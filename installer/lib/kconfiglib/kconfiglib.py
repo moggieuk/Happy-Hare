@@ -1295,7 +1295,9 @@ class Kconfig(object):
                     if sym.orig_type in _BOOL_TRISTATE:
                         # The C implementation only checks the first character
                         # to the right of '=', for whatever reason
-                        if not (sym.orig_type is BOOL
+                        if not (sym.orig_type is BOOLINT
+                                and val.startswith(("1", "0", "y", "n")) or
+                                sym.orig_type is BOOL
                                 and val.startswith(("y", "n")) or
                                 sym.orig_type is TRISTATE
                                 and val.startswith(("y", "m", "n"))):
@@ -1307,6 +1309,8 @@ class Kconfig(object):
                             continue
 
                         val = val[0]
+                        if sym.orig_type is BOOLINT:
+                            val = "y" if val in ("1", "y") else "n"
 
                         if sym.choice and val != "n":
                             # During .config loading, we infer the mode of the
@@ -1392,6 +1396,54 @@ class Kconfig(object):
                 if not choice._was_set:
                     choice.unset_value()
 
+# vvvv HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
+        if replace and filter_defaults:
+            self._migrate_legacy_boolint_pairs()
+
+    def _migrate_legacy_boolint_pairs(self):
+        """Migrate the temporary beta BOOL_X + PARAM_X representation.
+
+        Before BOOLINT existed, a prompted BOOL symbol drove a promptless INT
+        PARAM containing 0/1. The PARAM assignment was saved with
+        HH_DEFAULT_TOKEN, so normal menuconfig loading now treats it as a
+        default and clears it. If the old BOOL symbol is no longer defined,
+        recover its explicit selection into the replacement BOOLINT symbol.
+
+        Requiring the replacement assignment to have been marked as a default
+        prevents a stale BOOL line from overriding a new explicit BOOLINT
+        value. This compatibility helper and its aliases can be removed after
+        the v4 beta migration window.
+        """
+        aliases = {
+            "BOOL_ENABLE_SYNC_FEEDBACK": "PARAM_SYNC_FEEDBACK_ENABLED",
+            "BOOL_ENABLE_SYNC_TO_EXTRUDER": "PARAM_SYNC_TO_EXTRUDER",
+            "BOOL_ENABLE_SYNC_FORM_TIP": "PARAM_SYNC_FORM_TIP",
+            "BOOL_ENABLE_SYNC_PURGE": "PARAM_SYNC_PURGE",
+            "BOOL_BLOBIFIER_ENABLE_SHAKER": "VAR_BLOBIFIER_ENABLE_SHAKER",
+        }
+
+        for legacy_name, legacy_value in self.missing_syms:
+            if not legacy_name.startswith("BOOL_"):
+                continue
+
+            replacement_name = aliases.get(
+                legacy_name, "PARAM_" + legacy_name[len("BOOL_"):])
+            replacement = self.syms.get(replacement_name)
+
+            if not replacement or replacement.orig_type is not BOOLINT or \
+               not replacement._was_default:
+                continue
+
+            if legacy_value in ("y", "1"):
+                replacement.set_value("1")
+            elif legacy_value in ("n", "0"):
+                replacement.set_value("0")
+            else:
+                continue
+
+            replacement._was_default = False
+# ^^^^ HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
+
     def _undef_assign(self, name, val, filename, linenr):
         # Called for assignments to undefined symbols during .config loading
 
@@ -1406,7 +1458,9 @@ class Kconfig(object):
 
         # Use strings for bool/tristate user values in the warning
         if sym.orig_type in _BOOL_TRISTATE:
-            user_val = TRI_TO_STR[sym.user_value]
+            user_val = _bool_tri_to_str(sym, sym.user_value)
+            if sym.orig_type is BOOLINT:
+                new_val = "1" if new_val in (1, 2, "1", "y") else "0"
         else:
             user_val = sym.user_value
 
@@ -1505,7 +1559,11 @@ class Kconfig(object):
             #if not sym._write_to_conf:
             #    continue
 
-            if sym.orig_type in _BOOL_TRISTATE:
+            if sym.orig_type is BOOLINT:
+                add("#define {}{} {}\n"
+                    .format(self.config_prefix, sym.name, val))
+
+            elif sym.orig_type in _BOOL_TRISTATE:
                 if val == "y":
                     add("#define {}{} 1\n"
                         .format(self.config_prefix, sym.name))
@@ -1877,7 +1935,7 @@ class Kconfig(object):
 
             if sym._write_to_conf:
                 if sym._old_val is None and \
-                   sym.orig_type in _BOOL_TRISTATE and \
+                   sym.orig_type in _STANDARD_BOOL_TRISTATE and \
                    val == "n":
                     # No old value (the symbol was missing or n), new value n.
                     # No change.
@@ -1967,7 +2025,7 @@ class Kconfig(object):
         # Temporary list instead of generator makes this a bit faster
         return "".join([
             sym.config_string for sym in self.unique_defined_syms
-                if not (sym.orig_type in _BOOL_TRISTATE and not sym.tri_value)
+                if not (sym.orig_type in _STANDARD_BOOL_TRISTATE and not sym.tri_value)
         ])
 
     def node_iter(self, unique_syms=False):
@@ -3479,9 +3537,9 @@ class Kconfig(object):
                 node.selects.append((self._expect_nonconst_sym(),
                                      self._parse_cond()))
 
-            elif t0 is _T_FORCESHOW: # Happy Hare: Added to allow forced showing of some Symbols
-                if node.item.__class__ is not Symbol:
-                    self._parse_error("only symbols can force show")
+            elif t0 is _T_FORCESHOW: # Happy Hare: Added to allow forced showing of Symbols and menus
+                if node.item.__class__ is not Symbol and node.item is not MENU:
+                    self._parse_error("forceshow is only valid for symbols and menus")
 
                 node.forceshow = True
 
@@ -3533,12 +3591,12 @@ class Kconfig(object):
                 continue
 
             elif t0 is _T_DEFAULT:
-                node.defaults.append((self._parse_expr(False),
+                node.defaults.append((self._parse_default_expr(node.item),
                                       self._parse_cond()))
 
             elif t0 in _DEF_TOKEN_TO_TYPE:
                 self._set_type(node.item, _DEF_TOKEN_TO_TYPE[t0])
-                node.defaults.append((self._parse_expr(False),
+                node.defaults.append((self._parse_default_expr(node.item),
                                       self._parse_cond()))
 
             elif t0 is _T_PROMPT:
@@ -3696,6 +3754,20 @@ class Kconfig(object):
                        .format(sc.name_and_loc, TYPE_TO_STR[new_type]))
 
         sc.orig_type = new_type
+
+    def _parse_default_expr(self, item):
+        # Happy Hare: BOOLINT uses normal Kconfig Boolean logic internally,
+        # while allowing numeric 0/1 spellings for defaults.
+        return self._normalize_boolint_default(item, self._parse_expr(False))
+
+    def _normalize_boolint_default(self, item, default):
+        if item.__class__ is Symbol and item.orig_type is BOOLINT and \
+           default.__class__ is Symbol:
+            if default.name == "0":
+                return self.n
+            if default.name == "1":
+                return self.y
+        return default
 
     def _parse_prompt(self, node):
         # 'prompt' properties override each other within a single definition of
@@ -4143,6 +4215,14 @@ class Kconfig(object):
         # See the Symbol class docstring
         sym.direct_dep = self._make_or(sym.direct_dep, node.dep)
 
+        if sym.orig_type is BOOLINT:
+            # Also normalize when the type property appears after a default,
+            # which valid Kconfig syntax permits.
+            node.defaults = [
+                (self._normalize_boolint_default(sym, default), cond)
+                for default, cond in node.defaults
+            ]
+
         sym.defaults += node.defaults
         sym.generated_defaults += node.generated_defaults # Happy Hare: Added
         sym.ranges += node.ranges
@@ -4277,7 +4357,7 @@ class Kconfig(object):
             self._warn(msg)
 
         for choice in self.unique_choices:
-            if choice.orig_type not in _BOOL_TRISTATE:
+            if choice.orig_type not in _STANDARD_BOOL_TRISTATE:
                 self._warn("{} defined with type {}"
                            .format(choice.name_and_loc,
                                    TYPE_TO_STR[choice.orig_type]))
@@ -4449,7 +4529,8 @@ class Symbol(object):
       The name of the symbol, e.g. "FOO" for 'config FOO'.
 
     type:
-      The type of the symbol. One of BOOL, TRISTATE, STRING, INT, HEX, UNKNOWN.
+      The type of the symbol. One of BOOL, BOOLINT, TRISTATE, STRING, FLOAT,
+      INT, HEX, UNKNOWN.
       UNKNOWN is for undefined symbols, (non-special) constant symbols, and
       symbols defined without a type.
 
@@ -4771,6 +4852,12 @@ class Symbol(object):
         if self._cached_str_val is not None:
             return self._cached_str_val
 
+        if self.orig_type is BOOLINT:
+            # BOOLINT participates in Kconfig expressions as n/y, but exposes
+            # a numeric string to config files, templates, and callers.
+            self._cached_str_val = "1" if self.tri_value else "0"
+            return self._cached_str_val
+
         if self.orig_type in _BOOL_TRISTATE:
             # Also calculates the visibility, so invalidation safe
             self._cached_str_val = TRI_TO_STR[self.tri_value]
@@ -4956,7 +5043,7 @@ class Symbol(object):
                     dep_val = expr_value(cond)
                     if dep_val:
                         val = min(expr_value(default), dep_val)
-                        if val:
+                        if val or self.orig_type is BOOLINT:
                             self._write_to_conf = True
                         break
 
@@ -4979,7 +5066,7 @@ class Symbol(object):
             # m is promoted to y for (1) bool symbols and (2) symbols with a
             # weak_rev_dep (from imply) of y
             if val == 1 and \
-               (self.type is BOOL or expr_value(self.weak_rev_dep) == 2):
+               (self.type in _BOOL_TYPES or expr_value(self.weak_rev_dep) == 2):
                 val = 2
 
         elif vis == 2:
@@ -5023,6 +5110,10 @@ class Symbol(object):
         val = self.str_value
         if not self._write_to_conf:
             return ""
+
+        if self.orig_type is BOOLINT:
+            return "{}{}={}\n" \
+                   .format(self.kconfig.config_prefix, self.name, val)
 
         if self.orig_type in _BOOL_TRISTATE:
             return "{}{}={}\n" \
@@ -5088,7 +5179,14 @@ class Symbol(object):
         value of the symbol. For other symbol types, check whether the
         visibility is non-n.
         """
-        if self.orig_type in _BOOL_TRISTATE and value in STR_TO_TRI:
+        if self.orig_type is BOOLINT:
+            if value in ("0", "n"):
+                value = 0
+            elif value in ("1", "y"):
+                value = 2
+            elif value == 1:
+                value = 2
+        elif self.orig_type in _BOOL_TRISTATE and value in STR_TO_TRI:
             value = STR_TO_TRI[value]
 
         # If the new user value matches the old, nothing changes, and we can
@@ -5103,7 +5201,8 @@ class Symbol(object):
             return True
 
         # Check if the value is valid for our type
-        if not (self.orig_type is BOOL     and value in (2, 0)     or
+        if not (self.orig_type is BOOLINT  and value in (2, 0)     or
+                self.orig_type is BOOL     and value in (2, 0)     or
                 self.orig_type is TRISTATE and value in TRI_TO_STR or
                 value.__class__ is str   and
                 (self.orig_type is STRING                          or
@@ -5204,7 +5303,7 @@ class Symbol(object):
 
             if self.user_value is not None:
                 # Only add quotes for non-bool/tristate symbols
-                add("user value " + (TRI_TO_STR[self.user_value]
+                add("user value " + (_bool_tri_to_str(self, self.user_value)
                                      if self.orig_type in _BOOL_TRISTATE
                                      else '"{}"'.format(self.user_value)))
 
@@ -5326,7 +5425,7 @@ class Symbol(object):
                 return (2,)
 
             if not rev_dep_val:
-                if self.type is BOOL or expr_value(self.weak_rev_dep) == 2:
+                if self.type in _BOOL_TYPES or expr_value(self.weak_rev_dep) == 2:
                     return (0, 2)
                 return (0, 1, 2)
 
@@ -5335,7 +5434,7 @@ class Symbol(object):
 
             # rev_dep_val == 1
 
-            if self.type is BOOL or expr_value(self.weak_rev_dep) == 2:
+            if self.type in _BOOL_TYPES or expr_value(self.weak_rev_dep) == 2:
                 return (2,)
             return (1, 2)
 
@@ -5435,10 +5534,11 @@ class Symbol(object):
 
                 # Transpose mod to yes if type is bool (possibly due to modules
                 # being disabled)
-                if val == 1 and self.type is BOOL:
+                if val == 1 and self.type in _BOOL_TYPES:
                     val = 2
 
-            return TRI_TO_STR[val]
+            return ("1" if val else "0") if self.orig_type is BOOLINT else \
+                   TRI_TO_STR[val]
 
         if self.orig_type is STRING:
             # Happy Hare: 'default' and 'generated_default' are resolved
@@ -7065,6 +7165,8 @@ def _sym_to_num(sym):
 #    return sym.tri_value if sym.orig_type in _BOOL_TRISTATE else \
 #           int(sym.str_value, _TYPE_TO_BASE[sym.orig_type])
     # Happy Hare: introduced float type
+    if sym.orig_type is BOOLINT:
+        return 1 if sym.tri_value else 0
     if sym.orig_type in _BOOL_TRISTATE:
         return sym.tri_value
     if sym.orig_type is FLOAT:
@@ -7513,6 +7615,11 @@ TRI_TO_STR = {
     2: "y",
 }
 
+
+def _bool_tri_to_str(sym, value):
+    return ("1" if value else "0") if sym.orig_type is BOOLINT else \
+           TRI_TO_STR[value]
+
 STR_TO_TRI = {
     "n": 0,
     "m": 1,
@@ -7601,7 +7708,9 @@ except AttributeError:
     _T_TRISTATE,
     _T_UNEQUAL,
     _T_VISIBLE,
-) = range(1, 56) # Happy Hare: 51->56
+    _T_BOOLINT,      # Happy Hare: Added; appended to preserve existing token values
+    _T_DEF_BOOLINT,  # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 58) # Happy Hare: Added custom tokens through BOOLINT
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -7611,10 +7720,12 @@ _get_keyword = {
     "array_editor":   _T_ARRAY_EDITOR, # Happy Hare: Added
     "bool":           _T_BOOL,
     "boolean":        _T_BOOL,
+    "boolint":        _T_BOOLINT, # Happy Hare: Added
     "choice":         _T_CHOICE,
     "comment":        _T_COMMENT,
     "config":         _T_CONFIG,
     "def_bool":       _T_DEF_BOOL,
+    "defboolint":     _T_DEF_BOOLINT, # Happy Hare: Added
     "def_hex":        _T_DEF_HEX,
     "def_float":      _T_DEF_FLOAT, # Happy Hare: Added
     "def_int":        _T_DEF_INT,
@@ -7688,6 +7799,7 @@ REL_TO_STR = {
 # older versions.
 UNKNOWN  = 0
 BOOL     = _T_BOOL
+BOOLINT  = _T_BOOLINT # Happy Hare: Boolean with numeric 0/1 string output
 TRISTATE = _T_TRISTATE
 STRING   = _T_STRING
 FLOAT    = _T_FLOAT # Happy Hare: Added
@@ -7697,6 +7809,7 @@ HEX      = _T_HEX
 TYPE_TO_STR = {
     UNKNOWN:  "unknown",
     BOOL:     "bool",
+    BOOLINT:  "boolint",
     TRISTATE: "tristate",
     STRING:   "string",
     FLOAT:    "float",
@@ -7717,6 +7830,7 @@ _TYPE_TO_BASE = {
 # def_bool -> BOOL, etc.
 _DEF_TOKEN_TO_TYPE = {
     _T_DEF_BOOL:     BOOL,
+    _T_DEF_BOOLINT:  BOOLINT,
     _T_DEF_HEX:      HEX,
     _T_DEF_FLOAT:    FLOAT, # Happy Hare: Added
     _T_DEF_INT:      INT,
@@ -7734,6 +7848,7 @@ _DEF_TOKEN_TO_TYPE = {
 _STRING_LEX = frozenset({
     _T_ARRAY_EDITOR, # Happy Hare: Added
     _T_BOOL,
+    _T_BOOLINT,
     _T_CHOICE,
     _T_COMMENT,
     _T_HEX,
@@ -7756,6 +7871,7 @@ _STRING_LEX = frozenset({
 
 _TYPE_TOKENS = frozenset({
     _T_BOOL,
+    _T_BOOLINT,
     _T_TRISTATE,
     _T_FLOAT, # Happy Hare: Added
     _T_INT,
@@ -7783,11 +7899,23 @@ _OBL_SOURCE_TOKENS = frozenset({
 
 _BOOL_TRISTATE = frozenset({
     BOOL,
+    BOOLINT,
     TRISTATE,
+})
+
+_STANDARD_BOOL_TRISTATE = frozenset({
+    BOOL,
+    TRISTATE,
+})
+
+_BOOL_TYPES = frozenset({
+    BOOL,
+    BOOLINT,
 })
 
 _BOOL_TRISTATE_UNKNOWN = frozenset({
     BOOL,
+    BOOLINT,
     TRISTATE,
     UNKNOWN,
 })

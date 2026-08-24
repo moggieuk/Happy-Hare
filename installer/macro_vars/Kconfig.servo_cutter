@@ -1,9 +1,14 @@
-menu "Servo cutter at MMU (_MMU_SERVO_CUTTER)"
+menu "Servo cutter at MMU  (_MMU_SERVO_CUTTER)"
+  depends on  MMU_HAS_SERVO_CUTTER
+  forceshow
   help
     Happy Hare servo filament cutting macro configuration variables.
 
     This currently supports EREC and similar cutters that operate
     at the MMU end of the bowden.
+
+    (if disabled but desired, make sure you select "Have cutter at MMU" option
+     under "Tip Forming / Cutting --->" menu)
 
   comment "_"
   comment "_Servo movement"

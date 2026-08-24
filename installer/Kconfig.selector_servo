@@ -50,18 +50,14 @@ if MMU_HAS_SELECTOR_SERVO
         This avoids subsequent operations from happening before
         movement is complete
 
-    config BOOL_SERVO_ALWAYS_ACTIVE
-      bool "Servo always active?"
+    config PARAM_SERVO_ALWAYS_ACTIVE
+      boolint "Servo always active?"
+      default 0
       help
         This option will force the servo to always stay active. It can be dangerous on some
         designs or miscalibrated MMU because it strains the servo and control electronics.
 
         Recommend to disable unless you are sure you know you need it.
-    config PARAM_SERVO_ALWAYS_ACTIVE
-      int
-      default 1 if BOOL_SERVO_ALWAYS_ACTIVE
-      default 0
-
     config PARAM_SERVO_DURATION
       float "Servo PWM duration   "
       default 0.4 if LINEAR_SELECTOR
@@ -80,18 +76,15 @@ if MMU_HAS_SELECTOR_SERVO
       comment "_"
       comment "_Filament grip control"
 
-      config BOOL_SERVO_ACTIVE_DOWN
-        bool "Servo active down"
+      config PARAM_SERVO_ACTIVE_DOWN
+        boolint "Servo active down"
+        default 0
         help
           This option will force the servo to stay active just when in the down or gripped position.
           It can be dangerous on some designs or miscalibrated MMU because it strains the servo
           and control electronics.
 
           Recommend to disable unless you are sure you know you need it or your experience poor filament grip.
-      config PARAM_SERVO_ACTIVE_DOWN
-        int
-        default 1 if BOOL_SERVO_ACTIVE_DOWN
-        default 0
     endif
 
     if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR

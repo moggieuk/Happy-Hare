@@ -11,25 +11,17 @@ menu "Macro Variables"
   rsource "Kconfig.software"
   rsource "Kconfig.state"
   rsource "Kconfig.sequence"
+  rsource "Kconfig.client"
 
-  if INSTALL_CLIENT_MACROS
-    rsource "Kconfig.client"
-  endif
-
+  comment "_"
+  comment "_Tip Forming/Cutting"
   rsource "Kconfig.form_tip"
+  rsource "Kconfig.cut_tip"
+  rsource "Kconfig.servo_cutter"
 
-  if MMU_HAS_TOOLHEAD_CUTTER
-    rsource "Kconfig.cut_tip"
-  endif
-
-  if MMU_HAS_SERVO_CUTTER
-    rsource "Kconfig.servo_cutter"
-  endif
-
-  if MMU_HAS_BLOBIFIER
-    rsource "Kconfig.blobifier"
-  endif
-
+  comment "_"
+  comment "_Purging"
+  rsource "Kconfig.blobifier"
   rsource "Kconfig.purge"
 
 

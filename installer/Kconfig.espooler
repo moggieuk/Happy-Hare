@@ -102,6 +102,7 @@ if MMU_HAS_ESPOOLER
     config PARAM_ESPOOLER_OPERATIONS
       string "Espooler enabled operations      "
       default "rewind, assist, print"
+      array_editor ","
       help
         Regardless of h/w you can enable/disable actions. E.g. remove 'print' to turn off operation while printing. Options:
           rewind - when filament is being unloaded under MMU control (aka respool)
@@ -138,16 +139,11 @@ if MMU_HAS_ESPOOLER
       help
         The duration of the burst move in seconds
 
-    config BOOL_ESPOOLER_ASSIST_BURST_TRIGGER
-      bool "Trigger assist switch fitted?"
-      default n
+    config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER
+      boolint "Trigger assist switch fitted?"
+      default 0
       help
         If trigger assist switch is fitted 0=disable, 1=enable
-
-    config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER
-      int
-      default 1 if BOOL_ESPOOLER_ASSIST_BURST_TRIGGER
-      default 0
 
     config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
       int
@@ -155,7 +151,7 @@ if MMU_HAS_ESPOOLER
 
     config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
       prompt "Espooler assist burst trigger max"
-      depends on BOOL_ESPOOLER_ASSIST_BURST_TRIGGER
+      depends on PARAM_ESPOOLER_ASSIST_BURST_TRIGGER
       help
         If trigger assist switch is fitted this limits the max number of back-to-back advances
 

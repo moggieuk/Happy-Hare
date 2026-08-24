@@ -593,20 +593,15 @@ if MMU_HAS_NFC_READER
   # -------------------------------------
 
   menu "NFC/RFID params"
-    config BOOL_NFC_DEEP_READ
-      bool "RFID deep metadata read"
-      default y
+    config PARAM_NFC_DEEP_READ
+      boolint "RFID deep metadata read"
+      default 1
       help
         Read the filament data stored on supported spool tags (Bambu, Creality, OpenSpool, OpenTag, etc).
         A "deep read" parses the full tag (material, color, vendor, temperatures) instead of just the UID,
         and uses it to populate the local gate map when a tag is presented.
         Optionally, if a scanned tag's UID isn't yet known to Spoolman, a new spool can be created automatically
         from the tag.
-
-    config PARAM_NFC_DEEP_READ
-      int
-      default 1 if BOOL_NFC_DEEP_READ
-      default 0
 
     config PARAM_NFC_GATE_JOG_SCAN_WINDOW
       string "NFC jog scan window (scan)           "
@@ -630,9 +625,9 @@ if MMU_HAS_NFC_READER
         E.g. "-100, 400" means can retract -100mm and extrude 400mm.
              "0, 0" disables jog scanning during preload
 
-    config BOOL_NFC_NEIGHBOR_CHECK
-      bool "NFC neighbor field check"
-      default n
+    config PARAM_NFC_NEIGHBOR_CHECK
+      boolint "NFC neighbor field check"
+      default 0
       help
         A neighboring gate's spool can sit inside this gate's RF field, satisfying
         the preload NFC endstop or MMU_NFC_SCAN before the filament moves and
@@ -641,11 +636,6 @@ if MMU_HAS_NFC_READER
         rather than attributed. Off by default (no extra reader I/O).
 
         See "NFC neighbor eviction jog" below to also move it out of the way.
-
-    config PARAM_NFC_NEIGHBOR_CHECK
-      int
-      default 1 if BOOL_NFC_NEIGHBOR_CHECK
-      default 0
 
     config PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
       float "NFC neighbor eviction jog            "

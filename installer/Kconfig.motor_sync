@@ -1,7 +1,7 @@
 # This module is responsible for sync-feedback buffer and
 # motor synchronization parameters:
 #
-#   BOOL_ENABLE_SYNC_FEEDBACK
+#   PARAM_SYNC_FEEDBACK_ENABLED
 #
 #   PARAM_SYNC_TO_EXTRUDER
 #   PARAM_SYNC_FORM_TIP
@@ -17,31 +17,22 @@ menu "MMU/Extruder sync"
     overcome friction in the filament path.
 
   if MMU_HAS_SYNC_FEEDBACK_BUFFER
-    config BOOL_ENABLE_SYNC_FEEDBACK
-      bool "Enable dynamic sync feedback?"
-      default y
+    config PARAM_SYNC_FEEDBACK_ENABLED
+      boolint "Enable dynamic sync feedback?"
+      default 1
       help
         Sync feedback from the buffer will be used to dynamically adjust the
         gear stepper speed to exactly match the extruder. This prevents
         under extrusion artifacts caused by filament drag.
 
-    config PARAM_SYNC_FEEDBACK_ENABLED
-      int
-      default 1 if BOOL_ENABLE_SYNC_FEEDBACK
-      default 0
   endif
 
-  config BOOL_ENABLE_SYNC_TO_EXTRUDER
-    bool "Enable sync to extruder?" if !BOOL_FILAMENT_ALWAYS_GRIPPED
-    default y if BOOL_FILAMENT_ALWAYS_GRIPPED
+  config PARAM_SYNC_TO_EXTRUDER
+    boolint "Enable sync to extruder?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default 1 if PARAM_FILAMENT_ALWAYS_GRIPPED
     help
       This controls whether the extruder and gear steppers are synchronized
       during printing operations.
-
-  config PARAM_SYNC_TO_EXTRUDER
-    int
-    default 1 if BOOL_ENABLE_SYNC_TO_EXTRUDER
-    default 0
 
   config PARAM_SYNC_GEAR_CURRENT
     int "Synchronized gear current        "
@@ -49,59 +40,39 @@ menu "MMU/Extruder sync"
     help
       % of gear_stepper current (10%-100%) to use when syncing with extruder during print
 
-  config BOOL_ENABLE_SYNC_FORM_TIP
-    bool "Enable syncing while tip forming?" if !BOOL_FILAMENT_ALWAYS_GRIPPED
-    default y if ENABLE_SYNC_TO_EXTRUDER
+  config PARAM_SYNC_FORM_TIP
+    boolint "Enable syncing while tip forming?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default 1 if ENABLE_SYNC_TO_EXTRUDER
     help
       This controls whether the extruder and gear steppers are synchronized
       during tip forming operation.
 
       Set extruder current in "Software options" section
 
-  config PARAM_SYNC_FORM_TIP
-    int
-    default 1 if BOOL_ENABLE_SYNC_FORM_TIP
-    default 0
-
-  config BOOL_ENABLE_SYNC_PURGE
-    bool "Enable syncing while purging?" if !BOOL_FILAMENT_ALWAYS_GRIPPED
-    default y if ENABLE_SYNC_TO_EXTRUDER
+  config PARAM_SYNC_PURGE
+    boolint "Enable syncing while purging?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default 1 if ENABLE_SYNC_TO_EXTRUDER
     help
       This controls whether the extruder and gear steppers are synchronized
       during purging operation.
 
       Set extruder current in "Software options" section
 
-  config PARAM_SYNC_PURGE
-    int
-    default 1 if BOOL_ENABLE_SYNC_PURGE
-    default 0
-
   comment "_"
 
-  config BOOL_TOOLHEAD_POST_LOAD_TENSION_ADJUST
-    bool "Adjust neutral tension after toolhead load?"
-    default y
+  config PARAM_TOOLHEAD_POST_LOAD_TENSION_ADJUST
+    boolint "Adjust neutral tension after toolhead load?"
+    default 1
     help
       If synchronizing gear and extruder and you have a sync-feedback "buffer" (switch based or
       proportional) this setting determines whether to use it to create neutral tension after loading
 
-  config PARAM_TOOLHEAD_POST_LOAD_TENSION_ADJUST
-    int
-    default 1 if BOOL_TOOLHEAD_POST_LOAD_TENSION_ADJUST
-    default 0
-
-  config BOOL_TOOLHEAD_ENTRY_TENSION_TEST
-    bool "Test filament entry via tension after extruder move?"
-    default y
+  config PARAM_TOOLHEAD_ENTRY_TENSION_TEST
+    boolint "Test filament entry via tension after extruder move?"
+    default 1
     help
       If sync-feedback compression sensor is available this test will ensure the filament passes the
       extruder entry by checking for neutral tension when moving filament with just the extruder.
       Recommended with sprung loaded sync-feedback buffers. This is ignored if toolhead sensor is available.
-
-  config PARAM_TOOLHEAD_ENTRY_TENSION_TEST
-    int
-    default 1 if BOOL_TOOLHEAD_ENTRY_TENSION_TEST
-    default 0
 
 endmenu

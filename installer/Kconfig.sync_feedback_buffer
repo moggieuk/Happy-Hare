@@ -252,18 +252,13 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
       endif
 
-      config BOOL_REGISTER_BUFFER_SENSORS
-        bool "Register buffer sensors          "
-        default y
+      config PARAM_REGISTER_BUFFER_SENSORS
+        boolint "Register buffer sensors          "
+        default 1
         help
           Whether to register the sensors for visibility in klipper UI's
           and with QUERY_SENSOR command. There is no harm in doing this but
           it can be disabled to reduce clutter.
-      config PARAM_REGISTER_BUFFER_SENSORS
-        int
-        default 1 if BOOL_REGISTER_BUFFER_SENSORS
-        default 0
-
     endif
 
     comment "_"
@@ -289,19 +284,14 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       help
         Extruder movement (mm) for updates (keep small but set > retract distance)
 
-    config BOOL_SYNC_FEEDBACK_DEBUG_LOG
-      bool "Enable sync-feedback telemetry log?"
-      default n
+    config PARAM_SYNC_FEEDBACK_DEBUG_LOG
+      boolint "Enable sync-feedback telemetry log?"
+      default 0
       help
         If enabled this forces debugging to a telemetry log file "sync_<gate>.jsonl". This is great if
         trying to tune clog/tangle detection or for getting help on the Happy Hare forum. To plot graph
         of sync-feedback operation, run:
           ~/Happy-Hare/utils/plot_sync_feedback.sh
-
-    config PARAM_SYNC_FEEDBACK_DEBUG_LOG
-      int
-      default 1 if BOOL_SYNC_FEEDBACK_DEBUG_LOG
-      default 0
 
   endmenu
 endif

@@ -46,26 +46,18 @@ menu "Software Options"
 
   comment "_EndlessSpool"
 
-  config BOOL_ENDLESS_SPOOL_ENABLED
-    bool "Enable EndlessSpool?"
+  config PARAM_ENDLESS_SPOOL_ENABLED
+    boolint "Enable EndlessSpool?"
+    default 0
     help
       This uses filament runout detection to automate switching to a new spool without interruption
 
-  config PARAM_ENDLESS_SPOOL_ENABLED
-    int
-    default 1 if BOOL_ENDLESS_SPOOL_ENABLED
+  config PARAM_ENDLESS_SPOOL_ON_LOAD
+    boolint "Apply EndlessSpool automatically when loading an empty gate?"
     default 0
-
-  config BOOL_ENDLESS_SPOOL_ON_LOAD
-    bool "Apply EndlessSpool automatically when loading an empty gate?"
     help
       If the gate selected for a load is empty, automatically run EndlessSpool to find and
       switch to a gate that has filament instead of erroring
-
-  config PARAM_ENDLESS_SPOOL_ON_LOAD
-    int
-    default 1 if BOOL_ENDLESS_SPOOL_ON_LOAD
-    default 0
 
 
 # -------------------------------------
@@ -146,16 +138,12 @@ menu "Software Options"
     default "status" if CHOICE_SPOOLMAN_LED_SEGMENT_STATUS
     default "both" if CHOICE_SPOOLMAN_LED_SEGMENT_BOTH
 
-  config BOOL_SPOOLMAN_NFC_AUTO_CREATE
-    bool "Auto-create a Spoolman spool from an unknown NFC/RFID tag?"
+  config PARAM_SPOOLMAN_NFC_AUTO_CREATE
+    boolint "Auto-create a Spoolman spool from an unknown NFC/RFID tag?"
+    default 0
     help
       When a scanned tag UID is unknown to Spoolman, create a new spool from the tag metadata
       (requires nfc_deep_read and spoolman_support push or pull)
-
-  config PARAM_SPOOLMAN_NFC_AUTO_CREATE
-    int
-    default 1 if BOOL_SPOOLMAN_NFC_AUTO_CREATE
-    default 0
 
 
 # -------------------------------------
@@ -223,49 +211,29 @@ menu "Software Options"
     default 4 if CHOICE_LOG_FILE_LEVEL_STEPPER
     default 2
 
-  config BOOL_LOG_STATISTICS
-    bool "Log statistics on every toolchange?"
-    default y
+  config PARAM_LOG_STATISTICS
+    boolint "Log statistics on every toolchange?"
+    default 1
     help
       1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
 
-  config PARAM_LOG_STATISTICS
-    int
-    default 1 if BOOL_LOG_STATISTICS
-    default 0
-
-  config BOOL_LOG_VISUAL
-    bool "Log visual representation of filament?"
-    default y
+  config PARAM_LOG_VISUAL
+    boolint "Log visual representation of filament?"
+    default 1
     help
       Whether to log visual representation of filament in console
 
-  config PARAM_LOG_VISUAL
-    int
-    default 1 if BOOL_LOG_VISUAL
-    default 0
-
-  config BOOL_LOG_STARTUP_STATUS
-    bool "Log tool to gate status on startup"
-    default y
+  config PARAM_LOG_STARTUP_STATUS
+    boolint "Log tool to gate status on startup"
+    default 1
     help
       Whether to log tool summary and gate status on startup
 
-  config PARAM_LOG_STARTUP_STATUS
-    int
-    default 1 if BOOL_LOG_STARTUP_STATUS
-    default 0
-
-  config BOOL_LOG_M117_MESSAGES
-    bool "Send toolchange message via M117 to screen?"
-    default y
+  config PARAM_LOG_M117_MESSAGES
+    boolint "Send toolchange message via M117 to screen?"
+    default 1
     help
       Whether send toolchange message via M117 to screen
-
-  config PARAM_LOG_M117_MESSAGES
-    int
-    default 1 if BOOL_LOG_M117_MESSAGES
-    default 0
 
 
 # -------------------------------------
@@ -344,75 +312,45 @@ menu "Software Options"
   comment "_"
   comment "_Workflow"
 
-  config BOOL_STARTUP_RESET_TTG_MAP
-    bool "Reset tool-to-gate map on startup?"
-    default n
+  config PARAM_STARTUP_RESET_TTG_MAP
+    boolint "Reset tool-to-gate map on startup?"
+    default 0
     help
       Whether to reset TTG map on startup
 
-  config PARAM_STARTUP_RESET_TTG_MAP
-    int
-    default 1 if BOOL_STARTUP_RESET_TTG_MAP
-    default 0
-
-  config BOOL_SHOW_ERROR_DIALOG
-    bool "Show pop-up dialog on error?"
-    default y
+  config PARAM_SHOW_ERROR_DIALOG
+    boolint "Show pop-up dialog on error?"
+    default 1
     help
       Select to show pop-up dialog in addition to console message
 
-  config PARAM_SHOW_ERROR_DIALOG
-    int
-    default 1 if BOOL_SHOW_ERROR_DIALOG
+  config PARAM_STRICT_FILAMENT_RECOVERY
+    boolint "Use strict filament recovery?"
     default 0
-
-  config BOOL_STRICT_FILAMENT_RECOVERY
-    bool "Use strict filament recovery?"
-    default n
     help
       If enabled with MMU with toolhead sensor, this will cause filament position recovery to perform
       extra moves to look for filament trapped in the space after extruder but before sensor
 
-  config PARAM_STRICT_FILAMENT_RECOVERY
-    int
-    default 1 if BOOL_STRICT_FILAMENT_RECOVERY
-    default 0
-
-  config BOOL_FILAMENT_RECOVERY_ON_PAUSE
-    bool "Check filament position on pause/error?"
-    default y
+  config PARAM_FILAMENT_RECOVERY_ON_PAUSE
+    boolint "Check filament position on pause/error?"
+    default 1
     help
       Whether to run a quick check to determine current filament position on pause/error
 
-  config PARAM_FILAMENT_RECOVERY_ON_PAUSE
-    int
-    default 1 if BOOL_FILAMENT_RECOVERY_ON_PAUSE
+  config PARAM_RETRY_TOOL_CHANGE_ON_ERROR
+    boolint "Automatically retry a failed tool change?"
     default 0
-
-  config BOOL_RETRY_TOOL_CHANGE_ON_ERROR
-    bool "Automatically retry a failed tool change?"
-    default n
     help
       Whether to automatically retry a failed tool change. If enabled Happy Hare will perform the
       equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary to recover.
       Note that enabling this can mask problems with your MMU
 
-  config PARAM_RETRY_TOOL_CHANGE_ON_ERROR
-    int
-    default 1 if BOOL_RETRY_TOOL_CHANGE_ON_ERROR
-    default 0
-
-  config BOOL_BYPASS_AUTOLOAD
-    bool "Automatically load extruder for bypass operation?"
-    default y
+  config PARAM_BYPASS_AUTOLOAD
+    boolint "Automatically load extruder for bypass operation?"
+    default 1
     depends on MMU_HAS_SENSOR_EXTRUDER
     help
       If extruder sensor fitted this controls the automatic loading of extruder for bypass operation
-
-  config PARAM_BYPASS_AUTOLOAD
-    int
-    default 1 if BOOL_BYPASS_AUTOLOAD
-    default 0
 
 
 # -------------------------------------

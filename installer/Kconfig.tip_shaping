@@ -124,24 +124,19 @@ menu "Tip Forming / Cutting"
 # Other tip shaping options
 # -------------------------------------
 
-  config BOOL_FORCE_FORM_TIP_STANDALONE
-    bool "Happy Hare controlled in-print tip forming/cutting"
-    def_bool n if CHOICE_FORM_TIP_MACRO_SLICER
-    def_bool y
+  config PARAM_FORCE_FORM_TIP_STANDALONE
+    boolint "Happy Hare controlled in-print tip forming/cutting"
+    default 0 if CHOICE_FORM_TIP_MACRO_SLICER
+    default 1
     help
       You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
       To use tip cutting ensure this selection is checked and be sure to turn off in your slicer
-  config PARAM_FORCE_FORM_TIP_STANDALONE
-    int
-    default 1 if BOOL_FORCE_FORM_TIP_STANDALONE
-    default 0
-
   config PARAM_SLICER_TIP_PARK_POS
     string
     default "0"
   config PARAM_SLICER_TIP_PARK_POS
     prompt "Slicer tip park pos"
-    depends on !BOOL_FORCE_FORM_TIP_STANDALONE
+    depends on !PARAM_FORCE_FORM_TIP_STANDALONE
     help
       This specifies the position of filament in extruder after slicer completes tip forming
       and is usually a setting in the slicer config.

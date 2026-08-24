@@ -181,18 +181,16 @@ class TestMachineNfcDefaults(unittest.TestCase):
                 'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW',
                 'PARAM_NFC_GATE_CLEAR_DISTANCE',
                 'PARAM_NFC_PRELOAD_CLEAR_DISTANCE',
-                'BOOL_NFC_NEIGHBOR_CHECK',
                 'PARAM_NFC_NEIGHBOR_CHECK',
             )
         }
 
     def test_emu(self):
         self.assertEqual(self._defaults('emu'), {
-            'PARAM_NFC_GATE_JOG_SCAN_WINDOW': '-100, 450',
-            'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '-100, 450',
+            'PARAM_NFC_GATE_JOG_SCAN_WINDOW': '0, 480',
+            'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '0, 480',
             'PARAM_NFC_GATE_CLEAR_DISTANCE': '70',
             'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': '70',
-            'BOOL_NFC_NEIGHBOR_CHECK': 'y',
             'PARAM_NFC_NEIGHBOR_CHECK': '1',
         })
 
@@ -202,7 +200,6 @@ class TestMachineNfcDefaults(unittest.TestCase):
             'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '-300, 200',
             'PARAM_NFC_GATE_CLEAR_DISTANCE': '-70',
             'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': '-70',
-            'BOOL_NFC_NEIGHBOR_CHECK': 'y',
             'PARAM_NFC_NEIGHBOR_CHECK': '1',
         })
 

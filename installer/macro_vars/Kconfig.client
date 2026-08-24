@@ -1,9 +1,14 @@
 menu "Client macros        (_MMU_CLIENT)"
+  depends on INSTALL_CLIENT_MACROS
+  forceshow
   help
     Happy Hare client macro configuration variables.
 
     Supplemental customization and extension points for the recommended
     PAUSE, RESUME, and CANCEL_PRINT macros.
+
+    (if disabled but desired, select "install default client macros" option
+     under "Software Options --->" menu)
 
   config BOOL_CLIENT_RESET_TTG_ON_CANCEL
     bool "Reset TTG map on cancel"

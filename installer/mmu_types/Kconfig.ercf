@@ -6,8 +6,8 @@ config MMU_FAMILY_ERCF
     main versions, the original v1.1 and the upgraded v2.0.
   imply  LINEAR_SERVO_SELECTOR
   select MMU_HAS_ENCODER
-  select BOOL_VARIABLE_ROTATION_DISTANCES
-  select BOOL_REQUIRE_BOWDEN_MOVE
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select PARAM_REQUIRE_BOWDEN_MOVE
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
 
 if MMU_FAMILY_ERCF
@@ -30,7 +30,7 @@ if MMU_FAMILY_ERCF
         popular mods and filler with custom Binky based encoder.
       imply MMU_HAS_LEDS
       imply MMU_HAS_SENSOR_ENTRY
-      imply BOOL_HAS_BYPASS
+      imply PARAM_HAS_BYPASS
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
 
     config MMU_TYPE_ERCF_3_0
@@ -41,7 +41,7 @@ if MMU_FAMILY_ERCF
         ease of use features with hinged gates.
       imply MMU_HAS_LEDS
       imply MMU_HAS_SENSOR_ENTRY
-      imply BOOL_HAS_BYPASS
+      imply PARAM_HAS_BYPASS
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
   endchoice
 
@@ -108,7 +108,7 @@ if MMU_FAMILY_ERCF
       config MOD_JACK_RABBIT
         bool "Jack Rabbit Selector"
         imply LINEAR_SELECTOR
-        select BOOL_FILAMENT_ALWAYS_GRIPPED
+        select PARAM_FILAMENT_ALWAYS_GRIPPED
         help
           Select if building with the Jack Rabbit modification WITHOUT servo
           This will change the selector type and specify that the filament
@@ -145,7 +145,7 @@ if MMU_FAMILY_ERCF
     default 100
 
   # Calibration and Autotuning overrides
-  config BOOL_SKIP_CAL_ENCODER
+  config PARAM_SKIP_CAL_ENCODER
     default n
 
 

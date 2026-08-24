@@ -114,7 +114,7 @@ LEVEL_NOTICE = 25
 
 
 def kconfig_truthy(value):
-    return value is True or value in ("y", "m", 1)
+    return value is True or value in ("y", "m", "1", 1)
 
 
 class KConfig(kconfiglib.Kconfig):
@@ -161,6 +161,8 @@ class KConfig(kconfiglib.Kconfig):
 
     def getint(self, sym):
         s = self.syms[sym]
+        if s.orig_type == kconfiglib.BOOLINT:
+            return int(s.str_value)
         # Same user_value/str_value fallback as is_enabled() --
         # avoids int(None) blowing up for a symbol that's only ever been
         # set via default
@@ -172,6 +174,8 @@ class KConfig(kconfiglib.Kconfig):
         if sym not in self.syms:
             raise KeyError("Symbol '{}' not found in Kconfig".format(sym))
         s = self.syms[sym]
+        if s.orig_type == kconfiglib.BOOLINT:
+            return s.str_value
         # Same user_value/str_value fallback as is_enabled()/
         # getint() -- otherwise this silently returns None for anything
         # relying purely on a default instead of an explicit assignment
@@ -181,7 +185,9 @@ class KConfig(kconfiglib.Kconfig):
         """
         Return the Kconfig as a dictionary, converting all variables that
         end with "_<int>" into lists of the correct length for easy jinja
-        templating. Also converts "bool" types to Python bool.
+        templating. Also converts "bool" types to Python bool. BOOLINT values
+        remain the numeric strings "0" and "1", matching the INT parameters
+        they replace.
 
         Note: Prefers each symbol's raw user_value over the Kconfig-computed
         str_value/tri_value, since kconfiglib only honors a user-assigned
@@ -193,7 +199,7 @@ class KConfig(kconfiglib.Kconfig):
         are still meant to be explicitly overridden via the loaded .config
         file -- honoring user_value when present is what makes that work.
 
-        Caveat: for BOOL/TRISTATE symbols, user_value is stored internally
+        Caveat: for BOOL/BOOLINT/TRISTATE symbols, user_value is stored internally
         as an int tri-state (0/1/2), not as "n"/"m"/"y" -- it's normalized
         here before use so it isn't silently mistaken for something falsy.
         """
@@ -213,15 +219,18 @@ class KConfig(kconfiglib.Kconfig):
 
             raw = sym_obj.user_value if sym_obj.user_value is not None else sym_obj.str_value
 
-            if sym_obj.type in (kconfiglib.BOOL, kconfiglib.TRISTATE) and isinstance(raw, int):
+            if sym_obj.type == kconfiglib.BOOLINT:
+                value = "1" if raw in (1, 2, "1", "y") else "0"
+            elif sym_obj.type in (kconfiglib.BOOL, kconfiglib.TRISTATE) and isinstance(raw, int):
                 raw = kconfiglib.TRI_TO_STR[raw]
 
-            if sym_obj.type == kconfiglib.BOOL:
-                value = (raw == "y")
-            elif sym_obj.type == kconfiglib.TRISTATE:
-                value = raw
-            else:
-                value = raw.replace("\\n", "\n")
+            if sym_obj.type != kconfiglib.BOOLINT:
+                if sym_obj.type == kconfiglib.BOOL:
+                    value = (raw == "y")
+                elif sym_obj.type == kconfiglib.TRISTATE:
+                    value = raw
+                else:
+                    value = raw.replace("\\n", "\n")
 
             # Choice members: only include selected/enabled member. Checked
             # before the array-grouping regex below, since choice member names

@@ -1,6 +1,11 @@
-menu "Toolhead tip cutting   (_MMU_CUT_TIP)"
+menu "Toolhead tip cutting (_MMU_CUT_TIP)"
+  depends on MMU_HAS_TOOLHEAD_CUTTER
+  forceshow
   help
     Happy Hare toolhead tip cutting macro configuration variables.
+
+    (If disabled but desired, make sure you select "Has toolhead cutter"
+     option under the "Toolhead sensors/settings" menu))
 
   config BOOL_CUT_TIP_RESTORE_POSITION
     bool "Restore toolhead position after cut"

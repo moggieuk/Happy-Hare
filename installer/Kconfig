@@ -41,7 +41,7 @@
 #   generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
 #
 # 2. Added float type
-# 3. Option 'force_show'to force display even if dependency isn't met
+# 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met
 # 4. Recording of default value with #~DEFAULT~# magic token
 # 5. Preprocessor function 'saved-config-value' to read a symbol's previous assignment from
 #    KCONFIG_CONFIG before normal config loading, including lines marked with #~DEFAULT~#
@@ -54,7 +54,8 @@
 # 8. "if XX" construct is allowed on comment lines
 # 9. Added 'array_editor <separator> [size]' option for strings that represent lists
 #    E.g. `array_editor ";" PARAM_NUM_GATES
-# 10. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
+# 10. Added 'boolint' and 'defboolint' types: Boolean UI/logic with numeric 0/1 output
+# 11. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
 #    and include: B,BOLD,DIM,U,UNDERLINE,REV,REVERSE,C:n,COLOR:n (color), RESET
 #
 # Menuconfig:
