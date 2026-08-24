@@ -1396,6 +1396,52 @@ class Kconfig(object):
                 if not choice._was_set:
                     choice.unset_value()
 
+        if replace and filter_defaults:
+            self._migrate_legacy_boolint_pairs()
+
+    def _migrate_legacy_boolint_pairs(self):
+        """Migrate the temporary beta BOOL_X + PARAM_X representation.
+
+        Before BOOLINT existed, a prompted BOOL symbol drove a promptless INT
+        PARAM containing 0/1. The PARAM assignment was saved with
+        HH_DEFAULT_TOKEN, so normal menuconfig loading now treats it as a
+        default and clears it. If the old BOOL symbol is no longer defined,
+        recover its explicit selection into the replacement BOOLINT symbol.
+
+        Requiring the replacement assignment to have been marked as a default
+        prevents a stale BOOL line from overriding a new explicit BOOLINT
+        value. This compatibility helper and its aliases can be removed after
+        the v4 beta migration window.
+        """
+        aliases = {
+            "BOOL_ENABLE_SYNC_FEEDBACK": "PARAM_SYNC_FEEDBACK_ENABLED",
+            "BOOL_ENABLE_SYNC_TO_EXTRUDER": "PARAM_SYNC_TO_EXTRUDER",
+            "BOOL_ENABLE_SYNC_FORM_TIP": "PARAM_SYNC_FORM_TIP",
+            "BOOL_ENABLE_SYNC_PURGE": "PARAM_SYNC_PURGE",
+            "BOOL_BLOBIFIER_ENABLE_SHAKER": "VAR_BLOBIFIER_ENABLE_SHAKER",
+        }
+
+        for legacy_name, legacy_value in self.missing_syms:
+            if not legacy_name.startswith("BOOL_"):
+                continue
+
+            replacement_name = aliases.get(
+                legacy_name, "PARAM_" + legacy_name[len("BOOL_"):])
+            replacement = self.syms.get(replacement_name)
+
+            if not replacement or replacement.orig_type is not BOOLINT or \
+               not replacement._was_default:
+                continue
+
+            if legacy_value in ("y", "1"):
+                replacement.set_value("1")
+            elif legacy_value in ("n", "0"):
+                replacement.set_value("0")
+            else:
+                continue
+
+            replacement._was_default = False
+
     def _undef_assign(self, name, val, filename, linenr):
         # Called for assignments to undefined symbols during .config loading
 
