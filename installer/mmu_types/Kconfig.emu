@@ -122,9 +122,9 @@ if MMU_TYPE_EMU_1_0
     default 52
 
   config PARAM_NFC_GATE_JOG_SCAN_WINDOW
-    default "-100, 450"
+    default "0, 480"
   config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
-    default "-100, 450"
+    default "0, 480"
   config PARAM_NFC_GATE_CLEAR_DISTANCE
     default 70
   config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
