@@ -1396,6 +1396,7 @@ class Kconfig(object):
                 if not choice._was_set:
                     choice.unset_value()
 
+# vvvv HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
         if replace and filter_defaults:
             self._migrate_legacy_boolint_pairs()
 
@@ -1441,6 +1442,7 @@ class Kconfig(object):
                 continue
 
             replacement._was_default = False
+# ^^^^ HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
 
     def _undef_assign(self, name, val, filename, linenr):
         # Called for assignments to undefined symbols during .config loading
