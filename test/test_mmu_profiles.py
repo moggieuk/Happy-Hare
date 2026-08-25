@@ -401,41 +401,11 @@ class TestProportionalBufferSensor(unittest.TestCase):
         self.assertEqual(self.hh.sensor('mmu_entry_0').kind, 'switch')
 
 
-class TestTensionThresholdSignError(unittest.TestCase):
+class TestProportionalVirtualSensorThresholds(unittest.TestCase):
     """
-    A REAL BUG: a proportional buffer sensor reports TENSION almost all the time.
-
-    The config help for analog_sensor_threshold states the intent unambiguously
-    (installer/Kconfig.sync_feedback_buffer:208-215):
-
-        a setting of 0.9 means:
-          the virtual filament_compression sensor will trigger at 0.9
-          the virtual filament_tension sensor will trigger at -0.9
-
-    But the thresholds are computed without the negation
-    (extras/mmu/unit/mmu_buffer.py:207-209):
-
-        h = abs(self.analog_sensor_threshold) * self._vsensor_hysteresis
-        self._vsensor_threshold_low  = self.analog_sensor_threshold - h    # +0.864
-        self._vsensor_threshold_high = self.analog_sensor_threshold + h    # +0.936
-
-    so with the default threshold of 0.9 the bands are:
-
-        value > +0.936            -> compression
-        +0.864 .. +0.936          -> neutral
-        anything below +0.864     -> TENSION      <-- includes 0.0 and every -ve value
-
-    The consequences: there is effectively no neutral state (it is a 0.072-wide sliver at
-    the top of the compression range), and the virtual tension sensor is asserted for
-    essentially every reading a real sensor produces - including a perfectly centred
-    filament. Sync-feedback gear compensation reads permanent tension.
-
-    `low` should be negative: -(threshold - h) = -0.864, or -(threshold + h) = -0.936
-    depending on which side hysteresis is meant to widen. That choice is a design call,
-    which is why this is reported rather than fixed here.
-
-    Reachable with shipped defaults on any machine with an analog buffer sensor - EMU
-    ships one.
+    The configured threshold is the assertion point on both sides of zero.  Once asserted,
+    each virtual sensor releases one hysteresis interval inward, producing a stable neutral
+    core and preventing chatter at the assertion boundary.
     """
 
     def setUp(self):
@@ -454,48 +424,46 @@ class TestTensionThresholdSignError(unittest.TestCase):
         self.prop.feed(self.sensor._neutral_point + value * span)
         return self.sensor.value
 
-    def test_both_thresholds_are_currently_positive(self):
-        """The mechanism, pinned directly - this is the whole bug in one assertion."""
-        self.assertGreater(self.sensor._vsensor_threshold_low, 0.0,
-                           'the tension threshold should be negative')
-        self.assertAlmostEqual(self.sensor._vsensor_threshold_low, 0.864, places=3)
-        self.assertAlmostEqual(self.sensor._vsensor_threshold_high, 0.936, places=3)
+    def test_thresholds_are_symmetric_with_an_inward_release_band(self):
+        self.assertAlmostEqual(self.sensor._vsensor_tension_trigger, -0.900, places=3)
+        self.assertAlmostEqual(self.sensor._vsensor_tension_release, -0.864, places=3)
+        self.assertAlmostEqual(self.sensor._vsensor_compression_release, 0.864, places=3)
+        self.assertAlmostEqual(self.sensor._vsensor_compression_trigger, 0.900, places=3)
 
-    def test_a_centred_filament_currently_reports_tension(self):
-        """Documents today's behaviour so a fix shows up as a change here."""
-        self.feed_normalised(0.0)
-        self.assertTrue(self.sm.check_sensor('filament_tension'),
-                        'precondition for the bug: 0.0 < +0.864 so it reads as tension')
-        self.assertFalse(self.sm.check_sensor('filament_compression'))
-
-    def test_the_neutral_band_is_a_sliver_at_the_top(self):
-        self.feed_normalised(0.90)      # inside +0.864..+0.936
-        self.assertFalse(self.sm.check_sensor('filament_tension'))
-        self.assertFalse(self.sm.check_sensor('filament_compression'))
-
-    @unittest.expectedFailure
-    def test_a_centred_filament_should_read_neither(self):
-        """
-        What the config help promises. Flips green when the sign is corrected; delete this
-        and invert test_a_centred_filament_currently_reports_tension then.
-        """
+    def test_a_centred_filament_reads_neither(self):
         self.feed_normalised(0.0)
         self.assertFalse(self.sm.check_sensor('filament_tension'))
         self.assertFalse(self.sm.check_sensor('filament_compression'))
 
-    @unittest.expectedFailure
-    def test_tension_should_trigger_near_minus_one(self):
-        """Tension at -1.0 and nothing at -0.5, per the documented -0.9 trigger point."""
-        self.feed_normalised(-1.0)
-        self.assertTrue(self.sm.check_sensor('filament_tension'))
+    def test_moderate_tension_is_neutral(self):
         self.feed_normalised(-0.5)
         self.assertFalse(self.sm.check_sensor('filament_tension'))
+        self.assertFalse(self.sm.check_sensor('filament_compression'))
 
-    def test_compression_end_is_unaffected(self):
-        """The positive side works; only the tension threshold has the wrong sign."""
-        self.feed_normalised(1.0)
-        self.assertTrue(self.sm.check_sensor('filament_compression'))
+    def test_tension_uses_state_dependent_hysteresis(self):
+        self.feed_normalised(-0.91)
+        self.assertTrue(self.sm.check_sensor('filament_tension'))
+        self.feed_normalised(-0.88)
+        self.assertTrue(self.sm.check_sensor('filament_tension'),
+                        'tension should remain asserted inside its hysteresis band')
+        self.feed_normalised(-0.86)
         self.assertFalse(self.sm.check_sensor('filament_tension'))
+
+    def test_compression_uses_state_dependent_hysteresis(self):
+        self.feed_normalised(0.91)
+        self.assertTrue(self.sm.check_sensor('filament_compression'))
+        self.feed_normalised(0.88)
+        self.assertTrue(self.sm.check_sensor('filament_compression'),
+                        'compression should remain asserted inside its hysteresis band')
+        self.feed_normalised(0.86)
+        self.assertFalse(self.sm.check_sensor('filament_compression'))
+
+    def test_can_jump_directly_between_extremes(self):
+        self.feed_normalised(-1.0)
+        self.assertTrue(self.sm.check_sensor('filament_tension'))
+        self.feed_normalised(1.0)
+        self.assertFalse(self.sm.check_sensor('filament_tension'))
+        self.assertTrue(self.sm.check_sensor('filament_compression'))
 
 
 class TestAdcCompatMatrixOnRealMachine(unittest.TestCase):

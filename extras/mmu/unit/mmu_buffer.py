@@ -204,9 +204,15 @@ class MmuProportionalSensor:
         self.value = 0.0     # In [-1.0, 1.0]
 
         # Virtual sensor setup
-        h = abs(self.analog_sensor_threshold) * self._vsensor_hysteresis
-        self._vsensor_threshold_low = self.analog_sensor_threshold - h
-        self._vsensor_threshold_high = self.analog_sensor_threshold + h
+        threshold = self.analog_sensor_threshold
+        h = threshold * self._vsensor_hysteresis
+        # The configured threshold is where an extreme state is asserted.  Release it
+        # inside that boundary so noise around the threshold cannot chatter the virtual
+        # sensors.  This makes the stable neutral range symmetric around zero.
+        self._vsensor_tension_trigger = -threshold
+        self._vsensor_tension_release = -threshold + h
+        self._vsensor_compression_release = threshold - h
+        self._vsensor_compression_trigger = threshold
         self._vsensor_state = None
 
         # Setup ADC
@@ -277,20 +283,27 @@ class MmuProportionalSensor:
 
         prev_state = self._vsensor_state
 
-        # Apply hysteresis before calling trigger and initilize on first call
-        if self._vsensor_state is None:
-            if self.value > self._vsensor_threshold_high:
+        # Apply state-dependent hysteresis before calling trigger.  The configured
+        # threshold is the assertion point; an asserted state releases only after the
+        # value has moved inward by the hysteresis amount.  Check the opposite extreme
+        # first so a reading may jump directly from tension to compression or vice versa.
+        if self._vsensor_state == -1:
+            if self.value >= self._vsensor_compression_trigger:
                 self._vsensor_state = 1
-            elif self.value < self._vsensor_threshold_low:
+            elif self.value >= self._vsensor_tension_release:
+                self._vsensor_state = 0
+        elif self._vsensor_state == 1:
+            if self.value <= self._vsensor_tension_trigger:
                 self._vsensor_state = -1
+            elif self.value <= self._vsensor_compression_release:
+                self._vsensor_state = 0
+        else:  # Initial or neutral state
+            if self.value <= self._vsensor_tension_trigger:
+                self._vsensor_state = -1
+            elif self.value >= self._vsensor_compression_trigger:
+                self._vsensor_state = 1
             else:
                 self._vsensor_state = 0
-        elif self.value > self._vsensor_threshold_high:
-            self._vsensor_state = 1
-        elif self.value < self._vsensor_threshold_low:
-            self._vsensor_state = -1
-        elif self._vsensor_threshold_low <= self.value <= self._vsensor_threshold_high:
-            self._vsensor_state = 0
 
         # Service virtual endstop sensors only if hysteresis state changes...
         if self._vsensor_state != prev_state:
