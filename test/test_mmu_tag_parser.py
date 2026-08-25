@@ -301,61 +301,33 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class TestBlankTagMisdetectedAsBambu(TagParserTestCase):
+class TestBlankTagBambuRejection(TagParserTestCase):
     """
-    A blank tag is reported as a Bambu Lab tag, in the DEFAULT configuration.
-
-    _detect_bambu is explicitly a heuristic - its own docstring says "Detection is
-    unreliable from raw bytes alone ... best-effort heuristic only". It flags a candidate
-    when the dump is a multiple of 64 bytes, contains no NDEF TLV, and holds none of the
-    ASCII keywords PLA/ABS/PETG/TPU/spoolman_id/openspool. An all-zeros buffer satisfies
-    all three.
-
-    That is reachable with shipped defaults, not a contrived length: tag_max_pages
-    defaults to 16 (extras/mmu/unit/nfc/mmu_nfc_reader.py:119), so an NTAG deep read
-    returns 16 pages x 4 bytes = exactly 64 bytes. Scan a blank or non-filament NTAG and
-    the user is told:
-
-        "Detected Bambu Lab tag but decryption/authentication not available;
-         see README for hardware requirements"
-
-    BLAST RADIUS IS MESSAGING ONLY, and worth being precise about: the result is a parse
-    ERROR dict, is_parse_error() is True, and MmuNfcReader._read_tag_metadata therefore
-    returns None - so no incorrect filament data reaches the gate map. The cost is a
-    misleading diagnostic pointing the user at Bambu hardware requirements they do not
-    need.
-
-    A cheap tightening would be to require at least some non-zero entropy before
-    claiming an encrypted tag.
+    Sector-sized blank reads must not satisfy the best-effort Bambu heuristic.  Uniform
+    buffers carry no evidence of encrypted data, whether a reader fills them with 0x00,
+    0xFF, or another byte.  Non-uniform binary data remains eligible so this guard does
+    not turn into a speculative entropy threshold for real Bambu tags.
     """
 
     BLANK_NTAG_READ = bytes(64)     # 16 pages x 4 bytes, the shipped default
 
-    def test_blank_tag_is_currently_claimed_as_bambu(self):
-        """Pins today's behaviour so a fix shows up as a change here."""
-        info = self.parse(self.BLANK_NTAG_READ)
-        self.assertIsNotNone(info)
-        self.assertEqual(info.get('tag_format'), 'bambu')
-        self.assertIn('Bambu', info.get('error', ''))
+    def test_blank_tag_is_unrecognised_not_bambu(self):
+        self.assertFalse(tag_parser._detect_bambu(self.BLANK_NTAG_READ))
+        self.assertIsNone(self.parse(self.BLANK_NTAG_READ))
 
-    def test_the_misdetection_is_contained_to_messaging(self):
-        """No wrong filament data escapes: it is an error dict, so metadata is dropped."""
-        info = self.parse(self.BLANK_NTAG_READ)
-        self.assertTrue(tag_parser.is_parse_error(info))
-        self.assertNotIn('material', info)
+    def test_erased_tag_is_unrecognised_not_bambu(self):
+        erased = b'\xFF' * 64
+        self.assertFalse(tag_parser._detect_bambu(erased))
+        self.assertIsNone(self.parse(erased))
 
     def test_default_page_count_produces_exactly_the_trigger_length(self):
         """Documents WHY this is the default path rather than an edge case."""
         self.assertEqual(len(self.BLANK_NTAG_READ) % 64, 0)
         self.assertEqual(16 * 4, 64)
 
-    @unittest.expectedFailure
-    def test_blank_tag_should_not_be_claimed_as_bambu(self):
-        """
-        What should happen. Flips green if the heuristic gains an entropy check; delete
-        this and invert test_blank_tag_is_currently_claimed_as_bambu then.
-        """
-        self.assertFalse(tag_parser._detect_bambu(self.BLANK_NTAG_READ))
+    def test_nonuniform_binary_data_remains_a_bambu_candidate(self):
+        candidate = b'\xA5\x5A' * 32
+        self.assertTrue(tag_parser._detect_bambu(candidate))
 
     def test_a_written_ndef_tag_is_never_mistaken_for_bambu(self):
         """The NDEF escape hatch works, which is what keeps real tags safe."""

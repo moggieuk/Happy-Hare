@@ -519,8 +519,8 @@ def _detect_bambu(raw: bytes) -> bool:
     authentication (see ``_bambu_derive_keys`` and the module docstring).
 
     Detection is unreliable from raw bytes alone; we flag a candidate only when
-    the raw dump is exactly a multiple of 64 bytes (MIFARE Classic sector size)
-    with no readable NDEF and no known filament keywords.
+    the raw dump is exactly a multiple of 64 bytes (MIFARE Classic sector size),
+    contains varied data, and has no readable NDEF or known filament keywords.
     This is a best-effort heuristic only.
     """
     if len(raw) == 0:
@@ -530,6 +530,12 @@ def _detect_bambu(raw: bytes) -> bool:
     # 64 bytes is one MIFARE Classic 1K sector (4 blocks × 16 bytes).
     # A full card dump is 1024 bytes (16 sectors × 4 blocks × 16 bytes).
     if len(raw) % 64 != 0 and len(raw) != 1024:
+        return False
+    # Blank, erased, or failed reads are commonly returned as a uniform buffer of
+    # 0x00 or 0xFF.  Encrypted Bambu data must contain variation; rejecting every
+    # uniform payload also covers other reader fill bytes without guessing which
+    # value a particular device uses.
+    if len(set(raw)) < 2:
         return False
     # If we can find an NDEF TLV, it's not a Bambu tag.
     if _find_ndef_tlv(raw) is not None:
