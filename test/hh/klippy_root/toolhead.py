@@ -94,7 +94,14 @@ class ToolHead:
 
     def move(self, newpos, speed):
         self.moves.append((list(newpos), speed))
+        old_extruder_pos = self.commanded_pos[3]
         self.commanded_pos = list(newpos)
+        distance = self.commanded_pos[3] - old_extruder_pos
+        mq = self.printer.lookup_object('motion_queuing', None)
+        if mq is not None:
+            note_move = getattr(mq, 'note_toolhead_move', None)
+            if note_move is not None:
+                note_move(distance)
 
     def manual_move(self, coord, speed):
         newpos = list(self.commanded_pos)

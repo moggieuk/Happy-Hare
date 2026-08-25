@@ -43,6 +43,11 @@ class PrinterMotionQueuing:
         # Set by the harness (test/hh/bootstrap.py) to observe plain filament moves.
         # callable(trapq, signed_distance_mm)
         self.move_observer = None
+        # Toolhead extrusion does not use an MmuStepper manual trapq.  The fake
+        # toolhead reports its E-axis delta here so the harness can model a gear
+        # synchronized to the extruder without conflating it with manual moves.
+        # callable(signed_distance_mm)
+        self.toolhead_move_observer = None
 
     def allocate_trapq(self):
         tq = Trapq(len(self.trapqs))
@@ -145,6 +150,10 @@ class PrinterMotionQueuing:
         # MmuGenericRail.home DOES appear, and should.
         if self.move_observer is not None and distance:
             self.move_observer(trapq, distance)
+
+    def note_toolhead_move(self, distance):
+        if self.toolhead_move_observer is not None and distance:
+            self.toolhead_move_observer(distance)
 
     def _pace_factor(self):
         """

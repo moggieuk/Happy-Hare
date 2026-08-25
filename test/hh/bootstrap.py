@@ -505,9 +505,8 @@ class Session:
         long as the extruder and the filament model move by the SAME amount, HH's conclusion is
         self-consistent with the machine the harness is presenting.
 
-        Both halves are done explicitly rather than through a trapq append, because the model's
-        move observer is filtered to the gear stepper and tip forming is an extruder move; see
-        the CANDIDATE IMPROVEMENT note on _on_manual_move.
+        Both halves are done explicitly because the harness macro body does not emit either a
+        manual trapq move or a toolhead extrusion for the motion observers to see.
         """
         vars_macro = self.printer.lookup_object('gcode_macro %s_VARS' % macro.alias, None)
         variables = dict(getattr(macro, 'variables', {}) or {})
@@ -705,20 +704,22 @@ class Session:
         Advance the filament model for a plain (non-homing) move.
 
         Filtered to the trapq of whichever stepper is currently DRIVING the filament - HH's own
-        notion (MmuDrive.driving_stepper), and exactly one stepper drives in each of the four
-        sync modes (mmu_constants.py:169-172):
+        notion (MmuDrive.driving_stepper).  The three manual move modes use these trapqs:
 
             gear / gear+extruder  -> the gear stepper drives
-            extruder / synced     -> the extruder stepper drives
+            extruder              -> the extruder stepper drives
+
+        The fourth mode, gear synced to extruder, is a toolhead move and is handled separately
+        by _on_toolhead_move because it never reaches an MmuStepper manual trapq.
 
         A gear+extruder move appends to BOTH trapqs for ONE physical movement, so something has
         to pick just one; keying off the DRIVER counts it exactly once without having to reason
-        about append order, and without dropping the two modes where the gear is not the driver.
+        about append order, and without dropping extruder-only movement.
 
         This used to watch the gear stepper unconditionally, which silently discarded every
-        motor="extruder" and motor="synced" move - the model just did not follow the filament.
-        Invisible on a machine with no encoder; on one with an encoder it means no pulses are
-        generated and HH concludes the filament is stuck. test_mmu_motion's
+        motor="extruder" move.  Synced moves were also dropped because no toolhead observer
+        existed.  Invisible on a machine with no encoder; on one with an encoder either gap
+        means no pulses are generated and HH concludes the filament is stuck. test_mmu_motion's
         TestEveryDriveModeMovesFilament pins all four modes to the exact distance, so a
         regression to either the dropped-move or the double-counted kind fails loudly.
 
@@ -770,14 +771,28 @@ class Session:
 
     def _install_move_observer(self):
         """
-        Watch every plain (non-homing) move. Needed by BOTH the filament model and the
-        selector axes, so it is installed independently of either - a selector can move
-        before anything has asked for the filament model, and filament() is lazy.
+        Watch every plain (non-homing) manual move and toolhead extrusion.  Needed by the
+        filament model and selector axes, so it is installed independently of either - a
+        selector can move before anything has asked for the filament model, and filament()
+        is lazy.
         """
         mq = self.printer.lookup_object('motion_queuing', None)
         if mq is not None:
             mq.move_observer = self._on_manual_move
+            mq.toolhead_move_observer = self._on_toolhead_move
         return self
+
+    def _on_toolhead_move(self, distance):
+        """Advance filament when the gear is following a toolhead extrusion move."""
+        model = getattr(self.printer, 'harness_filament', None)
+        gate = self.mmu.gate_selected
+        if model is None or gate is None or gate < 0:
+            return
+
+        from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
+        if self.mmu.drive(gate).get_sync_mode() != DRIVE_GEAR_SYNCED_TO_EXTRUDER:
+            return
+        model.advance(gate, distance, 'toolhead extrusion')
 
     def _driving_stepper(self, gate):
         """

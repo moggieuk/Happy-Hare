@@ -92,11 +92,11 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 Expect to see:
 
 ```
-OK (skipped=1, expected failures=1)
+OK (skipped=1)
 ```
 
-`skipped` and `expected failures` are normal and explained in §6. Anything else — `FAILED
-(failures=…)` or `(errors=…)` — is a genuine problem.
+The skip is normal and explained in §6. Anything else — `FAILED (failures=…)` or
+`(errors=…)` — is a genuine problem.
 
 A minute and a half is still too long to sit through on every change, which is why `make
 test` opens a file picker first rather than starting straight away.
@@ -1004,7 +1004,7 @@ this wrong makes Happy Hare look broken when it is being right about an impossib
 ## 6. Skips and expected failures
 
 ```
-OK (skipped=1, expected failures=1)
+OK (skipped=1)
 ```
 
 **`expected failures`** are known bugs, written as tests of what *should* happen and
@@ -1013,11 +1013,7 @@ unexpected success as a *failure*, so the moment someone fixes the bug the suite
 and tells you to delete the marker. If a test you didn't touch suddenly fails that way,
 you probably fixed something — check, then remove the marker and its comment.
 
-Currently:
-
-| Where | Bug |
-|---|---|
-| `test_mmu_motion.py` | a `synced` (print-time) move does not advance the filament model — unlike the other three drive modes it never reaches `MmuStepper._submit_move`, so `motion_queuing`'s trapq hook never fires. A HARNESS gap rather than a Happy Hare bug, which is the one entry here that will not be fixed by changing `extras/` |
+There are currently no expected failures.
 
 **`skipped`** is `test/installer/test_build.py` — legacy installer tests that can't run
 (the functions they call no longer exist). Its header explains what restoring it needs.
