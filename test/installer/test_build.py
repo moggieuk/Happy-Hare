@@ -1,69 +1,133 @@
-# Installer / config-builder tests - CURRENTLY OUT OF ACTION.
+# Happy Hare installer refresh integration tests.
 #
-# The previous contents could not be imported, let alone run, and failed `make test` at
-# collection with:
+# A same-version refresh is the baseline for every future upgrade: before a migration can
+# transform renamed or moved settings, the installer must be able to rebuild the current
+# templates without losing existing user values.  This test drives build_config_file(), not
+# a test double, against the real BoxTurtle Kconfig profile and all four rendered base files.
 #
-#     ImportError: cannot import name 'ConfigInput' from 'installer.build'
-#
-# Skipped rather than deleted: the functionality it covered - the version-upgrade
-# migrations, Kconfig-driven config generation, and moonraker.conf patching - is real and
-# worth testing, and the fixtures under test/installer/*/ are intact and worth keeping.
-# Nothing here says the coverage is unwanted. The original is in git history.
-#
-# WHAT IS ACTUALLY BROKEN (verified, not assumed)
-#
-# 1. API drift. Of the seven symbols it imported from installer/build.py, four no longer
-#    exist:  Upgrades, ConfigInput, build_mmu_hardware_cfg, build_mmu_cfg.
-#    A fifth, ConfigBuilder, moved to installer/parser.py. Only HHConfig and KConfig are
-#    still where they were. So the build/upgrade half has to be re-derived against
-#    today's API (build / build_config_file / render_template), not merely re-imported.
-#
-# 2. Missing Kconfig state. Every build/upgrade test constructs
-#    KConfig(<fixture_dir>/.config), and there is NO `.config` file anywhere under
-#    test/installer/. Those have to be regenerated first.
-#
-#    NOTE the other fixtures ARE all present - in.cfg, expected.cfg and config.cfg exist
-#    for every case; 2_71/ and moonraker/ just nest theirs one level deeper (2_71/1,
-#    2_71/2, moonraker/1, moonraker/2).
-#
-# 3. Stale fixture format. The fixtures are v3.00-era: they declare
-#    `happy_hare_version: 3.00` and use the old {param_x} / {cfg_x} placeholders with
-#    [stepper_mmu_gear] sections. 10 fixture files use that style and none use today's
-#    [[PARAM_X]] / [% if %] Jinja form, so as template input they no longer describe
-#    anything real. Expected-output fixtures would need regenerating alongside.
-#
-# WHAT A RESTORATION CAN BORROW
-#
-# test/hh/cfg.py renders the real shipped templates in-memory with no filesystem writes,
-# and encodes the traps that otherwise yield silently-wrong output: Kconfig needs cwd =
-# repo/installer while render_template needs cwd = repo root; env vars must be set BEFORE
-# Kconfig() is constructed or pins render as ':PD5'; render_template calls exit(1) on a
-# Jinja UndefinedError. test/test_mmu_config.py asserts against it. That covers the
-# rendering half already.
-#
-# So the useful target for THIS file is what test/hh/ does not touch: the version-upgrade
-# migrations, moonraker.conf patching, and installer/parser.py's ConfigBuilder round
-# trips - the last of which is the one part whose API is still present and directly
-# testable today, and therefore the cheapest place to start.
+# The fixture is deliberately a compact installed-config fragment rather than a frozen copy
+# of every generated line.  It records only user-owned state.  Everything else must come from
+# today's real templates, which prevents a second stale template tree growing under test/.
+# Outputs are written to temporary directories; fixture files are never modified.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import glob
+import os
+import tempfile
 import unittest
 
-SKIP_REASON = (
-    "Installer build/upgrade tests need reconstructing: Upgrades / ConfigInput / "
-    "build_mmu_hardware_cfg / build_mmu_cfg no longer exist, ConfigBuilder moved to "
-    "installer/parser.py, no .config fixtures remain, and the fixtures are v3.00-era "
-    "{param_x} format. See this module's header for the full brief.")
+from installer.parser import ConfigBuilder
+from test.hh import cfg, profiles
 
 
-@unittest.skip(SKIP_REASON)
-class TestBuild(unittest.TestCase):
-    """Placeholder so the skip and its reason are visible in test output."""
+class TestV400Refresh(unittest.TestCase):
+    """Refresh an installed v4.00 configuration to v4.00 twice."""
 
-    def test_installer_build_coverage_is_pending(self):
-        pass
+    FIXTURE = os.path.join(os.path.dirname(__file__), "refresh", "4_00", "input")
+    INSTALLED_NAMES = {
+        "config/base/mmu.cfg": "mmu.cfg",
+        "config/base/mmu_hardware.cfg": "mmu_hardware_unit0.cfg",
+        "config/base/mmu_macro_vars.cfg": "mmu_macro_vars.cfg",
+        "config/base/mmu_parameters.cfg": "mmu_parameters_unit0.cfg",
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.TemporaryDirectory()
+        cls.first = os.path.join(cls.tmpdir.name, "first")
+        cls.second = os.path.join(cls.tmpdir.name, "second")
+
+        profile = profiles.get("boxturtle")
+        env = dict(cfg._SINGLE_UNIT_ENV, F_CFG_UPGRADE_MODE="refresh")
+        with cfg._env(env):
+            kconfig = cfg._kconfig("installer-refresh-4.00", profile.syms)
+            cls._build_pass(kconfig, cls.fixture_files(), cls.first)
+            cls._build_pass(kconfig, cls.output_files(cls.first), cls.second)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmpdir.cleanup()
+
+    @classmethod
+    def fixture_files(cls):
+        return sorted(glob.glob(os.path.join(cls.FIXTURE, "*.cfg")))
+
+    @classmethod
+    def output_files(cls, root):
+        return sorted(glob.glob(os.path.join(root, "mmu", "base", "*.cfg")))
+
+    @classmethod
+    def _build_pass(cls, kconfig, input_files, out_root):
+        from installer import build
+
+        dest_dir = os.path.join(out_root, "mmu", "base")
+        os.makedirs(dest_dir)
+        extra = {"PARAM_TOTAL_NUM_GATES": kconfig.getint("PARAM_NUM_GATES")}
+        env = dict(cfg._SINGLE_UNIT_ENV,
+                   OUT=out_root,
+                   F_CFG_UPGRADE_MODE="refresh")
+        with cfg._env(env), cfg._chdir(cfg.REPO_ROOT):
+            for template, installed_name in cls.INSTALLED_NAMES.items():
+                build.build_config_file(
+                    template,
+                    os.path.join(dest_dir, installed_name),
+                    kconfig,
+                    input_files,
+                    extra,
+                )
+
+    @classmethod
+    def parsed(cls, root, name):
+        return ConfigBuilder(os.path.join(root, "mmu", "base", name))
+
+    def test_existing_user_values_survive_refresh(self):
+        mmu = self.parsed(self.first, "mmu.cfg")
+        self.assertEqual(mmu.get("mmu_machine", "happy_hare_version"), "4.0.0")
+        self.assertEqual(mmu.get("mmu_parameters", "log_level"), "4")
+
+        macro_vars = self.parsed(self.first, "mmu_macro_vars.cfg")
+        self.assertEqual(
+            macro_vars.get(
+                "gcode_macro _MMU_SEQUENCE_VARS",
+                "variable_user_pre_load_extension",
+            ),
+            '"CUSTOM_PRE_LOAD"',
+        )
+
+        parameters = self.parsed(self.first, "mmu_parameters_unit0.cfg")
+        section = "mmu_unit_parameters unit0"
+        self.assertEqual(parameters.get(section, "gear_load_speed"), "123")
+        self.assertEqual(parameters.get(section, "gear_buzz_accel"), "987")
+
+    def test_user_defined_excluded_config_survives_refresh(self):
+        mmu = self.parsed(self.first, "mmu.cfg")
+        self.assertTrue(mmu.has_section("gcode_macro USER_REFRESH_SENTINEL"))
+        self.assertEqual(
+            mmu.get("gcode_macro USER_REFRESH_SENTINEL", "gcode"),
+            "M118 refresh fixture survived",
+        )
+
+        hardware = self.parsed(self.first, "mmu_hardware_unit0.cfg")
+        self.assertTrue(hardware.has_section("temperature_sensor fixture_chamber"))
+        self.assertEqual(
+            hardware.get("temperature_sensor fixture_chamber", "sensor_pin"),
+            "unit0:PA0",
+        )
+
+    def test_second_refresh_is_byte_identical(self):
+        first = self.output_files(self.first)
+        second = self.output_files(self.second)
+        self.assertEqual([os.path.basename(path) for path in first],
+                         [os.path.basename(path) for path in second])
+        for left, right in zip(first, second):
+            with self.subTest(file=os.path.basename(left)):
+                with open(left, "rb") as f:
+                    first_bytes = f.read()
+                with open(right, "rb") as f:
+                    second_bytes = f.read()
+                self.assertEqual(first_bytes, second_bytes)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -92,11 +92,10 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 Expect to see:
 
 ```
-OK (skipped=1)
+OK
 ```
 
-The skip is normal and explained in §6. Anything else — `FAILED (failures=…)` or
-`(errors=…)` — is a genuine problem.
+Anything reporting `FAILED (failures=…)` or `(errors=…)` is a genuine problem.
 
 A minute and a half is still too long to sit through on every change, which is why `make
 test` opens a file picker first rather than starting straight away.
@@ -690,7 +689,7 @@ test/
   filament_display_review.py  the bulk sweep, run via `make filament_display` (§1b)
   hh/                       the harness: the fake Klipper and fake Moonraker
   hh/klippy_root/           41 stand-in modules that pretend to be Klipper's own code
-  installer/                legacy installer tests, currently skipped (see §6)
+  installer/                installer refresh, parser and menuconfig tests
 ```
 
 The test files, grouped by what they're about:
@@ -724,8 +723,7 @@ The test files, grouped by what they're about:
 | `test_mmu_console.py` | 148 | the interactive console of §1a — rendering, command dispatch |
 | `test_mmu_dev_test.py` | 19 | every `_MMU_TEST` developer probe — breadth, not depth |
 
-Counts as the picker reports them; `installer/test_build.py` adds the one skipped test that
-makes up the 651 total.
+Counts as the picker reports them.
 
 ### Coverage map
 
@@ -1004,7 +1002,7 @@ this wrong makes Happy Hare look broken when it is being right about an impossib
 ## 6. Skips and expected failures
 
 ```
-OK (skipped=1)
+OK
 ```
 
 **`expected failures`** are known bugs, written as tests of what *should* happen and
@@ -1013,10 +1011,9 @@ unexpected success as a *failure*, so the moment someone fixes the bug the suite
 and tells you to delete the marker. If a test you didn't touch suddenly fails that way,
 you probably fixed something — check, then remove the marker and its comment.
 
-There are currently no expected failures.
-
-**`skipped`** is `test/installer/test_build.py` — legacy installer tests that can't run
-(the functions they call no longer exist). Its header explains what restoring it needs.
+There are currently no skips or expected failures. `test/installer/test_build.py` now
+exercises a same-version v4.00 refresh baseline; future version migrations should add
+focused before/after fixtures alongside it.
 
 ---
 
