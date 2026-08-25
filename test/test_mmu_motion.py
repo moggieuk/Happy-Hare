@@ -5,12 +5,14 @@
 # what is under test is the sequencing and the position arithmetic, not Klipper's
 # motion planner.
 #
-# Two integration points make this work, both in the fake layer with no monkeypatching
+# Three integration points make this work, all in the fake layer with no monkeypatching
 # of Happy Hare:
 #   - HOMING moves: the fake HomingMove asks the model which endstop trips first and
 #     how far the move gets (test/hh/klippy_root/extras/homing.py).
 #   - PLAIN moves (notably the final park): observed via the fake motion_queuing's
 #     trapq_append, from which the signed distance is exactly recoverable.
+#   - TOOLHEAD extrusion: its E-axis delta advances filament only while the MMU gear is
+#     synchronized to the extruder, matching print-time movement.
 #
 # Geometry is the model's DEFAULT_LAYOUT: park -100, entry -50, gate/exit 0. The entry
 # switch sits BETWEEN the park point and the gate sensor, so a parked filament leaves it
@@ -291,23 +293,15 @@ class TestEveryDriveModeMovesFilament(MotionTestCase):
     def test_extruder_only(self):
         self.assertAlmostEqual(self._moved('extruder'), self.MOVE, places=3)
 
-    @unittest.expectedFailure
     def test_gear_synced_to_extruder(self):
-        """
-        KNOWN GAP, and a different one from the three above - not fixable at this hook.
-
-        In 'synced' mode (DRIVE_GEAR_SYNCED_TO_EXTRUDER, the print-time mode where the gear
-        follows the extruder) the move never reaches MmuStepper._submit_move at all: it goes
-        through the toolhead's own extruder motion, so motion_queuing's trapq_append - the only
-        thing _on_manual_move can observe - is never called. Verified by spying on the observer:
-        for MOTOR=synced it sees nothing whatsoever, where MOTOR=extruder sees one append.
-
-        Closing it means observing toolhead extruder moves, which is a bigger change than the
-        driving-stepper accounting this class otherwise pins. Kept as an expected failure rather
-        than deleted so the gap is visible in the suite instead of only in a comment; it flips
-        green on its own once toolhead motion is observed.
-        """
         self.assertAlmostEqual(self._moved('synced'), self.MOVE, places=3)
+
+    def test_unsynced_toolhead_extrusion_does_not_move_the_model(self):
+        before = self.fil.tip[0]
+        pos = self.hh.mmu.toolhead.get_position()
+        pos[3] += self.MOVE
+        self.hh.mmu.toolhead.move(pos, 25.)
+        self.assertAlmostEqual(self.fil.tip[0] - before, 0., places=3)
 
 
 class TestQuietPlacement(MotionTestCase):
