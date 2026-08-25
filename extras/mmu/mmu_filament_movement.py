@@ -1534,20 +1534,14 @@ class MmuFilamentMovement:
         if u.p.extruder_homing_endstop == SENSOR_EXTRUDER_NONE:
             return False
 
-        force_homing = u.p.extruder_force_homing
-
         # Homing to extruder is not really necessary with toolhead sensor because we
         # always home to that, however it can be forced.
         if self.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
-            return force_homing
+            return bool(u.p.extruder_force_homing)
 
-        # With good calibration it is often better just to move the full length, but give user the choice
-        has_inccurate_endstop = u.p.extruder_homing_endstop in (SENSOR_EXTRUDER_ENCODER, SENSOR_GEAR_TOUCH)
-        if has_inccurate_endstop:
-            return force_homing
-
-        # Default is up to the user
-        return force_homing
+        # Without a toolhead sensor, the configured extruder endstop is the only
+        # precise reference point for the final extruder load.
+        return True
 
 
     def _home_to_extruder(self, extra_homing=0.):
