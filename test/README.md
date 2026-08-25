@@ -92,7 +92,7 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 Expect to see:
 
 ```
-OK (skipped=1, expected failures=4)
+OK (skipped=1, expected failures=2)
 ```
 
 `skipped` and `expected failures` are normal and explained in §6. Anything else — `FAILED
@@ -1004,7 +1004,7 @@ this wrong makes Happy Hare look broken when it is being right about an impossib
 ## 6. Skips and expected failures
 
 ```
-OK (skipped=1, expected failures=4)
+OK (skipped=1, expected failures=2)
 ```
 
 **`expected failures`** are known bugs, written as tests of what *should* happen and
@@ -1017,7 +1017,6 @@ Currently:
 
 | Where | Bug |
 |---|---|
-| `test_mmu_profiles.py` ×2 | the proportional buffer reports TENSION almost always — its low threshold is computed positive when the config help says it should be about −0.9 |
 | `test_mmu_tag_parser.py` | a blank tag is reported as a Bambu Lab tag |
 | `test_mmu_motion.py` | a `synced` (print-time) move does not advance the filament model — unlike the other three drive modes it never reaches `MmuStepper._submit_move`, so `motion_queuing`'s trapq hook never fires. A HARNESS gap rather than a Happy Hare bug, which is the one entry here that will not be fixed by changing `extras/` |
 
