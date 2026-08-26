@@ -1,7 +1,11 @@
 # Selector servo parameter tokens which must be inside
 # if MMU_HAS_SELECTOR_SERVO clause in cfg templates
 #
-# Responsible for setting defaults for::
+# Note that servo choices and settings are centralized here
+# but are specific to mmu type and override the defaults
+# in Kconfig.selector_servo
+#
+# Responsible for modifying defaults for:
 #   PARAM_SERVO_MIN_PULSE_WIDTH
 #   PARAM_SERVO_MAX_PULSE_WIDTH
 #   PARAM_SERVO_MAX_ANGLE
@@ -14,7 +18,6 @@
 #   PARAM_SERVO_MOVE_ANGLE
 #   PARAM_SERVO_DOWN_ANGLE
 #   PARAM_SERVO_ACTIVE_DOWN
-#   PARAM_SELECTOR_GATE_ANGLES
 
 if MMU_HAS_SELECTOR_SERVO
 
@@ -28,26 +31,5 @@ if MMU_HAS_SELECTOR_SERVO
     config SERVO_TYPE_OTHER
       bool "Not listed"
   endchoice
-
-  if SERVO_TYPE_OTHER
-    config PARAM_SERVO_MIN_PULSE_WIDTH
-      default 0.001
-
-    config PARAM_SERVO_MAX_PULSE_WIDTH
-      default 0.002
-
-    config PARAM_SERVO_MAX_ANGLE
-      default 180
-
-    config PARAM_SERVO_UP_ANGLE
-      default 0
-
-    config PARAM_SERVO_MOVE_ANGLE
-      default PARAM_SERVO_UP_ANGLE
-
-    config PARAM_SERVO_DOWN_ANGLE
-      default 0
-
-  endif
 
 endif

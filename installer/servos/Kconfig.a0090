@@ -1,11 +1,14 @@
 # GuoHua A0090 servo
-# Used by ERCF v3
+# Used by ERCF v2/v3
 
 if PARAM_VENDOR = "ERCF"
+
   config SERVO_TYPE_GUOHUA_A0090
     bool "GuoHua A0090"
 
+
   if SERVO_TYPE_GUOHUA_A0090
+
     config PARAM_SERVO_MIN_PULSE_WIDTH
       default 0.00050
 
@@ -19,13 +22,18 @@ if PARAM_VENDOR = "ERCF"
       default 30
 
     config PARAM_SERVO_MOVE_ANGLE
-      default 50 if MMU_TYPE_ERCF_2_0
+      default 50 if MMU_TYPE_ERCF_2_0 || MMU_TYPE_ERCF_3_0
       default PARAM_SERVO_UP_ANGLE
 
     config PARAM_SERVO_DOWN_ANGLE
       default 100
 
+    config PARAM_SERVO_DURATION
+      default 0.4
+
     config PARAM_SERVO_ALWAYS_ACTIVE
       default 0
+
   endif
+
 endif
