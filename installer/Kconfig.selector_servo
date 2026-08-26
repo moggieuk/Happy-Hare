@@ -25,6 +25,10 @@ if MMU_HAS_SELECTOR_SERVO
 
   menu "Selector servo"
 
+    # -------------------------------------
+    # Generic Options
+    # -------------------------------------
+
     config PARAM_SERVO_MIN_PULSE_WIDTH
       float "Servo min pulse width"
       default 0.001
@@ -42,7 +46,6 @@ if MMU_HAS_SELECTOR_SERVO
 
     config PARAM_SERVO_DWELL
       float "Servo dwell          "
-      default 0.5 if LINEAR_SELECTOR
       default 0.8 if SERVO_SELECTOR
       default 0.5
       help
@@ -58,18 +61,22 @@ if MMU_HAS_SELECTOR_SERVO
         designs or miscalibrated MMU because it strains the servo and control electronics.
 
         Recommend to disable unless you are sure you know you need it.
+
     config PARAM_SERVO_DURATION
-      float "Servo PWM duration   "
-      default 0.4 if LINEAR_SELECTOR
-      default 0.5 if SERVO_SELECTOR
+      float
+
+    config PARAM_SERVO_DURATION
+      prompt "Servo PWM duration   "
+      depends on !PARAM_SERVO_ALWAYS_ACTIVE
+      default 0.6 if SERVO_SELECTOR
       default 0.4
       help
         Duration of servo PWM signal if not always active
 
 
-# -------------------------------------
-# LinearServoSelector
-# -------------------------------------
+    # -------------------------------------
+    # LinearServoSelector
+    # -------------------------------------
 
     if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
 
@@ -85,41 +92,39 @@ if MMU_HAS_SELECTOR_SERVO
           and control electronics.
 
           Recommend to disable unless you are sure you know you need it or your experience poor filament grip.
+
+      config PARAM_SERVO_UP_ANGLE
+        int "Servo up angle       "
+        default 0
+        help
+          Position of the servo up (filament released) position.
+
+      config PARAM_SERVO_MOVE_ANGLE
+        int "Servo move angle     "
+        default PARAM_SERVO_UP_ANGLE
+        help
+          Position of the servo for selector movement.
+          Often this is the same as the up setting but on some
+          designs like ERCF this position also passively
+          holds the filament.
+
+      config PARAM_SERVO_DOWN_ANGLE
+        int "Servo down angle     "
+        default 0
+        help
+          Position of the servo down (filament gripped) position.
+
+      config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
+        int "Buzz servo on down   "
+        default 1
+        help
+          How often to buzz servo on down angle
     endif
 
-    if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
-        config PARAM_SERVO_UP_ANGLE
-          int "Servo up angle       "
-          default 0
-          help
-            Position of the servo up (filament released) position.
 
-        config PARAM_SERVO_MOVE_ANGLE
-          int "Servo move angle     "
-          default PARAM_SERVO_UP_ANGLE
-          help
-            Position of the servo for selector movement.
-            Often this is the same as the up setting but on some
-            designs like ERCF this position also passively
-            holds the filament.
-
-        config PARAM_SERVO_DOWN_ANGLE
-          int "Servo down angle     "
-          default 0
-          help
-            Position of the servo down (filament gripped) position.
-
-        config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-          int "Buzz servo on down   "
-          default 1
-          help
-            How often to buzz servo on down angle
-    endif
-
-
-# -------------------------------------
-# ServoSelector
-# -------------------------------------
+    # -------------------------------------
+    # ServoSelector
+    # -------------------------------------
 
     if SERVO_SELECTOR || TESTING_SELECTOR
 
@@ -170,7 +175,6 @@ if MMU_HAS_SELECTOR_SERVO
         default 360
         help
           Happy Hare will never move the server past this maximum configured angle
-
 
     endif
 

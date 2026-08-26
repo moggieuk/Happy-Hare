@@ -135,11 +135,8 @@ if MMU_FAMILY_ERCF
   config PARAM_VENDOR
     default "ERCF"
 
-  # Shared selector servo
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3
-  config PARAM_SERVO_DURATION
-    default 0.4
 
   config PARAM_GATE_HOMING_MAX
     default 100

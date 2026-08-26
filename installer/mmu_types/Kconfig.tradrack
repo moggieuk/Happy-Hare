@@ -67,11 +67,9 @@ if MMU_TYPE_TRADRACK_1_0
   config PARAM_SELECTOR_HOLD_CURRENT
     default 0.2
 
-  # Selector servo
+  # Selector servo control
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
-  config PARAM_SERVO_DURATION
-    default 0.4
 
   # Speeds overrides
 

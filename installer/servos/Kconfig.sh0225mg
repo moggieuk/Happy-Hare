@@ -2,10 +2,13 @@
 # Used by ERCF v1.0, v2.0, v3.0
 
 if PARAM_VENDOR = "ERCF"
+
   config SERVO_TYPE_SAVOX_SH0255MG
     bool "Savox SH-0255MG"
 
+
   if SERVO_TYPE_SAVOX_SH0255MG 
+
     config PARAM_SERVO_MIN_PULSE_WIDTH
       default 0.00085
 
@@ -27,5 +30,10 @@ if PARAM_VENDOR = "ERCF"
     config PARAM_SERVO_DOWN_ANGLE
       default 50 if MMU_TYPE_ERCF_2_0 && MOD_THUMPER_BLOCKS
       default 30 
+
+    config PARAM_SERVO_DURATION
+      default 0.4
+
   endif
+
 endif

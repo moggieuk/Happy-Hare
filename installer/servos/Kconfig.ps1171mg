@@ -2,10 +2,13 @@
 # Used by Tradrack v1.0
 
 if PARAM_VENDOR = "Tradrack"
+
   config SERVO_TYPE_JX_PS1171MG
     bool "JX PS-1171MG"
 
+
   if SERVO_TYPE_JX_PS1171MG
+
     config PARAM_SERVO_MIN_PULSE_WIDTH
       default 0.00070
 
@@ -20,5 +23,13 @@ if PARAM_VENDOR = "Tradrack"
 
     config PARAM_SERVO_DOWN_ANGLE
       default 1 
+
+    config PARAM_SERVO_DURATION
+      default 0.6
+
+    config PARAM_SERVO_DWELL
+      default 1.0
+
   endif
+
 endif

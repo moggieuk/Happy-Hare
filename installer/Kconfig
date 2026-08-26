@@ -282,7 +282,10 @@ if !MULTI_UNIT_ENTRY_POINT
     source "toolheads/Kconfig"      # Toolhead Selection menu
     source "Kconfig.toolhead"       # Toolhead Sensors/Settings
   endif
+  comment "_"
   source "Kconfig.endstops"         # Important endstops and load/unload distances
+  source "Kconfig.preload_eject"    # Gate preloading/ejection
+  comment "_"
   if !MULTI_UNIT
     source "Kconfig.options"        # Main software options
     source "Kconfig.tip_shaping"

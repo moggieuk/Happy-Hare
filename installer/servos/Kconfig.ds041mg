@@ -2,10 +2,13 @@
 # Used by ERCF v1.1, v2.0
 
 if PARAM_VENDOR = "ERCF"
+
   config SERVO_TYPE_GDW_DS041MG
     bool "GDW DS041MG"
 
+
   if SERVO_TYPE_GDW_DS041MG
+
     config PARAM_SERVO_MIN_PULSE_WIDTH
       default 0.00050
 
@@ -27,5 +30,7 @@ if PARAM_VENDOR = "ERCF"
 
     config PARAM_SERVO_ALWAYS_ACTIVE
       default 1
+
   endif
+
 endif
