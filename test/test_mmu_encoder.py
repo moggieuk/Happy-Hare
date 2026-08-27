@@ -106,6 +106,16 @@ class TestEncoderProfile(EncoderTestCase):
         self.assertEqual(blank, [], 'unpopulated keys in [%s]' % section)
         self.assertGreater(self.encoder.resolution, 0)
 
+    def test_runout_watchdog_is_active_only_during_printing(self):
+        self.assertFalse(self.encoder.active)
+
+        now = self.hh.reactor.monotonic()
+        self.hh.printer.send_event('mmu:printing', now)
+        self.assertTrue(self.encoder.active)
+
+        self.hh.printer.send_event('mmu:not_printing', now)
+        self.assertFalse(self.encoder.active)
+
 
 class TestEncoderMeasuresTravel(EncoderTestCase):
     """
@@ -158,6 +168,22 @@ class TestEncoderMeasuresTravel(EncoderTestCase):
         self.assertFalse(self.hh.sensor('unit0:encoder').present)
         self.preload()
         self.assertTrue(self.hh.sensor('unit0:encoder').present)
+
+    def test_movement_stays_latched_until_flowguard_consumes_it(self):
+        """
+        MCU counter reports arrive every 100ms, while FlowGuard samples every 250ms.
+        An empty counter report between a real pulse and the FlowGuard tick must not erase
+        the pulse. v3 latched this flag; the virtual-endstop work accidentally stopped doing
+        so in v4.
+        """
+        counter = self.hh.printer.harness_counters[ENCODER_PIN]
+        self.encoder._movement = False
+
+        counter.pulse(1)
+        self.assertTrue(self.encoder._movement, 'real pulse did not set the movement latch')
+
+        counter.pulse(0)
+        self.assertTrue(self.encoder._movement, 'empty MCU sample erased unconsumed movement')
 
 
 class TestGateHomingByMotion(EncoderTestCase):
@@ -447,6 +473,109 @@ class TestClogDetectionLength(EncoderTestCase):
         # Averaging down lands on a long float; only 1dp reaches mmu_vars.cfg
         self.assertEqual(self.calibrator.get_clog_detection_length(),
                          round(self.encoder.get_clog_detection_length(), 1))
+
+    def test_autotuning_does_not_run_while_flowguard_is_suspended(self):
+        """Match v3: toolchange/load suspension must not consume the print measurement."""
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.calibrator.update_clog_detection_length(20.0, push=True)
+        self.encoder.enable_flowguard(self.unit)
+        self.encoder.min_headroom = 0.
+        before = self.encoder.get_clog_detection_length()
+
+        self.encoder.disable_flowguard()
+        self.encoder.note_clog_detection_length()
+
+        self.assertEqual(self.encoder.get_clog_detection_length(), before)
+
+    def test_material_autotune_change_restores_startup_headroom(self):
+        """v3 rebased significant changes with detection length plus desired headroom."""
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.calibrator.update_clog_detection_length(20.0, push=True)
+        self.encoder.enable_flowguard(self.unit)
+        self.encoder.min_headroom = 0.
+
+        self.encoder._update_detection_length()
+
+        available = self.encoder.filament_runout_pos - self.encoder.last_extruder_pos
+        expected = self.encoder.detection_length + self.encoder.desired_headroom
+        self.assertAlmostEqual(available, expected)
+
+
+class TestEncoderRunoutEpoch(EncoderTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.mmu = self.hh.mmu
+        self.unit = self.mmu.mmu_unit(0)
+        self.pause_resume = self.hh.printer.lookup_object('pause_resume')
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.mmu._enable_filament_monitoring()
+
+    def test_runout_queued_before_reactivation_is_ignored(self):
+        """
+        Encoder runout is inferred state. A load/unload suspension resets that state, so a
+        callback queued against the previous observation epoch must not run afterward.
+        """
+        self.hh.settle(1.0)
+        eventtime = self.hh.reactor.monotonic()
+        old_generation = self.encoder.get_flowguard_generation()
+
+        self.mmu._disable_filament_monitoring()
+        self.hh.settle(1.0)
+        self.mmu._enable_filament_monitoring()
+        self.assertNotEqual(old_generation, self.encoder.get_flowguard_generation())
+
+        runouts = []
+        self.mmu._runout = lambda **kwargs: runouts.append(kwargs)
+        self.pause_resume.send_pause_command() # What the queued encoder callback did
+        self.hh.run_gcode(
+            '__MMU_ENCODER_RUNOUT EVENTTIME=%.6f GENERATION=%d'
+            % (eventtime, old_generation)
+        )
+
+        self.assertEqual(runouts, [], 'stale encoder event reached runout handling')
+        self.assertFalse(self.pause_resume.is_paused, 'stale callback left PAUSE asserted')
+
+
+class TestExtruderMonitorRebase(EncoderTestCase):
+
+    def test_enable_and_first_active_subscription_rebase_position_immediately(self):
+        monitor = self.hh.mmu.mmu_unit(0).extruder_monitor()
+        callback = lambda eventtime, movement: None
+
+        monitor.disable()
+        monitor.active = True
+        monitor.register_callback(callback, 1.)
+        self.assertIsNone(monitor._last_pos, 'disabled monitor should not sample')
+
+        monitor.enable()
+        self.assertEqual(monitor._last_pos, monitor._get_extruder_position())
+
+        monitor.remove_callback(callback)
+        self.assertIsNone(monitor._last_pos)
+
+        monitor.register_callback(callback, 1.)
+        self.assertEqual(monitor._last_pos, monitor._get_extruder_position())
+
+        monitor._last_pos = 123.
+        monitor.enable()
+        self.assertEqual(monitor._last_pos, 123., 'redundant enable discarded an active interval')
+
+    def test_disable_and_last_unsubscribe_clear_position(self):
+        monitor = self.hh.mmu.mmu_unit(0).extruder_monitor()
+        callback = lambda eventtime, movement: None
+        monitor.active = True
+        monitor.enabled = True
+        monitor.register_callback(callback, 1.)
+
+        monitor._last_pos = 123.
+        monitor.disable()
+        self.assertIsNone(monitor._last_pos)
+
+        monitor.enable()
+        monitor._last_pos = 999.
+        monitor.remove_callback(callback)
+        self.assertIsNone(monitor._last_pos)
 
 
 if __name__ == '__main__':

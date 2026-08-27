@@ -54,8 +54,9 @@ class ExtruderMonitor:
         """
         Enable monitoring and start the watchdog immediately.
         """
-        self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NOW)
         self.active = True
+        self._rebase_extruder_position(eventtime)
+        self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NOW)
 
 
     def _handle_not_printing(self, eventtime):
@@ -64,14 +65,19 @@ class ExtruderMonitor:
         """
         self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NEVER)
         self.active = False
+        self._last_pos = None
 
 
     def enable(self):
+        if self.enabled:
+            return
         self.enabled = True
+        self._rebase_extruder_position()
 
 
     def disable(self):
         self.enabled = False
+        self._last_pos = None
 
 
     def register_callback(self, cb, movement_threshold):
@@ -90,7 +96,10 @@ class ExtruderMonitor:
         if movement_threshold is None or movement_threshold <= 0:
             raise ValueError("movement_threshold must be a positive float")
 
+        first_callback = not self._callbacks
         self._callbacks[cb] = {"threshold": float(movement_threshold), "accum": 0.0}
+        if first_callback:
+            self._rebase_extruder_position()
 
 
     def remove_callback(self, cb):
@@ -98,6 +107,8 @@ class ExtruderMonitor:
         Unregister a previously registered callback. Silently ignores unknown cbs.
         """
         self._callbacks.pop(cb, None)
+        if not self._callbacks:
+            self._last_pos = None
 
 
     def get_and_reset_accumulated(self, cb):
@@ -141,6 +152,21 @@ class ExtruderMonitor:
 
     # Internal Implementation ----------------------------------------
 
+    def _get_extruder_position(self, eventtime=None):
+        if eventtime is None:
+            eventtime = self.mmu.reactor.monotonic()
+        mcu = self.mmu.printer.lookup_object('mcu')
+        est_print_time = mcu.estimated_print_time(eventtime)
+        return self.extruder_wrapper.extruder_stepper_obj().find_past_position(est_print_time)
+
+
+    def _rebase_extruder_position(self, eventtime=None):
+        """Start a fresh movement epoch without waiting for the next monitor tick."""
+        if self.enabled and self.active and self._callbacks:
+            self._last_pos = self._get_extruder_position(eventtime)
+        else:
+            self._last_pos = None
+
     def _check_extruder_movement(self, eventtime):
         """
         Reactor timer entrypoint. Returns the next wakeup time.
@@ -148,9 +174,7 @@ class ExtruderMonitor:
         if not self.enabled or not self.active or not self._callbacks:
             return eventtime + self.CHECK_INTERVAL
 
-        mcu = self.mmu.printer.lookup_object('mcu')
-        est_print_time = mcu.estimated_print_time(eventtime)
-        pos = self.extruder_wrapper.extruder_stepper_obj().find_past_position(est_print_time)
+        pos = self._get_extruder_position(eventtime)
 
         # Initialize last position on first successful read
         if self._last_pos is None:
