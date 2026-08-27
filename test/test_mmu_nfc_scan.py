@@ -41,6 +41,7 @@ NFC_PER_GATE_ENCODER = hh_profiles.NFC_PER_GATE.derive(
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
+GATE_UNKNOWN = -1
 GATE_AVAILABLE = 1
 FILAMENT_POS_UNLOADED = 0
 FILAMENT_POS_LOADED = 10
@@ -313,6 +314,25 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         said = ' '.join(self.hh.console[at:]).lower()
         self.assertIn('preloading gate 0...', said)
         self.assertNotIn('nfc:', said)
+
+    def test_sensorless_preload_bypasses_nfc_compound_and_scan_motion(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_parking_distance=-20')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_homing_max=120')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
+        self.fil.attach_tag(0, TAG, {'material': 'PLA'}, offset=40.0)
+        self.hh.place_filament(0, position=-100.0)
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+
+        reasons = [reason.lower() for _gate, _distance, reason in self.fil.history]
+        self.assertFalse(any('nfc' in reason or 'homing' in reason for reason in reasons),
+                         reasons)
+        self.assertEqual([distance for _gate, distance, _reason in self.fil.history],
+                         [120.0, -20.0])
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_UNKNOWN)
+        self.assertNotIn('with nfc scan', ' '.join(self.hh.console).lower())
+        self.assertEqual(self.hh.errors, [])
 
     def test_last_preloaded_gate_is_recorded_on_success(self):
         """MMU_SPOOLMAN_TAG GATE=LAST relies on this being set after a normal successful preload."""

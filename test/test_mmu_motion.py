@@ -45,6 +45,8 @@ logging.getLogger().setLevel(logging.CRITICAL)
 
 FILAMENT_POS_UNLOADED = 0
 FILAMENT_POS_HOMED_GATE = 1
+FILAMENT_POS_LOADED = 10
+GATE_UNKNOWN = -1
 GATE_EMPTY = 0
 GATE_AVAILABLE = 1
 
@@ -560,6 +562,144 @@ class TestPreload(MotionTestCase):
         self.hh.place_filament(1, position=TIP_AT_GATE)
         self.hh.run_gcode('MMU_PRELOAD GATE=1')
         self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=3)
+
+
+class TestSensorlessPreload(MotionTestCase):
+    """gate_preload_endstop=none is open-loop and must not disturb normal preload."""
+
+    FIXED_MOVE = 120.0
+    PARKING_MOVE = -20.0
+
+    def setUp(self):
+        super().setUp()
+        # Apply dependent values in an order that keeps every intermediate runtime profile
+        # valid. MMU_TEST_CONFIG deliberately applies each command immediately.
+        self.hh.run_gcode(
+            'MMU_TEST_CONFIG UNIT=0 gate_preload_parking_distance=%.1f'
+            % self.PARKING_MOVE)
+        self.hh.run_gcode(
+            'MMU_TEST_CONFIG UNIT=0 gate_preload_homing_max=%.1f'
+            % self.FIXED_MOVE)
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_attempts=9')
+        self.assertEqual(self.hh.errors, [], 'sensorless preload setup was not clean')
+
+    def test_fixed_preload_is_one_plain_move_then_parking(self):
+        self.hh.place_filament(1, position=TIP_AT_GATE)
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=1')
+
+        legs = [(distance, reason) for gate, distance, reason in self.fil.history
+                if gate == 1]
+        self.assertEqual(len(legs), 2, legs)
+        self.assertAlmostEqual(legs[0][0], self.FIXED_MOVE)
+        self.assertAlmostEqual(legs[1][0], self.PARKING_MOVE)
+        self.assertFalse(any('homing' in reason.lower() for _distance, reason in legs), legs)
+        self.assertAlmostEqual(
+            self.fil.tip[1], TIP_AT_GATE + self.FIXED_MOVE + self.PARKING_MOVE)
+
+    def test_attempts_are_forced_to_one_and_gate_remains_unknown(self):
+        self.hh.place_filament(1, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=1')
+
+        profile = self.hh.mmu._preload_profile()
+        self.assertEqual(profile.attempts, 1)
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_UNKNOWN)
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.mmu.last_preloaded_gate, 1)
+        self.assertIn('presence was not verified', ' '.join(self.hh.console))
+        self.assertNotIn('Filament detected and loaded in gate 1', self.hh.console)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_runtime_endstop_change_only_forces_attempts_while_none_is_active(self):
+        unit = self.hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_preload_attempts, 9)
+        self.assertEqual(self.hh.mmu._preload_profile().attempts, 1)
+
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_exit')
+        profile = self.hh.mmu._preload_profile()
+        self.assertEqual(profile.endstop, 'mmu_exit')
+        self.assertEqual(profile.attempts, 9)
+
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
+        profile = self.hh.mmu._preload_profile()
+        self.assertEqual(profile.endstop, 'none')
+        self.assertEqual(profile.attempts, 1)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_runtime_can_apply_complete_sensorless_profile_in_one_command(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_exit')
+        self.hh.run_gcode(
+            'MMU_TEST_CONFIG UNIT=0 gate_preload_attempts=7 '
+            'gate_preload_endstop=none gate_preload_homing_max=60 '
+            'gate_preload_parking_distance=-20 nfc_preload_clear_distance=-500 '
+            'nfc_preload_jog_scan_window=-500,500')
+
+        unit = self.hh.mmu.mmu_unit(0)
+        profile = self.hh.mmu._preload_profile()
+        self.assertEqual(unit.p.gate_preload_attempts, 7)
+        self.assertEqual(profile.endstop, 'none')
+        self.assertEqual(profile.homing_max, 60.0)
+        self.assertEqual(profile.parking_distance, -20.0)
+        self.assertEqual(profile.attempts, 1)
+        self.assertEqual(profile.clear_distance, -500.0)
+        self.assertEqual(profile.jog_scan_window, [-500.0, 500.0])
+        self.assertEqual(self.hh.errors, [])
+
+    def test_no_filament_is_not_misreported_as_empty_or_available(self):
+        self.hh.place_filament(2, position=-100000.0)
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+
+        self.assertEqual(self.hh.mmu.gate_status[2], GATE_UNKNOWN)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_fitted_exit_sensor_does_not_take_already_preloaded_shortcut(self):
+        self.hh.place_filament(1, position=self.fil.layout['mmu_exit'] + 5.0)
+        self.assertTrue(self.hh.sensor('mmu_exit_1').present)
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=1')
+
+        legs = [(distance, reason) for gate, distance, reason in self.fil.history
+                if gate == 1]
+        self.assertEqual([distance for distance, _reason in legs],
+                         [self.FIXED_MOVE, self.PARKING_MOVE])
+        self.assertFalse(any('homing' in reason.lower() for _distance, reason in legs), legs)
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_UNKNOWN)
+        self.assertNotIn('already preloaded', ' '.join(self.hh.console).lower())
+
+    def test_pending_spool_identity_is_applied_after_completed_fixed_move(self):
+        self.hh.place_filament(1, position=TIP_AT_GATE)
+        self.hh.mmu.pending_spool_id = 7
+        self.hh.run_gcode('MMU_PRELOAD GATE=1')
+
+        self.assertEqual(self.hh.mmu.gate_spool_id[1], 7)
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_UNKNOWN)
+
+    def test_current_loaded_gate_is_refused_before_motion(self):
+        self.hh.mmu.select_gate(0)
+        self.hh.mmu.filament_pos = FILAMENT_POS_LOADED
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+
+        self.assertEqual(self.fil.history, [])
+        self.assertTrue(any('filament is loaded' in error.lower()
+                            for error in self.hh.errors), self.hh.errors)
+
+    def test_crossload_preloads_another_gate_and_restores_loaded_state(self):
+        self.hh.place_filament(0)
+        self.hh.place_filament(2, position=TIP_AT_GATE)
+        self.hh.mmu.select_gate(0)
+        self.hh.mmu.filament_pos = FILAMENT_POS_LOADED
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+
+        self.assertEqual(self.hh.mmu.gate_selected, 0)
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(self.hh.mmu.gate_status[2], GATE_UNKNOWN)
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestNfcEndstopTrips(unittest.TestCase):

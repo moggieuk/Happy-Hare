@@ -86,7 +86,8 @@ class MmuFilamentMovement:
             endstop=u.p.gate_preload_endstop,
             homing_max=u.p.gate_preload_homing_max,
             parking_distance=u.p.gate_preload_parking_distance,
-            attempts=u.p.gate_preload_attempts,
+            attempts=(1 if u.p.gate_preload_endstop == SENSOR_GATE_NONE
+                      else u.p.gate_preload_attempts),
             jog_scan_window=u.p.nfc_preload_jog_scan_window,
             clear_distance=u.p.nfc_preload_clear_distance,
         )
@@ -152,6 +153,30 @@ class MmuFilamentMovement:
                     # Ensure expected sync/grip state before macro
                     self.reset_sync_gear_to_extruder(False, force_grip=True)
                     self.wrap_gcode_command(self.p.post_preload_macro, exception=True, wait=True)
+
+        # Explicitly sensorless preload is an open-loop operation. Keep it separate from the
+        # established homing/NFC path below: there is no datum to validate, retry, scan from,
+        # or use for a verified AVAILABLE result. A completed motor sequence is still a
+        # completed preload command, but filament presence remains unknown by definition.
+        if self.mmu_unit().p.gate_preload_endstop == SENSOR_GATE_NONE:
+            profile = self._preload_profile()
+            self.log_always("Preloading gate %d with fixed move..." % gate)
+            self.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
+            with self.wrap_suspend_filament_monitoring(), self.wrap_suspend_insert_events():
+                self.set_filament_direction(DIRECTION_LOAD)
+                self.move_filament("Fixed preload move", profile.homing_max)
+                self.set_filament_direction(DIRECTION_UNLOAD)
+                self.move_filament("Final parking", profile.parking_distance)
+                self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
+
+            self.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
+            self.last_preloaded_gate = gate
+            self._check_pending_filament(gate, pending=pending)
+            self.log_always(
+                "Fixed preload move complete for gate %d; filament presence was not verified"
+                % gate)
+            run_post_preload_macro()
+            return
 
         # Already preloaded? (a per-gate mmu_exit sensor that already reads filament present)
         if self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate):
