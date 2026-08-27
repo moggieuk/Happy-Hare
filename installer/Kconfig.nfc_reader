@@ -45,6 +45,7 @@
 #
 #   PARAM_NFC_READER_VEN_PIN     (if pn7160 type)
 #   PARAM_NFC_READER_IRQ_PIN     (if pn7160 type)
+#   PARAM_NFC_READER_RX_GAIN     (0 = chip/profile default)
 #
 # Per-gate:
 #   PARAM_NFC_READER_X
@@ -331,6 +332,19 @@ if MMU_HAS_NFC_READER
             Optional IRQ pin for the PN7160 reader.
             Don't forget to prefix with mcu name. E.g. mmu:PG13
       endif
+
+      config PARAM_NFC_READER_RX_GAIN
+        int "Receiver gain (dB)"
+        default 0
+        range 0 60
+        help
+          Static startup gain; 0 keeps the chip/RF-profile default.
+          Valid dB values (effective default in parentheses):
+            RC522/PN532: 18, 23, (33), 38, 43, 48
+            PN5180: 33, 40, (50), 57
+            PN7160: 18, 26, 32, 39, 44, (51), (53), 60
+              PN7160 defaults: NFC-A 106=53; ISO15693=51
+          Bench-tuning option for the antenna and receive path.
     endif
 
 
@@ -579,7 +593,20 @@ if MMU_HAS_NFC_READER
                   Optional IRQ pin for this gate's PN7160 reader.
                   Don't forget to prefix with mcu name. E.g. mmu:PG13
             endif
-          endif
+
+            config PARAM_NFC_READER_RX_GAIN_$(i)
+              int "Gate $(i) receiver gain (dB)"
+              default 0
+              range 0 60
+              help
+                Static startup gain; 0 keeps the chip/RF-profile default.
+                Valid dB values (effective default in parentheses):
+                  RC522/PN532: 18, 23, 33, 38, 43, 48 (33)
+                  PN5180: 33, 40, 50, 57 (50)
+                  PN7160: 18, 26, 32, 39, 44, 51, 53, 60
+                  PN7160 defaults: NFC-A 106=53; ISO15693=51
+                Bench-tuning option for the antenna and receive path.
+           endif
         endif
       @endrepeat@
 

@@ -22,6 +22,7 @@
 #   #transceive_delay: 0.250        # pn532/pn7160 tag-wait (min 0.050)
 #   #crc_delay: 0.050               # pn532 InRelease wait
 #   #tag_max_pages: 16              # NTAG/Type-5 pages read during a deep read (4..135)
+#   #rx_gain: 0                      # 0=chip default; valid dB values depend on reader_type
 #
 # [mmu_nfc_reader gate0]            # one reader instance; name = "gate0"
 #   reader_type: rc522              # pn532 | pn5180 | pn7160 | rc522 (overrides default)
@@ -214,6 +215,7 @@ class MmuNfcReaderDefaults:
         self.transceive_delay = config.getfloat('transceive_delay', 0.250, minval=0.050, maxval=2.0)
         self.crc_delay = config.getfloat('crc_delay', 0.050, minval=0.005, maxval=1.0)
         self.tag_max_pages = config.getint('tag_max_pages', 16, minval=4, maxval=135)
+        self.rx_gain = config.getint('rx_gain', 0, minval=0)
         self.low_level_debug = pn532_driver.get_low_level_debug(config)
 
 
@@ -253,8 +255,16 @@ class MmuNfcReader:
         self.tag_max_pages = config.getint('tag_max_pages',
                                            self._defaults.tag_max_pages if self._defaults else 16,
                                            minval=4, maxval=135)
-        low_level_debug = pn532_driver.get_low_level_debug(config,
-                                                           self._defaults.low_level_debug if self._defaults else False)
+        self.rx_gain = reader_factory.rx_gain_from_config(
+            config, self.reader_type,
+            default=self._defaults.rx_gain if self._defaults else 0)
+        low_level_debug = pn532_driver.get_low_level_debug(
+            config, self._defaults.low_level_debug if self._defaults else False)
+        if self.rx_gain and low_level_debug:
+            raise config.error(
+                "[mmu_nfc_reader %s]: rx_gain cannot be used with low_level_debug; "
+                "low_level_debug deliberately suppresses all driver-initiated chip traffic"
+                % self.name)
 
         # The driver labels its own log lines with this section's name, which it
         # derives from config itself - nothing to pass in or patch later.
@@ -328,8 +338,20 @@ class MmuNfcReader:
         self.last_target_info = None
         self.present = False
         self.reader.init()
+        self._apply_rx_gain()
         self.alive = bool(self.reader.is_alive())
         return self.alive
+
+
+    def _apply_rx_gain(self):
+        """Apply the static startup gain after the driver's reset/init sequence."""
+        if not self.rx_gain:
+            return
+        set_rx_gain = getattr(self.reader, 'set_rx_gain', None)
+        if set_rx_gain is None or not set_rx_gain(self.rx_gain):
+            reader_log.warning(
+                "[mmu_nfc_reader %s] rx_gain=%ddB was not applied by %s",
+                self.name, self.rx_gain, self.reader_type)
 
 
     def read(self, timeout=0.5):

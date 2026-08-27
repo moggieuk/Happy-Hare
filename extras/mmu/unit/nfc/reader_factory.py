@@ -17,6 +17,7 @@ from .pn532_uart_driver import PN532UARTDriver, DEFAULT_BAUD
 from .pn5180_driver import PN5180Driver
 from .pn7160_driver import PN7160Driver
 from .rc522_driver import RC522Driver
+from .rx_gain import RX_GAIN_DB
 
 SUPPORTED_READER_TYPES = ('pn532', 'pn5180', 'pn7160', 'rc522')
 DEFAULT_READER_TYPE = 'pn532'
@@ -46,7 +47,6 @@ DEFAULT_SPI_SPEED = {
     'rc522': 1000000,
 }
 PN7160_I2C_ADDRESSES = (0x28, 0x29, 0x2A, 0x2B)
-
 
 _UNSET = object()   # "caller passed no default", distinct from an explicit None
 
@@ -100,6 +100,24 @@ def reader_type_from_config(config, default=DEFAULT_READER_TYPE):
             % (config.get_name().split()[-1], reader_type,
                ', '.join(SUPPORTED_READER_TYPES)))
     return reader_type
+
+
+def rx_gain_from_config(config, reader_type, default=0):
+    """Return a validated, static receiver-gain selection in dB.
+
+    Zero means that no register/configuration write is made, preserving the
+    chip's protocol-specific startup default. All non-zero values must be an
+    exact member of the selected reader's hardware gain table.
+    """
+    gain = config.getint('rx_gain', default, minval=0)
+    allowed = RX_GAIN_DB[reader_type]
+    if gain and gain not in allowed:
+        raise config.error(
+            "[mmu_nfc_reader %s]: rx_gain for %s must be 0 (chip default) or "
+            "one of %s dB; got %d"
+            % (config.get_name().split()[-1], reader_type,
+               ', '.join(str(value) for value in allowed), gain))
+    return gain
 
 
 def default_interface(reader_type):

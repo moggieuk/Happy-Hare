@@ -49,6 +49,7 @@ import time
 import traceback
 
 from .log import logger
+from .rx_gain import RX_GAIN_CODES
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RC522 register addresses
@@ -69,6 +70,7 @@ _TxControlReg   = 0x14
 _TxASKReg       = 0x15
 _CRCResultRegH  = 0x21
 _CRCResultRegL  = 0x22
+_RFCfgReg       = 0x26   # bits 6:4 = RxGain
 _TModeReg       = 0x2A
 _TPrescalerReg  = 0x2B
 _TReloadRegH    = 0x2C
@@ -204,6 +206,17 @@ class RC522Driver:
 
     _INIT_ATTEMPTS = 3          # As PN532's _wake_pn532; a soft reset per attempt
     _INIT_RETRY_DELAY = 0.050
+
+    def set_rx_gain(self, db):
+        """Set RFCfgReg.RxGain while preserving the other register fields."""
+        code = RX_GAIN_CODES['rc522'].get(db)
+        if code is None:
+            return False
+        value = (self._read(_RFCfgReg) & ~0x70) | (code << 4)
+        self._write(_RFCfgReg, value)
+        logger.info("[%s rc522] rx_gain set to %d dB (RFCfg=0x%02X)",
+                    self._name, db, value)
+        return True
 
     def init(self):
         """
