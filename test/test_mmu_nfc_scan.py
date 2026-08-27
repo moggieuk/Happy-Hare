@@ -133,6 +133,32 @@ class TestJogScanFindsTag(NfcScanTestCase):
         self.assertIn('tag read', ' '.join(self.hh.console).lower())
         self.assertEqual(self.hh.errors, [])
 
+    def test_scan_refuses_the_current_gate_when_its_filament_is_loaded(self):
+        """Crossload capability must not permit jogging the gate owning the active load."""
+        self.preload(0)
+        self.hh.mmu.select_gate(0)
+        self.hh.mmu.filament_pos = FILAMENT_POS_LOADED
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+
+        self.assertEqual(self.fil.history, [], 'the currently loaded gate must not move')
+        self.assertTrue(any('filament is loaded' in e.lower() for e in self.hh.errors),
+                        self.hh.errors)
+
+    def test_preload_refuses_the_current_gate_when_its_filament_is_loaded(self):
+        """MMU_PRELOAD has the same invariant, including on a crossload-capable MMU."""
+        self.preload(0)
+        self.hh.mmu.select_gate(0)
+        self.hh.mmu.filament_pos = FILAMENT_POS_LOADED
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+
+        self.assertEqual(self.fil.history, [], 'preload must not move the currently loaded gate')
+        self.assertTrue(any('filament is loaded' in e.lower() for e in self.hh.errors),
+                        self.hh.errors)
+
     def test_backward_jog_finds_the_tag(self):
         """
         THE BACKWARD PATH. MmuNfcEndstop.home_start pins triggered=True because tag
