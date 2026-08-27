@@ -54,8 +54,9 @@ class MmuEncoder:
         counter.setup_callback(self._counter_callback)
 
         # For FlowGuard runout/clog/tangle functionality...
-        self.active = True                    # Active when in a print
+        self.active = False                   # Active only while in a print
         self._flowguard_enabled = False       # FlowGuard Runout/Clog/Tangle functionality
+        self._flowguard_generation = 0        # Invalidates callbacks queued before a disable/re-enable
 
         # The runout headroom that MMU will attempt to maintain (closest MMU comes to triggering runout)
         self.desired_headroom = config.getfloat('desired_headroom', 6., above=0.)
@@ -182,16 +183,22 @@ class MmuEncoder:
 
         self._reset_filament_runout_params()
         self._flowguard_enabled = (mode != 0)
+        self._flowguard_generation += 1
         return self._flowguard_enabled # Success if mode is not "off"
 
 
     def disable_flowguard(self):
         self._flowguard_enabled = False
+        self._flowguard_generation += 1
         return (self.detection_mode != 0) # Success if mode is not "off"
 
 
     def is_flowguard_enabled(self):
         return self._flowguard_enabled
+
+
+    def get_flowguard_generation(self):
+        return self._flowguard_generation
 
 
     def _get_extruder_pos(self, eventtime=None):
@@ -271,6 +278,10 @@ class MmuEncoder:
 
     # Called periodically to tune the automatic clog detection length
     def _update_detection_length(self, increase_only=False):
+        # Match v3: suspended monitoring must not consume or alter the measurement
+        # accumulated during the preceding print interval.
+        if not self._flowguard_enabled:
+            return
         if self.detection_mode != ENCODER_RUNOUT_AUTOMATIC:
             return
 
@@ -306,6 +317,10 @@ class MmuEncoder:
             if self.active_mmu_unit:
                 self.active_mmu_unit.calibrator.update_clog_detection_length(round(self.detection_length, 1))
 
+            # Match v3 set_clog_detection_length(): after a material autotune change,
+            # rebase at the live extruder position and grant startup headroom.
+            self._reset_filament_runout_params()
+
 
     # Called to see if state update requires callback notification
     def _handle_filament_event(self, filament_detected):
@@ -330,16 +345,24 @@ class MmuEncoder:
                 # Runout detected
                 self.min_event_systime = self.reactor.NEVER
                 self.mmu.log_info(f"MMU: Encoder Sensor {self.name}: runout event detected, Time {eventtime:.2f}")
-                self.reactor.register_callback(self._runout_event_handler)
+                generation = self._flowguard_generation
+                self.reactor.register_callback(
+                    lambda reh, et=eventtime, gen=generation: self._runout_event_handler(reh, et, gen))
 
 
-    def _runout_event_handler(self, eventtime):
+    def _runout_event_handler(self, reactor_eventtime, eventtime, generation):
+        # Avoid issuing even a transient PAUSE when the callback was invalidated before
+        # it began. The command repeats this check after acquiring the gcode mutex.
+        if not self.active or not self._flowguard_enabled or generation != self._flowguard_generation:
+            self.min_event_systime = self.reactor.monotonic() + self.event_delay
+            return
+
         # Pausing from inside an event requires that the pause portion of pause_resume execute immediately.
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
         if self.pause_delay:
-            self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        self._exec_gcode(self.runout_gcode)
+            self.printer.get_reactor().pause(reactor_eventtime + self.pause_delay)
+        self._exec_gcode(f"{self.runout_gcode} EVENTTIME={eventtime:.6f} GENERATION={generation}")
 
 
     def _insert_event_handler(self, eventtime):
@@ -416,9 +439,14 @@ class MmuEncoder:
 
             new_counts = count - self._last_count
             self._counts += new_counts
-            self._movement = new_counts > 0
+            movement = new_counts > 0
 
-            if self._movement:
+            # FlowGuard samples less often than the MCU counter. Latch movement until
+            # _extruder_pos_update_event() consumes it; an intervening empty counter
+            # sample must not erase a real pulse.
+            self._movement = self._movement or movement
+
+            if movement:
                 self._no_movement_count = 0
 
                 if not self._endstop_triggered:
@@ -431,7 +459,6 @@ class MmuEncoder:
         else:
             # No counts since last sample
             self._last_count_time = print_time
-            self._movement = False
             self._no_movement_count += 1
 
         if (self._endstop_triggered and self._no_movement_count >= self.no_movement_samples):
