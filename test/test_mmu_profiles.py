@@ -45,6 +45,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
+import re
 import unittest
 
 from test.hh import session
@@ -151,7 +152,8 @@ class TestEveryBootableProfile(unittest.TestCase):
         unit = hh.mmu.mmu_unit(0)
         self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
         self.assertEqual(unit.p.gate_preload_endstop, 'none')
-        self.assertEqual(unit.p.gate_preload_homing_max, 200)
+        # Simulator override only; the installer/Kconfig default remains 200 mm.
+        self.assertEqual(unit.p.gate_preload_homing_max, 100)
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
         self.assertEqual(unit.filament_heater, 'heater_generic box1_heater')
         self.assertEqual(unit.environment_sensor, 'temperature_sensor box1_env')
@@ -160,10 +162,22 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(model.layout['mmu_entry'], -150)
         self.assertEqual(model.layout['mmu_shared_exit'], 150)
         self.assertEqual(model.layout['extruder'], 900)
-        hh.place_filament(0, position=-110)
-        hh.run_gcode('MMU_PRELOAD GATE=0')
-        self.assertAlmostEqual(model.tip[0], 90)
+        # Reproduce make console's startup preload of every gate. No other
+        # filament may leave the shared sensor asserted after the selected gate
+        # is ejected and preloaded again.
+        for gate in range(4):
+            hh.place_filament(gate, position=-40)
+            hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
         self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+
+        hh.run_gcode('MMU_SELECT GATE=0')
+        hh.run_gcode('MMU_EJECT')
+        hh.run_gcode('MMU_PRELOAD')
+        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+        at = len(hh.console)
+        hh.run_gcode('MMU_STATUS')
+        status = re.sub(r'<[^>]+>', '', '\n'.join(hh.console[at:]))
+        self.assertIn('■◉■■■■■◯', status)
 
     def test_emu(self):
         self._check('emu')

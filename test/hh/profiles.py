@@ -361,7 +361,16 @@ KMS = Profile(
 # are supplied by the harness's external-object stub.
 QIDI = Profile(
     'qidi',
-    syms={'MMU_TYPE_QIDI_BOX_1_0': True},
+    syms={
+        'MMU_TYPE_QIDI_BOX_1_0': True,
+        # Simulator-only: the console seeds each gate 110 mm downstream of
+        # entry (-40 vs -150). A 200 mm fixed preload from there would put
+        # every startup filament across the shared hub switch, even though a
+        # real QIDI has substantially more entry-to-hub travel. Keep the
+        # production Kconfig default at 200 mm; 100 mm is enough to exercise
+        # fixed/crossload preload without occupying the simulated hub.
+        'PARAM_GATE_PRELOAD_HOMING_MAX': 100,
+    },
     description='QIDI Box 1.0 - 4 gates, fixed QIDI v2 MCU and THR sensor',
     # The generic harness layout has only 160 mm between entry and shared exit,
     # which makes QIDI's 200 mm fixed preload unrealistically cross the hub switch.
