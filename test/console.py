@@ -1345,6 +1345,7 @@ class Console:
         ('/sensor NAME on|off|enable|disable',
          'on/off drives the switch; enable/disable makes HH ignore it entirely'),
         ('/place GATE [POS]', 'put a filament tip at POS mm (default %g)' % TIP_AT_GATE),
+        ('/insert GATE [POS]', 'place filament and fire its entry-sensor callback'),
         ('/remove GATE', 'remove that gate\'s filament and clear its path sensors'),
         ('/preload GATE', 'place then MMU_PRELOAD that gate'),
         ('/exhaust GATE', 'give the filament a finite tail - this is what a runout IS'),
@@ -1663,6 +1664,18 @@ class Console:
         gate = int(args[0])
         pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
         self.hh.place_filament(gate, position=pos)
+
+    def _meta_insert(self, args):
+        if not 1 <= len(args) <= 2:
+            raise ValueError('usage: /insert GATE [POS]')
+        gate = int(args[0])
+        if not 0 <= gate < self.hh.mmu.num_gates:
+            raise ValueError('gate must be between 0 and %d' % (self.hh.mmu.num_gates - 1))
+        pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
+        mark = len(self.sink)
+        self.hh.place_filament(gate, position=pos, quiet=False)
+        self._settle_moonraker()
+        self._drain(mark)
 
     def _meta_remove(self, args):
         if len(args) != 1:

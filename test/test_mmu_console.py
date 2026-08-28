@@ -610,6 +610,38 @@ class TestBootupOutput(unittest.TestCase):
         self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
         self.assertEqual(console.fil.tail[0], float('-inf'))
 
+    def test_insert_fires_entry_autoload_when_enabled(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            console.meta('/remove 0')
+            console.meta('/insert 0')
+
+        self.assertIn('Preloading gate 0...', output.getvalue())
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+
+    def test_insert_does_not_preload_when_gate_autoload_is_disabled(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        console.hh.mmu.mmu_unit(1).p.gate_autoload = 0
+
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            console.meta('/remove 1')
+            console.meta('/insert 1')
+
+        self.assertNotIn('Preloading gate 1...', output.getvalue())
+        self.assertTrue(console.hh.sensor('mmu_entry_1').present)
+        self.assertFalse(console.hh.sensor('mmu_exit_1').present)
+        self.assertEqual(console.fil.tip[1], console_mod.TIP_AT_GATE)
+
     def test_reset_rebuilds_the_profile_startup_state(self):
         console = console_mod.Console(console_mod.parse_args(
             ['--profile', 'boxturtle', '--no-log', '--plain']))
