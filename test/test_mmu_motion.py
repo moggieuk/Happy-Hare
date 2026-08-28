@@ -55,7 +55,8 @@ GATE_AVAILABLE = 1
 
 
 class MotionTestCase(unittest.TestCase):
-    PROFILE = 'boxturtle_test'
+    # This suite exercises Box Turtle's real split exit/shared-exit geometry.
+    PROFILE = 'boxturtle'
 
     def setUp(self):
         self.hh = session(self.PROFILE)
@@ -375,9 +376,8 @@ class TestLoadGate(MotionTestCase):
 
     def test_homes_forward_to_the_gate_sensor(self):
         """
-        BoxTurtle's gate_homing_endstop is the shared exit at 100, so _load_gate
-        drives forward from the model's initial -100 position until that switch
-        trips - exactly 200mm.
+        BoxTurtle's gate_homing_endstop is the shared exit, so _load_gate drives
+        forward from the model's parked position until that switch trips.
 
         It does NOT park: _load_gate leaves the filament standing ON the gate, which is
         the starting position the bowden load expects. (It used to appear to park here,
@@ -392,11 +392,13 @@ class TestLoadGate(MotionTestCase):
 
     def test_the_gate_sensor_was_tripped_on_the_way(self):
         """A forward homing move reaches the shared hub switch."""
+        start = self.fil.tip[0]
         self.hh.mmu._load_gate()
         trips = [d for _g, d, reason in self.fil.history
                  if 'homing -> unit0:mmu_shared_exit' in reason and d > 0]
         self.assertTrue(trips, 'never homed forward onto the gate sensor')
-        self.assertAlmostEqual(trips[0], 200.0, places=3)
+        expected = self.fil.layout['mmu_shared_exit'] - start
+        self.assertAlmostEqual(trips[0], expected, places=3)
         self.assertTrue(self.hh.sensor('unit0:mmu_shared_exit').present,
                         '_load_gate leaves the filament on the gate switch')
 

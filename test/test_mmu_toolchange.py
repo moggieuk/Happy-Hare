@@ -41,7 +41,8 @@ TOOL_UNKNOWN = -2
 
 
 class ToolchangeTestCase(unittest.TestCase):
-    PROFILE = 'boxturtle_test'
+    # This suite exercises Box Turtle's real split exit/shared-exit geometry.
+    PROFILE = 'boxturtle'
     PRELOAD_GATES = (0,)
 
     def setUp(self):
