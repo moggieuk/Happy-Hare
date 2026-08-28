@@ -229,7 +229,7 @@ class MmuUnitParameters(TunableParametersBase):
 
     def _validate_gate_preload_parking_distance(self, value):
         endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
-        if value > 0 and endstop != SENSOR_EXIT_PREFIX:
+        if value > 0 and endstop not in [SENSOR_EXIT_PREFIX, SENSOR_GATE_NONE]:
             raise ValueError(
                 "gate_preload_parking_distance must be a retraction (<= 0) unless the preload "
                 "endstop is '%s' (got %.1f with endstop '%s')"

@@ -584,7 +584,7 @@ class TestSensorlessPreload(MotionTestCase):
         self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_attempts=9')
         self.assertEqual(self.hh.errors, [], 'sensorless preload setup was not clean')
 
-    def test_fixed_preload_is_one_plain_move_then_parking(self):
+    def test_fixed_preload_is_one_plain_move_without_parking(self):
         self.hh.place_filament(1, position=TIP_AT_GATE)
         self.fil.history.clear()
 
@@ -592,12 +592,22 @@ class TestSensorlessPreload(MotionTestCase):
 
         legs = [(distance, reason) for gate, distance, reason in self.fil.history
                 if gate == 1]
-        self.assertEqual(len(legs), 2, legs)
+        self.assertEqual(len(legs), 1, legs)
         self.assertAlmostEqual(legs[0][0], self.FIXED_MOVE)
-        self.assertAlmostEqual(legs[1][0], self.PARKING_MOVE)
         self.assertFalse(any('homing' in reason.lower() for _distance, reason in legs), legs)
-        self.assertAlmostEqual(
-            self.fil.tip[1], TIP_AT_GATE + self.FIXED_MOVE + self.PARKING_MOVE)
+        self.assertAlmostEqual(self.fil.tip[1], TIP_AT_GATE + self.FIXED_MOVE)
+
+    def test_runtime_parking_distance_is_accepted_but_ignored(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_parking_distance=25')
+        self.hh.place_filament(1, position=TIP_AT_GATE)
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=1')
+
+        legs = [(distance, reason) for gate, distance, reason in self.fil.history
+                if gate == 1]
+        self.assertEqual([distance for distance, _reason in legs], [self.FIXED_MOVE])
+        self.assertEqual(self.hh.errors, [])
 
     def test_attempts_are_forced_to_one_and_gate_remains_unknown(self):
         self.hh.place_filament(1, position=TIP_AT_GATE)
@@ -664,7 +674,7 @@ class TestSensorlessPreload(MotionTestCase):
         legs = [(distance, reason) for gate, distance, reason in self.fil.history
                 if gate == 1]
         self.assertEqual([distance for distance, _reason in legs],
-                         [self.FIXED_MOVE, self.PARKING_MOVE])
+                         [self.FIXED_MOVE])
         self.assertFalse(any('homing' in reason.lower() for _distance, reason in legs), legs)
         self.assertEqual(self.hh.mmu.gate_status[1], GATE_UNKNOWN)
         self.assertNotIn('already preloaded', ' '.join(self.hh.console).lower())

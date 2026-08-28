@@ -156,7 +156,7 @@ class MmuFilamentMovement:
 
         # Explicitly sensorless preload is an open-loop operation. Keep it separate from the
         # established homing/NFC path below: there is no datum to validate, retry, scan from,
-        # or use for a verified AVAILABLE result. A completed motor sequence is still a
+        # or use for a verified AVAILABLE result. A completed fixed move is still a
         # completed preload command, but filament presence remains unknown by definition.
         if self.mmu_unit().p.gate_preload_endstop == SENSOR_GATE_NONE:
             profile = self._preload_profile()
@@ -165,8 +165,6 @@ class MmuFilamentMovement:
             with self.wrap_suspend_filament_monitoring(), self.wrap_suspend_insert_events():
                 self.set_filament_direction(DIRECTION_LOAD)
                 self.move_filament("Fixed preload move", profile.homing_max)
-                self.set_filament_direction(DIRECTION_UNLOAD)
-                self.move_filament("Final parking", profile.parking_distance)
                 self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
             self.gate_maps.set_gate_status(gate, GATE_UNKNOWN)

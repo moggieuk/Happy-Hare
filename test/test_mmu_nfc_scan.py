@@ -329,7 +329,7 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertFalse(any('nfc' in reason or 'homing' in reason for reason in reasons),
                          reasons)
         self.assertEqual([distance for _gate, distance, _reason in self.fil.history],
-                         [120.0, -20.0])
+                         [120.0])
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_UNKNOWN)
         self.assertNotIn('with nfc scan', ' '.join(self.hh.console).lower())
         self.assertEqual(self.hh.errors, [])

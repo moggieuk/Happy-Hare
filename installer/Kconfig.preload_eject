@@ -36,7 +36,7 @@ menu "Filament preloading and ejection"
     config CHOICE_GATE_PRELOAD_ENDSTOP_NONE
       bool "No sensor / fixed move"
       help
-        Perform one fixed forward preload move followed by the configured parking move.
+        Perform one fixed forward preload move. The configured parking distance is ignored.
         Filament presence cannot be verified, so the gate will remain marked unknown.
         Per-gate NFC preload scanning and its associated clear/jog moves are not used.
 
@@ -68,12 +68,13 @@ menu "Filament preloading and ejection"
       Usually this is the same as gate homing distance
 
   config PARAM_GATE_PRELOAD_PARKING_DISTANCE
-    float "Preload parking distance    "
+    float
+    prompt "Preload parking distance    " if !CHOICE_GATE_PRELOAD_ENDSTOP_NONE
     default PARAM_GATE_PARKING_DISTANCE
     help
       Filament parking distance (mm) after homing to configured gate homing sensor
       or per-gate "mmu_exit" sensor if available.
-      With no preload sensor this is a fixed move relative to the end of the forward move.
+      This setting is ignored when no preload sensor is selected.
       Usually this is the same as gate parking distance
 
       Negative values for movement in the retract direction (back off sensor)
