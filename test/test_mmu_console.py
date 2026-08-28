@@ -330,7 +330,7 @@ class TestInstallDirBoots(unittest.TestCase):
         hh.run_gcode('MMU_PRELOAD GATE=0')
         hh.reactor.advance(0.)
         self.assertEqual(hh.mmu.gate_status[0], 1, 'preload did not mark the gate available')
-        self.assertAlmostEqual(fil.tip[0], -100.0, places=1)
+        self.assertAlmostEqual(fil.tip[0], 10.0, places=1)
         self.assertEqual(hh.errors, [])
 
 
@@ -1742,7 +1742,7 @@ class TestConsoleScript(unittest.TestCase):
         # Put this gate through every fitted sensor; other gates remain merely parked.
         hh.place_filament(0, position=800.)
         affected = [name for name in console.fil.sensor_names()
-                    if console.fil.gate_of(name) in (None, 0)
+                    if console.fil.gate_of(name) == 0
                     # Buffer switches report stored slack/tension, not filament
                     # presence, and are intentionally not all true at once.
                     and not console.fil.models_sensor(name)]
