@@ -537,6 +537,19 @@ class TestBootupOutput(unittest.TestCase):
         self.assertIn('Ready', joined)
         self.assertEqual(console.sink, [], 'preload noise leaked into the console history')
 
+    def test_box_turtle_banner_filament_row_matches_post_preload_status(self):
+        """The cached welcome must not retain its pre-preload sensor readings."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        banner = '\n'.join(console.startup_output)
+        banner_row = next(line for line in banner.split('\n') if line.startswith('[T0]'))
+        self.assertEqual(banner_row, console.hh.mmu.get_filament_position_string())
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+
     def _avail_row(self, console):
         """The gate-availability row of the bootup table. One sink entry is one MESSAGE, and
         the whole table arrives as a single multi-line one, so split before matching."""

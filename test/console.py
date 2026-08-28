@@ -566,6 +566,7 @@ class Console:
         # machine, so this costs the older profiles nothing.
         if preloading:
             self._preload_all()
+            self._refresh_startup_filament_row()
 
         # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
         # it every call Happy Hare makes to Moonraker goes into the void, so an NFC read ends
@@ -617,6 +618,16 @@ class Console:
             self._dispatch('MMU_SELECT GATE=%d' % selected)
             self.hh.reactor.advance(0.)
         self._clear_sink()  # setup noise is not console history
+
+    def _refresh_startup_filament_row(self):
+        """Make the cached boot banner describe the post-preload simulator state."""
+        current = self.hh.mmu.get_filament_position_string()
+        refreshed = []
+        for message in self.startup_output:
+            lines = message.split('\n')
+            lines = [current if line.startswith('[T') else line for line in lines]
+            refreshed.append('\n'.join(lines))
+        self.startup_output = refreshed
 
     def close(self):
         if self.hh is not None:
