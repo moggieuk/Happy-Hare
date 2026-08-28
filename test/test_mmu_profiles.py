@@ -109,7 +109,7 @@ class TestEveryBootableProfile(unittest.TestCase):
 
         model = hh.filament()
         self.assertEqual(model.layout['mmu_exit'], 0)
-        self.assertEqual(model.layout['mmu_shared_exit'], 100)
+        self.assertEqual(model.layout['mmu_shared_exit'], 150)
         hh.place_filament(0, position=-40)
         hh.run_gcode('MMU_PRELOAD GATE=0')
         self.assertAlmostEqual(model.tip[0], 10)

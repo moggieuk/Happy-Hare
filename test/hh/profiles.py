@@ -136,9 +136,10 @@ BOXTURTLE = Profile(
     description='BoxTurtle 1.0 - Type B, VirtualSelector, 4 gates, multigear',
     # The per-gate exit is just past each drive, while the shared exit is at
     # the downstream hub. BoxTurtle parks 10 mm beyond the former when
-    # preloading and 100 mm before the latter after normal gate homing, so the
-    # two sensors cannot occupy the generic harness's former 10 mm spacing.
-    filament_layout={'mmu_shared_exit': 100.0})
+    # preloading and 100 mm before the latter after normal gate homing. Leave
+    # 150 mm between them so that retraction parks 50 mm beyond the per-gate
+    # exit instead of landing on (and numerically just behind) that switch.
+    filament_layout={'mmu_shared_exit': 150.0})
 
 # BoxTurtle + one COMMON NFC reader serving all gates and the bypass (RC522 over SPI).
 #

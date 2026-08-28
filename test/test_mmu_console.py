@@ -570,6 +570,23 @@ class TestBootupOutput(unittest.TestCase):
         self.assertFalse(console.hh.sensor('mmu_entry_0').present)
         self.assertFalse(console.hh.sensor('mmu_exit_0').present)
 
+    def test_box_turtle_unload_parks_between_exit_and_shared_exit(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_LOAD')
+            console.run_command('MMU_UNLOAD')
+
+        self.assertAlmostEqual(console.fil.tip[0], 50, places=5)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+        self.assertEqual(console.failures, 0)
+        self.assertEqual(console.hh.errors, [])
+
     def test_preload_requires_explicit_filament_placement_after_eject(self):
         """Raw gcode must preserve the missing-filament failure; /place sets the scene."""
         console = console_mod.Console(console_mod.parse_args(
