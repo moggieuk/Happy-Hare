@@ -337,6 +337,17 @@ MMX = Profile(
           'MMU_HAS_SENSOR_SHARED_EXIT': True},
     description='MMX 1.0 - 4 gates, ServoSelector with vendor gate angles')
 
+# KMS with its ordinary defaults. OPTION_KMS_BUFFER is deliberately not set here: the
+# machine type implies it, and that default enables the four per-gate mmu_exit sensors.
+# Keeping gate/preload symbols out of the profile makes this useful for console experiments
+# that switch gate_preload_endstop to none at runtime with MMU_TEST_CONFIG. Jabberwocky is
+# simply the randomly selected toolhead requested for this fixture.
+KMS = Profile(
+    'kms',
+    syms={'MMU_TYPE_KMS_1_0': True,
+          'TOOLHEAD_TYPE_JABBERWOCKY': True},
+    description='KMS 1.0 defaults - 4 gates, exit sensors, Jabberwocky toolhead')
+
 # EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
 # sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
 # for real, and the virtual compression/tension sensors derived from an analog reading
@@ -350,8 +361,8 @@ EMU = Profile(
     syms={'MMU_TYPE_EMU_1_0': True},
     description='EMU 1.0 - 5 gates, proportional (analog) buffer sensor')
 
-# BoxTurtle plus an encoder, homing to it instead of to the gate switch. None of the
-# three shipped machine profiles ships an encoder, and _home_to_gate's encoder branch
+# BoxTurtle plus an encoder, homing to it instead of to the gate switch. KMS also ships an
+# encoder, but its exit sensors win the default homing choice, so _home_to_gate's encoder branch
 # (extras/mmu/mmu_filament_movement.py:206-231) is a completely different algorithm from
 # the endstop branch: it does not home at all, it makes a fixed-length move and asks
 # whether the filament MOVED. Nothing else covers it.
@@ -567,7 +578,7 @@ run_current: 0.6
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, EMU, ENCODER,
+CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, EMU, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                     NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,

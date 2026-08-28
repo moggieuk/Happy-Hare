@@ -74,6 +74,18 @@ class TestBoxTurtleRender(unittest.TestCase):
                          'gcode_macro _MMU_SEQUENCE_VARS'):
             self.assertIn(expected, secs)
 
+    def test_sensorless_preload_choice_renders_none_and_one_attempt(self):
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_sensorless_preload',
+            syms={'CHOICE_GATE_PRELOAD_ENDSTOP_NONE': True})
+        rendered = cfg.render(profile)
+        parser = cfg.assemble(rendered)
+        params = dict(parser.items('mmu_unit_parameters unit0'))
+
+        self.assertEqual(params['gate_preload_endstop'], 'none')
+        # The prompt is hidden in this mode, but the typed symbol retains an explicit value.
+        self.assertEqual(params['gate_preload_attempts'], '1')
+
     def test_every_rendered_macro_variable_is_a_valid_klipper_literal(self):
         """Real Klipper rejects the entire config if any variable is not a Python literal."""
         parser = cfg.assemble(self.rendered, macros=False)

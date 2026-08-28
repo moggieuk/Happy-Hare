@@ -35,6 +35,7 @@ logging.getLogger().setLevel(logging.CRITICAL)
 FILAMENT_POS_UNLOADED = 0
 FILAMENT_POS_LOADED = 10
 FILAMENT_POS_UNKNOWN = -1
+GATE_UNKNOWN = -1
 TOOL_GATE_UNKNOWN = -1
 TIP_AT_GATE = -40.0             # past the entry switch: where a user's push leaves it
 
@@ -125,6 +126,21 @@ class TestLinearSelector(SelectorTestCase):
     """
 
     PROFILE = 'tradrack'
+
+    def test_selected_gate_can_use_sensorless_preload_without_crossload_capability(self):
+        unit = self.hh.mmu.mmu_unit(0)
+        self.assertFalse(unit.can_crossload, 'precondition: Tradrack cannot crossload')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_parking_distance=-10')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_homing_max=60')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
+        self.hh.mmu.select_gate(1)
+        self.hh.place_filament(1, position=TIP_AT_GATE)
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=1')
+
+        self.assertEqual(self.hh.mmu.gate_selected, 1)
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_UNKNOWN)
+        self.assertEqual(self.hh.errors, [])
 
     def test_homing_succeeds(self):
         """

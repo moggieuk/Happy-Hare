@@ -145,6 +145,7 @@ MACRO_FORM_TIP  = "_MMU_FORM_TIP"
 SENSOR_ENCODER           = "encoder"               # Fake Gate endstop using encoder
 SENSOR_SHARED_EXIT       = "mmu_shared_exit"
 SENSOR_EXIT_PREFIX       = "mmu_exit"
+SENSOR_GATE_NONE         = "none"                  # Sensorless gate preload using a fixed move
 
 SENSOR_EXTRUDER_NONE     = "none"                  # Fake Extruder endstop aka don't attempt home
 SENSOR_EXTRUDER_ENCODER  = "encoder"               # Fake Extruder endstop (uses encoder to detect collision)

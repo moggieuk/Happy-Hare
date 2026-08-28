@@ -97,6 +97,7 @@ class MmuPreloadCommand(BaseCommand):
 
         can_preload = (
             filament_pos == FILAMENT_POS_UNLOADED
+            or preload_endstop == SENSOR_GATE_NONE
             or mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
             or (
                    not is_unloaded

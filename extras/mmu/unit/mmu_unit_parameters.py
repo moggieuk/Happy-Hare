@@ -82,6 +82,7 @@ class MmuUnitParameters(TunableParametersBase):
         if new != old:
             self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
             self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
+            self._validate_sensorless_preload_profile()
 
     def _on_gate_homing_max(self, old, new):
         if new != old:
@@ -94,10 +95,12 @@ class MmuUnitParameters(TunableParametersBase):
     def _on_gate_preload_homing_max(self, old, new):
         if new != old:
             self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
+            self._validate_sensorless_preload_profile()
 
     def _on_gate_preload_parking_distance(self, old, new):
         if new != old:
             self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
+            self._validate_sensorless_preload_profile()
 
     def _on_flowguard_tuning_change(self, old, new):
         # Push live FlowGuard tuning (relief) to a running controller
@@ -130,7 +133,8 @@ class MmuUnitParameters(TunableParametersBase):
 
     def _validate_nfc_preload_jog_scan_window(self, value):
         # empty disables scan-on-miss during MMU_PRELOAD; datum-relative like the gate window
-        if not value:
+        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
+        if endstop == SENSOR_GATE_NONE or not value:
             return
         if len(value) != 2:
             raise ValueError("nfc_preload_jog_scan_window must be two values (neg, pos), e.g. 0,480")
@@ -185,12 +189,12 @@ class MmuUnitParameters(TunableParametersBase):
 
     def _validate_nfc_preload_clear_distance(self, value):
         # 0 disables; independent of nfc_gate_clear_distance, can differ including in sign
-        if not value:
+        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
+        if endstop == SENSOR_GATE_NONE or not value:
             return
         self._validate_nfc_clear_reach(
             'nfc_preload_clear_distance', value, self.gate_preload_parking_distance,
             self.gate_preload_homing_max)
-        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
         if value > 0 and endstop in SHARED_GATE_ENDSTOPS:
             raise ValueError(
                 "nfc_preload_clear_distance must be a backward jog (< 0) unless the preload "
@@ -225,11 +229,20 @@ class MmuUnitParameters(TunableParametersBase):
 
     def _validate_gate_preload_parking_distance(self, value):
         endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
-        if value > 0 and endstop != SENSOR_EXIT_PREFIX:
+        if value > 0 and endstop not in [SENSOR_EXIT_PREFIX, SENSOR_GATE_NONE]:
             raise ValueError(
                 "gate_preload_parking_distance must be a retraction (<= 0) unless the preload "
                 "endstop is '%s' (got %.1f with endstop '%s')"
                 % (SENSOR_EXIT_PREFIX, value, endstop))
+
+    def _validate_sensorless_preload_profile(self):
+        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
+        if endstop != SENSOR_GATE_NONE:
+            return
+        if self.gate_preload_homing_max <= 0:
+            raise ValueError(
+                "gate_preload_homing_max must be greater than 0 when gate_preload_endstop "
+                "is '%s' (got %.1f)" % (SENSOR_GATE_NONE, self.gate_preload_homing_max))
 
 
     # ---- Specs ----
@@ -242,7 +255,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
 
         # Gate preloading
-        ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}, on_change=_on_gate_preload_endstop),
+        ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [SENSOR_GATE_NONE, ''])}, on_change=_on_gate_preload_endstop),
         ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING", on_change=_on_gate_preload_homing_max),
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance, on_change=_on_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
@@ -377,6 +390,7 @@ class MmuUnitParameters(TunableParametersBase):
     def _post_load_fixups(self):
         # gate_preload_endstop: if blank, inherit gate_homing_endstop
         self.gate_preload_endstop = self.gate_preload_endstop or self.gate_homing_endstop
+        self._validate_sensorless_preload_profile()
 
         # filament_always_gripped: forces sync flags on
         if self._mmu_unit.filament_always_gripped:
