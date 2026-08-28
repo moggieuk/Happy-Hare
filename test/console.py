@@ -788,7 +788,6 @@ class Console:
     def run_command(self, line):
         mark = len(self.sink)
         unhandled_mark = len(self.hh.gcode.unhandled)
-        self._seed_filament_for_preload(line)
         gate_status_before = None
         is_eject = bool(re.match(r'^\s*MMU_EJECT(?:\s|$)', line, re.I))
         if is_eject or (re.match(r'^\s*MMU_GATE_MAP(?:\s|$)', line, re.I)
@@ -826,18 +825,6 @@ class Console:
         self.streaming = False
         self._warn_unhandled(line, unhandled_mark)
         self._warn_silent_macro(line, mark)
-
-    def _seed_filament_for_preload(self, line):
-        """Model the user's insertion before an interactive raw MMU_PRELOAD."""
-        if not re.match(r'^\s*MMU_PRELOAD(?:\s|$)', line, re.I):
-            return
-        match = re.search(r'(?:^|\s)GATE\s*=\s*(-?\d+)', line, re.I)
-        gate = int(match.group(1)) if match else self.hh.mmu.gate_selected
-        if not 0 <= gate < self.hh.mmu.num_gates:
-            return
-        entry = self.hh.mmu.sensor_manager.check_gate_sensor('mmu_entry', gate)
-        if entry is False and self.hh.mmu.gate_maps.gate_status[gate] == GATE_EMPTY:
-            self.hh.place_filament(gate, position=TIP_AT_GATE)
 
     def _sync_filament_to_gate_map(self, before):
         """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""

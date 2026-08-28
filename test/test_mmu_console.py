@@ -570,18 +570,25 @@ class TestBootupOutput(unittest.TestCase):
         self.assertFalse(console.hh.sensor('mmu_entry_0').present)
         self.assertFalse(console.hh.sensor('mmu_exit_0').present)
 
-    def test_raw_preload_after_eject_models_reinsertion_at_entry(self):
+    def test_preload_requires_explicit_filament_placement_after_eject(self):
+        """Raw gcode must preserve the missing-filament failure; /place sets the scene."""
         console = console_mod.Console(console_mod.parse_args(
             ['--profile', 'boxturtle', '--no-log', '--plain']))
         self.addCleanup(console.close)
         console.boot()
 
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
             console.run_command('MMU_EJECT')
-            self.assertFalse(console.hh.sensor('mmu_entry_0').present)
-            console.run_command('MMU_PRELOAD')
+            console.run_command('MMU_PRELOAD GATE=0')
 
-        self.assertEqual(console.failures, 0)
+        self.assertIn("Couldn't pick up filament at gate", output.getvalue())
+        self.assertEqual(console.hh.mmu.gate_status[0], 0)
+        self.assertFalse(console.hh.sensor('mmu_entry_0').present)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/place 0')
+            console.run_command('MMU_PRELOAD GATE=0')
+
         self.assertEqual(console.hh.mmu.gate_status[0], 1)
         self.assertTrue(console.hh.sensor('mmu_entry_0').present)
         self.assertTrue(console.hh.sensor('mmu_exit_0').present)
