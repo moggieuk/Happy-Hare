@@ -18,8 +18,11 @@ menu "Filament preloading and ejection"
   choice CHOICE_GATE_PRELOAD_ENDSTOP
     prompt "Gate preload endstop        "
     help
-      Typically this will be the individual mmu exit sensor if is configured else the same
-      as the gate homing endstop
+      Typically this will be the individual mmu exit sensor if one is configured, otherwise
+      the same as the gate homing endstop.
+
+    default CHOICE_GATE_PRELOAD_ENDSTOP_EXIT if MMU_HAS_SENSOR_EXIT
+    default CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT
 
     config CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT
       bool "Same as gate homing endstop"

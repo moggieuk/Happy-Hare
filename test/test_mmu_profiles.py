@@ -94,7 +94,26 @@ class TestEveryBootableProfile(unittest.TestCase):
         return hh
 
     def test_boxturtle(self):
-        self._check('boxturtle')
+        hh = self._check('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_homing_max, 300)
+        self.assertEqual(unit.p.gate_parking_distance, -100)
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+        self.assertEqual(unit.p.gate_preload_homing_max, 200)
+        self.assertEqual(unit.p.gate_preload_parking_distance, 10)
+        self.assertEqual(unit.p.sync_gear_current, 70)
+
+    def test_boxturtle_nfc_defaults_are_valid_for_its_split_endstops(self):
+        for name in ('nfc_single', 'nfc_per_gate'):
+            with self.subTest(profile=name):
+                hh = self._boot(name)
+                unit = hh.mmu.mmu_unit(0)
+                self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+                self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+                self.assertEqual(unit.p.nfc_gate_clear_distance, -70)
+                self.assertEqual(unit.p.nfc_preload_clear_distance, 70)
+                self.assertEqual(hh.errors, [])
 
     def test_tradrack(self):
         """
