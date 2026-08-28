@@ -570,6 +570,23 @@ class TestBootupOutput(unittest.TestCase):
         self.assertFalse(console.hh.sensor('mmu_entry_0').present)
         self.assertFalse(console.hh.sensor('mmu_exit_0').present)
 
+    def test_raw_preload_after_eject_models_reinsertion_at_entry(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_EJECT')
+            self.assertFalse(console.hh.sensor('mmu_entry_0').present)
+            console.run_command('MMU_PRELOAD')
+
+        self.assertEqual(console.failures, 0)
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+
     def _avail_row(self, console):
         """The gate-availability row of the bootup table. One sink entry is one MESSAGE, and
         the whole table arrives as a single multi-line one, so split before matching."""
