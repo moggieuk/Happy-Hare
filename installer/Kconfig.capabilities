@@ -84,10 +84,6 @@ config MMU_HAS_EJECT_BUTTONS
 config MMU_HAS_BUFFER_MCU
   def_bool n
 
-# EMU design has a per-gate MCU and this controls the connection logic
-config MMU_HAS_PER_GATE_MCU
-  def_bool n
-
 # Some custom designs have some pre-packaged hardware configuration
 config PARAM_MISC_HARDWARE
   string
@@ -102,7 +98,9 @@ menu "Design attributes"
     It is unlikely that you want to change anything here so be careful.
 
   config MMU_HAS_PER_GATE_MCU
+    bool
     prompt "Design has per-gate MCU's" if PER_GATE_MCU
+    default n
     help
       If you are seeing this you must have enabled per-gate MCU support.
       This option allows you to turn it off so it won't appear again

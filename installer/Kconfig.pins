@@ -111,10 +111,7 @@ menu "Pins / TMC"
     string
   config PIN_SELECTOR_ENDSTOP
     string
-  config PIN_SELECTOR_SERVO
-    string
-
-  @repeat var=i min=0 max=11@
+  @repeat var=i min=4 max=11@
     config PIN_GATE_ENDSTOP_$(i)
       string
   @endrepeat@
@@ -175,11 +172,13 @@ menu "Pins / TMC"
     if INDEXED_SELECTOR
       @repeat var=i min=0 max=3@
         config PIN_GATE_ENDSTOP_$(i)
+          string
           prompt "Gate $(i) endstop pin" if PARAM_NUM_GATES > $(i)
       @endrepeat@
     endif
 
     config PIN_SELECTOR_SERVO
+      string
       prompt "Servo pin           " if MMU_HAS_SELECTOR_SERVO
   endmenu
 
@@ -190,17 +189,6 @@ menu "Pins / TMC"
   config HAS_ESPOOLER_ENABLE_PIN
     def_bool n
 
-  @repeat var=i min=0 max=11@
-    config PIN_ESPOOLER_EN_$(i)
-      string
-    config PIN_ESPOOLER_RWD_$(i)
-      string
-    config PIN_ESPOOLER_FWD_$(i)
-      string
-    config PIN_ESPOOLER_TRIG_$(i)
-      string
-  @endrepeat@
-
   menu "eSpooler pins"
     depends on MMU_HAS_ESPOOLER
 
@@ -208,12 +196,16 @@ menu "Pins / TMC"
       if PARAM_NUM_GATES > $(i)
         comment "_"
         config PIN_ESPOOLER_EN_$(i)
+          string
           prompt "eSpooler enable $(i) pin " if HAS_ESPOOLER_ENABLE_PIN
         config PIN_ESPOOLER_RWD_$(i)
+          string
           prompt "eSpooler rewind $(i) pin "
         config PIN_ESPOOLER_FWD_$(i)
+          string
           prompt "eSpooler forward $(i) pin"
         config PIN_ESPOOLER_TRIG_$(i)
+          string
           prompt "eSpooler trigger $(i) pin"
       endif
     @endrepeat@
@@ -223,16 +215,12 @@ menu "Pins / TMC"
 # Eject buttons
 # -------------------------------------
 
-  @repeat var=i min=0 max=11@
-    config PIN_EJECT_BUTTON_$(i)
-      string
-  @endrepeat@
-
   menu "Mmu eject buttons"
     depends on MMU_HAS_EJECT_BUTTONS
 
     @repeat var=i min=0 max=11@
       config PIN_EJECT_BUTTON_$(i)
+        string
         prompt "Eject button $(i) pin " if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
@@ -240,15 +228,6 @@ menu "Pins / TMC"
 # -------------------------------------
 # Sync-Feedback Buffer
 # -------------------------------------
-
-  config PIN_BUFFER_TENSION
-    string
-  config PIN_BUFFER_COMPRESSION
-    string
-  config PIN_BUFFER_ANALOG
-    string
-  config PIN_BUFFER_NEOPIXEL
-    string
 
   @repeat var=i min=0 max=3@
     config PIN_BUFFER_SENSOR_$(i)
@@ -259,12 +238,16 @@ menu "Pins / TMC"
     depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
     config PIN_BUFFER_TENSION
+      string
       prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION
     config PIN_BUFFER_COMPRESSION
+      string
       prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
     config PIN_BUFFER_ANALOG
+      string
       prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
     config PIN_BUFFER_NEOPIXEL
+      string
       prompt "Neopixel pin                 " if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
   endmenu
 
@@ -272,16 +255,12 @@ menu "Pins / TMC"
 # Entry sensor
 # -------------------------------------
 
-  @repeat var=i min=0 max=11@
-    config PIN_ENTRY_SENSOR_$(i)
-      string
-  @endrepeat@
-
   menu "Mmu entry sensor pins"
     depends on MMU_HAS_SENSOR_ENTRY
 
     @repeat var=i min=0 max=11@
       config PIN_ENTRY_SENSOR_$(i)
+        string
         prompt "Entry sensor $(i) pin " if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
@@ -290,16 +269,12 @@ menu "Pins / TMC"
 # Exit sensor
 # -------------------------------------
 
-  @repeat var=i min=0 max=11@
-    config PIN_EXIT_SENSOR_$(i)
-      string
-  @endrepeat@
-
   menu "Mmu exit sensor pins"
     depends on MMU_HAS_SENSOR_EXIT
 
     @repeat var=i min=0 max=11@
       config PIN_EXIT_SENSOR_$(i)
+        string
         prompt "Exit sensor $(i) pin " if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
@@ -317,15 +292,10 @@ menu "Pins / TMC"
 
   config PIN_ENCODER
     string
-  config PIN_NEOPIXEL
-    string
-  config PIN_FAN
-    string
-
-  config PIN_ENCODER
     prompt "Encoder pin           " if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER
 
   config PIN_NEOPIXEL
+    string
     prompt "Neopixel pin          " if MMU_HAS_LEDS && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
 
   menu "Neopixel per-gate pins" 
@@ -347,6 +317,7 @@ menu "Pins / TMC"
   endmenu
 
   config PIN_FAN
+    string
     prompt "Cooling fan           " if MMU_HAS_FANS && !MMU_HAS_PER_GATE_MCU
 
   menu "Fan per-gate pins" 
