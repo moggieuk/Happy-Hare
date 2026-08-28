@@ -31,6 +31,11 @@ PRINTER_STUB = """
 [mcu]
 serial: /dev/null
 
+# QIDI's filament switch is connected to its separate THR toolhead MCU. This
+# harmless external-MCU stub lets the qidi console profile resolve !THR:PA1.
+[mcu THR]
+serial: /dev/null
+
 [printer]
 kinematics: none
 max_velocity: 300
@@ -78,6 +83,18 @@ run_current: 0.5
 [neopixel cabinet_leds]
 pin: mcu:PA10
 chain_count: 12
+
+# External stock-QIDI dryer objects. Happy Hare references these by name but
+# deliberately does not generate them because their hardware setup belongs to
+# the printer configuration. The harness implementations need only the object
+# names and temperature limits.
+[temperature_sensor box1_env]
+min_temp: -20
+max_temp: 100
+
+[heater_generic box1_heater]
+min_temp: 0
+max_temp: 80
 """
 
 
@@ -417,7 +434,11 @@ class Session:
                 return 'extruder'
             return 'synced'
 
-        model = FilamentPath(self.mmu.num_gates, layout=layout)
+        # Profiles may refine the generic BoxTurtle-like geometry. An explicit
+        # call-site layout wins over those profile defaults one landmark at a time.
+        model_layout = dict(getattr(self.profile, 'filament_layout', {}) or {})
+        model_layout.update(layout or {})
+        model = FilamentPath(self.mmu.num_gates, layout=model_layout)
         model.configure_buffers(
             self.mmu.mmu_machine.units,
             selected_gate=lambda: self.mmu.gate_selected,

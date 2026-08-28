@@ -346,7 +346,9 @@ class TestQuietPlacement(MotionTestCase):
         self.hh.settle()
         homed = [r for _g, _d, r in self.fil.history if 'mmu_exit_0' in r]
         self.assertTrue(homed, 'expected a homing move to the gate sensor')
-        self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=2)
+        preload_park = (self.fil.layout['mmu_exit']
+                        + self.hh.mmu.mmu_unit(0).p.gate_preload_parking_distance)
+        self.assertAlmostEqual(self.fil.tip[0], preload_park, places=2)
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
         self.assertTrue(self.hh.sensor('mmu_entry_0').present,
                         'the gear is downstream of the entry switch - preload cannot clear it')
@@ -373,8 +375,9 @@ class TestLoadGate(MotionTestCase):
 
     def test_homes_forward_to_the_gate_sensor(self):
         """
-        BoxTurtle's gate_homing_endstop is mmu_exit at 0, so _load_gate drives forward
-        from the park position until that switch trips - exactly 100mm.
+        BoxTurtle's gate_homing_endstop is the shared exit at 100, so _load_gate
+        drives forward from the model's initial -100 position until that switch
+        trips - exactly 200mm.
 
         It does NOT park: _load_gate leaves the filament standing ON the gate, which is
         the starting position the bowden load expects. (It used to appear to park here,
@@ -384,17 +387,17 @@ class TestLoadGate(MotionTestCase):
         overshoot = self.hh.mmu._load_gate()
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_HOMED_GATE)
         self.assertEqual(overshoot, 0.0)
-        self.assertAlmostEqual(self.fil.tip[0], self.fil.layout['mmu_exit'], places=2)
+        self.assertAlmostEqual(self.fil.tip[0], self.fil.layout['mmu_shared_exit'], places=2)
         self.assertEqual(self.hh.errors, [])
 
     def test_the_gate_sensor_was_tripped_on_the_way(self):
-        """A forward homing move of exactly 100mm, from park to the gate switch."""
+        """A forward homing move reaches the shared hub switch."""
         self.hh.mmu._load_gate()
         trips = [d for _g, d, reason in self.fil.history
-                 if 'homing -> mmu_exit_0' in reason and d > 0]
+                 if 'homing -> unit0:mmu_shared_exit' in reason and d > 0]
         self.assertTrue(trips, 'never homed forward onto the gate sensor')
-        self.assertAlmostEqual(trips[0], 100.0, places=3)
-        self.assertTrue(self.hh.sensor('mmu_exit_0').present,
+        self.assertAlmostEqual(trips[0], 200.0, places=3)
+        self.assertTrue(self.hh.sensor('unit0:mmu_shared_exit').present,
                         '_load_gate leaves the filament on the gate switch')
 
     def test_second_home_against_an_already_triggered_switch_is_free(self):
@@ -487,7 +490,7 @@ class TestParkedState(MotionTestCase):
         self.hh.mmu._load_gate()
 
     def test_the_gate_switch_is_reached_by_the_load(self):
-        self.assertTrue(self.hh.sensor('mmu_exit_0').present)
+        self.assertTrue(self.hh.sensor('unit0:mmu_shared_exit').present)
         self.assertEqual(self.hh.errors, [])
 
     def test_parking_afterwards_clears_the_gate_switch(self):
@@ -498,9 +501,11 @@ class TestParkedState(MotionTestCase):
         """
         mmu = self.hh.mmu
         mmu._park_from_gate(mmu._gate_profile())
-        self.assertFalse(self.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(self.hh.sensor('unit0:mmu_shared_exit').present)
         self.assertTrue(self.hh.sensor('mmu_entry_0').present)
-        self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=2)
+        gate_park = (self.fil.layout['mmu_shared_exit']
+                     + mmu.mmu_unit(0).p.gate_parking_distance)
+        self.assertAlmostEqual(self.fil.tip[0], gate_park, places=2)
         self.assertEqual(self.hh.errors, [])
 
     def test_hh_agrees_the_gate_is_loaded(self):
@@ -516,8 +521,11 @@ class TestPreload(MotionTestCase):
         self.hh.run_gcode('MMU_PRELOAD GATE=1')
         self.assertEqual(self.hh.mmu.gate_status[1], GATE_AVAILABLE)
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
-        self.assertAlmostEqual(self.fil.tip[1], TIP_PARKED, places=2)
-        self.assertFalse(self.hh.sensor('mmu_exit_1').present)
+        preload_park = (self.fil.layout['mmu_exit']
+                        + self.hh.mmu.mmu_unit(0).p.gate_preload_parking_distance)
+        self.assertAlmostEqual(self.fil.tip[1], preload_park, places=2)
+        self.assertTrue(self.hh.sensor('mmu_exit_1').present)
+        self.assertFalse(self.hh.sensor('unit0:mmu_shared_exit').present)
         self.assertTrue(self.hh.sensor('mmu_entry_1').present,
                         'a parked filament still runs back through the entry switch')
         self.assertEqual(self.hh.errors, [])
@@ -530,22 +538,24 @@ class TestPreload(MotionTestCase):
         """
         self.hh.place_filament(2, position=TIP_AT_GATE, quiet=False)
         self.hh.settle()
-        self.assertAlmostEqual(self.fil.tip[2], TIP_PARKED, places=2)
+        preload_park = (self.fil.layout['mmu_exit']
+                        + self.hh.mmu.mmu_unit(0).p.gate_preload_parking_distance)
+        self.assertAlmostEqual(self.fil.tip[2], preload_park, places=2)
         self.assertEqual(self.hh.mmu.gate_status[2], GATE_AVAILABLE)
         self.assertEqual(self.hh.errors, [])
 
     def test_preload_passes_the_gate_sensor_on_the_way(self):  # noqa: D401
         """
-        Preload homes forward to the gate endstop and then retracts to park, so the
-        exit switch must have been tripped mid-sequence even though it reads clear at
-        the end. Confirms the sequence rather than just the endpoint.
+        Preload homes forward to the per-gate exit and parks 10mm beyond it, so
+        the exit remains covered while the downstream shared hub remains clear.
         """
         self.hh.place_filament(1, position=TIP_AT_GATE)
         self.hh.run_gcode('MMU_PRELOAD GATE=1')
         reached = [d for gate, d, reason in self.fil.history
                    if gate == 1 and 'mmu_exit_1' in reason]
         self.assertTrue(reached, 'preload never homed to the gate sensor')
-        self.assertFalse(self.hh.sensor('mmu_exit_1').present)
+        self.assertTrue(self.hh.sensor('mmu_exit_1').present)
+        self.assertFalse(self.hh.sensor('unit0:mmu_shared_exit').present)
 
     def test_plain_preload_announces_itself_once_and_without_nfc(self):
         """

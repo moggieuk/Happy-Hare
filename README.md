@@ -44,7 +44,7 @@ manage the details from the first filament load to the last toolchange.
 Happy Hare supports most community-built MMU/AFC systems, including
 **Box Turtle**, **ERCF**, **EMU**, **Tradrack**, **BTT ViViD**, **Night Owl**,
 **Angry Beaver**, **3MS**, **3D Chameleon**, **QuattroBox**, **PicoMMU**,
-**MMX**, **KMS**, and custom designs. Its capability-based architecture gives
+**MMX**, **KMS**, **QIDI Box**, and custom designs. Its capability-based architecture gives
 selector machines and modular gear-per-gate systems native motor and sensor
 control, with room to grow into multi-unit and mixed-hardware printers.
 

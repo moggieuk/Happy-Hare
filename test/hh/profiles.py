@@ -55,22 +55,29 @@ class Profile:
     units:        list of UnitProfile, or None/empty for a single-unit machine.
                   Supplying it is what selects cfg.py's multi-unit render path;
                   every profile below except ERCF_VVD is the one-unit case.
+    filament_layout: optional simulator-only overrides for physical sensor positions.
+                  This never affects rendered printer configuration.
     """
 
-    def __init__(self, name, syms=None, extra_params=None, description='', units=None):
+    def __init__(self, name, syms=None, extra_params=None, description='', units=None,
+                 filament_layout=None):
         self.name = name
         self.syms = dict(syms or {})
         self.extra_params = dict(extra_params or {})
         self.description = description
         self.units = list(units or [])
+        self.filament_layout = dict(filament_layout or {})
 
-    def derive(self, name, syms=None, extra_params=None, description='', units=None):
+    def derive(self, name, syms=None, extra_params=None, description='', units=None,
+               filament_layout=None):
         merged_syms = dict(self.syms)
         merged_syms.update(syms or {})
         merged_params = dict(self.extra_params)
         merged_params.update(extra_params or {})
-        return Profile(name, merged_syms, merged_params, description or self.description,
-                       units if units is not None else self.units)
+        return Profile(
+            name, merged_syms, merged_params, description or self.description,
+            units if units is not None else self.units,
+            self.filament_layout if filament_layout is None else filament_layout)
 
     def __repr__(self):
         return 'Profile(%r)' % (self.name,)
@@ -109,8 +116,30 @@ def clone_across_units(name, base, unit_names, description=''):
 # selectors now home and move filament too - see test_mmu_selector.py.
 BOXTURTLE = Profile(
     'boxturtle',
-    syms={'MMU_TYPE_BOX_TURTLE_1_0': True},
-    description='BoxTurtle 1.0 - Type B, VirtualSelector, 4 gates, multigear')
+    syms={
+        'MMU_TYPE_BOX_TURTLE_1_0': True,
+        # Match the physical BoxTurtle split explicitly in the simulator:
+        # normal loading homes at the shared hub, while crossload/preload uses
+        # the independent per-gate exit sensor.
+        'CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT': True,
+        'CHOICE_GATE_PRELOAD_ENDSTOP_EXIT': True,
+        'PARAM_GATE_PRELOAD_PARKING_DISTANCE': 10,
+        # Keep optional NFC fixtures neutral/safe unless their derived profile
+        # explicitly enables neighbor or self-jog behavior. These are harness
+        # controls, not changes to the BoxTurtle installer defaults.
+        'PARAM_NFC_GATE_JOG_SCAN_WINDOW': '-50, 480',
+        'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '0, 480',
+        'PARAM_NFC_NEIGHBOR_CHECK': False,
+        'PARAM_NFC_GATE_CLEAR_DISTANCE': 0,
+        'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': 0,
+    },
+    description='BoxTurtle 1.0 - Type B, VirtualSelector, 4 gates, multigear',
+    # The per-gate exit is just past each drive, while the shared exit is at
+    # the downstream hub. BoxTurtle parks 10 mm beyond the former when
+    # preloading and 100 mm before the latter after normal gate homing. Leave
+    # 150 mm between them so that retraction parks 50 mm beyond the per-gate
+    # exit instead of landing on (and numerically just behind) that switch.
+    filament_layout={'mmu_shared_exit': 150.0})
 
 # BoxTurtle + one COMMON NFC reader serving all gates and the bypass (RC522 over SPI).
 #
@@ -347,6 +376,34 @@ KMS = Profile(
     syms={'MMU_TYPE_KMS_1_0': True,
           'TOOLHEAD_TYPE_JABBERWOCKY': True},
     description='KMS 1.0 defaults - 4 gates, exit sensors, Jabberwocky toolhead')
+
+# QIDI Box: fixed STM32F401xC controller, four hardware-current-controlled gear
+# drivers, shared hub endstop, tension feedback, and an extruder-entry sensor on
+# the separate THR toolhead MCU. The stock dryer objects live in printer.cfg and
+# are supplied by the harness's external-object stub.
+QIDI = Profile(
+    'qidi',
+    syms={
+        'MMU_TYPE_QIDI_BOX_1_0': True,
+        # Simulator-only: the console seeds each gate 110 mm downstream of
+        # entry (-40 vs -150). A 200 mm fixed preload from there would put
+        # every startup filament across the shared hub switch, even though a
+        # real QIDI has substantially more entry-to-hub travel. Keep the
+        # production Kconfig default at 200 mm; 100 mm is enough to exercise
+        # fixed/crossload preload without occupying the simulated hub.
+        'PARAM_GATE_PRELOAD_HOMING_MAX': 100,
+    },
+    description='QIDI Box 1.0 - 4 gates, fixed QIDI v2 MCU and THR sensor',
+    # The generic harness layout has only 160 mm between entry and shared exit,
+    # which makes QIDI's 200 mm fixed preload unrealistically cross the hub switch.
+    # Model the reported few-hundred-mm internal leg and ~750 mm hub-to-extruder leg.
+    filament_layout={
+        'mmu_shared_exit': 150.0,
+        'extruder_entry': 900.0,
+        'extruder': 900.0,
+        'toolhead': 940.0,
+        'filament_compression': 900.0,
+    })
 
 # EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
 # sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
@@ -593,8 +650,8 @@ run_current: 0.6
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, EMU, EMU_EBB,
-                    ENCODER,
+CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, QIDI,
+                    EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                     NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,

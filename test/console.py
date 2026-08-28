@@ -566,6 +566,7 @@ class Console:
         # machine, so this costs the older profiles nothing.
         if preloading:
             self._preload_all()
+            self._refresh_startup_filament_row()
 
         # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
         # it every call Happy Hare makes to Moonraker goes into the void, so an NFC read ends
@@ -617,6 +618,17 @@ class Console:
             self._dispatch('MMU_SELECT GATE=%d' % selected)
             self.hh.reactor.advance(0.)
         self._clear_sink()  # setup noise is not console history
+
+    def _refresh_startup_filament_row(self):
+        """Make the cached boot banner describe the post-preload simulator state."""
+        current, _plain = self.hh.mmu.logger._color_message(
+            self.hh.mmu.get_filament_position_string())
+        refreshed = []
+        for message in self.startup_output:
+            lines = message.split('\n')
+            lines = [current if line.startswith('[T') else line for line in lines]
+            refreshed.append('\n'.join(lines))
+        self.startup_output = refreshed
 
     def close(self):
         if self.hh is not None:
@@ -777,13 +789,18 @@ class Console:
         mark = len(self.sink)
         unhandled_mark = len(self.hh.gcode.unhandled)
         gate_status_before = None
-        if (re.match(r'^\s*MMU_GATE_MAP(?:\s|$)', line, re.I)
-                and re.search(r'(?:^|\s)AVAILABLE\s*=', line, re.I)):
+        is_eject = bool(re.match(r'^\s*MMU_EJECT(?:\s|$)', line, re.I))
+        if is_eject or (re.match(r'^\s*MMU_GATE_MAP(?:\s|$)', line, re.I)
+                        and re.search(r'(?:^|\s)AVAILABLE\s*=', line, re.I)):
             gate_status_before = list(self.hh.mmu.gate_maps.gate_status)
         # Stream Happy Hare's output as it happens rather than after the command returns.
         # Scoped to here, not global: _dispatch() is also the raw path for setup and for the
         # tests, and both need it silent.
-        self.streaming = True
+        # MMU_EJECT's final row is produced immediately after HH marks the gate
+        # empty, but before the harness mirrors that map transition into its
+        # physical filament model. Buffer this one command so the final row can
+        # be refreshed after that synchronization; other commands still stream.
+        self.streaming = not is_eject
         try:
             self._dispatch(line)
         except Exception as exc:                    # noqa: BLE001
@@ -792,8 +809,11 @@ class Console:
             # parameter would end the session.
             print(paint('!! %s' % exc, '1;31', self.color))
             self.failures += 1
+        physical_changed = False
         if gate_status_before is not None:
-            self._sync_filament_to_gate_map(gate_status_before)
+            physical_changed = self._sync_filament_to_gate_map(gate_status_before)
+        if is_eject and physical_changed:
+            self._refresh_latest_filament_row(mark)
         # Settle whatever the command armed. Re-run unconditionally: a failed advance
         # skips its clock assignment, so this also repairs a mid-flight clock.
         try:
@@ -809,10 +829,12 @@ class Console:
     def _sync_filament_to_gate_map(self, before):
         """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""
         after = self.hh.mmu.gate_maps.gate_status
+        changed = False
         with self.hh.quiet_sensors():
             for gate, (old, new) in enumerate(zip(before, after)):
                 if old == new:
                     continue
+                changed = True
                 if new == GATE_EMPTY:
                     self.fil.remove(gate)
                 elif new in (GATE_AVAILABLE, GATE_AVAILABLE_FROM_BUFFER):
@@ -821,6 +843,19 @@ class Console:
                     self.fil.refill(gate, sync=False)
                     self.fil.park(gate)
                 # GATE_UNKNOWN describes knowledge, not a physical state: preserve it.
+        return changed
+
+    def _refresh_latest_filament_row(self, mark):
+        """Replace the final buffered visual row after simulator state catches up."""
+        current, _plain = self.hh.mmu.logger._color_message(
+            self.hh.mmu.get_filament_position_string())
+        for index in range(len(self.sink) - 1, mark - 1, -1):
+            lines = self.sink[index].split('\n')
+            for line_index in range(len(lines) - 1, -1, -1):
+                if lines[line_index].startswith('[T'):
+                    lines[line_index] = current
+                    self.sink[index] = '\n'.join(lines)
+                    return
 
     def _home_before_bootup(self):
         """
@@ -1310,6 +1345,8 @@ class Console:
         ('/sensor NAME on|off|enable|disable',
          'on/off drives the switch; enable/disable makes HH ignore it entirely'),
         ('/place GATE [POS]', 'put a filament tip at POS mm (default %g)' % TIP_AT_GATE),
+        ('/insert GATE [POS]', 'place filament and fire its entry-sensor callback'),
+        ('/remove GATE', 'remove that gate\'s filament and clear its path sensors'),
         ('/preload GATE', 'place then MMU_PRELOAD that gate'),
         ('/exhaust GATE', 'give the filament a finite tail - this is what a runout IS'),
         ('/filament', 'per-gate tip/tail description'),
@@ -1326,6 +1363,7 @@ class Console:
         ('/header [GROUPS]', 'set header groups: %s, or "all"/"off"' % ','.join(GROUPS)),
         ('/log [N]', 'path to mmu.log and its last N lines (default 20)'),
         ('/errors', 'every !! message this session'),
+        ('/reset', 'rebuild the simulator in this profile\'s startup state'),
         ('/help', 'this list'),
         ('/quit', 'exit (also Ctrl-D)'),
     )
@@ -1394,6 +1432,21 @@ class Console:
         if self.scrollback is not None:
             self.scrollback.clear()
         self.clear_log()
+
+    def _meta_reset(self, args):
+        """Discard all simulated machine state and boot the selected profile afresh."""
+        if args:
+            raise ValueError('usage: /reset')
+        self.close()
+        self.fil = None
+        self.startup_output = []
+        self.clock_epoch = None
+        self.failures = 0
+        self._clear_sink()
+        if self.scrollback is not None:
+            self.scrollback.clear()
+        self.boot()
+        self.info('simulator reset to %s startup state' % self.args.profile)
 
     def _meta_redraw(self, args):
         """Repaint everything, log included. /clear is the same thing minus the history."""
@@ -1611,6 +1664,31 @@ class Console:
         gate = int(args[0])
         pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
         self.hh.place_filament(gate, position=pos)
+
+    def _meta_insert(self, args):
+        if not 1 <= len(args) <= 2:
+            raise ValueError('usage: /insert GATE [POS]')
+        gate = int(args[0])
+        if not 0 <= gate < self.hh.mmu.num_gates:
+            raise ValueError('gate must be between 0 and %d' % (self.hh.mmu.num_gates - 1))
+        pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
+        mark = len(self.sink)
+        self.hh.place_filament(gate, position=pos, quiet=False)
+        self._settle_moonraker()
+        self._drain(mark)
+
+    def _meta_remove(self, args):
+        if len(args) != 1:
+            raise ValueError('usage: /remove GATE')
+        gate = int(args[0])
+        if not 0 <= gate < self.hh.mmu.num_gates:
+            raise ValueError('gate must be between 0 and %d' % (self.hh.mmu.num_gates - 1))
+        with self.hh.quiet_sensors():
+            # A later /place represents a newly inserted spool-backed strand, even if this
+            # gate had previously been /exhaust'ed into a finite runout tail.
+            self.fil.refill(gate, sync=False)
+            self.fil.remove(gate)
+        self.hh.reactor.advance(0.)
 
     def _meta_preload(self, args):
         gate = int(args[0])
