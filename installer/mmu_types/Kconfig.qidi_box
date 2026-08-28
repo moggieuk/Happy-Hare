@@ -27,6 +27,16 @@ config MMU_TYPE_QIDI_BOX_1_0
 
 if MMU_TYPE_QIDI_BOX_1_0
 
+  # Motor current and driver mode are configured in hardware. Keep the TMC
+  # type empty so no TMC sections or UART/DIAG pin prompts are generated.
+  config MMU_HAS_GEAR_TMC
+    bool
+    default n
+
+  config PARAM_GEAR_TMC
+    string
+    default ""
+
   # These objects are supplied by the stock QIDI configuration. Happy Hare
   # references them but must not generate duplicate sensor/heater sections.
   config CUSTOM_ENVIRONMENT_SENSOR_SETUP
@@ -41,17 +51,13 @@ if MMU_TYPE_QIDI_BOX_1_0
       Name of the existing temperature_sensor object for the QIDI Box.
 
   config PARAM_FILAMENT_HEATER
-    string "Existing filament heater"
+    string "Existing filament heater   "
     default "box1_heater"
     help
       Name of the existing heater_generic object for the QIDI Box dryer.
 
   choice CHOICE_BUFFER_SPRING_STATE
     default CHOICE_BUFFER_SPRING_STATE_TENSION
-  endchoice
-
-  choice CHOICE_GEAR_TMC
-    default CHOICE_GEAR_TMC_NONE
   endchoice
 
   # There are no per-gate exit sensors. Use a short fixed preload move so a

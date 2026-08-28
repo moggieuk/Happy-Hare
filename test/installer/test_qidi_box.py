@@ -84,7 +84,15 @@ class TestQidiBoxProfile(unittest.TestCase):
     def test_hardware_controlled_drivers_do_not_render_tmc_sections(self):
         self.assertEqual(self.kconfig.get("PARAM_GEAR_TMC"), "")
         self.assertEqual(self.other_kconfig.get("PARAM_GEAR_TMC"), "tmc2209")
-        self.assertFalse(self.other_kconfig.is_enabled("CHOICE_GEAR_TMC_NONE"))
+        self.assertFalse(self.kconfig.is_enabled("MMU_HAS_GEAR_TMC"))
+        self.assertTrue(self.other_kconfig.is_enabled("MMU_HAS_GEAR_TMC"))
+        self.assertEqual(
+            self.kconfig.named_choices["CHOICE_GEAR_TMC"].visibility, 0)
+        self.assertNotIn("CHOICE_GEAR_TMC_NONE", self.kconfig.syms)
+        for symbol in ("PIN_GEAR_UART", "PIN_GEAR_DIAG",
+                       "PIN_GEAR_UART_1", "PIN_GEAR_DIAG_1"):
+            with self.subTest(hidden_prompt=symbol):
+                self.assertEqual(self.kconfig.syms[symbol].visibility, 0)
         self.assertFalse(self.other_kconfig.is_enabled("BOARD_TYPE_QIDI_BOX_2_0"))
         hardware = self.rendered["config/base/mmu_hardware.cfg"]
         self.assertIsNone(re.search(
