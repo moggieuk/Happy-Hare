@@ -182,7 +182,7 @@ menu "Endstops and Bowden movement"
   comment "_Extruder homing"
 
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    prompt "Extruder homing endstop    "
+    prompt "Extruder homing endstop     "
     help
       It can be desirable to have an endstop defined near the toolhead.
       This can be "none" if toolhead sensor is available otherwise
@@ -255,7 +255,7 @@ menu "Endstops and Bowden movement"
 # -------------------------------------
 
   config PARAM_BOWDEN_LOAD_HOMING_BUFFER
-    float "Bowden load homing buffer  "
+    float "Bowden load homing buffer   "
     default 20
     help
       Distance to reduce fast bowden load to prevent collisions
@@ -267,7 +267,7 @@ menu "Endstops and Bowden movement"
     default 30
 
   config PARAM_EXTRUDER_COLLISION_HOMING_CURRENT
-    prompt "Collision homing current   "
+    prompt "Collision homing current    "
     depends on CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
     help
       When using extruder collision homing method (encoder or mmu_gear_touch)
@@ -275,7 +275,7 @@ menu "Endstops and Bowden movement"
       the % current reduction.
 
   config PARAM_EXTRUDER_HOMING_MAX
-    float "Extruder homing max        "
+    float "Extruder homing max         "
     default 100
     help
       The maximum distance filament will travel attempting to home
@@ -292,7 +292,7 @@ menu "Endstops and Bowden movement"
         However the extruder homing can be forced by setting this option.
 
     config PARAM_TOOLHEAD_HOMING_MAX
-      float "Toolhead sensor homing max "
+      float "Toolhead sensor homing max  "
       depends on MMU_HAS_SENSOR_TOOLHEAD
       default 40
       help
