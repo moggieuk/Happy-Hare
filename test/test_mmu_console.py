@@ -540,13 +540,18 @@ class TestBootupOutput(unittest.TestCase):
     def test_box_turtle_banner_filament_row_matches_post_preload_status(self):
         """The cached welcome must not retain its pre-preload sensor readings."""
         console = console_mod.Console(console_mod.parse_args(
-            ['--profile', 'boxturtle', '--no-log', '--plain']))
+            ['--profile', 'boxturtle', '--no-log']))
         self.addCleanup(console.close)
         console.boot()
 
         banner = '\n'.join(console.startup_output)
         banner_row = next(line for line in banner.split('\n') if line.startswith('[T0]'))
-        self.assertEqual(banner_row, console.hh.mmu.get_filament_position_string())
+        expected, _plain = console.hh.mmu.logger._color_message(
+            console.hh.mmu.get_filament_position_string())
+        self.assertEqual(banner_row, expected)
+        self.assertIn('<span style="color:#', banner_row)
+        self.assertNotIn('{{', banner_row)
+        self.assertNotIn('{5}', banner_row)
         self.assertTrue(console.hh.sensor('mmu_exit_0').present)
         self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
 

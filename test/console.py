@@ -621,7 +621,8 @@ class Console:
 
     def _refresh_startup_filament_row(self):
         """Make the cached boot banner describe the post-preload simulator state."""
-        current = self.hh.mmu.get_filament_position_string()
+        current, _plain = self.hh.mmu.logger._color_message(
+            self.hh.mmu.get_filament_position_string())
         refreshed = []
         for message in self.startup_output:
             lines = message.split('\n')
