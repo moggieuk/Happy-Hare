@@ -5,7 +5,7 @@
 # [% if %] guard or a missing template section shows up here rather than on a user's
 # printer.
 #
-# There are 19 shipped machine types. Eight boot in the harness today:
+# There are 19 shipped machine types. Nine boot in the harness today:
 #
 #   boxturtle  4 gates,  VirtualSelector       - Type B, the default everywhere else
 #   tradrack  10 gates,  LinearServoSelector   - a PHYSICAL selector, so the suite is not
@@ -17,6 +17,7 @@
 #                                                servo has no universally safe gate defaults
 #   mmx        4 gates,  ServoSelector         - vendor-supplied gate angles, including a
 #                                                full load/unload behavioral test
+#   kms        4 gates,  VirtualSelector       - default KMS buffer with per-gate exit sensors
 #   emu        5 gates,  VirtualSelector       - the only shipped profile with a
 #                                                PROPORTIONAL (analog) buffer sensor
 #   ercf 1.1   9 gates,  LinearServoSelector   - unit0 of ercf_vvd; encoder gate homing
@@ -29,7 +30,7 @@
 #   "13 need the machine x board pin selection" - a board choice is all that was needed;
 #       ercf_vvd carries BOARD_TYPE_ERB_1 and BOARD_TYPE_VVD_1_0.
 #   "2 need a heater_generic fake" - added (klippy_root/extras/heater_generic.py); ViViD
-#       was one of the two, KMS is the other and should now boot as well.
+#       and KMS now both boot with their real heater configuration.
 #   "1 needs an unselected choice param" - the MMU serial device, whose symbol NAME comes
 #       from `ls /dev/serial/by-id/*` (Kconfig:112-116) and so does not exist on a host with
 #       no MMU attached. The answer is to omit it: the choice falls back to ..._OTHER and
@@ -57,6 +58,7 @@ BOOTABLE = {
     'chameleon': (4, 'RotarySelector'),
     'pico_mmu': (4, 'ServoSelector'),
     'mmx': (4, 'ServoSelector'),
+    'kms': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
@@ -126,6 +128,19 @@ class TestEveryBootableProfile(unittest.TestCase):
         hh = self._check('mmx')
         selector = hh.mmu.mmu_unit(0).selector
         self.assertEqual(selector.servo_gate_angles, [60, 0, 180, 120])
+
+    def test_kms(self):
+        """KMS defaults keep its per-gate exits active for runtime sensorless experiments."""
+        hh = self._check('kms')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_exit')
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+        for gate in range(4):
+            self.assertIsNotNone(hh.sensor('mmu_exit_%d' % gate))
+
+        hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
+        self.assertEqual(unit.p.gate_preload_endstop, 'none')
+        self.assertEqual(hh.errors, [])
 
     def test_emu(self):
         self._check('emu')
