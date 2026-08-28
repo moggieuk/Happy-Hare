@@ -1885,7 +1885,7 @@ class TestConsoleScript(unittest.TestCase):
         # Put this gate through every fitted sensor; other gates remain merely parked.
         hh.place_filament(0, position=800.)
         affected = [name for name in console.fil.sensor_names()
-                    if console.fil.gate_of(name) in (None, 0)
+                    if console.fil.gate_of(name) == 0
                     # Buffer switches report stored slack/tension, not filament
                     # presence, and are intentionally not all true at once.
                     and not console.fil.models_sensor(name)]

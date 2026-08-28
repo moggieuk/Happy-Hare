@@ -55,7 +55,7 @@ GATE_AVAILABLE = 1
 
 
 class MotionTestCase(unittest.TestCase):
-    PROFILE = 'boxturtle'
+    PROFILE = 'boxturtle_test'
 
     def setUp(self):
         self.hh = session(self.PROFILE)

@@ -141,6 +141,26 @@ BOXTURTLE = Profile(
     # exit instead of landing on (and numerically just behind) that switch.
     filament_layout={'mmu_shared_exit': 150.0})
 
+# Stable, deliberately neutral fixture for tests of generic MMU behavior. BoxTurtle's real
+# defaults evolve with the machine; motion, NFC-validation and encoder tests should not all
+# change meaning whenever that happens. Profile-specific tests and make console continue to
+# use BOXTURTLE above, while this fixture preserves the former per-gate homing/parking shape
+# and keeps optional NFC arbitration disabled until a test explicitly enables it.
+BOXTURTLE_TEST = BOXTURTLE.derive(
+    'boxturtle_test',
+    syms={
+        'CHOICE_GATE_HOMING_ENDSTOP_EXIT': True,
+        'CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT': True,
+        'PARAM_GATE_PRELOAD_PARKING_DISTANCE': -100,
+        'PARAM_SYNC_GEAR_CURRENT': 50,
+        'PARAM_NFC_GATE_JOG_SCAN_WINDOW': '-50, 50',
+        'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '-50, 50',
+        'PARAM_NFC_NEIGHBOR_CHECK': False,
+        'PARAM_NFC_GATE_CLEAR_DISTANCE': 0,
+        'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': 0,
+    },
+    description='Neutral BoxTurtle fixture for generic harness tests')
+
 # BoxTurtle + one COMMON NFC reader serving all gates and the bypass (RC522 over SPI).
 #
 # MMU_HAS_COMMON_NFC_READER is what gates both the [mmu_nfc_reader NAME] section AND
@@ -151,14 +171,14 @@ BOXTURTLE = Profile(
 # "shared across MMU UNITS" and carried `depends on MULTI_UNIT`, making it unreachable on
 # a one-unit machine. The section rendered but `nfc_reader:` did not, so the reader was
 # orphaned and NFC silently did nothing. The harness caught that; it is now fixed.
-NFC_SINGLE = BOXTURTLE.derive(
+NFC_SINGLE = BOXTURTLE_TEST.derive(
     'nfc_single',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True},
     description='BoxTurtle + one common NFC reader (RC522/SPI)')
 
 # One reader per gate. This is the profile that exercises the per-gate read/LED path
 # and MmuNfcEndstop, and the one that surfaces the mmu_nfc_reader.py:132 crash.
-NFC_PER_GATE = BOXTURTLE.derive(
+NFC_PER_GATE = BOXTURTLE_TEST.derive(
     'nfc_per_gate',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True},
     description='BoxTurtle + per-gate NFC readers')
@@ -444,7 +464,7 @@ EMU_EBB = EMU.derive(
 # desired_headroom, the sample counts), so the section renders complete. That is the
 # test for whether hand-enabling a feature is legitimate - render it and read the
 # section, do not assume.
-ENCODER = BOXTURTLE.derive(
+ENCODER = BOXTURTLE_TEST.derive(
     'encoder',
     syms={
         'MMU_HAS_ENCODER': True,
@@ -659,7 +679,7 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS
                     NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
-            (ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}
+            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}
 
 
 def get(name):

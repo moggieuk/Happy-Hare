@@ -109,6 +109,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
         self.assertEqual(unit.p.gate_preload_homing_max, 200)
         self.assertEqual(unit.p.gate_preload_parking_distance, 10)
+        self.assertEqual(unit.p.sync_gear_current, 70)
 
         model = hh.filament()
         self.assertEqual(model.layout['mmu_exit'], 0)
@@ -118,6 +119,25 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertAlmostEqual(model.tip[0], 10)
         self.assertTrue(model.triggered('mmu_exit_0'))
         self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+
+    def test_boxturtle_nfc_defaults_are_valid_for_its_split_endstops(self):
+        from test.hh import profiles
+        profile = profiles.Profile(
+            'boxturtle_nfc_defaults',
+            syms={
+                'MMU_TYPE_BOX_TURTLE_1_0': True,
+                'MMU_HAS_NFC_READER': True,
+                'MMU_HAS_COMMON_NFC_READER': True,
+            })
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot()
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+        self.assertEqual(unit.p.nfc_gate_clear_distance, -70)
+        self.assertEqual(unit.p.nfc_preload_clear_distance, 70)
+        self.assertEqual(hh.errors, [])
 
     def test_tradrack(self):
         """

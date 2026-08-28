@@ -80,14 +80,13 @@ if MMU_TYPE_EMU_1_0
     default "EMU"
   config PARAM_VERSION
     default "1.0"  
-
   config PARAM_NUM_GATES
     default 5
-
   choice BOARD_TYPE
     default BOARD_TYPE_SLB_1_0
   endchoice
 
+  # Gear stepper ---------------------------
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_RUN_CURRENT
@@ -97,6 +96,10 @@ if MMU_TYPE_EMU_1_0
   config PARAM_GEAR_MICROSTEPS
     default 4
 
+  config PARAM_SYNC_GEAR_CURRENT
+    default 52
+
+  # Speeds  --------------------------------
   config PARAM_GEAR_LOAD_SPEED
     default 250
   config PARAM_GEAR_LOAD_ACCEL
@@ -118,9 +121,21 @@ if MMU_TYPE_EMU_1_0
   config PARAM_GEAR_HOMING_SPEED
     default 80
 
-  config PARAM_SYNC_GEAR_CURRENT
-    default 52
+  # Gate endstops and homing ---------------
+  config PARAM_GATE_HOMING_MAX
+    default 600
+  config PARAM_GATE_PARKING_DISTANCE
+    default -1
 
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default 600
+  config PARAM_GATE_PRELOAD_PARKING_DISTANCE
+    default -1
+
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default 100
+
+  # NFC reader setup (if fitted) -----------
   config PARAM_NFC_GATE_JOG_SCAN_WINDOW
     default "0, 480"
   config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
@@ -132,6 +147,7 @@ if MMU_TYPE_EMU_1_0
   config PARAM_NFC_NEIGHBOR_CHECK
     default y
 
+  # Other ----------------------------------
   config PARAM_COLOR_ORDER
     default "GRBW"
   
@@ -155,18 +171,6 @@ if MMU_TYPE_EMU_1_0
       generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
     
   endif
-
-  # "Gates" config
-  config PARAM_GATE_HOMING_MAX
-    default 600
-  config PARAM_GATE_PRELOAD_HOMING_MAX
-    default 600
-  config PARAM_GATE_PRELOAD_PARKING_DISTANCE
-    default -1
-  config PARAM_GATE_PARKING_DISTANCE
-    default -1
-  config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default 100
 
   config PARAM_FILAMENT_HEATERS 
     generated_default "$(UNIT_NAME)_heater%i" "" PARAM_NUM_GATES

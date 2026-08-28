@@ -44,7 +44,7 @@ class EndlessSpoolTestCase(unittest.TestCase):
     ENABLE = 1
 
     def setUp(self):
-        self.hh = session('boxturtle')
+        self.hh = session('boxturtle_test')
         self.hh.boot()
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
         self.fil = self.hh.filament()

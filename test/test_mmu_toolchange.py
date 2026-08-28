@@ -41,7 +41,7 @@ TOOL_UNKNOWN = -2
 
 
 class ToolchangeTestCase(unittest.TestCase):
-    PROFILE = 'boxturtle'
+    PROFILE = 'boxturtle_test'
     PRELOAD_GATES = (0,)
 
     def setUp(self):
