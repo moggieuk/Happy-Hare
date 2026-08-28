@@ -45,6 +45,9 @@ logging.getLogger().setLevel(logging.CRITICAL)
 
 FILAMENT_POS_UNLOADED = 0
 FILAMENT_POS_HOMED_GATE = 1
+FILAMENT_POS_IN_BOWDEN = 3
+FILAMENT_POS_END_BOWDEN = 4
+FILAMENT_POS_IN_EXTRUDER = 9
 FILAMENT_POS_LOADED = 10
 GATE_UNKNOWN = -1
 GATE_EMPTY = 0
@@ -420,6 +423,54 @@ class TestLoadGate(MotionTestCase):
         with self.assertRaises(Exception):
             self.hh.mmu._load_gate()
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
+
+
+class TestKmsEncoderUnload(unittest.TestCase):
+    """KMS must not skip its extruder-exit phase when a secondary probe is unavailable."""
+
+    def setUp(self):
+        self.hh = session('kms')
+        self.hh.boot(calibrate=True, gates_loaded_at=TIP_AT_GATE, prime=True)
+        self.fil = self.hh.filament()
+        self.hh.heat_extruder(220)
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(self.hh.errors, [], 'KMS load setup was not clean')
+
+    def tearDown(self):
+        self.hh.close()
+
+    def test_unload_preserves_positive_detection_when_probe_is_unavailable(self):
+        mmu = self.hh.mmu
+        self.assertTrue(mmu.mmu_unit().filament_always_gripped)
+        self.assertTrue(mmu.can_use_encoder())
+        self.assertIsNone(mmu.sensor_manager.check_sensor('extruder'))
+        self.assertIsNone(mmu.sensor_manager.check_sensor('toolhead'))
+
+        states = []
+        set_state = mmu.set_filament_pos_state
+
+        def record_state(state, silent=False):
+            changed = mmu.filament_pos != state
+            result = set_state(state, silent=silent)
+            if changed:
+                states.append(state)
+            return result
+
+        mmu.set_filament_pos_state = record_state
+        self.hh.run_gcode('MMU_UNLOAD')
+
+        self.assertEqual(states, [
+            FILAMENT_POS_IN_EXTRUDER,
+            FILAMENT_POS_END_BOWDEN,
+            FILAMENT_POS_IN_BOWDEN,
+            FILAMENT_POS_HOMED_GATE,
+            FILAMENT_POS_UNLOADED,
+        ])
+        self.assertEqual(mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestParkedState(MotionTestCase):
