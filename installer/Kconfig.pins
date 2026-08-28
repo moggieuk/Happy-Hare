@@ -58,7 +58,7 @@ menu "Pins / TMC"
   menu "Gear pins"
     config PIN_GEAR_UART
       string
-      prompt "Gear UART pin    " if PARAM_GEAR_TMC != ""
+      prompt "Gear UART pin    " if MMU_HAS_GEAR_TMC
     config PIN_GEAR_STEP
       string "Gear step pin    "
     config PIN_GEAR_DIR
@@ -67,7 +67,7 @@ menu "Pins / TMC"
       string "Gear enable pin  "
     config PIN_GEAR_DIAG
       string
-      prompt "Gear diag pin    " if PARAM_GEAR_TMC != ""
+      prompt "Gear diag pin    " if MMU_HAS_GEAR_TMC
 
     @repeat var=i min=1 max=11@
       config PIN_GEAR_UART_$(i)
@@ -87,7 +87,7 @@ menu "Pins / TMC"
         if PARAM_NUM_GATES > $(i)
           comment "_"
           config PIN_GEAR_UART_$(i)
-            prompt "Gear $(i) UART pin  " if PARAM_GEAR_TMC != ""
+            prompt "Gear $(i) UART pin  " if MMU_HAS_GEAR_TMC
           config PIN_GEAR_STEP_$(i)
             prompt "Gear $(i) step pin  "
           config PIN_GEAR_DIR_$(i)
@@ -95,7 +95,7 @@ menu "Pins / TMC"
           config PIN_GEAR_ENABLE_$(i)
             prompt "Gear $(i) enable pin"
           config PIN_GEAR_DIAG_$(i)
-            prompt "Gear $(i) diag pin  " if PARAM_GEAR_TMC != ""
+            prompt "Gear $(i) diag pin  " if MMU_HAS_GEAR_TMC
         endif
       @endrepeat@
     endif
