@@ -52,6 +52,21 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertTrue(self.kconfig.is_enabled("BOARD_TYPE_QIDI_BOX_2_0"))
         self.assertFalse(self.kconfig.is_enabled("BOARD_TYPE_OTHER"))
 
+    def test_path_variation_and_bypass_defaults_can_be_overridden(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            customized = cfg._kconfig(
+                "qidi_box_customized",
+                {
+                    "MMU_TYPE_QIDI_BOX_1_0": True,
+                    "PARAM_VARIABLE_BOWDEN_LENGTHS": True,
+                    "PARAM_VARIABLE_ROTATION_DISTANCES": True,
+                    "PARAM_HAS_BYPASS": True,
+                },
+            )
+        self.assertEqual(customized.get("PARAM_VARIABLE_BOWDEN_LENGTHS"), "1")
+        self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
+        self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
+
     def test_stock_sensors_buffer_and_dryer_are_enabled(self):
         for symbol in (
             "MMU_HAS_SENSOR_ENTRY",
