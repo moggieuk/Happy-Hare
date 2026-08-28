@@ -248,7 +248,8 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/clear` | as `/redraw`, but empty the log rather than repaint it |
 | `/scroll [N]`, `/s` | scroll back through the log (see below) |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
-| `/place`, `/preload`, `/exhaust` | set the scene: filament at a gate, preloaded, or run out |
+| `/place`, `/remove`, `/preload`, `/exhaust` | set the scene: filament inserted, removed, preloaded, or run out |
+| `/reset` | rebuild the selected profile in the same state as a fresh simulator start |
 | `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
 | `/timestamp [on\|off]` | stamp MMU output with the virtual clock; **on by default** at a terminal |
 

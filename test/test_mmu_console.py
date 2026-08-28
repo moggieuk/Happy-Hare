@@ -594,6 +594,41 @@ class TestBootupOutput(unittest.TestCase):
         self.assertTrue(console.hh.sensor('mmu_exit_0').present)
         self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
 
+    def test_remove_clears_a_gate_path_without_turning_it_into_runout(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.fil.exhaust(0, sync=False)
+            console.meta('/remove 0')
+
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertFalse(console.hh.sensor('mmu_entry_0').present)
+        self.assertFalse(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+        self.assertEqual(console.fil.tail[0], float('-inf'))
+
+    def test_reset_rebuilds_the_profile_startup_state(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        original_session = console.hh
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/remove 0')
+            console.meta('/sensor mmu_entry_0 disable')
+            console.meta('/reset')
+
+        self.assertIsNot(console.hh, original_session)
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').sensor.runout_helper.sensor_enabled)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+
     def _avail_row(self, console):
         """The gate-availability row of the bootup table. One sink entry is one MESSAGE, and
         the whole table arrives as a single multi-line one, so split before matching."""

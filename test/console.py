@@ -1345,6 +1345,7 @@ class Console:
         ('/sensor NAME on|off|enable|disable',
          'on/off drives the switch; enable/disable makes HH ignore it entirely'),
         ('/place GATE [POS]', 'put a filament tip at POS mm (default %g)' % TIP_AT_GATE),
+        ('/remove GATE', 'remove that gate\'s filament and clear its path sensors'),
         ('/preload GATE', 'place then MMU_PRELOAD that gate'),
         ('/exhaust GATE', 'give the filament a finite tail - this is what a runout IS'),
         ('/filament', 'per-gate tip/tail description'),
@@ -1361,6 +1362,7 @@ class Console:
         ('/header [GROUPS]', 'set header groups: %s, or "all"/"off"' % ','.join(GROUPS)),
         ('/log [N]', 'path to mmu.log and its last N lines (default 20)'),
         ('/errors', 'every !! message this session'),
+        ('/reset', 'rebuild the simulator in this profile\'s startup state'),
         ('/help', 'this list'),
         ('/quit', 'exit (also Ctrl-D)'),
     )
@@ -1429,6 +1431,21 @@ class Console:
         if self.scrollback is not None:
             self.scrollback.clear()
         self.clear_log()
+
+    def _meta_reset(self, args):
+        """Discard all simulated machine state and boot the selected profile afresh."""
+        if args:
+            raise ValueError('usage: /reset')
+        self.close()
+        self.fil = None
+        self.startup_output = []
+        self.clock_epoch = None
+        self.failures = 0
+        self._clear_sink()
+        if self.scrollback is not None:
+            self.scrollback.clear()
+        self.boot()
+        self.info('simulator reset to %s startup state' % self.args.profile)
 
     def _meta_redraw(self, args):
         """Repaint everything, log included. /clear is the same thing minus the history."""
@@ -1646,6 +1663,19 @@ class Console:
         gate = int(args[0])
         pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
         self.hh.place_filament(gate, position=pos)
+
+    def _meta_remove(self, args):
+        if len(args) != 1:
+            raise ValueError('usage: /remove GATE')
+        gate = int(args[0])
+        if not 0 <= gate < self.hh.mmu.num_gates:
+            raise ValueError('gate must be between 0 and %d' % (self.hh.mmu.num_gates - 1))
+        with self.hh.quiet_sensors():
+            # A later /place represents a newly inserted spool-backed strand, even if this
+            # gate had previously been /exhaust'ed into a finite runout tail.
+            self.fil.refill(gate, sync=False)
+            self.fil.remove(gate)
+        self.hh.reactor.advance(0.)
 
     def _meta_preload(self, args):
         gate = int(args[0])
