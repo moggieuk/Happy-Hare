@@ -48,6 +48,7 @@ FILAMENT_POS_UNLOADED = 0
 FILAMENT_POS_LOADED = 10
 GATE_EMPTY = 0
 GATE_AVAILABLE = 1
+GATE_AVAILABLE_FROM_BUFFER = 2
 
 ENCODER_PIN = 'unit0:PA6'
 ENCODER_AT = 20.0               # filament.DEFAULT_LAYOUT['mmu_encoder']
@@ -285,10 +286,10 @@ class TestLoadAndUnload(EncoderTestCase):
         self.assertGreater(self.encoder.get_distance(),
                            self.fil.layout['extruder_entry'] / 2)
 
-    def test_the_gate_stays_available_after_a_round_trip(self):
+    def test_the_gate_keeps_normal_buffered_availability_after_a_round_trip(self):
         self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
         self.hh.run_gcode('MMU_UNLOAD')
-        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE_FROM_BUFFER)
 
 
 class TestClogDetectionLength(EncoderTestCase):

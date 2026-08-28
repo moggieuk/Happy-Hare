@@ -2826,7 +2826,10 @@ class MmuFilamentMovement:
                         detected = False
                     elif sync:
                         # A further test is needed to see if the filament is actually in the extruder
-                        detected, moved = self.test_filament_still_in_extruder_by_retracting()
+                        probe_detected, moved = self.test_filament_still_in_extruder_by_retracting()
+                        # None means the probe was unavailable, not that filament was absent
+                        if probe_detected is not None:
+                            detected = probe_detected
                         park_pos += moved
 
             self.drive().set_filament_position(-park_pos)
