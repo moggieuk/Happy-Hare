@@ -330,7 +330,9 @@ class TestInstallDirBoots(unittest.TestCase):
         hh.run_gcode('MMU_PRELOAD GATE=0')
         hh.reactor.advance(0.)
         self.assertEqual(hh.mmu.gate_status[0], 1, 'preload did not mark the gate available')
-        self.assertAlmostEqual(fil.tip[0], -100.0, places=1)
+        expected = (fil.layout['mmu_exit']
+                    + hh.mmu.mmu_unit(0).p.gate_preload_parking_distance)
+        self.assertAlmostEqual(fil.tip[0], expected, places=1)
         self.assertEqual(hh.errors, [])
 
 

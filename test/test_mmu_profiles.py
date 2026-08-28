@@ -98,7 +98,23 @@ class TestEveryBootableProfile(unittest.TestCase):
         return hh
 
     def test_boxturtle(self):
-        self._check('boxturtle')
+        hh = self._check('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_homing_max, 300)
+        self.assertEqual(unit.p.gate_parking_distance, -100)
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+        self.assertEqual(unit.p.gate_preload_homing_max, 200)
+        self.assertEqual(unit.p.gate_preload_parking_distance, 10)
+
+        model = hh.filament()
+        self.assertEqual(model.layout['mmu_exit'], 0)
+        self.assertEqual(model.layout['mmu_shared_exit'], 100)
+        hh.place_filament(0, position=-40)
+        hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertAlmostEqual(model.tip[0], 10)
+        self.assertTrue(model.triggered('mmu_exit_0'))
+        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
 
     def test_tradrack(self):
         """

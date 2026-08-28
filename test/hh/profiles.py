@@ -116,8 +116,29 @@ def clone_across_units(name, base, unit_names, description=''):
 # selectors now home and move filament too - see test_mmu_selector.py.
 BOXTURTLE = Profile(
     'boxturtle',
-    syms={'MMU_TYPE_BOX_TURTLE_1_0': True},
-    description='BoxTurtle 1.0 - Type B, VirtualSelector, 4 gates, multigear')
+    syms={
+        'MMU_TYPE_BOX_TURTLE_1_0': True,
+        # Match the physical BoxTurtle split explicitly in the simulator:
+        # normal loading homes at the shared hub, while crossload/preload uses
+        # the independent per-gate exit sensor.
+        'CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT': True,
+        'CHOICE_GATE_PRELOAD_ENDSTOP_EXIT': True,
+        'PARAM_GATE_PRELOAD_PARKING_DISTANCE': 10,
+        # Keep optional NFC fixtures neutral/safe unless their derived profile
+        # explicitly enables neighbor or self-jog behavior. These are harness
+        # controls, not changes to the BoxTurtle installer defaults.
+        'PARAM_NFC_GATE_JOG_SCAN_WINDOW': '-50, 480',
+        'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '0, 480',
+        'PARAM_NFC_NEIGHBOR_CHECK': False,
+        'PARAM_NFC_GATE_CLEAR_DISTANCE': 0,
+        'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': 0,
+    },
+    description='BoxTurtle 1.0 - Type B, VirtualSelector, 4 gates, multigear',
+    # The per-gate exit is just past each drive, while the shared exit is at
+    # the downstream hub. BoxTurtle parks 10 mm beyond the former when
+    # preloading and 100 mm before the latter after normal gate homing, so the
+    # two sensors cannot occupy the generic harness's former 10 mm spacing.
+    filament_layout={'mmu_shared_exit': 100.0})
 
 # BoxTurtle + one COMMON NFC reader serving all gates and the bypass (RC522 over SPI).
 #
