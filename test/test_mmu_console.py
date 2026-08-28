@@ -555,6 +555,21 @@ class TestBootupOutput(unittest.TestCase):
         self.assertTrue(console.hh.sensor('mmu_exit_0').present)
         self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
 
+    def test_box_turtle_eject_row_matches_the_now_empty_physical_gate(self):
+        """Eject output must not retain the entry reading from before model removal."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_EJECT')
+
+        row = console.hh.mmu.get_filament_position_string()
+        self.assertIn('EMPTY', row)
+        self.assertFalse(console.hh.sensor('mmu_entry_0').present)
+        self.assertFalse(console.hh.sensor('mmu_exit_0').present)
+
     def _avail_row(self, console):
         """The gate-availability row of the bootup table. One sink entry is one MESSAGE, and
         the whole table arrives as a single multi-line one, so split before matching."""

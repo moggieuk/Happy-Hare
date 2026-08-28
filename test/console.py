@@ -789,13 +789,18 @@ class Console:
         mark = len(self.sink)
         unhandled_mark = len(self.hh.gcode.unhandled)
         gate_status_before = None
-        if (re.match(r'^\s*MMU_GATE_MAP(?:\s|$)', line, re.I)
-                and re.search(r'(?:^|\s)AVAILABLE\s*=', line, re.I)):
+        is_eject = bool(re.match(r'^\s*MMU_EJECT(?:\s|$)', line, re.I))
+        if is_eject or (re.match(r'^\s*MMU_GATE_MAP(?:\s|$)', line, re.I)
+                        and re.search(r'(?:^|\s)AVAILABLE\s*=', line, re.I)):
             gate_status_before = list(self.hh.mmu.gate_maps.gate_status)
         # Stream Happy Hare's output as it happens rather than after the command returns.
         # Scoped to here, not global: _dispatch() is also the raw path for setup and for the
         # tests, and both need it silent.
-        self.streaming = True
+        # MMU_EJECT's final row is produced immediately after HH marks the gate
+        # empty, but before the harness mirrors that map transition into its
+        # physical filament model. Buffer this one command so the final row can
+        # be refreshed after that synchronization; other commands still stream.
+        self.streaming = not is_eject
         try:
             self._dispatch(line)
         except Exception as exc:                    # noqa: BLE001
@@ -804,8 +809,11 @@ class Console:
             # parameter would end the session.
             print(paint('!! %s' % exc, '1;31', self.color))
             self.failures += 1
+        physical_changed = False
         if gate_status_before is not None:
-            self._sync_filament_to_gate_map(gate_status_before)
+            physical_changed = self._sync_filament_to_gate_map(gate_status_before)
+        if is_eject and physical_changed:
+            self._refresh_latest_filament_row(mark)
         # Settle whatever the command armed. Re-run unconditionally: a failed advance
         # skips its clock assignment, so this also repairs a mid-flight clock.
         try:
@@ -821,10 +829,12 @@ class Console:
     def _sync_filament_to_gate_map(self, before):
         """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""
         after = self.hh.mmu.gate_maps.gate_status
+        changed = False
         with self.hh.quiet_sensors():
             for gate, (old, new) in enumerate(zip(before, after)):
                 if old == new:
                     continue
+                changed = True
                 if new == GATE_EMPTY:
                     self.fil.remove(gate)
                 elif new in (GATE_AVAILABLE, GATE_AVAILABLE_FROM_BUFFER):
@@ -833,6 +843,19 @@ class Console:
                     self.fil.refill(gate, sync=False)
                     self.fil.park(gate)
                 # GATE_UNKNOWN describes knowledge, not a physical state: preserve it.
+        return changed
+
+    def _refresh_latest_filament_row(self, mark):
+        """Replace the final buffered visual row after simulator state catches up."""
+        current, _plain = self.hh.mmu.logger._color_message(
+            self.hh.mmu.get_filament_position_string())
+        for index in range(len(self.sink) - 1, mark - 1, -1):
+            lines = self.sink[index].split('\n')
+            for line_index in range(len(lines) - 1, -1, -1):
+                if lines[line_index].startswith('[T'):
+                    lines[line_index] = current
+                    self.sink[index] = '\n'.join(lines)
+                    return
 
     def _home_before_bootup(self):
         """
