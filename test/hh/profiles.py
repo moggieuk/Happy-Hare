@@ -348,6 +348,15 @@ KMS = Profile(
           'TOOLHEAD_TYPE_JABBERWOCKY': True},
     description='KMS 1.0 defaults - 4 gates, exit sensors, Jabberwocky toolhead')
 
+# QIDI Box: fixed STM32F401xC controller, four hardware-current-controlled gear
+# drivers, shared hub endstop, tension feedback, and an extruder-entry sensor on
+# the separate THR toolhead MCU. The stock dryer objects live in printer.cfg and
+# are supplied by the harness's external-object stub.
+QIDI = Profile(
+    'qidi',
+    syms={'MMU_TYPE_QIDI_BOX_1_0': True},
+    description='QIDI Box 1.0 - 4 gates, fixed QIDI v2 MCU and THR sensor')
+
 # EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
 # sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
 # for real, and the virtual compression/tension sensors derived from an analog reading
@@ -578,7 +587,7 @@ run_current: 0.6
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, EMU, ENCODER,
+CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, QIDI, EMU, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                     NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,

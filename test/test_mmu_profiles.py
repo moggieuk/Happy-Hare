@@ -18,6 +18,8 @@
 #   mmx        4 gates,  ServoSelector         - vendor-supplied gate angles, including a
 #                                                full load/unload behavioral test
 #   kms        4 gates,  VirtualSelector       - default KMS buffer with per-gate exit sensors
+#   qidi       4 gates,  VirtualSelector       - fixed QIDI v2 board, shared hub sensor,
+#                                                THR-hosted extruder sensor and stock dryer
 #   emu        5 gates,  VirtualSelector       - the only shipped profile with a
 #                                                PROPORTIONAL (analog) buffer sensor
 #   ercf 1.1   9 gates,  LinearServoSelector   - unit0 of ercf_vvd; encoder gate homing
@@ -59,6 +61,7 @@ BOOTABLE = {
     'pico_mmu': (4, 'ServoSelector'),
     'mmx': (4, 'ServoSelector'),
     'kms': (4, 'VirtualSelector'),
+    'qidi': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
@@ -141,6 +144,17 @@ class TestEveryBootableProfile(unittest.TestCase):
         hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
         self.assertEqual(unit.p.gate_preload_endstop, 'none')
         self.assertEqual(hh.errors, [])
+
+    def test_qidi(self):
+        """QIDI boots with its fixed board, external THR sensor and dryer objects."""
+        hh = self._check('qidi')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_preload_endstop, 'none')
+        self.assertEqual(unit.p.gate_preload_homing_max, 200)
+        self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
+        self.assertEqual(unit.filament_heater, 'heater_generic box1_heater')
+        self.assertEqual(unit.environment_sensor, 'temperature_sensor box1_env')
 
     def test_emu(self):
         self._check('emu')
