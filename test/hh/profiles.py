@@ -361,6 +361,21 @@ EMU = Profile(
     syms={'MMU_TYPE_EMU_1_0': True},
     description='EMU 1.0 - 5 gates, proportional (analog) buffer sensor')
 
+# The alternate EMU wiring: all five per-gate MCUs are EBB36/42 gen1 boards, with a
+# single five-pixel exit chain attached to gate 0's EBB.  Keep the LED map explicit:
+# EMU's vendor defaults describe the SLB's separate box/exit chains, while this fixture
+# deliberately exercises the valid arrangement where one per-gate MCU drives the LEDs
+# for the whole unit.
+EMU_EBB = EMU.derive(
+    'emu_ebb',
+    syms={
+        'BOARD_TYPE_EBB_GEN1': True,
+        'PARAM_CHAIN_COUNT': 5,
+        'PARAM_ENTRY_LEDS': '',
+        'PARAM_EXIT_LEDS': 'neopixel:_unit0_gate0_leds (1-5)',
+    },
+    description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, exit LEDs on gate 0')
+
 # BoxTurtle plus an encoder, homing to it instead of to the gate switch. KMS also ships an
 # encoder, but its exit sensors win the default homing choice, so _home_to_gate's encoder branch
 # (extras/mmu/mmu_filament_movement.py:206-231) is a completely different algorithm from
@@ -578,7 +593,8 @@ run_current: 0.6
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, EMU, ENCODER,
+CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, EMU, EMU_EBB,
+                    ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                     NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,

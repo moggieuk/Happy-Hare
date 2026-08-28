@@ -144,7 +144,10 @@ if MMU_TYPE_EMU_1_0
 
   endif
 
-  if BOARD_TYPE_EBB_1_0
+  if BOARD_TYPE_EBB_GEN1
+    config PARAM_CHAIN_COUNT
+      default 5
+
     config PARAM_ENTRY_LEDS
       generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (5)" "" "; " PARAM_NUM_GATES
 
