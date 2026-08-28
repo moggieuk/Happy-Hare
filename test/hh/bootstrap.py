@@ -434,7 +434,11 @@ class Session:
                 return 'extruder'
             return 'synced'
 
-        model = FilamentPath(self.mmu.num_gates, layout=layout)
+        # Profiles may refine the generic BoxTurtle-like geometry. An explicit
+        # call-site layout wins over those profile defaults one landmark at a time.
+        model_layout = dict(getattr(self.profile, 'filament_layout', {}) or {})
+        model_layout.update(layout or {})
+        model = FilamentPath(self.mmu.num_gates, layout=model_layout)
         model.configure_buffers(
             self.mmu.mmu_machine.units,
             selected_gate=lambda: self.mmu.gate_selected,

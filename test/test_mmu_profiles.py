@@ -156,6 +156,15 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(unit.filament_heater, 'heater_generic box1_heater')
         self.assertEqual(unit.environment_sensor, 'temperature_sensor box1_env')
 
+        model = hh.filament()
+        self.assertEqual(model.layout['mmu_entry'], -150)
+        self.assertEqual(model.layout['mmu_shared_exit'], 150)
+        self.assertEqual(model.layout['extruder'], 900)
+        hh.place_filament(0, position=-110)
+        hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertAlmostEqual(model.tip[0], 90)
+        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+
     def test_emu(self):
         self._check('emu')
 

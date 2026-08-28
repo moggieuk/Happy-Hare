@@ -55,22 +55,29 @@ class Profile:
     units:        list of UnitProfile, or None/empty for a single-unit machine.
                   Supplying it is what selects cfg.py's multi-unit render path;
                   every profile below except ERCF_VVD is the one-unit case.
+    filament_layout: optional simulator-only overrides for physical sensor positions.
+                  This never affects rendered printer configuration.
     """
 
-    def __init__(self, name, syms=None, extra_params=None, description='', units=None):
+    def __init__(self, name, syms=None, extra_params=None, description='', units=None,
+                 filament_layout=None):
         self.name = name
         self.syms = dict(syms or {})
         self.extra_params = dict(extra_params or {})
         self.description = description
         self.units = list(units or [])
+        self.filament_layout = dict(filament_layout or {})
 
-    def derive(self, name, syms=None, extra_params=None, description='', units=None):
+    def derive(self, name, syms=None, extra_params=None, description='', units=None,
+               filament_layout=None):
         merged_syms = dict(self.syms)
         merged_syms.update(syms or {})
         merged_params = dict(self.extra_params)
         merged_params.update(extra_params or {})
-        return Profile(name, merged_syms, merged_params, description or self.description,
-                       units if units is not None else self.units)
+        return Profile(
+            name, merged_syms, merged_params, description or self.description,
+            units if units is not None else self.units,
+            self.filament_layout if filament_layout is None else filament_layout)
 
     def __repr__(self):
         return 'Profile(%r)' % (self.name,)
@@ -355,7 +362,17 @@ KMS = Profile(
 QIDI = Profile(
     'qidi',
     syms={'MMU_TYPE_QIDI_BOX_1_0': True},
-    description='QIDI Box 1.0 - 4 gates, fixed QIDI v2 MCU and THR sensor')
+    description='QIDI Box 1.0 - 4 gates, fixed QIDI v2 MCU and THR sensor',
+    # The generic harness layout has only 160 mm between entry and shared exit,
+    # which makes QIDI's 200 mm fixed preload unrealistically cross the hub switch.
+    # Model the reported few-hundred-mm internal leg and ~750 mm hub-to-extruder leg.
+    filament_layout={
+        'mmu_shared_exit': 150.0,
+        'extruder_entry': 900.0,
+        'extruder': 900.0,
+        'toolhead': 940.0,
+        'filament_compression': 900.0,
+    })
 
 # EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
 # sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
