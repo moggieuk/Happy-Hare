@@ -335,6 +335,52 @@ class TestMultiUnitRender(unittest.TestCase):
                              'leaked out of _env()' % name)
 
 
+class TestEmuRender(unittest.TestCase):
+    """
+    EMU on the EBB36/42 gen1 per-gate board (boards/per_gate/Kconfig.ebb_gen1)
+    instead of the default SLB 1.0 (Kconfig.emu:87-89). EMU implies
+    MMU_HAS_PER_GATE_MCU, so the board's per-gate branch is what renders: five
+    unit0_gateN MCUs, each with its own gear, sensors, LEDs, fan and eject
+    button.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.profile = profiles.get('emu')
+        cls.profile_ebb = cls.profile.derive(
+            'emu_ebb',
+            syms={'BOARD_TYPE_EBB_GEN1': True},
+            description='EMU 1.0 on EBB36/42 gen1 per-gate boards')
+        cls.rendered = cfg.render(cls.profile)
+        cls.rendered_ebb = cfg.render(cls.profile_ebb)
+
+    def test_no_silent_misrender(self):
+        cfg.assert_sane(self.rendered)
+
+    def test_ebb_neopixel_chain_count(self):
+        # Example of asserting a single option in a rendered section: assemble()
+        # gives the RawConfigParser Klipper would see, and values are strings.
+        # chain_count 5 is the EBB-specific default (Kconfig.emu:154-155); the
+        # SLB board renders 4 for this same section.
+        neopixel = dict(cfg.assemble(self.rendered_ebb).items('neopixel _unit0_gate0_leds'))
+        self.assertEqual(neopixel['chain_count'], '5')
+
+    def test_ebb_entry_exit_leds(self):
+        leds = dict(cfg.assemble(self.rendered_ebb).items('mmu_leds unit0'))
+        self.assertEqual(leds['exit_leds'],
+            'neopixel:_unit0_gate0_leds (1,2,3,4)\n'
+            'neopixel:_unit0_gate1_leds (1,2,3,4)\n'
+            'neopixel:_unit0_gate2_leds (1,2,3,4)\n'
+            'neopixel:_unit0_gate3_leds (1,2,3,4)\n'
+            'neopixel:_unit0_gate4_leds (1,2,3,4)')
+        self.assertEqual(leds['entry_leds'],
+            'neopixel:_unit0_gate0_leds (5)\n'
+            'neopixel:_unit0_gate1_leds (5)\n'
+            'neopixel:_unit0_gate2_leds (5)\n'
+            'neopixel:_unit0_gate3_leds (5)\n'
+            'neopixel:_unit0_gate4_leds (5)')
+
+
 class TestSelectorTypeChoice(unittest.TestCase):
     """
     The CHOICE_SELECTOR_TYPE menu (installer/Kconfig.selector_type, depends on MMU_CUSTOM) is
