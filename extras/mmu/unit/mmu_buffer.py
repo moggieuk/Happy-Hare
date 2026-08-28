@@ -112,6 +112,20 @@ class MmuBuffer:
         self.connected_units.append(mmu_unit)
 
 
+    def supports_validation(self):
+        """
+        Whether the proportional sensor can drive active validation probes (extruder collision
+        homing, load/unload validation, recovery grip checks). Probes displace the buffer away
+        from its spring rest position so require a rest state with headroom toward compression:
+          'tension' - preloaded at tension rail, best friction immunity
+          'neutral' - dual sprung, discrimination relies on spring force ramp
+        'compression' rests at the compression rail (vsensor pre-triggered, probes blind) and
+        'none' has no restoring force (reading reflects last motion, not column force), so both
+        are limited to sync-feedback control
+        """
+        return self.proportional_sensor is not None and self.buffer_spring_state in ('tension', 'neutral')
+
+
     def sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
         """
         Button event handler for sync-feedback tension switch
