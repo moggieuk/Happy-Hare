@@ -5,7 +5,7 @@
 # [% if %] guard or a missing template section shows up here rather than on a user's
 # printer.
 #
-# There are 19 shipped machine types. Nine boot in the harness today:
+# There are 19 shipped machine types. Nine profiles boot in the harness today:
 #
 #   boxturtle  4 gates,  VirtualSelector       - Type B, the default everywhere else
 #   tradrack  10 gates,  LinearServoSelector   - a PHYSICAL selector, so the suite is not
@@ -20,6 +20,8 @@
 #   kms        4 gates,  VirtualSelector       - default KMS buffer with per-gate exit sensors
 #   emu        5 gates,  VirtualSelector       - the only shipped profile with a
 #                                                PROPORTIONAL (analog) buffer sensor
+#   emu_ebb    5 gates,  VirtualSelector       - EMU on per-gate EBB36/42 gen1 boards,
+#                                                with one shared exit LED chain
 #   ercf 1.1   9 gates,  LinearServoSelector   - unit0 of ercf_vvd; encoder gate homing
 #   vvd 1.0    4 gates,  IndexedSelector       - unit1 of ercf_vvd; a third selector class
 #
@@ -60,6 +62,7 @@ BOOTABLE = {
     'mmx': (4, 'ServoSelector'),
     'kms': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
+    'emu_ebb': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
     # its own assertions in TestMultiUnitMachine below.
@@ -144,6 +147,52 @@ class TestEveryBootableProfile(unittest.TestCase):
 
     def test_emu(self):
         self._check('emu')
+
+        # EMU's unmodified board choice is SLB, independently wired for every gate.
+        from test.hh import cfg, profiles
+        parser = cfg.assemble(cfg.render(profiles.get('emu')))
+        sensors = dict(parser.items('mmu_sensors unit0'))
+        for gate in range(5):
+            self.assertEqual(sensors['mmu_entry_switch_pin_%d' % gate],
+                             '^unit0_gate%d:PA1' % gate)
+            self.assertEqual(
+                dict(parser.items('neopixel _unit0_gate%d_leds' % gate))['pin'],
+                'unit0_gate%d:PA4' % gate)
+
+    def test_emu_ebb(self):
+        hh = self._check('emu_ebb')
+
+        # The shipped EBB defaults must remain internally valid too.  This caught the
+        # obsolete BOARD_TYPE_EBB_1_0 guard: it left one-pixel chains mapped as (1-5).
+        from test.hh import cfg, profiles
+        defaults = profiles.EMU.derive(
+            'emu_ebb_defaults', syms={'BOARD_TYPE_EBB_GEN1': True})
+        default_parser = cfg.assemble(cfg.render(defaults))
+        default_leds = dict(default_parser.items('mmu_leds unit0'))
+        self.assertEqual(default_leds['entry_leds'].splitlines(), [
+            'neopixel:_unit0_gate%d_leds (5)' % gate for gate in range(5)])
+        self.assertEqual(default_leds['exit_leds'].splitlines(), [
+            'neopixel:_unit0_gate%d_leds (1,2,3,4)' % gate for gate in range(5)])
+        for gate in range(5):
+            chain = dict(default_parser.items(
+                'neopixel _unit0_gate%d_leds' % gate))
+            self.assertEqual(chain['chain_count'], '5')
+
+        # Every gate uses the EBB pin map, but only gate 0's five-pixel chain is assigned
+        # to the logical exit segment (one pixel per gate).
+        parser = cfg.assemble(cfg.render(profiles.get('emu_ebb')))
+        sensors = dict(parser.items('mmu_sensors unit0'))
+        for gate in range(5):
+            self.assertEqual(sensors['mmu_entry_switch_pin_%d' % gate],
+                             '^unit0_gate%d:PB7' % gate)
+            chain = dict(parser.items('neopixel _unit0_gate%d_leds' % gate))
+            self.assertEqual(chain['pin'], 'unit0_gate%d:PD3' % gate)
+            self.assertEqual(chain['chain_count'], '5')
+        leds = dict(parser.items('mmu_leds unit0'))
+        self.assertEqual(leds['entry_leds'], '')
+        self.assertEqual(leds['exit_leds'], 'neopixel:_unit0_gate0_leds (1-5)')
+        self.assertEqual(
+            len(hh.mmu.mmu_unit(0).leds.virtual_chains['exit'].leds), 5)
 
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
