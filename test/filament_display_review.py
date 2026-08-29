@@ -816,6 +816,24 @@ class TestFilamentDisplayGateArea(unittest.TestCase):
 class TestFilamentDisplayBufferAndSyncFeedback(unittest.TestCase):
     """Tension/compression/proportional sensor combinations feed the buffer_segment() bracket."""
 
+    def test_proportional_sensor_keeps_decimal_aligned(self):
+        sensors = build_sensors(SENSOR_ENCODER, "no_optional_sensors")
+        sensors[SENSOR_PROPORTIONAL] = True
+
+        def visual_for(bias):
+            return render("", FilamentDisplayState(
+                pos=FILAMENT_POS_IN_BOWDEN,
+                gate_homing_endstop=SENSOR_ENCODER,
+                sensors=sensors,
+                has_encoder=True,
+                has_buffer=True,
+                sync_feedback_state="neutral",
+                sync_feedback_bias_modelled=bias,
+            ), verbose=False)
+
+        self.assertIn("[-0.4 ]", visual_for(-0.4))
+        self.assertIn("[ 0.4 ]", visual_for(0.4))
+
     def test_buffer_matrix(self):
         print()
         for style_name, is_bold in BOLD_STYLES:
