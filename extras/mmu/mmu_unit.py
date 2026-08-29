@@ -268,10 +268,14 @@ class MmuUnit:
                 logging.info("MMU: Loaded: [%s]" % base_tmc_section)
                 break
 
-        if gear_tmc is None and self.mmu_vendor != VENDOR_QIDI:
-            raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (gear_name, self.name))
         if gear_tmc is None:
-            logging.info("MMU: No software-controlled TMC for %s on QIDI mmu_unit %s" % (gear_name, self.name))
+            if self.mmu_vendor == VENDOR_QIDI:
+                logging.info("MMU: No software-controlled TMC for %s on QIDI mmu_unit %s" % (gear_name, self.name))
+            else:
+                logging.warning(
+                    "MMU: Gear stepper %s on mmu_unit %s has no software-controlled TMC; "
+                    "assuming motor current and driver mode are controlled in hardware"
+                    % (gear_name, self.name))
 
         # If multiple gear steppers share all possible attributes (saves repeated configuration)
         if self.multigear:

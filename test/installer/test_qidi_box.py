@@ -67,6 +67,19 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
         self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
 
+    def test_dryer_capabilities_are_recommended_but_can_be_disabled(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            without_dryer = cfg._kconfig(
+                "qidi_box_without_dryer",
+                {
+                    "MMU_TYPE_QIDI_BOX_1_0": True,
+                    "MMU_HAS_ENVIRONMENT_SENSOR": False,
+                    "MMU_HAS_HEATER": False,
+                },
+            )
+        self.assertFalse(without_dryer.is_enabled("MMU_HAS_ENVIRONMENT_SENSOR"))
+        self.assertFalse(without_dryer.is_enabled("MMU_HAS_HEATER"))
+
     def test_stock_sensors_buffer_and_standard_dryer_setup_are_enabled(self):
         for symbol in (
             "MMU_HAS_SENSOR_ENTRY",

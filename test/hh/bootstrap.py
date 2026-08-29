@@ -84,17 +84,6 @@ run_current: 0.5
 pin: mcu:PA10
 chain_count: 12
 
-# External stock-QIDI dryer objects. Happy Hare references these by name but
-# deliberately does not generate them because their hardware setup belongs to
-# the printer configuration. The harness implementations need only the object
-# names and temperature limits.
-[temperature_sensor box1_env]
-min_temp: -20
-max_temp: 100
-
-[heater_generic box1_heater]
-min_temp: 0
-max_temp: 80
 """
 
 

@@ -187,14 +187,15 @@ class TestEveryBootableProfile(unittest.TestCase):
 
     def test_qidi(self):
         """QIDI boots with its fixed board, THR sensor and normal dryer setup."""
-        hh = self._check('qidi')
+        with self.assertNoLogs(level='WARNING'):
+            hh = self._check('qidi')
         unit = hh.mmu.mmu_unit(0)
         self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
         self.assertEqual(unit.p.gate_preload_endstop, 'none')
         # Simulator override only; the installer/Kconfig default remains 200 mm.
         self.assertEqual(unit.p.gate_preload_homing_max, 100)
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
-        self.assertEqual(unit.filament_heater, 'heater_generic box1_heater')
+        self.assertEqual(unit.filament_heater, '')
         self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Env')
 
         model = hh.filament()
@@ -217,6 +218,24 @@ class TestEveryBootableProfile(unittest.TestCase):
         hh.run_gcode('MMU_STATUS')
         status = re.sub(r'<[^>]+>', '', '\n'.join(hh.console[at:]))
         self.assertIn('■◉■■■■■◯', status)
+
+    def test_non_qidi_hardware_controlled_driver_warns_and_boots(self):
+        from test.hh import profiles
+        profile = profiles.BOXTURTLE.derive(
+            'boxturtle_hardware_drivers_runtime',
+            syms={'CHOICE_GEAR_TMC_NONE': True})
+        hh = session(profile)
+        self.addCleanup(hh.close)
+
+        with self.assertLogs(level='WARNING') as captured:
+            hh.boot()
+
+        self.assertTrue(hh.fired('mmu:bootup'))
+        self.assertEqual(hh.errors, [])
+        self.assertTrue(any(
+            'has no software-controlled TMC; assuming motor current and driver mode '
+            'are controlled in hardware' in line
+            for line in captured.output))
 
     def test_emu(self):
         self._check('emu')
