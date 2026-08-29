@@ -22,7 +22,7 @@ config MMU_SHARED_TOOLHEAD
   bool
   default n
 
-choice TOOLHEAD_TYPE
+choice CHOICE_TOOLHEAD_TYPE
   prompt "Toolhead"
   default CHOICE_TOOLHEAD_TYPE_OTHER
   help 
