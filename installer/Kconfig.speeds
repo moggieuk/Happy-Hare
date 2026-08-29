@@ -16,6 +16,7 @@
 #   PARAM_SELECTOR_MOVE_SPEED
 #   PARAM_SELECTOR_HOMING_SPEED
 #   PARAM_SELECTOR_TOUCH_SPEED
+#   PARAM_SELECTOR_ACCEL
 #
 # These are shared by all mmu_units
 #   PARAM_EXTRUDER_LOAD_SPEED
@@ -183,6 +184,10 @@ menu "Speeds"
       float "Speed of touch selector movement"
       depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || TESTING_SELECTOR
       default 80
+
+    config PARAM_SELECTOR_ACCEL
+      float "Selector stepper acceleration   "
+      default 1200
 
   endif 
 
