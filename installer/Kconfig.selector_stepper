@@ -7,7 +7,6 @@
 #   PARAM_SELECTOR_RUN_CURRENT
 #   PARAM_SELECTOR_HOLD_CURRENT
 #   PARAM_SELECTOR_ENDSTOP_NAME
-#   PARAM_SELECTOR_ACCEL
 #   PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
 #   PARAM_STARTUP_HOME_SELECTOR
 #
@@ -43,10 +42,6 @@ if MMU_HAS_SELECTOR_STEPPER
     config PARAM_SELECTOR_ENDSTOP_NAME
       string
       default "mmu_sel_home"
-
-    config PARAM_SELECTOR_ACCEL
-      float "Selector stepper acceleration   "
-      default 1200
 
     config PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
       int "Selector full steps per rotation"
