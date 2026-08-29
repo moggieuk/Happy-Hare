@@ -1825,7 +1825,7 @@ class Console:
                 # Stop rather than reprint the same failure on every tick.
                 self.live = False
                 self._arm_tick(False)
-                self._reprint(lambda: self.info('live clock stopped: %s' % exc))
+                self._reprint(lambda exc=exc: self.info('live clock stopped: %s' % exc))
                 return
             if len(self.sink) > mark:
                 self._reprint(lambda: self._drain(mark))
