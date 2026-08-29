@@ -324,5 +324,46 @@ class FlowGuardSuppressionTestCase(unittest.TestCase):
         self.assertEqual(called, ['clog'])
 
 
+class FlowGuardBufferStatusTestCase(unittest.TestCase):
+    """The buffer status API must report the live monitoring flags, not cached telemetry."""
+
+    def setUp(self):
+        self.hh = session('emu')
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.mmu = self.hh.mmu
+        self.sf = self.mmu.mmu_machine.units[0].sync_feedback
+        self.assertTrue(self.sf.mmu_unit.has_buffer())
+        self.assertFalse(self.sf.mmu_unit.has_encoder())
+
+    def tearDown(self):
+        self.hh.close()
+
+    def flowguard_status(self):
+        return self.mmu.get_status(self.hh.reactor.monotonic())['flowguard']
+
+    def test_buffer_only_status_tracks_live_flowguard_flags(self):
+        self.assertEqual(
+            (self.flowguard_status()['enabled'], self.flowguard_status()['active']),
+            (True, False),
+        )
+
+        self.mmu.select_gate(0)
+        self.mmu._enable_filament_monitoring()
+        self.assertEqual(
+            (self.flowguard_status()['enabled'], self.flowguard_status()['active']),
+            (True, True),
+        )
+
+        # The controller's cached 'active' field is its private warm-up state. It must
+        # not leak back out as the public monitoring state after monitoring is disabled.
+        self.sf.flowguard_status['active'] = True
+        self.mmu._disable_filament_monitoring()
+        self.assertEqual(
+            (self.flowguard_status()['enabled'], self.flowguard_status()['active']),
+            (True, False),
+        )
+
+
 if __name__ == '__main__':
     unittest.main()
