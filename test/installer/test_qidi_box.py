@@ -36,6 +36,8 @@ class TestQidiBoxProfile(unittest.TestCase):
             "PARAM_HAS_BYPASS": "0",
             "PARAM_GEAR_ROTATION_DISTANCE": "13.6",
             "PARAM_GEAR_MICROSTEPS": "16",
+            "PARAM_GEAR_GEAR_RATIO": "1:1",
+            "PARAM_TOOLHEAD_TYPE": "QIDI Q2 Extruder",
             "PARAM_GATE_HOMING_ENDSTOP": "mmu_shared_exit",
             "PARAM_GATE_HOMING_MAX": "1500",
             "PARAM_GATE_PRELOAD_ENDSTOP": "none",
@@ -51,6 +53,9 @@ class TestQidiBoxProfile(unittest.TestCase):
 
         self.assertTrue(self.kconfig.is_enabled("BOARD_TYPE_QIDI_BOX_2_0"))
         self.assertFalse(self.kconfig.is_enabled("BOARD_TYPE_OTHER"))
+        self.assertTrue(
+            self.kconfig.is_enabled("TOOLHEAD_TYPE_QIDI_Q2"))
+        self.assertFalse(self.kconfig.is_enabled("CHOICE_TOOLHEAD_TYPE_OTHER"))
 
     def test_path_variation_and_bypass_defaults_can_be_overridden(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
@@ -185,11 +190,74 @@ class TestQidiBoxProfile(unittest.TestCase):
         machine = self.rendered["config/base/mmu.cfg"]
         self.assertIn("extruder_switch_pin         : !THR:PA1", machine)
 
-    def test_generic_qidi_q2_toolhead_dimensions_are_preserved(self):
+    def test_qidi_q2_toolhead_dimensions_and_sensor(self):
         machine = self.rendered["config/base/mmu.cfg"]
         self.assertIn("toolhead_extruder_to_nozzle : 72", machine)
         self.assertIn("toolhead_sensor_to_nozzle   : 62", machine)
         self.assertIn("toolhead_entry_to_extruder  : 8", machine)
+        self.assertIn("extruder_switch_pin         : !THR:PA1", machine)
+
+    def test_qidi_q2_implies_cutter_with_tuned_defaults(self):
+        self.assertTrue(self.kconfig.is_enabled("MMU_HAS_TOOLHEAD_CUTTER"))
+        expected = {
+            "VAR_CUT_TIP_PIN_LOC_XY": "15, 0.5",
+            "VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY": "-0.5, 0.5",
+            "VAR_CUT_TIP_RETRACT_LENGTH": "15",
+            "VAR_CUT_TIP_SIMPLE_TIP_FORMING": "False",
+            "VAR_CUT_TIP_PUSHBACK_LENGTH": "0",
+        }
+        for symbol, value in expected.items():
+            with self.subTest(symbol=symbol):
+                self.assertEqual(self.kconfig.get(symbol), value)
+
+    def test_qidi_q2_cutter_can_be_disabled(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            without_cutter = cfg._kconfig(
+                "qidi_box_without_cutter",
+                {
+                    "MMU_TYPE_QIDI_BOX_1_0": True,
+                    "MMU_HAS_TOOLHEAD_CUTTER": False,
+                },
+            )
+        self.assertFalse(without_cutter.is_enabled("MMU_HAS_TOOLHEAD_CUTTER"))
+
+    def test_qidi_q2_cutter_defaults_do_not_apply_to_q1(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            q1_with_cutter = cfg._kconfig(
+                "qidi_box_q1_with_cutter",
+                {
+                    "MMU_TYPE_QIDI_BOX_1_0": True,
+                    "TOOLHEAD_TYPE_QIDI_Q1_PRO": True,
+                    "MMU_HAS_TOOLHEAD_CUTTER": True,
+                },
+            )
+        self.assertEqual(q1_with_cutter.get("VAR_CUT_TIP_PIN_LOC_XY"),
+                         "14, 250")
+
+    def test_qidi_q2_cutter_defaults_can_be_overridden(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            customized = cfg._kconfig(
+                "qidi_box_custom_cutter",
+                {
+                    "MMU_TYPE_QIDI_BOX_1_0": True,
+                    "VAR_CUT_TIP_PIN_LOC_XY": "20, 1",
+                    "VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY": "1, 1",
+                    "VAR_CUT_TIP_RETRACT_LENGTH": 12,
+                    "BOOL_CUT_TIP_SIMPLE_TIP_FORMING": True,
+                    "VAR_CUT_TIP_PUSHBACK_LENGTH": 2,
+                },
+            )
+
+        expected = {
+            "VAR_CUT_TIP_PIN_LOC_XY": "20, 1",
+            "VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY": "1, 1",
+            "VAR_CUT_TIP_RETRACT_LENGTH": "12",
+            "VAR_CUT_TIP_SIMPLE_TIP_FORMING": "True",
+            "VAR_CUT_TIP_PUSHBACK_LENGTH": "2",
+        }
+        for symbol, value in expected.items():
+            with self.subTest(symbol=symbol):
+                self.assertEqual(customized.get(symbol), value)
 
 
 if __name__ == "__main__":

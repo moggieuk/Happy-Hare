@@ -1,0 +1,17 @@
+config TOOLHEAD_TYPE_QIDI_Q2
+  bool "QIDI Q2 Extruder"
+  imply MMU_HAS_SENSOR_EXTRUDER
+  imply MMU_HAS_TOOLHEAD_CUTTER
+
+if TOOLHEAD_TYPE_QIDI_Q2
+  config PARAM_TOOLHEAD_TYPE
+    default "QIDI Q2 Extruder"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default 72
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default 62
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default 8
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default 2
+endif

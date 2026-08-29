@@ -60,6 +60,9 @@ if MMU_TYPE_QIDI_BOX_1_0
   choice BOARD_TYPE
     default BOARD_TYPE_QIDI_BOX_2_0
   endchoice
+  choice CHOICE_TOOLHEAD_TYPE
+    default TOOLHEAD_TYPE_QIDI_Q2
+  endchoice
 
   # Gear stepper ---------------------------
   config PARAM_GEAR_GEAR_RATIO
@@ -68,6 +71,20 @@ if MMU_TYPE_QIDI_BOX_1_0
     default 13.6
   config PARAM_GEAR_MICROSTEPS
     default 16
+
+  # Q2 toolhead cutter --------------------
+  if MMU_HAS_TOOLHEAD_CUTTER && TOOLHEAD_TYPE_QIDI_Q2
+    config VAR_CUT_TIP_PIN_LOC_XY
+      default "15, 0.5"
+    config VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY
+      default "-0.5, 0.5"
+    config VAR_CUT_TIP_RETRACT_LENGTH
+      default 15
+    config BOOL_CUT_TIP_SIMPLE_TIP_FORMING
+      default n
+    config VAR_CUT_TIP_PUSHBACK_LENGTH
+      default 0
+  endif
 
   # Speeds ---------------------------------
   config PARAM_GEAR_LOAD_SPEED
