@@ -67,7 +67,7 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
         self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
 
-    def test_stock_sensors_buffer_and_dryer_are_enabled(self):
+    def test_stock_sensors_buffer_and_standard_dryer_setup_are_enabled(self):
         for symbol in (
             "MMU_HAS_SENSOR_ENTRY",
             "MMU_HAS_SENSOR_SHARED_EXIT",
@@ -80,11 +80,16 @@ class TestQidiBoxProfile(unittest.TestCase):
             with self.subTest(symbol=symbol):
                 self.assertTrue(self.kconfig.is_enabled(symbol))
         self.assertFalse(self.kconfig.is_enabled("MMU_HAS_SENSOR_EXIT"))
+        self.assertFalse(self.kconfig.is_enabled("CUSTOM_ENVIRONMENT_SENSOR_SETUP"))
+        self.assertFalse(self.kconfig.is_enabled("CUSTOM_HEATER_SETUP"))
+        self.assertGreater(self.kconfig.syms["PARAM_ENVIRONMENT_SENSOR"].visibility, 0)
+        self.assertGreater(self.kconfig.syms["PARAM_FILAMENT_HEATER"].visibility, 0)
 
         hardware = self.rendered["config/base/mmu_hardware.cfg"]
         self.assertNotIn("mmu_exit_switch_pin_0", hardware)
-        self.assertIn("environment_sensor       : box1_env", hardware)
-        self.assertIn("filament_heater          : box1_heater", hardware)
+        self.assertIn("environment_sensor       : unit0_Env", hardware)
+        self.assertIn("filament_heater          : \n", hardware)
+        self.assertIn("[temperature_sensor unit0_Env]", hardware)
         self.assertNotIn("max_concurrent_heaters", hardware)
         self.assertIn("buffer_range            : 8", hardware)
         self.assertIn("buffer_maxrange         : 12", hardware)

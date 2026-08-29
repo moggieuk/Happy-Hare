@@ -16,10 +16,6 @@ menu "Pins / TMC"
 # Gear TMC chip
 # -------------------------------------
 
-  config MMU_HAS_GEAR_TMC
-    bool
-    default y
-
   choice CHOICE_GEAR_TMC
     prompt "Gear TMC chip"
     default CHOICE_GEAR_TMC2209
@@ -50,6 +46,7 @@ menu "Pins / TMC"
     default "tmc2660" if CHOICE_GEAR_TMC2660
     default "tmc5160" if CHOICE_GEAR_TMC5160
     default "tmc2240" if CHOICE_GEAR_TMC2240
+    default ""
 
 # -------------------------------------
 # Gear stepper

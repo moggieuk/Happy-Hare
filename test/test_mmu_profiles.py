@@ -186,7 +186,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(hh.errors, [])
 
     def test_qidi(self):
-        """QIDI boots with its fixed board, external THR sensor and dryer objects."""
+        """QIDI boots with its fixed board, THR sensor and normal dryer setup."""
         hh = self._check('qidi')
         unit = hh.mmu.mmu_unit(0)
         self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
@@ -195,7 +195,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(unit.p.gate_preload_homing_max, 100)
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
         self.assertEqual(unit.filament_heater, 'heater_generic box1_heater')
-        self.assertEqual(unit.environment_sensor, 'temperature_sensor box1_env')
+        self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Env')
 
         model = hh.filament()
         self.assertEqual(model.layout['mmu_entry'], -150)

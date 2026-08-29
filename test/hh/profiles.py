@@ -399,12 +399,14 @@ KMS = Profile(
 
 # QIDI Box: fixed STM32F401xC controller, four hardware-current-controlled gear
 # drivers, shared hub endstop, tension feedback, and an extruder-entry sensor on
-# the separate THR toolhead MCU. The stock dryer objects live in printer.cfg and
-# are supplied by the harness's external-object stub.
+# the separate THR toolhead MCU. Exercise the normal environment-sensor setup;
+# the heater name points at the harness's existing heater_generic object, just
+# as a user supplies the name of their configured heater through Kconfig.
 QIDI = Profile(
     'qidi',
     syms={
         'MMU_TYPE_QIDI_BOX_1_0': True,
+        'PARAM_FILAMENT_HEATER': 'box1_heater',
         # Simulator-only: the console seeds each gate 110 mm downstream of
         # entry (-40 vs -150). A 200 mm fixed preload from there would put
         # every startup filament across the shared hub switch, even though a
