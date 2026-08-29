@@ -8401,7 +8401,12 @@ class Mmu:
                 else:
                     # Always update gate map from pre-gate sensor
                     if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate != self.gate_selected:
-                        self._set_gate_status(gate, self.GATE_EMPTY)
+                        # Verify current sensor state before marking gate as empty to avoid spurious events
+                        current_sensor_state = self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate)
+                        if current_sensor_state is False:  # Sensor currently shows no filament
+                            self._set_gate_status(gate, self.GATE_EMPTY)
+                        else:
+                            self.log_trace("Ignoring spurious runout event on %s - sensor still shows filament present" % raw_sensor)
 
                     # Real runout to process...
                     if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate == self.gate_selected:
@@ -8526,7 +8531,12 @@ class Mmu:
                 if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate is not None:
                     # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
                     if not(self.endless_spool_enabled and self.endless_spool_eject_gate > 0):
-                        self._set_gate_status(gate, self.GATE_EMPTY)
+                        # Verify current sensor state before marking gate as empty to avoid spurious events
+                        current_sensor_state = self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate)
+                        if current_sensor_state is False:  # Sensor currently shows no filament
+                            self._set_gate_status(gate, self.GATE_EMPTY)
+                        else:
+                            self.log_trace("Ignoring spurious filament removal event on %s - sensor still shows filament present" % raw_sensor)                    
                     else:
                         self.log_trace("Ignoring filament removal detected by %s because endless_spool_eject_gate is active" % raw_sensor)
 
