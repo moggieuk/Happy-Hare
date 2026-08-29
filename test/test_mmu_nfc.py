@@ -90,6 +90,31 @@ class TestPerGateNfcBoots(unittest.TestCase):
         for i in range(4):
             self.assertIn('mmu_nfc_reader unit0_nfc%d' % i, self.hh.printer.objects)
 
+    def test_showconfig_describes_preload_motion_endstop_and_nfc_range(self):
+        del self.hh.console[:]
+        self.hh.run_gcode('MMU_STATUS SHOWCONFIG=1')
+
+        shown = '\n'.join(str(msg) for msg in self.hh.console)
+        self.assertIn('PRELOAD SEQUENCE:', shown)
+        self.assertIn('gate_preload_homing_max', shown)
+        self.assertIn('MMU_EXIT sensor', shown)
+        self.assertIn('gate_preload_parking_distance', shown)
+        self.assertIn('RFID/NFC scanning during preload is ON for gates 0-3', shown)
+        self.assertIn('forward scan range is 0.0mm to +50.0mm', shown)
+        self.assertIn('configured endstop-relative window -50.0mm to +50.0mm', shown)
+
+    def test_showconfig_identifies_a_disabled_preload_reader(self):
+        mgr = self.unit().nfc_manager
+        mgr.gate_enabled[0] = False
+        try:
+            del self.hh.console[:]
+            self.hh.run_gcode('MMU_STATUS SHOWCONFIG=1')
+            shown = '\n'.join(str(msg) for msg in self.hh.console)
+            self.assertIn('RFID/NFC scanning during preload is ON for gates 1-3', shown)
+            self.assertIn('readers on gate 0 are disabled', shown)
+        finally:
+            mgr.gate_enabled[0] = True
+
     def test_defaults_inheritance_is_currently_inert(self):
         """
         Documents a KNOWN LIMITATION rather than asserting desired behaviour.
@@ -213,6 +238,19 @@ class TestCommonReaderWiring(unittest.TestCase):
             self.assertEqual(mgr.shared_reader.reader_type, 'rc522')
             self.assertTrue(all(r is None for r in mgr.gate_readers),
                             'a common reader must not populate per-gate slots')
+        finally:
+            hh.close()
+
+    def test_showconfig_distinguishes_common_reader_from_motion_scanning(self):
+        hh = session('nfc_single')
+        try:
+            hh.boot()
+            del hh.console[:]
+            hh.run_gcode('MMU_STATUS SHOWCONFIG=1')
+            shown = '\n'.join(str(msg) for msg in hh.console)
+            self.assertIn('RFID/NFC scanning during preload is OFF; no per-gate readers', shown)
+            self.assertIn('Shared RFID/NFC reader is ON', shown)
+            self.assertIn('does not scan during preload motion', shown)
         finally:
             hh.close()
 

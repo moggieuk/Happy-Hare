@@ -134,8 +134,45 @@ class MmuStatusCommand(BaseCommand):
             self.toolchange_retract = mmu.toolchange_retract
             self.filament_remaining = mmu_unit.extruder_wrapper.filament_remaining
             self.buffer_range = mmu_unit.buffer.buffer_range if mmu_unit.has_buffer() else 0.
+            unit_suffix = f" (UNIT {mmu_unit.unit_index})" if mmu.mmu_machine.num_units > 1 else ""
 
-            lines.append("\n\nLOAD SEQUENCE:")
+            lines.append(f"\n\nPRELOAD SEQUENCE{unit_suffix}:")
+
+            # Gate preloading ---------------------------------------------------
+
+            preload = mmu._preload_profile()
+            if preload.endstop == SENSOR_GATE_NONE:
+                lines.append(
+                    "\n- Filament preloads with one fixed forward move of "
+                    f"{self._f_calc('gate_preload_homing_max')}; no endstop is used and "
+                    "filament presence cannot be verified"
+                )
+                lines.append("\n- No separate preload parking move is performed")
+            else:
+                preload_endstop = (
+                    "ENCODER motion detection"
+                    if preload.endstop == SENSOR_ENCODER
+                    else f"{preload.endstop.upper()} sensor"
+                )
+                attempts = f", with up to {preload.attempts} attempts" if preload.attempts > 1 else ""
+                lines.append(
+                    "\n- Filament preloads by homing a maximum of "
+                    f"{self._f_calc('gate_preload_homing_max')} to {preload_endstop}{attempts}"
+                )
+                if preload.endstop == SENSOR_ENCODER:
+                    lines.append(
+                        "\n- Filament reverse-homes until encoder motion clears, then parks by moving "
+                        f"{self._f_calc('gate_preload_parking_distance')}"
+                    )
+                else:
+                    lines.append(
+                        "\n- Filament is parked by moving "
+                        f"{self._f_calc('gate_preload_parking_distance')} from the preload endstop"
+                    )
+
+            self._append_preload_rfid_summary(lines, mmu_unit, preload)
+
+            lines.append(f"\n\nLOAD SEQUENCE{unit_suffix}:")
 
             # Gate loading -------------------------------------------------------
 
@@ -287,7 +324,7 @@ class MmuStatusCommand(BaseCommand):
                     "to neutralize tension"
                 )
 
-            lines.append("\n\nUNLOAD SEQUENCE:")
+            lines.append(f"\n\nUNLOAD SEQUENCE{unit_suffix}:")
 
             # Tip forming --------------------------------------------------------
 
@@ -401,6 +438,69 @@ class MmuStatusCommand(BaseCommand):
 
         # Always warn if not fully calibrated or needs recovery
         mmu.report_necessary_recovery(use_autotune=False)
+
+
+    def _append_preload_rfid_summary(self, lines, mmu_unit, preload):
+        """Describe the RFID/NFC paths which can contribute to a preload."""
+        first, last = mmu_unit.gate_bounds()
+        gates = list(range(first, last + 1))
+        manager = mmu_unit.nfc_manager
+
+        configured = []
+        enabled = []
+        if manager is not None:
+            configured = [gate for gate in gates if manager.has_gate_nfc_reader(gate)]
+            enabled = [gate for gate in configured if manager.is_enabled(gate=gate)]
+
+        if preload.endstop in (SENSOR_GATE_NONE, SENSOR_ENCODER):
+            reason = (
+                "fixed preload has no endstop"
+                if preload.endstop == SENSOR_GATE_NONE
+                else "encoder homing cannot be combined with an NFC endstop"
+            )
+            lines.append(f"\n- RFID/NFC scanning during preload is OFF ({reason})")
+        elif enabled:
+            gate_text = self._gate_list(enabled)
+            neg, pos = preload.jog_scan_window if len(preload.jog_scan_window) == 2 else (0., 0.)
+            lines.append(
+                f"\n- RFID/NFC scanning during preload is ON for {gate_text}: tags are detected "
+                f"during the homing move; after the preload endstop the forward scan range is "
+                f"0.0mm to +{max(0., pos):.1f}mm (configured endstop-relative window "
+                f"{neg:+.1f}mm to {pos:+.1f}mm)"
+            )
+            disabled = [gate for gate in configured if gate not in enabled]
+            if disabled:
+                lines.append(f"; readers on {self._gate_list(disabled)} are disabled")
+        elif configured:
+            lines.append(
+                "\n- RFID/NFC scanning during preload is OFF; per-gate readers are configured "
+                f"for {self._gate_list(configured)} but disabled"
+            )
+        else:
+            lines.append("\n- RFID/NFC scanning during preload is OFF; no per-gate readers are configured")
+
+        if manager is not None and manager.has_shared_nfc_reader():
+            state = "ON" if manager.is_enabled(shared=True) else "OFF"
+            lines.append(
+                f"\n- Shared RFID/NFC reader is {state}; it assigns a presented tag before "
+                "preload and does not scan during preload motion"
+            )
+
+
+    @staticmethod
+    def _gate_list(gates):
+        """Compact a sorted gate list into user-facing ranges."""
+        ranges = []
+        start = previous = gates[0]
+        for gate in gates[1:]:
+            if gate == previous + 1:
+                previous = gate
+                continue
+            ranges.append((start, previous))
+            start = previous = gate
+        ranges.append((start, previous))
+        values = [str(start) if start == end else f"{start}-{end}" for start, end in ranges]
+        return "gate " + values[0] if len(values) == 1 and "-" not in values[0] else "gates " + ", ".join(values)
 
 
     def _f_calc(self, formula):

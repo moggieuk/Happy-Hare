@@ -2471,8 +2471,13 @@ class TestTheDefaultProfile(unittest.TestCase):
         """
         for unit in self.console.hh.mmu.mmu_machine.units:
             self.console._dispatch('MMU_SELECT GATE=%d' % unit.first_gate)
+            del self.console.sink[:]
             with contextlib.redirect_stdout(io.StringIO()):
                 self.console._dispatch('MMU_STATUS SHOWCONFIG=1')
+            shown = '\n'.join(self.console.sink)
+            self.assertIn('PRELOAD SEQUENCE (UNIT %d):' % unit.unit_index, shown)
+            self.assertIn('LOAD SEQUENCE (UNIT %d):' % unit.unit_index, shown)
+            self.assertIn('UNLOAD SEQUENCE (UNIT %d):' % unit.unit_index, shown)
 
     def _encoder_line(self):
         del self.console.sink[:]
