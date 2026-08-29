@@ -380,15 +380,20 @@ class MmuSyncFeedback:
 
         # Buffer controlled sync feedback
         if self.mmu_unit.has_buffer() and self.ctrl:
+            flowguard_status = dict(self.flowguard_status)
+            flowguard_status.update({
+                'active': self.flowguard_active,
+                'enabled': bool(self.p.flowguard_enabled),
+            })
             if self.mmu_unit.has_encoder():
-                self.flowguard_status['encoder_mode'] = self.p.flowguard_encoder_mode # Ok to mutate status
+                flowguard_status['encoder_mode'] = self.p.flowguard_encoder_mode
             status.update({
                 'sync_feedback_state': self.get_sync_feedback_string(),
                 'sync_feedback_enabled': self.is_enabled(),
                 'sync_feedback_bias_raw': round(self._get_sync_bias_raw(), 2),
                 'sync_feedback_bias_modelled': round(self._get_sync_bias_modelled(), 2),
                 'sync_feedback_flow_rate': self.flow_rate,
-                'flowguard': self.flowguard_status,
+                'flowguard': flowguard_status,
                 'tangle_prevention': {
                     'enabled': bool(self.p.tangle_prevention_enabled),
                     'active': self._tangle_prevention_active,
