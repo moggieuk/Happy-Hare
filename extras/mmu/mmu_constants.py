@@ -36,6 +36,7 @@ VENDOR_VVD            = "VVD"
 VENDOR_KMS            = "KMS"
 VENDOR_EMU            = "EMU"
 VENDOR_LOW_RIDER      = "LowRider"
+VENDOR_QIDI           = "QIDI"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
@@ -44,6 +45,7 @@ UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_NIGHT_OWL:    "Night Owl",
     VENDOR_VVD:          "BTT ViViD",
     VENDOR_LOW_RIDER:    "Low Rider",
+    VENDOR_QIDI:         "QIDI Box",
 }
 
 VENDORS = [
@@ -63,6 +65,7 @@ VENDORS = [
     VENDOR_KMS,
     VENDOR_EMU,
     VENDOR_LOW_RIDER,
+    VENDOR_QIDI,
     VENDOR_OTHER,
 ]
 

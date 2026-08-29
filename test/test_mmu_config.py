@@ -66,6 +66,15 @@ class TestBoxTurtleRender(unittest.TestCase):
 
     def test_parameters_and_macro_var_sections(self):
         self.assertIn('mmu_unit_parameters unit0', cfg.sections(self.rendered[PARAMS]))
+        parser = cfg.assemble(self.rendered)
+        params = dict(parser.items('mmu_unit_parameters unit0'))
+        self.assertEqual(params['gate_homing_endstop'], 'mmu_shared_exit')
+        self.assertEqual(params['gate_homing_max'], '300')
+        self.assertEqual(params['gate_parking_distance'], '-100')
+        self.assertEqual(params['gate_preload_endstop'], 'mmu_exit')
+        self.assertEqual(params['gate_preload_homing_max'], '200')
+        self.assertEqual(params['gate_preload_parking_distance'], '10')
+
         secs = cfg.sections(self.rendered[MACRO_VARS])
         # HH reads .variables off these at connect/ready
         # (extras/mmu/mmu_controller.py:205-207, 219-221)

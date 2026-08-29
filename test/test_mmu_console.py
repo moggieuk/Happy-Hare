@@ -330,7 +330,9 @@ class TestInstallDirBoots(unittest.TestCase):
         hh.run_gcode('MMU_PRELOAD GATE=0')
         hh.reactor.advance(0.)
         self.assertEqual(hh.mmu.gate_status[0], 1, 'preload did not mark the gate available')
-        self.assertAlmostEqual(fil.tip[0], -100.0, places=1)
+        expected = (fil.layout['mmu_exit']
+                    + hh.mmu.mmu_unit(0).p.gate_preload_parking_distance)
+        self.assertAlmostEqual(fil.tip[0], expected, places=1)
         self.assertEqual(hh.errors, [])
 
 
@@ -534,6 +536,147 @@ class TestBootupOutput(unittest.TestCase):
         joined = ' '.join(console.startup_output)
         self.assertIn('Ready', joined)
         self.assertEqual(console.sink, [], 'preload noise leaked into the console history')
+
+    def test_box_turtle_banner_filament_row_matches_post_preload_status(self):
+        """The cached welcome must not retain its pre-preload sensor readings."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        banner = '\n'.join(console.startup_output)
+        banner_row = next(line for line in banner.split('\n') if line.startswith('[T0]'))
+        expected, _plain = console.hh.mmu.logger._color_message(
+            console.hh.mmu.get_filament_position_string())
+        self.assertEqual(banner_row, expected)
+        self.assertIn('<span style="color:#', banner_row)
+        self.assertNotIn('{{', banner_row)
+        self.assertNotIn('{5}', banner_row)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+
+    def test_box_turtle_eject_row_matches_the_now_empty_physical_gate(self):
+        """Eject output must not retain the entry reading from before model removal."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_EJECT')
+
+        row = console.hh.mmu.get_filament_position_string()
+        self.assertIn('EMPTY', row)
+        self.assertFalse(console.hh.sensor('mmu_entry_0').present)
+        self.assertFalse(console.hh.sensor('mmu_exit_0').present)
+
+    def test_box_turtle_unload_parks_between_exit_and_shared_exit(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_LOAD')
+            console.run_command('MMU_UNLOAD')
+
+        self.assertAlmostEqual(console.fil.tip[0], 50, places=5)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+        self.assertEqual(console.failures, 0)
+        self.assertEqual(console.hh.errors, [])
+
+    def test_preload_requires_explicit_filament_placement_after_eject(self):
+        """Raw gcode must preserve the missing-filament failure; /place sets the scene."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            console.run_command('MMU_EJECT')
+            console.run_command('MMU_PRELOAD GATE=0')
+
+        self.assertIn("Couldn't pick up filament at gate", output.getvalue())
+        self.assertEqual(console.hh.mmu.gate_status[0], 0)
+        self.assertFalse(console.hh.sensor('mmu_entry_0').present)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/place 0')
+            console.run_command('MMU_PRELOAD GATE=0')
+
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+
+    def test_remove_clears_a_gate_path_without_turning_it_into_runout(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.fil.exhaust(0, sync=False)
+            console.meta('/remove 0')
+
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertFalse(console.hh.sensor('mmu_entry_0').present)
+        self.assertFalse(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+        self.assertEqual(console.fil.tail[0], float('-inf'))
+
+    def test_insert_fires_entry_autoload_when_enabled(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            console.meta('/remove 0')
+            console.meta('/insert 0')
+
+        self.assertIn('Preloading gate 0...', output.getvalue())
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
+
+    def test_insert_does_not_preload_when_gate_autoload_is_disabled(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        console.hh.mmu.mmu_unit(1).p.gate_autoload = 0
+
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            console.meta('/remove 1')
+            console.meta('/insert 1')
+
+        self.assertNotIn('Preloading gate 1...', output.getvalue())
+        self.assertTrue(console.hh.sensor('mmu_entry_1').present)
+        self.assertFalse(console.hh.sensor('mmu_exit_1').present)
+        self.assertEqual(console.fil.tip[1], console_mod.TIP_AT_GATE)
+
+    def test_reset_rebuilds_the_profile_startup_state(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        original_session = console.hh
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/remove 0')
+            console.meta('/sensor mmu_entry_0 disable')
+            console.meta('/reset')
+
+        self.assertIsNot(console.hh, original_session)
+        self.assertEqual(console.hh.mmu.gate_status[0], 1)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').present)
+        self.assertTrue(console.hh.sensor('mmu_entry_0').sensor.runout_helper.sensor_enabled)
+        self.assertTrue(console.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(console.hh.sensor('unit0:mmu_shared_exit').present)
 
     def _avail_row(self, console):
         """The gate-availability row of the bootup table. One sink entry is one MESSAGE, and
@@ -1742,7 +1885,7 @@ class TestConsoleScript(unittest.TestCase):
         # Put this gate through every fitted sensor; other gates remain merely parked.
         hh.place_filament(0, position=800.)
         affected = [name for name in console.fil.sensor_names()
-                    if console.fil.gate_of(name) in (None, 0)
+                    if console.fil.gate_of(name) == 0
                     # Buffer switches report stored slack/tension, not filament
                     # presence, and are intentionally not all true at once.
                     and not console.fil.models_sensor(name)]

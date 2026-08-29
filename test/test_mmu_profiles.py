@@ -18,6 +18,8 @@
 #   mmx        4 gates,  ServoSelector         - vendor-supplied gate angles, including a
 #                                                full load/unload behavioral test
 #   kms        4 gates,  VirtualSelector       - default KMS buffer with per-gate exit sensors
+#   qidi       4 gates,  VirtualSelector       - fixed QIDI v2 board, shared hub sensor,
+#                                                THR-hosted extruder sensor and stock dryer
 #   emu        5 gates,  VirtualSelector       - the only shipped profile with a
 #                                                PROPORTIONAL (analog) buffer sensor
 #   emu_ebb    5 gates,  VirtualSelector       - EMU on per-gate EBB36/42 gen1 boards,
@@ -45,6 +47,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
+import re
 import unittest
 
 from test.hh import session
@@ -61,6 +64,7 @@ BOOTABLE = {
     'pico_mmu': (4, 'ServoSelector'),
     'mmx': (4, 'ServoSelector'),
     'kms': (4, 'VirtualSelector'),
+    'qidi': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
     'emu_ebb': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
@@ -97,7 +101,43 @@ class TestEveryBootableProfile(unittest.TestCase):
         return hh
 
     def test_boxturtle(self):
-        self._check('boxturtle')
+        hh = self._check('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_homing_max, 300)
+        self.assertEqual(unit.p.gate_parking_distance, -100)
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+        self.assertEqual(unit.p.gate_preload_homing_max, 200)
+        self.assertEqual(unit.p.gate_preload_parking_distance, 10)
+        self.assertEqual(unit.p.sync_gear_current, 70)
+
+        model = hh.filament()
+        self.assertEqual(model.layout['mmu_exit'], 0)
+        self.assertEqual(model.layout['mmu_shared_exit'], 150)
+        hh.place_filament(0, position=-40)
+        hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertAlmostEqual(model.tip[0], 10)
+        self.assertTrue(model.triggered('mmu_exit_0'))
+        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+
+    def test_boxturtle_nfc_defaults_are_valid_for_its_split_endstops(self):
+        from test.hh import profiles
+        profile = profiles.Profile(
+            'boxturtle_nfc_defaults',
+            syms={
+                'MMU_TYPE_BOX_TURTLE_1_0': True,
+                'MMU_HAS_NFC_READER': True,
+                'MMU_HAS_COMMON_NFC_READER': True,
+            })
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot()
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+        self.assertEqual(unit.p.nfc_gate_clear_distance, -70)
+        self.assertEqual(unit.p.nfc_preload_clear_distance, 70)
+        self.assertEqual(hh.errors, [])
 
     def test_tradrack(self):
         """
@@ -144,6 +184,58 @@ class TestEveryBootableProfile(unittest.TestCase):
         hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
         self.assertEqual(unit.p.gate_preload_endstop, 'none')
         self.assertEqual(hh.errors, [])
+
+    def test_qidi(self):
+        """QIDI boots with its fixed board, THR sensor and normal dryer setup."""
+        with self.assertNoLogs(level='WARNING'):
+            hh = self._check('qidi')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_preload_endstop, 'none')
+        # Simulator override only; the installer/Kconfig default remains 200 mm.
+        self.assertEqual(unit.p.gate_preload_homing_max, 100)
+        self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
+        self.assertEqual(unit.filament_heater, '')
+        self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Env')
+
+        model = hh.filament()
+        self.assertEqual(model.layout['mmu_entry'], -150)
+        self.assertEqual(model.layout['mmu_shared_exit'], 150)
+        self.assertEqual(model.layout['extruder'], 900)
+        # Reproduce make console's startup preload of every gate. No other
+        # filament may leave the shared sensor asserted after the selected gate
+        # is ejected and preloaded again.
+        for gate in range(4):
+            hh.place_filament(gate, position=-40)
+            hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+
+        hh.run_gcode('MMU_SELECT GATE=0')
+        hh.run_gcode('MMU_EJECT')
+        hh.run_gcode('MMU_PRELOAD')
+        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+        at = len(hh.console)
+        hh.run_gcode('MMU_STATUS')
+        status = re.sub(r'<[^>]+>', '', '\n'.join(hh.console[at:]))
+        self.assertIn('■◉■■■■■◯', status)
+
+    def test_non_qidi_hardware_controlled_driver_warns_and_boots(self):
+        from test.hh import profiles
+        profile = profiles.BOXTURTLE.derive(
+            'boxturtle_hardware_drivers_runtime',
+            syms={'CHOICE_GEAR_TMC_NONE': True})
+        hh = session(profile)
+        self.addCleanup(hh.close)
+
+        with self.assertLogs(level='WARNING') as captured:
+            hh.boot()
+
+        self.assertTrue(hh.fired('mmu:bootup'))
+        self.assertEqual(hh.errors, [])
+        self.assertTrue(any(
+            'has no software-controlled TMC; assuming motor current and driver mode '
+            'are controlled in hardware' in line
+            for line in captured.output))
 
     def test_emu(self):
         self._check('emu')

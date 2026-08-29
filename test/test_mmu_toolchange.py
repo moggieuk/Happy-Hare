@@ -29,7 +29,6 @@ import logging
 import unittest
 
 from test.hh import session
-from test.hh.filament import TIP_PARKED
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -42,6 +41,7 @@ TOOL_UNKNOWN = -2
 
 
 class ToolchangeTestCase(unittest.TestCase):
+    # This suite exercises Box Turtle's real split exit/shared-exit geometry.
     PROFILE = 'boxturtle'
     PRELOAD_GATES = (0,)
 
@@ -82,7 +82,7 @@ class TestLoad(ToolchangeTestCase):
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_LOAD')
         reasons = [r for _g, _d, r in self.fil.history]
-        self.assertTrue(any('mmu_exit_0' in r for r in reasons),
+        self.assertTrue(any('unit0:mmu_shared_exit' in r for r in reasons),
                         'never homed to the gate')
         self.assertTrue(any('filament_compression' in r for r in reasons),
                         'never homed to the extruder compression sensor')
@@ -94,7 +94,9 @@ class TestLoad(ToolchangeTestCase):
         moves = [d for _g, d, reason in self.fil.history
                  if 'homing -> unit0:filament_compression' in reason]
         buffer = self.hh.mmu.mmu_machine.units[0].buffer
-        expected = self.fil.layout['extruder_entry'] + buffer.buffer_maxrange * 0.7
+        expected = (self.fil.layout['extruder_entry']
+                    + buffer.buffer_maxrange * 0.7
+                    - self.fil.layout['mmu_shared_exit'])
         self.assertTrue(moves)
         # Loading immediately reverse-homes off compression with the extruder; that
         # second transition is only a microscopic release move.
@@ -165,7 +167,9 @@ class TestUnload(ToolchangeTestCase):
     def test_unload_returns_filament_to_the_park_position(self):
         self.hh.run_gcode('MMU_UNLOAD')
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
-        self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=1)
+        park = (self.fil.layout['mmu_shared_exit']
+                + self.hh.mmu.mmu_unit(0).p.gate_parking_distance)
+        self.assertAlmostEqual(self.fil.tip[0], park, places=1)
         self.assertEqual(self.hh.errors, [])
 
     def test_unload_clears_the_path_sensors(self):
@@ -176,7 +180,7 @@ class TestUnload(ToolchangeTestCase):
         user) clears it.
         """
         self.hh.run_gcode('MMU_UNLOAD')
-        self.assertFalse(self.hh.sensor('mmu_exit_0').present)
+        self.assertFalse(self.hh.sensor('unit0:mmu_shared_exit').present)
         self.assertTrue(self.hh.sensor('mmu_entry_0').present)
 
     def test_unload_names_the_gate_it_is_unloading(self):
@@ -200,7 +204,8 @@ class TestUnload(ToolchangeTestCase):
 
     def test_load_unload_is_a_round_trip(self):
         """The whole point: a cycle must leave the machine where it started."""
-        start = TIP_PARKED
+        start = (self.fil.layout['mmu_shared_exit']
+                 + self.hh.mmu.mmu_unit(0).p.gate_parking_distance)
         self.hh.run_gcode('MMU_UNLOAD')
         self.assertAlmostEqual(self.fil.tip[0], start, places=1)
         self.hh.run_gcode('MMU_LOAD')
@@ -240,7 +245,9 @@ class TestToolChange(ToolchangeTestCase):
         self.assertEqual(self.hh.mmu.tool_selected, 2)
         self.assertEqual(self.hh.mmu.gate_selected, 2)
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
-        self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=1)
+        park = (self.fil.layout['mmu_shared_exit']
+                + self.hh.mmu.mmu_unit(0).p.gate_parking_distance)
+        self.assertAlmostEqual(self.fil.tip[0], park, places=1)
         self.assertGreater(self.fil.tip[2], self.fil.layout['extruder_entry'])
         self.assertEqual(self.hh.errors, [])
 

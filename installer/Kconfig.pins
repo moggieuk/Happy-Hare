@@ -35,6 +35,11 @@ menu "Pins / TMC"
       bool "TMC5160"
     config CHOICE_GEAR_TMC2240
       bool "TMC2240"
+    config CHOICE_GEAR_TMC_NONE
+      bool "None / hardware controlled"
+      help
+        Select this when motor current and driver mode are configured in
+        hardware and Klipper only controls step, direction and enable.
   endchoice
 
   config PARAM_GEAR_TMC
@@ -45,6 +50,7 @@ menu "Pins / TMC"
     default "tmc2660" if CHOICE_GEAR_TMC2660
     default "tmc5160" if CHOICE_GEAR_TMC5160
     default "tmc2240" if CHOICE_GEAR_TMC2240
+    default ""        if CHOICE_GEAR_TMC_NONE
 
 # -------------------------------------
 # Gear stepper
@@ -52,7 +58,8 @@ menu "Pins / TMC"
 
   menu "Gear pins"
     config PIN_GEAR_UART
-      string "Gear UART pin    "
+      string
+      prompt "Gear UART pin    " if PARAM_GEAR_TMC != ""
     config PIN_GEAR_STEP
       string "Gear step pin    "
     config PIN_GEAR_DIR
@@ -60,7 +67,8 @@ menu "Pins / TMC"
     config PIN_GEAR_ENABLE
       string "Gear enable pin  "
     config PIN_GEAR_DIAG
-      string "Gear diag pin    "
+      string
+      prompt "Gear diag pin    " if PARAM_GEAR_TMC != ""
 
     @repeat var=i min=1 max=11@
       config PIN_GEAR_UART_$(i)
@@ -80,7 +88,7 @@ menu "Pins / TMC"
         if PARAM_NUM_GATES > $(i)
           comment "_"
           config PIN_GEAR_UART_$(i)
-            prompt "Gear $(i) UART pin  "
+            prompt "Gear $(i) UART pin  " if PARAM_GEAR_TMC != ""
           config PIN_GEAR_STEP_$(i)
             prompt "Gear $(i) step pin  "
           config PIN_GEAR_DIR_$(i)
@@ -88,7 +96,7 @@ menu "Pins / TMC"
           config PIN_GEAR_ENABLE_$(i)
             prompt "Gear $(i) enable pin"
           config PIN_GEAR_DIAG_$(i)
-            prompt "Gear $(i) diag pin  "
+            prompt "Gear $(i) diag pin  " if PARAM_GEAR_TMC != ""
         endif
       @endrepeat@
     endif

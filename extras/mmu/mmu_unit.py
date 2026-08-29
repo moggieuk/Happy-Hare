@@ -117,6 +117,7 @@ class MmuUnit:
             VENDOR_KMS:          replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_EMU:          replace(DEF_PROFILE, variable_bowden_lengths=True, filament_always_gripped=True),
             VENDOR_LOW_RIDER:    replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY),
+            VENDOR_QIDI:         replace(DEF_PROFILE, variable_rotation_distances=False, filament_always_gripped=True),
         }
 
         if self.mmu_vendor == VENDOR_PRUSA:
@@ -268,7 +269,13 @@ class MmuUnit:
                 break
 
         if gear_tmc is None:
-            raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (gear_name, self.name))
+            if self.mmu_vendor == VENDOR_QIDI:
+                logging.info("MMU: No software-controlled TMC for %s on QIDI mmu_unit %s" % (gear_name, self.name))
+            else:
+                logging.warning(
+                    "MMU: Gear stepper %s on mmu_unit %s has no software-controlled TMC; "
+                    "assuming motor current and driver mode are controlled in hardware"
+                    % (gear_name, self.name))
 
         # If multiple gear steppers share all possible attributes (saves repeated configuration)
         if self.multigear:
