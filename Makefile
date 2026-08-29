@@ -73,9 +73,10 @@ export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 VENV       ?= $(SRC)/venv
 VENV_PY    := $(VENV)/bin/python
 VENV_STAMP := $(VENV)/.hh-test-requirements
-# Separate stamps: test, installer and utility requirements are installed
+# Separate stamps: test, installer, lint and utility requirements are installed
 # independently into the same venv, and none should trigger the others
 INSTALLER_STAMP := $(VENV)/.hh-installer-requirements
+LINT_STAMP      := $(VENV)/.hh-lint-requirements
 UTILS_STAMP     := $(VENV)/.hh-utils-requirements
 
 # Interpreter used to create the venv, falling back where plain `python` isn't a name
@@ -176,7 +177,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test console filament_display plot_sync shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff lint test console filament_display plot_sync shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -560,9 +561,9 @@ $(VENV_PY):
 		exit 1; \
 	}
 
-# One rule for both tenants: '.hh-<dir>-requirements' stamps <dir>/requirements.txt, so test/
-# and installer/ deps install independently. Stamps live inside the venv, so a deleted venv
-# or an edited requirements.txt reinstalls
+# One rule for every dependency tenant: '.hh-<dir>-requirements' stamps
+# <dir>/requirements.txt, so each tool installs independently. Stamps live inside the venv,
+# so a deleted venv or an edited requirements.txt reinstalls.
 $(VENV)/.hh-%-requirements: $(SRC)/%/requirements.txt | $(VENV_PY)
 	$(Q)$(venv_pip_check)
 	$(Q)echo "$(C_INFO)Installing $* dependencies from $(patsubst $(SRC)/%,%,$<)$(C_OFF)"
@@ -581,9 +582,14 @@ installer_venv: $(INSTALLER_STAMP)
 
 
 
-###########################
-##### Testing targets #####
-###########################
+####################################
+##### Testing and lint targets #####
+####################################
+
+# Install Ruff independently of the test harness and run it against the repository.
+# Pass additional Ruff arguments through ARGS, e.g. make lint ARGS='--show-fixes'.
+lint: $(LINT_STAMP)
+	$(Q)$(VENV)/bin/ruff check . $(ARGS)
 
 # Opens the interactive file picker, everything pre-ticked, so Enter runs the whole suite as
 # before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra
