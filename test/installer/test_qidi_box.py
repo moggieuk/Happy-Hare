@@ -104,11 +104,10 @@ class TestQidiBoxProfile(unittest.TestCase):
     def test_hardware_controlled_drivers_do_not_render_tmc_sections(self):
         self.assertEqual(self.kconfig.get("PARAM_GEAR_TMC"), "")
         self.assertEqual(self.other_kconfig.get("PARAM_GEAR_TMC"), "tmc2209")
-        self.assertFalse(self.kconfig.is_enabled("MMU_HAS_GEAR_TMC"))
-        self.assertTrue(self.other_kconfig.is_enabled("MMU_HAS_GEAR_TMC"))
-        self.assertEqual(
+        self.assertTrue(self.kconfig.is_enabled("CHOICE_GEAR_TMC_NONE"))
+        self.assertFalse(self.other_kconfig.is_enabled("CHOICE_GEAR_TMC_NONE"))
+        self.assertGreater(
             self.kconfig.named_choices["CHOICE_GEAR_TMC"].visibility, 0)
-        self.assertNotIn("CHOICE_GEAR_TMC_NONE", self.kconfig.syms)
         for symbol in ("PIN_GEAR_UART", "PIN_GEAR_DIAG",
                        "PIN_GEAR_UART_1", "PIN_GEAR_DIAG_1"):
             with self.subTest(hidden_prompt=symbol):
@@ -122,6 +121,28 @@ class TestQidiBoxProfile(unittest.TestCase):
         ))
         for suffix in ("", "_1", "_2", "_3"):
             self.assertIn("[mmu_stepper unit0_gear%s]" % suffix, hardware)
+
+    def test_hardware_controlled_driver_option_is_available_to_other_mmus(self):
+        profile = profiles.Profile(
+            "boxturtle_hardware_drivers",
+            syms={
+                "MMU_TYPE_BOX_TURTLE_1_0": True,
+                "CHOICE_GEAR_TMC_NONE": True,
+            },
+        )
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(profile.name, profile.syms)
+        hardware = cfg.render(profile)["config/base/mmu_hardware.cfg"]
+
+        self.assertTrue(kconfig.is_enabled("CHOICE_GEAR_TMC_NONE"))
+        self.assertEqual(kconfig.get("PARAM_GEAR_TMC"), "")
+        self.assertEqual(kconfig.syms["PIN_GEAR_UART"].visibility, 0)
+        self.assertEqual(kconfig.syms["PIN_GEAR_DIAG"].visibility, 0)
+        self.assertIsNone(re.search(
+            r"^\[tmc\w+ mmu_stepper unit0_gear(?:_\d+)?\]$",
+            hardware,
+            re.MULTILINE,
+        ))
 
     def test_fixed_board_pinout(self):
         hardware = self.rendered["config/base/mmu_hardware.cfg"]

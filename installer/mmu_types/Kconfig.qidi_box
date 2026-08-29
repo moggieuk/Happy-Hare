@@ -24,10 +24,11 @@ config MMU_TYPE_QIDI_BOX_1_0
 
 if MMU_TYPE_QIDI_BOX_1_0
 
-  # Motor current and driver mode are configured in hardware. Keep the TMC
-  # type empty so no TMC sections or UART/DIAG pin prompts are generated.
-  config MMU_HAS_GEAR_TMC
-    default n
+  # Motor current and driver mode are configured in hardware. Default to no
+  # Klipper-managed TMC, while allowing modified units to select one normally.
+  choice CHOICE_GEAR_TMC
+    default CHOICE_GEAR_TMC_NONE
+  endchoice
 
   choice CHOICE_BUFFER_SPRING_STATE
     default CHOICE_BUFFER_SPRING_STATE_TENSION

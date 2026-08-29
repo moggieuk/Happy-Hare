@@ -18,7 +18,6 @@
 #   MMU_HAS_PER_GATE_MCU
 #   MMU_HAS_EJECT_BUTTONS
 #   MMU_HAS_BUFFER_MCU
-#   MMU_HAS_GEAR_TMC
 #
 #   PARAM_MISC_HARDWARE
 #
@@ -84,9 +83,6 @@ config MMU_HAS_EJECT_BUTTONS
 # Some new designs have mcu integrated in sync-feedback buffer mcu
 config MMU_HAS_BUFFER_MCU
   def_bool n
-
-config MMU_HAS_GEAR_TMC
-  def_bool y
 
 # Some custom designs have some pre-packaged hardware configuration
 config PARAM_MISC_HARDWARE
