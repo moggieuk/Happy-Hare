@@ -1,5 +1,5 @@
 menu "Blobifier            (_BLOBIFIER)"
-  depends on MMU_HAS_BLOBIFIER
+  visible if MMU_HAS_BLOBIFIER
   forceshow
   help
     Blobifier purging system configuration variables.

@@ -1,5 +1,5 @@
 menu "Client macros        (_MMU_CLIENT)"
-  depends on INSTALL_CLIENT_MACROS
+  visible if INSTALL_CLIENT_MACROS
   forceshow
   help
     Happy Hare client macro configuration variables.
