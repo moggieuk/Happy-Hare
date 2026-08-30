@@ -11,7 +11,7 @@
 # Exit immediately on error (really important to catch menuconfig errors / non-saves / aborts)
 set -e
 
-SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=${INSTALL_SH_SCRIPT_DIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 SCRIPT_NAME=$(basename "$0")
 
 # Get current HH version from the mmu_constants.py file
@@ -39,17 +39,19 @@ usage() {
     echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.mmu_config) will be used."
     echo "  -i for interactive install (open menuconfig)"
     echo "  -u, -d for uninstall"
-    echo "  -y, --yes answer yes to all y/n prompts"
-    echo "  -l, --last recover .mmu_config files from the latest MMU backup"
-    echo "  -p, --prev choose an MMU backup and recover its .mmu_config files"
-    echo "  -f to just restore klipper/moonraker symlinks (recover after hard klipper update)"
-    echo "  -z skip github update check (nullifies -b <branch>)"
-    echo "  -s to skip restart of services"
     echo "  -b <branch> to switch to specified feature branch (sticky)"
     echo "  -n to specify a multiple MMU unit setup"
     echo "  -k <dir> non-default klipper home directory"
     echo "  -c <dir> non-default klipper config directory"
     echo "  -m <dir> non-default moonraker home directory"
+    echo "  -p, --prev choose an MMU backup and recover its configuration"
+    echo
+    echo "  Advanced:"
+    echo "  -y, --yes automatically answer yes to all y/n prompts"
+    echo "  -l, --last recover .mmu_config files from the last config backup"
+    echo "  -f to just restore klipper/moonraker symlinks (recover after hard klipper update)"
+    echo "  -z skip github update check (nullifies -b <branch>)"
+    echo "  -s to skip restart of services"
     # TODO: Repetier-Server stub support
     # echo "  -R specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
@@ -130,10 +132,15 @@ time_elapsed() {
     echo
 }
 
-# Best-effort guess at the printer config directory, used only to detect a v3 install
-# before self-update/uninstall/menuconfig have touched anything. Kconfig resolves this
-# authoritatively later in the script; this just needs to be good enough for the
-# one-time upgrade prompt below.
+
+##################################
+##### Config Backup/Recovery #####
+##################################
+
+# Best-effort guess at the printer config directory for early recovery and v3 checks,
+# before self-update/menuconfig have touched anything. Kconfig resolves this
+# authoritatively later in the script; this just needs to be good enough for these
+# preflight operations.
 guess_klipper_config_home() {
     if [ -n "${TESTDIR}" ]; then
         echo "${TESTDIR}/printer_data/config"
@@ -146,24 +153,63 @@ guess_klipper_config_home() {
     fi
 }
 
-# Copy the base and any per-unit Kconfig files from a selected backup. Files
-# ending in .old are prior Kconfig snapshots rather than the saved configuration.
-recover_backup_config() {
-    selected_backup=$1
+# Copy the base and any per-unit Kconfig files from the restored MMU directory
+# into Happy-Hare. Files ending in .old are prior Kconfig snapshots.
+copy_recovered_kconfigs() {
+    restored_config=$1
+    recovery_destination=${SCRIPT_DIR}
+    if [ -n "${TESTDIR}" ]; then
+        recovery_destination=${TESTDIR}
+        mkdir -p "${recovery_destination}"
+    fi
+
     recovered=n
-    for config_file in "${selected_backup}"/.mmu_config*; do
+    for config_file in "${restored_config}"/.mmu_config*; do
         [ -f "${config_file}" ] || continue
         case "${config_file}" in
         *.old) continue ;;
         esac
-        echo "${C_INFO}Recovering '$(basename "${config_file}")' from '$(basename "${selected_backup}")'${C_OFF}"
-        cp -p -- "${config_file}" "${SCRIPT_DIR}/$(basename "${config_file}")"
+        echo "${C_INFO}Recovering '$(basename "${config_file}")' from '$(basename "${restored_config}")'${C_OFF}"
+        cp -p "${config_file}" "${recovery_destination}/$(basename "${config_file}")"
         recovered=y
     done
 
     if [ "${recovered}" = n ]; then
-        echo "${C_WARNING}No recoverable .mmu_config files found in '${selected_backup}'${C_OFF}"
+        echo "${C_WARNING}No recoverable .mmu_config files found in '${restored_config}'${C_OFF}"
     fi
+}
+
+# Preserve the current MMU directory with the installer's standard timestamped
+# backup naming, restore the selected directory wholesale, then recover its
+# active Kconfig files into Happy-Hare before normal install processing begins.
+restore_mmu_config() {
+    selected_config=$1
+    config_home=$(guess_klipper_config_home)
+    current_config="${config_home}/mmu"
+
+    # The installed config is already in the desired location. Only recover its
+    # Kconfig files into Happy-Hare; the normal install will make its usual backup.
+    if [ "${selected_config}" = "${current_config}" ]; then
+        copy_recovered_kconfigs "${current_config}"
+        return 0
+    fi
+
+    if [ -e "${current_config}" ]; then
+        backup_base="${config_home}/mmu.old-$(date +%Y%m%d-%H%M%S)"
+        current_backup=${backup_base}
+        backup_suffix=0
+        while [ -e "${current_backup}" ]; do
+            backup_suffix=$((backup_suffix + 1))
+            current_backup="${backup_base}-${backup_suffix}"
+        done
+
+        echo "${C_INFO}Backing up current MMU config to '$(basename "${current_backup}")'${C_OFF}"
+        mv "${current_config}" "${current_backup}"
+    fi
+
+    echo "${C_INFO}Restoring MMU config from '$(basename "${selected_config}")'${C_OFF}"
+    cp -R "${selected_config}" "${current_config}"
+    copy_recovered_kconfigs "${current_config}"
 }
 
 # Format the timestamp embedded in standard mmu.old-YYYYMMDD-HHMMSS backup names.
@@ -190,7 +236,7 @@ recover_last_config() {
     current_config="${config_home}/mmu"
 
     if [ -d "${current_config}" ] && [ -f "${current_config}/.mmu_config" ]; then
-        recover_backup_config "${current_config}"
+        restore_mmu_config "${current_config}"
         return 0
     fi
 
@@ -207,7 +253,7 @@ recover_last_config() {
         return 0
     fi
 
-    recover_backup_config "${last_backup}"
+    restore_mmu_config "${last_backup}"
 }
 
 # List the current config first, when available, followed by every eligible backup
@@ -253,7 +299,7 @@ recover_previous_config() {
         current=$((current + 1))
         if [ "${current}" -eq "${selected}" ]; then
             echo
-            recover_backup_config "${backup_dir}"
+            restore_mmu_config "${backup_dir}"
             return 0
         fi
     done
@@ -476,6 +522,12 @@ enforce_root_policy() {
     esac
 }
 
+# Unit tests source the real installer functions, then exercise them against
+# temporary filesystem fixtures without entering the installer main routine.
+if [ "${INSTALL_SH_SOURCE_ONLY:-}" = y ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 
 # Convert long options to short options
 for arg in "$@"; do
@@ -541,6 +593,9 @@ if { [ "${F_RECOVER_LAST}" ] || [ "${F_RECOVER_PREVIOUS}" ]; } && [ "${F_UNINSTA
     exit 1
 fi
 
+# Recovery must remain in this early preflight position. In particular, it must
+# run before self-update, v3 detection, KCONFIG_CONFIG setup, or any code that
+# sources a .mmu_config file. Only option, platform, and root-safety checks precede it.
 if { [ "${F_RECOVER_LAST}" ] || [ "${F_RECOVER_PREVIOUS}" ]; } && [ ! "${F_CONFIG_RECOVERED}" ]; then
     if [ "${F_RECOVER_PREVIOUS}" ]; then
         recover_previous_config
