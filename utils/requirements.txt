@@ -1,0 +1,6 @@
+# FlowGuard telemetry plotting dependencies. Deliberately separate from the
+# production installer and test harness: `make plot_sync` creates ./venv and
+# installs or refreshes these automatically via Makefile's generic stamp rule.
+
+matplotlib
+numpy

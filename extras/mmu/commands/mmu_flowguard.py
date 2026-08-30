@@ -1,0 +1,74 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Implements MMU_FLOWGUARD command
+#  - This is a "per-unit" command
+#
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
+# Happy Hare imports
+from ..mmu_constants   import *
+from ..mmu_utils       import MmuError
+from .mmu_base_command import *
+
+
+class MmuFlowGuardCommand(BaseCommand):
+
+    CMD = "MMU_FLOWGUARD"
+
+    HELP_BRIEF = "Enable/disable FlowGuard (clog-tangle detection)"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "UNIT   = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
+        + "ENABLE = [1|0] Enable/disable FlowGuard clog/tangle detection\n"
+        + "(no parameters for status report)\n"
+    )
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}          ...Report FlowGuard clog/tangle detection status\n"
+        + f"{CMD} ENABLE=1 ...Enable FlowGuard detection on the active unit\n"
+        + f"{CMD} ENABLE=0 UNIT=ALL ...Disable FlowGuard detection on all units\n"
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_GENERAL,
+            per_unit=True
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
+        sf = mmu_unit.sync_feedback # Get sync_feedback associated with unit
+
+        if self.check_if_disabled(): return
+
+        if not ((mmu_unit.has_buffer() and sf.p.sync_feedback_enabled) or mmu_unit.has_encoder()):
+            mmu.log_warning("FlowGuard requires sync feedback enabled on buffer or encoder to function")
+            return
+
+        enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
+
+        if enable is not None:
+            sf.config_flowguard_feature(enable)
+
+        # Just report status
+        if sf.p.flowguard_enabled:
+            active = " and currently active" if sf.flowguard_active else " (not currently active)"
+            mmu.log_always(f"FlowGuard monitoring feature is enabled{active} on {mmu_unit.name}")
+        else:
+            mmu.log_always(f"FlowGuard monitoring feature is disabled on {mmu_unit.name}")

@@ -1,0 +1,117 @@
+config MMU_TYPE_QIDI_BOX_1_0
+  bool "QIDI Box"
+  help
+    QIDI Box is a four-gate type-B MMU with one always-engaged gear
+    motor per gate, a shared hub sensor, pre-gate sensors, a tension
+    feedback buffer, and a built-in filament dryer. The stock stepper
+    drivers are configured in hardware rather than through TMC UART.
+  select VIRTUAL_SELECTOR
+  select MMU_HAS_SENSOR_ENTRY
+  select MMU_HAS_SENSOR_SHARED_EXIT
+  select MMU_HAS_SENSOR_EXTRUDER
+  select MMU_HAS_SYNC_FEEDBACK_BUFFER
+  select MMU_HAS_SENSOR_BUFFER_TENSION
+  select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
+  select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+  imply  MMU_HAS_ENVIRONMENT_SENSOR
+  imply  MMU_HAS_HEATER
+  select PARAM_REQUIRE_BOWDEN_MOVE
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select PARAM_SYNC_TO_EXTRUDER
+  select PARAM_SYNC_FORM_TIP
+  select PARAM_SYNC_PURGE
+  select DISABLE_NUM_GATES_OPTION
+
+if MMU_TYPE_QIDI_BOX_1_0
+
+  # Motor current and driver mode are configured in hardware. Default to no
+  # Klipper-managed TMC, while allowing modified units to select one normally.
+  choice CHOICE_GEAR_TMC
+    default CHOICE_GEAR_TMC_NONE
+  endchoice
+
+  choice CHOICE_BUFFER_SPRING_STATE
+    default CHOICE_BUFFER_SPRING_STATE_TENSION
+  endchoice
+
+  # There are no per-gate exit sensors. Use a short fixed preload move so a
+  # gate can be prepared without entering or claiming the shared hub path.
+  choice CHOICE_GATE_PRELOAD_ENDSTOP
+    default CHOICE_GATE_PRELOAD_ENDSTOP_NONE
+  endchoice
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+
+  # ----------------------------------------
+  # Defaults
+  # ----------------------------------------
+
+  config PARAM_VENDOR
+    default "QIDI"
+  config PARAM_VERSION
+    default "1.0"
+  config PARAM_NUM_GATES
+    default 4
+  choice BOARD_TYPE
+    default BOARD_TYPE_QIDI_BOX_2_0
+  endchoice
+  choice CHOICE_TOOLHEAD_TYPE
+    default TOOLHEAD_TYPE_QIDI_Q2
+  endchoice
+
+  # Gear stepper ---------------------------
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_ROTATION_DISTANCE
+    default 13.6
+  config PARAM_GEAR_MICROSTEPS
+    default 16
+
+  # Q2 toolhead cutter --------------------
+  if MMU_HAS_TOOLHEAD_CUTTER && TOOLHEAD_TYPE_QIDI_Q2
+    config VAR_CUT_TIP_PIN_LOC_XY
+      default "15, 0.5"
+    config VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY
+      default "-0.5, 0.5"
+    config VAR_CUT_TIP_RETRACT_LENGTH
+      default 15
+    config BOOL_CUT_TIP_SIMPLE_TIP_FORMING
+      default n
+    config VAR_CUT_TIP_PUSHBACK_LENGTH
+      default 0
+  endif
+
+  # Speeds ---------------------------------
+  config PARAM_GEAR_LOAD_SPEED
+    default 120
+  config PARAM_GEAR_SHORT_MOVE_SPEED
+    default 80
+  config PARAM_EXTRUDER_LOAD_SPEED
+    default 16
+  config PARAM_EXTRUDER_UNLOAD_SPEED
+    default 16
+
+  # Gate endstops and homing ---------------
+  config PARAM_GATE_HOMING_MAX
+    default 1500
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default 200
+  config PARAM_GATE_PARKING_DISTANCE
+    default -80
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default 1500
+
+  # Buffer ---------------------------------
+  config PARAM_BUFFER_RANGE
+    default 8
+  config PARAM_BUFFER_MAXRANGE
+    default 12
+
+  comment "_"
+
+endif

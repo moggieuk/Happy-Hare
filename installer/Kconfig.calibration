@@ -1,0 +1,63 @@
+# Calibration and autotuning parameter token types and defaults
+#
+# Behavior parameters are generally determined by MMU type, use
+#   "imply  XXX"          .. to suggest on
+#   "select XXX"          .. to force on
+#   "select UNSELECT_XXX" .. to force off/disable
+#
+# Responsible for setting:
+#   PARAM_AUTOCAL_BOWDEN_LENGTH
+#   PARAM_AUTOTUNE_BOWDEN_LENGTH
+#   PARAM_SKIP_CAL_ROTATION_DISTANCE
+#   PARAM_AUTOTUNE_ROTATION_DISTANCE
+#   PARAM_SKIP_CAL_ENCODER
+
+menu "Calibration/Autotuning"
+
+  config PARAM_AUTOCAL_BOWDEN_LENGTH
+    boolint "Auto calibrate bowden length"
+    default 1 if \
+      MMU_HAS_SENSOR_EXTRUDER || \
+      (MMU_HAS_SYNC_FEEDBACK_BUFFER && \
+       (MMU_HAS_SENSOR_BUFFER_COMPRESSION || \
+        MMU_HAS_SENSOR_BUFFER_PROPORTIONAL))
+    help
+      Automated bowden length calibration.
+      The calibrated bowden length will be established on first load. It can also be set
+      manually or reset with MMU_CALIBRATE_BOWDEN. Best results require the use of
+      sync-feedback-compression or extruder sensor but gear-touch or encoder will also work.
+      Note that 'extruder_homing_endstop' cannot be 'none'
+  config PARAM_AUTOTUNE_BOWDEN_LENGTH
+    boolint "Autotune bowden length"
+    default 0
+    help
+      Automated bowden length tuning.
+      Once calibrated this setting will tune the bowden distance over time.
+      Works best with extruder or toolhead sensor because this provides an
+      accurate homing point near the extruder
+  config PARAM_SKIP_CAL_ROTATION_DISTANCE
+    boolint "Don't force rotation distance calibration"
+    default 1
+    help
+      Skip rotation distance calibration (MMU_CALIBRATE_GEAR).
+      This will rely on installed default value (although it can still be calibrated).
+      Usually a good choice if autotune is enabled.
+  config PARAM_AUTOTUNE_ROTATION_DISTANCE
+    boolint "Autotune rotation distance"
+    default 0
+    #default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && \
+    #    ((MMU_HAS_SENSOR_BUFFER_COMPRESSION && \
+    #      MMU_HAS_SENSOR_BUFFER_TENSION) || \
+    #     MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)
+    help
+      Automated gate calibration/tuning.
+      Requires sync-feedback sensor (aka "buffer") with both compression and tension switches
+      or accurately calibrated encoder (encoder works only with gate 0)
+  config PARAM_SKIP_CAL_ENCODER
+    boolint "Don't force encoder calibration"
+    default 1
+    help
+      Skip encoder calibration (MMU_CALIBRATE_ENCODER).
+      Will rely on installed default value (although it can still be calibrated).
+      Not recommended but allows for easier initial setup especially when using 'autotune_encoder'
+endmenu

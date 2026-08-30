@@ -1,0 +1,159 @@
+# Define MMU base capabilities excluding filament sensors.
+#
+# H/W features are represented by tokens with "MMU_HAS_" prefix
+# These are not designed to be directly exposed in UI.
+#
+#   MMU_HAS_SELECTOR_STEPPER
+#   MMU_HAS_SELECTOR_SERVO
+#   MMU_HAS_ENCODER
+#   MMU_HAS_SYNC_FEEDBACK_BUFFER
+#   MMU_HAS_ESPOOLER
+#   MMU_HAS_FILAMENT_BUFFER
+#   MMU_HAS_LEDS
+#   MMU_HAS_FANS
+#   MMU_HAS_ENVIRONMENT_SENSOR
+#   MMU_HAS_PER_GATE_ENV_SENSORS
+#   MMU_HAS_HEATER
+#   MMU_HAS_PER_GATE_HEATERS
+#   MMU_HAS_PER_GATE_MCU
+#   MMU_HAS_EJECT_BUTTONS
+#   MMU_HAS_BUFFER_MCU
+#
+#   PARAM_MISC_HARDWARE
+#
+# Behavior parameters are generally determined by MMU type, use
+#   "imply  XXX"          .. to suggest on
+#   "select XXX"          .. to force on
+#   "select UNSELECT_XXX" .. to force off/disable
+#
+# but can be tuned, especially for custom designs.
+#
+#   (PARAM_HAS_BYPASS) set in Kconfig.bypass
+#   PARAM_VARIABLE_BOWDEN_LENGTHS
+#   PARAM_VARIABLE_ROTATION_DISTANCES
+#   PARAM_REQUIRE_BOWDEN_MOVE
+#   PARAM_FILAMENT_ALWAYS_GRIPPED
+#
+# Some custom designs have special hardware setup. If so, that is included
+# in MISC_HARDWARE and these tokens may be 'y' to prevent duplicate setup.
+#   CUSTOM_LED_SETUP
+#   CUSTOM_ENVIRONMENT_SENSOR_SETUP
+#   CUSTOM_HEATER_SETUP
+#
+
+config MMU_HAS_SELECTOR_STEPPER
+  def_bool n
+
+config MMU_HAS_SELECTOR_SERVO
+  def_bool n
+
+config MMU_HAS_ENCODER
+  def_bool n
+
+config MMU_HAS_SYNC_FEEDBACK_BUFFER
+  def_bool n
+
+config MMU_HAS_ESPOOLER
+  def_bool n
+
+config MMU_HAS_FILAMENT_BUFFER
+  def_bool n
+
+config MMU_HAS_LEDS
+  def_bool n
+
+config MMU_HAS_FANS
+  def_bool n
+
+config MMU_HAS_ENVIRONMENT_SENSOR
+  def_bool n
+
+config MMU_HAS_PER_GATE_ENV_SENSORS
+  def_bool n
+
+config MMU_HAS_HEATER
+  def_bool n
+
+config MMU_HAS_PER_GATE_HEATERS
+  def_bool n
+
+config MMU_HAS_EJECT_BUTTONS
+  def_bool n
+
+# Some new designs have mcu integrated in sync-feedback buffer mcu
+config MMU_HAS_BUFFER_MCU
+  def_bool n
+
+# Some custom designs have some pre-packaged hardware configuration
+config PARAM_MISC_HARDWARE
+  string
+
+
+menu "Design attributes"
+  help
+    ADVANCED: This allows tweaking of vendor defaults that control the
+    way the MMU behaves. It allows supporting some modifications or
+    specific setup.
+
+    It is unlikely that you want to change anything here so be careful.
+
+  config MMU_HAS_PER_GATE_MCU
+    bool
+    prompt "Design has per-gate MCU's" if PER_GATE_MCU
+    default n
+    help
+      If you are seeing this you must have enabled per-gate MCU support.
+      This option allows you to turn it off so it won't appear again
+      until you run with the `-e` flag.
+
+  source "Kconfig.selector_type" 
+
+  source "Kconfig.bypass" 
+
+  config UNSELECT_VARIABLE_BOWDEN_LENGTHS
+    def_bool n
+  config PARAM_VARIABLE_BOWDEN_LENGTHS
+    boolint "Variable bowden lengths?"
+    default 0
+    forceshow
+    depends on !UNSELECT_VARIABLE_BOWDEN_LENGTHS
+    help
+      Whether filament path from parked position in the gate to the extruder is different
+      for each gate. Typically this is true of type-B designs but not true of type-A with
+      Linear Selector and single bowden exit from the MMU.
+  config UNSELECT_VARIABLE_ROTATION_DISTANCES
+    def_bool n
+  config PARAM_VARIABLE_ROTATION_DISTANCES
+    boolint "Variable rotation distances?"
+    default 0
+    forceshow
+    depends on !UNSELECT_VARIABLE_ROTATION_DISTANCES
+    help
+      Whether the design has different drive gears (typically BMG gears). Even if from
+      the same vendor the rotation distance can vary, hence this option.
+      If this is selected you are able to tune the rotation distance of each gate/lane
+      independently which may useful especially with long bowden tubes where
+      lack of calibration can multiply.
+  config UNSELECT_REQUIRE_BOWDEN_MOVE
+    def_bool n
+  config PARAM_REQUIRE_BOWDEN_MOVE
+    boolint "Require bowden move?"
+    default 0
+    forceshow
+    depends on !UNSELECT_REQUIRE_BOWDEN_MOVE
+    help
+      Whether the design requires a calibrated fast bowden move to reach the extruder.
+      This is not necessary if there is a filament splitter/combiner at the toolhead
+      and the extruder entry sensor is leveraged as the gate endstop.
+  config UNSELECT_FILAMENT_ALWAYS_GRIPPED
+    def_bool n
+  config PARAM_FILAMENT_ALWAYS_GRIPPED
+    boolint "Filament always gripped?"
+    default 0
+    forceshow
+    depends on !UNSELECT_FILAMENT_ALWAYS_GRIPPED
+    help
+      Whether the design is always gripping the filament. For most type-B designs this
+      will be true, but type-A designs usually have a choice because of their filament
+      release mechanism..
+endmenu

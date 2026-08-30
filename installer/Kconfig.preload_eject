@@ -1,0 +1,111 @@
+# This module defines types and parameters for control of the filament
+# preloading and ejection.
+#
+# Responsible for setting:
+#   PARAM_GATE_PRELOAD_ENDSTOP
+#   PARAM_GATE_PRELOAD_PARKING_DISTANCE
+#   PARAM_GATE_PRELOAD_HOMING_MAX
+#   PARAM_GATE_AUTOLOAD
+#   PARAM_GATE_PRELOAD_ATTEMPTS
+#   PARAM_GATE_FINAL_EJECT_DISTANCE
+
+menu "Filament preloading and ejection"
+
+  # -------------------------------------
+  # Gate preload endstop
+  # -------------------------------------
+
+  choice CHOICE_GATE_PRELOAD_ENDSTOP
+    prompt "Gate preload endstop        "
+    help
+      Typically this will be the individual mmu exit sensor if one is configured, otherwise
+      the same as the gate homing endstop.
+
+    default CHOICE_GATE_PRELOAD_ENDSTOP_EXIT if MMU_HAS_SENSOR_EXIT
+    default CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT
+
+    config CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT
+      bool "Same as gate homing endstop"
+      help
+        Use gate homing endstop (no individual mmu exit sensors are available)
+
+    config CHOICE_GATE_PRELOAD_ENDSTOP_EXIT
+      bool "Individual mmu exit sensors" if MMU_HAS_SENSOR_EXIT
+      help
+        Use individual per-gate exit sensor (often implemented as the per-gate hub entry sensor)
+        This can be useful on type-B MMU's when preloading filament while another gate has filament
+        loaded and the gate endstop is shared.
+
+    config CHOICE_GATE_PRELOAD_ENDSTOP_NONE
+      bool "No sensor / fixed move"
+      help
+        Perform one fixed forward preload move. The configured parking distance is ignored.
+        Filament presence cannot be verified, so the gate will remain marked unknown.
+        Per-gate NFC preload scanning and its associated clear/jog moves are not used.
+
+        When crossloading, the configured distance must remain inside the target gate's
+        independent filament path. Crossload capability alone does not guarantee that a
+        shared hub or downstream filament path is clear.
+  endchoice
+
+  # Create no-prompt param from choice
+  config PARAM_GATE_PRELOAD_ENDSTOP
+    string
+    default "mmu_exit" if CHOICE_GATE_PRELOAD_ENDSTOP_EXIT
+    default "none"     if CHOICE_GATE_PRELOAD_ENDSTOP_NONE
+    default ""         # Defaults to gate homing endstop
+
+
+  # -------------------------------------
+  # Movement params
+  # -------------------------------------
+
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    float "Preload homing distance     "
+    default PARAM_GATE_HOMING_MAX
+    help
+      Maximum homing distance (mm) to the configured preload endstop.
+
+      With no preload sensor this becomes the exact fixed forward move distance.
+
+      Usually this is the same as gate homing distance
+
+  config PARAM_GATE_PRELOAD_PARKING_DISTANCE
+    float
+    prompt "Preload parking distance    " if !CHOICE_GATE_PRELOAD_ENDSTOP_NONE
+    default PARAM_GATE_PARKING_DISTANCE
+    help
+      Filament parking distance (mm) after homing to configured gate homing sensor
+      or per-gate "mmu_exit" sensor if available.
+      This setting is ignored when no preload sensor is selected.
+      Usually this is the same as gate parking distance
+
+      Negative values for movement in the retract direction (back off sensor)
+      Positive values for movement in the extrude direction (past sensor)
+
+  config PARAM_GATE_AUTOLOAD
+    boolint "Automatically load gate when entry sensor triggers?"
+    default 1
+    depends on MMU_HAS_SENSOR_ENTRY
+    help
+      If mmu entry sensor fitted this controls the automatic loading of the gate
+
+  config PARAM_GATE_PRELOAD_ATTEMPTS
+    int
+    prompt "Number of preload attempts  " if !CHOICE_GATE_PRELOAD_ENDSTOP_NONE
+    default 1 if CHOICE_GATE_PRELOAD_ENDSTOP_NONE
+    default 2
+    help
+      Number of attempts to make at loading the filament after preload is issued.
+
+      Fixed at one when no preload sensor is selected.
+
+  comment "_"
+
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    float "Final eject distance        "
+    default 20
+    help
+      Additional distance to eject filament on MMU_EJECT to clear MMU's grip
+
+endmenu

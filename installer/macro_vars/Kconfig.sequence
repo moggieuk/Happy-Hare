@@ -1,0 +1,268 @@
+menu "Sequence macros      (_MMU_SEQUENCE)"
+  help
+    Happy Hare sequence macro configuration variables.
+
+    Controls parking movement, toolchange behavior, retraction,
+    restore position logic, and sequence macro extension hooks.
+
+  comment "_Toolhead movement"
+
+  config VAR_SEQUENCE_ENABLE_PARK_PRINTING
+    string "Park operations while printing   "
+    default "'toolchange,runout,load,unload,complete,pause,cancel'"
+    help
+      List of operations that should result in toolhead parking while in a print.
+      Empty string disables parking.
+
+  config VAR_SEQUENCE_ENABLE_PARK_STANDALONE
+    string "Park operations when standalone  "
+    default "'toolchange,load,unload,pause,cancel'"
+    help
+      List of operations that should result in toolhead parking when not printing.
+      Empty string disables parking.
+
+  config VAR_SEQUENCE_ENABLE_PARK_DISABLED
+    string "Park operations when MMU disabled"
+    default "'pause,cancel'"
+    help
+      List of operations that should result in toolhead parking when MMU is disabled.
+      Only pause and cancel can occur in this mode.
+      Empty string disables parking.
+
+  config VAR_SEQUENCE_MIN_TOOLCHANGE_Z
+    float "Minimum toolchange Z    "
+    default 1.0
+    help
+      Absolute minimum safety floor Z-height for all parking moves.
+
+  config VAR_SEQUENCE_PARK_TOOLCHANGE
+    string "Toolchange park position"
+    default "-999, -999, 1,  5, 2"
+    help
+      Parking movement and location for toolchange, load and unload operations.
+      x, y, z-hop, z_hop_ramp, retract
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  config VAR_SEQUENCE_PARK_RUNOUT
+    string "Runout park position    "
+    default "-999, -999, 1,  5, 2"
+    help
+      Parking movement and location for runout operation.
+      x, y, z-hop, z_hop_ramp, retract
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  config VAR_SEQUENCE_PARK_PAUSE
+    string "Pause park position     "
+    default "50,   50,   5,  0, 2"
+    help
+      Parking movement and location for pause operation.
+      This is also the park position when an MMU error occurs.
+      x, y, z-hop, z_hop_ramp, retract
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  config VAR_SEQUENCE_PARK_CANCEL
+    string "Cancel park position    "
+    default "-999, -999, 10, 0, 5"
+    help
+      Parking movement and location for print cancel operation.
+      x, y, z-hop, z_hop_ramp, retract
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  config VAR_SEQUENCE_PARK_COMPLETE
+    string "Complete park position  "
+    default "50,   50,   10, 0, 5"
+    help
+      Parking movement and location for print complete operation.
+      x, y, z-hop, z_hop_ramp, retract
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  comment "Fine tune"
+
+  config VAR_SEQUENCE_PRE_UNLOAD_POSITION
+    string "Pre-unload position     "
+    default "-999, -999, 0"
+    help
+      Advanced. Fine tune toolhead position before unloading sequence starts.
+      x, y, z-hop
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  config VAR_SEQUENCE_POST_FORM_TIP_POSITION
+    string "Post-form-tip position  "
+    default "-999, -999, 0"
+    help
+      Advanced. Fine tune toolhead position after form/cut tip is performed on unload
+      x, y, z-hop
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  config VAR_SEQUENCE_PRE_LOAD_POSITION
+    string "Pre-load position       "
+    default "-999, -999, 0"
+    help
+      Advanced. Fine tune toolhead position before loading sequence starts.
+      x, y, z-hop
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  choice CHOICE_SEQUENCE_RESTORE_XY_POS
+    prompt "Restore XY position after toolchange"
+    default CHOICE_SEQUENCE_RESTORE_XY_POS_LAST
+    help
+      Controls where the toolhead (x,y) is returned to after an operation that
+      invokes a parking move:
+        last - return to original position before park (frequently the default)
+        next - return to next print position if possible else last logic will be applied.
+               In print this reduces dwell time at the last position reducing blobbing
+               and unnecessary movement. Only applied to "toolchange" operation
+        none - the toolhead is left wherever it ends up after change. In a print the
+               next gcode command will restore toolhead x,y position
+
+    config CHOICE_SEQUENCE_RESTORE_XY_POS_LAST
+      bool "last"
+      help
+        Return to original position before park (frequently the default)
+
+    config CHOICE_SEQUENCE_RESTORE_XY_POS_NEXT
+      bool "next"
+      help
+        Return to next print position if possible, otherwise use last logic.
+        Only applied to toolchange operations.
+
+    config CHOICE_SEQUENCE_RESTORE_XY_POS_NONE
+      bool "none"
+      help
+        Leave the toolhead wherever it ends up after change.
+
+  endchoice
+
+  config VAR_SEQUENCE_RESTORE_XY_POS
+    string
+    default "'next'" if CHOICE_SEQUENCE_RESTORE_XY_POS_NEXT
+    default "'none'" if CHOICE_SEQUENCE_RESTORE_XY_POS_NONE
+    default "'last'"
+
+  comment "_"
+  comment "_Movement speeds"
+
+  config VAR_SEQUENCE_PARK_TRAVEL_SPEED
+    float "Park travel speed       "
+    default 200
+    help
+      Speed for any XY/Z travel movement in mm/s.
+
+  config VAR_SEQUENCE_PARK_LIFT_SPEED
+    float "Park lift speed         "
+    default 15
+    help
+      Z-only travel speed in mm/s.
+
+  config VAR_SEQUENCE_RETRACT_SPEED
+    float "Retract speed           "
+    default 30
+    help
+      Speed of the retract move in mm/s.
+
+  config VAR_SEQUENCE_UNRETRACT_SPEED
+    float "Unretract speed         "
+    default 30
+    help
+      Speed of the unretract move in mm/s.
+
+  comment "_"
+  comment "_User macro hooks"
+
+  config VAR_SEQUENCE_USER_MMU_ERROR_EXTENSION
+    string "MMU error extension macro    "
+    default ""
+    help
+      Executed after default logic when MMU error condition occurs.
+      Enter G-code without surrounding quotes.
+
+  config VAR_SEQUENCE_USER_PRE_UNLOAD_EXTENSION
+    string "Pre-unload extension macro   "
+    default ""
+    help
+      Executed after default logic.
+      Enter G-code without surrounding quotes.
+
+  config VAR_SEQUENCE_USER_POST_FORM_TIP_EXTENSION
+    string "Post-form-tip extension macro"
+    default ""
+    help
+      Executed after default logic.
+      Enter G-code without surrounding quotes.
+
+  config VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION
+    string "Post-unload extension macro  "
+    default ""
+    help
+      Executed after default logic.
+      Enter G-code without surrounding quotes.
+
+  config VAR_SEQUENCE_USER_PRE_LOAD_EXTENSION
+    string "Pre-load extension macro     "
+    default ""
+    help
+      Executed after default logic.
+      Enter G-code without surrounding quotes.
+
+  config VAR_SEQUENCE_USER_POST_LOAD_EXTENSION
+    string "Post-load extension macro    "
+    default ""
+    help
+      Executed after default logic but before restoring toolhead position.
+      Enter G-code without surrounding quotes.
+
+  config VAR_SEQUENCE_USER_POST_PRELOAD_EXTENSION
+    string "Post-preload extension macro "
+    default ""
+    help
+      Executed after successful filament preload
+      Enter G-code without surrounding quotes.
+
+  comment "_"
+  comment "_Misc"
+
+  config BOOL_SEQUENCE_AUTO_HOME
+    bool "Automatically home if necessary"
+    default n
+    help
+      Automatically home printer if necessary (with G28 command)
+      so that toolchange toolhead movement can occur. If not homed
+      movement will simply be skipped.
+
+  config VAR_SEQUENCE_AUTO_HOME
+    string
+    default "True" if BOOL_SEQUENCE_AUTO_HOME
+    default "False"
+
+  config BOOL_SEQUENCE_TIMELAPSE
+    bool "Take timelapse frame after load"
+    default n
+    help
+      Take frame snapshot after load.
+
+  config VAR_SEQUENCE_TIMELAPSE
+    string
+    default "True" if BOOL_SEQUENCE_TIMELAPSE
+    default "False"
+
+  config VAR_SEQUENCE_USER_PARK_MOVE_MACRO
+    string "User park move macro         "
+    default ""
+    help
+      Advanced. User supplied macro that is executed instead of the default G1 XY
+      move to park position.  Macro is called with X, Y, and F parameters. When
+      restoring, it is also passed RESTORE=1.
+      Enter the macro name without surrounding quotes.
+
+      This is useful when you want to control the movement path of the toolhead
+      to avoid an area rather than accept the direct line
+
+endmenu

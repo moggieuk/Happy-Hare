@@ -1,0 +1,139 @@
+# Module sets the serial connection tokens
+# Make the first 10 available serial tty devices selectable, it's unlikely people have more.
+#
+# Responsible for setting:
+#   CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+#   CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
+#   PARAM_BUFFER_SERIAL_DEVICE
+#   PARAM_BUFFER_CANBUS_UUID
+#   PARAM_BUFFER_CANBUS_INTERFACE
+
+choice CHOICE_BUFFER_CONNECTION_TYPE
+  prompt "MCU connection for sync-feedback buffer"
+  default CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+  help 
+    Choose the type of mcu connection for sync-feedback buffer
+    Serial or CANbus
+
+  config CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+    bool "Serial"
+    help
+      Select if your sync-feedback buffer connects via a serial connection to mcu board
+
+  config CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
+    bool "CANbus"
+    help
+      Select if your sync-feedback buffer  connects with a CANbus connection to mcu board
+endchoice
+
+# PAUL TODO add chip as filter for serial devices
+
+# -------------------------------------
+# Serial
+# -------------------------------------
+
+if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+
+  choice CHOICE_BUFFER_SERIAL_CONNECTION
+    prompt "Select serial device for sync-feedback buffer"
+    default CHOICE_BUFFER_SERIAL_DEVICE_PREVIOUS if "$(saved-config-value,PARAM_BUFFER_SERIAL_DEVICE)" != ""
+    help
+      MCU connection for sync-feedback buffer
+      Select the serial device connected to the sync-feedback buffer  mcu
+      or select "Other" and enter it manually.
+
+    config CHOICE_BUFFER_SERIAL_DEVICE_PREVIOUS
+      bool "Previous selection: $(saved-config-value,PARAM_BUFFER_SERIAL_DEVICE)"
+      depends on "$(saved-config-value,PARAM_BUFFER_SERIAL_DEVICE)" != ""
+
+    @repeat var=i min=1 max=10@
+    config $(buffer_serial_config,$(i))
+      bool "$(serial_device,$(i))"
+      depends on $(serial_exists,$(i))
+    @endrepeat@
+
+    config CHOICE_BUFFER_SERIAL_DEVICE_OTHER
+      bool "Other / manually entered"
+    if CHOICE_BUFFER_SERIAL_DEVICE_OTHER
+      config BUFFER_SERIAL_DEVICE_OTHER
+        string "Enter serial device path"
+        default "-enter-device-path-"
+        help
+          MCU connection for sync-feedback buffer
+          Specify the path of the serial device connected to the BUFFER's mcu.
+          It's best to use the /dev/serial/by-id/ path, as it's unique and
+          doesn't change when you plug in multiple serial devices.
+          Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+    endif
+  endchoice
+
+  config PARAM_BUFFER_SERIAL_DEVICE
+    string
+    default "$(saved-config-value,PARAM_BUFFER_SERIAL_DEVICE)" if CHOICE_BUFFER_SERIAL_DEVICE_PREVIOUS
+    @repeat var=i min=1 max=10@
+    default "$(serial_device,$(i))" if $(buffer_serial_config,$(i))
+    @endrepeat@
+    default BUFFER_SERIAL_DEVICE_OTHER if CHOICE_BUFFER_SERIAL_DEVICE_OTHER
+
+endif
+
+# -------------------------------------
+# CanBus
+# -------------------------------------
+
+if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
+
+  choice CHOICE_BUFFER_CANBUS_CONNECTION
+    prompt "Select canbus UUID for BUFFER"
+    default CHOICE_BUFFER_CANBUS_UUID_PREVIOUS if "$(saved-config-value,PARAM_BUFFER_CANBUS_UUID)" != ""
+    help
+      MCU connection for BUFFER
+      Select the CANbus uuid belonging to the BUFFER's mcu or select
+      "Other" and enter it manually.
+
+    config CHOICE_BUFFER_CANBUS_UUID_PREVIOUS
+      bool "Previous selection: $(saved_canbus_connection,PARAM_BUFFER_CANBUS_INTERFACE,PARAM_BUFFER_CANBUS_UUID)"
+      depends on "$(saved-config-value,PARAM_BUFFER_CANBUS_UUID)" != ""
+
+    @repeat var=i min=1 max=10@
+    config $(buffer_canbus_config,$(i))
+      bool "$(canbus_connection,$(i))"
+      depends on $(canbus_uuid_count) >= $(i)
+    @endrepeat@
+
+    config CHOICE_BUFFER_CANBUS_UUID_OTHER
+      bool "Other / manually entered"
+    if CHOICE_BUFFER_CANBUS_UUID_OTHER
+      config BUFFER_CANBUS_UUID_OTHER
+        string "Enter CANbus UUID"
+        default "-enter-canbus-id-"
+        help
+          Specify the CANbus UUID that is used for connection to the sync-feedback buffer
+          It is a 6 byte ID represented in hex.
+          This can be found with:
+            ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py <interface>
+          Enter only the uuid portion (12 hex digits)
+            E.g. 127081e7e3c6
+      config BUFFER_CANBUS_INTERFACE_OTHER
+        string "Enter CANbus interface"
+        default "can0"
+    endif
+  endchoice
+
+  config PARAM_BUFFER_CANBUS_UUID
+    string
+    default "$(saved-config-value,PARAM_BUFFER_CANBUS_UUID)" if CHOICE_BUFFER_CANBUS_UUID_PREVIOUS
+    @repeat var=i min=1 max=10@
+    default "$(canbus_uuid,$(i))" if $(buffer_canbus_config,$(i))
+    @endrepeat@
+    default BUFFER_CANBUS_UUID_OTHER if CHOICE_BUFFER_CANBUS_UUID_OTHER
+
+  config PARAM_BUFFER_CANBUS_INTERFACE
+    string
+    default "$(saved_canbus_interface,PARAM_BUFFER_CANBUS_INTERFACE)" if CHOICE_BUFFER_CANBUS_UUID_PREVIOUS
+    @repeat var=i min=1 max=10@
+    default "$(canbus_interface,$(i))" if $(buffer_canbus_config,$(i))
+    @endrepeat@
+    default BUFFER_CANBUS_INTERFACE_OTHER if CHOICE_BUFFER_CANBUS_UUID_OTHER
+
+endif

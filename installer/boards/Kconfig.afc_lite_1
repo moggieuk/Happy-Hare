@@ -1,0 +1,162 @@
+config BOARD_TYPE_AFC_LITE_1_0
+  bool "AFC Lite v1.0 / designed for Box Turtle"
+  help
+    This board was custom designed for the Box Turtle v1
+
+if BOARD_TYPE_AFC_LITE_1_0
+  config PARAM_BOARD_TYPE
+    default "AFC Lite v1"
+
+  # This board is unusual and has separate enable pins for espooler motor control
+  config HAS_ESPOOLER_ENABLE_PIN
+    default y
+
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
+  endchoice
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    default $(mmu_serial_config,1,stm32)
+  endchoice
+
+  config PIN_GEAR_UART 
+    default "$(MCU_NAME):PD5" 
+  config PIN_GEAR_STEP
+    default "$(MCU_NAME):PD4" 
+  config PIN_GEAR_DIR
+    default "$(MCU_NAME):PD3" 
+  config PIN_GEAR_ENABLE
+    default "!$(MCU_NAME):PD6" 
+  config PIN_GEAR_DIAG
+    default "$(MCU_NAME):PD2" 
+
+  config PIN_GEAR_UART_1 
+    default "$(MCU_NAME):PD0" 
+  config PIN_GEAR_STEP_1
+    default "$(MCU_NAME):PC12" 
+  config PIN_GEAR_DIR_1
+    default "$(MCU_NAME):PC11" 
+  config PIN_GEAR_ENABLE_1
+    default "!$(MCU_NAME):PD1" 
+  config PIN_GEAR_DIAG_1
+    default "$(MCU_NAME):PC10" 
+
+  config PIN_GEAR_UART_2 
+    default "$(MCU_NAME):PE1" 
+  config PIN_GEAR_STEP_2
+    default "$(MCU_NAME):PE2" 
+  config PIN_GEAR_DIR_2
+    default "$(MCU_NAME):PE3" 
+  config PIN_GEAR_ENABLE_2
+    default "!$(MCU_NAME):PE0" 
+  config PIN_GEAR_DIAG_2
+    default "$(MCU_NAME):PE4" 
+
+  config PIN_GEAR_UART_3 
+    default "$(MCU_NAME):PC6" 
+  config PIN_GEAR_STEP_3
+    default "$(MCU_NAME):PD15" 
+  config PIN_GEAR_DIR_3
+    default "$(MCU_NAME):PD14" 
+  config PIN_GEAR_ENABLE_3
+    default "!$(MCU_NAME):PC7" 
+  config PIN_GEAR_DIAG_3
+    default "$(MCU_NAME):PC8" 
+
+
+  config PIN_ENTRY_SENSOR_0
+    default "^$(MCU_NAME):PC5" 
+  config PIN_ENTRY_SENSOR_1
+    default "^$(MCU_NAME):PB0" 
+  config PIN_ENTRY_SENSOR_2
+    default "^$(MCU_NAME):PB1" 
+  config PIN_ENTRY_SENSOR_3
+    default "^$(MCU_NAME):PB2" 
+
+
+  config PIN_EXIT_SENSOR_0
+    default "^$(MCU_NAME):PE8" 
+  config PIN_EXIT_SENSOR_1
+    default "^$(MCU_NAME):PE9" 
+  config PIN_EXIT_SENSOR_2
+    default "^$(MCU_NAME):PE10" 
+  config PIN_EXIT_SENSOR_3
+    default "^$(MCU_NAME):PE11" 
+
+
+  config PIN_ESPOOLER_EN_0
+    default "$(MCU_NAME):PA2" 
+  config PIN_ESPOOLER_RWD_0
+    default "$(MCU_NAME):PA0" 
+  config PIN_ESPOOLER_FWD_0
+    default "$(MCU_NAME):PA1" 
+
+  config PIN_ESPOOLER_EN_1
+    default "$(MCU_NAME):PA5" 
+  config PIN_ESPOOLER_RWD_1
+    default "$(MCU_NAME):PA6" 
+  config PIN_ESPOOLER_FWD_1
+    default "$(MCU_NAME):PA7" 
+
+  config PIN_ESPOOLER_EN_2
+    default "$(MCU_NAME):PB13" 
+  config PIN_ESPOOLER_RWD_2
+    default "$(MCU_NAME):PB14" 
+  config PIN_ESPOOLER_FWD_2
+    default "$(MCU_NAME):PB15" 
+
+  config PIN_ESPOOLER_EN_3
+    default "$(MCU_NAME):PD11" 
+  config PIN_ESPOOLER_RWD_3
+    default "$(MCU_NAME):PD12" 
+  config PIN_ESPOOLER_FWD_3
+    default "$(MCU_NAME):PD13" 
+
+
+  config PIN_NEOPIXEL
+    default "$(MCU_NAME):PE14"
+
+
+  # Aka "Hub"
+  config PIN_SHARED_EXIT_SENSOR
+    default "^$(MCU_NAME):PC4"
+
+
+  # Aka "Buffer" - when filament is under tension (neck compressed) or compression (neck advances)
+  if !OPTION_TURTLE_NECK_V2_BUFFER
+    config PIN_BUFFER_TENSION
+      default "^$(MCU_NAME):PE13"
+    config PIN_BUFFER_COMPRESSION
+      default "^$(MCU_NAME):PE12"
+  endif
+
+
+# Spare neopixel ports:
+#   PE15, PB10, PB11
+
+
+# -------------------------------------
+# Separate Buffer
+# -------------------------------------
+
+  if OPTION_TURTLE_NECK_V2_BUFFER
+
+    config PIN_BUFFER_SENSOR_0
+      default "$(MCU_NAME)_buffer:PB5"
+    config PIN_BUFFER_SENSOR_1
+      default "$(MCU_NAME)_buffer:PB6"
+    config PIN_BUFFER_SENSOR_2
+      default "$(MCU_NAME)_buffer:PB7"
+    config PIN_BUFFER_SENSOR_3
+      default "$(MCU_NAME)_buffer:PB8"
+
+    config PIN_BUFFER_TENSION
+      default "$(MCU_NAME)_buffer:PB1"
+    config PIN_BUFFER_COMPRESSION
+      default "$(MCU_NAME)_buffer:PB2"
+
+    config PIN_BUFFER_NEOPIXEL
+      default "$(MCU_NAME)_buffer:PD3"
+
+  endif
+
+endif

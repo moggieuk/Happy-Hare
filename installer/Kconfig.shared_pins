@@ -1,0 +1,52 @@
+# Responsible for defining "PIN_*" parameters that are "per-printer"
+# rather than per-mmu in a multi unit setup.
+#
+# Responsible for setting:
+#   PIN_TOOLHEAD_SENSOR
+#   PIN_EXTRUDER_SENSOR
+#   PIN_GANTRY_BUMPER_SERVO
+#   PIN_BLOBIFIER_SERVO
+#   PIN_BLOBIFIER_BUCKET_SWITCH
+#   PIN_SERVO_CUTTER_SERVO
+
+
+if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
+
+# -------------------------------------
+# Toolhead sensors
+# -------------------------------------
+
+  config PIN_TOOLHEAD_SENSOR
+    prompt "Toolhead sensor pin   " if MMU_HAS_SENSOR_TOOLHEAD
+
+  config PIN_EXTRUDER_SENSOR
+    prompt "Extruder sensor pin   " if MMU_HAS_SENSOR_EXTRUDER
+
+
+# -------------------------------------
+# Misc servos, etc
+# -------------------------------------
+
+  if MMU_HAS_GANTRY_BUMPER_SERVO || MMU_HAS_BLOBIFIER || MMU_HAS_SERVO_CUTTER
+
+    comment "_"
+    comment "_Additional hardware"
+
+    config PIN_GANTRY_BUMPER_SERVO
+      prompt "Gantry servo pin      " if MMU_HAS_GANTRY_BUMPER_SERVO
+      help
+        Optional. Used to deploy fold-down "bumper" for tip cutting
+        when using a toolhead mounted filament cutting blade
+
+    config PIN_BLOBIFIER_SERVO
+      prompt "Blobifier servo pin    " if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
+
+    config PIN_BLOBIFIER_BUCKET_SWITCH
+      prompt "Blobifier bucket switch" if MMU_HAS_BLOBIFIER
+
+    config PIN_SERVO_CUTTER_SERVO
+      prompt "Cutting servo pin     " if MMU_HAS_SERVO_CUTTER
+
+  endif
+
+endif

@@ -1,0 +1,60 @@
+config MMU_TYPE_PICO_MMU_1_0
+  bool "Pico MMU"
+  help
+    Pick MMU is a type-A that uses a single servo and cam mechanism
+    to both select and grip the filament in the chosen gate. It is a
+    simple compact design but is limited to about 4 gates.
+  select SERVO_SELECTOR
+  select PARAM_REQUIRE_BOWDEN_MOVE
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select PARAM_SYNC_TO_EXTRUDER
+  select PARAM_SYNC_FORM_TIP
+  select PARAM_SYNC_PURGE
+  imply BOOL_ENABLE_LEDS
+
+if MMU_TYPE_PICO_MMU_1_0
+
+  source "servos/Kconfig"
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  ####################
+  ##### Defaults #####
+  ####################
+
+  config PARAM_VENDOR
+    default "PicoMMU"
+  config PARAM_VERSION
+    default "1.0"  
+  config PARAM_NUM_GATES
+    default 4
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "1.28:1"
+  config PARAM_GEAR_RUN_CURRENT
+    default 0.7
+  config PARAM_GEAR_HOLD_CURRENT
+    default 0.1
+
+  config PARAM_GEAR_HOMING_SPEED
+    default 80
+
+  config PARAM_GATE_HOMING_MAX
+    default 100
+  config PARAM_GATE_PARKING_DISTANCE
+    default -25
+
+  # Gate angles depend on the particular cam build. The generic four-gate
+  # default assumes 360 degree travel, but PicoMMU's ES3004 is limited to 140
+  # degrees. Leave them unseeded so Happy Hare boots safely and requires the
+  # user to calibrate the actual mechanism.
+  config PARAM_SERVO_GATE_ANGLES
+    default ""
+
+  comment "_"
+
+endif 

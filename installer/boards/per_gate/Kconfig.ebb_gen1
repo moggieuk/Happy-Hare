@@ -1,0 +1,131 @@
+config BOARD_TYPE_EBB_GEN1
+  bool "EBB36/42 gen1 MCU"
+  help
+    This covers the gen 1 EBB36 and EBB42 boards
+    (v1.1 and v 1.2)
+
+if BOARD_TYPE_EBB_GEN1
+  config PARAM_BOARD_TYPE
+    default "EBB36/42 gen1"
+
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_CANBUS
+  endchoice
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    default $(mmu_serial_config,1,stm32)
+  endchoice
+
+
+# -------------------------------------
+# Regular use
+# -------------------------------------
+
+  if !MMU_HAS_PER_GATE_MCU
+
+    config PIN_GEAR_UART
+      default "$(MCU_NAME):PA15"
+    config PIN_GEAR_STEP
+      default "$(MCU_NAME):PD0"
+    config PIN_GEAR_DIR
+      default "$(MCU_NAME):PD1"
+    config PIN_GEAR_ENABLE
+      default "!$(MCU_NAME):PD2"
+    config PIN_GEAR_DIAG
+      default ""
+
+    config PIN_ENTRY_SENSOR_0
+      default "^(MCU_NAME):PB7"
+
+    config PIN_EXIT_SENSOR_0
+      default "^(MCU_NAME):PB5"
+
+    config PIN_EJECT_BUTTON_0
+      default "^!$(MCU_NAME):PB6"
+
+    config PIN_NEOPIXEL
+      default "$(MCU_NAME):PD3"
+
+    config PIN_FAN
+      default "$(MCU_NAME):PA0"
+
+    config PIN_BUFFER_TENSION
+      default "^$(MCU_NAME):PB8"
+    config PIN_BUFFER_COMPRESSION
+      default "^$(MCU_NAME):PB9"
+
+    if OPTION_PSF_BUFFER
+      config PIN_BUFFER_ANALOG
+        default "$(MCU_NAME):PA3"
+    endif
+
+  endif
+
+# -------------------------------------
+# Per gate
+# -------------------------------------
+
+  if MMU_HAS_PER_GATE_MCU
+
+    config PIN_GEAR_UART
+      default "$(MCU_NAME)_gate0:PA15"
+    config PIN_GEAR_STEP
+      default "$(MCU_NAME)_gate0:PD0"
+    config PIN_GEAR_DIR
+      default "$(MCU_NAME)_gate0:PD1"
+    config PIN_GEAR_ENABLE
+      default "!$(MCU_NAME)_gate0:PD2"
+    config PIN_GEAR_DIAG
+      default ""
+
+    @repeat var=gate min=1 max=11@
+    if PARAM_NUM_GATES > $(gate)
+
+      config PIN_GEAR_UART_$(gate)
+        default "$(MCU_NAME)_gate$(gate):PA15"
+      config PIN_GEAR_STEP_$(gate)
+        default "$(MCU_NAME)_gate$(gate):PD0"
+      config PIN_GEAR_DIR_$(gate)
+        default "$(MCU_NAME)_gate$(gate):PD1"
+      config PIN_GEAR_ENABLE_$(gate)
+        default "!$(MCU_NAME)_gate$(gate):PD2"
+      config PIN_GEAR_DIAG_$(gate)
+        default ""
+
+    endif
+    @endrepeat@
+
+    @repeat var=gate min=0 max=11@
+    if PARAM_NUM_GATES > $(gate)
+
+      config PIN_ENTRY_SENSOR_$(gate)
+        default "^$(MCU_NAME)_gate$(gate):PB7"
+
+      config PIN_EXIT_SENSOR_$(gate)
+        default "^$(MCU_NAME)_gate$(gate):PB5"
+
+      config PIN_EJECT_BUTTON_$(gate)
+        default "^!$(MCU_NAME)_gate$(gate):PB6"
+
+      config PIN_NEOPIXEL_$(gate)
+        default "$(MCU_NAME)_gate$(gate):PD3"
+
+      config PIN_FAN_$(gate)
+        default "$(MCU_NAME)_gate$(gate):PA0"
+
+    endif
+    @endrepeat@
+
+    # Buffer. Assumed on gate 0 MCU ---
+    config PIN_BUFFER_TENSION
+      default "^$(MCU_NAME)_gate0:PB8"
+    config PIN_BUFFER_COMPRESSION
+      default "^$(MCU_NAME)_gate0:PB9"
+
+    if OPTION_PSF_BUFFER
+      config PIN_BUFFER_ANALOG
+        default "$(MCU_NAME)_gate0:PA3"
+    endif
+
+  endif
+
+endif

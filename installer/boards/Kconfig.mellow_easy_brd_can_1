@@ -1,0 +1,68 @@
+config BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
+  bool "Mellow EASY-BRD v1.x with CANbus"
+
+if BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
+  config PARAM_BOARD_TYPE
+    default "Mellow EASY-BRD v1"
+
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
+  endchoice
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    default $(mmu_serial_config,1,rp2040)
+  endchoice
+
+  config PIN_GEAR_UART
+    default "$(MCU_NAME):gpio9" 
+  config PIN_GEAR_STEP
+    default "$(MCU_NAME):gpio7" 
+  config PIN_GEAR_DIR
+    default "$(MCU_NAME):gpio8" 
+  config PIN_GEAR_ENABLE
+    default "!$(MCU_NAME):gpio6"
+  config PIN_GEAR_DIAG
+    default "$(MCU_NAME):gpio23"
+
+  config PIN_SELECTOR_UART
+    default "$(MCU_NAME):gpio0" 
+  config PIN_SELECTOR_STEP
+    default "$(MCU_NAME):gpio2" 
+  config PIN_SELECTOR_DIR
+    default "$(MCU_NAME):gpio1" 
+  config PIN_SELECTOR_ENABLE
+    default "!$(MCU_NAME):gpio3" 
+  config PIN_SELECTOR_DIAG
+    default "$(MCU_NAME):gpio22"
+  config PIN_SELECTOR_ENDSTOP
+    default "^$(MCU_NAME):gpio20"
+  config PIN_SELECTOR_SERVO
+    default "$(MCU_NAME):gpio21" 
+
+  config PIN_ENTRY_SENSOR_0
+    default "^$(MCU_NAME):gpio10"
+  config PIN_ENTRY_SENSOR_1
+    default "^$(MCU_NAME):gpio26"
+  config PIN_ENTRY_SENSOR_2
+    default "^$(MCU_NAME):gpio11"
+  config PIN_ENTRY_SENSOR_3
+    default "^$(MCU_NAME):gpio27"
+  config PIN_ENTRY_SENSOR_4
+    default "^$(MCU_NAME):gpio12"
+  config PIN_ENTRY_SENSOR_5
+    default "^$(MCU_NAME):gpio28"
+  config PIN_ENTRY_SENSOR_6
+    default "^$(MCU_NAME):gpio24"
+  config PIN_ENTRY_SENSOR_7
+    default "^$(MCU_NAME):gpio29"
+  config PIN_ENTRY_SENSOR_8
+    default "^$(MCU_NAME):gpio13"
+  config PIN_ENTRY_SENSOR_9
+    default "^$(MCU_NAME):gpio25"
+
+  config PIN_ENCODER
+    default "^$(MCU_NAME):gpio15" if MMU_HAS_ENCODER
+  config PIN_SHARED_EXIT_SENSOR
+    default "^$(MCU_NAME):gpio15" if !MMU_HAS_ENCODER
+  config PIN_NEOPIXEL
+    default "$(MCU_NAME):gpio14"
+endif

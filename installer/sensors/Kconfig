@@ -1,0 +1,21 @@
+# Force a logical order from mmu to extruder
+
+menu "Filament sensors"
+  help
+    Specify any additional filament sensors you have incorporated here.
+    This also allows for the installation of TMC stallguard based filament
+    detection and homing option.
+
+  rsource "Kconfig.entry"
+  rsource "Kconfig.exit"
+  rsource "Kconfig.shared_exit"
+  rsource "Kconfig.gear_touch"
+
+  config PARAM_REGISTER_MMU_SENSORS
+    boolint "Register mmu sensors"
+    default 1
+    help
+      Whether to register the sensors for visibility in klipper UI's
+      and with QUERY_SENSOR command. There is no harm in doing this but
+      it can be disabled to reduce clutter.
+endmenu

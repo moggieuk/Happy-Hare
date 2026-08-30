@@ -1,0 +1,91 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Implements MMU_HOME command
+#
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
+# Happy Hare imports
+from ..mmu_constants   import *
+from ..mmu_utils       import MmuError
+from .mmu_base_command import *
+
+
+class MmuHomeCommand(BaseCommand):
+
+    CMD = "MMU_HOME"
+
+    HELP_BRIEF = "Home the MMU selector"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
+        + "TOOL         = #(int) Optionally select tool number after homing\n"
+        + "SKIP_HOMED   = [0|1]  Skip homing of units that are already homed\n"
+        + "(no parameters: home selector on single unit setup and select T0)\n"
+    )
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} UNIT=ALL              ...Home all mmu units with selector kinimatics\n"
+        + f"{CMD} UNIT=ALL SKIP_HOMED=1 ...Home only units that are not already homed\n"
+        + f"{CMD} UNIT=1              ...Home unit 1\n"
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_GENERAL,
+            per_unit=True
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
+
+        if self.check_if_disabled(): return True # Truthy return aborts UNIT=ALL iteration
+        mmu.fix_started_state()
+
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR, mmu_unit=mmu_unit):
+            mmu.log_always("Not calibrated. Will attempt to home to endstop")
+            tool = -1
+        else:
+            tool = gcmd.get_int('TOOL', mmu.tool_selected, minval=0, maxval=mmu.num_gates - 1)
+        skip_homed = gcmd.get_int('SKIP_HOMED', 0, minval=0, maxval=1)
+
+        # With UNIT=ALL this handler is called once per unit. Defer the tool selection
+        # until the last unit to avoid ping-ponging between homing and gate selection
+        # (selecting a tool on a not-yet-homed unit would auto-home it prematurely)
+        unit_param = gcmd.get('UNIT', None)
+        all_units = unit_param is not None and unit_param.upper() == ALL_UNITS
+        select_tool = not all_units or mmu_unit is mmu.mmu_machine.units[-1]
+
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                if skip_homed and mmu_unit.selector.is_homed:
+                    mmu.log_always("Skipped homing %s (not necessary / already homed)" % mmu_unit.name if all_units else "Skipped homing (not necessary / already homed)")
+                else:
+                    mmu.home_unit(mmu_unit, reselect=False)
+                    mmu.log_always("Homed %s" % mmu_unit.name if all_units else "Homed")
+
+                # Always select gate for chosen tool (just once, at the end, if UNIT=ALL)
+                if select_tool:
+                    if tool == TOOL_GATE_BYPASS:
+                        mmu.select_bypass()
+                    elif tool >= 0:
+                        mmu.select_tool(tool)
+
+        except MmuError as ee:
+            mmu.handle_mmu_error(str(ee))
+            return True # Abort UNIT=ALL iteration over any remaining units

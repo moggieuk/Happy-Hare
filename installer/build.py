@@ -1,0 +1,1207 @@
+# Happy Hare MMU Software
+#
+# Install utilities called from Makefile
+#   - allows for Config file parsing and jinja templating
+#
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
+import sys
+import argparse
+import re
+import os
+import copy
+import ast
+import json
+import logging
+import subprocess
+import pickle
+
+from jinja2  import Environment, FileSystemLoader, UndefinedError
+from pathlib import Path
+
+import kconfiglib
+from .parser   import ConfigBuilder, WhitespaceNode, PARSE_ERROR_MARKER
+from .upgrades import Upgrades
+
+# Check for python 3.x
+if sys.version_info[0] < 3:
+    sys.stderr.write("ERROR: Python 3 is required to run Happy-Hare 4.x\n")
+    sys.exit(1)
+
+# Documented params that are not in templates or are commented out.
+# This list prevents removal on upgrade/reinstall.
+supplemental_params = [
+    "cad_gate0_pos",
+    "cad_gate_width",
+    "cad_bypass_offset",
+    "cad_last_gate_offset",
+    "cad_block_width",
+    "cad_bypass_block_width",
+    "cad_bypass_block_delta",
+    "cad_selector_tolerance",
+    "cad_max_rotations",
+    "default_gate_material",
+    "default_gate_color",
+    "default_gate_spool_id",
+    "default_gate_status",
+    "default_gate_filament_name",
+    "default_gate_temperature",
+    "default_gate_speed_override",
+    "default_endless_spool_groups",
+    "default_ttg_map",
+]
+
+# Other legal params that aren't exposed.
+# This list prevents removal on upgrade/reinstall if user chooses to use them
+hidden_params = [
+    "serious",
+    "test_random_failures",
+    "test_force_in_print",
+    "error_dialog_macro",
+    "error_macro",
+    "toolhead_homing_macro",
+    "park_macro",
+    "save_position_macro",
+    "restore_position_macro",
+    "clear_position_macro",
+    "encoder_dwell",
+    "encoder_move_step_size",
+    "gear_buzz_accel",
+
+    # For proportional sync-feedback sensor
+    "analog_sample_time",
+    "analog_sample_count",
+    "analog_report_time",
+    "analog_vsensor_hysteresis",
+
+    # From PR to convert Qidi hall-effect filament width sensor into extruder/toolhead sensor
+    "hall_sensor_endstop",
+    "hall_adc1",
+    "hall_adc2",
+    "hall_cal_dia1",
+    "hall_cal_dia2",
+    "hall_raw_dia1",
+    "hall_raw_dia2",
+    "hall_min_diameter",
+    "hall_max_diameter",
+]
+
+# This mapping is used to identify Kconfig parameter names and map then to the
+# correct cfg config section. This is used for the "merge" (option 3) approach
+VAR_SECTION_MAP = {
+    "var_software_":     "gcode_macro _MMU_SOFTWARE_VARS",
+    "var_state_":        "gcode_macro _MMU_STATE_VARS",
+    "var_sequence_":     "gcode_macro _MMU_SEQUENCE_VARS",
+    "var_client_":       "gcode_macro _MMU_CLIENT_VARS",
+    "var_cut_tip_":      "gcode_macro _MMU_CUT_TIP_VARS",
+    "var_form_tip_":     "gcode_macro _MMU_CUT_TIP_VARS",
+    "var_servo_cutter_": "gcode_macro _MMU_SERVO_CUTTER_VARS",
+    "var_blobifier_":    "gcode_macro _BLOBIFIER_VARS",
+    "var_purge_":        "gcode_macro _MMU_PURGE_VARS",
+    "var_fan_":          "gcode_macro _MMU_FAN_VARS",
+}
+
+happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
+unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
+
+LEVEL_NOTICE = 25
+
+
+def kconfig_truthy(value):
+    return value is True or value in ("y", "m", "1", 1)
+
+
+class KConfig(kconfiglib.Kconfig):
+    """
+    Enhanced representation of Kconfig file
+    that provides a few convenience methods
+    """
+
+    def __init__(self, config_file):
+        super(KConfig, self).__init__("Kconfig")
+        self.load_config(config_file, filter_defaults=False)
+        self.config_file = config_file
+
+    def load_unit(self, unit_config_file):
+        self.load_config(unit_config_file, filter_defaults=False)
+
+    def is_selected(self, choice, value):
+        if isinstance(value, list):
+            return any(self.is_selected(choice, v) for v in value)
+        # Choice.selection silently discards choice.user_selection
+        # if the selected member isn't currently visible (same trap as
+        # Symbol.str_value discarding Symbol.user_value -- see as_dict()).
+        # Prefer the raw user_selection so an explicit choice sticks even
+        # when the choice/members are invisible in this context.
+        ch = self.named_choices[choice]
+        selected = ch.user_selection or ch.selection
+        return selected is not None and selected.name == value
+
+    def is_enabled(self, sym):
+        s = self.syms[sym]
+        # Prefer the raw user_value (what was actually assigned
+        # in the loaded .config) over str_value, since kconfiglib only
+        # honors user_value when the symbol is currently visible. Fall back
+        # to str_value for anything that was never explicitly assigned, so
+        # a purely default-driven symbol is still resolved correctly.
+        raw = s.user_value if s.user_value is not None else s.str_value
+
+        # BOOL/TRISTATE user_value is an int tri-state (0/1/2), not
+        # "n"/"m"/"y" -- normalize it before handing it to kconfig_truthy()
+        if isinstance(raw, int):
+            raw = kconfiglib.TRI_TO_STR[raw]
+
+        return kconfig_truthy(raw)
+
+    def getint(self, sym):
+        s = self.syms[sym]
+        if s.orig_type == kconfiglib.BOOLINT:
+            return int(s.str_value)
+        # Same user_value/str_value fallback as is_enabled() --
+        # avoids int(None) blowing up for a symbol that's only ever been
+        # set via default
+        raw = s.user_value if s.user_value is not None else s.str_value
+        return int(raw)
+
+    def get(self, sym):
+        """Get the value of the symbol"""
+        if sym not in self.syms:
+            raise KeyError("Symbol '{}' not found in Kconfig".format(sym))
+        s = self.syms[sym]
+        if s.orig_type == kconfiglib.BOOLINT:
+            return s.str_value
+        # Same user_value/str_value fallback as is_enabled()/
+        # getint() -- otherwise this silently returns None for anything
+        # relying purely on a default instead of an explicit assignment
+        return s.user_value if s.user_value is not None else s.str_value
+
+    def as_dict(self):
+        """
+        Return the Kconfig as a dictionary, converting all variables that
+        end with "_<int>" into lists of the correct length for easy jinja
+        templating. Also converts "bool" types to Python bool. BOOLINT values
+        remain the numeric strings "0" and "1", matching the INT parameters
+        they replace.
+
+        Note: Prefers each symbol's raw user_value over the Kconfig-computed
+        str_value/tri_value, since kconfiglib only honors a user-assigned
+        value when the symbol is currently *visible*. Many symbols here are
+        intentionally invisible/promptless and rely entirely on defaults
+        (e.g. auto-detected settings) -- those still get their properly
+        computed default here whenever they have no explicit user_value.
+        Others (e.g. per-unit values like UNIT_NAME) are also invisible but
+        are still meant to be explicitly overridden via the loaded .config
+        file -- honoring user_value when present is what makes that work.
+
+        Caveat: for BOOL/BOOLINT/TRISTATE symbols, user_value is stored internally
+        as an int tri-state (0/1/2), not as "n"/"m"/"y" -- it's normalized
+        here before use so it isn't silently mistaken for something falsy.
+        """
+        result = {}
+        grouped = {}
+        grouped_names = {}  # key -> {index: original symbol name}, for ungrouping singletons
+
+        choice_member_names = {
+            sym.name
+            for choice in self.named_choices.values()
+            for sym in choice.syms
+        }
+
+        for sym_name, sym_obj in self.syms.items():
+            if sym_obj.type == kconfiglib.UNKNOWN:
+                continue
+
+            raw = sym_obj.user_value if sym_obj.user_value is not None else sym_obj.str_value
+
+            if sym_obj.type == kconfiglib.BOOLINT:
+                value = "1" if raw in (1, 2, "1", "y") else "0"
+            elif sym_obj.type in (kconfiglib.BOOL, kconfiglib.TRISTATE) and isinstance(raw, int):
+                raw = kconfiglib.TRI_TO_STR[raw]
+
+            if sym_obj.type != kconfiglib.BOOLINT:
+                if sym_obj.type == kconfiglib.BOOL:
+                    value = (raw == "y")
+                elif sym_obj.type == kconfiglib.TRISTATE:
+                    value = raw
+                else:
+                    value = raw.replace("\\n", "\n")
+
+            # Choice members: only include selected/enabled member. Checked
+            # before the array-grouping regex below, since choice member names
+            # commonly end in version/revision digits (e.g. MMU_TYPE_ERCF_1_1)
+            # that would otherwise incorrectly match the "_<int>" pattern.
+            if sym_name in choice_member_names:
+                if value is True or value in ("y", "m"):
+                    result[sym_name] = value
+                continue
+
+            m = re.match(r"^(.+_)(\d+)$", sym_name)
+            if m:
+                key = m.group(1)
+                nr = int(m.group(2))
+
+                if nr > 12:
+                    logging.warning(
+                        f"Symbol '{sym_name}' looks like an indexed array element (index={nr}) "
+                        f"but the index exceeds the maximum supported value (12). Treating it as a normal symbol."
+                    )
+                    result[sym_name] = value
+                    continue
+
+                grouped.setdefault(key, {})[nr] = value
+                grouped_names.setdefault(key, {})[nr] = sym_name
+                continue
+
+            result[sym_name] = value
+
+        for key, values in grouped.items():
+            if len(values) == 1:
+                # A single match under this prefix isn't a genuine array --
+                # it's almost certainly a symbol whose name just happens to
+                # end in digits (e.g. a hardware version number). Restore it
+                # under its real name instead of wrapping it in a bogus
+                # one-element list.
+                (idx, value), = values.items()
+                result[grouped_names[key][idx]] = value
+                continue
+
+            max_index = max(values)
+            default = False if all(isinstance(v, bool) for v in values.values()) else ""
+            result[key] = [
+                values.get(i, default)
+                for i in range(max_index + 1)
+            ]
+
+        return result
+
+
+class ParsedKConfig:
+    """
+    Lightweight Kconfig with just essentials for pickling without getting to
+    silly recursion depths pickling the Kconfig object graph. Depth was >20000!
+    """
+    def __init__(self, config_file, values, choices):
+        self.config_file = config_file
+        self.values = values
+        self.choices = choices
+
+    def is_selected(self, choice, value):
+        if isinstance(value, list):
+            return any(self.is_selected(choice, v) for v in value)
+        return self.choices.get(choice) == value
+
+    def is_enabled(self, sym):
+        return kconfig_truthy(self.values.get(sym, False))
+
+    def getint(self, sym):
+        return int(self.values[sym])
+
+    def get(self, sym):
+        if sym not in self.values:
+            raise KeyError("Symbol '{}' not found in Kconfig".format(sym))
+        return self.values[sym]
+
+    def as_dict(self):
+        return dict(self.values)
+
+# ---------------------------------------
+
+
+class HHConfig(ConfigBuilder):
+    """
+    Enhanced ConfigBuilder for Happy Hare configuration management.
+
+    Responsibilities:
+      1. Load and merge multiple Happy Hare .cfg files
+      2. Track where every option originally came from
+      3. Preserve user edits during upgrades/reinstalls
+      4. Detect deprecated/unused settings
+      5. Copy hidden/excluded config blocks safely
+
+    This allows configuration options to move between files
+    without breaking upgrades, while preserving user changes
+    and maintaining backward compatibility.
+    """
+
+    def __init__(self, cfg_files):
+        super(HHConfig, self).__init__()
+        self.origins = {}
+        self.used_options = set()
+        prefix = os.path.commonprefix(cfg_files)
+        for cfg_file in cfg_files:
+            logging.debug(" > Reading config file: " + cfg_file)
+            basename = cfg_file.replace(prefix, "")
+            super(HHConfig, self).read(cfg_file, origin=os.path.basename(cfg_file))
+            for section in self.sections(scope="included"):
+                for option in self.options(section):
+                    if (section, option) not in self.origins:
+                        self.origins[(section, option)] = basename
+
+        # These files get regenerated from the templates, so anything unparsable here isn't
+        # merely unreadable - it won't survive the rebuild. Say so plainly
+        report_parse_errors(self, "existing Happy Hare config", preserved=False)
+
+    def remove_option(self, section_name, option_name):
+        if (section_name, option_name) in self.origins:
+            self.origins.pop((section_name, option_name))
+        return super(HHConfig, self).remove_option(section_name, option_name)
+
+    def remove_section(self, section_name):
+        for sec, option in self.origins.items():
+            if sec == section_name:
+                self.origins.pop((sec, option))
+        return super(HHConfig, self).remove_section(section_name)
+
+    def move_option(self, old_section_name, old_option_name, new_section_name, new_option_name=None):
+        if new_option_name is None:
+            new_option_name = old_option_name
+        if self.has_option(old_section_name, old_option_name):
+            self.set(new_section_name, new_option_name, self.get(old_section_name, old_option_name))
+            self.origins.pop((old_section_name, old_option_name))
+            self.remove_option(old_section_name, old_option_name)
+
+    def rename_option(self, section_name, option_name, new_option_name):
+        self.move_option(section_name, option_name, section_name, new_option_name)
+
+    def rename_section(self, section_name, new_section_name):
+        if self.has_section(section_name):
+            self.add_section(new_section_name)
+            for option, value in self.items(section_name):
+                self.set(new_section_name, option, value)
+                self.origins.pop((section_name, option))
+            self.remove_section(section_name)
+
+    def update_builder(self, builder, excluded_params, excluded_vars, origin=None):
+        """
+        Update the builder config selectively from the existing config HH data.
+        'excluded_params' is a list of params that should NOT be updated (we want the
+        new values from Kconfig to win. It is empty for the non-interactive upgrade
+        case where all previous params are retained
+        """
+
+        excluded_var_sections = {section for section, _ in excluded_vars}
+        excluded_vars = set(excluded_vars)
+
+        # Copy over included options
+        for section in sorted(builder.sections(scope="included")):
+            for option in sorted(builder.options(section)):
+                if self.has_option(section, option):
+
+                    is_gcode = option.startswith("gcode")
+                    is_macro_section = section.startswith("gcode_macro")
+                    is_var_section = section in excluded_var_sections
+                    is_excluded_var = (section, option) in excluded_vars
+                    is_excluded_param = (
+                        not is_macro_section
+                        and option in excluded_params
+                    )
+
+                    if (
+                        not is_gcode
+                        and not is_excluded_var
+                        and (is_var_section or not is_excluded_param)
+                    ):
+                        builder.set(section, option, self.get(section, option))
+                        logging.debug("Restoring previous: [%s] %s: %s", section, option, self.get(section, option))
+
+                    elif not is_gcode:
+                        logging.debug("Kconfig override:   [%s] %s: %s --> Using: %s", section, option, self.get(section, option), builder.get(section, option))
+
+                    self.used_options.add((section, option))
+
+        # If existing config has excluded options use them in lieu of builder excluded options
+        if self.excluded_nodes(origin=origin) and builder.excluded_nodes():
+            logging.info("Preserving existing excluded config sections")
+            builder.delete_excluded()                      # Ensure template is clean
+            self._copy_excluded_to(builder, origin=origin) # Copy in previous excluded nodes
+            self.delete_excluded(origin=origin)            # Prevent them being reported in unsed option set
+
+    def _copy_excluded_to(self, builder, origin=None, insert_blank_line=True):
+        """
+        Copy all MagicExclusionNode(s) into builder config appending each as a separate top-level MagicExclusionNode.
+        Returns the number of nodes copied.
+        """
+
+        # Append deep copies to the destination, one by one
+        dest_doc = builder.document
+        copied = 0
+        for excluded in self.excluded_nodes(origin=origin):
+            if insert_blank_line and dest_doc.body and not isinstance(dest_doc.body[-1], WhitespaceNode):
+                dest_doc.body.append(WhitespaceNode("\n"))
+            dest_doc.body.append(copy.deepcopy(excluded))
+            copied += 1
+
+        return copied
+
+    def unused_options_for(self, origin):
+        return [
+            (section, key)
+            for (section, key), file in self.origins.items()
+            if file == origin and (section, key) not in self.used_options
+        ]
+
+
+# ---------------------------------------
+
+
+def report_parse_errors(builder, filename, preserved=True):
+    """
+    Summarize anything the config parser couldn't understand. The parser recovers rather than
+    aborting (it used to bomb out with a traceback, which is a hard blocker for the user), but
+    we must be loud about it because either way HH cannot see options in those lines.
+
+    preserved=True  - the file is edited in place (printer.cfg, moonraker.conf), so the lines
+                      survive verbatim with a marker comment added
+    preserved=False - the file is regenerated from a template with the user's values copied
+                      over (Happy Hare's own cfg files), so those lines will NOT be carried
+                      across and have to be re-applied by hand
+    """
+    errors = builder.parse_errors()
+    if not errors:
+        return False
+
+    logging.error("!! Unable to fully parse '{}' - {} problem(s) found:".format(filename, len(errors)))
+    for node in errors:
+        where = "{} ".format(node.origin) if node.origin else ""
+        logging.error("!!   {}line {}: {}".format(where, node.line, node.reason))
+        for line in node.value.strip("\n").split("\n")[:4]:
+            logging.error("!!     | {}".format(line))
+    if preserved:
+        logging.error("!! These lines were left exactly as they were and marked with '{}'".format(PARSE_ERROR_MARKER))
+        logging.error("!! Happy Hare has continued, but please fix them and re-run the installer")
+    else:
+        logging.error("!! Any settings in these lines could not be read and will be MISSING from the")
+        logging.error("!! rebuilt config. Fix them in the '.old-<timestamp>' backup and re-run the installer")
+    return True
+
+
+def add_supplemental_params(builder, hhcfg, section):
+    for param in supplemental_params + hidden_params:
+        if hhcfg.has_option(section, param):
+            logging.debug(" > Reinserting hidden / supplemental option: %s" % param)
+            builder.copy_option(hhcfg, section, param)
+
+
+INVALID_KLIPPER_STRING_LITERAL = "<invalid klipper string literal>"
+
+
+def klipper_string_literal(value):
+    """Render arbitrary menuconfig text as a Klipper/Python string literal.
+
+    Kconfig strings are decoded before they reach Jinja, while Klipper expects
+    every gcode_macro variable to be a valid Python literal.  JSON string
+    encoding is also valid Python string syntax and safely handles quotes,
+    backslashes, control characters, and newlines.
+
+    Early menuconfig users worked around the missing encoding by entering the
+    surrounding quotes themselves.  Preserve those values by unwrapping a
+    complete quoted string literal before encoding it again.
+
+    This filter must never abort template rendering.  Kconfig supplies strings,
+    but if an unexpected internal value cannot be converted or encoded, emit an
+    intentionally invalid literal so Klipper reports the bad generated option.
+    """
+    try:
+        text = value if isinstance(value, str) else str(value)
+    except Exception:
+        logging.exception("Unable to convert value to a Klipper string literal")
+        return INVALID_KLIPPER_STRING_LITERAL
+
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+        try:
+            legacy_value = ast.literal_eval(text)
+        except Exception:
+            pass
+        else:
+            if isinstance(legacy_value, str):
+                text = legacy_value
+
+    try:
+        return json.dumps(text, ensure_ascii=True)
+    except Exception:
+        logging.exception("Unable to encode value as a Klipper string literal")
+        return INVALID_KLIPPER_STRING_LITERAL
+
+
+def jinja_env():
+    env = Environment(
+        loader=FileSystemLoader("."),
+        block_start_string="[%",
+        block_end_string="%]",
+        variable_start_string="[[",
+        variable_end_string="]]",
+        comment_start_string="[#",
+        comment_end_string="#]",
+        trim_blocks=True,
+        line_comment_prefix=";;",
+    )
+    env.filters["klipper_string_literal"] = klipper_string_literal
+    return env
+
+
+def render_template(template_file, kcfg, extra_params):
+    """Render the template config file after expanding KConfig params (and extra params) dictionary"""
+    try:
+        env = jinja_env()
+        template = env.get_template(os.path.relpath(template_file))
+        params = kcfg.as_dict()
+        params.update(extra_params)
+        return template.render(params)
+    except UndefinedError as ue:
+        logging.error("%s while rendering '%s' with KConfig '%s'" % (str(ue), template_file, kcfg.config_file))
+        exit(1)
+
+
+# TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
+def build(cfg_file, dest_file, kconfig, input_files):
+    logging.debug("Building {} -> {} with kconfig {}".format(cfg_file, dest_file, kconfig))
+
+    cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
+    kcfg = load_parsed_kconfig(kconfig)
+    extra_params = dict()
+
+    # PARAM_TOTAL_NUM_GATES is required to create the Tx macro wrappers
+    if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
+        unit_kcfgs = dict()
+        total_num_gates = 0
+        for unit in kcfg.get("MMU_UNITS").split(","):
+            unit = unit.strip()
+            unit_kcfgs[unit] = load_parsed_kconfig(kconfig + "_" + unit)
+            total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
+
+        # Total sum of gates for all units
+        extra_params["PARAM_TOTAL_NUM_GATES"] = total_num_gates
+    else:
+        extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
+
+    build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params)
+
+
+# Where this fits into the Makefile flow:
+# Live installed configs
+#     v
+# linked into OUT/in
+#     v
+# installer.build reads them (THIS STEP)
+#     v
+# new generated configs written to OUT/
+#     v
+# OUT files installed back to live locations
+#
+def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
+    dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
+    logging.info("Building config file: %s" % dest_file_basename)
+
+    # 1.Generate an aggregated master HHConfig for all HH input_files
+    hhcfg = HHConfig(input_files)
+
+    # 2.Run upgrade transform on aggregated master HH Config
+    to_version = get_target_version()
+    from_version = get_current_version(hhcfg)
+
+    if major_minor(from_version) != major_minor(to_version):
+        logging.debug("Upgrading {} from v{} to v{}".format(cfg_file_basename, from_version, to_version))
+        upgrades = Upgrades()
+        upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
+
+        # Important to update version in case .mmu_config is not changed
+        hhcfg.set("mmu_machine", "happy_hare_version", to_version)
+
+    # 3.Render cfg template expanding KConfig parameters from read .mmu_config
+    buffer = render_template(cfg_file_basename, kcfg, extra_params)
+    logging.debug(
+        "Rendered template '%s' using Kconfig '%s' with extra_params: %s"
+        % (cfg_file_basename, kcfg.config_file, extra_params)
+    )
+
+    # 4.Generate builder Config from rendered cfg template
+    builder = ConfigBuilder()
+    builder.read_buf(buffer)
+    report_parse_errors(builder, cfg_file_basename)
+
+    # 5.Special case cfg files that contains parameters so we can add back any optional,
+    #   hidden or supplemental params because they are not present in cfg template
+    if cfg_file_basename == "config/base/mmu_parameters.cfg":
+        name = Path(dest_file).name
+        prefix = "mmu_parameters_"
+        suffix = ".cfg"
+        if name.startswith(prefix) and name.endswith(suffix):
+            unit_name = name[len(prefix):-len(suffix)]
+        else:
+            unit_name = "mmu"
+        section = "mmu_unit_parameters %s" % unit_name
+        add_supplemental_params(builder, hhcfg, section)
+
+    elif cfg_file_basename == "config/base/mmu.cfg":
+        add_supplemental_params(builder, hhcfg, "mmu_parameters")
+
+    # 6.Determine how much of the HHConfig (existing .cfg's) do we re-apply
+    refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
+
+    if refresh_mode == 'refresh':
+        # Default choice (always used when menuconfig UI is not run)
+        # Here we use the refreshed cfg templates as a starting point but
+        # then replace every matching parameter with existing value.
+        # Unused options will be reported.
+        excluded_params = [] # Don't filter out any existing params in HHConfig
+        excluded_vars = []   # Don't filter out any existing macro variables
+
+    elif refresh_mode == 'replace':
+        # Here we (re)create prestine cfg files based on kconfig settings
+        pass
+
+    elif refresh_mode == 'merge':
+        # Experimental. Here we selectively ignore simple PARAM_ and VAR_ parameter
+        # settings so that the Kconfig value "wins" in these cases
+
+        excluded_params = [
+            k.lower()[6:]
+            for k in kcfg.as_dict()
+            if k.lower().startswith("param_")
+        ]
+        #logging.debug("The following parameters are being filtered: %s" % ", ".join(excluded_params))
+
+        excluded_vars = []
+        for k in kcfg.as_dict():
+            key = k.lower()
+
+            for prefix, section in VAR_SECTION_MAP.items():
+                if key.startswith(prefix):
+                    name = key[len(prefix):]
+                    excluded_vars.append((section, f"variable_{name}"))
+                    break
+        #logging.debug("The following macro variables are being filtered: %s", excluded_vars)
+
+    else:
+        logging.error("Invalid F_CFG_UPGRADE_MODE '%s'" % refresh_mode)
+        exit(1)
+
+    if refresh_mode != 'replace':
+        # 7.Update the builder Config from the existing master HHConfig (existing .cfg's)
+        #   to ensure user edits are preserved. The 'excluded_params' is a list that is
+        #   excluded from consideration (i.e. ignored from existing .cfg's)
+        hhcfg.update_builder(builder, excluded_params, excluded_vars, origin=os.path.basename(dest_file))
+
+        # 8.Report on deprecated/unused options
+        first = True
+        origin = re.sub(r"^mmu[/\\]", "", dest_file_basename)
+        for section, option in hhcfg.unused_options_for(origin):
+            if first:
+                first = False
+                logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
+            logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
+
+    # 9.Write builder Config to destination cfg file
+    if os.path.islink(dest_file):
+        os.remove(dest_file)
+
+    data = builder.write()
+    with open(dest_file, "wb") as f:
+        f.write(data.encode("utf-8"))
+
+
+def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
+    logging.info("Checking for moonraker.conf additions")
+
+    kcfg = load_parsed_kconfig(kconfig)
+    buffer = render_template(moonraker_cfg, kcfg, {})
+    update = ConfigBuilder()
+    update.read_buf(buffer)
+    builder = ConfigBuilder(existing_cfg)
+    report_parse_errors(builder, existing_cfg)
+
+    def update_section(section):
+        if not builder.has_section(section):
+            logging.debug(" > Adding [{}]".format(section))
+            builder.add_section(section)
+
+        for option, value in update.items(section):
+            if not builder.has_option(section, option):
+                logging.debug(" > Adding [{}] {} = {}".format(section, option, value))
+                builder.set(section, option, value)
+
+    update_section("update_manager happy-hare")
+    update_section("mmu_server")
+
+    with open(existing_cfg, "w") as f:
+        f.write(builder.write())
+
+
+def uninstall_moonraker(moonraker_cfg):
+    # May not be complete path if config already deleted so ignore
+    if not os.path.isfile(moonraker_cfg):
+        return
+
+    logging.info("Cleaning up moonraker.conf additions")
+    builder = ConfigBuilder(moonraker_cfg)
+    report_parse_errors(builder, moonraker_cfg)
+
+    if builder.has_section("update_manager happy-hare"):
+        logging.debug(" > Removing [update_manager happy-hare]")
+        builder.remove_section("update_manager happy-hare")
+
+    if builder.has_section("mmu_server"):
+        logging.debug(" > Removing [mmu_server]")
+        builder.remove_section("mmu_server")
+
+    with open(moonraker_cfg, "w") as f:
+        f.write(builder.write())
+
+
+def install_includes(dest_file, kconfig):
+    logging.info("Checking for printer.cfg includes")
+
+    kcfg = load_parsed_kconfig(kconfig)
+    builder = ConfigBuilder(dest_file)
+    report_parse_errors(builder, dest_file)
+
+    def check_include(builder, param, include, comment="", at_top=True):
+        include = "include " + include
+        if kcfg.is_enabled(param):
+            if not builder.has_section(include):
+                logging.debug(" > Adding include [{}]".format(include))
+                builder.add_section(include, comment=comment, at_top=at_top)
+        else:
+            if builder.has_section(include):
+                logging.debug(" > Removing include [{}]".format(include))
+                builder.remove_section(include)
+
+    # Optional macros --------
+    check_include(
+        builder,
+        "INSTALL_12864_MENU",
+        "mmu/optional/mmu_menu.cfg",
+        at_top=True
+    )
+    check_include(
+        builder,
+        "INSTALL_CLIENT_MACROS",
+        "mmu/optional/client_macros.cfg",
+        comment="Happy Hare Client macros (should be after last include or other PAUSE/CANCEL macros)",
+        at_top=False
+    )
+
+    # Required --------
+    if not builder.has_section("include mmu/macros/*.cfg"):
+        logging.debug(" > Adding include [include mmu/macros/*.cfg]")
+        builder.add_section(
+            "include mmu/macros/*.cfg",
+            at_top=True
+        )
+
+    if not builder.has_section("include mmu/base/*.cfg"):
+        logging.debug(" > Adding include [include mmu/base/*.cfg]")
+        builder.add_section(
+            "include mmu/base/*.cfg",
+            comment="Happy Hare MMU includes (should be near top of file)",
+            at_top=True
+        )
+
+    with open(dest_file, "w") as f:
+        f.write(builder.write())
+
+
+def uninstall_includes(dest_file):
+    # May not be complete path if config already deleted so ignore
+    if not os.path.isfile(dest_file):
+        return
+
+    logging.info("Cleaning up includes")
+    builder = ConfigBuilder(dest_file)
+    report_parse_errors(builder, dest_file)
+    for section in builder.sections():
+        if section.startswith("include mmu/"):
+            logging.debug(" > Removing include [{}]".format(section))
+            builder.remove_section(section)
+
+    with open(dest_file, "w") as f:
+        f.write(builder.write())
+
+
+def restart_service(name, service, kconfig):
+    if not service:
+        logging.warning(f"No {name} service specified - Please restart manually")
+    else:
+        logging.info(f"Restarting {name}...")
+
+    kcfg = load_parsed_kconfig(kconfig)
+    if kcfg.is_enabled("INIT_SYSTEMD"):
+        if not service.endswith(".service"):
+            service = service + ".service"
+        if subprocess.call("systemctl list-unit-files '{}'".format(service), stdout=open(os.devnull, "w"), shell=True):
+            logging.warning("Service '{}' not found! Restart manually or check your config".format(service))
+        else:
+            subprocess.call("sudo systemctl restart '{}'".format(service), shell=True)
+    else:
+        if os.path.exists("/etc/init.d/" + service):
+            subprocess.call("/etc/init.d/{} restart".format(service), shell=True)
+        else:
+            logging.warning("Service '/etc/init.d/{}' not found! Restart manually or check your config".format(service))
+
+
+def major_minor(version_str):
+    """
+    Convert "<major>.<minor>.<point>" to (<major>, <minor>)
+    """
+    major, minor, *_ = version_str.strip('"').split(".")
+    return (int(major), int(minor))
+
+
+def get_current_version(hhcfg):
+    current_version = None
+    if hhcfg.has_section("mmu_machine"):
+        current_version = hhcfg.get("mmu_machine", "happy_hare_version")
+    elif hhcfg.has_section("mmu"):
+        current_version = hhcfg.get("mmu", "happy_hare_version") # old v3 config location
+
+    if current_version is None:
+        current_version = "4.0.0"
+    return current_version
+
+
+def get_target_version():
+    target_version = os.environ.get("HH_VERSION")
+    return target_version
+
+
+def get_config_version(kcfg):
+    version = kcfg.get("HAPPY_HARE_VERSION")
+    return version
+
+
+def check_version(kconfig, input_files):
+    hhcfg = HHConfig(input_files)
+    kcfg = load_parsed_kconfig(kconfig)
+
+    # Current version is pulled from current cfg files...
+    current_version = get_current_version(hhcfg)
+    logging.log(LEVEL_NOTICE, f"Current version: v{current_version}")
+
+    # Target version is pulled from the environment (from mmu_constants.py)
+    target_version = get_target_version()
+    if target_version is None:
+        logging.error("Target version HH_VERSION was not set")
+        exit(1)
+
+    if major_minor(current_version) == major_minor(target_version):
+        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required")
+        return
+
+    if major_minor(current_version) > major_minor(target_version):
+        logging.warning(
+            "Automatic 'downgrade' to earlier version is not guaranteed!\n"
+            "If you encounter startup problems you may need to manually compare "
+            "the backed-up 'mmu_hardware.cfg and 'mmu_parameters.cfg' with current one to restore differences"
+        )
+        return
+
+    logging.log(LEVEL_NOTICE, "Will try to upgrade to " + target_version)
+
+
+# Pickling the Kconfig object was getting to silly recursion depths >20000
+# So changed to pickle a light weight version
+#def pre_parse_kconfig(kconfig):
+#    out = os.getenv("OUT")
+#    base = os.path.basename(kconfig)
+#    pickle_file = "%s/%s.pickle" % (out, base)
+#    logging.debug(" > Pickling kconfig file: %s -> %s" % (kconfig, pickle_file))
+#    kcfg = KConfig(kconfig)
+#    sys.setrecursionlimit(30000)  # Increase recursion limit for pickling kconfiglib structures
+#    with open(pickle_file, "wb") as f:
+#        dill.dump(kcfg, f, recurse=True)
+#
+#def load_parsed_kconfig(kconfig):
+#    out = os.getenv("OUT")
+#    base = os.path.basename(kconfig)
+#    pickle_file = "%s/%s.pickle" % (out, base)
+#    logging.debug(" > Loading pickled kconfig file: %s" % pickle_file)
+#    try:
+#        with open(pickle_file, "rb") as f:
+#            return dill.load(f)
+#    except FileNotFoundError:
+#        # This shouldn't happen because we want make to decide on staleness
+#        logging.warning("Pre-parsed kconfig (%s) for '%s' not available... Parsing original" % (pickle_file, kconfig))
+#        return KConfig(kconfig)
+#    except Exception as e:
+#        logging.error("Error unpickling '%s' (%s)" % (pickle_file, e))
+#        exit(1)
+
+
+def pre_parse_kconfig(kconfig):
+    out = os.getenv("OUT")
+    base = os.path.basename(kconfig)
+    pickle_file = "%s/%s.pickle" % (out, base)
+
+    logging.debug(" > Pickling kconfig file: %s -> %s" % (kconfig, pickle_file))
+
+    tmp_file = pickle_file + ".tmp"
+    try:
+        kcfg = KConfig(kconfig)
+
+        data = {
+            "config_file": kconfig,
+            "values": kcfg.as_dict(),
+            "choices": {
+                # Choice.selection silently discards
+                # choice.user_selection if the selected member isn't
+                # currently visible (same trap as Symbol.str_value
+                # discarding Symbol.user_value -- see KConfig.as_dict()).
+                # Prefer the raw user_selection so an explicit choice
+                # sticks even when the choice/members are invisible.
+                name: (choice.user_selection or choice.selection).name
+                for name, choice in kcfg.named_choices.items()
+                if choice.user_selection or choice.selection
+            },
+        }
+        with open(tmp_file, "wb") as f:
+            pickle.dump(data, f)
+
+        os.replace(tmp_file, pickle_file)
+
+    except Exception as e:
+        if os.path.exists(tmp_file):
+            os.unlink(tmp_file)
+        logging.error("Error pickling '%s' (%s)" % (pickle_file, e))
+        exit(1)
+
+
+def load_parsed_kconfig(kconfig):
+    out = os.getenv("OUT")
+    base = os.path.basename(kconfig)
+    pickle_file = "%s/%s.pickle" % (out, base)
+
+    logging.debug(" > Loading pickled kconfig file: %s" % pickle_file)
+
+    try:
+        with open(pickle_file, "rb") as f:
+            data = pickle.load(f)
+
+            return ParsedKConfig(
+                data["config_file"],
+                data["values"],
+                data.get("choices", {})
+            )
+
+    except FileNotFoundError:
+        logging.warning("Pre-parsed kconfig (%s) for '%s' not available... Parsing original" % (pickle_file, kconfig))
+        return KConfig(kconfig)
+
+    except Exception as e:
+        logging.error("Error unpickling '%s' (%s)" % (pickle_file, e))
+        exit(1)
+
+
+
+# ----------------------------------------------------------------------------------------------
+# Dynamically generate optional Kconfig rules to augment options choices for:
+# mmu_toolhead, mmu_encoder, mmu_sync_feedback
+# The idea is that these can be shared and this would allow selection from choice list
+# TODO: This is currently incomplete and unused (never called)
+# ----------------------------------------------------------------------------------------------
+
+# Param tokens
+TOOLHEAD                  = "TOOLHEAD"
+ENCODER_NAME              = "ENCODER_NAME"
+SYNC_FEEDBACK_BUFFER_NAME = "SYNC_FEEDBACK_BUFFER_NAME"
+
+# Regex patterns grouped by token
+PARAM_REGEX = {
+    TOOLHEAD: {
+        "value": re.compile(r'^CONFIG_PARAM_TOOLHEAD="((?:[^"\\]|\\.)*)"(?:\s+#.*)?$'),
+        "shared": re.compile(r'^CONFIG_MMU_SHARED_TOOLHEAD=y(?:\s+#.*)?$'),
+    },
+    ENCODER_NAME: {
+        "value": re.compile(r'^CONFIG_PARAM_ENCODER_NAME="((?:[^"\\]|\\.)*)"(?:\s+#.*)?$'),
+        "shared": re.compile(r'^CONFIG_MMU_SHARED_ENCODER=y(?:\s+#.*)?$'),
+    },
+    SYNC_FEEDBACK_BUFFER_NAME: {
+        "value": re.compile(r'^CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="((?:[^"\\]|\\.)*)"(?:\s+#.*)?$'),
+        "shared": re.compile(r'^CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y(?:\s+#.*)?$'),
+    },
+}
+GENERATED_KCONFIG_PATH = "/tmp/.Kconfig.generated"
+
+def gen_kconfig_options(configs):
+    parts = []
+
+    for token in [TOOLHEAD, ENCODER_NAME, SYNC_FEEDBACK_BUFFER_NAME]:
+        text = generate_choices(token)
+        if text:
+            parts.append(text)
+
+    # Join with a newline between sections (and ensure trailing newline)
+    output = "\n".join(parts)
+    if output and not output.endswith("\n"):
+        output += "\n"
+
+    with open(GENERATED_KCONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(output)
+
+def split_csv(raw):
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+def unescape_kconfig_string(s):
+    # Matches the escaping style used in .mmu_config string values
+    return re.sub(r'\\(.)', r'\1', s)
+
+def to_symbol(name):
+    sym = re.sub(r"[^A-Za-z0-9_]", "_", name.strip().upper())
+    sym = re.sub(r"_+", "_", sym).strip("_")
+    if not sym:
+        raise ValueError(f"Invalid param name: {name!r}")
+    if sym[0].isdigit():
+        sym = f"_{sym}"
+    return sym
+
+def parse_param_from_config(path, token):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return [] # If exclude pattern exists anywhere in the file, ignore everything
+
+    value_regexp = PARAM_REGEX[token]["value"]
+    exclude_regexp = PARAM_REGEX[token]["shared"]
+
+    if exclude_regexp:
+        for line in lines:
+            if exclude_regexp.search(line):
+                return [] # Otherwise find the (single) match
+
+    for line in lines:
+        m = value_regexp.match(line.rstrip("\n"))
+        if not m:
+            continue
+
+        name = unescape_kconfig_string(m.group(1)).strip()
+        if name:
+            return [name]
+
+    return []
+
+def discover_names_from_configs(token):
+    """
+    Reads:
+      - base config (KCONFIG_CONFIG or .mmu_config)
+      - per-unit configs: KCONFIG_CONFIG_<unit>
+
+    using CONFIG_MMU_UNITS to know which unit config files to inspect.
+    """
+    base_config = os.environ.get("KCONFIG_CONFIG", ".mmu_config")
+    mmu_units = split_csv(os.environ.get("CONFIG_MMU_UNITS", ""))
+
+    seen = set()
+    result = []
+
+    def add_from_file(path):
+        for name in parse_param_from_config(path, token):
+            if name not in seen:
+                seen.add(name)
+                result.append(name)
+
+    add_from_file(base_config)
+
+    for unit_name in mmu_units:
+        cfg_path = f"{base_config}_{unit_name}"
+        add_from_file(cfg_path)
+
+    return result
+
+def generate_choices(token):
+    names = discover_names_from_configs(token)
+    if not names:
+        return ""
+
+    lines = []
+    lines.append(f'choice {token}_TYPE')
+
+    for name in names:
+        sym = to_symbol(name)
+
+        lines.append(f'  config CHOICE_{token}_TYPE_{sym}')
+        lines.append(f'    bool "{name}"')
+        lines.append('')
+        lines.append(f'  if CHOICE_{token}_TYPE_{sym}')
+        lines.append(f'    config PARAM_{token}_TYPE')
+        lines.append('      default "Shared"')
+        lines.append(f'    config MMU_SHARED_{token}')
+        lines.append('      default y')
+        lines.append(f'    config PARAM_{token}')
+        lines.append(f'      default "{name}"')
+        lines.append('  endif')
+
+    lines.append('endchoice')
+    lines.append('')
+
+    return "\n".join(lines)
+
+
+# ----------------------------------------------------------------------------------------------
+
+def main():
+    logging.addLevelName(logging.DEBUG, os.getenv("C_DEBUG", ""))
+    logging.addLevelName(logging.INFO, os.getenv("C_INFO", ""))
+    logging.addLevelName(LEVEL_NOTICE, os.getenv("C_NOTICE", ""))
+    logging.addLevelName(logging.WARNING, os.getenv("C_WARNING", ""))
+    logging.addLevelName(logging.ERROR, os.getenv("C_ERROR", ""))
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s%(message)s" + os.getenv("C_OFF", ""))
+
+    parser = argparse.ArgumentParser(description="Build script")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-b", "--build", nargs="*")
+    parser.add_argument("--check-version", nargs="*")
+    parser.add_argument("--print-happy-hare", nargs="?")
+    parser.add_argument("--print-unhappy-hare", nargs="?")
+    parser.add_argument("--install-moonraker", nargs=3)
+    parser.add_argument("--uninstall-moonraker", nargs=1)
+    parser.add_argument("--install-includes", nargs=2)
+    parser.add_argument("--uninstall-includes", nargs=1)
+    parser.add_argument("--restart-service", nargs=3)
+    parser.add_argument("--pre-parse-kconfig", nargs=1)
+    parser.add_argument("--gen-kconfig-options", nargs=1)
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.getLogger().setLevel(logging.INFO)
+
+    if args.build:
+        build(args.build[0], args.build[1], args.build[2], args.build[3:])
+
+    if args.print_happy_hare:
+        logging.log(LEVEL_NOTICE, happy_hare.format(caption=args.print_happy_hare))
+    if args.print_unhappy_hare:
+        logging.log(LEVEL_NOTICE, unhappy_hare.format(caption=args.print_unhappy_hare))
+
+    if args.install_moonraker:
+        install_moonraker(args.install_moonraker[0], args.install_moonraker[1], args.install_moonraker[2])
+    if args.uninstall_moonraker:
+        uninstall_moonraker(args.uninstall_moonraker[0])
+
+    if args.install_includes:
+        install_includes(args.install_includes[0], args.install_includes[1])
+    if args.uninstall_includes:
+        uninstall_includes(args.uninstall_includes[0])
+
+    if args.restart_service:
+        restart_service(args.restart_service[0], args.restart_service[1], args.restart_service[2])
+
+    if args.check_version:
+        check_version(args.check_version[0], args.check_version[1:])
+
+    if args.pre_parse_kconfig:
+        pre_parse_kconfig(args.pre_parse_kconfig[0])
+
+    if args.gen_kconfig_options:
+        gen_kconfig_options(args.gen_kconfig_options[0:])
+
+
+if __name__ == "__main__":
+    main()

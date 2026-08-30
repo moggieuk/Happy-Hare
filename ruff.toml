@@ -1,0 +1,17 @@
+target-version = "py310"
+
+# This is third-party code vendored into the repository. Linting it would make
+# upstream code style part of Happy Hare's checks.
+extend-exclude = [
+    "installer/lib/kconfiglib",
+]
+
+[lint]
+# Start with high-confidence errors that are likely to represent broken code.
+# Broader correctness and style rules can be introduced incrementally.
+select = [
+    "E9",
+    "F63",
+    "F7",
+    "F82",
+]

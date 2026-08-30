@@ -1,0 +1,151 @@
+config MMU_TYPE_VVD_1_0
+  bool "BTT ViViD"
+  select INDEXED_SELECTOR
+
+  select MMU_HAS_LEDS
+  select MMU_HAS_SENSOR_ENTRY
+  select MMU_HAS_ENVIRONMENT_SENSOR
+  select MMU_HAS_HEATER
+  select MMU_HAS_NFC_READER
+  select MMU_HAS_PER_GATE_NFC_READERS
+  select UNSELECT_MMU_HAS_ESPOOLER        # Disable
+  select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
+
+  select PARAM_REQUIRE_BOWDEN_MOVE
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable
+  select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable
+
+  select DISABLE_NUM_GATES_OPTION         # Disable
+  imply OPTION_VVD_BUFFER                 # Suggest
+
+
+if MMU_TYPE_VVD_1_0
+  config OPTION_VVD_BUFFER
+    bool "BTT ViViD buffer"
+    help
+      Select if using the BTT ViViD brand buffer connected to the bowden tube using its
+      integrated mcu. Don't select if using a different buffer system (instead add
+      under MMU additions)
+    select MMU_HAS_BUFFER_MCU
+    select MMU_HAS_SENSOR_EXIT
+    select MMU_HAS_SYNC_FEEDBACK_BUFFER
+    select MMU_HAS_SENSOR_BUFFER_COMPRESSION
+    select MMU_HAS_SENSOR_BUFFER_TENSION
+    select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+
+  if OPTION_VVD_BUFFER
+    choice CHOICE_BUFFER_SPRING_STATE
+      default CHOICE_BUFFER_SPRING_STATE_TENSION
+    endchoice
+
+    config PARAM_BUFFER_RANGE
+      default 8
+    config PARAM_BUFFER_MAXRANGE
+      default 16
+  endif
+endif
+
+if MMU_TYPE_VVD_1_0
+
+  # MISC_HARDWARE configured these
+  config CUSTOM_LED_SETUP
+    def_bool y
+  config CUSTOM_ENVIRONMENT_SENSOR_SETUP
+    def_bool y
+  config CUSTOM_HEATER_SETUP
+    def_bool y
+  config CUSTOM_NFC_READER_SETUP
+    def_bool y
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  ####################
+  ##### Defaults #####
+  ####################
+
+  config PARAM_VENDOR
+    default "VVD"
+  config PARAM_VERSION
+    default "1.0" 
+  config PARAM_NUM_GATES
+    default 4
+  choice BOARD_TYPE
+    default BOARD_TYPE_VVD_1_0
+  endchoice
+
+  config PARAM_SELECTOR_GATE_ORDER
+    default "0, 3, 1, 2"
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_ROTATION_DISTANCE
+    default 8.45
+  config PARAM_GEAR_RUN_CURRENT
+    default 0.7
+  config PARAM_GEAR_HOLD_CURRENT
+    default 0.1
+
+  config PARAM_GEAR_HOMING_SPEED
+    default 80
+
+  config PARAM_SELECTOR_GEAR_RATIO
+    default "25:10"
+  config PARAM_SELECTOR_ROTATION_DISTANCE
+    default 360
+  config PARAM_SELECTOR_RUN_CURRENT
+    default 0.8
+  config PARAM_SELECTOR_HOLD_CURRENT
+    default 0.3
+
+  config PARAM_SELECTOR_MOVE_SPEED
+    default 200
+
+  config PARAM_GATE_HOMING_MAX
+    default 800
+  config PARAM_GATE_PARKING_DISTANCE
+    default 10
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default 800
+  
+  config PARAM_CHAIN_COUNT
+    default 28   
+  config PARAM_COLOR_ORDER
+    default "GRB"
+  config PARAM_EXIT_LEDS 
+    default "neopixel:$(UNIT_NAME)_leds_1 (1-14); neopixel:$(UNIT_NAME)_leds_2 (1-14)"
+
+  config PARAM_ENVIRONMENT_SENSOR
+    default "$(UNIT_NAME)_env_left"
+
+  config PARAM_FILAMENT_HEATER
+    default "$(UNIT_NAME)_heater"
+  config PARAM_HEATER_MAX_TEMP
+    default "75"
+
+  config PARAM_NFC_READER_0
+    default "$(UNIT_NAME)_nfc01"
+  config PARAM_NFC_READER_1
+    default "$(UNIT_NAME)_nfc01"
+  config PARAM_NFC_READER_2
+    default "$(UNIT_NAME)_nfc23"
+  config PARAM_NFC_READER_3
+    default "$(UNIT_NAME)_nfc23"
+
+  config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+    default "-300, 200"
+  config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+    default "-300, 200"
+  config PARAM_NFC_GATE_CLEAR_DISTANCE
+    default -70
+  config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+    default -70
+  config PARAM_NFC_NEIGHBOR_CHECK
+    default y
+
+  comment "_"
+
+endif 

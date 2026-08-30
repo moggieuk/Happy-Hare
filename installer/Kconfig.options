@@ -1,0 +1,377 @@
+# Defines parameter token types and defaults for popular software options
+#
+# Responsible for setting:
+#   PARAM_LOG_LEVEL
+#   PARAM_LOG_FILE_LEVEL
+#
+#   PARAM_SPOOLMAN_SUPPORT
+#   PARAM_SPOOLMAN_PENDING_ID_TIMEOUT
+#   PARAM_SPOOLMAN_LED_SEGMENT
+#   PARAM_SPOOLMAN_NFC_AUTO_CREATE
+#   PARAM_ENDLESS_SPOOL_ENABLED
+#   PARAM_ENDLESS_SPOOL_ON_LOAD
+#   PARAM_T_MACRO_COLOR
+#
+#   INSTALL_12864_MENU
+#   INSTALL_CLIENT_MACROS
+#
+#   PARAM_LOG_STATISTICS
+#   PARAM_LOG_VISUAL
+#   PARAM_LOG_STARTUP_STATUS
+#   PARAM_LOG_M117_MESSAGES
+#
+#   PARAM_TIMEOUT_PAUSE
+#   PARAM_DISABLE_HEATER
+#   PARAM_DEFAULT_EXTRUDER_TEMP
+#   PARAM_EXTRUDER_TEMP_VARIANCE
+#
+#   PARAM_STARTUP_RESET_TTG_MAP
+#   PARAM_SHOW_ERROR_DIALOG
+#   PARAM_STRICT_FILAMENT_RECOVERY
+#   PARAM_FILAMENT_RECOVERY_ON_PAUSE
+#   PARAM_RETRY_TOOL_CHANGE_ON_ERROR
+#   PARAM_BYPASS_AUTOLOAD
+
+menu "Software Options"
+  help
+    Software Options
+    This covers some of the more common software setup options. Further
+    configuration can be achieved later by editing generated klipper
+    config files.
+
+
+# -------------------------------------
+# Endless Spool
+# -------------------------------------
+
+  comment "_EndlessSpool"
+
+  config PARAM_ENDLESS_SPOOL_ENABLED
+    boolint "Enable EndlessSpool?"
+    default 0
+    help
+      This uses filament runout detection to automate switching to a new spool without interruption
+
+  config PARAM_ENDLESS_SPOOL_ON_LOAD
+    boolint "Apply EndlessSpool automatically when loading an empty gate?"
+    default 0
+    help
+      If the gate selected for a load is empty, automatically run EndlessSpool to find and
+      switch to a gate that has filament instead of erroring
+
+
+# -------------------------------------
+# Spoolman
+# -------------------------------------
+
+  comment "_"
+  comment "_Spoolman"
+
+  choice CHOICE_SPOOLMAN_SUPPORT
+    prompt "Select spoolman spool manager support"
+    default CHOICE_SPOOLMAN_SUPPORT_OFF
+    help
+      |                  |    Activate /     | Fetch filament attributes from | Filament gate assignment | Filament gate assignment |
+      | spoolman_support | Deactivate spool? |   spoolman based on spool_id?  |   shown in spoolman DB?  | pulled from spoolman DB? |
+      +------------------+-------------------+--------------------------------+--------------------------+--------------------------+
+      |      off         |        no         |               no               |             no           |            no            |
+      |      readonly    |        yes        |               yes              |             no           |            no            |
+      |      push        |        yes        |               yes              |             yes          |            no            |
+      |      pull        |        yes        |               yes              |             yes          |            yes           |
+
+    config CHOICE_SPOOLMAN_SUPPORT_OFF
+      bool "Off"
+      help
+        Don't connect to spoolman
+
+    config CHOICE_SPOOLMAN_SUPPORT_RO
+      bool "Read-only"
+      help
+        Fetch filament attributes based on spool ID
+
+    config CHOICE_SPOOLMAN_SUPPORT_PUSH
+      bool "Push"
+      help
+        Fetch filament attributes and publish gate assignment to spoolman
+
+    config CHOICE_SPOOLMAN_SUPPORT_PULL
+      bool "Pull"
+      help
+        Fetch filament attributes and pull gate assignment from spoolman (print farms)
+  endchoice
+
+  config PARAM_SPOOLMAN_SUPPORT
+    string
+    default "off" if CHOICE_SPOOLMAN_SUPPORT_OFF
+    default "readonly" if CHOICE_SPOOLMAN_SUPPORT_RO
+    default "push" if CHOICE_SPOOLMAN_SUPPORT_PUSH
+    default "pull" if CHOICE_SPOOLMAN_SUPPORT_PULL
+
+  config PARAM_SPOOLMAN_PENDING_ID_TIMEOUT
+    int "Seconds before a pending spool_id assignment is voided"
+    range 5 120
+    default 20
+
+  choice CHOICE_SPOOLMAN_LED_SEGMENT
+    prompt "LED segment for pending spool effect"
+    default CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
+
+    config CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
+      bool "gate_status"
+      help
+        Show the pending spool_id overlay on LED segments displaying "gate_status"
+
+    config CHOICE_SPOOLMAN_LED_SEGMENT_STATUS
+      bool "status"
+      help
+        Show the pending spool_id overlay on the unit status LED only
+
+    config CHOICE_SPOOLMAN_LED_SEGMENT_BOTH
+      bool "both"
+      help
+        Show the pending spool_id overlay on segments displaying "gate_status" and the status segment
+  endchoice
+
+  config PARAM_SPOOLMAN_LED_SEGMENT
+    string
+    default "gate_status" if CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
+    default "status" if CHOICE_SPOOLMAN_LED_SEGMENT_STATUS
+    default "both" if CHOICE_SPOOLMAN_LED_SEGMENT_BOTH
+
+  config PARAM_SPOOLMAN_NFC_AUTO_CREATE
+    boolint "Auto-create a Spoolman spool from an unknown NFC/RFID tag?"
+    default 0
+    help
+      When a scanned tag UID is unknown to Spoolman, create a new spool from the tag metadata
+      (requires nfc_deep_read and spoolman_support push or pull)
+
+
+# -------------------------------------
+# Logging
+# -------------------------------------
+
+  comment "_"
+  comment "_Logging"
+
+  choice CHOICE_LOG_LEVEL
+    prompt "Console log level"
+    default CHOICE_LOG_LEVEL_INFO
+    help
+      Select verbosity of console logging.
+      Essential is minimal; Developer is very verbose.
+      Recommend "Info"
+
+    config CHOICE_LOG_LEVEL_ESSENTIAL
+      bool "Essential"
+    config CHOICE_LOG_LEVEL_INFO
+      bool "Info"
+    config CHOICE_LOG_LEVEL_DEBUG
+      bool "Debug"
+    config CHOICE_LOG_LEVEL_TRACE
+      bool "Trace"
+    config CHOICE_LOG_LEVEL_STEPPER
+      bool "Developer"
+  endchoice
+
+  config PARAM_LOG_LEVEL
+    int
+    default 0 if CHOICE_LOG_LEVEL_ESSENTIAL
+    default 1 if CHOICE_LOG_LEVEL_INFO
+    default 2 if CHOICE_LOG_LEVEL_DEBUG
+    default 3 if CHOICE_LOG_LEVEL_TRACE
+    default 4 if CHOICE_LOG_LEVEL_STEPPER
+    default 1
+
+  choice CHOICE_LOG_FILE_LEVEL
+    prompt "Log file (mmu.log) level"
+    default CHOICE_LOG_FILE_LEVEL_DEBUG
+    help
+      Select verbosity of mmu.log logging.
+      Essential is minimal; Developer is very verbose.
+      Recommend "Debug"
+
+    config CHOICE_LOG_FILE_LEVEL_ESSENTIAL
+      bool "Essential"
+    config CHOICE_LOG_FILE_LEVEL_INFO
+      bool "Info"
+    config CHOICE_LOG_FILE_LEVEL_DEBUG
+      bool "Debug"
+    config CHOICE_LOG_FILE_LEVEL_TRACE
+      bool "Trace"
+    config CHOICE_LOG_FILE_LEVEL_STEPPER
+      bool "Developer / Stepper"
+  endchoice
+
+  config PARAM_LOG_FILE_LEVEL
+    int
+    default 0 if CHOICE_LOG_FILE_LEVEL_ESSENTIAL
+    default 1 if CHOICE_LOG_FILE_LEVEL_INFO
+    default 2 if CHOICE_LOG_FILE_LEVEL_DEBUG
+    default 3 if CHOICE_LOG_FILE_LEVEL_TRACE
+    default 4 if CHOICE_LOG_FILE_LEVEL_STEPPER
+    default 2
+
+  config PARAM_LOG_STATISTICS
+    boolint "Log statistics on every toolchange?"
+    default 1
+    help
+      1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
+
+  config PARAM_LOG_VISUAL
+    boolint "Log visual representation of filament?"
+    default 1
+    help
+      Whether to log visual representation of filament in console
+
+  config PARAM_LOG_STARTUP_STATUS
+    boolint "Log tool to gate status on startup"
+    default 1
+    help
+      Whether to log tool summary and gate status on startup
+
+  config PARAM_LOG_M117_MESSAGES
+    boolint "Send toolchange message via M117 to screen?"
+    default 1
+    help
+      Whether send toolchange message via M117 to screen
+
+
+# -------------------------------------
+# Tool (Tx) Macros
+# -------------------------------------
+
+  choice CHOICE_T_MACRO_COLOR
+    prompt "Filament color shown on Tx tool macros (Mainsail/Fluidd)"
+    default CHOICE_T_MACRO_COLOR_SLICER
+
+    config CHOICE_T_MACRO_COLOR_SLICER
+      bool "slicer"
+      help
+        Color from the slicer tool map (default, what the slicer expects)
+
+    config CHOICE_T_MACRO_COLOR_ALLGATES
+      bool "allgates"
+      help
+        Color from all the tools in the gate map after running through the TTG map
+
+    config CHOICE_T_MACRO_COLOR_GATEMAP
+      bool "gatemap"
+      help
+        As per gatemap but hide empty tools
+
+    config CHOICE_T_MACRO_COLOR_OFF
+      bool "off"
+      help
+        Turn off color (and spool_id) association
+  endchoice
+
+  config PARAM_T_MACRO_COLOR
+    string
+    default "slicer" if CHOICE_T_MACRO_COLOR_SLICER
+    default "allgates" if CHOICE_T_MACRO_COLOR_ALLGATES
+    default "gatemap" if CHOICE_T_MACRO_COLOR_GATEMAP
+    default "off" if CHOICE_T_MACRO_COLOR_OFF
+
+
+# -------------------------------------
+# Temperature & Timeouts
+# -------------------------------------
+
+  comment "_"
+  comment "_Temperature & Timeouts"
+
+  config PARAM_TIMEOUT_PAUSE
+    int "Pause idle timeout                 "
+    default 72000
+    help
+      Idle time out (printer shuts down) in seconds used when in MMU pause state
+
+  config PARAM_DISABLE_HEATER
+    int "Disable heater delay               "
+    default 600
+    help
+      Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
+
+  config PARAM_DEFAULT_EXTRUDER_TEMP
+    float "Default extruder temperature       "
+    default 200
+    help
+      Default temperature for performing swaps and forming tips when not in print (overridden by gate map)
+
+  config PARAM_EXTRUDER_TEMP_VARIANCE
+    float "Extruder temperature variance      "
+    default 2
+    help
+      When waiting for extruder temperature this is the +/- permissible variance in degrees (>= 1)
+
+
+# -------------------------------------
+# Workflow
+# -------------------------------------
+
+  comment "_"
+  comment "_Workflow"
+
+  config PARAM_STARTUP_RESET_TTG_MAP
+    boolint "Reset tool-to-gate map on startup?"
+    default 0
+    help
+      Whether to reset TTG map on startup
+
+  config PARAM_SHOW_ERROR_DIALOG
+    boolint "Show pop-up dialog on error?"
+    default 1
+    help
+      Select to show pop-up dialog in addition to console message
+
+  config PARAM_STRICT_FILAMENT_RECOVERY
+    boolint "Use strict filament recovery?"
+    default 0
+    help
+      If enabled with MMU with toolhead sensor, this will cause filament position recovery to perform
+      extra moves to look for filament trapped in the space after extruder but before sensor
+
+  config PARAM_FILAMENT_RECOVERY_ON_PAUSE
+    boolint "Check filament position on pause/error?"
+    default 1
+    help
+      Whether to run a quick check to determine current filament position on pause/error
+
+  config PARAM_RETRY_TOOL_CHANGE_ON_ERROR
+    boolint "Automatically retry a failed tool change?"
+    default 0
+    help
+      Whether to automatically retry a failed tool change. If enabled Happy Hare will perform the
+      equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary to recover.
+      Note that enabling this can mask problems with your MMU
+
+  config PARAM_BYPASS_AUTOLOAD
+    boolint "Automatically load extruder for bypass operation?"
+    default 1
+    depends on MMU_HAS_SENSOR_EXTRUDER
+    help
+      If extruder sensor fitted this controls the automatic loading of extruder for bypass operation
+
+
+# -------------------------------------
+# Optional Macros
+# -------------------------------------
+
+  comment "_"
+  comment "_Optional Macros"
+
+  config INSTALL_12864_MENU
+    bool "Install Mini 12864 display menu?"
+    help
+      Installs MMU menu for Mini 12864 display.
+      Select only if printer has a Mini 12864 character display
+
+  config INSTALL_CLIENT_MACROS
+    bool "Install default client macros supplied with Happy Hare? (STRONGLY recommended)"
+    default y
+    help
+      Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
+      This is highly recommended and incorporates all functionality from popular alternatives
+      like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
+
+endmenu

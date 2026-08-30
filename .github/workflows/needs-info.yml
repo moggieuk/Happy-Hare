@@ -19,7 +19,7 @@ jobs:
             const lc = body.toLowerCase();
 
             // Simple heuristics: length + must-have sections/words
-            const required = ["summary", "steps to reproduce", "expected", "actual", "mmu-type", "hh-version", "klipper-version"];
+            const required = ["summary", "steps to reproduce", "expected", "actual", "mmu type", "happy hare version", "klipper version"];
             const missing = required.filter(s => !lc.includes(s));
 
             const insufficient = body.length < 100 || missing.length > 0;
@@ -36,17 +36,17 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number,
                 body:
-`Thanks! We need a bit more detail${missing.length ? ` (missing: ${missing.join(", ")})` : ""}.
+            `Thanks! We need a bit more detail${missing.length ? ` (missing: ${missing.join(", ")})` : ""}.
 
-Please edit the top comment to include:
-- Concise summary
-- Exact steps to reproduce
-- Expected vs. Actual
-- MMU Type (important)
-- Happy-Hare version
-- Klipper version
+            Please edit the top comment to include:
+            - Concise summary
+            - Exact steps to reproduce
+            - Expected vs. Actual
+            - MMU Type (important)
+            - Happy-Hare version
+            - Klipper version
 
-Once updated, this label will be removed automatically.`
+            Once updated, this label will be removed automatically.`
               });
             } else if (!insufficient && hasLabel("needs-info")) {
               await github.rest.issues.removeLabel({

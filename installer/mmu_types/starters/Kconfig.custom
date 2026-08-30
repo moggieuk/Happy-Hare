@@ -1,0 +1,32 @@
+config MMU_CUSTOM
+  help 
+    Select this custom config when your MMU isn't listed.
+    Ensure you choose the correct selector type.
+    After selection by sure to add options under "MMU Additions".
+    Then fine tune in Advanced/Raw Settings
+  bool "Custom Design"
+  
+if MMU_CUSTOM
+
+  source "Kconfig.num_gates"
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  ####################
+  ##### Defaults #####
+  ####################
+
+  config PARAM_VENDOR
+    default "Other"
+  config PARAM_VERSION
+    default "1.0"
+  config PARAM_NUM_GATES
+    default 4
+
+  comment "_"
+
+endif 

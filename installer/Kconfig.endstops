@@ -1,0 +1,302 @@
+# This module selects default gate and extruder homing endstops based on the
+# best strategy given available sensors. The default can be overruled by the
+# mmu_type if it sets something like:
+#   select MMU_TYPE_PREFERS_XXX
+# If so, this preference is used instead
+#
+# Responsible for setting:
+#   PARAM_GATE_HOMING_ENDSTOP
+#   PARAM_GATE_PARKING_DISTANCE
+#   PARAM_GATE_HOMING_MAX
+#   PARAM_GATE_LOAD_ATTEMPTS
+#   PARAM_EXTRUDER_HOMING_ENDSTOP
+#   PARAM_EXTRUDER_HOMING_MAX
+
+# Gate homing preference flags (hidden)
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+  def_bool n
+  depends on MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
+
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXIT
+  def_bool n
+  depends on MMU_HAS_SENSOR_EXIT
+
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
+  def_bool n
+  depends on MMU_HAS_SENSOR_SHARED_EXIT
+
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+  def_bool n
+  depends on MMU_HAS_ENCODER
+
+# Extruder homing preference flags (hidden)
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+  def_bool n
+  depends on MMU_HAS_SENSOR_EXTRUDER
+
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+  def_bool n
+  depends on MMU_HAS_SENSOR_BUFFER_COMPRESSION || MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+  def_bool n
+  depends on MMU_HAS_SENSOR_GEAR_TOUCH
+
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
+  def_bool n
+  depends on MMU_HAS_ENCODER
+
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
+  def_bool n
+
+
+menu "Endstops and Bowden movement"
+  help
+    Configure endstops, gate and extruder homing options.
+
+# -------------------------------------
+# Gate Endstop
+# -------------------------------------
+
+  comment "_Gate homing"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP 
+    prompt "Gate homing endstop         "
+    help
+      An MMU requires a homing point for pre-loading and unloading filament.
+      This allows you to choose the best option for your design
+
+    # mmu_type preferences (first true wins)
+    default CHOICE_GATE_HOMING_ENDSTOP_EXIT        if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER    if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+
+    # Heuristic fallbacks
+    default CHOICE_GATE_HOMING_ENDSTOP_EXIT        if MMU_HAS_SENSOR_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT if MMU_HAS_SENSOR_SHARED_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER    if MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
+    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER     if MMU_HAS_ENCODER
+    default CHOICE_GATE_HOMING_ENDSTOP_NONE
+
+    config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+      bool "Extruder entry sensor"
+      depends on MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
+      help
+        Use individual per-gate (mmu_exit) endstop sensor after drive gear.
+        Often also implemented as per-gate entry sensors on the filament combiner ("aka hub")
+
+    config CHOICE_GATE_HOMING_ENDSTOP_EXIT
+      bool "Individual per-gate exit sensor"
+      depends on MMU_HAS_SENSOR_EXIT
+      help
+        Use individual per-gate (mmu_exit) endstop sensor after drive gear.
+        Often also implemented as per-gate entry sensors on the filament combiner ("aka hub")
+
+    config CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
+      bool "Shared exit sensor"
+      depends on MMU_HAS_SENSOR_SHARED_EXIT
+      help
+        Use gate endstop which is shared by all MMU gates.
+        This is often implemented at the exit of the filament combiner ("aka hub") in type-B designs
+
+        Make sure that gate parking position is a retraction so filament doesn't block the bowden path
+
+    config CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+      bool "Encoder movement"
+      depends on MMU_HAS_ENCODER
+      help 
+        Detect filament position using movement of the encoder.
+
+    config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+      bool "Extruder entry sensor"
+      depends on MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
+      help 
+        Use extruder entry sensor (Only for some type-B designs,
+        where multiple bowden tubes are combined near the toolhead).
+
+    config CHOICE_GATE_HOMING_ENDSTOP_NONE
+      bool "No homing endstop available"
+      depends on !(MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE) && !MMU_HAS_SENSOR_EXIT && !MMU_HAS_SENSOR_SHARED_EXIT && !MMU_HAS_ENCODER
+      help
+        Ensure you have specified all filament sensors and encoder because
+        current configuration has no way to home at the MMU gate.
+
+  endchoice
+
+  # Create no-prompt param from choice
+  config PARAM_GATE_HOMING_ENDSTOP
+    string 
+    default "extruder"        if CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+    default "mmu_exit"        if CHOICE_GATE_HOMING_ENDSTOP_EXIT
+    default "mmu_shared_exit" if CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
+    default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+    default ""                # This is actually a config error
+
+  config PARAM_GATE_HOMING_MAX
+    float "Maximum homing distance     "
+    default 100
+    help
+      Maximum extra move distance (mm) to home (or actual move distance if
+      using "encoder" endstop)
+
+  config PARAM_GATE_PARKING_DISTANCE
+    float "Gate parking distance       "
+    default -23
+    help
+      Parking position relative to homing endstop. Must be -ve (retraction)
+      unless endstop is mmu_exit and filament can be left past the sensor
+      without restricting loading from another gate.
+
+      Negative values for movement in the retract direction (back off sensor)
+      Positive values for movement in the extrude direction (past sensor)
+
+  config PARAM_GATE_LOAD_ATTEMPTS
+    int "Number of gate load attempts"
+    range 1 20
+    default 2
+    depends on LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
+    help
+      Number of times MMU will attempt to grab the filament on initial load (type-A designs with servo)
+
+
+
+# -------------------------------------
+# Gate homing and buffer distances
+# -------------------------------------
+
+  config PARAM_BOWDEN_UNLOAD_HOMING_BUFFER
+    float "Bowden unload homing buffer "
+    default 40
+    help
+      Distance to reduce fast bowden unload to allow for accurate
+      gate homing and no gate overshoot when filament is being unloaded
+
+
+
+# -------------------------------------
+# Extruder endstop
+# -------------------------------------
+
+  comment "_"
+  comment "_Extruder homing"
+
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    prompt "Extruder homing endstop     "
+    help
+      It can be desirable to have an endstop defined near the toolhead.
+      This can be "none" if toolhead sensor is available otherwise
+      it is necessary to choose the best option for your design
+
+    # mmu_type preferences (first true wins)
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH       if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER     if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE        if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
+
+    # Heuristic fallbacks
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION if \
+        (MMU_HAS_SENSOR_BUFFER_COMPRESSION || MMU_HAS_SENSOR_BUFFER_PROPORTIONAL) && \
+        (CHOICE_BUFFER_SPRING_STATE_TENSION || CHOICE_BUFFER_SPRING_STATE_NEUTRAL)
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if MMU_HAS_SENSOR_EXTRUDER
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER     if MMU_HAS_ENCODER
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH       if MMU_HAS_SENSOR_GEAR_TOUCH
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
+
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+      bool "Extruder entry sensor"
+      depends on MMU_HAS_SENSOR_EXTRUDER
+      help
+        If you have a "filament entry" endstop configured
+        (Requires 'extruder' endstop)
+
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+      bool "Filament compression"
+      depends on MMU_HAS_SENSOR_BUFFER_COMPRESSION || MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      help
+        If you have a "sync-feedback" sensor (often called a "buffer")
+        with compression switch configured. E.g like Belay or TurtleNeck
+
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+      bool "Stallguard Touch detection"
+      depends on MMU_HAS_SENSOR_GEAR_TOUCH
+      help
+        Use touch detection when the gear stepper hits the extruder
+        (Requires stallguard)
+
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
+      bool "Encoder collision detection"
+      depends on MMU_HAS_ENCODER
+      help
+        Detect the collision with the extruder gear by monitoring encoder movement
+
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
+      bool "No homing endstop"
+      help
+        Don't attempt to home. Only possibility if lacking all sensor options.
+        Filament will be moved based on distance only
+
+        However this isn't a issue if you calibrate and have a toolhead sensor
+  endchoice
+
+  # Create no-prompt param from choice
+  config PARAM_EXTRUDER_HOMING_ENDSTOP
+    string 
+    default "extruder"             if CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    default "filament_compression" if CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+    default "encoder"              if CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
+    default "mmu_gear_touch"       if CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+    default "none"
+
+
+# -------------------------------------
+# Extruder homing and buffer distances
+# -------------------------------------
+
+  config PARAM_BOWDEN_LOAD_HOMING_BUFFER
+    float "Bowden load homing buffer   "
+    default 20
+    help
+      Distance to reduce fast bowden load to prevent collisions
+      and allow for accurate extruder homing
+
+  config PARAM_EXTRUDER_COLLISION_HOMING_CURRENT
+    int
+    range 10 100
+    default 30
+
+  config PARAM_EXTRUDER_COLLISION_HOMING_CURRENT
+    prompt "Collision homing current    "
+    depends on CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+    help
+      When using extruder collision homing method (encoder or mmu_gear_touch)
+      the current of the gear stepper can be reduced when homing. Specify
+      the % current reduction.
+
+  config PARAM_EXTRUDER_HOMING_MAX
+    float "Extruder homing max         "
+    default 100
+    help
+      The maximum distance filament will travel attempting to home
+      to the extruder. Should be greater than "Bowden load homing buffer"
+
+  if MMU_HAS_SENSOR_TOOLHEAD
+    config PARAM_EXTRUDER_FORCE_HOMING
+      boolint "Force extruder homing"
+      default 0 if CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+      default 1
+      help
+        By default, for not calibrating loads, Happy Hare will not home to the extruder
+        if a toolhead sensor is fitted (because homing point is inside the extruder).
+        However the extruder homing can be forced by setting this option.
+
+    config PARAM_TOOLHEAD_HOMING_MAX
+      float "Toolhead sensor homing max  "
+      depends on MMU_HAS_SENSOR_TOOLHEAD
+      default 40
+      help
+        Additional distance to advance in order to attempt to home to toolhead sensor
+  endif
+
+endmenu

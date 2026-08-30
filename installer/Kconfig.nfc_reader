@@ -1,0 +1,745 @@
+# NFC Readers for Spool RFID's
+#
+# Responsible for setting:
+#
+# MMU_HAS_NFC_READER
+# MMU_HAS_COMMON_NFC_READER
+# MMU_HAS_PER_GATE_NFC_READERS
+#
+# PARAM_NFC_DEEP_READ
+# PARAM_NFC_GATE_JOG_SCAN_WINDOW
+# PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+# PARAM_NFC_NEIGHBOR_CHECK
+# PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
+# PARAM_NFC_GATE_CLEAR_DISTANCE
+# PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+# PARAM_NFC_FIELD_PROBE_READS
+# PARAM_NFC_LED_SEGMENT
+#
+# Shared:
+#   PARAM_NFC_READER
+#
+# Single:
+#   PARAM_NFC_READER
+#   PARAM_NFC_READER_TYPE
+#   PARAM_NFC_READER_INTERFACE   (i2c | spi | uart - what the template dispatches on)
+#
+#   PARAM_NFC_READER_CS_PIN      (if spi interface)
+#   PARAM_NFC_READER_SPI_BUS     (if spi interface)
+#   PARAM_NFC_READER_SPI_SPEED   (if spi interface)
+#
+#   PARAM_NFC_READER_BUSY_PIN    (if pn5180 type)
+#   PARAM_NFC_READER_RESET_PIN   (if pn5180 type)
+#
+#   PARAM_NFC_READER_I2C_MCU     (if i2c interface)
+#   PARAM_NFC_READER_I2C_ADDRESS (if i2c interface)
+#   PARAM_NFC_READER_I2C_SPEED   (if i2c interface)
+#
+#   CHOICE_NFC_READER_I2C_HARDWARE / _I2C_SOFTWARE  (if i2c interface)
+#   PARAM_NFC_READER_I2C_BUS     (if i2c interface + hardware i2c)
+#   PARAM_NFC_READER_SCL_PIN     (if i2c interface + software i2c)
+#   PARAM_NFC_READER_SDA_PIN     (if i2c interface + software i2c)
+#
+#   PARAM_NFC_READER_SERIAL      (if uart interface - a plain path string)
+#   PARAM_NFC_READER_BAUD        (if uart interface)
+#
+#   PARAM_NFC_READER_VEN_PIN     (if pn7160 type)
+#   PARAM_NFC_READER_IRQ_PIN     (if pn7160 type)
+#   PARAM_NFC_READER_RX_GAIN     (0 = chip/profile default)
+#
+# Per-gate:
+#   PARAM_NFC_READER_X
+#     as above with _<gate_index> extension
+#
+# SUPPORTED READER TYPES
+#   - rc522  (spi)
+#   - pn5180 (spi, also needs BUSY and RST pins)
+#   - pn532  (i2c at 0x24, or uart/HSU on a host USB serial adapter)
+#   - pn7160 (i2c, i2c_address=0x28-0x2B)
+#
+# Chip and transport are separate settings in the rendered config, but menuconfig
+# offers them as one flat list of chip/transport pairs because that is how the
+# hardware is actually chosen. PN532-over-SPI is deliberately NOT offered: the
+# driver exists but has never run against hardware, so it is hand-edit only.
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_NFC_READER
+
+
+comment "_"
+comment "_RFID [[B]](BETA)[[/B]]"
+
+config UNSELECT_MMU_HAS_NFC_READER
+  def_bool n
+
+if !UNSELECT_MMU_HAS_NFC_READER
+  config MMU_HAS_NFC_READER
+    bool "Has NFC reader(s) for RFID tag?"
+    forceshow
+    default n
+    help
+      Select if the MMU has a NFC reader for sensing spool RFID's
+endif
+
+
+# Define type now so it can be explicitly selected
+config MMU_HAS_PER_GATE_NFC_READERS
+  def_bool n
+
+
+# ------------------------------------
+# NFC reader config
+# ------------------------------------
+
+if MMU_HAS_NFC_READER
+
+  menu "NFC reader config"
+    depends on !CUSTOM_NFC_READER_SETUP
+
+    # ------------------------------------
+    # Single NFC: all settings on one page
+    # ------------------------------------
+
+    config MMU_HAS_COMMON_NFC_READER
+      bool "Has common NFC reader?"
+      default n
+      help
+        Does MMU have a common NFC reader that can be used for all gates and bypass.
+
+    if MMU_HAS_COMMON_NFC_READER
+
+      config PARAM_NFC_READER
+        string "NFC reader name   "
+        default "$(UNIT_NAME)_nfc"
+        help
+          The name of the klipper object for this NFC reader. Unless it is going to be shared
+          across multiple MMU units it is recommended to use the default.
+
+      choice CHOICE_NFC_READER_TYPE
+        prompt "Reader type       "
+        default CHOICE_NFC_READER_TYPE_RC522
+        help
+          Select the type of NFC reader being used.
+
+        config CHOICE_NFC_READER_TYPE_RC522
+          bool "RC522 [[DIM]]/ SPI[[/DIM]]"
+          help
+            RC522 NFC reader using SPI.
+
+        config CHOICE_NFC_READER_TYPE_PN5180
+          bool "PN5180 [[DIM]]/ SPI[[/DIM]]"
+          help
+            PN5180 NFC reader using SPI. Also requires BUSY and RST pins.
+
+        config CHOICE_NFC_READER_TYPE_PN532
+          bool "PN532 [[DIM]]/ I2C[[/DIM]]"
+          help
+            PN532 NFC reader using I2C, usually at address 0x24.
+
+        config CHOICE_NFC_READER_TYPE_PN532_UART
+          bool "PN532 [[DIM]]/ UART"
+          help
+            PN532 in HSU mode on a USB serial adapter. One reader per adapter -
+            for more than one, use "PN532 / I2C" with software I2C instead (a
+            separate bit-banged bus per reader, no extra hardware).
+
+            An unplugged adapter does not stop Klipper starting; reconnect it
+            and run MMU_RFID_INIT to recover.
+
+       config CHOICE_NFC_READER_TYPE_PN532_SPI
+         bool "PN532 [[DIM]]/ SPI[[/DIM]]"
+         help
+           PN532 NFC reader using SPI. Set the breakout board's mode pads to
+           SEL0=0, SEL1=0.
+
+        config CHOICE_NFC_READER_TYPE_PN7160
+          bool "PN7160 [[DIM]]/ I2C[[/DIM]]"
+          help
+            PN7160 NFC reader using I2C, address range 0x28-0x2B.
+      endchoice
+
+      config PARAM_NFC_READER_TYPE
+        string
+        default "rc522"  if CHOICE_NFC_READER_TYPE_RC522
+        default "pn5180" if CHOICE_NFC_READER_TYPE_PN5180
+        default "pn532"  if CHOICE_NFC_READER_TYPE_PN532
+        default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_UART
+        default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_SPI
+        default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160
+
+      config PARAM_NFC_READER_INTERFACE
+        string
+        default "uart" if CHOICE_NFC_READER_TYPE_PN532_UART
+        default "spi"  if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180 || CHOICE_NFC_READER_TYPE_PN532_SPI
+        default "i2c"
+
+      if CHOICE_NFC_READER_TYPE_PN532_UART
+        config PARAM_NFC_READER_SERIAL
+          string "Serial device path"
+          default "-enter-device-path-"
+          help
+            Path of the serial adapter the PN532 is wired to.
+            Use the /dev/serial/by-id/ form: it is stable, whereas /dev/ttyUSB0
+            changes when devices are re-plugged or enumerate in a different order,
+            and swapping with another adapter is a confusing failure to diagnose.
+            Example: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+
+        config PARAM_NFC_READER_BAUD
+          int "Baud rate         "
+          default 115200
+          range 9600 1288000
+          help
+            Serial speed. Leave at 115200: that is what the PN532 powers up at, and
+            raising it needs a SetSerialBaudRate command the driver does not send.
+      endif
+
+      if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180 || CHOICE_NFC_READER_TYPE_PN532_SPI
+        config PARAM_NFC_READER_CS_PIN
+          string "CS pin            "
+          default "$(MCU_NAME):pin"
+          help
+            Chip-select pin for the SPI reader, e.g. "mcu:PA4"
+
+        config PARAM_NFC_READER_SPI_BUS
+          string "SPI bus name      "
+          default ""
+          help
+            Optional hardware SPI bus name, e.g. "spi1".
+            Leave blank to use the MCU's DEFAULT hardware SPI bus.
+            (This does not select software SPI)
+
+        config PARAM_NFC_READER_SPI_SPEED
+          int "SPI speed (Hz)    "
+          default 1000000
+          range 10 7000000 if CHOICE_NFC_READER_TYPE_PN5180
+          range 10 10000000
+          help
+            SPI speed for the reader, in Hz.
+            RC522 accepts up to 10MHz, PN5180 up to 7MHz.
+      endif
+
+      if CHOICE_NFC_READER_TYPE_PN5180
+        config PARAM_NFC_READER_BUSY_PIN
+          string "BUSY pin          "
+          default "$(MCU_NAME):pin"
+          help
+            BUSY pin for the PN5180 reader (active high).
+            Required: it is how the driver knows each command has completed.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
+
+        config PARAM_NFC_READER_RESET_PIN
+          string "RST pin           "
+          default "$(MCU_NAME):pin"
+          help
+            RST pin for the PN5180 reader (active low).
+            Required: it is the only way to recover the chip if it stops responding.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
+      endif
+
+      if CHOICE_NFC_READER_TYPE_PN532 || CHOICE_NFC_READER_TYPE_PN7160
+        config PARAM_NFC_READER_I2C_MCU
+          string "I2C MCU Name      "
+          default "$(MCU_NAME)"
+          help
+            MCU that owns this gate's I2C bus.
+
+        config PARAM_NFC_READER_I2C_ADDRESS
+            int "I2C address       "
+            default 36 if CHOICE_NFC_READER_TYPE_PN532
+            default 40 if CHOICE_NFC_READER_TYPE_PN7160
+            range 36 36 if CHOICE_NFC_READER_TYPE_PN532
+            range 36 43 if CHOICE_NFC_READER_TYPE_PN7160
+            help
+              I2C address of the NFC reader.
+              PN532 uses 36 (0x24)
+              PN7160 supports 40-43 (0x28-0x2B)
+
+        choice CHOICE_NFC_READER_I2C_BUS_TYPE
+          prompt "I2C bus type      "
+          default CHOICE_NFC_READER_I2C_HARDWARE
+          help
+            Hardware I2C uses the MCU's built-in I2C peripheral and is faster.
+            Software I2C ("bit banging") lets Klipper drive ANY two GPIO pins as an I2C bus
+            thus allowing more than one PN532 which use a fixed 0x24 address.
+
+          config CHOICE_NFC_READER_I2C_HARDWARE
+            bool "Hardware i2c"
+            help
+              Use one of the MCU's hardware I2C buses (recommended).
+
+          config CHOICE_NFC_READER_I2C_SOFTWARE
+            bool "Software i2c"
+            help
+              Bit-bang I2C on two ordinary GPIO pins. Slower than hardware, and it
+              supports neither clock stretching nor bus timeouts - a wedged bus
+              returns bad data rather than an error. Each software bus needs its
+              own pull-up resistors on both lines.
+        endchoice
+
+        config PARAM_NFC_READER_I2C_BUS_TYPE
+          string
+          default "software" if CHOICE_NFC_READER_I2C_SOFTWARE
+          default "hardware"
+
+        if CHOICE_NFC_READER_I2C_HARDWARE
+          config PARAM_NFC_READER_I2C_BUS
+            string "I2C bus name      "
+            default ""
+            help
+              Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
+        endif
+
+        if CHOICE_NFC_READER_I2C_SOFTWARE
+          config PARAM_NFC_READER_SCL_PIN
+            string "Software SCL pin  "
+            default ""
+            help
+              Software I2C clock pin. Required.
+              Don't forget to prefix with mcu name. E.g. mmu:PB8
+              The mcu prefix MUST match the I2C MCU Name above - Klipper does not
+              check this for I2C and a mismatch fails obscurely at startup.
+
+          config PARAM_NFC_READER_SDA_PIN
+            string "Software SDA pin  "
+            default ""
+            help
+              Software I2C data pin. Required.
+              Don't forget to prefix with mcu name. E.g. mmu:PB9
+        endif
+
+        config PARAM_NFC_READER_I2C_SPEED
+          int "I2C speed (Hz)    "
+          default 100000
+          range 100000 1000000
+          help
+            I2C speed for the NFC reader, in Hz. Klipper rejects anything below
+            100000, so that is the floor here.
+            For software I2C this sets the bit-bang half-period.
+      endif
+
+      if CHOICE_NFC_READER_TYPE_PN7160
+        config PARAM_NFC_READER_VEN_PIN
+          string "VEN pin           "
+          default ""
+          help
+            Optional VEN pin for the PN7160 reader.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
+
+        config PARAM_NFC_READER_IRQ_PIN
+          string "IRQ pin           "
+          default ""
+          help
+            Optional IRQ pin for the PN7160 reader.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
+      endif
+
+      config PARAM_NFC_READER_RX_GAIN
+        int "Receiver gain (dB)"
+        default 0
+        range 0 60
+        help
+          Static startup gain; 0 keeps the chip/RF-profile default.
+          Valid dB values (effective default in parentheses):
+            RC522/PN532: 18, 23, (33), 38, 43, 48
+            PN5180: 33, 40, (50), 57
+            PN7160: 18, 26, 32, 39, 44, (51), (53), 60
+              PN7160 defaults: NFC-A 106=53; ISO15693=51
+          Bench-tuning option for the antenna and receive path.
+    endif
+
+
+    # --------------------------------------
+    # Per-gate NFC: one menu per gate grouping
+    # all of that gate's settings
+    # --------------------------------------
+
+    config MMU_HAS_PER_GATE_NFC_READERS
+      prompt "Per-gate NFC readers?"
+      help
+        Most designs will only have a single NFC reader that allows presenting
+        filament prior to preload. However, some designs have a reader built
+        in per gate.
+
+    if MMU_HAS_PER_GATE_NFC_READERS
+      @repeat var=i min=0 max=11@
+        if PARAM_NUM_GATES > $(i)
+
+          config PARAM_NFC_READER_$(i)
+            string
+
+          menuconfig PARAM_NFC_READER_GATE_$(i)
+            bool "Gate $(i) NFC reader"
+            default y
+            help
+              Select to enable for gate
+
+           if PARAM_NFC_READER_GATE_$(i)
+
+             config PARAM_NFC_READER_$(i)
+               string "Gate $(i) reader name       "
+               default "$(UNIT_NAME)_nfc$(i)"
+               help
+                 Name of the NFC reader for this gate in the printer config.
+                 E.g., "unit0_nfc0".
+
+             choice CHOICE_NFC_READER_TYPE_$(i)
+               prompt "Gate $(i) reader type       "
+               default CHOICE_NFC_READER_TYPE_RC522_$(i)
+               help
+                 Select the type of NFC reader being used for this gate.
+
+               config CHOICE_NFC_READER_TYPE_RC522_$(i)
+                 bool "RC522 [[DIM]]/ SPI[[/DIM]]"
+
+               config CHOICE_NFC_READER_TYPE_PN5180_$(i)
+                 bool "PN5180 [[DIM]]/ SPI[[/DIM]]"
+
+               config CHOICE_NFC_READER_TYPE_PN532_$(i)
+                 bool "PN532 [[DIM]]/ I2C[[/DIM]]"
+
+               config CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
+                 bool "PN532 [[DIM]]/ UART[[/DIM]]"
+                 help
+                   PN532 in HSU mode on a USB serial adapter plugged into the HOST, not into
+                   an MCU. Needs its OWN adapter - a port cannot be shared with another reader.
+
+                   For a reader on every gate this means one USB adapter per gate. Software I2C
+                   is usually the better answer there: it gives each reader its own bit-banged
+                   bus off the MMU MCU with no extra hardware. Pick UART per gate only if you
+                   actually have the adapters.
+
+              config CHOICE_NFC_READER_TYPE_PN532_SPI_$(i)
+                bool "PN532 [[DIM]]/ SPI[[/DIM]]"
+                help
+                  PN532 NFC reader using SPI. Set the breakout board's mode pads to
+                  SEL0=0, SEL1=0.
+
+              config CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                bool "PN7160 [[DIM]]/ I2C[[/DIM]]"
+
+             endchoice
+
+             config PARAM_NFC_READER_TYPE_$(i)
+               string
+               default "rc522"  if CHOICE_NFC_READER_TYPE_RC522_$(i)
+               default "pn5180" if CHOICE_NFC_READER_TYPE_PN5180_$(i)
+               default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_$(i)
+               default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
+               default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_SPI_$(i)
+               default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+
+             config PARAM_NFC_READER_INTERFACE_$(i)
+               string
+               default "uart" if CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
+               default "spi"  if CHOICE_NFC_READER_TYPE_RC522_$(i) || CHOICE_NFC_READER_TYPE_PN5180_$(i) || CHOICE_NFC_READER_TYPE_PN532_SPI_$(i)
+               default "i2c"
+
+             if CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
+               config PARAM_NFC_READER_SERIAL_$(i)
+                 string "Gate $(i) serial device     "
+                 default "-enter-device-path-"
+                 help
+                   Path of the USB serial adapter for THIS gate's reader. Every gate
+                   needs a different one; reusing a port is rejected at startup.
+                   List them with: ls /dev/serial/by-id/
+                   Use the by-id form - /dev/ttyUSB0 is not stable across re-plugs.
+
+               config PARAM_NFC_READER_BAUD_$(i)
+                 int "Gate $(i) baud rate         "
+                 default 115200
+                 range 9600 1288000
+                 help
+                   Serial speed. Leave at 115200: that is what the PN532 powers up at,
+                   and raising it needs a command the driver does not send.
+             endif
+
+            if CHOICE_NFC_READER_TYPE_RC522_$(i) || CHOICE_NFC_READER_TYPE_PN5180_$(i) || CHOICE_NFC_READER_TYPE_PN532_SPI_$(i)
+              config PARAM_NFC_READER_CS_PIN_$(i)
+                string "Gate $(i) CS pin            "
+                default "$(MCU_NAME):pin"
+                help
+                  Chip-select pin for this gate's SPI reader.
+
+              config PARAM_NFC_READER_SPI_BUS_$(i)
+                string "Gate $(i) SPI bus name      "
+                default ""
+                help
+                  Optional hardware SPI bus name, e.g. "spi1".
+                  Leave blank to use the MCU's DEFAULT hardware SPI bus.
+                  (This does not select software SPI. For that, hand-add
+                  spi_software_sclk_pin/_mosi_pin/_miso_pin to the
+                  [mmu_nfc_reader] section - Klipper accepts them already.)
+
+              config PARAM_NFC_READER_SPI_SPEED_$(i)
+                int "Gate $(i) SPI speed (Hz)    "
+                default 1000000
+                range 1 7000000 if CHOICE_NFC_READER_TYPE_PN5180_$(i)
+                range 1 10000000
+                help
+                  SPI speed for this gate's reader, in Hz.
+                  RC522 accepts up to 10MHz, PN5180 up to 7MHz.
+            endif
+
+            if CHOICE_NFC_READER_TYPE_PN5180_$(i)
+              config PARAM_NFC_READER_BUSY_PIN_$(i)
+                string "Gate $(i) BUSY pin          "
+                default "$(MCU_NAME):pin"
+                help
+                  BUSY pin for this gate's PN5180 reader (active high). Required: it is
+                  how the driver knows each command has completed.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
+
+              config PARAM_NFC_READER_RESET_PIN_$(i)
+                string "Gate $(i) RST pin           "
+                default "$(MCU_NAME):pin"
+                help
+                  RST pin for this gate's PN5180 reader (active low). Required: it is the
+                  only way to recover the chip if it stops responding.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
+            endif
+
+            if CHOICE_NFC_READER_TYPE_PN532_$(i) || CHOICE_NFC_READER_TYPE_PN7160_$(i)
+              config PARAM_NFC_READER_I2C_MCU_$(i)
+                string "Gate $(i) I2C MCU           "
+                default "$(MCU_NAME)_gate$(i)" if MMU_HAS_PER_GATE_MCU
+                default "$(MCU_NAME)"
+                help
+                  MCU that owns this gate's I2C bus. Defaults to the gate MCU
+                  on per-gate-MCU designs, otherwise to the MMU MCU.
+
+              config PARAM_NFC_READER_I2C_ADDRESS_$(i)
+                int "I2C address              "
+                default 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
+                default 40 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                range 36 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
+                range 36 43 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                help
+                  I2C address of the NFC reader.
+                  PN532 uses 36 (0x24)
+                  PN7160 supports 40-43 (0x28-0x2B)
+
+              choice CHOICE_NFC_READER_I2C_BUS_TYPE_$(i)
+                prompt "Gate $(i) I2C bus type      "
+                default CHOICE_NFC_READER_I2C_HARDWARE_$(i)
+                help
+                  Hardware I2C uses the MCU's built-in I2C peripheral and is faster.
+                  Software I2C ("bit banging") lets Klipper drive ANY two GPIO pins as an I2C bus.
+
+                  For per-gate PN532 readers this is the important setting: every
+                  PN532 is fixed at address 0x24, so they cannot share a hardware
+                  bus. Give each gate its own software bus (its own pin pair) and
+                  the address stops mattering.
+
+                config CHOICE_NFC_READER_I2C_HARDWARE_$(i)
+                  bool "Hardware i2c"
+
+                config CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
+                  bool "Software i2c"
+              endchoice
+
+              config PARAM_NFC_READER_I2C_BUS_TYPE_$(i)
+                string
+                default "software" if CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
+                default "hardware"
+
+              if CHOICE_NFC_READER_I2C_HARDWARE_$(i)
+                config PARAM_NFC_READER_I2C_BUS_$(i)
+                  string "Gate $(i) I2C bus name      "
+                  default ""
+                  help
+                    Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
+              endif
+
+              if CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
+                config PARAM_NFC_READER_SCL_PIN_$(i)
+                  string "Gate $(i) software SCL pin  "
+                  default ""
+                  help
+                    Software I2C clock pin for this gate. Required.
+                    Don't forget to prefix with mcu name. E.g. mmu:PB8
+                    Must be a DIFFERENT pin pair from every other gate that uses the
+                    same I2C address, or the readers end up sharing one bus and
+                    colliding. The mcu prefix must match this gate's I2C MCU.
+
+                config PARAM_NFC_READER_SDA_PIN_$(i)
+                  string "Gate $(i) software SDA pin  "
+                  default ""
+                  help
+                    Software I2C data pin for this gate. Required.
+                    Don't forget to prefix with mcu name. E.g. mmu:PB9
+              endif
+
+              config PARAM_NFC_READER_I2C_SPEED_$(i)
+                int "Gate $(i) I2C speed (Hz)    "
+                default 100000
+                range 100000 1000000
+                help
+                  I2C speed for this gate's NFC reader, in Hz. Klipper rejects
+                  anything below 100000, so that is the floor here.
+            endif
+
+            if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+              config PARAM_NFC_READER_VEN_PIN_$(i)
+                string "Gate $(i) VEN pin           "
+                default ""
+                help
+                  Optional VEN pin for this gate's PN7160 reader.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
+
+              config PARAM_NFC_READER_IRQ_PIN_$(i)
+                string "Gate $(i) IRQ pin           "
+                default ""
+                help
+                  Optional IRQ pin for this gate's PN7160 reader.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
+            endif
+
+            config PARAM_NFC_READER_RX_GAIN_$(i)
+              int "Gate $(i) receiver gain (dB)"
+              default 0
+              range 0 60
+              help
+                Static startup gain; 0 keeps the chip/RF-profile default.
+                Valid dB values (effective default in parentheses):
+                  RC522/PN532: 18, 23, 33, 38, 43, 48 (33)
+                  PN5180: 33, 40, 50, 57 (50)
+                  PN7160: 18, 26, 32, 39, 44, 51, 53, 60
+                  PN7160 defaults: NFC-A 106=53; ISO15693=51
+                Bench-tuning option for the antenna and receive path.
+           endif
+        endif
+      @endrepeat@
+
+    endif # per gate
+
+  endmenu
+
+
+  # -------------------------------------
+  # NFC/RFID related params
+  # -------------------------------------
+
+  menu "NFC/RFID params"
+    config PARAM_NFC_DEEP_READ
+      boolint "RFID deep metadata read"
+      default 1
+      help
+        Read the filament data stored on supported spool tags (Bambu, Creality, OpenSpool, OpenTag, etc).
+        A "deep read" parses the full tag (material, color, vendor, temperatures) instead of just the UID,
+        and uses it to populate the local gate map when a tag is presented.
+        Optionally, if a scanned tag's UID isn't yet known to Spoolman, a new spool can be created automatically
+        from the tag.
+
+    config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+      string "NFC jog scan window (scan)           "
+      default "-50, 50"
+      array_editor "," 2
+      help
+        When the filament is parked in the gate this represents the maximum filament move in the retract and extrude
+        direction that is safely possible when searching for the RFID tag. To be sure to allow for complete spool
+        rotation this range should be at least 480mm if possible.
+        E.g. "-100, 400" means can retract -100mm and extruder 400mm. "0, 0" will disable jog scan operation
+
+    config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+      string "NFC jog scan window (preload)        "
+      default PARAM_NFC_GATE_JOG_SCAN_WINDOW
+      array_editor "," 2
+      help
+        Same as the jog scan window above, but used specifically when scanning for a tag during MMU_PRELOAD.
+        Preload often homes to a different endstop (typically the per-gate mmu_exit sensor rather than the
+        general gate homing endstop), so the safe scan range can differ. Defaults to the same value as the
+        gate jog scan window.
+        E.g. "-100, 400" means can retract -100mm and extrude 400mm.
+             "0, 0" disables jog scanning during preload
+
+    config PARAM_NFC_NEIGHBOR_CHECK
+      boolint "NFC neighbor field check"
+      default 0
+      help
+        A neighboring gate's spool can sit inside this gate's RF field, satisfying
+        the preload NFC endstop or MMU_NFC_SCAN before the filament moves and
+        misattributing that spool to this gate. When enabled, the tag's UID is
+        checked against the gate map first: a tag registered elsewhere is refused
+        rather than attributed. Off by default (no extra reader I/O).
+
+        See "NFC neighbor eviction jog" below to also move it out of the way.
+
+    config PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
+      float "NFC neighbor eviction jog            "
+      default 0
+      help
+        Adds eviction motion on top of the check above: an identified neighboring
+        gate is loaded and jogged this far off its park position until the field
+        clears, then re-parked afterwards. Signed: +ve is forward of the gate,
+        -ve is behind it (forward requires gate_homing_endstop=mmu_exit - see
+        the warning below). Must fit inside the jog scan window above.
+
+        0 disables eviction (default); reader gain is not a substitute.
+
+    config PARAM_NFC_GATE_CLEAR_DISTANCE
+      float "NFC self-jog clear distance (scan)   "
+      default 0
+      help
+        If a tag is still seen once this gate finished movement during MMU_NFC_SCAN, this
+        jogs THIS gate's own filament this far further off park and back before discarding -
+        catches a tag mounted close enough to stay in range at rest. Signed from
+        park position (+ve forward, -ve back; forward needs gate_homing_endstop=mmu_exit).
+        The jog magnitude and its backward target must fit gate_homing_max.
+
+        0 disables this escalation for MMU_NFC_SCAN (default).
+
+    config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+      float "NFC self-jog clear distance (preload)"
+      default PARAM_NFC_GATE_CLEAR_DISTANCE
+      help
+        Same as the scan clear distance above, but used during MMU_PRELOAD, which can home/park
+        via a different endstop (gate_preload_endstop) - so this can differ, including in sign,
+        from the scan distance. Defaults to it, since preload usually wants the same clear jog.
+        Forward requires the preload endstop (or, if unset, gate_homing_endstop) to be mmu_exit.
+        The jog magnitude and its backward target must fit gate_preload_homing_max.
+
+        0 disables this escalation for MMU_PRELOAD (default).
+
+    config PARAM_NFC_FIELD_PROBE_READS
+      int "NFC field probe reads                "
+      default 3
+      range 1 10
+      help
+        How many times to read a gate's reader when asking "is anything in this field?". A
+        tag at the edge of the field - the neighboring-spool signature - reads intermittently,
+        so a single read can miss it. Only used when the neighbor check or eviction jog above
+        or either self-jog clear distance is enabled.
+
+    choice CHOICE_NFC_LED_SEGMENT
+      prompt "NFC reader led feedback segment"
+      help
+        NFC reader transient LED feedback: which segment the shared-reader effects render on.
+        auto = 'status' for a shared/bypass reader, 'exit' for a per-gate reader)
+      default CHOICE_NFC_LED_SEGMENT_AUTO
+
+      config CHOICE_NFC_LED_SEGMENT_AUTO
+        bool "Auto"
+        help
+          Auto: 'status' for a shared/bypass reader, 'exit' for a per-gate reader
+
+      config CHOICE_NFC_LED_SEGMENT_STATUS
+        bool "Status"
+
+      config CHOICE_NFC_LED_SEGMENT_EXIT
+        bool "Exit"
+
+      config CHOICE_NFC_LED_SEGMENT_ENTRY
+        bool "Entry"
+
+    endchoice
+
+    # Create no-prompt param from choice
+    config PARAM_NFC_LED_SEGMENT
+      string
+      default "auto"   if CHOICE_NFC_LED_SEGMENT_AUTO
+      default "status" if CHOICE_NFC_LED_SEGMENT_STATUS
+      default "exit"   if CHOICE_NFC_LED_SEGMENT_EXIT
+      default "entry"  if CHOICE_NFC_LED_SEGMENT_ENTRY
+
+  endmenu
+endif

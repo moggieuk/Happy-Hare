@@ -1,0 +1,38 @@
+# Gear stepper parameter tokens for hardware and speeds
+#
+# Responsible for setting:
+#   PARAM_GEAR_GEAR_RATIO
+#   PARAM_GEAR_ROTATION_DISTANCE
+#   PARAM_GEAR_RUN_CURRENT
+#   PARAM_GEAR_HOLD_CURRENT
+#   PARAM_GEAR_FULL_STEPS_PER_ROTATION
+
+menu "Gear stepper"
+
+  config PARAM_GEAR_GEAR_RATIO
+    string "Gear ratio             "
+    default "1:1"
+
+  config PARAM_GEAR_ROTATION_DISTANCE
+    float "Gear rotation distance "
+    default 22.7316868
+
+  config PARAM_GEAR_RUN_CURRENT
+    float "Gear run current       "
+    default 0.7
+
+  config PARAM_GEAR_HOLD_CURRENT
+    float "Gear hold current      "
+    default 0.1
+
+  config PARAM_GEAR_MICROSTEPS
+    int "Microsteps             "
+    default 16
+
+  config PARAM_GEAR_FULL_STEPS_PER_ROTATION
+    int "Full steps per rotation"
+    default 200
+    help
+      200 for 1.8 degree, 400 for 0.9 degree
+
+endmenu

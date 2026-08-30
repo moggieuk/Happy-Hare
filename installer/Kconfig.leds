@@ -1,0 +1,160 @@
+# LED parameter token types and defaults.
+#
+# Responsible for setting:
+#   MMU_HAS_LEDS
+#
+# Led parameter tokens which must be inside if MMU_HAS_LEDS clause in cfg templates:
+#   PIN_NEOPIXEL (duplicate with pins)
+#   PIN_NEOPIXEL_X (per-gate MCU)
+#   PARAM_ENABLED
+#   PARAM_ANIMATION
+#   PARAM_CHAIN_COUNT
+#   PARAM_COLOR_ORDER
+#   PARAM_EXIT_LEDS
+#   PARAM_ENTRY_LEDS
+#   PARAM_STATUS_LEDS
+#   PARAM_LOGO_LEDS
+#   PARAM_FRAME_RATE
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_LEDS
+
+#comment "_"
+comment "_Leds"
+
+config UNSELECT_MMU_HAS_LEDS
+  def_bool n
+
+if !UNSELECT_MMU_HAS_LEDS
+  config MMU_HAS_LEDS
+    prompt "Has LEDs?"
+    forceshow
+    default n
+    help
+      Select if your MMU has LEDs.
+endif
+
+
+# -------------------------------------
+# LED config
+# -------------------------------------
+
+if MMU_HAS_LEDS
+  menu "LED config"
+
+    config BOOL_ENABLE_LEDS
+      bool "Enable LEDs?"
+      default y
+      help
+        This allows you to install but turn off LED on startup.
+
+    config PARAM_ENABLED
+      string
+      default "True" if BOOL_ENABLE_LEDS
+      default "False"
+
+    config BOOL_ENABLE_LEDS_ANIMATION
+      bool "Enable animation?"
+      default y
+      help
+        This allows you to turn off LED animations perhaps reducing the overhead
+        on your main klipper CPU. Only disable if you have frequent TTC errors
+        caused by overload (rarely necessary).
+
+    config PARAM_ANIMATION
+      string
+      default "True" if BOOL_ENABLE_LEDS_ANIMATION
+      default "False"
+
+    config PARAM_FRAME_RATE
+      int "Frame rate      "
+      range 6 32
+      default 24
+      help
+        Sets the led effect frame rate. By default this is 24, but can be reduced to 15
+        to slightly reduce the CPU load. Slower than that my make some effects look messy
+
+    config PARAM_EXIT_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+    config PARAM_ENTRY_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+    config PARAM_STATUS_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+    config PARAM_LOGO_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+    if !CUSTOM_LED_SETUP
+
+      config BOOL_EMU_SLB_HACK
+        bool
+        default y if MMU_HAS_PER_GATE_MCU && PARAM_VENDOR = "EMU" && PARAM_BOARD_TYPE = "SLB v1"
+
+      config PARAM_CHAIN_COUNT
+        int "Chain count     "
+        default 4 if BOOL_EMU_SLB_HACK
+        default 1 if MMU_HAS_PER_GATE_MCU
+        default PARAM_NUM_GATES
+
+      config PARAM_COLOR_ORDER
+        string "Color order     "
+        default "GRBW"
+
+      config PARAM_EXIT_LEDS
+        prompt "Exit leds       "
+        generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
+        generated_default "neopixel:_$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
+
+      config PARAM_ENTRY_LEDS
+        prompt "Entry leds      "
+
+      config PARAM_STATUS_LEDS
+        prompt "Status leds     "
+
+      config PARAM_LOGO_LEDS
+        prompt "Logo leds       "
+
+      config PIN_NEOPIXEL
+        prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU
+
+      menu "Neopixel per-gate pins" 
+        depends on MMU_HAS_PER_GATE_MCU
+
+        @repeat var=i min=0 max=11@
+          config PIN_NEOPIXEL_$(i)
+            string
+            prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
+        @endrepeat@
+      endmenu
+
+      # Hack to special case SLB v1 board wiring with EMU
+      menu "Neopixel per-gate box pins" 
+        depends on BOOL_EMU_SLB_HACK
+
+        @repeat var=i min=0 max=11@
+          config PIN_NEOPIXEL_BOX_$(i)
+            string
+            prompt "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)
+        @endrepeat@
+
+        config PARAM_CHAIN_COUNT
+          int "Chain count     "
+          default PARAM_NUM_GATES
+
+      endmenu
+
+    endif
+
+  endmenu
+endif
+

@@ -1,0 +1,72 @@
+config BOARD_TYPE_QIDI_BOX_2_0
+  bool "QIDI Box v2 MCU"
+  help
+    Stock QIDI Box controller based on an STM32F401xC and connected over
+    USB serial. When building mainline Klipper firmware, select the
+    STM32F401xC and the 32KiB bootloader/0x8000 flash offset
+    (CONFIG_STM32_FLASH_START_8000).
+
+if BOARD_TYPE_QIDI_BOX_2_0
+  config PARAM_BOARD_TYPE
+    default "QIDI Box v2 (STM32F401xC)"
+
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
+  endchoice
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    # Stock firmware: usb-Klipper_QIDI_BOX_V2_*
+    default $(mmu_serial_config,1,QIDI_BOX) if $(serial_exists,1,QIDI_BOX)
+    # Mainline firmware: usb-Klipper_stm32f401xc_*
+    default $(mmu_serial_config,1,stm32f401xc) if $(serial_exists,1,stm32f401xc)
+    default $(mmu_serial_config,1,stm32)
+  endchoice
+
+  # The stock drivers expose only step, direction and enable. Motor current
+  # is configured in hardware; there are no UART or DIAG connections.
+  config PIN_GEAR_STEP
+    default "$(MCU_NAME):PC14"
+  config PIN_GEAR_DIR
+    default "$(MCU_NAME):PC13"
+  config PIN_GEAR_ENABLE
+    default "!$(MCU_NAME):PC15"
+
+  config PIN_GEAR_STEP_1
+    default "$(MCU_NAME):PB9"
+  config PIN_GEAR_DIR_1
+    default "$(MCU_NAME):PB8"
+  config PIN_GEAR_ENABLE_1
+    default "!$(MCU_NAME):PC0"
+
+  config PIN_GEAR_STEP_2
+    default "$(MCU_NAME):PC12"
+  config PIN_GEAR_DIR_2
+    default "$(MCU_NAME):PC11"
+  config PIN_GEAR_ENABLE_2
+    default "!$(MCU_NAME):PD2"
+
+  config PIN_GEAR_STEP_3
+    default "$(MCU_NAME):PC8"
+  config PIN_GEAR_DIR_3
+    default "$(MCU_NAME):PB2"
+  config PIN_GEAR_ENABLE_3
+    default "!$(MCU_NAME):PC10"
+
+  config PIN_ENTRY_SENSOR_0
+    default "!$(MCU_NAME):PA0"
+  config PIN_ENTRY_SENSOR_1
+    default "!$(MCU_NAME):PB3"
+  config PIN_ENTRY_SENSOR_2
+    default "!$(MCU_NAME):PA13"
+  config PIN_ENTRY_SENSOR_3
+    default "!$(MCU_NAME):PA7"
+
+  config PIN_SHARED_EXIT_SENSOR
+    default "^!$(MCU_NAME):PB1"
+  config PIN_BUFFER_TENSION
+    default "^$(MCU_NAME):PB0"
+
+  # The filament switch is on the printer's THR head MCU, not this board.
+  config PIN_EXTRUDER_SENSOR
+    default "!THR:PA1"
+
+endif

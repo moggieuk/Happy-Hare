@@ -8,7 +8,7 @@
 
 * **Ensure the bug was not already reported** by searching on GitHub under [Issues](https://github.com/moggieuk/Happy-Hare/issues).
 
-* If you're unable to find an issue addressing the problem, [open a new one](https://github.com/rails/rails/issues/new). Be sure to include a **title and clear description**, as much **relevant information** as possible and **log files**.
+* If you're unable to find an issue addressing the problem, [open a new one](https://github.com/moggieuk/Happy-Hare/issues/new). Be sure to include a **title and clear description**, as much **relevant information** as possible and **log files**.
 
 #### **Did you write a patch that fixes a bug?**
 

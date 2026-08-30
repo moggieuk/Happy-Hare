@@ -1,0 +1,194 @@
+# Defines parameter token types and defaults for purging
+#
+# Responsible for defining/setting:
+#   MMU_HAS_BLOBIFIER (and PIN_BLOBIFIER_SERVO, PIN_BLOBIFIER_BUCKET_SWITCH)
+#
+# Responsible for setting:
+#   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH (if MMU_HAS_BLOBIFIER)
+#   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH (if MMU_HAS_BLOBIFIER)
+#   PARAM_PURGE_MACRO
+#   PARAM_FORCE_PURGE_STANDALONE
+#   PARAM_EXTRUDER_PURGE_CURRENT
+
+config MMU_HAS_BLOBIFIER
+  def_bool n
+
+config PIN_BLOBIFIER_SERVO
+  string
+  default ""
+
+config PIN_BLOBIFIER_BUCKET_SWITCH
+  string
+  default "^"
+
+# Stepper-driven Blobifier tray (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
+config PIN_BLOBIFIER_STEPPER_STEP
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_DIR
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_ENABLE
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_ENDSTOP
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_UART
+  string
+  default ""
+config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
+  string
+  default "0.6"
+
+
+menu "Purging"
+  help
+    Purging
+
+# -------------------------------------
+# Blobifier configuration
+# -------------------------------------
+
+  config MMU_HAS_BLOBIFIER
+    prompt "Have Blobifier?"
+    help
+      Enable this if you have a Blobifier purging system fitted.
+
+      NOTE: There is a lot of setup for Blobifier. After enabling this
+      be sure to edit Macro variables
+
+  if MMU_HAS_BLOBIFIER
+    config PIN_BLOBIFIER_BUCKET_SWITCH
+      prompt "Blobifier bucket switch pin"
+      help
+        The pull-up ( ^ ) is important here
+
+    choice CHOICE_BLOBIFIER_TYPE
+      prompt "Blobifier tray actuator    "
+      default CHOICE_BLOBIFIER_TYPE_SERVO
+      help
+        How the Blobifier tray is actuated: a servo (default) or a manual_stepper.
+
+      config CHOICE_BLOBIFIER_TYPE_SERVO
+        bool "Servo"
+      config CHOICE_BLOBIFIER_TYPE_STEPPER
+        bool "Stepper (manual_stepper)"
+    endchoice
+
+    if CHOICE_BLOBIFIER_TYPE_SERVO
+      config PIN_BLOBIFIER_SERVO
+        prompt "Blobifier servo pin        "
+
+      config PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
+        float "Servo min pulse width      "
+        default 0.00053
+        help
+          Adjust until a 'BLOBIFIER_SERVO POS=out' extends the tray fully without a buzzing sound
+
+          The default value is likely to be close so don't worry about this for now
+
+      config PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
+        float "Servo max pulse width      "
+        default 0.0023
+        help
+          Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
+
+          The default value is likely to be close so don't worry about this for now
+    endif
+
+    if CHOICE_BLOBIFIER_TYPE_STEPPER
+      config PIN_BLOBIFIER_STEPPER_STEP
+        prompt "Stepper step pin           "
+      config PIN_BLOBIFIER_STEPPER_DIR
+        prompt "Stepper dir pin            "
+      config PIN_BLOBIFIER_STEPPER_ENABLE
+        prompt "Stepper enable pin         "
+      config PIN_BLOBIFIER_STEPPER_ENDSTOP
+        prompt "Stepper endstop pin        "
+        help
+          The pull-up/invert ( ^! ) is typically required here
+      config PIN_BLOBIFIER_STEPPER_UART
+        prompt "Stepper TMC UART pin       "
+      config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
+        string "Stepper run current        "
+        default "0.6"
+      comment "Stepper-driven tray (TMC2209/UART generated; edit cfg for TMC2240/5160 SPI)"
+    endif
+  endif
+
+
+# -------------------------------------
+# Standalone purge choice
+# -------------------------------------
+
+  comment "_"
+  comment "_Essential purge configuration"
+
+  choice CHOICE_PURGE_MACRO
+    prompt "Select standalone purging option"
+    default CHOICE_PURGE_MACRO_BLOBIFIER if MMU_HAS_BLOBIFIER
+    default CHOICE_PURGE_MACRO_PURGE
+    help
+      How to perform standalone purging operation.
+
+    config CHOICE_PURGE_MACRO_PURGE
+      bool "Simple purge into bucket"
+      help
+        This simple built in macro simply purges the required volume of
+        filament.  Position can be controlled so this is done into a
+        purge bucket.
+
+    if MMU_HAS_BLOBIFIER
+      config CHOICE_PURGE_MACRO_BLOBIFIER
+        bool "Blobifier"
+        help
+          This popular choice purges into "poop" sized pellets which
+          are optionally caught by a collection bucket.
+    endif
+
+    config CHOICE_PURGE_MACRO_SLICER
+      bool "Slicer managed"
+      help
+        Purging is controlled and managed by the slicer rather than Happy-Hare.
+
+    config CHOICE_PURGE_MACRO_OTHER
+      bool "Other / manually entered"
+      help
+        Specify a custom macro to call to perform purging
+
+    config PURGE_MACRO_OTHER
+      string "Purging macro" if CHOICE_PURGE_MACRO_OTHER
+      default "-enter-your-macro-"
+      help
+        Name of macro to call to perform the standalone purging operation.
+  endchoice
+
+  config PARAM_PURGE_MACRO
+    string
+    default "_MMU_PURGE"      if CHOICE_PURGE_MACRO_PURGE
+    default "BLOBIFIER"       if CHOICE_PURGE_MACRO_BLOBIFIER
+    default ""                if CHOICE_PURGE_MACRO_SLICER
+    default PURGE_MACRO_OTHER if CHOICE_PURGE_MACRO_OTHER
+    default ""
+
+
+# -------------------------------------
+# Other purge options
+# -------------------------------------
+
+  config PARAM_FORCE_PURGE_STANDALONE
+    boolint "Happy Hare controlled in-print purge"
+    default 0 if CHOICE_PURGE_MACRO_SLICER
+    default 1
+    help
+      You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.
+      To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
+      and be sure to TURN OFF in your slicer
+  config PARAM_EXTRUDER_PURGE_CURRENT
+    int "Extruder purging current       "
+    default 100
+    help
+      % of extruder current (100%-150%) to use when purging (100 to disable feature)
+
+endmenu

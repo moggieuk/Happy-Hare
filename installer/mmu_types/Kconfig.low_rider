@@ -1,0 +1,45 @@
+config MMU_TYPE_LOW_RIDER_1_0
+  bool "Low Rider"
+  help
+    The Low Rider is a 5 gate MMU with rotary cam based selection
+    mechanism controlled by stepper
+  select ROTARY_SELECTOR
+  imply  PARAM_REQUIRE_BOWDEN_MOVE
+  select MMU_HAS_LEDS
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+
+####################
+##### Defaults #####
+####################
+
+if MMU_TYPE_LOW_RIDER_1_0
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  config PARAM_VENDOR
+    default "LowRider"
+  config PARAM_VERSION
+    default "1.0"
+  config PARAM_NUM_GATES
+    default 5
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "80:20"
+  config PARAM_GEAR_RUN_CURRENT
+    default 0.7
+  config PARAM_GEAR_HOLD_CURRENT
+    default 0.1
+
+  config PARAM_GATE_PARKING_DISTANCE
+    default -25
+  config PARAM_GATE_HOMING_MAX
+    default 1000
+
+  comment "_"
+
+endif 

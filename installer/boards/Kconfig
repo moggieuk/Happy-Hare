@@ -1,0 +1,57 @@
+# This module's purpose is to set:
+#   PARAM_BOARD_TYPE
+#
+# and a variable list of "PIN_" parameters depending on availability on that particular
+# mcu board. E.g.
+#   PIN_GEAR_DIAG
+#   PIN_SELECTOR_STEP
+#   PIN_ENTRY_SENSOR_SENSOR
+
+config PARAM_BOARD_TYPE
+  string
+
+choice BOARD_TYPE
+  prompt "Board type"
+  default BOARD_TYPE_OTHER
+  help 
+    MCU type
+    Select the type of mcu board you are using. This will configure
+    the default pin layout for your setup. After selecting board
+    pins can be customized in Advanced Settings.
+
+  if !MMU_TYPE_KMS_1_0 && !MMU_TYPE_VVD_1_0 && !MMU_TYPE_QIDI_BOX_1_0 && !MMU_HAS_PER_GATE_MCU
+    rsource "Kconfig.*"
+  endif
+
+  # EMU has special per-gate mcu options
+  if MMU_HAS_PER_GATE_MCU
+    rsource "per_gate/Kconfig.*"
+  endif
+
+  # KMS has fixed custom mcu
+  if MMU_TYPE_KMS_1_0
+    rsource "custom/Kconfig.kms"
+  endif
+
+  # ViViD has fixed custom mcu
+  if MMU_TYPE_VVD_1_0
+    rsource "custom/Kconfig.vvd"
+  endif
+
+  # QIDI Box has a fixed custom mcu
+  if MMU_TYPE_QIDI_BOX_1_0
+    rsource "custom/Kconfig.qidi_box"
+  endif
+
+  # Offer other where it makes sense as last option
+  if !MMU_TYPE_KMS_1_0 && !MMU_TYPE_VVD_1_0 && !MMU_TYPE_QIDI_BOX_1_0
+    config BOARD_TYPE_OTHER
+      bool "Not listed / Other"
+
+    if BOARD_TYPE_OTHER
+      config PARAM_BOARD_TYPE
+        default "Unknown"
+    endif
+  endif
+
+endchoice

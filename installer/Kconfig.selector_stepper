@@ -1,0 +1,141 @@
+# Selector stepper parameter tokens for hardware and speeds
+# Must be in a "if MMU_HAS_SELECTOR" clause in cfg templates
+#
+# Responsible for setting:
+#   PARAM_SELECTOR_GEAR_RATIO
+#   PARAM_SELECTOR_ROTATION_DISTANCE
+#   PARAM_SELECTOR_RUN_CURRENT
+#   PARAM_SELECTOR_HOLD_CURRENT
+#   PARAM_SELECTOR_ENDSTOP_NAME
+#   PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
+#   PARAM_STARTUP_HOME_SELECTOR
+#
+#   PARAM_SELECTOR_TOUCH_ENABLED
+#
+#   PARAM_SELECTOR_GATE_DIRECTIONS
+#   PARAM_SELECTOR_RELEASE_GATES
+
+
+if MMU_HAS_SELECTOR_STEPPER
+  menu "Selector stepper"
+
+# -------------------------------------
+# Basic stepper settings
+# -------------------------------------
+
+    config PARAM_SELECTOR_GEAR_RATIO
+      string "Selector gear ratio             "
+      default "1:1"
+
+    config PARAM_SELECTOR_ROTATION_DISTANCE
+      float "Selector rotation distance      "
+      default 40
+
+    config PARAM_SELECTOR_RUN_CURRENT
+      float "Selector run current            "
+      default 0.5
+
+    config PARAM_SELECTOR_HOLD_CURRENT
+      float "Selector hold current           "
+      default 0.2
+
+    config PARAM_SELECTOR_ENDSTOP_NAME
+      string
+      default "mmu_sel_home"
+
+    config PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
+      int "Selector full steps per rotation"
+      default 200
+      help
+        200 for 1.8 degree, 400 for 0.9 degree
+
+    config PARAM_STARTUP_HOME_SELECTOR
+      boolint "Home selector at startup?"
+      default 0
+      help
+        1 = force MMU homing on startup if unloaded, then reselect the last gate used
+        0 = trust the position saved at shutdown, so no homing is needed (an explicit
+            MMU_MOTORS_OFF discards that saved position and does require a re-home)
+
+
+# -------------------------------------
+# Selector touch Operation
+# -------------------------------------
+
+  config PARAM_SELECTOR_TOUCH_ENABLED
+    boolint "Enable touch selector movement using TMC Stallguard?"
+    default 0
+    help
+      This allows for additional selector recovery steps but is difficult to tune.
+      Not recommended if you are new to MMU/Happy-Hare.
+      The MCU must have DIAG output for steppers. Possible to configure later
+    depends on MMU_HAS_SELECTOR_STEPPER && (LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR)
+  if BOARD_TYPE_EASY_BRD
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+      depends on PARAM_SELECTOR_TOUCH_ENABLED
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+      depends on !PARAM_SELECTOR_TOUCH_ENABLED
+  endif
+
+
+# -------------------------------------
+# RotarySelector additions
+# -------------------------------------
+
+    if ROTARY_SELECTOR || TESTING_SELECTOR
+
+      comment "_"
+      comment "_Rotary selector"
+
+      config PARAM_SELECTOR_GATE_DIRECTIONS
+        string "Selector gate directions  "
+        array_editor "," PARAM_NUM_GATES
+        generated_default "0" "" ", " 0 PARAM_NUM_GATES
+        help
+          An array with entry for each gate representing the direction of movement of the gear stepper
+          when the gate is selected. This is used in the 3D-Chameleon design. E.g. "1, 1, 0, 0"
+            0 = normal direction
+            1 = reverse direction
+          The length should match the number of gates
+
+      config PARAM_SELECTOR_RELEASE_GATES
+        string "Selector release gates    "
+        array_editor "," PARAM_NUM_GATES
+        generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
+        help
+          An array with entry for each gate representing which gate to select to release the filament in
+          the designated gate. (Only works if 'filament_always_gripped: 0').
+          E.g. "2, 3, 0, 1" to release gate 0, select gate 2, to release gate 1, select gate 3, etc.
+          The length should match the number of gates
+    endif
+
+
+# -------------------------------------
+# Index Selector additions
+# -------------------------------------
+
+    if INDEXED_SELECTOR || TESTING_SELECTOR
+
+      comment "_"
+      comment "_Indexed selector"
+
+      config PARAM_SELECTOR_GATE_ORDER
+        string "Selector gate order       "
+        array_editor "," PARAM_NUM_GATES
+        generated_default "%i" "" ", " 0 PARAM_NUM_GATES
+        help
+          Comma separated list representing the order of gates when selector is moving in a forward
+          direction. This allows for efficient gate selection. Can also be automatically calibrated
+          with the MMU_CALIBRATE_SELECTOR_INDEXES command.
+          The length should match the number of gates
+
+      config PARAM_SELECTOR_ENDSTOP_WIDTH
+        float "Selector endstop width    "
+        default 10
+        help
+          Width of gate selection endstop. It allows for accurate centering on the gate.
+          Can also be automatically calibrated (per-gate) with the MMU_CALIBRATE_SELECTOR_INDEXES command
+    endif
+
+  endmenu
+endif 

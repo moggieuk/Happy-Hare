@@ -1,0 +1,48 @@
+# Assemble all marco configuration
+#
+# Also responsible for setting:
+#   PARAM_MACRO_TOOLHEAD_MAX_ACCEL
+#   PARAM_MACRO_TOOLHEAD_MIN_CRUISE_RATIO
+
+menu "Macro Variables"
+  help
+    Configure settings for Happy Hare klipper macros.
+
+  rsource "Kconfig.software"
+  rsource "Kconfig.state"
+  rsource "Kconfig.sequence"
+  rsource "Kconfig.client"
+
+  comment "_"
+  comment "_Tip Forming/Cutting"
+  rsource "Kconfig.form_tip"
+  rsource "Kconfig.cut_tip"
+  rsource "Kconfig.servo_cutter"
+
+  comment "_"
+  comment "_Purging"
+  rsource "Kconfig.blobifier"
+  rsource "Kconfig.purge"
+
+
+# -------------------------------------
+# Toolhead Control
+# -------------------------------------
+
+  comment "_"
+  comment "_Toolhead Control"
+
+  config PARAM_MACRO_TOOLHEAD_MAX_ACCEL
+    float "Macro toolhead max acceleration"
+    default 0
+    help
+      Default printer toolhead acceleration applied when macros are run for user customization and
+      parking moves (the previous value is automatically restored afterwards). 0 = use printer max
+
+  config PARAM_MACRO_TOOLHEAD_MIN_CRUISE_RATIO
+    float "Macro toolhead min cruise ratio"
+    default 0.5
+    help
+      Default printer cruise ratio applied when macros are run
+
+endmenu

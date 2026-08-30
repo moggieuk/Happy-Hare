@@ -1,0 +1,65 @@
+config MMU_TYPE_3D_CHAMELEON_1_0
+  bool "3D Chameleon"
+  help
+    3D Chameleon is a 4 gate MMU using innovative "opposing gate"
+    filament selection mechanism.
+  select ROTARY_SELECTOR
+  imply  PARAM_REQUIRE_BOWDEN_MOVE
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS
+
+####################
+##### Defaults #####
+####################
+
+if MMU_TYPE_3D_CHAMELEON_1_0
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  # Identity
+  config PARAM_VENDOR
+    default "3DChameleon"
+  config PARAM_VERSION
+    default "1.0" 
+
+  config PARAM_NUM_GATES
+    default 4
+
+  # Gear stepper
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_RUN_CURRENT
+    default 0.7
+  config PARAM_GEAR_HOLD_CURRENT
+    default 0.1
+
+  # Selector stepper
+  config PARAM_SELECTOR_GEAR_RATIO
+    default "1:1"
+  config PARAM_SELECTOR_RUN_CURRENT
+    default 0.63
+  config PARAM_SELECTOR_HOLD_CURRENT
+    default 0.2
+
+  config PARAM_SELECTOR_GATE_DIRECTIONS
+    default "1, 1, 0, 0"
+  config PARAM_SELECTOR_RELEASE_GATES
+    default "2, 3, 0, 1"
+
+  # Speeds overrides
+  config PARAM_GEAR_HOMING_SPEED
+    default 80
+
+  # Distances
+  config PARAM_GATE_PARKING_DISTANCE
+    default -250
+  config PARAM_GATE_HOMING_MAX
+    default 500
+
+  comment "_"
+
+endif 

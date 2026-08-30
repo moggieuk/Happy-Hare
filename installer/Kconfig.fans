@@ -1,0 +1,143 @@
+# Responsible for defining/setting cooling fan configuration:
+#   MMU_HAS_FANS
+#
+# Fan parameter tokens
+#   PARAM_FAN_MAX_POWER
+#   PARAM_FAN_KICK_START_TIME
+#   PIN_FAN   (single MCU)
+#   PIN_FAN_X (per-gate MCU)
+#
+# Fan control variable (marco_var) tokens 
+#   VAR_FAN_ON_TEMP
+#   VAR_FAN_OFF_TEMP
+#   VAR_FAN_POLLING_TIME
+#   VAR_FAN_CONTROL_ENABLED
+#   VAR_FAN_FORCED_MODE (choice: AUTO, OFF, ON)
+#   VAR_FAN_FORCED (mapped value: 0, 1, 2)
+#   VAR_FAN_SENSORS (comma-separated temperature_sensor names)
+#   VAR_FAN_FANS (comma-separated fan_generic names)
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_FANS
+
+
+comment "_"
+comment "_Fans"
+
+config UNSELECT_MMU_HAS_FANS
+  def_bool n
+
+if !UNSELECT_MMU_HAS_FANS
+  config MMU_HAS_FANS
+    bool "Has cooling fans?"
+    forceshow
+    default n
+    help
+      Enable this if you have cooling fans installed in your MMU unit(s).
+      Fans will be defined as hidden [fan_generic] sections in the generated config.
+endif
+
+
+# -------------------------------------
+# Fan config
+# -------------------------------------
+
+if MMU_HAS_FANS
+  menu "Fan config"
+
+    config PARAM_FAN_MAX_POWER
+      float "Fan maximum power  "
+      default 1.0
+      range 0.1 1.0
+      help
+        Maximum power setting for the fan (0.1 to 1.0).
+        1.0 = 100% power
+
+    config PARAM_FAN_KICK_START_TIME
+      float "Fan kick start time"
+      default 0.5
+      range 0 3.0
+      help
+        Time in seconds to run fan at full power before resetting to target speed.
+
+    if !MMU_HAS_PER_GATE_MCU
+      config PIN_FAN
+        string "Fan pin            "
+        default ""
+        help
+          Pin for cooling fan.
+          Leave blank if you don't have a fan installed.
+          Empty pins will be ignored in the generated configuration.
+    endif
+
+    menu "Fan pins" 
+      depends on MMU_HAS_PER_GATE_MCU
+
+      @repeat var=i min=0 max=11@
+        config PIN_FAN_$(i)
+          string "Fan $(i) pin" if PARAM_NUM_GATES > $(i)
+          help 
+            Leave blank if this gate does not have a fan installed.
+      @endrepeat@
+    endmenu
+
+  endmenu
+
+  menu "Fan controls"
+
+    config VAR_FAN_ON_TEMP
+      float "Fan on temperature            "
+      default 49.0
+      range 20.0 80.0
+      help
+        Temperature threshold (°C) to turn fans on.
+
+    config VAR_FAN_OFF_TEMP
+      float "Fan off temperature           "
+      default 47.0
+      range 20.0 80.0
+      help
+        Temperature threshold (°C) to turn fans off.
+
+    config VAR_FAN_POLLING_TIME
+      float "Fan polling time              "
+      default 5.0
+      range 1.0 30.0
+      help
+        Time in seconds between temperature sensor polling intervals.
+
+    config VAR_FAN_CONTROL_ENABLED
+      bool "Enable fan temperature control"
+      default y
+      help
+        Enable automatic fan control based on temperature sensors.
+
+    choice VAR_FAN_FORCED_MODE
+      prompt "Fan forced state              "
+      default VAR_FAN_FORCED_MODE_AUTO
+
+      config VAR_FAN_FORCED_MODE_AUTO
+        bool "AUTO"
+        help
+          Automatic fan control based on temperature sensors.
+
+      config VAR_FAN_FORCED_MODE_OFF
+        bool "All OFF"
+        help
+          Force all fans off globally.
+
+      config VAR_FAN_FORCED_MODE_ON
+        bool "All ON"
+        help
+          Force all fans on globally.
+
+    endchoice
+
+    config VAR_FAN_FORCED
+      string
+      default "0" if VAR_FAN_FORCED_MODE_OFF
+      default "1" if VAR_FAN_FORCED_MODE_ON
+      default "2" if VAR_FAN_FORCED_MODE_AUTO
+
+  endmenu
+endif

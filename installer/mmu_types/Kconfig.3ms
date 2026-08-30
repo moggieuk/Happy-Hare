@@ -1,0 +1,46 @@
+config MMU_TYPE_3MS_1_0
+  bool "3MS  - Modular Multi Material System"
+  help
+    3MS is a popular simple and reliable type-B MMU design. It is an open
+    framed minimalist design and easy to build with any number of gates.
+  select VIRTUAL_SELECTOR
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+
+if MMU_TYPE_3MS_1_0
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  ####################
+  ##### Defaults #####
+  ####################
+
+  config PARAM_VENDOR
+    default "3MS"
+  config PARAM_VERSION
+    default "1.0" 
+  config PARAM_NUM_GATES
+    default 4
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_RUN_CURRENT
+    default 0.7
+  config PARAM_GEAR_HOLD_CURRENT
+    default 0.1
+
+  config PARAM_GEAR_HOMING_SPEED
+    default 80
+
+  config PARAM_GATE_HOMING_MAX
+    default 500
+  config PARAM_GATE_PARKING_DISTANCE
+    default -250
+
+  comment "_"
+
+endif 

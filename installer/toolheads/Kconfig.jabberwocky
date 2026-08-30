@@ -1,0 +1,15 @@
+config TOOLHEAD_TYPE_JABBERWOCKY
+  bool "Jabberwocky"
+
+if TOOLHEAD_TYPE_JABBERWOCKY
+  config PARAM_TOOLHEAD_TYPE
+    default "Jabberwocky"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default 86
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default 74.3
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default 8.9
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default 22.5
+endif

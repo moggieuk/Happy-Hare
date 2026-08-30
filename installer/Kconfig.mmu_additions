@@ -1,0 +1,25 @@
+# This aggregates configuration for MMU additions
+# (this overlaps with some of Kconfig.pins and Kconfig.other)
+
+menu "MMU Features / Additions"
+  help
+    Enhancements to base design
+    If the base MMU design lacks a particular feature, there are often
+    modifications available to enhance the design. Select those modifications
+    here so that Happy Hare will install the correct drivers and setup
+    the best possible starter configuration.
+
+  source "Kconfig.leds"
+  source "Kconfig.fans"
+  source "Kconfig.sync_feedback_buffer"
+  source "Kconfig.environment_sensor"
+  source "Kconfig.heater"
+  source "Kconfig.nfc_reader"
+  source "Kconfig.eject_buttons"
+  source "Kconfig.encoder"
+  source "Kconfig.espooler"
+  source "Kconfig.filament_buffer"
+  comment "_"
+  comment "_Sensors"
+  source "sensors/Kconfig"
+endmenu

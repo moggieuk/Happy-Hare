@@ -1,0 +1,237 @@
+config BOARD_TYPE_AFC_PRO_1_0
+  bool "AFC Pro v1.0 / designed for Box Turtle"
+  help
+    This board was custom designed for the Box Turtle v1
+
+if BOARD_TYPE_AFC_PRO_1_0
+  config PARAM_BOARD_TYPE
+    default "AFC Pro v1"
+
+  # This board is unusual and has separate enable pins for espooler motor control
+  config HAS_ESPOOLER_ENABLE_PIN
+    default y
+
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
+  endchoice
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    default $(mmu_serial_config,1,stm32)
+  endchoice
+
+  config PIN_GEAR_UART 
+    default "$(MCU_NAME):PE8" 
+  config PIN_GEAR_STEP
+    default "$(MCU_NAME):PE7" 
+  config PIN_GEAR_DIR
+    default "$(MCU_NAME):PG1" 
+  config PIN_GEAR_ENABLE
+    default "!$(MCU_NAME):PE10" 
+
+  config PIN_GEAR_UART_1 
+    default "$(MCU_NAME):PF15" 
+  config PIN_GEAR_STEP_1
+    default "$(MCU_NAME):PB2" 
+  config PIN_GEAR_DIR_1
+    default "$(MCU_NAME):PA3" 
+  config PIN_GEAR_ENABLE_1
+    default "!$(MCU_NAME):PG0" 
+
+  config PIN_GEAR_UART_2 
+    default "$(MCU_NAME):PA1" 
+  config PIN_GEAR_STEP_2
+    default "$(MCU_NAME):PA0" 
+  config PIN_GEAR_DIR_2
+    default "$(MCU_NAME):PC1" 
+  config PIN_GEAR_ENABLE_2
+    default "!$(MCU_NAME):PA2" 
+
+  config PIN_GEAR_UART_3 
+    default "$(MCU_NAME):PF10" 
+  config PIN_GEAR_STEP_3
+    default "$(MCU_NAME):PF9" 
+  config PIN_GEAR_DIR_3
+    default "$(MCU_NAME):PF8" 
+  config PIN_GEAR_ENABLE_3
+    default "!$(MCU_NAME):PC0" 
+
+  config PIN_GEAR_UART_4 
+    default "$(MCU_NAME):PF6" 
+  config PIN_GEAR_STEP_4
+    default "$(MCU_NAME):PF5" 
+  config PIN_GEAR_DIR_4
+    default "$(MCU_NAME):PF4" 
+  config PIN_GEAR_ENABLE_4
+    default "!$(MCU_NAME):PF7" 
+
+  config PIN_GEAR_UART_5 
+    default "$(MCU_NAME):PF2" 
+  config PIN_GEAR_STEP_5
+    default "$(MCU_NAME):PF1" 
+  config PIN_GEAR_DIR_5
+    default "$(MCU_NAME):PF0" 
+  config PIN_GEAR_ENABLE_5
+    default "!$(MCU_NAME):PF3" 
+
+  config PIN_GEAR_UART_6 
+    default "$(MCU_NAME):PE6" 
+  config PIN_GEAR_STEP_6
+    default "$(MCU_NAME):PE5" 
+  config PIN_GEAR_DIR_6
+    default "$(MCU_NAME):PE4" 
+  config PIN_GEAR_ENABLE_6
+    default "!$(MCU_NAME):PC13" 
+
+  config PIN_GEAR_UART_7 
+    default "$(MCU_NAME):PE2" 
+  config PIN_GEAR_STEP_7
+    default "$(MCU_NAME):PE1" 
+  config PIN_GEAR_DIR_7
+    default "$(MCU_NAME):PE0" 
+  config PIN_GEAR_ENABLE_7
+    default "!$(MCU_NAME):PE3" 
+
+
+  config PIN_ENTRY_SENSOR_0
+    default "^$(MCU_NAME):PD1" 
+  config PIN_ENTRY_SENSOR_1
+    default "^$(MCU_NAME):PD4" 
+  config PIN_ENTRY_SENSOR_2
+    default "^$(MCU_NAME):PD6" 
+  config PIN_ENTRY_SENSOR_3
+    default "^$(MCU_NAME):PG9" 
+  config PIN_ENTRY_SENSOR_4
+    default "^$(MCU_NAME):PG11" 
+  config PIN_ENTRY_SENSOR_5
+    default "^$(MCU_NAME):PD3" 
+  config PIN_ENTRY_SENSOR_6
+    default "^$(MCU_NAME):PD2" 
+  config PIN_ENTRY_SENSOR_7
+    default "^$(MCU_NAME):PD5" 
+
+
+  config PIN_EXIT_SENSOR_0
+    default "^$(MCU_NAME):PD7" 
+  config PIN_EXIT_SENSOR_1
+    default "^$(MCU_NAME):PG10" 
+  config PIN_EXIT_SENSOR_2
+    default "^$(MCU_NAME):PG12" 
+  config PIN_EXIT_SENSOR_3
+    default "^$(MCU_NAME):PG13" 
+  config PIN_EXIT_SENSOR_4
+    default "^$(MCU_NAME):PB7" 
+  config PIN_EXIT_SENSOR_5
+    default "^$(MCU_NAME):PB6" 
+  config PIN_EXIT_SENSOR_6
+    default "^$(MCU_NAME):PB5" 
+  config PIN_EXIT_SENSOR_7
+    default "^$(MCU_NAME):PB4" 
+
+
+  config PIN_ESPOOLER_EN_0
+    default "$(MCU_NAME):PE15" 
+  config PIN_ESPOOLER_RWD_0
+    default "$(MCU_NAME):PE9" 
+  config PIN_ESPOOLER_FWD_0
+    default "$(MCU_NAME):PE11" 
+
+  config PIN_ESPOOLER_EN_1
+    default "$(MCU_NAME):PD9" 
+  config PIN_ESPOOLER_RWD_1
+    default "$(MCU_NAME):PE13" 
+  config PIN_ESPOOLER_FWD_1
+    default "$(MCU_NAME):PE14" 
+
+  config PIN_ESPOOLER_EN_2
+    default "$(MCU_NAME):PB13" 
+  config PIN_ESPOOLER_RWD_2
+    default "$(MCU_NAME):PB10" 
+  config PIN_ESPOOLER_FWD_2
+    default "$(MCU_NAME):PB11" 
+
+  config PIN_ESPOOLER_EN_3
+    default "$(MCU_NAME):PD11" 
+  config PIN_ESPOOLER_RWD_3
+    default "$(MCU_NAME):PB14" 
+  config PIN_ESPOOLER_FWD_3
+    default "$(MCU_NAME):PB15" 
+
+  config PIN_ESPOOLER_EN_4
+    default "$(MCU_NAME):PG3" 
+  config PIN_ESPOOLER_RWD_4
+    default "$(MCU_NAME):PD12" 
+  config PIN_ESPOOLER_FWD_4
+    default "$(MCU_NAME):PD13" 
+
+  config PIN_ESPOOLER_EN_5
+    default "$(MCU_NAME):PG5" 
+  config PIN_ESPOOLER_RWD_5
+    default "$(MCU_NAME):PD14" 
+  config PIN_ESPOOLER_FWD_5
+    default "$(MCU_NAME):PD15" 
+
+  config PIN_ESPOOLER_EN_6
+    default "$(MCU_NAME):PG7" 
+  config PIN_ESPOOLER_RWD_6
+    default "$(MCU_NAME):PC6" 
+  config PIN_ESPOOLER_FWD_6
+    default "$(MCU_NAME):PC7" 
+
+  config PIN_ESPOOLER_EN_7
+    default "$(MCU_NAME):PC11" 
+  config PIN_ESPOOLER_RWD_7
+    default "$(MCU_NAME):PC8" 
+  config PIN_ESPOOLER_FWD_7
+    default "$(MCU_NAME):PA15" 
+
+
+  config PIN_NEOPIXEL
+    default "$(MCU_NAME):PA5"
+
+
+  # Aka "Hub"
+  config PIN_SHARED_EXIT_SENSOR
+    default "^$(MCU_NAME):PD0"
+
+
+  # Aka "Buffer" - when filament is under tension (neck compressed) or compression (neck advances)
+  if !OPTION_TURTLE_NECK_V2_BUFFER
+    config PIN_BUFFER_TENSION
+      default "^$(MCU_NAME):PG15"
+    config PIN_BUFFER_COMPRESSION
+      default "^$(MCU_NAME):PB3"
+  endif
+
+
+# Spare neopixel ports:
+#   PC14, PC15, PA4
+
+# Spare switches:
+# PG14
+
+
+# -------------------------------------
+# Separate Buffer
+# -------------------------------------
+
+  if OPTION_TURTLE_NECK_V2_BUFFER
+
+    config PIN_BUFFER_SENSOR_0
+      default "$(MCU_NAME)_buffer:PB5"
+    config PIN_BUFFER_SENSOR_1
+      default "$(MCU_NAME)_buffer:PB6"
+    config PIN_BUFFER_SENSOR_2
+      default "$(MCU_NAME)_buffer:PB7"
+    config PIN_BUFFER_SENSOR_3
+      default "$(MCU_NAME)_buffer:PB8"
+
+    config PIN_BUFFER_TENSION
+      default "$(MCU_NAME)_buffer:PB1"
+    config PIN_BUFFER_COMPRESSION
+      default "$(MCU_NAME)_buffer:PB2"
+
+    config PIN_BUFFER_NEOPIXEL
+      default "$(MCU_NAME)_buffer:PD3"
+
+  endif
+
+endif

@@ -1,0 +1,30 @@
+# Raw direct access to suggested parameters
+# Generally grouped by sections of the .cfg files
+# (Once user edits values here they are sticky and
+# will override defaults)
+
+menu "Other Settings"
+  help
+    Other Settings
+    Allows override of designer defaults. Change these settings if you know
+    what you are doing (or have MMU customizations). You can always change later
+    by re-running "./install.sh -i" to run this editor (recommended) or by
+    editing the generated klipper config files directly
+
+  if !MULTI_UNIT_ENTRY_POINT
+    source "Kconfig.extruder"
+    source "Kconfig.num_gates"
+  endif
+
+  source "Kconfig.speeds"
+
+  if !MULTI_UNIT_ENTRY_POINT
+    source "Kconfig.gear_stepper"
+    source "Kconfig.selector_stepper"
+    source "Kconfig.selector_servo"
+    source "sensors/Kconfig"
+    source "Kconfig.motor_sync"
+    source "Kconfig.flowguard"
+    source "Kconfig.calibration"
+  endif
+endmenu

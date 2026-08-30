@@ -1,0 +1,986 @@
+# -*- coding: utf-8 -*-
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Manager class to coordinate the NFC/RFID readers associated with an MMU unit
+#
+# Modelled on MmuEnvironmentManager. Two reader topologies are supported (and may
+# co-exist on a single unit):
+#   1. A single 'shared' reader (mmu_unit.nfc_reader) that the user presents tags
+#      to manually. This manager polls it periodically and, on a tag read, asks
+#      Spoolman (via the mmu_controller -> Moonraker) to resolve the tag UID to a
+#      spool. The result is applied asynchronously as the "pending" spool id.
+#   2. A set of per-gate readers (mmu_unit.nfc_readers, indexed by local gate).
+#      These are not polled here - they are intended to be read on demand (e.g.
+#      during a gate load) and resolved to a specific gate. This manager just
+#      owns/inits them and offers a helper to resolve a per-gate read.
+#
+# On a read the manager fires a fire-and-forget lookup and then holds off further
+# reads for a short cooldown (and dedupes by UID) so a tag left on the reader
+# doesn't hammer Spoolman. If a lookup fails for a recoverable reason (e.g. a
+# Spoolman communication error) the controller can call allow_reread() to drop the
+# hold immediately so the same tag can be re-read without waiting.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
+import logging
+
+# Happy Hare imports
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .nfc.mmu_nfc_reader import MmuNfcReader
+from .nfc.mmu_nfc_endstop import MmuNfcEndstop
+
+NFC_CHECK_INTERVAL = 1.0   # How often to poll the shared NFC reader (seconds)
+NFC_READ_TIMEOUT   = 0.1   # Per-poll reader read timeout (seconds) - keep small; runs on reactor thread
+NFC_TAG_HOLD_TIME  = 5.0   # Cooldown after acting on a tag before reading again (seconds)
+NFC_INIT_DELAY     = 2.0   # Let other I2C devices settle before reader initialization
+
+# Homing-poll cadence (NFC-as-endstop). Each tick is a non-blocking presence
+# probe (see MmuNfcReader's "Homing presence probe" section), so detection
+# latency is bounded by the interval rather than by a blocking read. That is
+# what buys homing accuracy: at a gear_homing_speed of ~100mm/s, 0.020s is
+# ~2mm of overshoot where the old 0.25s blocking read was tens of mm.
+#
+# A reader whose driver lacks the probe contract runs the blocking shim, where
+# a tick still costs a bounded read_target(). Polling that at the tight interval
+# would be worse than not tightening at all, so it keeps the slower cadence.
+NFC_HOMING_POLL_INTERVAL      = 0.020   # Seconds between probe ticks (non-blocking driver)
+NFC_HOMING_POLL_INTERVAL_SHIM = 0.050   # Seconds between probe ticks (blocking shim)
+
+
+class MmuNfcManager:
+
+    def __init__(self, config, mmu_unit, params):
+        self.config = config
+        self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.mmu_machine = mmu_unit.mmu_machine # Entire logical combined MMU
+        self.p = params                         # mmu_unit_parameters
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
+        self.mmu = None                         # Set at klippy:connect
+
+        # Reader objects. NFC readers are NOT regular auto-loaded Klipper objects:
+        # each must be constructed with the owning mmu_unit (which the normal
+        # load_object path can't supply). We look one up first (it may be shared
+        # between gates) and otherwise build it from its config section. Done here
+        # at config time so a missing/invalid section surfaces early.
+        self.shared_reader = None               # Shared reader object, or None
+        self.gate_readers = []                  # Per-local-gate reader objects (or None per slot)
+        self.gate_endstops = {}                 # global_gate -> MmuNfcEndstop (for "tag detected" homing)
+        self._setup_readers()
+
+        # Homing poll (NFC-as-endstop): a single reactor timer drives whichever
+        # gate is currently homing. Only one homing move runs at a time, so one
+        # timer + one 'active endstop' is sufficient.
+        self._homing_poll_timer = self.reactor.register_timer(self._homing_poll)
+        self._homing_endstop = None
+        # Reader with a probe scan possibly still in flight. Set when a poll is
+        # armed and cleared by _drain_probe(), so it outlives _homing_endstop (which
+        # is dropped the instant a tag is detected) and covers the window in which
+        # the chip must not be disturbed.
+        self._probe_reader = None
+
+        # Per-reader control flags:
+        #   enabled - top-level on/off. If disabled a reader is never read (poll,
+        #             auto read_gate, or manual READ). Re-enabling re-initializes it.
+        #   active  - runtime guard against *accidental* reads. Blocks only the
+        #             automatic paths (poll, auto-dispatch); a manual READ overrides
+        #             it. Meant to be toggled frequently (e.g. off while a NEXT_SPOOLID
+        #             is pending, or off on all gates during a print).
+        self.shared_enabled = True
+        self.shared_active = True
+        self.gate_enabled = [True] * len(self.gate_readers)
+        self.gate_active = [True] * len(self.gate_readers)
+
+        # Shared-reader polling / debounce state
+        self._poll_timer = self.reactor.register_timer(self._poll_shared_reader)
+        self._bootup_init_timer = self.reactor.register_timer(self._delayed_bootup_init)
+        self._polling = False
+        self.reinit()
+
+        # Listen for important mmu events
+        self.printer.register_event_handler("mmu:enabled",  self._handle_mmu_enabled)
+        self.printer.register_event_handler("mmu:disabled", self._handle_mmu_disabled)
+        self.printer.register_event_handler("mmu:bootup",   self._handle_mmu_bootup)
+        self.printer.register_event_handler("mmu:printing", self._handle_printing)
+        self.printer.register_event_handler("mmu:not_printing", self._handle_not_printing)
+        self.printer.register_event_handler("mmu:spoolid_pending", self._handle_spoolid_pending)
+        self.printer.register_event_handler("mmu:spoolid_not_pending", self._handle_spoolid_not_pending)
+        self.printer.register_event_handler("klippy:connect", self._handle_connect)
+
+
+    def reinit(self):
+        # State reset on (re)initialization. Called by mmu_unit.reinit().
+        self._last_uid = None   # UID currently "held" (deduped)
+        self._hold_until = 0.0  # Monotonic time until which reads are ignored (cooldown)
+        # Safety net: a probe reference that somehow outlived its drain would keep the
+        # shared-reader poll suppressed indefinitely (see _movement_active). reinit only
+        # runs on MMU enable/init, never mid-operation, so nothing legitimately pending
+        # is discarded here - and the readers get re-inited on that path anyway.
+        self._probe_reader = None
+        # Deferred-attribution hold for NFC neighbor-field arbitration (MmuNfcFieldArbiter) -
+        # see hold_attribution(). Single-slot: only one gate's read is ever held at a time,
+        # since only one gate's preload/scan runs at once in this synchronous command model.
+        self._held_gate = None
+        self._held_dispatch = None
+
+
+    def _handle_connect(self):
+        self.mmu = self.mmu_machine.mmu_controller
+
+
+    def _setup_readers(self):
+        """
+        Build (or look up) the reader objects this unit controls. Readers are
+        constructed with the owning mmu_unit and registered as printer objects.
+        """
+        self.shared_reader = self._lookup_or_create_reader(self.mmu_unit.nfc_reader)
+        self.gate_readers = [self._lookup_or_create_reader(name) for name in self.mmu_unit.nfc_readers]
+
+        # One "tag detected" homing endstop per gate that has a reader. Named by
+        # GLOBAL gate ("mmu_nfc_<gate>") to match the per-gate sensor convention;
+        # mmu_unit binds each to its gate's gear rail (see iter_endstop_sensors).
+        self.gate_endstops = {}
+        for lg, reader in enumerate(self.gate_readers):
+            if reader is not None:
+                global_gate = self.mmu_unit.first_gate + lg
+                self.gate_endstops[global_gate] = MmuNfcEndstop(
+                    self.config, global_gate, reader, self, register=False)
+
+
+    def _lookup_or_create_reader(self, reader_name):
+        if not reader_name:
+            return None
+        section = 'mmu_nfc_reader %s' % reader_name
+        obj = self.printer.lookup_object(section, None)
+        if obj is not None:
+            return obj # Already created (e.g. shared between gates)
+        if not self.config.has_section(section):
+            raise self.config.error("MMU NFC reader section [%s] not found!" % section)
+        c = self.config.getsection(section)
+        obj = MmuNfcReader(c, self.mmu_unit)
+        self.printer.add_object(section, obj)
+        logging.info("MMU: Created: [%s]" % section)
+        return obj
+
+
+    #
+    # Public access -------------------------------------------------------------
+    #
+
+    def has_shared_nfc_reader(self):
+        return bool(self.mmu_unit.nfc_reader)
+
+
+    def has_gate_nfc_reader(self, gate):
+        nfc_readers = self.mmu_unit.nfc_readers
+        if not nfc_readers:
+            return False
+        if not self.mmu_unit.owns_gate(gate):
+            return False
+        lgate = self.mmu_unit.local_gate(gate)
+        return lgate < len(nfc_readers) and bool(nfc_readers[lgate])
+
+
+    def allow_reread(self):
+        """
+        Drop the read cooldown/dedupe so the currently presented tag can be read
+        again immediately. Intended to be called after a *recoverable* lookup
+        failure (e.g. Spoolman communication error) so the user doesn't have to
+        remove and re-present the tag. A definitive "unknown tag" result should
+        NOT call this (re-reading won't help).
+        """
+        self._last_uid = None
+        self._hold_until = 0.0
+
+
+    def read_gate(self, gate):
+        """
+        On-demand read of the per-gate reader for 'gate' and (if a tag is present)
+        initiate a Spoolman lookup targeting that gate. Returns the raw UID read
+        (or None). This is an *automatic* path so it honors both the enabled and
+        active flags. Safe to call with no per-gate reader configured.
+
+        Never deep reads while a homing probe is armed: a deep read takes long
+        enough to wreck homing accuracy and risk a Klipper "Timer too close", so
+        it belongs at a stationary point. Callers homing to a tag should use
+        read_gate_after_home() instead.
+        """
+        if not self.has_gate_nfc_reader(gate):
+            return None
+        if not self.is_enabled(gate=gate) or not self.is_active(gate=gate):
+            return None
+        reader = self._reader_for(gate=gate)
+        if reader is None:
+            return None
+        deep = self._want_metadata()
+        if deep and self._homing_endstop is not None:
+            # A bug rather than a configuration choice - say so and degrade to
+            # UID-only rather than stalling the reactor mid-move.
+            self.mmu.log_error(
+                "NFC: refusing a deep read on gate %s while homing to a tag - "
+                "reading UID only (deep reads must run after the move)" % gate)
+            deep = False
+        uid, metadata = self._read_reader(reader, deep=deep)
+        if uid:
+            if gate is not None and gate == self._held_gate:
+                # A hold is armed for this exact gate (NFC neighbor-field arbitration,
+                # NFC_FIELD_PROVISIONAL) - stash instead of dispatching. See
+                # hold_attribution().
+                self._held_dispatch = (uid, gate, metadata)
+            else:
+                self._dispatch_lookup(uid, gate=gate, metadata=metadata)
+        return uid
+
+
+    def hold_attribution(self, gate):
+        """
+        Arm a hold on gate 'gate': the next successful read_gate()/read_gate_after_home()
+        for this exact gate stashes its (uid, metadata) instead of dispatching immediately.
+
+        Used by MmuNfcFieldArbiter for a NFC_FIELD_PROVISIONAL verdict, where whether an
+        unregistered tag actually belongs to this gate isn't known until the caller's own
+        operation completes and ratification re-probes the field - attributing it eagerly
+        and only warning on failure would leave a neighbor's tag (and, via Spoolman, its
+        spool_id) committed to the wrong gate with no way to un-commit it. Single-slot:
+        only one gate's read is ever held at a time in this synchronous command model.
+        """
+        self._held_gate = gate
+        self._held_dispatch = None
+
+
+    def release_held_attribution(self):
+        """Commit a held read (if one is stashed) and clear the hold either way."""
+        if self._held_dispatch is not None:
+            uid, gate, metadata = self._held_dispatch
+            self._dispatch_lookup(uid, gate=gate, metadata=metadata)
+        self._held_gate = None
+        self._held_dispatch = None
+
+
+    def discard_held_attribution(self):
+        """Drop a held read (if one is stashed) WITHOUT dispatching it, and clear the hold."""
+        self._held_gate = None
+        self._held_dispatch = None
+
+
+    def read_gate_after_home(self, gate):
+        """
+        Read gate 'gate's tag once a homing move has finished, with the machine
+        stationary. Returns the UID read (or None).
+
+        This is the counterpart to the homing probe: the probe reports presence
+        only, so this is where the UID - and the tag metadata, when nfc_deep_read
+        is on - is actually obtained. Deliberately named for "after a move" rather
+        than "deep", because with nfc_deep_read off the gate map still needs the
+        UID; depth stays read_gate()'s decision.
+
+        Deliberately does NOT reposition the filament. The tag travels on through
+        the deceleration ramp after the probe triggers, so it may no longer be
+        coupled to the antenna - if the read comes back empty we log it and move
+        on rather than jogging to chase it.
+
+        Note on ordering: _homing_poll() disarms itself the instant it detects a tag
+        (and home_wait -> stop_homing_poll is a backstop), so _homing_endstop is clear
+        by the time this runs and read_gate()'s deep-read guard above does not fire.
+        That is intended - do not replicate that guard here or the post-move deep read
+        is silently disabled.
+        """
+        if not self.has_gate_nfc_reader(gate):
+            return None
+        # Drain the move queue before touching the reader. move_filament() already
+        # flushes step generation and do_homing_move() syncs print time, but the
+        # queue drain there is conditional on 'wait', so don't assume it.
+        try:
+            self.mmu.movequeue_wait() # TTC mitigation: read only once motion has stopped
+        except Exception as e:
+            self.mmu.log_error("NFC: gate %s wait-for-stationary failed: %s" % (gate, str(e)))
+        # Now stationary, so it's safe to drain a probe scan still in flight and
+        # hand the chip over clean for a normal read. No-op if home_wait already did.
+        self._drain_probe()
+        uid = self.read_gate(gate)
+        if not uid:
+            self.mmu.log_debug(
+                "NFC: gate %s tag not readable after homing - the tag likely moved "
+                "past the reader during deceleration" % gate)
+        return uid
+
+
+    def clear_gate_reader(self, gate):
+        """
+        Drop the sticky last-read UID and release any held target on the per-gate
+        reader so the next read reflects a fresh, live detection rather than a
+        stale selection from a previous operation. Safe if no reader is configured.
+        """
+        reader = self._reader_for(gate=gate)
+        if reader is None:
+            return
+        try:
+            reader.clear_uid()
+        except Exception as e:
+            self.mmu.log_error("NFC: clear error on reader '%s': %s" % (getattr(reader, 'name', '?'), str(e)))
+
+
+    #
+    # Per-reader enable/active control and manual operations (used by MMU_NFC) ---
+    #
+
+    def has_reader(self, shared=False, gate=None):
+        return self._reader_for(shared=shared, gate=gate) is not None
+
+
+    def is_enabled(self, shared=False, gate=None):
+        if shared:
+            return self.shared_enabled
+        lg = self._local_index(gate)
+        return self.gate_enabled[lg] if lg is not None else False
+
+
+    def is_active(self, shared=False, gate=None):
+        if shared:
+            return self.shared_active
+        lg = self._local_index(gate)
+        return self.gate_active[lg] if lg is not None else False
+
+
+    def set_enabled(self, value, shared=False, gate=None):
+        """
+        Set a reader's top-level enabled flag. Re-initializes on a transition
+        to enabled, since a reader may have been powered down/idled while off.
+        """
+        value = bool(value)
+        if shared:
+            was, self.shared_enabled = self.shared_enabled, value
+        else:
+            lg = self._local_index(gate)
+            if lg is None:
+                return
+            was, self.gate_enabled[lg] = self.gate_enabled[lg], value
+        if value and not was:
+            self.init_reader(shared=shared, gate=gate)
+
+
+    def set_active(self, value, shared=False, gate=None):
+        """
+        Set a reader's runtime active flag (guards automatic reads only).
+        """
+        value = bool(value)
+        if shared:
+            self.shared_active = value
+        else:
+            lg = self._local_index(gate)
+            if lg is not None:
+                self.gate_active[lg] = value
+
+
+    def snapshot_active(self):
+        """Capture the current active flags (shared + per-gate) as an opaque token
+        for save/restore around an exclusive operation (e.g. an NFC jog-scan)."""
+        return (self.shared_active, list(self.gate_active))
+
+
+    def restore_active(self, snapshot):
+        """Restore active flags previously captured by snapshot_active()."""
+        self.shared_active = snapshot[0]
+        self.gate_active = list(snapshot[1])
+
+
+    def deactivate_all(self):
+        """Set the shared reader and every per-gate reader inactive (soft guard)."""
+        self.shared_active = False
+        self.gate_active = [False] * len(self.gate_active)
+
+
+    def init_reader(self, shared=False, gate=None):
+        """
+        (Re)initialize a single addressed reader. Returns alive bool, or None
+        if no such reader is configured. A re-init is a fresh start, so when the
+        shared reader is (re)inited the shared-poll read dedupe is dropped too
+        (a still-presented tag can re-trigger a lookup).
+        """
+        reader = self._reader_for(shared=shared, gate=gate)
+        if reader is None:
+            return None
+        self._init_reader(reader, self._label_for(shared=shared, gate=gate))
+        if reader is self.shared_reader:
+            self.allow_reread()
+        return reader.alive
+
+
+    def init_all(self):
+        """
+        (Re)initialize every reader this unit controls (fresh start: the
+        shared-poll read dedupe is dropped too).
+        """
+        self._init_all_readers()
+        self.allow_reread()
+
+
+    def read_reader(self, shared=False, gate=None, deep=False):
+        """
+        Manual one-shot read of an addressed reader, returning (uid, metadata).
+
+        Intended for the MMU_NFC command. Overrides the 'active' guard (an explicit
+        request is not an accidental read); callers should honor 'enabled' first.
+        Does not dispatch a Spoolman lookup - it just reports the tag. With deep=True
+        a structured read parses and returns the tag metadata (explicit request, so
+        the per-unit nfc_deep_read gate for automatic reads does not apply); metadata
+        is None for UID-only reads or unparseable/unsupported tags.
+        """
+        reader = self._reader_for(shared=shared, gate=gate)
+        if reader is None:
+            return None, None
+        return self._read_reader(reader, deep=deep)
+
+
+    def probe_gate_field(self, gate, reads=None):
+        """
+        Is anything in this gate's reader field right now? Returns the first UID seen
+        (or None). For NFC neighbor-field arbitration (MmuNfcFieldArbiter): a probe is a
+        *question*, not an attribution, so it reuses read_reader()'s semantics (overrides the
+        'active' guard the way an explicit request should, honors 'enabled', never dispatches
+        a Spoolman lookup) via a live, UID-only read.
+
+        Reads up to 'reads' times (default the unit's nfc_field_probe_reads): a tag at the
+        edge of the field - exactly the signature of a neighboring gate's spool intruding on
+        this reader - can read intermittently, so a single read can miss it.
+        """
+        if not self.has_gate_nfc_reader(gate) or not self.is_enabled(gate=gate):
+            return None
+        if reads is None:
+            reads = self.mmu_unit.p.nfc_field_probe_reads
+        for _ in range(max(1, reads)):
+            self.clear_gate_reader(gate) # Live detection, not a stale sticky UID
+            uid, _metadata = self.read_reader(gate=gate, deep=False)
+            if uid:
+                return uid
+        return None
+
+
+    def release_reader(self, shared=False, gate=None):
+        """
+        Release the current target on an addressed reader.
+        """
+        reader = self._reader_for(shared=shared, gate=gate)
+        if reader is None:
+            return False
+        try:
+            return reader.release(reason="mmu_nfc_command")
+        except Exception as e:
+            self.mmu.log_error("NFC: release error on reader '%s': %s" % (getattr(reader, 'name', '?'), str(e)))
+            return False
+
+
+    def get_status(self, eventtime=None):
+        """
+        Pure status snapshot (no reader I/O) for printer variables.
+
+        Shape: {'unit', 'polling', 'shared': {..}|None, 'gates': {global_gate: {..}}}
+        where each reader dict reports enabled/active/alive/present/uid (the cached
+        tag from the last read, not a live scan).
+        """
+        def reader_status(reader, enabled, active):
+            return {
+                'enabled': bool(enabled),
+                'active': bool(active),
+                'alive': bool(getattr(reader, 'alive', False)),
+                'present': bool(getattr(reader, 'present', False)),
+                'uid': getattr(reader, 'last_uid', None),
+            }
+
+        status = {'unit': self.mmu_unit.name, 'polling': self._polling}
+        status['shared'] = (reader_status(self.shared_reader, self.shared_enabled, self.shared_active)
+                            if self.shared_reader is not None else None)
+        gates = {}
+        for lg, reader in enumerate(self.gate_readers):
+            if reader is not None:
+                gates[self.mmu_unit.first_gate + lg] = reader_status(reader, self.gate_enabled[lg], self.gate_active[lg])
+        status['gates'] = gates
+        return status
+
+
+    #
+    # Internal implementation --------------------------------------------------
+    #
+
+    def _handle_mmu_enabled(self):
+        """
+        Event indicating that the MMU unit was enabled. (Re)arm shared-reader
+        polling - enable/disable can cycle during a session.
+        """
+        self._start_polling()
+
+
+    def _handle_mmu_disabled(self):
+        """
+        Event indicating that the MMU unit was disabled. Stop polling.
+        """
+        self._stop_polling()
+
+
+    def _handle_mmu_bootup(self):
+        """
+        MMU bootup event. Schedule initialization after the I2C bus settles.
+        """
+        num_readers = ((1 if self.shared_reader is not None else 0) +
+                       sum(1 for r, _ in self._unique_readers() if r is not self.shared_reader))
+        self.mmu.log_debug("NFC: bootup on %s - scheduling %d reader(s) in %.1fs" %
+                           (self.mmu_unit.name, num_readers, NFC_INIT_DELAY))
+        self.reactor.update_timer(self._bootup_init_timer,
+                                  self.reactor.monotonic() + NFC_INIT_DELAY)
+
+
+    def _delayed_bootup_init(self, eventtime):
+        """One-shot, non-blocking NFC initialization scheduled after bootup."""
+        self.mmu.log_debug("NFC: initializing readers on %s after bootup delay" % self.mmu_unit.name)
+        self._init_all_readers()
+        self._start_polling()
+        return self.reactor.NEVER
+
+
+    def _handle_printing(self, eventtime):
+        """
+        Deactivate all readers while actively printing so no NFC transaction runs
+        on the reactor thread mid-print. The shared poll and auto read_gate honor
+        the active flag; a manual MMU_NFC READ still overrides it if needed.
+        """
+        self._set_all_active(False)
+
+
+    def _handle_not_printing(self, eventtime):
+        """
+        Re-activate all readers once printing stops.
+        """
+        self._set_all_active(True)
+
+
+    def _handle_spoolid_pending(self):
+        """
+        A shared-reader spool lookup is in flight (broadcast by the controller).
+        Deactivate the shared reader so no competing lookup is dispatched until it
+        resolves. Per-gate readers are unaffected.
+        """
+        self.shared_active = False
+
+
+    def _handle_spoolid_not_pending(self, reread=False):
+        """
+        The in-flight shared lookup resolved. Re-activate the shared reader;
+        on a recoverable failure (reread) also drop the dedup/cooldown so the same
+        tag can be re-read immediately.
+        """
+        self.shared_active = True
+        if reread:
+            self.allow_reread()
+
+
+    def _set_all_active(self, value):
+        value = bool(value)
+        self.shared_active = value
+        self.gate_active = [value] * len(self.gate_active)
+
+
+    def _local_index(self, gate):
+        """
+        Map a global gate number to a per-gate reader slot index, or None.
+        """
+        if gate is None:
+            return None
+        if not self.mmu_unit.owns_gate(gate):
+            return None
+        lgate = self.mmu_unit.local_gate(gate)
+        return lgate if lgate < len(self.gate_readers) else None
+
+
+    def _reader_for(self, shared=False, gate=None):
+        """
+        Resolve the reader object addressed by (shared | gate), or None.
+        """
+        if shared:
+            return self.shared_reader
+        lg = self._local_index(gate)
+        return self.gate_readers[lg] if lg is not None else None
+
+
+    def _label_for(self, shared=False, gate=None):
+        """
+        Driver logging label for an addressed reader: unit name (shared) or
+        logical gate number (per-gate).
+        """
+        if shared:
+            return self.mmu_unit.name
+        lg = self._local_index(gate)
+        return self.mmu_unit.first_gate + lg if lg is not None else '?'
+
+
+    def _unique_readers(self):
+        """
+        [(reader, [global_gate, ...])] in first-appearance order, deduped by object
+        identity. One physical reader may be named by more than one gate slot (a
+        reader shared between neighboring gates - see mmu_unit.py's 'nfc_readers'),
+        and may also double as the unit's shared reader. Anything that drives
+        HARDWARE per boot/event must iterate this, not gate_readers directly, or
+        the chip gets the same transaction N times.
+        """
+        by_id = {}
+        result = []
+        for lgate, reader in enumerate(self.gate_readers):
+            if reader is None:
+                continue
+            global_gate = self.mmu_unit.first_gate + lgate
+            idx = by_id.get(id(reader))
+            if idx is None:
+                by_id[id(reader)] = len(result)
+                result.append((reader, [global_gate]))
+            else:
+                result[idx][1].append(global_gate)
+        return result
+
+
+    def _init_all_readers(self):
+        # The shared reader is labelled with the unit name; per-gate readers with
+        # their first logical gate number (a reader shared between two gates is
+        # only inited once here, not once per gate slot - see _unique_readers()).
+        if self.shared_reader is not None:
+            self._init_reader(self.shared_reader, self.mmu_unit.name)
+        for reader, gates in self._unique_readers():
+            if reader is self.shared_reader:
+                continue # Dual shared/per-gate role - already inited above
+            if len(gates) > 1:
+                self.mmu.log_debug("NFC: reader '%s' serves gates %s - initializing once" %
+                                   (getattr(reader, 'name', '?'), ",".join(map(str, gates))))
+            self._init_reader(reader, gates[0])
+
+
+    def _init_reader(self, reader, gate):
+        name = getattr(reader, 'name', '?')
+        try:
+            alive = reader.init(gate)
+            if alive:
+                # 'gate' is a logging label, not always a gate: _init_all_readers passes
+                # the unit name for the shared reader, which has no gate. Report it as
+                # what it is rather than as "gate=unit0".
+                where = ("gate %s" % gate if isinstance(gate, int)
+                         else "shared on %s" % gate)
+                self.mmu.log_debug("NFC: reader '%s' initialized (%s)" % (name, where))
+            else:
+                self.mmu.log_warning("NFC: reader '%s' did not respond during init" % name)
+        except Exception as e:
+            self.mmu.log_error("NFC: error initializing reader '%s': %s" % (name, str(e)))
+
+
+    def _start_polling(self):
+        if self.shared_reader is None:
+            return # Nothing to poll
+        if not self._polling:
+            self.mmu.log_info("NFC: shared reader '%s' listening for tags" % self.mmu_unit.nfc_reader)
+        self._polling = True
+        self.reinit()
+        self.reactor.update_timer(self._poll_timer, self.reactor.NOW)
+
+
+    def _stop_polling(self):
+        self._polling = False
+        self.reactor.update_timer(self._poll_timer, self.reactor.NEVER)
+
+
+    def _poll_shared_reader(self, eventtime):
+        """
+        Reactor callback to periodically read the shared reader.
+        Note: this performs a live NFC transaction, so the read timeout is kept
+        small. Reads are suppressed during printing via the active flag (cleared
+        on mmu:printing) to keep the reactor responsive.
+        """
+        if not self._polling or self.mmu is None or self.shared_reader is None:
+            return self.reactor.NEVER
+
+        # Respect the reader's enabled (hard off) and active (soft guard) flags, and
+        # stand down while any filament movement is underway (see _movement_active).
+        # Keep ticking so a later re-enable/re-activate/move-finish resumes us
+        # automatically.
+        if not self.shared_enabled or not self.shared_active or self._movement_active():
+            return eventtime + NFC_CHECK_INTERVAL
+
+        now = self.reactor.monotonic()
+
+        # Cooldown after a recent read
+        if now < self._hold_until:
+            return eventtime + NFC_CHECK_INTERVAL
+
+        uid, metadata = self._read_reader(self.shared_reader, deep=self._want_metadata(), log=False)
+
+        if uid:
+            # Only act on a newly presented tag; a tag left on the reader keeps
+            # the same UID and must not re-trigger a Spoolman lookup
+            if uid != self._last_uid:
+                self._last_uid = uid
+                self._hold_until = now + NFC_TAG_HOLD_TIME
+                self.mmu.log_debug("NFC: shared reader read tag UID=%s" % uid)
+                self._dispatch_lookup(uid, gate=None, metadata=metadata)
+        else:
+            # No tag present - forget the held UID so re-presentation is honored
+            self._last_uid = None
+
+        return eventtime + NFC_CHECK_INTERVAL
+
+
+    def _movement_active(self):
+        """
+        True when the shared-reader poll must stand down because the machine is
+        moving. A poll is a live NFC transaction on the reactor thread and a deep
+        one can run for seconds, which starves a drip-homing move and invites a
+        Klipper "Timer too close".
+
+        Two conditions, either of which suppresses:
+
+          1. A homing probe is armed or undrained on ANY unit - not just this
+             manager's. A reader object can serve both the shared and per-gate
+             roles, and even when it doesn't the readers usually share a bus, so
+             checking only our own state leaves a second unit's home unguarded.
+             Keyed on _probe_reader rather than _homing_endstop because it spans
+             the wider window: from arming right through to the drain, including
+             the deceleration ramp after a detection disarms the poll.
+          2. The MMU is mid-operation (action != ACTION_IDLE), which covers every
+             non-NFC homing move too - gate switch, extruder, bowden load. The
+             mmu:printing handler only clears the active flag during a print, and
+             preload/load-gate outside a print is exactly where this bit.
+
+        The whole poll is skipped, not merely downgraded to UID-only: a UID-only
+        read would still dispatch a lookup and set _last_uid/_hold_until, and the
+        dedupe would then block the proper deep re-read for NFC_TAG_HOLD_TIME
+        because the UID matches.
+        """
+        for unit in self.mmu_machine.units:
+            mgr = getattr(unit, 'nfc_manager', None)
+            if mgr is not None and mgr._probe_reader is not None:
+                return True
+        return getattr(self.mmu, 'action', ACTION_IDLE) != ACTION_IDLE
+
+
+    def _read_reader(self, reader, deep=False, log=True):
+        """
+        Read a tag from 'reader', returning (uid, metadata).
+
+        With deep=False (default) reads just the UID via read_uid() - the tag
+        contents are never parsed and metadata is None. With deep=True (used only
+        when Spoolman auto-create is enabled) performs a structured read and
+        returns the parsed tag metadata dict alongside the UID. Both paths
+        auto-release the target, so no separate release step is required.
+
+        A deep read that fails still yields the UID (read_tag_data banks it first),
+        which is the datum that matters - so it is reported as a warning and the read
+        continues rather than being treated as a failure.
+        """
+        try:
+            if deep:
+                uid, metadata = reader.read_tag_data(timeout=NFC_READ_TIMEOUT)
+            else:
+                uid = reader.read_uid(timeout=NFC_READ_TIMEOUT)
+                metadata = None
+        except Exception as e:
+            self.mmu.log_error("NFC: read error on reader '%s': %s" % (getattr(reader, 'name', '?'), str(e)))
+            return None, None
+        uid = str(uid) if uid else None
+        # Tell the user when a deep read failed on a tag we DID identify. Without this
+        # it is only a klippy.log line, so a tag whose metadata never parses looks
+        # indistinguishable from a plain UID-only tag. last_deep_error is what makes
+        # that distinction - metadata=None alone does not.
+        deep_error = getattr(reader, 'last_deep_error', None) if deep else None
+        if uid and deep_error:
+            self.mmu.log_warning(
+                "NFC: deep read failed on reader '%s' (%s) - tag UID %s was still read, "
+                "continuing without tag metadata" % (getattr(reader, 'name', '?'), deep_error, uid))
+        if log:
+            self.mmu.log_debug(
+                "NFC: reader '%s' read UID=%s deep=%s metadata_keys=%s" % (
+                    getattr(reader, 'name', '?'), uid, deep,
+                    sorted(metadata.keys()) if isinstance(metadata, dict) else []))
+        return uid, metadata
+
+
+    def _want_metadata(self):
+        """
+        True when reads should be deep (parse the full tag contents). Gated by
+        nfc_deep_read so that with nfc_deep_read=0 the tag is never parsed - only
+        the UID is read - and no metadata is produced, applied, or sent. When on,
+        metadata populates the local gate map (and, if further enabled, drives
+        Spoolman auto-create) independently of whether Spoolman is configured.
+        """
+        return self.mmu is not None and self.mmu.nfc_deep_read_enabled(self.mmu_unit)
+
+
+    def _dispatch_lookup(self, uid, gate=None, metadata=None):
+        """
+        Hand a tag read to the controller (fire-and-forget). The controller
+        applies deep-read 'metadata' to the local gate map and, if Spoolman is
+        active, initiates the async UID->spool resolution (whose result returns
+        later as an MMU_GATE_MAP command from Moonraker). Nothing is awaited here.
+
+        'metadata' is the parsed tag payload from a deep read (dict), or None for
+        a UID-only read.
+        """
+        try:
+            self.mmu.log_debug(
+                "NFC: dispatching UID=%s from reader unit=%s gate=%s to Spoolman lookup" %
+                (uid, self.mmu_unit.name, gate))
+            self.mmu._nfc_tag_read(uid, gate=gate, metadata=metadata, unit=self.mmu_unit)
+        except Exception as e:
+            self.mmu.log_error("NFC: error initiating tag lookup for UID=%s: %s" % (uid, str(e)))
+
+
+    #
+    # Homing poll (NFC-as-endstop) ----------------------------------------------
+    #
+    # Driven by MmuNfcEndstop.home_start/home_wait. While a gate homes filament to
+    # its reader we tick a non-blocking presence probe on that reader; a detection
+    # completes the endstop's homing completion (via trigger_handler), which stops
+    # the drip-homing move.
+    #
+    # The probe reports presence only - no UID, no tag contents. The endstop just
+    # needs a boolean, and reading the tag here is what made homing inaccurate and
+    # risked TTC. The UID (and metadata, if nfc_deep_read is on) is read once
+    # afterwards by read_gate_after_home(), with the machine stationary.
+    #
+
+    def get_gate_endstop(self, gate):
+        """
+        Return the MmuNfcEndstop for a global gate, or None.
+        """
+        return self.gate_endstops.get(gate)
+
+
+    def _homing_poll_interval(self, reader):
+        """
+        Probe tick spacing for 'reader': tight for a driver implementing the
+        non-blocking probe contract, slower for one falling back to the blocking
+        shim (where a tick still costs a bounded read_target()).
+        """
+        try:
+            if reader.has_probe_support():
+                return NFC_HOMING_POLL_INTERVAL
+        except Exception:
+            pass
+        return NFC_HOMING_POLL_INTERVAL_SHIM
+
+
+    def start_homing_poll(self, endstop):
+        """
+        Begin ticking a presence probe on 'endstop's reader. Clears the sticky
+        UID first so nothing stale can be mistaken for this home's detection,
+        then kicks off the first scan. Called from home_start.
+
+        Homing is deliberate so it overrides the 'active' guard, but a *disabled*
+        reader can't be read - refuse clearly rather than let the move run its
+        full length and fail later with an opaque "no trigger". While the poll is
+        armed the shared-reader poll is suppressed (see _poll_shared_reader) so it
+        can't contend on a reader object shared between the shared and gate roles.
+        """
+        if not self.is_enabled(gate=endstop.gate):
+            self.mmu.log_error(
+                "NFC: gate %d reader is disabled - cannot home to tag "
+                "(re-enable with MMU_NFC ... ENABLE=1)" % endstop.gate)
+            return # Don't arm; the move will run full and home_wait reports no trigger
+        self._homing_endstop = endstop
+        self._probe_reader = endstop.reader
+        try:
+            endstop.reader.clear_uid()
+            endstop.reader.probe_start()
+        except Exception as e:
+            self.mmu.log_error("NFC: homing probe start failed: %s" % str(e))
+        self.reactor.update_timer(self._homing_poll_timer, self.reactor.NOW)
+
+
+    def stop_homing_poll(self):
+        """
+        Stop ticking the homing probe and drain it. Called from home_wait, and
+        idempotent - _homing_poll also disarms on a detection, and the drain is
+        separately idempotent via _drain_probe().
+        """
+        self._disarm_homing_poll()
+        self._drain_probe()
+
+
+    def _disarm_homing_poll(self):
+        """
+        Stop the probe timer and clear the 'armed' state, WITHOUT draining the
+        chip (which can block - see _drain_probe). Idempotent.
+        """
+        self.reactor.update_timer(self._homing_poll_timer, self.reactor.NEVER)
+        self._homing_endstop = None
+
+
+    def _drain_probe(self):
+        """
+        Abort/drain a probe scan left in flight, leaving the chip clean for a
+        normal read. Idempotent, and safe to call from either stop_homing_poll()
+        or read_gate_after_home() - whichever gets there first.
+
+        Deliberately separate from _disarm_homing_poll() because this can block:
+        on some chips probe_stop() issues a real RF release (PN532's InRelease has
+        a 200ms timeout of its own, ignoring the caller's). It must therefore only
+        run once the machine is stationary,
+        never at the moment of detection while the move is still decelerating.
+        """
+        reader, self._probe_reader = self._probe_reader, None
+        if reader is None:
+            return # Nothing in flight
+        try:
+            reader.probe_stop()
+        except Exception as e:
+            self.mmu.log_error("NFC: homing probe stop failed: %s" % str(e))
+
+
+    def _homing_poll(self, eventtime):
+        """
+        One probe tick. probe_poll() reports True (tag present), False (that scan
+        finished with nothing there) or None (still scanning - ask again). Nothing
+        is ever abandoned mid-scan, which is what keeps the reader in sync across
+        a long run of misses.
+        """
+        endstop = self._homing_endstop
+        if endstop is None:
+            return self.reactor.NEVER
+        reader = endstop.reader
+        try:
+            found = reader.probe_poll()
+        except Exception as e:
+            self.mmu.log_error("NFC: homing probe error: %s" % str(e))
+            found = False
+
+        if found:
+            # Tag detected - complete the endstop. Pass the raw reactor eventtime;
+            # the endstop's _endstop_trigger_time() converts it to MCU print_time
+            # for the homing position calc, while note_filament_present keeps the
+            # reactor time it needs.
+            #
+            # Disarm before triggering so nothing downstream of the completion can
+            # observe a probe that is still armed - notably read_gate()'s deep-read
+            # guard, which must not fire for the legitimate post-move read.
+            #
+            # Do NOT drain the chip here: on some chips probe_stop() issues a real
+            # RF release (PN532's InRelease can block up to 200ms) and at this instant
+            # the drip move is still decelerating, which is exactly the
+            # reactor-hogging we're removing. A scan left in flight meanwhile is
+            # harmless; _drain_probe() clears it at the next stationary point
+            # (stop_homing_poll from home_wait, or read_gate_after_home).
+            self._disarm_homing_poll()
+            endstop.trigger_handler(eventtime, True)
+            return self.reactor.NEVER
+
+        if found is False:
+            # That scan completed empty - start the next one. (None means the
+            # scan is still in flight, so leave it alone and re-check.)
+            try:
+                reader.probe_start()
+            except Exception as e:
+                self.mmu.log_error("NFC: homing probe restart failed: %s" % str(e))
+
+        return eventtime + self._homing_poll_interval(reader)

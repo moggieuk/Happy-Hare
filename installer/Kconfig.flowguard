@@ -1,0 +1,108 @@
+# This module is responsible for flowguard configuration
+#
+# Responsible for setting:
+#   PARAM_FLOWGUARD_ENABLED
+#   PARAM_FLOWGUARD_MAX_RELIEF
+#   PARAM_FLOWGUARD_ENCODER_MODE
+#   PARAM_FLOWGUARD_ENCODER_MAX_MOTION
+#   PARAM_TANGLE_PREVENTION_ENABLED
+#   PARAM_TANGLE_PREVENTION_THRESHOLD
+#   PARAM_TANGLE_PREVENTION_RELEASE
+
+menu "FlowGuard (clog/tangle/runout detection)"
+depends on MMU_HAS_SYNC_FEEDBACK_BUFFER || MMU_HAS_ENCODER
+
+config PARAM_FLOWGUARD_ENABLED
+  boolint "Enable sync-feedback base FlowGuard (sync speed correction, clog/tangle/runout)?"
+  default 1
+  help
+    FlowGuard is a feature that uses the sync-feedback buffer and/or encoder to detect
+    filament clogs, tangles and runouts. If enabled the print will be paused to allow
+    you to correct the issue, possibly saving your print but certainly saving your printer.
+config PARAM_FLOWGUARD_MAX_RELIEF
+  float
+  default 40
+
+config PARAM_FLOWGUARD_MAX_RELIEF
+  prompt "Max relief movement"
+  depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && PARAM_FLOWGUARD_ENABLED
+  help
+    The amount of relief movement (effective mm change in filament length between MMU and extruder) that
+    Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since
+    the relief movement is highly dependent on filament "spring" in the bowden tube, filament friction, and
+    'sync_feedback_buffer_range', it is generally good to start high and then decrease if a more sensitive trigger is desired.
+    Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers.
+
+
+if MMU_HAS_SYNC_FEEDBACK_BUFFER
+  config PARAM_TANGLE_PREVENTION_ENABLED
+    boolint "Enable tangle prevention (boost gear current on high spool tension)?"
+    default 1
+    help
+      Tangle prevention boosts the gear stepper current to 100% when the proportional sync-feedback
+      sensor reports high filament tension (the gear struggling to pull filament from the spool),
+      then restores normal current once tension eases. This helps pull through minor spool
+      resistance before it develops into a tangle. Requires a proportional (type P) sensor.
+
+  config PARAM_TANGLE_PREVENTION_THRESHOLD
+    float
+    default 0.3
+
+  config PARAM_TANGLE_PREVENTION_THRESHOLD
+    prompt "Tension threshold to boost gear current"
+    depends on PARAM_TANGLE_PREVENTION_ENABLED
+    help
+      Proportional sensor tension level (0.2-0.9, fraction of the tension half of the sensor range) at which the
+      gear current is boosted to 100%. Lower values trigger the boost sooner. Increase if you get false triggers.
+
+  config PARAM_TANGLE_PREVENTION_RELEASE
+    float
+    default 0.2
+
+  config PARAM_TANGLE_PREVENTION_RELEASE
+    prompt "Tension level to restore gear current"
+    depends on PARAM_TANGLE_PREVENTION_ENABLED
+    help
+      Tension level (0.15-0.8) at which the boosted gear current is restored to normal once tension eases. Must be
+      below the threshold - the gap between the two provides hysteresis to prevent the current thrashing on and off.
+endif
+
+
+if MMU_HAS_ENCODER
+  config BOOL_FLOWGUARD_ENCODER_MODE
+    bool "Enable encoder based FlowGuard (clog/tangle/runout detection)?"
+    help
+      Encoder runout/clog/tangle detection watches for movement over either a static or automatically adjusted distance - if
+      no encoder movement is seen when the extruder moves this distance runout/ clog/tangle event will be generated. Allowing
+      the distance to be adjusted automatically will generally allow for a quicker trigger but use a static length
+      (mode=1, set encoder_max_motion) if you get false triggers (see flowguard guide on wiki for more details).
+      Note that this feature cannot distinguish between clog or tangle.
+
+  config BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+    bool "Enable automatic detection length?"
+    help
+      This constantly tunes the clog/tangle/runout detection length to help avoid false triggering
+    depends on BOOL_FLOWGUARD_ENCODER_MODE
+    default y
+
+  config PARAM_FLOWGUARD_ENCODER_MODE
+    int 
+    default 2 if BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+    default 1 if BOOL_FLOWGUARD_ENCODER_MODE
+    default 0
+
+  config PARAM_FLOWGUARD_ENCODER_MAX_MOTION
+    float
+    default 20
+
+  config PARAM_FLOWGUARD_ENCODER_MAX_MOTION
+    prompt "Extruder max motion"
+    depends on BOOL_FLOWGUARD_ENCODER_MODE && !BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+    help
+      The encoder_max_motion is the absolute max permitted extruder movement without the encoder seeing movement when using
+      non-automatic mode (mode=1). Smaller values are more sensitive but beware of going too small - slack and friction in the
+      bowden may cause gaps in encoder movement. Increase if you have false triggers.
+      Note that this value is overridden by any calibrated value stored in 'mmu_vars.cfg' if in automatic mode (mode=2).
+endif
+
+endmenu

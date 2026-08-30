@@ -1,0 +1,78 @@
+# This module is responsible for sync-feedback buffer and
+# motor synchronization parameters:
+#
+#   PARAM_SYNC_FEEDBACK_ENABLED
+#
+#   PARAM_SYNC_TO_EXTRUDER
+#   PARAM_SYNC_FORM_TIP
+#   PARAM_SYNC_PURGE
+#   PARAM_SYNC_GEAR_CURRENT
+#   PARAM_TOOLHEAD_POST_LOAD_TENSION_ADJUST
+#   PARAM_TOOLHEAD_ENTRY_TENSION_TEST
+
+menu "MMU/Extruder sync"
+  help
+    Some MMU designs allow fine control over when the MMU stepper is
+    synced with the extruder stepper. Synchronization helps to
+    overcome friction in the filament path.
+
+  if MMU_HAS_SYNC_FEEDBACK_BUFFER
+    config PARAM_SYNC_FEEDBACK_ENABLED
+      boolint "Enable dynamic sync feedback?"
+      default 1
+      help
+        Sync feedback from the buffer will be used to dynamically adjust the
+        gear stepper speed to exactly match the extruder. This prevents
+        under extrusion artifacts caused by filament drag.
+
+  endif
+
+  config PARAM_SYNC_TO_EXTRUDER
+    boolint "Enable sync to extruder?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default 1 if PARAM_FILAMENT_ALWAYS_GRIPPED
+    help
+      This controls whether the extruder and gear steppers are synchronized
+      during printing operations.
+
+  config PARAM_SYNC_GEAR_CURRENT
+    int "Synchronized gear current        "
+    default 100
+    help
+      % of gear_stepper current (10%-100%) to use when syncing with extruder during print
+
+  config PARAM_SYNC_FORM_TIP
+    boolint "Enable syncing while tip forming?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default 1 if ENABLE_SYNC_TO_EXTRUDER
+    help
+      This controls whether the extruder and gear steppers are synchronized
+      during tip forming operation.
+
+      Set extruder current in "Software options" section
+
+  config PARAM_SYNC_PURGE
+    boolint "Enable syncing while purging?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default 1 if ENABLE_SYNC_TO_EXTRUDER
+    help
+      This controls whether the extruder and gear steppers are synchronized
+      during purging operation.
+
+      Set extruder current in "Software options" section
+
+  comment "_"
+
+  config PARAM_TOOLHEAD_POST_LOAD_TENSION_ADJUST
+    boolint "Adjust neutral tension after toolhead load?"
+    default 1
+    help
+      If synchronizing gear and extruder and you have a sync-feedback "buffer" (switch based or
+      proportional) this setting determines whether to use it to create neutral tension after loading
+
+  config PARAM_TOOLHEAD_ENTRY_TENSION_TEST
+    boolint "Test filament entry via tension after extruder move?"
+    default 1
+    help
+      If sync-feedback compression sensor is available this test will ensure the filament passes the
+      extruder entry by checking for neutral tension when moving filament with just the extruder.
+      Recommended with sprung loaded sync-feedback buffers. This is ignored if toolhead sensor is available.
+
+endmenu

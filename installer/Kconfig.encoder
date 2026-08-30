@@ -1,0 +1,180 @@
+# Responsible for setting:
+#   MMU_HAS_ENCODER
+#
+# Encoder parameter tokens which must be inside if MMU_HAS_ENCODER clause in cfg templates:
+#   MMU_SHARED_ENCODER
+#   PARAM_ENCODER_NAME
+#   PARAM_ENCODER_RESOLUTION
+#   PARAM_GATE_ENDSTOP_TO_ENCODER
+#   PIN_ENCODER (duplicate with pins)
+#   PARAM_BOWDEN_APPLY_CORRECTION
+#   PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
+#   PARAM_BOWDEN_PRE_UNLOAD_TEST
+#   PARAM_ENCODER_MOVE_VALIDATION
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_ENCODER
+
+
+comment "_"
+comment "_Encoder"
+
+config UNSELECT_MMU_HAS_ENCODER
+  def_bool n
+
+if !UNSELECT_MMU_HAS_ENCODER
+  config MMU_HAS_ENCODER
+    prompt "Has encoder?"
+    forceshow
+    default n
+    help
+      An encoder measures filament movement and can be used to validate
+      movement, detect clogs, monitor flow rate and detect filament
+      collision with the extruder in lieu of a toolhead switch sensor.
+endif
+
+
+# -------------------------------------
+# Encoder config
+# -------------------------------------
+
+if MMU_HAS_ENCODER
+  menu "Encoder config"
+
+    config MMU_SHARED_ENCODER
+      depends on MULTI_UNIT
+      bool "Shared with existing unit?"
+      default n
+
+    if MMU_SHARED_ENCODER
+      config PARAM_ENCODER_NAME
+        prompt "Shared encoder name             "
+        default "-specify name-"
+        help
+          Enter the name of shared encoder. A shared encoder must be see the filament from
+          each MMU and thus is not a common setup.
+
+          If this is the second mmu unit it is likely that the name of the existing encoder
+          is 'unit0' (default name)
+    endif
+
+    if !MMU_SHARED_ENCODER
+      config PARAM_ENCODER_NAME
+        string "Encoder name"
+        default UNIT_NAME
+        help
+          The name of the klipper object for this encoder. Unless it is going to be shared
+          across multiple MMU units it is recommended to use the unit name.
+
+      choice CHOICE_ENCODER_TYPE
+        prompt "Type"
+        default CHOICE_ENCODER_TYPE_BINKY_12
+        help
+          Select the base of the encoder design. This will set the default resolution.
+
+        config CHOICE_ENCODER_TYPE_BINKY_8
+          bool "Binky 8 vane wheel"
+          help
+            Select for Binky based encoders with an 8 vane encoder wheel.
+
+        config CHOICE_ENCODER_TYPE_BINKY_10
+          bool "Binky 10 vane wheel"
+          help
+            Select for Binky based encoders with an 10 vane encoder wheel.
+
+        config CHOICE_ENCODER_TYPE_BINKY_12
+          bool "Binky 12 vane wheel"
+          help
+            Select for Binky based encoders with an 12 vane encoder wheel.
+
+        config CHOICE_ENCODER_TYPE_TCRT5000
+          bool "TCRT 5000 based"
+          help
+            Select for older TCRT5000 based encoders.
+            (this was the one fitted to ERCF v1.1)
+
+        config CHOICE_ENCODER_TYPE_OTHER
+          bool "Other"
+          help
+            Select for any other encoder and ensure you set the resolution correctly.
+      endchoice
+
+      config PARAM_ENCODER_RESOLUTION
+        help
+          Ensure this matches the resolution of your encoder. It represents
+          filament movement (mm) for each sensor pulse. Note that this is
+          only used as an initial value and it overridden by calibration.
+
+          (defaults are based on a 23.5mm rotation distance BMG gear)
+        float "Uncalibrated encoder resolution "
+        default 0.7059 if CHOICE_ENCODER_TYPE_TCRT5000
+        default 0.979  if CHOICE_ENCODER_TYPE_BINKY_12
+        default 1.175  if CHOICE_ENCODER_TYPE_BINKY_10
+        default 1.469  if CHOICE_ENCODER_TYPE_BINKY_8
+        default 1.0    if CHOICE_ENCODER_TYPE_OTHER
+        default 1.0
+
+      config PARAM_GATE_ENDSTOP_TO_ENCODER
+        float "Gate endstop to encoder distance"
+        default 10 if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
+        default 0
+        help
+          The distance from the gate endstop to when the encoder "sees" the filament.
+          If the gate endstop is the encoder then this is ignored, however, if using
+          a shared_exit endstop we need to know how much of the movement is not
+          seen by the encoder. If this is not set the encoder will always measure
+          less that the actual movement.
+
+      config PIN_ENCODER
+        prompt "Encoder pin                     "
+
+      config PARAM_REGISTER_AS_SENSOR
+        boolint "Register as virtual switch sensor"
+        default 1
+        help
+          This controls whether the encoder appears as a (virtual) filament switch
+          sensor in UI's like Mainsail and Fluidd.
+          Note that it is always available as an sensor/endstop. This controls
+          just the visibility in UI's
+
+    endif
+
+    comment "_"
+    comment "_Bowden movement"
+
+    config PARAM_BOWDEN_APPLY_CORRECTION
+      boolint "Apply bowden correction moves?"
+      default 0
+      help
+        In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to
+        detect missed steps caused by "jerking" on a heavy spool. If bowden correction is enabled Happy Hare
+        will "believe" the encoder reading and make correction moves to bring the filament to within the
+        'bowden_allowable_encoder_delta' of the end of bowden position (this does require a reliable encoder
+        and is not recommended for very high speed loading >350mm/s)
+
+    config PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
+      float "Bowden allowable encoder delta"
+      default 20.0
+      help
+        How close in mm the correction moves will attempt to get to target
+
+    config PARAM_BOWDEN_PRE_UNLOAD_TEST
+      boolint "Check for bowden movement before full unload pull?"
+      default 1
+      help
+        This safety check uses the encoder to verify the filament is free of extruder before the fast bowden
+        movement to reduce possibility of grinding filament. If enabled the trigger can be tuned by setting
+        the "bowden_pre_unload_error_tolerance" which represents the percentage of allowable mismatch between
+        actual movement and that seen by encoder. Setting to 50% tolerance usually works well. Increasing
+        will make test more tolerant and a value of 100% essentially disables error detection.
+        1 to check for bowden movement before full pull (slower), 0 don't check (faster)
+
+    config PARAM_ENCODER_MOVE_VALIDATION
+      boolint "Use encoder to validate movement distance?"
+      default 1
+      help
+        ADVANCED: Determines if encoder measurement should be used to validate movement distance.
+        Disabling eliminates slight pause between moves but is less safe
+
+  endmenu
+endif

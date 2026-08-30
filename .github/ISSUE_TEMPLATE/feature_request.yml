@@ -9,6 +9,12 @@ body:
       value: |
         Thanks for contributing! Please complete all required fields.
 
+        This repo covers the Happy Hare Klipper/Moonraker extension itself. If
+        your idea is specific to the **documentation site**, the
+        **KlipperScreen** interface, or the **Mainsail/Fluidd** UI, please
+        consider using the links on the [issue chooser page](https://github.com/moggieuk/Happy-Hare/issues/new/choose)
+        instead so it lands with the people who work on that codebase.
+
   - type: input
     id: summary
     attributes:
@@ -67,7 +73,7 @@ body:
     attributes:
       label: Checklist
       options:
-        - label: Have you running the lastest Happy Hare release
+        - label: Have you tried the latest Happy Hare release
           required: true
         - label: I searched existing issues
           required: true

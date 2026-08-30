@@ -1,0 +1,201 @@
+# Responsible for setting:
+#   MMU_HAS_ESPOOLER
+#
+# Espooler parameter tokens which must be inside if MMU_HAS_ESPOOLER clause in cfg templates:
+# PIN_ESPOOLER_EN_<gate> (depends on HAS_ESPOOLER_ENABLE_PIN)
+# PIN_ESPOOLER_RWD_<gate>
+# PIN_ESPOOLER_FWD_<gate>
+# PIN_ESPOOLER_TRIG_<gate>
+#
+# PARAM_ESPOOLER_MIN_DISTANCE
+# PARAM_ESPOOLER_MAX_STEPPER_SPEED
+# PARAM_ESPOOLER_MIN_STEPPER_SPEED
+# PARAM_ESPOOLER_SPEED_EXPONENT
+# PARAM_ESPOOLER_ASSIST_REDUCED_SPEED
+# PARAM_ESPOOLER_PRINTING_POWER
+# PARAM_ESPOOLER_OPERATIONS
+# PARAM_ESPOOLER_ASSIST_EXTRUDER_MOVE_LENGTH
+# PARAM_ESPOOLER_ASSIST_BURST_POWER
+# PARAM_ESPOOLER_ASSIST_BURST_DURATION
+# PARAM_ESPOOLER_ASSIST_BURST_TRIGGER
+# PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
+# PARAM_ESPOOLER_REWIND_BURST_POWER
+# PARAM_ESPOOLER_REWIND_BURST_DURATION
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_ESPOOLER
+
+
+config UNSELECT_MMU_HAS_ESPOOLER
+  def_bool n
+
+comment "_"
+comment "_Espooler"
+
+if !UNSELECT_MMU_HAS_ESPOOLER
+config MMU_HAS_ESPOOLER
+  prompt "Has eSpooler?"
+  forceshow
+  default n
+  help
+    An eSpooler is primarily used to rewind filament to prevent
+    it tangling but can also be driven to assist loading and even
+    assist in print. Select if you have added a DC motor controlled
+    eSpooler.
+endif
+
+
+# -------------------------------------
+# Espooler config
+# -------------------------------------
+
+if MMU_HAS_ESPOOLER
+
+  menu "eSpooler config"
+
+# -------------------------------------
+# eSpooler operation
+# -------------------------------------
+
+    config PARAM_ESPOOLER_MIN_DISTANCE
+      float "Espooler minimum move distance   "
+      default 30
+      help
+        Individual stepper movements less than this distance will not activate espooler
+
+    config PARAM_ESPOOLER_MAX_STEPPER_SPEED
+      float "Espooler max stepper speed       "
+      default 300
+      help
+        Gear stepper speed at which espooler will be at maximum power
+
+    config PARAM_ESPOOLER_MIN_STEPPER_SPEED
+      float "Espooler min stepper speed       "
+      default 0
+      help
+        Gear stepper speed at which espooler will become inactive (useful for non PWM control)
+
+    config PARAM_ESPOOLER_SPEED_EXPONENT
+      float "Espooler speed exponent          "
+      default 0.5
+      help
+        Controls non-linear espooler power relative to stepper speed. Typically the espooler will be
+        controlled with PWM signal. This will be at the maximum at speeds equal or above
+        'espooler_max_stepper_speed'. The PWM signal will scale downwards towards 0 for slower speeds.
+        The falloff being controlled by this setting according to this formula (0.5 is a good starting value):
+          espooler_pwm = (stepper_speed / espooler_max_stepper_speed) ^ espooler_speed_exponent
+
+    config PARAM_ESPOOLER_ASSIST_REDUCED_SPEED
+      int "Espooler assist reduced speed    "
+      range 0 100
+      default 50
+      help
+        Control the % of the rewind speed that is applied to assisting load (want rewind to be faster)
+
+    config PARAM_ESPOOLER_PRINTING_POWER
+      int "Espooler printing power          "
+      range 0 100
+      default 0
+      help
+        If >0, fixes the % of PWM power while printing. 0=allows burst movement
+
+    config PARAM_ESPOOLER_OPERATIONS
+      string "Espooler enabled operations      "
+      default "rewind, assist, print"
+      array_editor ","
+      help
+        Regardless of h/w you can enable/disable actions. E.g. remove 'print' to turn off operation while printing. Options:
+          rewind - when filament is being unloaded under MMU control (aka respool)
+          assist - when filament is being loaded under MMU control (% of "rewind" speed but with minimum of "print" power)
+          print  - while printing. Generally set 'espooler_printing_power' to a low percentage just to
+                   allow motor to be turned freely or set to 0 to enable/allow "burst" assist movements
+        If using a digitally controlled espooler motor (not PWM), then you should remove "print" and set
+        'espooler_min_stepper_speed' to prevent "over movement"
+
+    comment "_"
+    comment "Assist burst (ASSIST direction, e.g. print/loosen)"
+
+    config PARAM_ESPOOLER_ASSIST_EXTRUDER_MOVE_LENGTH
+      float "Espooler assist extruder move    "
+      default 100
+      help
+        This burst configuration is used to control the small rotation in the ASSIST direction
+        optionally used when 'print' operation is enabled, 'espooler_printing_power: 0' and is
+        triggered (tension switch or extruder movement). It can also be used to loosen filament with
+        'MMU_ESPOOLER COMMAND=assist BURST=1'.
+
+        Distance (mm) extruder needs to move between each assist burst
+
+    config PARAM_ESPOOLER_ASSIST_BURST_POWER
+      int "Espooler assist burst power      "
+      range 0 100
+      default 100
+      help
+        The % power of the burst move
+
+    config PARAM_ESPOOLER_ASSIST_BURST_DURATION
+      float "Espooler assist burst duration   "
+      default 0.4
+      help
+        The duration of the burst move in seconds
+
+    config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER
+      boolint "Trigger assist switch fitted?"
+      default 0
+      help
+        If trigger assist switch is fitted 0=disable, 1=enable
+
+    config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
+      int
+      default 3
+
+    config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
+      prompt "Espooler assist burst trigger max"
+      depends on PARAM_ESPOOLER_ASSIST_BURST_TRIGGER
+      help
+        If trigger assist switch is fitted this limits the max number of back-to-back advances
+
+    comment "_"
+    comment "Rewind burst (REWIND direction, e.g. drying/tighten)"
+
+    config PARAM_ESPOOLER_REWIND_BURST_POWER
+      int "Espooler rewind burst power      "
+      range 0 100
+      default 100
+      help
+        This burst configuration is used to control the small rotation in the REWIND direction
+        optionally used when running the filament drying cycle. The goal is to rotate the spool
+        60-90 degrees. It can also be used to tighten the filament with
+        'MMU_ESPOOLER COMMAND=rewind BURST=1'.
+
+        The % power of the rewind burst move
+
+    config PARAM_ESPOOLER_REWIND_BURST_DURATION
+      float "Espooler rewind burst duration   "
+      default 0.4
+      help
+        The duration of the rewind burst move in seconds
+
+# -------------------------------------
+# eSpooler pins
+# -------------------------------------
+
+    comment "_"
+    comment "_eSpooler pins"
+
+    @repeat var=i min=0 max=11@
+      if PARAM_NUM_GATES > $(i)
+        comment "_" if $(i) > 0
+        config PIN_ESPOOLER_EN_$(i)
+          prompt "eSpooler enable $(i) pin " if HAS_ESPOOLER_ENABLE_PIN
+        config PIN_ESPOOLER_RWD_$(i)
+          prompt "eSpooler rewind $(i) pin "
+        config PIN_ESPOOLER_FWD_$(i)
+          prompt "eSpooler forward $(i) pin"
+        config PIN_ESPOOLER_TRIG_$(i)
+          prompt "eSpooler trigger $(i) pin"
+      endif
+    @endrepeat@
+
+  endmenu
+endif

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env sh
 # Happy Hare MMU Software
 # Test runner
 #
@@ -9,4 +9,8 @@
 #   2. Create a class in that file that inherits from unittest.TestCase
 #   3. Ensure that each test directory has a blank file named `__init__.py`
 
-python3 -m unittest
+if [ -n "$1" ]; then
+  python -m unittest -k "$@" 
+else
+  python -m unittest
+fi

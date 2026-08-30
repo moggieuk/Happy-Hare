@@ -1,0 +1,180 @@
+config MMU_TYPE_EMU_1_0
+  bool "EMU  - Expandable Multi-material Unit"
+  help
+    EMU is a modular type-B MMU with each spool being contained in it's own
+    (optionally heater) enclosure. It had many features and is an incredible
+    choice for new builds. Highly recommended to use with an analog proportional
+    sync-feedback buffer like PSF.
+  imply  MMU_HAS_PER_GATE_MCU # Install must also be run with "-e" for PER_GATE_MCU support
+  select VIRTUAL_SELECTOR
+  imply  MMU_HAS_ENVIRONMENT_SENSOR
+  select MMU_HAS_PER_GATE_ENV_SENSORS
+  select MMU_HAS_PER_GATE_HEATERS
+  select MMU_HAS_LEDS
+  imply  MMU_HAS_EJECT_BUTTONS
+  select MMU_HAS_SENSOR_ENTRY
+  select MMU_HAS_SENSOR_EXIT
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select PARAM_VARIABLE_BOWDEN_LENGTHS
+  select PARAM_REQUIRE_BOWDEN_MOVE
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select PARAM_SYNC_TO_EXTRUDER
+  select PARAM_SYNC_FORM_TIP
+  select PARAM_SYNC_PURGE
+  imply  MMU_HAS_SYNC_FEEDBACK_BUFFER
+  imply  MMU_HAS_FANS
+  imply  OPTION_PSF_BUFFER
+
+
+# -------------------------------------
+# Buffer option
+# -------------------------------------
+
+if MMU_TYPE_EMU_1_0
+  config OPTION_PSF_BUFFER
+    bool "PSF buffer"
+    help
+      Select if using the recommended PSF brand buffer connected to the bowden tube.
+      Don't select if using a different sync-feedback buffer system (instead add
+      under MMU additions)
+    select MMU_HAS_SYNC_FEEDBACK_BUFFER
+    select MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+    select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
+    select UNSELECT_MMU_HAS_SENSOR_BUFFER_TENSION
+
+  if OPTION_PSF_BUFFER
+    choice CHOICE_BUFFER_SPRING_STATE
+      default CHOICE_BUFFER_SPRING_STATE_TENSION
+    endchoice
+
+    config PARAM_BUFFER_RANGE
+      default 16
+    config PARAM_BUFFER_MAXRANGE
+      default 16
+  endif
+
+  if !OPTION_PSF_BUFFER
+    config MMU_HAS_SENSOR_BUFFER_COMPRESSION
+      default y
+    config MMU_HAS_SENSOR_BUFFER_TENSION
+      default y
+  endif
+endif
+
+
+# -------------------------------------
+# Defaults
+# -------------------------------------
+
+if MMU_TYPE_EMU_1_0
+
+  source "Kconfig.num_gates"
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  config PARAM_VENDOR
+    default "EMU"
+  config PARAM_VERSION
+    default "1.0"  
+  config PARAM_NUM_GATES
+    default 5
+  choice BOARD_TYPE
+    default BOARD_TYPE_SLB_1_0
+  endchoice
+
+  # Gear stepper ---------------------------
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_RUN_CURRENT
+    default 0.9
+  config PARAM_GEAR_HOLD_CURRENT
+    default 0.1
+  config PARAM_GEAR_MICROSTEPS
+    default 4
+
+  config PARAM_SYNC_GEAR_CURRENT
+    default 52
+
+  # Speeds  --------------------------------
+  config PARAM_GEAR_LOAD_SPEED
+    default 250
+  config PARAM_GEAR_LOAD_ACCEL
+    default 120
+  config PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
+    default 250
+  config PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
+    default 120
+  config PARAM_GEAR_UNLOAD_SPEED
+    default 250
+  config PARAM_GEAR_UNLOAD_ACCEL
+    default 120
+  config PARAM_GEAR_SHORT_MOVE_SPEED
+    default 80
+  config PARAM_GEAR_SHORT_MOVE_ACCEL
+    default 80
+  config PARAM_GEAR_SHORT_MOVE_THRESHOLD
+    default 100
+  config PARAM_GEAR_HOMING_SPEED
+    default 80
+
+  # Gate endstops and homing ---------------
+  config PARAM_GATE_HOMING_MAX
+    default 600
+  config PARAM_GATE_PARKING_DISTANCE
+    default -1
+
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default 600
+  config PARAM_GATE_PRELOAD_PARKING_DISTANCE
+    default -1
+
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default 100
+
+  # NFC reader setup (if fitted) -----------
+  config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+    default "0, 480"
+  config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+    default "0, 480"
+  config PARAM_NFC_GATE_CLEAR_DISTANCE
+    default 70
+  config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+    default 70
+  config PARAM_NFC_NEIGHBOR_CHECK
+    default y
+
+  # Other ----------------------------------
+  config PARAM_COLOR_ORDER
+    default "GRBW"
+  
+  if BOARD_TYPE_SLB_1_0
+    config PARAM_ENTRY_LEDS
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_box (1)" "" "; " PARAM_NUM_GATES
+
+    config PARAM_EXIT_LEDS
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+
+  endif
+
+  if BOARD_TYPE_EBB_GEN1
+    config PARAM_CHAIN_COUNT
+      default 5
+
+    config PARAM_ENTRY_LEDS
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (5)" "" "; " PARAM_NUM_GATES
+
+    config PARAM_EXIT_LEDS
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+    
+  endif
+
+  config PARAM_FILAMENT_HEATERS 
+    generated_default "$(UNIT_NAME)_heater%i" "" PARAM_NUM_GATES
+
+  comment "_"
+
+endif 

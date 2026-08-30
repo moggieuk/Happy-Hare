@@ -1,0 +1,12 @@
+# Responsible for setting:
+#   PARAM_DISPLAY_NAME
+
+config PARAM_DISPLAY_NAME
+  string "Display name"
+  generated_default "%s-%d" "PARAM_VENDOR UNIT_INDEX" if PARAM_VENDOR != "Other"
+  default UNIT_NAME
+  help
+    The display name identifies your MMU in various UI's.
+    It is NOT the identifier name, which is typically just "unit_X"
+
+    Keep it reasonably short but it may contain spaces.

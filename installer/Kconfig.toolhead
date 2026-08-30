@@ -1,0 +1,141 @@
+# Type setting and raw modification of toolhead dimensional parameters and toolhead sensors:
+#
+# Although a toolhead can be unique to each mmu unit this installer currently
+# assumes a single one is configured, named "default" in the mmu.cfg
+#
+# Responsible for defining/setting:
+#   MMU_HAS_SENSOR_TOOLHEAD (and PIN_EXTRUDER_SENSOR)
+#   MMU_HAS_SENSOR_EXTRUDER (and PIN_EXTRUDER_SENSOR)
+#   MMU_HAS_TOOLHEAD_CUTTER
+#
+# Responsible for setting:
+#   PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+#   PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+#   PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+#   PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+#   PARAM_TOOLHEAD_OOZE_REDUCTION
+
+config MMU_HAS_SENSOR_TOOLHEAD
+  def_bool n
+
+config PIN_TOOLHEAD_SENSOR
+  string
+
+config MMU_HAS_SENSOR_EXTRUDER
+  def_bool n
+
+config PIN_EXTRUDER_SENSOR
+  string
+
+config MMU_HAS_TOOLHEAD_CUTTER
+  def_bool n
+
+
+menu "Toolhead sensors/settings"
+  help
+    Configure toolhead sensors and physical dimensions of your toolhead.
+
+    Also configure some properties like how much filament remains in the extruder after unload.
+    They are used to ensure exact toolhead filament loading without excessive oozing.
+    Note: If you have a toolhead sensor you can automate the calculation of these parameters!
+    Read about the 'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
+
+# -------------------------------------
+# Toolhead features
+# -------------------------------------
+
+  config MMU_HAS_TOOLHEAD_CUTTER
+    prompt "Has toolhead cutter?"
+    help
+      Select if you have a filament cutter built into the toolhead that
+      uses toolhead motion for cutting action.
+
+      The cutting macro will automatically be added
+
+
+# -------------------------------------
+# Toolhead sensors
+# -------------------------------------
+
+  comment "_"
+  comment "_Toolhead sensors"
+
+  config MMU_HAS_SENSOR_TOOLHEAD
+    prompt "Has toolhead sensor?"
+    help
+      Select if you have a filament sensor inside of your toolhead after
+      the extruder drive. This is normally connected to a pin on your main
+      printer MCU so specify it here.
+
+  config PIN_TOOLHEAD_SENSOR
+    prompt "Toolhead sensor pin    "
+    depends on MMU_HAS_SENSOR_TOOLHEAD
+    help
+      Can also be set under "Pins" section
+
+  config MMU_HAS_SENSOR_EXTRUDER
+    prompt "Has extruder (entry) sensor?"
+    help
+      Select if you have a filament sensor at or just prior to
+      the extruder entry. This is normally connected to a pin on your main
+      printer MCU so specify it here.
+  
+  config PIN_EXTRUDER_SENSOR
+    prompt "Extruder sensor pin    "
+    depends on MMU_HAS_SENSOR_EXTRUDER
+    help
+      Can also be set under "Pins" section
+
+  config PARAM_REGISTER_TOOLHEAD_SENSORS
+    boolint "Register toolhead sensors"
+    default 1
+    help
+      Whether to register the sensors for visibility in klipper UI's
+      and with QUERY_SENSOR command. There is no harm in doing this but
+      it can be disabled to reduce clutter.
+# -------------------------------------
+# Toolhead dimensions
+# -------------------------------------
+
+  comment "_"
+  comment "_Toolhead dimensions"
+
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    float "Extruder entrance to nozzle"
+    help
+      Distance (mm) from extruder gears (entrance) to nozzle
+
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    float "Toolhead sensor to nozzle  "
+    help
+      Distance (mm) from "toolhead" sensor to nozzle
+    depends on MMU_HAS_SENSOR_TOOLHEAD
+
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    float "Extruder sensor to entry   "
+    help
+      Distance (mm) from extruder "entry" sensor to extruder gears
+    depends on MMU_HAS_SENSOR_EXTRUDER
+
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    float "Residual filament          "
+    help
+      This setting represents how much residual filament (mm) is left behind in the nozzle when filament is
+      removed. it is thus used to reduce the extruder loading length and prevent excessive blobbing but also
+      in the calculation of purge volume.
+      Note that this value can also be measured with 'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
+
+# This is for tuning and can mask other issues with toolhead dimensions
+  config PARAM_TOOLHEAD_OOZE_REDUCTION
+    float "Ooze reduction             "
+    range 0 5
+    default 0
+    help
+      This is for tuning to fix blobbing. It is expected that this value is NEAR ZERO as it represents a further
+      reduction in extruder load length to fix blobbing. If using a wipetower and you experience blobs on it,
+      increase this value (reduce the quantity of filament loaded). If you experience gaps, decrease this value.
+      If gaps and already at 0 then perhaps the 'toolhead_extruder_to_nozzle' or 'toolhead_residual_filament'
+      settings are incorrect. Similarly a value >+5mm also suggests the four settings above are not correct.
+      Recommend starting with 0
+
+endmenu

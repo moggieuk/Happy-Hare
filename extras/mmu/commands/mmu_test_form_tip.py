@@ -1,0 +1,132 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Implements MMU_TEST_FORM_TIP command
+#
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
+# Happy Hare imports
+from ..mmu_constants   import *
+from ..mmu_utils       import MmuError
+from .mmu_base_command import *
+
+
+class MmuTestFormTipCommand(BaseCommand):
+    """
+    Convenience macro for calling the standalone tip forming functionality (or cutter logic).
+    """
+
+    CMD = "MMU_TEST_FORM_TIP"
+
+    HELP_BRIEF = "Convenience macro for calling the standalone tip forming functionality (or cutter logic)"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "RESET         = 1     To reset macro parameters to defaults\n"
+        + "SHOW          = [0|1]\n"
+        + "RUN           = [0|1]\n"
+        + "EXTRUDER_ONLY = 1     To prevent syncing with MMU\n"
+        + "(also accepts macro variable overrides; can use 'variable_' prefix or omit it)\n"
+    )
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}               ...Run the standalone tip forming sequence for tuning\n"
+        + f"{CMD} SHOW=1        ...Display the current tip forming macro parameters\n"
+        + f"{CMD} EXTRUDER_ONLY=1 ...Form a tip without syncing the MMU gear motor\n"
+        + f"{CMD} RESET=1       ...Reset the tip forming macro parameters to their defaults\n"
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_TESTING
+        )
+
+    def _run(self, gcmd):
+        # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
+
+        if self.check_if_disabled(): return
+
+        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
+        run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
+
+        macro_name = mmu._macro_name(mmu.p.form_tip_macro)
+        gcode_macro = mmu.printer.lookup_object("gcode_macro %s" % macro_name, None)
+        if gcode_macro is None:
+            raise gcmd.error("Filament tip forming macro '%s' not found" % mmu.p.form_tip_macro)
+        gcode_vars = mmu.printer.lookup_object("gcode_macro %s_VARS" % macro_name, gcode_macro)
+
+        if reset:
+            if mmu.form_tip_vars is not None:
+                gcode_vars.variables = dict(mmu.form_tip_vars)
+                mmu.form_tip_vars = None
+                mmu.log_always("Reset '%s' macro variables to defaults" % mmu.p.form_tip_macro)
+            show = True
+
+        if show:
+            msg = "Variable settings for macro '%s':" % mmu.p.form_tip_macro
+            for k, v in gcode_vars.variables.items():
+                msg += "\nvariable_%s: %s" % (k, v)
+            mmu.log_always(msg)
+            return
+
+        # Save restore point on first call
+        if mmu.form_tip_vars is None:
+            mmu.form_tip_vars = dict(gcode_vars.variables)
+
+        for param in gcmd.get_command_parameters():
+            value = gcmd.get(param)
+            param = param.lower()
+            if param.startswith("variable_"):
+                mmu.log_always("Removing 'variable_' prefix from '%s' - not necessary" % param)
+                param = param[9:]
+            if param in gcode_vars.variables:
+                gcode_vars.variables[param] = self._fix_type(value)
+            elif param not in ["reset", "show", "run"]:
+                mmu.log_error("Variable '%s' is not defined for '%s' macro" % (param, mmu.p.form_tip_macro))
+
+        # Actually run the macro in test mode (will final_eject) unless strangely run from a print job
+        msg = "Running macro '%s' with the following variable settings:" % mmu.p.form_tip_macro
+        for k, v in gcode_vars.variables.items():
+            msg += "\nvariable_%s: %s" % (k, v)
+        mmu.log_always(msg)
+
+        if not run:
+            return
+
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                with mmu.wrap_action(ACTION_CUTTING_TIP if mmu.has_toolhead_cutter else ACTION_FORMING_TIP):
+                    mmu._ensure_safe_extruder_temperature(wait=True)
+                    mmu.reset_sync_gear_to_extruder(not extruder_only and mmu.mmu_unit().p.sync_form_tip, force_grip=True)
+                    _,_,_ = mmu._do_form_tip(test=not mmu.is_in_print())
+                    mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
+
+        except MmuError as ee:
+            mmu.handle_mmu_error(str(ee))
+
+
+    # Helper to infer type for setting gcode macro variables
+    def _fix_type(self, s):
+        try:
+            return float(s)
+        except ValueError:
+            try:
+                return int(s)
+            except ValueError:
+                return s

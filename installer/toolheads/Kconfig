@@ -1,0 +1,53 @@
+# This module's purpose is to set the toolhead type and defaults for
+# associated dimensional parameters:
+#
+#   MMU_SHARED_TOOLHEAD - Currently not dynamically set (see gen-kconfig-options idea in build.py)
+#
+#   PARAM_TOOLHEAD_TYPE
+#   PARAM_TOOLHEAD
+#   PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+#   PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+#   PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+#   PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+#
+
+config PARAM_TOOLHEAD_TYPE
+  string
+
+config PARAM_TOOLHEAD
+  string
+  default "default"
+
+config MMU_SHARED_TOOLHEAD
+  bool
+  default n
+
+choice CHOICE_TOOLHEAD_TYPE
+  prompt "Toolhead"
+  default CHOICE_TOOLHEAD_TYPE_OTHER
+  help 
+    Toolhead type (extruder and hotend combo)
+    If your toolhead appears in this list you are lucky and can benefit from tuned values
+    from others. It is still recommended you learn how to measure and calibrate your own
+    because of the number of modifications and versions of hardware. If you are unsure,
+    just select the default and perform calibration as described in the wiki
+
+  rsource "Kconfig.*"
+
+  config CHOICE_TOOLHEAD_TYPE_OTHER
+    bool "Other/Unknown requiring calibration"
+
+  if CHOICE_TOOLHEAD_TYPE_OTHER
+    config PARAM_TOOLHEAD_TYPE
+      default "Other/Unknown"
+    config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+      default 72
+    config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+      default 62
+    config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+      default 8
+    config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+      default 2
+  endif
+
+endchoice

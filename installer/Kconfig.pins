@@ -1,0 +1,347 @@
+# This defines the symbol types, pins menu layout and changes to defaults.
+# The defaults are set in the Kconfig.board_type under the boards directory.
+#
+# Responsible for defining all "PIN_*" parameters
+# Note types must always be defined, the prompts are based on MMU capabilities
+#
+# Assumed that max gates:
+#   for type-A boards is 12 (although currently max is 8)
+#   for type-B boards is 5 (Chameleon X5)
+
+menu "Pins / TMC"
+  help
+    Configure TMC driver types for gear and selector steppers and MCU pin assignments.
+
+# -------------------------------------
+# Gear TMC chip
+# -------------------------------------
+
+  choice CHOICE_GEAR_TMC
+    prompt "Gear TMC chip"
+    default CHOICE_GEAR_TMC2209
+    help
+      Select correct TMC chip type for gear stepper.
+      Can be changed by editing .cfg files directly.
+
+    config CHOICE_GEAR_TMC2209
+      bool "TMC2209"
+    config CHOICE_GEAR_TMC2130
+      bool "TMC2130"
+    config CHOICE_GEAR_TMC2208
+      bool "TMC2208"
+    config CHOICE_GEAR_TMC2660
+      bool "TMC2660"
+    config CHOICE_GEAR_TMC5160
+      bool "TMC5160"
+    config CHOICE_GEAR_TMC2240
+      bool "TMC2240"
+    config CHOICE_GEAR_TMC_NONE
+      bool "None / hardware controlled"
+      help
+        Select this when motor current and driver mode are configured in
+        hardware and Klipper only controls step, direction and enable.
+  endchoice
+
+  config PARAM_GEAR_TMC
+    string
+    default "tmc2209" if CHOICE_GEAR_TMC2209
+    default "tmc2130" if CHOICE_GEAR_TMC2130
+    default "tmc2208" if CHOICE_GEAR_TMC2208
+    default "tmc2660" if CHOICE_GEAR_TMC2660
+    default "tmc5160" if CHOICE_GEAR_TMC5160
+    default "tmc2240" if CHOICE_GEAR_TMC2240
+    default ""        if CHOICE_GEAR_TMC_NONE
+
+# -------------------------------------
+# Gear stepper
+# -------------------------------------
+
+  menu "Gear pins"
+    config PIN_GEAR_UART
+      string
+      prompt "Gear UART pin    " if PARAM_GEAR_TMC != ""
+    config PIN_GEAR_STEP
+      string "Gear step pin    "
+    config PIN_GEAR_DIR
+      string "Gear dir pin     "
+    config PIN_GEAR_ENABLE
+      string "Gear enable pin  "
+    config PIN_GEAR_DIAG
+      string
+      prompt "Gear diag pin    " if PARAM_GEAR_TMC != ""
+
+    @repeat var=i min=1 max=11@
+      config PIN_GEAR_UART_$(i)
+        string
+      config PIN_GEAR_STEP_$(i)
+        string
+      config PIN_GEAR_DIR_$(i)
+        string
+      config PIN_GEAR_ENABLE_$(i)
+        string
+      config PIN_GEAR_DIAG_$(i)
+        string
+    @endrepeat@
+
+    if MULTIGEAR
+      @repeat var=i min=1 max=11@
+        if PARAM_NUM_GATES > $(i)
+          comment "_"
+          config PIN_GEAR_UART_$(i)
+            prompt "Gear $(i) UART pin  " if PARAM_GEAR_TMC != ""
+          config PIN_GEAR_STEP_$(i)
+            prompt "Gear $(i) step pin  "
+          config PIN_GEAR_DIR_$(i)
+            prompt "Gear $(i) dir pin   "
+          config PIN_GEAR_ENABLE_$(i)
+            prompt "Gear $(i) enable pin"
+          config PIN_GEAR_DIAG_$(i)
+            prompt "Gear $(i) diag pin  " if PARAM_GEAR_TMC != ""
+        endif
+      @endrepeat@
+    endif
+
+  endmenu
+
+# -------------------------------------
+# Selector stepper and servo
+# -------------------------------------
+
+  config PIN_SELECTOR_UART
+    string
+  config PIN_SELECTOR_STEP
+    string
+  config PIN_SELECTOR_DIR
+    string
+  config PIN_SELECTOR_ENABLE
+    string
+  config PIN_SELECTOR_DIAG
+    string
+  config PIN_SELECTOR_ENDSTOP
+    string
+  @repeat var=i min=4 max=11@
+    config PIN_GATE_ENDSTOP_$(i)
+      string
+  @endrepeat@
+
+# -------------------------------------
+# Selector TMC chip
+# -------------------------------------
+
+  choice CHOICE_SELECTOR_TMC
+    prompt "Selector TMC chip"
+    default CHOICE_SELECTOR_TMC2209
+    depends on MMU_HAS_SELECTOR_STEPPER
+    help
+      Select correct TMC chip type for gear stepper.
+      Can be changed by editing .cfg files directly.
+
+    config CHOICE_SELECTOR_TMC2209
+      bool "TMC2209"
+    config CHOICE_SELECTOR_TMC2130
+      bool "TMC2130"
+    config CHOICE_SELECTOR_TMC2208
+      bool "TMC2208"
+    config CHOICE_SELECTOR_TMC2660
+      bool "TMC2660"
+    config CHOICE_SELECTOR_TMC5160
+      bool "TMC5160"
+    config CHOICE_SELECTOR_TMC2240
+      bool "TMC2240"
+  endchoice
+
+  config PARAM_SELECTOR_TMC
+    string
+    default "tmc2209" if CHOICE_SELECTOR_TMC2209
+    default "tmc2130" if CHOICE_SELECTOR_TMC2130
+    default "tmc2208" if CHOICE_SELECTOR_TMC2208
+    default "tmc2660" if CHOICE_SELECTOR_TMC2660
+    default "tmc5160" if CHOICE_SELECTOR_TMC5160
+    default "tmc2240" if CHOICE_SELECTOR_TMC2240
+
+  menu "Selector pins"
+    depends on MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
+
+    if MMU_HAS_SELECTOR_STEPPER
+      config PIN_SELECTOR_UART
+        prompt "Selector UART pin   "
+      config PIN_SELECTOR_STEP
+        prompt "Selector step pin   "
+      config PIN_SELECTOR_DIR
+        prompt "Selector dir pin    "
+      config PIN_SELECTOR_ENABLE
+        prompt "Selector enable pin "
+      config PIN_SELECTOR_DIAG
+        prompt "Selector diag pin   "
+      config PIN_SELECTOR_ENDSTOP
+        prompt "Selector endstop pin"
+    endif
+
+    if INDEXED_SELECTOR
+      @repeat var=i min=0 max=3@
+        config PIN_GATE_ENDSTOP_$(i)
+          string
+          prompt "Gate $(i) endstop pin" if PARAM_NUM_GATES > $(i)
+      @endrepeat@
+    endif
+
+    config PIN_SELECTOR_SERVO
+      string
+      prompt "Servo pin           " if MMU_HAS_SELECTOR_SERVO
+  endmenu
+
+# -------------------------------------
+# eSpooler
+# -------------------------------------
+
+  config HAS_ESPOOLER_ENABLE_PIN
+    def_bool n
+
+  menu "eSpooler pins"
+    depends on MMU_HAS_ESPOOLER
+
+    @repeat var=i min=0 max=11@
+      if PARAM_NUM_GATES > $(i)
+        comment "_"
+        config PIN_ESPOOLER_EN_$(i)
+          string
+          prompt "eSpooler enable $(i) pin " if HAS_ESPOOLER_ENABLE_PIN
+        config PIN_ESPOOLER_RWD_$(i)
+          string
+          prompt "eSpooler rewind $(i) pin "
+        config PIN_ESPOOLER_FWD_$(i)
+          string
+          prompt "eSpooler forward $(i) pin"
+        config PIN_ESPOOLER_TRIG_$(i)
+          string
+          prompt "eSpooler trigger $(i) pin"
+      endif
+    @endrepeat@
+  endmenu
+
+# -------------------------------------
+# Eject buttons
+# -------------------------------------
+
+  menu "Mmu eject buttons"
+    depends on MMU_HAS_EJECT_BUTTONS
+
+    @repeat var=i min=0 max=11@
+      config PIN_EJECT_BUTTON_$(i)
+        string
+        prompt "Eject button $(i) pin " if PARAM_NUM_GATES > $(i)
+    @endrepeat@
+  endmenu
+
+# -------------------------------------
+# Sync-Feedback Buffer
+# -------------------------------------
+
+  @repeat var=i min=0 max=3@
+    config PIN_BUFFER_SENSOR_$(i)
+      string
+  @endrepeat@
+ 
+  menu "Sync-feedback Buffer"
+    depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+
+    config PIN_BUFFER_TENSION
+      string
+      prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION
+    config PIN_BUFFER_COMPRESSION
+      string
+      prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
+    config PIN_BUFFER_ANALOG
+      string
+      prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+    config PIN_BUFFER_NEOPIXEL
+      string
+      prompt "Neopixel pin                 " if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
+  endmenu
+
+# -------------------------------------
+# Entry sensor
+# -------------------------------------
+
+  menu "Mmu entry sensor pins"
+    depends on MMU_HAS_SENSOR_ENTRY
+
+    @repeat var=i min=0 max=11@
+      config PIN_ENTRY_SENSOR_$(i)
+        string
+        prompt "Entry sensor $(i) pin " if PARAM_NUM_GATES > $(i)
+    @endrepeat@
+  endmenu
+
+# -------------------------------------
+# Exit sensor
+# -------------------------------------
+
+  menu "Mmu exit sensor pins"
+    depends on MMU_HAS_SENSOR_EXIT
+
+    @repeat var=i min=0 max=11@
+      config PIN_EXIT_SENSOR_$(i)
+        string
+        prompt "Exit sensor $(i) pin " if PARAM_NUM_GATES > $(i)
+    @endrepeat@
+  endmenu
+
+# -------------------------------------
+# Shared Exit sensor
+# -------------------------------------
+
+  config PIN_SHARED_EXIT_SENSOR
+    string "Shared exit sensor pin" if MMU_HAS_SENSOR_SHARED_EXIT
+
+# -------------------------------------
+# Misc pins
+# -------------------------------------
+
+  config PIN_ENCODER
+    string
+    prompt "Encoder pin           " if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER
+
+  config PIN_NEOPIXEL
+    string
+    prompt "Neopixel pin          " if MMU_HAS_LEDS && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
+
+  menu "Neopixel per-gate pins" 
+    depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
+
+    @repeat var=i min=0 max=11@
+      config PIN_NEOPIXEL_$(i)
+        string "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
+    @endrepeat@
+  endmenu
+
+  menu "Neopixel box pins" 
+    depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
+
+    @repeat var=i min=0 max=11@
+      config PIN_NEOPIXEL_BOX_$(i)
+        string "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)
+    @endrepeat@
+  endmenu
+
+  config PIN_FAN
+    string
+    prompt "Cooling fan           " if MMU_HAS_FANS && !MMU_HAS_PER_GATE_MCU
+
+  menu "Fan per-gate pins" 
+    depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
+
+    @repeat var=i min=0 max=11@
+      config PIN_FAN_$(i)
+        string
+        prompt "Cooling fan gate $(i) pin" if PARAM_NUM_GATES > $(i)
+    @endrepeat@
+  endmenu
+
+# -------------------------------------
+# Per-printer pins
+# -------------------------------------
+
+  source "Kconfig.shared_pins"
+
+endmenu
