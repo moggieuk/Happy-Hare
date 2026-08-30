@@ -171,6 +171,31 @@ class TestBoxTurtleRender(unittest.TestCase):
         self.assertIn('max_extrude_only_distance', extruder)       # from the template
 
 
+class TestConditionalMacroDefaults(unittest.TestCase):
+
+    def test_hidden_feature_menus_keep_rendering_defaults_active(self):
+        """Menu visibility must not turn required Jinja values into empty strings."""
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('conditional_macro_defaults', {
+                'INSTALL_CLIENT_MACROS': False,
+                'MMU_HAS_TOOLHEAD_CUTTER': False,
+                'MMU_HAS_BLOBIFIER': False,
+                'MMU_HAS_SERVO_CUTTER': False,
+            })
+
+        expected = {
+            'VAR_CLIENT_UNLOAD_TOOL_ON_CANCEL': 'False',
+            'VAR_CUT_TIP_RESTORE_POSITION': 'False',
+            'VAR_CUT_TIP_BLADE_POS': '37.5',
+            'VAR_BLOBIFIER_PURGE_SPD': '400',
+            'VAR_SERVO_CUTTER_SERVO_DURATION': '1.5',
+        }
+        for name, value in expected.items():
+            with self.subTest(symbol=name):
+                self.assertEqual(kc.syms[name].str_value, value)
+                self.assertTrue(kc.syms[name].config_string)
+
+
 class TestMenuconfigMacroStrings(unittest.TestCase):
 
     def _pre_unload_value(self, configured, profile_name):
