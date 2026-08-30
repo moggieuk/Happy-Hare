@@ -166,53 +166,90 @@ recover_backup_config() {
     fi
 }
 
-# Recover from the newest eligible MMU backup. Backup names contain sortable
-# timestamps, so the final matching directory is the newest one.
+# Format the timestamp embedded in standard mmu.old-YYYYMMDD-HHMMSS backup names.
+format_recovery_choice() {
+    backup_name=$(basename "$1")
+    if [ "$2" = current ]; then
+        echo "${backup_name} (current config)"
+        return 0
+    fi
+
+    backup_timestamp=$(printf '%s\n' "${backup_name}" | sed -n \
+        's/^mmu\.old-\([0-9][0-9][0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)-\([0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)$/\1-\2-\3 \4:\5:\6/p')
+    if [ -n "${backup_timestamp}" ]; then
+        echo "${backup_name} (${backup_timestamp})"
+    else
+        echo "${backup_name}"
+    fi
+}
+
+# Recover entry 1 from the same ordering shown by --prev: the current installed
+# config when available, otherwise the newest timestamped backup.
 recover_last_config() {
     config_home=$(guess_klipper_config_home)
-    last_backup=
+    current_config="${config_home}/mmu"
 
+    if [ -d "${current_config}" ] && [ -f "${current_config}/.mmu_config" ]; then
+        recover_backup_config "${current_config}"
+        return 0
+    fi
+
+    last_backup=
     for backup_dir in "${config_home}"/mmu*; do
         [ -d "${backup_dir}" ] || continue
-        [ "${backup_dir}" != "${config_home}/mmu" ] || continue
+        [ "${backup_dir}" != "${current_config}" ] || continue
         [ -f "${backup_dir}/.mmu_config" ] || continue
         last_backup=${backup_dir}
     done
 
     if [ -z "${last_backup}" ]; then
-        echo "${C_WARNING}No MMU backup containing .mmu_config found in '${config_home}'${C_OFF}"
+        echo "${C_WARNING}No MMU configuration containing .mmu_config found in '${config_home}'${C_OFF}"
         return 0
     fi
 
     recover_backup_config "${last_backup}"
 }
 
-# List every eligible MMU backup and let the user choose which one to recover.
+# List the current config first, when available, followed by every eligible backup
+# in reverse lexical order. Standard backup timestamps make that newest-to-oldest.
 recover_previous_config() {
     config_home=$(guess_klipper_config_home)
-    backup_count=0
+    current_config="${config_home}/mmu"
 
-    echo "${C_INFO}Available MMU configuration backups:${C_OFF}"
+    # Build the ordered choice list in this function's positional parameters.
+    # Prepending each glob match reverses the normal oldest-to-newest ordering.
+    set --
     for backup_dir in "${config_home}"/mmu*; do
         [ -d "${backup_dir}" ] || continue
-        [ "${backup_dir}" != "${config_home}/mmu" ] || continue
+        [ "${backup_dir}" != "${current_config}" ] || continue
         [ -f "${backup_dir}/.mmu_config" ] || continue
+        set -- "${backup_dir}" "$@"
+    done
+    if [ -d "${current_config}" ] && [ -f "${current_config}/.mmu_config" ]; then
+        set -- "${current_config}" "$@"
+    fi
+
+    echo
+    echo "${C_INFO}Available MMU configuration backups:${C_OFF}"
+    backup_count=0
+    for backup_dir in "$@"; do
         backup_count=$((backup_count + 1))
-        echo "  ${backup_count}) $(basename "${backup_dir}")"
+        if [ "${backup_dir}" = "${current_config}" ]; then
+            echo "  ${backup_count}) $(format_recovery_choice "${backup_dir}" current)"
+        else
+            echo "  ${backup_count}) $(format_recovery_choice "${backup_dir}" backup)"
+        fi
     done
 
     if [ "${backup_count}" -eq 0 ]; then
-        echo "${C_WARNING}No MMU backup containing .mmu_config found in '${config_home}'${C_OFF}"
+        echo "${C_WARNING}No MMU configuration containing .mmu_config found in '${config_home}'${C_OFF}"
         return 0
     fi
 
     echo
-    selected=$(prompt_n "${backup_count}" "Choose a backup")
+    selected=$(prompt_n "${backup_count}" "Choose backup to restore from")
     current=0
-    for backup_dir in "${config_home}"/mmu*; do
-        [ -d "${backup_dir}" ] || continue
-        [ "${backup_dir}" != "${config_home}/mmu" ] || continue
-        [ -f "${backup_dir}/.mmu_config" ] || continue
+    for backup_dir in "$@"; do
         current=$((current + 1))
         if [ "${current}" -eq "${selected}" ]; then
             echo
