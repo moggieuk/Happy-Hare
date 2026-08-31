@@ -1,0 +1,15 @@
+config TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_BAMBU_X1
+  bool "Stealthburner Clockwork2 Bambu X1"
+
+if TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_BAMBU_X1
+  config PARAM_TOOLHEAD_TYPE
+    default "Stealthburner Clockwork2 Bambu X1"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default 85
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default 75
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default 13
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default 22.5
+endif
