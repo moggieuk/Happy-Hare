@@ -9,6 +9,7 @@
 #   PARAM_ENABLED
 #   PARAM_ANIMATION
 #   PARAM_CHAIN_COUNT
+#   PARAM_CHAIN_COUNT_X (per-gate MCU; defaults to PARAM_CHAIN_COUNT)
 #   PARAM_COLOR_ORDER
 #   PARAM_EXIT_LEDS
 #   PARAM_ENTRY_LEDS
@@ -127,13 +128,23 @@ if MMU_HAS_LEDS
       config PIN_NEOPIXEL
         prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU
 
-      menu "Neopixel per-gate pins" 
+      menu "Neopixel per-gate chains"
         depends on MMU_HAS_PER_GATE_MCU
 
+        # Each gate drives its own chain off its own MCU, so each has its own length -
+        # a gate wired with four exit pixels can sit next to gates wired with one.
+        # PARAM_CHAIN_COUNT above stays the machine-wide answer and is what every gate
+        # falls back to, so a .mmu_config written before these existed (and every vendor
+        # default, which only sets the scalar) renders exactly as it did.
         @repeat var=i min=0 max=11@
           config PIN_NEOPIXEL_$(i)
             string
             prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
+
+          config PARAM_CHAIN_COUNT_$(i)
+            int
+            prompt "Neopixel gate $(i) chain count" if PARAM_NUM_GATES > $(i)
+            default PARAM_CHAIN_COUNT
         @endrepeat@
       endmenu
 
