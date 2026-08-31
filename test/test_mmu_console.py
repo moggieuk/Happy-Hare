@@ -360,6 +360,36 @@ class TestOutputHandler(unittest.TestCase):
         self.assertEqual(len(hh.gcode.console), before + 1)
 
 
+class TestDumpVarsMacro(unittest.TestCase):
+    """MMU_DUMP_VARS is a read-only macro whose output is useful in the simulator."""
+
+    def test_dump_vars_renders_live_status(self):
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        before = len(hh.console)
+
+        hh.run_gcode('MMU_DUMP_VARS')
+
+        output = '\n'.join(hh.console[before:])
+        self.assertIn("printer['mmu'].num_gates = 4", output)
+        self.assertIn("printer['mmu_machine'].happy_hare_version =", output)
+        self.assertNotIn("printer['mmu_stepper ", output)
+        self.assertEqual(hh.errors, [])
+
+    def test_verbose_dump_includes_stepper_status(self):
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        before = len(hh.console)
+
+        hh.run_gcode('MMU_DUMP_VARS VERBOSE=1')
+
+        output = '\n'.join(hh.console[before:])
+        self.assertIn("printer['mmu_stepper ", output)
+        self.assertEqual(hh.errors, [])
+
+
 class TestRenderer(unittest.TestCase):
     """html_to_ansi - HH emits HTML, not ANSI (extras/mmu/mmu_logger.py:96)."""
 
@@ -1821,6 +1851,17 @@ class TestConsoleScript(unittest.TestCase):
         self.assertNotIn('ready_gcode_handlers', out)
         self.assertIn('Happy Hare MMU commands', out)
         self.assertIn('MMU_CHANGE_TOOL', out)
+
+    def test_mmu_help_only_marks_actual_gcode_macros(self):
+        rc, out = self._run(
+            ['MMU_HELP'],
+            ['--header', 'off', '--profile', 'nfc_per_gate'])
+        self.assertEqual(rc, 0, out[-2000:])
+        self.assertIn('MMU_RFID_INIT', out)
+        self.assertNotIn('MMU_RFID_INIT²', out)
+        self.assertIn('MMU_RFID_READ', out)
+        self.assertNotIn('MMU_RFID_READ²', out)
+        self.assertIn('MMU_COLD_PULL²', out)
 
     def test_vars_reports_both_status_objects(self):
         rc, out = self._run(['/vars'], ['--header', 'off'])

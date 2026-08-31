@@ -471,7 +471,21 @@ class Session:
         # but it TAKES TIME on a real machine, and a paced session that skips it in an instant
         # reads as if the operation were over when it is not. Time only; no movement.
         effects.setdefault('_MMU_PURGE', self._effect_spend_time)
+        # This read-only utility is useful specifically in the interactive console. Run its
+        # real Jinja body so it can enumerate the harness's live get_status() dictionaries;
+        # ordinary choreography macros remain recorded no-ops.
+        effects.setdefault('MMU_DUMP_VARS', self._effect_dump_vars)
         return effects
+
+    def _effect_dump_vars(self, macro, gcmd):
+        gcode_macro = self.printer.lookup_object('gcode_macro')
+        context = gcode_macro.create_template_context()
+        context.update({
+            'params': dict(gcmd.get_command_parameters()),
+            'rawparams': gcmd.get_raw_command_parameters(),
+            'action_respond_info': lambda msg: gcmd.respond_info(str(msg)),
+        })
+        macro.template.run_gcode_from_command(context)
 
     # What a macro whose body never runs would nonetheless COST, at pace 1. Tip forming and
     # purging are both a sequence of ramming, cooling and wiping moves that the harness does not

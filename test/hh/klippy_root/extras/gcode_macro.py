@@ -116,6 +116,11 @@ class _StatusWrapper:
     def __contains__(self, key):
         return self.printer.lookup_object(key, None) is not None
 
+    def __iter__(self):
+        # Klipper's status wrapper is iterable, which reporting macros such as
+        # MMU_DUMP_VARS rely on to discover matching printer objects.
+        return iter(name for name, _obj in self.printer.lookup_objects())
+
 
 class GCodeMacro:
     def __init__(self, config):
