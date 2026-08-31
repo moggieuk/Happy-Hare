@@ -1810,6 +1810,22 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('does not run macro bodies', out)
         self.assertIn('MMU_CHANGE_TOOL TOOL=1', out)
 
+    def test_mmu_cold_pull_runs_its_macro_body(self):
+        rc, out = self._run(
+            ['MMU_COLD_PULL MATERIAL=PLA HOT_TEMP=180 COLD_TEMP=170 '
+             'PULL_TEMP=175 MIN_EXTRUDE_TEMP=175 CLEAN_LENGTH=2'],
+            ['--header', 'off'])
+        self.assertEqual(rc, 0, out[-2000:])
+        self.assertIn('Cold Pull based on PLA profile', out)
+        self.assertIn('Heating extruder to 180', out)
+        self.assertIn('>>>>> PULL NOW <<<<<', out)
+        self.assertIn('Cold pull is successful', out)
+
+    def test_mmu_cold_pull_rejects_an_unknown_material(self):
+        rc, out = self._run(['MMU_COLD_PULL MATERIAL=WOOD'], ['--header', 'off'])
+        self.assertEqual(rc, 1, out[-2000:])
+        self.assertIn('Unknown material', out)
+
     def test_mmu_help_works(self):
         """
         MMU_HELP enumerates gcode.ready_gcode_handlers (mmu_help.py:155). The fake dispatch

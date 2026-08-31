@@ -525,6 +525,16 @@ class Console:
         self.hh.build()
         self.hh.gcode.register_output_handler(self._on_output)
 
+        # Macro bodies are no-ops in the general-purpose harness. Cold pull is deliberately
+        # executable in this interactive simulator: it is a self-contained maintenance
+        # workflow whose temperature checkpoints and extruder moves are useful to exercise.
+        # Keep the exception local so print-start/toolchange macros retain the established
+        # recorded-only behavior relied on by the unit tests.
+        effects = getattr(self.hh.printer, 'harness_macro_effects', None)
+        if effects is None:
+            effects = self.hh.printer.harness_macro_effects = {}
+        effects['MMU_COLD_PULL'] = self._run_macro_body
+
         if a.trace:
             self.hh.mmu.p.log_level = a.trace
         if a.plain:
@@ -596,6 +606,10 @@ class Console:
         self.wall_start = time.time()
         self.clock_epoch = self.hh.reactor.monotonic()
         return self
+
+    @staticmethod
+    def _run_macro_body(macro, gcmd):
+        macro.run_body(gcmd)
 
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
@@ -907,10 +921,11 @@ class Console:
 
     def _warn_silent_macro(self, line, mark):
         """
-        The fake gcode_macro records a macro call but never renders or runs its BODY
-        (pinned by test_mmu_toolchange.py). So T1, print start/end and the park/cut/purge
-        sequences are REGISTERED - they do not show up as unknown commands - and simply do
-        nothing. Silence is the whole symptom, so key off "produced no output at all".
+        With the explicit MMU_COLD_PULL exception installed in boot(), the fake gcode_macro
+        otherwise records a macro call but never renders or runs its BODY (pinned by
+        test_mmu_toolchange.py). So T1, print start/end and the park/cut/purge sequences are
+        REGISTERED - they do not show up as unknown commands - and simply do nothing. Silence
+        is the whole symptom, so key off "produced no output at all".
         """
         if len(self.sink) > mark:
             return
