@@ -79,13 +79,6 @@ menu "Endstops and Bowden movement"
     default CHOICE_GATE_HOMING_ENDSTOP_ENCODER     if MMU_HAS_ENCODER
     default CHOICE_GATE_HOMING_ENDSTOP_NONE
 
-    config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-      bool "Extruder entry sensor"
-      depends on MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
-      help
-        Use individual per-gate (mmu_exit) endstop sensor after drive gear.
-        Often also implemented as per-gate entry sensors on the filament combiner ("aka hub")
-
     config CHOICE_GATE_HOMING_ENDSTOP_EXIT
       bool "Individual per-gate exit sensor"
       depends on MMU_HAS_SENSOR_EXIT
