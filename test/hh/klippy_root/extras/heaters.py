@@ -48,6 +48,9 @@ class PrinterHeaters:
         self.available_heaters = []
         self.available_sensors = []
         self.available_monitors = []
+        self.printer.lookup_object('gcode').register_command(
+            'TEMPERATURE_WAIT', self._cmd_TEMPERATURE_WAIT,
+            desc='Wait for a temperature sensor')
 
     def setup_heater(self, config, gcode_id=None):
         name = config.get_name().split()[-1]
@@ -75,6 +78,31 @@ class PrinterHeaters:
 
     def set_temperature(self, heater, temp, wait=False):
         heater.set_temp(temp)
+
+    def _cmd_TEMPERATURE_WAIT(self, gcmd):
+        """Complete a thermal wait instantly while preserving its observable stages."""
+        sensor = gcmd.get('SENSOR')
+        heater = self.lookup_heater(sensor)
+        minimum = gcmd.get_float('MINIMUM', None)
+        maximum = gcmd.get_float('MAXIMUM', None)
+        if minimum is None and maximum is None:
+            raise gcmd.error("TEMPERATURE_WAIT requires MINIMUM and/or MAXIMUM")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise gcmd.error("TEMPERATURE_WAIT MINIMUM exceeds MAXIMUM")
+
+        # There is deliberately no thermal time model in the harness. Move the reading to
+        # the first boundary this wait would encounter so a cooling ramp still exposes every
+        # intermediate temperature instead of teleporting straight to its final target.
+        current = heater.smoothed_temp
+        target = heater.target_temp
+        if minimum is not None and current < minimum:
+            current = min(target, maximum) if maximum is not None else max(minimum, target)
+            current = max(current, minimum)
+        if maximum is not None and current > maximum:
+            current = max(target, minimum) if minimum is not None else min(maximum, target)
+            current = min(current, maximum)
+        heater.smoothed_temp = current
+        heater.can_extrude = current >= heater.min_extrude_temp
 
     def lookup_heater(self, heater_name):
         if heater_name not in self.heaters:

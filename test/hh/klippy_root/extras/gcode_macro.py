@@ -13,10 +13,11 @@
 #    _BLOBIFIER_VARS (:461).
 #
 # Macro bodies are registered as recorded no-ops at this tier - running ~2000 lines
-# of shipped Jinja macro is a later milestone, and HH reaches bootup without it.
+# of shipped Jinja macro is a later milestone, and HH reaches bootup without it. Callers may
+# explicitly opt one macro into run_body(); make console does that for MMU_COLD_PULL only.
 #
-# A macro whose MOTION Happy Hare measures is the exception: see cmd() and
-# printer.harness_macro_effects.
+# A macro whose MOTION Happy Hare measures may instead receive a smaller modeled effect: see
+# cmd() and printer.harness_macro_effects.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -89,9 +90,13 @@ class PrinterGCodeMacro:
             'printer': _StatusWrapper(self.printer, eventtime),
             'action_emergency_stop': lambda msg='': None,
             'action_respond_info': lambda msg: None,
-            'action_raise_error': lambda msg: None,
+            'action_raise_error': self._action_raise_error,
             'action_call_remote_method': lambda method, **kw: None,
         }
+
+    def _action_raise_error(self, msg):
+        """Match Klipper's template helper when an opted-in macro rejects input."""
+        raise self.printer.command_error(msg)
 
 
 class _StatusWrapper:
@@ -115,6 +120,11 @@ class _StatusWrapper:
 
     def __contains__(self, key):
         return self.printer.lookup_object(key, None) is not None
+
+    def __iter__(self):
+        # Klipper's status wrapper is iterable, which reporting macros such as
+        # MMU_DUMP_VARS rely on to discover matching printer objects.
+        return iter(name for name, _obj in self.printer.lookup_objects())
 
 
 class GCodeMacro:
@@ -157,6 +167,14 @@ class GCodeMacro:
         effect = (getattr(self.printer, 'harness_macro_effects', None) or {}).get(self.alias)
         if effect is not None:
             effect(self, gcmd)
+
+    def run_body(self, gcmd):
+        """Render and dispatch this macro body when the harness explicitly opts it in."""
+        gcode_macro = self.printer.lookup_object('gcode_macro')
+        context = gcode_macro.create_template_context()
+        context['params'] = gcmd.get_command_parameters()
+        context['rawparams'] = gcmd.get_raw_command_parameters()
+        self.template.run_gcode_from_command(context)
 
     def get_status(self, eventtime=None):
         return dict(self.variables)

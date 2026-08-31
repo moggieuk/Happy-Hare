@@ -10,6 +10,8 @@
 #   boxturtle  4 gates,  VirtualSelector       - Type B, the default everywhere else
 #   tradrack  10 gates,  LinearServoSelector   - a PHYSICAL selector, so the suite is not
 #                                                shaped around one selector type
+#   3ms        4 gates,  VirtualSelector       - zero-length Bowden; gate homing aliases the
+#                                                extruder-entry sensor as mmu_shared_exit
 #   chameleon  4 gates,  RotarySelector        - a fourth selector class, and the only one
 #                                                with no servo: releasing drives the carriage
 #                                                to the OPPOSING gate's offset
@@ -58,6 +60,7 @@ logging.getLogger().setLevel(logging.CRITICAL)
 BOOTABLE = {
     'boxturtle': (4, 'VirtualSelector'),
     'tradrack': (10, 'LinearServoSelector'),
+    '3ms': (4, 'VirtualSelector'),
     # Needs two symbols the vendor Kconfig leaves open (a board and a gate homing sensor) or it
     # does not render at all - see the profile's own comment in test/hh/profiles.py.
     'chameleon': (4, 'RotarySelector'),
@@ -146,6 +149,17 @@ class TestEveryBootableProfile(unittest.TestCase):
         """
         hh = self._check('tradrack')
         self.assertTrue(hasattr(hh.mmu.mmu_unit(0).selector, 'selector_stepper'))
+
+    def test_3ms(self):
+        hh = self._check('3ms')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertFalse(unit.require_bowden_move)
+        self.assertEqual(unit.p.gate_homing_endstop, 'extruder')
+        extruder_sensor = unit.toolhead_wrapper.sensors['extruder']
+        self.assertIsNotNone(extruder_sensor)
+        for gate_sensors in hh.mmu.sensor_manager.gate_sensors:
+            self.assertIs(gate_sensors['extruder'], extruder_sensor)
+            self.assertIs(gate_sensors['mmu_shared_exit'], extruder_sensor)
 
     def test_chameleon(self):
         """

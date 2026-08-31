@@ -624,9 +624,11 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
 
 ### Three things that will look like bugs
 
-1. **Macro bodies do not run.** The fake `gcode_macro` records a call and never renders the
-   body, so `T1`, the print start/end and the park/cut/purge sequences produce **silence**.
-   Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
+1. **Most macro bodies do not run.** The fake `gcode_macro` records a call and normally never
+   renders the body, so `T1`, the print start/end and the park/cut/purge sequences produce
+   **silence**. Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
+   `MMU_COLD_PULL` is the deliberate exception: the console runs its body and simulates its
+   heater waits instantly so the complete maintenance workflow can be exercised.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The
    console does that for you at startup (`boot(calibrate=True, pre_bootup=...)`);
    in a test, call `hh.boot(calibrate=True)`, or `hh.boot()` then `hh.calibrate()`, then

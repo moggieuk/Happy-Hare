@@ -335,6 +335,19 @@ TRADRACK = Profile(
     syms={'MMU_TYPE_TRADRACK_1_0': True},
     description='Tradrack 1.0 - physical LinearServoSelector')
 
+# 3MS has no Bowden move: each gate feeds directly to the extruder-entry sensor. This
+# exercises MmuSensorManager's alias from that sensor to mmu_shared_exit, which lets the
+# otherwise generic gate-loading code use the toolhead sensor as its homing point.
+THREE_MS = Profile(
+    '3ms',
+    syms={
+        'MMU_TYPE_3MS_1_0': True,
+        'BOARD_TYPE_MMB_2_0': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_EXTRUDER_SENSOR': 'mcu:PA7',
+    },
+    description='3MS 1.0 - no-Bowden Type B homing at the extruder sensor')
+
 # 3D Chameleon: the ONLY profile with a RotarySelector, and the only machine where selecting a
 # gate is not a bijection with a carriage position. There is one gear motor for all four gates,
 # reversed on half of them (selector_gate_directions), and no servo - so "release the filament"
@@ -696,7 +709,7 @@ run_current: 0.6
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU, MMX, KMS, QIDI,
                     EMU, EMU_EBB, LEDS_UNEVEN, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                     NFC_GATE_CLEAR,
