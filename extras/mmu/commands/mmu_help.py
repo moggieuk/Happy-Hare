@@ -157,6 +157,16 @@ class MmuHelpCommand(BaseCommand):
         # Fast lookup of registered names
         registered = {rc["name"].upper() for rc in BaseCommand._registered_commands}
 
+        # A command outside BaseCommand is not necessarily a gcode macro. Some subsystems
+        # (notably the RFID readers) register Python handlers directly with Klipper's gcode
+        # dispatcher. Only show the macro superscript when a matching gcode_macro object
+        # actually exists.
+        macro_commands = {
+            obj_name.split(" ", 1)[1].upper()
+            for obj_name, _obj in mmu.printer.lookup_objects("gcode_macro")
+            if " " in obj_name
+        }
+
         def categorize(c):
             cu = c.upper()
             if cu in ["MMU_COLD_PULL"]:
@@ -205,7 +215,7 @@ class MmuHelpCommand(BaseCommand):
                     "help_supplement": "",
                     "category": category,
                     "per_unit": False,
-                    "not_registered": True,
+                    "not_registered": name in macro_commands,
                 }
                 other_cmds.append(metadata)
 
