@@ -1114,6 +1114,16 @@ class TestLedSwatches(unittest.TestCase):
         # swatches were 83, i.e. a 117-column row.
         self.assertEqual(len(visible(got)), 59)
 
+    def test_a_list_of_sizes_groups_gates_of_different_widths(self):
+        """
+        Gates need not carry the same number of LEDs (the leds_uneven profile is 1,1,1,1,6),
+        so the caller passes the real per-gate counts. Dividing evenly instead would still
+        render 10 blocks - it would just put the gaps in the wrong places, which reads as
+        "gate 2 is lit" when it is gate 4's third pixel.
+        """
+        got = self.swatches([(0., 0., 1., 0.)] * 10, [1, 1, 1, 1, 6])
+        self.assertEqual(got, ' '.join([self.ON] * 4 + [self.ON * 6]))
+
     def test_a_whole_segment_in_one_group_has_no_gaps(self):
         """How status and logo arrive - neither is indexed by gate."""
         self.assertEqual(self.swatches([(1., 1., 1., 0.)] * 4, 4), self.ON * 4)

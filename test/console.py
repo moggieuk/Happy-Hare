@@ -1219,18 +1219,23 @@ class Console:
                 effect = self.hh.mmu.led_manager.effect_state.get(index, {}).get(segment, '?')
                 label = ('%s %s' % (unit.name, segment)) if self.num_units > 1 else segment
                 # status and logo are not indexed by gate, so grouping them would be a lie.
-                # For the per-gate pair mmu_leds.py:101-102 has already guaranteed that the
-                # division is exact.
+                # The per-gate pair is grouped by the real per-gate counts from [mmu_leds]:
+                # gates need not all carry the same number of LEDs, and an even division
+                # here would draw the gate boundaries in the wrong places.
                 per_gate = len(data)
                 if segment in MmuLeds.PER_GATE_SEGMENTS and unit.num_gates:
-                    per_gate = max(1, len(data) // unit.num_gates)
+                    per_gate = leds.gate_led_counts(segment) or per_gate
                 out.append('  led %-14s %s  [%s]'
                            % (label, self._swatches(data, per_gate), effect))
         return out
 
     def _swatches(self, data, per_gate):
         """
-        One block per LED, `per_gate` of them run together and a space between groups.
+        One block per LED, grouped with a space between groups.
+
+        `per_gate` is either an int (that many in every group) or a list of group sizes,
+        which is what an uneven per-gate split needs - gates may carry different numbers of
+        LEDs, so "1 1 1 1 6" is a real layout and not a rounding artefact.
 
         Ungrouped, ViViD's exit segment - 28 LEDs over 4 gates - renders a 117-column row,
         which soft-wraps and scribbles over the row below it (PinnedHeader.repaint writes
@@ -1253,9 +1258,18 @@ class Console:
                 r, g, b = (min(255, int(round(c * scale))) for c in (r, g, b))
                 glyph = self.LED_DIM
             cells.append(paint(glyph, fg(r, g, b, self.mode)[2:-1], self.color))
-        per_gate = max(1, per_gate)                  # or the slice below is empty and loops
-        return ' '.join(''.join(cells[i:i + per_gate])
-                        for i in range(0, len(cells), per_gate))
+        if isinstance(per_gate, int):
+            per_gate = max(1, per_gate)              # or the slice below is empty and loops
+            sizes = [per_gate] * -(-len(cells) // per_gate)
+        else:
+            sizes = [size for size in per_gate if size > 0]
+        groups, i = [], 0
+        for size in sizes:
+            groups.append(''.join(cells[i:i + size]))
+            i += size
+        if i < len(cells):                           # anything the sizes did not account for
+            groups.append(''.join(cells[i:]))
+        return ' '.join(groups)
 
     # A HEAVY rule marks the boundary between the status section and the log window - that
     # is the one line a reader uses to tell "state" from "output" at a glance. The top edge
