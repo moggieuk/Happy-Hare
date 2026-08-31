@@ -283,6 +283,31 @@ class TestInstallSh(unittest.TestCase):
         )
         return config_home
 
+    def test_v3_detection_accepts_separator_and_whitespace_variants(self):
+        config_home = self.root / "printer_data" / "config"
+        parameters = config_home / "mmu" / "base" / "mmu_parameters.cfg"
+        variants = (
+            "happy_hare_version: 3.2.1\n",
+            "happy_hare_version = 3.2.1\n",
+            "  happy_hare_version  :  3.2.1\n",
+            "\thappy_hare_version\t=\t3.2.1\n",
+        )
+
+        for value in variants:
+            with self.subTest(value=value.strip()):
+                self.write(parameters, value)
+                self.run_shell("""
+                    SCRIPT_DIR={repo}
+                    CONFIG_KLIPPER_CONFIG_HOME={config}
+                    KCONFIG_CONFIG={missing}
+                    TESTDIR=
+                    v3_detected
+                """.format(
+                    repo=shlex.quote(str(REPO_ROOT)),
+                    config=shlex.quote(str(config_home)),
+                    missing=shlex.quote(str(self.root / "missing-kconfig")),
+                ))
+
     def test_v3_blue_choice_pins_v3_branch_and_reexecs(self):
         config_home = self.make_v3_install()
         fake_checkout = self.root / "checkout"

@@ -335,7 +335,7 @@ v3_detected() {
     v3_cfg="$(guess_klipper_config_home)/mmu/base/mmu_parameters.cfg"
     [ ! -e "${guessed_kconfig}" ] \
         && [ -f "${v3_cfg}" ] \
-        && grep -qE '^happy_hare_version:[[:space:]]*3\.' "${v3_cfg}"
+        && grep -qE '^[[:space:]]*happy_hare_version[[:space:]]*[:=][[:space:]]*3\.' "${v3_cfg}"
 }
 
 # The v3 -> v4 choice ("blue pill" stay on v3 / "red pill" upgrade to v4) has to be
