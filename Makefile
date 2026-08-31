@@ -264,7 +264,9 @@ strip_prefix = $(patsubst $(1)%,%,$(2))
 backup_ext  := .old-$(shell date '+%Y%m%d-%H%M%S')
 backup_name = $(addsuffix $(backup_ext),$(1))
 backup = \
-	if [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
+	if [ -n "$(2)" ]; then \
+	  echo "$(C_INFO)Skipping backup of '$(1)' because recovery already preserved it$(C_OFF)"; \
+	elif [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
 	  echo "$(C_INFO)Making a backup of '$(1)' to '$(notdir $(call backup_name,$(1)))'$(C_OFF)"; \
 	  $(SUDO)cp -a "$(1)" "$(call backup_name,$(1))"; \
 	fi
@@ -405,7 +407,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
 
 # Recipe to backup Happy-Hare configs before installing
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
-	$(Q)$(call backup,$(basename $@))
+	$(Q)$(call backup,$(basename $@),$(F_NO_MMU_BACKUP))
 
 $(install_targets): build | python_deps
 

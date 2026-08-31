@@ -11,6 +11,7 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SH = REPO_ROOT / "install.sh"
+MAKEFILE = REPO_ROOT / "Makefile"
 
 
 class TestInstallSh(unittest.TestCase):
@@ -78,6 +79,7 @@ class TestInstallSh(unittest.TestCase):
             CONFIG_KLIPPER_CONFIG_HOME={config}
             TESTDIR=
             recover_last_config
+            [ -z "${{F_NO_MMU_BACKUP:-}}" ]
         """.format(
             repo=shlex.quote(str(repo_dest)),
             config=shlex.quote(str(config_home)),
@@ -134,6 +136,7 @@ class TestInstallSh(unittest.TestCase):
             CONFIG_KLIPPER_CONFIG_HOME={config}
             TESTDIR=
             recover_previous_config
+            [ "$F_NO_MMU_BACKUP" = y ]
         """.format(
             repo=shlex.quote(str(repo_dest)),
             config=shlex.quote(str(config_home)),
@@ -201,17 +204,59 @@ class TestInstallSh(unittest.TestCase):
         self.assertFalse(config_home.exists())
         self.assertEqual(list(repo_dest.iterdir()), [])
 
-    def test_v3_choice_precedes_recovery_in_installer_main(self):
+    def test_v3_choice_precedes_recovery_and_is_not_bypassed_by_yes(self):
         script = INSTALL_SH.read_text(encoding="utf-8")
         v3_choice = script.index(
-            'if [ "${F_SKIP_UPDATE}" != "force" ] && [ ! "${F_YES}" ] '
-            '&& v3_detected; then'
+            'if [ "${F_SKIP_UPDATE}" != "force" ] && v3_detected; then'
         )
         recovery = script.index(
             'if { [ "${F_RECOVER_LAST}" ] || [ "${F_RECOVER_PREVIOUS}" ]; } '
             '&& [ ! "${F_CONFIG_RECOVERED}" ]; then'
         )
         self.assertLess(v3_choice, recovery)
+
+    def test_make_skips_only_requested_mmu_backup(self):
+        mmu = self.root / "mmu"
+        self.write(mmu / "marker", "current\n")
+        recipe = (
+            f"include {MAKEFILE}\n"
+            ".PHONY: installer-backup-test\n"
+            "installer-backup-test:\n"
+            "\t$(Q)$(call backup,$(BACKUP_TEST_PATH),$(F_NO_MMU_BACKUP))"
+        )
+        test_makefile = self.write(self.root / "backup-test.mk", recipe)
+        common = [
+            "make",
+            "--no-print-directory",
+            "-f", str(test_makefile),
+            "installer-backup-test",
+            "Q=",
+            "KCONFIG_CONFIG={}".format(self.root / "missing-kconfig"),
+            "BACKUP_TEST_PATH={}".format(mmu),
+        ]
+
+        skipped = subprocess.run(
+            common + ["F_NO_MMU_BACKUP=y"],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertIn("recovery already preserved it", skipped.stdout)
+        self.assertEqual(list(self.root.glob("mmu.old-*")), [])
+
+        subprocess.run(
+            common,
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(len(list(self.root.glob("mmu.old-*"))), 1)
+        self.assertIn(
+            "$(call backup,$(basename $@),$(F_NO_MMU_BACKUP))",
+            MAKEFILE.read_text(encoding="utf-8"),
+        )
 
     def make_v3_install(self):
         config_home = self.root / "printer_data" / "config"
@@ -293,6 +338,7 @@ class TestInstallSh(unittest.TestCase):
             KCONFIG_CONFIG={missing}
             TESTDIR=
             unset BRANCH
+            F_YES=y
             v3_detected
             offer_v3_v4_choice
             [ "$F_V3_UPGRADE" = y ]

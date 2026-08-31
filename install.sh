@@ -44,7 +44,7 @@ usage() {
     echo "  -k <dir> non-default klipper home directory"
     echo "  -c <dir> non-default klipper config directory"
     echo "  -m <dir> non-default moonraker home directory"
-    echo "  -p, --prev choose an MMU backup and recover its configuration"
+    echo "  -p, --prev choose a MMU backup and recover its configuration"
     echo
     echo "  Advanced:"
     echo "  -y, --yes automatically answer yes to all y/n prompts"
@@ -210,6 +210,7 @@ restore_mmu_config() {
     echo "${C_INFO}Restoring MMU config from '$(basename "${selected_config}")'${C_OFF}"
     cp -R "${selected_config}" "${current_config}"
     copy_recovered_kconfigs "${current_config}"
+    export F_NO_MMU_BACKUP=y
 }
 
 # Format the timestamp embedded in standard mmu.old-YYYYMMDD-HHMMSS backup names.
@@ -595,7 +596,7 @@ fi
 
 # Settle v3 vs v4 before recovery, self-update, or installation work. Detection
 # only inspects the existing v3 files and does not source a .mmu_config file.
-if [ "${F_SKIP_UPDATE}" != "force" ] && [ ! "${F_YES}" ] && v3_detected; then
+if [ "${F_SKIP_UPDATE}" != "force" ] && v3_detected; then
     offer_v3_v4_choice
 fi
 
