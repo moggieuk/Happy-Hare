@@ -1,0 +1,15 @@
+config TOOLHEAD_TYPE_STEALTHBURNER_G2E_BAMBU_X1
+  bool "Stealthburner G2E Bambu X1"
+
+if TOOLHEAD_TYPE_STEALTHBURNER_G2E_BAMBU_X1
+  config PARAM_TOOLHEAD_TYPE
+    default "Stealthburner G2E Bambu X1"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default 99.5
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default 79.5
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default 13.3
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default 22.5
+endif
