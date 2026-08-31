@@ -27,24 +27,30 @@ self_update() {
         return
     fi
 
-    echo "${C_NOTICE}Running on '${current_branch}' branch" \
-        "Checking for updates...${C_OFF}"
     # Both check for updates but also help me not loose changes accidently
     git fetch --quiet
 
     switch=0
-    if ! git diff --quiet --exit-code "origin/${current_branch}"; then
-        echo "${C_NOTICE}Found a new version of Happy Hare on github, updating...${C_OFF}"
+    if [ -n "${BRANCH}" ] && [ "${BRANCH}" != "${current_branch}" ]; then
+        # An explicit branch selection takes precedence over updating the branch we
+        # happened to start on. Switch first; the common pull below updates only the
+        # selected branch.
+        current_branch=${BRANCH}
+        echo "${C_NOTICE}Switching to '${current_branch}' branch${C_OFF}"
         if [ -n "$(git status --porcelain)" ]; then
             git stash push -m 'local changes stashed before self update' --quiet
         fi
         switch=1
-    fi
-
-    if [ -n "${BRANCH}" ] && [ "${BRANCH}" != "${current_branch}" ]; then
-        current_branch=${BRANCH}
-        echo "${C_NOTICE}Switching to '${current_branch}' branch${C_OFF}"
-        switch=1
+    else
+        echo "${C_NOTICE}Running on '${current_branch}' branch" \
+            "Checking for updates...${C_OFF}"
+        if ! git diff --quiet --exit-code "origin/${current_branch}"; then
+            echo "${C_NOTICE}Found a new version of Happy Hare on github, updating...${C_OFF}"
+            if [ -n "$(git status --porcelain)" ]; then
+                git stash push -m 'local changes stashed before self update' --quiet
+            fi
+            switch=1
+        fi
     fi
 
     if [ "${switch}" -eq 1 ]; then

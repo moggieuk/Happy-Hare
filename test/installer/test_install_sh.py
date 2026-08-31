@@ -11,6 +11,7 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SH = REPO_ROOT / "install.sh"
+SELF_UPDATE_SH = REPO_ROOT / "installer" / "self_update.sh"
 MAKEFILE = REPO_ROOT / "Makefile"
 
 
@@ -345,6 +346,55 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("[update_manager happy-hare]\nprimary_branch: v3", moonraker)
         self.assertEqual((log_dir / "self-update").read_text().strip(), "v3")
         self.assertEqual((log_dir / "reexec").read_text().strip(), "v3:force:YES")
+
+    def test_self_update_switches_before_checking_current_branch(self):
+        remote = self.root / "remote.git"
+        checkout = self.root / "checkout"
+
+        subprocess.run(["git", "init", "--bare", str(remote)], check=True,
+                       capture_output=True, text=True)
+        subprocess.run(["git", "init", str(checkout)], check=True,
+                       capture_output=True, text=True)
+        for key, value in (("user.name", "Installer Test"),
+                           ("user.email", "installer@example.invalid")):
+            subprocess.run(["git", "-C", str(checkout), "config", key, value],
+                           check=True)
+        self.write(checkout / "marker", "v3\n")
+        subprocess.run(["git", "-C", str(checkout), "add", "marker"], check=True)
+        subprocess.run(["git", "-C", str(checkout), "commit", "-m", "v3"],
+                       check=True, capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(checkout), "branch", "-M", "v3"],
+                       check=True)
+        subprocess.run(["git", "-C", str(checkout), "tag", "v3-test"], check=True)
+        subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin",
+                        str(remote)], check=True)
+        subprocess.run(["git", "-C", str(checkout), "push", "-u", "origin", "v3",
+                        "--tags"], check=True, capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(checkout), "checkout", "-b",
+                        "codex/local-only"], check=True, capture_output=True, text=True)
+
+        env = os.environ.copy()
+        env.update({
+            "BRANCH": "v3",
+            "C_OFF": "",
+            "C_NOTICE": "",
+            "C_WARNING": "",
+            "C_ERROR": "",
+        })
+        result = subprocess.run(
+            ["/bin/sh", str(SELF_UPDATE_SH)], cwd=checkout, env=env,
+            text=True, capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        current = subprocess.run(
+            ["git", "-C", str(checkout), "branch", "--show-current"],
+            check=True, text=True, capture_output=True,
+        ).stdout.strip()
+        self.assertEqual(current, "v3")
+        self.assertIn("Switching to 'v3' branch", result.stdout)
+        self.assertNotIn("Running on 'codex/local-only' branch", result.stdout)
+        self.assertNotIn("Found a new version", result.stdout)
 
     def test_v3_red_choice_backs_up_v3_and_cleans_for_v4(self):
         config_home = self.make_v3_install()
