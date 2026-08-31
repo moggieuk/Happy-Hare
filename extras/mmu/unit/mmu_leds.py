@@ -37,7 +37,9 @@ class VirtualMmuLedChain:
 
         # We need to configure the chain now so we can validate
         self.leds = []
+        self.groups = [] # Number of leds contributed by each config line, in order
         for chain_name, leds in self.config_chains:
+            before = len(self.leds)
             try:
                 chain = self.printer.load_object(config, chain_name)
                 if chain:
@@ -45,6 +47,7 @@ class VirtualMmuLedChain:
                         self.leds.append((chain, led))
             except Exception as e:
                 raise config.error("MMU LED chain '%s' referenced in '%s' cannot be loaded:\n%s" % (chain_name, self.name, str(e)))
+            self.groups.append(len(self.leds) - before)
 
         # Register led object with klipper
         logging.info("MMU: Created virtual led chain: [%s]" % led_section)
@@ -97,9 +100,10 @@ class MmuLeds:
             config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
             self.virtual_chains[segment] = VirtualMmuLedChain(config, self.mmu_unit.name, segment, config_chains)
 
-            num_leds = len(self.virtual_chains[segment].leds)
-            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds % self.num_gates:
-                raise config.error("Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d)" % (segment, num_leds, self.num_gates))
+        # Work out which LEDs of the per-gate segments belong to which gate. This is the single
+        # place that mapping is decided - everything else (mmu_led_effect, mmu_led_manager) asks
+        # here rather than deriving it, precisely because the split need not be even
+        self.gate_leds = {segment: self._map_leds_to_gates(config, segment) for segment in self.PER_GATE_SEGMENTS}
 
         # Check for LED chain overlap or unavailable LEDs
         used = {}
@@ -165,6 +169,53 @@ class MmuLeds:
             self.effects[operation] = effect
             self.effect_duration[operation] = duration
         self.effect_rgb[''] = (0,0,0)
+
+    # Split a per-gate segment's LEDs between the gates of this unit. Returns a list of
+    # 'num_gates' lists, each holding the 1-based LED indexes (into the segment's virtual
+    # chain) that belong to that gate.
+    #
+    # If the segment was written with exactly one line per gate then each line IS a gate's set
+    # of LEDs - which is how the shipped templates emit it for a per-gate MCU
+    # ("neopixel:_unit0_gate0_leds (1,2,3,4)" and so on, one per gate) - so gates are free to
+    # carry different numbers of LEDs. Anything else is shared out evenly, which is the only
+    # way to make sense of a definition whose lines are strips rather than gates (e.g. the
+    # documented 8-gates-over-5-strips wiring in mmu_hardware.cfg), and that requires the LED
+    # count to divide by num_gates.
+    def _map_leds_to_gates(self, config, segment):
+        groups = self.virtual_chains[segment].groups
+        num_leds = len(self.virtual_chains[segment].leds)
+
+        if len(groups) == self.num_gates:
+            counts = groups
+        elif num_leds % self.num_gates:
+            raise config.error(
+                "Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d). Either use a count that "
+                "divides evenly or define '%s_leds' with one line per gate to give each gate its own LEDs" % (
+                    segment, num_leds, self.num_gates, segment)
+            )
+        else:
+            counts = [num_leds // self.num_gates] * self.num_gates
+
+        gate_leds, index = [], 1 # LED indexes are 1-based within the segment
+        for count in counts:
+            gate_leds.append(list(range(index, index + count)))
+            index += count
+        return gate_leds
+
+    # The 1-based LED indexes on 'segment' belonging to 'gate' (absolute gate number). Empty
+    # if the segment isn't indexed by gate or the gate isn't on this unit
+    def gate_led_indexes(self, segment, gate):
+        gate_leds = self.gate_leds.get(segment)
+        if gate_leds is None:
+            return []
+        index = gate - self.first_gate
+        if not 0 <= index < len(gate_leds):
+            return []
+        return gate_leds[index]
+
+    # Number of LEDs on 'segment' for each gate of this unit (list of length num_gates)
+    def gate_led_counts(self, segment):
+        return [len(leds) for leds in self.gate_leds.get(segment, [])]
 
     def parse_chain(self, chain):
         chain = chain.strip()

@@ -23,11 +23,36 @@
 import logging
 import unittest
 
-from test.hh import session
+from test.hh import profiles, session
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
 WARMUP = 12.0       # past the 8s effect_initialized state flash
+
+# GATES NEED NOT ALL CARRY THE SAME NUMBER OF LEDS.
+#
+# EMU is the shape where this is real: MMU_HAS_PER_GATE_MCU gives every gate its own
+# [neopixel _unit0_gateN_leds] chain, and exit_leds/entry_leds are generated with ONE LINE
+# PER GATE. So a lane wired with four exit pixels sitting next to lanes wired with one is a
+# perfectly ordinary machine - and that per-line grouping is the only statement of intent
+# there is: "neopixel:_unit0_gate4_leds (1-6)" on its own line says gate 4 owns six LEDs.
+#
+# `num_leds // num_gates` threw that away. Below, exit is 1,1,1,1,6 = 10 LEDs over 5 gates,
+# which divides, so the old code did not even complain - it silently handed every gate 2 and
+# slid four of the five gates onto pixels belonging to a different lane.
+LEDS_UNEVEN = profiles.EMU.derive(
+    'leds_uneven',
+    syms={
+        'BOARD_TYPE_EBB_GEN1': True,
+        'PARAM_CHAIN_COUNT': 7,
+        'PARAM_EXIT_LEDS': ('neopixel:_unit0_gate0_leds (1); neopixel:_unit0_gate1_leds (1); '
+                            'neopixel:_unit0_gate2_leds (1); neopixel:_unit0_gate3_leds (1); '
+                            'neopixel:_unit0_gate4_leds (1-6)'),
+        'PARAM_ENTRY_LEDS': ('neopixel:_unit0_gate0_leds (2); neopixel:_unit0_gate1_leds (2); '
+                             'neopixel:_unit0_gate2_leds (2); neopixel:_unit0_gate3_leds (2); '
+                             'neopixel:_unit0_gate4_leds (7)'),
+    },
+    description='EMU - gate 4 carries 6 exit LEDs, every other gate one')
 
 
 class LedTestCase(unittest.TestCase):
@@ -226,6 +251,78 @@ class TestAllFourSegments(unittest.TestCase):
         """
         data = self.unit().leds.virtual_chains['logo'].get_status()['color_data']
         self.assertEqual(data, [(0., 0., 0.3, 0.)] * 3)
+
+
+class TestUnevenLedsPerGate(unittest.TestCase):
+    """
+    A gate owns the LEDs its own config line lists - not `total // num_gates` of them.
+
+    See LEDS_UNEVEN above for why that is the real machine shape rather than a curiosity.
+    Every assertion here is against exit = 1,1,1,1,6; the old even split made it 2,2,2,2,2,
+    so these fail on the arithmetic, not on some incidental detail of the fixture.
+    """
+
+    PROFILE = LEDS_UNEVEN
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session(cls.PROFILE)
+        cls.hh.boot()
+        cls.hh.reactor.advance(WARMUP)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    @property
+    def leds(self):
+        return self.hh.mmu.mmu_unit(0).leds
+
+    def colors(self, segment='exit'):
+        return self.leds.virtual_chains[segment].get_status()['color_data']
+
+    def test_each_config_line_is_a_gate(self):
+        self.assertEqual(self.leds.gate_led_counts('exit'), [1, 1, 1, 1, 6])
+        self.assertEqual(self.leds.gate_led_counts('entry'), [1, 1, 1, 1, 1])
+
+    def test_gate_indexes_run_consecutively_through_the_segment(self):
+        """Gates 0-3 take one LED each, so gate 4's six start at 5 - not at 9."""
+        self.assertEqual([self.leds.gate_led_indexes('exit', gate) for gate in range(5)],
+                         [[1], [2], [3], [4], [5, 6, 7, 8, 9, 10]])
+
+    def test_a_gate_outside_the_unit_has_no_leds(self):
+        self.assertEqual(self.leds.gate_led_indexes('exit', 5), [])
+        self.assertEqual(self.leds.gate_led_indexes('exit', -1), [])
+
+    def test_painting_a_gate_lights_exactly_that_gate(self):
+        """
+        THE regression, end to end through MMU_SET_LED. An (r,g,b) is the static SET_LED
+        path, so what lands is precisely the set of LEDs led_indexes() handed over.
+
+        The colour is deliberately one no shipped effect produces: the neighbouring gates
+        are still running their own gate_status effects, and a red or green probe could
+        pass by coincidence. No reactor.advance either - the frame timer must not get to
+        repaint over the assertion.
+        """
+        odd = (0.25, 0.5, 0.75, 0.)
+        self.hh.run_gcode('MMU_SET_LED GATE=4 EXIT_EFFECT=(0.25,0.5,0.75)')
+        data = self.colors('exit')
+        self.assertEqual(data[4:], [odd] * 6, "gate 4's six LEDs were not all painted")
+        self.assertNotIn(odd, data[:4], 'the paint bled onto another gate')
+
+    def test_per_gate_effects_are_built_over_the_same_mapping(self):
+        """
+        mmu_led_effect creates one _led_effect per gate, and mmu_led_manager then addresses
+        it by name. Both have to agree about which LEDs the gate owns or the manager stops
+        one set of LEDs and lights another.
+        """
+        chain = self.leds.virtual_chains['exit']
+        by_name = {effect.name: effect for effect in
+                   self.hh.printer.lookup_object('mmu_led_effect').effects}
+        for gate, expected in enumerate([[0], [1], [2], [3], [4, 5, 6, 7, 8, 9]]):
+            effect = by_name.get('mmu_static_blue_exit_%d' % gate)
+            self.assertIsNotNone(effect, 'no per-gate effect for gate %d' % gate)
+            self.assertEqual([index for obj, index in effect.leds if obj is chain], expected)
 
 
 class TestEffectConfiguration(LedTestCase):

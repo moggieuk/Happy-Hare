@@ -576,6 +576,13 @@ class MmuLedManager:
             num_leds = mmu_unit.leds.get_status()[segment]
             if gate is None or gate < 0:
                 return list(range(1, num_leds + 1))
+            if segment in MmuLeds.PER_GATE_SEGMENTS:
+                # Gates can carry different numbers of LEDs, so the mapping comes from
+                # [mmu_leds] rather than being derived by even division
+                return mmu_unit.leds.gate_led_indexes(segment, gate)
+            # 'status' and 'logo' are not indexed by gate at all. Scoping them to one is
+            # meaningless, but leave the pre-existing arithmetic alone rather than quietly
+            # changing what "MMU_SET_LED GATE=n STATUS_EFFECT=..." has always done
             leds_per_gate = num_leds // mmu_unit.num_gates
             index0 = (gate - mmu_unit.first_gate) * leds_per_gate + 1
             return list(range(index0, index0 + leds_per_gate))
