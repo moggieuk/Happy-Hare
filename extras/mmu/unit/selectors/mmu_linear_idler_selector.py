@@ -43,6 +43,11 @@ class LinearIdlerSelectorParameters(LinearSelectorParameters):
     _SPECS = (*LinearSelectorParameters._SPECS,
         ParamSpec('idler_dwell',            'float', 0.4, section="IDLER", limits=dict(minval=0.1)),
         ParamSpec('idler_buzz_gear_on_down', 'int',    3, section="IDLER", limits=dict(minval=0, maxval=10)),
+        # 0 = release pre-positions at the active gate (fast re-engage, idler stays over
+        #     the loaded channel for the rest of the print)
+        # 1 = release moves the idler clear to the disengaged/away position instead,
+        #     matching stock Prusa MMU3 firmware (costs an idler move on next re-engage)
+        ParamSpec('idler_release_to_away',   'int',    0, section="IDLER", limits=dict(minval=0, maxval=1)),
     )
 
     def __init__(self, config, selector):
@@ -282,11 +287,11 @@ class LinearSelectorIdler:
 
 
     def idler_up(self, measure=False):
-        """Release filament; pre-position at selected gate (MMU3 idler)."""
+        """Release filament; pre-position at selected gate, or move clear of it (MMU3 idler)."""
         if self.mmu._is_running_test: return 0. # Save idler while testing
         gate = self.mmu.gate_selected
         if self.mmu_unit.manages_gate(gate) and gate >= 0:
-            lgate = self.mmu_unit.local_gate(gate)
+            lgate = self._disengaged_gate if self.p.idler_release_to_away else self.mmu_unit.local_gate(gate)
         else:
             lgate = self._disengaged_gate
         if self.active_gate == lgate:
@@ -378,7 +383,10 @@ class LinearSelectorIdler:
         (or the disengaged position when lgate == num_gates).
         """
         if not self.is_homed:
-            return # Position unknown until the idler has been homed
+            # Physical position is otherwise unknown (e.g. after a klippy restart) -
+            # silently skipping the move would leave the idler wherever it happened to
+            # be, so callers would think they gripped/released when they didn't.
+            self.home()
         if lgate == TOOL_GATE_BYPASS: return
         if lgate >= len(self.idler_offsets):
             self.mmu.log_error("Gate number does not exist")

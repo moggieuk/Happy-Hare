@@ -32,6 +32,8 @@
 #   data_pin: mmu:PB5
 #   clock_pin: mmu:PC7
 #   latch_pin: mmu:PB6
+#   miso_pin: mmu:PF6      # optional: enables software-SPI transport
+#   spi_speed: 500000      # software SPI clock (default 500kHz)
 #
 # Usage in stepper config:
 #   dir_pin: !mmu_sr:0       # Gear DIR (inverted)
@@ -104,6 +106,56 @@ class _RawDigitalOut:
         self._set_cmd.send([self._oid, clock, _HIGH if value else _LOW],
                            minclock=0, reqclock=clock)
         self._last_clock = clock
+
+
+class _SoftwareSPI:
+    """
+    MCU SPI device created via raw config commands (software bit-banged
+    bus), used to shift the register state out on the DATA/CLOCK pins.
+
+    Unlike a bitbang of queue_digital_out commands, `spi_send` does NOT
+    allocate move nodes on the MCU -- the transfer runs synchronously in
+    the command dispatcher (~tens of µs at 500kHz), so a full shift-out
+    costs zero move nodes instead of 33-50. The LATCH strobe is the only
+    remaining queue_digital_out traffic (2 nodes per write).
+
+    Requires CONFIG_WANT_SOFTWARE_SPI in the firmware (present in the
+    stock Prusa MMU3 build); no firmware changes needed.
+    """
+
+    def __init__(self, mcu, miso_pin_name, mosi_pin_name, sclk_pin_name, speed):
+        self._mcu = mcu
+        self._miso_pin_name = miso_pin_name
+        self._mosi_pin_name = mosi_pin_name
+        self._sclk_pin_name = sclk_pin_name
+        self._speed = speed
+        self._oid = None
+        self._send_cmd = None
+        self._cmd_queue = None
+        mcu.register_config_callback(self._build_config)
+
+    def _build_config(self):
+        self._oid = self._mcu.create_oid()
+        self._mcu.add_config_cmd(
+            "config_spi_without_cs oid=%d" % (self._oid,))
+        # pulse_ticks = full clock period (firmware halves it internally)
+        pulse_ticks = max(2, int(self._mcu.seconds_to_clock(1.0 / self._speed)))
+        self._mcu.add_config_cmd(
+            "spi_set_sw_bus oid=%d miso_pin=%s mosi_pin=%s sclk_pin=%s"
+            " mode=0 pulse_ticks=%d"
+            % (self._oid, self._miso_pin_name, self._mosi_pin_name,
+               self._sclk_pin_name, pulse_ticks))
+        self._cmd_queue = self._mcu.alloc_command_queue()
+        self._send_cmd = self._mcu.lookup_command(
+            "spi_send oid=%c data=%*s", cq=self._cmd_queue)
+
+    def get_mcu(self):
+        return self._mcu
+
+    def send(self, data):
+        # Executes at receipt on the MCU (synchronous bit-bang in the
+        # command dispatcher); no clocks involved.
+        self._send_cmd.send([self._oid, data])
 
 
 class ShiftRegisterBit:
@@ -185,6 +237,27 @@ class ShiftRegister:
         # serialize writes so two overlapping bitbangs never send the MCU
         # timer dispatcher backwards ("Rescheduled timer in the past").
         self._last_write_end = 0.
+        # Coalescing: at most ONE write may be pending (state changed but the
+        # bitbang commands not yet generated). A pending write reads the
+        # current state when it generates, so any further changes merge into
+        # it -- latest state wins. Without this, bursts of back-to-back state
+        # changes (DIR flips, enables, LED frames) each produced a 50-command
+        # bitbang and 2-3 of them piled up around a gear move overflowed the
+        # ATmega32U4's move queue (verified on the live MMU3).
+        self._pending_write_start = None
+        self._pending_timer = None
+        # Bits that are purely cosmetic (e.g. LEDs). Writes touching ONLY
+        # these may be deferred while steps are executing, since the ~25ms
+        # bitbang would otherwise stall step execution on the AVR timer.
+        self.led_mask = int(config.get('led_mask', '0'), 0)
+
+        # Optional software-SPI transport. If `miso_pin` is set, the register
+        # state is shifted out via `spi_send` (zero move nodes, ~tens of µs)
+        # instead of the 33-50 node queue_digital_out bitbang. Only the LATCH
+        # strobe remains digital_out traffic. Without miso_pin the legacy
+        # bitbang transport is used.
+        miso_pin_str = config.get('miso_pin', None)
+        self._use_spi = miso_pin_str is not None
 
         # DATA and CLOCK pins are shared with the TMC2130 software SPI bus
         # (PB5 = MOSI, PC7 = SCLK on the MMU3 board). Allow multi-use so
@@ -202,8 +275,19 @@ class ShiftRegister:
 
         self._data_pin_name  = data_params['pin']   # e.g. 'PB5' — exposed for stepper.py placeholder
         self._clock_pin_name = clock_params['pin']   # e.g. 'PC7'
-        self._data_pin  = _RawDigitalOut(self.mcu, self._data_pin_name)
-        self._clock_pin = _RawDigitalOut(self.mcu, self._clock_pin_name)
+        if self._use_spi:
+            # DATA/CLOCK are driven by the software SPI bus; no raw pins.
+            self._data_pin = None
+            self._clock_pin = None
+            miso_params = ppins.parse_pin(miso_pin_str)
+            spi_speed = config.getint('spi_speed', 500000, minval=10000)
+            self._spi = _SoftwareSPI(self.mcu, miso_params['pin'],
+                                     self._data_pin_name, self._clock_pin_name,
+                                     spi_speed)
+        else:
+            self._data_pin  = _RawDigitalOut(self.mcu, self._data_pin_name)
+            self._clock_pin = _RawDigitalOut(self.mcu, self._clock_pin_name)
+            self._spi = None
 
         # LATCH is exclusive to the shift register — also use _RawDigitalOut
         # so it participates in the same minclock=0 burst-send strategy as
@@ -280,7 +364,7 @@ class ShiftRegister:
             self.state &= ~(1 << bit_num)
 
     def _set_bit_at_time(self, bit_num, value, print_time):
-        """Update bit state and write the full register at print_time.
+        """Update bit state and schedule a register write at print_time.
 
         Ensures a minimum future margin so queue_digital_out commands don't
         arrive at the MCU after their scheduled time ("Rescheduled timer in
@@ -288,8 +372,8 @@ class ShiftRegister:
         toolhead position (e.g. SET_PIN with no recent moves).
 
         Returns the actual print_time the write was scheduled at (which may
-        be later than requested if it had to be deferred behind another
-        in-flight shift register write).
+        be later than requested if it had to be deferred behind an in-flight
+        shift register write or merged into a pending one).
         """
         self._set_bit(bit_num, value)
         # Guarantee at least 100ms into the future from NOW.
@@ -301,7 +385,95 @@ class ShiftRegister:
         min_time = self.mcu.estimated_print_time(curtime + 0.100)
         if print_time < min_time:
             print_time = min_time
+        return self._request_write(print_time, bit_num)
+
+    def _request_write(self, print_time, bit_num):
+        """
+        Schedule a bitbang of the current register state.
+
+        Coalescing: if a write is already pending (scheduled but not yet
+        generated) the request merges into it -- the pending write reads the
+        current state when it generates, so latest-state-wins. This turns
+        bursts of back-to-back state changes into a single 50-command bitbang
+        instead of one per change, which is what overflowed the AVR move queue
+        when 2-3 writes piled up around a gear move.
+
+        Generation is deferred until just before the scheduled start so that
+        any changes arriving in the meantime merge into this one write, while
+        still leaving enough lead for the burst (minclock=0) to reach the MCU
+        before its scheduled times.
+
+        Returns the print_time the write is scheduled at (the pending write's
+        start if merged), so callers like _pre_set_dir_pin can delay a move
+        until the write completes.
+        """
+        if self._pending_write_start is not None:
+            # Merge into the pending write -- it reads self.state at
+            # generation time, so there is nothing further to schedule.
+            return self._pending_write_start
+
+        # Cosmetic bits (LEDs): defer while steps are executing. The bitbang
+        # monopolizes the AVR timer for ~25ms; letting it run mid-move stalls
+        # step execution and backs up the move queue. (Not needed for the
+        # software-SPI transport -- a shift-out is ~tens of µs.)
+        if self.led_mask and (1 << bit_num) & self.led_mask and not self._use_spi:
+            print_time = self._defer_cosmetic_write(print_time)
+
+        reactor = self.printer.get_reactor()
+        curtime = reactor.monotonic()
+        if print_time < self._last_write_end:
+            # A write is still executing: queue ONE follow-up write that
+            # starts after it, instead of overlapping another bitbang.
+            print_time = self._last_write_end + 0.001
+        if print_time > self.mcu.estimated_print_time(curtime + 0.100):
+            # Not needed yet -- defer generation until just before start so
+            # any further state changes merge into this single write.
+            self._pending_write_start = print_time
+            lead = print_time - self.mcu.estimated_print_time(curtime)
+            self._pending_timer = reactor.register_timer(
+                self._fire_pending_write, curtime + max(0., lead - 0.050))
+            return print_time
         return self._write_register(print_time)
+
+    def _fire_pending_write(self, eventtime):
+        """Reactor callback: generate the pending write's bitbang.
+
+        Reads the current register state, so every change that merged into
+        this pending write lands in a single bitbang.
+        """
+        reactor = self.printer.get_reactor()
+        start = self._pending_write_start
+        self._pending_write_start = None
+        self._pending_timer = None
+        if start is None:
+            return reactor.NEVER
+        curtime = reactor.monotonic()
+        now_pt = self.mcu.estimated_print_time(curtime)
+        if start < now_pt:
+            start = now_pt
+        self._write_register(start)
+        return reactor.NEVER
+
+    def _defer_cosmetic_write(self, print_time):
+        """Push a cosmetic (LED) write past the current step execution horizon.
+
+        LED state is not timing-critical, so while the host has steps queued
+        that the MCU hasn't executed yet, the write is pushed ~150ms past the
+        MCU's actual position. Once there, the pending-write coalescing keeps
+        LED frames at worst one 25ms bitbang per ~150ms during a move instead
+        of one per frame.
+        """
+        toolhead = self.printer.lookup_object('toolhead', None)
+        if toolhead is None:
+            return print_time
+        curtime = self.printer.get_reactor().monotonic()
+        est_print_time = self.mcu.estimated_print_time(curtime)
+        requested = print_time
+        print_time = getattr(toolhead, 'print_time', est_print_time)
+        if print_time > est_print_time + 0.050:
+            # Steps are executing -- land the write just past the horizon
+            return max(requested, est_print_time + 0.150)
+        return requested
 
     def _write_register(self, print_time):
         """
@@ -330,6 +502,8 @@ class ShiftRegister:
 
         Returns the actual print_time the write started at.
         """
+        if self._use_spi:
+            return self._write_register_spi(print_time)
         if print_time < self._last_write_end:
             print_time = self._last_write_end
         mcu_freq = self.mcu.seconds_to_clock(1.0)
@@ -337,6 +511,10 @@ class ShiftRegister:
 
         state = self.state
         t = print_time
+        # Publish the end time BEFORE generating: a request arriving while the
+        # commands are being sent must see this write as in-flight, or it would
+        # schedule an overlapping bitbang.
+        self._last_write_end = t + dt * (self.num_bits * 3 + 3)
 
         # Shift out MSB first (bit num_bits-1 down to bit 0).
         for i in range(self.num_bits - 1, -1, -1):
@@ -353,13 +531,51 @@ class ShiftRegister:
         t += dt
         self._latch_pin.set_digital(t, 0)
 
-        self._last_write_end = t + dt
-
         logging.debug(
             "shift_register '%s': wrote 0x%04x at print_time=%.6f",
             self.name, state, print_time)
 
         return print_time
+
+    def _write_register_spi(self, print_time):
+        """
+        Shift the current register state out via the software SPI bus and
+        strobe LATCH.
+
+        The shift-out executes on the MCU as soon as the `spi_send` command
+        is received (synchronous bit-bang in the command dispatcher, no move
+        nodes, no timer events -- safe even mid-move). The LATCH strobe is
+        the only queue_digital_out traffic: 2 move nodes per write instead
+        of the bitbang's 33-50, which was overflowing the ATmega32U4's move
+        node pool when a write piled onto a gear move's steps.
+
+        The LATCH is scheduled `max(print_time, now + 10ms)` so it always
+        fires well after the shift-out lands on the MCU (serial latency +
+        transfer time are far below 10ms).
+
+        Returns the actual print_time the LATCH fires at (when the new
+        state becomes visible on the outputs).
+        """
+        state = self.state
+        data = state.to_bytes(self.num_bits // 8, 'big')
+        reactor = self.printer.get_reactor()
+        curtime = reactor.monotonic()
+        now_pt = self.mcu.estimated_print_time(curtime)
+        latch_t = max(print_time, now_pt + 0.010)
+        # Publish the end time BEFORE sending: a request arriving while the
+        # write is in flight must see it as such, or it would schedule an
+        # overlapping LATCH strobe.
+        self._last_write_end = latch_t + 0.001
+        self._spi.send(data)
+        # Pulse LATCH to transfer shift register contents to output register.
+        self._latch_pin.set_digital(latch_t, 1)
+        self._latch_pin.set_digital(latch_t + 0.001, 0)
+
+        logging.debug(
+            "shift_register '%s': wrote 0x%04x (spi) latch_t=%.6f",
+            self.name, state, latch_t)
+
+        return latch_t
 
     # -- Status ------------------------------------------------------------------
 

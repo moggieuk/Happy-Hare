@@ -38,7 +38,8 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_GEAR_DIR
     default "$(MCU_NAME):PD5"   # Dummy -- real DIR is on the shift register
   config PIN_GEAR_DIR_SR
-    default "!mmu_sr:0"
+    default "mmu_sr:0"   # NOT inverted -- positive gear moves must LOAD filament
+                         # (verified live: the `!` made positive moves unload)
   config PIN_GEAR_ENABLE
     default "!mmu_sr:1"
   config PIN_GEAR_DIAG
@@ -88,6 +89,8 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
 
   # Gate filament sensor (single sensor shared by all gates)
   config PIN_SHARED_EXIT_SENSOR
-    default "!$(MCU_NAME):PF6"
+    default "$(MCU_NAME):PF6"   # NOT inverted -- verified on the live MMU3: the
+                                # sensor reports filament present when the opto
+                                # is blocked; the `!` inversion read it backwards
 
 endif

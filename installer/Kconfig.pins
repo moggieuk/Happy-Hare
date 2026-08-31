@@ -170,9 +170,7 @@ menu "Pins / TMC"
   config PIN_SR_LATCH
     string
 
-  @repeat var=i min=0 max=11@
-
-    @repeat var=i min=4 max=11@
+  @repeat var=i min=4 max=11@
     config PIN_GATE_ENDSTOP_$(i)
       string
   @endrepeat@
