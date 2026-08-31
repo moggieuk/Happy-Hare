@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 #
-# Happy Hare MMU Software
+# Happy Hare v4 MMU Software
 #
 # Installer / Updater launch script with familiar options
 #
-# Carefully written to only use options that are widely available
+# Carefully written to only use shell options that are widely available
 # Please report any incompatibility via github issue
 #
 
