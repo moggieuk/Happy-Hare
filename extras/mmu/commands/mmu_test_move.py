@@ -33,7 +33,7 @@ class MmuTestMoveCommand(MoveMixin, BaseCommand):
         + "ALLOW_BYPASS = [0|1]  Ignore bypass check\n"
         + "MOVE         = mm     Specify the move distance (default 100)\n"
         + "SPEED        = mm/s   Optionally override the default speed\n"
-        + "ACCEL        = mm/s^2 Optionally override the default accelarateion\n"
+        + "ACCEL        = mm/s^2 Optionally override the default acceleration\n"
         + "MOTOR        = [gear|extruder|gear+extruder|synced] Select motor to operation on (default: gear)\n"
         + "GRIP         = 1      To retain grip on filament after move for type-A testing\n"
         + "WAIT         = 0      Don't wait for move to complete (default 1 makes move synchronous)\n"

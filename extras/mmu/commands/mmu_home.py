@@ -33,7 +33,7 @@ class MmuHomeCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD} UNIT=ALL              ...Home all mmu units with selector kinimatics\n"
+        + f"{CMD} UNIT=ALL              ...Home all mmu units with selector kinematics\n"
         + f"{CMD} UNIT=ALL SKIP_HOMED=1 ...Home only units that are not already homed\n"
         + f"{CMD} UNIT=1              ...Home unit 1\n"
     )

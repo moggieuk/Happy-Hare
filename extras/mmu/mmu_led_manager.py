@@ -539,7 +539,7 @@ class MmuLedManager:
         return self.mmu.reactor.NEVER
 
 
-    # Make the necessary configuration changes to LED accross all mmu_units
+    # Make the necessary configuration changes to LED across all mmu_units
     #
     # Effects for LED segments when not providing "action status feedback" can be:
     # any effect name, "r,g,b" color, or built-in functional effects:
@@ -556,7 +556,7 @@ class MmuLedManager:
             'logo': logo_effect,
         }
 
-        # Helper functions to make core logic simplier...
+        # Helper functions to make core logic simpler...
 
         # Iteration wrapper to easily detect the last loop
         def with_last(iterable):

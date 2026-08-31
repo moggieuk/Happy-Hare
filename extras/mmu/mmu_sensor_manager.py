@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Manager to centralize mmu_sensor operations accross mmu_units and to swap in the
+# Goal: Manager to centralize mmu_sensor operations across mmu_units and to swap in the
 #       appropriate set of "active" sensors as selected gate/unit changes (via events)
 #
 # (\_/)
@@ -190,7 +190,7 @@ class MmuSensorManager:
     def _handle_gate_selected(self, gate, prev_gate):
         """
         Handler for gate changed event
-        Reset the relevent sensor list based on current gate handling bypass and unknown
+        Reset the relevant sensor list based on current gate handling bypass and unknown
         """
         if gate == TOOL_GATE_UNKNOWN:
             unit = self.mmu.unit_selected
@@ -674,7 +674,7 @@ class MmuSensorManager:
         """
         Common helper that defines sensors and relationship to filament_pos state for easy filament tracing.
         Note:
-            Buffer based compression/tension sensor and excoder virtual sensor are excluded since they
+            Buffer based compression/tension sensor and encoder virtual sensor are excluded since they
             are not simple filament present or not switches
         Returns {sensor_name: True/False/None} where None means sensor disabled.
         """

@@ -991,8 +991,8 @@ class Kconfig(object):
         # Regular expressions for parsing .config files
         # Orig: _re_match(self.config_prefix + r"([^=]+)=(.*)")
         #       _re_match(r"# {}([^ ]+) is not set".format(self.config_prefix))
-        self._set_match = _re_match(r"{0}([^=]+)=(.*?)(?={1}$|$)({1})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modifed to include DEFAULT marker as group 3
-        self._unset_match = _re_match(r"# {}([^ ]+) is not set({})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modifed to include DEFAULT marker as group 3
+        self._set_match = _re_match(r"{0}([^=]+)=(.*?)(?={1}$|$)({1})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modified to include DEFAULT marker as group 3
+        self._unset_match = _re_match(r"# {}([^ ]+) is not set({})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modified to include DEFAULT marker as group 3
 
         self.config_header = os.getenv("KCONFIG_CONFIG_HEADER", "")
         self.header_header = os.getenv("KCONFIG_AUTOHEADER_HEADER", "")
@@ -1721,7 +1721,7 @@ class Kconfig(object):
                        expr_value(node.visibility) and \
                        node is not self.top_node:
                         # Happy Hare: Orig: add("# end of {}\n".format(node.prompt[0]))
-                        # Happy Hare: Reformated and indented
+                        # Happy Hare: Reformatted and indented
                         indent = "  " * max(menu_depth - 1, 0)
                         add("# {}end of {}\n".format(indent, node.prompt[0]))
                         after_end_comment = True
@@ -1774,7 +1774,7 @@ class Kconfig(object):
                   item is COMMENT):
 
                 # Happy Hare: Orig: add("\n#\n# {}\n#\n".format(node.prompt[0]))
-                # Happy Hare: Reformated and indented
+                # Happy Hare: Reformatted and indented
                 indent = "  " * menu_depth
                 add("# {}{}\n".format(indent, node.prompt[0]))
                 after_end_comment = False
@@ -4918,7 +4918,7 @@ class Symbol(object):
                                 num2str(low), num2str(high)))
                 else:
                     # If the user value is well-formed and satisfies range
-                    # contraints, it is stored in exactly the same form as
+                    # constraints, it is stored in exactly the same form as
                     # specified in the assignment (with or without "0x", etc.)
                     val = self.user_value
                     use_defaults = False

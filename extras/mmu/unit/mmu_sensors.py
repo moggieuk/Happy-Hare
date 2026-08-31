@@ -6,7 +6,7 @@
 # Goal: Easy setup of all filament sensors for mmu_unit
 #
 # Pre-gate sensors:
-#   Simplifed filament switch sensor easy configuration of mmu entry sensors used to detect runout and insertion of filament
+#   Simplified filament switch sensor easy configuration of mmu entry sensors used to detect runout and insertion of filament
 #   and preload into gate and update gate_map when possible to do so based on MMU state, not printer state
 #   Essentially this uses the default `filament_switch_sensor` but then replaces the runout_helper
 #   Each has name `mmu_entry_X` where X is gate number

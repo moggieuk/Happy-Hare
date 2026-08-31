@@ -36,7 +36,7 @@ class MmuTestHomingMoveCommand(MoveMixin, BaseCommand):
         + "ENDSTOPS     = Comma separated list of endstops (only physical switch endstop possible)\n"
         + "STOP_ON_ENDSTOP = [-1|0|1] 1 for extrude, -1 for retract, 0 for don't stop\n"
         + "SPEED        = mm/s   Optionally override the default speed\n"
-        + "ACCEL        = mm/s^2 Optionally override the default accelarateion\n"
+        + "ACCEL        = mm/s^2 Optionally override the default acceleration\n"
         + "MOTOR        = [gear|extruder|gear+extruder] Select motor to operation on (default: gear)\n"
         + "WAIT         = [0|1]  Wait for move to complete (make move synchronous)\n"
         + "DEBUG        = [0|1]  Turn on developer stepper movement debugging\n"

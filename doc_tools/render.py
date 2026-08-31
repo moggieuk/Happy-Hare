@@ -17,7 +17,7 @@ import os
 from collections import Counter
 
 # The xterm names pyte reports, in the shades a screenshot wants: readable rather
-# than literal. 256-colour and truecolour cells arrive as bare hex and pass through.
+# than literal. 256-colour and truecolor cells arrive as bare hex and pass through.
 #
 # The dark end of this palette is load-bearing, not decoration. menuconfig writes
 # white-on-blue for the selection bar and, in the aquatic style the multi-unit entry
@@ -63,7 +63,7 @@ def _colour(value, fallback):
         return fallback
     if value in NAMED:
         return NAMED[value]
-    return '#' + value      # pyte hands 256/truecolour through as raw hex
+    return '#' + value      # pyte hands 256/truecolor through as raw hex
 
 
 def _contrast_fg(bg_hex):

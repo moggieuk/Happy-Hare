@@ -93,7 +93,7 @@ class MmuStepLoadBowdenCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "LENGTH    = mm   Override the default calibrated bowden length)\n"
-        + "START_POS = mm   Postion of filament past the gate homing point at start of move\n"
+        + "START_POS = mm   Position of filament past the gate homing point at start of move\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"

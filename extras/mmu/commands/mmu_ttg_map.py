@@ -33,7 +33,7 @@ class MmuTtgMapCommand(BaseCommand):
         + "GATE      = g \n"
         + "GATE      = g Specify the gate\n"
         + "TOOL      = t Specify the tool\n"
-        + "AVAILABLE = [0|1] Optionally specify the filament availablity in the gate\n"
+        + "AVAILABLE = [0|1] Optionally specify the filament availability in the gate\n"
         + "(no parameters for status report)\n"
     )
     HELP_SUPPLEMENT = (

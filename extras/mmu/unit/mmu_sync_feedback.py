@@ -6,7 +6,7 @@
 #
 # Goal: Class to handle sync-feedback and adjustment of gear stepper rotation distance
 #       to keep MMU in sync with extruder as well as some filament tension routines.
-#       This will always exist even in the absense of a mmu_buffer - flowguard is
+#       This will always exist even in the absence of a mmu_buffer - flowguard is
 #       available with just encoder.
 #
 # FlowGuard: It also implements protection for all modes/sensor types that will trigger
@@ -319,7 +319,7 @@ class MmuSyncFeedback:
     def adjust_filament_tension(self, use_gear_motor=True, max_move=None):
         """
         Relax the filament tension, preferring proportional control if available else sync-feedback sensor switches.
-        By default uses gear stepper to achive the result but optionally can use just extruder stepper for
+        By default uses gear stepper to achieve the result but optionally can use just extruder stepper for
         extruder entry check using compression sensor 'max_move' is advisory maximum travel distance
         Returns distance of the correction move and whether operation was successful (or None if not performed)
         """
@@ -635,7 +635,7 @@ class MmuSyncFeedback:
             if self.p.flowguard_enabled and self.flowguard_active:
                 self.mmu.log_error("FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
-                # Pick most appropriate sensor to assign event to (primariliy for optics)
+                # Pick most appropriate sensor to assign event to (primarily for optics)
                 has_tension, has_compression, has_proportional = self.get_active_sensors()
 
                 if has_proportional:
@@ -795,7 +795,7 @@ class MmuSyncFeedback:
     def _get_sensor_state(self, use_virtual_threshold=False):
         """
         Get current tension state based on current sensor feedback.
-        Arg 'use_virtual_threshold' forces a descrete {-1, 0, 1) output even from proportional sensor
+        Arg 'use_virtual_threshold' forces a discrete {-1, 0, 1) output even from proportional sensor
         Returns float in range [-1.0 .. 1.0] for proportional, {-1, 0, 1) for switch
         """
         sm = self.mmu.sensor_manager

@@ -4,7 +4,7 @@
 #                          moggieuk@hotmail.com
 #
 # Goal: Manager class to handle all aspects of MMU unit calibration and autotuning. In
-#       paricular manage persistence of bowden lengths and gear rotation distances.
+#       particular manage persistence of bowden lengths and gear rotation distances.
 #
 # Implements commands:
 #   MMU_CALIBRATE_GEAR
@@ -247,7 +247,7 @@ class MmuCalibrator:
         else:                          # From encoder to gate_endstop
             adjustment = mmu_unit.p.gate_endstop_to_encoder
 
-        # Undate any calibrated value
+        # Update any calibrated value
         self._bowden_lengths = [length + adjustment if length != UNCALIBRATED else length for length in self._bowden_lengths]
         mmu.log_debug(
             f"Adjusted bowden lengths by {adjustment:.1f}mm: {self._bowden_lengths} "

@@ -74,7 +74,7 @@ class Upgrades:
 
 # Upgrade from v3 is possible but difficult and requires a lot of testing. Therefore for
 # now I'm going to assume at least a v4.0.0 starting point for sanity. In case I ever
-# add upgrade from previous versions, the logic is mostely here:
+# add upgrade from previous versions, the logic is mostly here:
 #    def upgrade_2_70_to_2_71(self, cfg):
 #        cfg = cfg.hhcfg
 #

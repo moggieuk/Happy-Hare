@@ -124,7 +124,7 @@ class MmuStatusCommand(BaseCommand):
 
         if mmu.gate_selected >= 0:
             fil_pos_str = FILAMENT_POS_NAME_MAP.get(mmu.filament_pos, "INVALID")
-            lines.append(f"\nFilament positon believed to be: {fil_pos_str}")
+            lines.append(f"\nFilament position believed to be: {fil_pos_str}")
 
         if config:
 

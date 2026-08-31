@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Container for all parameters relating to logical mmu (i.e. all parameters shared accross units)
+# Goal: Container for all parameters relating to logical mmu (i.e. all parameters shared across units)
 #
 # (\_/)
 # ( *,*)
@@ -104,7 +104,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('extruder_form_tip_current',     'int',   100,  section="TOOLHEAD/EXTRUDER", limits=dict(minval=100, maxval=150)),
         ParamSpec('extruder_purge_current',        'int',   100,  section="TOOLHEAD/EXTRUDER", limits=dict(minval=100, maxval=150)),
 
-        # Filament move speeds and accelaration
+        # Filament move speeds and acceleration
         ParamSpec('extruder_load_speed',           'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
         ParamSpec('extruder_unload_speed',         'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
         ParamSpec('extruder_sync_load_speed',      'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),

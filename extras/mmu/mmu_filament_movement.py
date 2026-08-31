@@ -3503,7 +3503,7 @@ class MmuFilamentMovement:
         # First check sensors in filament path
         detected = self.sensor_manager.check_any_sensors_in_path()
 
-        # Check resting postion of sprung sync-feedback buffer for positive identification of filament
+        # Check resting position of sprung sync-feedback buffer for positive identification of filament
         if not detected and u.has_buffer():
             resting_state = u.buffer.buffer_spring_state_num
             state = u.sync_feedback._get_sensor_state(use_virtual_threshold=True) # Get discrete state
@@ -3825,7 +3825,7 @@ class MmuFilamentMovement:
     def wrap_sync_gear_to_extruder(self):
         """
         Preserve sync state across a block. Grip restoration is only performed by
-        the outermost wrapper, because it is often noisey / expensive on type-A MMUs.
+        the outermost wrapper, because it is often noisy / expensive on type-A MMUs.
 
         Yields:
             self while nested operations may temporarily alter sync and grip state.

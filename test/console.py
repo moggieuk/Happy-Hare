@@ -562,7 +562,7 @@ class Console:
         self.hh.heat_extruder(a.temp)
 
         # A PHYSICAL selector needs calibrating and homing before it can select a gate, and an
-        # uncalibrated one refuses with "Selector is not clibrated". No-op on a VirtualSelector
+        # uncalibrated one refuses with "Selector is not calibrated". No-op on a VirtualSelector
         # machine, so this costs the older profiles nothing.
         if preloading:
             self._preload_all()

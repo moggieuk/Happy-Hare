@@ -1670,7 +1670,7 @@ class PN532SPIDriver(_PN532Base):
         return None
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Low-level SPI debug tools -- WIP, not implementtedho
+    # Low-level SPI debug tools -- WIP, not implemented yet
     # ─────────────────────────────────────────────────────────────────────────
 
     def low_level_raw_write(self, data):

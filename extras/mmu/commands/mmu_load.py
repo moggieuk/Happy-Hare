@@ -67,7 +67,7 @@ class MmuLoadCommand(BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament load
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during filament load
                     if mmu.filament_pos != FILAMENT_POS_UNLOADED:
                         mmu.log_always("Filament already loaded")
                         return
@@ -91,6 +91,6 @@ class MmuLoadCommand(BaseCommand):
                     mmu._persist_swap_statistics()
 
         except MmuError as ee:
-            mmu.handle_mmu_error("%s.\nOccured when loading tool: %s" % (str(ee), mmu._last_toolchange))
+            mmu.handle_mmu_error("%s.\nOccurred when loading tool: %s" % (str(ee), mmu._last_toolchange))
             if mmu.tool_selected == TOOL_GATE_BYPASS:
                 mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN)

@@ -92,7 +92,7 @@ class MmuGateMapCommand(BaseCommand):
         try:
             gate_map = ast.literal_eval(gmapstr)
         except Exception as e:
-            mmu.log_error("Recieved unparsable gate map update. See log for more details")
+            mmu.log_error("Received unparsable gate map update. See log for more details")
             mmu.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
             return
 
@@ -236,7 +236,7 @@ class MmuGateMapCommand(BaseCommand):
 
                         spool_id = self._safe_int(fil.get('spool_id', -1))
                         if (not from_spoolman or spool_id != -1):
-                            # Update attributes but don't allow spoolman to accidently clear
+                            # Update attributes but don't allow spoolman to accidentally clear
                             status = self._safe_int(fil.get('status', mmu.gate_status[gate_idx]))
                             if status == GATE_EMPTY and mmu.gate_status[gate_idx] != GATE_EMPTY:
                                 mmu.gate_maps.clear_gate_attributes(gate_idx)

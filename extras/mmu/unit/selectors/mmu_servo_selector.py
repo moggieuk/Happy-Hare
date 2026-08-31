@@ -427,7 +427,7 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
         + "UNIT    = #(int) Optional if only one unit fitted to printer\n"
         + "ANGLE   = #(int) Move servo to designated angle\n"
         + "GATE    = #(int) Specify the gate by it's global logical index\n"
-        + "LGATE   = #(int) Speficy gate by the local mmu unit index (same as GATE with single MMU unit)\n"
+        + "LGATE   = #(int) Specify gate by the local mmu unit index (same as GATE with single MMU unit)\n"
         + "SAVE    = 1      To persist the calibration results else they will just be reported\n"
         + "SINGLE  = 1      To force the calibration of a single gate only\n"
         + "SPACING = #(int) Angle between gates for quick setting all gates\n"
