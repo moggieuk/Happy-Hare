@@ -798,7 +798,7 @@ else
   kalico="${HOME}/klipper/klippy/__init__.py"
 fi
 
-if [ -f ${kalico} ]; then
+if [ -f "${kalico}" ]; then
     if grep -q '^APP_NAME[[:space:]]*=[[:space:]]*"Kalico"' \
         "${kalico}" 2>/dev/null; then
         if [ "${F_OVERRIDE_CHECKS}" = "y" ]; then
