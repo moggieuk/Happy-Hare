@@ -29,30 +29,10 @@ logging.getLogger().setLevel(logging.CRITICAL)
 
 WARMUP = 12.0       # past the 8s effect_initialized state flash
 
-# GATES NEED NOT ALL CARRY THE SAME NUMBER OF LEDS.
-#
-# EMU is the shape where this is real: MMU_HAS_PER_GATE_MCU gives every gate its own
-# [neopixel _unit0_gateN_leds] chain, and exit_leds/entry_leds are generated with ONE LINE
-# PER GATE. So a lane wired with four exit pixels sitting next to lanes wired with one is a
-# perfectly ordinary machine - and that per-line grouping is the only statement of intent
-# there is: "neopixel:_unit0_gate4_leds (1-6)" on its own line says gate 4 owns six LEDs.
-#
-# `num_leds // num_gates` threw that away. Below, exit is 1,1,1,1,6 = 10 LEDs over 5 gates,
-# which divides, so the old code did not even complain - it silently handed every gate 2 and
-# slid four of the five gates onto pixels belonging to a different lane.
-LEDS_UNEVEN = profiles.EMU.derive(
-    'leds_uneven',
-    syms={
-        'BOARD_TYPE_EBB_GEN1': True,
-        'PARAM_CHAIN_COUNT': 7,
-        'PARAM_EXIT_LEDS': ('neopixel:_unit0_gate0_leds (1); neopixel:_unit0_gate1_leds (1); '
-                            'neopixel:_unit0_gate2_leds (1); neopixel:_unit0_gate3_leds (1); '
-                            'neopixel:_unit0_gate4_leds (1-6)'),
-        'PARAM_ENTRY_LEDS': ('neopixel:_unit0_gate0_leds (2); neopixel:_unit0_gate1_leds (2); '
-                             'neopixel:_unit0_gate2_leds (2); neopixel:_unit0_gate3_leds (2); '
-                             'neopixel:_unit0_gate4_leds (7)'),
-    },
-    description='EMU - gate 4 carries 6 exit LEDs, every other gate one')
+# Gate 4 carries six exit LEDs, every other gate one. Registered in test/hh/profiles.py
+# rather than built here so `make console --profile leds_uneven` can drive it too - see the
+# comment on the profile for why EMU is the shape where this is a real machine.
+LEDS_UNEVEN = profiles.LEDS_UNEVEN
 
 
 class LedTestCase(unittest.TestCase):

@@ -453,6 +453,32 @@ EMU_EBB = EMU.derive(
     },
     description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, exit LEDs on gate 0')
 
+# GATES THAT DO NOT ALL CARRY THE SAME NUMBER OF LEDS. Gate 4 has six exit pixels; every
+# other gate has one.
+#
+# EMU is where this is real rather than contrived: a per-gate MCU gives each gate its own
+# [neopixel _unit0_gateN_leds] chain, and exit_leds/entry_leds are generated with ONE LINE
+# PER GATE - so that per-line grouping is what says who owns what. The mapping used to be
+# derived as num_leds // num_gates instead, and note the shape below is chosen so that it
+# DIVIDES: 1+1+1+1+6 is 10 over 5 gates, so the old code did not complain, it just handed
+# every gate 2 and pointed four of the five lanes at another lane's pixels.
+#
+# chain_count is one value for all five chains, so gates 0-3 carry unused pixels here. That
+# is a property of the installer, not of the mapping under test.
+LEDS_UNEVEN = EMU.derive(
+    'leds_uneven',
+    syms={
+        'BOARD_TYPE_EBB_GEN1': True,
+        'PARAM_CHAIN_COUNT': 7,
+        'PARAM_EXIT_LEDS': ('neopixel:_unit0_gate0_leds (1); neopixel:_unit0_gate1_leds (1); '
+                            'neopixel:_unit0_gate2_leds (1); neopixel:_unit0_gate3_leds (1); '
+                            'neopixel:_unit0_gate4_leds (1-6)'),
+        'PARAM_ENTRY_LEDS': ('neopixel:_unit0_gate0_leds (2); neopixel:_unit0_gate1_leds (2); '
+                             'neopixel:_unit0_gate2_leds (2); neopixel:_unit0_gate3_leds (2); '
+                             'neopixel:_unit0_gate4_leds (7)'),
+    },
+    description='EMU 1.0 - gate 4 carries 6 exit LEDs, every other gate one')
+
 # BoxTurtle plus an encoder, homing to it instead of to the gate switch. KMS also ships an
 # encoder, but its exit sensors win the default homing choice, so _home_to_gate's encoder branch
 # (extras/mmu/mmu_filament_movement.py:206-231) is a completely different algorithm from
@@ -671,7 +697,7 @@ run_current: 0.6
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
 CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, KMS, QIDI,
-                    EMU, EMU_EBB, ENCODER,
+                    EMU, EMU_EBB, LEDS_UNEVEN, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                     NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
