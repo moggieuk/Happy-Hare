@@ -205,6 +205,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('extruder_force_homing',            'int',       0, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
         ParamSpec('extruder_homing_endstop',          'choice', SENSOR_EXTRUDER_NONE, section="EXTRUDER MOVE", choices={o: o for o in EXTRUDER_ENDSTOPS}),
         ParamSpec('extruder_homing_max',              'float',  50.0, section="EXTRUDER MOVE", limits=dict(above=10.0)),
+        ParamSpec('extruder_homing_sync',             'int',       0, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
         ParamSpec('extruder_collision_homing_step',   'int',       3, section="EXTRUDER MOVE", limits=dict(minval=2, maxval=5), guard=_guard_has_encoder),
         ParamSpec('toolhead_homing_max',              'float',  20.0, section="EXTRUDER MOVE", limits=dict(minval=0.0),         guard=_guard_has_sensor(SENSOR_TOOLHEAD)),
         ParamSpec('toolhead_unload_safety_margin',    'float',  10.0, section="EXTRUDER MOVE", limits=dict(minval=0.0)),

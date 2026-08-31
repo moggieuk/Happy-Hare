@@ -279,6 +279,23 @@ menu "Endstops and Bowden movement"
       The maximum distance filament will travel attempting to home
       to the extruder. Should be greater than "Bowden load homing buffer"
 
+  config BOOL_EXTRUDER_HOMING_SYNC
+    bool "Sync extruder with gear during extruder homing?"
+    default n
+    help
+      Drive the extruder in sync with the gear while homing to the extruder
+      endstop. Needed when the entry sensor only trips if the extruder gear
+      moves -- either the filament must be pulled through the gears to reach a
+      sensor past them, or the sensor is tripped by the gear being physically
+      pushed as the filament engages it (e.g. an MK3S IR entry sensor). A
+      stationary gear (holding or cogging) can't move, so the filament slips at
+      the MMU gear and the sensor never triggers.
+
+  config PARAM_EXTRUDER_HOMING_SYNC
+    int
+    default 1 if BOOL_EXTRUDER_HOMING_SYNC
+    default 0
+
   if MMU_HAS_SENSOR_TOOLHEAD
     config BOOL_EXTRUDER_FORCE_HOMING
       bool "Force extruder homing"

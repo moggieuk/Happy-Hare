@@ -1491,15 +1491,23 @@ class MmuFilamentMovement:
                 )
 
         else:
+            homing_motor = "gear+extruder" if u.p.extruder_homing_sync else "gear"
             self.log_debug(
                 f"Homing to extruder '{u.p.extruder_homing_endstop}' endstop "
-                f"up to {homing_max:.1f}mm"
+                f"up to {homing_max:.1f}mm (motor: {homing_motor})"
             )
 
+            # When 'extruder_homing_sync' is set, drive the extruder in sync with
+            # the gear. Some entry sensors only trip when the extruder gear
+            # itself moves: either the filament must be pulled through the gears
+            # to reach a sensor past them, or the sensor is tripped by the gear
+            # being physically pushed as the filament engages it (e.g. the MK3S
+            # IR sensor). A stationary gear (holding or cogging) can't move, so
+            # the filament slips at the MMU gear and the sensor never triggers.
             homing_movement, homed, measured, _ = self.move_filament(
                 "Homing filament to extruder endstop",
                 homing_max,
-                motor="gear",
+                motor=homing_motor,
                 homing_move=1,
                 endstop_name=u.p.extruder_homing_endstop,
             )
@@ -1518,7 +1526,7 @@ class MmuFilamentMovement:
                     actual, _, measured, _ = self.move_filament(
                         "Aligning filament to extruder gear",
                         u.toolhead_wrapper.p.toolhead_entry_to_extruder,
-                        motor="gear",
+                        motor=homing_motor,
                     )
                     homing_movement += actual
 

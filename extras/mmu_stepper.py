@@ -897,14 +897,21 @@ class MmuStepper(ExtruderStepper):
         mcu = vpin.get_mcu()
         curtime = self.printer.get_reactor().monotonic()
         now_pt = mcu.estimated_print_time(curtime)
-        sched_time = now_pt + 0.100
+        base = move_time if move_time is not None else now_pt
+        # Schedule the bitbang strictly AFTER the previous move's steps. The
+        # ~25ms, 50-event write monopolizes the AVR timer; if it overlaps step
+        # execution the ISR contention stalls steps and backs up the MCU move
+        # queue ("Move queue overflow" -- verified on the live MMU3 with 2-3
+        # writes piled up around a gear move). Scheduling past `base` (the end
+        # of the previous move) plus the deferred-start margin below lands the
+        # write in the quiet window between moves.
+        sched_time = max(now_pt + 0.100, base + 0.005)
         actual_time = vpin.set_digital(sched_time, new_dir)
         self._dir_sr_last = new_dir
         # Bitbang ends ~25ms after its actual (possibly deferred) start;
         # add a margin for the pacing. Using the deferred start keeps the
         # move from overlapping another stepper's in-flight SR write.
         write_end = actual_time + 0.035
-        base = move_time if move_time is not None else now_pt
         return max(0., write_end - base)
 
 

@@ -109,6 +109,35 @@ if MMU_TYPE_PRUSA_MMU3_3_0
       with the shift register bitbang burst overflowed the MCU move queue
       ("Move queue overflow" -- verified on the live MMU3).
 
+  # ------------------------------------------------------------------
+  # Gear move speeds for the MMU3's ATmega32U4 (2.5KB RAM, ~115 move
+  # queue nodes). Klipper's queue_step compression can only group ~2-4
+  # steps per command through the acceleration phase, so the accel-phase
+  # step budget (v^2 / 2a * steps_per_mm) must stay small. With the gear
+  # at 165 steps/mm that means keeping v^2/2a under ~0.7mm; the generic
+  # 100mm/s / accel 100 defaults make the accel phase 50mm long and shut
+  # the MCU down on every gear move ("Move queue overflow" -- verified
+  # on the live MMU3: 25mm/s at accel 50 fails, accel >= ~400 passes).
+  # Cruise compression is excellent, so only the accel/decel phases pay.
+
+  config PARAM_GEAR_LOAD_SPEED
+    default 25
+    help
+      Bowden load speed for the MMU3 AVR. v^2/2a = 0.39mm at accel 800
+      keeps the accel-phase step burst within the move queue budget.
+  config PARAM_GEAR_LOAD_ACCEL
+    default 800
+  config PARAM_GEAR_UNLOAD_SPEED
+    default 25
+  config PARAM_GEAR_UNLOAD_ACCEL
+    default 800
+  config PARAM_GEAR_SHORT_MOVE_SPEED
+    default 30
+    help
+      Short move speed for the MMU3 AVR (accel phase 0.56mm at accel 800).
+  config PARAM_GEAR_SHORT_MOVE_ACCEL
+    default 800
+
   config PARAM_IDLER_GEAR_RATIO
     default "1:1"
   config PARAM_IDLER_ROTATION_DISTANCE
@@ -143,6 +172,15 @@ if MMU_TYPE_PRUSA_MMU3_3_0
       stop, 8-6 false-trigger on the homing acceleration transient; 10
       trips reliably at the silicone after full travel (verified on the
       live MMU3).
+
+  # MMU3 has no purge bucket/waste chute of its own -- the shipped standalone
+  # purge macro just dumps filament in place wherever the toolhead happens to
+  # be parked. Default to letting the slicer's wipe tower handle purging
+  # instead (remember to enable it in the slicer if you rely on this default).
+  config BOOL_FORCE_PURGE_STANDALONE
+    default n
+  config PARAM_FORCE_PURGE_STANDALONE
+    default 0
 
   config CUSTOM_LED_SETUP
     def_bool y

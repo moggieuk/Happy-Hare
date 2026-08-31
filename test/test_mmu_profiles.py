@@ -207,7 +207,7 @@ class TestEveryBootableProfile(unittest.TestCase):
             'idler': unit.selector.idler.idler_stepper,
         }
         expected_bit = {'gear': 0, 'selector': 2, 'idler': 4}
-        expected_invert = {'gear': 1, 'selector': 0, 'idler': 0}  # !mmu_sr:0, mmu_sr:2, mmu_sr:4
+        expected_invert = {'gear': 0, 'selector': 0, 'idler': 0}  # mmu_sr:0, mmu_sr:2, mmu_sr:4 (gear NOT inverted: positive moves load, verified live)
 
         for name, stepper in steppers.items():
             with self.subTest(stepper=name):

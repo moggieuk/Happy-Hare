@@ -559,6 +559,70 @@ class TestPrusaIdlerSelector(SelectorTestCase):
         self.assertEqual(idler.get_filament_grip_state(), FILAMENT_RELEASE_STATE)
         self.assertEqual(self.hh.errors, [])
 
+    def test_sr_writes_coalesce_into_a_single_pending_bitbang(self):
+        """
+        Rapid state changes must merge into one pending bitbang instead of
+        generating a 50-command write per change. Back-to-back bitbangs
+        piling up around a gear move overflowed the MMU3 AVR's move queue
+        ("Move queue overflow" -- the live failure this package fixes).
+        """
+        sr = self.hh.printer.lookup_object('shift_register mmu_sr')
+        reactor = self.hh.printer.get_reactor()
+        mcu = sr.mcu
+        now_pt = mcu.estimated_print_time(reactor.monotonic())
+
+        # Normalize: flush any pending write left by homing and anchor the
+        # in-flight end at the current print position (the harness clock is
+        # offset negative; the RELATIVE times are what matter).
+        sr._pending_write_start = None
+        sr._last_write_end = now_pt
+
+        # First change schedules a pending write well in the future (not yet
+        # generated).
+        start = sr._set_bit_at_time(4, 1, now_pt + 10.0)   # idler DIR
+        self.assertIsNotNone(sr._pending_write_start)
+        timer1 = sr._pending_timer
+
+        # A second change arrives before generation: merges into the SAME
+        # pending write -- identical scheduled start, no second timer, and
+        # the state already reflects both bits.
+        start2 = sr._set_bit_at_time(5, 1, now_pt + 10.05)  # idler ENABLE
+        self.assertEqual(start2, start)
+        self.assertIs(sr._pending_timer, timer1)
+        self.assertEqual((sr.state >> 4) & 1, 1)
+        self.assertEqual((sr.state >> 5) & 1, 1)
+
+        # Firing the pending write generates ONE bitbang covering both bits
+        sr._fire_pending_write(reactor.monotonic())
+        self.assertIsNone(sr._pending_write_start)
+        self.assertGreater(sr._last_write_end, start)
+
+    def test_sr_led_writes_defer_while_steps_execute(self):
+        """
+        LED bits (led_mask 0xFF00) are cosmetic: a write requested while the
+        toolhead has steps queued past the MCU's actual position is pushed to
+        ~150ms past the execution horizon instead of bitbanging mid-move.
+        """
+        sr = self.hh.printer.lookup_object('shift_register mmu_sr')
+        reactor = self.hh.printer.get_reactor()
+        mcu = sr.mcu
+        now_pt = mcu.estimated_print_time(reactor.monotonic())
+
+        # Normalize (see coalescing test): the harness clock is offset
+        # negative, so anchor the in-flight end at the current position.
+        sr._pending_write_start = None
+        sr._last_write_end = now_pt
+
+        toolhead = self.hh.printer.lookup_object('toolhead')
+        setattr(toolhead, 'print_time', now_pt + 1.0)   # simulate busy
+        try:
+            start = sr._set_bit_at_time(8, 1, now_pt + 0.105)  # LED bit 8
+            self.assertEqual(start, now_pt + 0.150)  # deferred past horizon
+            self.assertEqual((sr.state >> 8) & 1, 1)
+        finally:
+            delattr(toolhead, 'print_time')
+
+
     def test_drive_after_home_moves_to_the_gate(self):
         idler, axis = self.idler(), self.idler_axis()
         self.hh.run_gcode('MMU_SELECT GATE=0')
@@ -573,13 +637,13 @@ class TestPrusaIdlerSelector(SelectorTestCase):
         lives on the SHR16 shift register (dir_sr_pin config) and is written
         from Python before every move through the resolved ShiftRegisterBit.
 
-        After MMU_HOME the idler sits DISENGAGED at the far end (the homing
-        reselect parks it there), so a move to gate 2 is backward (logical
-        dir 1 -> physical 1 without inversion) and a move to gate 5 is
-        forward (logical dir 0 -> physical 0). The idler homes toward the
-        silicone stop at position 0, so the DIR bit is NOT inverted
-        (mmu_sr:4) -- with the old ! inversion the homing pressed the far
-        hard endstop instead (verified on the live MMU3).
+        After MMU_HOME the idler sits at position 0 (the silicone stop it
+        homed against), so a move to gate 2 is forward (logical dir 0 ->
+        physical 0) and a move back to gate 0 is backward (logical dir 1 ->
+        physical 1 without inversion). The idler homes toward the silicone
+        stop at position 0, so the DIR bit is NOT inverted (mmu_sr:4) --
+        with the old ! inversion the homing pressed the far hard endstop
+        instead (verified on the live MMU3).
         """
         idler = self.idler()
         sr = self.hh.printer.lookup_object('shift_register mmu_sr')
@@ -590,10 +654,10 @@ class TestPrusaIdlerSelector(SelectorTestCase):
         self.assertEqual(vpin._bit_num, 4)   # Idler DIR is SR bit 4
         self.assertEqual(vpin._invert, 0)    # config says mmu_sr:4 (no inversion)
 
-        idler._set_idler_to_gate(2)   # 40 -> 16: backward, dir 1 -> physical 1
-        self.assertEqual((sr.state >> 4) & 1, 1)
-        idler._set_idler_to_gate(5)   # 16 -> 40: forward, dir 0 -> physical 0
+        idler._set_idler_to_gate(2)   # 0 -> 16: forward, dir 0 -> physical 0
         self.assertEqual((sr.state >> 4) & 1, 0)
+        idler._set_idler_to_gate(0)   # 16 -> 0: backward, dir 1 -> physical 1
+        self.assertEqual((sr.state >> 4) & 1, 1)
 
 
 class TestMultiUnitSelectors(SelectorTestCase):
