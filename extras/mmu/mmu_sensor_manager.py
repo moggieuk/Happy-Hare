@@ -99,9 +99,9 @@ class MmuSensorManager:
                 if (
                     not mmu_unit.require_bowden_move
                     and gate_sensors.get(SENSOR_EXTRUDER_ENTRY)
-                    and SENSOR_SHARED_EXIT not in self.gate_sensors
+                    and SENSOR_SHARED_EXIT not in gate_sensors
                 ):
-                    self.gate_sensors.update(collect_sensors([(mmu_unit.toolhead_wrapper.extruder_sensor, SENSOR_SHARED_EXIT)]))
+                    gate_sensors[SENSOR_SHARED_EXIT] = gate_sensors[SENSOR_EXTRUDER_ENTRY]
 
                 suffixed_gate_sensors = collect_sensors([
                     (mmu_unit.sensors.entry_sensors.get(gate), self.get_gate_sensor_name(SENSOR_ENTRY_PREFIX, gate)),
