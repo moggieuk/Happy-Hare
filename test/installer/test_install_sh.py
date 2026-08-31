@@ -181,6 +181,38 @@ class TestInstallSh(unittest.TestCase):
         self.assertTrue((testdir / ".mmu_config_unit0").exists())
         self.assertFalse((repo_dest / ".mmu_config").exists())
 
+    def test_recovery_options_are_noops_on_first_install(self):
+        config_home = self.root / "printer_data" / "config"
+        repo_dest = self.root / "happy-hare"
+        repo_dest.mkdir()
+
+        result = self.run_shell("""
+            SCRIPT_DIR={repo}
+            CONFIG_KLIPPER_CONFIG_HOME={config}
+            TESTDIR=
+            recover_last_config
+            recover_previous_config
+        """.format(
+            repo=shlex.quote(str(repo_dest)),
+            config=shlex.quote(str(config_home)),
+        ))
+
+        self.assertEqual(result.stdout.count("No MMU configuration containing"), 2)
+        self.assertFalse(config_home.exists())
+        self.assertEqual(list(repo_dest.iterdir()), [])
+
+    def test_v3_choice_precedes_recovery_in_installer_main(self):
+        script = INSTALL_SH.read_text(encoding="utf-8")
+        v3_choice = script.index(
+            'if [ "${F_SKIP_UPDATE}" != "force" ] && [ ! "${F_YES}" ] '
+            '&& v3_detected; then'
+        )
+        recovery = script.index(
+            'if { [ "${F_RECOVER_LAST}" ] || [ "${F_RECOVER_PREVIOUS}" ]; } '
+            '&& [ ! "${F_CONFIG_RECOVERED}" ]; then'
+        )
+        self.assertLess(v3_choice, recovery)
+
     def make_v3_install(self):
         config_home = self.root / "printer_data" / "config"
         self.write(

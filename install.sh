@@ -593,9 +593,15 @@ if { [ "${F_RECOVER_LAST}" ] || [ "${F_RECOVER_PREVIOUS}" ]; } && [ "${F_UNINSTA
     exit 1
 fi
 
+# Settle v3 vs v4 before recovery, self-update, or installation work. Detection
+# only inspects the existing v3 files and does not source a .mmu_config file.
+if [ "${F_SKIP_UPDATE}" != "force" ] && [ ! "${F_YES}" ] && v3_detected; then
+    offer_v3_v4_choice
+fi
+
 # Recovery must remain in this early preflight position. In particular, it must
-# run before self-update, v3 detection, KCONFIG_CONFIG setup, or any code that
-# sources a .mmu_config file. Only option, platform, and root-safety checks precede it.
+# run before self-update, KCONFIG_CONFIG setup, or any code that sources a
+# .mmu_config file. Only option/platform/root checks and the v3 choice precede it.
 if { [ "${F_RECOVER_LAST}" ] || [ "${F_RECOVER_PREVIOUS}" ]; } && [ ! "${F_CONFIG_RECOVERED}" ]; then
     if [ "${F_RECOVER_PREVIOUS}" ]; then
         recover_previous_config
@@ -603,13 +609,6 @@ if { [ "${F_RECOVER_LAST}" ] || [ "${F_RECOVER_PREVIOUS}" ]; } && [ ! "${F_CONFI
         recover_last_config
     fi
     export F_CONFIG_RECOVERED=y
-fi
-
-# Settle v3 vs v4 before self-update or installation work (see
-# offer_v3_v4_choice for why). Non-interactive callers keep the checkout's
-# current branch; choosing a migration policy requires a human decision.
-if [ "${F_SKIP_UPDATE}" != "force" ] && [ ! "${F_YES}" ] && v3_detected; then
-    offer_v3_v4_choice
 fi
 
 # Handle git self update or branch change
