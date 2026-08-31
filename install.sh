@@ -376,7 +376,9 @@ offer_v3_v4_choice() {
         echo "${C_INFO}Switching to the 'v3' branch...${C_OFF}"
         export BRANCH=v3
         "$SCRIPT_DIR/installer/self_update.sh" || exit 1
-        F_SKIP_UPDATE=force exec "$0" "$@"
+        # The branch switch above already fetched and pulled v3. Its installer uses
+        # SKIP_UPDATE (rather than v4's F_SKIP_UPDATE) to suppress a redundant update.
+        SKIP_UPDATE=YES F_SKIP_UPDATE=force exec "$0" "$@"
     else
         echo "${C_WARNING}Proceeding with the v4 upgrade. Your v3 'mmu' config directory will be${C_OFF}"
         echo "${C_WARNING}renamed to 'mmu.V3' for reference - nothing is deleted.${C_OFF}"

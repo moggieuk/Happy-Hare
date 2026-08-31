@@ -322,7 +322,7 @@ class TestInstallSh(unittest.TestCase):
         reexec = self.write(
             self.root / "reexec.sh",
             "#!/bin/sh\n"
-            "printf '%s:%s\\n' \"$BRANCH\" \"$F_SKIP_UPDATE\" "
+            "printf '%s:%s:%s\\n' \"$BRANCH\" \"$F_SKIP_UPDATE\" \"$SKIP_UPDATE\" "
             ">\"$TEST_LOG/reexec\"\n",
         )
         reexec.chmod(0o755)
@@ -344,7 +344,7 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("[update_manager other]\nprimary_branch: other-main", moonraker)
         self.assertIn("[update_manager happy-hare]\nprimary_branch: v3", moonraker)
         self.assertEqual((log_dir / "self-update").read_text().strip(), "v3")
-        self.assertEqual((log_dir / "reexec").read_text().strip(), "v3:force")
+        self.assertEqual((log_dir / "reexec").read_text().strip(), "v3:force:YES")
 
     def test_v3_red_choice_backs_up_v3_and_cleans_for_v4(self):
         config_home = self.make_v3_install()
