@@ -133,6 +133,12 @@ if MMU_HAS_SELECTOR_SERVO
 
       config PARAM_SERVO_GATE_ANGLES
         string "Servo gate angles    "
+        array_editor "," PARAM_NUM_GATES
+        default "0, 180"                  if PARAM_SERVO_MAX_ANGLE = 180 && PARAM_NUM_GATES = 2
+        default "0, 90, 180"              if PARAM_SERVO_MAX_ANGLE = 180 && PARAM_NUM_GATES = 3
+        default "0, 60, 120, 180"         if PARAM_SERVO_MAX_ANGLE = 180 && PARAM_NUM_GATES = 4
+        default "0, 45, 90, 135, 180"     if PARAM_SERVO_MAX_ANGLE = 180 && PARAM_NUM_GATES = 5
+        default "0, 36, 72, 108, 144, 180" if PARAM_SERVO_MAX_ANGLE = 180 && PARAM_NUM_GATES = 6
         default "0, 180"                    if PARAM_NUM_GATES = 2
         default "0, 120, 240"               if PARAM_NUM_GATES = 3
         default "0, 90, 180, 270"           if PARAM_NUM_GATES = 4
@@ -140,11 +146,13 @@ if MMU_HAS_SELECTOR_SERVO
         default "0, 60, 120, 180, 240, 300" if PARAM_NUM_GATES = 6
         default ""
         help
-          CAUTION: default settings assume a 360 degree movement!
           Specify a list of angles representing the initial gate positions. This can avoid
           calibration but typically calibrated values (saved in 'mmu_vars.cfg') would override
           this setting.
           You may leave it blank to force user calibration.
+
+          Note: Defaults have been evenly distributed over 180 degrees when the configured servo selector
+          maximum is 180 otherwise evenly distributed over 360 degrees.
 
       config PARAM_SERVO_RELEASE_ANGLE
         int "Servo release angle  "

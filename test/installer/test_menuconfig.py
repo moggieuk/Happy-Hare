@@ -115,5 +115,34 @@ class TestMenuRendering(unittest.TestCase):
             win.writes, ["------- > FANS (^C); other arrows: ? ? ?"])
 
 
+class TestArrayEditorValidation(unittest.TestCase):
+
+    @staticmethod
+    def angle_symbol(gates=4):
+        return SimpleNamespace(
+            orig_type=menuconfig.STRING,
+            array_editor=",",
+            array_size_sym=SimpleNamespace(
+                orig_type=menuconfig.INT,
+                str_value=str(gates),
+                name="PARAM_NUM_GATES",
+            ),
+        )
+
+    def test_gate_sized_array_rejects_the_wrong_number_of_values(self):
+        with patch.object(menuconfig, "_error") as error:
+            self.assertFalse(menuconfig._check_valid(
+                self.angle_symbol(), "26,58,90"))
+
+        error.assert_called_once()
+        self.assertIn("Expected 4 value(s)", error.call_args.args[0])
+
+    def test_empty_array_remains_available_as_calibration_sentinel(self):
+        with patch.object(menuconfig, "_error") as error:
+            self.assertTrue(menuconfig._check_valid(self.angle_symbol(), ""))
+
+        error.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

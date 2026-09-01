@@ -3636,7 +3636,7 @@ def _check_valid(sym, s):
         # reference, validate the number of elements against the
         # referenced symbol's current value
         size_sym = getattr(sym, "array_size_sym", None)
-        if sym.orig_type == STRING and getattr(sym, "array_editor", None) \
+        if s and sym.orig_type == STRING and getattr(sym, "array_editor", None) \
            and size_sym is not None:
             base = 16 if size_sym.orig_type == HEX else 10
             try:
