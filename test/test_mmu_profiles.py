@@ -160,6 +160,13 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertFalse(unit.require_bowden_move)
         self.assertEqual(unit.calibrator.get_bowden_length(), 0)
         self.assertEqual(unit.p.gate_homing_endstop, 'extruder')
+        # Preload must cover the complete gate-to-extruder path. Once parked,
+        # ordinary gate homing only has to cover the 250 mm parking offset.
+        self.assertEqual(unit.p.gate_homing_max, 500)
+        self.assertEqual(unit.p.gate_parking_distance, -250)
+        self.assertEqual(unit.p.gate_preload_homing_max, 1500)
+        self.assertEqual(unit.p.gate_preload_parking_distance, -250)
+        self.assertEqual(unit.p.gate_final_eject_distance, 1500)
         extruder_sensor = unit.toolhead_wrapper.sensors['extruder']
         self.assertIsNotNone(extruder_sensor)
         for gate_sensors in hh.mmu.sensor_manager.gate_sensors:
