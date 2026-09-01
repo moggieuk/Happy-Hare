@@ -65,6 +65,7 @@ class MmuBuffer:
             None,
             switch_pin,
             event_delay=event_delay,
+            events=("clog", "tangle"),
             button_handler=self.sync_compression_callback,
             register=register
         )
@@ -77,6 +78,7 @@ class MmuBuffer:
             None,
             switch_pin,
             event_delay=event_delay,
+            events=("clog", "tangle"),
             button_handler=self.sync_tension_callback,
             register=register
         )

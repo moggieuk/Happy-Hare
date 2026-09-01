@@ -266,11 +266,8 @@ class FlowGuardSuppressionTestCase(unittest.TestCase):
     emu: the only shipped profile with an analog buffer sensor, so the only one with a real
     FlowGuard/proportional-sensor path to test against.
 
-    FlowGuard has no other test coverage (test/README.md's coverage map lists it as "none"),
-    and driving a real trip through the sync controller would mean modelling ADC behaviour
-    this suite has never exercised. _process_status is called directly instead, with a
-    minimal but real status shape, to test the one thing this change adds: the guard at its
-    note_clog_tangle dispatch site.
+    _process_status is called directly with a minimal but real status shape so the test can
+    target the dispatch guard without having to manufacture the preceding ADC history.
     """
 
     def setUp(self):
@@ -322,6 +319,63 @@ class FlowGuardSuppressionTestCase(unittest.TestCase):
 
         self._trip('clog')
         self.assertEqual(called, ['clog'])
+
+
+class DiscreteFlowGuardDispatchTestCase(unittest.TestCase):
+    """BoxTurtle's switch buffer must dispatch both FlowGuard event types."""
+
+    def setUp(self):
+        self.hh = session('boxturtle')
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.mmu = self.hh.mmu
+        self.sf = self.mmu.mmu_machine.units[0].sync_feedback
+        self.sf.flowguard_active = True
+
+    def tearDown(self):
+        self.hh.close()
+
+    def _trip(self, trigger):
+        calls = []
+
+        def capture_runout(**kwargs):
+            calls.append(kwargs)
+            self.mmu.pause_resume.send_resume_command()
+
+        self.mmu._runout = capture_runout
+        status = {
+            'output': {
+                'sensor_ui': 0.0,
+                'flowguard': {'trigger': trigger, 'reason': 'test'},
+                'autotune': {},
+                'rd_current': 1.0,
+                'rd_prev': 1.0,
+                'rd_tuned': 1.0,
+            }
+        }
+        pause_calls = self.mmu.pause_resume.pause_calls
+        resume_calls = self.mmu.pause_resume.resume_calls
+
+        self.sf._process_status(self.hh.reactor.monotonic(), status)
+        self.hh.reactor.advance(0.)
+
+        self.assertEqual(self.mmu.pause_resume.pause_calls, pause_calls + 1)
+        self.assertEqual(self.mmu.pause_resume.resume_calls, resume_calls + 1)
+        self.assertFalse(self.mmu.pause_resume.is_paused)
+        self.assertFalse(self.sf.flowguard_active)
+        return calls
+
+    def test_compression_sensor_dispatches_clog(self):
+        self.assertEqual(
+            self._trip('clog'),
+            [{'event_type': 'clog', 'sensor': 'unit0:filament_compression'}]
+        )
+
+    def test_tension_sensor_dispatches_tangle(self):
+        self.assertEqual(
+            self._trip('tangle'),
+            [{'event_type': 'tangle', 'sensor': 'unit0:filament_tension'}]
+        )
 
 
 class FlowGuardBufferStatusTestCase(unittest.TestCase):
