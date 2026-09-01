@@ -80,6 +80,10 @@ BOOTABLE = {
 # name them. Keep in step with TestSelectorCoverage.
 EXERCISED_BY_LATER_UNITS = {'IndexedSelector'}
 
+FILAMENT_POS_UNLOADED = 0
+FILAMENT_POS_LOADED = 10
+TIP_AT_GATE = -40.0
+
 
 class TestEveryBootableProfile(unittest.TestCase):
     """
@@ -150,16 +154,231 @@ class TestEveryBootableProfile(unittest.TestCase):
         hh = self._check('tradrack')
         self.assertTrue(hasattr(hh.mmu.mmu_unit(0).selector, 'selector_stepper'))
 
-    def test_3ms(self):
+    def test_3ms_load_unload_round_trip(self):
         hh = self._check('3ms')
         unit = hh.mmu.mmu_unit(0)
         self.assertFalse(unit.require_bowden_move)
+        self.assertEqual(unit.calibrator.get_bowden_length(), 0)
         self.assertEqual(unit.p.gate_homing_endstop, 'extruder')
         extruder_sensor = unit.toolhead_wrapper.sensors['extruder']
         self.assertIsNotNone(extruder_sensor)
         for gate_sensors in hh.mmu.sensor_manager.gate_sensors:
             self.assertIs(gate_sensors['extruder'], extruder_sensor)
             self.assertIs(gate_sensors['mmu_shared_exit'], extruder_sensor)
+
+        # Exercise the complete zero-Bowden choreography, not just construction of
+        # the alias: preload parks behind the extruder sensor, load homes straight
+        # back to it and enters the toolhead, then unload returns to the same park.
+        # A zero load buffer is deliberately smaller than the 8 mm entry-to-extruder
+        # offset. It used to make the adjusted buffer negative and turn subtracting
+        # that buffer into an unintended positive "fast Bowden" move.
+        unit.p.bowden_load_homing_buffer = 0.
+        load_bowden_results = []
+        unload_bowden_results = []
+        load_telemetry = []
+        unload_telemetry = []
+        unload_extruder_results = []
+        state_transitions = []
+        original_load_bowden = hh.mmu._load_bowden
+        original_unload_bowden = hh.mmu._unload_bowden
+        original_unload_extruder = hh.mmu._unload_extruder
+
+        def record_load_bowden(*args, **kwargs):
+            result = original_load_bowden(*args, **kwargs)
+            load_bowden_results.append(result)
+            return result
+
+        def record_unload_bowden(*args, **kwargs):
+            result = original_unload_bowden(*args, **kwargs)
+            unload_bowden_results.append(result)
+            return result
+
+        def record_unload_extruder(*args, **kwargs):
+            result = original_unload_extruder(*args, **kwargs)
+            unload_extruder_results.append(result)
+            return result
+
+        hh.mmu._load_bowden = record_load_bowden
+        hh.mmu._unload_bowden = record_unload_bowden
+        hh.mmu._unload_extruder = record_unload_extruder
+        unit.calibrator.note_load_telemetry = lambda *args: load_telemetry.append(args)
+        unit.calibrator.note_unload_telemetry = lambda *args: unload_telemetry.append(args)
+
+        model = hh.filament()
+        hh.place_filament(0, position=TIP_AT_GATE)
+        hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertAlmostEqual(model.tip[0], TIP_AT_GATE)
+
+        from extras.mmu.mmu_constants import (
+            FILAMENT_POS_HOMED_ENTRY,
+            FILAMENT_POS_HOMED_EXTRUDER,
+            FILAMENT_POS_IN_EXTRUDER,
+            GATE_AVAILABLE,
+        )
+        original_set_filament_pos_state = hh.mmu.set_filament_pos_state
+
+        def record_filament_pos_state(state, *args, **kwargs):
+            changed = hh.mmu.filament_pos != state
+            result = original_set_filament_pos_state(state, *args, **kwargs)
+            if changed:
+                state_transitions.append(state)
+            return result
+
+        hh.mmu.set_filament_pos_state = record_filament_pos_state
+
+        hh.heat_extruder(220)
+        hh.mmu.select_gate(0)
+        hh.run_gcode('MMU_LOAD')
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertGreater(model.tip[0], model.layout['extruder'])
+        self.assertEqual(state_transitions, [
+            FILAMENT_POS_HOMED_ENTRY,
+            FILAMENT_POS_HOMED_EXTRUDER,
+            FILAMENT_POS_LOADED,
+        ])
+
+        state_transitions.clear()
+        hh.run_gcode('MMU_UNLOAD')
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertAlmostEqual(model.tip[0], TIP_AT_GATE, places=3)
+        self.assertEqual(state_transitions, [
+            FILAMENT_POS_IN_EXTRUDER,
+            FILAMENT_POS_HOMED_ENTRY,
+            FILAMENT_POS_UNLOADED,
+        ])
+        self.assertEqual(load_bowden_results, [])
+        self.assertEqual(unload_bowden_results, [])
+        self.assertEqual(len(unload_extruder_results), 1)
+        self.assertIs(unload_extruder_results[0][2], True)
+        self.assertGreaterEqual(load_telemetry[0][2], 0.)
+        self.assertEqual(unload_telemetry[0][2], 0.)
+        self.assertEqual(hh.mmu.gate_status[0], GATE_AVAILABLE)
+
+        # mmu_shared_exit is an implementation alias for the extruder sensor,
+        # not a second physical switch. The parked filament should occupy its
+        # dedicated lane up to one clear sensor in the visual representation.
+        unloaded_visual = hh.mmu.get_filament_position_string()
+        self.assertEqual(unloaded_visual.count('◯'), 1)
+        self.assertGreater(unloaded_visual.split('◯', 1)[0].count('■'), 20)
+        self.assertEqual(hh.errors, [])
+
+    def test_3ms_unload_rehomes_when_extruder_datum_was_not_observed(self):
+        hh = self._check('3ms')
+        model = hh.filament()
+        hh.place_filament(0, position=TIP_AT_GATE)
+        hh.run_gcode('MMU_PRELOAD GATE=0')
+        hh.heat_extruder(220)
+        hh.mmu.select_gate(0)
+        hh.run_gcode('MMU_LOAD')
+
+        # Model the defensive path in _unload_extruder(): the entry sensor is
+        # already reported clear, so HOMED_ENTRY is only an assumption and must
+        # not be used as a precise reference for a direct parking move.
+        check_sensor = hh.mmu.sensor_manager.check_sensor
+
+        def report_extruder_clear(sensor):
+            if sensor == 'extruder':
+                return False
+            return check_sensor(sensor)
+
+        direct_parks = []
+        fallback_homes = []
+        fallback_homed_states = []
+        park_at_gate = hh.mmu._park_at_gate
+        unload_gate = hh.mmu._unload_gate
+        set_gate_homed_state = hh.mmu._set_gate_homed_state
+
+        def record_direct_park(*args, **kwargs):
+            direct_parks.append((args, kwargs))
+            return park_at_gate(*args, **kwargs)
+
+        def record_fallback_home(*args, **kwargs):
+            fallback_homes.append((args, kwargs))
+            return unload_gate(*args, **kwargs)
+
+        def record_fallback_homed_state(*args, **kwargs):
+            result = set_gate_homed_state(*args, **kwargs)
+            fallback_homed_states.append(hh.mmu.filament_pos)
+            return result
+
+        hh.mmu.sensor_manager.check_sensor = report_extruder_clear
+        hh.mmu._park_at_gate = record_direct_park
+        hh.mmu._unload_gate = record_fallback_home
+        hh.mmu._set_gate_homed_state = record_fallback_homed_state
+        hh.run_gcode('MMU_UNLOAD')
+
+        from extras.mmu.mmu_constants import FILAMENT_POS_HOMED_ENTRY
+        self.assertEqual(direct_parks, [])
+        self.assertEqual(len(fallback_homes), 1)
+        self.assertEqual(fallback_homed_states, [FILAMENT_POS_HOMED_ENTRY])
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertAlmostEqual(model.tip[0], TIP_AT_GATE, places=3)
+        self.assertEqual(hh.errors, [])
+
+    def test_3ms_recovery_uses_extruder_state_for_shared_entry_sensor(self):
+        hh = self._check('3ms')
+        model = hh.filament()
+        hh.mmu.select_gate(0)
+
+        from extras.mmu.mmu_constants import (
+            FILAMENT_POS_IN_EXTRUDER,
+            FILAMENT_POS_UNKNOWN,
+        )
+
+        # The shared entry sensor cannot prove how far filament extends into the
+        # toolhead. Treat a trigger conservatively so a subsequent unload starts
+        # with extraction, even when recovery is not permitted to heat and probe.
+        hh.place_filament(0, position=model.layout['extruder_entry'])
+        hh.mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN, silent=True)
+        hh.mmu.recover_filament_pos(strict=True, can_heat=False, silent=True)
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_IN_EXTRUDER)
+
+        # A clear shared entry sensor, with no other filament detection, is the
+        # normal parked state and must still recover as fully unloaded.
+        hh.place_filament(0, position=TIP_AT_GATE)
+        hh.mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN, silent=True)
+        hh.mmu.recover_filament_pos(strict=True, can_heat=False, silent=True)
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertEqual(hh.errors, [])
+
+    def test_extruder_gate_datum_does_not_change_bowden_unit_state(self):
+        hh = self._check('3ms')
+        unit = hh.mmu.mmu_unit(0)
+        unit.require_bowden_move = True
+        hh.place_filament(0, position=TIP_AT_GATE)
+        hh.mmu.select_gate(0)
+        hh.mmu._load_gate()
+
+        from extras.mmu.mmu_constants import (
+            FILAMENT_POS_HOMED_ENTRY,
+            FILAMENT_POS_HOMED_GATE,
+            FILAMENT_POS_UNKNOWN,
+        )
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_HOMED_GATE)
+
+        # The no-Bowden recovery override must not leak into a conventional
+        # Bowden unit: the same triggered sensor retains the pre-change
+        # HOMED_ENTRY result when a heated extruder check is unavailable.
+        hh.mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN, silent=True)
+        hh.mmu.recover_filament_pos(strict=True, can_heat=False, silent=True)
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_HOMED_ENTRY)
+
+    def test_bowden_homing_buffers_reject_negative_config(self):
+        from test.hh import profiles
+
+        for parameter in (
+                'PARAM_BOWDEN_LOAD_HOMING_BUFFER',
+                'PARAM_BOWDEN_UNLOAD_HOMING_BUFFER'):
+            with self.subTest(parameter=parameter):
+                profile = profiles.get('3ms').derive(
+                    '3ms_negative_%s' % parameter.lower(),
+                    syms={parameter: -1})
+                hh = session(profile)
+                self.addCleanup(hh.close)
+                with self.assertRaisesRegex(
+                        Exception,
+                        r"must have minimum of 0"):
+                    hh.boot()
 
     def test_chameleon(self):
         """

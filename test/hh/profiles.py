@@ -346,7 +346,17 @@ THREE_MS = Profile(
         'MMU_HAS_SENSOR_EXTRUDER': True,
         'PIN_EXTRUDER_SENSOR': 'mcu:PA7',
     },
-    description='3MS 1.0 - no-Bowden Type B homing at the extruder sensor')
+    description='3MS 1.0 - no-Bowden Type B homing at the extruder sensor',
+    # The console presents filament at -40 mm and 3MS parks 250 mm behind its
+    # extruder-entry datum. Put that datum at +210 mm so preload/load can reach it
+    # within gate_homing_max and unload returns to the exact presented position.
+    # Preserve the generic 40 mm extruder-to-toolhead spacing.
+    filament_layout={
+        'extruder_entry': 210.0,
+        'extruder': 210.0,
+        'toolhead': 250.0,
+        'filament_compression': 210.0,
+    })
 
 # 3D Chameleon: the ONLY profile with a RotarySelector, and the only machine where selecting a
 # gate is not a bijection with a carriage position. There is one gear motor for all four gates,
