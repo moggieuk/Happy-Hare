@@ -3586,6 +3586,21 @@ class Kconfig(object):
                     if self._tokens[self._tokens_i] is not None:
                         self._trailing_tokens_error()
 
+            elif t0 is _T_ARRAY_SIZE_MISMATCH: # Happy Hare: Added derived array length check
+                if node.item.__class__ is not Symbol:
+                    self._parse_error("array_size_mismatch is only valid for symbols")
+
+                target = self._tokens[self._tokens_i]
+                self._tokens_i += 1
+                if target.__class__ is not Symbol or target.is_constant:
+                    self._parse_error(
+                        "expected an unquoted symbol reference for "
+                        "array_size_mismatch")
+                if self._tokens[self._tokens_i] is not None:
+                    self._trailing_tokens_error()
+
+                node.item.array_size_mismatch = target
+
             elif t0 is None:
                 # Blank line
                 continue
@@ -3991,6 +4006,13 @@ class Kconfig(object):
                 if stop_sym is not None:
                     depend_on(sym, stop_sym)
                 depend_on(sym, cond)
+
+            # Happy Hare: Derived array-length warning predicates depend on
+            # both the array and its configured size symbol.
+            if sym.array_size_mismatch is not None:
+                depend_on(sym, sym.array_size_mismatch)
+                if sym.array_size_mismatch.array_size_sym is not None:
+                    depend_on(sym, sym.array_size_mismatch.array_size_sym)
 
             # The default values and their conditions
             for value, cond in sym.defaults:
@@ -4784,6 +4806,14 @@ class Symbol(object):
       value. Must be given unquoted in the Kconfig file -- a quoted string
       there is parsed as a constant rather than a symbol reference.
 
+    array_size_mismatch:
+      Happy Hare: Added. None for ordinary symbols. For a BOOL symbol with an
+      'array_size_mismatch ARRAY' property, references the STRING symbol to
+      validate. The BOOL evaluates to y when ARRAY is non-empty and its number
+      of elements differs from ARRAY's array_size_sym value. Empty arrays stay
+      valid because some selectors deliberately require calibration instead
+      of shipping potentially unsafe gate angles.
+
     is_allnoconfig_y:
       True if the symbol has 'option allnoconfig_y' set on it. This has no
       effect internally (except when printing symbols), but can be checked by
@@ -4808,6 +4838,7 @@ class Symbol(object):
         "_write_to_conf",
         "array_editor", # Happy Hare: Added
         "array_size_sym", # Happy Hare: Added
+        "array_size_mismatch", # Happy Hare: Added
         "choice",
         "defaults",
         "generated_defaults", # Happy Hare: Added
@@ -5020,6 +5051,29 @@ class Symbol(object):
 
             self._cached_tri_val = 0
             return 0
+
+        # Happy Hare: A promptless derived bool used by Kconfig warnings to
+        # catch array values loaded from an existing config. The interactive
+        # array editor rejects the same mismatch before accepting an edit.
+        if self.array_size_mismatch is not None:
+            # Populate _cached_vis as the normal bool path does. Recursive
+            # invalidation uses it to know this derived value was evaluated.
+            self.visibility
+            target = self.array_size_mismatch
+            size_sym = target.array_size_sym
+            mismatch = False
+            if target.str_value and size_sym is not None:
+                base = 16 if size_sym.orig_type == HEX else 10
+                try:
+                    expected = int(size_sym.str_value, base)
+                except ValueError:
+                    pass
+                else:
+                    mismatch = len(target.str_value.split(target.array_editor)) != expected
+
+            self._write_to_conf = False
+            self._cached_tri_val = 2 if mismatch else 0
+            return self._cached_tri_val
 
         # Warning: See Symbol._rec_invalidate(), and note that this is a hidden
         # function call (property magic)
@@ -5393,6 +5447,7 @@ class Symbol(object):
         self.env_var = \
         self.array_editor = \
         self.array_size_sym = \
+        self.array_size_mismatch = \
         self._cached_str_val = self._cached_tri_val = self._cached_vis = \
         self._cached_assignable = None
 
@@ -7710,7 +7765,8 @@ except AttributeError:
     _T_VISIBLE,
     _T_BOOLINT,      # Happy Hare: Added; appended to preserve existing token values
     _T_DEF_BOOLINT,  # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 58) # Happy Hare: Added custom tokens through BOOLINT
+    _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 59) # Happy Hare: Added custom tokens through ARRAY_SIZE_MISMATCH
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -7718,6 +7774,7 @@ _get_keyword = {
     "---help---":     _T_HELP,
     "allnoconfig_y":  _T_ALLNOCONFIG_Y,
     "array_editor":   _T_ARRAY_EDITOR, # Happy Hare: Added
+    "array_size_mismatch": _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added
     "bool":           _T_BOOL,
     "boolean":        _T_BOOL,
     "boolint":        _T_BOOLINT, # Happy Hare: Added
