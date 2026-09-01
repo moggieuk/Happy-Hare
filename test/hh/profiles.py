@@ -343,7 +343,6 @@ THREE_MS = Profile(
     syms={
         'MMU_TYPE_3MS_1_0': True,
         'BOARD_TYPE_MMB_2_0': True,
-        'MMU_HAS_SENSOR_EXTRUDER': True,
         'PIN_EXTRUDER_SENSOR': 'mcu:PA7',
     },
     description='3MS 1.0 - no-Bowden Type B homing at the extruder sensor',
