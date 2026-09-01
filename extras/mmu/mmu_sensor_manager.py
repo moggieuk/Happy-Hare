@@ -515,6 +515,21 @@ class MmuSensorManager:
         return None
 
 
+    def check_event_sensor(self, name, gate=None):
+        """
+        Return the current state of the exact sensor named by a queued event.
+
+        Unlike check_sensor(), this resolves against the stable global registry rather
+        than active_sensors_map. Event delivery may lag behind a gate or unit selection,
+        so checking the active generic sensor can inspect a different physical switch.
+        """
+        mmu_unit = self.mmu.mmu_unit(gate) if gate is not None and gate >= 0 else None
+        _qualified, sensor, _error = self.resolve_sensor(name, mmu_unit=mmu_unit)
+        if sensor is not None and sensor.runout_helper.sensor_enabled:
+            return bool(sensor.runout_helper.filament_present)
+        return None
+
+
     def check_gate_sensor(self, name, gate):
         """
         Return per-gate sensor state or None if unavailable/disabled.

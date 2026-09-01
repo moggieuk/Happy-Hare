@@ -689,6 +689,23 @@ class TestBootupOutput(unittest.TestCase):
         self.assertFalse(console.hh.sensor('mmu_exit_1').present)
         self.assertEqual(console.fil.tip[1], console_mod.TIP_AT_GATE)
 
+    def test_insert_after_exhaust_refills_and_fires_vivid_entry_sensor(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'ercf_vvd', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            console.meta('/exhaust 11')
+            self.assertFalse(console.hh.sensor('mmu_entry_11').present)
+            console.meta('/advance 0.51')  # Clear the entry sensor's event_delay window
+            console.meta('/insert 11')
+
+        self.assertIn('Preloading gate 11', output.getvalue())
+        self.assertEqual(console.fil.tail[11], float('-inf'))
+        self.assertTrue(console.hh.sensor('mmu_entry_11').present)
+        self.assertEqual(console.hh.mmu.gate_status[11], 1)
+
     def test_reset_rebuilds_the_profile_startup_state(self):
         console = console_mod.Console(console_mod.parse_args(
             ['--profile', 'boxturtle', '--no-log', '--plain']))

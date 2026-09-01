@@ -81,12 +81,29 @@ class MmuSensorRunoutCommand(BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
 
-                if sensor and mmu.sensor_manager.check_sensor(sensor):
-                    mmu.log_assertion("Runout handler suspects sensor malfunction on %s. Ignored" % raw_sensor)
+                # Events may be delivered after another gate or unit was selected. Read
+                # the exact sensor named by the event, not a generic sensor in the active map.
+                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate)
+
+                if sensor and sensor_state is not False:
+                    state = "still detects filament" if sensor_state is True else "cannot be read"
+                    mmu.log_assertion(
+                        "Runout handler suspects sensor malfunction on %s (%s). Ignored"
+                        % (raw_sensor, state)
+                    )
 
                 else:
-                    # Always update gate map from mmu entry sensor, even if the event is stale
-                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate != mmu.gate_selected:
+                    is_entry = sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None
+                    is_eject_gate = (
+                        is_entry
+                        and mmu.endless_spool_enabled
+                        and mmu.p.endless_spool_eject_gate == gate
+                    )
+
+                    # Always update the gate map from a confirmed-clear entry sensor,
+                    # including the selected gate and stale/suspended events. The one
+                    # exception is a designated waste gate actively consuming filament.
+                    if is_entry and not is_eject_gate:
                         mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
 
                     if duplicate or suspended:
@@ -102,8 +119,8 @@ class MmuSensorRunoutCommand(BaseCommand):
                             mmu.log_debug(msg)
 
                     # Real runout to process...
-                    elif sensor.startswith(SENSOR_ENTRY_PREFIX) and gate == mmu.gate_selected:
-                        if mmu.endless_spool_enabled and mmu.p.endless_spool_eject_gate == gate:
+                    elif is_entry and gate == mmu.gate_selected:
+                        if is_eject_gate:
                             mmu.log_trace(
                                 "Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate"
                                 % raw_sensor

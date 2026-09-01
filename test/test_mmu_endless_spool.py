@@ -144,6 +144,16 @@ class TestRunoutSwapsGate(EndlessSpoolTestCase):
         self.assertIn('runout', announced)
         self.assertIn('endlessspool', announced.replace(' ', ''))
 
+    def test_gate_zero_can_be_used_as_the_designated_waste_gate(self):
+        self.hh.mmu.p.endless_spool_eject_gate = 0
+
+        original = self.load_and_run_out(tool=1)
+
+        self.assertEqual(original, 1, 'test must run out a gate other than the waste gate')
+        self.assertTrue(any('designated waste gate 0' in msg for msg in self.hh.console))
+        self.assertNotEqual(self.hh.mmu.gate_selected, 0,
+                            'replacement filament must be selected after waste ejection')
+
     def test_successive_runouts_walk_through_the_group(self):
         """
         Three spools in a row. Each runout must find the next available gate rather than

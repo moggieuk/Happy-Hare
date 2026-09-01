@@ -1678,6 +1678,7 @@ class Console:
     def _meta_place(self, args):
         gate = int(args[0])
         pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
+        self.fil.refill(gate, sync=False)
         self.hh.place_filament(gate, position=pos)
 
     def _meta_insert(self, args):
@@ -1688,6 +1689,7 @@ class Console:
             raise ValueError('gate must be between 0 and %d' % (self.hh.mmu.num_gates - 1))
         pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
         mark = len(self.sink)
+        self.fil.refill(gate, sync=False)
         self.hh.place_filament(gate, position=pos, quiet=False)
         self._settle_moonraker()
         self._drain(mark)
@@ -1707,6 +1709,7 @@ class Console:
 
     def _meta_preload(self, args):
         gate = int(args[0])
+        self.fil.refill(gate, sync=False)
         self.hh.place_filament(gate, position=TIP_AT_GATE)
         self.run_command('MMU_PRELOAD GATE=%d' % gate)
 
