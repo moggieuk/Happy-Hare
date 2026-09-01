@@ -93,6 +93,18 @@ class MmuFilamentMovement:
         )
 
 
+    def _set_gate_homed_state(self, profile):
+        """Publish the physical state represented by a gate homing datum."""
+        self.set_filament_pos_state(
+            FILAMENT_POS_HOMED_ENTRY
+            if (
+                profile.endstop == SENSOR_EXTRUDER_ENTRY
+                and not self.mmu_unit().require_bowden_move
+            )
+            else FILAMENT_POS_HOMED_GATE
+        )
+
+
     def _shared_gate_path_occupied(self, endstop, gate):
         """
         True if 'endstop' is a per-UNIT resource shared by every gate on that unit (not
@@ -423,7 +435,10 @@ class MmuFilamentMovement:
                     # Don't reset if filament is buffered
                     self.gate_maps.set_gate_status(
                         gate, max(self.gate_status[gate], GATE_AVAILABLE))
-                    self.set_filament_pos_state(FILAMENT_POS_HOMED_GATE)
+                    # On a no-Bowden design the gate datum is the extruder-entry
+                    # sensor itself, so publish the physical location rather than
+                    # pretending that a separate gate/Bowden boundary was reached.
+                    self._set_gate_homed_state(profile)
                     self.log_trace_exit(f"_home_to_gate() => (overshoot={overshoot})")
                     return overshoot, tag_read
 
@@ -450,9 +465,10 @@ class MmuFilamentMovement:
 
     def _park_at_gate(self, profile, label="unload"):
         """
-        Primitive: park the filament when it is already standing ON the gate datum, having
-        just homed forward onto it. There is nothing to search for, so this is the parking
-        move and nothing else.
+        Primitive: park the filament when it is already standing at a known gate datum.
+        This may be the trigger point after homing forward or, for a no-bowden layout, the
+        release point after homing backward from the same sensor. There is nothing to
+        search for, so this is the parking move and nothing else.
 
         Encoder "homing" has no datum - it stops an unknown distance past the point motion
         was first detected - so there is nothing to park from and that case delegates to
@@ -530,7 +546,7 @@ class MmuFilamentMovement:
                 endstop_name=endstop_name,
             )
             if homed:
-                self.set_filament_pos_state(FILAMENT_POS_HOMED_GATE)
+                self._set_gate_homed_state(profile)
                 self.move_filament("Final parking", profile.parking_distance)
                 self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
                 self.log_trace_exit(f"_park_from_gate() => (homing_movement={homing_movement})")
@@ -1226,11 +1242,11 @@ class MmuFilamentMovement:
                 # This can easily happen when your parking distance is configured to park the filament past the
                 # gate sensor instead of behind the gate sensor and the filament position is determined to be
                 # "somewhere in the bowden tube"
-                # NOT _park_at_gate(): that one's precondition is a FORWARD home onto the
-                # datum, and this arrived at the switch RELEASE point coming backward.
-                # Direction and validation already ran at the top of this block.
+                # Keep this recovery inline because it owns the early return and preserves
+                # the measured homing movement. Direction and validation already ran at
+                # the top of this block.
                 if homed:
-                    self.set_filament_pos_state(FILAMENT_POS_HOMED_GATE)
+                    self._set_gate_homed_state(profile)
                     self.move_filament("Final parking", profile.parking_distance)
                     self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
                     self.log_trace_exit(f"_unload_gate() => (homing_movement={homing_movement})")
@@ -1303,8 +1319,9 @@ class MmuFilamentMovement:
 
         full = (length == bowden_length or length is None)
 
-        # Compensate for distance already moved for gate homing endstop (e.g. overshoot after encoder based gate homing)
-        length -= start_pos
+        # Compensate for distance already moved for gate homing endstop (e.g. overshoot after encoder based gate homing).
+        # A homing overshoot can consume the entire requested move, but can never leave a negative physical move.
+        length = max(length - start_pos, 0.)
 
         try:
             # Do we need to reduce bowden move by buffer amount to ensure we don't overshoot homing sensor
@@ -1319,6 +1336,10 @@ class MmuFilamentMovement:
                     # (because the bowden length is always recorded as distance to extruder gear)
                     extruder_homing_buffer -= u.toolhead_wrapper.p.toolhead_entry_to_extruder
 
+                # A reserved buffer must only subtract from the remaining fast move. In
+                # particular, a large entry-to-extruder offset must not make the buffer
+                # negative and turn its subtraction into an unintended forward move.
+                extruder_homing_buffer = min(max(extruder_homing_buffer, 0.), length)
                 length -= extruder_homing_buffer # Reduce fast move distance
 
             ratio = None
@@ -1447,11 +1468,12 @@ class MmuFilamentMovement:
         if bowden_length > 0 and not self.calibrating:
             length = min(length, bowden_length) # Cannot exceed calibrated distance
 
-        # Compensate for distance already moved whilst unloading extruder
-        length -= start_pos
+        # Compensate for distance already moved whilst unloading extruder. An extruder
+        # overshoot can consume the entire requested move, but cannot leave a negative move.
+        length = max(length - start_pos, 0.)
 
         # Shorten move to provide gate unload buffer used to ensure we don't overshoot homing point
-        gate_homing_buffer = u.p.bowden_unload_homing_buffer
+        gate_homing_buffer = min(u.p.bowden_unload_homing_buffer, length)
         length -= gate_homing_buffer
 
         try:
@@ -2032,14 +2054,17 @@ class MmuFilamentMovement:
             validate: Whether encoder-based validation should be performed during unload.
 
         Returns:
-            tuple[bool, float]: Sync state, Overshoot
+            tuple[bool, float, bool]: Sync state, Overshoot, entry datum established
               Sync state: True when the unload finished in a synced state; otherwise False.
               Overshoot past the extruder reference point later stages should account for (positive value)
+              Entry datum established: True only when reverse homing physically cleared the
+              extruder-entry sensor; False when its position was assumed or not used.
         """
         u = self.mmu_unit()
         self.log_trace_entry(f"_unload_extruder(extruder_only={extruder_only}, validate={validate})")
 
         overshoot = 0.
+        entry_datum_established = False
         with self.wrap_action(ACTION_UNLOADING_EXTRUDER):
             self.log_debug("Extracting filament from extruder")
             self.set_filament_direction(DIRECTION_UNLOAD)
@@ -2098,6 +2123,7 @@ class MmuFilamentMovement:
                         homing_move=-1,
                         endstop_name=SENSOR_EXTRUDER_ENTRY,
                     )
+                    entry_datum_established = fhomed
 
                 if not fhomed:
                     raise MmuError("Failed to reach extruder entry sensor after moving %.1fmm" % actual)
@@ -2218,8 +2244,11 @@ class MmuFilamentMovement:
             self.movequeue_wait()
             self.log_debug("Filament should be out of extruder")
 
-            self.log_trace_exit(f"_unload_extruder() => (synced={synced}, overshoot={overshoot})")
-            return synced, overshoot
+            self.log_trace_exit(
+                f"_unload_extruder() => (synced={synced}, overshoot={overshoot}, "
+                f"entry_datum_established={entry_datum_established})"
+            )
+            return synced, overshoot, entry_datum_established
 
 
 # PAUL
@@ -2440,7 +2469,7 @@ class MmuFilamentMovement:
                     extruder_homing_buffer = 0.
                     bowden_move_ratio = None
 
-                    if start_filament_pos < FILAMENT_POS_END_BOWDEN:
+                    if u.require_bowden_move and start_filament_pos < FILAMENT_POS_END_BOWDEN:
                         # Homing buffer is the shortfall in desired bowden move
                         bowden_move_ratio, extruder_homing_buffer = self._load_bowden(bowden_move, start_pos=start_overshoot)
                         bowden_travel = bowden_move - extruder_homing_buffer
@@ -2650,7 +2679,11 @@ class MmuFilamentMovement:
 
             # Note: Conditionals deliberately coded this way to match macro alternative
             start_filament_pos = self.filament_pos
-            unload_to_buffer = (start_filament_pos >= FILAMENT_POS_END_BOWDEN and not extruder_only)
+            unload_to_buffer = (
+                u.require_bowden_move
+                and start_filament_pos >= FILAMENT_POS_END_BOWDEN
+                and not extruder_only
+            )
 
             if self.p.gcode_unload_sequence and calibrated:
                 self.log_debug("Calling external user defined unloading sequence macro")
@@ -2667,7 +2700,7 @@ class MmuFilamentMovement:
 
             elif extruder_only:
                 if start_filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY:
-                    synced_extruder_unload,_ = self._unload_extruder(extruder_only=True, validate=do_form_tip == FORM_TIP_STANDALONE)
+                    synced_extruder_unload,_,_ = self._unload_extruder(extruder_only=True, validate=do_form_tip == FORM_TIP_STANDALONE)
                 else:
                     raise MmuError("Cannot unload extruder because filament not detected in extruder! (state: %s)" % start_filament_pos)
 
@@ -2676,18 +2709,42 @@ class MmuFilamentMovement:
 
             else:
                 ext_unload_overshoot = 0.
+                extruder_entry_datum_established = False
                 if start_filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY:
                     # Exit extruder, fast unload of bowden, then slow unload to gate
-                    synced_extruder_unload, ext_unload_overshoot = self._unload_extruder(validate=do_form_tip == FORM_TIP_STANDALONE)
+                    (
+                        synced_extruder_unload,
+                        ext_unload_overshoot,
+                        extruder_entry_datum_established,
+                    ) = self._unload_extruder(
+                        validate=do_form_tip == FORM_TIP_STANDALONE
+                    )
 
                 if (
                     (start_filament_pos >= FILAMENT_POS_END_BOWDEN and calibrated) or
                     (start_filament_pos >= FILAMENT_POS_HOMED_GATE and not full)
                 ):
-                    # Fast unload of bowden, then unload gate
-                    bowden_move_ratio, gate_homing_buffer = self._unload_bowden(bowden_move, ext_unload_overshoot)
-                    homing_movement = self._unload_gate(gate_homing_buffer)
-                    bowden_travel = bowden_move - gate_homing_buffer - homing_movement
+                    if u.require_bowden_move:
+                        # Fast unload of bowden, then unload gate
+                        bowden_move_ratio, gate_homing_buffer = self._unload_bowden(bowden_move, ext_unload_overshoot)
+                        homing_movement = self._unload_gate(gate_homing_buffer)
+                        bowden_travel = bowden_move - gate_homing_buffer - homing_movement
+                    else:
+                        # No Bowden stage exists. If unloading the extruder just
+                        # reverse-homed off the same sensor used as the gate datum,
+                        # that release point is already the parking reference and a
+                        # second zero-distance home would only publish a false state.
+                        bowden_move_ratio = None
+                        gate_homing_buffer = 0.
+                        if (
+                            extruder_entry_datum_established
+                            and self.filament_pos == FILAMENT_POS_HOMED_ENTRY
+                            and u.p.gate_homing_endstop == SENSOR_EXTRUDER_ENTRY
+                        ):
+                            homing_movement = self._park_at_gate(self._gate_profile())
+                        else:
+                            homing_movement = self._unload_gate()
+                        bowden_travel = 0.
 
                     # Notify autotune manager
                     if full:
@@ -3439,6 +3496,13 @@ class MmuFilamentMovement:
                 elif prop_result is False:
                     self.log_info("Proportional sensor indicates no extruder grip - filament may not be fully loaded")
                     self.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=silent)
+
+        # On a no-Bowden unit the extruder-entry sensor is also the gate datum. A
+        # triggered level proves filament reached the entrance but cannot distinguish
+        # that point from filament extending through the extruder to the nozzle. Recover
+        # conservatively for a safe unload, even when heated checks are not allowed now.
+        elif es and not u.require_bowden_move:
+            self.set_filament_pos_state(FILAMENT_POS_IN_EXTRUDER, silent=silent)
 
         # Somewhere in extruder
         elif filament_detected and can_heat and self.check_filament_in_extruder():

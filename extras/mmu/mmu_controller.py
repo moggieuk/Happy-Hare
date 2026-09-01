@@ -757,8 +757,37 @@ class MmuController(MmuFilamentMovement):
         gate = self.gate_selected
         pos = self.filament_pos
         direction = self.filament_direction
-        gate_homing_endstop = self.mmu_unit().p.gate_homing_endstop
+        unit = self.mmu_unit()
+        gate_homing_endstop = unit.p.gate_homing_endstop
         gate_status = self.gate_status[gate] if gate >= 0 else GATE_UNKNOWN
+
+        # A no-Bowden unit aliases mmu_shared_exit to its extruder-entry sensor so
+        # generic gate homing can use it. That is one physical switch, not two
+        # landmarks in the visual path.
+        gate_sensor_sets = getattr(self.sensor_manager, 'gate_sensors', ())
+        selected_gate_sensors = (
+            gate_sensor_sets[gate]
+            if 0 <= gate < len(gate_sensor_sets)
+            else {}
+        )
+        shared_exit_is_extruder_alias = (
+            selected_gate_sensors.get(SENSOR_SHARED_EXIT) is not None
+            and selected_gate_sensors.get(SENSOR_SHARED_EXIT)
+                is selected_gate_sensors.get(SENSOR_EXTRUDER_ENTRY)
+        )
+
+        # UNLOADED normally means parked near the gate. For the aliased no-Bowden
+        # topology the dedicated lane itself runs to the extruder sensor, so render
+        # the parked filament through that lane and stop before the one real sensor.
+        render_pos = (
+            FILAMENT_POS_END_BOWDEN
+            if (
+                pos == FILAMENT_POS_UNLOADED
+                and gate_status != GATE_EMPTY
+                and shared_exit_is_extruder_alias
+            )
+            else pos
+        )
 
         status = self.get_status(0)
         if status['filament_remaining']:
@@ -797,19 +826,19 @@ class MmuController(MmuFilamentMovement):
             # A genuinely empty gate has nothing to show as "already passed"
             if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
                 return space
-            return arrow if pos >= target_pos else space
+            return arrow if render_pos >= target_pos else space
 
         def homed_segment(target_pos, label):
-            if pos > target_pos:
+            if render_pos > target_pos:
                 return arrow + label + arrow
-            if pos == target_pos:
+            if render_pos == target_pos:
                 return home + label + space
             return space + label + space
 
         def pad(target_pos, length):
-            if pos > target_pos:
+            if render_pos > target_pos:
                 return arrow * length
-            if pos == target_pos:
+            if render_pos == target_pos:
                 left = length - length // 2
                 right = length // 2
                 return arrow * left + space * right
@@ -834,7 +863,11 @@ class MmuController(MmuFilamentMovement):
         # here, so its reading is real evidence for THIS gate specifically
         # (unlike _gate_empty()'s at-rest presence check below, which excludes it
         # since a stale cross-gate reading is a real risk there).
-        PER_GATE_SENSORS = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT)
+        PER_GATE_SENSORS = (
+            (SENSOR_EXIT_PREFIX,)
+            if shared_exit_is_extruder_alias
+            else (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT)
+        )
 
         def _furthest_triggered_gate_sensor_index():
             index = -1
@@ -853,6 +886,8 @@ class MmuController(MmuFilamentMovement):
             if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is False:
                 return -1
             for i, s in enumerate(GATE_SENSOR_ORDER):
+                if s == SENSOR_SHARED_EXIT and shared_exit_is_extruder_alias:
+                    continue
                 if self.sensor_manager.has_sensor(s):
                     return i - 1
             return len(GATE_SENSOR_ORDER) - 1
@@ -945,6 +980,8 @@ class MmuController(MmuFilamentMovement):
             return gate_presence_marker()
 
         def gate_sensor_marker(sensor):
+            if sensor == SENSOR_SHARED_EXIT and shared_exit_is_extruder_alias:
+                return arrow if _passed_gate_sensor(sensor) else space
             # A fitted sensor's own reading is always shown; only an unfitted
             # one falls back to inferring passage from a further-along trigger.
             if self.sensor_manager.has_sensor(sensor):

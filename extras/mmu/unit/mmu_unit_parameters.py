@@ -277,8 +277,8 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),
-        ParamSpec('bowden_load_homing_buffer',        'float',  20.0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=500)),
-        ParamSpec('bowden_unload_homing_buffer',      'float',  40.0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=500)),
+        ParamSpec('bowden_load_homing_buffer',        'float',  20.0, section="BOWDEN MOVE", limits=dict(minval=0.0, maxval=500)),
+        ParamSpec('bowden_unload_homing_buffer',      'float',  40.0, section="BOWDEN MOVE", limits=dict(minval=0.0, maxval=500)),
         ParamSpec('bowden_apply_correction',          'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1),   guard=_guard_has_encoder),
         ParamSpec('bowden_allowable_encoder_delta',   'float',  20.0, section="BOWDEN MOVE", limits=dict(minval=1.0),           guard=_guard_has_encoder),
         ParamSpec('bowden_pre_unload_test',           'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1),   guard=_guard_has_encoder),
