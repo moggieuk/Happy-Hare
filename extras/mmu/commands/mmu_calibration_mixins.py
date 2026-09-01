@@ -284,7 +284,7 @@ class CalibrationMixin:
     def _calibrate_gate(self, gate, length, repeats, save=True):
         """
         Automatically calibrate the rotation_distance for gate>0 using encoder measurements and gate 0 as reference
-        Gate 0 is always calibrated with MMU_CALILBRATE_GEAR
+        Gate 0 is always calibrated with MMU_CALIBRATE_GEAR
         """
         mmu = self.mmu
         mmu_unit = self.mmu_unit

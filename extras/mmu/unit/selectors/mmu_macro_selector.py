@@ -5,7 +5,7 @@
 #
 # Goal: Implementation of Macro Selector
 #  - Universal selector control via macros
-#  - Great for experimention
+#  - Great for experimentation
 #
 # (\_/)
 # ( *,*)

@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Encapsulation of toolhead physical dimensions and sensors so that it can be shared accross mmu units
+# Goal: Encapsulation of toolhead physical dimensions and sensors so that it can be shared across mmu units
 #       or to allow of IDEX support where different mmu units connect to potentially different toolheads
 #       Also optional implementation of a modified extruder stepper that has homing ability
 #
@@ -138,7 +138,7 @@ class MmuToolheadWrapper():
                                events=('insert', 'runout'),
                                register=register)
 
-            # Likley overriding entry or toolhead sensor but can also define a brand new toolhead sensor
+            # Likely overriding entry or toolhead sensor but can also define a brand new toolhead sensor
             self.sensors[target_name] = s
 
 

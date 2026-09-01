@@ -89,7 +89,7 @@ class MmuCalcPurgeVolumesCommand(BaseCommand):
                 mmu.gcode.run_script_from_command("MMU_SLICER_TOOL_MAP PURGE_MAP=1")
             except Exception as e:
                 # Convert unexpected exceptions into MmuError so caller wrapper handles them consistently
-                raise MmuError("Error generating purge volues: %s" % str(e))
+                raise MmuError("Error generating purge volumes: %s" % str(e))
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

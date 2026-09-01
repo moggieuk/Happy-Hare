@@ -420,7 +420,7 @@ class HHConfig(ConfigBuilder):
             logging.info("Preserving existing excluded config sections")
             builder.delete_excluded()                      # Ensure template is clean
             self._copy_excluded_to(builder, origin=origin) # Copy in previous excluded nodes
-            self.delete_excluded(origin=origin)            # Prevent them being reported in unsed option set
+            self.delete_excluded(origin=origin)            # Prevent them being reported in unused option set
 
     def _copy_excluded_to(self, builder, origin=None, insert_blank_line=True):
         """

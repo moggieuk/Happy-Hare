@@ -6,11 +6,11 @@
 # Goal:
 # Implements h/w "eSpooler" control for a MMU unit that is powered by a DC motor
 # (normally PWM speed controlled) that can be used to rewind a filament spool or be
-# driven peridically in the forward direction to provide "forward assist" functionality.
+# driven periodically in the forward direction to provide "forward assist" functionality.
 # For simplicity of setup it is assumed that all pins are of the same type/config per mmu_unit.
 # Control is via direct control or klipper events.
 #
-# Note: This is implemented to work on logical gate indexes accross the mmu_machine and
+# Note: This is implemented to work on logical gate indexes across the mmu_machine and
 #       doesn't need to convert to unit local gate indexes. The caller should however
 #       ensure the correct espooler is called
 #
@@ -64,7 +64,7 @@ class MmuESpooler:
         ppins = self.printer.lookup_object('pins')
         buttons = self.printer.load_object(config, 'buttons')
 
-        # These params are assumed to be shared accross the espooler unit
+        # These params are assumed to be shared across the espooler unit
         self.is_pwm = config.getboolean("pwm", True)
         self.hardware_pwm = config.getboolean("hardware_pwm", False)
         self.scale = config.getfloat('scale', 1., above=0.)
@@ -259,7 +259,7 @@ class MmuESpooler:
             self.mmu.log_debug("Got bad espooler burst event for gate %d: duration=%.1f, value=%.1f (ignored)" % (gate, duration, value))
             return
 
-        # Only allowed if not moving (OFF or PRINT) but always allow interuption of in-print assist gate
+        # Only allowed if not moving (OFF or PRINT) but always allow interruption of in-print assist gate
         cur_op, cur_value = self.get_operation(gate)
         msg = "ESPOOLER: Got espooler rotate event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
         if cur_op in [ESPOOLER_OFF, ESPOOLER_PRINT] or gate == self.print_assist_gate:
@@ -463,7 +463,7 @@ class MmuESpooler:
     def _update_pwm(self, gate, value, operation):
         """
         Set the PWM or digital signal for espooler on gate
-        The operation is used to assertain motor direction
+        The operation is used to ascertain motor direction
         """
         if self.mmu.log_enabled(LOG_STEPPER):
             self.mmu.log_stepper("ESPOOLER: _update_pwm(%s, %s, %s)" % (gate, value, operation))

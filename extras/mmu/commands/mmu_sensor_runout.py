@@ -135,7 +135,7 @@ class MmuSensorRunoutCommand(BaseCommand):
                         process_runout = True
 
                     elif sensor.startswith(SENSOR_EXTRUDER_ENTRY):
-                        raise MmuError("Filament runout occured at extruder. Manual intervention is required")
+                        raise MmuError("Filament runout occurred at extruder. Manual intervention is required")
 
                     # An idle lane emptying is normal (the user pulled the spool). The gate map
                     # was updated above if it was an entry sensor; there is nothing else to do

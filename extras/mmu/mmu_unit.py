@@ -341,7 +341,7 @@ class MmuUnit:
         # Load subcomponents
         # This is done in a deliberate order, allows passing of parent ownership
         # and better config checking.
-        # I.e. most of these objects have special constructers and are not designed
+        # I.e. most of these objects have special constructors and are not designed
         # for regular klipper object loading
         # ---------------------------------------------------------------------------------------------------
 
@@ -366,7 +366,7 @@ class MmuUnit:
         logging.info("MMU: Created %s selector" % self.selector_type)
 
         # Create toolhead wrapper (probably shared so check for existence first)
-        # This encapsulates demensions and provides possibility of dissimilar toolheads on IDEX printer,
+        # This encapsulates dimensions and provides possibility of dissimilar toolheads on IDEX printer,
         # however, for now the toolhead is a shared "default" definition in mmu.cfg
         toolhead_name = config.get('toolhead')
         section = 'mmu_toolhead %s' % toolhead_name
@@ -416,7 +416,7 @@ class MmuUnit:
         else:
             logging.info("MMU: - No mmu_leds specified")
 
-        # Load optional mmu_encoder (can be a shared encoder so check for existance first)
+        # Load optional mmu_encoder (can be a shared encoder so check for existence first)
         self.encoder = None
         encoder_name = config.get('encoder', None)
         if encoder_name:
@@ -436,7 +436,7 @@ class MmuUnit:
             logging.info("MMU: - No mmu_encoder specified")
             self.calibrator.mark_calibrated(CALIBRATED_ENCODER)
 
-        # Load optional sync-feedback mmu_buffer (can be a shared buffer so check for existance first)
+        # Load optional sync-feedback mmu_buffer (can be a shared buffer so check for existence first)
         self.buffer = None
         buffer_name = config.get('buffer', None)
         if buffer_name:

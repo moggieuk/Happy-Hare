@@ -81,12 +81,12 @@ class MmuController(MmuFilamentMovement):
         self.tool_extrusion_multipliers = [1.0] * self.num_gates # M221 record
 
 
-        # Complete setup of other contoller components ------------------------------------------------------
+        # Complete setup of other controller components ------------------------------------------------------
 
         self.logger         = MmuLogger(self)            # Handles console logging and separate file based log
         self.psm            = MmuPrintStateMachine(self) # Manages an augmented printer state machine
-        self.led_manager    = MmuLedManager(self)        # Manages leds accross all units
-        self.sensor_manager = MmuSensorManager(self)     # Manages sensors accross all units
+        self.led_manager    = MmuLedManager(self)        # Manages leds across all units
+        self.sensor_manager = MmuSensorManager(self)     # Manages sensors across all units
         self.gate_maps      = MmuGateMaps(self)          # Gate map / TTG map / EndlessSpool state
         self.nfc_arbiter    = MmuNfcFieldArbiter(self)   # NFC "noisy neighbor" field arbitration
 
@@ -148,7 +148,7 @@ class MmuController(MmuFilamentMovement):
 
     def reinit(self):
         """
-        Ensure clean state on initialiaztion and after MMU enable/disable operation
+        Ensure clean state on initialization and after MMU enable/disable operation
         """
         self.is_enabled = True      # Whether Happy Hare is enabled or not
 
@@ -307,7 +307,7 @@ class MmuController(MmuFilamentMovement):
             if gstats:
                 self.gate_statistics[gate].update(gstats)
 
-        # Saftey: If unit_selected is still unknown (None), then pick the first
+        # Safety: If unit_selected is still unknown (None), then pick the first
         if self.unit_selected is None:
             self._set_unit_selected(0)
 
@@ -2251,7 +2251,7 @@ class MmuController(MmuFilamentMovement):
 # -----------------------------------------------------------------------------------------------------------
 
     def handle_mmu_error(self, reason, force_in_print=False):
-        self.psm.fix_started_state() # Get out of 'started' state before transistion to mmu pause
+        self.psm.fix_started_state() # Get out of 'started' state before transition to mmu pause
 
         run_pause_macro = run_error_macro = recover_pos = send_event = False
         if self.is_in_print(force_in_print):
@@ -2360,7 +2360,7 @@ class MmuController(MmuFilamentMovement):
             self.is_handling_runout = False
             self.initialize_encoder(dwell=None) # Encoder 0000
 
-            # Restablish known syncing state so next tension test will work
+            # Re-establish known syncing state so next tension test will work
             synced = self.reset_sync_gear_to_extruder(force_grip=False, force_in_print=force_in_print)
 
             # Adjust filament tension if filament in extruder and currently synced.
@@ -2369,7 +2369,7 @@ class MmuController(MmuFilamentMovement):
             if synced:
                 self._adjust_filament_tension()
 
-            # Restablish desired syncing state AND grip (servo) position
+            # Re-establish desired syncing state AND grip (servo) position
             self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
 
         # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
@@ -2428,7 +2428,7 @@ class MmuController(MmuFilamentMovement):
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
                     mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60 # Caution, klipper's gcode_move state is not a muliplier here!
+                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60 # Caution, klipper's gcode_move state is not a multiplier here!
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
                 # This will save the print position in the macro and apply park
@@ -2451,7 +2451,7 @@ class MmuController(MmuFilamentMovement):
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
                 mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60 # Caution, klipper's gcode_move state is not a muliplier here!
+                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60 # Caution, klipper's gcode_move state is not a multiplier here!
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check
@@ -3861,7 +3861,7 @@ class MmuController(MmuFilamentMovement):
         # handle, so a second sensor reporting it later can be recognized as a duplicate
         self.runout_last_handled_time = self.reactor.monotonic()
 
-        with self.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during handling
+        with self.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during handling
             self.is_handling_runout = (event_type == "runout") # Best starting assumption
             self._save_toolhead_position_and_park('runout') # includes "clog" and "tangle"
 
@@ -3870,7 +3870,7 @@ class MmuController(MmuFilamentMovement):
                 raise MmuError("Filament %s on an unknown or bypass tool\nManual intervention is required" % type_str)
 
             if self.filament_pos != FILAMENT_POS_LOADED and event_type is None:
-                raise MmuError("Filament %s occured but filament is marked as not loaded(?)\nManual intervention is required" % type_str)
+                raise MmuError("Filament %s occurred but filament is marked as not loaded(?)\nManual intervention is required" % type_str)
 
             self.log_debug("Issue on tool T%d" % self.tool_selected)
 
@@ -3945,7 +3945,7 @@ class MmuWrapperCancelPrintCommand(BaseCommand):
 
     def _run(self, gcmd):
         if self.mmu.is_enabled:
-            self.mmu.psm.fix_started_state() # Get out of 'started' state before transistion to cancelled
+            self.mmu.psm.fix_started_state() # Get out of 'started' state before transition to cancelled
             self.mmu.log_debug("MMU CANCEL_PRINT wrapper called")
             self.mmu._clear_mmu_error_dialog()
             self.mmu._save_toolhead_position_and_park("cancel")

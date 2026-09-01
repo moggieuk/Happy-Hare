@@ -103,7 +103,7 @@ class BaseSelector:
         Don't override this method, instead override _select_gate() after the local gate translation.
         """
         if not self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-            raise MmuError(f"Selector is not clibrated on %s" % self.mmu_unit.name)
+            raise MmuError(f"Selector is not calibrated on %s" % self.mmu_unit.name)
 
         lgate = self._local_gate(gate)
         self._select_gate(lgate)

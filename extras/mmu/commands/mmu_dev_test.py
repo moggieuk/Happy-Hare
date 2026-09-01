@@ -268,7 +268,7 @@ class MmuTestCommand(BaseCommand):
                     def wait_for_results():
                         while len(gathered_states) < len(tests):
                             pass
-                        mmu.log_trace(" -- All states were gatherred : %s" % len(gathered_states))
+                        mmu.log_trace(" -- All states were gathered : %s" % len(gathered_states))
                         display_results()
                         global finished
                         finished = True

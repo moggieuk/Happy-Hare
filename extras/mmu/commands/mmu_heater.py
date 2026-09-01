@@ -9,7 +9,7 @@
 # Implements commands:
 #   MMU_HEATER
 #
-# The environment manager will support automatic spool rotation if equiped with eSpooler and the
+# The environment manager will support automatic spool rotation if equipped with eSpooler and the
 # dry cycle is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
 # fastened to the spool. Also, the GATES parameter must be supplied to this command.
 #
@@ -40,7 +40,7 @@ class MmuHeaterCommand(BaseCommand):
         + "DRY             = [0|1] Disable/enable filament heater for filament drying cycle\n"
         + "TIMER           = #(mins) Force drying time\n"
         + "TEMP            = #(degrees) Force temperature\n"
-        + "HUMIDITY        = % Terminate drying when humidty goal is reached\n"
+        + "HUMIDITY        = % Terminate drying when humidity goal is reached\n"
         + "GATES           = g1,g2 Gates to control ONLY IF MMU has per-gate heaters/dryers\n"
         + "ROTATE          = [0|1] Rotate spool (requires eSpooler and explicit GATES)\n"
         + "ROTATE_INTERVAL = #(mins) How often to rotate spools when drying (requires eSpooler)\n"
@@ -275,7 +275,7 @@ class MmuHeaterCommand(BaseCommand):
                 else:
                     msg += "\nEnvironment sensor not available / misconfigured"
                     cur_temp = ds.get('heater_temp', -1)
-                    if cur_temp is None: cur_temp = -1 # Saftey, should not be possible to get here
+                    if cur_temp is None: cur_temp = -1 # Safety, should not be possible to get here
 
                 msg += "\nDrying temp: %.1f°C (current: %.1f°C)" % (
                     ds.get('temp'),
@@ -284,7 +284,7 @@ class MmuHeaterCommand(BaseCommand):
 
             else:
                 # Per-gate status report
-                msg += "\nPer-gate dryer mode (max concurrent heaters: %d). Humidty target %.1f%%" % (
+                msg += "\nPer-gate dryer mode (max concurrent heaters: %d). Humidity target %.1f%%" % (
                     mmu_unit.max_concurrent_heaters,
                     ds.get('humidity_target'),
                 )

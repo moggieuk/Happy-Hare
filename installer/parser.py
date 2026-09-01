@@ -1336,7 +1336,7 @@ class ConfigBuilder(object):
 
 
 # Simple built-in command line round-trip test for the config parser. Use
-# "--check" option to perform byte-by-btye comparison
+# "--check" option to perform byte-by-byte comparison
 # "--print" option to pretty print node tree
 #
 # Usage:
