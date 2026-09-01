@@ -1,7 +1,7 @@
 # This defines the symbol types, pins menu layout and changes to defaults.
 # The defaults are set in the Kconfig.board_type under the boards directory.
 #
-# Responsible for defining all "PIN_*" parameters
+# Responsible for defining all "PIN_*" parameters and board-specific UART addresses
 # Note types must always be defined, the prompts are based on MMU capabilities
 #
 # Assumed that max gates:
@@ -60,6 +60,12 @@ menu "Pins / TMC"
     config PIN_GEAR_UART
       string
       prompt "Gear UART pin    " if PARAM_GEAR_TMC != ""
+    config PARAM_GEAR_UART_ADDRESS
+      int
+      prompt "Gear UART address" if PARAM_GEAR_TMC != ""
+      default 0
+      range 0 3
+      depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER
     config PIN_GEAR_STEP
       string "Gear step pin    "
     config PIN_GEAR_DIR
@@ -69,6 +75,14 @@ menu "Pins / TMC"
     config PIN_GEAR_DIAG
       string
       prompt "Gear diag pin    " if PARAM_GEAR_TMC != ""
+
+    @repeat var=i min=1 max=11@
+      config PARAM_GEAR_UART_ADDRESS_$(i)
+        int
+        default 0
+        range 0 3
+        depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER
+    @endrepeat@
 
     @repeat var=i min=1 max=11@
       config PIN_GEAR_UART_$(i)
@@ -89,6 +103,8 @@ menu "Pins / TMC"
           comment "_"
           config PIN_GEAR_UART_$(i)
             prompt "Gear $(i) UART pin  " if PARAM_GEAR_TMC != ""
+          config PARAM_GEAR_UART_ADDRESS_$(i)
+            prompt "Gear $(i) UART addr " if PARAM_GEAR_TMC != ""
           config PIN_GEAR_STEP_$(i)
             prompt "Gear $(i) step pin  "
           config PIN_GEAR_DIR_$(i)
@@ -164,17 +180,22 @@ menu "Pins / TMC"
 
     if MMU_HAS_SELECTOR_STEPPER
       config PIN_SELECTOR_UART
-        prompt "Selector UART pin   "
+        prompt "Selector UART pin    "
+      config PARAM_SELECTOR_UART_ADDRESS
+        int "Selector UART address"
+        default 1
+        range 0 3
+        depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER
       config PIN_SELECTOR_STEP
-        prompt "Selector step pin   "
+        prompt "Selector step pin    "
       config PIN_SELECTOR_DIR
-        prompt "Selector dir pin    "
+        prompt "Selector dir pin     "
       config PIN_SELECTOR_ENABLE
-        prompt "Selector enable pin "
+        prompt "Selector enable pin  "
       config PIN_SELECTOR_DIAG
-        prompt "Selector diag pin   "
+        prompt "Selector diag pin    "
       config PIN_SELECTOR_ENDSTOP
-        prompt "Selector endstop pin"
+        prompt "Selector endstop pin "
     endif
 
     if INDEXED_SELECTOR
@@ -187,7 +208,7 @@ menu "Pins / TMC"
 
     config PIN_SELECTOR_SERVO
       string
-      prompt "Servo pin           " if MMU_HAS_SELECTOR_SERVO
+      prompt "Servo pin            " if MMU_HAS_SELECTOR_SERVO
   endmenu
 
 # -------------------------------------
