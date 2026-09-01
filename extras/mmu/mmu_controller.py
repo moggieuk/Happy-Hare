@@ -3899,7 +3899,7 @@ class MmuController(MmuFilamentMovement):
                     self.log_error("A runout has been detected. Checking for alternative gates %s" % msg)
                     self.log_info("Remapping T%d to gate %d" % (self.tool_selected, next_gate))
 
-                    if self.p.endless_spool_eject_gate > 0:
+                    if self.p.endless_spool_eject_gate >= 0:
                         self.log_info("Ejecting filament remains to designated waste gate %d" % self.p.endless_spool_eject_gate)
                         self.select_gate(self.p.endless_spool_eject_gate)
                     self._unload_tool(form_tip=FORM_TIP_STANDALONE)

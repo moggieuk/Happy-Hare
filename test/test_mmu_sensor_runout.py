@@ -30,6 +30,7 @@ from test.hh import session
 logging.getLogger().setLevel(logging.CRITICAL)
 
 FILAMENT_POS_LOADED = 10
+GATE_UNKNOWN = -1
 GATE_EMPTY = 0
 GATE_AVAILABLE = 1
 TIP_AT_GATE = -40.0
@@ -65,6 +66,10 @@ class RunoutFilterTestCase(unittest.TestCase):
         """Put monitoring into the armed state and return the reactor time it happened."""
         self.mmu._enable_filament_monitoring()
         return self.hh.reactor.monotonic()
+
+    def set_sensor_state(self, name, present):
+        """Set the level used by direct delayed-handler delivery tests."""
+        self.hh.sensor(name).sensor.runout_helper.filament_present = bool(present)
 
 
 class TestDelayedDelivery(RunoutFilterTestCase):
@@ -158,9 +163,158 @@ class TestGateMap(RunoutFilterTestCase):
             self.hh.settle(1.0)
         self.hh.settle(1.0)
 
+        # deliver() intentionally bypasses the physical edge; model the clear level
+        # that the delayed remove/runout handler must re-check before trusting it.
+        self.set_sensor_state('mmu_entry_2', False)
         self.deliver(tripped, sensor='mmu_entry_2', gate=2)
         self.assertEqual(self.runouts, [], 'idle-lane event should not drive runout handling')
         self.assertEqual(self.mmu.gate_maps.gate_status[2], GATE_EMPTY)
+
+    def test_selected_entry_runout_marks_empty_before_processing(self):
+        gate = self.mmu.gate_selected
+        self.mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        self.mmu.endless_spool_enabled = False
+        self.set_sensor_state('mmu_entry_%d' % gate, False)
+
+        self.deliver(self.hh.reactor.monotonic(), sensor='mmu_entry_%d' % gate, gate=gate)
+
+        self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_EMPTY)
+        self.assertEqual(len(self.runouts), 1, 'selected gate must still enter normal runout handling')
+
+    def test_bounced_idle_entry_runout_is_ignored_using_its_own_gate_sensor(self):
+        # Gate 0 is active and clear; gate 2, named by the delayed event, has bounced
+        # back to present. Reading the generic active sensor would accept this event.
+        self.mmu.gate_maps.set_gate_status(2, GATE_AVAILABLE)
+        self.set_sensor_state('mmu_entry_0', False)
+        self.set_sensor_state('mmu_entry_2', True)
+
+        self.deliver(self.hh.reactor.monotonic(), sensor='mmu_entry_2', gate=2)
+
+        self.assertEqual(self.mmu.gate_maps.gate_status[2], GATE_AVAILABLE)
+        self.assertEqual(self.runouts, [])
+        self.assertTrue(any('sensor malfunction' in error for error in self.hh.errors))
+
+    def test_unreadable_runout_sensor_is_ignored(self):
+        sensor = self.hh.sensor('mmu_entry_2').sensor
+        sensor.runout_helper.sensor_enabled = False
+        self.mmu.gate_maps.set_gate_status(2, GATE_AVAILABLE)
+
+        self.deliver(self.hh.reactor.monotonic(), sensor='mmu_entry_2', gate=2)
+
+        self.assertEqual(self.mmu.gate_maps.gate_status[2], GATE_AVAILABLE)
+        self.assertEqual(self.runouts, [])
+        self.assertTrue(any('cannot be read' in error for error in self.hh.errors))
+
+
+class TestInsertRemoveHandlers(RunoutFilterTestCase):
+
+    def run_insert(self, gate):
+        self.hh.run_gcode('__MMU_SENSOR_INSERT SENSOR=mmu_entry_%d GATE=%d' % (gate, gate))
+
+    def run_remove(self, gate):
+        self.hh.run_gcode('__MMU_SENSOR_REMOVE SENSOR=mmu_entry_%d GATE=%d' % (gate, gate))
+
+    def test_insert_marks_empty_gate_unknown_before_every_autoload_guard(self):
+        gate = 1
+        unit = self.mmu.mmu_unit(gate)
+        self.set_sensor_state('mmu_entry_%d' % gate, True)
+
+        cases = (
+            ('autoload disabled', False, 0, 0),
+            ('printing', True, 0, 1),
+            ('action busy', False, 1, 1),
+        )
+        for label, printing, action, autoload in cases:
+            with self.subTest(label=label):
+                self.mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
+                self.mmu.is_printing = lambda value=printing: value
+                self.mmu.action = action
+                unit.p.gate_autoload = autoload
+
+                self.run_insert(gate)
+
+                self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_UNKNOWN)
+
+    def test_bounced_insert_is_ignored(self):
+        gate = 1
+        self.mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
+        self.set_sensor_state('mmu_entry_%d' % gate, False)
+
+        self.run_insert(gate)
+
+        self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_EMPTY)
+        self.assertTrue(any('sensor malfunction' in error for error in self.hh.errors))
+
+    def test_remove_marks_gate_empty(self):
+        gate = 1
+        self.mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        self.set_sensor_state('mmu_entry_%d' % gate, False)
+
+        self.run_remove(gate)
+
+        self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_EMPTY)
+
+    def test_remove_from_unrelated_gate_is_not_hidden_by_eject_gate(self):
+        gate = 1
+        self.mmu.endless_spool_enabled = True
+        self.mmu.p.endless_spool_eject_gate = 2
+        self.mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        self.set_sensor_state('mmu_entry_%d' % gate, False)
+
+        self.run_remove(gate)
+
+        self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_EMPTY)
+
+    def test_remove_marks_designated_eject_gate_empty_too(self):
+        self.mmu.endless_spool_enabled = True
+        for gate in (0, 2):
+            with self.subTest(gate=gate):
+                self.mmu.p.endless_spool_eject_gate = gate
+                self.mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+                self.set_sensor_state('mmu_entry_%d' % gate, False)
+
+                self.run_remove(gate)
+
+                self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_EMPTY)
+
+    def test_bounced_remove_is_ignored(self):
+        gate = 1
+        self.mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        self.set_sensor_state('mmu_entry_%d' % gate, True)
+
+        self.run_remove(gate)
+
+        self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_AVAILABLE)
+        self.assertTrue(any('sensor malfunction' in error for error in self.hh.errors))
+
+
+class TestNonGateInsertValidation(unittest.TestCase):
+
+    def setUp(self):
+        self.hh = session('3ms')
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.sensor_name = 'default:extruder'
+
+    def tearDown(self):
+        self.hh.close()
+
+    def set_sensor_state(self, present):
+        self.hh.sensor(self.sensor_name).sensor.runout_helper.filament_present = bool(present)
+
+    def test_bounced_extruder_insert_is_rejected_before_bypass_dispatch(self):
+        self.set_sensor_state(False)
+
+        self.hh.run_gcode('__MMU_SENSOR_INSERT SENSOR=%s' % self.sensor_name)
+
+        self.assertTrue(any('sensor malfunction' in error for error in self.hh.errors))
+
+    def test_current_extruder_insert_reaches_bypass_dispatch(self):
+        self.set_sensor_state(True)
+
+        self.hh.run_gcode('__MMU_SENSOR_INSERT SENSOR=%s' % self.sensor_name)
+
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestRunoutArming(RunoutFilterTestCase):
@@ -211,10 +365,14 @@ class TestRunoutArming(RunoutFilterTestCase):
         self.hh.settle(1.0)
         now = self.hh.reactor.monotonic()
 
+        # Direct delivery bypasses the physical switch edge, so publish the clear
+        # levels the delayed callbacks are expected to confirm.
+        self.set_sensor_state('mmu_entry_2', False)
         self.deliver(now, sensor='mmu_entry_2', gate=2)
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.mmu.gate_maps.gate_status[2], GATE_EMPTY)
 
+        self.set_sensor_state('mmu_exit_2', False)
         self.deliver(now, sensor='mmu_exit_2', gate=2)
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.runouts, [], 'an idle lane must not drive runout handling')

@@ -68,16 +68,22 @@ class MmuSensorRemoveCommand(BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
 
+                # Removal callbacks are queued. Resolve the exact callback source
+                # before dispatch so a bounced or now-unreadable sensor cannot mutate state.
+                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate)
+                if sensor_state is not False:
+                    state = "still detects filament" if sensor_state is True else "cannot be read"
+                    mmu.log_assertion(
+                        "Remove handler suspects sensor malfunction on %s (%s). Ignored"
+                        % (raw_sensor, state)
+                    )
+                    return
+
                 if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
-                    # Ignore mmu entry runout if endless_spool_eject_gate feature is active
-                    # and we want filament to be consumed to clear gate
-                    if not (mmu.endless_spool_enabled and mmu.p.endless_spool_eject_gate > 0):
-                        mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
-                    else:
-                        mmu.log_trace(
-                            "Ignoring filament removal detected by %s because endless_spool_eject_gate is active"
-                            % raw_sensor
-                        )
+                    # A confirmed-clear entry sensor means this lane is empty regardless
+                    # of print state. EndlessSpool's waste-eject path also resets the gate
+                    # explicitly, so it needs no special exception here.
+                    mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
 
                 else:
                     mmu.log_assertion(
