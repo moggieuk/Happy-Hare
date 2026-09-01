@@ -16,25 +16,25 @@ overrides:
     ignoreRegExpList:
       # Ignore identifiers followed by brackets (recs[-1])
       - "/\\b\\w+\\b(?=\\[)/"
-      
+
       # Ignore identifiers followed by parentheses (func())
       - "/\\b\\w+\\b(?=\\s*\\(|\\()/"
-      
+
       # Ignore attribute access (.attr)
       - "/\\.\\b\\w+\\b/"
-      
+
       # Ignore assignments (var = or var=)
       - "/\\b\\w+\\b(?=\\s*=)/"
-      
+
       # Ignore class/function definitions
       - "/\\b(def|class)\\s+\\w+/"
-      
+
       # Ignore imports
       - "/\\b(import|from|as)\\b/"
-      
+
       # Ignore decorators
       - "/@\\b\\w+\\b/"
-    
+
     # Add project-specific identifiers here
     words:
       - recs

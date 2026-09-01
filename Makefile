@@ -20,6 +20,10 @@ UT ?= *
 # vars: export PIP_ARGS='--user --break-system-packages' on a PEP 668 python with no venv
 PIP_ARGS ?=
 
+# CSpell version used by the opt-in spellcheck target. Keep this compatible with
+# Node versions commonly found on contributor machines.
+CSPELL_VERSION ?= 9.8.0
+
 # Parallel build
 MAKEFLAGS += --jobs 16
 
@@ -177,7 +181,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff lint test console filament_display plot_sync shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -592,6 +596,29 @@ installer_venv: $(INSTALLER_STAMP)
 # Pass additional Ruff arguments through ARGS, e.g. make lint ARGS='--show-fixes'.
 lint: $(LINT_STAMP)
 	$(Q)$(VENV)/bin/ruff check . $(ARGS)
+
+# Spell-check tracked, human-maintained source and documentation using the project
+# CSpell configuration. Generated assets, vendored code and test fixtures are excluded.
+# Pass additional CSpell options through ARGS, e.g. make spellcheck ARGS='--no-summary'.
+spellcheck:
+	$(Q)command -v npx >/dev/null 2>&1 || { \
+		echo "$(C_ERROR)Node.js/npm is required to run CSpell$(C_OFF)"; \
+		exit 1; \
+	}
+	$(Q)git ls-files -- \
+		'*.py' '*.md' '*.txt' '*.yml' '*.yaml' '*.toml' '*.cfg' '*.sh' \
+		'Makefile' 'install.sh' 'config/CHANGES' \
+		'installer/Kconfig*' 'installer/**/Kconfig*' \
+		':(exclude).cspell.config.yml' \
+		':(exclude).project-words.txt' \
+		':(exclude)assets/**' \
+		':(exclude)installer/lib/kconfiglib/**' \
+		':(exclude)test/installer/**/*.cfg*' \
+		':(exclude)test/support/**' | \
+		while IFS= read -r file; do \
+			[ -f "$$file" ] && printf '%s\n' "$$file"; \
+		done | \
+		npx --yes cspell@$(CSPELL_VERSION) lint --no-progress --file-list stdin $(ARGS)
 
 # Opens the interactive file picker, everything pre-ticked, so Enter runs the whole suite as
 # before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra
