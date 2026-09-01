@@ -2,9 +2,9 @@ name: Lint
 
 on:
   push:
-    branches: [v4]
+    branches: [v4, main]
   pull_request:
-    branches: [v4]
+    branches: [v4, main]
 
 permissions:
   contents: read
