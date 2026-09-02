@@ -321,7 +321,7 @@ class TestInstallSh(unittest.TestCase):
         )
         self_update.chmod(0o755)
         reexec = self.write(
-            self.root / "reexec.sh",
+            fake_checkout / "reexec.sh",
             "#!/bin/sh\n"
             "printf '%s:%s:%s\\n' \"$BRANCH\" \"$F_SKIP_UPDATE\" \"$SKIP_UPDATE\" "
             ">\"$TEST_LOG/reexec\"\n",
@@ -373,6 +373,13 @@ class TestInstallSh(unittest.TestCase):
         subprocess.run(["git", "-C", str(checkout), "checkout", "-b",
                         "codex/local-only"], check=True, capture_output=True, text=True)
 
+        # Run a copy of the script inside the throwaway checkout: the script
+        # re-anchors to its own location, so the original would act on the real
+        # repo (stash/checking out branches in the user's working tree).
+        script = self.write(checkout / "installer" / "self_update.sh",
+                            SELF_UPDATE_SH.read_text(encoding="utf-8"))
+        script.chmod(0o755)
+
         env = os.environ.copy()
         env.update({
             "BRANCH": "v3",
@@ -382,7 +389,7 @@ class TestInstallSh(unittest.TestCase):
             "C_ERROR": "",
         })
         result = subprocess.run(
-            ["/bin/sh", str(SELF_UPDATE_SH)], cwd=checkout, env=env,
+            ["/bin/sh", str(script)], cwd=checkout, env=env,
             text=True, capture_output=True,
         )
 

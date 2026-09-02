@@ -8,6 +8,11 @@
 
 set -e # Exit immediately on error
 
+# Anchor the working directory to the project root (this script's parent):
+# every git call below needs a repo cwd, and install.sh (or a user running us
+# directly) may be standing anywhere else.
+cd "$(dirname -- "$0")/.."
+
 self_update() {
     git_cmd="git branch --show-current"
     if which timeout >/dev/null 2>&1; then

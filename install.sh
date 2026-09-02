@@ -37,6 +37,7 @@ usage() {
     echo "${C_OFF}"
     echo "${C_INFO}(no flags for safe re-install / upgrade)${C_OFF}"
     echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.mmu_config) will be used."
+    echo "  Relative paths are interpreted relative to the Happy-Hare checkout directory."
     echo "  -i for interactive install (open menuconfig)"
     echo "  -u, -d for uninstall"
     echo "  -b <branch> to switch to specified feature branch (sticky)"
@@ -324,6 +325,24 @@ set_moonraker_primary_branch() {
     fi
 }
 
+# Normalise KCONFIG_CONFIG so install.sh and the make Kconfig recipes (menuconfig,
+# olddefconfig, kconfig_needs_update) always refer to the same file. Absolute paths
+# pass through untouched; relative paths anchor to the project directory, because every make
+# invocation goes through run_make (`make -C $SCRIPT_DIR`) and kconfiglib uses
+# KCONFIG_CONFIG as-is against its own process cwd - which is the project dir, not the
+# caller's directory. Without this, e.g. `./Happy-Hare/install.sh -i`` from the parent
+# directory would have menuconfig save .mmu_config in the working directory while this script's
+# [ -e ]/source checks look in the caller's directory, aborting with "has not been
+# saved" even though the save succeeded.
+resolve_kconfig_config() {
+    KCONFIG_CONFIG=${KCONFIG_CONFIG:-.mmu_config}
+    case "${KCONFIG_CONFIG}" in
+    /*) ;;
+    *) KCONFIG_CONFIG=${SCRIPT_DIR}/${KCONFIG_CONFIG} ;;
+    esac
+    export KCONFIG_CONFIG
+}
+
 
 ##### V3 Upgrade support vvv ##################################################################
 
@@ -331,7 +350,8 @@ set_moonraker_primary_branch() {
 # on disk with a "happy_hare_version: 3.x" stamp (the value Happy Hare itself writes
 # and trusts for exactly this purpose).
 v3_detected() {
-    guessed_kconfig="${KCONFIG_CONFIG:-${SCRIPT_DIR}/.mmu_config}"
+    resolve_kconfig_config
+    guessed_kconfig="${KCONFIG_CONFIG}"
     v3_cfg="$(guess_klipper_config_home)/mmu/base/mmu_parameters.cfg"
     [ ! -e "${guessed_kconfig}" ] \
         && [ -f "${v3_cfg}" ] \
@@ -378,7 +398,10 @@ offer_v3_v4_choice() {
         "$SCRIPT_DIR/installer/self_update.sh" || exit 1
         # The branch switch above already fetched and pulled v3. Its installer uses
         # SKIP_UPDATE (rather than v4's F_SKIP_UPDATE) to suppress a redundant update.
-        SKIP_UPDATE=YES F_SKIP_UPDATE=force exec "$0" "$@"
+        # Absolute path, not "$0": the script has by now cd'd into the project
+        # directory, so a relatively typed $0 (e.g. ../Happy-Hare/install.sh)
+        # would no longer resolve.
+        SKIP_UPDATE=YES F_SKIP_UPDATE=force exec "${SCRIPT_DIR}/${SCRIPT_NAME}" "$@"
     else
         echo "${C_WARNING}Proceeding with the v4 upgrade. Your v3 'mmu' config directory will be${C_OFF}"
         echo "${C_WARNING}renamed to 'mmu.V3' for reference - nothing is deleted.${C_OFF}"
@@ -532,6 +555,12 @@ if [ "${INSTALL_SH_SOURCE_ONLY:-}" = y ]; then
 fi
 
 
+# Run the entire main flow with the project directory as the working directory.
+# install.sh itself is cwd-agnostic (its paths are absolute or project-anchored),
+# but its subprocesses are not - most visibly self_update.sh's git calls, which
+# fail with 'not a git repository' when launched from a non-repo directory.
+cd "${SCRIPT_DIR}"
+
 # Convert long options to short options
 for arg in "$@"; do
     shift
@@ -625,7 +654,7 @@ elif [ ! "${F_SKIP_UPDATE}" ] && [ ! "${F_UNINSTALL}" ]; then
     # -b <branch>") since self_update.sh never runs to consult BRANCH in that case either.
     [ -n "${BRANCH}" ] && set_moonraker_primary_branch "${BRANCH}"
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
-    F_SKIP_UPDATE=force exec "$0" "$@"
+    F_SKIP_UPDATE=force exec "${SCRIPT_DIR}/${SCRIPT_NAME}" "$@"
 else
     [ -t 1 ] && clear
     echo "${C_NOTICE}Skipping (git) self update${C_OFF}"
@@ -636,7 +665,7 @@ if [ "$1" ]; then
     KCONFIG_CONFIG="$1"
 fi
 
-export KCONFIG_CONFIG="${KCONFIG_CONFIG-.mmu_config}"
+resolve_kconfig_config
 export PATH="${SCRIPT_DIR}:${PATH}"
 
 case "${os_type}" in
