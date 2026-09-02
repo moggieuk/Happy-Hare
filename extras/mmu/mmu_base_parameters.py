@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Base class for all runtime changable mmu parameters
+# Goal: Base class for all runtime changeable mmu parameters
 #
 #   Subclasses: MmuPrinterParameters, MmuUnitParameters, MmuSelectorParameters
 #   Notes:

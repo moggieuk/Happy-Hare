@@ -87,9 +87,9 @@ class RotarySelector(PhysicalSelector):
 
     Implements commands:
       MMU_CALIBRATE_ROTARY_SELECTOR
-      MMU_SOAKTEST_SELECTOR (PyhsicalSelector)
-      MMU_GRIP (PyhsicalSelector)
-      MMU_RELEASE (PyhsicalSelector)
+      MMU_SOAKTEST_SELECTOR (PhysicalSelector)
+      MMU_GRIP (PhysicalSelector)
+      MMU_RELEASE (PhysicalSelector)
     """
     PARAMS_CLS = RotarySelectorParameters
 

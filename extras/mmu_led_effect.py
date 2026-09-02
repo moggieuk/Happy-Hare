@@ -41,8 +41,8 @@ from .mmu.unit.mmu_leds import MmuLeds
 #   "unit0_mmu_flash_exit_3" for gate 2 (led 3)
 #   "unit0_mmu_flash_exit_4" for gate 3 (led 4)
 #
-# Created effects can be restricted with by specifing 'define_on' and a let of segment
-# names or 'gates' to indicate creation on exit/entry gates. If ommitted all possible
+# Created effects can be restricted by specifying 'define_on' and a list of segment
+# names or 'gates' to indicate creation on exit/entry gates. If omitted all possible
 # effects will be created
 #
 # Then you can set effects with commands like:
@@ -112,7 +112,7 @@ class MmuLedEffect:
         #logging.info("MMU: Created: %s on %s" % (c.get_name(), leds))
 
         # Register _led_effect with klipper
-        # NOTE: Not currently registering to reduce printer variables and unecessary get status() calls
+        # NOTE: Not currently registering to reduce printer variables and unnecessary get status() calls
         #self.printer.add_object(c.get_name(), led_effect)
 
 def load_config_prefix(config):

@@ -15,12 +15,12 @@
 #     is possible to specify which gates to dry. The list of heaters and environment sensors
 #     should be set with the 'filament_heaters' and 'environment_sensors' properties.
 #     Further, in this mode a basic "power management" is implemented which limits the number
-#     of simulateous heaters to that defined by the 'max_concurrent_heaters' property.
+#     of simultaneous heaters to that defined by the 'max_concurrent_heaters' property.
 #     Individual control of per-gate heaters and lifecycle is possible by specifying gates of
 #     interest. The periodic venting macro will be called with a GATE parameter listing the
 #     currently heated gates.
 #
-# The manager will support automatic spool rotation if equiped with eSpooler and the dry cycle
+# The manager will support automatic spool rotation if equipped with eSpooler and the dry cycle
 # is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
 # fastened to the spool and the GATES parameter must be supplied.
 #
@@ -385,7 +385,7 @@ class MmuEnvironmentManager:
         """
         Structured status for client consumption.
         We don't duplicate temperature or humidity data here but expect the client to read configuration
-        and look up appropriate heator and environemnt sensor objects directly
+        and look up appropriate heater and environment sensor objects directly
         """
         return {
             'drying_state': self._drying_state
@@ -885,7 +885,7 @@ class MmuEnvironmentManager:
         self.mmu.log_info("Rotating spools in gates: %s..." % ",".join(map(str, gates)))
         if self.mmu_unit.mmu_vendor != VENDOR_VVD:
             self.spools_to_rotate = list(gates)
-            # Initiate rotation of first spool -- they are moved in sequence for asetics and to avoid possiblity of overload
+            # Initiate rotation of first spool -- they are moved in sequence for aesthetics and to avoid possibility of overload
             self._rotate_spool(self.spools_to_rotate[0])
             return
 

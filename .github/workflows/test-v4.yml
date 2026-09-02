@@ -1,14 +1,14 @@
-# Runs the test/ suite (test/README.md) on every PR against v4 and after merge.
+# Runs the test/ suite (test/README.md) on every PR against v4 or main and after merge.
 # Uses NO_VENV=1 per test/README.md's own CI guidance - a GitHub Actions runner is
 # already the throwaway, dependencies-installed-directly environment that mode is for,
 # so there's no reason to pay for venv creation on every run.
-name: Test Suite (v4)
+name: Test Suite
 
 on:
   push:
-    branches: [v4]
+    branches: [v4, main]
   pull_request:
-    branches: [v4]
+    branches: [v4, main]
 
 jobs:
   test:
@@ -22,7 +22,7 @@ jobs:
 
       - name: Syntax check all Python files
         # Fast net for files outside the unittest import graph (installer/,
-        # components/, utils/, doc_tools/) that `make test` never touches
+        # components/ and utils/) that `make test` never touches
         # because nothing under test imports them.
         run: python -m compileall -q .
 

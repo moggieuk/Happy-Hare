@@ -15,7 +15,7 @@
 #
 
 # This defines the current version.
-# IMPORTANT keep version string up-to-date and constistent with git tag
+# IMPORTANT keep version string up-to-date and consistent with git tag
 # Config upgrades are performed when <major>,<minor> is changed
 VERSION = "4.0.0" # When <major.minor> is revved, Happy Hare will instruct users to re-run ./install.sh
 
@@ -37,6 +37,7 @@ VENDOR_KMS            = "KMS"
 VENDOR_EMU            = "EMU"
 VENDOR_LOW_RIDER      = "LowRider"
 VENDOR_QIDI           = "QIDI"
+VENDOR_HTLF           = "HTLF"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
@@ -66,6 +67,7 @@ VENDORS = [
     VENDOR_EMU,
     VENDOR_LOW_RIDER,
     VENDOR_QIDI,
+    VENDOR_HTLF,
     VENDOR_OTHER,
 ]
 
@@ -222,7 +224,7 @@ LOG_INFO      = 1
 LOG_DEBUG     = 2
 LOG_TRACE     = 3
 LOG_STEPPER   = 4
-LOG_LEVELS = ['ESSENTAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
+LOG_LEVELS = ['ESSENTIAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
 
 # States of espooler motor
 ESPOOLER_NONE   = ''

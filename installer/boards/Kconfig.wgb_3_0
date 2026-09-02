@@ -7,6 +7,10 @@ if BOARD_TYPE_WGB_3_0
   config PARAM_BOARD_TYPE
     default "WGB v3"
 
+  # WGB N20 driver SLP pins must be asserted to enable each motor.
+  config HAS_ESPOOLER_ENABLE_PIN
+    default y
+
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   endchoice

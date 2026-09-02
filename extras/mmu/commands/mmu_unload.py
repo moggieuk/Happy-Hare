@@ -62,9 +62,9 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during filament unload
 
                     self._handle_unload(gcmd)
 
         except MmuError as ee:
-            mmu.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
+            mmu.handle_mmu_error("%s.\nOccurred when unloading tool" % str(ee))

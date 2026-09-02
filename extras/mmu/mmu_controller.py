@@ -81,12 +81,12 @@ class MmuController(MmuFilamentMovement):
         self.tool_extrusion_multipliers = [1.0] * self.num_gates # M221 record
 
 
-        # Complete setup of other contoller components ------------------------------------------------------
+        # Complete setup of other controller components ------------------------------------------------------
 
         self.logger         = MmuLogger(self)            # Handles console logging and separate file based log
         self.psm            = MmuPrintStateMachine(self) # Manages an augmented printer state machine
-        self.led_manager    = MmuLedManager(self)        # Manages leds accross all units
-        self.sensor_manager = MmuSensorManager(self)     # Manages sensors accross all units
+        self.led_manager    = MmuLedManager(self)        # Manages leds across all units
+        self.sensor_manager = MmuSensorManager(self)     # Manages sensors across all units
         self.gate_maps      = MmuGateMaps(self)          # Gate map / TTG map / EndlessSpool state
         self.nfc_arbiter    = MmuNfcFieldArbiter(self)   # NFC "noisy neighbor" field arbitration
 
@@ -148,7 +148,7 @@ class MmuController(MmuFilamentMovement):
 
     def reinit(self):
         """
-        Ensure clean state on initialiaztion and after MMU enable/disable operation
+        Ensure clean state on initialization and after MMU enable/disable operation
         """
         self.is_enabled = True      # Whether Happy Hare is enabled or not
 
@@ -307,7 +307,7 @@ class MmuController(MmuFilamentMovement):
             if gstats:
                 self.gate_statistics[gate].update(gstats)
 
-        # Saftey: If unit_selected is still unknown (None), then pick the first
+        # Safety: If unit_selected is still unknown (None), then pick the first
         if self.unit_selected is None:
             self._set_unit_selected(0)
 
@@ -757,8 +757,37 @@ class MmuController(MmuFilamentMovement):
         gate = self.gate_selected
         pos = self.filament_pos
         direction = self.filament_direction
-        gate_homing_endstop = self.mmu_unit().p.gate_homing_endstop
+        unit = self.mmu_unit()
+        gate_homing_endstop = unit.p.gate_homing_endstop
         gate_status = self.gate_status[gate] if gate >= 0 else GATE_UNKNOWN
+
+        # A no-Bowden unit aliases mmu_shared_exit to its extruder-entry sensor so
+        # generic gate homing can use it. That is one physical switch, not two
+        # landmarks in the visual path.
+        gate_sensor_sets = getattr(self.sensor_manager, 'gate_sensors', ())
+        selected_gate_sensors = (
+            gate_sensor_sets[gate]
+            if 0 <= gate < len(gate_sensor_sets)
+            else {}
+        )
+        shared_exit_is_extruder_alias = (
+            selected_gate_sensors.get(SENSOR_SHARED_EXIT) is not None
+            and selected_gate_sensors.get(SENSOR_SHARED_EXIT)
+                is selected_gate_sensors.get(SENSOR_EXTRUDER_ENTRY)
+        )
+
+        # UNLOADED normally means parked near the gate. For the aliased no-Bowden
+        # topology the dedicated lane itself runs to the extruder sensor, so render
+        # the parked filament through that lane and stop before the one real sensor.
+        render_pos = (
+            FILAMENT_POS_END_BOWDEN
+            if (
+                pos == FILAMENT_POS_UNLOADED
+                and gate_status != GATE_EMPTY
+                and shared_exit_is_extruder_alias
+            )
+            else pos
+        )
 
         status = self.get_status(0)
         if status['filament_remaining']:
@@ -797,19 +826,19 @@ class MmuController(MmuFilamentMovement):
             # A genuinely empty gate has nothing to show as "already passed"
             if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
                 return space
-            return arrow if pos >= target_pos else space
+            return arrow if render_pos >= target_pos else space
 
         def homed_segment(target_pos, label):
-            if pos > target_pos:
+            if render_pos > target_pos:
                 return arrow + label + arrow
-            if pos == target_pos:
+            if render_pos == target_pos:
                 return home + label + space
             return space + label + space
 
         def pad(target_pos, length):
-            if pos > target_pos:
+            if render_pos > target_pos:
                 return arrow * length
-            if pos == target_pos:
+            if render_pos == target_pos:
                 left = length - length // 2
                 right = length // 2
                 return arrow * left + space * right
@@ -834,7 +863,11 @@ class MmuController(MmuFilamentMovement):
         # here, so its reading is real evidence for THIS gate specifically
         # (unlike _gate_empty()'s at-rest presence check below, which excludes it
         # since a stale cross-gate reading is a real risk there).
-        PER_GATE_SENSORS = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT)
+        PER_GATE_SENSORS = (
+            (SENSOR_EXIT_PREFIX,)
+            if shared_exit_is_extruder_alias
+            else (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT)
+        )
 
         def _furthest_triggered_gate_sensor_index():
             index = -1
@@ -853,6 +886,8 @@ class MmuController(MmuFilamentMovement):
             if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is False:
                 return -1
             for i, s in enumerate(GATE_SENSOR_ORDER):
+                if s == SENSOR_SHARED_EXIT and shared_exit_is_extruder_alias:
+                    continue
                 if self.sensor_manager.has_sensor(s):
                     return i - 1
             return len(GATE_SENSOR_ORDER) - 1
@@ -945,6 +980,8 @@ class MmuController(MmuFilamentMovement):
             return gate_presence_marker()
 
         def gate_sensor_marker(sensor):
+            if sensor == SENSOR_SHARED_EXIT and shared_exit_is_extruder_alias:
+                return arrow if _passed_gate_sensor(sensor) else space
             # A fitted sensor's own reading is always shown; only an unfitted
             # one falls back to inferring passage from a further-along trigger.
             if self.sensor_manager.has_sensor(sensor):
@@ -2214,7 +2251,7 @@ class MmuController(MmuFilamentMovement):
 # -----------------------------------------------------------------------------------------------------------
 
     def handle_mmu_error(self, reason, force_in_print=False):
-        self.psm.fix_started_state() # Get out of 'started' state before transistion to mmu pause
+        self.psm.fix_started_state() # Get out of 'started' state before transition to mmu pause
 
         run_pause_macro = run_error_macro = recover_pos = send_event = False
         if self.is_in_print(force_in_print):
@@ -2323,7 +2360,7 @@ class MmuController(MmuFilamentMovement):
             self.is_handling_runout = False
             self.initialize_encoder(dwell=None) # Encoder 0000
 
-            # Restablish known syncing state so next tension test will work
+            # Re-establish known syncing state so next tension test will work
             synced = self.reset_sync_gear_to_extruder(force_grip=False, force_in_print=force_in_print)
 
             # Adjust filament tension if filament in extruder and currently synced.
@@ -2332,7 +2369,7 @@ class MmuController(MmuFilamentMovement):
             if synced:
                 self._adjust_filament_tension()
 
-            # Restablish desired syncing state AND grip (servo) position
+            # Re-establish desired syncing state AND grip (servo) position
             self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
 
         # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
@@ -2391,7 +2428,7 @@ class MmuController(MmuFilamentMovement):
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
                     mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60 # Caution, klipper's gcode_move state is not a muliplier here!
+                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60 # Caution, klipper's gcode_move state is not a multiplier here!
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
                 # This will save the print position in the macro and apply park
@@ -2414,7 +2451,7 @@ class MmuController(MmuFilamentMovement):
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
                 mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60 # Caution, klipper's gcode_move state is not a muliplier here!
+                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60 # Caution, klipper's gcode_move state is not a multiplier here!
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check
@@ -3824,7 +3861,7 @@ class MmuController(MmuFilamentMovement):
         # handle, so a second sensor reporting it later can be recognized as a duplicate
         self.runout_last_handled_time = self.reactor.monotonic()
 
-        with self.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during handling
+        with self.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during handling
             self.is_handling_runout = (event_type == "runout") # Best starting assumption
             self._save_toolhead_position_and_park('runout') # includes "clog" and "tangle"
 
@@ -3833,7 +3870,7 @@ class MmuController(MmuFilamentMovement):
                 raise MmuError("Filament %s on an unknown or bypass tool\nManual intervention is required" % type_str)
 
             if self.filament_pos != FILAMENT_POS_LOADED and event_type is None:
-                raise MmuError("Filament %s occured but filament is marked as not loaded(?)\nManual intervention is required" % type_str)
+                raise MmuError("Filament %s occurred but filament is marked as not loaded(?)\nManual intervention is required" % type_str)
 
             self.log_debug("Issue on tool T%d" % self.tool_selected)
 
@@ -3862,7 +3899,7 @@ class MmuController(MmuFilamentMovement):
                     self.log_error("A runout has been detected. Checking for alternative gates %s" % msg)
                     self.log_info("Remapping T%d to gate %d" % (self.tool_selected, next_gate))
 
-                    if self.p.endless_spool_eject_gate > 0:
+                    if self.p.endless_spool_eject_gate >= 0:
                         self.log_info("Ejecting filament remains to designated waste gate %d" % self.p.endless_spool_eject_gate)
                         self.select_gate(self.p.endless_spool_eject_gate)
                     self._unload_tool(form_tip=FORM_TIP_STANDALONE)
@@ -3908,7 +3945,7 @@ class MmuWrapperCancelPrintCommand(BaseCommand):
 
     def _run(self, gcmd):
         if self.mmu.is_enabled:
-            self.mmu.psm.fix_started_state() # Get out of 'started' state before transistion to cancelled
+            self.mmu.psm.fix_started_state() # Get out of 'started' state before transition to cancelled
             self.mmu.log_debug("MMU CANCEL_PRINT wrapper called")
             self.mmu._clear_mmu_error_dialog()
             self.mmu._save_toolhead_position_and_park("cancel")

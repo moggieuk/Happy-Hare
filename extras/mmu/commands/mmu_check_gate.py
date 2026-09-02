@@ -85,7 +85,7 @@ class MmuCheckGateCommand(BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during gate check
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during gate check
                     with mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
                         with mmu.wrap_action(ACTION_CHECKING):
                             tool_selected = mmu.tool_selected
@@ -189,7 +189,7 @@ class MmuCheckGateCommand(BaseCommand):
                                         mmu.initialize_encoder() # Encoder 0000
 
                             # If not printing select original tool and load filament if necessary
-                            # We don't do this when printing because this is expected to preceed loading initial tool
+                            # We don't do this when printing because this is expected to precede loading initial tool
                             if not mmu.is_printing():
                                 try:
                                     if tool_selected == TOOL_GATE_BYPASS:

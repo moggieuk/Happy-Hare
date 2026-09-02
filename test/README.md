@@ -632,8 +632,8 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The
    console does that for you at startup (`boot(calibrate=True, pre_bootup=...)`);
    in a test, call `hh.boot(calibrate=True)`, or `hh.boot()` then `hh.calibrate()`, then
-   `MMU_HOME UNIT=<n>`. Skip it and every selection fails with *"Selector is not clibrated"*
-   (sic). Calibration is **seeded** by default for speed, but `MMU_CALIBRATE_*` genuinely
+   `MMU_HOME UNIT=<n>`. Skip it and every selection fails with *"Selector is not calibrated"*.
+   Calibration is **seeded** by default for speed, but `MMU_CALIBRATE_*` genuinely
    works — see § "Physical selectors" below.
    A real printer usually skips the homing because it restores the position it saved at
    shutdown; a harness session starts with no vars file, so there is nothing to restore. To

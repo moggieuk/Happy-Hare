@@ -1,0 +1,9 @@
+# DM996 servo
+# Used by LowRider
+
+if PARAM_VENDOR = "LowRider"
+
+  config SERVO_TYPE_DM996
+    bool "DM996"
+
+endif

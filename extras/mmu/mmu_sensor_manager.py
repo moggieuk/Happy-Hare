@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Manager to centralize mmu_sensor operations accross mmu_units and to swap in the
+# Goal: Manager to centralize mmu_sensor operations across mmu_units and to swap in the
 #       appropriate set of "active" sensors as selected gate/unit changes (via events)
 #
 # (\_/)
@@ -190,7 +190,7 @@ class MmuSensorManager:
     def _handle_gate_selected(self, gate, prev_gate):
         """
         Handler for gate changed event
-        Reset the relevent sensor list based on current gate handling bypass and unknown
+        Reset the relevant sensor list based on current gate handling bypass and unknown
         """
         if gate == TOOL_GATE_UNKNOWN:
             unit = self.mmu.unit_selected
@@ -515,6 +515,21 @@ class MmuSensorManager:
         return None
 
 
+    def check_event_sensor(self, name, gate=None):
+        """
+        Return the current state of the exact sensor named by a queued event.
+
+        Unlike check_sensor(), this resolves against the stable global registry rather
+        than active_sensors_map. Event delivery may lag behind a gate or unit selection,
+        so checking the active generic sensor can inspect a different physical switch.
+        """
+        mmu_unit = self.mmu.mmu_unit(gate) if gate is not None and gate >= 0 else None
+        _qualified, sensor, _error = self.resolve_sensor(name, mmu_unit=mmu_unit)
+        if sensor is not None and sensor.runout_helper.sensor_enabled:
+            return bool(sensor.runout_helper.filament_present)
+        return None
+
+
     def check_gate_sensor(self, name, gate):
         """
         Return per-gate sensor state or None if unavailable/disabled.
@@ -674,7 +689,7 @@ class MmuSensorManager:
         """
         Common helper that defines sensors and relationship to filament_pos state for easy filament tracing.
         Note:
-            Buffer based compression/tension sensor and excoder virtual sensor are excluded since they
+            Buffer based compression/tension sensor and encoder virtual sensor are excluded since they
             are not simple filament present or not switches
         Returns {sensor_name: True/False/None} where None means sensor disabled.
         """

@@ -36,7 +36,7 @@ class MmuHelpCommand(BaseCommand):
         + "STEPS     = [0|1] Advanced load/unload sequence and steps commands\n"
         + "MACROS    = [0|1] Print start/end or slicer macros (defined in mmu_software.cfg)\n"
         + "CALLBACKS = [0|1] Callbacks macros (defined in mmu_sequence.cfg, mmu_state.cfg)\n"
-        + "INTERNAL  = [0|1] Internal commands/macros (Caution!)\n" # Hidden from user unless explcitily asked for
+        + "INTERNAL  = [0|1] Internal commands/macros (Caution!)\n" # Hidden from user unless explicitly asked for
         + "OTHER     = [0|1] Alias or not categorised\n"
         + "CMD       = _cmd_ Show help on command (same as _cmd_ HELP=1)\n"
         + "(without parameters it will summarize just major commands)\n"

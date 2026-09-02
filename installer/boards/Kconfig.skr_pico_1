@@ -15,6 +15,8 @@ if BOARD_TYPE_SKR_PICO_1
   # MMU Type B
   config PIN_GEAR_UART 
     default "$(MCU_NAME):gpio9" 
+  config PARAM_GEAR_UART_ADDRESS
+    default 0
   config PIN_GEAR_STEP
     default "$(MCU_NAME):gpio11" 
   config PIN_GEAR_DIR
@@ -25,6 +27,10 @@ if BOARD_TYPE_SKR_PICO_1
     default "$(MCU_NAME):gpio4" 
 
   if MULTIGEAR
+    config PIN_GEAR_UART_1
+      default PIN_GEAR_UART
+    config PARAM_GEAR_UART_ADDRESS_1
+      default 1
     config PIN_GEAR_STEP_1
       default "$(MCU_NAME):gpio6" 
     config PIN_GEAR_DIR_1
@@ -34,6 +40,10 @@ if BOARD_TYPE_SKR_PICO_1
     config PIN_GEAR_DIAG_1
       default "$(MCU_NAME):gpio3" 
 
+    config PIN_GEAR_UART_2
+      default PIN_GEAR_UART
+    config PARAM_GEAR_UART_ADDRESS_2
+      default 2
     config PIN_GEAR_STEP_2
       default "$(MCU_NAME):gpio19" 
     config PIN_GEAR_DIR_2
@@ -43,6 +53,10 @@ if BOARD_TYPE_SKR_PICO_1
     config PIN_GEAR_DIAG_2
       default "$(MCU_NAME):gpio25"
 
+    config PIN_GEAR_UART_3
+      default PIN_GEAR_UART
+    config PARAM_GEAR_UART_ADDRESS_3
+      default 3
     config PIN_GEAR_STEP_3
       default "$(MCU_NAME):gpio14" 
     config PIN_GEAR_DIR_3
@@ -54,6 +68,10 @@ if BOARD_TYPE_SKR_PICO_1
   endif
 
   if !MULTIGEAR
+    config PIN_SELECTOR_UART
+      default PIN_GEAR_UART
+    config PARAM_SELECTOR_UART_ADDRESS
+      default 2
     config PIN_SELECTOR_STEP
       default "$(MCU_NAME):gpio19" 
     config PIN_SELECTOR_DIR

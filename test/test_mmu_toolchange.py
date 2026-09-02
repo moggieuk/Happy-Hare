@@ -172,6 +172,22 @@ class TestUnload(ToolchangeTestCase):
         self.assertAlmostEqual(self.fil.tip[0], park, places=1)
         self.assertEqual(self.hh.errors, [])
 
+    def test_full_unload_preserves_explicit_bowden_helper_length(self):
+        requests = []
+        original_unload_bowden = self.hh.mmu._unload_bowden
+
+        def record_unload_bowden(length=None, *args, **kwargs):
+            requests.append(length)
+            return original_unload_bowden(length, *args, **kwargs)
+
+        self.hh.mmu._unload_bowden = record_unload_bowden
+        self.hh.run_gcode('MMU_UNLOAD')
+
+        self.assertEqual(requests, [
+            self.hh.mmu.mmu_unit().calibrator.get_bowden_length(),
+        ])
+        self.assertEqual(self.hh.errors, [])
+
     def test_unload_clears_the_path_sensors(self):
         """
         Everything downstream of the gate goes clear. The ENTRY switch does not, and must

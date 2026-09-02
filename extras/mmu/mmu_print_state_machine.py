@@ -60,7 +60,7 @@ class MmuPrintStateMachine:
 
     def _handle_idle_timeout_event(self, eventtime, event_type):
         """
-        Track print events simply to ease internal print state transitions. Specificly we want to detect
+        Track print events simply to ease internal print state transitions. Specifically we want to detect
         the start and end of a print and falling back into 'standby' state on idle
     
         Klipper reference sources for state:
@@ -86,10 +86,10 @@ class MmuPrintStateMachine:
                     # Figure out the difference between initial job start and resume
                     if prev_ps['state'] == "paused" and prev_ps['filename'] == new_ps['filename'] and prev_ps['total_duration'] < new_ps['total_duration']:
                         # This is a 'resumed' state so ignore
-                        self.mmu.log_trace("Automaticaly detected RESUME (ignored), print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
+                        self.mmu.log_trace("Automatically detected RESUME (ignored), print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
                     else:
                         # This is a 'started' state
-                        self.mmu.log_trace("Automaticaly detected JOB START, print_status:print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
+                        self.mmu.log_trace("Automatically detected JOB START, print_status:print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
                         if self.print_state not in ["started", "printing"]:
                             self.on_print_start(pre_start_only=True)
                             self.mmu.reactor.register_callback(lambda pt: self.print_event("MMU_PRINT_START AUTOMATIC=1"))
@@ -147,7 +147,7 @@ class MmuPrintStateMachine:
 
     def fix_started_state(self):
         """
-        Workaround to force state transistion to printing for any early moves if MMU_PRINT_START not yet run
+        Workaround to force state transition to printing for any early moves if MMU_PRINT_START not yet run
         """
         if self.is_printer_printing() and not self.is_in_print():
             self.mmu.wrap_gcode_command("MMU_PRINT_START FIX_STATE=1")
@@ -261,7 +261,7 @@ class MmuPrintStateMachine:
 
     def is_mmu_paused_and_locked(self):
         """
-        The MMU is paused and locked (meaning that it is awating a resume command to perhaps restore extruder temps)
+        The MMU is paused and locked (meaning that it is awaiting a resume command to perhaps restore extruder temps)
         """
         return self.print_state in ["pause_locked"]
 

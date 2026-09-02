@@ -265,7 +265,7 @@ class MmuServer:
                 if MMU_RFID_FIELD not in fields:
                     extras = extras and await self._add_extra_field("spool", field_name="RFID", field_key=MMU_RFID_FIELD, field_type="text", default_value="")
 
-                # Create cache of spool location from Spoolman db for effeciency
+                # Create cache of spool location from Spoolman db for efficiency
                 if extras:
                     await self._build_spool_location_cache(silent=True)
                 self.spoolman_has_extras = extras
@@ -1799,7 +1799,7 @@ class MmuServer:
                         "vendor_name": (gate_vendor[gate] if gate < len(gate_vendor) else None) or spool_attrs.get('vendor', None) or None,
                         "name": (gate_filament_name[gate] if gate < len(gate_filament_name) else None) or spool_attrs.get('name', None) or None,
                         "color": gate_color[gate] if gate < len(gate_color) else None,
-                        "td": None, # we don't currently capture transmision distance and isn't standard in spoolman
+                        "td": None, # we don't currently capture transmission distance and isn't standard in spoolman
                         "material": gate_material[gate] if gate < len(gate_material) else None,
                         "bed_temp": spool_attrs.get('bed_temp', None) or None,
                         "nozzle_temp": gate_temperature[gate] if gate < len(gate_temperature) else 200,
@@ -2299,7 +2299,7 @@ if __name__ == "__main__":
     enabled_msg = "enabled" if config["check_objects"] else "disabled"
     metadata.logger.info(f"Object Processing is {enabled_msg}")
 
-    # Parsing for mmu placeholders and next pos insertion. We do this first so we can add additonal metadata
+    # Parsing for mmu placeholders and next pos insertion. We do this first so we can add additional metadata
     main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos)
 
     # Original metadata parser

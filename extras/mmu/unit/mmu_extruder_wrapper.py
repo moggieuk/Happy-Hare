@@ -172,7 +172,7 @@ class MmuExtruderWrapper():
         self.filament_remaining = length
         self.filament_remaining_color = color
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1))) # TODO TEMP Duplicate non-namespaced for older Mainsail/Fluidd UI
-        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color)              # TODO TEMP Deplicate non-namespaced for older Mainsail/Fluidd UI
+        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color)              # TODO TEMP duplicate non-namespaced for older Mainsail/Fluidd UI
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1)), self.name)
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color, self.name, write=True)
 

@@ -1013,7 +1013,7 @@ _TIGERTAG_ASPECTS: dict[int, str] = {
     0: "-", 21: "Clear", 24: "Tricolor", 64: "Glitter",
     67: "Translucent", 91: "Glow in the Dark", 92: "Silk",
     97: "Lithophane", 104: "Basic", 123: "Wood", 126: "Pearl",
-    129: "Gloss", 134: "Satin", 145: "Rainbow", 168: "Thermoreactif",
+    129: "Gloss", 134: "Satin", 145: "Rainbow", 168: "Thermoreactif",  # cspell:ignore Thermoreactif
     173: "Stone", 216: "Neon", 220: "Pastel", 226: "Metal",
     232: "Marble", 238: "Carbon", 247: "Matt", 252: "Bicolor",
     255: "None",

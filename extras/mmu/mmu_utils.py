@@ -565,6 +565,7 @@ class MmuColorUtils:
     """
 
     # Standard symbolic color names
+    # cspell:disable # technical color names should not be spell checked
     W3C_COLORS = {
         'aliceblue': '#F0F8FF',
         'antiquewhite': '#FAEBD7',
@@ -715,6 +716,7 @@ class MmuColorUtils:
         'yellow': '#FFFF00',
         'yellowgreen': '#9ACD32',
     }
+    # cspell:enable
 
 
     @staticmethod

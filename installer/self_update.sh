@@ -27,7 +27,7 @@ self_update() {
         return
     fi
 
-    # Both check for updates but also help me not loose changes accidently
+    # Both check for updates but also help me not loose changes accidentally
     git fetch --quiet
 
     switch=0

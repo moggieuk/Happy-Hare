@@ -22,7 +22,7 @@
 #    --log=<file>            (simulator json log output, default: sim.jsonl)
 # Use --chaos=0 sample-error=0 for "pure" simulation
 #
-# Grpahing logs:
+# Graphing logs:
 #  python sync_feedback.py --plot=<sim.jsonl>
 #
 #
@@ -519,7 +519,7 @@ def plot_progress(
             has_fg_armed = True
             fg_armed.append((i, -1.0))
 
-    # Header sparators representing reset() points in controller
+    # Header separators representing reset() points in controller
     header_break_idxs = [
         i for i, r in enumerate(records[:end_idx])
         if r.get("meta", {}).get("header_break") is True

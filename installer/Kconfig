@@ -57,6 +57,10 @@
 # 10. Added 'boolint' and 'defboolint' types: Boolean UI/logic with numeric 0/1 output
 # 11. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
 #    and include: B,BOLD,DIM,U,UNDERLINE,REV,REVERSE,C:n,COLOR:n (color), RESET
+# 12. Derived array-size mismatch checks for warnings:
+#      config WARN_ARRAY_LENGTH
+#        bool
+#        array_size_mismatch PARAM_ARRAY
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

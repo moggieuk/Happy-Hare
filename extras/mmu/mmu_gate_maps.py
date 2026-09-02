@@ -188,7 +188,7 @@ class MmuGateMaps:
         self.mmu.var_manager.write()
         self.update_t_macros()
 
-        # Also persist to spoolman db if pushing updates for visability
+        # Also persist to spoolman db if pushing updates for visibility
         if spoolman_sync:
             if self.p.spoolman_support == SPOOLMAN_PUSH:
                 if gate_ids is None:

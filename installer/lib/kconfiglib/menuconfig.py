@@ -247,6 +247,14 @@ _SUBMENU_INDENT = 4
 # Number of steps for Page Up/Down to jump
 _PG_JUMP = 6
 
+# Readable substitutions for terminals limited to ASCII. Any other character
+# unsupported by the curses window encoding is replaced with "?".
+_ENCODING_FALLBACKS = str.maketrans({
+    "─": "-",
+    "→": ">",
+    "°": "^",
+})
+
 # Height of the help window in show-help mode
 _SHOW_HELP_HEIGHT = 7
 _ALWAYS_SHOW_HELP_WINDOW = True
@@ -3628,7 +3636,7 @@ def _check_valid(sym, s):
         # reference, validate the number of elements against the
         # referenced symbol's current value
         size_sym = getattr(sym, "array_size_sym", None)
-        if sym.orig_type == STRING and getattr(sym, "array_editor", None) \
+        if s and sym.orig_type == STRING and getattr(sym, "array_editor", None) \
            and size_sym is not None:
             base = 16 if size_sym.orig_type == HEX else 10
             try:
@@ -3791,14 +3799,28 @@ def _safe_addstr(win, *args):
     maxlen = _width(win) - x
     s = s.expandtabs()
 
-    try:
+    def addnstr(text):
         # The 'curses' module uses wattr_set() internally if you pass 'attr',
         # overwriting the background style, so setting 'attr' to 0 in the first
         # case won't do the right thing
         if attr is None:
-            win.addnstr(y, x, s, maxlen)
+            win.addnstr(y, x, text, maxlen)
         else:
-            win.addnstr(y, x, s, maxlen, attr)
+            win.addnstr(y, x, text, maxlen, attr)
+
+    try:
+        addnstr(s)
+    except UnicodeEncodeError as e:
+        # Minimal embedded distributions might not provide any UTF-8 locale,
+        # leaving curses configured for ASCII despite the locale repair above.
+        # Preserve common UI glyphs where possible, replace everything else
+        # unsupported with "?", and retry instead of aborting menuconfig.
+        safe_s = s.translate(_ENCODING_FALLBACKS)
+        safe_s = safe_s.encode(e.encoding, errors="replace").decode(e.encoding)
+        try:
+            addnstr(safe_s)
+        except curses.error:
+            pass
     except curses.error:
         pass
 

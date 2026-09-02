@@ -4,6 +4,7 @@ config MMU_TYPE_3MS_1_0
     3MS is a popular simple and reliable type-B MMU design. It is an open
     framed minimalist design and easy to build with any number of gates.
   select VIRTUAL_SELECTOR
+  imply MMU_HAS_SENSOR_EXTRUDER
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select PARAM_FILAMENT_ALWAYS_GRIPPED
 
@@ -38,8 +39,12 @@ if MMU_TYPE_3MS_1_0
 
   config PARAM_GATE_HOMING_MAX
     default 500
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default 1500
   config PARAM_GATE_PARKING_DISTANCE
     default -250
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default 1500
 
   comment "_"
 

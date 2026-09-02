@@ -23,6 +23,20 @@ class FakeWindow:
         return 10, 80
 
 
+class FakeAsciiWindow(FakeWindow):
+    def __init__(self):
+        self.writes = []
+
+    def getyx(self):
+        return 0, 0
+
+    def addnstr(self, y, x, text, maxlen, *args):
+        # Match an ASCII-configured curses window on embedded systems without
+        # an installed UTF-8 locale.
+        text.encode("ascii")
+        self.writes.append(text[:maxlen])
+
+
 class TestMenuCursorSkipsComments(unittest.TestCase):
 
     def setUp(self):
@@ -87,6 +101,47 @@ class TestMenuCursorSkipsComments(unittest.TestCase):
         with patch.object(menuconfig, "_shown_nodes",
                           return_value=[comment(), comment()]):
             self.assertFalse(menuconfig._enter_menu(submenu))
+
+
+class TestMenuRendering(unittest.TestCase):
+
+    def test_non_ascii_text_has_readable_ascii_fallbacks(self):
+        win = FakeAsciiWindow()
+
+        menuconfig._safe_addstr(
+            win, 0, 0, "─────── → FANS (°C); other arrows: ← ↑ ↓", 1)
+
+        self.assertEqual(
+            win.writes, ["------- > FANS (^C); other arrows: ? ? ?"])
+
+
+class TestArrayEditorValidation(unittest.TestCase):
+
+    @staticmethod
+    def angle_symbol(gates=4):
+        return SimpleNamespace(
+            orig_type=menuconfig.STRING,
+            array_editor=",",
+            array_size_sym=SimpleNamespace(
+                orig_type=menuconfig.INT,
+                str_value=str(gates),
+                name="PARAM_NUM_GATES",
+            ),
+        )
+
+    def test_gate_sized_array_rejects_the_wrong_number_of_values(self):
+        with patch.object(menuconfig, "_error") as error:
+            self.assertFalse(menuconfig._check_valid(
+                self.angle_symbol(), "26,58,90"))
+
+        error.assert_called_once()
+        self.assertIn("Expected 4 value(s)", error.call_args.args[0])
+
+    def test_empty_array_remains_available_as_calibration_sentinel(self):
+        with patch.object(menuconfig, "_error") as error:
+            self.assertTrue(menuconfig._check_valid(self.angle_symbol(), ""))
+
+        error.assert_not_called()
 
 
 if __name__ == "__main__":

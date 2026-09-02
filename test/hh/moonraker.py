@@ -10,9 +10,8 @@
 # script. On a real install this file lives at
 # $(MOONRAKER_HOME)/moonraker/components/mmu_server.py so `.` is moonraker.components
 # and file_manager is a sibling. In this repo `components/` holds only mmu_server.py,
-# so the import fails and MmuServer cannot even be constructed - which is why the
-# legacy test/components/test_mmu_server.py has been failing at setUp. We inject a
-# stub into sys.modules before import.
+# so the import fails and MmuServer cannot even be constructed. We inject a stub into
+# sys.modules before import.
 #
 # THE ACTIVATION GATE. Almost every public method early-returns unless
 # _mmu_backend_enabled() (:293-296) is true, and that needs klippy_apis to report an
