@@ -63,12 +63,24 @@ class TestMmxDesignAttributes(unittest.TestCase):
         self.assertGreater(
             released.syms["PARAM_FILAMENT_ALWAYS_GRIPPED"].visibility, 0)
 
-    def test_mmx_does_not_force_bowden_move(self):
-        bowden = self.mmx.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
-        self.assertEqual(bowden.str_value, "0")
-        self.assertGreater(bowden.visibility, 0)
+    def test_mmx_requires_bowden_move_for_non_extruder_gate_endstop(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(
+                "mmx_shared_exit_bowden",
+                {
+                    "MMU_TYPE_MMX_1_0": True,
+                    "MMU_HAS_SENSOR_SHARED_EXIT": True,
+                },
+            )
 
-        bowden.set_value("1")
+        self.assertEqual(
+            kconfig.get("PARAM_GATE_HOMING_ENDSTOP"), "mmu_shared_exit")
+        bowden = kconfig.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
+        self.assertEqual(bowden.str_value, "1")
+        self.assertGreater(bowden.visibility, 0)
+        self.assertEqual(bowden.assignable, (2,))
+
+        bowden.set_value("0")
         self.assertEqual(bowden.str_value, "1")
 
 

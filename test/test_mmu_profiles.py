@@ -348,27 +348,23 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertEqual(hh.errors, [])
 
-    def test_extruder_gate_datum_does_not_change_bowden_unit_state(self):
+    def test_no_bowden_mode_rejects_non_extruder_gate_endstop(self):
         hh = self._check('3ms')
         unit = hh.mmu.mmu_unit(0)
+
+        with self.assertRaises(Exception) as cm:
+            hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=encoder')
+        self.assertIn("gate_homing_endstop must be 'extruder'", str(cm.exception))
+        self.assertEqual(unit.p.gate_homing_endstop, 'extruder')
+
         unit.require_bowden_move = True
-        hh.place_filament(0, position=TIP_AT_GATE)
-        hh.mmu.select_gate(0)
-        hh.mmu._load_gate()
+        hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=encoder')
+        self.assertEqual(unit.p.gate_homing_endstop, 'encoder')
 
-        from extras.mmu.mmu_constants import (
-            FILAMENT_POS_HOMED_ENTRY,
-            FILAMENT_POS_HOMED_GATE,
-            FILAMENT_POS_UNKNOWN,
-        )
-        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_HOMED_GATE)
-
-        # The no-Bowden recovery override must not leak into a conventional
-        # Bowden unit: the same triggered sensor retains the pre-change
-        # HOMED_ENTRY result when a heated extruder check is unavailable.
-        hh.mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN, silent=True)
-        hh.mmu.recover_filament_pos(strict=True, can_heat=False, silent=True)
-        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_HOMED_ENTRY)
+        with self.assertRaises(Exception) as cm:
+            hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=extruder')
+        self.assertIn("requires require_bowden_move to be 0", str(cm.exception))
+        self.assertEqual(unit.p.gate_homing_endstop, 'encoder')
 
     def test_bowden_homing_buffers_reject_negative_config(self):
         from test.hh import profiles

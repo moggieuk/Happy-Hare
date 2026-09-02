@@ -72,6 +72,15 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
         self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
 
+    def test_shared_exit_requires_bowden_move(self):
+        bowden = self.kconfig.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
+        self.assertEqual(bowden.str_value, "1")
+        self.assertGreater(bowden.visibility, 0)
+        self.assertEqual(bowden.assignable, (2,))
+
+        bowden.set_value("0")
+        self.assertEqual(bowden.str_value, "1")
+
     def test_dryer_capabilities_are_recommended_but_can_be_disabled(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             without_dryer = cfg._kconfig(
