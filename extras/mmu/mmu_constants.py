@@ -37,6 +37,7 @@ VENDOR_KMS            = "KMS"
 VENDOR_EMU            = "EMU"
 VENDOR_LOW_RIDER      = "LowRider"
 VENDOR_QIDI           = "QIDI"
+VENDOR_HTLF           = "HTLF"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
@@ -66,6 +67,7 @@ VENDORS = [
     VENDOR_EMU,
     VENDOR_LOW_RIDER,
     VENDOR_QIDI,
+    VENDOR_HTLF,
     VENDOR_OTHER,
 ]
 
