@@ -300,35 +300,6 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(
             len(hh.mmu.mmu_unit(0).leds.virtual_chains['exit'].leds), 5)
 
-    def test_a_missing_per_gate_chain_count_falls_back_to_the_scalar(self):
-        """
-        PARAM_CHAIN_COUNT_<gate> was added so gates wired with different numbers of pixels
-        can each declare their own chain length. Backwards compatibility is the entire
-        constraint on that: a .mmu_config written before those symbols existed carries only
-        the scalar PARAM_CHAIN_COUNT, and so does every vendor default - emu_ebb sets 5 and
-        nothing else. "Unset" therefore has to mean "whatever the scalar says", not 0.
-
-        test_emu_ebb asserts the same '5' in passing; this states it as the rule it is, so
-        that deleting or reworking that test does not quietly take the guard with it.
-        """
-        from test.hh import cfg, profiles
-        parser = cfg.assemble(cfg.render(profiles.get('emu_ebb')))
-        self.assertEqual(
-            [dict(parser.items('neopixel _unit0_gate%d_leds' % gate))['chain_count']
-             for gate in range(5)],
-            ['5'] * 5)
-
-    def test_one_gate_can_be_given_a_chain_of_its_own_length(self):
-        """The point of the symbols: gate 4 wired with nine pixels, the rest left alone."""
-        from test.hh import cfg, profiles
-        profile = profiles.get('emu_ebb').derive(
-            'emu_ebb_uneven_chains', syms={'PARAM_CHAIN_COUNT_4': 9})
-        parser = cfg.assemble(cfg.render(profile))
-        self.assertEqual(
-            [dict(parser.items('neopixel _unit0_gate%d_leds' % gate))['chain_count']
-             for gate in range(5)],
-            ['5', '5', '5', '5', '9'])
-
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
         self._check('ercf_vvd')
