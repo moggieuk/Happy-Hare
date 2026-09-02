@@ -2,6 +2,7 @@
 
 import unittest
 
+from extras.mmu.mmu_constants import VENDORS
 from test.hh import cfg, profiles
 
 
@@ -46,6 +47,9 @@ class TestHtlfProfile(unittest.TestCase):
 
         self.assertTrue(self.kconfig.is_enabled("PARAM_VARIABLE_ROTATION_DISTANCES"))
         self.assertTrue(self.kconfig.is_enabled("PARAM_FILAMENT_ALWAYS_GRIPPED"))
+
+    def test_vendor_is_accepted_by_runtime_config(self):
+        self.assertIn(self.kconfig.get("PARAM_VENDOR"), VENDORS)
 
 
 if __name__ == "__main__":
