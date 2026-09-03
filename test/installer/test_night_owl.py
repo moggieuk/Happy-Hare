@@ -23,6 +23,25 @@ class TestNightOwlProfile(unittest.TestCase):
         self.assertEqual(
             self.kconfig.get("PARAM_BOARD_TYPE"), "OwlFC-Mini v1.0")
 
+    def test_entry_and_exit_sensors_are_recommended(self):
+        self.assertTrue(self.kconfig.is_enabled("MMU_HAS_SENSOR_ENTRY"))
+        self.assertTrue(self.kconfig.is_enabled("MMU_HAS_SENSOR_EXIT"))
+
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            without_lane_sensors = cfg._kconfig(
+                "night_owl_without_lane_sensors",
+                {
+                    "MMU_TYPE_NIGHT_OWL_1_0": True,
+                    "MMU_HAS_SENSOR_ENTRY": False,
+                    "MMU_HAS_SENSOR_EXIT": False,
+                },
+            )
+
+        self.assertFalse(
+            without_lane_sensors.is_enabled("MMU_HAS_SENSOR_ENTRY"))
+        self.assertFalse(
+            without_lane_sensors.is_enabled("MMU_HAS_SENSOR_EXIT"))
+
     def test_owlfc_mini_pinout(self):
         expected = {
             "PIN_GEAR_STEP": "unit0:PB15",
