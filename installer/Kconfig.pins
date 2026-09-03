@@ -282,7 +282,7 @@ menu "Pins / TMC"
       prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
     config PIN_BUFFER_NEOPIXEL
       string
-      prompt "Neopixel pin                 " if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
+      prompt "Buffer neopixel pin          " if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
   endmenu
 
 # -------------------------------------
