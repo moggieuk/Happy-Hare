@@ -200,7 +200,7 @@ menu "Endstops and Bowden movement"
   comment "_Extruder homing"
 
   comment "Extruder homing not necessary - toolhead sensor available"
-    depends on MMU_HAS_SENSOR_TOOLHEAD && !PARAM_EXTRUDER_FORCE_HOMING
+    depends on MMU_HAS_SENSOR_TOOLHEAD
 
   config PARAM_EXTRUDER_FORCE_HOMING
     boolint
