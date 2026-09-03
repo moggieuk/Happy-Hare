@@ -31,7 +31,6 @@
 #   (PARAM_HAS_BYPASS) set in Kconfig.bypass
 #   PARAM_VARIABLE_BOWDEN_LENGTHS
 #   PARAM_VARIABLE_ROTATION_DISTANCES
-#   PARAM_REQUIRE_BOWDEN_MOVE
 #   PARAM_FILAMENT_ALWAYS_GRIPPED
 #
 # Some custom designs have special hardware setup. If so, that is included
@@ -134,17 +133,6 @@ menu "Design attributes"
       If this is selected you are able to tune the rotation distance of each gate/lane
       independently which may useful especially with long bowden tubes where
       lack of calibration can multiply.
-  config UNSELECT_REQUIRE_BOWDEN_MOVE
-    def_bool n
-  config PARAM_REQUIRE_BOWDEN_MOVE
-    boolint "Require bowden move?"
-    default 0
-    forceshow
-    depends on !UNSELECT_REQUIRE_BOWDEN_MOVE
-    help
-      Whether the design requires a calibrated fast bowden move to reach the extruder.
-      This is not necessary if there is a filament splitter/combiner at the toolhead
-      and the extruder entry sensor is leveraged as the gate endstop.
   config UNSELECT_FILAMENT_ALWAYS_GRIPPED
     def_bool n
   config PARAM_FILAMENT_ALWAYS_GRIPPED

@@ -6,6 +6,7 @@
 #
 # Responsible for setting:
 #   PARAM_GATE_HOMING_ENDSTOP
+#   PARAM_REQUIRE_BOWDEN_MOVE
 #   PARAM_GATE_PARKING_DISTANCE
 #   PARAM_GATE_HOMING_MAX
 #   PARAM_GATE_LOAD_ATTEMPTS
@@ -15,7 +16,7 @@
 # Gate homing preference flags (hidden)
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
   def_bool n
-  depends on MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
+  depends on MMU_HAS_SENSOR_EXTRUDER
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXIT
   def_bool n
@@ -54,9 +55,9 @@ menu "Endstops and Bowden movement"
   help
     Configure endstops, gate and extruder homing options.
 
-# -------------------------------------
-# Gate Endstop
-# -------------------------------------
+  # -------------------------------------
+  # Gate Endstop
+  # -------------------------------------
 
   comment "_Gate homing"
 
@@ -75,7 +76,7 @@ menu "Endstops and Bowden movement"
     # Heuristic fallbacks
     default CHOICE_GATE_HOMING_ENDSTOP_EXIT        if MMU_HAS_SENSOR_EXIT
     default CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT if MMU_HAS_SENSOR_SHARED_EXIT
-    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER    if MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
+    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER    if MMU_HAS_SENSOR_EXTRUDER
     default CHOICE_GATE_HOMING_ENDSTOP_ENCODER     if MMU_HAS_ENCODER
     default CHOICE_GATE_HOMING_ENDSTOP_NONE
 
@@ -87,7 +88,7 @@ menu "Endstops and Bowden movement"
         Often also implemented as per-gate entry sensors on the filament combiner ("aka hub")
 
     config CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
-      bool "Shared exit sensor"
+      bool "Shared exit / hub sensor"
       depends on MMU_HAS_SENSOR_SHARED_EXIT
       help
         Use gate endstop which is shared by all MMU gates.
@@ -103,14 +104,14 @@ menu "Endstops and Bowden movement"
 
     config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
       bool "Extruder entry sensor"
-      depends on MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE
+      depends on MMU_HAS_SENSOR_EXTRUDER
       help 
         Use extruder entry sensor (Only for some type-B designs,
         where multiple bowden tubes are combined near the toolhead).
 
     config CHOICE_GATE_HOMING_ENDSTOP_NONE
       bool "No homing endstop available"
-      depends on !(MMU_HAS_SENSOR_EXTRUDER && !PARAM_REQUIRE_BOWDEN_MOVE) && !MMU_HAS_SENSOR_EXIT && !MMU_HAS_SENSOR_SHARED_EXIT && !MMU_HAS_ENCODER
+      depends on !MMU_HAS_SENSOR_EXTRUDER && !MMU_HAS_SENSOR_EXIT && !MMU_HAS_SENSOR_SHARED_EXIT && !MMU_HAS_ENCODER
       help
         Ensure you have specified all filament sensors and encoder because
         current configuration has no way to home at the MMU gate.
@@ -125,6 +126,15 @@ menu "Endstops and Bowden movement"
     default "mmu_shared_exit" if CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
     default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
     default ""                # This is actually a config error
+
+  config PARAM_REQUIRE_BOWDEN_MOVE
+    boolint
+    default 0 if CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+    default 1
+    help
+      Derived from the gate homing endstop. A separately calibrated fast
+      Bowden move is not required when gate homing reaches the extruder entry
+      sensor directly.
 
   config PARAM_GATE_HOMING_MAX
     float "Maximum homing distance     "
@@ -145,21 +155,36 @@ menu "Endstops and Bowden movement"
       Positive values for movement in the extrude direction (past sensor)
 
   config PARAM_GATE_LOAD_ATTEMPTS
-    int "Number of gate load attempts"
+    int
+    prompt "Number of gate load attempts" if MMU_HAS_SELECTOR_SERVO
     range 1 20
-    default 2
-    depends on LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
+    default 1
     help
       Number of times MMU will attempt to grab the filament on initial load (type-A designs with servo)
 
 
 
-# -------------------------------------
-# Gate homing and buffer distances
-# -------------------------------------
+  # -------------------------------------
+  # Bowden move buffer
+  # -------------------------------------
+
+  comment "_"
+  comment "_Bowden Move"
+
+  comment "No bowden move required - gate homing to extruder"
+    depends on !PARAM_REQUIRE_BOWDEN_MOVE
+
+  config PARAM_BOWDEN_LOAD_HOMING_BUFFER
+    float
+    prompt "Bowden load homing buffer   " if PARAM_REQUIRE_BOWDEN_MOVE
+    default 20
+    help
+      Distance to reduce fast bowden load to prevent collisions
+      and allow for accurate extruder homing
 
   config PARAM_BOWDEN_UNLOAD_HOMING_BUFFER
-    float "Bowden unload homing buffer "
+    float
+    prompt "Bowden unload homing buffer " if PARAM_REQUIRE_BOWDEN_MOVE
     default 40
     help
       Distance to reduce fast bowden unload to allow for accurate
@@ -167,19 +192,37 @@ menu "Endstops and Bowden movement"
 
 
 
-# -------------------------------------
-# Extruder endstop
-# -------------------------------------
+  # -------------------------------------
+  # Extruder reference
+  # -------------------------------------
 
   comment "_"
   comment "_Extruder homing"
 
-  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    prompt "Extruder homing endstop     "
+  comment "Extruder homing not necessary - toolhead sensor available"
+    depends on MMU_HAS_SENSOR_TOOLHEAD && !PARAM_EXTRUDER_FORCE_HOMING
+
+  config PARAM_EXTRUDER_FORCE_HOMING
+    boolint
+    prompt "Force extruder homing" if MMU_HAS_SENSOR_TOOLHEAD
+    default 0 if !MMU_HAS_SENSOR_TOOLHEAD
+    default 0 if CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+    default 1
     help
-      It can be desirable to have an endstop defined near the toolhead.
-      This can be "none" if toolhead sensor is available otherwise
-      it is necessary to choose the best option for your design
+      Force a separate extruder-reference operation before homing to the
+      toolhead sensor. This is usually unnecessary when gate homing already
+      uses the extruder entry sensor.
+
+  config SHOW_ACTIVE_EXTRUDER_HOMING
+    def_bool y if !MMU_HAS_SENSOR_TOOLHEAD
+    def_bool y if MMU_HAS_SENSOR_TOOLHEAD && PARAM_EXTRUDER_FORCE_HOMING
+
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    prompt "Extruder endstop method     " if SHOW_ACTIVE_EXTRUDER_HOMING
+    help
+      Select how Happy Hare establishes the extruder gear reference before
+      loading toward the nozzle. This can be "none" when a toolhead sensor
+      provides the next precise reference point.
 
     # mmu_type preferences (first true wins)
     default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
@@ -198,11 +241,20 @@ menu "Endstops and Bowden movement"
     default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
 
     config CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
-      bool "Extruder entry sensor"
+      bool "Extruder entry sensor + advance"
       depends on MMU_HAS_SENSOR_EXTRUDER
+      depends on !CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
       help
-        If you have a "filament entry" endstop configured
-        (Requires 'extruder' endstop)
+        Use the extruder entry sensor, then advance by the configured
+        entry-to-extruder distance to establish the gear position.
+
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_ADVANCE_ONLY
+      bool "Advance from extruder entry sensor"
+      depends on MMU_HAS_SENSOR_EXTRUDER
+      depends on CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+      help
+        Gate homing has already reached the extruder entry sensor. Advance by
+        the configured entry-to-extruder distance to establish the extruder gear position.
 
     config CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
       bool "Filament compression"
@@ -226,16 +278,19 @@ menu "Endstops and Bowden movement"
 
     config CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
       bool "No homing endstop"
+      depends on !CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
       help
-        Don't attempt to home. Only possibility if lacking all sensor options.
-        Filament will be moved based on distance only
+        Don't attempt to home. Two use cases include:
+          1) Only possibility if lacking all sensor options
+          2) Option if you calibrate and have a toolhead sensor
 
-        However this isn't a issue if you calibrate and have a toolhead sensor
+        Filament will be moved based on distance only
   endchoice
 
   # Create no-prompt param from choice
   config PARAM_EXTRUDER_HOMING_ENDSTOP
     string 
+    default "extruder"             if CHOICE_EXTRUDER_HOMING_ENDSTOP_ADVANCE_ONLY
     default "extruder"             if CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
     default "filament_compression" if CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
     default "encoder"              if CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
@@ -243,53 +298,43 @@ menu "Endstops and Bowden movement"
     default "none"
 
 
-# -------------------------------------
-# Extruder homing and buffer distances
-# -------------------------------------
-
-  config PARAM_BOWDEN_LOAD_HOMING_BUFFER
-    float "Bowden load homing buffer   "
-    default 20
-    help
-      Distance to reduce fast bowden load to prevent collisions
-      and allow for accurate extruder homing
-
-  config PARAM_EXTRUDER_COLLISION_HOMING_CURRENT
-    int
-    range 10 100
-    default 30
-
-  config PARAM_EXTRUDER_COLLISION_HOMING_CURRENT
-    prompt "Collision homing current    "
-    depends on CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
-    help
-      When using extruder collision homing method (encoder or mmu_gear_touch)
-      the current of the gear stepper can be reduced when homing. Specify
-      the % current reduction.
+  # -------------------------------------
+  # Extruder homing and buffer distances
+  # -------------------------------------
 
   config PARAM_EXTRUDER_HOMING_MAX
-    float "Extruder homing max         "
+    float
+    prompt "Extruder homing max         " if SHOW_ACTIVE_EXTRUDER_HOMING && !(CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE || CHOICE_EXTRUDER_HOMING_ENDSTOP_ADVANCE_ONLY)
     default 100
     help
       The maximum distance filament will travel attempting to home
       to the extruder. Should be greater than "Bowden load homing buffer"
 
-  if MMU_HAS_SENSOR_TOOLHEAD
-    config PARAM_EXTRUDER_FORCE_HOMING
-      boolint "Force extruder homing"
-      default 0 if CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
-      default 1
-      help
-        By default, for not calibrating loads, Happy Hare will not home to the extruder
-        if a toolhead sensor is fitted (because homing point is inside the extruder).
-        However the extruder homing can be forced by setting this option.
+  config PARAM_EXTRUDER_COLLISION_HOMING_CURRENT
+    int
+    prompt "Collision % homing current  " if SHOW_ACTIVE_EXTRUDER_HOMING && (CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH)
+    range 10 100
+    default 30
+    help
+      When using extruder collision homing method (encoder or mmu_gear_touch)
+      the current of the gear stepper can be reduced when homing. Specify
+      the % current reduction.
 
-    config PARAM_TOOLHEAD_HOMING_MAX
-      float "Toolhead sensor homing max  "
-      depends on MMU_HAS_SENSOR_TOOLHEAD
-      default 40
-      help
-        Additional distance to advance in order to attempt to home to toolhead sensor
-  endif
+  # -------------------------------------
+  # Toolhead sensor homing
+  # -------------------------------------
+
+  comment "_"
+    depends on MMU_HAS_SENSOR_TOOLHEAD
+
+  comment "_Toolhead sensor homing"
+    depends on MMU_HAS_SENSOR_TOOLHEAD
+
+  config PARAM_TOOLHEAD_HOMING_MAX
+    float
+    prompt "Toolhead sensor homing max  " if MMU_HAS_SENSOR_TOOLHEAD
+    default 40
+    help
+      Additional distance to advance in order to attempt to home to toolhead sensor
 
 endmenu

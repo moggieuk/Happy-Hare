@@ -5,7 +5,6 @@ config MMU_TYPE_HTLF_1_0
     rotary cam based selection mechanism controlled by stepper
   select ROTARY_SELECTOR
   select MMU_HAS_LEDS
-  imply  PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select DISABLE_NUM_GATES_OPTION
