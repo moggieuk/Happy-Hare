@@ -88,7 +88,8 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` offers everything — currently **862 tests, about 1m40s** on a warm laptop.
+`make test` offers everything — currently **1,327 tests in 46 files, about 6m30s** on a
+warm laptop.
 Expect to see:
 
 ```
@@ -97,8 +98,8 @@ OK
 
 Anything reporting `FAILED (failures=…)` or `(errors=…)` is a genuine problem.
 
-A minute and a half is still too long to sit through on every change, which is why `make
-test` opens a file picker first rather than starting straight away.
+Six minutes is too long to sit through on every change, which is why `make test` opens a
+file picker first rather than starting straight away.
 
 ### Running less than everything
 
@@ -106,19 +107,18 @@ test` opens a file picker first rather than starting straight away.
 suite exactly as it always did — but untick the expensive files and you get a focused run:
 
 ```
-Happy Hare tests - 862 tests in 27 files        times from last run (~ = reference, never run locally)
+Happy Hare tests - 1327 tests in 46 files        times from last run (~ = reference, never run locally)
 
-   1 [x] installer.test_build           1     0.0s
-   2 [x] test_mmu_adc_compat           14     0.0s
-   3 [x] test_mmu_bootup               34     2.3s
+   1 [x] installer.test_build           3     3.0s
+   2 [x] installer.test_htlf            2     1.7s
    …
-   7 [x] test_mmu_console             176      37s
+  19 [x] test_mmu_console             205      51s
    …
-  15 [x] test_mmu_nfc                  17     9.7s
+  30 [x] test_mmu_nfc                  29      15s
    …
-  27 [x] test_mmu_toolchange           20     0.9s
+  46 [x] test_mmu_toolchange           30     1.3s
 
-  selected: 27 files - 862 tests - ~1m42s last time
+  selected: 46 files - 1327 tests - ~6m28s last time
 
   [Enter] run    1 3 5-8 toggle    a all    n none    v invert
   +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
@@ -127,11 +127,11 @@ Happy Hare tests - 862 tests in 27 files        times from last run (~ = referen
 
 The right-hand column is how long each file took **on your machine, last run**, and it is the
 column to look at when deciding what to drop, because the cost is wildly uneven. From a real
-full run: `test_mmu_console` took 37 s for 176 tests and `test_mmu_nfc` 9.7 s for 17, while
-several files — including `test_mmu_tag_parser`'s 36 tests — came in under a tenth of a second
-between them. A handful of the twenty-seven files account for most of the run. The times
-fill in after your first run, `s` sorts by them, and the footer estimates what the current
-selection will cost.
+full run: `test_mmu_config` took 56 s for 33 tests, `test_mmu_console` 51 s for 205, and
+`test_mmu_profiles` 47 s for 43, while several files — including
+`test_mmu_tag_parser`'s 36 tests — came in under a tenth of a second. A handful of the 46
+files account for most of the run. The times fill in after your first run, `s` sorts by them,
+and the footer estimates what the current selection will cost.
 
 Never run the suite on this machine at all? The picker still isn't guessing: `test/benchmark.json`
 ships a checked-in reference measurement, so every file you haven't personally timed yet shows
@@ -144,12 +144,8 @@ tests, which is where nearly all the time actually is — `setUpClass` building 
 the assertions. And part of that cost is shared and cached across a *run* (`test/hh/cfg.py`
 caches Kconfig parsing per profile, and the fake `gcode_macro.py` caches compiled Jinja macro
 templates), so a file run on its own can still cost a little more than the same file inside a
-full run — `test_mmu_config` is 6.7 s in a full run and 7.5 s alone, the gap being the one
-Kconfig parse and macro compile nothing earlier in that solo run had already warmed. That gap
-used to be nearly two orders of magnitude wider (0.1 s vs 35 s) before those two caches existed —
-most of the profile-parsing and macro-compiling cost used to be paid fresh on every single boot,
-not just the first one in a run. Treat the column as a guide to relative cost within a run, not
-an absolute per-file price.
+full run: nothing earlier in a solo run has warmed those caches. Treat the column as a guide to
+relative cost within a run, not an absolute per-file price.
 
 Typing `n` then `+nfc` then Enter runs just the NFC files. `p` recalls the last selection you
 narrowed to — a full run doesn't overwrite it, so you can alternate between a focused loop
