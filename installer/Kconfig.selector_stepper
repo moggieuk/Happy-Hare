@@ -8,6 +8,7 @@
 #   PARAM_SELECTOR_HOLD_CURRENT
 #   PARAM_SELECTOR_ENDSTOP_NAME
 #   PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
+#   PARAM_SELECTOR_SENSE_RESISTOR
 #   PARAM_STARTUP_HOME_SELECTOR
 #
 #   PARAM_SELECTOR_TOUCH_ENABLED
@@ -136,6 +137,13 @@ if MMU_HAS_SELECTOR_STEPPER
           Width of gate selection endstop. It allows for accurate centering on the gate.
           Can also be automatically calibrated (per-gate) with the MMU_CALIBRATE_SELECTOR_INDEXES command
     endif
+
+    config PARAM_SELECTOR_SENSE_RESISTOR
+      float "TMC sense resistor          "
+      default 0.150 if CHOICE_SELECTOR_TMC2226
+      default 0.110
+      help
+        Current-sense resistor value used by the selector stepper driver.
 
   endmenu
 endif 

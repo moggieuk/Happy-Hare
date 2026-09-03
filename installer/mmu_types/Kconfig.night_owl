@@ -15,15 +15,59 @@ config MMU_TYPE_NIGHT_OWL_1_0
 
 if MMU_TYPE_NIGHT_OWL_1_0
 
+  choice CHOICE_TURTLE_NECK
+    prompt "Turtle Neck"
+    default CHOICE_TURTLE_NECK_V2
+
+    config CHOICE_TURTLE_NECK_V1
+      bool "Turtle Neck v1"
+      help
+        The v1 version is unsprung
+      select MMU_HAS_SYNC_FEEDBACK_BUFFER
+      select MMU_HAS_SENSOR_BUFFER_COMPRESSION
+      select MMU_HAS_SENSOR_BUFFER_TENSION
+      select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+
+    config CHOICE_TURTLE_NECK_V2
+      bool "Turtle Neck v2"
+      help
+        The v2 version has both filament tension and compression switches.
+      select MMU_HAS_SYNC_FEEDBACK_BUFFER
+      select MMU_HAS_SENSOR_BUFFER_COMPRESSION
+      select MMU_HAS_SENSOR_BUFFER_TENSION
+      select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+
+    config CHOICE_TURTLE_NECK_OTHER
+      bool "Other"
+      help
+        Select if you use another type of sync-feedback buffer
+        including the new proportional types
+      select MMU_HAS_SYNC_FEEDBACK_BUFFER
+
+  endchoice
+
+  if CHOICE_TURTLE_NECK_V1 || CHOICE_TURTLE_NECK_V2
+    choice CHOICE_BUFFER_SPRING_STATE
+      default CHOICE_BUFFER_SPRING_STATE_TENSION if CHOICE_TURTLE_NECK_V2
+      default CHOICE_BUFFER_SPRING_STATE_NONE    if CHOICE_TURTLE_NECK_V1
+    endchoice
+
+    config PARAM_BUFFER_RANGE
+      default 8
+    config PARAM_BUFFER_MAXRANGE
+      default 12
+  endif
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
 
   source "Kconfig.capabilities"
 
-  ####################
-  ##### Defaults #####
-  ####################
+
+  # -------------------------------------
+  # Defaults
+  # -------------------------------------
 
   config PARAM_VENDOR
     default "NightOwl"
@@ -31,7 +75,11 @@ if MMU_TYPE_NIGHT_OWL_1_0
     default "1.0"
   config PARAM_NUM_GATES
     default 2
+  choice BOARD_TYPE
+    default BOARD_TYPE_OWLFC_MINI_1_0
+  endchoice
 
+  # Gear stepper ---------------------------
   config PARAM_GEAR_GEAR_RATIO
     default "50:10"
   config PARAM_GEAR_RUN_CURRENT
@@ -39,12 +87,34 @@ if MMU_TYPE_NIGHT_OWL_1_0
   config PARAM_GEAR_HOLD_CURRENT
     default 0.1
 
-  config PARAM_GATE_PARKING_DISTANCE
-    default 0
+  config PARAM_SYNC_GEAR_CURRENT
+    default 70
+
+  # Gate endstops and homing ---------------
   config PARAM_GATE_HOMING_MAX
-    default 100
+    default 300
+  config PARAM_GATE_PARKING_DISTANCE
+    default -100
+
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default 200
+  config PARAM_GATE_PRELOAD_PARKING_DISTANCE
+    default 10
+
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default 300
+
+  # NFC reader setup (if fitted) -----------
+  config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+    default "0, 480"
+  config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+    default "0, 480"
+  config PARAM_NFC_GATE_CLEAR_DISTANCE
+    default -70
+  config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+    default 70
+  config PARAM_NFC_NEIGHBOR_CHECK
+    default y
 
   comment "_"
 
