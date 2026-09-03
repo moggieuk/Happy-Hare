@@ -121,6 +121,23 @@ class TestUartAddressConfiguration(unittest.TestCase):
             with self.subTest(symbol=symbol):
                 self.assertEqual(kconfig.get(symbol), "0")
 
+    def test_unsupported_multigear_board_hides_addresses_with_valid_defaults(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(
+                "unsupported_multigear_uart_addresses",
+                {
+                    "MMU_CUSTOM_TYPE_EVERYTHING": True,
+                    "BOARD_TYPE_MMB_2_0": True,
+                    "PARAM_NUM_GATES": 5,
+                },
+            )
+
+        for gear in range(1, 5):
+            symbol = "PARAM_GEAR_UART_ADDRESS_%d" % gear
+            with self.subTest(symbol=symbol):
+                self.assertEqual(kconfig.get(symbol), "0")
+                self.assertEqual(kconfig.syms[symbol].visibility, 0)
+
     def test_skr_pico_selector_shares_uart_pin_and_uses_driver_address(self):
         kconfig = self.kconfigs["skr_pico"]
         self.assertEqual(
