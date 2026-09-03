@@ -77,8 +77,8 @@ class TestMmxDesignAttributes(unittest.TestCase):
             kconfig.get("PARAM_GATE_HOMING_ENDSTOP"), "mmu_shared_exit")
         bowden = kconfig.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
         self.assertEqual(bowden.str_value, "1")
-        self.assertGreater(bowden.visibility, 0)
-        self.assertEqual(bowden.assignable, (2,))
+        self.assertEqual(bowden.visibility, 0)
+        self.assertEqual(bowden.assignable, ())
 
         bowden.set_value("0")
         self.assertEqual(bowden.str_value, "1")

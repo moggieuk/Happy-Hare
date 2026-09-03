@@ -140,6 +140,9 @@ if MMU_FAMILY_ERCF
   config PARAM_GATE_HOMING_MAX
     default 100
 
+  config PARAM_GATE_LOAD_ATTEMPTS
+    default 2
+
   # Calibration and Autotuning overrides
   config PARAM_SKIP_CAL_ENCODER
     default n
