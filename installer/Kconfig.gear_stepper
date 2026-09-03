@@ -37,7 +37,7 @@ menu "Gear stepper"
       200 for 1.8 degree, 400 for 0.9 degree
 
   config PARAM_GEAR_SENSE_RESISTOR
-    float "TMC sense resistor      "
+    float "TMC sense resistor     "
     default 0.150 if CHOICE_GEAR_TMC2226
     default 0.110
     help
