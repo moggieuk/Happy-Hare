@@ -83,117 +83,6 @@ if MMU_HAS_LEDS
         Reducing this to 15 can slightly reduce Klipper CPU load, although lower
         values may make some effects look less smooth.
 
-    choice CHOICE_EXIT_EFFECT
-      prompt "Exit effect     "
-      default CHOICE_EXIT_EFFECT_GATE_STATUS
-      help
-        off turns the segment off. gate_status shows gate availability and state.
-        filament_color shows the filament color stored in the gate map.
-        slicer_color shows the color assigned by the slicer.
-
-      config CHOICE_EXIT_EFFECT_OFF
-        bool "off"
-        help
-          Keep the exit LEDs off when no temporary or action effect is active.
-
-      config CHOICE_EXIT_EFFECT_GATE_STATUS
-        bool "gate_status"
-        help
-          Show the availability and status of each gate on its exit LEDs.
-
-      config CHOICE_EXIT_EFFECT_FILAMENT_COLOR
-        bool "filament_color"
-        help
-          Show each gate's filament color from the Happy Hare gate map.
-
-      config CHOICE_EXIT_EFFECT_SLICER_COLOR
-        bool "slicer_color"
-        help
-          Show the color assigned to each gate by the slicer.
-    endchoice
-
-    config PARAM_EXIT_EFFECT
-      string
-      default "off"            if CHOICE_EXIT_EFFECT_OFF
-      default "gate_status"    if CHOICE_EXIT_EFFECT_GATE_STATUS
-      default "filament_color" if CHOICE_EXIT_EFFECT_FILAMENT_COLOR
-      default "slicer_color"   if CHOICE_EXIT_EFFECT_SLICER_COLOR
-      default "gate_status"
-
-    choice CHOICE_ENTRY_EFFECT
-      prompt "Entry effect    "
-      default CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
-      help
-        off turns the segment off. gate_status shows gate availability and state.
-        filament_color shows the filament color stored in the gate map.
-        slicer_color shows the color assigned by the slicer.
-
-      config CHOICE_ENTRY_EFFECT_OFF
-        bool "off"
-        help
-          Keep the entry LEDs off when no temporary or action effect is active.
-
-      config CHOICE_ENTRY_EFFECT_GATE_STATUS
-        bool "gate_status"
-        help
-          Show the availability and status of each gate on its entry LEDs.
-
-      config CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
-        bool "filament_color"
-        help
-          Show each gate's filament color from the Happy Hare gate map.
-
-      config CHOICE_ENTRY_EFFECT_SLICER_COLOR
-        bool "slicer_color"
-        help
-          Show the color assigned to each gate by the slicer.
-    endchoice
-
-    config PARAM_ENTRY_EFFECT
-      string
-      default "off"            if CHOICE_ENTRY_EFFECT_OFF
-      default "gate_status"    if CHOICE_ENTRY_EFFECT_GATE_STATUS
-      default "filament_color" if CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
-      default "slicer_color"   if CHOICE_ENTRY_EFFECT_SLICER_COLOR
-      default "filament_color"
-
-    choice CHOICE_STATUS_EFFECT
-      prompt "Status effect   "
-      default CHOICE_STATUS_EFFECT_FILAMENT_COLOR
-      help
-        off turns the segment off. gate_status shows gate availability and state.
-        filament_color shows the selected filament color from the gate map.
-        slicer_color shows the selected color assigned by the slicer.
-
-      config CHOICE_STATUS_EFFECT_OFF
-        bool "off"
-        help
-          Keep the status LEDs off when no temporary or action effect is active.
-
-      config CHOICE_STATUS_EFFECT_GATE_STATUS
-        bool "gate_status"
-        help
-          Show the status of the selected gate on the status LEDs.
-
-      config CHOICE_STATUS_EFFECT_FILAMENT_COLOR
-        bool "filament_color"
-        help
-          Show the selected gate's filament color from the Happy Hare gate map.
-
-      config CHOICE_STATUS_EFFECT_SLICER_COLOR
-        bool "slicer_color"
-        help
-          Show the selected gate's color assigned by the slicer.
-    endchoice
-
-    config PARAM_STATUS_EFFECT
-      string
-      default "off"            if CHOICE_STATUS_EFFECT_OFF
-      default "gate_status"    if CHOICE_STATUS_EFFECT_GATE_STATUS
-      default "filament_color" if CHOICE_STATUS_EFFECT_FILAMENT_COLOR
-      default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
-      default "filament_color"
-
     config PARAM_EXIT_LEDS
       string
       array_editor ";"
@@ -312,6 +201,119 @@ if MMU_HAS_LEDS
       endmenu
 
     endif
+
+    comment "_"
+
+    choice CHOICE_EXIT_EFFECT
+      prompt "Exit effect     "
+      default CHOICE_EXIT_EFFECT_GATE_STATUS
+      help
+        off turns the segment off. gate_status shows gate availability and state.
+        filament_color shows the filament color stored in the gate map.
+        slicer_color shows the color assigned by the slicer.
+
+      config CHOICE_EXIT_EFFECT_OFF
+        bool "off"
+        help
+          Keep the exit LEDs off when no temporary or action effect is active.
+
+      config CHOICE_EXIT_EFFECT_GATE_STATUS
+        bool "gate_status"
+        help
+          Show the availability and status of each gate on its exit LEDs.
+
+      config CHOICE_EXIT_EFFECT_FILAMENT_COLOR
+        bool "filament_color"
+        help
+          Show each gate's filament color from the Happy Hare gate map.
+
+      config CHOICE_EXIT_EFFECT_SLICER_COLOR
+        bool "slicer_color"
+        help
+          Show the color assigned to each gate by the slicer.
+    endchoice
+
+    config PARAM_EXIT_EFFECT
+      string
+      default "off"            if CHOICE_EXIT_EFFECT_OFF
+      default "gate_status"    if CHOICE_EXIT_EFFECT_GATE_STATUS
+      default "filament_color" if CHOICE_EXIT_EFFECT_FILAMENT_COLOR
+      default "slicer_color"   if CHOICE_EXIT_EFFECT_SLICER_COLOR
+      default "gate_status"
+
+    choice CHOICE_ENTRY_EFFECT
+      prompt "Entry effect    "
+      default CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
+      help
+        off turns the segment off. gate_status shows gate availability and state.
+        filament_color shows the filament color stored in the gate map.
+        slicer_color shows the color assigned by the slicer.
+
+      config CHOICE_ENTRY_EFFECT_OFF
+        bool "off"
+        help
+          Keep the entry LEDs off when no temporary or action effect is active.
+
+      config CHOICE_ENTRY_EFFECT_GATE_STATUS
+        bool "gate_status"
+        help
+          Show the availability and status of each gate on its entry LEDs.
+
+      config CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
+        bool "filament_color"
+        help
+          Show each gate's filament color from the Happy Hare gate map.
+
+      config CHOICE_ENTRY_EFFECT_SLICER_COLOR
+        bool "slicer_color"
+        help
+          Show the color assigned to each gate by the slicer.
+    endchoice
+
+    config PARAM_ENTRY_EFFECT
+      string
+      default "off"            if CHOICE_ENTRY_EFFECT_OFF
+      default "gate_status"    if CHOICE_ENTRY_EFFECT_GATE_STATUS
+      default "filament_color" if CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
+      default "slicer_color"   if CHOICE_ENTRY_EFFECT_SLICER_COLOR
+      default "filament_color"
+
+    choice CHOICE_STATUS_EFFECT
+      prompt "Status effect   "
+      default CHOICE_STATUS_EFFECT_FILAMENT_COLOR
+      help
+        off turns the segment off. gate_status shows gate availability and state.
+        filament_color shows the selected filament color from the gate map.
+        slicer_color shows the selected color assigned by the slicer.
+
+      config CHOICE_STATUS_EFFECT_OFF
+        bool "off"
+        help
+          Keep the status LEDs off when no temporary or action effect is active.
+
+      config CHOICE_STATUS_EFFECT_GATE_STATUS
+        bool "gate_status"
+        help
+          Show the status of the selected gate on the status LEDs.
+
+      config CHOICE_STATUS_EFFECT_FILAMENT_COLOR
+        bool "filament_color"
+        help
+          Show the selected gate's filament color from the Happy Hare gate map.
+
+      config CHOICE_STATUS_EFFECT_SLICER_COLOR
+        bool "slicer_color"
+        help
+          Show the selected gate's color assigned by the slicer.
+    endchoice
+
+    config PARAM_STATUS_EFFECT
+      string
+      default "off"            if CHOICE_STATUS_EFFECT_OFF
+      default "gate_status"    if CHOICE_STATUS_EFFECT_GATE_STATUS
+      default "filament_color" if CHOICE_STATUS_EFFECT_FILAMENT_COLOR
+      default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
+      default "filament_color"
 
   endmenu
 endif
