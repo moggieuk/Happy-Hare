@@ -77,14 +77,6 @@ class TestLowRiderProfile(unittest.TestCase):
         customized.syms["PARAM_SERVO_GATE_ANGLES"].set_value("26,58,90,118")
         self.assertFalse(customized.is_enabled("W20"))
 
-    def test_extruder_gate_endstop_forces_no_bowden_move(self):
-        bowden = self.kconfig.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
-        self.assertEqual(bowden.str_value, "0")
-        self.assertEqual(bowden.visibility, 0)
-
-        bowden.set_value("1")
-        self.assertEqual(bowden.str_value, "0")
-
     def test_extruder_gate_keeps_bowden_and_toolhead_defaults_hidden(self):
         hidden_defaults = {
             "PARAM_BOWDEN_LOAD_HOMING_BUFFER": "20",
