@@ -81,7 +81,6 @@ menu "Pins / TMC"
         int
         default 0
         range 0 3
-        depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER
     @endrepeat@
 
     @repeat var=i min=1 max=11@
@@ -104,7 +103,7 @@ menu "Pins / TMC"
           config PIN_GEAR_UART_$(i)
             prompt "Gear $(i) UART pin  " if PARAM_GEAR_TMC != ""
           config PARAM_GEAR_UART_ADDRESS_$(i)
-            prompt "Gear $(i) UART addr " if PARAM_GEAR_TMC != ""
+            prompt "Gear $(i) UART addr " if PARAM_GEAR_TMC != "" && (BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER)
           config PIN_GEAR_STEP_$(i)
             prompt "Gear $(i) step pin  "
           config PIN_GEAR_DIR_$(i)
