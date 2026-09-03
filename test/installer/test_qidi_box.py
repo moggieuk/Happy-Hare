@@ -43,6 +43,7 @@ class TestQidiBoxProfile(unittest.TestCase):
             "PARAM_GATE_PRELOAD_ENDSTOP": "none",
             "PARAM_GATE_PRELOAD_HOMING_MAX": "200",
             "PARAM_GATE_PRELOAD_ATTEMPTS": "1",
+            "PARAM_GATE_LOAD_ATTEMPTS": "1",
             "PARAM_GATE_PARKING_DISTANCE": "-80",
             "PARAM_GATE_FINAL_EJECT_DISTANCE": "1500",
             "PARAM_EXTRUDER_HOMING_ENDSTOP": "extruder",
@@ -56,6 +57,8 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertTrue(
             self.kconfig.is_enabled("TOOLHEAD_TYPE_QIDI_Q2"))
         self.assertFalse(self.kconfig.is_enabled("CHOICE_TOOLHEAD_TYPE_OTHER"))
+        self.assertEqual(
+            self.kconfig.syms["PARAM_GATE_LOAD_ATTEMPTS"].visibility, 0)
 
     def test_path_variation_and_bypass_defaults_can_be_overridden(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
@@ -71,6 +74,39 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertEqual(customized.get("PARAM_VARIABLE_BOWDEN_LENGTHS"), "1")
         self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
         self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
+
+    def test_shared_exit_requires_bowden_move(self):
+        bowden = self.kconfig.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
+        self.assertEqual(bowden.str_value, "1")
+        self.assertEqual(bowden.visibility, 0)
+        self.assertEqual(bowden.assignable, ())
+        self.assertGreater(
+            self.kconfig.syms["PARAM_BOWDEN_UNLOAD_HOMING_BUFFER"].visibility,
+            0,
+        )
+
+        bowden.set_value("0")
+        self.assertEqual(bowden.str_value, "1")
+
+    def test_toolhead_without_forced_homing_hides_extruder_method(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(
+                "qidi_box_toolhead_without_extruder_homing",
+                {
+                    "MMU_TYPE_QIDI_BOX_1_0": True,
+                    "MMU_HAS_SENSOR_TOOLHEAD": True,
+                    "PARAM_EXTRUDER_FORCE_HOMING": False,
+                },
+            )
+
+        choice = kconfig.named_choices["CHOICE_EXTRUDER_HOMING_ENDSTOP"]
+        self.assertEqual(choice.visibility, 0)
+        self.assertEqual(kconfig.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "none")
+        self.assertEqual(kconfig.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
+        self.assertEqual(
+            kconfig.syms["PARAM_EXTRUDER_COLLISION_HOMING_CURRENT"].visibility,
+            0,
+        )
 
     def test_dryer_capabilities_are_recommended_but_can_be_disabled(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):

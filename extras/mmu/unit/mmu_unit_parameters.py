@@ -45,6 +45,16 @@ class MmuUnitParameters(TunableParametersBase):
     def _guard_has_flowguard(self):
         return self._guard_has_encoder or self._guard_has_buffer
 
+    def _validate_gate_homing_endstop(self, value):
+        if value == SENSOR_EXTRUDER_ENTRY and self._mmu_unit.require_bowden_move:
+            raise ValueError(
+                "gate_homing_endstop '%s' requires require_bowden_move to be 0"
+                % SENSOR_EXTRUDER_ENTRY)
+        if value != SENSOR_EXTRUDER_ENTRY and not self._mmu_unit.require_bowden_move:
+            raise ValueError(
+                "gate_homing_endstop must be '%s' when require_bowden_move is 0 (got '%s')"
+                % (SENSOR_EXTRUDER_ENTRY, value))
+
     def _guard_sync_tunable(self):
         return not self._mmu_unit.filament_always_gripped
 
@@ -249,7 +259,7 @@ class MmuUnitParameters(TunableParametersBase):
 
     _SPECS: Sequence[ParamSpec] = (
         # Gate loading
-        ParamSpec('gate_homing_endstop',              'choice', SENSOR_ENCODER, section="GATE HOMING", choices={o: o for o in GATE_ENDSTOPS}, on_change=_on_gate_homing_endstop),
+        ParamSpec('gate_homing_endstop',              'choice', SENSOR_ENCODER, section="GATE HOMING", choices={o: o for o in GATE_ENDSTOPS}, validator=_validate_gate_homing_endstop, on_change=_on_gate_homing_endstop),
         ParamSpec('gate_homing_max',                  'float', 100.0, section="GATE HOMING", limits=dict(minval=10), on_change=_on_gate_homing_max),
         ParamSpec('gate_parking_distance',            'float', -10.0, section="GATE HOMING", validator=_validate_gate_parking_distance, on_change=_on_gate_parking_distance),
         ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),

@@ -104,10 +104,10 @@ class MmuUnit:
         VENDOR_PROFILES = {
             VENDOR_ERCF:         replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, show_bypass=True, filament_buffer=True),
             VENDOR_TRADRACK:     replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, variable_rotation_distances=False, filament_buffer=True),
-            VENDOR_ANGRY_BEAVER: replace(DEF_PROFILE, require_bowden_move=False, filament_always_gripped=True),
+            VENDOR_ANGRY_BEAVER: replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_BOX_TURTLE:   replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_NIGHT_OWL:    replace(DEF_PROFILE, filament_always_gripped=True),
-            VENDOR_3MS:          replace(DEF_PROFILE, require_bowden_move=False, filament_always_gripped=True),
+            VENDOR_3MS:          replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_3D_CHAMELEON: replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY, variable_rotation_distances=False, variable_bowden_lengths=True),
             VENDOR_PICO_MMU:     replace(DEF_PROFILE, selector_type=SELECTOR_SERVO,  variable_rotation_distances=False),
             VENDOR_QUATTRO_BOX:  replace(DEF_PROFILE, filament_always_gripped=True),

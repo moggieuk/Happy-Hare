@@ -22,6 +22,7 @@ class TestLowRiderProfile(unittest.TestCase):
             "PARAM_VERSION": "1.0",
             "PARAM_NUM_GATES": "6",
             "PARAM_SELECTOR_TYPE": "ServoSelector",
+            "PARAM_GATE_LOAD_ATTEMPTS": "1",
             "PARAM_VARIABLE_ROTATION_DISTANCES": "1",
             "PARAM_REQUIRE_BOWDEN_MOVE": "0",
             "PARAM_FILAMENT_ALWAYS_GRIPPED": "1",
@@ -46,6 +47,8 @@ class TestLowRiderProfile(unittest.TestCase):
         self.assertFalse(self.kconfig.is_enabled("UNSELECT_VARIABLE_ROTATION_DISTANCES"))
         self.assertGreater(
             self.kconfig.syms["PARAM_VARIABLE_ROTATION_DISTANCES"].visibility, 0)
+        self.assertGreater(
+            self.kconfig.syms["PARAM_GATE_LOAD_ATTEMPTS"].visibility, 0)
         angles = self.kconfig.syms["PARAM_SERVO_GATE_ANGLES"]
         self.assertEqual(angles.array_editor, ",")
         self.assertIs(angles.array_size_sym, self.kconfig.syms["PARAM_NUM_GATES"])
@@ -73,6 +76,87 @@ class TestLowRiderProfile(unittest.TestCase):
 
         customized.syms["PARAM_SERVO_GATE_ANGLES"].set_value("26,58,90,118")
         self.assertFalse(customized.is_enabled("W20"))
+
+    def test_extruder_gate_endstop_forces_no_bowden_move(self):
+        bowden = self.kconfig.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
+        self.assertEqual(bowden.str_value, "0")
+        self.assertEqual(bowden.visibility, 0)
+
+        bowden.set_value("1")
+        self.assertEqual(bowden.str_value, "0")
+
+    def test_extruder_gate_keeps_bowden_and_toolhead_defaults_hidden(self):
+        hidden_defaults = {
+            "PARAM_BOWDEN_LOAD_HOMING_BUFFER": "20",
+            "PARAM_BOWDEN_UNLOAD_HOMING_BUFFER": "40",
+            "PARAM_EXTRUDER_FORCE_HOMING": "0",
+            "PARAM_EXTRUDER_COLLISION_HOMING_CURRENT": "30",
+            "PARAM_TOOLHEAD_HOMING_MAX": "40",
+        }
+        for symbol, value in hidden_defaults.items():
+            with self.subTest(symbol=symbol):
+                self.assertEqual(self.kconfig.get(symbol), value)
+                self.assertEqual(self.kconfig.syms[symbol].visibility, 0)
+
+        choice = self.kconfig.named_choices["CHOICE_EXTRUDER_HOMING_ENDSTOP"]
+        self.assertGreater(choice.visibility, 0)
+        self.assertEqual(
+            self.kconfig.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "extruder")
+        self.assertTrue(self.kconfig.is_enabled(
+            "CHOICE_EXTRUDER_HOMING_ENDSTOP_ADVANCE_ONLY"))
+        self.assertEqual(
+            self.kconfig.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
+
+    def test_extruder_gate_allows_gear_touch_extruder_homing(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(
+                "low_rider_gear_touch_extruder_homing",
+                {
+                    "MMU_TYPE_LOW_RIDER_1_0": True,
+                    "MMU_HAS_SENSOR_GEAR_TOUCH": True,
+                    "CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH": True,
+                },
+            )
+
+        self.assertEqual(
+            kconfig.get("PARAM_GATE_HOMING_ENDSTOP"), "extruder")
+        self.assertEqual(
+            kconfig.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "mmu_gear_touch")
+        self.assertGreater(
+            kconfig.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
+        self.assertGreater(
+            kconfig.syms["PARAM_EXTRUDER_COLLISION_HOMING_CURRENT"].visibility,
+            0,
+        )
+
+    def test_toolhead_force_reveals_extruder_homing_controls(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            normal = cfg._kconfig(
+                "low_rider_toolhead",
+                {
+                    "MMU_TYPE_LOW_RIDER_1_0": True,
+                    "MMU_HAS_SENSOR_TOOLHEAD": True,
+                },
+            )
+            forced = cfg._kconfig(
+                "low_rider_toolhead_forced",
+                {
+                    "MMU_TYPE_LOW_RIDER_1_0": True,
+                    "MMU_HAS_SENSOR_TOOLHEAD": True,
+                    "PARAM_EXTRUDER_FORCE_HOMING": True,
+                },
+            )
+
+        choice = "CHOICE_EXTRUDER_HOMING_ENDSTOP"
+        self.assertGreater(normal.syms["PARAM_EXTRUDER_FORCE_HOMING"].visibility, 0)
+        self.assertGreater(normal.syms["PARAM_TOOLHEAD_HOMING_MAX"].visibility, 0)
+        self.assertEqual(normal.named_choices[choice].visibility, 0)
+        self.assertEqual(normal.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
+
+        self.assertGreater(forced.named_choices[choice].visibility, 0)
+        self.assertEqual(forced.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
+        self.assertEqual(forced.get("PARAM_EXTRUDER_HOMING_MAX"), "100")
+        self.assertEqual(forced.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "extruder")
 
     def test_gate_defaults_reserve_zero_for_release(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
