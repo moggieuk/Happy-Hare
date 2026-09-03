@@ -49,7 +49,15 @@ self_update() {
     else
         echo "${C_NOTICE}Running on '${current_branch}' branch" \
             "Checking for updates...${C_OFF}"
-        if ! git diff --quiet --exit-code "origin/${current_branch}"; then
+        # The remote branch may not be named like the local one: prefer this
+        # branch's tracking remote if set, otherwise assume the same name on
+        # origin.
+        upstream=$(git rev-parse --abbrev-ref "@{u}" 2>/dev/null) \
+            || upstream="origin/${current_branch}"
+        # A branch with no remote counterpart (e.g. a local-only branch) has
+        # nothing to update from; don't treat the missing ref as an update.
+        if git rev-parse --verify --quiet "${upstream}" \
+            && ! git diff --quiet --exit-code "${upstream}"; then
             echo "${C_NOTICE}Found a new version of Happy Hare on github, updating...${C_OFF}"
             if [ -n "$(git status --porcelain)" ]; then
                 git stash push -m 'local changes stashed before self update' --quiet

@@ -14,6 +14,19 @@ INSTALL_SH = REPO_ROOT / "install.sh"
 SELF_UPDATE_SH = REPO_ROOT / "installer" / "self_update.sh"
 MAKEFILE = REPO_ROOT / "Makefile"
 
+# Environment for every git call on the scratch repos: the user's global and
+# system gitconfig are isolated (an alias like `tag = tag -a`, a hooks path or
+# an editor in there would otherwise make a test interactive), and no editor
+# is ever invoked. Tests must never depend on - or be stopped by - the
+# runner's own git setup.
+GIT_ENV = {
+    **os.environ,
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_EDITOR": "true",
+    "GIT_SEQUENCE_EDITOR": "true",
+}
+
 
 class TestInstallSh(unittest.TestCase):
 
@@ -352,27 +365,33 @@ class TestInstallSh(unittest.TestCase):
         checkout = self.root / "checkout"
 
         subprocess.run(["git", "init", "--bare", str(remote)], check=True,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=GIT_ENV)
         subprocess.run(["git", "init", str(checkout)], check=True,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=GIT_ENV)
         for key, value in (("user.name", "Installer Test"),
-                           ("user.email", "installer@example.invalid")):
+                           ("user.email", "installer@example.invalid"),
+                           ("commit.gpgsign", "false")):
             subprocess.run(["git", "-C", str(checkout), "config", key, value],
-                           check=True)
+                           check=True, env=GIT_ENV)
         self.write(checkout / "marker", "v3\n")
-        subprocess.run(["git", "-C", str(checkout), "add", "marker"], check=True)
-        subprocess.run(["git", "-C", str(checkout), "commit", "-m", "v3"],
-                       check=True, capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(checkout), "add", "marker"], check=True,
+                       env=GIT_ENV)
+        subprocess.run(["git", "-C", str(checkout), "-c", "user.name=Installer Test",
+                        "-c", "user.email=installer@example.invalid",
+                        "-c", "commit.gpgsign=false", "commit", "-m", "v3"],
+                       check=True, capture_output=True, text=True, env=GIT_ENV)
         subprocess.run(["git", "-C", str(checkout), "branch", "-M", "v3"],
-                       check=True)
-        subprocess.run(["git", "-C", str(checkout), "tag", "v3-test"], check=True)
+                       check=True, env=GIT_ENV)
+        subprocess.run(["git", "-C", str(checkout), "tag", "-m", "v3-test",
+                        "v3-test"], check=True, env=GIT_ENV)
         subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin",
-                        str(remote)], check=True)
+                        str(remote)], check=True, env=GIT_ENV)
         subprocess.run(["git", "-C", str(checkout), "push", "-u", "origin", "v3",
-                        "--tags"], check=True, capture_output=True, text=True)
+                        "--tags"], check=True, capture_output=True, text=True,
+                       env=GIT_ENV)
         subprocess.run(["git", "-C", str(checkout), "checkout", "-b",
-                        "codex/local-only"], check=True, capture_output=True, text=True)
-
+                        "codex/local-only"], check=True, capture_output=True,
+                       text=True, env=GIT_ENV)
         # Run a copy of the script inside the throwaway checkout: the script
         # re-anchors to its own location, so the original would act on the real
         # repo (stash/checking out branches in the user's working tree).
@@ -380,7 +399,7 @@ class TestInstallSh(unittest.TestCase):
                             SELF_UPDATE_SH.read_text(encoding="utf-8"))
         script.chmod(0o755)
 
-        env = os.environ.copy()
+        env = GIT_ENV.copy()
         env.update({
             "BRANCH": "v3",
             "C_OFF": "",
@@ -396,12 +415,115 @@ class TestInstallSh(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         current = subprocess.run(
             ["git", "-C", str(checkout), "branch", "--show-current"],
-            check=True, text=True, capture_output=True,
+            check=True, text=True, capture_output=True, env=GIT_ENV,
         ).stdout.strip()
         self.assertEqual(current, "v3")
         self.assertIn("Switching to 'v3' branch", result.stdout)
         self.assertNotIn("Running on 'codex/local-only' branch", result.stdout)
         self.assertNotIn("Found a new version", result.stdout)
+
+    def make_update_checkout(self, branch=None):
+        """A scratch checkout containing a copy of the real self_update.sh.
+
+        The script re-anchors itself to the parent of its own location, so
+        running a copy that lives inside this throwaway checkout keeps it from
+        ever touching the real repo (where an "update" would rewrite the
+        working tree).
+        """
+        remote = self.root / "remote.git"
+        checkout = self.root / "checkout"
+        subprocess.run(["git", "init", "--bare", str(remote)], check=True,
+                       capture_output=True, text=True, env=GIT_ENV)
+        # The bare's HEAD defaults to the runner's init.defaultBranch (often
+        # 'master'), which would leave a later clone with no checkout. Point
+        # it at the branch this helper publishes.
+        subprocess.run(["git", "-C", str(remote), "symbolic-ref", "HEAD",
+                        "refs/heads/main"], check=True, env=GIT_ENV)
+        subprocess.run(["git", "init", str(checkout)], check=True,
+                       capture_output=True, text=True, env=GIT_ENV)
+        for key, value in (("user.name", "Installer Test"),
+                           ("user.email", "installer@example.invalid"),
+                           ("commit.gpgsign", "false")):
+            subprocess.run(["git", "-C", str(checkout), "config", key, value],
+                           check=True, env=GIT_ENV)
+        self.write(checkout / "marker", "one\n")
+        subprocess.run(["git", "-C", str(checkout), "add", "marker"], check=True,
+                       env=GIT_ENV)
+        subprocess.run(["git", "-C", str(checkout), "-c", "user.name=Installer Test",
+                        "-c", "user.email=installer@example.invalid",
+                        "-c", "commit.gpgsign=false", "commit", "-m", "one"],
+                       check=True, capture_output=True, text=True, env=GIT_ENV)
+        subprocess.run(["git", "-C", str(checkout), "branch", "-M", "main"],
+                       check=True, env=GIT_ENV)
+        subprocess.run(["git", "-C", str(checkout), "tag", "-m", "baseline",
+                        "baseline"], check=True, env=GIT_ENV)
+        subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin",
+                        str(remote)], check=True, env=GIT_ENV)
+        subprocess.run(["git", "-C", str(checkout), "push", "-u", "origin",
+                        "main", "--tags"], check=True, capture_output=True, text=True,
+                       env=GIT_ENV)
+        script = self.write(checkout / "installer" / "self_update.sh",
+                            SELF_UPDATE_SH.read_text(encoding="utf-8"))
+        script.chmod(0o755)
+        if branch is not None and branch != "main":
+            # (the helper ends on main; -b on the current branch would fatal)
+            subprocess.run(["git", "-C", str(checkout), "checkout", "-b",
+                            branch], check=True, capture_output=True, text=True,
+                           env=GIT_ENV)
+        return remote, checkout
+
+    def run_self_update(self, checkout):
+        env = GIT_ENV.copy()
+        env.pop("BRANCH", None)
+        for color in ("C_OFF", "C_NOTICE", "C_WARNING", "C_ERROR"):
+            env[color] = ""
+        return subprocess.run(
+            ["/bin/sh", str(checkout / "installer" / "self_update.sh")],
+            cwd=checkout, env=env, text=True, capture_output=True,
+        )
+
+    def test_self_update_skips_local_only_branch_without_remote(self):
+        _, checkout = self.make_update_checkout(branch="local-only")
+        result = self.run_self_update(checkout)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Running on 'local-only' branch", result.stdout)
+        self.assertNotIn("Found a new version", result.stdout)
+        self.assertIn("Already on the latest version: baseline", result.stdout)
+        current = subprocess.run(
+            ["git", "-C", str(checkout), "branch", "--show-current"],
+            check=True, text=True, capture_output=True, env=GIT_ENV,
+        ).stdout.strip()
+        self.assertEqual(current, "local-only")
+
+    def test_self_update_uses_tracking_remote_when_set(self):
+        _, checkout = self.make_update_checkout()
+        result = self.run_self_update(checkout)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Found a new version", result.stdout)
+        self.assertIn("Already on the latest version: baseline", result.stdout)
+
+        # A new commit upstream must still be detected and pulled.
+        runner = self.root / "runner"
+        subprocess.run(["git", "clone", str(self.root / "remote.git"),
+                        str(runner)], check=True, capture_output=True, text=True,
+                       env=GIT_ENV)
+        self.write(runner / "marker", "two\n")
+        subprocess.run(["git", "-C", str(runner), "add", "marker"], check=True,
+                       env=GIT_ENV)
+        subprocess.run(["git", "-C", str(runner),
+                        "-c", "user.name=Installer Test",
+                        "-c", "user.email=installer@example.invalid",
+                        "-c", "commit.gpgsign=false",
+                        "commit", "-m", "two"], check=True, capture_output=True,
+                       text=True, env=GIT_ENV)
+        subprocess.run(["git", "-C", str(runner), "push", "origin", "main"],
+                       check=True, capture_output=True, text=True, env=GIT_ENV)
+
+        result = self.run_self_update(checkout)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Found a new version of Happy Hare on github", result.stdout)
+        self.assertIn("Now on git version:", result.stdout)
+        self.assertEqual((checkout / "marker").read_text().strip(), "two")
 
     def test_v3_red_choice_backs_up_v3_and_cleans_for_v4(self):
         config_home = self.make_v3_install()
