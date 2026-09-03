@@ -65,6 +65,14 @@ where it applies rather than omitting it.
   pair sharing, and a preserved write-up of unmerged RF-crosstalk mitigation
   design work. Relevant any time you're touching NFC/RFID code or debugging
   tag misattribution.
+- **`kconfig-menuconfig`** — the `installer/` Kconfig tree, the HH-forked
+  kconfiglib, the `.mmu_config` value flow (menuconfig → pickle → Jinja →
+  merged `.cfg`), and the symbol-naming contract (`PARAM_`/`PIN_`/`BOOL_`/
+  `MMU_HAS_`/`CHOICE_`/`UNSELECT_` and the `#~DEFAULT~#` modifiable-defaults
+  mechanism). Remember in this repo a config option **is** a Kconfig symbol —
+  so this applies whenever adding/renaming/removing an option, changing a
+  default, restructuring menuconfig screens, or debugging an option that
+  won't show / persist / render.
 
 These aren't a substitute for reading the code — they exist to save you from
 rediscovering invariants and design decisions that already cost someone a
