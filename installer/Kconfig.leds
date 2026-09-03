@@ -8,6 +8,9 @@
 #   PIN_NEOPIXEL_X (per-gate MCU)
 #   PARAM_ENABLED
 #   PARAM_ANIMATION
+#   PARAM_EXIT_EFFECT
+#   PARAM_ENTRY_EFFECT
+#   PARAM_STATUS_EFFECT
 #   PARAM_CHAIN_COUNT
 #   PARAM_COLOR_ORDER
 #   PARAM_EXIT_LEDS
@@ -41,12 +44,17 @@ endif
 
 if MMU_HAS_LEDS
   menu "LED config"
+    help
+      Configure the LED hardware, logical segments, startup behavior and default
+      effects for this MMU unit.
 
     config BOOL_ENABLE_LEDS
       bool "Enable LEDs?"
       default y
       help
-        This allows you to install but turn off LED on startup.
+        Enable the LEDs when Happy Hare starts. Disable this to keep the LED
+        configuration installed while leaving all LEDs off at startup. They can
+        still be enabled later with MMU_LED.
 
     config PARAM_ENABLED
       string
@@ -66,13 +74,128 @@ if MMU_HAS_LEDS
       default "True" if BOOL_ENABLE_LEDS_ANIMATION
       default "False"
 
+    choice CHOICE_EXIT_EFFECT
+      prompt "Exit effect     "
+      default CHOICE_EXIT_EFFECT_GATE_STATUS
+      help
+        off turns the segment off. gate_status shows gate availability and state.
+        filament_color shows the filament color stored in the gate map.
+        slicer_color shows the color assigned by the slicer.
+
+      config CHOICE_EXIT_EFFECT_OFF
+        bool "off"
+        help
+          Keep the exit LEDs off when no temporary or action effect is active.
+
+      config CHOICE_EXIT_EFFECT_GATE_STATUS
+        bool "gate_status"
+        help
+          Show the availability and status of each gate on its exit LEDs.
+
+      config CHOICE_EXIT_EFFECT_FILAMENT_COLOR
+        bool "filament_color"
+        help
+          Show each gate's filament color from the Happy Hare gate map.
+
+      config CHOICE_EXIT_EFFECT_SLICER_COLOR
+        bool "slicer_color"
+        help
+          Show the color assigned to each gate by the slicer.
+    endchoice
+
+    config PARAM_EXIT_EFFECT
+      string
+      default "off"            if CHOICE_EXIT_EFFECT_OFF
+      default "gate_status"    if CHOICE_EXIT_EFFECT_GATE_STATUS
+      default "filament_color" if CHOICE_EXIT_EFFECT_FILAMENT_COLOR
+      default "slicer_color"   if CHOICE_EXIT_EFFECT_SLICER_COLOR
+      default "gate_status"
+
+    choice CHOICE_ENTRY_EFFECT
+      prompt "Entry effect    "
+      default CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
+      help
+        off turns the segment off. gate_status shows gate availability and state.
+        filament_color shows the filament color stored in the gate map.
+        slicer_color shows the color assigned by the slicer.
+
+      config CHOICE_ENTRY_EFFECT_OFF
+        bool "off"
+        help
+          Keep the entry LEDs off when no temporary or action effect is active.
+
+      config CHOICE_ENTRY_EFFECT_GATE_STATUS
+        bool "gate_status"
+        help
+          Show the availability and status of each gate on its entry LEDs.
+
+      config CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
+        bool "filament_color"
+        help
+          Show each gate's filament color from the Happy Hare gate map.
+
+      config CHOICE_ENTRY_EFFECT_SLICER_COLOR
+        bool "slicer_color"
+        help
+          Show the color assigned to each gate by the slicer.
+    endchoice
+
+    config PARAM_ENTRY_EFFECT
+      string
+      default "off"            if CHOICE_ENTRY_EFFECT_OFF
+      default "gate_status"    if CHOICE_ENTRY_EFFECT_GATE_STATUS
+      default "filament_color" if CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
+      default "slicer_color"   if CHOICE_ENTRY_EFFECT_SLICER_COLOR
+      default "filament_color"
+
+    choice CHOICE_STATUS_EFFECT
+      prompt "Status effect   "
+      default CHOICE_STATUS_EFFECT_FILAMENT_COLOR
+      help
+        off turns the segment off. gate_status shows gate availability and state.
+        filament_color shows the selected filament color from the gate map.
+        slicer_color shows the selected color assigned by the slicer.
+
+      config CHOICE_STATUS_EFFECT_OFF
+        bool "off"
+        help
+          Keep the status LEDs off when no temporary or action effect is active.
+
+      config CHOICE_STATUS_EFFECT_GATE_STATUS
+        bool "gate_status"
+        help
+          Show the status of the selected gate on the status LEDs.
+
+      config CHOICE_STATUS_EFFECT_FILAMENT_COLOR
+        bool "filament_color"
+        help
+          Show the selected gate's filament color from the Happy Hare gate map.
+
+      config CHOICE_STATUS_EFFECT_SLICER_COLOR
+        bool "slicer_color"
+        help
+          Show the selected gate's color assigned by the slicer.
+    endchoice
+
+    config PARAM_STATUS_EFFECT
+      string
+      default "off"            if CHOICE_STATUS_EFFECT_OFF
+      default "gate_status"    if CHOICE_STATUS_EFFECT_GATE_STATUS
+      default "filament_color" if CHOICE_STATUS_EFFECT_FILAMENT_COLOR
+      default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
+      default "filament_color"
+
+    comment "_"
+
+
     config PARAM_FRAME_RATE
       int "Frame rate      "
       range 6 32
       default 24
       help
-        Sets the led effect frame rate. By default this is 24, but can be reduced to 15
-        to slightly reduce the CPU load. Slower than that my make some effects look messy
+        Set the LED animation frame rate. The default is 24 frames per second.
+        Reducing this to 15 can slightly reduce Klipper CPU load, although lower
+        values may make some effects look less smooth.
 
     config PARAM_EXIT_LEDS
       string
@@ -105,51 +228,89 @@ if MMU_HAS_LEDS
         default 4 if BOOL_EMU_SLB_HACK
         default 1 if MMU_HAS_PER_GATE_MCU
         default PARAM_NUM_GATES
+        help
+          Set the number of physical LEDs in each generated Neopixel chain. The
+          chain must contain every LED index referenced by the segment mappings.
 
       config PARAM_COLOR_ORDER
         string "Color order     "
         default "GRBW"
+        help
+          Set the channel order expected by the LEDs, for example RGB, GRB, RGBW
+          or GRBW. This must match the physical LED type and wiring.
 
       config PARAM_EXIT_LEDS
         prompt "Exit leds       "
         generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
         generated_default "neopixel:_$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
+        help
+          Assign the LEDs mounted at the filament exit for each gate. Use a
+          virtual-chain specification such as "neopixel:my_leds (1-4)". Multiple
+          chains can be entered in the array editor, and ranges may be reversed
+          when the physical chain runs in the opposite gate order.
 
       config PARAM_ENTRY_LEDS
         prompt "Entry leds      "
+        help
+          Assign the LEDs mounted at the filament entry for each gate. Use a
+          virtual-chain specification such as "neopixel:my_leds (5-8)". Leave
+          this empty when the unit has no entry LED segment.
 
       config PARAM_STATUS_LEDS
         prompt "Status leds     "
+        help
+          Assign one or more LEDs used to show the overall MMU and selected
+          filament status. Use a virtual-chain specification such as
+          "neopixel:my_leds (9)". Leave this empty when no status LEDs are fitted.
 
       config PARAM_LOGO_LEDS
         prompt "Logo leds       "
+        help
+          Assign any decorative LEDs used to illuminate an MMU logo. Use a
+          virtual-chain specification such as "neopixel:my_leds (10-12)". Leave
+          this empty when no logo LEDs are fitted.
 
       config PIN_NEOPIXEL
         prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU
+        help
+          Set the MCU pin connected to the data input of the generated Neopixel
+          chain for this unit.
 
       menu "Neopixel per-gate pins" 
         depends on MMU_HAS_PER_GATE_MCU
+        help
+          Set the Neopixel data pin on each gate MCU. Each configured gate gets
+          its own generated LED chain.
 
         @repeat var=i min=0 max=11@
           config PIN_NEOPIXEL_$(i)
             string
             prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
+            help
+              Set the data pin for the Neopixel chain connected to gate $(i)'s MCU.
         @endrepeat@
       endmenu
 
       # Hack to special case SLB v1 board wiring with EMU
       menu "Neopixel per-gate box pins" 
         depends on BOOL_EMU_SLB_HACK
+        help
+          Set the additional box-side Neopixel data pin for each EMU gate using
+          an SLB v1 board.
 
         @repeat var=i min=0 max=11@
           config PIN_NEOPIXEL_BOX_$(i)
             string
             prompt "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)
+            help
+              Set the box-side Neopixel data pin associated with gate $(i).
         @endrepeat@
 
         config PARAM_CHAIN_COUNT
           int "Chain count     "
           default PARAM_NUM_GATES
+          help
+            Set the number of physical LEDs in the generated box-side chain.
 
       endmenu
 
@@ -157,4 +318,3 @@ if MMU_HAS_LEDS
 
   endmenu
 endif
-

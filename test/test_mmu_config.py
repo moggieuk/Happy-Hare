@@ -53,6 +53,43 @@ class TestBoxTurtleRender(unittest.TestCase):
             self.assertIn('mmu_stepper unit0_gear%s' % i, secs)
             self.assertIn('tmc2209 mmu_stepper unit0_gear%s' % i, secs)
 
+    def test_led_effect_defaults_are_preserved(self):
+        leds = dict(cfg.assemble(self.rendered).items('mmu_leds unit0'))
+        self.assertEqual(leds['exit_effect'], 'gate_status')
+        self.assertEqual(leds['entry_effect'], 'filament_color')
+        self.assertEqual(leds['status_effect'], 'filament_color')
+
+    def test_led_effect_choices_remain_visible_for_empty_segments(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(
+                'boxturtle_led_effect_visibility',
+                profiles.get('boxturtle').syms)
+
+        for choice in ('CHOICE_EXIT_EFFECT', 'CHOICE_ENTRY_EFFECT',
+                       'CHOICE_STATUS_EFFECT'):
+            self.assertGreater(kconfig.named_choices[choice].visibility, 0)
+
+    def test_led_effect_choices_render_into_the_unit_config(self):
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_led_effect_choices',
+            syms={
+                'PARAM_ENTRY_LEDS': 'neopixel:_unit0_leds (5-8)',
+                'PARAM_STATUS_LEDS': 'neopixel:_unit0_leds (9)',
+                'CHOICE_EXIT_EFFECT_OFF': True,
+                'CHOICE_ENTRY_EFFECT_GATE_STATUS': True,
+                'CHOICE_STATUS_EFFECT_SLICER_COLOR': True,
+            })
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(profile.name, profile.syms)
+        for choice in ('CHOICE_EXIT_EFFECT', 'CHOICE_ENTRY_EFFECT',
+                       'CHOICE_STATUS_EFFECT'):
+            self.assertGreater(kconfig.named_choices[choice].visibility, 0)
+
+        leds = dict(cfg.assemble(cfg.render(profile)).items('mmu_leds unit0'))
+        self.assertEqual(leds['exit_effect'], 'off')
+        self.assertEqual(leds['entry_effect'], 'gate_status')
+        self.assertEqual(leds['status_effect'], 'slicer_color')
+
     def test_mmu_sections(self):
         secs = cfg.sections(self.rendered[MMU])
         for expected in ('mmu_machine', 'mmu_parameters', 'mmu_toolhead default'):
