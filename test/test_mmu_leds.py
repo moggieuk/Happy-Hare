@@ -233,13 +233,77 @@ class TestAllFourSegments(unittest.TestCase):
         self.assertEqual(data, [(0., 0., 0.3, 0.)] * 3)
 
 
+class TestFragmentsAreNotGates(unittest.TestCase):
+    """
+    The lines of an exit_leds/entry_leds definition are WIRING, not gates, and an unprefixed
+    definition must keep being shared out evenly however those lines happen to fall.
+
+    This is the regression an earlier version of this feature introduced by inferring gate
+    ownership from the line layout: someone who splits a chain across pins to spread current,
+    and lands on one fragment per gate with unequal sizes, had their gate boundaries silently
+    redrawn - and lost any way to ask for the even split back.
+    """
+
+    def setUp(self):
+        self.hh = None
+
+    def tearDown(self):
+        if self.hh is not None:
+            self.hh.close()
+
+    def _leds(self, exit_leds, chain_count=8):
+        """A 4-gate BoxTurtle whose exit segment is wired as the given fragments."""
+        profile = profiles.BOXTURTLE_TEST.derive(
+            'leds_fragments',
+            syms={'PARAM_CHAIN_COUNT': chain_count, 'PARAM_EXIT_LEDS': exit_leds})
+        self.hh = session(profile)
+        self.hh.boot()
+        return self.hh.mmu.mmu_unit(0).leds
+
+    def test_one_fragment_per_gate_of_equal_size_divides_evenly(self):
+        leds = self._leds('neopixel:_unit0_leds (1-2); neopixel:_unit0_leds (3-4); '
+                          'neopixel:_unit0_leds (5-6); neopixel:_unit0_leds (7-8)')
+        self.assertEqual(leds.gate_led_counts('exit'), [2, 2, 2, 2])
+
+    def test_one_fragment_per_gate_of_unequal_size_still_divides_evenly(self):
+        """
+        THE regression. Four fragments, four gates, sizes 3,1,1,3 - the coincidence a
+        current-spreading wiring can land on. Gate boundaries must stay at 2,2,2,2.
+        """
+        leds = self._leds('neopixel:_unit0_leds (1-3); neopixel:_unit0_leds (4); '
+                          'neopixel:_unit0_leds (5); neopixel:_unit0_leds (6-8)')
+        self.assertEqual(leds.gate_led_counts('exit'), [2, 2, 2, 2])
+        self.assertEqual(leds.gate_led_indexes('exit', 0), [1, 2])
+
+    def test_fragments_unrelated_to_gate_count_divide_evenly(self):
+        """The shipped 8-over-5-strips shape, scaled down: 3 fragments over 4 gates."""
+        leds = self._leds('neopixel:_unit0_leds (1-4); neopixel:_unit0_leds (5-6); '
+                          'neopixel:_unit0_leds (7-8)')
+        self.assertEqual(leds.gate_led_counts('exit'), [2, 2, 2, 2])
+
+    def test_a_prefix_is_what_asks_for_uneven_gates(self):
+        """Same eight LEDs, same four fragments - only the prefixes differ from above."""
+        leds = self._leds('0: neopixel:_unit0_leds (1-3); 1: neopixel:_unit0_leds (4); '
+                          '2: neopixel:_unit0_leds (5); 3: neopixel:_unit0_leds (6-8)')
+        self.assertEqual(leds.gate_led_counts('exit'), [3, 1, 1, 3])
+        self.assertEqual(leds.gate_led_indexes('exit', 0), [1, 2, 3])
+
+    def test_two_fragments_can_name_the_same_gate(self):
+        """A gate whose LEDs straddle two strips - not expressible as a per-gate count."""
+        leds = self._leds('0: neopixel:_unit0_leds (1); 0: neopixel:_unit0_leds (2); '
+                          '1: neopixel:_unit0_leds (3-4); 2: neopixel:_unit0_leds (5-6); '
+                          '3: neopixel:_unit0_leds (7-8)')
+        self.assertEqual(leds.gate_led_counts('exit'), [2, 2, 2, 2])
+        self.assertEqual(leds.gate_led_indexes('exit', 0), [1, 2])
+
+
 class TestUnevenLedsPerGate(unittest.TestCase):
     """
-    A gate owns the LEDs its own config line lists - not `total // num_gates` of them.
+    A gate owns the LEDs the "<gate>:" prefix gives it - not `total // num_gates` of them.
 
     See LEDS_UNEVEN above for why that is the real machine shape rather than a curiosity.
-    Every assertion here is against exit = 1,1,1,1,6; the old even split made it 2,2,2,2,2,
-    so these fail on the arithmetic, not on some incidental detail of the fixture.
+    Every assertion here is against exit = 1,1,1,1,6; an even split makes it 2,2,2,2,2, so
+    these fail on the arithmetic, not on some incidental detail of the fixture.
     """
 
     PROFILE = LEDS_UNEVEN
@@ -261,7 +325,7 @@ class TestUnevenLedsPerGate(unittest.TestCase):
     def colors(self, segment='exit'):
         return self.leds.virtual_chains[segment].get_status()['color_data']
 
-    def test_each_config_line_is_a_gate(self):
+    def test_each_prefixed_line_is_a_gate(self):
         self.assertEqual(self.leds.gate_led_counts('exit'), [1, 1, 1, 1, 6])
         self.assertEqual(self.leds.gate_led_counts('entry'), [1, 1, 1, 1, 1])
 

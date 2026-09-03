@@ -32,13 +32,13 @@ class VirtualMmuLedChain:
         led_section = "led %s" % self.name
         config.fileconfig.add_section(led_section)
         led_config = config.getsection(led_section)
-        self.led_helper = klipper_led.LEDHelper(led_config, self.update_leds, sum(len(leds) for chain_name, leds in config_chains))
+        self.led_helper = klipper_led.LEDHelper(led_config, self.update_leds, sum(len(leds) for gate, chain_name, leds in config_chains))
         config.fileconfig.remove_section(led_section)
 
         # We need to configure the chain now so we can validate
         self.leds = []
-        self.groups = [] # Number of leds contributed by each config line, in order
-        for chain_name, leds in self.config_chains:
+        self.fragments = [] # (gate or None, led count) per config line, in order
+        for gate, chain_name, leds in self.config_chains:
             before = len(self.leds)
             try:
                 chain = self.printer.load_object(config, chain_name)
@@ -47,7 +47,7 @@ class VirtualMmuLedChain:
                         self.leds.append((chain, led))
             except Exception as e:
                 raise config.error("MMU LED chain '%s' referenced in '%s' cannot be loaded:\n%s" % (chain_name, self.name, str(e)))
-            self.groups.append(len(self.leds) - before)
+            self.fragments.append((gate, len(self.leds) - before))
 
         # Register led object with klipper
         logging.info("MMU: Created virtual led chain: [%s]" % led_section)
@@ -174,32 +174,58 @@ class MmuLeds:
     # 'num_gates' lists, each holding the 1-based LED indexes (into the segment's virtual
     # chain) that belong to that gate.
     #
-    # If the segment was written with exactly one line per gate then each line IS a gate's set
-    # of LEDs - which is how the shipped templates emit it for a per-gate MCU
-    # ("neopixel:_unit0_gate0_leds (1,2,3,4)" and so on, one per gate) - so gates are free to
-    # carry different numbers of LEDs. Anything else is shared out evenly, which is the only
-    # way to make sense of a definition whose lines are strips rather than gates (e.g. the
-    # documented 8-gates-over-5-strips wiring in mmu_hardware.cfg), and that requires the LED
-    # count to divide by num_gates.
+    # THE LINES ARE NOT GATES. A line is a fragment of physical wiring - a strip, a single
+    # LED, a chain on another pin - and is written that way to spread current over pins or
+    # simply because that is how the machine is built. The shipped 8-gates-over-5-strips
+    # example in mmu_hardware.cfg has five lines and eight gates. So by default the LEDs are
+    # concatenated into one logical chain and shared out EVENLY, which requires the count to
+    # divide by num_gates. That is the historical behaviour and stays the default.
+    #
+    # A gate that owns a different number of LEDs from its neighbours has to say so, and it
+    # says so in the same declaration, by prefixing lines with the gate they belong to:
+    #
+    #   exit_leds: 0: neopixel:bt_1 (1-3)
+    #              1: neopixel:bt_1 (4)
+    #
+    # Deliberately all-or-nothing, and every gate must appear: a definition half in one
+    # notation and half in the other has no obvious reading, and a gate with no LEDs at all
+    # would need paint/stop paths that do not exist. More than one line may name the same
+    # gate, which is how a gate whose LEDs straddle two strips is expressed.
     def _map_leds_to_gates(self, config, segment):
-        groups = self.virtual_chains[segment].groups
+        fragments = self.virtual_chains[segment].fragments
         num_leds = len(self.virtual_chains[segment].leds)
+        assigned = [gate for gate, _ in fragments if gate is not None]
 
-        if len(groups) == self.num_gates:
-            counts = groups
-        elif num_leds % self.num_gates:
+        if not assigned:
+            if num_leds % self.num_gates:
+                raise config.error(
+                    "Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d). Either use a count that "
+                    "divides evenly or prefix each line of '%s_leds' with the gate it belongs to (e.g. \"0: ...\")" % (
+                        segment, num_leds, self.num_gates, segment)
+                )
+            per_gate = num_leds // self.num_gates
+            return [list(range(gate * per_gate + 1, (gate + 1) * per_gate + 1)) for gate in range(self.num_gates)]
+
+        if len(assigned) != len(fragments):
             raise config.error(
-                "Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d). Either use a count that "
-                "divides evenly or define '%s_leds' with one line per gate to give each gate its own LEDs" % (
-                    segment, num_leds, self.num_gates, segment)
-            )
-        else:
-            counts = [num_leds // self.num_gates] * self.num_gates
+                "Only %d of the %d lines of MMU '%s_leds' name a gate. Either prefix all of them or none of "
+                "them - a partly prefixed definition is ambiguous" % (len(assigned), len(fragments), segment))
 
-        gate_leds, index = [], 1 # LED indexes are 1-based within the segment
-        for count in counts:
-            gate_leds.append(list(range(index, index + count)))
+        gate_leds = [[] for _ in range(self.num_gates)]
+        index = 1 # LED indexes are 1-based within the segment
+        for gate, count in fragments:
+            if not 0 <= gate < self.num_gates:
+                raise config.error(
+                    "MMU '%s_leds' assigns LEDs to gate %d but this unit only has gates 0..%d" % (
+                        segment, gate, self.num_gates - 1))
+            gate_leds[gate].extend(range(index, index + count))
             index += count
+
+        unlit = [gate for gate, leds in enumerate(gate_leds) if not leds]
+        if unlit:
+            raise config.error(
+                "MMU '%s_leds' gives no LEDs to gate(s) %s. Every gate needs at least one" % (
+                    segment, ', '.join(map(str, unlit))))
         return gate_leds
 
     # The 1-based LED indexes on 'segment' belonging to 'gate' (absolute gate number). Empty
@@ -217,9 +243,20 @@ class MmuLeds:
     def gate_led_counts(self, segment):
         return [len(leds) for leds in self.gate_leds.get(segment, [])]
 
+    # An optional "<gate>:" prefix on a line assigns that fragment to a gate of this unit
+    # (0-based within the unit), e.g. "2: neopixel:mmu_leds (5-8)". Nothing else can start a
+    # line with digits followed by a colon - a chain reference always leads with its section
+    # type ("neopixel:...") - so this cannot collide with an existing config.
+    GATE_PREFIX_RE = re.compile(r'^\s*(\d+)\s*:\s*')
+
     def parse_chain(self, chain):
         chain = chain.strip()
         leds=[]
+        gate = None
+        prefix = self.GATE_PREFIX_RE.match(chain)
+        if prefix:
+            gate = int(prefix.group(1))
+            chain = chain[prefix.end():]
         parms = [parameter.strip() for parameter in chain.split() if parameter.strip()]
         if parms:
             chain_name = parms[0].replace(':',' ')
@@ -239,9 +276,9 @@ class MmuLeds:
                     else:
                         for i in led.split(','):
                             leds.append(int(i)-1)
-            return chain_name, leds
+            return gate, chain_name, leds
         else:
-            return None, None
+            return None, None, None
 
     def get_effect(self, operation):
         return self.effects.get(operation, '')

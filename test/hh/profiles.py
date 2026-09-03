@@ -475,15 +475,14 @@ EMU_EBB = EMU.derive(
     },
     description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, exit LEDs on gate 0')
 
-# GATES THAT DO NOT ALL CARRY THE SAME NUMBER OF LEDS. Gate 4 has six exit pixels; every
-# other gate has one.
+# GATES THAT DO NOT ALL CARRY THE SAME NUMBER OF LEDS, said so explicitly with the "<gate>:"
+# prefix. Gate 4 has six exit pixels; every other gate has one.
 #
 # EMU is where this is real rather than contrived: a per-gate MCU gives each gate its own
-# [neopixel _unit0_gateN_leds] chain, and exit_leds/entry_leds are generated with ONE LINE
-# PER GATE - so that per-line grouping is what says who owns what. The mapping used to be
-# derived as num_leds // num_gates instead, and note the shape below is chosen so that it
-# DIVIDES: 1+1+1+1+6 is 10 over 5 gates, so the old code did not complain, it just handed
-# every gate 2 and pointed four of the five lanes at another lane's pixels.
+# [neopixel _unit0_gateN_leds] chain, so a lane wired with six pixels next to lanes wired
+# with one is ordinary. Note the total DIVIDES - 1+1+1+1+6 is 10 over 5 gates - which is the
+# point: without the prefixes this is a perfectly legal even split of 2 per gate, and
+# nothing about the lines themselves says otherwise. The prefix is the only thing that does.
 #
 # chain_count is one value for all five chains, so gates 0-3 carry unused pixels here. That
 # is a property of the installer, not of the mapping under test.
@@ -492,12 +491,12 @@ LEDS_UNEVEN = EMU.derive(
     syms={
         'BOARD_TYPE_EBB_GEN1': True,
         'PARAM_CHAIN_COUNT': 7,
-        'PARAM_EXIT_LEDS': ('neopixel:_unit0_gate0_leds (1); neopixel:_unit0_gate1_leds (1); '
-                            'neopixel:_unit0_gate2_leds (1); neopixel:_unit0_gate3_leds (1); '
-                            'neopixel:_unit0_gate4_leds (1-6)'),
-        'PARAM_ENTRY_LEDS': ('neopixel:_unit0_gate0_leds (2); neopixel:_unit0_gate1_leds (2); '
-                             'neopixel:_unit0_gate2_leds (2); neopixel:_unit0_gate3_leds (2); '
-                             'neopixel:_unit0_gate4_leds (7)'),
+        'PARAM_EXIT_LEDS': ('0: neopixel:_unit0_gate0_leds (1); 1: neopixel:_unit0_gate1_leds (1); '
+                            '2: neopixel:_unit0_gate2_leds (1); 3: neopixel:_unit0_gate3_leds (1); '
+                            '4: neopixel:_unit0_gate4_leds (1-6)'),
+        'PARAM_ENTRY_LEDS': ('0: neopixel:_unit0_gate0_leds (2); 1: neopixel:_unit0_gate1_leds (2); '
+                             '2: neopixel:_unit0_gate2_leds (2); 3: neopixel:_unit0_gate3_leds (2); '
+                             '4: neopixel:_unit0_gate4_leds (7)'),
     },
     description='EMU 1.0 - gate 4 carries 6 exit LEDs, every other gate one')
 
