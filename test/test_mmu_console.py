@@ -2410,7 +2410,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
         self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
 
-    def test_gate9_compression_rises_only_during_extruder_home(self):
+    def test_gate9_compression_rises_only_during_forced_extruder_home(self):
         """ViViD's buffer must stay uncompressed throughout its Bowden move."""
         from extras.mmu.mmu_constants import (
             FILAMENT_POS_HOMED_ENTRY,
@@ -2420,6 +2420,13 @@ class TestTheDefaultProfile(unittest.TestCase):
         console = self.console
         hh = console.hh
         hh.set_pacing(1.)
+        # The shared toolhead sensor now disables extruder homing by default. Opt in
+        # explicitly so this test continues to exercise ViViD's compression-home path.
+        hh.run_gcode(
+            'MMU_TEST_CONFIG UNIT=1 QUIET=1 '
+            'extruder_force_homing=1 '
+            'extruder_homing_endstop=filament_compression'
+        )
         compression = hh.sensor('unit1:filament_compression')
         previous = [compression.present]
         rising_reasons = []

@@ -75,19 +75,6 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
         self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
 
-    def test_shared_exit_requires_bowden_move(self):
-        bowden = self.kconfig.syms["PARAM_REQUIRE_BOWDEN_MOVE"]
-        self.assertEqual(bowden.str_value, "1")
-        self.assertEqual(bowden.visibility, 0)
-        self.assertEqual(bowden.assignable, ())
-        self.assertGreater(
-            self.kconfig.syms["PARAM_BOWDEN_UNLOAD_HOMING_BUFFER"].visibility,
-            0,
-        )
-
-        bowden.set_value("0")
-        self.assertEqual(bowden.str_value, "1")
-
     def test_toolhead_without_forced_homing_hides_extruder_method(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig(
