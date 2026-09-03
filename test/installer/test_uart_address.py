@@ -91,7 +91,7 @@ class TestUartAddressConfiguration(unittest.TestCase):
         kconfig = self.kconfigs["virtual_selector"]
         uart_pin = kconfig.get("PIN_GEAR_UART")
         self.assertEqual(uart_pin, "unit0:gpio9")
-        for gear, expected in enumerate((0, 1, 2, 3)):
+        for gear, expected in zip(range(4), (0, 2, 1, 3)):
             suffix = "" if gear == 0 else "_%d" % gear
             address_symbol = "PARAM_GEAR_UART_ADDRESS%s" % suffix
             pin_symbol = "PIN_GEAR_UART%s" % suffix
@@ -103,7 +103,7 @@ class TestUartAddressConfiguration(unittest.TestCase):
             "virtual_selector", self.profile_syms["virtual_selector"])
         sections = hardware.split("[tmc2209 mmu_stepper unit0_gear")
         self.assertEqual(len(sections), 5)
-        for gear, expected in enumerate(range(4)):
+        for gear, expected in zip(range(4), (0, 2, 1, 3)):
             with self.subTest(rendered_gear=gear):
                 self.assertIn(
                     "uart_pin                 : unit0:gpio9",

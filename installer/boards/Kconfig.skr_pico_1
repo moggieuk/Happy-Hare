@@ -30,7 +30,7 @@ if BOARD_TYPE_SKR_PICO_1
     config PIN_GEAR_UART_1
       default PIN_GEAR_UART
     config PARAM_GEAR_UART_ADDRESS_1
-      default 1
+      default 2
     config PIN_GEAR_STEP_1
       default "$(MCU_NAME):gpio6" 
     config PIN_GEAR_DIR_1
@@ -43,7 +43,7 @@ if BOARD_TYPE_SKR_PICO_1
     config PIN_GEAR_UART_2
       default PIN_GEAR_UART
     config PARAM_GEAR_UART_ADDRESS_2
-      default 2
+      default 1
     config PIN_GEAR_STEP_2
       default "$(MCU_NAME):gpio19" 
     config PIN_GEAR_DIR_2
