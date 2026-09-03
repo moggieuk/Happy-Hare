@@ -30,7 +30,7 @@
 #   - i2c3_PB3_PB4    (alternative)
 #
 # Can be disabled and forced off with:
-#   select UNSELECT_MMU_HAS_NFC_READER
+#   select UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
 
 
 comment "_"
