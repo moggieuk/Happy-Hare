@@ -2,7 +2,7 @@
 
 #### **Do you need help with your setup?**
 
-* Please ask your questions in the [Discord server](https://discord.gg/HXEHUb9W) instead. Github issues is meant for bugs and feature requests, not your specific setup problems.
+* Please ask your questions in the [Discord server](https://discord.gg/98TYYUf6f2) instead. Github issues is meant for bugs and feature requests, not your specific setup problems.
 
 #### **Did you find a bug?**
 

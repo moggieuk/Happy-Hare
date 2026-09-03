@@ -49,7 +49,7 @@ site for v4 systems.
 
 ## Community and support
 
-- Join the [Happy Hare Discord](https://discord.gg/aABQUjkZPk) for setup help and
+- Join the [Happy Hare Discord](https://discord.gg/98TYYUf6f2) for setup help and
   discussion with other v3 users.
 - Use the [GitHub issue tracker](https://github.com/moggieuk/Happy-Hare/issues)
   for reproducible bugs and feature requests.
