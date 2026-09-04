@@ -25,6 +25,8 @@ menu "Pins / TMC"
 
     config CHOICE_GEAR_TMC2209
       bool "TMC2209"
+    config CHOICE_GEAR_TMC2226
+      bool "TMC2226"
     config CHOICE_GEAR_TMC2130
       bool "TMC2130"
     config CHOICE_GEAR_TMC2208
@@ -45,6 +47,7 @@ menu "Pins / TMC"
   config PARAM_GEAR_TMC
     string
     default "tmc2209" if CHOICE_GEAR_TMC2209
+    default "tmc2209" if CHOICE_GEAR_TMC2226 # TMC2226 uses Klipper's TMC2209 driver.
     default "tmc2130" if CHOICE_GEAR_TMC2130
     default "tmc2208" if CHOICE_GEAR_TMC2208
     default "tmc2660" if CHOICE_GEAR_TMC2660
@@ -153,6 +156,8 @@ menu "Pins / TMC"
 
     config CHOICE_SELECTOR_TMC2209
       bool "TMC2209"
+    config CHOICE_SELECTOR_TMC2226
+      bool "TMC2226"
     config CHOICE_SELECTOR_TMC2130
       bool "TMC2130"
     config CHOICE_SELECTOR_TMC2208
@@ -168,6 +173,7 @@ menu "Pins / TMC"
   config PARAM_SELECTOR_TMC
     string
     default "tmc2209" if CHOICE_SELECTOR_TMC2209
+    default "tmc2209" if CHOICE_SELECTOR_TMC2226 # TMC2226 uses Klipper's TMC2209 driver.
     default "tmc2130" if CHOICE_SELECTOR_TMC2130
     default "tmc2208" if CHOICE_SELECTOR_TMC2208
     default "tmc2660" if CHOICE_SELECTOR_TMC2660
@@ -276,7 +282,7 @@ menu "Pins / TMC"
       prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
     config PIN_BUFFER_NEOPIXEL
       string
-      prompt "Neopixel pin                 " if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
+      prompt "Buffer neopixel pin          " if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
   endmenu
 
 # -------------------------------------

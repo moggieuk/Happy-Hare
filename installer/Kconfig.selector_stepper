@@ -8,6 +8,7 @@
 #   PARAM_SELECTOR_HOLD_CURRENT
 #   PARAM_SELECTOR_ENDSTOP_NAME
 #   PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
+#   PARAM_SELECTOR_SENSE_RESISTOR
 #   PARAM_STARTUP_HOME_SELECTOR
 #
 #   PARAM_SELECTOR_TOUCH_ENABLED
@@ -49,6 +50,13 @@ if MMU_HAS_SELECTOR_STEPPER
       help
         200 for 1.8 degree, 400 for 0.9 degree
 
+    config PARAM_SELECTOR_SENSE_RESISTOR
+      float "TMC sense resistor              "
+      default 0.150 if CHOICE_SELECTOR_TMC2226
+      default 0.110
+      help
+        Current-sense resistor value used by the selector stepper driver.
+
     config PARAM_STARTUP_HOME_SELECTOR
       boolint "Home selector at startup?"
       default 0
@@ -88,7 +96,7 @@ if MMU_HAS_SELECTOR_STEPPER
       comment "_Rotary selector"
 
       config PARAM_SELECTOR_GATE_DIRECTIONS
-        string "Selector gate directions  "
+        string "Selector gate directions        "
         array_editor "," PARAM_NUM_GATES
         generated_default "0" "" ", " 0 PARAM_NUM_GATES
         help
@@ -99,7 +107,7 @@ if MMU_HAS_SELECTOR_STEPPER
           The length should match the number of gates
 
       config PARAM_SELECTOR_RELEASE_GATES
-        string "Selector release gates    "
+        string "Selector release gates          "
         array_editor "," PARAM_NUM_GATES
         generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
         help
@@ -120,7 +128,7 @@ if MMU_HAS_SELECTOR_STEPPER
       comment "_Indexed selector"
 
       config PARAM_SELECTOR_GATE_ORDER
-        string "Selector gate order       "
+        string "Selector gate order             "
         array_editor "," PARAM_NUM_GATES
         generated_default "%i" "" ", " 0 PARAM_NUM_GATES
         help
@@ -130,7 +138,7 @@ if MMU_HAS_SELECTOR_STEPPER
           The length should match the number of gates
 
       config PARAM_SELECTOR_ENDSTOP_WIDTH
-        float "Selector endstop width    "
+        float "Selector endstop width          "
         default 10
         help
           Width of gate selection endstop. It allows for accurate centering on the gate.

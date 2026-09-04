@@ -1132,8 +1132,9 @@ class TestLedSwatches(unittest.TestCase):
     row read as "some default-coloured thing I do not recognise".
     """
 
-    def swatches(self, data, per_gate, color=False):
-        console = console_mod.Console(console_mod.parse_args(['--plain', '--no-log']))
+    def swatches(self, data, per_gate, color=False, mode='auto'):
+        console = console_mod.Console(
+            console_mod.parse_args(['--plain', '--no-log', '--color', mode]))
         console.color = color
         return console._swatches(data, per_gate)
 
@@ -1181,14 +1182,25 @@ class TestLedSwatches(unittest.TestCase):
 
     def test_a_bright_led_is_left_exactly_as_it_is(self):
         """The floor is for the bottom of the range only - it must not touch anything else."""
-        self.assertEqual(self.swatches([(0.25, 0.25, 0.25, 0.)], 1, color=True),
-                         console_mod.paint(self.ON, console_mod.fg(64, 64, 64, '256')[2:-1]))
+        # Each depth pinned: 'auto' would resolve through the runner's $COLORTERM,
+        # and a truecolor terminal once turned this test red on CI-green code.
+        for mode in ('256', 'truecolor'):
+            with self.subTest(mode=mode):
+                self.assertEqual(
+                    self.swatches([(0.25, 0.25, 0.25, 0.)], 1, color=True, mode=mode),
+                    console_mod.paint(self.ON, console_mod.fg(64, 64, 64, mode)[2:-1]))
 
     def test_a_lit_led_is_painted_in_its_own_colour(self):
-        got = self.swatches([(1., 0., 0., 0.), (0., 0., 0., 0.)], 1, color=True)
-        self.assertIn('\x1b[38;5;', got, 'the lit LED lost its colour')
-        self.assertIn('\x1b[90m', got, 'the unlit LED should be grey')
-        check_no_line_leaks(self, got)
+        # As above: assert each depth rather than whichever one the ambient
+        # $COLORTERM happens to pick, and cover the truecolor paint path too.
+        for mode in ('256', 'truecolor'):
+            with self.subTest(mode=mode):
+                got = self.swatches([(1., 0., 0., 0.), (0., 0., 0., 0.)], 1,
+                                    color=True, mode=mode)
+                sgr = '2' if mode == 'truecolor' else '5'
+                self.assertIn('\x1b[38;%s;' % sgr, got, 'the lit LED lost its colour')
+                self.assertIn('\x1b[90m', got, 'the unlit LED should be grey')
+                check_no_line_leaks(self, got)
 
     def test_a_degenerate_group_size_still_terminates(self):
         self.assertEqual(self.swatches([(0., 0., 0., 0.)] * 2, 0), self.OFF + ' ' + self.OFF)
@@ -2410,7 +2422,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
         self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
 
-    def test_gate9_compression_rises_only_during_extruder_home(self):
+    def test_gate9_compression_rises_only_during_forced_extruder_home(self):
         """ViViD's buffer must stay uncompressed throughout its Bowden move."""
         from extras.mmu.mmu_constants import (
             FILAMENT_POS_HOMED_ENTRY,
@@ -2420,6 +2432,13 @@ class TestTheDefaultProfile(unittest.TestCase):
         console = self.console
         hh = console.hh
         hh.set_pacing(1.)
+        # The shared toolhead sensor now disables extruder homing by default. Opt in
+        # explicitly so this test continues to exercise ViViD's compression-home path.
+        hh.run_gcode(
+            'MMU_TEST_CONFIG UNIT=1 QUIET=1 '
+            'extruder_force_homing=1 '
+            'extruder_homing_endstop=filament_compression'
+        )
         compression = hh.sensor('unit1:filament_compression')
         previous = [compression.present]
         rising_reasons = []

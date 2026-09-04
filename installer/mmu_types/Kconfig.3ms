@@ -26,6 +26,9 @@ if MMU_TYPE_3MS_1_0
     default "1.0" 
   config PARAM_NUM_GATES
     default 4
+  choice BOARD_TYPE
+    default BOARD_TYPE_SKR_PICO_1
+  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
