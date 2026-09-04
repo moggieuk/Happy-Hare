@@ -159,20 +159,26 @@ class MmuCheckGateCommand(BaseCommand):
                                 for gate, tool in gates_tools:
                                     try:
                                         mmu.select_gate(gate)
-                                        mmu.log_info("Checking gate %d..." % gate)
-                                        _ = mmu._load_gate(allow_retry=False)
-                                        if tool >= 0:
-                                            mmu.log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
-                                        else:
-                                            mmu.log_info("Gate %d - Filament detected. Marked available" % gate)
-                                        mmu.gate_maps.set_gate_status(gate, max(mmu.gate_status[gate], GATE_AVAILABLE))
-                                        try:
-                                            # Encoder unload may need a little more homing distance
-                                            u = mmu.mmu_unit(gate)
-                                            extra_homing = u.p.gate_homing_max if u.p.gate_homing_endstop == SENSOR_ENCODER else 0
-                                            mmu._unload_gate(extra_homing)
-                                        except MmuError as ee:
-                                            raise MmuError("Failure during check gate %d %s:\n%s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
+                                        # Keep live sensor readings available for homing, but do
+                                        # not let this command's owned motion (or switch chatter
+                                        # during it) queue insert/remove callbacks itself.
+                                        # This must follow select_gate(): event suspension snapshots
+                                        # the active sensors for the newly selected gate.
+                                        with mmu.wrap_suspend_insert_events():
+                                            mmu.log_info("Checking gate %d..." % gate)
+                                            _ = mmu._load_gate(allow_retry=False)
+                                            if tool >= 0:
+                                                mmu.log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
+                                            else:
+                                                mmu.log_info("Gate %d - Filament detected. Marked available" % gate)
+                                            mmu.gate_maps.set_gate_status(gate, max(mmu.gate_status[gate], GATE_AVAILABLE))
+                                            try:
+                                                # Encoder unload may need a little more homing distance
+                                                u = mmu.mmu_unit(gate)
+                                                extra_homing = u.p.gate_homing_max if u.p.gate_homing_endstop == SENSOR_ENCODER else 0
+                                                mmu._unload_gate(extra_homing)
+                                            except MmuError as ee:
+                                                raise MmuError("Failure during check gate %d %s:\n%s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
                                     except MmuError as ee:
                                         mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
                                         mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
