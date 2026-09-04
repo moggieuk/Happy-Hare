@@ -510,3 +510,37 @@ class TestInstallSh(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFirstUnitRenameWarning(TestInstallSh):
+    """
+    Switching single -> multi moves the old single-unit config onto whichever unit is
+    listed first, whatever it is called. The settings survive that; the calibration, which
+    is stored under the old unit's name, does not - so say so while the choice is fresh.
+    """
+
+    def old_config(self, unit="unit0"):
+        return self.write(self.root / ".mmu_config_old",
+                          'CONFIG_UNIT_NAME="%s"\nCONFIG_SENTINEL=y\n' % unit)
+
+    def warn(self, first_unit, unit="unit0"):
+        return self.run_shell('warn_if_first_unit_renamed %s %s'
+                              % (shlex.quote(str(self.old_config(unit))),
+                                 shlex.quote(first_unit)))
+
+    def test_renaming_the_first_unit_is_called_out(self):
+        out = self.warn("left").stdout
+        self.assertIn("'left'", out)
+        self.assertIn("'unit0'", out)
+        self.assertIn("mmu_unit0_", out)        # what to rename
+        self.assertIn("mmu_left_", out)         # ...and to what
+
+    def test_keeping_the_name_says_nothing(self):
+        """Appending to the default list is the normal path and must stay quiet."""
+        self.assertEqual(self.warn("unit0").stdout.strip(), "")
+
+    def test_a_config_without_a_unit_name_says_nothing(self):
+        old = self.write(self.root / ".mmu_config_old", "CONFIG_SENTINEL=y\n")
+        result = self.run_shell('warn_if_first_unit_renamed %s left'
+                                % shlex.quote(str(old)))
+        self.assertEqual(result.stdout.strip(), "")

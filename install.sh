@@ -314,6 +314,32 @@ recover_previous_config() {
     done
 }
 
+# Say so when switching to multi-unit renames the unit that owns the saved calibration.
+# The config itself follows the rename (it is moved to the new first unit below), but every
+# calibrated value in mmu_vars.cfg is stored under the OLD unit name and nothing looks that
+# up any more, so the MMU comes back reporting itself uncalibrated. Warned about here, while
+# the choice is still fresh and reversible, rather than only at the next restart.
+warn_if_first_unit_renamed() {
+    old_kconfig=$1
+    first_unit=$2
+
+    old_unit=$(sed -n 's/^CONFIG_UNIT_NAME="\(.*\)"$/\1/p' "${old_kconfig}" | tail -n 1)
+    [ -n "${old_unit}" ] || return 0
+    [ "${old_unit}" != "${first_unit}" ] || return 0
+
+    echo
+    echo "${C_WARNING}The first MMU unit is now called '${first_unit}', but this printer's saved"
+    echo "calibration belongs to '${old_unit}'.${C_OFF}"
+    echo "${C_INFO}Its settings have been carried over, but bowden lengths, rotation distances,"
+    echo "encoder calibration and gate statistics are stored per unit and will not be found"
+    echo "under the new name - the MMU will report as uncalibrated."
+    echo
+    echo "To keep them, either name the first unit '${old_unit}', or rename the 'mmu_${old_unit}_*'"
+    echo "entries in mmu_vars.cfg to 'mmu_${first_unit}_*'.${C_OFF}"
+    echo
+}
+
+
 # Point Moonraker's update manager at a specific branch, so future automatic updates
 # keep tracking it instead of drifting back to whatever primary_branch was there before.
 # Scoped to the [update_manager happy-hare] section only - other [update_manager ...]
@@ -1033,6 +1059,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
 
         first_unit=$(trim "${CONFIG_MMU_UNITS%%,*}")
         if [ -n "${first_unit}" ]; then
+            warn_if_first_unit_renamed "${tmpconfig}" "${first_unit}"
             mv "${tmpconfig}" "${KCONFIG_CONFIG}_${first_unit}"
         else
             rm -f "${tmpconfig}"
