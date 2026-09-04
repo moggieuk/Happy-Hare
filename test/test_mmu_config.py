@@ -430,6 +430,59 @@ class TestSelectorTypeChoice(unittest.TestCase):
         self.assertEqual(kc.syms['PARAM_SELECTOR_TYPE'].str_value, 'LinearMultiGearSelector')
 
 
+class TestRenderKconfigReuse(unittest.TestCase):
+    """Rendering reuses parse trees without leaking one profile's values into another."""
+
+    def setUp(self):
+        cfg._render_cache.clear()
+        cfg._render_kconfig_cache.clear()
+
+    def tearDown(self):
+        cfg._render_cache.clear()
+        cfg._render_kconfig_cache.clear()
+
+    def test_single_unit_profiles_share_one_parse_and_reset_values(self):
+        original = cfg._new_kconfig
+        parses = []
+
+        def counted(label):
+            parses.append(label)
+            return original(label)
+
+        cfg._new_kconfig = counted
+        self.addCleanup(setattr, cfg, '_new_kconfig', original)
+
+        first = profiles.get('boxturtle').derive(
+            'reuse_first', syms={'PARAM_GATE_PARKING_DISTANCE': -81})
+        second = profiles.get('boxturtle').derive(
+            'reuse_second', syms={'PARAM_GATE_PARKING_DISTANCE': -82})
+        first_parser = cfg.assemble(cfg.render(first))
+        second_parser = cfg.assemble(cfg.render(second))
+
+        self.assertEqual(len(parses), 1)
+        self.assertEqual(dict(first_parser.items('mmu_unit_parameters unit0'))[
+            'gate_parking_distance'], '-81')
+        self.assertEqual(dict(second_parser.items('mmu_unit_parameters unit0'))[
+            'gate_parking_distance'], '-82')
+
+    def test_multi_unit_environments_never_share_a_tree(self):
+        original = cfg._new_kconfig
+        parses = []
+
+        def counted(label):
+            parses.append(label)
+            return original(label)
+
+        cfg._new_kconfig = counted
+        self.addCleanup(setattr, cfg, '_new_kconfig', original)
+
+        cfg.render(TWO_UNIT)
+
+        self.assertEqual(len(parses), 3)
+        self.assertEqual(set(parses), {
+            'two_boxturtles', 'two_boxturtles:unit0', 'two_boxturtles:unit1'})
+
+
 class TestPreviousKconfigSelections(unittest.TestCase):
     """Unavailable dynamic devices remain selectable through a stable previous option."""
 

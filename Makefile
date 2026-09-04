@@ -15,6 +15,10 @@ V  ?=
 # (re-run the last selection). See test/README.md section 1
 UT ?= *
 
+# Test files run in isolated Python processes. Four is deliberately both the default and
+# maximum for the Raspberry Pis on which contributors commonly run this suite.
+JOBS ?= 4
+
 # Extra flags for the pip that installs installer/requirements.txt. Exported rather than
 # passed on the command line when it has to survive install.sh, which forwards no make
 # vars: export PIP_ARGS='--user --break-system-packages' on a PEP 668 python with no venv
@@ -626,7 +630,7 @@ spellcheck:
 test: $(test_prereqs)
 	$(Q)$(using_klippy_env)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
-		$(TEST_PY) -m test.select $(V) \
+		$(TEST_PY) -m test.select $(V) --jobs "$(JOBS)" \
 			$(if $(filter-out *,$(UT)),--pattern '$(strip $(UT))') \
 			$(if $(ALL),--all) $(if $(LAST),--last) $(ARGS)
 

@@ -16,10 +16,11 @@
 # 0.08s - a per-test timer reports the 0.08 and hides the 35. So each module's suite is
 # wrapped in a _TimedSuite that times its own run(), bracketing setUpModule/setUpClass too.
 #
-# WHY IT STILL ENDS UP IN unittest.main(). Only the *selection* happens here; the run is
-# handed to unittest's own CLI, so -v/-k/-f/-b and the exit status keep working with no
-# code of ours in the way. Everything ticked (or --all) runs the identical
-# `discover -p '*'` the Makefile used to run directly.
+# WHY FILES RUN IN SEPARATE PROCESSES. The fake Klipper harness deliberately owns global
+# import and logger state. Running unrelated modules together in persistent workers lets
+# that state leak between them. A fresh `unittest` process per file is the safe boundary;
+# four such processes run concurrently by default. Each worker's output is captured whole,
+# so a failure traceback can never be interleaved with another file's output.
 #
 # THE MENU IS SKIPPED whenever it cannot work or nobody asked for it: not a tty, --all,
 # --last, --pattern, or a module that failed to import (see _discover). That predicate
@@ -30,8 +31,11 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 import unittest
@@ -226,7 +230,16 @@ def _fmt_secs(seconds):
     return '%dm%02ds' % (minutes, rest)
 
 
-def _render(entries, selected, times, local, order, c):
+def _parallel_estimate(modules, times, jobs):
+    """Estimate elapsed wall time using greedy file scheduling."""
+    loads = [0.0] * min(jobs, len(modules))
+    for seconds in sorted((times[module] for module in modules), reverse=True):
+        index = loads.index(min(loads))
+        loads[index] += seconds
+    return max(loads) if loads else 0.0
+
+
+def _render(entries, selected, times, local, order, c, jobs):
     """`times` is reference-first, local-second (see main()) so it covers every module the
     user has ever measured OR that test/benchmark.json ships; `local` is just the modules the
     USER has personally timed, needed here only to mark the rest as reference-sourced."""
@@ -262,7 +275,7 @@ def _render(entries, selected, times, local, order, c):
     missing = files - len(known)
     estimate = ''
     if known:
-        total_known = sum(times[module] for module in known)
+        total_known = _parallel_estimate(known, times, jobs)
         marker = '~' if not missing else '>'
         if known_local == len(known):
             estimate = ' - %s%s last time' % (marker, _fmt_secs(total_known))
@@ -308,7 +321,7 @@ def _toggle_tokens(line, entries, selected):
     return True
 
 
-def _menu(entries, times, local, previous):
+def _menu(entries, times, local, previous, jobs):
     """Returns the chosen module names, or None if the user quit."""
     c = _colours()
     selected = {module for module, _, _ in entries}
@@ -317,7 +330,7 @@ def _menu(entries, times, local, previous):
     message = ''
 
     while True:
-        _render(entries, selected, times, local, order, c)
+        _render(entries, selected, times, local, order, c, jobs)
         if message:
             print('  %s%s%s' % (c['warn'], message, c['off']))
             message = ''
@@ -373,6 +386,16 @@ def _menu(entries, times, local, previous):
 
 # -- entry point -------------------------------------------------------------------
 
+def _job_count(value):
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError('must be an integer from 1 to 4')
+    if not 1 <= number <= 4:
+        raise argparse.ArgumentTypeError('must be from 1 to 4')
+    return number
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog='make test', add_help=False,
@@ -380,6 +403,8 @@ def main(argv=None):
     parser.add_argument('--all', action='store_true', help='run everything, no menu')
     parser.add_argument('--last', action='store_true', help='re-run the last selection, no menu')
     parser.add_argument('--pattern', help='run files matching a glob, no menu (make UT=...)')
+    parser.add_argument('--jobs', type=_job_count, default=4,
+                        help='number of isolated test-file workers (1-4, default: 4)')
     parser.add_argument('--help', '-h', action='store_true', help='show this help')
     args, passthrough = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
     if args.help:
@@ -394,7 +419,8 @@ def main(argv=None):
     times.update(local)          # the user's own measurement always wins
 
     if args.pattern:
-        return _run(sink, ['discover', '-p', args.pattern] + passthrough, None, entries)
+        return _dispatch(args.jobs, sink, entries, passthrough, None,
+                         ['discover', '-p', args.pattern] + passthrough)
 
     if not entries:
         print('No tests found under %s' % ROOT, file=sys.stderr)
@@ -417,16 +443,90 @@ def main(argv=None):
             print('No previous selection saved - running everything.', file=sys.stderr)
             chosen = everything
     elif args.all or not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return _run(sink, ['discover', '-p', '*'] + passthrough, None, entries)
+        return _dispatch(args.jobs, sink, entries, passthrough, None,
+                         ['discover', '-p', '*'] + passthrough)
     else:
-        chosen = _menu(entries, times, local, previous)
+        chosen = _menu(entries, times, local, previous, args.jobs)
         if chosen is None:
             print('Nothing run.')
             return 1                                # so `make test && ...` does not proceed
 
-    if set(chosen) == set(everything):
-        return _run(sink, ['discover', '-p', '*'] + passthrough, None, entries)
-    return _run(sink, list(chosen) + passthrough, chosen, entries)
+    narrowed = set(chosen) != set(everything)
+    selected_entries = [entry for entry in entries if entry[0] in chosen]
+    serial_argv = (list(chosen) + passthrough if narrowed
+                   else ['discover', '-p', '*'] + passthrough)
+    return _dispatch(args.jobs, sink, selected_entries, passthrough,
+                     chosen if narrowed else None, serial_argv)
+
+
+def _dispatch(jobs, sink, entries, passthrough, selection, serial_argv):
+    if jobs == 1 or not entries:
+        return _run(sink, serial_argv, selection, entries)
+    return _run_parallel(jobs, entries, passthrough, selection)
+
+
+def _worker(module, passthrough):
+    """Run one module in a clean interpreter and return its indivisible output block."""
+    started = time.perf_counter()
+    process = subprocess.run(
+        [sys.executable, '-m', 'unittest', module] + list(passthrough),
+        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, errors='replace')
+    elapsed = time.perf_counter() - started
+    match = re.search(r'^Ran (\d+) tests? in ', process.stdout, re.MULTILINE)
+    return module, process.returncode, elapsed, int(match.group(1)) if match else 0, process.stdout
+
+
+def _run_parallel(jobs, entries, passthrough, selection):
+    """Run test files concurrently without sharing Python process state."""
+    started = time.perf_counter()
+    _, local_records = _load_state()
+    schedule_times = _load_reference()
+    schedule_times.update({module: seconds for module, (seconds, _) in local_records.items()})
+    # Longest first is the same greedy scheduling model shown by the picker estimate. It
+    # prevents one expensive file from being left alone after the other workers go idle.
+    scheduled = sorted(entries, key=lambda entry: -schedule_times.get(entry[0], 0.0))
+    modules = [module for module, _, _ in scheduled]
+    expected = {module: count for module, _, count in entries}
+    widths = max((len(_display(module)) for module in modules), default=0)
+    results = []
+    verbose = '-v' in passthrough or '--verbose' in passthrough
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(modules))) as pool:
+        futures = [pool.submit(_worker, module, passthrough) for module in modules]
+        for complete, future in enumerate(concurrent.futures.as_completed(futures), 1):
+            result = future.result()
+            results.append(result)
+            module, returncode, elapsed, _, output = result
+            status = 'PASS' if returncode == 0 else 'FAIL'
+            print('[%2d/%d] %s  %-*s  %s' % (
+                complete, len(modules), status, widths, _display(module), _fmt_secs(elapsed)),
+                flush=True)
+            if verbose or returncode:
+                print('\n--- %s: %s ---' % (status, module))
+                print(output.rstrip())
+                print('--- end: %s ---\n' % module, flush=True)
+
+    elapsed = time.perf_counter() - started
+    failures = [result for result in results if result[1]]
+    ran = sum(result[3] for result in results)
+    measured = {
+        module: (seconds, count or expected[module])
+        for module, returncode, seconds, count, output in results
+    }
+    narrowed = selection is not None
+    filtered = any(arg == '-k' or arg.startswith('-k') for arg in passthrough)
+    _save_state(list(selection) if narrowed else _load_state()[0], measured, filtered=filtered)
+
+    print('\nRan %d tests in %.3fs (%d files, %d workers)' % (
+        ran, elapsed, len(modules), min(jobs, len(modules))))
+    if failures:
+        print('\nFAILED (%d test file%s: %s)' % (
+            len(failures), '' if len(failures) == 1 else 's',
+            ', '.join(result[0] for result in failures)))
+        return 1
+    print('\nOK')
+    return 0
 
 
 def _run(sink, argv, selection, entries):
@@ -442,7 +542,7 @@ def _run(sink, argv, selection, entries):
     # would just be noise in the saved timings
     bearing = {module for module, _, _ in entries}
     measured = {module: value for module, value in sink.items() if module in bearing}
-    narrowed = selection is not None and 0 < len(selection) < len(entries)
+    narrowed = selection is not None
     # -k runs a SUBSET of every file it touches, so those timings are not whole-file
     # timings and must not displace one. Nothing else here does that: --pattern (make UT=)
     # narrows which FILES are discovered, and each of those still runs in full.
