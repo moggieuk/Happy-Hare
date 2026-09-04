@@ -183,51 +183,11 @@ def _prepare_imports():
             sys.path.insert(0, p)
 
 
-# installer/Kconfig's serial/canbus auto-detect macros (serial_device, mmu_serial_config,
-# canbus_uuid, ...) are parameterised - which in Kconfig means "=", not ":=" - so kconfiglib
-# re-forks a shell for every REFERENCE, not just once per definition. One multi-unit parse
-# references them ~370 times, but only ~60 distinct command strings: the same gate/MCU probe
-# is asked for repeatedly by different `default`/`depends on` lines. Measured: 22s of a 25s
-# `make console` boot was $(shell, ...) subprocess overhead alone.
-#
-# Caching is scoped to ONE Kconfig() construction, not the whole process: some other macros
-# here (mmu_has_sensor_toolhead, unit_suffix, ...) read a bare, un-substituted $VAR that the
-# *subprocess* resolves from os.environ at exec time, not a Kconfig $(VAR) baked into the
-# command text at parse time - and _env() (above) deliberately sets different values of that
-# environment across the entry-point parse and each per-unit parse. A cache that lived across
-# parses would silently replay the entry-point parse's answer into a unit parse with a
-# different environment. Reset per-parse costs nothing (env and cwd are fixed for the
-# lifetime of one Kconfig().__init__) and is where all the duplication above was measured to
-# live anyway.
-def _install_shell_cache(kconfiglib):
-    if getattr(kconfiglib._shell_fn, '_hh_cache', None) is not None:
-        return kconfiglib._shell_fn._hh_cache
-    real_shell_fn = kconfiglib._shell_fn
-    cache = {}
-
-    def cached_shell_fn(kconf, name, command):
-        try:
-            return cache[command]
-        except KeyError:
-            result = real_shell_fn(kconf, name, command)
-            cache[command] = result
-            return result
-
-    cached_shell_fn._hh_cache = cache
-    kconfiglib._shell_fn = cached_shell_fn
-    return cache
-
-
-def _kconfig(label, syms):
-    """
-    One Kconfig parse with `syms` applied. The CALLER owns the env - wrap this in _env(),
-    because kconfiglib expands $(VAR) while Kconfig() is being constructed here.
-    """
+def _new_kconfig(label):
+    """Parse a fresh Kconfig tree in the caller's currently installed environment."""
     _prepare_imports()
     import kconfiglib
     import installer.build as build
-
-    _install_shell_cache(kconfiglib).clear()
 
     class _HarnessKConfig(build.KConfig):
         """
@@ -241,18 +201,36 @@ def _kconfig(label, syms):
             self.config_file = '<harness:%s>' % (label,)
 
     with _chdir(INSTALLER):
-        kc = _HarnessKConfig()
-        for name, value in syms.items():
-            if name not in kc.syms:
-                raise KeyError("profile %r sets unknown Kconfig symbol %r"
-                               % (label, name))
-            sym = kc.syms[name]
-            if isinstance(value, bool):
-                # BOOL/TRISTATE user values are int tri-states: 2 == y, 0 == n
-                sym.set_value(2 if value else 0)
-            else:
-                sym.set_value(str(value))
+        return _HarnessKConfig()
+
+
+def _apply_syms(kc, label, syms, reset=False):
+    """Apply one profile's values to a fresh or resettable parsed tree."""
+    if reset:
+        kc.unset_values()
+    kc.config_file = '<harness:%s>' % (label,)
+    for name, value in syms.items():
+        if name not in kc.syms:
+            raise KeyError("profile %r sets unknown Kconfig symbol %r"
+                           % (label, name))
+        sym = kc.syms[name]
+        if isinstance(value, bool):
+            # BOOL/TRISTATE user values are int tri-states: 2 == y, 0 == n
+            sym.set_value(2 if value else 0)
+        else:
+            sym.set_value(str(value))
     return kc
+
+
+def _kconfig(label, syms):
+    """
+    One independent Kconfig parse with `syms` applied. The CALLER owns the env - wrap this
+    in _env(), because kconfiglib expands $(VAR) while Kconfig() is being constructed here.
+
+    Direct callers often retain and mutate the returned object, so this deliberately does
+    not use the render-only parsed-tree cache below.
+    """
+    return _apply_syms(_new_kconfig(label), label, syms)
 
 
 def _flag(kc, name):
@@ -294,6 +272,35 @@ def _per_unit_name(tmpl, unit_name):
 
 
 _render_cache = {}
+_render_kconfig_cache = {}
+
+
+def _render_kconfig_key():
+    """Environment identity for a parsed tree used only during rendering.
+
+    Kconfig expands environment variables while parsing, including variables referenced by
+    recursive preprocessor functions. Keying on the complete environment is intentionally
+    conservative: an unrelated change merely costs another parse, while omitting a relevant
+    value could render valid-looking pins for the wrong unit. Dynamic discovery is already
+    assumed stable for a process by `_render_cache`, which memoises final output.
+    """
+    return tuple(sorted(os.environ.items()))
+
+
+def _kconfig_for_render(label, syms):
+    """Apply values to a parsed tree leased synchronously by the render path.
+
+    The returned object must not escape rendering: the next render in the same environment
+    resets all symbol and choice user values with Kconfiglib's public `unset_values()` API.
+    Tests which need an independent, persistent Kconfig object continue to use `_kconfig()`.
+    """
+    key = _render_kconfig_key()
+    kc = _render_kconfig_cache.get(key)
+    if kc is None:
+        kc = _new_kconfig(label)
+        _render_kconfig_cache[key] = kc
+        return _apply_syms(kc, label, syms)
+    return _apply_syms(kc, label, syms, reset=True)
 
 
 def render(profile):
@@ -333,7 +340,7 @@ def render(profile):
 
 def _render_single_unit(profile):
     with _env(_SINGLE_UNIT_ENV):
-        kc = _kconfig(profile.name, profile.syms)
+        kc = _kconfig_for_render(profile.name, profile.syms)
 
     # Note we do NOT inject UNIT_NAME/MCU_NAME as jinja params. Production does not
     # (build.py:478-494 sets only PARAM_TOTAL_NUM_GATES) and they are already Kconfig
@@ -363,7 +370,7 @@ def _render_multi_unit(profile, units):
                    F_MULTI_UNIT_ENTRY_POINT='y',
                    UNIT_NAME=','.join(names),
                    MCU_NAME=','.join(names))):
-        entry_kc = _kconfig(profile.name, profile.syms)
+        entry_kc = _kconfig_for_render(profile.name, profile.syms)
 
     # Printer-level capabilities the units need to know about, read back off the entry parse
     # exactly as install.sh:418-427 reads them back out of the top-level config file.
@@ -383,7 +390,8 @@ def _render_multi_unit(profile, units):
                 MCU_NAME=unit.mcu_name,
                 UNIT_INDEX=str(unit.index)))):
             unit_kcs.append(
-                (unit, _kconfig('%s:%s' % (profile.name, unit.name), unit.syms)))
+                (unit, _kconfig_for_render(
+                    '%s:%s' % (profile.name, unit.name), unit.syms)))
 
     # The SUM across units, not this unit's count - build.py:481-492. It drives the Tx macro
     # wrappers, which are printer-wide.

@@ -29,10 +29,7 @@ import jinja2
 # config ('{%','%}','{','}', extensions=['jinja2.ext.do']) never varies, and everything that
 # differs per render - printer state, gate, eventtime - is injected later via
 # TemplateWrapper.render(context), never baked into the compiled template at from_string()
-# time. That is what makes this safe to cache for the process's entire lifetime, unlike
-# test/hh/cfg.py's $(shell,...) cache: that one has to be cleared every Kconfig() parse
-# because a few of ITS macros read a bare $VAR the subprocess resolves from a live os.environ
-# at exec time - there is no such live dependency here.
+# time. That is what makes this safe to cache for the process's entire lifetime.
 #
 # Without this, every boot rebuilt a fresh Environment and recompiled every one of the ~360
 # gcode_macro sections a rendered profile ships from scratch: measured at 23,603
