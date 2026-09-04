@@ -58,6 +58,67 @@ class TestInstallSh(unittest.TestCase):
             )
         return result
 
+    def _isolated_git_env(self):
+        """Env for running git: no user config, no prompts, no editor.
+
+        These tests build a throwaway repo and run the real self_update.sh,
+        which calls git a dozen more times inside. In a noninteractive
+        environment (CI, a printer, a headless box) the developer's own
+        configuration must not leak in: commit/tag GPG signing asks for a
+        passphrase, core.hooksPath can run a hook that waits, and
+        core.editor or a credential helper can open something that waits
+        for a human. Pointing GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM at
+        /dev/null and stripping inherited GIT_*/GPG variables makes git
+        behave as if no configuration existed anywhere - no signing, no
+        hooks, no editor, no credential helper. The sandboxed
+        HOME/XDG_CONFIG_HOME/GNUPGHOME cover the non-git processes git may
+        fork (gpg, ssh, askpass), GIT_TERMINAL_PROMPT=0 stops it from
+        waiting for credentials, and GIT_EDITOR=true turns a (theoretical)
+        "ask the editor for a message" into an immediate success instead
+        of a hang. The author/committer identity is fixed here (not per
+        invocation) so no commit or tag can fail with "tell me who you
+        are" no matter which git calls the tests make.
+        """
+        # Deliberately rebuilt on every call, not cached in setUp: the copy
+        # happens at call time, so a GIT_*/GPG variable exported by a test
+        # mid-run (test_git_is_isolated_from_developer_configuration does
+        # exactly this) is stripped rather than carried over, and the result
+        # always tracks the rest of the live environment. The cost is one
+        # dict copy next to a fork/exec.
+        env = os.environ.copy()
+        for key in list(env):
+            if key.startswith("GIT_") or key in ("GNUPGHOME",
+                                                 "GPG_AGENT_INFO",
+                                                 "HOME",
+                                                 "XDG_CONFIG_HOME"):
+                del env[key]
+        env.update({
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_EDITOR": "true",
+            "HOME": str(self.root),
+            "XDG_CONFIG_HOME": str(self.root / "xdg-config"),
+            "GNUPGHOME": str(self.root / "gnupg"),
+            "GIT_AUTHOR_NAME": "Installer Test",
+            "GIT_AUTHOR_EMAIL": "installer@example.invalid",
+            "GIT_COMMITTER_NAME": "Installer Test",
+            "GIT_COMMITTER_EMAIL": "installer@example.invalid",
+        })
+        return env
+
+    def _git(self, *args, cwd=None, check=True):
+        result = subprocess.run(
+            ["git"] + list(args), cwd=cwd,
+            env=self._isolated_git_env(),
+            text=True, capture_output=True)
+        if check and result.returncode:
+            self.fail("git {} failed (status {})\nstdout: {}\nstderr: {}".format(
+                " ".join(args), result.returncode,
+                result.stdout, result.stderr))
+        return result
+
     def make_mmu_config(self, directory, *extra_names):
         self.write(directory / ".mmu_config", "CONFIG_SENTINEL=y\n")
         for name in extra_names:
@@ -259,6 +320,49 @@ class TestInstallSh(unittest.TestCase):
             MAKEFILE.read_text(encoding="utf-8"),
         )
 
+    def test_git_is_isolated_from_developer_configuration(self):
+        """Test git must read no config a developer happens to have.
+
+        The failure this guards against: a login shell exports
+        GIT_CONFIG_GLOBAL (or the config just sits in $HOME), it enables
+        GPG signing or points at a hook/editor, and a noninteractive test
+        run hangs or fails because of *that developer's* machine, not the
+        code under test.
+        """
+        config_home = self.root / "hostile-home"
+        config_home.mkdir()
+        self.write(config_home / ".gitconfig",
+                   "[core]\n"
+                   "\teditor = /nonexistent-editor\n"
+                   "\thooksPath = /nonexistent-hooks\n"
+                   "[commit]\n\tgpgsign = true\n"
+                   "[tag]\n\tgpgsign = true\n"
+                   "[include]\n\tpath = /nonexistent-include\n")
+        # Export it the way a login shell would, and make sure it goes away
+        # again afterwards.
+        saved = os.environ.get("GIT_CONFIG_GLOBAL")
+        os.environ["GIT_CONFIG_GLOBAL"] = str(config_home / ".gitconfig")
+        if saved is None:
+            self.addCleanup(os.environ.pop, "GIT_CONFIG_GLOBAL")
+        else:
+            self.addCleanup(os.environ.__setitem__, "GIT_CONFIG_GLOBAL", saved)
+
+        repo = self.root / "repo"
+        self._git("init", str(repo))
+        for option in ("core.editor", "commit.gpgsign", "tag.gpgsign"):
+            result = self._git("-C", str(repo), "config", "--get", option,
+                               check=False)
+            self.assertEqual(
+                result.returncode, 1,
+                "git read developer configuration: {}={!r} (stderr {!r})".format(
+                    option, result.stdout, result.stderr))
+
+        # And a commit still succeeds with no GPG key anywhere: no signing,
+        # no prompt, no editor.
+        self.write(repo / "marker", "v4\n")
+        self._git("-C", str(repo), "add", "marker")
+        self._git("-C", str(repo), "commit", "-m", "v4")
+
     def make_v3_install(self):
         config_home = self.root / "printer_data" / "config"
         self.write(
@@ -351,29 +455,20 @@ class TestInstallSh(unittest.TestCase):
         remote = self.root / "remote.git"
         checkout = self.root / "checkout"
 
-        subprocess.run(["git", "init", "--bare", str(remote)], check=True,
-                       capture_output=True, text=True)
-        subprocess.run(["git", "init", str(checkout)], check=True,
-                       capture_output=True, text=True)
-        for key, value in (("user.name", "Installer Test"),
-                           ("user.email", "installer@example.invalid")):
-            subprocess.run(["git", "-C", str(checkout), "config", key, value],
-                           check=True)
+        self._git("init", "--bare", str(remote))
+        self._git("init", str(checkout))
         self.write(checkout / "marker", "v3\n")
-        subprocess.run(["git", "-C", str(checkout), "add", "marker"], check=True)
-        subprocess.run(["git", "-C", str(checkout), "commit", "-m", "v3"],
-                       check=True, capture_output=True, text=True)
-        subprocess.run(["git", "-C", str(checkout), "branch", "-M", "v3"],
-                       check=True)
-        subprocess.run(["git", "-C", str(checkout), "tag", "v3-test"], check=True)
-        subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin",
-                        str(remote)], check=True)
-        subprocess.run(["git", "-C", str(checkout), "push", "-u", "origin", "v3",
-                        "--tags"], check=True, capture_output=True, text=True)
-        subprocess.run(["git", "-C", str(checkout), "checkout", "-b",
-                        "codex/local-only"], check=True, capture_output=True, text=True)
+        self._git("-C", str(checkout), "add", "marker")
+        self._git("-C", str(checkout), "commit", "-m", "v3")
+        self._git("-C", str(checkout), "branch", "-M", "v3")
+        self._git("-C", str(checkout), "tag", "v3-test")
+        self._git("-C", str(checkout), "remote", "add", "origin", str(remote))
+        self._git("-C", str(checkout), "push", "-u", "origin", "v3", "--tags")
+        self._git("-C", str(checkout), "checkout", "-b", "codex/local-only")
 
-        env = os.environ.copy()
+        # The script runs git itself (fetch/stash/checkout/pull/describe);
+        # it inherits the same isolation so none of those can prompt either.
+        env = self._isolated_git_env()
         env.update({
             "BRANCH": "v3",
             "C_OFF": "",
@@ -387,10 +482,8 @@ class TestInstallSh(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        current = subprocess.run(
-            ["git", "-C", str(checkout), "branch", "--show-current"],
-            check=True, text=True, capture_output=True,
-        ).stdout.strip()
+        current = self._git("-C", str(checkout),
+                            "branch", "--show-current").stdout.strip()
         self.assertEqual(current, "v3")
         self.assertIn("Switching to 'v3' branch", result.stdout)
         self.assertNotIn("Running on 'codex/local-only' branch", result.stdout)
