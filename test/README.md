@@ -67,6 +67,7 @@ make VENV=/somewhere/else test  # put the venv somewhere other than ./venv
 make KLIPPY_ENV=/nonexistent test  # ignore klipper's env, build the venv instead
 make NO_VENV=1 test             # don't use a venv at all (see below)
 make PY=/usr/bin/python3 test   # ditto, against a named interpreter
+make JOBS=1 test                # run test files serially (the default is 4 workers)
 ```
 
 If venv creation fails, the error says what to do — on Debian/Ubuntu it is usually
@@ -88,8 +89,8 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` offers everything — currently **1,339 tests in 47 files, about 2m20s** on a
-warm laptop.
+`make test` offers everything — currently **1,339 tests in 47 files, about 45–65s** on a
+warm laptop with the default four workers.
 Expect to see:
 
 ```
@@ -98,8 +99,7 @@ OK
 
 Anything reporting `FAILED (failures=…)` or `(errors=…)` is a genuine problem.
 
-Two minutes is still too long to sit through on every change, which is why `make test` opens a
-file picker first rather than starting straight away.
+The file picker is still useful when you want an even tighter edit/test loop.
 
 ### Running less than everything
 
@@ -141,12 +141,15 @@ immediately — reference and local times can be mixed in the same screen, one r
 
 Two things to know about the numbers. They cover each file's **class fixtures** as well as its
 tests, which is where nearly all the time actually is — `setUpClass` building a printer, not
-the assertions. And part of that cost is shared and cached across a *run* (`test/hh/cfg.py`
-caches rendered profiles and reuses parsed Kconfig trees by environment, while the fake
-`gcode_macro.py` caches compiled Jinja macro templates), so a file run on its own can still
-cost a little more than the same file inside a
-full run: nothing earlier in a solo run has warmed those caches. Treat the column as a guide to
-relative cost within a run, not an absolute per-file price.
+the assertions. Test files run in isolated Python processes so fake-Klipper imports and global
+state cannot leak between files; up to four processes run concurrently. The footer estimates
+elapsed time by scheduling the selected per-file times across those workers, rather than simply
+adding them together. `JOBS=1` is useful for serial debugging; four is deliberately both the
+default and maximum for Raspberry Pi hardware.
+
+Worker output is captured per file. Passing files get one progress line; a failing file gets a
+labelled block containing its complete standard `unittest` traceback and failure summary. Output
+from another worker cannot appear inside that block.
 
 Typing `n` then `+nfc` then Enter runs just the NFC files. `p` recalls the last selection you
 narrowed to — a full run doesn't overwrite it, so you can alternate between a focused loop
