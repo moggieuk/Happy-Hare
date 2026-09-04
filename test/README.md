@@ -118,7 +118,7 @@ Happy Hare tests - 1339 tests in 47 files        times from last run (~ = refere
    …
   47 [x] test_mmu_toolchange           30     1.3s
 
-  selected: 47 files - 1339 tests - ~2m21s last time
+  selected: 47 files - 1339 tests - ~60s last time
 
   [Enter] run    1 3 5-8 toggle    a all    n none    v invert
   +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
