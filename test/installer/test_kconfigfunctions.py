@@ -30,6 +30,16 @@ class TestBasicFunctions(unittest.TestCase):
             self.assertEqual(funcs.path_is_dir(None, None, root), 'y')
             self.assertEqual(funcs.path_is_dir(None, None, filename), 'n')
 
+    def test_path_join_decodes_serialized_kconfig_value(self):
+        self.assertEqual(
+            funcs.path_join(None, None, '"~/printer_data/config"',
+                            'mmu/mmu_vars.cfg'),
+            '~/printer_data/config/mmu/mmu_vars.cfg')
+        self.assertEqual(
+            funcs.path_join(None, None, '~/printer_data/config',
+                            'mmu/mmu_vars.cfg'),
+            '~/printer_data/config/mmu/mmu_vars.cfg')
+
     def test_word_helpers_are_one_based(self):
         self.assertEqual(funcs.word_count(None, None, ' can0:a   can1:b '), '2')
         self.assertEqual(funcs.word_at(None, None, 'can0:a can1:b', '2'), 'can1:b')

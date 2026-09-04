@@ -32,6 +32,22 @@ def path_is_dir(_kconf, _name, path):
     return "y" if os.path.isdir(path) else "n"
 
 
+def _unquote_kconfig_string(value):
+    """Decode a string copied from Kconfig's ``CONFIG_FOO="..."`` format."""
+    match = _STRING_VALUE_RE.match(value)
+    return _UNESCAPE_RE.sub(r"\1", match.group(1)) if match else value
+
+
+def _escape_kconfig_string(value):
+    return value.replace("\\", r"\\").replace('"', r'\"')
+
+
+def path_join(_kconf, _name, base, suffix):
+    """Join paths after removing quotes inherited from a serialized Kconfig value."""
+    return _escape_kconfig_string(os.path.join(
+        _unquote_kconfig_string(base), suffix))
+
+
 def word_count(_kconf, _name, value):
     return str(len(value.split()))
 
@@ -181,19 +197,13 @@ def _saved_values(kconf):
             if value.endswith(HH_DEFAULT_TOKEN):
                 value = value[:-len(HH_DEFAULT_TOKEN)]
 
-            match = _STRING_VALUE_RE.match(value)
-            if match:
-                value = _UNESCAPE_RE.sub(r"\1", match.group(1))
+            value = _unquote_kconfig_string(value)
 
             values[name[len(prefix):]] = value
 
     _config_cache.clear()
     _config_cache[cache_key] = values
     return values
-
-
-def _escape_kconfig_string(value):
-    return value.replace("\\", r"\\").replace('"', r'\"')
 
 
 def saved_config_value(kconf, _, symbol):
@@ -220,6 +230,7 @@ functions = {
     "hh-pad": (pad, 2, 2),
     "path-exists": (path_exists, 1, 1),
     "path-is-dir": (path_is_dir, 1, 1),
+    "path-join": (path_join, 2, 2),
     "saved-config-value": (saved_config_value, 1, 1),
     "saved-interface": (saved_interface, 1, 1),
     "serial-device": (serial_device, 2, 3),
