@@ -19,7 +19,7 @@
     <img src="assets/images/badge-last-commit.svg" alt="Last commit"></a>
 </p>
 
-<p>&nbsp;</p
+<p>&nbsp;</p>
 
 <p>
   <strong>One driver. Every kind of MMU. A complete Klipper experience.</strong>
