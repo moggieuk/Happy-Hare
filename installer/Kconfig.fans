@@ -14,8 +14,12 @@
 #   VAR_FAN_CONTROL_ENABLED
 #   VAR_FAN_FORCED_MODE (choice: AUTO, OFF, ON)
 #   VAR_FAN_FORCED (mapped value: 0, 1, 2)
-#   VAR_FAN_SENSORS (comma-separated temperature_sensor names)
-#   VAR_FAN_FANS (comma-separated fan_generic names)
+#   VAR_FAN_FANS (single MCU: comma-separated fan_generic names; the
+#                  per-gate list is built in the template from PIN_FAN_X)
+#
+# The controlled sensor names are not fan variables - they are the
+# environment sensor names themselves (PARAM_ENVIRONMENT_SENSOR on a single
+# MCU, PARAM_ENVIRONMENT_SENSOR_X per gate).
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_FANS
@@ -68,6 +72,16 @@ if MMU_HAS_FANS
           Pin for cooling fan.
           Leave blank if you don't have a fan installed.
           Empty pins will be ignored in the generated configuration.
+
+      config VAR_FAN_FANS
+        string "Fan name(s)         "
+        default "_mmu_fan"
+        help
+          Name(s) of the [fan_generic] section(s) the fan control macro
+          drives - comma-separated for several fans. Must match the name(s)
+          created in the generated hardware config; the default matches the
+          _mmu_fan section defined when a fan pin is set.
+          Leave blank to keep the fan(s) but disable automatic control.
     endif
 
     menu "Fan pins" 
