@@ -8,7 +8,7 @@
 config SHOW_SHARED_WARNINGS
   bool
   depends on MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
-  @repeat var=i min=1 max=3@
+  @repeat var=i min=1 max=4@
     default y if SW$(i)
   @endrepeat@
 
@@ -20,6 +20,10 @@ config SW2
 
 config SW3
     def_bool y if MMU_HAS_SENSOR_EXTRUDER && PIN_EXTRUDER_SENSOR = ""
+
+config SW4
+    def_bool y if MMU_HAS_BLOBIFIER && MMU_HAS_BLOBIFIER_BUCKET_SWITCH && \
+        (PIN_BLOBIFIER_BUCKET_SWITCH = "" || PIN_BLOBIFIER_BUCKET_SWITCH = "^")
 
 
 config SHOW_PER_UNIT_WARNINGS
@@ -106,6 +110,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Caution: You opted to not install client macros [Software Options]"  if SW1
     comment "Toolhead sensor is enabled but no MCU pin defined"                   if SW2
     comment "Extruder sensor is enabled but no MCU pin defined"                   if SW3
+    comment "Blobifier bucket switch is enabled but no valid MCU pin is defined"  if SW4
   endif
 
   if SHOW_PER_UNIT_WARNINGS
