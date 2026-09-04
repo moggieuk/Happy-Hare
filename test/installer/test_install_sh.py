@@ -59,32 +59,8 @@ class TestInstallSh(unittest.TestCase):
         return result
 
     def _isolated_git_env(self):
-        """Env for running git: no user config, no prompts, no editor.
-
-        These tests build a throwaway repo and run the real self_update.sh,
-        which calls git a dozen more times inside. In a noninteractive
-        environment (CI, a printer, a headless box) the developer's own
-        configuration must not leak in: commit/tag GPG signing asks for a
-        passphrase, core.hooksPath can run a hook that waits, and
-        core.editor or a credential helper can open something that waits
-        for a human. Pointing GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM at
-        /dev/null and stripping inherited GIT_*/GPG variables makes git
-        behave as if no configuration existed anywhere - no signing, no
-        hooks, no editor, no credential helper. The sandboxed
-        HOME/XDG_CONFIG_HOME/GNUPGHOME cover the non-git processes git may
-        fork (gpg, ssh, askpass), GIT_TERMINAL_PROMPT=0 stops it from
-        waiting for credentials, and GIT_EDITOR=true turns a (theoretical)
-        "ask the editor for a message" into an immediate success instead
-        of a hang. The author/committer identity is fixed here (not per
-        invocation) so no commit or tag can fail with "tell me who you
-        are" no matter which git calls the tests make.
-        """
-        # Deliberately rebuilt on every call, not cached in setUp: the copy
-        # happens at call time, so a GIT_*/GPG variable exported by a test
-        # mid-run (test_git_is_isolated_from_developer_configuration does
-        # exactly this) is stripped rather than carried over, and the result
-        # always tracks the rest of the live environment. The cost is one
-        # dict copy next to a fork/exec.
+        """Return a predictable, non-interactive environment for test git."""
+        # Rebuild for every call so variables set during a test are stripped.
         env = os.environ.copy()
         for key in list(env):
             if key.startswith("GIT_") or key in ("GNUPGHOME",
@@ -321,14 +297,7 @@ class TestInstallSh(unittest.TestCase):
         )
 
     def test_git_is_isolated_from_developer_configuration(self):
-        """Test git must read no config a developer happens to have.
-
-        The failure this guards against: a login shell exports
-        GIT_CONFIG_GLOBAL (or the config just sits in $HOME), it enables
-        GPG signing or points at a hook/editor, and a noninteractive test
-        run hangs or fails because of *that developer's* machine, not the
-        code under test.
-        """
+        """Developer git configuration must not affect temporary repos."""
         config_home = self.root / "hostile-home"
         config_home.mkdir()
         self.write(config_home / ".gitconfig",
@@ -338,8 +307,7 @@ class TestInstallSh(unittest.TestCase):
                    "[commit]\n\tgpgsign = true\n"
                    "[tag]\n\tgpgsign = true\n"
                    "[include]\n\tpath = /nonexistent-include\n")
-        # Export it the way a login shell would, and make sure it goes away
-        # again afterwards.
+        # Restore the process environment when the test finishes.
         saved = os.environ.get("GIT_CONFIG_GLOBAL")
         os.environ["GIT_CONFIG_GLOBAL"] = str(config_home / ".gitconfig")
         if saved is None:
@@ -357,8 +325,7 @@ class TestInstallSh(unittest.TestCase):
                 "git read developer configuration: {}={!r} (stderr {!r})".format(
                     option, result.stdout, result.stderr))
 
-        # And a commit still succeeds with no GPG key anywhere: no signing,
-        # no prompt, no editor.
+        # A commit must succeed without inherited signing or editor settings.
         self.write(repo / "marker", "v4\n")
         self._git("-C", str(repo), "add", "marker")
         self._git("-C", str(repo), "commit", "-m", "v4")
