@@ -301,6 +301,58 @@ class TestMenuconfigMacroStrings(unittest.TestCase):
         self.assertEqual(ast.literal_eval(raw), 'fan_generic fan0')
 
 
+class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
+
+    def _render_mmu(self, name, syms):
+        profile = profiles.get('boxturtle').derive(
+            name,
+            syms=dict({
+                'MMU_HAS_BLOBIFIER': True,
+                'PIN_BLOBIFIER_SERVO': 'unit0:PA1',
+            }, **syms))
+        return cfg.render(profile)[MMU]
+
+    def test_blobifier_does_not_require_a_bucket_switch(self):
+        mmu = self._render_mmu('blobifier_without_bucket_switch', {
+            'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
+        })
+        self.assertNotIn('gcode_button bucket', cfg.sections(mmu))
+
+    def test_bucket_switch_defaults_to_enabled(self):
+        mmu = self._render_mmu('blobifier_default_bucket_switch', {})
+        self.assertIn('gcode_button bucket', cfg.sections(mmu))
+
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('no_blobifier_bucket_switch_warning', {
+                'MMU_HAS_BLOBIFIER': False,
+            })
+        self.assertFalse(kc.is_enabled('SW4'))
+
+    def test_bucket_switch_is_rendered_when_enabled(self):
+        mmu = self._render_mmu('blobifier_with_bucket_switch', {
+            'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': True,
+            'PIN_BLOBIFIER_BUCKET_SWITCH': '^unit0:PA2',
+        })
+        parser = cfg.assemble({MMU: mmu})
+        self.assertEqual(
+            dict(parser.items('gcode_button bucket'))['pin'],
+            '^unit0:PA2')
+
+    def test_enabled_bucket_switch_without_a_pin_is_rendered_and_warned(self):
+        mmu = self._render_mmu('blobifier_bucket_switch_missing_pin', {
+            'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': True,
+            'PIN_BLOBIFIER_BUCKET_SWITCH': '',
+        })
+        self.assertIn('gcode_button bucket', cfg.sections(mmu))
+
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('blobifier_bucket_switch_missing_pin_warning', {
+                'MMU_HAS_BLOBIFIER': True,
+                'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': True,
+                'PIN_BLOBIFIER_BUCKET_SWITCH': '',
+            })
+        self.assertTrue(kc.is_enabled('SW4'))
+
 # Deliberately TWO IDENTICAL BOXTURTLES rather than the real ercf_vvd profile. The point is
 # to test the multi-unit RENDER PATH, so both units being the machine every other test
 # already trusts means a failure here is the path and not an ERCF or ViViD quirk. It lives
