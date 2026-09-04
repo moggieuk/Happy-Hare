@@ -114,9 +114,10 @@ class SaveVariableManager:
                 "If not, add this line and restart"
             )
 
-        # Record this boot's naming only after migrating, so the markers describe where
-        # the data actually ended up.
+        # Order matters: migrate first so the warning only reports what migration could
+        # not move, then record this boot's naming for the next one to compare against.
         self._migrate_unit_namespace()
+        self._warn_on_orphaned_units()
         self._record_naming_markers()
 
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
@@ -171,7 +172,9 @@ class SaveVariableManager:
 
         Data already stored per unit is left alone on a multi-unit machine - there is no
         single answer to which unit would inherit it. Unnamed data is different: only a
-        single unit can have written it, so the first unit takes it.
+        single unit can have written it, so the first unit takes it. Whatever is still
+        stranded after that - data under a unit name nothing configures any more - is
+        reported by _warn_on_orphaned_units rather than guessed at.
         """
         old = self._saved_namespace()
         if old is _UNKNOWN:
@@ -218,6 +221,41 @@ class SaveVariableManager:
                 % (moved, "unnamed" if old is None else "'%s'" % old,
                    "unnamed" if new is None else "'%s'" % new)
             )
+
+
+    def _warn_on_orphaned_units(self):
+        """
+        Warn when a unit that owned saved data is no longer configured.
+
+        Every persisted per-unit value (bowden lengths, rotation distances, encoder
+        resolution, selector offsets/angles, gate stats) is stored under "mmu_<unit>_...",
+        so renaming a unit silently orphans all of it and the MMU comes back reporting
+        itself uncalibrated. The switch that makes this easy to hit is single -> multi:
+        install.sh carries the old single-unit config over to whichever name is listed
+        first (install.sh's tmpconfig rename), and the default first name is the single
+        unit's own "unit0" - but nothing stops a user replacing it, e.g. "left,right".
+
+        Comparing against the names recorded on the previous boot catches every case
+        (rename, reorder, single <-> multi) without having to reason about the shape of
+        individual variable names. Only warns while the orphaned data is still there, so
+        it goes quiet by itself once the keys are migrated or removed.
+        """
+        previous = self.save_variables.allVariables.get(VARS_MMU_UNIT_NAMES, None)
+        current = list(self.mmu_machine.unit_names)
+        for old in (previous or []):
+            if old in current:
+                continue
+            prefix = "mmu_%s_" % old
+            orphaned = sorted(k for k in self.save_variables.allVariables if k.startswith(prefix))
+            if orphaned:
+                logging.warning(
+                    "MMU: mmu_vars.cfg still holds %d saved value(s) for a unit named '%s', which "
+                    "is no longer configured (units are now: %s). That data - calibration "
+                    "included - is orphaned and the affected unit will report as uncalibrated. "
+                    "To recover, either name a unit '%s' again, or rename those keys to "
+                    "'mmu_<unit>_*' for the unit that replaced it: %s"
+                    % (len(orphaned), old, ", ".join(current) or "none", old, ", ".join(orphaned))
+                )
 
 
     def _record_naming_markers(self):

@@ -389,6 +389,56 @@ class TestBareUnitNames(unittest.TestCase):
             root.removeHandler(handler)
             root.setLevel(previous)
 
+    def test_a_renamed_unit_warns_that_its_saved_data_is_orphaned(self):
+        """
+        The single -> multi trap: install.sh carries the old single-unit config over to
+        whichever unit is listed FIRST, and the default first name is the single unit's own
+        'unit0' - but a user who types 'left,right' instead keeps their hardware config and
+        silently loses every calibrated value, which stays behind as mmu_unit0_*.
+        """
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        # Calibration as the previous boot left it, under a unit that no longer exists.
+        hh.mmu.var_manager.save_variables.allVariables.update({
+            'mmu__unit_names': ['left'],
+            'mmu_left_bowden_lengths': [1623.6],
+            'mmu_left_gear_rotation_distances': [22.7],
+        })
+
+        with self.assertLogs(level='WARNING') as cm:
+            self._rebuild_var_manager(hh)
+
+        warning = '\n'.join(cm.output)
+        self.assertIn("unit named 'left'", warning)
+        self.assertIn('mmu_left_bowden_lengths', warning)          # names what to migrate
+        self.assertIn('unit0', warning)                            # names what it is now
+
+    def test_no_warning_when_the_orphaned_data_is_gone(self):
+        """Self-clearing: the warning is about data that is actually there, not history."""
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        hh.mmu.var_manager.save_variables.allVariables['mmu__unit_names'] = ['left']
+
+        with self.captured_warnings() as warnings:
+            self._rebuild_var_manager(hh)
+        self.assertEqual(warnings, [])
+
+    def test_no_warning_on_first_boot_after_upgrade(self):
+        """An existing install has no recorded names yet - that must not read as a rename."""
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        allvars = hh.mmu.var_manager.save_variables.allVariables
+        allvars.pop('mmu__unit_names', None)
+        allvars['mmu_unit0_bowden_lengths'] = [1623.6]
+
+        with self.captured_warnings() as warnings:
+            self._rebuild_var_manager(hh)
+        self.assertEqual(warnings, [])
+
     def test_unit_names_are_recorded_for_the_next_boot(self):
         hh = session('boxturtle')
         self.addCleanup(hh.close)
