@@ -58,7 +58,7 @@ menu "Paths & Services"
 
   config PARAM_MMU_VARS_CFG
     string "save_variables path     "
-    default "$(CONFIG_KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg" if $(nonempty,$(CONFIG_KLIPPER_CONFIG_HOME))
+    default "$(path-join,$(CONFIG_KLIPPER_CONFIG_HOME),mmu/mmu_vars.cfg)" if $(nonempty,$(CONFIG_KLIPPER_CONFIG_HOME))
     default "/usr/data/printer_data/config/mmu/mmu_vars.cfg" if $(path-exists,/usr/data/printer_data)
     default "~/printer_data/config/mmu/mmu_vars.cfg"
 

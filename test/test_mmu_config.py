@@ -90,6 +90,21 @@ class TestBoxTurtleRender(unittest.TestCase):
         self.assertEqual(leds['entry_effect'], 'gate_status')
         self.assertEqual(leds['status_effect'], 'slicer_color')
 
+    def test_serialized_config_home_does_not_quote_save_variables_path(self):
+        env = dict(cfg._SINGLE_UNIT_ENV,
+                   CONFIG_KLIPPER_CONFIG_HOME='"~/printer_data/config"')
+        with cfg._env(env):
+            kconfig = cfg._kconfig(
+                'quoted_config_home', profiles.get('boxturtle').syms)
+
+        self.assertEqual(kconfig.get('PARAM_MMU_VARS_CFG'),
+                         '~/printer_data/config/mmu/mmu_vars.cfg')
+        rendered = cfg._render_templates(
+            (MACRO_VARS,), kconfig, {'PARAM_TOTAL_NUM_GATES': 4})
+        self.assertIn(
+            'filename: ~/printer_data/config/mmu/mmu_vars.cfg\n',
+            rendered[MACRO_VARS])
+
     def test_mmu_sections(self):
         secs = cfg.sections(self.rendered[MMU])
         for expected in ('mmu_machine', 'mmu_parameters', 'mmu_toolhead default'):
