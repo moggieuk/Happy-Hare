@@ -14,9 +14,6 @@ set -e
 SCRIPT_DIR=${INSTALL_SH_SCRIPT_DIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 SCRIPT_NAME=$(basename "$0")
 
-# Get current HH version from the mmu_constants.py file
-export HH_VERSION=$(sed -n 's/^VERSION = "\(.*\)".*/\1/p' "$SCRIPT_DIR/extras/mmu/mmu_constants.py")
-
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
     C_DEBUG=$(tput -Txterm-256color setaf 5)
@@ -25,6 +22,17 @@ if [ -n "$(which tput 2>/dev/null)" ]; then
     C_WARNING=$(tput -Txterm-256color setaf 3)
     C_ERROR=$(tput -Txterm-256color bold)$(tput -Txterm-256color setaf 1)
 fi
+
+# Refuse installer runs from anywhere other than the project root.
+caller_dir=$(pwd -P)
+if [ "${caller_dir}" != "${SCRIPT_DIR}" ]; then
+    echo "${C_ERROR}Run this installer from the Happy Hare directory:${C_OFF}" >&2
+    echo "  cd \"${SCRIPT_DIR}\" && ./${SCRIPT_NAME}" >&2
+    exit 1
+fi
+
+# Get current HH version from the mmu_constants.py file
+export HH_VERSION=$(sed -n 's/^VERSION = "\(.*\)".*/\1/p' "$SCRIPT_DIR/extras/mmu/mmu_constants.py")
 
 usage() {
     USAGE="Usage: $0"
