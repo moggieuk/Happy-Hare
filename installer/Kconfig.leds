@@ -210,9 +210,9 @@ if MMU_HAS_LEDS
         bool "Custom"
         help
           A machine-local theme file (mmu/led_theme/custom_<unit>.cfg).
-          The installer creates it once, from the stock set for this unit
-          type, and never modifies it again - upgrades leave it untouched,
-          so it is yours to edit freely.
+          The installer creates it once, from this machine's default set
+          (the EMU set on an EMU), and never modifies it again - upgrades
+          leave it untouched, so it is yours to edit freely.
     endchoice
 
     config PARAM_LED_THEME

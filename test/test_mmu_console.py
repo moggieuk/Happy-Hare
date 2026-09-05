@@ -85,8 +85,13 @@ def make_install_tree(root, printer_cfg=True, macros=True, mmu_vars=True):
     rendered = cfg_mod.render(profiles.get('boxturtle'))
     base = os.path.join(root, 'mmu', 'base')
     os.makedirs(base)
+    theme = os.path.join(root, 'mmu', 'led_theme')
+    os.makedirs(theme)
     for tmpl, text in rendered.items():
-        with open(os.path.join(base, os.path.basename(tmpl)), 'w', encoding='utf-8') as f:
+        # Themes install to mmu/led_theme/ (the hardware file includes them; printer.cfg
+        # never globs that directory) - everything else goes to mmu/base/.
+        dest = theme if tmpl.startswith('config/led_theme/') else base
+        with open(os.path.join(dest, os.path.basename(tmpl)), 'w', encoding='utf-8') as f:
             f.write(text)
     if macros:
         mdir = os.path.join(root, 'mmu', 'macros')
@@ -126,12 +131,15 @@ def make_multi_unit_tree(root, units=('unit0', 'unit1')):
     """
     base = os.path.join(root, 'mmu', 'base')
     os.makedirs(base)
+    theme = os.path.join(root, 'mmu', 'led_theme')
+    os.makedirs(theme)
     os.makedirs(os.path.join(root, 'mmu', 'macros'))
 
     rendered = cfg_mod.render(profiles.clone_across_units(
         'boxturtle_x%d' % len(units), profiles.get('boxturtle'), units))
     for name, text in rendered.items():
-        with open(os.path.join(base, os.path.basename(name)), 'w', encoding='utf-8') as fh:
+        dest = theme if name.startswith('config/led_theme/') else base
+        with open(os.path.join(dest, os.path.basename(name)), 'w', encoding='utf-8') as fh:
             fh.write(text)
 
     for name, text in cfg_mod.macro_files().items():

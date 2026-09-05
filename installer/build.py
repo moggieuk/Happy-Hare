@@ -16,6 +16,7 @@ import argparse
 import re
 import os
 import copy
+import glob
 import ast
 import json
 import logging
@@ -26,7 +27,7 @@ from jinja2  import Environment, FileSystemLoader, UndefinedError
 from pathlib import Path
 
 import kconfiglib
-from .parser   import ConfigBuilder, WhitespaceNode, PARSE_ERROR_MARKER
+from .parser   import ConfigBuilder, WhitespaceNode, PARSE_ERROR_MARKER, SectionNode
 from .upgrades import Upgrades
 
 # Check for python 3.x
@@ -593,6 +594,85 @@ def build(cfg_file, dest_file, kconfig, input_files):
 #     v
 # OUT files installed back to live locations
 #
+
+# The machine's default shipped theme. If a further shipped theme appears,
+# teach this function its default condition.
+def _default_theme_name(kcfg):
+    return "mmu_leds"
+
+
+def _selected_theme(kcfg):
+    """PARAM_LED_THEME, falling back to the machine default when it was never
+    explicitly set (a pickled ParsedKConfig may not carry it)."""
+    try:
+        value = kcfg.get("PARAM_LED_THEME")
+    except KeyError:
+        return _default_theme_name(kcfg)
+    return value if value else _default_theme_name(kcfg)
+
+
+def seed_custom_theme(kcfg, builder, dest_file, template_theme):
+    """Create mmu/led_theme/custom_<unit>.cfg once, seeded from this
+    machine's default shipped theme (the user's current values were already
+    reapplied above). The Makefile keeps custom_*.cfg out of a build's
+    inputs, so no build reads or rewrites it afterwards - the user owns it.
+    template_theme is the rendered template's stem, not the dest's: the dest
+    is <theme>_<unit>.cfg and a theme name itself contains an underscore.
+    """
+    if _selected_theme(kcfg) != "custom":
+        return
+
+    # Only the default theme seeds, so building the other shipped theme
+    # cannot double-create the file for the same unit.
+    if template_theme != _default_theme_name(kcfg):
+        return
+
+    name = Path(dest_file).name
+    unit_name = name[len(template_theme) + 1:-len(".cfg")]
+    custom_file = os.path.join(os.path.dirname(dest_file), "custom_%s.cfg" % unit_name)
+
+    if os.path.exists(custom_file):
+        logging.info("Custom LED theme '%s' already exists - leaving it untouched" % custom_file)
+        return
+
+    logging.info("Creating machine-local LED theme '%s' (seeded from the %s theme)" % (custom_file, template_theme))
+    data = builder.write()
+    with open(custom_file, "wb") as f:
+        f.write(data.encode("utf-8"))
+
+
+def prune_led_themes(config_home, kcfgs):
+    """Remove installed LED theme files no unit selects anymore (install-time
+    cleanup when the menuconfig selection changes). Per unit, keep the theme
+    named by PARAM_LED_THEME if it is a shipped one; 'custom' and
+    user-maintained theme files are never touched, and a unit without LEDs
+    keeps no shipped theme files at all."""
+    src = os.getenv("SRC", ".")
+    shipped = sorted(Path(p).stem
+                     for p in glob.glob(os.path.join(src, "config", "led_theme", "*.cfg")))
+    theme_dir = os.path.join(config_home, "mmu", "led_theme")
+    if not os.path.isdir(theme_dir):
+        return
+    for kcfg in kcfgs:
+        try:
+            unit = kcfg.get("UNIT_NAME")
+        except KeyError:
+            continue
+        if not unit:
+            continue
+        try:
+            selected = kcfg.get("PARAM_LED_THEME")
+        except KeyError:
+            selected = None
+        keep = selected if selected in shipped else None
+        for name in shipped:
+            if name == keep:
+                continue
+            path = os.path.join(theme_dir, "%s_%s.cfg" % (name, unit))
+            if os.path.lexists(path):
+                os.remove(path)
+                logging.info("Removed unselected LED theme '%s'" % path)
+
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
     dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
     logging.info("Building config file: %s" % dest_file_basename)
@@ -639,6 +719,18 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     elif cfg_file_basename == "config/base/mmu.cfg":
         add_supplemental_params(builder, hhcfg, "mmu_parameters")
+
+    # LED theme templates (config/led_theme/*.cfg) render to per-unit files in
+    # mmu/led_theme/. They are NOT glob-included from printer.cfg: the unit's
+    # hardware file includes exactly the one named by PARAM_LED_THEME, so a
+    # theme that renders empty for this machine must not produce a file at all
+    # (a dangling include would otherwise break klippy startup).
+    if cfg_file_basename.startswith("config/led_theme/") and \
+            next(builder._iter_section_nodes(builder.document), None) is None:
+        logging.info(
+            "LED theme '%s' has no content for this machine - not writing %s"
+            % (Path(cfg_file_basename).stem, dest_file_basename))
+        return
 
     # 6.Determine how much of the HHConfig (existing .cfg's) do we re-apply
     refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
@@ -703,6 +795,11 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     data = builder.write()
     with open(dest_file, "wb") as f:
         f.write(data.encode("utf-8"))
+
+    # 'custom' theme seeding: a no-op unless the selected theme is 'custom'
+    # and this build is of the machine's default shipped theme.
+    if cfg_file_basename.startswith("config/led_theme/"):
+        seed_custom_theme(kcfg, builder, dest_file, Path(cfg_file_basename).stem)
 
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
@@ -1161,6 +1258,7 @@ def main():
     parser.add_argument("--uninstall-moonraker", nargs=1)
     parser.add_argument("--install-includes", nargs=2)
     parser.add_argument("--uninstall-includes", nargs=1)
+    parser.add_argument("--prune-led-themes", nargs="*")
     parser.add_argument("--restart-service", nargs=3)
     parser.add_argument("--pre-parse-kconfig", nargs=1)
     parser.add_argument("--gen-kconfig-options", nargs=1)
@@ -1188,6 +1286,10 @@ def main():
         install_includes(args.install_includes[0], args.install_includes[1])
     if args.uninstall_includes:
         uninstall_includes(args.uninstall_includes[0])
+
+    if args.prune_led_themes:
+        prune_led_themes(args.prune_led_themes[0],
+                         [load_parsed_kconfig(p) for p in args.prune_led_themes[1:]])
 
     if args.restart_service:
         restart_service(args.restart_service[0], args.restart_service[1], args.restart_service[2])
