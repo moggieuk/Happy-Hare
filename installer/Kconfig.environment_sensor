@@ -236,7 +236,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
                 bool "BME280"
             endchoice
 
-            config PARAM_ENVIRONMENT_SENSOR_TYPE
+            config PARAM_ENVIRONMENT_SENSOR_TYPE_$(i)
               string
               default "AHT1X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i)
               default "AHT2X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i)
