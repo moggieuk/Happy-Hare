@@ -332,6 +332,7 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
             'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
         })
         self.assertNotIn('gcode_button bucket', cfg.sections(mmu))
+        self.assertNotIn('gcode_macro _BLOBIFIER_BUCKET_SWITCH', cfg.sections(mmu))
 
     def test_bucket_switch_defaults_to_enabled(self):
         mmu = self._render_mmu('blobifier_default_bucket_switch', {})
@@ -352,6 +353,12 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
         self.assertEqual(
             dict(parser.items('gcode_button bucket'))['pin'],
             '^unit0:PA2')
+        self.assertEqual(
+            dict(parser.items('gcode_button bucket'))['debounce_delay'],
+            '0.5')
+        self.assertEqual(
+            dict(parser.items('gcode_macro _BLOBIFIER_BUCKET_SWITCH'))['variable_armed'],
+            '0')
 
     def test_enabled_bucket_switch_without_a_pin_is_rendered_and_warned(self):
         mmu = self._render_mmu('blobifier_bucket_switch_missing_pin', {
