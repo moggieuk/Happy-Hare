@@ -359,6 +359,11 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
         self.assertEqual(
             dict(parser.items('gcode_macro _BLOBIFIER_BUCKET_SWITCH'))['variable_armed'],
             '0')
+        button_gcode = dict(parser.items('gcode_button bucket'))
+        self.assertIn('RESPOND PREFIX="BLOBIFIER"', button_gcode['press_gcode'])
+        self.assertIn('bucket switch pressed', button_gcode['press_gcode'])
+        self.assertIn('resetting count', button_gcode['release_gcode'])
+        self.assertIn('reset ignored', button_gcode['release_gcode'])
 
     def test_enabled_bucket_switch_without_a_pin_is_rendered_and_warned(self):
         mmu = self._render_mmu('blobifier_bucket_switch_missing_pin', {
