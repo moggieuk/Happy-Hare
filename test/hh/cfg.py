@@ -37,7 +37,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import os, re, sys, contextlib, configparser
+import os, re, sys, glob, contextlib, configparser
 
 HARNESS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HARNESS_DIR))
@@ -68,11 +68,21 @@ PER_UNIT_TEMPLATES = (
     'config/base/mmu_parameters.cfg',
 )
 
+# LED themes: per-unit templates like the set above, installed to mmu/led_theme/ (NOT
+# glob-included from printer.cfg - the unit's hardware file includes the one named by
+# PARAM_LED_THEME). Rendered like the other per-unit files so the include line can be
+# inlined at assemble() time (see _expand_includes).
+THEME_TEMPLATES = tuple(sorted(os.path.relpath(p, REPO_ROOT)
+                               for p in glob.glob(os.path.join(REPO_ROOT, 'config/led_theme/*.cfg'))))
+
 # Sorted, because that IS the include order (see above) - and because on a multi-unit render
 # the per-unit names have to interleave correctly: mmu.cfg, mmu_hardware_unit0.cfg,
 # mmu_hardware_unit1.cfg, mmu_macro_vars.cfg, mmu_parameters_unit*.cfg. Every path shares
 # the config/base/ prefix, so sorting full paths and sorting basenames agree.
-BASE_TEMPLATES = tuple(sorted(SHARED_TEMPLATES + PER_UNIT_TEMPLATES))
+# Theme templates render per unit like the set above but install to mmu/led_theme/; they
+# come after config/base/ in this sort, which matches reality (the hardware file includes
+# its theme, so the theme never precedes it).
+BASE_TEMPLATES = tuple(sorted(SHARED_TEMPLATES + PER_UNIT_TEMPLATES + THEME_TEMPLATES))
 
 # config/macros/*.cfg are COPIED VERBATIM by the installer, not rendered - Makefile:148
 # filters mmu/macros/%.cfg out of the rendered set. They must therefore be read raw:
@@ -402,7 +412,7 @@ def _render_multi_unit(profile, units):
     rendered = _render_templates(SHARED_TEMPLATES, entry_kc, extra)
     for unit, kc in unit_kcs:
         rendered.update(_render_templates(
-            PER_UNIT_TEMPLATES, kc, extra,
+            PER_UNIT_TEMPLATES + THEME_TEMPLATES, kc, extra,
             name_of=lambda tmpl, n=unit.name: _per_unit_name(tmpl, n)))
 
     # Rebuild in installed-name order: assemble() treats insertion order AS include order,
@@ -525,6 +535,11 @@ def load_install_dir(profile):
         root = os.path.dirname(base)    # so 'mmu/...' resolves relative to root
         patterns = ['mmu/base/*.cfg', 'mmu/macros/*.cfg']
 
+    # LED theme files are never listed in printer.cfg (the unit's hardware file includes
+    # them), so pick them up explicitly; an empty glob is harmless on older installs.
+    if patterns is not None and 'mmu/led_theme/*.cfg' not in patterns:
+        patterns = list(patterns) + ['mmu/led_theme/*.cfg']
+
     out = {}
     for pattern in patterns:
         # Sorted, because Klipper's include glob is sorted and the order is load-bearing:
@@ -550,6 +565,60 @@ def load_install_dir(profile):
     return out
 
 
+# Klipper 'include' directive line; the path resolves relative to the including file.
+INCLUDE_RE = re.compile(r'^\s*\[include[ \t]+([^\]]*)\]')
+
+
+def _resolve_include_ref(ref, rendered, including_key):
+    """
+    Map a Klipper include path (relative to the including file's directory) to the key
+    of the rendered dict it names, or None. The including file's rendered key decides
+    the config-root-relative directory the reference resolves against. Multi-unit
+    renders key per-unit templates as config/led_theme/<t>_<unit>.cfg (matching the
+    installed name); single-unit renders omit the suffix, so fall back to a prefix
+    match on the basename.
+    """
+    if ref.startswith(('/', 'mmu/', 'config/')):
+        normalized = ref
+    else:
+        install_key = 'mmu/' + including_key[len('config/'):] \
+            if including_key.startswith('config/') else including_key
+        normalized = os.path.normpath(os.path.join(os.path.dirname(install_key), ref))
+    if normalized in rendered:
+        return normalized
+    if normalized.startswith('mmu/'):
+        key = 'config/' + normalized[len('mmu/'):]
+        if key in rendered:
+            return key
+    root, ext = os.path.splitext(os.path.basename(normalized))
+    for name in rendered:
+        if not name.startswith(('config/led_theme/', 'mmu/led_theme/')):
+            continue
+        kbase, kext = os.path.splitext(os.path.basename(name))
+        if ext == kext and root.startswith(kbase + '_'):
+            return name
+    return None
+
+
+def _expand_includes(name, text, rendered):
+    """
+    Replace '[include <path>]' lines with the referenced file's text, the way Klipper's
+    configfile would. The harness parses a flat dict instead of a directory tree, so
+    without this the included file's content (e.g. a LED theme's effect_* options)
+    would be missing from the assembled config.
+    """
+    out = []
+    for line in text.split('\n'):
+        match = INCLUDE_RE.match(line)
+        if match:
+            key = _resolve_include_ref(match.group(1).strip(), rendered, name)
+            if key is not None and key in rendered:
+                out.append(rendered[key].rstrip('\n'))
+                continue
+        out.append(line)
+    return '\n'.join(out)
+
+
 def assemble(rendered, printer_stub='', macros=True):
     """
     Build the single RawConfigParser Klipper would see, reading the parts in
@@ -558,6 +627,9 @@ def assemble(rendered, printer_stub='', macros=True):
     strict=False is required: [extruder] legitimately appears in more than one
     input (the stub supplies its stepper options, mmu_macro_vars.cfg supplies its
     extrude limits). Interpolation is off because macro bodies are full of '%'.
+
+    'include <path>' lines are expanded inline (see _expand_includes); a file
+    that is only ever reached through such an include is not read twice.
     """
     fileconfig = configparser.RawConfigParser(
         strict=False,
@@ -569,9 +641,26 @@ def assemble(rendered, printer_stub='', macros=True):
         fileconfig.read_string(printer_stub, source='printer_stub.cfg')
     # Insertion order IS include order. render() builds its dict by iterating
     # BASE_TEMPLATES so this is identical for a profile, and it generalises to the
-    # arbitrary file set load_install_dir() produces.
+    # arbitrary file set load_install_dir() produces. Files referenced only through
+    # an '[include]' line in an EARLIER file are spliced in there and skipped here;
+    # the including files (e.g. mmu/base/*) always sort before their include
+    # targets (mmu/led_theme/*), so a single pass in dict order is sufficient.
+    # LED theme files are additionally never read on their own even when not
+    # included: printer.cfg does not glob mmu/led_theme/, so an unselected theme
+    # (e.g. the EMU one on a stock machine) sits installed but is unreachable -
+    # reading it would wrongly merge its [mmu_leds <unit>] options over the
+    # selected theme's.
+    inlined = set()
     for name, text in rendered.items():
-        fileconfig.read_string(text, source=name)
+        if name in inlined or name.startswith(('config/led_theme/', 'mmu/led_theme/')):
+            continue
+        for line in text.split('\n'):
+            match = INCLUDE_RE.match(line)
+            if match:
+                key = _resolve_include_ref(match.group(1).strip(), rendered, name)
+                if key is not None:
+                    inlined.add(key)
+        fileconfig.read_string(_expand_includes(name, text, rendered), source=name)
     if macros and not any(n.startswith('config/macros/') or '/macros/' in n
                           for n in rendered):
         # An install directory carries its own macros (possibly hand-edited); only fall

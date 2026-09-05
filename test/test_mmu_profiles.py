@@ -897,5 +897,45 @@ class TestAdcCompatMatrixOnRealMachine(unittest.TestCase):
                         hh.close()
 
 
-if __name__ == '__main__':
-    unittest.main()
+class TestLedThemes(unittest.TestCase):
+    """
+    The per-unit [mmu_leds <unit>] effect_* assignments live in a swappable theme file
+    (mmu/led_theme/<name>_<unit>.cfg) that the unit's hardware file includes, selected by
+    the PARAM_LED_THEME Kconfig (CHOICE_LED_THEME in menuconfig). This pins the whole
+    mechanism: what moves, what stays, and that the assembled config is the merge of the
+    two halves of the section.
+    """
+
+    def _rendered(self, name):
+        from test.hh import cfg, profiles
+        return cfg.render(profiles.get(name))
+
+    def test_stock_profile_includes_the_stock_theme(self):
+        rendered = self._rendered('boxturtle')
+
+        hardware = [v for k, v in rendered.items() if k.startswith('config/base/mmu_hardware')]
+        self.assertEqual(len(hardware), 1)
+        includes = [l.strip() for l in hardware[0].splitlines() if l.startswith('[include ')]
+        self.assertEqual(includes, ['[include ../led_theme/mmu_leds_unit0.cfg]'])
+        # The effect_* assignments moved out of the hardware file entirely.
+        self.assertFalse(any(l.startswith('effect_') for l in hardware[0].splitlines()))
+
+        theme = [v for k, v in rendered.items() if k.startswith('config/led_theme/mmu_leds')]
+        self.assertEqual(len(theme), 1)
+        effect_lines = [l for l in theme[0].splitlines() if l.startswith('effect_')]
+        self.assertEqual(len(effect_lines), 23)
+        self.assertIn('[mmu_leds unit0]', theme[0])
+
+        # The assembled config merges both halves of the section, and the include line
+        # itself leaves no trace in the parsed config.
+        from test.hh import cfg
+        parser = cfg.assemble(rendered)
+        section = dict(parser.items('mmu_leds unit0'))
+        self.assertTrue(any(o.endswith('_leds') for o in section), 'hardware half missing')
+        # The refresh machinery re-aligns the value column, so compare the effect name and
+        # the color, not the inter-column whitespace.
+        self.assertEqual(section['effect_error'].split(',')[0], 'mmu_red_strobe')
+        self.assertIn('(1, 0, 0)', section['effect_error'])
+        self.assertNotIn('include', section)
+        self.assertFalse(any(o.startswith('include') for o in parser.defaults()))
+
