@@ -199,6 +199,7 @@ restart_klipper = 0
 
 hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/unit/*.py extras/mmu/unit/nfc/*.py extras/mmu/unit/selectors/*.py extras/mmu/commands/*.py)
 hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/* # These will get removed upon install/uninstall
+hh_old_config_files     := macros/mmu_fan_control.cfg # These will get removed upon install
 hh_moonraker_components := $(wildcard components/*.py)
 
 # All repo configs files less mmu_vars.cfg. Zero-length files (e.g. config/base/*.cfg
@@ -425,6 +426,8 @@ install: $(install_targets)
 	$(Q)for f in $(kconfig_files); do \
 		[ -f "$$f" ] && $(SUDO)cp -p "$$f" "$(KLIPPER_CONFIG_HOME)/mmu/$$(basename "$$f")"; \
 	done
+	@# Remove config files retired by this release. The mmu directory backup above preserves them.
+	$(Q)$(SUDO)rm -f $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/,$(hh_old_config_files))
 	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
@@ -667,6 +670,7 @@ variables:
 	@echo "========================="
 	@echo "$(C_NOTICE)hh_klipper_extras_files        =$(C_INFO) $(hh_klipper_extras_files)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_old_klipper_modules         =$(C_INFO) $(hh_old_klipper_modules)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_old_config_files            =$(C_INFO) $(hh_old_config_files)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_moonraker_components        =$(C_INFO) $(hh_moonraker_components)$(C_OFF)"
 	@echo "$(C_NOTICE)repo_cfgs                      =$(C_INFO) $(repo_cfgs)$(C_OFF)"
 	@echo "$(C_NOTICE)unit_names                     =$(C_INFO) $(unit_names)$(C_OFF)"
