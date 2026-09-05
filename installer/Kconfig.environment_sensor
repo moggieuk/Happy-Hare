@@ -146,7 +146,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
 
       if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
         config PARAM_ENVIRONMENT_SENSOR_BME_REPORT_TIME
-          int "BME280 report time (secs)"
+          int "Report time (secs)"
           default 120
           range 0 300
           help
@@ -268,7 +268,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
 
             if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
               config PARAM_ENVIRONMENT_SENSOR_BME_REPORT_TIME_$(i)
-                int "Gate $(i) BME280 report time (secs)"
+                int "Gate $(i) report time (secs)"
                 default 120
                 range 0 300
                 help
