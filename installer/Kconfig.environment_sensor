@@ -7,6 +7,7 @@
 # Single MCU:
 #   PARAM_ENVIRONMENT_SENSOR_TYPE
 #   PARAM_ENVIRONMENT_SENSOR_REPORT_TIME (if AHT type)
+#   PARAM_ENVIRONMENT_SENSOR_BME_REPORT_TIME (if BME280)
 #   PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS
 #
 #   CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE (i2c bus type)
@@ -143,6 +144,16 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
             Recommend setting this to >= 60sec or 0 to disable.
       endif
 
+      if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
+        config PARAM_ENVIRONMENT_SENSOR_BME_REPORT_TIME
+          int "BME280 report time (secs)"
+          default 120
+          range 0 300
+          help
+            Frequency to poll the BME280 sensor (default 120 seconds).
+            Set to 0 to omit the bme280_report_time parameter.
+      endif
+
       config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS
         int "i2c address       "
         default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
@@ -254,6 +265,16 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
                 NOTE: This option requires a patched aht1x driver for Klipper
                 to support the aht10_report_time parameter. 
                 Recommend setting this to >= 60sec or 0 to disable.
+
+            if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              config PARAM_ENVIRONMENT_SENSOR_BME_REPORT_TIME_$(i)
+                int "Gate $(i) BME280 report time (secs)"
+                default 120
+                range 0 300
+                help
+                  Frequency to poll this gate's BME280 sensor (default 120 seconds).
+                  Set to 0 to omit the bme280_report_time parameter.
+            endif
 
             choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
               prompt "Gate $(i) i2c bus type      "
