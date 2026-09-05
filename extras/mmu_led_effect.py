@@ -85,7 +85,6 @@ class MmuLedEffect:
                     if not led_chain:
                         raise config.error("Led chain %s not found!" % led_chain)
                     num_leds = led_chain.led_helper.led_count
-                    leds_per_gate = num_leds // mmu_unit.num_gates
 
                     if num_leds > 0:
                         # Full segment effects
@@ -93,13 +92,11 @@ class MmuLedEffect:
                             section_to = "_led_effect unit%d_%s_%s" % (unit_index, led_effect_section, segment)
                             self._add_led_effect(config, section_to, led_segment_name)
 
-                        # Per gate
+                        # Per gate. Gates may carry different numbers of LEDs so the indexes come
+                        # from [mmu_leds] rather than from dividing the segment evenly
                         if segment in MmuLeds.PER_GATE_SEGMENTS and (not define_on or 'gates' in define_on):
                             for idx in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
-                                led0 = (idx - mmu_unit.first_gate) * leds_per_gate + 1
-                                led_spec = str(led0)
-                                if leds_per_gate > 1:
-                                    led_spec = "%d-%d" % (led0, led0 + leds_per_gate - 1)
+                                led_spec = ','.join(str(led) for led in mmu_leds.gate_led_indexes(segment, idx))
                                 section_to = "_led_effect %s_%s_%d" % (led_effect_section, segment, idx)
                                 self._add_led_effect(config, section_to, "%s (%s)" % (led_segment_name, led_spec))
 
