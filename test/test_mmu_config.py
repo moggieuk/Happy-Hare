@@ -361,7 +361,7 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
             '0')
         button_gcode = dict(parser.items('gcode_button bucket'))
         self.assertIn('RESPOND PREFIX="BLOBIFIER"', button_gcode['press_gcode'])
-        self.assertIn('bucket switch pressed', button_gcode['press_gcode'])
+        self.assertIn('Bucket switch pressed', button_gcode['press_gcode'])
         self.assertIn('resetting count', button_gcode['release_gcode'])
         self.assertIn('reset ignored', button_gcode['release_gcode'])
 
