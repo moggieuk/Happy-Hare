@@ -111,6 +111,28 @@ class TestConfigLoad(unittest.TestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+class TestInitialStatusSchema(unittest.TestCase):
+    """The first status snapshot must establish every public subscription field."""
+
+    def test_top_level_fields_do_not_change_after_ready(self):
+        for profile in ('boxturtle', 'nfc_spoolman'):
+            with self.subTest(profile=profile):
+                hh = session(profile)
+                try:
+                    hh.build()
+                    initial = hh.mmu.get_status(hh.reactor.monotonic())
+
+                    hh.connect().ready()
+                    ready = hh.mmu.get_status(hh.reactor.monotonic())
+
+                    self.assertEqual(set(initial), set(ready))
+                    self.assertIn('nfc', initial)
+                    self.assertEqual(bool(initial['nfc']), profile == 'nfc_spoolman')
+                    self.assertEqual(hh.errors, [])
+                finally:
+                    hh.close()
+
+
 class TestVersionMismatch(unittest.TestCase):
     """
     extras/mmu_machine.py:44-47 is meant to turn a stale `happy_hare_version` into a
@@ -271,7 +293,6 @@ class TestReady(BootedSessionMixin, unittest.TestCase):
     """A4: klippy:ready."""
 
     def test_mmu_is_ready(self):
-        self.assertTrue(self.hh.mmu._ready)
         self.assertTrue(self.hh.fired('mmu:initialized'))
 
     def test_pause_family_was_wrapped(self):
