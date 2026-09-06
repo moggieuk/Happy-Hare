@@ -211,10 +211,12 @@ if MMU_HAS_LEDS
 
     config PARAM_EXIT_LED_COUNTS
       string
+      array_editor "," PARAM_NUM_GATES
       default ""
 
     config PARAM_ENTRY_LED_COUNTS
       string
+      array_editor "," PARAM_NUM_GATES
       default ""
 
     config PARAM_STATUS_LEDS
