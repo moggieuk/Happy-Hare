@@ -2,6 +2,7 @@
 #
 # Responsible for setting:
 #   MMU_HAS_HEATER
+#   MMU_HAS_HEATER_FANS (shared configuration only)
 #
 # Heater parameter tokens which must be inside if MMU_HAS_HEATER clause in cfg templates:
 #   PARAM_FILAMENT_HEATER
@@ -13,8 +14,13 @@
 #   PARAM_HEATER_VENT_INTERVAL
 #   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER)
 #
-# Per-gate:
-#   PARAM_FILAMENT_HEATERS
+# Heater fan parameter tokens:
+#   PARAM_HEATER_FAN_MAX_POWER, PARAM_HEATER_FAN_KICK_START_TIME,
+#   PARAM_HEATER_FAN_SPEED, PARAM_HEATER_FAN_SHUTDOWN_SPEED, PIN_HEATER_FAN
+#     (shared configuration)
+#   PARAM_HEATER_FAN_MAX_POWER_X, PARAM_HEATER_FAN_KICK_START_TIME_X,
+#   PARAM_HEATER_FAN_SPEED_X, PARAM_HEATER_FAN_SHUTDOWN_SPEED_X,
+#   PIN_HEATER_FAN_X (per-gate configuration)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_HEATER
@@ -36,65 +42,53 @@ if !UNSELECT_MMU_HAS_HEATER
         Select if the MMU has a heater in the filament storage enclosure
 endif
 
+# -------------------------------------
+# Heater hardware config
+# -------------------------------------
+
+if MMU_HAS_HEATER && !CUSTOM_HEATER_SETUP && !MMU_HAS_PER_GATE_CONFIG
+  menu "Heater h/w config"
+    help
+      Associate an existing Klipper enclosure heater with this MMU unit.
+
+    comment "Happy Hare does not currently create klipper heater objects for you"
+    comment "so you need to manually create these and enter object names here   "
+
+    # ------------------------------------
+    # Single heater
+    # ------------------------------------
+
+    config PARAM_FILAMENT_HEATER
+      string "Enclosure heater name     "
+      default ""
+      help
+        Enter the full name of the heater used to heat the filament enclosure.
+
+        E.g. If you have a section like this: [heater_generic MMU_heater], then enter
+             without the square brackets: "MMU_heater"
+
+
+  endmenu
+endif
+
 
 # -------------------------------------
-# Heater config
+# Heater and humidity control config
 # -------------------------------------
 
 if MMU_HAS_HEATER
-  menu "Heater config"
+  menu "Heater and humidity control"
+    help
+      Configure drying limits, defaults, venting, and spool rotation behavior.
+      Use MMU_HEATER at runtime to control heater temperatures and drying
+      cycles, including humidity targets, venting, and spool rotation.
 
-    if !CUSTOM_HEATER_SETUP
-
-      config MMU_HAS_PER_GATE_HEATERS
-        bool "Per-gate Heaters?"
-        default n
+    if MMU_HAS_PER_GATE_CONFIG
+      config PARAM_MAX_CONCURRENT_HEATERS
+        int "Maximum concurrent heaters"
+        default 1
         help
-          Most designs will only have a single heater but some, like EMU, have a per-gate heater
-
-
-      # ------------------------------------
-      # Single heater
-      # ------------------------------------
-
-      if !MMU_HAS_PER_GATE_HEATERS
-        config PARAM_FILAMENT_HEATER
-          string "Enclosure heater name     "
-          depends on !MMU_HAS_PER_GATE_HEATERS
-          default ""
-          help
-            Enter the full name of the heater used to heat the filament enclosure.
-
-            E.g. If you have a section like this: [heater_generic MMU_heater], then enter
-                 without the square brackets: "MMU_heater"
-      endif
-
-
-      # ------------------------------------
-      # Multiple heaters
-      # ------------------------------------
-
-      if MMU_HAS_PER_GATE_HEATERS
-        # Currently we don't create heater objects so just assemble arbitrary names
-
-        config PARAM_FILAMENT_HEATERS
-          string "List of enclosure heaters "
-          default ""
-          array_editor ","
-          help
-            Enter a list of full names for heaters used to heat individual compartments
-            of the enclosure.
-
-            E.g. If you have a section like this: [heater_generic MMU_heater0], then enter
-                 without the square brackets: "MMU_heater0, MMU_heater1, ..."
-
-           config PARAM_MAX_CONCURRENT_HEATERS
-           int "Maximum concurrent heaters"
-           default 1
-           help
-             Limit the number of simultaneously active heaters (power/PSU protection)
-      endif
-
+          Limit the number of simultaneously active heaters (power/PSU protection)
     endif
 
 
@@ -146,6 +140,66 @@ if MMU_HAS_HEATER
       depends on MMU_HAS_ESPOOLER
       help
         Interval in minutes to rotate filament (requires eSpooler and filament end attached to spool)
-
   endmenu
-endif
+
+
+endif # MMU_HAS_HEATER
+
+
+# -------------------------------------
+# Heater fan enable
+# -------------------------------------
+
+config MMU_HAS_HEATER_FANS
+  bool "Configure heater fan(s)?"
+  depends on MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG
+  help
+    Create a fixed Klipper [heater_fan] associated directly with the shared
+    enclosure heater. Per-gate heater fans are selected within each gate.
+
+
+# -------------------------------------
+# Heater fan hardware config
+# -------------------------------------
+
+menu "Heater fan h/w config"
+  visible if MMU_HAS_HEATER_FANS && !CUSTOM_HEATER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG
+  help
+    Configure the shared Klipper heater fan output and operating speeds.
+
+  config PARAM_HEATER_FAN_MAX_POWER
+    float "Fan maximum power  "
+    default 1.0
+    range 0.1 1.0
+    help
+      Maximum power setting for the heater fan (0.1 to 1.0).
+
+  config PARAM_HEATER_FAN_KICK_START_TIME
+    float "Fan kick start time"
+    default 0.5
+    range 0 3.0
+    help
+      Time in seconds to run the heater fan at full power before resetting
+      to its target speed.
+
+  config PARAM_HEATER_FAN_SPEED
+    float "Fan speed          "
+    default 1.0
+    range 0.0 1.0
+    help
+      Fan speed while the associated heater is active (0.0 to 1.0).
+
+  config PARAM_HEATER_FAN_SHUTDOWN_SPEED
+    float "Fan shutdown speed "
+    default 1.0
+    range 0.0 1.0
+    help
+      Fan speed while the MCU is shutting down (0.0 to 1.0).
+
+  config PIN_HEATER_FAN
+    string "Heater fan pin     "
+    default ""
+    help
+      Pin for the fan associated with the shared enclosure heater.
+
+endmenu

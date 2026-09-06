@@ -104,7 +104,6 @@ VAR_SECTION_MAP = {
     "var_servo_cutter_": "gcode_macro _MMU_SERVO_CUTTER_VARS",
     "var_blobifier_":    "gcode_macro _BLOBIFIER_VARS",
     "var_purge_":        "gcode_macro _MMU_PURGE_VARS",
-    "var_fan_":          "gcode_macro _MMU_FAN_VARS",
 }
 
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'

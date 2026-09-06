@@ -253,7 +253,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       endif
 
       config PARAM_REGISTER_BUFFER_SENSORS
-        boolint "Register buffer sensors          "
+        boolint "Register buffer sensors in Mainsail / Fluidd"
         default 1
         help
           Whether to register the sensors for visibility in klipper UI's

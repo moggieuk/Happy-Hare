@@ -12,7 +12,7 @@ menu "Filament sensors"
   rsource "Kconfig.gear_touch"
 
   config PARAM_REGISTER_MMU_SENSORS
-    boolint "Register mmu sensors"
+    boolint "Register mmu sensors in Mainsail / Fluidd"
     default 1
     help
       Whether to register the sensors for visibility in klipper UI's

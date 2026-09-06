@@ -687,6 +687,14 @@ class TestMultiUnitMachine(unittest.TestCase):
         self.assertEqual(unit0.nfc_reader, 'unit0_nfc')
         self.assertEqual(unit0.nfc_readers, [])
 
+    def test_vivid_custom_environment_sensor_is_not_generated_twice(self):
+        from test.hh import cfg, profiles
+        rendered = cfg.render(profiles.get('ercf_vvd'))
+        hardware = rendered['config/base/mmu_hardware_unit1.cfg']
+        self.assertEqual(
+            hardware.count('[temperature_sensor unit1_env_left]'),
+            1)
+
     def test_filament_heater_resolves(self):
         """
         ViViD selects MMU_HAS_HEATER, so [mmu_machine] carries filament_heater and
