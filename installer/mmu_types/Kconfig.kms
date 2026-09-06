@@ -57,9 +57,6 @@ endif
 
 if MMU_TYPE_KMS_1_0
 
-  config CUSTOM_HEATER_FAN_SETUP
-    def_bool y
-
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif

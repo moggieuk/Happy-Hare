@@ -7,7 +7,6 @@
 #   PARAM_FAN_KICK_START_TIME
 #   PIN_FAN   (single MCU)
 #   PIN_FAN_X (per-gate MCU)
-#   PARAM_FAN / PARAM_FANS (custom setup object names)
 #
 # Fan control parameter tokens
 #   PARAM_DEFAULT_FAN_TEMPERATURE_SOURCE
@@ -21,6 +20,9 @@
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_FANS
 
+
+comment "_"
+comment "_Fan"
 
 config UNSELECT_MMU_HAS_FANS
   def_bool n
@@ -41,19 +43,8 @@ endif
 # Fan hardware config
 # -------------------------------------
 
-if MMU_HAS_FANS
-  if CUSTOM_MANAGED_FAN_SETUP
-    config PARAM_FAN
-      string
-      default ""
-
-    config PARAM_FANS
-      string
-      default ""
-  endif
-
-  if !CUSTOM_MANAGED_FAN_SETUP
-    menu "Fan h/w config"
+if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
+  menu "Fan h/w config"
 
     config PARAM_FAN_MAX_POWER
       float "Fan maximum power  "
@@ -89,8 +80,7 @@ if MMU_HAS_FANS
       @endrepeat@
     endif
 
-    endmenu
-  endif
+  endmenu
 
   config FAN_HAS_ENVIRONMENT_TEMPERATURE
     def_bool y if MMU_HAS_ENVIRONMENT_SENSOR

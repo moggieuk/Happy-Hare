@@ -57,7 +57,7 @@ class MmuFanCommand(BaseCommand):
     def _run(self, gcmd, mmu_unit):
         manager = mmu_unit.fan_manager
         if not manager.has_fans():
-            raise gcmd.error("No MMU fan configured on %s" % mmu_unit.name)
+            raise gcmd.error("No manageable fans on this unit")
 
         enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
         forced = gcmd.get_int('FAN_FORCED', None, minval=FAN_OFF, maxval=FAN_AUTO)

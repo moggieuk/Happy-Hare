@@ -34,7 +34,7 @@
 
 
 comment "_"
-comment "_Environment Sensor / Fan"
+comment "_Environment Sensor"
 
 config UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
   def_bool n

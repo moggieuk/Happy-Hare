@@ -106,6 +106,88 @@ class TestMmuFanRender(unittest.TestCase):
         self.assertNotIn('gcode_macro _MMU_FAN_VARS',
                          cfg.sections(rendered[MACRO_VARS]))
 
+
+class TestMmuFanPinConfiguration(unittest.TestCase):
+
+    @staticmethod
+    def _pins_visibility(kconfig, symbol):
+        from kconfiglib import expr_value
+        nodes = [
+            node for node in kconfig.syms[symbol].nodes
+            if node.filename.endswith('Kconfig.pins')
+        ]
+        return max(
+            expr_value(node.prompt[1]) if node.prompt else 0
+            for node in nodes
+        )
+
+    def test_raw_pin_editors_follow_fan_layout(self):
+        cases = (
+            ('managed_shared', {
+                'MMU_TYPE_HTLF_1_0': True,
+                'MMU_HAS_FANS': True,
+            }, ('PIN_FAN',), ('PIN_FAN_0',)),
+            ('per_gate', {
+                'MMU_TYPE_EMU_1_0': True,
+                'MMU_HAS_HEATER': True,
+            }, ('PIN_FAN_0',), ('PIN_FAN',)),
+        )
+
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            for label, syms, visible, hidden in cases:
+                kconfig = cfg._kconfig(label, syms)
+                for symbol in visible:
+                    with self.subTest(case=label, symbol=symbol):
+                        self.assertGreater(
+                            self._pins_visibility(kconfig, symbol), 0)
+                for symbol in hidden:
+                    with self.subTest(case=label, symbol=symbol):
+                        self.assertEqual(
+                            self._pins_visibility(kconfig, symbol), 0)
+
+
+class TestVividCustomFans(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.profile = profiles.get('ercf_vvd')
+        cls.parser = cfg.assemble(cfg.render(cls.profile))
+        cls.hh = session(cls.profile)
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def test_custom_fans_suppress_managed_fan_configuration(self):
+        unit = dict(self.parser.items('mmu_unit unit1'))
+        self.assertNotIn('fan', unit)
+        self.assertNotIn('fans', unit)
+        self.assertEqual(
+            [section for section in self.parser.sections()
+             if section.startswith('fan_generic ') and 'unit1' in section],
+            [])
+        self.assertIn('heater_fan unit1_fan', self.parser.sections())
+        self.assertIn('controller_fan unit1_mcu_fan', self.parser.sections())
+
+    def test_vivid_forces_fan_capability_but_hides_managed_controls(self):
+        syms = next(unit.syms for unit in self.profile.units if unit.name == 'unit1')
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('vivid_custom_fans', syms)
+        self.assertTrue(kconfig.is_enabled('MMU_HAS_FANS'))
+        self.assertTrue(kconfig.is_enabled('CUSTOM_FAN_SETUP'))
+        self.assertEqual(kconfig.syms['PIN_FAN'].visibility, 0)
+        self.assertEqual(kconfig.syms['PIN_FAN_0'].visibility, 0)
+        self.assertEqual(kconfig.named_choices['PARAM_FAN_FORCED_MODE'].visibility, 0)
+
+    def test_mmu_fan_reports_no_manageable_fans(self):
+        unit = next(unit for unit in self.hh.mmu.mmu_machine.units
+                    if unit.name == 'unit1')
+        self.assertEqual(unit.fan_manager.fans, [])
+        with self.assertRaisesRegex(Exception, '^No manageable fans on this unit$'):
+            self.hh.run_gcode('MMU_FAN UNIT=unit1')
+
+
 class TestMmuFanRuntime(unittest.TestCase):
 
     def setUp(self):
