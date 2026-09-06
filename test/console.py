@@ -1234,18 +1234,16 @@ class Console:
                 effect = self.hh.mmu.led_manager.effect_state.get(index, {}).get(segment, '?')
                 label = ('%s %s' % (unit.name, segment)) if self.num_units > 1 else segment
                 # status and logo are not indexed by gate, so grouping them would be a lie.
-                # For the per-gate pair mmu_leds.py:101-102 has already guaranteed that the
-                # division is exact.
                 per_gate = len(data)
                 if segment in MmuLeds.PER_GATE_SEGMENTS and unit.num_gates:
-                    per_gate = max(1, len(data) // unit.num_gates)
+                    per_gate = leds.gate_led_counts(segment)
                 out.append('  led %-14s %s  [%s]'
                            % (label, self._swatches(data, per_gate), effect))
         return out
 
     def _swatches(self, data, per_gate):
         """
-        One block per LED, `per_gate` of them run together and a space between groups.
+        One block per LED, grouped by either a uniform size or a list of gate sizes.
 
         Ungrouped, ViViD's exit segment - 28 LEDs over 4 gates - renders a 117-column row,
         which soft-wraps and scribbles over the row below it (PinnedHeader.repaint writes
@@ -1268,9 +1266,15 @@ class Console:
                 r, g, b = (min(255, int(round(c * scale))) for c in (r, g, b))
                 glyph = self.LED_DIM
             cells.append(paint(glyph, fg(r, g, b, self.mode)[2:-1], self.color))
-        per_gate = max(1, per_gate)                  # or the slice below is empty and loops
-        return ' '.join(''.join(cells[i:i + per_gate])
-                        for i in range(0, len(cells), per_gate))
+        if isinstance(per_gate, int):
+            per_gate = max(1, per_gate)              # or the slice below is empty and loops
+            return ' '.join(''.join(cells[i:i + per_gate])
+                            for i in range(0, len(cells), per_gate))
+        groups, index = [], 0
+        for count in per_gate:
+            groups.append(''.join(cells[index:index + count]))
+            index += count
+        return ' '.join(groups)
 
     # A HEAVY rule marks the boundary between the status section and the log window - that
     # is the one line a reader uses to tell "state" from "output" at a glance. The top edge

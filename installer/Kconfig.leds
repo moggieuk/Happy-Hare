@@ -15,6 +15,8 @@
 #   PARAM_COLOR_ORDER
 #   PARAM_EXIT_LEDS
 #   PARAM_ENTRY_LEDS
+#   PARAM_EXIT_LED_COUNTS
+#   PARAM_ENTRY_LED_COUNTS
 #   PARAM_STATUS_LEDS
 #   PARAM_LOGO_LEDS
 #   PARAM_FRAME_RATE
@@ -207,6 +209,14 @@ if MMU_HAS_LEDS
       array_editor ";"
       default "" if CUSTOM_LED_SETUP
 
+    config PARAM_EXIT_LED_COUNTS
+      string
+      default ""
+
+    config PARAM_ENTRY_LED_COUNTS
+      string
+      default ""
+
     config PARAM_STATUS_LEDS
       string
       array_editor ";"
@@ -249,12 +259,28 @@ if MMU_HAS_LEDS
           chains can be entered in the array editor, and ranges may be reversed
           when the physical chain runs in the opposite gate order.
 
+      config PARAM_EXIT_LED_COUNTS
+        prompt "Exit led counts "
+        help
+          Optionally assign a different number of exit LEDs to each gate. Enter
+          one comma-separated positive integer per gate. The counts consume the
+          exit virtual chain in gate order and must total its number of LEDs.
+          Leave empty to distribute the LEDs equally between all gates.
+
       config PARAM_ENTRY_LEDS
         prompt "Entry leds      "
         help
           Assign the LEDs mounted at the filament entry for each gate. Use a
           virtual-chain specification such as "neopixel:my_leds (5-8)". Leave
           this empty when the unit has no entry LED segment.
+
+      config PARAM_ENTRY_LED_COUNTS
+        prompt "Entry led counts"
+        help
+          Optionally assign a different number of entry LEDs to each gate. Enter
+          one comma-separated positive integer per gate. The counts consume the
+          entry virtual chain in gate order and must total its number of LEDs.
+          Leave empty to distribute the LEDs equally between all gates.
 
       config PARAM_STATUS_LEDS
         prompt "Status leds     "
