@@ -356,10 +356,10 @@ menu "Pins / TMC"
 
   config PIN_FAN
     string
-    prompt "Fan pin               " if MMU_HAS_FANS && !MMU_HAS_PER_GATE_FANS && !CUSTOM_FAN_SETUP
+    prompt "Fan pin               " if MMU_HAS_FANS && !MMU_HAS_PER_GATE_FANS && !CUSTOM_FAN_SETUP && (CHOICE_FAN_TYPE_HEATER || CHOICE_FAN_TYPE_MANAGED)
 
   menu "Fan per-gate pins" 
-    depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_FANS && !CUSTOM_FAN_SETUP
+    depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_FANS && !CUSTOM_FAN_SETUP && (CHOICE_FAN_TYPE_HEATER || CHOICE_FAN_TYPE_MANAGED)
 
     @repeat var=i min=0 max=11@
       config PIN_FAN_$(i)

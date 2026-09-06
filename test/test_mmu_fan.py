@@ -15,6 +15,7 @@ def _single_fan_profile():
         'qidi_managed_fan',
         syms={
             'MMU_HAS_FANS': True,
+            'CHOICE_FAN_TYPE_MANAGED': True,
             'PIN_FAN': 'unit0:PA8',
         })
 
@@ -62,7 +63,7 @@ class TestMmuFanRender(unittest.TestCase):
                 'default_fan_temperature_source'],
             'mcu')
 
-    def test_shared_fan_has_no_source_when_none_is_available(self):
+    def test_fan_config_is_not_created_when_no_mode_is_available(self):
         profile = _single_fan_profile().derive(
             'qidi_fan_without_temperature_source',
             syms={
@@ -71,10 +72,13 @@ class TestMmuFanRender(unittest.TestCase):
                 'MMU_HAS_HEATER': False,
             })
         parser = cfg.assemble(cfg.render(profile))
-        self.assertEqual(
-            dict(parser.items('mmu_unit_parameters unit0'))[
-                'default_fan_temperature_source'],
-            '')
+        unit = dict(parser.items('mmu_unit unit0'))
+        params = dict(parser.items('mmu_unit_parameters unit0'))
+        self.assertNotIn('fan', unit)
+        self.assertNotIn('fans', unit)
+        self.assertNotIn('default_fan_temperature_source', params)
+        self.assertFalse(any(section.startswith(('fan_generic ', 'heater_fan '))
+                             for section in parser.sections()))
 
     def test_per_gate_fans_use_one_configured_default_source(self):
         profile = profiles.get('emu').derive(
@@ -105,6 +109,172 @@ class TestMmuFanRender(unittest.TestCase):
         rendered = cfg.render(_single_fan_profile())
         self.assertNotIn('gcode_macro _MMU_FAN_VARS',
                          cfg.sections(rendered[MACRO_VARS]))
+
+
+class TestMmuFanModeConfiguration(unittest.TestCase):
+
+    @staticmethod
+    def _kconfig(name, syms):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            return cfg._kconfig(name, syms)
+
+    @staticmethod
+    def _comment_visibility(kconfig, text):
+        from kconfiglib import COMMENT, expr_value
+        return max(
+            expr_value(node.prompt[1])
+            for node in kconfig.node_iter()
+            if node.item is COMMENT and node.prompt and node.prompt[0] == text
+        )
+
+    def test_prompt_and_heater_default_when_both_modes_are_available(self):
+        syms = dict(profiles.get('qidi').syms, MMU_HAS_FANS=True)
+        kconfig = self._kconfig('qidi_fan_type_default', syms)
+
+        prompts = {
+            node.prompt[0] for node in kconfig.syms['MMU_HAS_FANS'].nodes
+            if node.prompt
+        }
+        self.assertEqual(prompts, {'Configure fan?'})
+        self.assertTrue(kconfig.is_enabled('FAN_CAN_USE_HEATER'))
+        self.assertTrue(kconfig.is_enabled('FAN_CAN_BE_MANAGED'))
+        self.assertTrue(kconfig.is_enabled('CHOICE_FAN_TYPE_HEATER'))
+        self.assertFalse(kconfig.is_enabled('CHOICE_FAN_TYPE_MANAGED'))
+        self.assertEqual(
+            self._comment_visibility(
+                kconfig,
+                'this will be setup as a fixed [heater_fan] for safety'),
+            2)
+        self.assertEqual(
+            kconfig.named_choices['PARAM_FAN_FORCED_MODE'].visibility, 0)
+        self.assertEqual(kconfig.get('PARAM_FAN_SPEED'), '1.0')
+        self.assertEqual(kconfig.get('PARAM_FAN_SHUTDOWN_SPEED'), '1.0')
+
+    def test_managed_selection_changes_comment_and_exposes_controls(self):
+        syms = dict(
+            profiles.get('qidi').syms,
+            MMU_HAS_FANS=True,
+            CHOICE_FAN_TYPE_MANAGED=True)
+        kconfig = self._kconfig('qidi_managed_fan_type', syms)
+
+        self.assertTrue(kconfig.is_enabled('CHOICE_FAN_TYPE_MANAGED'))
+        self.assertEqual(
+            self._comment_visibility(
+                kconfig,
+                'this fan may be controlled at runtime for environment cooling or ventilation'),
+            2)
+        self.assertGreater(
+            kconfig.named_choices['PARAM_FAN_FORCED_MODE'].visibility, 0)
+        self.assertEqual(kconfig.syms['PARAM_FAN_SPEED'].visibility, 0)
+        self.assertEqual(kconfig.syms['PARAM_FAN_SHUTDOWN_SPEED'].visibility, 0)
+
+    def test_per_gate_fans_offer_no_mode_without_per_gate_support(self):
+        syms = {
+            'MMU_CUSTOM': True,
+            'MMU_HAS_FANS': True,
+            'MMU_HAS_PER_GATE_FANS': True,
+            'MMU_HAS_HEATER': True,
+            'MMU_HAS_PER_GATE_HEATERS': False,
+            'MMU_HAS_ENVIRONMENT_SENSOR': True,
+            'MMU_HAS_PER_GATE_ENV_SENSORS': False,
+            'MMU_HAS_PER_GATE_MCU': False,
+            'BOOL_CREATE_MCU_ENVIRONMENT_SENSORS': True,
+        }
+        kconfig = self._kconfig('unsupported_per_gate_fans', syms)
+
+        self.assertEqual(kconfig.named_choices['CHOICE_FAN_TYPE'].visibility, 0)
+        self.assertIsNone(kconfig.named_choices['CHOICE_FAN_TYPE'].selection)
+        self.assertFalse(kconfig.is_enabled('CHOICE_FAN_TYPE_HEATER'))
+        self.assertFalse(kconfig.is_enabled('CHOICE_FAN_TYPE_MANAGED'))
+        self.assertEqual(kconfig.syms['PIN_FAN_0'].visibility, 0)
+        self.assertTrue(kconfig.is_enabled('W21'))
+        self.assertEqual(
+            self._comment_visibility(
+                kconfig,
+                'No compatible fan configuration is available for the selected hardware'),
+            2)
+
+    def test_emu_managed_mode_requires_an_enabled_temperature_source(self):
+        syms = dict(
+            profiles.get('emu').syms,
+            MMU_HAS_ENVIRONMENT_SENSOR=False,
+            BOOL_CREATE_MCU_ENVIRONMENT_SENSORS=False)
+        kconfig = self._kconfig('emu_without_temperature_sources', syms)
+
+        # EMU still has the physical per-gate capabilities, but neither kind
+        # of temperature sensor is configured for use.
+        self.assertTrue(kconfig.is_enabled('MMU_HAS_PER_GATE_ENV_SENSORS'))
+        self.assertTrue(kconfig.is_enabled('MMU_HAS_PER_GATE_MCU'))
+        self.assertFalse(kconfig.is_enabled('FAN_CAN_BE_MANAGED'))
+        self.assertEqual(kconfig.named_choices['CHOICE_FAN_TYPE'].visibility, 0)
+        self.assertIsNone(kconfig.named_choices['CHOICE_FAN_TYPE'].selection)
+        self.assertEqual(
+            self._comment_visibility(
+                kconfig,
+                'No compatible fan configuration is available for the selected hardware'),
+            2)
+
+    def test_unavailable_comment_is_hidden_when_a_mode_can_be_selected(self):
+        syms = dict(profiles.get('qidi').syms, MMU_HAS_FANS=True)
+        kconfig = self._kconfig('qidi_available_fan_type', syms)
+
+        self.assertEqual(
+            self._comment_visibility(
+                kconfig,
+                'No compatible fan configuration is available for the selected hardware'),
+            0)
+
+    def test_shared_heater_fan_is_rendered_with_safety_settings(self):
+        profile = profiles.get('qidi').derive(
+            'qidi_heater_fan',
+            syms={
+                'MMU_HAS_FANS': True,
+                'PARAM_FILAMENT_HEATER': 'qidi_heater',
+                'PIN_FAN': 'unit0:PA8',
+                'PARAM_FAN_SPEED': 0.75,
+                'PARAM_FAN_SHUTDOWN_SPEED': 0.8,
+            })
+        parser = cfg.assemble(cfg.render(profile))
+        unit = dict(parser.items('mmu_unit unit0'))
+        fan = dict(parser.items('heater_fan _unit0_fan'))
+        params = dict(parser.items('mmu_unit_parameters unit0'))
+
+        self.assertNotIn('fan', unit)
+        self.assertNotIn('fans', unit)
+        self.assertNotIn('fan_generic _unit0_fan', parser.sections())
+        self.assertEqual(fan['heater'], 'qidi_heater')
+        self.assertEqual(fan['fan_speed'], '0.75')
+        self.assertEqual(fan['shutdown_speed'], '0.8')
+        self.assertNotIn('fan_control_enabled', params)
+
+    def test_per_gate_heater_fans_use_gate_aligned_heaters(self):
+        profile = profiles.get('emu').derive(
+            'emu_heater_fans', syms={'MMU_HAS_HEATER': True})
+        parser = cfg.assemble(cfg.render(profile))
+        unit = dict(parser.items('mmu_unit unit0'))
+
+        self.assertNotIn('fan', unit)
+        self.assertNotIn('fans', unit)
+        for gate in range(5):
+            section = 'heater_fan _unit0_fan%d' % gate
+            self.assertIn(section, parser.sections())
+            self.assertEqual(
+                dict(parser.items(section))['heater'],
+                'unit0_heater%d' % gate)
+
+    def test_heater_without_fixed_fan_is_warned(self):
+        base = dict(profiles.get('qidi').syms)
+        self.assertTrue(
+            self._kconfig('qidi_without_fan', base).is_enabled('W21'))
+
+        managed = dict(
+            base, MMU_HAS_FANS=True, CHOICE_FAN_TYPE_MANAGED=True)
+        self.assertTrue(
+            self._kconfig('qidi_managed_only', managed).is_enabled('W21'))
+
+        fixed = dict(base, MMU_HAS_FANS=True)
+        self.assertFalse(
+            self._kconfig('qidi_fixed_fan', fixed).is_enabled('W21'))
 
 
 class TestMmuFanPinConfiguration(unittest.TestCase):
@@ -176,6 +346,7 @@ class TestVividCustomFans(unittest.TestCase):
             kconfig = cfg._kconfig('vivid_custom_fans', syms)
         self.assertTrue(kconfig.is_enabled('MMU_HAS_FANS'))
         self.assertTrue(kconfig.is_enabled('CUSTOM_FAN_SETUP'))
+        self.assertFalse(kconfig.is_enabled('W21'))
         self.assertEqual(kconfig.syms['PIN_FAN'].visibility, 0)
         self.assertEqual(kconfig.syms['PIN_FAN_0'].visibility, 0)
         self.assertEqual(kconfig.named_choices['PARAM_FAN_FORCED_MODE'].visibility, 0)
