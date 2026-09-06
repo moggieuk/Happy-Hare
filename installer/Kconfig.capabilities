@@ -11,14 +11,18 @@
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_LEDS
 #   MMU_HAS_FANS
-#   MMU_HAS_PER_GATE_FANS
 #   MMU_HAS_ENVIRONMENT_SENSOR
-#   MMU_HAS_PER_GATE_ENV_SENSORS
 #   MMU_HAS_HEATER
-#   MMU_HAS_PER_GATE_HEATERS
-#   MMU_HAS_PER_GATE_MCU
+#   MMU_HAS_HEATER_FAN
 #   MMU_HAS_EJECT_BUTTONS
 #   MMU_HAS_BUFFER_MCU
+#
+# Per-gate capabilities:
+#   MMU_HAS_PER_GATE_MCU
+#   MMU_HAS_PER_GATE_ENV_SENSORS
+#   MMU_HAS_PER_GATE_FANS
+#   MMU_HAS_PER_GATE_HEATERS
+#   MMU_HAS_PER_GATE_NFC_READERS
 #
 #   PARAM_MISC_HARDWARE
 #
@@ -39,6 +43,8 @@
 #   CUSTOM_LED_SETUP
 #   CUSTOM_ENVIRONMENT_SENSOR_SETUP
 #   CUSTOM_HEATER_SETUP
+#   CUSTOM_MANAGED_FAN_SETUP
+#   CUSTOM_HEATER_FAN_SETUP
 #
 
 config MMU_HAS_SELECTOR_STEPPER
@@ -65,20 +71,14 @@ config MMU_HAS_LEDS
 config MMU_HAS_FANS
   def_bool n
 
-config MMU_HAS_PER_GATE_FANS
-  bool
-
 config MMU_HAS_ENVIRONMENT_SENSOR
-  def_bool n
-
-config MMU_HAS_PER_GATE_ENV_SENSORS
   def_bool n
 
 config MMU_HAS_HEATER
   def_bool n
 
-config MMU_HAS_PER_GATE_HEATERS
-  def_bool n
+config MMU_HAS_HEATER_FAN
+  bool
 
 config MMU_HAS_EJECT_BUTTONS
   def_bool n
@@ -87,10 +87,35 @@ config MMU_HAS_EJECT_BUTTONS
 config MMU_HAS_BUFFER_MCU
   def_bool n
 
+
+# ------------------------------------
+# Custom hardware
+# ------------------------------------
+
 # Some custom designs have some pre-packaged hardware configuration
 config PARAM_MISC_HARDWARE
   string
 
+# If custom hardware includes any of these, disable generic setup to prevent duplication
+config CUSTOM_LED_SETUP
+  def_bool n
+
+config CUSTOM_ENVIRONMENT_SENSOR_SETUP
+  def_bool n
+
+config CUSTOM_HEATER_SETUP
+  def_bool n
+
+config CUSTOM_MANAGED_FAN_SETUP
+  def_bool n
+
+config CUSTOM_HEATER_FAN_SETUP
+  def_bool n
+
+
+# ------------------------------------
+# Design attributes controlling behavior
+# ------------------------------------
 
 menu "Design attributes"
   help
@@ -99,15 +124,6 @@ menu "Design attributes"
     specific setup.
 
     It is unlikely that you want to change anything here so be careful.
-
-  config MMU_HAS_PER_GATE_MCU
-    bool
-    prompt "Design has per-gate MCU's" if PER_GATE_MCU
-    default n
-    help
-      If you are seeing this you must have enabled per-gate MCU support.
-      This option allows you to turn it off so it won't appear again
-      until you run with the `-e` flag.
 
   source "Kconfig.selector_type" 
 
@@ -124,6 +140,7 @@ menu "Design attributes"
       Whether filament path from parked position in the gate to the extruder is different
       for each gate. Typically this is true of type-B designs but not true of type-A with
       Linear Selector and single bowden exit from the MMU.
+
   config UNSELECT_VARIABLE_ROTATION_DISTANCES
     def_bool n
   config PARAM_VARIABLE_ROTATION_DISTANCES
@@ -137,6 +154,7 @@ menu "Design attributes"
       If this is selected you are able to tune the rotation distance of each gate/lane
       independently which may useful especially with long bowden tubes where
       lack of calibration can multiply.
+
   config UNSELECT_FILAMENT_ALWAYS_GRIPPED
     def_bool n
   config PARAM_FILAMENT_ALWAYS_GRIPPED
@@ -148,4 +166,32 @@ menu "Design attributes"
       Whether the design is always gripping the filament. For most type-B designs this
       will be true, but type-A designs usually have a choice because of their filament
       release mechanism..
+
+
+  # ------------------------------------
+  # Per-gate capabilities
+  # ------------------------------------
+
+  comment "_" if SHOW_HIDDEN
+
+  config MMU_HAS_PER_GATE_MCU
+    def_bool n
+    prompt "Per-gate MCUs?" if SHOW_HIDDEN
+
+  config MMU_HAS_PER_GATE_ENV_SENSORS
+    def_bool n
+    prompt "Per-gate environment sensors?" if SHOW_HIDDEN
+
+  config MMU_HAS_PER_GATE_FANS
+    def_bool n
+    prompt "Per-gate fans?" if SHOW_HIDDEN
+
+  config MMU_HAS_PER_GATE_HEATERS
+    def_bool n
+    prompt "Per-gate heaters?" if SHOW_HIDDEN
+
+  config MMU_HAS_PER_GATE_NFC_READERS
+    def_bool n
+    prompt "Per-gate NFC readers?" if SHOW_HIDDEN
+
 endmenu

@@ -82,18 +82,13 @@ if !UNSELECT_MMU_HAS_NFC_READER
 endif
 
 
-# Define type now so it can be explicitly selected
-config MMU_HAS_PER_GATE_NFC_READERS
-  def_bool n
-
-
 # ------------------------------------
 # NFC reader config
 # ------------------------------------
 
 if MMU_HAS_NFC_READER
 
-  menu "NFC reader config"
+  menu "NFC reader h/w config"
     depends on !CUSTOM_NFC_READER_SETUP
 
     # ------------------------------------
@@ -711,7 +706,7 @@ if MMU_HAS_NFC_READER
         or either self-jog clear distance is enabled.
 
     choice CHOICE_NFC_LED_SEGMENT
-      prompt "NFC reader led feedback segment"
+      prompt "NFC reader led feedback segment      "
       help
         NFC reader transient LED feedback: which segment the shared-reader effects render on.
         auto = 'status' for a shared/bypass reader, 'exit' for a per-gate reader)

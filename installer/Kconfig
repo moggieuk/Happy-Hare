@@ -84,6 +84,7 @@
 #   MMU_HAS_PER_GATE_MCU (currently only EMU design)
 #   MMU_HAS_PER_GATE_ENV_SENSORS
 #   MMU_HAS_PER_GATE_HEATERS
+#   MMU_HAS_PER_GATE_NFC_READERS
 #   MMU_HAS_SELECTOR
 #   MMU_HAS_SELECTOR_SERVO
 #   MMU_HAS_SELECTOR_STEPPER
@@ -215,8 +216,10 @@ comment "_"
 #  y to shows MMU additions menu inline with type
 #  n to show as top level menu
 config SHOW_MMU_ADDITIONS_WITH_TYPE
-  bool
-  default n
+  def_bool n
+
+config SHOW_HIDDEN
+  def_bool n
 
 # Optional auto generated config for shared components to
 # adds options for sharing previously defined components

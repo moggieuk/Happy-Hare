@@ -7,6 +7,7 @@
 #   PARAM_FAN_KICK_START_TIME
 #   PIN_FAN   (single MCU)
 #   PIN_FAN_X (per-gate MCU)
+#   PARAM_FAN / PARAM_FANS (custom setup object names)
 #
 # Fan control parameter tokens
 #   PARAM_DEFAULT_FAN_TEMPERATURE_SOURCE
@@ -21,21 +22,18 @@
 #   select UNSELECT_MMU_HAS_FANS
 
 
-comment "_"
-comment "_Fans"
-
 config UNSELECT_MMU_HAS_FANS
   def_bool n
 
 if !UNSELECT_MMU_HAS_FANS
   config MMU_HAS_FANS
-    bool "Has managed fans?"
+    bool "Has managed fan?"
     forceshow
     default n
     help
       Enable this if you have fans installed in your MMU unit(s). Fans are
-      created as [fan_generic] objects so Happy Hare can use them for automatic
-      temperature control or direct MMU_FAN control.
+      normally created as [fan_generic] objects so Happy Hare can use them for
+      automatic temperature control or direct MMU_FAN control.
 endif
 
 
@@ -44,16 +42,18 @@ endif
 # -------------------------------------
 
 if MMU_HAS_FANS
-  menu "Fan h/w config"
+  if CUSTOM_MANAGED_FAN_SETUP
+    config PARAM_FAN
+      string
+      default ""
 
-    config MMU_HAS_PER_GATE_FANS
-      bool "Per-gate fans?"
-      depends on MMU_HAS_PER_GATE_MCU
-      default y if MMU_HAS_PER_GATE_MCU
-      help
-        Select this when individual gates have their own fans. Leave this off
-        for the normal case of one fan shared by the whole MMU unit, including
-        designs that otherwise use per-gate MCUs.
+    config PARAM_FANS
+      string
+      default ""
+  endif
+
+  if !CUSTOM_MANAGED_FAN_SETUP
+    menu "Fan h/w config"
 
     config PARAM_FAN_MAX_POWER
       float "Fan maximum power  "
@@ -80,18 +80,17 @@ if MMU_HAS_FANS
           Empty pins will be ignored in the generated configuration.
     endif
 
-    menu "Fan pins" 
-      depends on MMU_HAS_PER_GATE_FANS
-
+    if MMU_HAS_PER_GATE_FANS
       @repeat var=i min=0 max=11@
         config PIN_FAN_$(i)
           string "Fan $(i) pin" if PARAM_NUM_GATES > $(i)
           help 
             Leave blank if this gate does not have a fan installed.
       @endrepeat@
-    endmenu
+    endif
 
-  endmenu
+    endmenu
+  endif
 
   config FAN_HAS_ENVIRONMENT_TEMPERATURE
     def_bool y if MMU_HAS_ENVIRONMENT_SENSOR
@@ -99,7 +98,7 @@ if MMU_HAS_FANS
   config FAN_HAS_MCU_TEMPERATURE
     def_bool y if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
 
-  menu "Fan controls"
+  menu "Fan control config"
 
     choice CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE
       prompt "Default fan temperature source"

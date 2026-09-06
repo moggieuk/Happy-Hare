@@ -34,7 +34,7 @@
 
 
 comment "_"
-comment "_Environment Sensor"
+comment "_Environment Sensor / Fan"
 
 config UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
   def_bool n
@@ -54,15 +54,7 @@ endif
 # -------------------------------------
 
 if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
-  menu "Environment sensor config"
-    config MMU_HAS_PER_GATE_ENV_SENSORS
-      bool "Per-gate environment sensors?"
-      depends on MMU_HAS_PER_GATE_MCU
-      default n
-      help
-        Most designs will only have a single environment sensor but some, like EMU, have a per-gate sensor.
-        Blank the Sensor Name if you don't have one fitted to every gate.
-
+  menu "Environment sensor h/w config"
     if !MMU_HAS_PER_GATE_ENV_SENSORS
       config PARAM_ENVIRONMENT_SENSOR
         string "Sensor name       "
