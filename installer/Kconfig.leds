@@ -265,10 +265,12 @@ if MMU_HAS_LEDS
         prompt "Exit led counts "
         depends on PARAM_EXIT_LEDS != ""
         help
-          Optionally assign a different number of exit LEDs to each gate. Enter
-          one comma-separated positive integer per gate. The counts consume the
-          exit virtual chain in gate order and must total its number of LEDs.
-          Leave empty to distribute the LEDs equally between all gates.
+          Normally leave this empty; LEDs are then distributed equally among
+          all gates. For an uneven split, enter one positive integer per gate.
+          The number of entries MUST equal num_gates, and the sum of the counts
+          MUST equal the number of LEDs specified by exit_leds. Counts consume
+          the virtual chain in gate order. Example for 10 LEDs over 4 gates:
+          "1, 1, 2, 6".
 
       config PARAM_ENTRY_LEDS
         prompt "Entry leds      "
@@ -281,10 +283,12 @@ if MMU_HAS_LEDS
         prompt "Entry led counts"
         depends on PARAM_ENTRY_LEDS != ""
         help
-          Optionally assign a different number of entry LEDs to each gate. Enter
-          one comma-separated positive integer per gate. The counts consume the
-          entry virtual chain in gate order and must total its number of LEDs.
-          Leave empty to distribute the LEDs equally between all gates.
+          Normally leave this empty; LEDs are then distributed equally among
+          all gates. For an uneven split, enter one positive integer per gate.
+          The number of entries MUST equal num_gates, and the sum of the counts
+          MUST equal the number of LEDs specified by entry_leds. Counts consume
+          the virtual chain in gate order. Example for 8 LEDs over 4 gates:
+          "1, 1, 2, 4".
 
       config PARAM_STATUS_LEDS
         prompt "Status leds     "
