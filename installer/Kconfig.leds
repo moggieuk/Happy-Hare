@@ -263,6 +263,7 @@ if MMU_HAS_LEDS
 
       config PARAM_EXIT_LED_COUNTS
         prompt "Exit led counts "
+        depends on PARAM_EXIT_LEDS != ""
         help
           Optionally assign a different number of exit LEDs to each gate. Enter
           one comma-separated positive integer per gate. The counts consume the
@@ -278,6 +279,7 @@ if MMU_HAS_LEDS
 
       config PARAM_ENTRY_LED_COUNTS
         prompt "Entry led counts"
+        depends on PARAM_ENTRY_LEDS != ""
         help
           Optionally assign a different number of entry LEDs to each gate. Enter
           one comma-separated positive integer per gate. The counts consume the
