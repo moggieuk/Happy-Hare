@@ -65,14 +65,26 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
     depends on FAN_CAN_USE_HEATER || FAN_CAN_BE_MANAGED
     default CHOICE_FAN_TYPE_HEATER if FAN_CAN_USE_HEATER
     default CHOICE_FAN_TYPE_MANAGED
+    help
+      Select how the configured fan(s) will be created and controlled. A fixed
+      heater fan is tied directly to its heater by Klipper for safety. A managed
+      fan is controlled by Happy Hare for enclosure cooling or ventilation.
 
     config CHOICE_FAN_TYPE_HEATER
       bool "Fixed heater fan"
       depends on FAN_CAN_USE_HEATER
+      help
+        Create a Klipper [heater_fan] associated with the shared heater or the
+        heater for each gate. It follows the heater and is not controlled by
+        MMU_FAN.
 
     config CHOICE_FAN_TYPE_MANAGED
       bool "Managed fan"
       depends on FAN_CAN_BE_MANAGED
+      help
+        Create a Klipper [fan_generic] controlled by Happy Hare. It can respond
+        automatically to the selected temperature source or be controlled at
+        runtime with MMU_FAN.
 
   endchoice
 
@@ -85,9 +97,9 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
   config FAN_TYPE_MANAGED_SELECTED
     def_bool y if CHOICE_FAN_TYPE_MANAGED
 
-  comment "No compatible fan configuration is available for the selected hardware" if !FAN_CAN_USE_HEATER && !FAN_CAN_BE_MANAGED
-  comment "this will be setup as a fixed [heater_fan] for safety" if CHOICE_FAN_TYPE_HEATER
-  comment "this fan may be controlled at runtime for environment cooling or ventilation" if CHOICE_FAN_TYPE_MANAGED
+  comment "No compatible fan configuration is available for the selected hardware"       if !FAN_CAN_USE_HEATER && !FAN_CAN_BE_MANAGED
+  comment "This will be setup as a fixed [heater_fan] for safety"                        if CHOICE_FAN_TYPE_HEATER
+  comment "This fan may be controlled at runtime for environment cooling or ventilation" if CHOICE_FAN_TYPE_MANAGED
 
   menu "Fan h/w config"
     depends on CHOICE_FAN_TYPE_HEATER || CHOICE_FAN_TYPE_MANAGED
@@ -116,12 +128,14 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
         Fan speed while the associated heater is active (0.0 to 1.0).
 
     config PARAM_FAN_SHUTDOWN_SPEED
-      float "Fan shutdown speed "
-      depends on CHOICE_FAN_TYPE_HEATER
+      float
+      prompt "Fan shutdown speed " if CHOICE_FAN_TYPE_HEATER
+      default 0.0 if CHOICE_FAN_TYPE_MANAGED
       default 1.0
       range 0.0 1.0
       help
-        Fan speed while the MCU is shutting down (0.0 to 1.0).
+        Fan speed while the MCU is shutting down (0.0 to 1.0). For safety it is
+        recommended that this be 1.0 if protecting a heater.
 
     if !MMU_HAS_PER_GATE_FANS
       config PIN_FAN
@@ -165,10 +179,17 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
       config CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_ENVIRONMENT
         bool "Environment sensor"
         depends on FAN_HAS_ENVIRONMENT_TEMPERATURE
+        help
+          Use the configured enclosure environment sensor. With per-gate fans,
+          each fan uses the environment sensor associated with the same gate.
 
       config CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU
         bool "MCU temperature"
         depends on FAN_HAS_MCU_TEMPERATURE
+        help
+          Use the configured MMU controller CPU temperature sensor. With
+          per-gate fans, each fan uses the MCU sensor associated with the same
+          gate.
 
     endchoice
 
@@ -212,21 +233,28 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
     choice PARAM_FAN_FORCED_MODE
       prompt "Default fan mode              "
       default PARAM_FAN_FORCED_MODE_AUTO
+      help
+        Select the fan state applied when Happy Hare starts. The mode can be
+        changed later with MMU_FAN; a forced mode overrides automatic
+        temperature control until the fans are returned to AUTO.
 
       config PARAM_FAN_FORCED_MODE_AUTO
         bool "AUTO"
         help
-          Automatic fan control based on the selected temperature source.
+          Start each fan under automatic control using its selected temperature
+          source and the configured ON/OFF thresholds.
 
       config PARAM_FAN_FORCED_MODE_OFF
         bool "All OFF"
         help
-          Start all fans forced off.
+          Start all fans forced off, regardless of temperature, until their mode
+          is changed with MMU_FAN.
 
       config PARAM_FAN_FORCED_MODE_ON
         bool "All ON"
         help
-          Start all fans forced on.
+          Start all fans forced on at full speed, regardless of temperature,
+          until their mode is changed with MMU_FAN.
 
     endchoice
 

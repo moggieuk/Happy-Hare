@@ -143,7 +143,7 @@ class TestMmuFanModeConfiguration(unittest.TestCase):
         self.assertEqual(
             self._comment_visibility(
                 kconfig,
-                'this will be setup as a fixed [heater_fan] for safety'),
+                'This will be setup as a fixed [heater_fan] for safety'),
             2)
         self.assertEqual(
             kconfig.named_choices['PARAM_FAN_FORCED_MODE'].visibility, 0)
@@ -161,12 +161,43 @@ class TestMmuFanModeConfiguration(unittest.TestCase):
         self.assertEqual(
             self._comment_visibility(
                 kconfig,
-                'this fan may be controlled at runtime for environment cooling or ventilation'),
+                'This fan may be controlled at runtime for environment cooling or ventilation'),
             2)
         self.assertGreater(
             kconfig.named_choices['PARAM_FAN_FORCED_MODE'].visibility, 0)
         self.assertEqual(kconfig.syms['PARAM_FAN_SPEED'].visibility, 0)
         self.assertEqual(kconfig.syms['PARAM_FAN_SHUTDOWN_SPEED'].visibility, 0)
+        self.assertEqual(kconfig.get('PARAM_FAN_SHUTDOWN_SPEED'), '0.0')
+
+    def test_fan_choices_and_options_have_help_text(self):
+        syms = dict(
+            profiles.get('qidi').syms,
+            MMU_HAS_FANS=True,
+            CHOICE_FAN_TYPE_MANAGED=True)
+        kconfig = self._kconfig('fan_choice_help', syms)
+
+        choices = (
+            'CHOICE_FAN_TYPE',
+            'CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE',
+            'PARAM_FAN_FORCED_MODE',
+        )
+        options = (
+            'CHOICE_FAN_TYPE_HEATER',
+            'CHOICE_FAN_TYPE_MANAGED',
+            'CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_ENVIRONMENT',
+            'CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU',
+            'PARAM_FAN_FORCED_MODE_AUTO',
+            'PARAM_FAN_FORCED_MODE_OFF',
+            'PARAM_FAN_FORCED_MODE_ON',
+        )
+        for name in choices:
+            with self.subTest(choice=name):
+                self.assertTrue(any(node.help for node in
+                                    kconfig.named_choices[name].nodes))
+        for name in options:
+            with self.subTest(option=name):
+                self.assertTrue(any(node.help for node in
+                                    kconfig.syms[name].nodes))
 
     def test_per_gate_fans_offer_no_mode_without_per_gate_support(self):
         syms = {
