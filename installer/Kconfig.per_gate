@@ -1,0 +1,245 @@
+# Per-gate hardware configuration for modular MMU designs.
+#
+# MMU_HAS_PER_GATE_CONFIG controls this presentation and the gate-aligned
+# environment/heater/fan associations. It is intentionally independent of
+# MMU_HAS_PER_GATE_MCU, which describes the MCU connection topology.
+
+if MMU_HAS_PER_GATE_CONFIG
+
+  comment "_"
+  comment "_Per-gate config"
+
+  @repeat var=i min=0 max=11@
+    if PARAM_NUM_GATES > $(i)
+
+      menu "Gate $(i) config"
+        help
+          Configure the environment sensor, heater, and fans for gate $(i).
+
+        # -------------------------------------
+        # Environment sensor
+        # -------------------------------------
+
+        if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
+
+          config PARAM_ENVIRONMENT_SENSOR_$(i)
+            string
+
+          menuconfig PARAM_ENVIRONMENT_SENSOR_GATE_$(i)
+            bool "Environment sensor"
+            default y
+            help
+              Create an environment sensor for this gate.
+
+          if PARAM_ENVIRONMENT_SENSOR_GATE_$(i)
+
+            config PARAM_ENVIRONMENT_SENSOR_$(i)
+              string "Sensor name       "
+              default "$(UNIT_NAME)_Env$(i)"
+              help
+                Name of the environment sensor section in the printer config.
+
+            choice CHOICE_ENVIRONMENT_SENSOR_TYPE_$(i)
+              prompt "Sensor type       "
+              default CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i)
+              help
+                Select the environment sensor type used by this gate.
+
+              config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i)
+                bool "AHT1X"
+
+              config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i)
+                bool "AHT2X"
+
+              config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
+                bool "AHT3X"
+
+              config CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+                bool "BME280"
+            endchoice
+
+            config PARAM_ENVIRONMENT_SENSOR_TYPE_$(i)
+              string
+              default "AHT1X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i)
+              default "AHT2X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i)
+              default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
+              default "BME280" if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+
+            config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_$(i)
+              int "Report time (secs)"
+              depends on CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
+              default 60
+              range 0 300
+              help
+                Frequency to poll the sensor. Requires a patched aht1x driver
+                for aht10_report_time support.
+
+            choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
+              prompt "i2c bus type      "
+              default CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
+              help
+                Select whether to use a hardware or software i2c bus.
+
+              config CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
+                bool "Hardware i2c"
+
+              config CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
+                bool "Software i2c"
+            endchoice
+
+            if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
+              choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
+                prompt "i2c bus name      "
+                default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3_$(i) if BOARD_TYPE_EBB_GEN1
+                default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2_$(i)
+                help
+                  Select the hardware i2c bus used by this gate's sensor.
+
+                config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2_$(i)
+                  bool "i2c2_PB10_PB11"
+
+                config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3_$(i)
+                  bool "i2c3_PB3_PB4"
+              endchoice
+
+              config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
+                string
+                default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2_$(i)
+                default "i2c3_PB3_PB4"   if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3_$(i)
+            endif
+
+            config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS_$(i)
+              int "i2c address       "
+              default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              default 56
+
+            if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
+              config PIN_ENVIRONMENT_SENSOR_SCL_$(i)
+                string "SCL pin           "
+                default ""
+
+              config PIN_ENVIRONMENT_SENSOR_SDA_$(i)
+                string "SDA pin           "
+                default ""
+            endif
+          endif
+        endif
+
+        # -------------------------------------
+        # Enclosure heater association
+        # -------------------------------------
+
+        if MMU_HAS_HEATER && !CUSTOM_HEATER_SETUP
+          menuconfig PARAM_FILAMENT_HEATER_GATE_$(i)
+            bool "Enclosure heater"
+            default y
+            help
+              Associate an existing Klipper heater with this gate.
+
+          config PARAM_FILAMENT_HEATER_$(i)
+            string "Heater name       " if PARAM_FILAMENT_HEATER_GATE_$(i)
+            default "$(UNIT_NAME)_heater$(i)"
+            help
+              Full or short name of the heater for this gate.
+        endif
+
+        # -------------------------------------
+        # Happy Hare managed fan
+        # -------------------------------------
+
+        if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
+          config PARAM_FAN_GATE_$(i)
+            bool "Managed fan"
+            default y
+            help
+              Create a [fan_generic] managed by Happy Hare for this gate.
+
+          if PARAM_FAN_GATE_$(i)
+            menu "Fan h/w config"
+              help
+                Configure the managed fan output for this gate.
+
+              config PARAM_FAN_MAX_POWER_$(i)
+                float "Fan maximum power  "
+                default 1.0
+                range 0.1 1.0
+                help
+                  Maximum power setting for this gate's fan (0.1 to 1.0).
+
+              config PARAM_FAN_KICK_START_TIME_$(i)
+                float "Fan kick start time"
+                default 0.5
+                range 0 3.0
+                help
+                  Time in seconds to run this gate's fan at full power before
+                  resetting to its target speed.
+
+              config PIN_FAN_$(i)
+                string "Fan pin            "
+                help
+                  Leave blank if this gate does not have a managed fan installed.
+
+            endmenu
+          endif
+        endif
+
+        # -------------------------------------
+        # Fixed heater fan
+        # -------------------------------------
+
+        if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP
+          config PARAM_HEATER_FAN_GATE_$(i)
+            bool "Heater fan"
+            depends on (!CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_GATE_$(i)) || (CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_$(i) != "")
+            default y
+            help
+              Create a fixed [heater_fan] tied directly to this gate's heater.
+
+          if PARAM_HEATER_FAN_GATE_$(i)
+            menu "Heater fan h/w config"
+              help
+                Configure the Klipper heater fan output for this gate.
+
+              config PARAM_HEATER_FAN_MAX_POWER_$(i)
+                float "Fan maximum power  "
+                default 1.0
+                range 0.1 1.0
+                help
+                  Maximum power setting for this gate's heater fan (0.1 to 1.0).
+
+              config PARAM_HEATER_FAN_KICK_START_TIME_$(i)
+                float "Fan kick start time"
+                default 0.5
+                range 0 3.0
+                help
+                  Time in seconds to run this gate's heater fan at full power
+                  before resetting to its target speed.
+
+              config PARAM_HEATER_FAN_SPEED_$(i)
+                float "Fan speed          "
+                default 1.0
+                range 0.0 1.0
+                help
+                  Fan speed while this gate's heater is active (0.0 to 1.0).
+
+              config PARAM_HEATER_FAN_SHUTDOWN_SPEED_$(i)
+                float "Fan shutdown speed "
+                default 1.0
+                range 0.0 1.0
+                help
+                  Fan speed while this gate's MCU is shutting down (0.0 to 1.0).
+
+              config PIN_HEATER_FAN_$(i)
+                string "Heater fan pin     "
+                help
+                  Leave blank if this gate does not have a heater fan installed.
+
+            endmenu
+          endif
+        endif
+
+      endmenu
+    endif
+  @endrepeat@
+
+endif

@@ -1,14 +1,12 @@
 # Responsible for defining/setting fan configuration:
 #   MMU_HAS_FANS
-#   MMU_HAS_PER_GATE_FANS
+#   MMU_HAS_PER_GATE_CONFIG
 #
-# Fan parameter tokens
-#   PARAM_FAN_MAX_POWER
-#   PARAM_FAN_KICK_START_TIME
-#   PARAM_FAN_SPEED
-#   PARAM_FAN_SHUTDOWN_SPEED
-#   PIN_FAN   (single MCU)
-#   PIN_FAN_X (per-gate MCU)
+# Managed fan parameter tokens
+#   PARAM_FAN_MAX_POWER, PARAM_FAN_KICK_START_TIME, PIN_FAN
+#     (shared configuration)
+#   PARAM_FAN_MAX_POWER_X, PARAM_FAN_KICK_START_TIME_X, PIN_FAN_X
+#     (per-gate configuration)
 #
 # Fan control parameter tokens
 #   PARAM_DEFAULT_FAN_TEMPERATURE_SOURCE
@@ -24,20 +22,21 @@
 
 
 comment "_"
-comment "_Fan"
+comment "_Managed Environment Fan"
 
 config UNSELECT_MMU_HAS_FANS
   def_bool n
 
 if !UNSELECT_MMU_HAS_FANS
   config MMU_HAS_FANS
-    bool "Configure fan?"
+    bool "Enable managed fan(s)?"
+    depends on MMU_HAS_ENVIRONMENT_SENSOR || BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
     forceshow
     default n
     help
-      Enable this to configure fans installed in your MMU unit(s). Fans can be
-      fixed [heater_fan] objects for heater safety, or [fan_generic] objects
-      managed by Happy Hare for environmental cooling and ventilation.
+      Configure [fan_generic] objects managed by Happy Hare for environmental
+      cooling or ventilation. A configured environment or MCU temperature
+      sensor is required. Heater fans are configured with their heaters.
 endif
 
 
@@ -46,98 +45,26 @@ endif
 # -------------------------------------
 
 if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
-
-  config FAN_CAN_USE_HEATER
-    def_bool y if MMU_HAS_HEATER && \
-        ((!MMU_HAS_PER_GATE_FANS && !MMU_HAS_PER_GATE_HEATERS) || \
-         (MMU_HAS_PER_GATE_FANS && MMU_HAS_PER_GATE_HEATERS))
-
-  config FAN_CAN_BE_MANAGED
-    def_bool y if \
-        (!MMU_HAS_PER_GATE_FANS && \
-         (MMU_HAS_ENVIRONMENT_SENSOR || BOOL_CREATE_MCU_ENVIRONMENT_SENSORS)) || \
-        (MMU_HAS_PER_GATE_FANS && \
-         ((MMU_HAS_ENVIRONMENT_SENSOR && MMU_HAS_PER_GATE_ENV_SENSORS) || \
-          (BOOL_CREATE_MCU_ENVIRONMENT_SENSORS && MMU_HAS_PER_GATE_MCU)))
-
-  choice CHOICE_FAN_TYPE
-    prompt "Fan type"
-    depends on FAN_CAN_USE_HEATER || FAN_CAN_BE_MANAGED
-    default CHOICE_FAN_TYPE_HEATER if FAN_CAN_USE_HEATER
-    default CHOICE_FAN_TYPE_MANAGED
-    help
-      Select how the configured fan(s) will be created and controlled. A fixed
-      heater fan is tied directly to its heater by Klipper for safety. A managed
-      fan is controlled by Happy Hare for enclosure cooling or ventilation.
-
-    config CHOICE_FAN_TYPE_HEATER
-      bool "Fixed heater fan"
-      depends on FAN_CAN_USE_HEATER
+  if !MMU_HAS_PER_GATE_CONFIG
+    menu "Fan h/w config"
       help
-        Create a Klipper [heater_fan] associated with the shared heater or the
-        heater for each gate. It follows the heater and is not controlled by
-        MMU_FAN.
+        Configure the pin and electrical behavior of the shared managed fan.
 
-    config CHOICE_FAN_TYPE_MANAGED
-      bool "Managed fan"
-      depends on FAN_CAN_BE_MANAGED
-      help
-        Create a Klipper [fan_generic] controlled by Happy Hare. It can respond
-        automatically to the selected temperature source or be controlled at
-        runtime with MMU_FAN.
+      config PARAM_FAN_MAX_POWER
+        float "Fan maximum power  "
+        default 1.0
+        range 0.1 1.0
+        help
+          Maximum power setting for the fan (0.1 to 1.0).
+          1.0 = 100% power
 
-  endchoice
+      config PARAM_FAN_KICK_START_TIME
+        float "Fan kick start time"
+        default 0.5
+        range 0 3.0
+        help
+          Time in seconds to run fan at full power before resetting to target speed.
 
-  # Use computed symbols in templates. A choice member's saved user value can
-  # outlive its dependencies in an existing .config, while these defaults
-  # always reflect the choice Kconfig actually selected for this hardware.
-  config FAN_TYPE_HEATER_SELECTED
-    def_bool y if CHOICE_FAN_TYPE_HEATER
-
-  config FAN_TYPE_MANAGED_SELECTED
-    def_bool y if CHOICE_FAN_TYPE_MANAGED
-
-  comment "No compatible fan configuration is available for the selected hardware"       if !FAN_CAN_USE_HEATER && !FAN_CAN_BE_MANAGED
-  comment "This will be setup as a fixed [heater_fan] for safety"                        if CHOICE_FAN_TYPE_HEATER
-  comment "This fan may be controlled at runtime for environment cooling or ventilation" if CHOICE_FAN_TYPE_MANAGED
-
-  menu "Fan h/w config"
-    depends on CHOICE_FAN_TYPE_HEATER || CHOICE_FAN_TYPE_MANAGED
-
-    config PARAM_FAN_MAX_POWER
-      float "Fan maximum power  "
-      default 1.0
-      range 0.1 1.0
-      help
-        Maximum power setting for the fan (0.1 to 1.0).
-        1.0 = 100% power
-
-    config PARAM_FAN_KICK_START_TIME
-      float "Fan kick start time"
-      default 0.5
-      range 0 3.0
-      help
-        Time in seconds to run fan at full power before resetting to target speed.
-
-    config PARAM_FAN_SPEED
-      float "Fan speed          "
-      depends on CHOICE_FAN_TYPE_HEATER
-      default 1.0
-      range 0.0 1.0
-      help
-        Fan speed while the associated heater is active (0.0 to 1.0).
-
-    config PARAM_FAN_SHUTDOWN_SPEED
-      float
-      prompt "Fan shutdown speed " if CHOICE_FAN_TYPE_HEATER
-      default 0.0 if CHOICE_FAN_TYPE_MANAGED
-      default 1.0
-      range 0.0 1.0
-      help
-        Fan speed while the MCU is shutting down (0.0 to 1.0). For safety it is
-        recommended that this be 1.0 if protecting a heater.
-
-    if !MMU_HAS_PER_GATE_FANS
       config PIN_FAN
         string "Fan pin            "
         default ""
@@ -145,18 +72,9 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           Pin for the fan shared by this MMU unit.
           Leave blank if you don't have a fan installed.
           Empty pins will be ignored in the generated configuration.
-    endif
 
-    if MMU_HAS_PER_GATE_FANS
-      @repeat var=i min=0 max=11@
-        config PIN_FAN_$(i)
-          string "Fan $(i) pin" if PARAM_NUM_GATES > $(i)
-          help 
-            Leave blank if this gate does not have a fan installed.
-      @endrepeat@
-    endif
-
-  endmenu
+    endmenu
+  endif
 
   config FAN_HAS_ENVIRONMENT_TEMPERATURE
     def_bool y if MMU_HAS_ENVIRONMENT_SENSOR
@@ -164,8 +82,11 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
   config FAN_HAS_MCU_TEMPERATURE
     def_bool y if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
 
-  menu "Fan control config"
-    depends on CHOICE_FAN_TYPE_MANAGED
+  menu "Managed fan defaults"
+    help
+      Configure the managed fan settings applied when Happy Hare starts.
+      At runtime, MMU_FAN can change enable state, mode, temperature source,
+      and ON/OFF temperatures for the unit or selected per-gate fans.
 
     choice CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE
       prompt "Default fan temperature source"

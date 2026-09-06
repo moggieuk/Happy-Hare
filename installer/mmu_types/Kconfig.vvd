@@ -56,6 +56,8 @@ if MMU_TYPE_VVD_1_0
     def_bool y
   config CUSTOM_FAN_SETUP
     def_bool y
+  config CUSTOM_HEATER_FAN_SETUP
+    def_bool y
   config CUSTOM_NFC_READER_SETUP
     def_bool y
 

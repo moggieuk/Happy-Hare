@@ -52,7 +52,12 @@ config W6
     def_bool y if MMU_HAS_LEDS && PIN_NEOPIXEL = "" && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
 
 config W7
-    def_bool y if MMU_HAS_FANS && PIN_FAN = "" && !MMU_HAS_PER_GATE_FANS && !CUSTOM_FAN_SETUP && (CHOICE_FAN_TYPE_HEATER || CHOICE_FAN_TYPE_MANAGED)
+    def_bool y if MMU_HAS_FANS && PIN_FAN = "" && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
+
+@repeat var=i min=0 max=11@
+config W7
+    def_bool y if MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP && PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i) && PIN_FAN_$(i) = ""
+@endrepeat@
 
 config W8
     def_bool y if MMU_HAS_ENCODER && PIN_ENCODER = "" && !MMU_SHARED_ENCODER
@@ -70,7 +75,12 @@ config W12
     def_bool y if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL && PIN_BUFFER_ANALOG = "" && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
 config W13
-    def_bool y if MMU_HAS_HEATER && PARAM_FILAMENT_HEATER = "" && PARAM_FILAMENT_HEATERS = ""
+    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER = ""
+
+@repeat var=i min=0 max=11@
+config W13
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && PARAM_NUM_GATES > $(i) && PARAM_FILAMENT_HEATER_GATE_$(i) && PARAM_FILAMENT_HEATER_$(i) = ""
+@endrepeat@
 
 config W14
     def_bool y if MMU_HAS_ENVIRONMENT_SENSOR && PARAM_ENVIRONMENT_SENSOR = "" && \
@@ -107,7 +117,15 @@ config W20
     array_size_mismatch PARAM_SERVO_GATE_ANGLES
 
 config W21
-    def_bool y if MMU_HAS_HEATER && !CUSTOM_FAN_SETUP && !FAN_TYPE_HEATER_SELECTED
+    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && !MMU_HAS_HEATER_FANS
+
+config W21
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && PIN_HEATER_FAN = ""
+
+@repeat var=i min=0 max=11@
+config W21
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && PARAM_NUM_GATES > $(i) && ((!CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_GATE_$(i)) || (CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_$(i) != "")) && (!PARAM_HEATER_FAN_GATE_$(i) || PIN_HEATER_FAN_$(i) = "")
+@endrepeat@
 
 
 
@@ -129,7 +147,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "No gate homing endstop configured"                                   if W4
     comment "Parking must be a retraction (<=0) unless gate endstop is mmu_exit"  if W5
     comment "Leds are enabled but no MCU pin defined"                             if W6
-    comment "Fans are enabled but no MCU pin defined"                             if W7
+    comment "Managed fans are enabled but no MCU pin defined"                     if W7
     comment "Encoder is enabled but no MCU pin defined"                           if W8
     comment "Shared exit sensor is enabled but no MCU pin defined"                if W9
     comment "Buffer tension switch is enabled but no MCU pin defined"             if W10

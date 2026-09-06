@@ -13,14 +13,13 @@
 #   MMU_HAS_FANS
 #   MMU_HAS_ENVIRONMENT_SENSOR
 #   MMU_HAS_HEATER
+#   MMU_HAS_HEATER_FANS
 #   MMU_HAS_EJECT_BUTTONS
 #   MMU_HAS_BUFFER_MCU
 #
-# Per-gate capabilities:
+# Per-gate capabilities/topology:
 #   MMU_HAS_PER_GATE_MCU
-#   MMU_HAS_PER_GATE_ENV_SENSORS
-#   MMU_HAS_PER_GATE_FANS
-#   MMU_HAS_PER_GATE_HEATERS
+#   MMU_HAS_PER_GATE_CONFIG
 #   MMU_HAS_PER_GATE_NFC_READERS
 #
 #   PARAM_MISC_HARDWARE
@@ -43,6 +42,7 @@
 #   CUSTOM_ENVIRONMENT_SENSOR_SETUP
 #   CUSTOM_HEATER_SETUP
 #   CUSTOM_FAN_SETUP
+#   CUSTOM_HEATER_FAN_SETUP
 #   CUSTOM_NFC_READER_SETUP
 #
 
@@ -69,12 +69,16 @@ config MMU_HAS_LEDS
 
 config MMU_HAS_FANS
   def_bool n
+  depends on MMU_HAS_ENVIRONMENT_SENSOR || BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
 
 config MMU_HAS_ENVIRONMENT_SENSOR
   def_bool n
 
 config MMU_HAS_HEATER
   def_bool n
+
+config MMU_HAS_HEATER_FANS
+  def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG
 
 config MMU_HAS_EJECT_BUTTONS
   def_bool n
@@ -103,6 +107,9 @@ config CUSTOM_HEATER_SETUP
   def_bool n
 
 config CUSTOM_FAN_SETUP
+  def_bool n
+
+config CUSTOM_HEATER_FAN_SETUP
   def_bool n
 
 config CUSTOM_NFC_READER_SETUP
@@ -174,17 +181,12 @@ menu "Design attributes"
     def_bool n
     prompt "Per-gate MCUs?" if SHOW_HIDDEN
 
-  config MMU_HAS_PER_GATE_ENV_SENSORS
+  config MMU_HAS_PER_GATE_CONFIG
     def_bool n
-    prompt "Per-gate environment sensors?" if SHOW_HIDDEN
-
-  config MMU_HAS_PER_GATE_FANS
-    def_bool n
-    prompt "Per-gate fans?" if SHOW_HIDDEN
-
-  config MMU_HAS_PER_GATE_HEATERS
-    def_bool n
-    prompt "Per-gate heaters?" if SHOW_HIDDEN
+    prompt "Per-gate configuration?" if SHOW_HIDDEN
+    help
+      Present environment sensor, heater and fan hardware configuration in a
+      separate menu for each gate. This is independent of the MCU topology.
 
   config MMU_HAS_PER_GATE_NFC_READERS
     def_bool n

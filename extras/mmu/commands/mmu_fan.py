@@ -32,7 +32,7 @@ class MmuFanCommand(BaseCommand):
     HELP_SUPPLEMENT = (
         "Examples:\n"
         + f"{CMD}                              ...Show fan status\n"
-        + f"{CMD} FAN_FORCED=1                 ...Force all unit fans on\n"
+        + f"{CMD} FAN_FORCED=1                 ...Force all managed fans on\n"
         + f"{CMD} FAN_FORCED=0 GATE=2          ...Force gate 2 fan off\n"
         + f"{CMD} FAN_FORCED=2 GATES=1,2       ...Return gate 1 and 2 fans to AUTO\n"
         + f"{CMD} SOURCE=mcu GATE=2            ...Use gate 2 MCU temperature\n"
@@ -72,6 +72,11 @@ class MmuFanCommand(BaseCommand):
             raise gcmd.error("GATE/GATES is only available when per-gate fans are configured")
         if gates_supplied and forced is None and source is None and on_temp is None and off_temp is None:
             raise gcmd.error("GATE/GATES requires FAN_FORCED, SOURCE, ON_TEMP, or OFF_TEMP")
+        if gates_supplied:
+            try:
+                manager.validate_targets(gates)
+            except ValueError as e:
+                raise gcmd.error(str(e))
 
         if source is not None:
             allowed_sources = FAN_TEMPERATURE_SOURCES + (FAN_SOURCE_DEFAULT,)
@@ -82,7 +87,7 @@ class MmuFanCommand(BaseCommand):
                     source, gates if gates_supplied else None)
             except ValueError as e:
                 raise gcmd.error(str(e))
-            selected = "gates %s" % ",".join(map(str, gates)) if gates_supplied else "all fans"
+            selected = "gates %s" % ",".join(map(str, gates)) if gates_supplied else "all managed fans"
             sources = manager.get_snapshot(gates if gates_supplied else None)
             description = ", ".join(
                 "%s: %s" % (
@@ -98,7 +103,7 @@ class MmuFanCommand(BaseCommand):
                     on_temp, off_temp, gates if gates_supplied else None)
             except ValueError as e:
                 raise gcmd.error(str(e))
-            selected = "gates %s" % ",".join(map(str, gates)) if gates_supplied else "all fans"
+            selected = "gates %s" % ",".join(map(str, gates)) if gates_supplied else "all managed fans"
             ranges = manager.get_snapshot(gates if gates_supplied else None)
             description = ", ".join(
                 "%s: OFF <= %.1f%sC, ON >= %.1f%sC" % (
@@ -111,11 +116,14 @@ class MmuFanCommand(BaseCommand):
         if enable is not None:
             manager.set_enabled(bool(enable))
             self.mmu.log_info("MMU fan control %s for %s" % (
-                "enabled" if enable else "disabled; all fans off", mmu_unit.name))
+                "enabled" if enable else "disabled; all managed fans off", mmu_unit.name))
 
         if forced is not None:
-            manager.set_mode(forced, gates if gates_supplied else None)
-            selected = "gates %s" % ",".join(map(str, gates)) if gates_supplied else "all fans"
+            try:
+                manager.set_mode(forced, gates if gates_supplied else None)
+            except ValueError as e:
+                raise gcmd.error(str(e))
+            selected = "gates %s" % ",".join(map(str, gates)) if gates_supplied else "all managed fans"
             self.mmu.log_info("MMU %s on %s set to %s" % (
                 selected, mmu_unit.name, {FAN_OFF: "OFF", FAN_ON: "ON", FAN_AUTO: "AUTO"}[forced]))
 

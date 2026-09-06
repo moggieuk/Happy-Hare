@@ -88,7 +88,7 @@ class MmuFanManager:
         if mode not in FAN_STATE_NAMES:
             raise ValueError("Invalid fan mode: %s" % mode)
 
-        indexes = self._indexes_for_gates(gates)
+        indexes = self._target_indexes(gates)
         for index in indexes:
             self._modes[index] = mode
 
@@ -98,7 +98,7 @@ class MmuFanManager:
         self.refresh()
 
     def set_thresholds(self, on_temp=None, off_temp=None, gates=None):
-        indexes = self._indexes_for_gates(gates)
+        indexes = self._target_indexes(gates)
         updates = []
         for index in indexes:
             effective_on = self._on_temps[index] if on_temp is None else float(on_temp)
@@ -120,15 +120,9 @@ class MmuFanManager:
         if source not in FAN_TEMPERATURE_SOURCES:
             raise ValueError("Invalid fan temperature source: %s" % (source or "none"))
 
-        indexes = self._indexes_for_gates(gates)
+        indexes = self._target_indexes(gates)
         updates = []
         for index in indexes:
-            if not self.fans[index]:
-                if gates is not None:
-                    gate = self.mmu_unit.first_gate + index
-                    raise ValueError("No fan configured for gate %d on %s" % (
-                        gate, self.mmu_unit.name))
-                continue
             if not self._temperature_source_exists(source, index):
                 if self.has_per_gate_fans():
                     target = "gate %d on %s" % (
@@ -161,7 +155,7 @@ class MmuFanManager:
     def get_snapshot(self, gates=None, eventtime=None):
         eventtime = self.reactor.monotonic() if eventtime is None else eventtime
         snapshot = []
-        for index in self._indexes_for_gates(gates):
+        for index in self._target_indexes(gates):
             fan_name = self.fans[index]
             if not fan_name:
                 continue
@@ -273,6 +267,28 @@ class MmuFanManager:
         if gates is None:
             return list(range(len(self.fans)))
         return [gate - self.mmu_unit.first_gate for gate in gates]
+
+    def validate_targets(self, gates=None):
+        """Validate an explicit gate selection before a command mutates state."""
+        self._target_indexes(gates)
+
+    def _target_indexes(self, gates):
+        indexes = self._indexes_for_gates(gates)
+        if gates is None:
+            return [index for index in indexes if self.fans[index]]
+
+        missing = [
+            self.mmu_unit.first_gate + index
+            for index in indexes if not self.fans[index]
+        ]
+        if missing:
+            if len(missing) == 1:
+                target = "Gate %d does" % missing[0]
+            else:
+                target = "Gates %s do" % ",".join(map(str, missing))
+            raise ValueError("%s not have a managed fan on %s" % (
+                target, self.mmu_unit.name))
+        return indexes
 
     def _get_speed(self, fan_name, eventtime):
         fan_obj = self.printer.lookup_object(fan_name, None)
