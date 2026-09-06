@@ -90,6 +90,21 @@ class TestBoxTurtleRender(unittest.TestCase):
         self.assertEqual(leds['entry_effect'], 'gate_status')
         self.assertEqual(leds['status_effect'], 'slicer_color')
 
+    def test_serialized_config_home_does_not_quote_save_variables_path(self):
+        env = dict(cfg._SINGLE_UNIT_ENV,
+                   CONFIG_KLIPPER_CONFIG_HOME='"~/printer_data/config"')
+        with cfg._env(env):
+            kconfig = cfg._kconfig(
+                'quoted_config_home', profiles.get('boxturtle').syms)
+
+        self.assertEqual(kconfig.get('PARAM_MMU_VARS_CFG'),
+                         '~/printer_data/config/mmu/mmu_vars.cfg')
+        rendered = cfg._render_templates(
+            (MACRO_VARS,), kconfig, {'PARAM_TOTAL_NUM_GATES': 4})
+        self.assertIn(
+            'filename: ~/printer_data/config/mmu/mmu_vars.cfg\n',
+            rendered[MACRO_VARS])
+
     def test_mmu_sections(self):
         secs = cfg.sections(self.rendered[MMU])
         for expected in ('mmu_machine', 'mmu_parameters', 'mmu_toolhead default'):
@@ -301,6 +316,135 @@ class TestMenuconfigMacroStrings(unittest.TestCase):
         self.assertEqual(ast.literal_eval(raw), 'fan_generic fan0')
 
 
+class TestEnvironmentSensorReportTime(unittest.TestCase):
+
+    def _single_sensor(self, name, choice):
+        profile = profiles.get('boxturtle').derive(
+            name,
+            syms={
+                'MMU_HAS_ENVIRONMENT_SENSOR': True,
+                choice: True,
+            })
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig(name, profile.syms)
+        rendered = cfg.render(profile)
+        parser = cfg.assemble(rendered, macros=False)
+        sensor = dict(parser.items('temperature_sensor unit0_Env'))
+        return kc, sensor
+
+    def test_aht_sensor_uses_selected_report_time_parameter(self):
+        kc, sensor = self._single_sensor(
+            'environment_sensor_aht_report_time',
+            'CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X')
+
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM'),
+                         'aht10_report_time')
+        self.assertEqual(sensor['sensor_type'], 'AHT2X')
+        self.assertEqual(sensor['aht10_report_time'], '60')
+
+    def test_bme280_sensor_omits_unsupported_report_time_parameter(self):
+        kc, sensor = self._single_sensor(
+            'environment_sensor_bme_report_time',
+            'CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280')
+
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM'), '')
+        self.assertEqual(sensor['sensor_type'], 'BME280')
+        self.assertNotIn('aht10_report_time', sensor)
+        self.assertNotIn('bme_report_time', sensor)
+        self.assertNotIn('bme280_report_time', sensor)
+
+    def test_mixed_per_gate_sensors_select_report_parameter_independently(self):
+        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        with cfg._env(env):
+            kc = cfg._kconfig('environment_sensor_mixed_per_gate', {
+                'MMU_TYPE_EMU_1_0': True,
+                'MMU_HAS_PER_GATE_MCU': True,
+                'CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_0': True,
+                'CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_1': True,
+            })
+
+        rendered = cfg._render_templates(
+            (HARDWARE,), kc,
+            {'PARAM_TOTAL_NUM_GATES': kc.getint('PARAM_NUM_GATES')})
+        parser = cfg.assemble(rendered, macros=False)
+        bme = dict(parser.items('temperature_sensor unit0_Env0'))
+        aht = dict(parser.items('temperature_sensor unit0_Env1'))
+
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM_0'), '')
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM_1'),
+                         'aht10_report_time')
+        self.assertEqual(bme['sensor_type'], 'BME280')
+        self.assertNotIn('aht10_report_time', bme)
+        self.assertNotIn('bme_report_time', bme)
+        self.assertNotIn('bme280_report_time', bme)
+        self.assertEqual(aht['sensor_type'], 'AHT1X')
+        self.assertEqual(aht['aht10_report_time'], '60')
+
+
+class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
+
+    def _render_mmu(self, name, syms):
+        profile = profiles.get('boxturtle').derive(
+            name,
+            syms=dict({
+                'MMU_HAS_BLOBIFIER': True,
+                'PIN_BLOBIFIER_SERVO': 'unit0:PA1',
+            }, **syms))
+        return cfg.render(profile)[MMU]
+
+    def test_blobifier_does_not_require_a_bucket_switch(self):
+        mmu = self._render_mmu('blobifier_without_bucket_switch', {
+            'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
+        })
+        self.assertNotIn('gcode_button bucket', cfg.sections(mmu))
+        self.assertNotIn('gcode_macro _BLOBIFIER_BUCKET_SWITCH', cfg.sections(mmu))
+
+    def test_bucket_switch_defaults_to_enabled(self):
+        mmu = self._render_mmu('blobifier_default_bucket_switch', {})
+        self.assertIn('gcode_button bucket', cfg.sections(mmu))
+
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('no_blobifier_bucket_switch_warning', {
+                'MMU_HAS_BLOBIFIER': False,
+            })
+        self.assertFalse(kc.is_enabled('SW4'))
+
+    def test_bucket_switch_is_rendered_when_enabled(self):
+        mmu = self._render_mmu('blobifier_with_bucket_switch', {
+            'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': True,
+            'PIN_BLOBIFIER_BUCKET_SWITCH': '^unit0:PA2',
+        })
+        parser = cfg.assemble({MMU: mmu})
+        self.assertEqual(
+            dict(parser.items('gcode_button bucket'))['pin'],
+            '^unit0:PA2')
+        self.assertEqual(
+            dict(parser.items('gcode_button bucket'))['debounce_delay'],
+            '0.5')
+        self.assertEqual(
+            dict(parser.items('gcode_macro _BLOBIFIER_BUCKET_SWITCH'))['variable_armed'],
+            '0')
+        button_gcode = dict(parser.items('gcode_button bucket'))
+        self.assertIn('RESPOND PREFIX="BLOBIFIER"', button_gcode['press_gcode'])
+        self.assertIn('Bucket switch pressed', button_gcode['press_gcode'])
+        self.assertIn('resetting count', button_gcode['release_gcode'])
+        self.assertIn('reset ignored', button_gcode['release_gcode'])
+
+    def test_enabled_bucket_switch_without_a_pin_is_rendered_and_warned(self):
+        mmu = self._render_mmu('blobifier_bucket_switch_missing_pin', {
+            'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': True,
+            'PIN_BLOBIFIER_BUCKET_SWITCH': '',
+        })
+        self.assertIn('gcode_button bucket', cfg.sections(mmu))
+
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('blobifier_bucket_switch_missing_pin_warning', {
+                'MMU_HAS_BLOBIFIER': True,
+                'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': True,
+                'PIN_BLOBIFIER_BUCKET_SWITCH': '',
+            })
+        self.assertTrue(kc.is_enabled('SW4'))
+
 # Deliberately TWO IDENTICAL BOXTURTLES rather than the real ercf_vvd profile. The point is
 # to test the multi-unit RENDER PATH, so both units being the machine every other test
 # already trusts means a failure here is the path and not an ERCF or ViViD quirk. It lives
@@ -428,6 +572,59 @@ class TestSelectorTypeChoice(unittest.TestCase):
                 'CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR': True,
             })
         self.assertEqual(kc.syms['PARAM_SELECTOR_TYPE'].str_value, 'LinearMultiGearSelector')
+
+
+class TestRenderKconfigReuse(unittest.TestCase):
+    """Rendering reuses parse trees without leaking one profile's values into another."""
+
+    def setUp(self):
+        cfg._render_cache.clear()
+        cfg._render_kconfig_cache.clear()
+
+    def tearDown(self):
+        cfg._render_cache.clear()
+        cfg._render_kconfig_cache.clear()
+
+    def test_single_unit_profiles_share_one_parse_and_reset_values(self):
+        original = cfg._new_kconfig
+        parses = []
+
+        def counted(label):
+            parses.append(label)
+            return original(label)
+
+        cfg._new_kconfig = counted
+        self.addCleanup(setattr, cfg, '_new_kconfig', original)
+
+        first = profiles.get('boxturtle').derive(
+            'reuse_first', syms={'PARAM_GATE_PARKING_DISTANCE': -81})
+        second = profiles.get('boxturtle').derive(
+            'reuse_second', syms={'PARAM_GATE_PARKING_DISTANCE': -82})
+        first_parser = cfg.assemble(cfg.render(first))
+        second_parser = cfg.assemble(cfg.render(second))
+
+        self.assertEqual(len(parses), 1)
+        self.assertEqual(dict(first_parser.items('mmu_unit_parameters unit0'))[
+            'gate_parking_distance'], '-81')
+        self.assertEqual(dict(second_parser.items('mmu_unit_parameters unit0'))[
+            'gate_parking_distance'], '-82')
+
+    def test_multi_unit_environments_never_share_a_tree(self):
+        original = cfg._new_kconfig
+        parses = []
+
+        def counted(label):
+            parses.append(label)
+            return original(label)
+
+        cfg._new_kconfig = counted
+        self.addCleanup(setattr, cfg, '_new_kconfig', original)
+
+        cfg.render(TWO_UNIT)
+
+        self.assertEqual(len(parses), 3)
+        self.assertEqual(set(parses), {
+            'two_boxturtles', 'two_boxturtles:unit0', 'two_boxturtles:unit1'})
 
 
 class TestPreviousKconfigSelections(unittest.TestCase):

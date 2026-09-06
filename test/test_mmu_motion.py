@@ -430,6 +430,47 @@ class TestLoadGate(MotionTestCase):
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
 
 
+class TestCheckGate(MotionTestCase):
+
+    def test_entry_bounce_is_suppressed_for_each_selected_gate(self):
+        """
+        MMU_CHECK_GATE owns the selected gate's filament motion. An electrical
+        open/closed bounce during that motion must update the readable switch state
+        without queuing a stale REMOVE handler after the command completes.
+
+        Exercise two gates so the event suspension has to follow select_gate(); an
+        outer snapshot would protect only whichever gate happened to start active.
+        """
+        mmu = self.hh.mmu
+        gates = (0, 1)
+        for gate in gates:
+            self.hh.place_filament(gate, position=TIP_AT_GATE)
+        self.hh.settle(1.0) # Clear the sensors' event-delay window
+
+        load_gate = mmu._load_gate
+
+        def load_gate_with_entry_bounce(*args, **kwargs):
+            sensor = self.hh.sensor('mmu_entry_%d' % mmu.gate_selected)
+            sensor.set(False, settle=False)
+            sensor.set(True, settle=False)
+            return load_gate(*args, **kwargs)
+
+        mmu._load_gate = load_gate_with_entry_bounce
+        self.hh.run_gcode('MMU_CHECK_GATE GATES=0,1')
+
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual([mmu.gate_status[gate] for gate in gates],
+                         [GATE_AVAILABLE, GATE_AVAILABLE])
+        self.assertTrue(all(self.hh.sensor('mmu_entry_%d' % gate).present
+                            for gate in gates))
+
+        # The protection is scoped to the check; a genuine later removal must
+        # still update the gate map normally.
+        self.hh.sensor('mmu_entry_1').set(False)
+        self.assertEqual(mmu.gate_status[1], GATE_EMPTY)
+        self.assertEqual(self.hh.errors, [])
+
+
 class TestKmsEncoderUnload(unittest.TestCase):
     """KMS must not skip its extruder-exit phase when a secondary probe is unavailable."""
 
