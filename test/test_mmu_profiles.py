@@ -501,6 +501,8 @@ class TestEveryBootableProfile(unittest.TestCase):
             'neopixel:_unit0_gate%d_leds (5)' % gate for gate in range(5)])
         self.assertEqual(default_leds['exit_leds'].splitlines(), [
             'neopixel:_unit0_gate%d_leds (1,2,3,4)' % gate for gate in range(5)])
+        self.assertNotIn('entry_led_counts', default_leds)
+        self.assertNotIn('exit_led_counts', default_leds)
         for gate in range(5):
             chain = dict(default_parser.items(
                 'neopixel _unit0_gate%d_leds' % gate))

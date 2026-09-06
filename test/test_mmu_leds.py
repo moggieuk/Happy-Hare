@@ -23,11 +23,36 @@
 import logging
 import unittest
 
-from test.hh import session
+from test.hh import profiles, session
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
 WARMUP = 12.0       # past the 8s effect_initialized state flash
+
+UNEVEN_EXIT_LEDS = ('neopixel:_unit0_gate0_leds (1); neopixel:_unit0_gate1_leds (1); '
+                     'neopixel:_unit0_gate2_leds (1); neopixel:_unit0_gate3_leds (1); '
+                     'neopixel:_unit0_gate4_leds (1-6)')
+UNEVEN_ENTRY_LEDS = ('neopixel:_unit0_gate0_leds (7); neopixel:_unit0_gate1_leds (7); '
+                      'neopixel:_unit0_gate2_leds (7); neopixel:_unit0_gate3_leds (7); '
+                      'neopixel:_unit0_gate4_leds (7)')
+
+# Five physical chain lines deliberately contribute 1,1,1,1,6 LEDs. Without the explicit
+# count option those line breaks remain physical-chain composition only and the existing
+# equal 2,2,2,2,2 split must be preserved. With it, gate 4 owns the final six virtual LEDs.
+LEDS_LINES_ONLY = profiles.EMU.derive(
+    'leds_lines_only',
+    syms={
+        'BOARD_TYPE_EBB_GEN1': True,
+        'PARAM_CHAIN_COUNT': 7,
+        'PARAM_EXIT_LEDS': UNEVEN_EXIT_LEDS,
+        'PARAM_ENTRY_LEDS': UNEVEN_ENTRY_LEDS,
+    })
+LEDS_UNEVEN = LEDS_LINES_ONLY.derive(
+    'leds_uneven',
+    syms={
+        'PARAM_EXIT_LED_COUNTS': '1, 1, 1, 1, 6',
+        'PARAM_ENTRY_LED_COUNTS': '1, 1, 1, 1, 1',
+    })
 
 
 class LedTestCase(unittest.TestCase):
@@ -218,6 +243,9 @@ class TestAllFourSegments(unittest.TestCase):
         leds = self.unit(1).leds
         self.assertEqual(len(leds.virtual_chains['exit'].leds), 28)
         self.assertEqual(len(leds.virtual_chains['entry'].leds), 0)
+        self.assertEqual(leds.gate_led_counts('exit'), [7] * 4)
+        self.assertEqual(leds.gate_led_indexes('exit', 9), list(range(1, 8)))
+        self.assertEqual(leds.gate_led_indexes('exit', 12), list(range(22, 29)))
 
     def test_the_logo_tuple_effect_actually_lights_the_leds(self):
         """
@@ -226,6 +254,80 @@ class TestAllFourSegments(unittest.TestCase):
         """
         data = self.unit().leds.virtual_chains['logo'].get_status()['color_data']
         self.assertEqual(data, [(0., 0., 0.3, 0.)] * 3)
+
+
+class TestExplicitLedsPerGate(unittest.TestCase):
+    """An optional count list partitions the flattened virtual chain by gate."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session(LEDS_UNEVEN)
+        cls.hh.boot()
+        cls.hh.reactor.advance(WARMUP)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    @property
+    def leds(self):
+        return self.hh.mmu.mmu_unit(0).leds
+
+    def colors(self, segment='exit'):
+        return self.leds.virtual_chains[segment].get_status()['color_data']
+
+    def test_explicit_counts_define_each_gate(self):
+        self.assertEqual(self.leds.gate_led_counts('exit'), [1, 1, 1, 1, 6])
+        self.assertEqual(self.leds.gate_led_counts('entry'), [1, 1, 1, 1, 1])
+
+    def test_gate_indexes_run_consecutively_through_the_virtual_chain(self):
+        self.assertEqual([self.leds.gate_led_indexes('exit', gate) for gate in range(5)],
+                         [[1], [2], [3], [4], [5, 6, 7, 8, 9, 10]])
+
+    def test_a_gate_outside_the_unit_has_no_leds(self):
+        self.assertEqual(self.leds.gate_led_indexes('exit', 5), [])
+        self.assertEqual(self.leds.gate_led_indexes('exit', -1), [])
+
+    def test_painting_a_gate_lights_exactly_its_leds(self):
+        odd = (0.25, 0.5, 0.75, 0.)
+        self.hh.run_gcode('MMU_SET_LED GATE=4 EXIT_EFFECT=(0.25,0.5,0.75)')
+        data = self.colors()
+        self.assertEqual(data[4:], [odd] * 6)
+        self.assertNotIn(odd, data[:4], 'the paint bled onto another gate')
+
+    def test_per_gate_effects_use_the_same_mapping(self):
+        chain = self.leds.virtual_chains['exit']
+        by_name = {effect.name: effect for effect in
+                   self.hh.printer.lookup_object('mmu_led_effect').effects}
+        for gate, expected in enumerate([[0], [1], [2], [3], [4, 5, 6, 7, 8, 9]]):
+            effect = by_name.get('mmu_static_blue_exit_%d' % gate)
+            self.assertIsNotNone(effect, 'no per-gate effect for gate %d' % gate)
+            self.assertEqual([index for obj, index in effect.leds if obj is chain], expected)
+
+
+class TestLedCountCompatibility(unittest.TestCase):
+    def test_config_lines_do_not_implicitly_change_the_equal_split(self):
+        hh = session(LEDS_LINES_ONLY)
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertEqual(hh.mmu.mmu_unit(0).leds.gate_led_counts('exit'), [2] * 5)
+
+    def test_invalid_explicit_counts_are_rejected(self):
+        cases = [
+            ('1, 1, 8', "must contain exactly num_gates"),
+            ('1, 1, 1, 1, 0', "must all be positive integers"),
+            ('1, 1, 1, 1, 5', "totals 9.*contains 10 LEDs"),
+        ]
+        for counts, message in cases:
+            with self.subTest(counts=counts):
+                profile = LEDS_LINES_ONLY.derive(
+                    'invalid_led_counts', syms={'PARAM_EXIT_LED_COUNTS': counts})
+                hh = session(profile)
+                try:
+                    with self.assertRaisesRegex(Exception, message):
+                        hh.boot()
+                finally:
+                    hh.close()
 
 
 class TestEffectConfiguration(LedTestCase):

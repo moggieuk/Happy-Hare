@@ -15,6 +15,8 @@
 #   PARAM_COLOR_ORDER
 #   PARAM_EXIT_LEDS
 #   PARAM_ENTRY_LEDS
+#   PARAM_EXIT_LED_COUNTS
+#   PARAM_ENTRY_LED_COUNTS
 #   PARAM_STATUS_LEDS
 #   PARAM_LOGO_LEDS
 #   PARAM_FRAME_RATE
@@ -207,6 +209,16 @@ if MMU_HAS_LEDS
       array_editor ";"
       default "" if CUSTOM_LED_SETUP
 
+    config PARAM_EXIT_LED_COUNTS
+      string
+      array_editor "," PARAM_NUM_GATES
+      default ""
+
+    config PARAM_ENTRY_LED_COUNTS
+      string
+      array_editor "," PARAM_NUM_GATES
+      default ""
+
     config PARAM_STATUS_LEDS
       string
       array_editor ";"
@@ -249,12 +261,34 @@ if MMU_HAS_LEDS
           chains can be entered in the array editor, and ranges may be reversed
           when the physical chain runs in the opposite gate order.
 
+      config PARAM_EXIT_LED_COUNTS
+        prompt "Exit led counts "
+        depends on PARAM_EXIT_LEDS != ""
+        help
+          NORMALLY LEAVE THIS EMPTY.
+          LEDs are then distributed equally among all gates. For an uneven
+          split, enter one positive integer per gate. The number of entries
+          MUST equal num_gates, and the sum of the counts MUST equal the number
+          of LEDs specified by exit_leds. Counts consume the virtual chain in
+          gate order. Example for 10 LEDs over 4 gates: "1, 1, 2, 6".
+
       config PARAM_ENTRY_LEDS
         prompt "Entry leds      "
         help
           Assign the LEDs mounted at the filament entry for each gate. Use a
           virtual-chain specification such as "neopixel:my_leds (5-8)". Leave
           this empty when the unit has no entry LED segment.
+
+      config PARAM_ENTRY_LED_COUNTS
+        prompt "Entry led counts"
+        depends on PARAM_ENTRY_LEDS != ""
+        help
+          NORMALLY LEAVE THIS EMPTY.
+          LEDs are then distributed equally among all gates. For an uneven
+          split, enter one positive integer per gate. The number of entries
+          MUST equal num_gates, and the sum of the counts MUST equal the number
+          of LEDs specified by entry_leds. Counts consume the virtual chain in
+          gate order. Example for 8 LEDs over 4 gates: "1, 1, 2, 4".
 
       config PARAM_STATUS_LEDS
         prompt "Status leds     "

@@ -97,9 +97,12 @@ class MmuLeds:
             config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
             self.virtual_chains[segment] = VirtualMmuLedChain(config, self.mmu_unit.name, segment, config_chains)
 
-            num_leds = len(self.virtual_chains[segment].leds)
-            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds % self.num_gates:
-                raise config.error("Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d)" % (segment, num_leds, self.num_gates))
+        # Decide the gate boundaries once so effect creation and runtime updates cannot
+        # disagree. Without an explicit count list this preserves the existing equal split.
+        self.gate_leds = {
+            segment: self._map_leds_to_gates(config, segment)
+            for segment in self.PER_GATE_SEGMENTS
+        }
 
         # Check for LED chain overlap or unavailable LEDs
         used = {}
@@ -165,6 +168,42 @@ class MmuLeds:
             self.effects[operation] = effect
             self.effect_duration[operation] = duration
         self.effect_rgb[''] = (0,0,0)
+
+    def _map_leds_to_gates(self, config, segment):
+        num_leds = len(self.virtual_chains[segment].leds)
+        option = "%s_led_counts" % segment
+        counts = list(config.getintlist(option, []))
+
+        if counts:
+            if len(counts) != self.num_gates:
+                raise config.error("'%s' must contain exactly num_gates (%d) values" % (option, self.num_gates))
+            if any(count <= 0 for count in counts):
+                raise config.error("'%s' values must all be positive integers" % option)
+            if sum(counts) != num_leds:
+                raise config.error("'%s' totals %d but the '%s' virtual chain contains %d LEDs" % (
+                    option, sum(counts), segment, num_leds))
+        else:
+            if num_leds > 0 and num_leds % self.num_gates:
+                raise config.error("Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d)" % (
+                    segment, num_leds, self.num_gates))
+            counts = [num_leds // self.num_gates] * self.num_gates
+
+        gate_leds = []
+        index = 1 # LED indexes are 1-based within the virtual segment
+        for count in counts:
+            gate_leds.append(list(range(index, index + count)))
+            index += count
+        return gate_leds
+
+    def gate_led_indexes(self, segment, gate):
+        gate_leds = self.gate_leds.get(segment)
+        local_gate = gate - self.first_gate
+        if gate_leds is None or not 0 <= local_gate < len(gate_leds):
+            return []
+        return gate_leds[local_gate]
+
+    def gate_led_counts(self, segment):
+        return [len(leds) for leds in self.gate_leds.get(segment, [])]
 
     def parse_chain(self, chain):
         chain = chain.strip()

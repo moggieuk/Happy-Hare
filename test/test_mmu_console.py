@@ -1162,6 +1162,10 @@ class TestLedSwatches(unittest.TestCase):
         # swatches were 83, i.e. a 117-column row.
         self.assertEqual(len(visible(got)), 59)
 
+    def test_uneven_led_counts_define_the_gate_boundaries(self):
+        got = self.swatches([(0., 0., 1., 0.)] * 6, [1, 2, 3])
+        self.assertEqual(got, ' '.join([self.ON, self.ON * 2, self.ON * 3]))
+
     def test_a_whole_segment_in_one_group_has_no_gaps(self):
         """How status and logo arrive - neither is indexed by gate."""
         self.assertEqual(self.swatches([(1., 1., 1., 0.)] * 4, 4), self.ON * 4)
