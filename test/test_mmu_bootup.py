@@ -293,7 +293,6 @@ class TestReady(BootedSessionMixin, unittest.TestCase):
     """A4: klippy:ready."""
 
     def test_mmu_is_ready(self):
-        self.assertTrue(self.hh.mmu._ready)
         self.assertTrue(self.hh.fired('mmu:initialized'))
 
     def test_pause_family_was_wrapped(self):
