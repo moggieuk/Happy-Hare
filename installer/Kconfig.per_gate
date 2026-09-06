@@ -149,7 +149,7 @@ if MMU_HAS_PER_GATE_CONFIG
 
         if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           config PARAM_FAN_GATE_$(i)
-            bool "Managed fan"
+            bool "Managed cooling fan"
             default y
             help
               Create a [fan_generic] managed by Happy Hare for this gate.
