@@ -248,6 +248,56 @@ class TestConditionalMacroDefaults(unittest.TestCase):
                 self.assertTrue(kc.syms[name].config_string)
 
 
+class TestHardwareConfigurationWarnings(unittest.TestCase):
+
+    @staticmethod
+    def _kconfig(name, syms):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            return cfg._kconfig(name, syms)
+
+    def test_missing_shared_heater_name_is_warned(self):
+        syms = dict(profiles.get('qidi').syms)
+        self.assertTrue(self._kconfig('missing_heater_name', syms).is_enabled('W13'))
+
+        syms['PARAM_FILAMENT_HEATER'] = 'qidi_heater'
+        self.assertFalse(self._kconfig('configured_heater_name', syms).is_enabled('W13'))
+
+    def test_missing_shared_environment_sensor_name_is_warned(self):
+        syms = dict(profiles.get('qidi').syms, PARAM_ENVIRONMENT_SENSOR='')
+        self.assertTrue(self._kconfig('missing_environment_name', syms).is_enabled('W14'))
+
+        syms['PARAM_ENVIRONMENT_SENSOR'] = 'qidi_environment'
+        self.assertFalse(self._kconfig('configured_environment_name', syms).is_enabled('W14'))
+
+    def test_missing_per_gate_environment_sensor_names_are_warned(self):
+        syms = dict(profiles.get('emu').syms)
+        syms.update({'PARAM_ENVIRONMENT_SENSOR_GATE_%d' % gate: False
+                     for gate in range(5)})
+        self.assertTrue(self._kconfig('missing_per_gate_environment_names', syms).is_enabled('W14'))
+        self.assertFalse(self._kconfig(
+            'configured_per_gate_environment_names', profiles.get('emu').syms
+        ).is_enabled('W14'))
+
+
+class TestCustomHardwareCapabilities(unittest.TestCase):
+
+    def test_custom_nfc_capability_is_declared_with_the_other_custom_hardware(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('custom_nfc_capability', profiles.get('qidi').syms)
+        self.assertTrue(any(
+            node.filename.endswith('Kconfig.capabilities')
+            for node in kconfig.syms['CUSTOM_NFC_READER_SETUP'].nodes
+        ))
+
+    def test_custom_nfc_setup_does_not_enable_nfc_without_the_capability(self):
+        profile = profiles.get('qidi').derive(
+            'custom_nfc_without_capability',
+            syms={'MMU_HAS_NFC_READER': False},
+            extra_params={'CUSTOM_NFC_READER_SETUP': True})
+        rendered = cfg.render(profile)
+        self.assertNotIn('nfc_deep_read', rendered[PARAMS])
+
+
 class TestMenuconfigMacroStrings(unittest.TestCase):
 
     def _pre_unload_value(self, configured, profile_name):

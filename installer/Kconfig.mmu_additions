@@ -10,10 +10,11 @@ menu "MMU Features / Additions"
     the best possible starter configuration.
 
   source "Kconfig.leds"
-  source "Kconfig.fans"
   source "Kconfig.sync_feedback_buffer"
   source "Kconfig.environment_sensor"
+  source "Kconfig.fans"
   source "Kconfig.heater"
+  source "Kconfig.per_gate"
   source "Kconfig.nfc_reader"
   source "Kconfig.eject_buttons"
   source "Kconfig.encoder"

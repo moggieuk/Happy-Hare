@@ -29,7 +29,7 @@ config SW4
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=20@
+  @repeat var=i min=1 max=21@
     default y if W$(i)
   @endrepeat@
 
@@ -52,7 +52,12 @@ config W6
     def_bool y if MMU_HAS_LEDS && PIN_NEOPIXEL = "" && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
 
 config W7
-    def_bool y if MMU_HAS_FANS && PIN_FAN = "" && !MMU_HAS_PER_GATE_MCU
+    def_bool y if MMU_HAS_FANS && PIN_FAN = "" && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
+
+@repeat var=i min=0 max=11@
+config W7
+    def_bool y if MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP && PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i) && PIN_FAN_$(i) = ""
+@endrepeat@
 
 config W8
     def_bool y if MMU_HAS_ENCODER && PIN_ENCODER = "" && !MMU_SHARED_ENCODER
@@ -70,10 +75,21 @@ config W12
     def_bool y if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL && PIN_BUFFER_ANALOG = "" && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
 config W13
-    def_bool y if MMU_HAS_HEATERS && PARAM_FILAMENT_HEATER = "" && PARAM_FILAMENT_HEATERS = ""
+    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER = ""
+
+@repeat var=i min=0 max=11@
+config W13
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && PARAM_NUM_GATES > $(i) && PARAM_FILAMENT_HEATER_GATE_$(i) && PARAM_FILAMENT_HEATER_$(i) = ""
+@endrepeat@
 
 config W14
-    def_bool y if MMU_HAS_ENVIRONMENT_SENSOR && PARAM_ENVIRONMENT_SENSOR = "" && PARAM_ENVIRONMENT_SENSORS = ""
+    def_bool y if MMU_HAS_ENVIRONMENT_SENSOR && PARAM_ENVIRONMENT_SENSOR = "" && \
+        PARAM_ENVIRONMENT_SENSOR_0 = "" && PARAM_ENVIRONMENT_SENSOR_1 = "" && \
+        PARAM_ENVIRONMENT_SENSOR_2 = "" && PARAM_ENVIRONMENT_SENSOR_3 = "" && \
+        PARAM_ENVIRONMENT_SENSOR_4 = "" && PARAM_ENVIRONMENT_SENSOR_5 = "" && \
+        PARAM_ENVIRONMENT_SENSOR_6 = "" && PARAM_ENVIRONMENT_SENSOR_7 = "" && \
+        PARAM_ENVIRONMENT_SENSOR_8 = "" && PARAM_ENVIRONMENT_SENSOR_9 = "" && \
+        PARAM_ENVIRONMENT_SENSOR_10 = "" && PARAM_ENVIRONMENT_SENSOR_11 = ""
 
 config W15
     def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && !(MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION || MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)
@@ -100,6 +116,17 @@ config W20
     bool
     array_size_mismatch PARAM_SERVO_GATE_ANGLES
 
+config W21
+    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && !MMU_HAS_HEATER_FANS
+
+config W21
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && PIN_HEATER_FAN = ""
+
+@repeat var=i min=0 max=11@
+config W21
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && PARAM_NUM_GATES > $(i) && ((!CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_GATE_$(i)) || (CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_$(i) != "")) && (!PARAM_HEATER_FAN_GATE_$(i) || PIN_HEATER_FAN_$(i) = "")
+@endrepeat@
+
 
 
 if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
@@ -118,9 +145,9 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Unknown MCU board selected. You will need to configure all pins"     if W2
     comment "Toolhead type is 'other'. Are you sure yours is not listed?"         if W3
     comment "No gate homing endstop configured"                                   if W4
-    comment "Parking must be a retraction (<=0) unless gate endstop is mmu_exit"     if W5
+    comment "Parking must be a retraction (<=0) unless gate endstop is mmu_exit"  if W5
     comment "Leds are enabled but no MCU pin defined"                             if W6
-    comment "Fans are enabled but no MCU pin defined"                             if W7
+    comment "Managed fans are enabled but no MCU pin defined"                     if W7
     comment "Encoder is enabled but no MCU pin defined"                           if W8
     comment "Shared exit sensor is enabled but no MCU pin defined"                if W9
     comment "Buffer tension switch is enabled but no MCU pin defined"             if W10
@@ -129,10 +156,11 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "MMU heater is enabled but heater name(s) not defined"                if W13
     comment "MMU environment sensor is enabled but sensor name(s) not defined"    if W14
     comment "Sync-feedback buffer configured but it had no sensors defined"       if W15
-    comment "Warning: Sync-feedback buffer configured with both analog and digital inputs" if W16
+    comment "Sync-feedback buffer configured with both analog and digital inputs" if W16
     comment "NFC neighbor eviction jog must be backward (<=0) unless gate endstop is mmu_exit" if W17
-    comment "NFC gate clear jog must be backward (<=0) unless gate endstop is mmu_exit"       if W18
-    comment "NFC preload clear jog must be backward (<=0) unless preload endstop is mmu_exit" if W19
-    comment "Servo gate angle count must match the number of gates"                           if W20
+    comment "NFC gate clear jog must be backward (<=0) unless gate endstop is mmu_exit"        if W18
+    comment "NFC preload clear jog must be backward (<=0) unless preload endstop is mmu_exit"  if W19
+    comment "Servo gate angle count must match the number of gates"                            if W20
+    comment "MMU heater is configured without a fixed heater fan"                              if W21
   endif
 endif

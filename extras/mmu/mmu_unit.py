@@ -46,6 +46,7 @@ from .unit.mmu_sync_feedback            import MmuSyncFeedback
 from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
 from .unit.mmu_environment_manager      import MmuEnvironmentManager
+from .unit.mmu_fan_manager              import MmuFanManager
 from .unit.mmu_nfc_manager              import MmuNfcManager
 from .mmu_utils                         import MmuError
 
@@ -139,7 +140,7 @@ class MmuUnit:
 
 
         # ---------------------------------------------------------------------------------------------------
-        # Optional heater and evironment sensors
+        # Optional fans, heater and environment sensors
         # ---------------------------------------------------------------------------------------------------
 
         # Helper to try common name prefixes to avoid long specification like:
@@ -159,9 +160,24 @@ class MmuUnit:
                     errors.append("%s: %s" % (candidate, str(e)))
 
             raise config.error(
-                "Object '%s' could not be loaded as a valid %s in [mmu_machine]\n"
-                "Tried:\n%s" % (obj_name, kind, "\n".join(errors))
+                "Object '%s' could not be loaded as a valid %s in [mmu_unit %s]\n"
+                "Tried:\n%s" % (obj_name, kind, self.name, "\n".join(errors))
             )
+
+        self.fan = config.get('fan', '')
+        self.fans = list(config.getlist('fans', []))
+
+        if len(self.fans) not in [0, self.num_gates]:
+            raise config.error("'fans' must be empty or a comma separated list of 'num_gates' elements")
+
+        if self.fan and self.fans:
+            raise config.error("Can't configure both single and per-gate MMU fans")
+
+        self.fan = resolve_object_name(config, self.fan, "fan_generic ", "fan")
+        self.fans = [
+            resolve_object_name(config, name, "fan_generic ", "fan")
+            for name in self.fans
+        ]
 
         self.environment_sensor = config.get('environment_sensor', '')
         self.environment_sensors = list(config.getlist('environment_sensors', []))
@@ -204,8 +220,15 @@ class MmuUnit:
         # Create shared and per-gate NFC readers. We only store the reader names, the
         # klipper objects are loaded and referenced by the MmuNfcManager.
         # (all sensors are optional so any combination is possible)
-        self.nfc_reader  = config.get('nfc_reader', '')
-        self.nfc_readers = list(config.getlist('nfc_readers', []))
+        nfc_prefix = 'mmu_nfc_reader '
+
+        def nfc_short_name(name):
+            return name[len(nfc_prefix):] if name.startswith(nfc_prefix) else name
+
+        self.nfc_reader = nfc_short_name(config.get('nfc_reader', ''))
+        self.nfc_readers = [
+            nfc_short_name(name) for name in config.getlist('nfc_readers', [])
+        ]
 
         if len(self.nfc_readers) not in [0, self.num_gates]:
             raise config.error("'nfc_readers' must be empty or a comma separated list of 'num_gates' elements")
@@ -463,6 +486,10 @@ class MmuUnit:
         self.environment_manager = MmuEnvironmentManager(params, self, self.p)
         logging.info("MMU: Created: heater and environment manager for unit %s" % self.name)
 
+        # Create generic fan manager
+        self.fan_manager = MmuFanManager(params, self, self.p)
+        logging.info("MMU: Created: fan manager for unit %s" % self.name)
+
         # Create NFC manager
         self.nfc_manager = MmuNfcManager(params, self, self.p)
         logging.info("MMU: Created: nfc manager for unit %s" % self.name)
@@ -478,6 +505,7 @@ class MmuUnit:
             self.buffer,
             self.sync_feedback,
             self.environment_manager,
+            self.fan_manager,
             self.nfc_manager,
         ]
 
@@ -666,6 +694,12 @@ class MmuUnit:
 
     def has_heater(self):
         return self.filament_heater or self.filament_heaters
+
+    def has_fan(self):
+        return self.fan or any(self.fans)
+
+    def has_per_gate_fans(self):
+        return bool(self.fans)
 
     def has_bypass(self):
         return self.show_bypass
@@ -956,6 +990,11 @@ class MmuUnit:
             # Per-gate heater/sensors
             unit_info['environment_sensors'] = self.environment_sensors
             unit_info['filament_heaters'] = self.filament_heaters
+
+        if self.fan:
+            unit_info['fan'] = self.fan
+        elif self.fans:
+            unit_info['fans'] = self.fans
 
         if self.nfc_reader:
             # Single (shared) NFC reader

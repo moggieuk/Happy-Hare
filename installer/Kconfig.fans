@@ -1,143 +1,189 @@
-# Responsible for defining/setting cooling fan configuration:
+# Responsible for defining/setting fan configuration:
 #   MMU_HAS_FANS
+#   MMU_HAS_PER_GATE_CONFIG
 #
-# Fan parameter tokens
-#   PARAM_FAN_MAX_POWER
-#   PARAM_FAN_KICK_START_TIME
-#   PIN_FAN   (single MCU)
-#   PIN_FAN_X (per-gate MCU)
+# Managed fan parameter tokens
+#   PARAM_FAN_MAX_POWER, PARAM_FAN_KICK_START_TIME, PIN_FAN
+#     (shared configuration)
+#   PARAM_FAN_MAX_POWER_X, PARAM_FAN_KICK_START_TIME_X, PIN_FAN_X
+#     (per-gate configuration)
 #
-# Fan control variable (marco_var) tokens 
-#   VAR_FAN_ON_TEMP
-#   VAR_FAN_OFF_TEMP
-#   VAR_FAN_POLLING_TIME
-#   VAR_FAN_CONTROL_ENABLED
-#   VAR_FAN_FORCED_MODE (choice: AUTO, OFF, ON)
-#   VAR_FAN_FORCED (mapped value: 0, 1, 2)
-#   VAR_FAN_SENSORS (comma-separated temperature_sensor names)
-#   VAR_FAN_FANS (comma-separated fan_generic names)
+# Fan control parameter tokens
+#   PARAM_DEFAULT_FAN_TEMPERATURE_SOURCE
+#   PARAM_DEFAULT_FAN_ON_TEMP
+#   PARAM_DEFAULT_FAN_OFF_TEMP
+#   PARAM_FAN_POLLING_TIME
+#   PARAM_FAN_CONTROL_ENABLED
+#   PARAM_FAN_FORCED_MODE (choice: AUTO, OFF, ON)
+#   PARAM_FAN_FORCED (mapped value: 0, 1, 2)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_FANS
 
 
 comment "_"
-comment "_Fans"
+comment "_Managed Environment Fan"
 
 config UNSELECT_MMU_HAS_FANS
   def_bool n
 
 if !UNSELECT_MMU_HAS_FANS
   config MMU_HAS_FANS
-    bool "Has cooling fans?"
+    bool "Enable managed fan(s)?"
+    depends on MMU_HAS_ENVIRONMENT_SENSOR || BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
     forceshow
     default n
     help
-      Enable this if you have cooling fans installed in your MMU unit(s).
-      Fans will be defined as hidden [fan_generic] sections in the generated config.
+      Configure [fan_generic] objects managed by Happy Hare for environmental
+      cooling or ventilation. A configured environment or MCU temperature
+      sensor is required. Heater fans are configured with their heaters.
 endif
 
 
 # -------------------------------------
-# Fan config
+# Fan hardware config
 # -------------------------------------
 
-if MMU_HAS_FANS
-  menu "Fan config"
-
-    config PARAM_FAN_MAX_POWER
-      float "Fan maximum power  "
-      default 1.0
-      range 0.1 1.0
+if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
+  if !MMU_HAS_PER_GATE_CONFIG
+    menu "Fan h/w config"
       help
-        Maximum power setting for the fan (0.1 to 1.0).
-        1.0 = 100% power
+        Configure the pin and electrical behavior of the shared managed fan.
 
-    config PARAM_FAN_KICK_START_TIME
-      float "Fan kick start time"
-      default 0.5
-      range 0 3.0
-      help
-        Time in seconds to run fan at full power before resetting to target speed.
+      config PARAM_FAN_MAX_POWER
+        float "Fan maximum power  "
+        default 1.0
+        range 0.1 1.0
+        help
+          Maximum power setting for the fan (0.1 to 1.0).
+          1.0 = 100% power
 
-    if !MMU_HAS_PER_GATE_MCU
+      config PARAM_FAN_KICK_START_TIME
+        float "Fan kick start time"
+        default 0.5
+        range 0 3.0
+        help
+          Time in seconds to run fan at full power before resetting to target speed.
+
       config PIN_FAN
         string "Fan pin            "
         default ""
         help
-          Pin for cooling fan.
+          Pin for the fan shared by this MMU unit.
           Leave blank if you don't have a fan installed.
           Empty pins will be ignored in the generated configuration.
-    endif
 
-    menu "Fan pins" 
-      depends on MMU_HAS_PER_GATE_MCU
-
-      @repeat var=i min=0 max=11@
-        config PIN_FAN_$(i)
-          string "Fan $(i) pin" if PARAM_NUM_GATES > $(i)
-          help 
-            Leave blank if this gate does not have a fan installed.
-      @endrepeat@
     endmenu
+  endif
 
-  endmenu
+  config FAN_HAS_ENVIRONMENT_TEMPERATURE
+    def_bool y if MMU_HAS_ENVIRONMENT_SENSOR
 
-  menu "Fan controls"
+  config FAN_HAS_MCU_TEMPERATURE
+    def_bool y if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
 
-    config VAR_FAN_ON_TEMP
-      float "Fan on temperature            "
+  menu "Managed fan defaults"
+    help
+      Configure the managed fan settings applied when Happy Hare starts.
+      At runtime, MMU_FAN can change enable state, mode, temperature source,
+      and ON/OFF temperatures for the unit or selected per-gate fans.
+
+    choice CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE
+      prompt "Default fan temperature source"
+      depends on FAN_HAS_ENVIRONMENT_TEMPERATURE || FAN_HAS_MCU_TEMPERATURE
+      default CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_ENVIRONMENT if FAN_HAS_ENVIRONMENT_TEMPERATURE
+      default CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU if FAN_HAS_MCU_TEMPERATURE
+      help
+        Default source for every fan in the unit. Per-gate fans can be changed
+        at runtime with MMU_FAN SOURCE= and GATE= or GATES=.
+
+      config CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_ENVIRONMENT
+        bool "Environment sensor"
+        depends on FAN_HAS_ENVIRONMENT_TEMPERATURE
+        help
+          Use the configured enclosure environment sensor. With per-gate fans,
+          each fan uses the environment sensor associated with the same gate.
+
+      config CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU
+        bool "MCU temperature"
+        depends on FAN_HAS_MCU_TEMPERATURE
+        help
+          Use the configured MMU controller CPU temperature sensor. With
+          per-gate fans, each fan uses the MCU sensor associated with the same
+          gate.
+
+    endchoice
+
+    config PARAM_DEFAULT_FAN_TEMPERATURE_SOURCE
+      string
+      default "environment" if CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_ENVIRONMENT
+      default "mcu" if CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU
+      default ""
+
+    config PARAM_DEFAULT_FAN_ON_TEMP
+      float "Default fan ON temperature    "
       default 49.0
       range 20.0 80.0
       help
-        Temperature threshold (°C) to turn fans on.
+        Default temperature threshold (°C) to turn fans on. Per-gate ranges
+        can be adjusted at runtime with MMU_FAN.
 
-    config VAR_FAN_OFF_TEMP
-      float "Fan off temperature           "
+    config PARAM_DEFAULT_FAN_OFF_TEMP
+      float "Default fan OFF temperature   "
       default 47.0
       range 20.0 80.0
       help
-        Temperature threshold (°C) to turn fans off.
+        Default temperature threshold (°C) to turn fans off. Per-gate ranges
+        can be adjusted at runtime with MMU_FAN.
 
-    config VAR_FAN_POLLING_TIME
+    config PARAM_FAN_POLLING_TIME
       float "Fan polling time              "
       default 5.0
       range 1.0 30.0
       help
         Time in seconds between temperature sensor polling intervals.
 
-    config VAR_FAN_CONTROL_ENABLED
-      bool "Enable fan temperature control"
+    config PARAM_FAN_CONTROL_ENABLED
+      boolint "Enable fan temperature control"
       default y
       help
-        Enable automatic fan control based on temperature sensors.
+        Enable automatic fan control based on each fan's selected temperature
+        source. Fans without a corresponding source remain off in AUTO mode but
+        can still be controlled with MMU_FAN.
 
-    choice VAR_FAN_FORCED_MODE
-      prompt "Fan forced state              "
-      default VAR_FAN_FORCED_MODE_AUTO
+    choice PARAM_FAN_FORCED_MODE
+      prompt "Default fan mode              "
+      default PARAM_FAN_FORCED_MODE_AUTO
+      help
+        Select the fan state applied when Happy Hare starts. The mode can be
+        changed later with MMU_FAN; a forced mode overrides automatic
+        temperature control until the fans are returned to AUTO.
 
-      config VAR_FAN_FORCED_MODE_AUTO
+      config PARAM_FAN_FORCED_MODE_AUTO
         bool "AUTO"
         help
-          Automatic fan control based on temperature sensors.
+          Start each fan under automatic control using its selected temperature
+          source and the configured ON/OFF thresholds.
 
-      config VAR_FAN_FORCED_MODE_OFF
+      config PARAM_FAN_FORCED_MODE_OFF
         bool "All OFF"
         help
-          Force all fans off globally.
+          Start all fans forced off, regardless of temperature, until their mode
+          is changed with MMU_FAN.
 
-      config VAR_FAN_FORCED_MODE_ON
+      config PARAM_FAN_FORCED_MODE_ON
         bool "All ON"
         help
-          Force all fans on globally.
+          Start all fans forced on at full speed, regardless of temperature,
+          until their mode is changed with MMU_FAN.
 
     endchoice
 
-    config VAR_FAN_FORCED
-      string
-      default "0" if VAR_FAN_FORCED_MODE_OFF
-      default "1" if VAR_FAN_FORCED_MODE_ON
-      default "2" if VAR_FAN_FORCED_MODE_AUTO
+    config PARAM_FAN_FORCED
+      int
+      default 0 if PARAM_FAN_FORCED_MODE_OFF
+      default 1 if PARAM_FAN_FORCED_MODE_ON
+      default 2 if PARAM_FAN_FORCED_MODE_AUTO
 
   endmenu
 endif

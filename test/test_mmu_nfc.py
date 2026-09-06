@@ -11,6 +11,7 @@
 
 import logging
 import unittest
+from unittest import mock
 
 from test.hh import cfg, profiles, session
 
@@ -213,6 +214,44 @@ class TestCommonReaderWiring(unittest.TestCase):
                          'configured but never instantiated')
         self.assertNotIn('nfc_readers', unit,
                          'a common reader must not also declare per-gate readers')
+
+    def test_full_reader_name_is_accepted(self):
+        rendered = dict(cfg.render(profiles.get('nfc_single')))
+        path = 'config/base/mmu_hardware.cfg'
+        rendered[path] = rendered[path].replace(
+            'nfc_reader               : unit0_nfc',
+            'nfc_reader               : mmu_nfc_reader unit0_nfc')
+        self.assertIn('nfc_reader               : mmu_nfc_reader unit0_nfc',
+                      rendered[path])
+        with mock.patch('test.hh.cfg.render', return_value=rendered):
+            hh = session('nfc_single')
+            try:
+                hh.boot()
+                unit = hh.printer.lookup_object('mmu_machine').units[0]
+                self.assertEqual(unit.nfc_reader, 'unit0_nfc')
+                self.assertIsNotNone(unit.nfc_manager.shared_reader)
+            finally:
+                hh.close()
+
+    def test_full_per_gate_reader_names_are_accepted(self):
+        rendered = dict(cfg.render(profiles.get('nfc_per_gate')))
+        path = 'config/base/mmu_hardware.cfg'
+        short_names = ', '.join('unit0_nfc%d' % gate for gate in range(4))
+        full_names = ', '.join(
+            'mmu_nfc_reader unit0_nfc%d' % gate for gate in range(4))
+        rendered[path] = rendered[path].replace(
+            'nfc_readers              : ' + short_names,
+            'nfc_readers              : ' + full_names)
+        self.assertIn('nfc_readers              : ' + full_names, rendered[path])
+        with mock.patch('test.hh.cfg.render', return_value=rendered):
+            hh = session('nfc_per_gate')
+            try:
+                hh.boot()
+                unit = hh.printer.lookup_object('mmu_machine').units[0]
+                self.assertEqual(unit.nfc_readers, short_names.split(', '))
+                self.assertTrue(all(unit.nfc_manager.gate_readers))
+            finally:
+                hh.close()
 
     def test_a_reader_is_opt_in(self):
         """

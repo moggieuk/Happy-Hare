@@ -350,17 +350,39 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
+# -------------------------------------
+# Managed fans
+# -------------------------------------
+
   config PIN_FAN
     string
-    prompt "Cooling fan           " if MMU_HAS_FANS && !MMU_HAS_PER_GATE_MCU
+    prompt "Managed fan pin       " if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
 
-  menu "Fan per-gate pins" 
-    depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
+  menu "Managed fan per-gate pins"
+    depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
 
     @repeat var=i min=0 max=11@
       config PIN_FAN_$(i)
         string
-        prompt "Cooling fan gate $(i) pin" if PARAM_NUM_GATES > $(i)
+        prompt "Managed fan gate $(i) pin" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
+    @endrepeat@
+  endmenu
+
+# -------------------------------------
+# Heater fans
+# -------------------------------------
+
+  config PIN_HEATER_FAN
+    string
+    prompt "Heater fan pin        " if MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
+
+  menu "Heater fan per-gate pins"
+    depends on MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
+
+    @repeat var=i min=0 max=11@
+      config PIN_HEATER_FAN_$(i)
+        string
+        prompt "Heater fan gate $(i) pin" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
     @endrepeat@
   endmenu
 
