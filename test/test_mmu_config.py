@@ -366,6 +366,71 @@ class TestMenuconfigMacroStrings(unittest.TestCase):
         self.assertEqual(ast.literal_eval(raw), 'fan_generic fan0')
 
 
+class TestEnvironmentSensorReportTime(unittest.TestCase):
+
+    def _single_sensor(self, name, choice):
+        profile = profiles.get('boxturtle').derive(
+            name,
+            syms={
+                'MMU_HAS_ENVIRONMENT_SENSOR': True,
+                choice: True,
+            })
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig(name, profile.syms)
+        rendered = cfg.render(profile)
+        parser = cfg.assemble(rendered, macros=False)
+        sensor = dict(parser.items('temperature_sensor unit0_Env'))
+        return kc, sensor
+
+    def test_aht_sensor_uses_selected_report_time_parameter(self):
+        kc, sensor = self._single_sensor(
+            'environment_sensor_aht_report_time',
+            'CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X')
+
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM'),
+                         'aht10_report_time')
+        self.assertEqual(sensor['sensor_type'], 'AHT2X')
+        self.assertEqual(sensor['aht10_report_time'], '60')
+
+    def test_bme280_sensor_omits_unsupported_report_time_parameter(self):
+        kc, sensor = self._single_sensor(
+            'environment_sensor_bme_report_time',
+            'CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280')
+
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM'), '')
+        self.assertEqual(sensor['sensor_type'], 'BME280')
+        self.assertNotIn('aht10_report_time', sensor)
+        self.assertNotIn('bme_report_time', sensor)
+        self.assertNotIn('bme280_report_time', sensor)
+
+    def test_mixed_per_gate_sensors_select_report_parameter_independently(self):
+        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        with cfg._env(env):
+            kc = cfg._kconfig('environment_sensor_mixed_per_gate', {
+                'MMU_TYPE_EMU_1_0': True,
+                'MMU_HAS_PER_GATE_MCU': True,
+                'CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_0': True,
+                'CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_1': True,
+            })
+
+        rendered = cfg._render_templates(
+            (HARDWARE,), kc,
+            {'PARAM_TOTAL_NUM_GATES': kc.getint('PARAM_NUM_GATES')})
+        parser = cfg.assemble(rendered, macros=False)
+        bme = dict(parser.items('temperature_sensor unit0_Env0'))
+        aht = dict(parser.items('temperature_sensor unit0_Env1'))
+
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM_0'), '')
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM_1'),
+                         'aht10_report_time')
+        self.assertEqual(bme['sensor_type'], 'BME280')
+        self.assertNotIn('aht10_report_time', bme)
+        self.assertNotIn('bme_report_time', bme)
+        self.assertNotIn('bme280_report_time', bme)
+        self.assertEqual(aht['sensor_type'], 'AHT1X')
+        self.assertEqual(aht['aht10_report_time'], '60')
+
+
 class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
 
     def _render_mmu(self, name, syms):
@@ -382,6 +447,7 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
             'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
         })
         self.assertNotIn('gcode_button bucket', cfg.sections(mmu))
+        self.assertNotIn('gcode_macro _BLOBIFIER_BUCKET_SWITCH', cfg.sections(mmu))
 
     def test_bucket_switch_defaults_to_enabled(self):
         mmu = self._render_mmu('blobifier_default_bucket_switch', {})
@@ -402,6 +468,17 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
         self.assertEqual(
             dict(parser.items('gcode_button bucket'))['pin'],
             '^unit0:PA2')
+        self.assertEqual(
+            dict(parser.items('gcode_button bucket'))['debounce_delay'],
+            '0.5')
+        self.assertEqual(
+            dict(parser.items('gcode_macro _BLOBIFIER_BUCKET_SWITCH'))['variable_armed'],
+            '0')
+        button_gcode = dict(parser.items('gcode_button bucket'))
+        self.assertIn('RESPOND PREFIX="BLOBIFIER"', button_gcode['press_gcode'])
+        self.assertIn('Bucket switch pressed', button_gcode['press_gcode'])
+        self.assertIn('resetting count', button_gcode['release_gcode'])
+        self.assertIn('reset ignored', button_gcode['release_gcode'])
 
     def test_enabled_bucket_switch_without_a_pin_is_rendered_and_warned(self):
         mmu = self._render_mmu('blobifier_bucket_switch_missing_pin', {

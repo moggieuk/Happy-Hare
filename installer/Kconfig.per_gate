@@ -65,14 +65,23 @@ if MMU_HAS_PER_GATE_CONFIG
               default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               default "BME280" if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
 
+            config PARAM_SENSOR_REPORT_TIME_PARAM_$(i)
+              string
+              default ""                  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              default "aht10_report_time"
+
             config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_$(i)
-              int "Report time (secs)"
-              depends on CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
+              int "Report time (secs)" if PARAM_SENSOR_REPORT_TIME_PARAM_$(i) != ""
+              default 0  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
               default 60
-              range 0 300
+              range 0 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              range 0 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               help
-                Frequency to poll the sensor. Requires a patched aht1x driver
-                for aht10_report_time support.
+                Frequency to poll the sensor (default 60 seconds)
+
+                NOTE: This option may require a patched aht1x driver for Klipper
+                to support the aht10_report_time parameter.
+                Recommend setting this to >= 60sec or 0 to disable.
 
             choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
               prompt "i2c bus type      "

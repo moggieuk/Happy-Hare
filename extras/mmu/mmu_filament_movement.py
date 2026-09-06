@@ -530,6 +530,7 @@ class MmuFilamentMovement:
                     if measured > self.encoder().movement_min(): # We expect 0, but relax the test a little (allow one pulse)
                         self.log_warning("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                     self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
+                    homing_movement = -homing_movement # Match signed reverse displacement from switch endstops
                     self.log_trace_exit(f"_park_from_gate() => (homing_movement={homing_movement})")
                     return homing_movement
 
@@ -1334,7 +1335,7 @@ class MmuFilamentMovement:
                 if self._must_home_to_extruder() and u.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
                     # If homing to extruder entry sensor, Further reduce to compensate for distance from sensor to extruder gear
                     # (because the bowden length is always recorded as distance to extruder gear)
-                    extruder_homing_buffer -= u.toolhead_wrapper.p.toolhead_entry_to_extruder
+                    extruder_homing_buffer += u.toolhead_wrapper.p.toolhead_entry_to_extruder
 
                 # A reserved buffer must only subtract from the remaining fast move. In
                 # particular, a large entry-to-extruder offset must not make the buffer
