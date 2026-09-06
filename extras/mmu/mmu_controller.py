@@ -681,9 +681,6 @@ class MmuController(MmuFilamentMovement):
         # establish stable subscriptions before MMU initialization completes.
         status.update(self.mmu_unit().sync_feedback.get_status(eventtime))
 
-        if not self._ready:
-            return status
-
         # Adds status for gate map, ttg map, endless spool, etc
         status.update(self.gate_maps.get_status(eventtime))
 
@@ -726,8 +723,7 @@ class MmuController(MmuFilamentMovement):
             st = mgr.get_status(eventtime)
             if st['shared'] is not None or st['gates']:
                 nfc_status.append(st)
-        if nfc_status:
-            status['nfc'] = nfc_status
+        status['nfc'] = nfc_status
 
         # Development/testing hook
         if hasattr(self, "developer_status_update"):
