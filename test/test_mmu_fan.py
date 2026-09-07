@@ -418,12 +418,15 @@ class TestVividCustomFans(unittest.TestCase):
         self.assertIn('heater_fan unit1_fan', self.parser.sections())
         self.assertIn('controller_fan unit1_mcu_fan', self.parser.sections())
 
-    def test_vivid_forces_fan_capability_but_hides_managed_controls(self):
+    def test_vivid_custom_fans_do_not_enable_managed_controls(self):
         syms = next(unit.syms for unit in self.profile.units if unit.name == 'unit1')
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('vivid_custom_fans', syms)
-        self.assertTrue(kconfig.is_enabled('MMU_HAS_FANS'))
+        self.assertFalse(kconfig.is_enabled('MMU_HAS_FANS'))
+        self.assertEqual(kconfig.syms['MMU_HAS_FANS'].visibility, 0)
         self.assertTrue(kconfig.is_enabled('CUSTOM_FAN_SETUP'))
+        self.assertTrue(kconfig.is_enabled('MMU_HAS_HEATER_FANS'))
+        self.assertEqual(kconfig.syms['MMU_HAS_HEATER_FANS'].assignable, (2,))
         self.assertTrue(kconfig.is_enabled('CUSTOM_HEATER_FAN_SETUP'))
         self.assertFalse(kconfig.is_enabled('W21'))
         self.assertEqual(kconfig.syms['PIN_FAN'].visibility, 0)
@@ -437,7 +440,7 @@ class TestVividCustomFans(unittest.TestCase):
         with self.assertRaisesRegex(Exception, '^No manageable fans on this unit$'):
             self.hh.run_gcode('MMU_FAN UNIT=unit1')
 
-    def test_kms_and_vivid_split_both_custom_fan_families(self):
+    def test_kms_and_vivid_fix_their_custom_hardware_capabilities(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             for profile_name in ('kms', 'vvd'):
                 syms = (profiles.get('kms').syms if profile_name == 'kms'
@@ -445,8 +448,27 @@ class TestVividCustomFans(unittest.TestCase):
                                   if unit.name == 'unit1'))
                 kconfig = cfg._kconfig('%s_custom_fans' % profile_name, syms)
                 with self.subTest(profile=profile_name):
+                    self.assertTrue(kconfig.is_enabled(
+                        'CUSTOM_ENVIRONMENT_SENSOR_SETUP'))
+                    self.assertTrue(kconfig.is_enabled('CUSTOM_HEATER_SETUP'))
                     self.assertTrue(kconfig.is_enabled('CUSTOM_FAN_SETUP'))
                     self.assertTrue(kconfig.is_enabled('CUSTOM_HEATER_FAN_SETUP'))
+                    self.assertFalse(kconfig.is_enabled('MMU_HAS_FANS'))
+                    self.assertEqual(
+                        kconfig.syms['MMU_HAS_FANS'].visibility, 0)
+                    self.assertTrue(kconfig.is_enabled('MMU_HAS_HEATER_FANS'))
+                    self.assertEqual(
+                        kconfig.syms['MMU_HAS_HEATER_FANS'].assignable, (2,))
+
+    def test_kms_custom_environment_sensor_is_not_duplicated(self):
+        rendered = '\n'.join(cfg.render(profiles.get('kms')).values())
+
+        self.assertEqual(
+            rendered.count('[temperature_sensor unit0_environment]'), 1)
+        self.assertEqual(rendered.count('[heater_generic unit0_heater]'), 1)
+        self.assertNotIn('[fan_generic ', rendered)
+        self.assertIn('[heater_fan unit0_fan_left]', rendered)
+        self.assertIn('[heater_fan unit0_fan_right]', rendered)
 
 
 class TestMmuFanRuntime(unittest.TestCase):

@@ -21,22 +21,24 @@
 #   select UNSELECT_MMU_HAS_FANS
 
 
-comment "_"
-comment "_Managed Environment Fan"
+if !CUSTOM_FAN_SETUP
+  comment "_"
+  comment "_Managed Environment Fan"
 
-config UNSELECT_MMU_HAS_FANS
-  def_bool n
+  config UNSELECT_MMU_HAS_FANS
+    def_bool n
 
-if !UNSELECT_MMU_HAS_FANS
-  config MMU_HAS_FANS
-    bool "Enable managed fan(s)?"
-    depends on MMU_HAS_ENVIRONMENT_SENSOR || BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
-    forceshow
-    default n
-    help
-      Configure [fan_generic] objects managed by Happy Hare for environmental
-      cooling or ventilation. A configured environment or MCU temperature
-      sensor is required. Heater fans are configured with their heaters.
+  if !UNSELECT_MMU_HAS_FANS
+    config MMU_HAS_FANS
+      bool "Enable managed fan(s)?"
+      depends on MMU_HAS_ENVIRONMENT_SENSOR || BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
+      forceshow
+      default n
+      help
+        Configure [fan_generic] objects managed by Happy Hare for environmental
+        cooling or ventilation. A configured environment or MCU temperature
+        sensor is required. Heater fans are configured with their heaters.
+  endif
 endif
 
 

@@ -9,6 +9,7 @@ config MMU_TYPE_KMS_1_0
   select MMU_HAS_ESPOOLER
   select MMU_HAS_ENVIRONMENT_SENSOR
   select MMU_HAS_HEATER
+  select MMU_HAS_HEATER_FANS
   select MMU_HAS_LEDS
   select MMU_HAS_SENSOR_ENTRY
   select PARAM_VARIABLE_ROTATION_DISTANCES
@@ -57,7 +58,11 @@ endif
 
 if MMU_TYPE_KMS_1_0
 
-  # MISC_HARDWARE configures both fan families on this design.
+  # MISC_HARDWARE configures these
+  config CUSTOM_ENVIRONMENT_SENSOR_SETUP
+    def_bool y
+  config CUSTOM_HEATER_SETUP
+    def_bool y
   config CUSTOM_FAN_SETUP
     def_bool y
   config CUSTOM_HEATER_FAN_SETUP

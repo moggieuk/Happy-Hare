@@ -6,7 +6,7 @@ config MMU_TYPE_VVD_1_0
   select MMU_HAS_SENSOR_ENTRY
   select MMU_HAS_ENVIRONMENT_SENSOR
   select MMU_HAS_HEATER
-  select MMU_HAS_FANS
+  select MMU_HAS_HEATER_FANS
   select MMU_HAS_NFC_READER
   select MMU_HAS_PER_GATE_NFC_READERS
   select UNSELECT_MMU_HAS_ESPOOLER        # Disable
@@ -47,7 +47,7 @@ endif
 
 if MMU_TYPE_VVD_1_0
 
-  # MISC_HARDWARE configured these
+  # MISC_HARDWARE configures these
   config CUSTOM_LED_SETUP
     def_bool y
   config CUSTOM_ENVIRONMENT_SENSOR_SETUP
