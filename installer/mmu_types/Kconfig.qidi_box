@@ -33,11 +33,11 @@ if MMU_TYPE_QIDI_BOX_1_0
     default CHOICE_BUFFER_SPRING_STATE_TENSION
   endchoice
 
-  # There are no per-gate exit sensors. Use a short fixed preload move so a
-  # gate can be prepared without entering or claiming the shared hub path.
-  choice CHOICE_GATE_PRELOAD_ENDSTOP
-    default CHOICE_GATE_PRELOAD_ENDSTOP_NONE
-  endchoice
+  # There are no per-gate exit sensors, so preload homes to the shared hub
+  # endstop (inherited from gate_homing_endstop) and then parks back by
+  # gate_parking_distance, which leaves the filament before the hub, inside
+  # the gate's own path. A fixed move cannot do this: the parking retract is
+  # not applied when the preload endstop is 'none'.
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
@@ -99,7 +99,7 @@ if MMU_TYPE_QIDI_BOX_1_0
   config PARAM_GATE_HOMING_MAX
     default 1500
   config PARAM_GATE_PRELOAD_HOMING_MAX
-    default 200
+    default 1500
   config PARAM_GATE_PARKING_DISTANCE
     default -80
   config PARAM_GATE_FINAL_EJECT_DISTANCE
