@@ -111,6 +111,13 @@ if MMU_TYPE_QIDI_BOX_1_0
   config PARAM_BUFFER_MAXRANGE
     default 12
 
+  # Dryer ----------------------------------
+  # The profile implies MMU_HAS_HEATER, so name the heater object the same way
+  # the other vendors with a dryer do (see Kconfig.vvd / Kconfig.kms). Without
+  # a name the dryer is enabled but bound to nothing and silently does nothing.
+  config PARAM_FILAMENT_HEATER
+    default "$(UNIT_NAME)_heater"
+
   comment "_"
 
 endif
