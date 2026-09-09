@@ -143,12 +143,15 @@ class MmuEnvironmentManager:
                 per_gate_plan[gate]['temp'] = temp
 
         else:
-            lowest = self.mmu_unit.p.heater_default_dry_temp
-            longest = self.mmu_unit.p.heater_default_dry_time
+            # Seed from the gates themselves, not from the defaults: seeding
+            # `lowest` with heater_default_dry_temp caps the result at that
+            # default, so a per-gate recommendation above it (e.g. 60C for PETG
+            # with a 45C default) could never be reached. Same for `longest`.
+            gate_temps = [per_gate_plan[gate]['temp'] for gate in gates]
+            gate_timers = [per_gate_plan[gate]['timer'] for gate in gates]
 
-            for gate in gates:
-                lowest = min(lowest, per_gate_plan[gate]['temp'])
-                longest = max(longest, per_gate_plan[gate]['timer'])
+            lowest = min(gate_temps) if gate_temps else self.mmu_unit.p.heater_default_dry_temp
+            longest = max(gate_timers) if gate_timers else self.mmu_unit.p.heater_default_dry_time
 
             if not self.has_per_gate_heaters():
                 temp = lowest
