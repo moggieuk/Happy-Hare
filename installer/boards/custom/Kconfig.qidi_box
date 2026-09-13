@@ -69,4 +69,16 @@ if BOARD_TYPE_QIDI_BOX_2_0
   config PIN_EXTRUDER_SENSOR
     default "!THR:PA1"
 
+  # The dryer's AHT sensor is wired to PA8/PC9, which are not an STM32
+  # hardware i2c pair, so the board needs software i2c. The generic default
+  # (hardware i2c2_PB10_PB11) does not exist on this MCU and Klipper refuses
+  # to start with "Unknown i2c_bus".
+  choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
+    default CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
+  endchoice
+  config PIN_ENVIRONMENT_SENSOR_SCL
+    default "PA8"
+  config PIN_ENVIRONMENT_SENSOR_SDA
+    default "PC9"
+
 endif
