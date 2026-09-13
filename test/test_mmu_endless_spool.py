@@ -388,5 +388,54 @@ class TestEndlessSpoolDestinationSelection(EndlessSpoolTestCase):
                          'an unchecked gate should not be presented as a known-good target')
 
 
+class TestGateCheckSubstitutesAnEmptyGate(EndlessSpoolTestCase):
+    """
+    Print start runs MMU_CHECK_GATE before any load. It used to mark a required tool's empty gate
+    EMPTY and then raise, pausing the print - so the on-load remap never got its turn and a correctly
+    configured EndlessSpool group could not help at the one moment users most expect it to.
+
+    is_in_print is forced rather than driving a real print: the raise is guarded on it, and a print
+    needs a homed toolhead and a heated bed the harness has no reason to provide.
+    """
+
+    GROUPS = '1,1,2,2'
+
+    def setUp(self):
+        super().setUp()
+        self.hh.run_gcode('MMU_TEST_CONFIG endless_spool_on_load=1')
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        with self.hh.quiet_sensors():
+            self.fil.remove(0)
+        self.hh.settle()
+
+    def test_gate_check_remaps_instead_of_pausing_the_print(self):
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 1, 'T0 should have been substituted to gate 1')
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
+        self.assertFalse([e for e in self.hh.errors if 'marked EMPTY' in e],
+                         'the print must not be paused when a substitute gate exists')
+
+    def test_the_substitute_gate_is_itself_verified(self):
+        """Remapping to a gate nobody checked would only move the failure later into the print."""
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_AVAILABLE)
+
+    def test_still_pauses_when_the_whole_group_is_empty(self):
+        with self.hh.quiet_sensors():
+            self.fil.remove(1)
+        self.hh.settle()
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertTrue([e for e in self.hh.errors if 'marked EMPTY' in e],
+                        'with no alternative left the print must still be stopped')
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_EMPTY)
+
+    def test_no_substitution_without_a_group_partner(self):
+        self.hh.run_gcode('MMU_ENDLESS_SPOOL GROUPS=1,2,3,4')
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 0, 'must not remap outside the group')
+        self.assertTrue([e for e in self.hh.errors if 'marked EMPTY' in e])
+
+
 if __name__ == '__main__':
     unittest.main()
