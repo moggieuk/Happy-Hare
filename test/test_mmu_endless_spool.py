@@ -33,6 +33,7 @@ from test.hh.filament import TIP_PARKED
 logging.getLogger().setLevel(logging.CRITICAL)
 
 FILAMENT_POS_LOADED = 10
+GATE_UNKNOWN = -1
 GATE_EMPTY = 0
 GATE_AVAILABLE = 1
 TIP_AT_GATE = -40.0
@@ -245,6 +246,146 @@ class TestClogVersusRunout(EndlessSpoolTestCase):
         self.hh.settle()
         self.hh.place_filament(0, position=TIP_AT_GATE)
         self.assertTrue(self.hh.sensor('mmu_entry_0').present)
+
+
+class TestStaleGateStatusOnLoad(EndlessSpoolTestCase):
+    """
+    A gate can be empty in reality while gate_status still says otherwise: nothing corrects
+    status between bootup and a load. The EndlessSpool-on-load trigger needs an exact
+    GATE_EMPTY, so a gate sitting at GATE_UNKNOWN silently disables the whole feature and the
+    load walks into an empty gate - with a correct group, endless_spool_enabled and
+    endless_spool_on_load all in place. Observed on a real machine 2026-09-13.
+
+    The fix refreshes the target gate from its own sensors immediately before the trigger.
+    """
+
+    GROUPS = '1,1,2,2'          # gates 0+1 substitutable, 2+3 a separate group
+
+    def setUp(self):
+        super().setUp()
+        # endless_spool_on_load defaults to 0; the trigger under test is behind it.
+        self.hh.run_gcode('MMU_TEST_CONFIG endless_spool_on_load=1')
+        # Empty gate 0 without letting Happy Hare see it. A sensor event would call
+        # set_gate_status(GATE_EMPTY) and fix the status for us, which is precisely the
+        # correction that does NOT happen when filament is removed while the printer is off
+        # or a gate check leaves the status stale.
+        with self.hh.quiet_sensors():
+            self.fil.remove(0)
+        self.hh.settle()
+        # One call, not two: MMU_GATE_MAP's TEMP defaults to default_extruder_temp rather
+        # than to the gate's current value (mmu_gate_map.py:288), so a later call that omits
+        # TEMP silently resets it and this test would be measuring that instead.
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=%d '
+                          'MATERIAL=PLA TEMP=220 SPOOLID=3 QUIET=1' % GATE_UNKNOWN)
+        self.assertFalse(self.hh.sensor('mmu_entry_0').present,
+                         'precondition: gate 0 is physically empty')
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_UNKNOWN,
+                         'precondition: and Happy Hare has not noticed')
+        self.assertEqual(self.hh.mmu.gate_temperature[0], 220,
+                         'precondition: gate 0 carries its spool temperature')
+
+    def test_load_remaps_away_from_an_unknown_but_empty_gate(self):
+        """The headline: T0 maps to an empty gate, so it should resolve to its group partner."""
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 1)
+        self.assertEqual(self.hh.mmu.gate_selected, 1)
+        self.assertEqual(self.hh.mmu.tool_selected, 0, 'the tool must not change')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+
+    def test_the_corrected_gate_is_marked_empty(self):
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
+
+    def test_gate_metadata_survives_the_correction(self):
+        """
+        Correcting availability must not destroy filament identity. Nothing was ejected from
+        gate 0 - a sensor merely reported the lane empty - so its material, temperature and
+        spool id are still the best record of what belongs there. Losing them makes the next
+        load heat to the fallback temperature instead of the spool's.
+        """
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        self.assertEqual(self.hh.mmu.gate_material[0], 'PLA')
+        self.assertEqual(self.hh.mmu.gate_temperature[0], 220)
+        self.assertEqual(self.hh.mmu.gate_spool_id[0], 3)
+
+    def test_only_the_target_gate_is_revalidated(self):
+        """Loading one tool must not rewrite the status of gates it was not asked about."""
+        before = list(self.hh.mmu.gate_status)
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        after = self.hh.mmu.gate_status
+        for gate in (1, 2, 3):
+            with self.subTest(gate=gate):
+                self.assertEqual(after[gate], before[gate])
+
+
+class TestUnknownGateThatActuallyHasFilament(EndlessSpoolTestCase):
+    """
+    The other half of the same question. GATE_UNKNOWN means "nobody has checked", not "empty",
+    so a gate that turns out to be full must be loaded normally - never remapped away from.
+    """
+
+    GROUPS = '1,1,2,2'
+
+    def setUp(self):
+        super().setUp()
+        self.hh.run_gcode('MMU_TEST_CONFIG endless_spool_on_load=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=%d QUIET=1' % GATE_UNKNOWN)
+        self.assertTrue(self.hh.sensor('mmu_entry_0').present,
+                        'precondition: gate 0 still holds filament')
+
+    def test_a_full_unknown_gate_is_not_remapped(self):
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 0, 'must not remap away from a good gate')
+        self.assertEqual(self.hh.mmu.gate_selected, 0)
+
+
+class TestNoGateSensors(unittest.TestCase):
+    """
+    Machines with no per-gate sensors must be unaffected. check_gate_sensor returns None when
+    a sensor is absent, so neither correction branch fires and status is left exactly as the
+    user set it. 3D Chameleon has no entry or per-gate exit sensors, which is the case to prove.
+
+    This calls validate_gate_status directly rather than driving a toolchange: the point under
+    test is the sensor-absent path itself, and a Chameleon toolchange would drag in rotary
+    selector motion that has nothing to do with it.
+    """
+
+    def setUp(self):
+        self.hh = session('chameleon')
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+
+    def tearDown(self):
+        self.hh.close()
+
+    def test_validation_is_a_no_op_without_sensors(self):
+        maps = self.hh.mmu.gate_maps
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 MATERIAL=PLA TEMP=220 QUIET=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=%d QUIET=1' % GATE_UNKNOWN)
+
+        maps.validate_gate_status([0], clear_attributes=False)
+
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_UNKNOWN)
+        self.assertEqual(self.hh.mmu.gate_material[0], 'PLA')
+        self.assertEqual(self.hh.errors, [])
+
+
+class TestEndlessSpoolDestinationSelection(EndlessSpoolTestCase):
+    """
+    The trigger and the destination test disagree about what GATE_UNKNOWN means: the trigger
+    requires == GATE_EMPTY (strict), while get_next_endless_spool_gate accepts != GATE_EMPTY
+    (lenient). So an unchecked gate cannot trigger a switch but can be chosen as the gate to
+    switch to. Fixing that is a separate change; this records the asymmetry so it self-heals.
+    """
+
+    GROUPS = '1,1,2,2'
+
+    @unittest.expectedFailure
+    def test_an_unknown_gate_is_not_chosen_as_the_destination(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=%d QUIET=1' % GATE_UNKNOWN)
+        next_gate, _ = self.gate_maps.get_next_endless_spool_gate(0, 0)
+        self.assertEqual(next_gate, -1,
+                         'an unchecked gate should not be presented as a known-good target')
 
 
 if __name__ == '__main__':
