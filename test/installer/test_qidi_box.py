@@ -40,9 +40,9 @@ class TestQidiBoxProfile(unittest.TestCase):
             "PARAM_TOOLHEAD_TYPE": "QIDI Q2 Extruder",
             "PARAM_GATE_HOMING_ENDSTOP": "mmu_shared_exit",
             "PARAM_GATE_HOMING_MAX": "1500",
-            "PARAM_GATE_PRELOAD_ENDSTOP": "none",
-            "PARAM_GATE_PRELOAD_HOMING_MAX": "200",
-            "PARAM_GATE_PRELOAD_ATTEMPTS": "1",
+            "PARAM_GATE_PRELOAD_ENDSTOP": "",
+            "PARAM_GATE_PRELOAD_HOMING_MAX": "1500",
+            "PARAM_GATE_PRELOAD_ATTEMPTS": "2",
             "PARAM_GATE_LOAD_ATTEMPTS": "1",
             "PARAM_GATE_PARKING_DISTANCE": "-80",
             "PARAM_GATE_FINAL_EJECT_DISTANCE": "1500",
@@ -136,8 +136,8 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertIn("buffer_maxrange         : 12", hardware)
 
         parameters = self.rendered["config/base/mmu_parameters.cfg"]
-        self.assertIn("gate_preload_endstop          : none", parameters)
-        self.assertIn("gate_preload_homing_max       : 200", parameters)
+        self.assertIn("gate_preload_endstop          : " + chr(9), parameters)
+        self.assertIn("gate_preload_homing_max       : 1500", parameters)
         self.assertIn("sync_feedback_enabled           : 1", parameters)
         self.assertIn("sync_feedback_speed_multiplier  : 5", parameters)
         self.assertIn("gear_load_speed             : 120", parameters)
