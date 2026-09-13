@@ -712,16 +712,18 @@ class MmuStepper(ExtruderStepper):
         # toolhead step generation runs ahead of the print time, and the
         # advanced time cursor breaks drip moves against the manual trapq
         # ("Internal error in stepcompress").
+        #
+        # Only pre-motion_queuing klippys (e.g. Kalico) expose the step
+        # generator API; on newer ones this is a no-op.
+        toolhead = self.printer.lookup_object('toolhead', None)
+        if toolhead is None or not hasattr(toolhead, 'step_generators'):
+            return
         if self.motion_mode == self.MODE_EXTRUDER:
             if not self._step_gen_registered:
-                toolhead = self.printer.lookup_object('toolhead', None)
-                if toolhead is not None and hasattr(toolhead, 'step_generators'):
-                    toolhead.register_step_generator(
-                        self.stepper.generate_steps)
-                    self._step_gen_registered = True
+                toolhead.register_step_generator(self.stepper.generate_steps)
+                self._step_gen_registered = True
         elif self._step_gen_registered:
-            self.printer.lookup_object('toolhead').unregister_step_generator(
-                self.stepper.generate_steps)
+            toolhead.unregister_step_generator(self.stepper.generate_steps)
             self._step_gen_registered = False
 
 
