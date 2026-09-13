@@ -186,6 +186,7 @@ class MmuFanManager:
             if not fan_name:
                 continue
 
+            current_speed = self._get_speed(fan_name, eventtime)
             mode = self._modes[index]
             if mode == FAN_OFF:
                 speed = 0.
@@ -198,12 +199,13 @@ class MmuFanManager:
                 if not temperatures:
                     speed = 0.
                 else:
-                    current_speed = self._get_speed(fan_name, eventtime)
                     temperature = max(temperatures)
                     if current_speed > 0.:
                         speed = 1. if temperature > self._off_temps[index] else 0.
                     else:
                         speed = 1. if temperature >= self._on_temps[index] else 0.
+            if speed == current_speed:
+                continue
             self._set_speed(fan_name, speed)
 
     def _get_temperatures(self, fan_index, eventtime):
@@ -300,7 +302,7 @@ class MmuFanManager:
         fan_obj = self.printer.lookup_object(fan_name, None)
         if fan_obj is None:
             return
-        fan_obj.fan.set_speed_from_command(float(speed))
+        fan_obj.fan.set_speed(float(speed))
 
     def _set_all_speeds(self, speed):
         for fan_name in self.fans:

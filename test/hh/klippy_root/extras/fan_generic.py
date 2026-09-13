@@ -5,11 +5,11 @@ class Fan:
     def __init__(self):
         self.speed = 0.
 
-    def set_speed(self, print_time, value):
+    def set_speed(self, value, print_time=None):
         self.speed = float(value)
 
     def set_speed_from_command(self, value):
-        self.set_speed(None, value)
+        self.set_speed(value)
 
     def get_status(self, eventtime=None):
         return {'speed': self.speed, 'rpm': None}
