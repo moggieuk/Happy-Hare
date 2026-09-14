@@ -275,6 +275,28 @@ class TestLedThemeMakefileSelection(unittest.TestCase):
             self.assertIn("mmu/base/mmu.cfg", line)
             self.assertNotIn("custom_unit0.cfg", line)
 
+    def test_custom_on_an_emu_builds_the_vendor_theme(self):
+        self.assertEqual(
+            self._theme_files(['CONFIG_MMU_TYPE_EMU_1_0=y',
+                               'CONFIG_PARAM_LED_THEME="custom"']),
+            {"led_theme/emu_leds_unit0.cfg"})
+
+    def test_custom_on_an_emu_installs_the_seeded_machine_local_theme(self):
+        self.assertEqual(
+            self._custom_files(['CONFIG_MMU_TYPE_EMU_1_0=y',
+                                'CONFIG_PARAM_LED_THEME="custom"']),
+            {"led_theme/custom_unit0.cfg"})
+
+    def test_a_selection_less_values_file_on_an_emu_builds_the_vendor_theme(self):
+        self.assertEqual(self._theme_files(['CONFIG_MMU_TYPE_EMU_1_0=y']),
+                         {"led_theme/emu_leds_unit0.cfg"})
+
+    def test_an_emu_can_still_pick_the_stock_theme(self):
+        self.assertEqual(
+            self._theme_files(['CONFIG_MMU_TYPE_EMU_1_0=y',
+                               'CONFIG_PARAM_LED_THEME="mmu_leds"']),
+            {"led_theme/mmu_leds_unit0.cfg"})
+
 
 class TestCustomThemeSeeding(unittest.TestCase):
     """build_config_file() seeds mmu/led_theme/custom_<unit>.cfg from the machine's
@@ -326,6 +348,95 @@ class TestCustomThemeSeeding(unittest.TestCase):
         self._build_theme()
         with open(custom) as f:
             self.assertIn("# user-owned", f.read())
+
+    def test_custom_on_an_emu_seeds_from_the_vendor_theme(self):
+        """On an EMU the machine default is the vendor set, so the seed
+        comes from emu_leds.cfg: the seeded gate effects are the static
+        ones, not the stock breathing set."""
+        from installer import build
+        profile = profiles.get("emu")
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV)):
+            kconfig = cfg._kconfig(
+                "custom-theme-seed-emu",
+                dict(profile.syms, PARAM_LED_THEME="custom"))
+        dest = os.path.join(self.root, "mmu", "led_theme", "emu_leds_unit0.cfg")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        extra = {"PARAM_TOTAL_NUM_GATES": kconfig.getint("PARAM_NUM_GATES")}
+        env = dict(cfg._SINGLE_UNIT_ENV, OUT=self.root, F_CFG_UPGRADE_MODE="replace")
+        with cfg._env(env), cfg._chdir(REPO_ROOT):
+            build.build_config_file(
+                "config/led_theme/emu_leds.cfg", dest, kconfig, [], extra)
+
+        custom = os.path.join(self.root, "mmu", "led_theme", "custom_unit0.cfg")
+        self.assertTrue(os.path.exists(custom),
+                        "EMU custom theme was not seeded by the vendor theme's build")
+        theme = ConfigBuilder(custom)
+        self.assertEqual(effect_value(theme, "mmu_leds unit0", "effect_gate_available"),
+                         ("mmu_static_white_dim_unit0", (0.1, 0.1, 0.1), None))
+
+
+class TestLedThemePrune(unittest.TestCase):
+    """The install step's prune_led_themes(): when the menuconfig selection changes,
+    installed shipped-theme files the unit no longer selects are removed. 'custom' and
+    user-maintained theme files are never touched, and a unit without LEDs keeps no
+    shipped theme files at all."""
+
+    SEED = ("mmu_leds_unit0.cfg", "emu_leds_unit0.cfg",
+            "custom_unit0.cfg", "usertheme_unit0.cfg")
+
+    def _run(self, profile_name, overrides):
+        profile = profiles.get(profile_name)
+        env = dict(cfg._SINGLE_UNIT_ENV)
+        with cfg._env(env):
+            kcfg = cfg._kconfig("prune-%s" % profile_name,
+                                dict(profile.syms, **overrides))
+        from installer import build  # after _kconfig: it puts the vendored kconfiglib first
+        tmpdir = tempfile.TemporaryDirectory()
+        try:
+            theme_dir = os.path.join(tmpdir.name, "mmu", "led_theme")
+            os.makedirs(theme_dir)
+            for name in self.SEED:
+                with open(os.path.join(theme_dir, name), "w") as f:
+                    f.write("[mmu_leds unit0]\n")
+            env = dict(cfg._SINGLE_UNIT_ENV, OUT=os.path.join(tmpdir.name, "out"))
+            with cfg._env(env), cfg._chdir(cfg.REPO_ROOT):
+                build.prune_led_themes(tmpdir.name, [kcfg])
+            return {os.path.basename(p) for p in glob.glob(os.path.join(theme_dir, "*.cfg"))}
+        finally:
+            tmpdir.cleanup()
+
+    def test_stock_selection_drops_the_other_shipped_theme(self):
+        self.assertEqual(self._run("boxturtle", {}),
+                         {"mmu_leds_unit0.cfg", "custom_unit0.cfg", "usertheme_unit0.cfg"})
+
+    def test_emu_selection_drops_the_stock_theme(self):
+        self.assertEqual(self._run("boxturtle", {"PARAM_LED_THEME": "emu_leds"}),
+                         {"emu_leds_unit0.cfg", "custom_unit0.cfg", "usertheme_unit0.cfg"})
+
+    def test_custom_selection_drops_all_shipped_themes(self):
+        self.assertEqual(self._run("boxturtle", {"PARAM_LED_THEME": "custom"}),
+                         {"custom_unit0.cfg", "usertheme_unit0.cfg"})
+
+    def test_unit_without_leds_drops_all_shipped_themes(self):
+        self.assertEqual(self._run("3ms", {}),
+                         {"custom_unit0.cfg", "usertheme_unit0.cfg"})
+
+    def test_printer_without_a_theme_dir_is_a_noop(self):
+        profile = profiles.get("boxturtle")
+        env = dict(cfg._SINGLE_UNIT_ENV)
+        with cfg._env(env):
+            kcfg = cfg._kconfig("prune-noop", dict(profile.syms))
+        from installer import build
+        tmpdir = tempfile.TemporaryDirectory()
+        try:
+            home = os.path.join(tmpdir.name, "config")
+            os.makedirs(home)
+            env = dict(cfg._SINGLE_UNIT_ENV, OUT=os.path.join(tmpdir.name, "out"))
+            with cfg._env(env), cfg._chdir(cfg.REPO_ROOT):
+                build.prune_led_themes(home, [kcfg])
+            self.assertFalse(os.path.exists(os.path.join(home, "mmu", "led_theme")))
+        finally:
+            tmpdir.cleanup()
 
 
 if __name__ == "__main__":

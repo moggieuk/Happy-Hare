@@ -189,6 +189,7 @@ if MMU_HAS_LEDS
 
     choice CHOICE_LED_THEME
       prompt "Led theme       "
+      default CHOICE_LED_THEME_EMU if MMU_TYPE_EMU_1_0
       default CHOICE_LED_THEME_STANDARD
       help
         The LED theme is a per-unit file holding the effect_* defaults for
@@ -204,7 +205,7 @@ if MMU_HAS_LEDS
       config CHOICE_LED_THEME_EMU
         bool "EMU"
         help
-          The EMU vendor effect set.
+          The EMU vendor effect set. The default for EMU machines.
 
       config CHOICE_LED_THEME_CUSTOM
         bool "Custom"

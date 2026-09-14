@@ -595,10 +595,11 @@ def build(cfg_file, dest_file, kconfig, input_files):
 # OUT files installed back to live locations
 #
 
-# The machine's default shipped theme. If a further shipped theme appears,
-# teach this function its default condition.
+# The default theme follows the machine type (EMU installs default to the
+# EMU set, see Kconfig.emu). If a third shipped theme appears, teach this
+# function its default condition.
 def _default_theme_name(kcfg):
-    return "mmu_leds"
+    return "emu_leds" if kcfg.is_enabled("MMU_TYPE_EMU_1_0") else "mmu_leds"
 
 
 def _selected_theme(kcfg):

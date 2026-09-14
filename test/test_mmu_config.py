@@ -540,6 +540,8 @@ class TestMultiUnitRender(unittest.TestCase):
             'config/base/mmu_macro_vars.cfg',
             'config/base/mmu_parameters_unit0.cfg',
             'config/base/mmu_parameters_unit1.cfg',
+            'config/led_theme/emu_leds_unit0.cfg',
+            'config/led_theme/emu_leds_unit1.cfg',
             'config/led_theme/mmu_leds_unit0.cfg',
             'config/led_theme/mmu_leds_unit1.cfg',
         ])
