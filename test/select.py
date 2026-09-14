@@ -344,6 +344,7 @@ def _menu(entries, times, local, previous, jobs):
             if not selected:
                 message = 'Nothing selected - tick something, or q to quit.'
                 continue
+            print('Running tests...', flush=True)
             return [module for module, _, _ in entries if module in selected]
 
         head, rest = line[0], line[1:].strip()
