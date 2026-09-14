@@ -259,6 +259,13 @@ class HomingMove:
         _home_wait_all(self.endstops, print_time)
         for sp in self.stepper_positions:
             sp.note_home_end(print_time)
+        if probe_pos:
+            # The trigger position, as real Klipper's probe_pos branch reports
+            # it. The non-probe branch reports the move TARGET instead (its
+            # `trigpos = movepos`), which is what a manual_home without probe_pos
+            # does on Kalico - HH measures distances from trig_pos, so the two
+            # must stay distinct here.
+            return [halt_axis, 0., 0., 0.]
         return movepos
 
     def _resolve(self, model, leaves, delta, sought=True):
@@ -417,11 +424,12 @@ class PrinterHoming:
                     probe_pos, triggered, check_triggered):
         """
         NOTE the `probe_pos` parameter. This is the NEWER Klipper signature - mainline
-        v0.13.0-111 has manual_home(self, toolhead, endstops, pos, speed, triggered,
-        check_triggered) with no probe_pos, while HH passes 7 arguments
-        (extras/mmu_stepper.py:884). So this is a second independent confirmation that
-        Happy Hare targets a bleeding-edge Klipper, alongside its hard requirement on
-        extras/motion_queuing.py (absent from mainline entirely).
+        v0.13.0-111 and forks such as Kalico have manual_home(self, toolhead, endstops,
+        pos, speed, triggered, check_triggered) with no probe_pos and no return value.
+        HH's do_homing_move uses it on Klipper and drives HomingMove directly on
+        Kalico (its manual_home would drop probe_pos and report the move target),
+        so this keeps the Klipper shape. (Mainline also lacks extras/motion_queuing.py,
+        HH's other bleeding-edge dependency.)
         """
         hmove = HomingMove(self.printer, endstops, toolhead)
         try:
@@ -439,8 +447,9 @@ class PrinterHoming:
 
 
 def load_config(config):
-    # Required: HH does lookup_object('homing') (extras/mmu_stepper.py:883), and the
-    # object only exists because ToolHead preloads this module by name. Without a
-    # load_config here, load_object returns its default and the lookup fails with
+    # Required: the harness and tests (e.g. the Kalico manual_home signature test
+    # in test_mmu_motion.py) do lookup_object('homing'), and the object only exists
+    # because ToolHead preloads this module by name. Without a load_config here,
+    # load_object returns its default and the lookup fails with
     # "Unknown config object 'homing'".
     return PrinterHoming(config)

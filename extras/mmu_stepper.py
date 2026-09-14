@@ -48,6 +48,7 @@ import logging, collections, math
 from kinematics.extruder import ExtruderStepper, PrinterExtruder
 from .                   import force_move
 from .homing             import HomingMove
+from .mmu.mmu_utils      import is_kalico
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -880,8 +881,19 @@ class MmuStepper(ExtruderStepper):
 
         endstops = self.rail.get_homing_endstops(endstop_name)
 
-        phoming = self.printer.lookup_object('homing')
-        trigpos = phoming.manual_home(self, endstops, pos, speed, probe_pos, triggered, check_trigger)
+        if is_kalico(self.printer):
+            # Kalico's manual_home predates the probe_pos argument and returns
+            # no trigger position - going through it would report the move
+            # target as the position. Drive HomingMove directly instead, the
+            # approach the verified v3 code used on Kalico.
+            hmove = HomingMove(self.printer, endstops, self)
+            trigpos = hmove.homing_move(pos, speed, probe_pos=probe_pos,
+                                        triggered=triggered,
+                                        check_triggered=check_trigger)
+        else:
+            phoming = self.printer.lookup_object('homing')
+            trigpos = phoming.manual_home(self, endstops, pos, speed, probe_pos,
+                                          triggered, check_trigger)
         self.sync_print_time()
         haltpos = self.get_position()
 

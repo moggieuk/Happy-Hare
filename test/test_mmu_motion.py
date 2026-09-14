@@ -429,6 +429,61 @@ class TestLoadGate(MotionTestCase):
             self.hh.mmu._load_gate()
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
 
+    def test_kalico_homing_drives_homing_move_directly(self):
+        """
+        Kalico's manual_home predates the probe_pos argument and returns no
+        trigger position: going through it, homing_move runs with probe_pos=False
+        and reports the move TARGET as the position - a bowden calibration on
+        Kalico measured the 2000mm homing max instead of the ~1200mm tube length.
+        do_homing_move therefore drives HomingMove directly on Kalico (the
+        approach the verified v3 code used there), passing probe_pos through, and
+        never calls manual_home. On Klipper it keeps using manual_home, which has
+        the probe_pos parameter.
+
+        Simulate Kalico by registering a 'danger_options' object (Kalico's marker
+        module) so is_kalico() reports True, record any manual_home call (there
+        must be none), and assert the move goes through HomingMove.homing_move
+        with probe_pos. ('danger_options' is left registered: session-scoped, the
+        harness has no removal API, and nothing else in a session consults it.)
+        """
+        # Local import: the fake klippy tree (and hence `extras`) only exists on
+        # sys.path once the session in setUp has installed the overlay.
+        from extras.homing import HomingMove
+        printer = self.hh.printer
+        homing = printer.lookup_object('homing')
+        manual_home_calls = []
+        original_manual_home = homing.manual_home
+        homing.manual_home = lambda *args: manual_home_calls.append(args)
+
+        moves = []
+        original_homing_move = HomingMove.homing_move
+
+        def recording_homing_move(self, movepos, speed, probe_pos=False,
+                                  triggered=True, check_triggered=True):
+            moves.append((probe_pos, triggered, check_triggered))
+            return original_homing_move(self, movepos, speed, probe_pos=probe_pos,
+                                        triggered=triggered,
+                                        check_triggered=check_triggered)
+
+        printer.add_object('danger_options', object())
+        try:
+            HomingMove.homing_move = recording_homing_move
+            overshoot = self.hh.mmu._load_gate()
+        finally:
+            HomingMove.homing_move = original_homing_move
+            homing.manual_home = original_manual_home
+
+        self.assertEqual(manual_home_calls, [],
+                         'do_homing_move must not use manual_home on Kalico')
+        self.assertEqual(len(moves), 1)
+        probe_pos, triggered, check_triggered = moves[0]
+        self.assertTrue(probe_pos,
+                        'Kalico homing must pass probe_pos through, or the move '
+                        'target is reported as the trigger position')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_HOMED_GATE)
+        self.assertEqual(overshoot, 0.0)
+        self.assertEqual(self.hh.errors, [])
+
 
 class TestCheckGate(MotionTestCase):
 

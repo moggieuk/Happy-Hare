@@ -65,7 +65,7 @@ usage() {
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
     echo "  -r allow running ${SCRIPT_NAME} from a root login (not through sudo)"
     echo "  -e, --emu Enables multi MCU support (e.g. for EMU design)"
-    echo "  -o override compatibility checks (e.g. Kalico detection)"
+    echo "  -o override compatibility checks (e.g. unknown MIPS layout)"
     echo "  -t  activate test mode - write config to /tmp/mmu_test instead of your real install"
     echo "  (-q verbose make for debugging)"
     echo "  (-v verbose builder for debugging)"
@@ -370,7 +370,6 @@ offer_v3_v4_choice() {
     echo "   deleted), old includes are removed from printer.cfg and moonraker.conf, and"
     echo "   you're walked through a FRESH v4 setup via menuconfig. Nothing from mmu.V3"
     echo "   is carried over automatically - it's there for you to copy values back out of."
-    echo "   ${C_WARNING}NOTE: DOES NOT YET WORK ON KALICO - stay on v3 for now${C_OFF}"
     echo
     echo "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4/"
     echo "${C_WARNING}------------------------------------------------------------------------${C_OFF}"
@@ -508,6 +507,21 @@ detect_platform() {
     fi
 
     export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
+}
+
+# Kalico identifies itself with APP_NAME = "Kalico" in klippy/__init__.py.
+# Support for it is not guaranteed - the install warns, but never aborts.
+check_kalico() {
+    if [ -d "${CONFIG_KLIPPER_HOME:-}" ]; then
+        kalico="${CONFIG_KLIPPER_HOME}/klippy/__init__.py"
+    else
+        kalico="${HOME}/klipper/klippy/__init__.py"
+    fi
+
+    if [ -f "${kalico}" ] \
+        && grep -q '^APP_NAME[[:space:]]*=[[:space:]]*"Kalico"' "${kalico}" 2>/dev/null; then
+        echo "${C_ERROR}Kalico detected: Happy Hare support for Kalico is not guaranteed.${C_OFF}" >&2
+    fi
 }
 
 enforce_root_policy() {
@@ -799,24 +813,7 @@ fi
 ##### Compatibility checks #####
 ################################
 
-# Check Kalico is installed (klippy/__init__.py contains APP_NAME = "Kalico")
-if [ -d "${CONFIG_KLIPPER_HOME}" ]; then
-  kalico="${CONFIG_KLIPPER_HOME}/klippy/__init__.py"
-else
-  kalico="${HOME}/klipper/klippy/__init__.py"
-fi
-
-if [ -f "${kalico}" ]; then
-    if grep -q '^APP_NAME[[:space:]]*=[[:space:]]*"Kalico"' \
-        "${kalico}" 2>/dev/null; then
-        if [ "${F_OVERRIDE_CHECKS}" = "y" ]; then
-            echo "${C_WARNING}WARNING: Kalico detected. Happy-Hare is not currently compatible with Kalico until Klipper motion-subsystem enhancements have been ported. Proceeding at your own risk.${C_OFF}" >&2
-        else
-            echo "${C_ERROR}ERROR: Kalico detected. Happy-Hare is not currently compatible with Kalico until Klipper motion-subsystem enhancements have been ported.${C_OFF}" >&2
-            exit 1
-        fi
-    fi
-fi
+check_kalico
 
 if [ -n "${CONFIG_KLIPPER_CONFIG_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
     echo "${C_ERROR}Klipper config directory not found: ${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
