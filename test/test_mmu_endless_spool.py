@@ -36,6 +36,7 @@ FILAMENT_POS_LOADED = 10
 GATE_UNKNOWN = -1
 GATE_EMPTY = 0
 GATE_AVAILABLE = 1
+GATE_AVAILABLE_FROM_BUFFER = 2
 TIP_AT_GATE = -40.0
 
 
@@ -435,6 +436,37 @@ class TestGateCheckSubstitutesAnEmptyGate(EndlessSpoolTestCase):
         self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
         self.assertEqual(self.gate_maps.ttg_map[0], 0, 'must not remap outside the group')
         self.assertTrue([e for e in self.hh.errors if 'marked EMPTY' in e])
+
+
+class TestBufferedStatusSurvivesTheRefresh(EndlessSpoolTestCase):
+    """
+    The pre-load refresh now runs before every tool load, so anything it discards is discarded
+    every time. A gate parked with filament still covering its exit sensor keeps
+    GATE_AVAILABLE_FROM_BUFFER, and that status is what selects gear_from_filament_buffer_speed and
+    _accel for the load. The exit sensor proves filament is present, not where it came from, so
+    confirming presence must not downgrade a buffered gate to plain GATE_AVAILABLE.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Park gate 0's filament forward, still covering its exit sensor - the configuration this
+        # affects. place_filament is quiet, so no insert event rewrites the status underneath us.
+        self.hh.place_filament(0, position=self.fil.position('mmu_exit_0') + 5.0)
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=%d QUIET=1' % GATE_AVAILABLE_FROM_BUFFER)
+        self.assertTrue(self.hh.sensor('mmu_exit_0').present,
+                        'precondition: the exit sensor is covered')
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE_FROM_BUFFER,
+                         'precondition: the gate is marked as buffered')
+
+    def test_the_refresh_preserves_buffered_availability(self):
+        self.gate_maps.validate_gate_status([0], clear_attributes=False)
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE_FROM_BUFFER)
+
+    def test_an_unknown_gate_still_becomes_available(self):
+        """The upgrade direction must keep working - max() must not freeze a stale lower status."""
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=%d QUIET=1' % GATE_UNKNOWN)
+        self.gate_maps.validate_gate_status([0], clear_attributes=False)
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
 
 
 class TestGateCheckParkingFailureIsNotAnEmptyGate(EndlessSpoolTestCase):
