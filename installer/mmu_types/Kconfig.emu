@@ -73,6 +73,10 @@ if MMU_TYPE_EMU_1_0
     default CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU if FAN_HAS_MCU_TEMPERATURE
   endchoice
 
+  choice CHOICE_LED_THEME
+    default CHOICE_LED_THEME_EMU
+  endchoice
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif

@@ -205,7 +205,7 @@ if MMU_HAS_LEDS
       config CHOICE_LED_THEME_EMU
         bool "EMU"
         help
-          The EMU vendor effect set.
+          The EMU vendor effect set. The default for EMU machines.
 
       config CHOICE_LED_THEME_CUSTOM
         bool "Custom"
