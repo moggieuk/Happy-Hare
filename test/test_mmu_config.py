@@ -256,7 +256,7 @@ class TestHardwareConfigurationWarnings(unittest.TestCase):
             return cfg._kconfig(name, syms)
 
     def test_missing_shared_heater_name_is_warned(self):
-        syms = dict(profiles.get('qidi').syms)
+        syms = dict(profiles.get('qidi').syms, PARAM_FILAMENT_HEATER='')
         self.assertTrue(self._kconfig('missing_heater_name', syms).is_enabled('W13'))
 
         syms['PARAM_FILAMENT_HEATER'] = 'qidi_heater'
