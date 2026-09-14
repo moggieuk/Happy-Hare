@@ -2553,6 +2553,21 @@ class MmuController(MmuFilamentMovement):
 
 
     @contextlib.contextmanager
+    def wrap_suspend_calibration_events(self):
+        # Calibration can select other gates/units. Suppress edges on every sensor
+        # before they queue a callback, while retaining readings and button feedback.
+        helpers = {sensor.runout_helper for sensor in self.sensor_manager.all_sensors_map.values()}
+        for helper in helpers:
+            helper.suspend_events(True)
+        try:
+            with self.wrap_suspend_filament_monitoring():
+                yield self
+        finally:
+            for helper in helpers:
+                helper.suspend_events(False)
+
+
+    @contextlib.contextmanager
     def wrap_suspend_insert_events(self):
         """
         Suspend the selected gate's insert/remove events for the duration of an operation
