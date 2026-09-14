@@ -33,6 +33,16 @@ class DummyKinematics:
                 'axis_maximum': (200., 200., 200., 0.)}
 
 
+def _register_step_generator(self, handler):
+    self.step_generators.append(handler)
+
+
+def _unregister_step_generator(self, handler):
+    # Mirrors the old toolhead (kalico/klippy/toolhead.py:817-819)
+    if handler in self.step_generators:
+        self.step_generators.remove(handler)
+
+
 class ToolHead:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -45,7 +55,18 @@ class ToolHead:
         self.extra_axes = []
         self.extruder = None
         self.kin = DummyKinematics()
-        self.step_generators = []
+        # The pre-motion_queuing generation (real old Klipper / Kalico)
+        # exposes the step-generator list on the toolhead; newer generations
+        # have no such API at all. MmuStepper selects on exactly that
+        # capability, so the fake must mirror each generation.
+        if 'motion_queuing' in getattr(self.printer, 'harness_missing_modules', ()):
+            self.step_generators = []
+            # Per-instance so that the new-generation toolhead exposes none
+            # of this API at all, exactly like the real one.
+            self.register_step_generator = _register_step_generator.__get__(
+                self, ToolHead)
+            self.unregister_step_generator = _unregister_step_generator.__get__(
+                self, ToolHead)
         self.lookahead_callbacks = []
         # -- assertion surfaces -------------------------------------------
         self.moves = []             # [(newpos, speed)] every commanded move
@@ -78,9 +99,6 @@ class ToolHead:
         # straight through, which is what the callers here expect to observe.
         self.lookahead_callbacks.append(callback)
         callback(self._print_time())
-
-    def register_step_generator(self, handler):
-        self.step_generators.append(handler)
 
     def note_step_generation_scan_time(self, delay, old_delay=0.):
         pass

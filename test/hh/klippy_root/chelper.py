@@ -16,6 +16,11 @@
 def get_ffi():
     raise AssertionError(
         "chelper.get_ffi() was called, but the test harness has no C helper.\n"
-        "As of this writing the only `import chelper` in Happy Hare is the unused "
-        "one at extras/mmu/unit/mmu_drive.py:20. If real step generation is now "
-        "needed, that belongs in the real-Klipper tier - see the harness plan.")
+        "The mainline-Klipper code paths never need one: extras/mmu/unit/"
+        "mmu_drive.py:20 imports chelper and never references it, and "
+        "extras/mmu_stepper.py only reaches for it inside "
+        "MotionQueuingEmulator, which the pre-motion_queuing-generation "
+        "sessions (Session(kalico=True) / old_klipper=True) stand in for "
+        "with a pure-Python ffi (test/hh/bootstrap.py). If a MAINLINE path "
+        "now needs the iterative solver, that belongs in the real-Klipper "
+        "tier - see the harness plan.")

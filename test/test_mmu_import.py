@@ -126,6 +126,32 @@ class TestHappyHareImports(unittest.TestCase):
         self.assertTrue(hasattr(endstop, 'MmuNfcEndstop'))
         self.assertTrue(hasattr(tag_parser, 'parse_tag'))
 
+    def test_extras_subpackages_are_regular_packages(self):
+        """
+        Every directory beneath extras/ must be a regular package (have an
+        __init__.py), not a namespace package: Klipper forks that rewrite
+        imports into a `klippy` package (Kalico's klippy/compat.py
+        KlippyPathFinder) call spec.loader.exec_module(), and a namespace
+        package spec has no loader - plugin loading dies at startup with
+        "'NoneType' object has no attribute 'exec_module'". The top-level
+        extras/ itself stays a namespace portion: the platform ships its own
+        extras/__init__.py, and HH must not shadow it.
+        """
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        extras = os.path.join(repo, 'extras')
+        self.assertFalse(
+            os.path.isfile(os.path.join(extras, '__init__.py')),
+            'extras/__init__.py belongs to the platform - HH must not ship one')
+        for dirpath, dirnames, _filenames in os.walk(extras):
+            dirnames[:] = [d for d in dirnames if d != '__pycache__']
+            if dirpath == extras:
+                continue
+            rel = os.path.relpath(dirpath, repo)
+            self.assertTrue(
+                os.path.isfile(os.path.join(dirpath, '__init__.py')),
+                '%s is a namespace package - Klipper forks (e.g. Kalico) '
+                'cannot import it' % rel)
+
     def test_mcu_endstop_is_the_isinstance_anchor(self):
         """
         Two HH sites gate on isinstance(x, mcu.MCU_endstop), and at
