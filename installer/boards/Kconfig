@@ -54,4 +54,19 @@ choice BOARD_TYPE
     endif
   endif
 
+  config BOARD_TYPE_MANUAL
+    bool "Shared / externally configured MCU"
+    help
+      Share an existing MCU or configure MCUs yourself.
+      Skips MCU definitions, connections and CPU temperature sensors,
+      including gate and buffer MCUs. No board pin defaults are supplied.
+      Define required [mcu] sections elsewhere in your Klipper config.
+      Set pins in Advanced Settings or edit mmu_hardware.cfg.
+      Prefix pins with the existing MCU name (for example mcu:PA1).
+
+  if BOARD_TYPE_MANUAL
+    config PARAM_BOARD_TYPE
+      default "Shared / externally configured"
+  endif
+
 endchoice

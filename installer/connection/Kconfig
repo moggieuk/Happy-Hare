@@ -1,15 +1,19 @@
 # Module sets the serial or CANbus connection tokens to MMU
 # and optionally sync-feedback buffer
 
-menu "MCU connection"
-  help
-    Configure MMU controller communication settings using serial USB and CANbus.
+if !BOARD_TYPE_MANUAL
 
-  rsource "Kconfig.mmu_mcu"
-endmenu
+  menu "MCU connection"
+    help
+      Configure MMU controller communication settings using serial USB and CANbus.
 
-if MMU_HAS_BUFFER_MCU
-  menu "Buffer MCU connection"
-    rsource "Kconfig.buffer_mcu"
+    rsource "Kconfig.mmu_mcu"
   endmenu
+
+  if MMU_HAS_BUFFER_MCU
+    menu "Buffer MCU connection"
+      rsource "Kconfig.buffer_mcu"
+    endmenu
+  endif
+
 endif

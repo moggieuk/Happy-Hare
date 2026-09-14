@@ -29,7 +29,7 @@ config SW4
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=21@
+  @repeat var=i min=1 max=25@
     default y if W$(i)
   @endrepeat@
 
@@ -37,7 +37,7 @@ config W1
     def_bool y if MMU_CUSTOM
 
 config W2
-    def_bool y if BOARD_TYPE_OTHER
+    def_bool y if BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
 
 config W3
     def_bool y if CHOICE_TOOLHEAD_TYPE_OTHER
@@ -127,40 +127,70 @@ config W21
     def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && PARAM_NUM_GATES > $(i) && ((!CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_GATE_$(i)) || (CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_$(i) != "")) && (!PARAM_HEATER_FAN_GATE_$(i) || PIN_HEATER_FAN_$(i) = "")
 @endrepeat@
 
+# Step/direction are required; enable and diagnostic pins may be unused.
+# UART is required only when a driver section is generated.
+config W22
+    def_bool y if PIN_GEAR_STEP = "" || PIN_GEAR_DIR = ""
 
+config W23
+    def_bool y if PARAM_GEAR_TMC != "" && PIN_GEAR_UART = ""
+
+# Only check additional motors that are present in the rendered configuration.
+@repeat var=i min=1 max=11@
+config W22
+    def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && (PIN_GEAR_STEP_$(i) = "" || PIN_GEAR_DIR_$(i) = "")
+
+config W23
+    def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && PARAM_GEAR_TMC != "" && PIN_GEAR_UART_$(i) = ""
+@endrepeat@
+
+config W24
+    def_bool y if MMU_HAS_SELECTOR_STEPPER && (PIN_SELECTOR_STEP = "" || PIN_SELECTOR_DIR = "")
+
+config W25
+    def_bool y if MMU_HAS_SELECTOR_STEPPER && PARAM_SELECTOR_TMC != "" && PIN_SELECTOR_UART = ""
+
+
+# -------------------------------------
+# Warning messages
+# -------------------------------------
 
 if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
   comment "_"
   comment "_Config Warnings / Errors"
 
   if SHOW_SHARED_WARNINGS
-    comment "Caution: You opted to not install client macros [Software Options]"  if SW1
-    comment "Toolhead sensor is enabled but no MCU pin defined"                   if SW2
-    comment "Extruder sensor is enabled but no MCU pin defined"                   if SW3
-    comment "Blobifier bucket switch is enabled but no valid MCU pin is defined"  if SW4
+    comment "Caution: You opted to not install client macros [Software Options]"               if SW1
+    comment "Toolhead sensor is enabled but no MCU pin defined"                                if SW2
+    comment "Extruder sensor is enabled but no MCU pin defined"                                if SW3
+    comment "Blobifier bucket switch is enabled but no valid MCU pin is defined"               if SW4
   endif
 
   if SHOW_PER_UNIT_WARNINGS
-    comment "Custom MMU selected. You will need to carefully check configuration" if W1
-    comment "Unknown MCU board selected. You will need to configure all pins"     if W2
-    comment "Toolhead type is 'other'. Are you sure yours is not listed?"         if W3
-    comment "No gate homing endstop configured"                                   if W4
-    comment "Parking must be a retraction (<=0) unless gate endstop is mmu_exit"  if W5
-    comment "Leds are enabled but no MCU pin defined"                             if W6
-    comment "Managed fans are enabled but no MCU pin defined"                     if W7
-    comment "Encoder is enabled but no MCU pin defined"                           if W8
-    comment "Shared exit sensor is enabled but no MCU pin defined"                if W9
-    comment "Buffer tension switch is enabled but no MCU pin defined"             if W10
-    comment "Buffer compression switch is enabled but no MCU pin defined"         if W11
-    comment "Buffer proportional feedback enabled but no analog MCU pin defined"  if W12
-    comment "MMU heater is enabled but heater name(s) not defined"                if W13
-    comment "MMU environment sensor is enabled but sensor name(s) not defined"    if W14
-    comment "Sync-feedback buffer configured but it had no sensors defined"       if W15
-    comment "Sync-feedback buffer configured with both analog and digital inputs" if W16
+    comment "Custom MMU selected. You will need to carefully check configuration"              if W1
+    comment "Unknown/manual MCU board selected. You will need to configure all pins"           if W2
+    comment "Toolhead type is 'other'. Are you sure yours is not listed?"                      if W3
+    comment "No gate homing endstop configured"                                                if W4
+    comment "Parking must be a retraction (<=0) unless gate endstop is mmu_exit"               if W5
+    comment "Leds are enabled but no MCU pin defined"                                          if W6
+    comment "Managed fans are enabled but no MCU pin defined"                                  if W7
+    comment "Encoder is enabled but no MCU pin defined"                                        if W8
+    comment "Shared exit sensor is enabled but no MCU pin defined"                             if W9
+    comment "Buffer tension switch is enabled but no MCU pin defined"                          if W10
+    comment "Buffer compression switch is enabled but no MCU pin defined"                      if W11
+    comment "Buffer proportional feedback enabled but no analog MCU pin defined"               if W12
+    comment "MMU heater is enabled but heater name(s) not defined"                             if W13
+    comment "MMU environment sensor is enabled but sensor name(s) not defined"                 if W14
+    comment "Sync-feedback buffer configured but it had no sensors defined"                    if W15
+    comment "Sync-feedback buffer configured with both analog and digital inputs"              if W16
     comment "NFC neighbor eviction jog must be backward (<=0) unless gate endstop is mmu_exit" if W17
     comment "NFC gate clear jog must be backward (<=0) unless gate endstop is mmu_exit"        if W18
     comment "NFC preload clear jog must be backward (<=0) unless preload endstop is mmu_exit"  if W19
     comment "Servo gate angle count must match the number of gates"                            if W20
     comment "MMU heater is configured without a fixed heater fan"                              if W21
+    comment "Gear motor(s) missing step or direction pins [Pins / TMC]"                        if W22
+    comment "Gear TMC driver(s) missing UART pins [Pins / TMC]"                                if W23
+    comment "Selector stepper missing step or direction pins [Pins / TMC]"                     if W24
+    comment "Selector TMC driver missing UART pin [Pins / TMC]"                                if W25
   endif
 endif
