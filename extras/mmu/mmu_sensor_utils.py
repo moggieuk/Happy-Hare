@@ -126,6 +126,7 @@ class MmuRunoutHelper:
         self.runout_suspended = False
         self.button_handler_suspended = False
         self.events_suspended = False
+        self._events_suspend_depth = 0
         self._events_suspended_from = None
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -195,7 +196,7 @@ class MmuRunoutHelper:
             return
 
         # Don't handle too early or if disabled
-        if eventtime >= self.min_event_systime and self.sensor_enabled:
+        if not self.events_suspended and eventtime >= self.min_event_systime and self.sensor_enabled:
             self._process_state_change(eventtime, is_filament_present)
 
 
@@ -263,12 +264,16 @@ class MmuRunoutHelper:
         gates the sync-feedback callback, not these gcode events.
         """
         if suspend:
+            self._events_suspend_depth += 1
             if not self.events_suspended:
                 self.events_suspended = True
                 self._events_suspended_from = self.min_event_systime # Save once, so nesting is safe
             self.min_event_systime = self.reactor.NEVER
 
         elif self.events_suspended:
+            self._events_suspend_depth -= 1
+            if self._events_suspend_depth:
+                return
             self.events_suspended = False
             # NEVER means a handler was in flight when we suspended. Restoring it would
             # silence the sensor for the rest of the session, so re-open the gate instead

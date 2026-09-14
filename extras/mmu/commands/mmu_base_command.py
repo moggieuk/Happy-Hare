@@ -62,6 +62,13 @@ class BaseCommand:
         value from the handler aborts the iteration over the remaining units (used to
         stop multi-unit operations after an error has been handled)
         """
+        if name.upper().startswith("MMU_CALIBRATE_"):
+            calibration_handler = handler
+
+            def handler(*args):
+                with self.mmu.wrap_suspend_calibration_events():
+                    return calibration_handler(*args)
+
         def wrapped(gcmd):
             mmu = self.mmu
 
