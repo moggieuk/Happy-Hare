@@ -708,17 +708,20 @@ class MmuStepper(ExtruderStepper):
 
 
     def _sync_step_generator(self):
-        # A stepper in manual mode must not be stepped by the toolhead:
+        # A standalone manual stepper must not be stepped by the toolhead:
         # toolhead step generation runs ahead of the print time, and the
         # advanced time cursor breaks drip moves against the manual trapq
         # ("Internal error in stepcompress").
+        # Extruder-mode steppers and manual steppers registered as G-code
+        # axes must instead be stepped by the toolhead.
         #
         # Only pre-motion_queuing klippys (e.g. Kalico) expose the step
         # generator API; on newer ones this is a no-op.
         toolhead = self.printer.lookup_object('toolhead', None)
         if toolhead is None or not hasattr(toolhead, 'step_generators'):
             return
-        if self.motion_mode == self.MODE_EXTRUDER:
+        if (self.motion_mode == self.MODE_EXTRUDER
+                or self.axis_gcode_id is not None):
             if not self._step_gen_registered:
                 toolhead.register_step_generator(self.stepper.generate_steps)
                 self._step_gen_registered = True
@@ -1082,6 +1085,7 @@ class MmuStepper(ExtruderStepper):
             # Unregister
             toolhead.remove_extra_axis(self)
             self.axis_gcode_id = None
+            self._sync_step_generator()
             return
         if (len(gcode_axis) != 1 or not gcode_axis.isupper()
             or gcode_axis in "XYZEFN"):
@@ -1097,6 +1101,7 @@ class MmuStepper(ExtruderStepper):
         self.gaxis_limit_velocity = limit_velocity
         self.gaxis_limit_accel = limit_accel
         toolhead.add_extra_axis(self, self.commanded_pos)
+        self._sync_step_generator()
 
 
     def process_move(self, print_time, move, ea_index):

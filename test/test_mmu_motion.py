@@ -988,6 +988,35 @@ def _assert_step_generator_tracking(testcase):
     testcase.assertEqual(testcase.hh.errors, [])
 
 
+def _assert_gcode_axis_step_generator_tracking(testcase):
+    # A manual stepper assigned as a G-code axis must be stepped by the
+    # toolhead exactly like an extruder-mode one: the old-generation
+    # manual_stepper.command_with_gcode_axis registers the step generator
+    # when it assigns the axis and unregisters it when it removes the axis.
+    # Without that, a G1 move on the assigned axis queues movement and
+    # updates the software position without generating a single motor step.
+    toolhead = testcase.hh.printer.lookup_object('toolhead')
+    testcase.assertTrue(hasattr(toolhead, 'step_generators'),
+                        'this generation\'s toolhead must expose step generators')
+    unit = testcase.hh.mmu.mmu_unit(0)
+    gear = next(d.mmu_gear_stepper for d in unit.drives
+                if d.mmu_gear_stepper is not None)
+    handler = gear.stepper.generate_steps
+    stepper = gear.full_name.split()[-1]
+    testcase.assertNotIn(handler, toolhead.step_generators,
+                         'a standalone manual stepper must not be stepped by the toolhead')
+    testcase.hh.run_gcode('MMU_STEPPER STEPPER=%s GCODE_AXIS=A' % stepper)
+    testcase.assertEqual(toolhead.step_generators.count(handler), 1,
+                         'assigning the axis must register the step generator exactly once')
+    testcase.hh.run_gcode('MMU_STEPPER STEPPER=%s GCODE_AXIS=' % stepper)
+    testcase.assertNotIn(handler, toolhead.step_generators,
+                         'removing the axis must unregister the step generator')
+    testcase.hh.run_gcode('MMU_STEPPER STEPPER=%s GCODE_AXIS=A' % stepper)
+    testcase.assertEqual(toolhead.step_generators.count(handler), 1,
+                         'reassigning must register exactly once, not stack a second entry')
+    testcase.assertEqual(testcase.hh.errors, [])
+
+
 class TestKalico(MotionTestCase):
     """
     Kalico-generation session: is_kalico() is True from config load (the
@@ -1065,6 +1094,19 @@ class TestKalico(MotionTestCase):
         """
         _assert_step_generator_tracking(self)
 
+    def test_gcode_axis_assignment_restores_step_generator(self):
+        """
+        The inverse of the stepcompress bug: a manual stepper assigned a
+        G-code axis (MMU_STEPPER ... GCODE_AXIS=A) is planned by the
+        toolhead, so on the pre-motion_queuing generation its step
+        generator must be registered again - exactly what Kalico's own
+        manual_stepper.command_with_gcode_axis does. Unregistered, a G1
+        move on axis A would queue and advance the software position
+        without any motor steps. The fake toolhead does not generate
+        physical steps, so only the registration list can catch this.
+        """
+        _assert_gcode_axis_step_generator_tracking(self)
+
 
 class TestOldKlipper(MotionTestCase):
     """
@@ -1101,6 +1143,9 @@ class TestOldKlipper(MotionTestCase):
 
     def test_manual_mode_steppers_off_toolhead_step_generators(self):
         _assert_step_generator_tracking(self)
+
+    def test_gcode_axis_assignment_restores_step_generator(self):
+        _assert_gcode_axis_step_generator_tracking(self)
 
 
 if __name__ == '__main__':
