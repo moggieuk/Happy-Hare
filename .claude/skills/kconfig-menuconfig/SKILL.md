@@ -146,6 +146,8 @@ installer/
                           # fans, leds, encoder, espooler, nfc_reader, ...
                           # Convention: "# Sets/Defines parameter tokens:" header
   mmu_types/ (+ starters/)  # rsource "Kconfig.*" — one file per machine type
+                            # (each inlines Kconfig.mmu_additions; see the
+                            #  cross-file section below)
   boards/ (+ custom/, per_gate/)  # MCU/board selection; pin defaults
   connection/           # MCU serial/CAN auto-discovery ($(shell) heavy)
   servos/  sensors/  toolheads/  macro_vars/
@@ -232,31 +234,65 @@ feeding promptless `MMU_HAS_*` defaults at `Kconfig:~203`).
    are marked `# Happy Hare:` inline; if you re-sync upstream, that grep is
    your change list.
 
-## Board-specific defaults (cross-file)
+## Machine- and board-specific defaults (cross-file)
 
-Boards get their own pin/bus defaults by re-declaring the same `config` in
-`boards/Kconfig.<board>` with just an added `default` — no prompt, no
-repeated help. The nodes merge into one Symbol (upstream Kconfig: same-name
+**Machine- and board-specific defaults MUST live in the matching machine type's `mmu_types/Kconfig.<mmu>` file (inside its `if MMU_TYPE_X` block, or as `BOARD_TYPE` choice default) or the matching board's `boards/Kconfig.<board>` file — never in a feature `Kconfig.<topic>`.** A feature file stays machine- and board-agnostic; a `default ... if MMU_TYPE_X` / `if BOARD_TYPE_X` line in a feature file is a rule violation even when it happens to work (earliest-default-wins, below).
+
+Machines and boards get their own defaults by re-declaring the same `config` in
+`mmu_types/Kconfig.<mmu>` (inside the `if MMU_TYPE_X` block — no `if` on the
+default needed) or `boards/Kconfig.<board>` with just an added `default` —
+no prompt, no repeated help. The nodes merge into one Symbol (upstream Kconfig: same-name
 `config` definitions merge; prompts add, defaults add). Gotchas, all bitten
 in this repo:
 
-- **A default's condition is evaluated exactly as written.** The parser
-  stores only the explicit `default <val> if <cond>` condition
-  (kconfiglib.py:3608-3610); the node's *enclosing* `if`/`depends` block is
-  NOT auto-ANDed in. Write `default "i2c3_PC0_PC1" if BOARD_TYPE_MMB_2_0`
-  even inside an `if BOARD_TYPE_MMB_2_0` block.
+- **A default's condition is evaluated as an expression against the
+  current values of the symbols it references.** The parser stores the
+  explicit `default <val> if <cond>` condition (kconfiglib.py:3608-3610);
+  `_propagate_deps` (kconfiglib.py:4166) then ANDs in the node's own
+  `depends on` and every enclosing `if`/`menu` dependency — so a plain
+  `default <val>` inside an `if BOARD_TYPE_X` block is correctly scoped
+  with no repeated condition (this is how all board/machine files are
+  written). What surprises people is the *evaluation*: conditions are
+  checked against the symbols' computed values, and for a promptless
+  (invisible) symbol the user value is discarded (pitfall 2) — so a
+  condition can silently fail to match for a reason that has nothing to
+  do with scoping.
 - **The earliest-parsed default wins** for strings (`_node_ordered_string_default()`,
   kconfiglib.py:~5613 — also used by the *value-computation* path at :~5010,
   so it decides both the computed value and the min-config write). `boards/Kconfig`
-  is sourced at Kconfig:277, *before* `Kconfig.mmu_additions` (:279), so a
-  satisfied board default beats a feature file's later `default ""`.
-- **`choice` members cannot come from another file.** A board file may steer
-  an *existing* choice with `default <CHOICE_MEMBER> if <cond>` only; the
-  members themselves must be declared inside the `choice ... endchoice`
+  is sourced at Kconfig:275, *before* `Kconfig.mmu_additions` (:277), so a
+  satisfied machine-type (`mmu_types/Kconfig`, :273) or board default
+  beats a feature file's later `default ""`.
+- **`choice` members cannot come from another file.** A machine/board file may steer
+  an *existing* choice with `default <CHOICE_MEMBER> if <cond>` only;
+  the members themselves must be declared inside the `choice ... endchoice`
   block (per-gate variants in its `@repeat` block). Selection is
-  first-satisfied (`Choice._selection_from_defaults`, kconfiglib.py:~6130) —
-  put the new board-specific default line *above* the older, more general
-  ones.
+  first-satisfied over the merged `choice.defaults` list, in parse order
+  (`Choice._selection_from_defaults`, kconfiglib.py:~6130) — put the new
+  board-specific default line *above* the older, more general ones in that
+  order (for choices declared in a feature file, "above" is not the same as
+  "in an earlier-sourced file" — see the inlining bullet below).
+- **Feature files are inlined once per machine type.** Every
+  `mmu_types/Kconfig.*` (all 19, incl. `starters/`) sources
+  `Kconfig.mmu_additions` inside its own `if MMU_TYPE_X` block, wrapped in
+  `if SHOW_MMU_ADDITIONS_WITH_TYPE` (a `def_bool n`, no prompt, nothing
+  selects it — dormant UI option, root `Kconfig:~217`); the root also has a
+  fallback source at `Kconfig:~277` under `if !SHOW_MMU_ADDITIONS_WITH_TYPE`.
+  So a feature-file symbol has ~20 definition sites that all merge into ONE
+  object (for a choice: one shared Choice, `choice.defaults` accumulating in
+  parse order — introspect `kc.choices`, evaluate conditions with
+  module-level `kconfiglib.expr_value`; fork expr nodes are tuples, the tree
+  root is `kc.top_node`, line numbers are `linenr`). `_propagate_deps` ANDs
+  each copy's guards into its defaults, so while the dormant guard is n the
+  ~19 inlined copies' defaults are dead and the *live* general defaults are
+  the untyped root fallback's. Consequences: steering a feature-file choice
+  from anywhere in `mmu_types/` (sourced `Kconfig:~273`, before `:~277`) beats
+  the live general default — "above the older, more general ones" means
+  before the fallback copy in parse order, not "in an earlier-sourced file".
+  Keep the steering line above the type file's own additions source anyway
+  (it still wins if the dormant guard is ever enabled). This is also why a
+  `default ... if MMU_TYPE_X` left in the feature file happens to work:
+  the fallback copy carries it, first-satisfied.
 - **Board type and per-gate MCU are mutually exclusive in the tree.**
   `boards/Kconfig` sources `boards/per_gate/` (EBB Gen1 / SLB) *instead of*
   the normal board set when `MMU_HAS_PER_GATE_MCU` is set — so

@@ -53,7 +53,7 @@ class TestMmuFanRender(unittest.TestCase):
             ['_unit0_fan0', '_unit0_fan1', '_unit0_fan2',
              '_unit0_fan3', '_unit0_fan4'])
         params = dict(parser.items('mmu_unit_parameters unit0'))
-        self.assertEqual(params['default_fan_temperature_source'], 'environment')
+        self.assertEqual(params['default_fan_temperature_source'], 'mcu')
         self.assertNotIn('fan_temperature_sources', params)
         for gate in range(5):
             self.assertIn('fan_generic _unit0_fan%d' % gate, parser.sections())
@@ -95,6 +95,18 @@ class TestMmuFanRender(unittest.TestCase):
         params = dict(parser.items('mmu_unit_parameters unit0'))
         self.assertEqual(params['default_fan_temperature_source'], 'mcu')
         self.assertNotIn('fan_temperature_sources', params)
+
+    def test_emu_defaults_fan_source_to_mcu_on_both_boards(self):
+        # Neither profile sets a temperature source symbol, so this pins the
+        # computed Kconfig default for the EMU on its two supported boards.
+        for profile_name in ('emu', 'emu_ebb'):
+            profile = profiles.get(profile_name)
+            with self.subTest(profile=profile_name):
+                self.assertNotIn(
+                    'CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU', profile.syms)
+                parser = cfg.assemble(cfg.render(profile))
+                params = dict(parser.items('mmu_unit_parameters unit0'))
+                self.assertEqual(params['default_fan_temperature_source'], 'mcu')
 
     def test_legacy_fan_macro_configuration_is_not_rendered(self):
         rendered = cfg.render(_single_fan_profile())
@@ -570,7 +582,9 @@ class TestMmuFanRuntime(unittest.TestCase):
         with self.assertRaisesRegex(
                 Exception,
                 "Temperature source 'environment' is not available for gate 1 on unit0"):
-            self.hh.run_gcode('MMU_FAN SOURCE=default GATE=1')
+            self.hh.run_gcode('MMU_FAN SOURCE=environment GATE=1')
+        # The EMU default source is mcu, and gate 1's MCU sensor exists.
+        self.hh.run_gcode('MMU_FAN SOURCE=default GATE=1')
         self.assertEqual(
             {item['gate']: item['source'] for item in manager.get_snapshot()}[1],
             'mcu')
@@ -587,6 +601,9 @@ class TestMmuFanRuntime(unittest.TestCase):
                    for name in unit.environment_sensors]
         mcu_sensor = self.hh.printer.lookup_object('temperature_sensor _unit0_mcu1')
 
+        # The EMU defaults every fan to its MCU sensor; gate 0 is explicitly
+        # switched to its environment sensor to exercise both sources.
+        self.hh.run_gcode('MMU_FAN SOURCE=environment GATE=0')
         self.hh.run_gcode('MMU_FAN SOURCE=mcu ON_TEMP=60 OFF_TEMP=58 GATE=1')
         snapshots = {item['gate']: item for item in manager.get_snapshot()}
         self.assertEqual(
@@ -616,7 +633,7 @@ class TestMmuFanRuntime(unittest.TestCase):
         self.hh.run_gcode('MMU_FAN SOURCE=default GATE=1')
         self.assertEqual(
             {item['gate']: item['source'] for item in manager.get_snapshot()}[1],
-            'environment')
+            'mcu')
         self.assertEqual(self.hh.errors, [])
 
     def test_per_gate_command_targets_only_selected_fans(self):
@@ -626,14 +643,13 @@ class TestMmuFanRuntime(unittest.TestCase):
         self.hh.boot()
         unit = self.hh.mmu.mmu_unit(0)
         fans = [self.hh.printer.lookup_object(name) for name in unit.fans]
-        sensors = [self.hh.printer.lookup_object(name)
-                   for name in unit.environment_sensors]
+        mcu_sensor = self.hh.printer.lookup_object('temperature_sensor _unit0_mcu1')
 
-        sensors[1].feed(50.)
+        mcu_sensor.feed(50.)
         self.hh.reactor.advance(unit.p.fan_polling_time)
         self.assertEqual([fan.get_status(0)['speed'] for fan in fans],
                          [0., 1., 0., 0., 0.])
-        sensors[1].feed(47.)
+        mcu_sensor.feed(47.)
         self.hh.reactor.advance(unit.p.fan_polling_time)
         self.assertEqual([fan.get_status(0)['speed'] for fan in fans],
                          [0., 0., 0., 0., 0.])
