@@ -56,6 +56,7 @@ choice BOARD_TYPE
 
   config BOARD_TYPE_MANUAL
     bool "Shared / externally configured MCU"
+    depends on !MMU_TYPE_KMS_1_0 && !MMU_TYPE_VVD_1_0 && !MMU_TYPE_QIDI_BOX_1_0
     help
       Share an existing MCU or configure MCUs yourself.
       Skips MCU definitions, connections and CPU temperature sensors,

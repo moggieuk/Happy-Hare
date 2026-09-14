@@ -39,9 +39,8 @@ class TestManualMcu(unittest.TestCase):
         self.assertIn("step_pin                 : mcu:PA1", hardware)
         self.assertIn("uart_address             : 2", hardware)
 
-    def test_all_mcu_topologies_can_opt_out(self):
-        for machine in ("MMU_TYPE_TRADRACK_1_0", "MMU_TYPE_EMU_1_0",
-                        "MMU_TYPE_VVD_1_0", "MMU_TYPE_QIDI_BOX_1_0"):
+    def test_supported_mcu_topologies_can_opt_out(self):
+        for machine in ("MMU_TYPE_TRADRACK_1_0", "MMU_TYPE_EMU_1_0"):
             with self.subTest(machine=machine):
                 profile = profiles.Profile(
                     "manual_" + machine,
@@ -53,6 +52,34 @@ class TestManualMcu(unittest.TestCase):
                 self.assertNotIn("serial", hardware.split("[mmu_unit")[0])
                 self.assertNotIn("canbus", hardware.split("[mmu_unit")[0])
                 self.assertIn("MCU setup is managed outside Happy Hare", hardware)
+
+    def test_fixed_custom_boards_reject_manual_selection(self):
+        for machine, board in (("MMU_TYPE_KMS_1_0", "BOARD_TYPE_KMS_1_0"),
+                               ("MMU_TYPE_VVD_1_0", "BOARD_TYPE_VVD_1_0"),
+                               ("MMU_TYPE_QIDI_BOX_1_0", "BOARD_TYPE_QIDI_BOX_2_0")):
+            with self.subTest(machine=machine):
+                # Also exercise switching from a previously selected manual board.
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kc = cfg._kconfig("fixed_board", self.profile.syms)
+                    kc.syms[machine].set_value(2)
+                    kc.syms["BOARD_TYPE_MANUAL"].set_value(2)
+                    self.assertEqual(kc.syms["BOARD_TYPE_MANUAL"].visibility, 0)
+                    self.assertEqual(kc.syms["BOARD_TYPE_MANUAL"].str_value, "n")
+                    self.assertTrue(kc.is_enabled(board))
+                    self.assertTrue(kc.is_enabled("BOOL_CREATE_MCU_ENVIRONMENT_SENSORS"))
+                    with tempfile.NamedTemporaryFile() as saved:
+                        kc.write_config(saved.name)
+                        reloaded = cfg._kconfig("fixed_board_reload", {})
+                        reloaded.load_config(saved.name)
+                    self.assertFalse(reloaded.is_enabled("BOARD_TYPE_MANUAL"))
+                    self.assertTrue(reloaded.is_enabled(board))
+                hardware = cfg._render_templates(
+                    ["config/base/mmu_hardware.cfg"], reloaded,
+                    {"PARAM_TOTAL_NUM_GATES": reloaded.getint("PARAM_NUM_GATES")}
+                )["config/base/mmu_hardware.cfg"]
+                self.assertIn("[mcu unit0]", hardware)
+                self.assertIn("temperature_mcu", hardware)
+                self.assertNotIn("MCU setup is managed outside Happy Hare", hardware)
 
     def test_selection_survives_save_reload_and_can_be_reversed(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
