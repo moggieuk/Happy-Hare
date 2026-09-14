@@ -427,11 +427,10 @@ class TestEveryBootableProfile(unittest.TestCase):
             hh = self._check('qidi')
         unit = hh.mmu.mmu_unit(0)
         self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
-        self.assertEqual(unit.p.gate_preload_endstop, 'none')
-        # Simulator override only; the installer/Kconfig default remains 200 mm.
-        self.assertEqual(unit.p.gate_preload_homing_max, 100)
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_preload_homing_max, 1500)
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
-        self.assertEqual(unit.filament_heater, '')
+        self.assertEqual(unit.filament_heater, 'heater_generic unit0_heater')
         self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Env')
 
         model = hh.filament()
@@ -441,15 +440,19 @@ class TestEveryBootableProfile(unittest.TestCase):
         # Reproduce make console's startup preload of every gate. No other
         # filament may leave the shared sensor asserted after the selected gate
         # is ejected and preloaded again.
+        from extras.mmu.mmu_constants import GATE_AVAILABLE
         for gate in range(4):
             hh.place_filament(gate, position=-40)
             hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
-        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+            self.assertEqual(hh.mmu.gate_status[gate], GATE_AVAILABLE)
+            self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
 
         hh.run_gcode('MMU_SELECT GATE=0')
         hh.run_gcode('MMU_EJECT')
         hh.run_gcode('MMU_PRELOAD')
+        self.assertEqual(hh.mmu.gate_status[0], GATE_AVAILABLE)
         self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+        self.assertEqual(hh.errors, [])
         at = len(hh.console)
         hh.run_gcode('MMU_STATUS')
         status = re.sub(r'<[^>]+>', '', '\n'.join(hh.console[at:]))
