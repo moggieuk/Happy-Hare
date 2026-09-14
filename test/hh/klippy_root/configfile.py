@@ -13,7 +13,7 @@
 #   extras/mmu/unit/mmu_leds.py:32-35        add_section/getsection/remove_section to
 #                                            build a real led.LEDHelper
 #   extras/mmu_led_effect.py:107-113         synthesises [_led_effect ...] sections
-#   extras/mmu/unit/mmu_extruder_wrapper.py:63-66,89-91
+#   extras/mmu/unit/mmu_extruder_wrapper.py:67-69,96-98
 #                                            removes then restores [extruder] options
 #   extras/mmu/mmu_unit.py:277-292           fileconfig.set to share gear/TMC params
 #

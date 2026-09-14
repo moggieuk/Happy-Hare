@@ -22,9 +22,11 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
+import re
 import unittest
 
 from test.hh import session
+from test.hh.bootstrap import PRINTER_STUB
 
 # HH logs a lot at INFO during construction; keep test output readable.
 logging.getLogger().setLevel(logging.CRITICAL)
@@ -278,7 +280,7 @@ class TestConnect(BootedSessionMixin, unittest.TestCase):
         MmuExtruderWrapper strips [extruder]'s stepper options during the section
         loop so PrinterExtruder builds no stepper, then restores them and swaps in
         its own homing-capable stepper at connect
-        (extras/mmu/unit/mmu_extruder_wrapper.py:63-66, 86-96).
+        (extras/mmu/unit/mmu_extruder_wrapper.py:67-69, 91-101).
         """
         extruder = self.hh.printer.lookup_object('extruder')
         wrappers = [o for o in self.hh.printer.objects.values()
@@ -471,6 +473,40 @@ class TestSensorDriving(BootedSessionMixin, unittest.TestCase):
     def test_sensor_lookup_errors_are_helpful(self):
         with self.assertRaises(KeyError):
             self.hh.sensor('no_such_sensor')
+
+
+class TestNoExtruderTmc(BootedSessionMixin, unittest.TestCase):
+    """
+    Machines whose mainboard has no UART to the extruder driver (Ender 3 V3 SE + MMX)
+    cannot carry a [tmc<chip> extruder] section. Config load and boot must succeed
+    without one: MmuExtruderWrapper degrades to hardware-controlled driver settings
+    instead of raising. Regression - v3.4.x had no such requirement and this machine
+    booted there.
+    """
+
+    PROFILE = 'mmx'
+
+    @classmethod
+    def setUpClass(cls):
+        stub = re.sub(r'^\[tmc2209 extruder\]\n(?:[^\n]*\n)*\n', '', PRINTER_STUB, flags=re.M)
+        assert 'tmc2209 extruder' not in stub  # sanity: the strip must have worked
+        cls.hh = session(cls.PROFILE, printer_stub=stub)
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def test_boot_succeeds_without_extruder_tmc(self):
+        self.assertEqual(self.hh.errors, [])
+
+    def test_wrapper_reports_no_extruder_tmc(self):
+        wrapper = self.hh.printer.lookup_object('mmu_extruder extruder')
+        self.assertIsNone(wrapper.extruder_tmc_obj())
+
+    def test_gear_tmc_is_unaffected(self):
+        unit = self.hh.printer.lookup_object('mmu_machine').units[0]
+        self.assertIsNotNone(unit.drives[0].tmc_obj())
 
 
 if __name__ == '__main__':

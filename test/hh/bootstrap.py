@@ -22,11 +22,12 @@ BOOT_DELAY = 2.5
 #
 # [extruder] needs its STEPPER options here: the shipped mmu_macro_vars.cfg [extruder]
 # carries only the extrude limits, but MmuExtruderWrapper builds an MmuExtruderStepper
-# straight off config.getsection('extruder') (mmu_extruder_wrapper.py:58-59).
+# straight off config.getsection('extruder') (mmu_extruder_wrapper.py:64-65).
 #
-# [tmc2209 extruder] is MANDATORY - MmuExtruderWrapper.__init__ raises
-# "Extruder 'extruder' TMC configuration not found" without a <chip> extruder section
-# (mmu_extruder_wrapper.py:44-55).
+# [tmc2209 extruder] is OPTIONAL - MmuExtruderWrapper degrades to hardware-controlled
+# driver settings without a <chip> extruder section (mmu_extruder_wrapper.py). It is
+# here because most profiles exercise extruder current control; TestNoExtruderTmc
+# (test/test_mmu_bootup.py) strips it to cover machines with no UART to the extruder.
 PRINTER_STUB = """
 [mcu]
 serial: /dev/null

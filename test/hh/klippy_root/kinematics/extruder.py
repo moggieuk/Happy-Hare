@@ -9,9 +9,9 @@
 # CRITICAL: PrinterExtruder must only build an ExtruderStepper when the section
 # actually has a step_pin, exactly as real Klipper does. That is what makes
 # MmuExtruderWrapper's option-stripping trick work - it removes [extruder]'s
-# stepper options at config time (extras/mmu/unit/mmu_extruder_wrapper.py:63-66) so
+# stepper options at config time (extras/mmu/unit/mmu_extruder_wrapper.py:67-69) so
 # no duplicate stepper is built, then restores them and swaps in its own homing
-# stepper at klippy:connect (:89-96). If this fake unconditionally built a stepper,
+# stepper at klippy:connect (:91-101). If this fake unconditionally built a stepper,
 # that whole design would go untested.
 #
 # sk_extruder is a plain token, not a chelper struct (see stepper.StepperKinematics).

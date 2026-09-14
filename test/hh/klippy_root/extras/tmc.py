@@ -16,9 +16,12 @@
 #    and extras/mmu_stepper.py:311 calls setup_pin('endstop', ...) on it. Without the
 #    chip, config load fails on an unknown pin chip.
 #
-# MmuExtruderWrapper REQUIRES a `<chip> extruder` section to exist and raises
-# otherwise (extras/mmu/unit/mmu_extruder_wrapper.py:44-55), which is why the harness
-# printer stub ships [tmc2209 extruder].
+# Like Klipper, loading a `<chip> <stepper>` section that does not exist is a config
+# error. The fake configfile's getsection() deliberately does not raise for missing
+# sections (HH's own bare-section lookups depend on that), so the loaders enforce it
+# here instead. The stub still ships [tmc2209 extruder] because most profiles exercise
+# extruder current control; TestNoExtruderTmc (test/test_mmu_bootup.py) strips it to
+# cover machines with no UART to the extruder driver.
 
 
 class TMCCommandHelper:
@@ -125,6 +128,8 @@ class TMC:
 
 def make_load_config_prefix(chip_name):
     def load_config_prefix(config):
+        if not config.fileconfig.has_section(config.get_name()):
+            raise config.error("Unable to find config section '%s'" % config.get_name())
         return TMC(config, chip_name)
     return load_config_prefix
 

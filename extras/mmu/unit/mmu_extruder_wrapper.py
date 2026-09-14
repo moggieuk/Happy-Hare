@@ -43,19 +43,22 @@ class MmuExtruderWrapper():
 
         self.homing_extruder_stepper = None
 
-        # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
+        # Load the extruder TMC section if present - it enables software current control
+        # (tip forming) and the stallguard touch endstop. Optional: without it the driver
+        # settings are controlled in hardware, as on printers with no UART to the extruder.
         self._extruder_tmc = None
         for chip in TMC_CHIPS:
-            try:
-                section = f"{chip} {self.name}"
+            section = f"{chip} {self.name}"
+            if config.has_section(section):
                 self._extruder_tmc = self.printer.load_object(config, section)
                 logging.info(f"MMU: Loaded: [{section}]")
                 break
-            except Exception:
-                pass
 
         if self._extruder_tmc is None:
-            raise config.error(f"Extruder '{self.name}' TMC configuration not found. Required for mmu_unit {mmu_unit.name}")
+            logging.warning(
+                "MMU: Extruder '%s' on mmu_unit %s has no software-controlled TMC; "
+                "assuming motor current and driver mode are controlled in hardware"
+                % (self.name, mmu_unit.name))
 
         # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
         toolhead_section = config.getsection(self.name)

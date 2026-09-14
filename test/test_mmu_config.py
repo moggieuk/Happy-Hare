@@ -206,7 +206,7 @@ class TestBoxTurtleRender(unittest.TestCase):
     def test_assemble_tolerates_duplicate_extruder_section(self):
         """
         [extruder] appears in both the printer stub (stepper options, which
-        MmuExtruderWrapper needs at extras/mmu/unit/mmu_extruder_wrapper.py:58-59)
+        MmuExtruderWrapper needs at extras/mmu/unit/mmu_extruder_wrapper.py:64-65)
         and mmu_macro_vars.cfg (extrude limits). RawConfigParser(strict=False) must
         merge rather than raise.
         """
