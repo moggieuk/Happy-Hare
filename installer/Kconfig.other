@@ -16,8 +16,6 @@ menu "Other Settings"
     source "Kconfig.num_gates"
   endif
 
-  source "Kconfig.speeds"
-
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.gear_stepper"
     source "Kconfig.selector_stepper"
