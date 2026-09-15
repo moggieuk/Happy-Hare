@@ -132,8 +132,8 @@ class MmuFilamentMovement:
             return (self.filament_pos != FILAMENT_POS_UNLOADED
                     and self.gate_selected != gate
                     and unit.owns_gate(self.gate_selected))
-        shared_name = self.sensor_manager.get_qualified_endstop_name(endstop)
-        return bool(self.sensor_manager.check_sensor(shared_name))
+        shared_name = self.sensor_manager.get_qualified_endstop_name(endstop, mmu_unit=self.mmu_unit(gate))
+        return self.sensor_manager.check_event_sensor(shared_name, gate) is True
 
 
     def _preload_gate(self, pending=None):
