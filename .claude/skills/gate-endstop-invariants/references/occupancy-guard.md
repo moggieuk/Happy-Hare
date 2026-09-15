@@ -54,6 +54,24 @@ registry, so it reads the switch that actually sits downstream of `gate`.
 multi-unit machine that reads the wrong unit entirely and lets a sweep proceed
 into an occupied shared path.
 
+### Trap: the no-bowden `mmu_shared_exit` alias
+
+`MmuSensorManager` aliases `gate_sensors[SENSOR_SHARED_EXIT]` to the extruder
+sensor on a unit with `not require_bowden_move` and no physical shared-exit
+switch (search `Special case for "no bowden" designs`). **That alias lives only
+in the per-gate map, never in `all_sensors_map`** — so `check_event_sensor`
+cannot see it and returns `None`, i.e. the guard reads `False` unconditionally.
+
+`gate_homing_endstop` can never name the alias (`_validate_gate_homing_endstop`
+forces `extruder` when `require_bowden_move == 0`), and `gate_preload_endstop`
+is now refused likewise by `_validate_gate_preload_endstop`
+(`extras/mmu/unit/mmu_unit_parameters.py`) — that validator exists *only* to
+keep this guard alive, so don't delete it as redundant. If you add another
+`SHARED_GATE_ENDSTOPS` consumer that takes an endstop name from config, check
+it cannot name the alias either. Note `has_sensor()` *does* see the alias
+(it goes through `active_sensors_map`) while `resolve_sensor()` does not; that
+asymmetry is the shape of the bug.
+
 **Call sites today** (grep rather than trust these line numbers):
 - `extras/mmu/commands/mmu_nfc_scan.py` — `can_continue` predicate:
   `active_unit.can_crossload and not mmu._shared_gate_path_occupied(scan_unit.p.gate_homing_endstop, gate)`.
@@ -118,7 +136,9 @@ and new sensor spellings resolve to the same physical switch. The **cross-unit**
 resolution is pinned by `TestSharedGateOccupancyAcrossUnits` in the same file,
 which builds a two-unit fixture with `hh_profiles.clone_across_units()` and
 asserts the guard is `True` for a gate on the occupied unit and `False` for one
-on the other.
+on the other. `test/test_mmu_profiles.py::
+test_no_bowden_mode_rejects_shared_exit_preload_endstop` is what keeps the
+no-bowden alias trap below closed.
 
 `test/test_mmu_nfc_scan.py`:
 
