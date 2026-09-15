@@ -2286,8 +2286,11 @@ class MmuController(MmuFilamentMovement):
             self.wrap_gcode_command(self.p.pause_macro, exception=False)
             self.pause_resume.send_pause_command()
 
-        if recover_pos and recover:
-            self.recover_filament_pos(message=True)
+        if recover_pos:
+            if recover:
+                self.recover_filament_pos(message=True)
+            else:
+                self.log_always("Filament position is unknown. Use MMU_RECOVER to establish it")
 
         # Intention is not to sync unless we have to but will be restored on resume/continue_printing
         self.reset_sync_gear_to_extruder(force_grip=True)

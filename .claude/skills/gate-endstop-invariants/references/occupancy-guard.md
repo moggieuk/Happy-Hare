@@ -81,6 +81,8 @@ asymmetry is the shape of the bug.
   the cross-unit case.
 - `extras/mmu/mmu_filament_movement.py` inside `_preload_gate` and `_jog_scan`.
 - `extras/mmu/mmu_nfc_arbiter.py` — advisory only, skips a candidate.
+- `extras/mmu/commands/mmu_check_gate.py` `_check_path_unloaded()` — iterates all
+  of `SHARED_GATE_ENDSTOPS`, so it is the widest consumer.
 
 **Concrete failure if you remove or bypass this:** with
 `gate_homing_endstop = mmu_shared_exit` on a crossload-capable unit (e.g.
@@ -129,16 +131,60 @@ endstop as `gate_preload_endstop or gate_homing_endstop`).
 depends on another field that can change live), wire it through an
 `on_change` hook the same way — a load-time-only validator isn't enough.
 
-## 4. Reference tests
+## 4. `gate_occupancy()` — a per-gate verdict built partly from shared sensors
 
-`TestSharedGateOccupancy` below covers only the single-unit case, where the old
-and new sensor spellings resolve to the same physical switch. The **cross-unit**
-resolution is pinned by `TestSharedGateOccupancyAcrossUnits` in the same file,
-which builds a two-unit fixture with `hh_profiles.clone_across_units()` and
-asserts the guard is `True` for a gate on the occupied unit and `False` for one
-on the other. `test/test_mmu_profiles.py::
+`gate_occupancy(gate)` in `extras/mmu/mmu_filament_movement.py` (just below
+`_shared_gate_path_occupied`) classifies one gate as `OCCUPANCY_PRESENT` /
+`OCCUPANCY_EMPTY` / `OCCUPANCY_UNKNOWN` (`mmu_constants.py`). Its inputs are of
+mixed scope:
+
+| sensor | scope |
+|---|---|
+| `mmu_exit_<g>`, `mmu_entry_<g>` | per-gate |
+| `mmu_shared_exit`, `extruder`, `toolhead` | shared by every gate on the unit |
+
+A shared sensor reading present therefore makes `gate_occupancy()` return
+`PRESENT` for **every** gate on that unit, whichever gate's filament is
+actually sitting there.
+
+The two call sites want different things from it:
+
+- `commands/mmu_check_gate.py` — "may I declare this lane empty without moving
+  anything?" The wide OR is correct and conservative here: a remnant anywhere
+  downstream should stop you calling the lane empty.
+- `_home_to_gate()` — the `empty` decision needs `UNKNOWN` *specifically*, to let
+  a clean homing miss stand as an empty lane on a machine with no entry switches
+  (Tradrack, Chameleon, PicoMMU/MMX, encoder-homing ERCF). A shared sensor that
+  flips `UNKNOWN` to `PRESENT` makes `empty` false: position is left `UNKNOWN`,
+  the sweep aborts and recovery is suppressed. On those machines that is the
+  difference between gate discovery working and not.
+
+**Why it is safe today.** `_check_path_unloaded()` (`commands/mmu_check_gate.py`)
+runs before each gate is selected and refuses when `mmu_shared_exit`, `extruder`
+or `toolhead` reads present — so all three are guaranteed clear by the time
+either call site runs, and at the `MMU_CHECK_GATE` site the shared arm is
+strictly redundant. Measured: instrumenting `gate_occupancy` across `3ms` /
+`tradrack` / `boxturtle`, with and without the extruder sensor jammed
+permanently `True`, the shared arm fired in **0 of 73 calls** — a genuinely
+triggered shared sensor makes the command refuse before reaching it, and
+machines without those sensors read `None`.
+
+**The invariant to preserve:** any caller that acts on `UNKNOWN` must have ruled
+the shared path out first. Declining to act on `PRESENT` is always safe. If you
+add a caller outside `MMU_CHECK_GATE`, either put it behind the same guard or
+split out a per-gate-only variant for that one decision — otherwise you
+reintroduce the cross-gate misattribution §2 exists to prevent. The docstring on
+`gate_occupancy()` states this; keep the two in sync.
+
+## 5. Reference tests
+
+For the **cross-unit** resolution specifically, the class below cover only the
+single-unit case. See `test/test_mmu_check_gate.py::TestSharedPathTargetUnit`,
+which builds a two-unit fixture with `profiles.clone_across_units()` and asserts
+the guard is `True` for a gate on the occupied unit and `False` for one on the
+other. And `test/test_mmu_profiles.py::
 test_no_bowden_mode_rejects_shared_exit_preload_endstop` is what keeps the
-no-bowden alias trap below closed.
+no-bowden alias trap above closed.
 
 `test/test_mmu_nfc_scan.py`:
 

@@ -40,7 +40,7 @@ from ..homing             import HomingMove
 
 # Happy Hare imports
 from .mmu_constants       import *
-from .mmu_utils           import MmuError
+from .mmu_utils           import MmuError, MmuGateHomingMiss
 from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 
 
@@ -134,6 +134,37 @@ class MmuFilamentMovement:
                     and unit.owns_gate(self.gate_selected))
         shared_name = self.sensor_manager.get_qualified_endstop_name(endstop, mmu_unit=self.mmu_unit(gate))
         return self.sensor_manager.check_event_sensor(shared_name, gate) is True
+
+
+    def gate_occupancy(self, gate):
+        """
+        Sensor verdict on one gate, ignoring the recorded gate_status:
+
+            OCCUPANCY_PRESENT  a sensor sees filament - only a pickup can say where it is
+            OCCUPANCY_EMPTY    the entry switch says the lane is clear - no motion needed
+            OCCUPANCY_UNKNOWN  no entry switch, so a clean homing miss is the only evidence
+                               of an empty lane available
+
+        PRESENT wins over an empty entry switch: a remnant that has left the entry switch
+        still shows on the exit switch or downstream, and it must not be called empty.
+
+        Only the entry/exit switches are per-gate. mmu_shared_exit, extruder and toolhead
+        are shared by every gate on the unit, so PRESENT may be another gate's filament and
+        is NOT attributable to 'gate'. Declining to act on PRESENT is therefore always safe,
+        but a caller that acts on UNKNOWN must have ruled the shared path out first - both
+        current callers sit behind MMU_CHECK_GATE's _check_path_unloaded().
+        """
+        sensors = self.sensor_manager
+        unit = self.mmu_unit(gate)
+        if (sensors.check_gate_sensor(SENSOR_EXIT_PREFIX, gate) is True
+                or any(sensors.check_event_sensor(
+                    sensors.get_qualified_endstop_name(name, mmu_unit=unit), gate) is True
+                    for name in (SENSOR_SHARED_EXIT, SENSOR_EXTRUDER_ENTRY, SENSOR_TOOLHEAD))):
+            return OCCUPANCY_PRESENT
+        entry = sensors.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate)
+        if entry is None:
+            return OCCUPANCY_UNKNOWN
+        return OCCUPANCY_PRESENT if entry else OCCUPANCY_EMPTY
 
 
     def _preload_gate(self, pending=None):
@@ -313,7 +344,7 @@ class MmuFilamentMovement:
         run_post_preload_macro()
 
 
-    def _load_gate(self, allow_retry=True, extra_homing=0.0):
+    def _load_gate(self, allow_retry=True, extra_homing=0.0, mark_empty_on_failure=True):
         """
         Load filament into gate. This is considered the starting position for the rest of the filament loading
         process. Note that this may overshoot the home position for the "encoder" technique but subsequent
@@ -329,15 +360,35 @@ class MmuFilamentMovement:
                 back than a normal load - e.g. MMU_NFC_SCAN re-homing to the gate after
                 jogging behind it. Mirrors _unload_gate's extra_homing.
 
+            mark_empty_on_failure: If True, a failed pickup marks the gate EMPTY and sets
+                filament position to UNLOADED. If False, the gate's sensors decide: an
+                untouched lane nothing can see raises MmuGateHomingMiss and is still EMPTY,
+                anything else leaves position UNKNOWN. Either way a gate concluded EMPTY
+                has its attributes cleared.
+
         Returns:
             float: Overshoot past the gate homing point that later stages should account for.
         """
-        overshoot, _tag_read = self._home_to_gate(
-            self._gate_profile(allow_retry=allow_retry), extra_homing=extra_homing)
-        return overshoot
+        profile = self._gate_profile(allow_retry=allow_retry)
+        if not mark_empty_on_failure:
+            # Validate up front so a config error escapes as itself rather than as a
+            # failed pickup. _home_to_gate() re-checks; that is deliberate.
+            self._validate_gate_config("load", profile.endstop)
+        try:
+            overshoot, _tag_read = self._home_to_gate(
+                profile, extra_homing=extra_homing, mark_empty_on_failure=mark_empty_on_failure)
+            return overshoot
+        except MmuGateHomingMiss:
+            raise # Already recorded as empty by _home_to_gate()
+        except (MmuError, self.printer.command_error) as ee:
+            if not mark_empty_on_failure:
+                self.set_filament_pos_state(FILAMENT_POS_UNKNOWN)
+                self.gate_maps.set_gate_status(self.gate_selected, GATE_UNKNOWN)
+                raise MmuError(str(ee)) from ee
+            raise
 
 
-    def _home_to_gate(self, profile, extra_homing=0.0, nfc=None, label="load"):
+    def _home_to_gate(self, profile, extra_homing=0.0, nfc=None, label="load", mark_empty_on_failure=True):
         """
         Primitive: home filament FORWARD into the gate. Driven by 'profile', so the same
         code serves a normal load (gate_*) and a preload (gate_preload_*).
@@ -354,13 +405,15 @@ class MmuFilamentMovement:
                 or None for plain homing. The CALLER builds and tears the compound down -
                 see _preload_gate, which needs to know whether it exists before it logs.
             label: "load" / "preload" - used in configuration validation errors.
+            mark_empty_on_failure: See _load_gate().
 
         Returns:
             (overshoot, tag_read): overshoot past the gate home point - the measured
             distance for encoder homing, the distance chased forward on the NFC scan path,
             and 0.0 for a plain endstop home; tag_read True if an NFC tag was read.
         Raises:
-            MmuError: filament not detected within the homing budget (gate set EMPTY).
+            MmuError: filament not detected within the homing budget.
+            MmuGateHomingMiss: that miss looks like an empty lane - see mark_empty_on_failure.
 
         Does NOT park and does NOT run finalize/macros - callers own that.
         """
@@ -381,7 +434,16 @@ class MmuFilamentMovement:
                         if i == 0
                         else f"Retry load into encoder (retry #{i})"
                     )
-                    _, _, m, _ = self.move_filament(msg, homing_max)
+                    try:
+                        _, _, m, _ = self.move_filament(msg, homing_max)
+                    except self.printer.command_error as e:
+                        # A driver fault reads as "nothing moved", same as a completed move
+                        # that detected nothing. move_filament's own tolerance covers homing
+                        # moves only, and this branch makes a plain move.
+                        if mark_empty_on_failure:
+                            raise
+                        self.log_debug("Load into encoder did not complete: %s" % str(e))
+                        m = 0.0
                     measured += m
 
                     if m > 6.0:
@@ -405,6 +467,7 @@ class MmuFilamentMovement:
 
             tag_read = False
             overshoot = 0.0
+            measured = 0.0 # The NFC sub-branch below never assigns it
             for i in range(profile.attempts):
                 if nfc is not None:
                     homed, tag_read, overshoot = self._home_to_gate_with_nfc(
@@ -448,18 +511,33 @@ class MmuFilamentMovement:
                 if i < profile.attempts - 1:
                     self.selector().filament_release()
 
-        self.gate_maps.set_gate_status(gate, GATE_EMPTY)
-        self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
+        # Did filament move at all? movement_min() is the encoder's noise floor, not the
+        # 'm > 6.0' pickup threshold above. 'measured' is a signed delta (a reverse home
+        # runs the encoder backwards) and is always 0.0 with no encoder fitted.
+        motion_floor = self.encoder(gate).movement_min() if self.has_encoder(gate) else 0.0
+        # With mark_empty_on_failure off, only an untouched lane no sensor can see counts as
+        # empty. Motor displacement is not proof that filament moved, so this trusts the
+        # homing sensor to work.
+        empty = mark_empty_on_failure or (
+            abs(measured) <= motion_floor
+            and self.gate_occupancy(gate) == OCCUPANCY_UNKNOWN)
+        if empty:
+            # Clears: the recorded spool must not outlive a lane concluded empty.
+            self.gate_maps.set_gate_status(gate, GATE_EMPTY)
+            self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         msg = "Couldn't pick up filament at gate"
         if profile.endstop == SENSOR_ENCODER:
             msg += " (encoder didn't report enough movement)"
         else:
             msg += " (gate endstop didn't trigger)"
-        msg += (
-            f"\nGate marked as empty. Use "
-            f"'MMU_GATE_MAP GATE={gate} AVAILABLE=1' to reset"
-        )
+        if mark_empty_on_failure:
+            msg += (f"\nGate marked as empty. Use "
+                    f"'MMU_GATE_MAP GATE={gate} AVAILABLE=1' to reset")
+        elif empty:
+            raise MmuGateHomingMiss(msg)
+        else:
+            msg += "\nFilament position is uncertain. Check the path and recover before continuing."
         raise MmuError(msg)
 
 
