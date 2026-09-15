@@ -209,7 +209,9 @@ class MmuGateMaps:
 # RUNOUT, ENDLESS SPOOL, TTG MAPPING and GATE HANDLING
 # -----------------------------------------------------------------------------------------------------------
 
-    def get_next_endless_spool_gate(self, tool, gate):
+    # exclude_gates lets a caller rule out gates it has already found wanting, whatever
+    # the map says about them.
+    def get_next_endless_spool_gate(self, tool, gate, exclude_gates=()):
         group = self.endless_spool_groups[gate]
         next_gate = -1
         checked_gates = []
@@ -217,7 +219,7 @@ class MmuGateMaps:
             check = (gate + i + 1) % self.num_gates
             if self.endless_spool_groups[check] == group:
                 checked_gates.append(check)
-                if self.gate_status[check] != GATE_EMPTY:
+                if check not in exclude_gates and self.gate_status[check] != GATE_EMPTY:
                     next_gate = check
                     break
         alt_gates = "(checked gates: %s)" % ",".join(map(str, checked_gates))

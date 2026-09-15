@@ -81,6 +81,8 @@ asymmetry is the shape of the bug.
   the cross-unit case.
 - `extras/mmu/mmu_filament_movement.py` inside `_preload_gate` and `_jog_scan`.
 - `extras/mmu/mmu_nfc_arbiter.py` — advisory only, skips a candidate.
+- `extras/mmu/commands/mmu_check_gate.py` `_check_path_unloaded()` — iterates all
+  of `SHARED_GATE_ENDSTOPS`, so it is the widest consumer.
 
 **Concrete failure if you remove or bypass this:** with
 `gate_homing_endstop = mmu_shared_exit` on a crossload-capable unit (e.g.
@@ -131,14 +133,13 @@ depends on another field that can change live), wire it through an
 
 ## 4. Reference tests
 
-`TestSharedGateOccupancy` below covers only the single-unit case, where the old
-and new sensor spellings resolve to the same physical switch. The **cross-unit**
-resolution is pinned by `TestSharedGateOccupancyAcrossUnits` in the same file,
-which builds a two-unit fixture with `hh_profiles.clone_across_units()` and
-asserts the guard is `True` for a gate on the occupied unit and `False` for one
-on the other. `test/test_mmu_profiles.py::
+For the **cross-unit** resolution specifically, the class below cover only the
+single-unit case. See `test/test_mmu_check_gate.py::TestSharedPathTargetUnit`,
+which builds a two-unit fixture with `profiles.clone_across_units()` and asserts
+the guard is `True` for a gate on the occupied unit and `False` for one on the
+other. And `test/test_mmu_profiles.py::
 test_no_bowden_mode_rejects_shared_exit_preload_endstop` is what keeps the
-no-bowden alias trap below closed.
+no-bowden alias trap above closed.
 
 `test/test_mmu_nfc_scan.py`:
 

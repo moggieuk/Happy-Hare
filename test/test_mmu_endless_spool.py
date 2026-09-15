@@ -389,6 +389,59 @@ class TestEndlessSpoolDestinationSelection(EndlessSpoolTestCase):
                          'an unchecked gate should not be presented as a known-good target')
 
 
+class TestGateCheckSubstitutesAnEmptyGate(EndlessSpoolTestCase):
+    """
+    Print start runs MMU_CHECK_GATE before any load, so a required tool's empty gate must be
+    substituted here: pausing instead denies the on-load remap its turn, and a correctly
+    configured EndlessSpool group cannot help at the one moment users most expect it to.
+
+    is_in_print is forced rather than driving a real print: the raise is guarded on it, and a print
+    needs a homed toolhead and a heated bed the harness has no reason to provide.
+    """
+
+    GROUPS = '1,1,2,2'
+
+    def setUp(self):
+        super().setUp()
+        self.hh.run_gcode('MMU_TEST_CONFIG endless_spool_on_load=1')
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        with self.hh.quiet_sensors():
+            self.fil.remove(0)
+        self.hh.settle()
+
+    def test_gate_check_remaps_instead_of_pausing_the_print(self):
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 1, 'T0 should have been substituted to gate 1')
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
+        self.assertFalse([e for e in self.hh.errors if 'marked EMPTY' in e],
+                         'the print must not be paused when a substitute gate exists')
+
+    def test_the_substitute_gate_is_itself_verified(self):
+        """Remapping to a gate nobody checked would only move the failure later into the print."""
+        self.fil.history.clear()
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_AVAILABLE)
+        self.assertTrue(any(gate == 1 and distance > 0 for gate, distance, _ in self.fil.history))
+        self.assertTrue(any(gate == 1 and distance < 0 for gate, distance, _ in self.fil.history))
+        self.assertAlmostEqual(self.fil.tip[1], -100., places=3)
+
+    def test_still_pauses_when_the_whole_group_is_empty(self):
+        with self.hh.quiet_sensors():
+            self.fil.remove(1)
+        self.hh.settle()
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertTrue([e for e in self.hh.errors if 'marked EMPTY' in e],
+                        'with no alternative left the print must still be stopped')
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_EMPTY)
+
+    def test_no_substitution_without_a_group_partner(self):
+        self.hh.run_gcode('MMU_ENDLESS_SPOOL GROUPS=1,2,3,4')
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 0, 'must not remap outside the group')
+        self.assertTrue([e for e in self.hh.errors if 'marked EMPTY' in e])
+
+
 class TestBufferedStatusSurvivesTheRefresh(EndlessSpoolTestCase):
     """
     validate_gate_status() runs before every tool load, so anything it discards is discarded
@@ -418,6 +471,62 @@ class TestBufferedStatusSurvivesTheRefresh(EndlessSpoolTestCase):
         self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=%d QUIET=1' % GATE_UNKNOWN)
         self.gate_maps.validate_gate_status([0], clear_attributes=False)
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
+
+
+class TestGateCheckParkingFailureIsNotAnEmptyGate(EndlessSpoolTestCase):
+    """
+    "Filament was found but could not be parked" is not "the gate is empty", and the two need
+    opposite recovery. The check loads filament to prove it exists, then unloads it back to the park
+    so another gate can be selected safely. Substituting on a parking failure would select and
+    load a second gate while the first gate's filament is still somewhere in the path - on a
+    moving-selector machine, that is selector motion across filament.
+
+    Only a pickup failure may authorize substitution.
+    """
+
+    GROUPS = '1,1,2,2'
+
+    def setUp(self):
+        super().setUp()
+        self.hh.run_gcode('MMU_TEST_CONFIG endless_spool_on_load=1')
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        # Every gate keeps its filament: gate 0 is NOT empty. The only fault injected is that
+        # parking it again fails.
+        from extras.mmu.mmu_utils import MmuError  # deferred: needs the fake klippy tree booted
+
+        self.checked = []
+        real_unload = self.hh.mmu._unload_gate
+
+        def failing_unload(*args, **kwargs):
+            self.checked.append(self.hh.mmu.gate_selected)
+            if self.hh.mmu.gate_selected == 0:
+                raise MmuError("simulated parking failure")
+            return real_unload(*args, **kwargs)
+
+        self.hh.mmu._unload_gate = failing_unload
+        self.addCleanup(setattr, self.hh.mmu, '_unload_gate', real_unload)
+
+    def test_a_parking_failure_stops_the_check(self):
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertTrue(self.hh.errors, 'the failure must be reported, not swallowed')
+
+    def test_a_parking_failure_does_not_remap(self):
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 0,
+                         'T0 must stay on gate 0 - its filament is unaccounted for')
+
+    def test_no_other_gate_is_touched(self):
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertNotIn(1, self.checked,
+                         'gate 1 must not be selected while gate 0 is unparked')
+        self.assertEqual(self.loaded_gates(), [],
+                         'no gate should have been loaded past the extruder')
+
+    def test_the_gate_is_not_marked_empty(self):
+        """It demonstrably has filament - _load_gate succeeded. Calling it empty is a lie that
+        would also let the next load remap away from a perfectly good gate."""
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertNotEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
 
 
 if __name__ == '__main__':
