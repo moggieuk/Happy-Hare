@@ -41,9 +41,9 @@ menu "Speeds"
       default 100
       help
         This is the default bowden load speed for long movements.
-        On systems with a buffer that catches loose filament this can be used to
-        set a lower speed (for first time load) to overcome friction without
-        the stepper loosing steps
+        On systems with a "filament buffer" that catches loose filament this will set
+        a lower speed (for first time load) to overcome friction without the stepper
+        loosing steps. and the "from buffer" speed can be set higher.
 
     config PARAM_GEAR_LOAD_ACCEL
       float "Normal load acceleration        "
@@ -56,11 +56,21 @@ menu "Speeds"
         float "From filament buffer load speed "
         default 150
         help
-          High speed for normal filament loading (or from filament buffer if fitted)
+          High speed for normal filament loading from filament buffer. It is
+          employed after the initial load/unload when Happy Hare knows the filament
+          won't tug on the spool.
+          Generally this can be 50% higher than the normal load speed and
+          allows for optimization of filament swap times.
 
       config PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
         float "From buffer load acceleration   "
         default 400
+        help
+          Bowden load accelaration for long movements when loading from filament buffer.
+          It is employed after the initial load/unload when Happy Hare knows the filament
+          won't tug on the spool.
+          Generally this can be at least 100% higher than the normal load accelaration and
+          allows for optimization of filament swap times.
     endif
 
     config PARAM_GEAR_UNLOAD_SPEED
@@ -73,6 +83,10 @@ menu "Speeds"
     config PARAM_GEAR_UNLOAD_ACCEL
       float "Normal unload acceleration      "
       default 100
+      help
+        Acceleration in mm/s^2 for long bowden unload moves driven by the MMU
+        gear stepper. Lower values bring the filament up to speed more gently,
+        which can help an eSpooler keep up with the returning filament.
 
     config PARAM_GEAR_HOMING_SPEED
       float "Gear homing speed               "
@@ -89,6 +103,10 @@ menu "Speeds"
     config PARAM_GEAR_SHORT_MOVE_ACCEL
       float "Short movement acceleration     "
       default 400
+      help
+        Acceleration in mm/s^2 for gear stepper moves at or below the short
+        move threshold, including incremental retracts with an encoder.
+        Applies to both loading and unloading moves that are not homing moves.
 
     config PARAM_GEAR_SHORT_MOVE_THRESHOLD
       float "Short move threshold            "
@@ -174,20 +192,39 @@ menu "Speeds"
     config PARAM_SELECTOR_MOVE_SPEED
       float "Speed of selector movement      "
       default 200
+      help
+        Speed in mm/s for normal selector positioning between gates.
+        Select a speed the selector can reliably reach without losing steps.
+        Homing and touch moves use their separate speed settings.
 
     config PARAM_SELECTOR_HOMING_SPEED
       float "Speed of selector homing moves  "
       depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || ROTARY_SELECTOR || TESTING_SELECTOR
       default 60
+      help
+        Speed in mm/s for the initial selector homing move to its endstop.
+        A slower speed can improve reliable detection of the home position.
+        Moves using the selector touch endstop use the touch speed instead.
 
     config PARAM_SELECTOR_TOUCH_SPEED
       float "Speed of touch selector movement"
       depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || TESTING_SELECTOR
       default 80
+      help
+        Speed in mm/s for selector moves using TMC StallGuard to detect a
+        stall or obstruction. Used for touch positioning and end-of-travel
+        detection when selector touch is configured and enabled.
+        Tune together with the driver's StallGuard sensitivity for reliable
+        detection without false triggers.
 
     config PARAM_SELECTOR_ACCEL
       float "Selector stepper acceleration   "
       default 1200
+      help
+        Acceleration in mm/s^2 for selector movement, including homing and
+        touch moves. Lower values give gentler starts and stops; higher
+        values reach the selected speed sooner but can cause lost steps
+        if the selector cannot keep up.
 
   endif 
 

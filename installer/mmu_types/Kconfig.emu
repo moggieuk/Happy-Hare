@@ -6,6 +6,7 @@ config MMU_TYPE_EMU_1_0
     choice for new builds. Highly recommended to use with an analog proportional
     sync-feedback buffer like PSF.
   select VIRTUAL_SELECTOR
+  select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
   imply  MMU_HAS_PER_GATE_MCU # Install must also be run with "-e" for PER_GATE_MCU support
   select MMU_HAS_PER_GATE_CONFIG
   imply  MMU_HAS_ENVIRONMENT_SENSOR
