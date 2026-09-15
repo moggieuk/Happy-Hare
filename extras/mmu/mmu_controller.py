@@ -2242,7 +2242,9 @@ class MmuController(MmuFilamentMovement):
 # ERROR HANDLING AND RESUME LOGIC
 # -----------------------------------------------------------------------------------------------------------
 
-    def handle_mmu_error(self, reason, force_in_print=False):
+    # recover=False suppresses the sensor-based position guess but keeps the normal
+    # pause/error handling. For callers whose failure left the position genuinely unknown.
+    def handle_mmu_error(self, reason, force_in_print=False, recover=True):
         self.psm.fix_started_state() # Get out of 'started' state before transition to mmu pause
 
         run_pause_macro = run_error_macro = recover_pos = send_event = False
@@ -2284,7 +2286,7 @@ class MmuController(MmuFilamentMovement):
             self.wrap_gcode_command(self.p.pause_macro, exception=False)
             self.pause_resume.send_pause_command()
 
-        if recover_pos:
+        if recover_pos and recover:
             self.recover_filament_pos(message=True)
 
         # Intention is not to sync unless we have to but will be restored on resume/continue_printing
