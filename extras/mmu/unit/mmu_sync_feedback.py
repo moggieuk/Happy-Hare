@@ -156,7 +156,10 @@ class MmuSyncFeedback:
             return "unavailable"
 
         if state is None:
-            state = self._get_sensor_state()
+            # A proportional sensor returns a raw float that is essentially never exactly
+            # 0.0, so a plain sign test can never report neutral. Ask for the discrete
+            # state instead, which the virtual tension/compression sensors already derive.
+            state = self._get_sensor_state(use_virtual_threshold=True)
         if (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active) or detail:
 #            # Polarity varies slightly between modes on proportional sensor so ask controller
 #            polarity = self.ctrl.polarity(state)
