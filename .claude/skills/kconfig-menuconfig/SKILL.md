@@ -173,6 +173,10 @@ feeding promptless `MMU_HAS_*` defaults at `Kconfig:~203`).
 
 ## Checklist: adding / changing a symbol
 
+**Help display limit: at most seven lines per Kconfig `help` block, including
+blank lines.** Menuconfig can display only seven lines. Keep lines short enough
+to avoid wrapping beyond that limit; put longer explanations in documentation.
+
 1. **Name it per the contract** above. A symbol that should be a *modifiable
    default* (user-tweakable, `r`-resettable) needs a special prefix **and a
    prompt**. Promptless symbols are invisible in the UI, can't get
