@@ -227,21 +227,30 @@ class MmuGateMaps:
 
     # Use mmu entry (and gear) sensors to "correct" gate status
     # Return updated gate_status adjusted by sensor readings
-    def validate_gate_status(self, gates=None):
+    #
+    # clear_attributes=False retains the gate's filament metadata when a sensor correction
+    # makes it EMPTY. "This lane is empty" is not the same claim as "I no longer know what
+    # filament belongs to this lane" - nothing was ejected, so the recorded material/color/
+    # temperature/spool_id remains the best knowledge we have and the caller may be about to
+    # use it. Contrast reset_gate(), which is a genuine ejection and must keep clearing.
+    def validate_gate_status(self, gates=None, clear_attributes=True):
         v_gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
         gates = range(self.num_gates) if gates is None else gates
         for gate in gates:
             status = v_gate_status[gate]
             gear_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
             if gear_detected is True:
-                v_gate_status[gate] = GATE_AVAILABLE
+                # max(): the sensor proves filament is present, not where it came from, so an
+                # existing GATE_AVAILABLE_FROM_BUFFER must survive - it selects the buffer speed
+                # and accel for the load. Matches _home_to_gate() and MMU_CHECK_GATE.
+                v_gate_status[gate] = max(status, GATE_AVAILABLE)
             else:
                 pre_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate)
                 if pre_detected is True and status == GATE_EMPTY:
                     v_gate_status[gate] = GATE_UNKNOWN
                 elif pre_detected is False and status != GATE_EMPTY:
                     v_gate_status[gate] = GATE_EMPTY
-            if status != GATE_EMPTY and v_gate_status[gate] == GATE_EMPTY:
+            if clear_attributes and status != GATE_EMPTY and v_gate_status[gate] == GATE_EMPTY:
                 self.clear_gate_attributes(gate)
         self.gate_status = v_gate_status
 

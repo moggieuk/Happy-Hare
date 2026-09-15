@@ -157,6 +157,11 @@ class MmuCheckGateCommand(BaseCommand):
                             with mmu.wrap_suppress_visual_log():
                                 mmu._set_tool_selected(TOOL_GATE_UNKNOWN)
                                 for gate, tool in gates_tools:
+                                    # Only a failure to pick up filament means "this gate is empty".
+                                    # Selection or parking failures happen with filament proven present
+                                    # and must never be treated as an empty gate, nor authorize moving
+                                    # on to another one - the filament has not been safely parked yet.
+                                    gate_is_empty = False
                                     try:
                                         mmu.select_gate(gate)
                                         # Keep live sensor readings available for homing, but do
@@ -166,7 +171,11 @@ class MmuCheckGateCommand(BaseCommand):
                                         # the active sensors for the newly selected gate.
                                         with mmu.wrap_suspend_insert_events():
                                             mmu.log_info("Checking gate %d..." % gate)
-                                            _ = mmu._load_gate(allow_retry=False)
+                                            try:
+                                                _ = mmu._load_gate(allow_retry=False)
+                                            except MmuError:
+                                                gate_is_empty = True
+                                                raise
                                             if tool >= 0:
                                                 mmu.log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
                                             else:
@@ -180,6 +189,11 @@ class MmuCheckGateCommand(BaseCommand):
                                             except MmuError as ee:
                                                 raise MmuError("Failure during check gate %d %s:\n%s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
                                     except MmuError as ee:
+                                        if not gate_is_empty:
+                                            # Filament was found at this gate but could not be selected
+                                            # or parked, so it may still be spanning the path. Report and
+                                            # stop; do not mark the gate empty and do not touch another.
+                                            raise
                                         mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
                                         mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
                                         if tool >= 0:
@@ -187,7 +201,29 @@ class MmuCheckGateCommand(BaseCommand):
                                         else:
                                             msg = "Gate %d marked EMPTY" % gate
                                         mmu.log_debug("Gate marked empty because: %s" % str(ee))
-                                        if mmu.is_in_print():
+
+                                        # An empty gate is exactly what EndlessSpool exists for, but this
+                                        # check runs before the load, so without this the print is paused
+                                        # here and the on-load remap never gets its turn. Substitute now
+                                        # and carry on, matching what a mid-print runout would do.
+                                        remapped_gate = -1
+                                        if tool >= 0 and mmu.endless_spool_enabled and mmu.p.endless_spool_on_load:
+                                            next_gate, es_msg = mmu.gate_maps.get_next_endless_spool_gate(tool, gate)
+                                            if next_gate >= 0:
+                                                mmu.log_always("%s! Checking for alternative gates %s" % (msg, es_msg))
+                                                mmu.log_info("Remapping T%d to gate %d" % (tool, next_gate))
+                                                mmu.gate_maps.remap_tool(tool, next_gate)
+                                                remapped_gate = next_gate
+
+                                        if remapped_gate >= 0:
+                                            # Re-check the replacement so the print only starts once the
+                                            # gate it will actually use is known to hold filament. Appending
+                                            # to the list being iterated is deliberate and terminates: every
+                                            # failed check marks that gate EMPTY, and get_next_endless_spool_gate
+                                            # only ever returns a gate that is not EMPTY, so the group is
+                                            # exhausted in at most num_gates steps and then raises below.
+                                            gates_tools.append([remapped_gate, tool])
+                                        elif mmu.is_in_print():
                                             raise MmuError("%s%s" % ("Required " if mmu.is_printing() else "", msg))
                                         else:
                                             mmu.log_always(msg)

@@ -3064,6 +3064,15 @@ class MmuController(MmuFilamentMovement):
             from_gate = self.gate_selected
             self.select_tool(tool)
             gate = self.ttg_map[tool] if tool >= 0 else self.gate_selected
+            if tool >= 0:
+                # gate_status is only corrected at bootup and on an explicit map reset, so by
+                # now it can be arbitrarily stale. The EndlessSpool test below needs an exact
+                # GATE_EMPTY, and a gate left at GATE_UNKNOWN silently skips the whole path and
+                # loads an empty gate instead. Refresh just this gate from its own sensors; a
+                # machine without gate sensors reads None and this is a no-op.
+                # clear_attributes=False: an empty lane is not an ejected lane, and the gate's
+                # temperature is about to be used to heat the extruder.
+                self.gate_maps.validate_gate_status([gate], clear_attributes=False)
             if self.gate_status[gate] == GATE_EMPTY:
                 if self.endless_spool_enabled and self.p.endless_spool_on_load:
                     next_gate, msg = self.gate_maps.get_next_endless_spool_gate(tool, gate)
