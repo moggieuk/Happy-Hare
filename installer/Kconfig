@@ -292,6 +292,9 @@ if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.options"        # Main software options
     source "Kconfig.tip_shaping"
     source "Kconfig.purging"
+  endif
+  source "Kconfig.speeds"           # All speeds
+  if !MULTI_UNIT
     source "macro_vars/Kconfig"     # Variables for all macros
   endif
   source "Kconfig.other"            # Raw access to other parameters

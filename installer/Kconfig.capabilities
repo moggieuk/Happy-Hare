@@ -60,9 +60,7 @@ config MMU_HAS_SYNC_FEEDBACK_BUFFER
 
 config MMU_HAS_ESPOOLER
   def_bool n
-
-config MMU_HAS_FILAMENT_BUFFER
-  def_bool n
+  select UNSELECT_MMU_HAS_FILAMENT_BUFFER
 
 config MMU_HAS_LEDS
   def_bool n
@@ -131,6 +129,8 @@ menu "Design attributes"
   source "Kconfig.selector_type" 
 
   source "Kconfig.bypass" 
+
+  source "Kconfig.filament_buffer"
 
   config UNSELECT_VARIABLE_BOWDEN_LENGTHS
     def_bool n

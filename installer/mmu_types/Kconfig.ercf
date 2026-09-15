@@ -6,6 +6,7 @@ config MMU_FAMILY_ERCF
     main versions, the original v1.1 and the upgraded v2.0.
   imply  LINEAR_SERVO_SELECTOR
   select MMU_HAS_ENCODER
+  imply  MMU_HAS_FILAMENT_BUFFER
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
 
@@ -69,12 +70,6 @@ if MMU_FAMILY_ERCF
        help
          Alternative filament block removing need for magnetic gate opening.
 
-      config MMU_HAS_FILAMENT_BUFFER
-        prompt "Has ERCP filament buffer?"
-        help
-          Does MMU have the Enraged Rabbit Carrot Patch (ERCP) filament buffer
-          to catch the uncoiled filament on unload.
-
       source "Kconfig.bypass"
     endmenu
   endif
@@ -90,11 +85,6 @@ if MMU_FAMILY_ERCF
         help
           Alternative filament block with slightly different geometry.
 
-      config MMU_HAS_FILAMENT_BUFFER
-        prompt "Has Cotton Tail filament buffer?"
-        help
-          Does MMU have the Cotton Tail filament buffer to catch the uncoiled
-          filament on unload. NOTE unselect if you are using Filamentalist.
     endmenu
   endif
 
@@ -113,11 +103,6 @@ if MMU_FAMILY_ERCF
           This will change the selector type and specify that the filament
           is always gripped
 
-      config MMU_HAS_FILAMENT_BUFFER
-        prompt "Has Cotton Tail filament buffer?"
-        help
-          Does MMU have the Cotton Tail filament buffer to catch the uncoiled
-          filament on unload. NOTE unselect if you are using Filamentalist.
     endmenu
   endif
 
