@@ -238,7 +238,10 @@ class MmuGateMaps:
             status = v_gate_status[gate]
             gear_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
             if gear_detected is True:
-                v_gate_status[gate] = GATE_AVAILABLE
+                # The sensor proves filament is present, not where it came from, so
+                # GATE_AVAILABLE_FROM_BUFFER must survive - it selects the buffer speed
+                # and accel for the load.
+                v_gate_status[gate] = max(status, GATE_AVAILABLE)
             else:
                 pre_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate)
                 if pre_detected is True and status == GATE_EMPTY:
