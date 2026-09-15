@@ -22,8 +22,11 @@ is the single source of truth. Call it — or make sure it's already being
 called on your path — before selecting/homing/sweeping a gate onto any
 endstop in `SHARED_GATE_ENDSTOPS` (`mmu_constants.py`):
 
-- **Switch-based** (`mmu_shared_exit`, `extruder`): reads the live qualified
-  sensor directly, so call order doesn't matter.
+- **Switch-based** (`mmu_shared_exit`, `extruder`): reads the live sensor
+  belonging to the **target gate's** unit, so call order doesn't matter. It
+  must be the target gate's unit, not the selected gate's — see
+  [`references/occupancy-guard.md`](references/occupancy-guard.md) §2, which
+  also records the no-bowden alias trap that goes with it.
 - **Encoder**: true iff filament is loaded, a *different* gate is selected,
   and that gate belongs to the same unit — this becomes inert once the
   caller has already switched `gate_selected` to the target gate, so **this

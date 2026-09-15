@@ -873,6 +873,39 @@ class TestSharedGateOccupancy(NfcScanTestCase):
         # The switch must not have landed half-applied with a stale positive parking distance
         self.assertEqual(self.hh.mmu.mmu_unit(0).p.gate_homing_endstop, 'encoder')
 
+class TestSharedGateOccupancyAcrossUnits(unittest.TestCase):
+    """
+    The guard must read the sensor belonging to the TARGET gate's unit, not the selected
+    gate's. This used to be check_sensor(get_qualified_endstop_name(endstop)), which was
+    unit-blind twice over: with no mmu_unit argument the name is qualified with the
+    SELECTED gate's unit, and check_sensor then strips the prefix off again and looks the
+    generic name up in active_sensors_map - itself a pointer at the selected gate's map.
+    So on a multi-unit machine the guard read the wrong unit's mmu_shared_exit entirely,
+    and would let a sweep proceed into a shared path that really was occupied.
+
+    TestSharedGateOccupancy above covers the single-unit case, where both spellings
+    resolve to the same physical switch and the bug is invisible.
+    """
+
+    def test_guard_reads_the_target_units_shared_exit(self):
+        # clone_across_units is the supported way to get a multi-unit shape; building one
+        # by hand renders unit1's sections with unit0's pins (see its docstring).
+        profile = hh_profiles.clone_across_units(
+            'two_boxes', hh_profiles.get('boxturtle_test'), ('unit0', 'unit1'))
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        self.assertEqual(hh.errors, [], 'bootup was not clean')
+
+        # Select a gate on unit0, then occupy unit1's shared exit with one of ITS gates.
+        hh.mmu.select_gate(0)
+        hh.place_filament(5, position=hh.filament().layout['mmu_shared_exit'] + 5.)
+
+        self.assertTrue(hh.mmu._shared_gate_path_occupied('mmu_shared_exit', 4),
+                        "gate 4 shares unit1's occupied shared exit")
+        self.assertFalse(hh.mmu._shared_gate_path_occupied('mmu_shared_exit', 0),
+                         "gate 0 is on unit0, whose shared exit is clear")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -30,23 +30,39 @@ set.
 ## 2. The guard itself
 
 `_shared_gate_path_occupied(self, endstop, gate)` —
-`extras/mmu/mmu_filament_movement.py:93-121`.
+`extras/mmu/mmu_filament_movement.py` (search the name; line numbers drift).
 
 - Returns `False` immediately if `endstop not in SHARED_GATE_ENDSTOPS`.
 - Encoder case: `filament_pos != FILAMENT_POS_UNLOADED and gate_selected != gate
   and unit.owns_gate(gate_selected)`. **Must be checked before the caller's own
   `select_gate(gate)`** — it goes inert once `gate_selected` already equals
   `gate` (documented in the docstring).
-- Switch-based case (`mmu_shared_exit`, `extruder`): reads the live qualified
-  sensor via `sensor_manager.check_sensor(...)` — order-independent.
+- Switch-based case (`mmu_shared_exit`, `extruder`): resolves the sensor
+  against the **target gate's** unit and reads it via
+  `sensor_manager.check_event_sensor(name, gate)` — order-independent.
 
-**Call sites today:**
-- `extras/mmu/commands/mmu_nfc_scan.py:90-96` — `can_continue` predicate:
+### Resolve against the TARGET gate's unit, not the selected one
+
+Use `check_event_sensor(name, gate)` with the name qualified by
+`mmu_unit(gate)`. It resolves against `all_sensors_map`, the stable global
+registry, so it reads the switch that actually sits downstream of `gate`.
+
+`check_sensor(get_qualified_endstop_name(endstop))` is the trap: with no
+`mmu_unit` the name is qualified with the *selected* gate's unit, and
+`check_sensor` then strips that prefix and looks the generic name up in
+`active_sensors_map` — itself only a pointer at the selected gate's map. On a
+multi-unit machine that reads the wrong unit entirely and lets a sweep proceed
+into an occupied shared path.
+
+**Call sites today** (grep rather than trust these line numbers):
+- `extras/mmu/commands/mmu_nfc_scan.py` — `can_continue` predicate:
   `active_unit.can_crossload and not mmu._shared_gate_path_occupied(scan_unit.p.gate_homing_endstop, gate)`.
-- `extras/mmu/commands/mmu_preload.py:81-88` — same pattern, using
+- `extras/mmu/commands/mmu_preload.py` — same pattern, using
   `preload_endstop = preload_unit.p.gate_preload_endstop or preload_unit.p.gate_homing_endstop`.
-- `extras/mmu/mmu_filament_movement.py:172-175` inside `_preload_gate`.
-- `extras/mmu/mmu_filament_movement.py:690-692` inside `_jog_scan`.
+  Both of these short-circuit on `... is not active_unit`, so neither can reach
+  the cross-unit case.
+- `extras/mmu/mmu_filament_movement.py` inside `_preload_gate` and `_jog_scan`.
+- `extras/mmu/mmu_nfc_arbiter.py` — advisory only, skips a candidate.
 
 **Concrete failure if you remove or bypass this:** with
 `gate_homing_endstop = mmu_shared_exit` on a crossload-capable unit (e.g.
@@ -96,6 +112,13 @@ depends on another field that can change live), wire it through an
 `on_change` hook the same way — a load-time-only validator isn't enough.
 
 ## 4. Reference tests
+
+`TestSharedGateOccupancy` below covers only the single-unit case, where the old
+and new sensor spellings resolve to the same physical switch. The **cross-unit**
+resolution is pinned by `TestSharedGateOccupancyAcrossUnits` in the same file,
+which builds a two-unit fixture with `hh_profiles.clone_across_units()` and
+asserts the guard is `True` for a gate on the occupied unit and `False` for one
+on the other.
 
 `test/test_mmu_nfc_scan.py`:
 
