@@ -366,6 +366,29 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertIn("requires require_bowden_move to be 0", str(cm.exception))
         self.assertEqual(unit.p.gate_homing_endstop, 'encoder')
 
+    def test_no_bowden_mode_rejects_shared_exit_preload_endstop(self):
+        """
+        MmuSensorManager aliases mmu_shared_exit to the extruder sensor on a no-bowden unit,
+        but only inside the per-gate map. _shared_gate_path_occupied resolves against the
+        global registry, where that alias does not exist - so a unit configured to preload
+        against the alias would run with the shared-path occupancy guard silently dead.
+        They are the same switch; the name that resolves is the one to use.
+        """
+        hh = self._check('3ms')
+        unit = hh.mmu.mmu_unit(0)
+
+        with self.assertRaises(Exception) as cm:
+            hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_shared_exit')
+        self.assertIn("gate_preload_endstop must be 'extruder'", str(cm.exception))
+        self.assertEqual(unit.p.gate_preload_endstop, 'extruder')
+
+        # Every other choice is still free, and the restriction is tied to no-bowden only.
+        hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=extruder')
+        self.assertEqual(unit.p.gate_preload_endstop, 'extruder')
+        unit.require_bowden_move = True
+        hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_shared_exit')
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_shared_exit')
+
     def test_bowden_homing_buffers_reject_negative_config(self):
         from test.hh import profiles
 

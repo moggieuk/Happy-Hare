@@ -42,6 +42,14 @@ class MmuError(Exception):
     pass
 
 
+class MmuGateHomingMiss(MmuError):
+    """A pickup that failed with nothing moved and no sensor seeing filament.
+
+    Reported separately because the gate can be treated as empty, where a pickup that
+    failed any other way leaves the filament position unknown.
+    """
+
+
 
 # -----------------------------------------------------------------------------------------------------------
 # WRAPPER FOR EFFICIENT USE OF SAVE VARIABLES
