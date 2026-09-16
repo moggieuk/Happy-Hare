@@ -71,11 +71,8 @@ class MmuCalibrator:
         bowden_home = self.var_manager.get(VARS_MMU_BOWDEN_HOME, None, namespace=u.name)
         if u.require_bowden_move and bowden_lengths is not None \
                 and bowden_home is not None and bowden_home not in GATE_ENDSTOPS:
-            # Unknown reference endstop - e.g. 'mmu_gate', the v2/v3 name for the per-gate
-            # exit sensor, carried over by a manual v3 -> v4 migration of mmu_vars.cfg.
-            # The saved lengths were calibrated against the current endstop, so keep them
-            # and normalize the stored reference before the adjustment below rereads it
-            # (an unrecognised value must not be treated as a changed endstop)
+            # Assume unknown references (e.g. legacy mmu_gate) mean the current endstop.
+            # Normalize storage before adjustment rereads it.
             mmu.log_warning(
                 "Warning: %s = %r is not a valid gate homing endstop (expected one of %s). "
                 "Keeping saved bowden lengths and re-stamping the reference to %s"
@@ -85,7 +82,7 @@ class MmuCalibrator:
             self.var_manager.set(VARS_MMU_BOWDEN_HOME, u.p.gate_homing_endstop, namespace=u.name)
         if u.require_bowden_move:
             if bowden_lengths is not None:
-                if any(x < UNCALIBRATED for x in bowden_lengths): # -1 is a valid 'not calibrated yet' entry
+                if any(x < UNCALIBRATED for x in bowden_lengths):
                     mmu.log_warning(
                         "Warning: negative bowden lengths for %s coerced to uncalibrated: %s"
                         % (u.name, bowden_lengths)
@@ -245,8 +242,6 @@ class MmuCalibrator:
         # Persist
         self.var_manager.set(VARS_MMU_BOWDEN_LENGTHS, self._bowden_lengths, namespace=mmu_unit.name)
         if length != UNCALIBRATED:
-            # Record the endstop the calibration was measured against so a restart can
-            # detect a reference change instead of losing the lengths
             self.var_manager.set(VARS_MMU_BOWDEN_HOME, mmu_unit.p.gate_homing_endstop, namespace=mmu_unit.name)
         self.var_manager.write()
 
@@ -264,9 +259,7 @@ class MmuCalibrator:
         current_home = self.var_manager.get(VARS_MMU_BOWDEN_HOME, None, namespace=mmu_unit.name)
         new_home = mmu_unit.p.gate_homing_endstop
         if current_home is None:
-            # No recorded reference (calibrated before the home was persisted, or a stale
-            # reference was discarded at load): assume the lengths were calibrated against
-            # the current endstop and just record it
+            # Without a baseline, assume the current endstop and preserve the lengths.
             mmu.log_debug("Recording bowden lengths reference endstop for %s: %s" % (mmu_unit.name, new_home))
             self.var_manager.set(VARS_MMU_BOWDEN_HOME, new_home, namespace=mmu_unit.name)
             self.var_manager.write()
