@@ -69,21 +69,23 @@ class MmuCalibrator:
 
         bowden_lengths = self.var_manager.get(VARS_MMU_BOWDEN_LENGTHS, None, namespace=u.name)
         bowden_home = self.var_manager.get(VARS_MMU_BOWDEN_HOME, None, namespace=u.name)
-        if bowden_home is not None and bowden_home not in GATE_ENDSTOPS:
+        if u.require_bowden_move and bowden_lengths is not None \
+                and bowden_home is not None and bowden_home not in GATE_ENDSTOPS:
             # Unknown reference endstop - e.g. 'mmu_gate', the v2/v3 name for the per-gate
             # exit sensor, carried over by a manual v3 -> v4 migration of mmu_vars.cfg.
             # The saved lengths were calibrated against the current endstop, so keep them
-            # and let the reference be re-stamped instead of discarding the calibration
+            # and normalize the stored reference before the adjustment below rereads it
+            # (an unrecognised value must not be treated as a changed endstop)
             mmu.log_warning(
                 "Warning: %s = %r is not a valid gate homing endstop (expected one of %s). "
-                "Keeping saved bowden lengths; the reference will be re-stamped to %s"
+                "Keeping saved bowden lengths and re-stamping the reference to %s"
                 % (self.var_manager.namespace(VARS_MMU_BOWDEN_HOME, namespace=u.name),
                    bowden_home, " / ".join(GATE_ENDSTOPS), u.p.gate_homing_endstop)
             )
-            bowden_home = None
+            self.var_manager.set(VARS_MMU_BOWDEN_HOME, u.p.gate_homing_endstop, namespace=u.name)
         if u.require_bowden_move:
             if bowden_lengths is not None:
-                if any(x < 0 for x in bowden_lengths):
+                if any(x < UNCALIBRATED for x in bowden_lengths): # -1 is a valid 'not calibrated yet' entry
                     mmu.log_warning(
                         "Warning: negative bowden lengths for %s coerced to uncalibrated: %s"
                         % (u.name, bowden_lengths)
