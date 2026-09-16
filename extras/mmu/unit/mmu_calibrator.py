@@ -68,9 +68,25 @@ class MmuCalibrator:
         # -------------------------------------------------------------------------------------------------------
 
         bowden_lengths = self.var_manager.get(VARS_MMU_BOWDEN_LENGTHS, None, namespace=u.name)
-        bowden_home = self.var_manager.get(VARS_MMU_BOWDEN_HOME, u.p.gate_homing_endstop, namespace=u.name)
+        bowden_home = self.var_manager.get(VARS_MMU_BOWDEN_HOME, None, namespace=u.name)
+        if u.require_bowden_move and bowden_lengths is not None \
+                and bowden_home is not None and bowden_home not in GATE_ENDSTOPS:
+            # Assume unknown references (e.g. legacy mmu_gate) mean the current endstop.
+            # Normalize storage before adjustment rereads it.
+            mmu.log_warning(
+                "Warning: %s = %r is not a valid gate homing endstop (expected one of %s). "
+                "Keeping saved bowden lengths and re-stamping the reference to %s"
+                % (self.var_manager.namespace(VARS_MMU_BOWDEN_HOME, namespace=u.name),
+                   bowden_home, " / ".join(GATE_ENDSTOPS), u.p.gate_homing_endstop)
+            )
+            self.var_manager.set(VARS_MMU_BOWDEN_HOME, u.p.gate_homing_endstop, namespace=u.name)
         if u.require_bowden_move:
-            if bowden_lengths is not None and bowden_home in GATE_ENDSTOPS:
+            if bowden_lengths is not None:
+                if any(x < UNCALIBRATED for x in bowden_lengths):
+                    mmu.log_warning(
+                        "Warning: negative bowden lengths for %s coerced to uncalibrated: %s"
+                        % (u.name, bowden_lengths)
+                    )
                 bowden_lengths = [UNCALIBRATED if x < 0 else x for x in bowden_lengths] # Ensure -1 value for uncalibrated
                 # Ensure list size
                 if len(bowden_lengths) == u.num_gates:
@@ -225,6 +241,8 @@ class MmuCalibrator:
 
         # Persist
         self.var_manager.set(VARS_MMU_BOWDEN_LENGTHS, self._bowden_lengths, namespace=mmu_unit.name)
+        if length != UNCALIBRATED:
+            self.var_manager.set(VARS_MMU_BOWDEN_HOME, mmu_unit.p.gate_homing_endstop, namespace=mmu_unit.name)
         self.var_manager.write()
 
 
@@ -240,6 +258,12 @@ class MmuCalibrator:
 
         current_home = self.var_manager.get(VARS_MMU_BOWDEN_HOME, None, namespace=mmu_unit.name)
         new_home = mmu_unit.p.gate_homing_endstop
+        if current_home is None:
+            # Without a baseline, assume the current endstop and preserve the lengths.
+            mmu.log_debug("Recording bowden lengths reference endstop for %s: %s" % (mmu_unit.name, new_home))
+            self.var_manager.set(VARS_MMU_BOWDEN_HOME, new_home, namespace=mmu_unit.name)
+            self.var_manager.write()
+            return
         if new_home == current_home: return
 
         if new_home == SENSOR_ENCODER: # From gate endstop to encoder
