@@ -145,27 +145,7 @@ export IN  := $(OUT)/in
 
 # Default unit and mcu naming
 export UNIT_NAME ?= unit0
-
-# ID_NAME is the name that goes inside the MCU alias, and so inside every pin that
-# names it. Normally the unit name, which is only there to tell several units apart;
-# with bare_unit_names there is one unit with no name to lend, so it becomes a plain
-# mmu. Multi-unit is tested first because the symbol is absent there too - Kconfig only
-# offers it on a single unit - and an absent symbol must not read as bare, or every
-# unit would answer to the same alias.
-#
-# Scope is deliberately the MCU alias alone. Every other generated object name - the
-# steppers, servo, encoder, sensors, LED chains - is stamped out of [[UNIT_NAME]] by
-# config/base/mmu_hardware.cfg, and the name has to match on both sides. Changing one
-# side leaves a dangling reference; changing both is a rename of every Klipper object
-# an existing install already has.
-ifeq ($(filter y,$(CONFIG_MULTI_UNIT)),y)
-  export ID_NAME ?= $(UNIT_NAME)
-else ifeq ($(strip $(CONFIG_PARAM_BARE_UNIT_NAMES)),0)
-  export ID_NAME ?= $(UNIT_NAME)
-else
-  export ID_NAME ?= mmu
-endif
-export MCU_NAME ?= $(ID_NAME)
+export MCU_NAME ?= unit0
 
 # Helper functions/constants
 comma := ,
@@ -451,6 +431,8 @@ install: $(install_targets)
 	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
+	@# A single unnamed unit has nothing to label in the UI - see set_ui_defaults
+	$(Q)$(PY) -m installer.build $(V) --set-ui-defaults "$(KCONFIG_CONFIG)"
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION)is ready!"
 
 uninstall: clean | python_deps

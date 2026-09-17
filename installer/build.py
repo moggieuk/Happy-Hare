@@ -844,6 +844,55 @@ def restart_service(name, service, kconfig):
             logging.warning("Service '/etc/init.d/{}' not found! Restart manually or check your config".format(service))
 
 
+def set_ui_defaults(kconfig):
+    """
+    Point the UI unit-name label at what this machine actually is.
+
+    Mainsail captions each unit "#<n> <name>". On a single unnamed unit that caption
+    carries nothing worth reading; on a named unit, and especially on a multi-unit
+    machine, it is the only thing telling the units apart.
+
+    That condition is not permanent - converting a machine to multi-unit flips it - so
+    this writes the value matching the machine just built, rather than filling in a
+    default once and leaving it to go stale. An install is an explicit action and is
+    entitled to line the UI up with the hardware it just configured.
+
+    Failures are ignored throughout: Moonraker may be down, may be unreachable, or the
+    UI may not be Mainsail at all, and none of that should fail an install.
+    """
+    import json
+    import time
+    import urllib.request
+
+    kcfg = load_parsed_kconfig(kconfig)
+    # Multi-unit is tested FIRST. PARAM_BARE_UNIT_NAMES is a per-unit symbol and is
+    # absent from the shared config a multi-unit machine is built from, where it still
+    # resolves to its default of 1 - reading it there claims a three unit machine has
+    # no name to show, which is precisely backwards.
+    if kcfg.is_enabled("MULTI_UNIT"):
+        show_name = True
+    else:
+        show_name = not kcfg.is_enabled("PARAM_BARE_UNIT_NAMES")
+
+    body = json.dumps({"namespace": "mainsail", "key": "view.mmu.showName",
+                       "value": show_name})
+    req = urllib.request.Request("http://localhost:7125/server/database/item",
+                                 data=body.encode(), method="POST",
+                                 headers={"Content-Type": "application/json"})
+    for _ in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=3) as r:
+                r.read()
+        except Exception:
+            time.sleep(2)   # Moonraker is still coming back up after its restart
+            continue
+        if show_name:
+            logging.log(LEVEL_NOTICE, "Showing the unit name in the UI")
+        else:
+            logging.log(LEVEL_NOTICE, "Unit has no name, so hid the unit name in the UI")
+        return
+
+
 def major_minor(version_str):
     """
     Convert "<major>.<minor>.<point>" to (<major>, <minor>)
@@ -1162,6 +1211,7 @@ def main():
     parser.add_argument("--install-includes", nargs=2)
     parser.add_argument("--uninstall-includes", nargs=1)
     parser.add_argument("--restart-service", nargs=3)
+    parser.add_argument("--set-ui-defaults", nargs=1)
     parser.add_argument("--pre-parse-kconfig", nargs=1)
     parser.add_argument("--gen-kconfig-options", nargs=1)
     args = parser.parse_args()
@@ -1188,6 +1238,9 @@ def main():
         install_includes(args.install_includes[0], args.install_includes[1])
     if args.uninstall_includes:
         uninstall_includes(args.uninstall_includes[0])
+
+    if args.set_ui_defaults:
+        set_ui_defaults(args.set_ui_defaults[0])
 
     if args.restart_service:
         restart_service(args.restart_service[0], args.restart_service[1], args.restart_service[2])
