@@ -49,13 +49,6 @@ exercises the option you touched.
   feature requests, not proposals.
 - Setup-specific questions belong in Discord, not GitHub issues.
 
-## AI-assisted commits
-
-A large fraction of recent history is Claude-assisted with attribution
-(`Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` /
-`Claude Sonnet 5 <noreply@anthropic.com>`) — keep that convention on commits
-where it applies rather than omitting it.
-
 ## Subsystem knowledge (loads automatically when relevant)
 
 - **`gate-endstop-invariants`** — the shared-gate endstop occupancy rule and
