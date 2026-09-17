@@ -341,6 +341,15 @@ class MmuProportionalSensor:
                 self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), self.value)
 
 
+    def get_virtual_sensor_state(self):
+        """
+        Return the physical {-1, 0, 1} hysteresis state, regardless of switch enablement.
+
+        Before the first ADC sample, report neutral to match the initial analog value.
+        """
+        return self._vsensor_state if self._vsensor_state is not None else 0
+
+
     def get_status(self, eventtime):
         return {
             "enabled":          bool(self.runout_helper.sensor_enabled),
