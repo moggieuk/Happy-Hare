@@ -268,6 +268,8 @@ TD1_STATE_DISABLED     = 'disabled'  # Scanner present but Happy Hare is ignorin
 
 # mmu_vars.cfg variables
 VARS_MMU_REVISION                  = "mmu__revision"
+VARS_MMU_BARE_UNIT_NAMES           = "mmu__bare_unit_names"  # Always unprefixed: records whether "bare_unit_names" was in effect last boot
+VARS_MMU_UNIT_NAMES                = "mmu__unit_names"       # Always unprefixed: unit names in effect last boot, to spot a rename orphaning their data
 VARS_MMU_ENABLE_ENDLESS_SPOOL      = "mmu_state_enable_endless_spool"
 VARS_MMU_ENDLESS_SPOOL_GROUPS      = "mmu_state_endless_spool_groups"
 VARS_MMU_SENSOR_ENABLED            = "mmu_state_sensor_enabled"  # Sparse {qualified_sensor_name: False}, only disabled entries stored
@@ -312,6 +314,32 @@ VARS_MMU_SELECTOR_RELEASE_ANGLE    = "mmu_selector_release_angle"
 VARS_MMU_SELECTOR_SERVO_ANGLES     = "mmu_selector_servo_angles"      # Used on linear selectors with servo for filament grip
 VARS_MMU_SELECTOR_GATE_SEQUENCE    = "mmu_selector_gate_sequence"     # Used by indexed selectors
 VARS_MMU_SELECTOR_ENDSTOP_WIDTHS   = "mmu_selector_endstop_widths"    # Used by indexed selectors
+
+# The variables above that are stored per-unit, i.e. the ones SaveVariableManager.namespace()
+# rewrites to "mmu_<unit>_...". Listed explicitly because the two groups are not separable by
+# name alone - "mmu_statistics_gate_3" is per-unit while "mmu_statistics_swaps" is not. Used to
+# move saved data across when the naming changes (single unit named <-> unnamed, unit renamed).
+# Missing an entry here does not lose data silently: whatever is left behind under the old name
+# is reported by SaveVariableManager's orphaned-unit warning.
+VARS_MMU_PER_UNIT = (
+    VARS_MMU_ENCODER_RESOLUTION,
+    VARS_MMU_ENCODER_CLOG_LENGTH,
+    VARS_MMU_GEAR_ROTATION_DISTANCES,
+    VARS_MMU_BOWDEN_LENGTHS,
+    VARS_MMU_BOWDEN_HOME,
+    VARS_MMU_SELECTOR_OFFSETS,
+    VARS_MMU_SELECTOR_BYPASS_OFFSET,
+    VARS_MMU_SELECTOR_LAST_POS,
+    VARS_MMU_SELECTOR_ANGLES,
+    VARS_MMU_SELECTOR_BYPASS_ANGLE,
+    VARS_MMU_SELECTOR_RELEASE_ANGLE,
+    VARS_MMU_SELECTOR_SERVO_ANGLES,
+    VARS_MMU_SELECTOR_GATE_SEQUENCE,
+    VARS_MMU_SELECTOR_ENDSTOP_WIDTHS,
+)
+VARS_MMU_PER_UNIT_PREFIXES = (
+    VARS_MMU_GATE_STATISTICS_PREFIX,  # mmu_statistics_gate_<gate>, one per gate
+)
 
 # Mainsail/Fluid visualization of extruder colors and other attributes
 T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled

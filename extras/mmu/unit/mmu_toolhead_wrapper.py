@@ -80,6 +80,12 @@ class MmuToolheadWrapper():
         # --------------------------------------------
         # Setup single extruder (entrance) sensor
         # --------------------------------------------
+        # "bare_unit_names" (single-unit installs only) drops the "<toolhead>:" prefix, which
+        # otherwise only exists to keep multiple toolheads' sensors from colliding.
+        extruder_entry_sensor_name = (
+            SENSOR_EXTRUDER_ENTRY if self.mmu_machine.bare_unit_names
+            else f"{self.name}:{SENSOR_EXTRUDER_ENTRY}"
+        )
         switch_pin = config.get('extruder_switch_pin', None)
         sensor = sf.create_mmu_sensor(
             config,
@@ -96,6 +102,11 @@ class MmuToolheadWrapper():
         # --------------------------------------------
         # Setup single toolhead sensor
         # --------------------------------------------
+        # Same "bare_unit_names" rule as the extruder entry sensor above.
+        toolhead_sensor_name = (
+            SENSOR_TOOLHEAD if self.mmu_machine.bare_unit_names
+            else f"{self.name}:{SENSOR_TOOLHEAD}"
+        )
         switch_pin = config.get('toolhead_switch_pin', None)
         sensor = sf.create_mmu_sensor(
             config,

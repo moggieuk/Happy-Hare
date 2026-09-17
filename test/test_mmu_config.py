@@ -805,6 +805,34 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         self.assertFalse(kc.is_enabled('SW5'))
 
 
+class TestBareUnitNames(unittest.TestCase):
+    """
+    PARAM_BARE_UNIT_NAMES: an install-time opt-in, single-unit-only alternative to the
+    normal namespaced/prefixed save_variables keys and encoder/extruder sensor names -
+    see extras/mmu/mmu_utils.py:SaveVariableManager.namespace(), and the Kconfig
+    "depends on !MULTI_UNIT" guard for why it is never offered on a multi-unit machine.
+    """
+
+    def test_defaults_on_for_a_plain_single_unit_machine(self):
+        """One unit has nothing to be told apart from, so it is unnamed by default."""
+        parser = cfg.assemble(cfg.render(profiles.get('boxturtle')))
+        self.assertEqual(dict(parser.items('mmu_machine'))['bare_unit_names'], '1')
+
+    def test_renders_off_when_the_name_is_wanted(self):
+        parser = cfg.assemble(cfg.render(profiles.get('boxturtle_named_unit')))
+        self.assertEqual(dict(parser.items('mmu_machine'))['bare_unit_names'], '0')
+
+    def test_option_does_not_exist_on_a_multi_unit_machine(self):
+        """
+        Kconfig hides PARAM_BARE_UNIT_NAMES entirely under multi-unit ("depends on
+        !MULTI_UNIT"), so it must fall back to its Python-side default (0/off) rather
+        than ever render as selectable - a real multi-unit machine has no single unit
+        name for the storage to collapse onto.
+        """
+        parser = cfg.assemble(cfg.render(TWO_UNIT))
+        self.assertNotIn('bare_unit_names', dict(parser.items('mmu_machine')))
+
+
 # Deliberately TWO IDENTICAL BOXTURTLES rather than the real ercf_vvd profile. The point is
 # to test the multi-unit RENDER PATH, so both units being the machine every other test
 # already trusts means a failure here is the path and not an ERCF or ViViD quirk. It lives

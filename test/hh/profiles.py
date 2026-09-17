@@ -161,6 +161,31 @@ BOXTURTLE_TEST = BOXTURTLE.derive(
     },
     description='Neutral BoxTurtle fixture for generic harness tests')
 
+# A pair differing only in "bare_unit_names", for testing that one symbol - not distinct
+# machines. Both carry an encoder and an extruder entry sensor so the naming can be checked
+# on real sensor objects as well as on saved variables. The bare variant states the option
+# explicitly even though it is the single-unit default, so these two stay a matched pair if
+# that default ever moves.
+BOXTURTLE_BARE_NAMES = BOXTURTLE.derive(
+    'boxturtle_bare_names',
+    syms={
+        'PARAM_BARE_UNIT_NAMES': True,
+        # Also bring in an encoder and an extruder-entry sensor so a test can exercise
+        # mmu_encoder.py's and mmu_toolhead_wrapper.py's halves of the option too, not
+        # just the save_variables half.
+        'MMU_HAS_ENCODER': True,
+        'PIN_ENCODER': 'unit0:PA6',
+        'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_EXTRUDER_SENSOR': 'unit0:PA7',
+    },
+    description='BoxTurtle with bare_unit_names enabled (unnamed variables/sensors)')
+
+BOXTURTLE_NAMED_UNIT = BOXTURTLE_BARE_NAMES.derive(
+    'boxturtle_named_unit',
+    syms={'PARAM_BARE_UNIT_NAMES': False},
+    description='BoxTurtle keeping the unit name in variables/sensors')
+
 # BoxTurtle + one COMMON NFC reader serving all gates and the bypass (RC522 over SPI).
 #
 # MMU_HAS_COMMON_NFC_READER is what gates both the [mmu_nfc_reader NAME] section AND
@@ -779,7 +804,8 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU
                     TD1_OFFPATH, TD1_BOTH)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
-            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}
+            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER,
+             BOXTURTLE_BARE_NAMES, BOXTURTLE_NAMED_UNIT)}
 
 
 def get(name):

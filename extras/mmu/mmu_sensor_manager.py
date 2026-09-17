@@ -41,12 +41,21 @@ class MmuSensorManager:
         def collect_sensors(pairs):
             return {key: sensor for sensor, key in pairs if sensor}
 
+        # With "bare_unit_names" the encoder, extruder-entry and toolhead sensors are
+        # registered WITHOUT their "<owner>:" prefix (see MmuEncoder / MmuToolheadWrapper).
+        # Naming is a two-sided contract: the registry keys built here and
+        # get_qualified_endstop_name() below must use the same rule, otherwise a homing
+        # move resolves e.g. "extruder" to "default:extruder" and finds no endstop.
+        # Read the option, not num_units: a single-unit machine with the option turned off
+        # keeps its prefixes, and this side has to follow it there too.
+        bare_unit_names = self.mmu_machine.bare_unit_names
+
         for mmu_unit in self.mmu_machine.units:
 
             sf_buffer = mmu_unit.buffer
             sf_buffer_name = sf_buffer.name if sf_buffer is not None else None
             encoder = mmu_unit.encoder
-            encoder_name = encoder.name if encoder is not None else None
+            encoder_name = encoder.name if encoder is not None and not bare_unit_names else None
             sensor_defs = [
                 (mmu_unit.sensors.shared_exit_sensor, SENSOR_SHARED_EXIT, mmu_unit.name),
                 (sf_buffer.compression_sensor if sf_buffer else None, SENSOR_COMPRESSION, sf_buffer_name),
@@ -336,6 +345,13 @@ class MmuSensorManager:
         if endstop_name in [SENSOR_COMPRESSION, SENSOR_TENSION]:
             if mmu_unit.buffer:
                 return self.get_prefixed_sensor_name(endstop_name, mmu_unit.buffer.name)
+            return endstop_name
+
+        # An unnamed single unit registers these three without a prefix, so resolving to a
+        # prefixed name here would look up a sensor that does not exist. This function and
+        # MmuEncoder/MmuToolheadWrapper have to agree on what the sensors are called.
+        if self.mmu_machine.bare_unit_names and endstop_name in [
+                SENSOR_ENCODER, SENSOR_EXTRUDER_ENTRY, SENSOR_TOOLHEAD]:
             return endstop_name
 
         # These have form: "<encoderName>:genericName" (encoder is optional, may not be fitted)
