@@ -130,3 +130,175 @@ class TestSwitchSyncFeedbackString(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestBufferSpringRelease(unittest.TestCase):
+    """
+    MMU_SYNC_FEEDBACK RELEASE=1 parks the buffer where its spring rests, so a sprung
+    buffer is not left holding its spring loaded between prints.
+
+    These tests script the sensor readings rather than letting filament travel drive
+    them. That is not laziness: the harness only models buffer travel dynamically for
+    two-switch tension-sprung buffers (test/hh/filament.py:167-171), so a PROPORTIONAL
+    buffer's analog reading does not respond to gear moves here at all. What is being
+    changed is which target the routine aims at and which way it therefore moves, and
+    that is exactly what these assert on.
+    """
+
+    NEUTRAL_START = 0.0
+
+    # EMU already ships buffer_spring_state: tension, so every case states the spring
+    # it wants rather than leaning on the profile default. Drive the CHOICE symbols
+    # and not PARAM_BUFFER_SPRING_STATE: the PARAM has no prompt, so setting it
+    # directly is ignored by Kconfig (it warns) and only works by accident.
+    SPRING_CHOICE = {
+        'tension':     'CHOICE_BUFFER_SPRING_STATE_TENSION',
+        'neutral':     'CHOICE_BUFFER_SPRING_STATE_NEUTRAL',
+        'compression': 'CHOICE_BUFFER_SPRING_STATE_COMPRESSION',
+        'none':        'CHOICE_BUFFER_SPRING_STATE_NONE',
+    }
+
+    def _session(self, spring=None, profile_name='emu'):
+        from test.hh import profiles as profiles_mod
+        profile = profiles_mod.get(profile_name)
+        if spring is not None:
+            syms = dict.fromkeys(self.SPRING_CHOICE.values(), False)
+            syms[self.SPRING_CHOICE[spring]] = True
+            profile = profile.derive('%s_spring_%s' % (profile_name, spring), syms=syms)
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertEqual(hh.errors, [])
+
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
+        hh.mmu.filament_pos = FILAMENT_POS_LOADED
+        return hh
+
+    def _run(self, hh, gcode, readings):
+        """
+        Run gcode with a scripted sequence of sensor readings.
+        Returns (gear moves commanded, info/debug lines logged).
+        """
+        moves, logged = [], []
+        sf = hh.mmu.mmu_unit(0).sync_feedback
+        seq = list(readings)
+
+        def fake_state(*args, **kwargs):
+            return seq.pop(0) if len(seq) > 1 else seq[0]
+
+        def fake_move(reason, dist, *args, **kwargs):
+            moves.append(dist)
+            return dist
+
+        with patch.object(sf, '_get_sensor_state', side_effect=fake_state), \
+                patch.object(hh.mmu, 'move_filament', side_effect=fake_move), \
+                patch.object(hh.mmu, 'log_info', side_effect=logged.append), \
+                patch.object(hh.mmu, 'log_debug', side_effect=logged.append), \
+                patch.object(hh.mmu, 'log_warning', side_effect=logged.append):
+            hh.run_gcode(gcode)
+        return moves, logged
+
+    def test_spring_state_is_the_release_target_and_sets_the_direction(self):
+        """
+        A tension-sprung buffer rests at -1, so releasing it RETRACTS. This is the
+        whole feature: before the change there was no way to ask for anything but 0.
+        """
+        hh = self._session(spring='tension')
+        self.assertEqual(hh.mmu.mmu_unit(0).buffer.buffer_spring_state_num, -1)
+
+        moves, logged = self._run(
+            hh, 'MMU_SYNC_FEEDBACK RELEASE=1', [self.NEUTRAL_START, -0.99])
+
+        self.assertTrue(moves, 'RELEASE=1 commanded no movement at all')
+        self.assertLess(moves[0], 0.0,
+                        'releasing a tension-sprung buffer must retract, got %r' % moves)
+        self.assertTrue(any('Released buffer spring' in m for m in logged),
+                        'expected a release confirmation, got %r' % logged)
+
+    def test_direction_is_taken_from_config_not_hardcoded(self):
+        """A compression-sprung buffer rests at +1, so it releases the other way."""
+        hh = self._session(spring='compression')
+        self.assertEqual(hh.mmu.mmu_unit(0).buffer.buffer_spring_state_num, 1)
+
+        moves, _ = self._run(
+            hh, 'MMU_SYNC_FEEDBACK RELEASE=1', [self.NEUTRAL_START, 0.99])
+
+        self.assertTrue(moves, 'RELEASE=1 commanded no movement at all')
+        self.assertGreater(moves[0], 0.0,
+                           'releasing a compression-sprung buffer must feed, got %r' % moves)
+
+    def test_release_is_a_noop_when_no_resting_position_is_configured(self):
+        """
+        'none' is the shipped default and means nobody has said where this buffer
+        rests. Aiming at a guess would be worse than doing nothing.
+        """
+        hh = self._session(spring='none')
+        self.assertIsNone(hh.mmu.mmu_unit(0).buffer.buffer_spring_state_num)
+
+        moves, logged = self._run(
+            hh, 'MMU_SYNC_FEEDBACK RELEASE=1', [self.NEUTRAL_START])
+
+        self.assertEqual(moves, [], 'RELEASE=1 moved filament with no spring state set')
+        self.assertTrue(any('Nothing to release' in m for m in logged),
+                        'expected a skip explanation, got %r' % logged)
+
+    def test_adjust_tension_still_targets_neutral(self):
+        """Regression: the existing behaviour must be untouched by the new target."""
+        hh = self._session(spring='tension')
+
+        moves, logged = self._run(
+            hh, 'MMU_SYNC_FEEDBACK ADJUST_TENSION=1', [-0.5, -0.05])
+
+        self.assertTrue(moves, 'ADJUST_TENSION=1 commanded no movement')
+        self.assertGreater(moves[0], 0.0,
+                           'correcting tension toward neutral must feed, got %r' % moves)
+        self.assertTrue(any('Neutralized tension' in m for m in logged),
+                        'expected the original neutralize message, got %r' % logged)
+        self.assertFalse(any('Released buffer spring' in m for m in logged),
+                         'ADJUST_TENSION must not report a spring release')
+
+    def test_rail_target_accepts_a_saturated_reading_as_arrival(self):
+        """
+        A sensor pinned at its rail never reports exactly -1.0, so a symmetric band
+        around the target would never be satisfied and the routine would keep nudging
+        into the buffer's own hard stop. Reaching the rail has to count as arrival.
+        """
+        hh = self._session(spring='tension')
+        sf = hh.mmu.mmu_unit(0).sync_feedback
+
+        moves = []
+        with patch.object(sf, '_get_sensor_state', side_effect=lambda *a, **k: -0.98), \
+                patch.object(hh.mmu, 'move_filament',
+                             side_effect=lambda reason, dist, *a, **k: moves.append(dist)):
+            actual, success = sf.adjust_filament_tension(target=-1.0)
+
+        self.assertTrue(success, 'a buffer sitting on its rail should report success')
+        self.assertEqual(moves, [], 'already at the rail: nothing should move')
+
+
+class TestSwitchBufferSpringRelease(unittest.TestCase):
+    """A switch buffer can only home to neutral, so it must decline rather than guess."""
+
+    def test_switch_buffer_declines_release(self):
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertEqual(hh.errors, [])
+
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
+        hh.mmu.filament_pos = FILAMENT_POS_LOADED
+
+        unit = hh.mmu.mmu_unit(0)
+        self.assertFalse(hh.mmu.sensor_manager.has_sensor('filament_proportional'))
+
+        moves, logged = [], []
+        with patch.object(hh.mmu, 'move_filament',
+                          side_effect=lambda reason, dist, *a, **k: moves.append(dist)), \
+                patch.object(hh.mmu, 'log_debug', side_effect=logged.append), \
+                patch.object(hh.mmu, 'log_info', side_effect=logged.append), \
+                patch.object(hh.mmu, 'log_warning', side_effect=logged.append):
+            hh.run_gcode('MMU_SYNC_FEEDBACK RELEASE=1')
+
+        self.assertEqual(moves, [], 'a switch buffer must not be driven to a rail')
+        self.assertTrue(any('Nothing to release' in m for m in logged),
+                        'expected an explicit decline, got %r' % logged)

@@ -319,11 +319,13 @@ class MmuSyncFeedback:
                 self._schedule_tangle_current(gate, restore_percent, False, msg)
 
 
-    def adjust_filament_tension(self, use_gear_motor=True, max_move=None):
+    def adjust_filament_tension(self, use_gear_motor=True, max_move=None, target=0.0):
         """
         Relax the filament tension, preferring proportional control if available else sync-feedback sensor switches.
         By default uses gear stepper to achieve the result but optionally can use just extruder stepper for
         extruder entry check using compression sensor 'max_move' is advisory maximum travel distance
+        'target' is the sync-feedback state to settle at, default 0.0 (neutral). A non-neutral target is
+        used to park the buffer at its spring rest position and requires a proportional sensor
         Returns distance of the correction move and whether operation was successful (or None if not performed)
         """
         if not self.mmu_unit.has_buffer(): return 0.0, None
@@ -332,7 +334,12 @@ class MmuSyncFeedback:
         max_move = max_move or self.mmu_unit.buffer.buffer_maxrange
 
         if has_proportional:
-            return self._adjust_filament_tension_proportional() # Doesn't yet support extruder stepper or max_move parameter
+            return self._adjust_filament_tension_proportional(target=target) # Doesn't yet support extruder stepper or max_move parameter
+
+        if target:
+            # Switch buffers home to neutral only; a non-neutral target has no meaning for them
+            self.mmu.log_debug("Tension target %.2f ignored: only supported with a proportional sensor" % target)
+            return 0., None
 
         if has_tension or has_compression:
             return self._adjust_filament_tension_switch(use_gear_motor=use_gear_motor, max_move=max_move)
@@ -920,9 +927,10 @@ class MmuSyncFeedback:
         return actual, fhomed
 
 
-    def _adjust_filament_tension_proportional(self):
+    def _adjust_filament_tension_proportional(self, target=0.0):
         """
         Helper to relax filament tension using the proportional sync-feedback buffer.
+        'target' is the sensor state to settle at, default 0.0 (neutral).
         Returns: actual distance moved (mm), success bool
         """
 
@@ -945,6 +953,23 @@ class MmuSyncFeedback:
         if neutral_band < 0.05:
             neutral_band = 0.05
 
+        # A rail target is one-sided: there is nothing past the rail to come back from, so
+        # "reached or passed it" is the honest arrival test. Inside the sensor's normal range
+        # this agrees with the symmetric band; it differs only for a reading beyond the far
+        # side of the target, which is what a drifted analog_max_* calibration produces.
+        target = max(-1.0, min(1.0, float(target)))
+        at_rail = abs(target) >= 1.0 - neutral_band
+
+        def arrived(state):
+            if at_rail:
+                return state <= target + neutral_band if target < 0. else state >= target - neutral_band
+            return abs(state - target) <= neutral_band
+
+        # Only the wording changes; 'neutral' would be a lie when parking at a rail
+        arrival_word = "neutral" if not target else "on target"
+        if target:
+            self.mmu.log_debug("Proportional adjust: targeting %.2f rather than neutral" % target)
+
         # maxrange is full end-to-end sensor span; use half as the per-side budget from neutral to either end
         maxrange_span_mm = float(self.mmu_unit.buffer.buffer_maxrange)
         if maxrange_span_mm <= 0.0:
@@ -965,11 +990,11 @@ class MmuSyncFeedback:
         # --- Initial proportional correction ---
         # Negative sensor state = tension -> feed filament. positive sensor state = compression -> retract filament
         prop_state = self._get_sensor_state() # [-1..+1], 0 ≈ neutral
-        if abs(prop_state) > neutral_band:
+        if not arrived(prop_state):
             # Initial move distance as a proportion to how off centre we are based on the sensor readings.
             # this will get the sensor close but likely will need a few fine adjustments (nudges) to get it
             # within the centre range depending on how large the bowden tube slack is.
-            initial_move_mm = -prop_state * per_side_budget_mm
+            initial_move_mm = -(prop_state - target) * per_side_budget_mm
             if abs(initial_move_mm) >= nudge_mm:
                 self.mmu.move_filament(
                     "Proportional initial adjust - extruder load",
@@ -985,11 +1010,11 @@ class MmuSyncFeedback:
 
         # --- Check proportional sensor state after initial move and return if within neutral deadband ---
         prop_state = self._get_sensor_state()
-        if abs(prop_state) <= neutral_band:
+        if arrived(prop_state):
             self.mmu.log_info(
-                "Proportional adjust: neutral after initial "
+                "Proportional adjust: %s after initial "
                 "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f, success=yes)" %
-                (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
+                (arrival_word, nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
             )
             return moved_total_mm, True
 
@@ -1005,18 +1030,18 @@ class MmuSyncFeedback:
                 )
                 return moved_total_mm, False
 
-            if abs(prop_state) <= neutral_band:
+            if arrived(prop_state):
                 # confirm neutral after a short wait
                 try:
                     self.mmu.reactor.pause(settle_time)
                 except Exception:
                     time.sleep(settle_time)
                 prop_state = self._get_sensor_state()
-                if abs(prop_state) <= neutral_band:
+                if arrived(prop_state):
                     break
 
-            # Direction: tension -> feed forward; compression -> retract
-            nudge_move_mm = nudge_mm if prop_state < 0.0 else -nudge_mm
+            # Direction: below target -> feed forward; above target -> retract
+            nudge_move_mm = nudge_mm if prop_state < target else -nudge_mm
             # don't exceed the end to end sensor span (maxrange_span_mm). Serves as "ultimate" failsafe.
             if abs(moved_total_mm + nudge_move_mm) >= maxrange_span_mm:
                 self.mmu.log_info(
@@ -1040,7 +1065,7 @@ class MmuSyncFeedback:
 
         # Final check
         final_state = self._get_sensor_state()
-        success = abs(final_state) <= neutral_band
+        success = arrived(final_state)
         self.mmu.log_info(
             "Proportional adjust: complete "
             "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f, success=%s)" %
