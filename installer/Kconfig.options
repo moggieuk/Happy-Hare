@@ -235,6 +235,18 @@ menu "Software Options"
     help
       Whether send toolchange message via M117 to screen
 
+  config PARAM_SUPPRESS_KLIPPER_WARNINGS
+    boolint "Suppress startup Klipper compatibility warnings?"
+    default 0
+    help
+      Demote Happy Hare's startup notices about Kalico compatibility and existing
+      filament_switch_sensor sections to debug messages. With the default logging
+      levels these go to mmu.log instead of the console. They can still appear on
+      the console when its log level is Debug or higher; recording them in mmu.log
+      also requires a file log level of Debug or higher.
+      This does not suppress all Klipper warnings or errors.
+      Default 0 keeps these startup notices visible.
+
 
 # -------------------------------------
 # Tool (Tx) Macros

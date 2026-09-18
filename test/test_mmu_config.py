@@ -27,6 +27,37 @@ PARAMS = 'config/base/mmu_parameters.cfg'
 MACRO_VARS = 'config/base/mmu_macro_vars.cfg'
 
 
+class TestKlipperTuningRender(unittest.TestCase):
+
+    def test_shipped_defaults_and_custom_values_for_single_and_multi_unit(self):
+        defaults = {
+            'update_trsync': 0,
+            'update_bit_max_time': 1,
+            'update_aht10_commands': 0,
+            'suppress_klipper_warnings': 0,
+        }
+        overrides = {
+            'update_trsync': 1,
+            'update_bit_max_time': 0,
+            'update_aht10_commands': 1,
+            'suppress_klipper_warnings': 1,
+        }
+        for name in ('boxturtle', 'ercf_vvd'):
+            base = profiles.get(name)
+            for label, expected in (('defaults', defaults), ('custom', overrides)):
+                with self.subTest(profile=name, settings=label):
+                    profile = base if label == 'defaults' else base.derive(
+                        name + '_klipper_tuning',
+                        syms={'PARAM_' + key.upper(): value
+                              for key, value in expected.items()})
+                    rendered = cfg.render(profile)
+                    cfg.assert_sane(rendered)
+                    params = cfg.assemble(rendered)['mmu_parameters']
+                    self.assertNotIn('canbus_comms_retries', params)
+                    for key, value in expected.items():
+                        self.assertEqual(params.getint(key), value, key)
+
+
 class TestBoxTurtleRender(unittest.TestCase):
 
     @classmethod
