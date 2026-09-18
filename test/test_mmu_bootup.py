@@ -24,6 +24,7 @@
 import logging
 import re
 import unittest
+from unittest.mock import patch
 
 from test.hh import session
 from test.hh.bootstrap import PRINTER_STUB
@@ -111,6 +112,13 @@ class TestConfigLoad(unittest.TestCase):
 
     def test_no_errors_during_config_load(self):
         self.assertEqual(self.hh.errors, [])
+
+    def test_kalico_status_is_an_integer(self):
+        for detected, expected in ((False, 0), (True, 1)):
+            with self.subTest(kalico=detected), patch.object(self.hh.mmu, 'kalico', detected):
+                status = self.hh.mmu.get_status(self.hh.reactor.monotonic())
+                self.assertIs(type(status['kalico']), int)
+                self.assertEqual(status['kalico'], expected)
 
 
 class TestInitialStatusSchema(unittest.TestCase):

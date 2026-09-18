@@ -128,14 +128,15 @@ menu "Toolhead sensors/settings"
 # This is for tuning and can mask other issues with toolhead dimensions
   config PARAM_TOOLHEAD_OOZE_REDUCTION
     float "Ooze reduction             "
-    range 0 5
+    range -5 5
     default 0
     help
-      This is for tuning to fix blobbing. It is expected that this value is NEAR ZERO as it represents a further
-      reduction in extruder load length to fix blobbing. If using a wipetower and you experience blobs on it,
-      increase this value (reduce the quantity of filament loaded). If you experience gaps, decrease this value.
-      If gaps and already at 0 then perhaps the 'toolhead_extruder_to_nozzle' or 'toolhead_residual_filament'
-      settings are incorrect. Similarly a value >+5mm also suggests the four settings above are not correct.
+      This is for tuning to fix blobbing. Zero or a small positive value is normal: positive values reduce
+      the extruder load length. If using a wipetower and you experience blobs on it, increase this value
+      (reduce the quantity of filament loaded). If you experience gaps, decrease this value.
+      Negative values increase the extruder load length and may indicate that 'toolhead_residual_filament'
+      is too large or 'toolhead_extruder_to_nozzle' is too small. Check these settings if a negative value
+      is needed. Needing more than +5mm of reduction also suggests the toolhead settings are incorrect.
       Recommend starting with 0
 
 endmenu
