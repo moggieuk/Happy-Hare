@@ -5,9 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 # Serialize creation so closely spaced pushes reuse the same PR.
 concurrency:
@@ -19,12 +17,22 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ vars.BRANCH_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BRANCH_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
       - name: Open synchronization PR and enable auto-merge
         uses: actions/github-script@v7
         with:
-          # A dedicated token lets PR checks run without manual approval.
-          # See .github/BRANCH_SYNC.md for setup and the built-in token fallback.
-          github-token: ${{ secrets.BRANCH_SYNC_TOKEN || github.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const { owner, repo } = context.repo;
             const base = 'development';
