@@ -631,6 +631,7 @@ class MmuController(MmuFilamentMovement):
     def get_status(self, eventtime):
         status = {
             'enabled': self.is_enabled,
+            'kalico': int(self.kalico),
             'num_gates': self.num_gates,
             'is_homed': all(unit.selector.is_homed for unit in self.mmu_machine.units),
             'print_state': self.psm.print_state,
