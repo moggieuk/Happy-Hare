@@ -262,7 +262,6 @@ if MULTI_UNIT_ENTRY_POINT
   endmenu
 
   source "Kconfig.paths_services"   # Advanced install options
-  source "Kconfig.klipper"          # Shared Klipper compatibility and timing
 endif
 
 
@@ -302,7 +301,6 @@ if !MULTI_UNIT_ENTRY_POINT
   if !MULTI_UNIT
     comment "_"
     source "Kconfig.paths_services" # Advanced install options
-    source "Kconfig.klipper"        # Shared Klipper compatibility and timing
   endif
 endif
 
