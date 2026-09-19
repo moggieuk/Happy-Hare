@@ -89,27 +89,28 @@ if BOARD_TYPE_QIDI_BOX_2_0
   # so unless that line is driven high the chips stay in reset and every
   # register reads back 0xFF.
   config PARAM_MISC_HARDWARE
-    default "$(ml,# NFC readers are held in reset until NRSTPD is driven high
-[output_pin $(UNIT_NAME)_nfc_rst]
-pin: $(MCU_NAME):PB12
-value: 1
-shutdown_value: 1
-
-# NFC reader gates 0/1
-[mmu_nfc_reader $(UNIT_NAME)_nfc01]
-reader_type           : rc522
-cs_pin                : $(MCU_NAME):PC6
-spi_bus               : spi2_PB14_PB15_PB13
-spi_speed             : 1000000
-debug                 : 0
-
-# NFC reader gates 2/3
-[mmu_nfc_reader $(UNIT_NAME)_nfc23]
-reader_type           : rc522
-cs_pin                : $(MCU_NAME):PC7
-spi_bus               : spi2_PB14_PB15_PB13
-spi_speed             : 1000000
-debug                 : 0
+    default "$(ml,\
+# NFC readers are held in reset until NRSTPD is driven high\n\
+[output_pin $(UNIT_NAME)_nfc_rst]\n\
+pin: $(MCU_NAME):PB12\n\
+value: 1\n\
+shutdown_value: 1\n\
+\n\
+# NFC reader gates 0/1\n\
+[mmu_nfc_reader $(UNIT_NAME)_nfc01]\n\
+reader_type           : rc522\n\
+cs_pin                : $(MCU_NAME):PC6\n\
+spi_bus               : spi2_PB14_PB15_PB13\n\
+spi_speed             : 1000000\n\
+debug                 : 0\n\
+\n\
+# NFC reader gates 2/3\n\
+[mmu_nfc_reader $(UNIT_NAME)_nfc23]\n\
+reader_type           : rc522\n\
+cs_pin                : $(MCU_NAME):PC7\n\
+spi_bus               : spi2_PB14_PB15_PB13\n\
+spi_speed             : 1000000\n\
+debug                 : 0\n\
 )"
 
 endif
