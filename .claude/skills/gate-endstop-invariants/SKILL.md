@@ -1,6 +1,6 @@
 ---
 name: gate-endstop-invariants
-description: Explains the shared-gate endstop occupancy invariant in Happy Hare's extras/mmu code — the rule that gate_homing_endstop values shared across gates on a unit (mmu_shared_exit, extruder, encoder) must never be homed or swept into while a different gate's filament still occupies them, and how gate_parking_distance sign validation is re-checked when gate_homing_endstop changes live. Use this whenever touching gate homing, gate endstops, gate_parking_distance, crossload logic, mmu_filament_movement.py, or shared-gate/shared-exit sensor behavior in extras/mmu/ — even if the request doesn't mention "invariant" or "occupancy" by name, e.g. adding a new endstop type, changing parking/recovery logic, or debugging a jam or tangle at a hub.
+description: Explains the shared-gate endstop occupancy invariant in Happy Hare's extras/mmu code — the rule that gate_homing_endstop values shared across gates on a unit (mmu_shared_exit, extruder, encoder) must never be homed or swept into while a different gate's filament still occupies them, and how gate_parking_distance sign validation is re-checked when gate_homing_endstop changes live. Use this whenever touching gate homing, gate endstops, gate_parking_distance, crossload logic, mmu_filament_movement.py, gate_occupancy/OCCUPANCY_* verdicts, MMU_CHECK_GATE, or shared-gate/shared-exit sensor behavior in extras/mmu/ — even if the request doesn't mention "invariant" or "occupancy" by name, e.g. adding a new endstop type, changing parking/recovery logic, or debugging a jam or tangle at a hub.
 ---
 
 # Gate/endstop occupancy invariant
@@ -22,8 +22,11 @@ is the single source of truth. Call it — or make sure it's already being
 called on your path — before selecting/homing/sweeping a gate onto any
 endstop in `SHARED_GATE_ENDSTOPS` (`mmu_constants.py`):
 
-- **Switch-based** (`mmu_shared_exit`, `extruder`): reads the live qualified
-  sensor directly, so call order doesn't matter.
+- **Switch-based** (`mmu_shared_exit`, `extruder`): reads the live sensor
+  belonging to the **target gate's** unit, so call order doesn't matter. It
+  must be the target gate's unit, not the selected gate's — see
+  [`references/occupancy-guard.md`](references/occupancy-guard.md) §2, which
+  also records the no-bowden alias trap that goes with it.
 - **Encoder**: true iff filament is loaded, a *different* gate is selected,
   and that gate belongs to the same unit — this becomes inert once the
   caller has already switched `gate_selected` to the target gate, so **this
@@ -38,6 +41,23 @@ If you're changing or extending this, read
 has exact file:line citations, the concrete failure scenario, and the
 reference tests to run this against
 (`test/test_mmu_nfc_scan.py::TestSharedGateOccupancy`).
+
+## `gate_occupancy()` also reads shared sensors — PRESENT is not per-gate
+
+`gate_occupancy(gate)` (same file) returns `OCCUPANCY_PRESENT` / `_EMPTY` /
+`_UNKNOWN` and reads like a purely per-gate question. It isn't: only
+`mmu_entry_<g>` / `mmu_exit_<g>` are per-gate. It also ORs in `mmu_shared_exit`,
+`extruder` and `toolhead`, which every gate on the unit shares. So **`PRESENT`
+may be another gate's filament and is not attributable to `gate`.**
+
+Declining to act on `PRESENT` is always safe. *Acting* on `UNKNOWN` is not —
+that's the "no entry switch fitted, so trust a clean homing miss" branch in
+`_home_to_gate`, and a shared sensor reading present silently turns `UNKNOWN`
+into `PRESENT`. Both current callers are safe only because
+`_check_path_unloaded()` in `commands/mmu_check_gate.py` has already proved the
+shared path clear. Reuse `gate_occupancy()` anywhere that guard doesn't run and
+you reintroduce cross-gate misattribution — see
+[references/occupancy-guard.md](references/occupancy-guard.md) §4.
 
 ## gate_parking_distance and live endstop changes
 

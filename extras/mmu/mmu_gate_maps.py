@@ -209,7 +209,9 @@ class MmuGateMaps:
 # RUNOUT, ENDLESS SPOOL, TTG MAPPING and GATE HANDLING
 # -----------------------------------------------------------------------------------------------------------
 
-    def get_next_endless_spool_gate(self, tool, gate):
+    # exclude_gates lets a caller rule out gates it has already found wanting, whatever
+    # the map says about them.
+    def get_next_endless_spool_gate(self, tool, gate, exclude_gates=()):
         group = self.endless_spool_groups[gate]
         next_gate = -1
         checked_gates = []
@@ -217,7 +219,7 @@ class MmuGateMaps:
             check = (gate + i + 1) % self.num_gates
             if self.endless_spool_groups[check] == group:
                 checked_gates.append(check)
-                if self.gate_status[check] != GATE_EMPTY:
+                if check not in exclude_gates and self.gate_status[check] != GATE_EMPTY:
                     next_gate = check
                     break
         alt_gates = "(checked gates: %s)" % ",".join(map(str, checked_gates))
@@ -227,21 +229,28 @@ class MmuGateMaps:
 
     # Use mmu entry (and gear) sensors to "correct" gate status
     # Return updated gate_status adjusted by sensor readings
-    def validate_gate_status(self, gates=None):
+    #
+    # clear_attributes=False keeps the gate's material/color/temperature/spool_id when a
+    # sensor correction makes it EMPTY: an empty lane is not an ejected one, and a caller
+    # may be about to use those. reset_gate() is a real ejection and always clears.
+    def validate_gate_status(self, gates=None, clear_attributes=True):
         v_gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
         gates = range(self.num_gates) if gates is None else gates
         for gate in gates:
             status = v_gate_status[gate]
             gear_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
             if gear_detected is True:
-                v_gate_status[gate] = GATE_AVAILABLE
+                # The sensor proves filament is present, not where it came from, so
+                # GATE_AVAILABLE_FROM_BUFFER must survive - it selects the buffer speed
+                # and accel for the load.
+                v_gate_status[gate] = max(status, GATE_AVAILABLE)
             else:
                 pre_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate)
                 if pre_detected is True and status == GATE_EMPTY:
                     v_gate_status[gate] = GATE_UNKNOWN
                 elif pre_detected is False and status != GATE_EMPTY:
                     v_gate_status[gate] = GATE_EMPTY
-            if status != GATE_EMPTY and v_gate_status[gate] == GATE_EMPTY:
+            if clear_attributes and status != GATE_EMPTY and v_gate_status[gate] == GATE_EMPTY:
                 self.clear_gate_attributes(gate)
         self.gate_status = v_gate_status
 
@@ -300,18 +309,20 @@ class MmuGateMaps:
         self.persist_endless_spool()
 
 
-    def set_gate_status(self, gate, state):
+    # clear_attributes=False keeps spool identity when only a sensor reports the lane
+    # empty. The default clears, and unassigns the spool in Spoolman.
+    def set_gate_status(self, gate, state, clear_attributes=True):
         if 0 <= gate < self.num_gates:
             if state != self.gate_status[gate]:
                 self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
-                if state == GATE_EMPTY:
+                if state == GATE_EMPTY and clear_attributes:
                     self.clear_gate_attributes(gate)
                 self.gate_status[gate] = state
                 if state == GATE_EMPTY:
                     self.update_gate_color_rgb()
                     self.persist_gate_map(
                         spoolman_sync=True,
-                        gate_ids=[(gate, -1)],
+                        gate_ids=[(gate, self.gate_spool_id[gate])],
                         changed_gate=gate
                     )
                     return
