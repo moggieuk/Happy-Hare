@@ -337,7 +337,7 @@ class MmuSyncFeedback:
             return self._adjust_filament_tension_proportional(target=target) # Doesn't yet support extruder stepper or max_move parameter
 
         if target:
-            # Switch buffers home to neutral only; a non-neutral target has no meaning for them
+            # Non-neutral targets are not implemented for switch sensors.
             self.mmu.log_debug("Tension target %.2f ignored: only supported with a proportional sensor" % target)
             return 0., None
 
@@ -953,10 +953,7 @@ class MmuSyncFeedback:
         if neutral_band < 0.05:
             neutral_band = 0.05
 
-        # A rail target is one-sided: there is nothing past the rail to come back from, so
-        # "reached or passed it" is the honest arrival test. Inside the sensor's normal range
-        # this agrees with the symmetric band; it differs only for a reading beyond the far
-        # side of the target, which is what a drifted analog_max_* calibration produces.
+        # Rail targets accept readings at or beyond the arrival threshold.
         target = max(-1.0, min(1.0, float(target)))
         at_rail = abs(target) >= 1.0 - neutral_band
 
@@ -965,7 +962,6 @@ class MmuSyncFeedback:
                 return state <= target + neutral_band if target < 0. else state >= target - neutral_band
             return abs(state - target) <= neutral_band
 
-        # Only the wording changes; 'neutral' would be a lie when parking at a rail
         arrival_word = "neutral" if not target else "on target"
         if target:
             self.mmu.log_debug("Proportional adjust: targeting %.2f rather than neutral" % target)

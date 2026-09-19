@@ -128,10 +128,6 @@ class TestSwitchSyncFeedbackString(unittest.TestCase):
                 self.assertEqual(sf.get_sync_feedback_string(detail=True), expected)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class TestBufferSpringRelease(unittest.TestCase):
     """
     MMU_SYNC_FEEDBACK RELEASE=1 parks the buffer where its spring rests, so a sprung
@@ -302,3 +298,113 @@ class TestSwitchBufferSpringRelease(unittest.TestCase):
         self.assertEqual(moves, [], 'a switch buffer must not be driven to a rail')
         self.assertTrue(any('Nothing to release' in m for m in logged),
                         'expected an explicit decline, got %r' % logged)
+
+
+class TestPrintEndReleaseGuards(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from test.hh import install
+        install()
+
+    def boot(self, profile='emu'):
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertEqual(hh.errors, [])
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
+        hh.mmu.gate_selected = 0
+        hh.mmu.filament_pos = FILAMENT_POS_LOADED
+        hh.mmu.psm.set_print_state('printing')
+        hh.printer.lookup_object('gcode_macro _MMU_SOFTWARE_VARS').variables.update(
+            unload_tool=False, reset_ttg=False, dump_stats=False)
+        hh.printer.harness_macro_effects['MMU_END'] = lambda macro, gcmd: macro.run_body(gcmd)
+        hh.gcode.executed.clear()
+        return hh
+
+    def run_end(self, hh, expected_call, expected_adjust=False):
+        with patch.object(hh.mmu.mmu_unit(0).sync_feedback, 'adjust_filament_tension',
+                          return_value=(0., True)) as adjust, \
+                patch.object(hh.mmu, 'log_warning') as warning:
+            hh.run_gcode('MMU_END')
+        self.assertEqual('MMU_SYNC_FEEDBACK RELEASE=1' in hh.gcode.executed, expected_call)
+        self.assertEqual(adjust.called, expected_adjust)
+        warning.assert_not_called()
+        self.assertEqual(hh.errors, [])
+        self.assertIn('MMU_PRINT_END STATE=complete', hh.gcode.executed)
+        self.assertEqual(hh.mmu.psm.print_state, 'complete')
+
+    def test_loaded_buffer_releases_even_with_feedback_control_disabled(self):
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled):
+                hh = self.boot()
+                hh.mmu.mmu_unit(0).sync_feedback.p.sync_feedback_enabled = enabled
+                self.run_end(hh, True, True)
+                hh.close()
+
+    def test_macro_skips_unit_without_buffer(self):
+        hh = self.boot('ercf_vvd')
+        self.assertFalse(hh.mmu.mmu_unit().has_buffer())
+        self.run_end(hh, False)
+
+    def test_macro_skips_invalid_gate_or_unloaded_filament(self):
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED
+        for gate, position in ((-1, FILAMENT_POS_LOADED), (-2, FILAMENT_POS_LOADED),
+                               (0, FILAMENT_POS_UNLOADED)):
+            with self.subTest(gate=gate, position=position):
+                hh = self.boot()
+                hh.mmu.gate_selected = gate
+                hh.mmu.filament_pos = position
+                self.run_end(hh, False)
+                hh.close()
+
+    def test_extension_can_invalidate_release_after_macro_rendering(self):
+        from extras.mmu.mmu_constants import FILAMENT_POS_UNLOADED
+        for attribute, value in (('gate_selected', -1), ('filament_pos', FILAMENT_POS_UNLOADED)):
+            with self.subTest(attribute=attribute):
+                hh = self.boot('ercf_vvd_buffers')
+                hh.printer.lookup_object('gcode_macro _MMU_SOFTWARE_VARS').variables[
+                    'user_print_end_extension'] = 'TEST_CHANGE_STATE'
+                hh.gcode.register_command('TEST_CHANGE_STATE',
+                    lambda gcmd: setattr(hh.mmu, attribute, value))
+                self.run_end(hh, True)
+                hh.close()
+
+    def test_release_only_quietly_skips_ineligible_states(self):
+        from extras.mmu.mmu_constants import FILAMENT_POS_UNLOADED
+        for case in ('unknown_gate', 'bypass', 'unloaded', 'disabled', 'no_buffer',
+                     'disabled_sensors', 'no_rest_state', 'switch_buffer'):
+            with self.subTest(case=case):
+                profile = 'ercf_vvd' if case in ('unknown_gate', 'no_buffer') else 'emu'
+                if case == 'switch_buffer': profile = 'boxturtle'
+                hh = self.boot(profile)
+                if case == 'unknown_gate': hh.mmu.gate_selected = -1
+                if case == 'bypass': hh.mmu.gate_selected = -2
+                if case == 'unloaded': hh.mmu.filament_pos = FILAMENT_POS_UNLOADED
+                if case == 'disabled': hh.mmu.is_enabled = False
+                if case == 'disabled_sensors':
+                    for name in ('filament_proportional', 'filament_tension', 'filament_compression'):
+                        sensor = hh.mmu.sensor_manager.get_sensor_obj(name)
+                        hh.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=0' % sensor.runout_helper.name)
+                if case == 'no_rest_state':
+                    hh.mmu.mmu_unit(0).buffer.buffer_spring_state_num = None
+                with patch.object(hh.mmu, 'move_filament') as move, \
+                        patch.object(hh.mmu, 'log_warning') as warning, \
+                        patch.object(hh.mmu, 'log_always') as status:
+                    hh.run_gcode('MMU_SYNC_FEEDBACK RELEASE=1')
+                move.assert_not_called()
+                warning.assert_not_called()
+                status.assert_not_called()
+                self.assertEqual(hh.errors, [])
+                hh.close()
+
+    def test_combined_command_preserves_other_actions(self):
+        hh = self.boot('boxturtle')
+        with patch.object(hh.mmu, 'move_filament') as move:
+            hh.run_gcode('MMU_SYNC_FEEDBACK RELEASE=1 ENABLE=0')
+        self.assertFalse(hh.mmu.mmu_unit(0).sync_feedback.p.sync_feedback_enabled)
+        move.assert_not_called()
+        self.assertEqual(hh.errors, [])
+
+
+if __name__ == '__main__':
+    unittest.main()

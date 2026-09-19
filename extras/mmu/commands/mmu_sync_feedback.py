@@ -53,12 +53,31 @@ class MmuSyncFeedbackCommand(BaseCommand):
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
+        enable = gcmd.get_int("ENABLE", None, minval=0, maxval=1)
+        reset = gcmd.get_int("RESET", None, minval=0, maxval=1)
+        autotune = gcmd.get_int("AUTOTUNE", None, minval=0, maxval=1)
+        adjust_tension = gcmd.get_int("ADJUST_TENSION", 0, minval=0, maxval=1)
+        release = gcmd.get_int("RELEASE", 0, minval=0, maxval=1)
+        release_only = release and enable is None and reset is None and autotune is None and not adjust_tension
+
+        # Recheck print-end eligibility before inferring the unit.
+        if release_only and (
+            not mmu.is_enabled
+            or mmu.gate_selected < 0
+            or mmu.filament_pos != FILAMENT_POS_LOADED
+        ):
+            mmu.log_debug("Nothing to release: no loaded MMU gate")
+            return
+
         unit = self.get_unit(gcmd, mode="infer")
 
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
 
         if not unit.has_buffer():
+            if release_only:
+                mmu.log_debug("Nothing to release: no sync-feedback buffer")
+                return
             mmu.log_warning("No sync-feedback buffer on unit!")
             return
 
@@ -67,26 +86,21 @@ class MmuSyncFeedbackCommand(BaseCommand):
 
         has_tension, has_compression, has_proportional = sf.get_active_sensors()
         if not any((has_proportional, has_tension, has_compression)):
+            if release_only:
+                mmu.log_debug("Nothing to release: sync-feedback sensors are disabled")
+                return
             mmu.log_warning("No sync-feedback sensors are enabled!")
             return
 
-        enable = gcmd.get_int("ENABLE", None, minval=0, maxval=1)
-        reset = gcmd.get_int("RESET", None, minval=0, maxval=1)
-        autotune = gcmd.get_int("AUTOTUNE", None, minval=0, maxval=1)
-        adjust_tension = gcmd.get_int("ADJUST_TENSION", 0, minval=0, maxval=1)
-        release = gcmd.get_int("RELEASE", 0, minval=0, maxval=1)
-
-        # A sprung buffer left mid-range holds its spring loaded between prints. 'buffer_spring_state'
-        # already records where it rests unladen, so that is where RELEASE parks it. Unset ('none')
-        # means no reliable resting position is known, so there is nothing to aim at.
+        # Release to the configured spring rest position.
         release_target = unit.buffer.buffer_spring_state_num if release else None
         if release and release_target is None:
             mmu.log_debug("Nothing to release: buffer has no configured 'buffer_spring_state'")
+            if release_only: return
             release = 0
         elif release and not has_proportional:
-            # Switch buffers can only home to neutral, so there is no way to hold one
-            # at a rail. Say that rather than falling through to the generic failure.
             mmu.log_debug("Nothing to release: buffer spring release needs a proportional sensor")
+            if release_only: return
             release = 0
 
         if enable is not None:
@@ -109,7 +123,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
             if self.check_if_not_loaded(): return
             target = release_target if release else 0.
             try:
-                # Cannot adjust sync feedback sensor if gears are not synced
+                # Restore sync and grip after adjustment.
                 with mmu.wrap_sync_gear_to_extruder():
                     # Avoid spurious runout during tiny corrective moves (unlikely)
                     with mmu.wrap_suspend_filament_monitoring():
