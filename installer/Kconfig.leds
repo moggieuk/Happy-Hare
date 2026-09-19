@@ -11,6 +11,7 @@
 #   PARAM_EXIT_EFFECT
 #   PARAM_ENTRY_EFFECT
 #   PARAM_STATUS_EFFECT
+#   PARAM_LED_THEME
 #   PARAM_CHAIN_COUNT
 #   PARAM_COLOR_ORDER
 #   PARAM_EXIT_LEDS
@@ -186,6 +187,47 @@ if MMU_HAS_LEDS
       default "filament_color" if CHOICE_STATUS_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
       default "filament_color"
+
+    choice CHOICE_LED_THEME
+      prompt "Led theme       "
+      default CHOICE_LED_THEME_STANDARD
+      help
+        The LED theme is a per-unit file holding the effect_* defaults for
+        [mmu_leds <unit>]. It is installed to mmu/led_theme/ and included
+        from the unit's hardware config, so a machine can swap in a
+        completely different set of effects.
+
+      config CHOICE_LED_THEME_STANDARD
+        bool "Standard"
+        help
+          The stock effect set shipped with Happy Hare.
+
+      config CHOICE_LED_THEME_EMU
+        bool "EMU"
+        help
+          The EMU vendor effect set. The default for EMU machines.
+
+      config CHOICE_LED_THEME_CUSTOM
+        bool "Custom"
+        help
+          A machine-local theme file (mmu/led_theme/custom_<unit>.cfg).
+          The installer creates it once, from this machine's default set,
+          and never modifies it again - upgrades leave it untouched, so it is
+          yours to edit freely.
+    endchoice
+
+    config PARAM_LED_THEME
+      string
+      default "mmu_leds" if CHOICE_LED_THEME_STANDARD
+      default "emu_leds" if CHOICE_LED_THEME_EMU
+      default "custom"   if CHOICE_LED_THEME_CUSTOM
+      default "mmu_leds"
+      help
+        The name of the LED theme file. Shipped themes are mmu_leds and
+        emu_leds; 'custom' uses the machine-local theme file the installer
+        creates once. Any other value is taken as the name of your own
+        theme file - you create and maintain mmu/led_theme/<name>_<unit>.cfg
+        yourself; the installer never writes it.
 
     comment "_"
 
