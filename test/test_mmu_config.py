@@ -19,12 +19,45 @@ import re
 import tempfile
 import unittest
 
+import jinja2
+
 from test.hh import bootstrap, cfg, profiles
 
 HARDWARE = 'config/base/mmu_hardware.cfg'
 MMU = 'config/base/mmu.cfg'
 PARAMS = 'config/base/mmu_parameters.cfg'
 MACRO_VARS = 'config/base/mmu_macro_vars.cfg'
+
+
+class TestKlipperTuningRender(unittest.TestCase):
+
+    def test_shipped_defaults_and_custom_values_for_single_and_multi_unit(self):
+        defaults = {
+            'update_trsync': 0,
+            'update_bit_max_time': 1,
+            'update_aht10_commands': 0,
+            'suppress_klipper_warnings': 0,
+        }
+        overrides = {
+            'update_trsync': 1,
+            'update_bit_max_time': 0,
+            'update_aht10_commands': 1,
+            'suppress_klipper_warnings': 1,
+        }
+        for name in ('boxturtle', 'ercf_vvd'):
+            base = profiles.get(name)
+            for label, expected in (('defaults', defaults), ('custom', overrides)):
+                with self.subTest(profile=name, settings=label):
+                    profile = base if label == 'defaults' else base.derive(
+                        name + '_klipper_tuning',
+                        syms={'PARAM_' + key.upper(): value
+                              for key, value in expected.items()})
+                    rendered = cfg.render(profile)
+                    cfg.assert_sane(rendered)
+                    params = cfg.assemble(rendered)['mmu_parameters']
+                    self.assertNotIn('canbus_comms_retries', params)
+                    for key, value in expected.items():
+                        self.assertEqual(params.getint(key), value, key)
 
 
 class TestBoxTurtleRender(unittest.TestCase):
@@ -296,6 +329,78 @@ class TestCustomHardwareCapabilities(unittest.TestCase):
             extra_params={'CUSTOM_NFC_READER_SETUP': True})
         rendered = cfg.render(profile)
         self.assertNotIn('nfc_deep_read', rendered[PARAMS])
+
+
+class TestBlobifierFirmwareDetection(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        profile = profiles.get('boxturtle').derive(
+            'blobifier_firmware_detection', syms={'MMU_HAS_BLOBIFIER': True})
+        cls.parser = cfg.assemble(cfg.render(profile))
+        env = jinja2.Environment('{%', '%}', '{', '}', undefined=jinja2.StrictUndefined)
+        cls.template = env.from_string(
+            cls.parser['gcode_macro _BLOBIFIER_HOME_STEPPER']['gcode'])
+
+    def test_uses_runtime_firmware_and_preserves_initialization_guard(self):
+        for kalico, syntax in ((0, 'try_home'), (1, '2')):
+            for initialized in (0, 1):
+                with self.subTest(kalico=kalico, initialized=initialized):
+                    # No _BLOBIFIER_VARS.firmware: firmware selection must come from MMU status.
+                    rendered = self.template.render(printer={
+                        'mmu': {'kalico': kalico},
+                        'gcode_macro BLOBIFIER': {'initialized': initialized},
+                    })
+                    commands = [line.strip() for line in rendered.splitlines()
+                                if line.strip().startswith('MANUAL_STEPPER ')]
+                    expected = [] if not initialized else [
+                        'MANUAL_STEPPER STEPPER=stepper_blobifier ENABLE=1 SET_POSITION=30 SYNC=1',
+                        'MANUAL_STEPPER STEPPER=stepper_blobifier MOVE=0 SPEED=20 STOP_ON_ENDSTOP=' + syntax,
+                    ]
+                    self.assertEqual(commands, expected)
+
+    def test_generated_variables_do_not_require_firmware_selection(self):
+        self.assertNotIn('variable_firmware', self.parser['gcode_macro _BLOBIFIER_VARS'])
+
+
+class TestBlobifierHooksRender(unittest.TestCase):
+
+    def test_defaults_custom_hooks_and_disabled_cleaning(self):
+        defaults = {
+            'user_pre_blobifier_extension': '',
+            'clean_macro': 'BLOBIFIER_CLEAN',
+            'user_post_purge_extension': '',
+            'user_post_blobifier_extension': '',
+        }
+        custom = {
+            'user_pre_blobifier_extension': 'MY_PARK',
+            'clean_macro': 'MY_CLEAN PASSES=2',
+            'user_post_purge_extension': 'RESPOND MSG="purge complete"',
+            'user_post_blobifier_extension': 'MY_GANTRY_WIPE',
+        }
+        for name in ('boxturtle', 'ercf_vvd'):
+            for label, enabled, expected in (
+                    ('blobifier_disabled', False, defaults),
+                    ('defaults', True, defaults),
+                    ('custom', True, custom),
+                    ('cleaning_disabled', True, dict(defaults, clean_macro=''))):
+                with self.subTest(profile=name, settings=label):
+                    syms = {'MMU_HAS_BLOBIFIER': enabled}
+                    if label in ('custom', 'cleaning_disabled'):
+                        syms.update({'VAR_BLOBIFIER_' + key.upper(): value
+                                     for key, value in expected.items()})
+                    profile = profiles.get(name).derive(
+                        name + '_blobifier_hooks_' + label, syms=syms)
+                    rendered = cfg.render(profile)
+                    cfg.assert_sane(rendered)
+                    parser = cfg.assemble(rendered, macros=False)
+                    if not enabled:
+                        self.assertNotIn('gcode_macro _BLOBIFIER_VARS', parser)
+                        continue
+                    variables = parser['gcode_macro _BLOBIFIER_VARS']
+                    for key, value in expected.items():
+                        self.assertEqual(ast.literal_eval(variables['variable_' + key]),
+                                         value, key)
 
 
 class TestMenuconfigMacroStrings(unittest.TestCase):

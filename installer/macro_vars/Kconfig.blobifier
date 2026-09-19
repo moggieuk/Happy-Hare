@@ -7,6 +7,9 @@ menu "Blobifier            (_BLOBIFIER)"
     (if disabled but desired, make sure you select "Have Blobifer" option
      under "Purging --->" menu)
 
+  comment "_"
+  comment "_Hardware and General"
+
   config VAR_BLOBIFIER_PURGE_SPD
     float "Purge speed                    "
     default 400
@@ -301,5 +304,52 @@ menu "Blobifier            (_BLOBIFIER)"
   config VAR_BLOBIFIER_PURGE_RETRACT_INTERVAL
     float "Purge retract interval (mm)    "
     default 20
+
+  comment "_"
+  comment "_Hooks and Extensions"
+
+  config VAR_BLOBIFIER_USER_PRE_BLOBIFIER_EXTENSION
+    string "Pre-blobifier extension macro  "
+    default ""
+    help
+      Called at the start of BLOBIFIER, after saving G-code state but before
+      checking homing and quad gantry level status. Use for custom preparation
+      or parking, such as a gantry-mounted nozzle leak stop. Any movement in
+      this macro must handle its own homing checks.
+      Enter the macro name or G-code without surrounding quotes.
+      Leave empty to disable (default).
+
+  config VAR_BLOBIFIER_CLEAN_MACRO
+    string "Nozzle cleaning macro          "
+    default "BLOBIFIER_CLEAN"
+    help
+      Called after purging and before restoring Z. The cleaning macro must
+      handle its own safe descent checks and Z movement.
+      Default BLOBIFIER_CLEAN uses the stock bed-mounted brush routine.
+      Leave empty to skip this cleaning step, for example when using a
+      gantry-mounted brush with the post-blobifier hook instead.
+      Enter the macro name or G-code without surrounding quotes.
+
+  config VAR_BLOBIFIER_USER_POST_PURGE_EXTENSION
+    string "Post-purge extension macro     "
+    default ""
+    help
+      Called after purging and the cleaning macro, before restoring Z.
+      Use to park the nozzle on a gantry-mounted leak stop before the Z move,
+      or for other custom actions at this point in the sequence.
+      Enter the macro name or G-code without surrounding quotes.
+      Leave empty to disable (default).
+
+  config VAR_BLOBIFIER_USER_POST_BLOBIFIER_EXTENSION
+    string "Post-blobifier extension macro "
+    default ""
+    help
+      Called at the end of BLOBIFIER, after tray retraction and G-code state
+      restoration. On a normal purge, Z has already been restored. Use for
+      cleaning on a gantry-mounted brush before returning to the caller.
+      This hook also runs when purging is skipped by the homing or quad gantry
+      level checks; custom movement must handle that case safely.
+      Enter the macro name or G-code without surrounding quotes.
+      Leave empty to disable (default).
 
 endmenu

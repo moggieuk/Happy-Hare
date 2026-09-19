@@ -235,6 +235,18 @@ menu "Software Options"
     help
       Whether send toolchange message via M117 to screen
 
+  config PARAM_SUPPRESS_KLIPPER_WARNINGS
+    boolint "Suppress startup Klipper compatibility warnings?"
+    default 0
+    help
+      Demote Happy Hare's startup notices about Kalico compatibility and existing
+      filament_switch_sensor sections to debug messages. With the default logging
+      levels these go to mmu.log instead of the console. They can still appear on
+      the console when its log level is Debug or higher; recording them in mmu.log
+      also requires a file log level of Debug or higher.
+      This does not suppress all Klipper warnings or errors.
+      Default 0 keeps these startup notices visible.
+
 
 # -------------------------------------
 # Tool (Tx) Macros
@@ -373,5 +385,48 @@ menu "Software Options"
       Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
       This is highly recommended and incorporates all functionality from popular alternatives
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
+
+
+# -------------------------------------
+# Advanced Klipper tuning
+# -------------------------------------
+
+  comment "_"
+  comment "_Advanced Klipper tuning"
+
+  # Shared compatibility and timing workarounds applied at Klipper startup.
+  # Keep defaults unless troubleshooting; these do not fix wiring or overloaded hardware.
+
+  config PARAM_UPDATE_TRSYNC
+    boolint "Increase homing synchronization timeout?"
+    default 0
+    help
+      Raise Klipper's TRSYNC_TIMEOUT to at least 0.05 seconds. This can help with
+      timing failures during homing, particularly with CANbus-connected MCUs.
+      It does not resolve every "Timer too close" error. The change is applied in
+      memory at startup without editing Klipper files and affects Klipper globally.
+      Default 0 leaves Klipper's timeout unchanged.
+
+  config PARAM_UPDATE_BIT_MAX_TIME
+    boolint "Relax NeoPixel timing tolerance?"
+    default 1
+    help
+      Raise Klipper's NeoPixel BIT_MAX_TIME to at least 0.000030 seconds (30 us).
+      This workaround can help older LEDs that produce "Unable to obtain
+      'neopixel_result' response" errors in klippy.log.
+      It is applied in memory at startup without editing Klipper files and affects
+      all Klipper NeoPixels. Default 1 preserves Happy Hare's shipped configuration;
+      set to 0 to leave Klipper's timing unchanged.
+
+  config PARAM_UPDATE_AHT10_COMMANDS
+    boolint "Use AHT30-compatible commands with the legacy AHT10 driver?"
+    default 0
+    help
+      Compatibility workaround for the BTT ViViD AHT30 sensor on older Klipper
+      versions without native support. Configure the sensor using the AHT10 driver
+      and enable this to replace that driver's command table at startup.
+      This affects all sensors using that driver, not just the MMU sensor.
+      Leave disabled when using native sensor support. Default 0 leaves the
+      Klipper command table unchanged.
 
 endmenu

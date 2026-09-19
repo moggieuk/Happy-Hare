@@ -59,6 +59,16 @@ class MmuUnitParameters(TunableParametersBase):
                 "gate_homing_endstop must be '%s' when require_bowden_move is 0 (got '%s')"
                 % (SENSOR_EXTRUDER_ENTRY, value))
 
+    def _validate_gate_preload_endstop(self, value):
+        # On a no-bowden unit mmu_shared_exit is only an alias for the extruder sensor, and
+        # only within the per-gate sensor map. _shared_gate_path_occupied() resolves against
+        # the global registry and so cannot see it, leaving that guard silently dead. Same
+        # switch either way, so require the name that resolves.
+        if value == SENSOR_SHARED_EXIT and not self._mmu_unit.require_bowden_move:
+            raise ValueError(
+                "gate_preload_endstop must be '%s' rather than '%s' when require_bowden_move "
+                "is 0 (they are the same sensor)" % (SENSOR_EXTRUDER_ENTRY, SENSOR_SHARED_EXIT))
+
     def _guard_sync_tunable(self):
         return not self._mmu_unit.filament_always_gripped
 
@@ -302,7 +312,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
 
         # Gate preloading
-        ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [SENSOR_GATE_NONE, ''])}, on_change=_on_gate_preload_endstop),
+        ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [SENSOR_GATE_NONE, ''])}, validator=_validate_gate_preload_endstop, on_change=_on_gate_preload_endstop),
         ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING", on_change=_on_gate_preload_homing_max),
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance, on_change=_on_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),

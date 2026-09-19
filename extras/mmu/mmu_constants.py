@@ -176,6 +176,12 @@ GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SEN
 # owned by a single gate (contrast SENSOR_EXIT_PREFIX, which is per-gate)
 SHARED_GATE_ENDSTOPS = [SENSOR_SHARED_EXIT, SENSOR_EXTRUDER_ENTRY, SENSOR_ENCODER]
 
+# What a gate's own sensors say about it, from MmuFilamentMovement.gate_occupancy().
+# Distinct from the recorded GATE_* status, which is remembered rather than observed.
+OCCUPANCY_PRESENT = "present"   # a sensor sees filament
+OCCUPANCY_EMPTY   = "empty"     # the entry switch says the lane is clear
+OCCUPANCY_UNKNOWN = "unknown"   # no entry switch fitted, so nothing to ask
+
 # Verdicts from MmuNfcFieldArbiter's "who is in my reader field?" classification ladder.
 # NFC_FIELD_NEIGHBOR is an intermediate/internal state used while attempting eviction and
 # never yielded to a caller.

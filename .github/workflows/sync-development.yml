@@ -1,0 +1,85 @@
+name: Sync main into development
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# Serialize creation so closely spaced pushes reuse the same PR.
+concurrency:
+  group: sync-main-into-development
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ vars.BRANCH_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BRANCH_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Open synchronization PR and enable auto-merge
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const base = 'development';
+            const head = 'main';
+            const { data: comparison } = await github.rest.repos.compareCommitsWithBasehead({
+              owner, repo, basehead: `${base}...${head}`,
+            });
+            if (comparison.ahead_by === 0) {
+              core.info('development already contains main; nothing to synchronize.');
+              return;
+            }
+
+            const { data: existing } = await github.rest.pulls.list({
+              owner, repo, state: 'open', base, head: `${owner}:${head}`,
+            });
+            let pr = existing[0];
+            if (!pr) {
+              const { data } = await github.rest.pulls.create({
+                owner, repo, base, head,
+                title: 'Sync main into development',
+                body: [
+                  'Bring changes merged into `main` into `development`.',
+                  'This PR automatically includes subsequent pushes to `main`.',
+                  '**Merge with a merge commit** to preserve shared branch history.',
+                  'If there are conflicts, resolve them on a temporary branch based on',
+                  '`development` and merge that resolution into `development`.',
+                  'Do not merge development into main just to resolve this PR.',
+                ].join('\n\n'),
+              });
+              pr = data;
+            }
+            await core.summary.addLink('Synchronization pull request', pr.html_url).write();
+
+            const { data: repository } = await github.rest.repos.get({ owner, repo });
+            if (!repository.allow_auto_merge || !repository.allow_merge_commit) {
+              core.warning('PR is ready for manual merging. Enable Allow auto-merge and Allow merge commits; see .github/BRANCH_SYNC.md.');
+              return;
+            }
+            if (pr.auto_merge) {
+              core.info('Auto-merge is already enabled.');
+              return;
+            }
+            // Request deferred auto-merge rather than directly merging or bypassing rules.
+            await github.graphql(`
+              mutation($id: ID!) {
+                enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: MERGE}) {
+                  pullRequest { number }
+                }
+              }
+            `, { id: pr.node_id });

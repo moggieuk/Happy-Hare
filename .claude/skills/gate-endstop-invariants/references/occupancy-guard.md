@@ -30,23 +30,59 @@ set.
 ## 2. The guard itself
 
 `_shared_gate_path_occupied(self, endstop, gate)` —
-`extras/mmu/mmu_filament_movement.py:93-121`.
+`extras/mmu/mmu_filament_movement.py` (search the name; line numbers drift).
 
 - Returns `False` immediately if `endstop not in SHARED_GATE_ENDSTOPS`.
 - Encoder case: `filament_pos != FILAMENT_POS_UNLOADED and gate_selected != gate
   and unit.owns_gate(gate_selected)`. **Must be checked before the caller's own
   `select_gate(gate)`** — it goes inert once `gate_selected` already equals
   `gate` (documented in the docstring).
-- Switch-based case (`mmu_shared_exit`, `extruder`): reads the live qualified
-  sensor via `sensor_manager.check_sensor(...)` — order-independent.
+- Switch-based case (`mmu_shared_exit`, `extruder`): resolves the sensor
+  against the **target gate's** unit and reads it via
+  `sensor_manager.check_event_sensor(name, gate)` — order-independent.
 
-**Call sites today:**
-- `extras/mmu/commands/mmu_nfc_scan.py:90-96` — `can_continue` predicate:
+### Resolve against the TARGET gate's unit, not the selected one
+
+Use `check_event_sensor(name, gate)` with the name qualified by
+`mmu_unit(gate)`. It resolves against `all_sensors_map`, the stable global
+registry, so it reads the switch that actually sits downstream of `gate`.
+
+`check_sensor(get_qualified_endstop_name(endstop))` is the trap: with no
+`mmu_unit` the name is qualified with the *selected* gate's unit, and
+`check_sensor` then strips that prefix and looks the generic name up in
+`active_sensors_map` — itself only a pointer at the selected gate's map. On a
+multi-unit machine that reads the wrong unit entirely and lets a sweep proceed
+into an occupied shared path.
+
+### Trap: the no-bowden `mmu_shared_exit` alias
+
+`MmuSensorManager` aliases `gate_sensors[SENSOR_SHARED_EXIT]` to the extruder
+sensor on a unit with `not require_bowden_move` and no physical shared-exit
+switch (search `Special case for "no bowden" designs`). **That alias lives only
+in the per-gate map, never in `all_sensors_map`** — so `check_event_sensor`
+cannot see it and returns `None`, i.e. the guard reads `False` unconditionally.
+
+`gate_homing_endstop` can never name the alias (`_validate_gate_homing_endstop`
+forces `extruder` when `require_bowden_move == 0`), and `gate_preload_endstop`
+is now refused likewise by `_validate_gate_preload_endstop`
+(`extras/mmu/unit/mmu_unit_parameters.py`) — that validator exists *only* to
+keep this guard alive, so don't delete it as redundant. If you add another
+`SHARED_GATE_ENDSTOPS` consumer that takes an endstop name from config, check
+it cannot name the alias either. Note `has_sensor()` *does* see the alias
+(it goes through `active_sensors_map`) while `resolve_sensor()` does not; that
+asymmetry is the shape of the bug.
+
+**Call sites today** (grep rather than trust these line numbers):
+- `extras/mmu/commands/mmu_nfc_scan.py` — `can_continue` predicate:
   `active_unit.can_crossload and not mmu._shared_gate_path_occupied(scan_unit.p.gate_homing_endstop, gate)`.
-- `extras/mmu/commands/mmu_preload.py:81-88` — same pattern, using
+- `extras/mmu/commands/mmu_preload.py` — same pattern, using
   `preload_endstop = preload_unit.p.gate_preload_endstop or preload_unit.p.gate_homing_endstop`.
-- `extras/mmu/mmu_filament_movement.py:172-175` inside `_preload_gate`.
-- `extras/mmu/mmu_filament_movement.py:690-692` inside `_jog_scan`.
+  Both of these short-circuit on `... is not active_unit`, so neither can reach
+  the cross-unit case.
+- `extras/mmu/mmu_filament_movement.py` inside `_preload_gate` and `_jog_scan`.
+- `extras/mmu/mmu_nfc_arbiter.py` — advisory only, skips a candidate.
+- `extras/mmu/commands/mmu_check_gate.py` `_check_path_unloaded()` — iterates all
+  of `SHARED_GATE_ENDSTOPS`, so it is the widest consumer.
 
 **Concrete failure if you remove or bypass this:** with
 `gate_homing_endstop = mmu_shared_exit` on a crossload-capable unit (e.g.
@@ -95,7 +131,60 @@ endstop as `gate_preload_endstop or gate_homing_endstop`).
 depends on another field that can change live), wire it through an
 `on_change` hook the same way — a load-time-only validator isn't enough.
 
-## 4. Reference tests
+## 4. `gate_occupancy()` — a per-gate verdict built partly from shared sensors
+
+`gate_occupancy(gate)` in `extras/mmu/mmu_filament_movement.py` (just below
+`_shared_gate_path_occupied`) classifies one gate as `OCCUPANCY_PRESENT` /
+`OCCUPANCY_EMPTY` / `OCCUPANCY_UNKNOWN` (`mmu_constants.py`). Its inputs are of
+mixed scope:
+
+| sensor | scope |
+|---|---|
+| `mmu_exit_<g>`, `mmu_entry_<g>` | per-gate |
+| `mmu_shared_exit`, `extruder`, `toolhead` | shared by every gate on the unit |
+
+A shared sensor reading present therefore makes `gate_occupancy()` return
+`PRESENT` for **every** gate on that unit, whichever gate's filament is
+actually sitting there.
+
+The two call sites want different things from it:
+
+- `commands/mmu_check_gate.py` — "may I declare this lane empty without moving
+  anything?" The wide OR is correct and conservative here: a remnant anywhere
+  downstream should stop you calling the lane empty.
+- `_home_to_gate()` — the `empty` decision needs `UNKNOWN` *specifically*, to let
+  a clean homing miss stand as an empty lane on a machine with no entry switches
+  (Tradrack, Chameleon, PicoMMU/MMX, encoder-homing ERCF). A shared sensor that
+  flips `UNKNOWN` to `PRESENT` makes `empty` false: position is left `UNKNOWN`,
+  the sweep aborts and recovery is suppressed. On those machines that is the
+  difference between gate discovery working and not.
+
+**Why it is safe today.** `_check_path_unloaded()` (`commands/mmu_check_gate.py`)
+runs before each gate is selected and refuses when `mmu_shared_exit`, `extruder`
+or `toolhead` reads present — so all three are guaranteed clear by the time
+either call site runs, and at the `MMU_CHECK_GATE` site the shared arm is
+strictly redundant. Measured: instrumenting `gate_occupancy` across `3ms` /
+`tradrack` / `boxturtle`, with and without the extruder sensor jammed
+permanently `True`, the shared arm fired in **0 of 73 calls** — a genuinely
+triggered shared sensor makes the command refuse before reaching it, and
+machines without those sensors read `None`.
+
+**The invariant to preserve:** any caller that acts on `UNKNOWN` must have ruled
+the shared path out first. Declining to act on `PRESENT` is always safe. If you
+add a caller outside `MMU_CHECK_GATE`, either put it behind the same guard or
+split out a per-gate-only variant for that one decision — otherwise you
+reintroduce the cross-gate misattribution §2 exists to prevent. The docstring on
+`gate_occupancy()` states this; keep the two in sync.
+
+## 5. Reference tests
+
+For the **cross-unit** resolution specifically, the class below cover only the
+single-unit case. See `test/test_mmu_check_gate.py::TestSharedPathTargetUnit`,
+which builds a two-unit fixture with `profiles.clone_across_units()` and asserts
+the guard is `True` for a gate on the occupied unit and `False` for one on the
+other. And `test/test_mmu_profiles.py::
+test_no_bowden_mode_rejects_shared_exit_preload_endstop` is what keeps the
+no-bowden alias trap above closed.
 
 `test/test_mmu_nfc_scan.py`:
 
