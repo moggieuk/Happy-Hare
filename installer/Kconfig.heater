@@ -137,9 +137,9 @@ if MMU_HAS_HEATER
     config PARAM_HEATER_ROTATE_INTERVAL
       string "Rotate interval           "
       default "5"
-      depends on MMU_HAS_ESPOOLER
+      depends on MMU_HAS_ESPOOLER || MMU_GEAR_ROTATES_SPOOL
       help
-        Interval in minutes to rotate filament (requires eSpooler and filament end attached to spool)
+        Interval in minutes to rotate filament (requires the filament end attached to spool)
   endmenu
 
 
