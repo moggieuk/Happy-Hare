@@ -92,6 +92,13 @@ class Printer:
             return self.objects[section]
         module_parts = section.split()
         module_name = module_parts[0]
+        # Pre-motion_queuing generation emulation: modules that do not exist
+        # in that generation fail to load exactly as on real old Klipper /
+        # Kalico.
+        if module_name in getattr(self, 'harness_missing_modules', ()):
+            if default is not configfile.sentinel:
+                return default
+            raise self.config_error("Unable to load module '%s'" % (section,))
         py_name = os.path.join(self._extras_dir, module_name + '.py')
         py_dirname = os.path.join(self._extras_dir, module_name, '__init__.py')
         if not os.path.exists(py_name) and not os.path.exists(py_dirname):

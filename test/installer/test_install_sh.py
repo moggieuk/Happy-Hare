@@ -507,6 +507,27 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("[server]", moonraker)
         self.assertEqual(make_log.read_text().strip(), "F_NO_SERVICE=y fix_links")
 
+    def test_kalico_detection_warns_but_does_not_abort(self):
+        # run_shell fails on a non-zero exit, so this also proves the check
+        # no longer exits the installer.
+        klipper_home = self.root / "kalico"
+        self.write(klipper_home / "klippy/__init__.py", 'APP_NAME = "Kalico"\n')
+        result = self.run_shell("""
+            CONFIG_KLIPPER_HOME={home}
+            check_kalico
+        """.format(home=shlex.quote(str(klipper_home))))
+        self.assertIn("Kalico detected", result.stderr)
+        self.assertIn("not guaranteed", result.stderr)
+
+    def test_kalico_detection_ignores_vanilla_klipper(self):
+        klipper_home = self.root / "klipper"
+        self.write(klipper_home / "klippy/__init__.py", 'APP_NAME = "Klipper"\n')
+        result = self.run_shell("""
+            CONFIG_KLIPPER_HOME={home}
+            check_kalico
+        """.format(home=shlex.quote(str(klipper_home))))
+        self.assertNotIn("Kalico", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

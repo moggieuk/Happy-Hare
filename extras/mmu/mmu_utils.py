@@ -30,6 +30,12 @@ import logging, math, contextlib, re, copy
 from .mmu_constants import *
 
 
+def is_kalico(printer):
+    # Kalico ships its own [danger_options] module; vanilla Klipper has no
+    # such config object.
+    return bool(printer.lookup_object('danger_options', False))
+
+
 
 # -----------------------------------------------------------------------------------------------------------
 # DEDICATED MMU EXCEPTION

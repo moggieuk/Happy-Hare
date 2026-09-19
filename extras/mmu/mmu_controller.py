@@ -22,7 +22,7 @@ from itertools                  import repeat
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
-from .mmu_utils                 import MmuError, MmuColorUtils
+from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
 from .mmu_led_manager           import MmuLedManager
@@ -72,7 +72,7 @@ class MmuController(MmuFilamentMovement):
         self._gear_run_current_depth = 0        # Nesting depth of wrap_gear_current(), which locks out changes
         self.p = mmu_machine.params             # Shared Parameters shortcut
 
-        self.kalico = bool(self.printer.lookup_object('danger_options', False))
+        self.kalico = is_kalico(self.printer)
 
         # Tool speed and extrusion multipliers
         self.tool_speed_multipliers     = [1.0] * self.num_gates # M220 record

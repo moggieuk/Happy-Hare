@@ -84,8 +84,9 @@ def build_overlay():
     # matching sys.path entry, so without this file `extras.__path__` would become
     # [<tmp>/klippy/extras, <repo>/extras] and which copy wins would depend on
     # sys.path order. An __init__.py terminates the merge. HH's own subpackages
-    # (extras/mmu, extras/mmu/unit) stay namespace portions beneath it, which is
-    # exactly what they are on a real install too.
+    # (extras/mmu, extras/mmu/unit) ship their own __init__.py - regular packages
+    # here and on a real install alike (test_extras_subpackages_are_regular_packages
+    # in test_mmu_import.py).
     init = os.path.join(klippy, 'extras', '__init__.py')
     if not os.path.exists(init):
         with open(init, 'w') as f:

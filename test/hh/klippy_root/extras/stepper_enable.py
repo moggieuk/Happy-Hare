@@ -1,6 +1,12 @@
-# Fake Klipper extras/stepper_enable.py. HH: extras/mmu_stepper.py:827-828,
-# extras/mmu/mmu_filament_movement.py:1169-1171,
-# extras/mmu/commands/mmu_calibration_mixins.py:401.
+# Fake Klipper extras/stepper_enable.py. HH: extras/mmu_stepper.py (do_enable,
+# DISABLE_STALL_TIME), extras/mmu/mmu_filament_movement.py:1697-1698,
+# extras/mmu/commands/mmu_calibration_mixins.py:404.
+#
+# Two generations, as on real Klipper: the pre-set_motors_enable generation
+# (old mainline, Kalico) and the current one - the same split as
+# motion_queuing, so load_config() picks by the session's generation.
+
+DISABLE_STALL_TIME = 0.100
 
 
 class EnableTracking:
@@ -25,7 +31,7 @@ class EnableTracking:
         return True
 
 
-class PrinterStepperEnable:
+class _PrinterStepperEnableBase:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.enable_lines = {}
@@ -49,6 +55,11 @@ class PrinterStepperEnable:
         for el in self.enable_lines.values():
             el.motor_disable(pt)
 
+    def get_status(self, eventtime=None):
+        return {'steppers': {n: el.is_enabled for n, el in self.enable_lines.items()}}
+
+
+class PrinterStepperEnable(_PrinterStepperEnableBase):
     def set_motors_enable(self, names, enable):
         toolhead = self.printer.lookup_object('toolhead', None)
         pt = toolhead.get_last_move_time() if toolhead else 0.
@@ -56,9 +67,14 @@ class PrinterStepperEnable:
             el = self.lookup_enable(name)
             el.motor_enable(pt) if enable else el.motor_disable(pt)
 
-    def get_status(self, eventtime=None):
-        return {'steppers': {n: el.is_enabled for n, el in self.enable_lines.items()}}
+
+# Pre-set_motors_enable generation (old mainline, Kalico)
+class PrinterStepperEnableOldGen(_PrinterStepperEnableBase):
+    pass
 
 
 def load_config(config):
+    printer = config.get_printer()
+    if 'motion_queuing' in getattr(printer, 'harness_missing_modules', ()):
+        return PrinterStepperEnableOldGen(config)
     return PrinterStepperEnable(config)
