@@ -344,6 +344,7 @@ class TestClogDetectionLength(EncoderTestCase):
         a shutdown rather than a paused print.
         """
         self.preload()
+        self.hh.heat_extruder()
         self.hh.run_gcode('MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=500 REPEATS=1')
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(

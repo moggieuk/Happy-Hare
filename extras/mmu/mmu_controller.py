@@ -329,14 +329,8 @@ class MmuController(MmuFilamentMovement):
                     continue
 
                 if u.p.startup_home_selector:
-                    unit_loaded = (
-                        self.gate_selected != TOOL_GATE_UNKNOWN and
-                        u.manages_gate(self.gate_selected) and
-                        self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]
-                    )
-
-                    if unit_loaded:
-                        self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded")
+                    if self._unit_may_have_filament(u):
+                        self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded (or filament state could not be confirmed)")
                         continue
 
                     try:
@@ -446,12 +440,15 @@ class MmuController(MmuFilamentMovement):
             # flight) -- a timed command that arrives after its scheduled
             # clock shuts the MCU down with "Rescheduled timer in the past"
             # (verified on the live MMU3: every boot crashed inside
-            # __MMU_BOOTUP until this was deferred). Run them only once the
-            # clock estimate is reliable, mirroring the shift register's
-            # initial-write delay.
-            self.reactor.register_callback(
-                lambda pt: self._bootup_autohome(),
-                self.reactor.monotonic() + BOOT_CLOCK_CONVERGENCE_DELAY)
+            # __MMU_BOOTUP until this was deferred). Only machines with a
+            # shift register (Prusa MMU3) pay this 30s cost; everyone else
+            # homes synchronously as before.
+            if any('shift_register' in obj for obj in self.printer.objects):
+                self.reactor.register_callback(
+                    lambda pt: self._bootup_autohome(),
+                    self.reactor.monotonic() + BOOT_CLOCK_CONVERGENCE_DELAY)
+            else:
+                self._bootup_autohome()
             # Make sure the gate is really selected (allows selectors to initialize
             # themselves). Ask the unit that owns the gate: the autohoming loop variable
             # would be whichever unit happened to be last, so an uncalibrated final unit

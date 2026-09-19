@@ -90,9 +90,9 @@ class LinearIdlerSelector(LinearSelector):
         super().handle_disconnect()
         self.idler.handle_disconnect()
 
-    def home(self, force_unload=None):
+    def home(self):
         # Home selector, then idler (MMU3 requires both before operation)
-        super().home(force_unload)
+        super().home()
         self.idler.home()
 
     def filament_drive(self, buzz_gear=True):
