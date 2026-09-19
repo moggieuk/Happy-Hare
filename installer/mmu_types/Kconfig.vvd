@@ -10,6 +10,7 @@ config MMU_TYPE_VVD_1_0
   select MMU_HAS_NFC_READER
   select MMU_HAS_PER_GATE_NFC_READERS
   select UNSELECT_MMU_HAS_ESPOOLER        # Disable
+  select MMU_GEAR_ROTATES_SPOOL           # Gate gear motor turns the spool
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
 
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable

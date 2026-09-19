@@ -62,6 +62,11 @@ config MMU_HAS_ESPOOLER
   def_bool n
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER
 
+# Type-B designs without an eSpooler can still turn the spool with the gate's
+# own gear motor, so spool rotation is not tied to having an eSpooler.
+config MMU_GEAR_ROTATES_SPOOL
+  def_bool n
+
 config MMU_HAS_LEDS
   def_bool n
 

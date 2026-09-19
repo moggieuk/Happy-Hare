@@ -99,6 +99,7 @@ class MmuUnit:
             filament_always_gripped: bool = False    # Is filament always gripped by MMU (overrides gear/extruder syncing assumptions)
             show_bypass: bool = False                # Does design has selectable filament bypass (only type-A and type-C). Only one allowed per mmu_machine!
             filament_buffer: bool = False            # Does design has buffer to catch loose filament on rewind (allows for faster loading speeds)
+            gear_rotates_spool: bool = False         # Can the gear motor itself turn the spool (type-B without an eSpooler)
 
         DEF_PROFILE = MmuUnitProfile()
 
@@ -114,11 +115,11 @@ class MmuUnit:
             VENDOR_QUATTRO_BOX:  replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_MMX:          replace(DEF_PROFILE, selector_type=SELECTOR_SERVO),
             VENDOR_MMX6:         replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY),
-            VENDOR_VVD:          replace(DEF_PROFILE, selector_type=SELECTOR_INDEXED, filament_always_gripped=True),
+            VENDOR_VVD:          replace(DEF_PROFILE, selector_type=SELECTOR_INDEXED, filament_always_gripped=True, gear_rotates_spool=True),
             VENDOR_KMS:          replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_EMU:          replace(DEF_PROFILE, variable_bowden_lengths=True, filament_always_gripped=True),
             VENDOR_LOW_RIDER:    replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY),
-            VENDOR_QIDI:         replace(DEF_PROFILE, variable_rotation_distances=False, filament_always_gripped=True),
+            VENDOR_QIDI:         replace(DEF_PROFILE, variable_rotation_distances=False, filament_always_gripped=True, gear_rotates_spool=True),
         }
 
         if self.mmu_vendor == VENDOR_PRUSA:
@@ -134,6 +135,7 @@ class MmuUnit:
         self.filament_always_gripped =     bool(config.getint('filament_always_gripped', profile.filament_always_gripped))
         self.show_bypass =                 bool(config.getint('show_bypass', profile.show_bypass))
         self.filament_buffer =             bool(config.getint('filament_buffer', profile.filament_buffer))
+        self.gear_rotates_spool =          bool(config.getint('gear_rotates_spool', profile.gear_rotates_spool))
 
         # Can selector mechanism allow selection of other gates on unit when filament is loaded
         self.can_crossload = self.selector_type in [SELECTOR_VIRTUAL, SELECTOR_SERVO, SELECTOR_INDEXED, SELECTOR_MACRO, SELECTOR_ROTARY]
