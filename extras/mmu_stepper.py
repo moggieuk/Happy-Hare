@@ -42,13 +42,15 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-import logging, collections, math, inspect
-import chelper
+import logging, collections, math
 
 # Klipper imports
 from kinematics.extruder import ExtruderStepper, PrinterExtruder
 from .                   import force_move
 from .homing             import HomingMove
+
+# Temporary Kalico compatibility imports
+import inspect, chelper
 from .stepper_enable     import DISABLE_STALL_TIME
 
 
@@ -471,22 +473,11 @@ def MmuLookupRailFromStepper(stepper_obj, config, need_position_minmax=True, def
 
 
 
-# -----------------------------------------------------------------------------------------------------------
-# MotionQueuingEmulator: the motion_queuing surface MmuStepper uses, for
-# Klipper generations without klippy/extras/motion_queuing.py (old mainline
-# and Kalico).
+# =======================================================================
+# BEGIN temporary Kalico compatibility: motion_queuing emulator
+# Remove when Kalico provides motion_queuing natively.
+# Uses Kalico's manual_stepper contract; resolves toolhead after config loading.
 #
-# Implements the old-style stepping contract of klippy/extras/manual_stepper.py:
-#   - trapqs are allocated and finalized through the chelper ffi directly
-#   - a plain do_move steps the drive and its manual followers, finalizes the
-#     trapq, then notes movequeue activity on the toolhead
-#   - a drip move hands the steppers to toolhead.drip_update_time(), which
-#     steps them on each drip segment
-#
-# The toolhead is resolved lazily: on those generations it is created after
-# the user config sections, and MmuStepper is constructed during section
-# loading.
-# -----------------------------------------------------------------------------------------------------------
 
 class MotionQueuingEmulator:
 
@@ -530,8 +521,11 @@ class MotionQueuingEmulator:
         self._toolhead().note_mcu_movequeue_activity(mq_time, set_step_gen_time)
 
     def drip_update_time(self, start_time, end_time, drip_completion):
-        self._toolhead().drip_update_time(end_time, drip_completion,
-                                          self._driven_steppers())
+        self._toolhead().drip_update_time(end_time, drip_completion, self._driven_steppers())
+
+#
+# END temporary Kalico compatibility: motion_queuing emulator
+# =======================================================================
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -604,10 +598,11 @@ class MmuStepper(ExtruderStepper):
             self.steppers = [self.stepper]
 
         # Setup iterative solver and manual-mode trapq
-        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
-        if self.motion_queuing is None:
-            # This generation lacks klippy/extras/motion_queuing.py
+        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)  # Kalico: None to allow missing module
+        if self.motion_queuing is None:  # Temporary Kalico compatibility
             self.motion_queuing = MotionQueuingEmulator(self.printer, self)
+        self._step_gen_registered = False  # Temporary. Added for Kalico compatibility
+
         self.manual_trapq = self.motion_queuing.allocate_trapq()
         self.trapq_append = self.motion_queuing.lookup_trapq_append()
         self.trapq = self.manual_trapq
@@ -620,7 +615,6 @@ class MmuStepper(ExtruderStepper):
         # Manual mode state
         self.manual_motion_queue = None
         self._manual_followers = set()
-        self._step_gen_registered = False
 
         # Registered with toolhead as an extra axis only in manual mode
         self.axis_gcode_id = None
@@ -697,6 +691,13 @@ class MmuStepper(ExtruderStepper):
         return (self.motion_mode == self.MODE_MANUAL and self.manual_motion_queue is None)
 
 
+
+    # =======================================================================
+    # BEGIN temporary Kalico compatibility
+    # Remove these helpers when Kalico provides motion_queuing,
+    # set_motors_enable and manual_home(probe_pos) natively.
+    #
+
     def _handle_connect(self):
         super()._handle_connect()
         toolhead = self.printer.lookup_object('toolhead')
@@ -728,6 +729,42 @@ class MmuStepper(ExtruderStepper):
         elif self._step_gen_registered:
             toolhead.unregister_step_generator(self.stepper.generate_steps)
             self._step_gen_registered = False
+
+
+    def _do_enable_legacy(self, stepper_enable, stepper_names, enable):
+        # Kalico lacks set_motors_enable; preserve its enable/disable timing.
+        toolhead = self.printer.lookup_object('toolhead')
+        # Flush pending auto-enable callbacks.
+        toolhead.flush_step_generation()
+        print_time = None
+        did_change = False
+        for stepper_name in stepper_names:
+            el = stepper_enable.lookup_enable(stepper_name)
+            if el.is_motor_enabled() == enable:
+                continue
+            if print_time is None:
+                # Allow time after the previous auto-enable.
+                if not enable:
+                    toolhead.dwell(DISABLE_STALL_TIME)
+                print_time = toolhead.get_last_move_time()
+            if enable:
+                el.motor_enable(print_time)
+            else:
+                el.motor_disable(print_time)
+            did_change = True
+        # Allow time before the next auto-enable.
+        if did_change and not enable:
+            toolhead.dwell(DISABLE_STALL_TIME)
+
+
+    def _do_homing_move_legacy(self, endstops, pos, speed, probe_pos, triggered, check_trigger):
+        # Kalico's manual_home lacks probe_pos and returns no trigger position.
+        hmove = HomingMove(self.printer, endstops, self)
+        return hmove.homing_move(pos, speed, probe_pos=probe_pos, triggered=triggered, check_triggered=check_trigger)
+
+    #
+    # END temporary Kalico compatibility
+    # =======================================================================
 
 
     # ----------------------------------------------------------------------
@@ -763,7 +800,7 @@ class MmuStepper(ExtruderStepper):
         self.motion_queue = None
         self.manual_motion_queue = None
         self.motion_queuing.check_step_generation_scan_windows()
-        self._sync_step_generator()
+        self._sync_step_generator()  # Temporary. Added for Kalico compatibility
 
 
     def _activate_extruder_mode_detached(self, initial=False):
@@ -789,7 +826,7 @@ class MmuStepper(ExtruderStepper):
         self.motion_queue = None
         self.manual_motion_queue = None
         self.motion_queuing.check_step_generation_scan_windows()
-        self._sync_step_generator()
+        self._sync_step_generator()  # Temporary. Added for Kalico compatibility
 
 
     def _activate_extruder_motion_queue(self, extruder):
@@ -808,7 +845,7 @@ class MmuStepper(ExtruderStepper):
         self.motion_queue = extruder.get_name()
         self.manual_motion_queue = None
         self.motion_queuing.check_step_generation_scan_windows()
-        self._sync_step_generator()
+        self._sync_step_generator()  # Temporary. Added for Kalico compatibility
 
 
     # ----------------------------------------------------------------------
@@ -930,37 +967,10 @@ class MmuStepper(ExtruderStepper):
     def do_enable(self, enable):
         stepper_names = [s.get_name() for s in self.steppers]
         stepper_enable = self.printer.lookup_object('stepper_enable')
-        if hasattr(stepper_enable, 'set_motors_enable'):
+        if hasattr(stepper_enable, 'set_motors_enable'):  # Temporary. Added for Kalico compatibility
             stepper_enable.set_motors_enable(stepper_names, enable)
         else:
             self._do_enable_legacy(stepper_enable, stepper_names, enable)
-
-
-    def _do_enable_legacy(self, stepper_enable, stepper_names, enable):
-        # Older stepper_enable generations have no set_motors_enable;
-        # mirror its semantics with the per-stepper API
-        toolhead = self.printer.lookup_object('toolhead')
-        # Flush steps to ensure all auto enable callbacks invoked
-        toolhead.flush_step_generation()
-        print_time = None
-        did_change = False
-        for stepper_name in stepper_names:
-            el = stepper_enable.lookup_enable(stepper_name)
-            if el.is_motor_enabled() == enable:
-                continue
-            if print_time is None:
-                # Dwell for sufficient delay from any previous auto enable
-                if not enable:
-                    toolhead.dwell(DISABLE_STALL_TIME)
-                print_time = toolhead.get_last_move_time()
-            if enable:
-                el.motor_enable(print_time)
-            else:
-                el.motor_disable(print_time)
-            did_change = True
-        # Dwell to ensure sufficient delay prior to a future auto enable
-        if did_change and not enable:
-            toolhead.dwell(DISABLE_STALL_TIME)
 
 
     def do_set_position(self, setpos):
@@ -1016,19 +1026,10 @@ class MmuStepper(ExtruderStepper):
         endstops = self.rail.get_homing_endstops(endstop_name)
 
         phoming = self.printer.lookup_object('homing')
-        if 'probe_pos' in inspect.signature(phoming.manual_home).parameters:
-            trigpos = phoming.manual_home(self, endstops, pos, speed, probe_pos,
-                                          triggered, check_trigger)
+        if 'probe_pos' in inspect.signature(phoming.manual_home).parameters:  # Temporary. Check added for Kalico compatibility
+            trigpos = phoming.manual_home(self, endstops, pos, speed, probe_pos, triggered, check_trigger) # Modern Klipper
         else:
-            # Klippys whose manual_home predates the probe_pos argument (e.g.
-            # Kalico, mainline v0.13.0-111) also return no trigger position -
-            # going through it would report the move target as the position.
-            # Drive HomingMove directly instead, the approach the verified v3
-            # code used on Kalico.
-            hmove = HomingMove(self.printer, endstops, self)
-            trigpos = hmove.homing_move(pos, speed, probe_pos=probe_pos,
-                                        triggered=triggered,
-                                        check_triggered=check_trigger)
+            trigpos = self._do_homing_move_legacy(endstops, pos, speed, probe_pos, triggered, check_trigger) # For Kalico compatibility
         self.sync_print_time()
         haltpos = self.get_position()
 
@@ -1085,7 +1086,7 @@ class MmuStepper(ExtruderStepper):
             # Unregister
             toolhead.remove_extra_axis(self)
             self.axis_gcode_id = None
-            self._sync_step_generator()
+            self._sync_step_generator()  # Temporary. Added for Kalico compatibility
             return
         if (len(gcode_axis) != 1 or not gcode_axis.isupper()
             or gcode_axis in "XYZEFN"):
@@ -1101,7 +1102,7 @@ class MmuStepper(ExtruderStepper):
         self.gaxis_limit_velocity = limit_velocity
         self.gaxis_limit_accel = limit_accel
         toolhead.add_extra_axis(self, self.commanded_pos)
-        self._sync_step_generator()
+        self._sync_step_generator()  # Temporary. Added for Kalico compatibility
 
 
     def process_move(self, print_time, move, ea_index):
