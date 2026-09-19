@@ -618,6 +618,191 @@ class TestStepperPositionSemantics(unittest.TestCase):
         self.assertAlmostEqual(travelled, 37., places=3)
 
 
+class TestPrusaIdlerSelector(SelectorTestCase):
+    """
+    Prusa MMU3: a LinearIdlerSelector. The selector is a plain linear carriage
+    (homing with stallguard, like the LinearSelector family) and the IDLER is a
+    stepper barrel that grips/releases filament at each gate, with one extra
+    disengaged position beyond the last gate. Both home during MMU_HOME.
+    """
+
+    PROFILE = 'prusa_mmu3'
+
+    def idler(self):
+        return self.selector('unit0').idler
+
+    def idler_axis(self):
+        for axis in self.hh.printer.harness_selectors:
+            if getattr(axis, 'idler', None) is not None:
+                return axis
+        self.fail('no idler axis published for prusa_mmu3')
+
+    def test_homing_homes_both_selector_and_idler(self):
+        selector = self.selector('unit0')
+        self.assertTrue(selector.is_homed)
+        self.assertTrue(selector.idler.is_homed)
+
+    def test_uncalibrated_idler_falls_back_to_the_vendor_cad_defaults(self):
+        """
+        A fresh install with no saved idler offsets must come up with working
+        gate positions, not an unusable [-1...] list. The vendor defaults are
+        Prusa's factory idler geometry (prusa-firmware-mmu config.h: slots at
+        58-218deg, 40deg pitch, idle 18deg from the far endstop) converted to
+        rotation_distance 40 units, with gate 0 = the right-most lane.
+        """
+        hh = session(self.PROFILE)
+        hh.boot()                                   # no calibrate -> no seeding
+        selector = {u.name: u for u in hh.mmu.mmu_machine.units}['unit0'].selector
+        self.assertEqual(selector.idler.idler_offsets,
+                         [19.7, 15.3, 10.9, 6.4, 2.0, 23.5])
+        from extras.mmu.unit.mmu_calibrator import CALIBRATED_SELECTOR
+        self.assertTrue(selector.calibrator.check_calibrated(CALIBRATED_SELECTOR))
+
+    def test_idler_offsets_follow_the_rotation_distance(self):
+        """
+        Nominal idler geometry: one gate position per rotation/num_gates, and the
+        disengaged position one full rotation beyond home. The harness seeds from
+        the stepper's rotation distance, so the offsets must match it.
+        """
+        idler = self.idler()
+        rd = idler.idler_stepper.stepper.get_rotation_distance()[0]
+        spacing = rd / self.hh.mmu.num_gates
+        self.assertEqual(idler.idler_offsets[:5],
+                         [round(i * spacing, 1) for i in range(5)])
+        self.assertEqual(idler.idler_offsets[5], round(spacing * 5, 1))
+
+    def test_selecting_a_gate_grips_filament_at_that_gates_offset(self):
+        idler, axis = self.idler(), self.idler_axis()
+        for gate in (0, 2, 4):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.assertEqual(self.hh.mmu.gate_selected, gate)
+                self.assertAlmostEqual(axis.carriage, idler.idler_offsets[gate],
+                                       places=3)
+                self.assertEqual(idler.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+                self.assertEqual(self.hh.errors, [])
+
+    def test_release_pre_positions_at_the_selected_gate(self):
+        """
+        MMU3 semantics: release pre-positions the idler at the selected gate so the
+        gear can drive filament immediately. Only selector movement disengages.
+        """
+        idler, axis = self.idler(), self.idler_axis()
+        self.hh.run_gcode('MMU_SELECT GATE=1')
+        self.hh.mmu.mmu_unit(0).selector.filament_release()
+        self.assertAlmostEqual(axis.carriage, idler.idler_offsets[1], places=3)
+        self.assertEqual(idler.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+
+    def test_hold_move_disengages_before_selector_movement(self):
+        """filament_hold_move() (called before every selector move) parks the idler."""
+        idler, axis = self.idler(), self.idler_axis()
+        self.hh.run_gcode('MMU_SELECT GATE=3')
+        self.hh.mmu.mmu_unit(0).selector.filament_hold_move()
+        self.assertAlmostEqual(axis.carriage, idler.idler_offsets[5], places=3)
+        self.assertEqual(idler.get_filament_grip_state(), FILAMENT_RELEASE_STATE)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_sr_writes_coalesce_into_a_single_pending_bitbang(self):
+        """
+        Rapid state changes must merge into one pending bitbang instead of
+        generating a 50-command write per change. Back-to-back bitbangs
+        piling up around a gear move overflowed the MMU3 AVR's move queue
+        ("Move queue overflow" -- the live failure this package fixes).
+        """
+        sr = self.hh.printer.lookup_object('shift_register mmu_sr')
+        reactor = self.hh.printer.get_reactor()
+        mcu = sr.mcu
+        now_pt = mcu.estimated_print_time(reactor.monotonic())
+
+        # Normalize: flush any pending write left by homing and anchor the
+        # in-flight end at the current print position (the harness clock is
+        # offset negative; the RELATIVE times are what matter).
+        sr._pending_write_start = None
+        sr._last_write_end = now_pt
+
+        # First change schedules a pending write well in the future (not yet
+        # generated).
+        start = sr._set_bit_at_time(4, 1, now_pt + 10.0)   # idler DIR
+        self.assertIsNotNone(sr._pending_write_start)
+        timer1 = sr._pending_timer
+
+        # A second change arrives before generation: merges into the SAME
+        # pending write -- identical scheduled start, no second timer, and
+        # the state already reflects both bits.
+        start2 = sr._set_bit_at_time(5, 1, now_pt + 10.05)  # idler ENABLE
+        self.assertEqual(start2, start)
+        self.assertIs(sr._pending_timer, timer1)
+        self.assertEqual((sr.state >> 4) & 1, 1)
+        self.assertEqual((sr.state >> 5) & 1, 1)
+
+        # Firing the pending write generates ONE bitbang covering both bits
+        sr._fire_pending_write(reactor.monotonic())
+        self.assertIsNone(sr._pending_write_start)
+        self.assertGreater(sr._last_write_end, start)
+
+    def test_sr_led_writes_defer_while_steps_execute(self):
+        """
+        LED bits (led_mask 0xFF00) are cosmetic: a write requested while the
+        toolhead has steps queued past the MCU's actual position is pushed to
+        ~150ms past the execution horizon instead of bitbanging mid-move.
+        """
+        sr = self.hh.printer.lookup_object('shift_register mmu_sr')
+        reactor = self.hh.printer.get_reactor()
+        mcu = sr.mcu
+        now_pt = mcu.estimated_print_time(reactor.monotonic())
+
+        # Normalize (see coalescing test): the harness clock is offset
+        # negative, so anchor the in-flight end at the current position.
+        sr._pending_write_start = None
+        sr._last_write_end = now_pt
+
+        toolhead = self.hh.printer.lookup_object('toolhead')
+        setattr(toolhead, 'print_time', now_pt + 1.0)   # simulate busy
+        try:
+            start = sr._set_bit_at_time(8, 1, now_pt + 0.105)  # LED bit 8
+            self.assertEqual(start, now_pt + 0.150)  # deferred past horizon
+            self.assertEqual((sr.state >> 8) & 1, 1)
+        finally:
+            delattr(toolhead, 'print_time')
+
+
+    def test_drive_after_home_moves_to_the_gate(self):
+        idler, axis = self.idler(), self.idler_axis()
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.mmu.mmu_unit(0).selector.filament_drive()
+        self.assertAlmostEqual(axis.carriage, idler.idler_offsets[0], places=3)
+        self.assertEqual(idler.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_idler_moves_go_through_the_mmu_stepper_with_dir_pre_set(self):
+        """
+        The _pre_set_dir_pin hook must fire for idler moves: the MMU3 DIR bit
+        lives on the SHR16 shift register (dir_sr_pin config) and is written
+        from Python before every move through the resolved ShiftRegisterBit.
+
+        After MMU_HOME the idler sits at position 0 (the silicone stop it
+        homed against), so a move to gate 2 is forward (logical dir 0 ->
+        physical 0) and a move back to gate 0 is backward (logical dir 1 ->
+        physical 1 without inversion). The idler homes toward the silicone
+        stop at position 0, so the DIR bit is NOT inverted (mmu_sr:4) --
+        with the old ! inversion the homing pressed the far hard endstop
+        instead (verified on the live MMU3).
+        """
+        idler = self.idler()
+        sr = self.hh.printer.lookup_object('shift_register mmu_sr')
+
+        # The stepper resolved its dir_sr_pin config into bit 4 of the SR
+        vpin = idler.idler_stepper._dir_sr_pin
+        self.assertIsNotNone(vpin)
+        self.assertEqual(vpin._bit_num, 4)   # Idler DIR is SR bit 4
+        self.assertEqual(vpin._invert, 0)    # config says mmu_sr:4 (no inversion)
+
+        idler._set_idler_to_gate(2)   # 0 -> 16: forward, dir 0 -> physical 0
+        self.assertEqual((sr.state >> 4) & 1, 0)
+        idler._set_idler_to_gate(0)   # 16 -> 0: backward, dir 1 -> physical 1
+        self.assertEqual((sr.state >> 4) & 1, 1)
+
+
 class TestMultiUnitSelectors(SelectorTestCase):
     """
     ercf_vvd: two units, two selector classes, and an encoder on one of them.
@@ -996,12 +1181,18 @@ class TestPersistedPositionRestore(unittest.TestCase):
         0 for every physical selector (config/base/mmu_parameters.cfg), so there is no profile
         to switch to.
         """
+        from extras.mmu.mmu_constants import BOOT_CLOCK_CONVERGENCE_DELAY
+
         def enable_startup_homing():
             self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 startup_home_selector=1')
 
         hh = self.boot(calibrate=True, selected_gate=self.GATE, selector_last_pos=True,
                        pre_bootup=enable_startup_homing)
 
+        # The bootup autohome is deferred BOOT_CLOCK_CONVERGENCE_DELAY seconds past
+        # connect (the MCU clock estimate is unreliable that early), so the reactor
+        # must be advanced past the deferral before the homing happens.
+        hh.settle(BOOT_CLOCK_CONVERGENCE_DELAY + 1.)
         self.assertIn('Homing MMU', '\n'.join(hh.console), 'bootup did not actually home')
         self.assertTrue(self.selector().is_homed)
         self.assertEqual(hh.mmu.gate_selected, self.GATE,

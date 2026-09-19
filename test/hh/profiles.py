@@ -652,6 +652,14 @@ ERCF_VVD_DUAL_EXTRUDER = ERCF_VVD.derive(
     ],
     description='ercf_vvd with each unit on its own extruder')
 
+# Prusa MMU3 - Type A, LinearIdlerSelector, 5 gates. Exercises the shift register
+# based stepper DIR/ENABLE pins (mmu_sr:N virtual pins), the TMC2130 SPI TMC
+# sections and the idler stepper with stallguard "touch" homing.
+PRUSA_MMU3 = Profile(
+    'prusa_mmu3',
+    syms={'MMU_TYPE_PRUSA_MMU3_3_0': True},
+    description='Prusa MMU3 - Type A, LinearIdlerSelector, 5 gates, SHR16 shift register')
+
 # Appended to bootstrap.PRINTER_STUB by tests using the profile above. The TMC section is not
 # optional - MmuExtruderWrapper raises without one for the extruder it is given.
 EXTRA_EXTRUDER_STUB = """
@@ -684,7 +692,7 @@ run_current: 0.6
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
 CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU, MMX, KMS, QIDI,
-                    EMU, EMU_EBB, ENCODER,
+                    EMU, EMU_EBB, ENCODER, PRUSA_MMU3,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                     NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,

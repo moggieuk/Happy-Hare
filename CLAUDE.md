@@ -66,6 +66,14 @@ exercises the option you touched.
   so this applies whenever adding/renaming/removing an option, changing a
   default, restructuring menuconfig screens, or debugging an option that
   won't show / persist / render.
+- **`mmu3-avr-subsystem`** — the Prusa MMU3's ATmega32U4 constraints: the
+  ~115-node move-queue budget and `v^2/2a` accel rule behind the gear speed/
+  accel defaults, the SHR16 shift-register bitbang architecture (write
+  coalescing, real-time gating, move-aware DIR, LED deferral), and USB CDC
+  timing hazards. Relevant any time you're touching `shift_register.py`,
+  `_pre_set_dir_pin`, MMU3 speed/accel defaults, or debugging "Move queue
+  overflow"/"Rescheduled timer in the past" on unit0.
+
 
 These aren't a substitute for reading the code — they exist to save you from
 rediscovering invariants and design decisions that already cost someone a
