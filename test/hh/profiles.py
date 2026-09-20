@@ -183,6 +183,19 @@ NFC_PER_GATE = BOXTURTLE_TEST.derive(
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True},
     description='BoxTurtle + per-gate NFC readers')
 
+# Per-gate readers with gate 2 switched OFF at the menuconfig toggle while its reader NAME
+# is left behind, which is what a real .mmu_config looks like after someone edits the name
+# and later deselects the gate: PARAM_NFC_READER_GATE_2 only hides the prompt, and
+# installer/build.py reads the raw user_value regardless of visibility, so the stale name
+# survives. The template used to render it anyway - gate 2 got a reader it had been told
+# not to have. Deliberately does NOT clear PARAM_NFC_READER_2: clearing it is exactly what
+# hides the bug. A sibling of NFC_PER_GATE rather than a change to it, because the neighbor
+# and scan suites need all four gates populated.
+NFC_PER_GATE_SPARSE = NFC_PER_GATE.derive(
+    'nfc_per_gate_sparse',
+    syms={'PARAM_NFC_READER_GATE_2': False, 'PARAM_NFC_READER_2': 'unit0_nfc2'},
+    description='BoxTurtle + per-gate NFC readers, gate 2 switched off (stale name kept)')
+
 # Per-gate readers with NFC neighbor-field CHECKING switched on (no eviction motion): a tag
 # positively registered to a neighboring gate is refused rather than attributed, but nothing
 # is jogged. This is the "fast-fail" half of the feature (MmuNfcFieldArbiter), reachable with
@@ -685,8 +698,8 @@ run_current: 0.6
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
 CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU, MMX, KMS, QIDI,
                     EMU, EMU_EBB, ENCODER,
-                    NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
-                    NFC_GATE_CLEAR,
+                    NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
+                    NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
                     NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                     NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)

@@ -67,6 +67,31 @@ Load-bearing facts about the flow:
   are preserved. This is why changing the *default or meaning of an existing*
   symbol is a breaking change for installed machines (see CONTRIBUTING: such
   changes "will probably be rejected").
+- **Renaming a symbol silently discards the user's value, and there is no
+  migration hook.** kconfiglib drops an assignment whose symbol no longer
+  exists, `build.KConfig` runs with `warn_assign_undef = False`, and
+  `Makefile:736` sends `olddefconfig`'s output to `/dev/null` — so the old line
+  vanishes with *zero* diagnostics and the new name takes its default. Measured
+  on a real `.mmu_config`: a bool the user had explicitly set to `n` came back
+  `y`, no warning emitted. Harmless for a value still at its default (it
+  carries a `#~DEFAULT~#` token and recomputes identically), a silent
+  behaviour change for anything explicitly set — and every upgrade touches
+  `installer/Kconfig*`, so the staleness check runs `olddefconfig`
+  unprompted. Note `installer/upgrades.py` does NOT help: it renames options
+  and sections in the generated Klipper `.cfg` files, not Kconfig symbols.
+  So renaming a symbol users have set is a breaking change unless it ships
+  with a migration, and one would have to: rewrite every `.mmu_config*`
+  (glob — per-unit files are where the per-unit tree's symbols live), handle
+  both the `CONFIG_X=v` and `# CONFIG_X is not set` spellings, preserve the
+  trailing `#~DEFAULT~#` token, preserve each file's **mtime** (or
+  `kconfig_needs_update` stops seeing the file as stale and suppresses the
+  very `olddefconfig` pass the migration precedes), and run before
+  *menuconfig*, not just before `olddefconfig`, or an interactive install
+  builds its screen from the already-lost value. Cheapest answer is usually
+  to leave the name alone: `PARAM_NFC_READER_GATE_$(i)` keeps its prefix for
+  exactly this reason, matching its four siblings (`PARAM_FILAMENT_HEATER_GATE_`,
+  `PARAM_FAN_GATE_`, `PARAM_HEATER_FAN_GATE_`, `PARAM_TD1_DEVICE_GATE_`) even
+  though they are all presentation-only bools that `BOOL_` would describe better.
 
 ## The symbol-naming contract
 

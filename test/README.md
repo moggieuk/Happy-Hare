@@ -887,6 +887,7 @@ templates** from them, so a broken template shows up as a test failure.
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
 | `nfc_per_gate` | one reader per gate |
+| `nfc_per_gate_sparse` | per-gate readers with gate 2 switched off at the menuconfig toggle, its reader name deliberately left behind — the sparse per-gate list on a single unit |
 | `nfc_pn532_uart` | one common PN532 over HSU/UART — the only host-serial reader |
 | `nfc_spoolman` | per-gate NFC + Spoolman enabled + auto-create |
 
