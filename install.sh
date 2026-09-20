@@ -509,21 +509,6 @@ detect_platform() {
     export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
 }
 
-# Kalico identifies itself with APP_NAME = "Kalico" in klippy/__init__.py.
-# Support for it is not guaranteed - the install warns, but never aborts.
-check_kalico() {
-    if [ -d "${CONFIG_KLIPPER_HOME:-}" ]; then
-        kalico="${CONFIG_KLIPPER_HOME}/klippy/__init__.py"
-    else
-        kalico="${HOME}/klipper/klippy/__init__.py"
-    fi
-
-    if [ -f "${kalico}" ] \
-        && grep -q '^APP_NAME[[:space:]]*=[[:space:]]*"Kalico"' "${kalico}" 2>/dev/null; then
-        echo "${C_ERROR}Kalico detected: Happy Hare support for Kalico is not guaranteed.${C_OFF}" >&2
-    fi
-}
-
 enforce_root_policy() {
     if [ -n "${SUDO_COMMAND:-}" ]; then
         echo "${C_ERROR}ERROR: Do not run ${SCRIPT_NAME} with sudo. Use the Klipper user, or log in as root on an embedded system.${C_OFF}" >&2
@@ -807,13 +792,6 @@ if [ -n "${CONFIG_KLIPPER_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_HOME}" ]; then
     echo "${C_ERROR}Klipper config directory not found: ${CONFIG_KLIPPER_HOME}${C_OFF}"
     exit 1
 fi
-
-
-################################
-##### Compatibility checks #####
-################################
-
-check_kalico
 
 if [ -n "${CONFIG_KLIPPER_CONFIG_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
     echo "${C_ERROR}Klipper config directory not found: ${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
