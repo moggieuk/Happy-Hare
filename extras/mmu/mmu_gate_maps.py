@@ -644,7 +644,6 @@ class MmuGateMaps:
         """
         Format per-gate filament details into a readable summary.
         """
-        msg = "Gates / Filaments:" # String used to filter in KlipperScreen-HH
         available_status = {
             GATE_AVAILABLE_FROM_BUFFER: "Buffered",
             GATE_AVAILABLE: "On spool",
@@ -652,6 +651,7 @@ class MmuGateMaps:
             GATE_UNKNOWN: "Unknown"
         }
 
+        rows = []
         for g in range(self.num_gates):
             available = available_status[self.gate_status[g]]
             name = self.gate_filament_name[g] or "Unknown"
@@ -668,11 +668,10 @@ class MmuGateMaps:
             tools = ",".join("T{}".format(t) for t in range(self.num_gates) if self.ttg_map[t] == g)
             tools_fstr = (" [{}]".format(tools) if tools else "")
             gate_fstr = "{}".format(g).ljust(2, UI_SPACE)
-            gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(14 + len(filament_char), UI_SPACE)
+            gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr)
 
             available_fstr = "{};".format(available).ljust(11, UI_SPACE)
-            material_fstr = material.ljust(5, UI_SPACE)
-            fil_fstr = "{} | {}{}C | {} | {}".format(material_fstr, temperature, UI_DEGREE, color, name)
+            temperature_fstr = "{}{}C".format(temperature, UI_DEGREE)
             rfid = (self.gate_spool_rfid[g] or "").upper()
             rfid_fstr = "({});".format(rfid).ljust(12, UI_SPACE) if rfid else ""
 
@@ -692,7 +691,28 @@ class MmuGateMaps:
                 rfids = ','.join(self.gate_spool_rfid_aliases[g]) or "none"
                 extra_fstr += " [RFIDS: {}]".format(rfids)
 
-            msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
+            rows.append((gate_fstr, available_fstr, spool_fstr, material, temperature_fstr, color, name + speed_fstr + extra_fstr))
+
+        # Size columns from visible text: swatch color tokens occupy no console space.
+        def visible_length(value):
+            return len(re.sub(r"\{\{[^{}]*\}\}", "", value))
+
+        spool_header = "Spoolman" if self.p.spoolman_support != SPOOLMAN_OFF else ""
+        if any(self.gate_spool_rfid):
+            spool_header = "Spoolman / RFID" if spool_header else "RFID"
+        headers = ("Gate", "", spool_header, "Material", "", "Color", "Filament")
+        widths = [max([len(header)] + [visible_length(row[i]) for row in rows]) for i, header in enumerate(headers)]
+        widths[0] = max(widths[0] + 2, 17)
+        if spool_header:
+            widths[2] = max(widths[2], len(spool_header) + 2)
+
+        def format_row(row):
+            cells = [value + UI_SPACE * (widths[i] - visible_length(value)) for i, value in enumerate(row[:-1])]
+            return "{}{}{}{} | {} | {} | {}".format(*cells, row[-1])
+
+        msg = "Gates / Filaments:" # String used to filter in KlipperScreen-HH
+        msg += "\n" + format_row(headers)
+        msg += "".join("\n" + format_row(row) for row in rows)
         return msg
 
 

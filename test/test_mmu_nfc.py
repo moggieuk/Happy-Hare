@@ -57,7 +57,7 @@ class TestPerGateNfcBoots(unittest.TestCase):
     def test_gate_map_displays_uppercase_rfid_uid_as_own_field_without_spool_id(self):
         self.hh.run_gcode('MMU_GATE_MAP GATE=0 RFID=ab12cd34 QUIET=1')
 
-        gate_row = self.hh.mmu.gate_maps.gate_map_to_string().splitlines()[1]
+        gate_row = self.hh.mmu.gate_maps.gate_map_to_string().splitlines()[2]
 
         self.assertIn('(AB12CD34);', gate_row)
         self.assertNotIn('Unknown | AB12CD34', gate_row)
@@ -68,14 +68,14 @@ class TestPerGateNfcBoots(unittest.TestCase):
             hh.boot()
             hh.run_gcode('MMU_GATE_MAP GATE=0 SPOOLID=8 RFID=ab12cd34 QUIET=1')
 
-            gate_row = hh.mmu.gate_maps.gate_map_to_string().splitlines()[1]
+            gate_row = hh.mmu.gate_maps.gate_map_to_string().splitlines()[2]
 
             self.assertIn('Id: 8 (AB12CD34) -->', gate_row)
             self.assertNotIn('(AB12CD34);', gate_row)
         finally:
             hh.close()
 
-    def test_gate_map_justifies_material_to_five_characters(self):
+    def test_gate_map_aligns_headers_and_filament_columns(self):
         self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=TPU QUIET=1')
         self.hh.run_gcode('MMU_GATE_MAP GATE=2 MATERIAL=PLA+ QUIET=1')
 
@@ -84,8 +84,17 @@ class TestPerGateNfcBoots(unittest.TestCase):
             for line in self.hh.mmu.gate_maps.gate_map_to_string().splitlines()
         ]
 
-        self.assertIn('TPU   |', gate_rows[2])
-        self.assertIn('PLA+  |', gate_rows[3])
+        self.assertEqual(gate_rows[0], 'Gates / Filaments:')
+        self.assertIn('TPU      |', gate_rows[3])
+        self.assertIn('PLA+     |', gate_rows[4])
+        header = gate_rows[1]
+        self.assertTrue(header.startswith('Gate'))
+        self.assertIn('Material', header)
+        self.assertIn('Color', header)
+        self.assertIn('Filament', header)
+        separators = [i for i, char in enumerate(header) if char == '|']
+        for row in gate_rows[2:]:
+            self.assertEqual([i for i, char in enumerate(row) if char == '|'], separators)
 
     def test_reader_sections_are_registered_objects(self):
         for i in range(4):
