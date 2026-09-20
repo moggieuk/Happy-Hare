@@ -600,6 +600,82 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
             })
         self.assertTrue(kc.is_enabled('SW4'))
 
+class TestBlobifierTmcDriverChoice(unittest.TestCase):
+    """Driver section comes from Kconfig; a hand edit is reverted on every install."""
+
+    def _render_mmu(self, name, syms):
+        profile = profiles.get('boxturtle').derive(
+            name,
+            syms=dict({
+                'MMU_HAS_BLOBIFIER': True,
+                'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+                'PIN_BLOBIFIER_STEPPER_STEP': 'unit0:PD4',
+                'PIN_BLOBIFIER_STEPPER_DIR': '!unit0:PD3',
+                'PIN_BLOBIFIER_STEPPER_ENABLE': '!unit0:PD6',
+                'PIN_BLOBIFIER_STEPPER_ENDSTOP': '^!unit0:PC15',
+            }, **syms))
+        return cfg.render(profile)[MMU]
+
+    @staticmethod
+    def _drivers(mmu):
+        return [s for s in cfg.sections(mmu)
+                if s.startswith('tmc') and s.endswith('manual_stepper stepper_blobifier')]
+
+    def test_uart_driver_is_the_default(self):
+        mmu = self._render_mmu('blobifier_tmc_default', {
+            'PIN_BLOBIFIER_STEPPER_UART': 'unit0:PC14',
+        })
+        self.assertEqual(self._drivers(mmu), ['tmc2209 manual_stepper stepper_blobifier'])
+        driver = dict(cfg.assemble({MMU: mmu}).items(
+            'tmc2209 manual_stepper stepper_blobifier'))
+        self.assertEqual(driver['uart_pin'], 'unit0:PC14')
+        self.assertEqual(driver['run_current'], '0.6')
+        self.assertEqual(driver['hold_current'], '0.1')
+        self.assertEqual(driver['sense_resistor'], '0.110')
+        self.assertNotIn('cs_pin', driver)
+
+    def test_spi_driver_replaces_the_section_rather_than_adding_one(self):
+        mmu = self._render_mmu('blobifier_tmc2240', {
+            'CHOICE_BLOBIFIER_TMC2240': True,
+            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
+            'PIN_BLOBIFIER_STEPPER_SPI_SCLK': 'unit0:PG8',
+            'PIN_BLOBIFIER_STEPPER_SPI_MOSI': 'unit0:PG6',
+            'PIN_BLOBIFIER_STEPPER_SPI_MISO': 'unit0:PG7',
+        })
+        # Exactly one, or Klipper's mux registry rejects the second at boot
+        self.assertEqual(self._drivers(mmu), ['tmc2240 manual_stepper stepper_blobifier'])
+        driver = dict(cfg.assemble({MMU: mmu}).items(
+            'tmc2240 manual_stepper stepper_blobifier'))
+        self.assertEqual(driver['cs_pin'], 'unit0:PC14')
+        self.assertEqual(driver['spi_software_sclk_pin'], 'unit0:PG8')
+        self.assertEqual(driver['spi_software_miso_pin'], 'unit0:PG7')
+        self.assertNotIn('uart_pin', driver)
+        # tmc2240 takes 'rref', not 'sense_resistor' - Klipper rejects the unknown option
+        self.assertNotIn('sense_resistor', driver)
+
+    def test_hardware_controlled_driver_emits_no_section(self):
+        mmu = self._render_mmu('blobifier_tmc_none', {'CHOICE_BLOBIFIER_TMC_NONE': True})
+        self.assertIn('manual_stepper stepper_blobifier', cfg.sections(mmu))
+        self.assertEqual(self._drivers(mmu), [])
+
+    def test_missing_driver_pin_is_warned(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('blobifier_tmc_missing_uart_pin', {
+                'MMU_HAS_BLOBIFIER': True,
+                'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+                'PIN_BLOBIFIER_STEPPER_UART': '',
+            })
+        self.assertTrue(kc.is_enabled('SW5'))
+
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('blobifier_tmc_none_needs_no_pin', {
+                'MMU_HAS_BLOBIFIER': True,
+                'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+                'CHOICE_BLOBIFIER_TMC_NONE': True,
+            })
+        self.assertFalse(kc.is_enabled('SW5'))
+
+
 # Deliberately TWO IDENTICAL BOXTURTLES rather than the real ercf_vvd profile. The point is
 # to test the multi-unit RENDER PATH, so both units being the machine every other test
 # already trusts means a failure here is the path and not an ERCF or ViViD quirk. It lives

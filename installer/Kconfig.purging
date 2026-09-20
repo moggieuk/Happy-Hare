@@ -121,12 +121,61 @@ menu "Purging"
         prompt "Stepper endstop pin        "
         help
           The pull-up/invert ( ^! ) is typically required here
+      choice CHOICE_BLOBIFIER_TMC
+        prompt "Stepper TMC chip           "
+        default CHOICE_BLOBIFIER_TMC2209
+        help
+          Select correct TMC chip type for the Blobifier tray stepper.
+
+        config CHOICE_BLOBIFIER_TMC2209
+          bool "TMC2209"
+        config CHOICE_BLOBIFIER_TMC5160
+          bool "TMC5160"
+        config CHOICE_BLOBIFIER_TMC2240
+          bool "TMC2240"
+        config CHOICE_BLOBIFIER_TMC_NONE
+          bool "None / hardware controlled"
+      endchoice
+
+      config PARAM_BLOBIFIER_TMC
+        string
+        default "tmc2209" if CHOICE_BLOBIFIER_TMC2209
+        default "tmc5160" if CHOICE_BLOBIFIER_TMC5160
+        default "tmc2240" if CHOICE_BLOBIFIER_TMC2240
+        default ""        if CHOICE_BLOBIFIER_TMC_NONE
+
+      # SPI drivers are addressed by cs_pin, UART drivers by uart_pin
+      config BOOL_BLOBIFIER_TMC_SPI
+        bool
+        default y if CHOICE_BLOBIFIER_TMC5160 || CHOICE_BLOBIFIER_TMC2240
+
       config PIN_BLOBIFIER_STEPPER_UART
-        prompt "Stepper TMC UART pin       "
+        string
+        prompt "Stepper TMC uart pin       " if PARAM_BLOBIFIER_TMC != "" && !BOOL_BLOBIFIER_TMC_SPI
+      config PIN_BLOBIFIER_STEPPER_CS
+        string
+        prompt "Stepper TMC cs pin         " if BOOL_BLOBIFIER_TMC_SPI
+      config PIN_BLOBIFIER_STEPPER_SPI_SCLK
+        string
+        prompt "Stepper TMC spi sclk pin   " if BOOL_BLOBIFIER_TMC_SPI
+        help
+          Leave all three spi pins blank to use the MCU's hardware SPI bus
+      config PIN_BLOBIFIER_STEPPER_SPI_MOSI
+        string
+        prompt "Stepper TMC spi mosi pin   " if BOOL_BLOBIFIER_TMC_SPI
+      config PIN_BLOBIFIER_STEPPER_SPI_MISO
+        string
+        prompt "Stepper TMC spi miso pin   " if BOOL_BLOBIFIER_TMC_SPI
+
       config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
-        string "Stepper run current        "
+        string
+        prompt "Stepper run current        " if PARAM_BLOBIFIER_TMC != ""
         default "0.6"
-      comment "Stepper-driven tray (TMC2209/UART generated; edit cfg for TMC2240/5160 SPI)"
+      config PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
+        float
+        prompt "Stepper sense resistor     " if PARAM_BLOBIFIER_TMC != "" && !CHOICE_BLOBIFIER_TMC2240
+        default 0.075 if CHOICE_BLOBIFIER_TMC5160
+        default 0.110
     endif
   endif
 

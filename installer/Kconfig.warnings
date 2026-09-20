@@ -8,7 +8,7 @@
 config SHOW_SHARED_WARNINGS
   bool
   depends on MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
-  @repeat var=i min=1 max=4@
+  @repeat var=i min=1 max=5@
     default y if SW$(i)
   @endrepeat@
 
@@ -24,6 +24,11 @@ config SW3
 config SW4
     def_bool y if MMU_HAS_BLOBIFIER && MMU_HAS_BLOBIFIER_BUCKET_SWITCH && \
         (PIN_BLOBIFIER_BUCKET_SWITCH = "" || PIN_BLOBIFIER_BUCKET_SWITCH = "^")
+
+config SW5
+    def_bool y if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_STEPPER && PARAM_BLOBIFIER_TMC != "" && \
+        ((BOOL_BLOBIFIER_TMC_SPI && PIN_BLOBIFIER_STEPPER_CS = "") || \
+         (!BOOL_BLOBIFIER_TMC_SPI && PIN_BLOBIFIER_STEPPER_UART = ""))
 
 
 config SHOW_PER_UNIT_WARNINGS
@@ -164,6 +169,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Toolhead sensor is enabled but no MCU pin defined"                                if SW2
     comment "Extruder sensor is enabled but no MCU pin defined"                                if SW3
     comment "Blobifier bucket switch is enabled but no valid MCU pin is defined"               if SW4
+    comment "Blobifier tray stepper TMC is selected but no uart/cs pin is defined"             if SW5
   endif
 
   if SHOW_PER_UNIT_WARNINGS
