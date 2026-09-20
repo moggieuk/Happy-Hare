@@ -2239,7 +2239,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertIn('|%s?%s|' % (square, square), avail)
         self.assertIn('|\\%s/|' % triangle, selct)
 
-        gate_row = mmu.gate_maps.gate_map_to_string().splitlines()[gate + 1]
+        gate_row = mmu.gate_maps.gate_map_to_string().splitlines()[gate + 2]
         self.assertIn('(%s?%s)' % (square, square), gate_row)
 
     def test_the_homing_chatter_stays_out_of_the_banner(self):
