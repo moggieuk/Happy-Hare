@@ -17,12 +17,45 @@ config MMU_TYPE_QIDI_BOX_1_0
   imply  MMU_HAS_HEATER
   select PARAM_FILAMENT_ALWAYS_GRIPPED
   select MMU_GEAR_ROTATES_SPOOL           # Gate gear motor turns the spool
+  select MMU_HAS_NFC_READER
+  select MMU_HAS_PER_GATE_NFC_READERS
   select PARAM_SYNC_TO_EXTRUDER
   select PARAM_SYNC_FORM_TIP
   select PARAM_SYNC_PURGE
   select DISABLE_NUM_GATES_OPTION
 
 if MMU_TYPE_QIDI_BOX_1_0
+
+  # The readers are declared by the board profile, one physical chip per pair
+  # of gates, so the per-gate list repeats each name twice.
+  config CUSTOM_NFC_READER_SETUP
+    def_bool y
+  config PARAM_NFC_READER_0
+    default "$(UNIT_NAME)_nfc01"
+  config PARAM_NFC_READER_1
+    default "$(UNIT_NAME)_nfc01"
+  config PARAM_NFC_READER_2
+    default "$(UNIT_NAME)_nfc23"
+  config PARAM_NFC_READER_3
+    default "$(UNIT_NAME)_nfc23"
+
+  # The tag sits on the spool, so the gear motor has to turn it past the
+  # antenna to find it; a full turn of a near-empty spool is about 480mm.
+  # Retracting is the safe direction here - the gate parks at the shared hub,
+  # so feeding forward would push filament into it.
+  config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+    default "-480, 60"
+  config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+    default "-480, 60"
+  config PARAM_NFC_GATE_CLEAR_DISTANCE
+    default -70
+  config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+    default -70
+
+  # One physical reader serves two gates, so a neighbour's spool can sit in
+  # the same RF field and be attributed to the wrong gate.
+  config PARAM_NFC_NEIGHBOR_CHECK
+    default y
 
   # Motor current and driver mode are configured in hardware. Default to no
   # Klipper-managed TMC, while allowing modified units to select one normally.

@@ -81,4 +81,36 @@ if BOARD_TYPE_QIDI_BOX_2_0
   config PIN_ENVIRONMENT_SENSOR_SDA
     default "PC9"
 
+  # Two FM1780 readers (Fudan) sit on SPI2 and differ only by chip select:
+  # PC6 covers gates 0/1, PC7 covers gates 2/3. They are register compatible
+  # with the MFRC522, so the rc522 driver drives them unchanged.
+  #
+  # NRSTPD is wired to PB12. The rc522 driver only ever soft-resets over SPI,
+  # so unless that line is driven high the chips stay in reset and every
+  # register reads back 0xFF.
+  config PARAM_MISC_HARDWARE
+    default "$(ml,\
+# NFC readers are held in reset until NRSTPD is driven high\n\
+[output_pin $(UNIT_NAME)_nfc_rst]\n\
+pin: $(MCU_NAME):PB12\n\
+value: 1\n\
+shutdown_value: 1\n\
+\n\
+# NFC reader gates 0/1\n\
+[mmu_nfc_reader $(UNIT_NAME)_nfc01]\n\
+reader_type           : rc522\n\
+cs_pin                : $(MCU_NAME):PC6\n\
+spi_bus               : spi2_PB14_PB15_PB13\n\
+spi_speed             : 1000000\n\
+debug                 : 0\n\
+\n\
+# NFC reader gates 2/3\n\
+[mmu_nfc_reader $(UNIT_NAME)_nfc23]\n\
+reader_type           : rc522\n\
+cs_pin                : $(MCU_NAME):PC7\n\
+spi_bus               : spi2_PB14_PB15_PB13\n\
+spi_speed             : 1000000\n\
+debug                 : 0\n\
+)"
+
 endif
