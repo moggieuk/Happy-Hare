@@ -183,8 +183,8 @@ class MmuHeaterCommand(BaseCommand):
 
             # Optional spool rotation (requires eSpooler and explicit gates)
             # (BTT ViViD is allowed if not in print)
-            if rotate and not (mmu_unit.has_espooler() or mmu_unit.mmu_vendor == VENDOR_VVD):
-                self.mmu.log_warning("Rotation requested but eSpooler not fitted - ignoring")
+            if rotate and not (mmu_unit.has_espooler() or mmu_unit.gear_rotates_spool):
+                self.mmu.log_warning("Rotation requested but no eSpooler and the gear motor cannot turn the spool - ignoring")
                 rotate = 0
 
             if rotate and not gates_param:

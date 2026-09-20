@@ -16,6 +16,7 @@ config MMU_TYPE_QIDI_BOX_1_0
   imply  MMU_HAS_ENVIRONMENT_SENSOR
   imply  MMU_HAS_HEATER
   select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select MMU_GEAR_ROTATES_SPOOL           # Gate gear motor turns the spool
   select MMU_HAS_NFC_READER
   select MMU_HAS_PER_GATE_NFC_READERS
   select PARAM_SYNC_TO_EXTRUDER

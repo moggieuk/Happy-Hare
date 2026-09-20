@@ -886,7 +886,7 @@ class MmuEnvironmentManager:
         Move the spools in the retract direction a small distance, 90 degrees is perfect
         """
         self.mmu.log_info("Rotating spools in gates: %s..." % ",".join(map(str, gates)))
-        if self.mmu_unit.mmu_vendor != VENDOR_VVD:
+        if not self.mmu_unit.gear_rotates_spool:
             self.spools_to_rotate = list(gates)
             # Initiate rotation of first spool -- they are moved in sequence for aesthetics and to avoid possibility of overload
             self._rotate_spool(self.spools_to_rotate[0])
