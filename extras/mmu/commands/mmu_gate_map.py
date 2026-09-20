@@ -14,6 +14,7 @@
 #
 
 import ast
+import math
 
 # Happy Hare imports
 from ..mmu_constants   import *
@@ -29,7 +30,7 @@ class MmuGateMapCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "QUIET        = 1 To minimize console reporting\n"
-        + "DETAILS      = 1 Include the complete Spoolman RFID UID set for each gate\n"
+        + "DETAILS      = 1 Include measured TD/color and the complete Spoolman RFID UID set for each gate\n"
         + "RESET        = 1 To reset specified GATE/GATES filament attributes to configured defaults\n"
         + "GATES        = g,g,g comma separated list of gates; required with RESET unless GATE is used\n"
         + "GATE         = g Specify a single gate; required with RESET unless GATES is used\n"
@@ -41,6 +42,7 @@ class MmuGateMapCommand(BaseCommand):
         + "COLOR        = # Filament color as w3c name or RRGGBB or RRGGBBaa (without #)\n"
         + "SPOOLID      = # Optionally the spoolman ID for the filament (don't need to specify other attributes)\n"
         + "TEMP         = # Default temperature of filament\n"
+        + "TD           = Positive transmission distance, or blank to clear (also clears measured color)\n"
         + "SPEED        = % Speed override (use <100 for soft TPU types)\n"
         + "RFID         = # Single hexadecimal RFID tag UID read at the gate (blank to clear)\n"
         + "AVAILABLE    = [-1|0|1|2] Filament availability: Unknown | Empty | Available | Available from filament buffer\n"
@@ -48,7 +50,7 @@ class MmuGateMapCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD} DETAILS=1                      ...Display the gate map with all cached RFID UIDs\n"
+        + f"{CMD} DETAILS=1                      ...Display the gate map with measured TD/color and cached RFID UIDs\n"
         + f"{CMD} GATES=0,1,2,3 AVAILABLE=1      ...Mark gates 0-3 as having filament available\n"
         + f"{CMD} GATE=5 COLOR=red MATERIAL=pla  ...Set filament attributes for gate 5\n"
         + f"{CMD} NEXT_SPOOLID=45                ...Automatically mark the next spool preloaded or loaded with spoolman id 45\n"
@@ -209,6 +211,8 @@ class MmuGateMapCommand(BaseCommand):
 
                         # Update gate attributes if we have valid spool_id
                         spool_id = self._safe_int(fil.get('spool_id', -1))
+                        if mmu.gate_spool_id[gate_idx] != spool_id:
+                            mmu.gate_maps.gate_filament_changed(gate_idx)
                         mmu.gate_spool_id[gate_idx] = spool_id
                         mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                         mmu.gate_material[gate_idx] = fil.get('material', '')
@@ -343,6 +347,27 @@ class MmuGateMapCommand(BaseCommand):
                         mmu.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % SPOOLMAN_PULL)
                         break
 
+            # Transmission distance is a local measurement that Spoolman does not model,
+            # so unlike the filament attributes above it stays editable in every spoolman
+            # mode - including SPOOLMAN_PULL, which owns the rest of the gate's metadata
+            td = gcmd.get('TD', None)
+            if td is not None:
+                value = None
+                if td.strip():
+                    try:
+                        value = float(td)
+                    except ValueError:
+                        raise gcmd.error("TD must be a finite positive number, or blank to clear")
+                    if not math.isfinite(value) or value <= 0:
+                        raise gcmd.error("TD must be a finite positive number, or blank to clear")
+                for gate_idx in gatelist:
+                    if mmu.gate_td[gate_idx] == value:
+                        continue
+                    # A hand-entered TD supersedes whatever the scanner measured, so the
+                    # measured color that came with it is no longer trustworthy either
+                    mmu.gate_maps.gate_filament_changed(gate_idx)
+                    mmu.gate_maps.gate_td[gate_idx] = value
+
             changed_gate_ids = list(ids_dict.items())
 
         # Ensure everything is synced
@@ -371,5 +396,7 @@ class MmuGateMapCommand(BaseCommand):
                 "Ignoring invalid RFID value for gate %d: expected one even-length hexadecimal UID; "
                 "comma-separated UID lists belong in Spoolman" % gate)
             return False
+        if self.mmu.gate_spool_rfid[gate] != normalized:
+            self.mmu.gate_maps.gate_filament_changed(gate)
         self.mmu.gate_spool_rfid[gate] = normalized
         return True

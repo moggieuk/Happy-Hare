@@ -249,6 +249,16 @@ FILAMENT_RELEASE_STATE = 0
 FILAMENT_DRIVE_STATE   = 1
 FILAMENT_HOLD_STATE    = 2
 
+# TD-1 filament measurement
+TD1_GATE_UNASSIGNED    = "-"   # 'td1_devices' placeholder for a gate with no scanner
+
+# Per-gate TD-1 state reported in printer.mmu. Happy Hare's own policy toward the gate's
+# scanner - device connectivity belongs to Moonraker's [td1] and isn't repeated here
+TD1_STATE_NONE         = ''          # No scanner serves this gate
+TD1_STATE_ENABLED      = 'enabled'   # Scanner in use, readings applied on request only
+TD1_STATE_AUTO         = 'auto'      # Scanner in use, new readings applied automatically
+TD1_STATE_DISABLED     = 'disabled'  # Scanner present but Happy Hare is ignoring it
+
 # mmu_vars.cfg variables
 VARS_MMU_REVISION                  = "mmu__revision"
 VARS_MMU_ENABLE_ENDLESS_SPOOL      = "mmu_state_enable_endless_spool"
@@ -258,6 +268,8 @@ VARS_MMU_TOOL_TO_GATE_MAP          = "mmu_state_tool_to_gate_map"
 VARS_MMU_GATE_STATUS               = "mmu_state_gate_status"
 VARS_MMU_GATE_MATERIAL             = "mmu_state_gate_material"
 VARS_MMU_GATE_VENDOR               = "mmu_state_gate_vendor"
+VARS_MMU_GATE_TD                   = "mmu_state_gate_td"
+VARS_MMU_GATE_TD1_COLOR            = "mmu_state_gate_td1_color"
 VARS_MMU_GATE_COLOR                = "mmu_state_gate_color"
 VARS_MMU_GATE_FILAMENT_NAME        = "mmu_state_gate_filament_name"
 VARS_MMU_GATE_TEMPERATURE          = "mmu_state_gate_temperature"

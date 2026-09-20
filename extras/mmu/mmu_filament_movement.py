@@ -2439,6 +2439,10 @@ class MmuFilamentMovement:
 
         self.set_filament_direction(DIRECTION_LOAD)
         self.initialize_filament_position(dwell=None) # Reset measurement to 0
+        td1_token = None
+        if not extruder_only and full and not skip_extruder:
+            td1_token = self.td1.begin_load(self.gate_selected)
+        td1_success = False
 
         try:
             must_home = False
@@ -2616,11 +2620,14 @@ class MmuFilamentMovement:
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
+            td1_success = True
+
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
             raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
 
         finally:
+            self.td1.end_load(td1_token, td1_success)
             self._track_gate_statistics('loads', self.gate_selected)
 
             if not extruder_only:

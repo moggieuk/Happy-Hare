@@ -45,7 +45,7 @@ from .unit.mmu_leds import MmuLeds
 class MmuLedManager:
 
     # Functional effects _set_led renders directly (no [mmu_led_effect] / RGB fallback needed)
-    FUNCTIONAL_EFFECTS = ('off', 'on', 'gate_status', 'filament_color', 'slicer_color')
+    FUNCTIONAL_EFFECTS = ('off', 'on', 'gate_status', 'filament_color', 'td1_color', 'slicer_color')
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -324,7 +324,7 @@ class MmuLedManager:
 
         gate = gate if (gate is None or gate >= 0) else None
 
-        gate_effects = {'gate_status', 'filament_color', 'slicer_color'}
+        gate_effects = {'gate_status', 'filament_color', 'td1_color', 'slicer_color'}
         units = [self.mmu.mmu_unit(gate)] if gate is not None else self.mmu_machine.units
         for mmu_unit in units:
             leds = mmu_unit.leds
@@ -744,12 +744,17 @@ class MmuLedManager:
                         for g in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
                             set_gate_effect(_effect_for_gate(g), unit, segment, g, fadetime=fadetime)
 
-                elif effect == "filament_color":
+                elif effect in ("filament_color", "td1_color"):
                     def _resolve_filament_rgb(g):
-                        rgb = self.mmu.gate_color_rgb[g]
+                        # 'td1_color' shows the measured color, falling back to the ordinary
+                        # filament color when a gate has no measurement - both are cached
+                        # parallel maps maintained by update_gate_color_rgb()
+                        td1 = effect == "td1_color"
+                        color = self.mmu.gate_td1_color[g] or self.mmu.gate_color[g] if td1 else self.mmu.gate_color[g]
+                        rgb = self.mmu.gate_td1_color_rgb[g] if td1 else self.mmu.gate_color_rgb[g]
                         if self.mmu.gate_status[g] == GATE_EMPTY:
                             return mmu_unit.leds.empty_light
-                        if self.mmu.gate_color[g] == "":
+                        if color == "":
                             return mmu_unit.leds.white_light
                         if rgb == (0, 0, 0):
                             return mmu_unit.leds.black_light
@@ -818,15 +823,18 @@ class MmuLedManager:
             elif effect == "off":
                 stop_effect_and_set_gate_rgb((0,0,0), unit, segment, gate, fadetime=fadetime)
     
-            elif effect in ["filament_color", "on"]:
+            elif effect in ["filament_color", "td1_color", "on"]:
                 stop_gate_effect(unit, segment, None)
                 rgb = mmu_unit.leds.white_light
                 if self.mmu.gate_selected >= 0 and self.mmu.filament_pos > FILAMENT_POS_UNLOADED:
-                    if effects[segment] != "on" and self.mmu.gate_color[self.mmu.gate_selected] != "":
-                        rgb = self.mmu.gate_color_rgb[self.mmu.gate_selected]
+                    gate = self.mmu.gate_selected
+                    td1 = effect == "td1_color"
+                    color = self.mmu.gate_td1_color[gate] or self.mmu.gate_color[gate] if td1 else self.mmu.gate_color[gate]
+                    if effects[segment] != "on" and color != "":
+                        rgb = self.mmu.gate_td1_color_rgb[gate] if td1 else self.mmu.gate_color_rgb[gate]
                         if rgb == (0,0,0):
                             rgb = mmu_unit.leds.black_light
-                        elif effect == "filament_color":
+                        elif effect in ("filament_color", "td1_color"):
                             rgb = MmuLeds.apply_intensity(rgb, mmu_unit.leds.filament_color_intensity)
                 else:
                     rgb = mmu_unit.leds.black_light

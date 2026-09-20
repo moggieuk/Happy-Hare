@@ -29,6 +29,7 @@ from .mmu_led_manager           import MmuLedManager
 from .mmu_filament_movement     import MmuFilamentMovement
 from .mmu_print_state_machine   import MmuPrintStateMachine
 from .mmu_gate_maps             import MmuGateMaps
+from .mmu_td1                   import MmuTd1
 from .mmu_nfc_arbiter           import MmuNfcFieldArbiter
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
@@ -86,6 +87,7 @@ class MmuController(MmuFilamentMovement):
         self.led_manager    = MmuLedManager(self)        # Manages leds across all units
         self.sensor_manager = MmuSensorManager(self)     # Manages sensors across all units
         self.gate_maps      = MmuGateMaps(self)          # Gate map / TTG map / EndlessSpool state
+        self.td1            = MmuTd1(self)
         self.nfc_arbiter    = MmuNfcFieldArbiter(self)   # NFC "noisy neighbor" field arbitration
 
 
@@ -148,6 +150,7 @@ class MmuController(MmuFilamentMovement):
         """
         Ensure clean state on initialization and after MMU enable/disable operation
         """
+        self.td1.owners.clear()
         self.is_enabled = True      # Whether Happy Hare is enabled or not
 
         self.filament_monitoring_enabled = False
@@ -680,6 +683,11 @@ class MmuController(MmuFilamentMovement):
 
         # Adds status for gate map, ttg map, endless spool, etc
         status.update(self.gate_maps.get_status(eventtime))
+
+        # Per-gate TD-1 policy. Machine-level rather than merged per-unit like espooler
+        # because one physical scanner can be shared across units, but the same flat
+        # gate-indexed shape
+        status.update(self.td1.get_status(eventtime))
 
         # Adds extruder status (like filament remaining)
         status.update(self.mmu_unit().extruder_wrapper.get_status(eventtime))
@@ -1792,6 +1800,18 @@ class MmuController(MmuFilamentMovement):
         return self.gate_maps.gate_color_rgb
 
     @property
+    def gate_td(self):
+        return self.gate_maps.gate_td
+
+    @property
+    def gate_td1_color(self):
+        return self.gate_maps.gate_td1_color
+
+    @property
+    def gate_td1_color_rgb(self):
+        return self.gate_maps.gate_td1_color_rgb
+
+    @property
     def endless_spool_enabled(self):
         return self.gate_maps.endless_spool_enabled
 
@@ -2698,6 +2718,8 @@ class MmuController(MmuFilamentMovement):
 
 
     def set_filament_pos_state(self, state, silent=False):
+        if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
+            self.td1.owners.clear()
         if self.filament_pos != state:
             self.filament_pos = state
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
@@ -3306,6 +3328,7 @@ class MmuController(MmuFilamentMovement):
         if prev_gate >= 0:
             self.drive(prev_gate).sync_mode(DRIVE_UNSYNCED)
             self.disable_idle_gear_stepper(prev_gate) # Type-B: disable lane we are leaving
+        self.td1.owners.clear()
         self.gate_selected = gate
         # --------------------------------------------------------------------
 

@@ -99,6 +99,11 @@ if MMU_HAS_LEDS
         help
           Show each gate's filament color from the Happy Hare gate map.
 
+      config CHOICE_EXIT_EFFECT_TD1_COLOR
+        bool "td1_color"
+        help
+          Show measured TD-1 color, falling back to filament_color when unmeasured.
+
       config CHOICE_EXIT_EFFECT_SLICER_COLOR
         bool "slicer_color"
         help
@@ -109,6 +114,7 @@ if MMU_HAS_LEDS
       string
       default "off"            if CHOICE_EXIT_EFFECT_OFF
       default "gate_status"    if CHOICE_EXIT_EFFECT_GATE_STATUS
+      default "td1_color"      if CHOICE_EXIT_EFFECT_TD1_COLOR
       default "filament_color" if CHOICE_EXIT_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_EXIT_EFFECT_SLICER_COLOR
       default "gate_status"
@@ -136,6 +142,11 @@ if MMU_HAS_LEDS
         help
           Show each gate's filament color from the Happy Hare gate map.
 
+      config CHOICE_ENTRY_EFFECT_TD1_COLOR
+        bool "td1_color"
+        help
+          Show measured TD-1 color, falling back to filament_color when unmeasured.
+
       config CHOICE_ENTRY_EFFECT_SLICER_COLOR
         bool "slicer_color"
         help
@@ -146,6 +157,7 @@ if MMU_HAS_LEDS
       string
       default "off"            if CHOICE_ENTRY_EFFECT_OFF
       default "gate_status"    if CHOICE_ENTRY_EFFECT_GATE_STATUS
+      default "td1_color"      if CHOICE_ENTRY_EFFECT_TD1_COLOR
       default "filament_color" if CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_ENTRY_EFFECT_SLICER_COLOR
       default "filament_color"
@@ -173,6 +185,11 @@ if MMU_HAS_LEDS
         help
           Show the selected gate's filament color from the Happy Hare gate map.
 
+      config CHOICE_STATUS_EFFECT_TD1_COLOR
+        bool "td1_color"
+        help
+          Show measured TD-1 color, falling back to filament_color when unmeasured.
+
       config CHOICE_STATUS_EFFECT_SLICER_COLOR
         bool "slicer_color"
         help
@@ -183,6 +200,7 @@ if MMU_HAS_LEDS
       string
       default "off"            if CHOICE_STATUS_EFFECT_OFF
       default "gate_status"    if CHOICE_STATUS_EFFECT_GATE_STATUS
+      default "td1_color"      if CHOICE_STATUS_EFFECT_TD1_COLOR
       default "filament_color" if CHOICE_STATUS_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
       default "filament_color"

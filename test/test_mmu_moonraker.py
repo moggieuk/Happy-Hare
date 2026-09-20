@@ -70,7 +70,7 @@ class TestInitialisation(MoonrakerTestCase):
             'spoolman_set_spool_gate', 'spoolman_unset_spool_gate',
             'spoolman_get_spool_info', 'spoolman_display_spool_location',
             'spoolman_get_spool_by_uid', 'spoolman_set_spool_uid',
-            'moonraker_push_lane_data', 'moonraker_cleanup_lane_data',
+            'moonraker_push_lane_data', 'moonraker_cleanup_lane_data', 'mmu_td1_request',
         }
         self.assertEqual(set(self.hh.server.remote_methods), expected)
 

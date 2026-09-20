@@ -202,6 +202,43 @@ NFC_NEIGHBOR_EVICT = NFC_PER_GATE.derive(
     syms={'PARAM_NFC_NEIGHBOR_EVICT_DISTANCE': '-40'},
     description='BoxTurtle + per-gate NFC readers, neighbor eviction enabled (backward jog)')
 
+# BoxTurtle + one TD-1 scanner serving every gate on the unit.
+#
+# TD-1 is the odd one out among the optional features: the scanner is a USB device owned
+# by Moonraker's [td1] component, so there are no pins, no bus and no klipper section -
+# MMU_HAS_TD1 renders a serial on [mmu_unit] and a block of path geometry on
+# [mmu_unit_parameters]. Registering these profiles is what makes test_mmu_profiles /
+# test_mmu_config render the real shipped templates for the feature; without one, a
+# template regression here is invisible to the rest of the suite.
+#
+# There is no scan geometry to configure - measurement happens by filament traversing
+# its normal path past the scanner - so enabling the feature is the whole of the setup.
+TD1_SHARED = BOXTURTLE_TEST.derive(
+    'td1_shared',
+    syms={'MMU_HAS_TD1': True, 'PARAM_TD1_DEVICE': 'TD1-0042'},
+    description='BoxTurtle + one shared TD-1 scanner')
+
+# One scanner per gate, with gate 2 deliberately left without one: the per-gate list has
+# to carry a placeholder for that gate so the list index stays the local gate number.
+TD1_PER_GATE = BOXTURTLE_TEST.derive(
+    'td1_per_gate',
+    syms={'MMU_HAS_TD1': True, 'MMU_HAS_PER_GATE_TD1': True,
+          'PARAM_TD1_DEVICE_0': 'TD1-0042', 'PARAM_TD1_DEVICE_1': 'TD1-0043',
+          'PARAM_TD1_DEVICE_GATE_2': False, 'PARAM_TD1_DEVICE_2': '',
+          'PARAM_TD1_DEVICE_3': 'TD1-0042'},
+    description='BoxTurtle + per-gate TD-1 scanners (gate 2 unassigned)')
+
+# Both capture policies on, plus the advanced timeout. This is the profile that proves
+# the advanced prompt is conditional but its SYMBOL is not - hiding it must still render
+# a valid default rather than an empty value.
+TD1_ADVANCED = TD1_PER_GATE.derive(
+    'td1_advanced',
+    syms={'BOOL_TD1_ADVANCED': True,
+          'PARAM_TD1_CAPTURE_TIMEOUT': '8',
+          'PARAM_TD1_AUTO_UPDATE': True,
+          'PARAM_TD1_CAPTURE_ON_LOAD': True},
+    description='BoxTurtle + per-gate TD-1 scanners, automatic capture enabled')
+
 # Per-gate readers with the self-jog ratification escalation switched on for MMU_NFC_SCAN,
 # independent of neighbor eviction above (nfc_neighbor_evict_distance stays 0 here) - a
 # still-detected tag is confirmed/discarded by jogging THIS gate's own filament further off
@@ -689,7 +726,8 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU
                     NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
                     NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
-                    NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)
+                    NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
+                    TD1_SHARED, TD1_PER_GATE, TD1_ADVANCED)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
             (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}

@@ -247,6 +247,35 @@ class MmuUnit:
 
 
         # ---------------------------------------------------------------------------------------------------
+        # Optional TD-1 filament measurement scanners
+        # ---------------------------------------------------------------------------------------------------
+
+        # TD-1 scanners are USB devices owned by Moonraker's [td1] component, not klipper
+        # objects, so unlike NFC readers there is no section to validate - we only store
+        # the USB serial numbers here. MmuTd1 resolves them against Moonraker at runtime.
+        # 'td1_device' is one scanner shared by every gate on this unit; 'td1_devices' is
+        # one entry per gate in local gate order. They are mutually exclusive.
+        self.td1_device = config.get('td1_device', '').strip()
+        self.td1_devices = [
+            '' if name.strip() == TD1_GATE_UNASSIGNED else name.strip()
+            for name in config.getlist('td1_devices', [])
+        ]
+
+        if self.td1_device and self.td1_devices:
+            raise config.error("Specify 'td1_device' or 'td1_devices' for unit %s, not both" % self.name)
+
+        if config.get('td1_device', None) is not None and not self.td1_device:
+            raise config.error("'td1_device' requires a Moonraker TD-1 USB serial number")
+
+        if len(self.td1_devices) not in [0, self.num_gates]:
+            raise config.error("'td1_devices' must be empty or a comma separated list of 'num_gates' elements")
+
+        # A serial may repeat within 'td1_devices' and across units - that is intentional:
+        # one physical scanner can serve several gates or even several units. MmuTd1 owns
+        # each serial once and serializes access. Use '-' for a gate with no scanner.
+
+
+        # ---------------------------------------------------------------------------------------------------
         # MMU Extruder
         # ---------------------------------------------------------------------------------------------------
 
@@ -707,6 +736,9 @@ class MmuUnit:
     def has_filament_buffer(self):
         return self.filament_buffer
 
+    def has_td1(self):
+        return bool(self.td1_device or any(self.td1_devices))
+
     def motors_onoff(self, on=False, motor="all"):
         if motor in ["all", "gear", "gears"]:
             drives = self.drives if motor == "gears" else [self.drives[0]]
@@ -1003,5 +1035,13 @@ class MmuUnit:
         elif self.nfc_readers:
             # Per-gate NFC reader
             unit_info['nfc_readers'] = self.nfc_readers
+
+        if self.td1_device:
+            # Single (shared) TD-1 scanner
+            unit_info['td1_device'] = self.td1_device
+
+        elif self.td1_devices:
+            # Per-gate TD-1 scanners
+            unit_info['td1_devices'] = self.td1_devices
 
         return unit_info

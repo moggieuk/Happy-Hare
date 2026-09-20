@@ -1,0 +1,131 @@
+# TD-1 filament measurement (transmission distance + measured color)
+#
+# Unlike NFC readers, TD-1 scanners are USB devices owned by Moonraker's [td1] component,
+# not Klipper MCU peripherals - so there are no pins, no bus settings and no klipper
+# section to create. All we collect here is the USB serial number and the filament-path
+# geometry Happy Hare needs to drive filament to the scanner and back.
+#
+# Responsible for setting:
+#
+# MMU_HAS_TD1
+# MMU_HAS_PER_GATE_TD1
+#
+# Shared:
+#   PARAM_TD1_DEVICE
+#
+# Per-gate:
+#   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
+#   PARAM_TD1_DEVICE_GATE_$(i)  (whether this gate has a scanner at all)
+#
+# Capture policy (rendered into [mmu_unit_parameters] in mmu_parameters.cfg):
+#   PARAM_TD1_AUTO_UPDATE
+#   PARAM_TD1_CAPTURE_ON_LOAD
+#   PARAM_TD1_CAPTURE_TIMEOUT
+#
+#   BOOL_TD1_ADVANCED            (reveals the timeout; not rendered otherwise)
+#
+# There is deliberately no scan geometry here. A reading is produced by filament
+# travelling its normal path past the scanner, so its position never has to be
+# described - see MMU_CHECK_GATE TD1=1.
+#
+
+comment "_"
+comment "_TD-1 filament measurement"
+
+config MMU_HAS_TD1
+  bool "Has TD-1 scanner(s)?"
+  default n
+  forceshow
+  help
+    Capture filament transmission distance (TD) and measured RGB color using Moonraker's
+    [td1] component. The scanner plugs into a host USB port - no MCU pins are needed.
+
+    Add [td1] to moonraker.conf and restart Moonraker, then read the serial numbers from
+    the /machine/td1/data endpoint. Hardware does not need to be connected to complete
+    this configuration.
+
+if MMU_HAS_TD1
+  menu "TD-1 setup"
+
+    config MMU_HAS_PER_GATE_TD1
+      bool "Per-gate TD-1 scanners?"
+      default n
+      help
+        Most designs have a single scanner serving every gate on the unit. Select this
+        only if each gate has its own. Either way, repeating the same serial number in
+        another unit shares that physical scanner - access is serialized automatically.
+
+    if !MMU_HAS_PER_GATE_TD1
+      config PARAM_TD1_DEVICE
+        string "Shared TD-1 USB serial  "
+        default ""
+        help
+          USB serial number of the scanner serving every gate on this unit, exactly as
+          Moonraker reports it. E.g. "TD1-0042".
+    endif
+
+    if MMU_HAS_PER_GATE_TD1
+      @repeat var=i min=0 max=11@
+        if PARAM_NUM_GATES > $(i)
+
+          config PARAM_TD1_DEVICE_$(i)
+            string
+
+          menuconfig PARAM_TD1_DEVICE_GATE_$(i)
+            bool "Gate $(i) TD-1 scanner"
+            default y
+            help
+              Deselect for a gate that has no scanner of its own.
+
+          if PARAM_TD1_DEVICE_GATE_$(i)
+            config PARAM_TD1_DEVICE_$(i)
+              string "Gate $(i) USB serial       "
+              default ""
+              help
+                USB serial number of this gate's scanner. Repeat a serial to share one
+                physical scanner between neighboring gates.
+          endif
+
+        endif
+      @endrepeat@
+    endif
+
+    comment "_"
+
+    config PARAM_TD1_AUTO_UPDATE
+      boolint "Apply new readings automatically?"
+      default n
+      help
+        Update measured TD and color whenever a new reading arrives and Happy Hare knows
+        which filament owns the path. This never moves filament.
+
+        Units sharing one physical scanner must agree on this setting.
+
+    config PARAM_TD1_CAPTURE_ON_LOAD
+      boolint "Wait for a reading when loading?"
+      default n
+      help
+        Wait briefly for a fresh reading after a normal load completes, rather than
+        relying on it arriving by itself. Skipped while printing, so tool changes are
+        never delayed.
+
+        Filament passes through the scanner during any normal load, so this costs no
+        extra movement - only the wait.
+
+    config BOOL_TD1_ADVANCED
+      bool "Advanced settings"
+      default n
+      help
+        Measurement timing. The default suits most setups.
+
+    # The prompt is conditional, not the symbol: hiding it must reveal the default,
+    # not leave the rendered configuration with an empty value
+    config PARAM_TD1_CAPTURE_TIMEOUT
+      string "Measurement wait (secs) " if BOOL_TD1_ADVANCED
+      default "5"
+      help
+        How long to wait for a fresh reading once filament has passed the scanner. The
+        device takes a moment to report, so a second or two is normal.
+
+  endmenu
+endif

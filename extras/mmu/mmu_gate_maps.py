@@ -52,6 +52,8 @@ class MmuGateMaps:
             (VARS_MMU_GATE_FILAMENT_NAME,  'gate_filament_name', ""),
             (VARS_MMU_GATE_MATERIAL,       'gate_material', ""),
             (VARS_MMU_GATE_VENDOR,         'gate_vendor', ""),
+            (VARS_MMU_GATE_TD,             'gate_td', None),
+            (VARS_MMU_GATE_TD1_COLOR,      'gate_td1_color', ""),
             (VARS_MMU_GATE_COLOR,          'gate_color', ""),
             (VARS_MMU_GATE_TEMPERATURE,    'gate_temperature', int(self.p.default_extruder_temp)),
             (VARS_MMU_GATE_SPOOL_ID,       'gate_spool_id', -1),
@@ -171,6 +173,24 @@ class MmuGateMaps:
         self.mmu.var_manager.write()
 
 
+    def gate_filament_changed(self, gate):
+        """
+        The filament in 'gate' is no longer the filament it was.
+
+        Called for spool assignment/removal, RFID changes, gate reset and gates going
+        EMPTY - anything meaning that measurements taken from the old filament no longer
+        describe what is in the gate. Those measurements are fields of this map, so they
+        are dropped here rather than by whoever produced them.
+
+        'mmu:gate_filament_changed' then lets subsystems drop what they derived from the
+        old identity. Persistence is left to whichever gate-map write the caller was
+        already going to make, so handlers must not persist or mutate the map themselves.
+        """
+        self.gate_td[gate] = None
+        self.gate_td1_color[gate] = ""
+        self.printer.send_event("mmu:gate_filament_changed", gate)
+
+
     def persist_gate_status(self):
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, self.gate_status, write=True)
 
@@ -180,6 +200,8 @@ class MmuGateMaps:
         self.mmu.var_manager.set(VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
         self.mmu.var_manager.set(VARS_MMU_GATE_MATERIAL, self.gate_material)
         self.mmu.var_manager.set(VARS_MMU_GATE_VENDOR, self.gate_vendor)
+        self.mmu.var_manager.set(VARS_MMU_GATE_TD, self.gate_td)
+        self.mmu.var_manager.set(VARS_MMU_GATE_TD1_COLOR, self.gate_td1_color)
         self.mmu.var_manager.set(VARS_MMU_GATE_COLOR, self.gate_color)
         self.mmu.var_manager.set(VARS_MMU_GATE_TEMPERATURE, self.gate_temperature)
         self.mmu.var_manager.set(VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
@@ -337,6 +359,7 @@ class MmuGateMaps:
         self.mmu.log_debug("Resetting gate map for gates: %s" % gates)
         self.renew_gate_map()
         for gate in gates:
+            self.gate_filament_changed(gate)
             self.gate_status[gate] = self.p.default_gate_status[gate]
         self.validate_gate_status(gates)
         # Applying defaults after status validation deliberately allows configured
@@ -358,6 +381,7 @@ class MmuGateMaps:
 
     def clear_gate_attributes(self, gate):
         """Clear filament metadata when a gate transitions to EMPTY."""
+        self.gate_filament_changed(gate)
         for _, attr, default in self._gate_map_vars:
             if attr != 'gate_status':
                 getattr(self, attr)[gate] = default
@@ -383,11 +407,14 @@ class MmuGateMaps:
     # Assign spool id to gate and clear from other gates returning list of changes
     def assign_spool_id(self, gate, spool_id):
         if self.gate_spool_id[gate] != spool_id:
+            self.gate_filament_changed(gate)
             self.gate_spool_rfid_aliases[gate] = tuple()
         self.gate_spool_id[gate] = spool_id
         mod_gate_ids = [(gate, spool_id)]
         for i, sid in enumerate(self.gate_spool_id):
             if sid == spool_id and i != gate:
+                if sid > 0:
+                    self.gate_filament_changed(i)
                 self.gate_spool_id[i] = -1
                 self.gate_spool_rfid_aliases[i] = tuple()
                 mod_gate_ids.append((i, -1))
@@ -420,6 +447,8 @@ class MmuGateMaps:
         if rfid is not None:
             rfid = self.normalize_gate_rfid(rfid)
             if rfid is not None:
+                if self.gate_spool_rfid[gate] != rfid:
+                    self.gate_filament_changed(gate)
                 self.gate_spool_rfid[gate] = rfid
         self.update_gate_color_rgb()
         self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
@@ -443,6 +472,7 @@ class MmuGateMaps:
         if self.gate_spool_rfid[gate] == rfid:
             return
         self.renew_gate_map() # Ensure webhooks see get_status() change
+        self.gate_filament_changed(gate)
         self.gate_spool_rfid[gate] = rfid
         self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
 
@@ -507,10 +537,16 @@ class MmuGateMaps:
 # COLOR / MACRO SUPPORT
 # -----------------------------------------------------------------------------------------------------------
 
-    # Keep parallel RGB color map updated when color changes
+    # Keep parallel RGB color maps updated when color changes
     def update_gate_color_rgb(self):
-        # Recalculate RGB map for easy LED support
+        # Recalculate RGB maps for easy LED support. 'td1_color' falls back to the ordinary
+        # filament color per gate, so an unmeasured gate renders exactly as 'filament_color'.
+        # gate_td1_color_rgb is an internal LED cache only - gate_td1_color is what's published
         self.gate_color_rgb = [MmuColorUtils.color_to_rgb_tuple(i) for i in self.gate_color]
+        self.gate_td1_color_rgb = [
+            MmuColorUtils.color_to_rgb_tuple(td1 or color)
+            for td1, color in zip(self.gate_td1_color, self.gate_color)
+        ]
 
 
     # Keep parallel RGB color map updated when slicer color or TTG changes
@@ -689,6 +725,8 @@ class MmuGateMaps:
             speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             extra_fstr = " [SELECTED]" if g == self.mmu.gate_selected else ""
             if details:
+                td = "{:.2f}".format(self.gate_td[g]) if self.gate_td[g] is not None else "none"
+                extra_fstr += " [TD: {} MEASURED COLOR: {}]".format(td, self.gate_td1_color[g] or "none")
                 rfids = ','.join(self.gate_spool_rfid_aliases[g]) or "none"
                 extra_fstr += " [RFIDS: {}]".format(rfids)
 
@@ -847,6 +885,9 @@ class MmuGateMaps:
         self.gate_filament_name = list(self.gate_filament_name)
         self.gate_material = list(self.gate_material)
         self.gate_vendor = list(self.gate_vendor)
+        self.gate_td = list(self.gate_td)
+        self.gate_td1_color = list(self.gate_td1_color)
+        self.gate_td1_color_rgb = list(self.gate_td1_color_rgb)
         self.gate_color = list(self.gate_color)
         self.gate_temperature = list(self.gate_temperature)
         self.gate_spool_id = list(self.gate_spool_id)
@@ -866,6 +907,10 @@ class MmuGateMaps:
             'gate_filament_name': self.gate_filament_name,
             'gate_material': self.gate_material,
             'gate_vendor': self.gate_vendor,
+            'gate_td': self.gate_td,
+            'gate_td1_color': self.gate_td1_color,
+            # gate_td1_color_rgb is deliberately absent: an internal LED cache derived
+            # from gate_td1_color, with nothing to tell a consumer that the source doesn't.
             'gate_color': self.gate_color,
             'gate_temperature': self.gate_temperature,
             'gate_spool_id': self.gate_spool_id,
