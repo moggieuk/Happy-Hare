@@ -175,7 +175,8 @@ class MmuTd1:
         """
         return {'serial': serial, 'connected': False, 'enabled': True, 'auto': auto,
                 'td': None, 'color': None, 'scan_time': None,
-                'error': None, 'error_kind': None, 'last_outcome': None}
+                'error': None, 'error_kind': None, 'last_outcome': None,
+                'unclaimed': None}
 
 
     def set_device_state(self, serial, enabled=None, auto=None):
@@ -191,7 +192,66 @@ class MmuTd1:
             device['enabled'] = bool(enabled)
         if auto is not None:
             device['auto'] = bool(auto)
-        self.owners.pop(serial, None)
+        self.release(serial=serial)
+
+
+    def release(self, gate=None, serial=None):
+        """
+        Drop armed attribution, recording what the scanner is still owed.
+
+        A token that was armed and never produced a reading means filament crossed the
+        scanner with nobody left to claim what it measured. Forgetting that is what lets
+        the next gate adopt the previous gate's measurement, so the debt is recorded
+        here rather than only where an explicit wait times out - during a print nothing
+        waits at all, and the token is simply dropped at the next tool change.
+        """
+        for key, owner in list(self.owners.items()):
+            if (gate is None or owner['gate'] == gate) and (serial is None or key == serial):
+                self.owners.pop(key)
+                if not owner.get('satisfied'):
+                    self.owe(key, owner['gate'])
+
+
+    def owe(self, serial, gate):
+        """
+        Record that this scanner may still report a reading produced by 'gate'.
+
+        One slot is enough: a second unclaimed traverse only makes the pending reading
+        older, and the question a claimant asks is never "how many" but "is the next
+        reading certainly mine".
+        """
+        device = self.devices.get(serial)
+        if device is not None:
+            device['unclaimed'] = gate
+
+
+    def claimable(self, serial, gate):
+        """
+        True when a reading arriving now is certainly attributable to 'gate'.
+
+        False while the scanner owes a different gate. Moonraker timestamps a reading
+        when it receives it, not when filament entered the scanner, so a late reading
+        from the previous gate is indistinguishable by time from this gate's own - the
+        debt is the only thing that separates them.
+        """
+        device = self.devices.get(serial)
+        return device is None or device['unclaimed'] in (None, gate)
+
+
+    def settle(self, serial):
+        """
+        Consume the outstanding debt with the reading that just arrived.
+
+        The reading itself is written nowhere: it belongs to a gate that has already
+        stopped waiting for it. Assumes the scanner reports in traversal order, which
+        holds for one optical sensor on one filament path but is on the list of things
+        still to confirm against real hardware - if it turns out a reading can overtake
+        an older one, this settles with the wrong one and the claimant loses a
+        measurement (it never gains a wrong one).
+        """
+        device = self.devices.get(serial)
+        if device is not None:
+            device['unclaimed'] = None
 
 
     def settings(self, gate):
@@ -230,6 +290,8 @@ class MmuTd1:
         self.pending.clear()
         for device in self.devices.values():
             device['connected'] = False
+            # Nothing observed before a disconnect can be owed to anyone afterwards
+            device['unclaimed'] = None
 
 
     def _wants_readings(self):
@@ -333,7 +395,10 @@ class MmuTd1:
         """
         if not isinstance(data, dict):
             data, error, error_kind = {}, "Invalid TD-1 device list", TD1_ERR_BRIDGE
-        for serial in set(self.devices) | set(data):
+        for serial in sorted(set(self.devices) | set(data)):
+            # Scanners Moonraker reports but nothing here claims are kept deliberately:
+            # MMU_TD1 listing them with "Gates: none" is how you find a serial to
+            # configure in the first place
             device = self.devices.setdefault(serial, self._new_device(serial))
             previous = device.get('scan_time')
             was_connected = device.get('connected', False)
@@ -342,12 +407,20 @@ class MmuTd1:
             device['error_kind'] = error_kind
             if not device['connected']:
                 device['last_outcome'] = 'disconnected'
+                # Dropped rather than released: a disconnect invalidates the model of
+                # what is in front of the scanner, so there is nothing left to owe
                 self.owners.pop(serial, None)
+                device['unclaimed'] = None
                 continue
             record = data[serial]
             reported = record.get('error') if isinstance(record, dict) else None
             if not reported and not has_reading(record):
-                # Normal before the first insertion - not a fault, just nothing to report
+                # Normal before the first insertion - not a fault, just nothing to report.
+                # A device that HAD a reading and now reports none has been power cycled
+                # or rebooted, so drop the cached one with it: leaving it behind makes
+                # status quote a measurement the scanner no longer stands behind, and
+                # hands measurement() a record carrying both a value and an error
+                device.update(td=None, color=None, scan_time=None)
                 device['error'] = "TD-1 has not measured anything yet"
                 device['error_kind'] = TD1_ERR_NO_READING
                 device['last_outcome'] = 'no measurement yet'
@@ -369,10 +442,18 @@ class MmuTd1:
                 and (previous is None or valid['scan_time'] > previous)
                 and not self.busy):
                 gate = owner['gate']
-                if (self.revisions[gate] == owner['revision']
-                    and self.mmu.gate_selected == gate
-                    and self.mmu.filament_pos == FILAMENT_POS_LOADED):
+                if not self.claimable(serial, gate):
+                    # Owed to a gate that has already stopped waiting; this reading
+                    # settles that debt and is attributed to nobody
+                    device['last_outcome'] = ("status_only: settled an unclaimed reading from gate %d"
+                                              % device['unclaimed'])
+                    self.settle(serial)
+                elif (self.revisions[gate] == owner['revision']
+                      and self.mmu.gate_selected == gate
+                      and self.mmu.filament_pos == FILAMENT_POS_LOADED):
                     self.apply(gate, valid)
+                    owner['satisfied'] = True
+                    self.settle(serial)
                     device['last_outcome'] = "applied to gate %d" % gate
 
 
@@ -390,9 +471,7 @@ class MmuTd1:
         already in flight discard its own result rather than apply it to a new spool.
         """
         self.revisions[gate] += 1
-        for serial, owner in list(self.owners.items()):
-            if owner['gate'] == gate:
-                self.owners.pop(serial)
+        self.release(gate=gate)
 
 
     def apply(self, gate, record):
@@ -403,7 +482,12 @@ class MmuTd1:
         notifies LEDs, macros and the lane-data push exactly once. A reading identical to
         what the gate already holds is dropped rather than churning any of that.
         """
-        valid = measurement(record)
+        try:
+            valid = measurement(record)
+        except (ValueError, TypeError) as exc:
+            # Callers reach here from g-code handlers, where anything that isn't an
+            # MmuError becomes a Klipper shutdown rather than a reported error
+            raise MmuTd1NoReading("TD-1: %s" % exc) from exc
         maps = self.mmu.gate_maps
         if maps.gate_td[gate] == valid['td'] and maps.gate_td1_color[gate] == valid['color']:
             return
@@ -436,6 +520,21 @@ class MmuTd1:
         return device
 
 
+    def reading(self, gate):
+        """
+        The scanner's latest valid measurement for 'gate', as a normalized record.
+
+        device() lets a scanner that has simply not measured yet through as healthy, so
+        this is where "healthy but nothing to report" becomes a proper MmuError rather
+        than the ValueError that measurement() raises.
+        """
+        device = self.device(gate)
+        try:
+            return measurement(device)
+        except (ValueError, TypeError) as exc:
+            raise MmuTd1NoReading("TD-1: %s" % exc) from exc
+
+
     def wait_measurement(self, gate, baseline, timeout):
         """
         Wait for a measurement newer than 'baseline', for at most 'timeout' seconds.
@@ -446,20 +545,41 @@ class MmuTd1:
         is genuinely unusable propagates, because no amount of waiting will fix it.
         """
         deadline = self.reactor.monotonic() + timeout
-        while True:
-            device = self.device(gate)
-            stamp = device.get('scan_time')
-            if stamp is not None and (baseline is None or stamp > baseline):
-                return measurement(device)
-            remaining = deadline - self.reactor.monotonic()
-            if remaining <= 0:
-                raise MmuTd1NoReading("TD-1: no fresh measurement for gate %d" % gate)
-            try:
-                self.refresh(timeout=min(remaining, TD1_REQUEST_TIMEOUT))
-            except MmuTd1BridgeTimeout:
-                continue
-            if self.reactor.monotonic() < deadline:
-                self.reactor.pause(self.reactor.monotonic() + TD1_WAIT_GRANULARITY)
+        serial = self.paths[gate]['serial']
+        self.busy = True
+        self.active_serial = serial
+        try:
+            while True:
+                device = self.device(gate)
+                stamp = device.get('scan_time')
+                if stamp is not None and (baseline is None or stamp > baseline):
+                    if self.claimable(serial, gate):
+                        self.settle(serial)
+                        return self.reading(gate)
+                    # Owed to a gate that already gave up waiting. Take it off the
+                    # scanner's books and keep waiting for one that is ours
+                    self.mmu.log_debug(
+                        "TD-1: discarded a reading still owed to gate %d" % device['unclaimed'])
+                    self.settle(serial)
+                    baseline = stamp
+                    continue
+                remaining = deadline - self.reactor.monotonic()
+                if remaining <= 0:
+                    # Filament crossed the scanner and we stopped waiting for what it
+                    # measured, so whatever turns up next is not the next gate's
+                    self.owe(serial, gate)
+                    raise MmuTd1NoReading("TD-1: no fresh measurement for gate %d" % gate)
+                try:
+                    self.refresh(timeout=min(remaining, TD1_REQUEST_TIMEOUT))
+                except MmuTd1BridgeTimeout:
+                    continue
+                if self.reactor.monotonic() < deadline:
+                    self.reactor.pause(self.reactor.monotonic() + TD1_WAIT_GRANULARITY)
+        finally:
+            # Must not leak: a stuck 'busy' silences the passive path and pins polling
+            # at its active interval for the rest of the session
+            self.busy = False
+            self.active_serial = ""
 
 
     def needs_measurement(self, gate):
@@ -515,14 +635,17 @@ class MmuTd1:
         capture = bool(self.settings(gate).td1_capture_on_load)
         if not device['enabled'] or not (device['auto'] or capture):
             return None
+        # Whatever was armed before is finished with either way, and if it never
+        # produced a reading the scanner still owes that gate one
+        self.release(serial=serial)
         try:
             self.device(gate)
         except MmuError as exc:
-            self.owners.pop(serial, None)
             self.mmu.log_debug(str(exc))
             return None
         token = {'gate': gate, 'revision': self.revisions[gate],
-                 'baseline': device.get('scan_time'), 'capture': capture}
+                 'baseline': device.get('scan_time'), 'capture': capture,
+                 'satisfied': False}
         self.owners[serial] = token
         return token
 
@@ -542,7 +665,7 @@ class MmuTd1:
             or self.revisions[gate] != token['revision']
             or self.mmu.gate_selected != gate
             or self.owners.get(serial) is not token):
-            self.owners.pop(serial, None)
+            self.release(serial=serial)
             return
         if not token['capture'] or self.mmu.is_printing():
             return
@@ -551,9 +674,10 @@ class MmuTd1:
             if (self.revisions[gate] != token['revision']
                 or self.mmu.gate_selected != gate
                 or self.owners.get(serial) is not token):
-                self.owners.pop(serial, None)
+                self.release(serial=serial)
                 return
             self.apply(gate, record)
+            token['satisfied'] = True
         except MmuError as exc:
             # A measurement failure never invalidates an otherwise successful load
             self.mmu.log_warning(str(exc))

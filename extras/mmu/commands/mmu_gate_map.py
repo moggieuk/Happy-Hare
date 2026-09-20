@@ -364,8 +364,10 @@ class MmuGateMapCommand(BaseCommand):
                     if mmu.gate_td[gate_idx] == value:
                         continue
                     # A hand-entered TD supersedes whatever the scanner measured, so the
-                    # measured color that came with it is no longer trustworthy either
-                    mmu.gate_maps.gate_filament_changed(gate_idx)
+                    # measured color that came with it is no longer trustworthy either.
+                    # The gate still holds the same filament though, so this is not a
+                    # 'mmu:gate_filament_changed' - nobody's attribution state is stale
+                    mmu.gate_maps.clear_measurements(gate_idx)
                     mmu.gate_maps.gate_td[gate_idx] = value
 
             changed_gate_ids = list(ids_dict.items())

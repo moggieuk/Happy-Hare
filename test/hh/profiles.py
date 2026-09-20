@@ -220,13 +220,26 @@ TD1_SHARED = BOXTURTLE_TEST.derive(
 
 # One scanner per gate, with gate 2 deliberately left without one: the per-gate list has
 # to carry a placeholder for that gate so the list index stays the local gate number.
+#
+# Gate 2 keeps a serial ON PURPOSE. Switching a gate's scanner off only hides the
+# prompt, and kconfig keeps the value behind a hidden prompt - so this is what a user
+# who enters a serial and then changes their mind actually leaves behind, and the
+# template has to render '-' for it regardless.
 TD1_PER_GATE = BOXTURTLE_TEST.derive(
     'td1_per_gate',
     syms={'MMU_HAS_TD1': True, 'MMU_HAS_PER_GATE_TD1': True,
           'PARAM_TD1_DEVICE_0': 'TD1-0042', 'PARAM_TD1_DEVICE_1': 'TD1-0043',
-          'PARAM_TD1_DEVICE_GATE_2': False, 'PARAM_TD1_DEVICE_2': '',
+          'PARAM_TD1_DEVICE_GATE_2': False, 'PARAM_TD1_DEVICE_2': 'TD1-0099',
           'PARAM_TD1_DEVICE_3': 'TD1-0042'},
     description='BoxTurtle + per-gate TD-1 scanners (gate 2 unassigned)')
+
+# The feature switched on and nothing filled in - what you get by ticking the box in
+# menuconfig and moving on. Must render no assignment at all rather than an empty one,
+# which klipper rejects at boot.
+TD1_UNCONFIGURED = BOXTURTLE_TEST.derive(
+    'td1_unconfigured',
+    syms={'MMU_HAS_TD1': True},
+    description='BoxTurtle + TD-1 enabled but no scanner serial entered')
 
 # Both capture policies on, plus the advanced timeout. This is the profile that proves
 # the advanced prompt is conditional but its SYMBOL is not - hiding it must still render
@@ -727,7 +740,7 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
                     NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                     NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
-                    TD1_SHARED, TD1_PER_GATE, TD1_ADVANCED)
+                    TD1_SHARED, TD1_PER_GATE, TD1_ADVANCED, TD1_UNCONFIGURED)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
             (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}

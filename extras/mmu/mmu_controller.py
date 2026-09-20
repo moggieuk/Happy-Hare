@@ -150,7 +150,7 @@ class MmuController(MmuFilamentMovement):
         """
         Ensure clean state on initialization and after MMU enable/disable operation
         """
-        self.td1.owners.clear()
+        self.td1.release()
         self.is_enabled = True      # Whether Happy Hare is enabled or not
 
         self.filament_monitoring_enabled = False
@@ -2719,7 +2719,7 @@ class MmuController(MmuFilamentMovement):
 
     def set_filament_pos_state(self, state, silent=False):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
-            self.td1.owners.clear()
+            self.td1.release()
         if self.filament_pos != state:
             self.filament_pos = state
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
@@ -3328,7 +3328,7 @@ class MmuController(MmuFilamentMovement):
         if prev_gate >= 0:
             self.drive(prev_gate).sync_mode(DRIVE_UNSYNCED)
             self.disable_idle_gear_stepper(prev_gate) # Type-B: disable lane we are leaving
-        self.td1.owners.clear()
+        self.td1.release()
         self.gate_selected = gate
         # --------------------------------------------------------------------
 
@@ -3715,6 +3715,7 @@ class MmuController(MmuFilamentMovement):
         same_spool = (uid_norm is not None and
                       (uid_norm == self.gate_maps.gate_spool_rfid[gate] or uid_norm in known_uids))
         if not same_spool and self.gate_maps.gate_spool_id[gate] > 0:
+            self.gate_maps.renew_gate_map() # Copy before mutation so webhooks sees the change
             mod_gate_ids = self.gate_maps.assign_spool_id(gate, -1)
 
         if isinstance(metadata, dict) and metadata.get('material'):

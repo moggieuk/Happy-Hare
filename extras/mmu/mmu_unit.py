@@ -257,9 +257,16 @@ class MmuUnit:
         # one entry per gate in local gate order. They are mutually exclusive.
         self.td1_device = config.get('td1_device', '').strip()
         self.td1_devices = [
-            '' if name.strip() == TD1_GATE_UNASSIGNED else name.strip()
-            for name in config.getlist('td1_devices', [])
+            name.strip() for name in config.getlist('td1_devices', [])
         ]
+
+        # A blank entry means "no scanner on this gate", as in 'nfc_readers'. A literal
+        # '-' used to mean that; reject it rather than treat it as a USB serial, which
+        # would only surface later as a scanner that is permanently disconnected
+        if any(name == '-' for name in self.td1_devices):
+            raise config.error(
+                "'td1_devices' uses a blank entry for a gate with no scanner, not '-' "
+                "(unit %s)" % self.name)
 
         if self.td1_device and self.td1_devices:
             raise config.error("Specify 'td1_device' or 'td1_devices' for unit %s, not both" % self.name)
@@ -272,7 +279,7 @@ class MmuUnit:
 
         # A serial may repeat within 'td1_devices' and across units - that is intentional:
         # one physical scanner can serve several gates or even several units. MmuTd1 owns
-        # each serial once and serializes access. Use '-' for a gate with no scanner.
+        # each serial once. Leave an entry blank for a gate with no scanner.
 
 
         # ---------------------------------------------------------------------------------------------------

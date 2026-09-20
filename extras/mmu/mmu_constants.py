@@ -250,8 +250,6 @@ FILAMENT_DRIVE_STATE   = 1
 FILAMENT_HOLD_STATE    = 2
 
 # TD-1 filament measurement
-TD1_GATE_UNASSIGNED    = "-"   # 'td1_devices' placeholder for a gate with no scanner
-
 # Per-gate TD-1 state reported in printer.mmu. Happy Hare's own policy toward the gate's
 # scanner - device connectivity belongs to Moonraker's [td1] and isn't repeated here
 TD1_STATE_NONE         = ''          # No scanner serves this gate

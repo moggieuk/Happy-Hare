@@ -83,7 +83,7 @@ class Td1Case(unittest.TestCase):
     def owner(self, gate, serial="SERIAL_A", capture=False):
         """Arm attribution the way begin_load() would, without a load sequence."""
         token = {'gate': gate, 'revision': self.manager.revisions[gate],
-                 'baseline': None, 'capture': capture}
+                 'baseline': None, 'capture': capture, 'satisfied': False}
         self.manager.owners[serial] = token
         return token
 
@@ -164,7 +164,7 @@ class TestTd1Setup(Td1Case):
         profile = PROFILE.derive("td1_per_gate", syms=PER_GATE_SYMS)
         rendered = cfg.assemble(cfg.render(profile))
         unit = rendered["mmu_unit unit0"]
-        self.assertEqual(unit.get("td1_devices"), "A, B, -, A")
+        self.assertEqual(unit.get("td1_devices"), "A, B, , A")
         self.assertNotIn("td1_device", unit)
 
     def test_tunables_live_on_unit_parameters(self):
@@ -1119,7 +1119,6 @@ class TestTd1LaneData(unittest.TestCase):
 class TestTd1ConfigValidation(unittest.TestCase):
     def test_conflicting_and_malformed_assignments_are_rejected(self):
         cases = [
-            (dict(PARAM_TD1_DEVICE=""), "requires"),
             (dict(PARAM_TD1_CAPTURE_TIMEOUT="0"), "td1_capture_timeout"),
         ]
         for syms, message in cases:
@@ -1257,3 +1256,160 @@ class TestTd1InvalidateOtherOwner(Td1Case):
         self.mmu.gate_maps.gate_filament_changed(0)
         self.assertEqual(self.manager.owners, {"OTHER": token})
         self.assertIsNone(self.mmu.gate_td[0])
+
+
+class TestTd1Attribution(Td1Case):
+    """
+    A shared scanner must never hand one gate's measurement to the next.
+
+    Attribution rests on "a reading newer than the baseline sampled before this gate
+    moved", and Moonraker timestamps a reading when it RECEIVES it rather than when
+    filament entered the scanner. So a reading produced by gate A but delivered late
+    carries a late timestamp and is indistinguishable by time from gate B's own. What
+    separates them is the debt: a gate that stops waiting leaves the scanner owing it
+    a reading, and the next claimant discards whatever settles that debt.
+
+    These drive the real wait_measurement()/update_devices() path on purpose. Stubbing
+    wait_measurement is what let this through the first time.
+    """
+
+    def feed(self, plan):
+        """Answer every bridge poll from 'plan', which returns a Moonraker payload."""
+        def sink(method, values):
+            if method == "mmu_td1_request":
+                self.manager._callback(Request(
+                    request_id=values["request_id"], devices=plan(), error=None))
+        self.hh.webhooks.sink = sink
+
+    def test_a_late_reading_is_not_adopted_by_the_next_gate(self):
+        # Gate 0's reading misses its capture timeout, then lands while gate 1 is
+        # traversing. Before the debt existed this wrote 99.0 onto gate 1
+        state = {"late": False}
+        self.feed(lambda: {"SERIAL_A": rec_or_blank(state["late"])})
+        for gate in (0, 1):
+            self.hh.place_filament(gate)
+        self.mmu.gate_maps.gate_status = [1, 1, -1, -1]
+        original = self.manager.capture
+        def capture(gate, baseline):
+            if gate == 1:
+                state["late"] = True
+            return original(gate, baseline)
+        self.manager.capture = capture
+        self.hh.run_gcode("MMU_CHECK_GATE GATES=0,1 TD1=1")
+        self.assertEqual(self.hh.errors, [])
+        self.assertIsNone(self.mmu.gate_td[0], "gate 0 gave up, so it stays unmeasured")
+        self.assertIsNone(self.mmu.gate_td[1], "gate 0's reading must not become gate 1's")
+
+    def test_a_gate_still_measures_after_settling_someone_else_s_debt(self):
+        # Settling a debt costs one reading, not the whole capture: the gate keeps
+        # waiting and takes the next one
+        blank = {"SERIAL_A": {"td": None, "color": None, "scan_time": None}}
+        self.manager.update_devices(blank) # Connected, nothing measured yet
+        self.manager.owe("SERIAL_A", 0)
+        readings = iter([record(second=1, td=7.), record(second=2, td=8.)])
+        current = {"data": blank}
+        def plan():
+            nxt = next(readings, None)
+            if nxt is not None:
+                current["data"] = {"SERIAL_A": nxt}
+            return current["data"]
+        self.feed(plan)
+        self.manager.capture(1, None)
+        self.assertIsNone(self.mmu.gate_td[0])
+        self.assertEqual(self.mmu.gate_td[1], 8., "first reading settled gate 0's debt")
+
+    def test_an_owner_dropped_without_a_reading_leaves_a_debt(self):
+        # The printing path never waits, so nothing times out - the token is simply
+        # discarded at the next tool change, and that is equally a debt
+        self.manager.update_devices({"SERIAL_A": record()})
+        self.manager.owners.clear()
+        self.owner(0, capture=False)
+        self.manager.release(gate=0)
+        self.assertEqual(self.manager.devices["SERIAL_A"]["unclaimed"], 0)
+        self.assertFalse(self.manager.claimable("SERIAL_A", 1))
+        self.assertTrue(self.manager.claimable("SERIAL_A", 0),
+                        "the gate that is owed can still claim its own reading")
+
+    def test_a_satisfied_owner_leaves_no_debt(self):
+        self.manager.update_devices({"SERIAL_A": record()})
+        token = self.owner(0, capture=False)
+        token["satisfied"] = True
+        self.manager.release(gate=0)
+        self.assertIsNone(self.manager.devices["SERIAL_A"]["unclaimed"])
+
+    def test_the_passive_path_refuses_a_reading_owed_elsewhere(self):
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
+        self.manager.update_devices({"SERIAL_A": record()})
+        self.mmu.select_gate(1)
+        self.mmu.filament_pos = FILAMENT_POS_LOADED
+        self.manager.devices["SERIAL_A"]["auto"] = True
+        self.owner(1, capture=False)
+        self.manager.owe("SERIAL_A", 0)
+        self.manager.update_devices({"SERIAL_A": record(second=5, td=9.)})
+        self.assertIsNone(self.mmu.gate_td[1], "owed to gate 0, so attributed to nobody")
+        self.assertIsNone(self.manager.devices["SERIAL_A"]["unclaimed"], "debt settled")
+        # ...and with the debt gone the next reading is genuinely gate 1's
+        self.manager.update_devices({"SERIAL_A": record(second=6, td=9.5)})
+        self.assertEqual(self.mmu.gate_td[1], 9.5)
+
+    def test_busy_is_set_while_waiting_and_always_cleared(self):
+        # A leaked 'busy' would silence the passive path and pin polling for the rest
+        # of the session, so the flag has to survive the failure case too
+        blank = {"SERIAL_A": {"td": None, "color": None, "scan_time": None}}
+        self.manager.update_devices(blank) # Connected, nothing measured yet
+        seen = []
+        self.feed(lambda: (seen.append(self.manager.busy), blank)[1])
+        self.param(0, "td1_capture_timeout", 0.2)
+        with self.assertRaises(Exception):
+            self.manager.capture(0, None)
+        self.assertTrue(any(seen), "busy must be set while a capture is waiting")
+        self.assertFalse(self.manager.busy)
+        self.assertEqual(self.manager.active_serial, "")
+
+
+class TestTd1RebootedScanner(Td1Case):
+    def test_a_rebooted_scanner_drops_its_cached_reading(self):
+        # Moonraker reports every field null after a power cycle. Keeping the old
+        # values made status quote a measurement the device no longer stands behind
+        self.manager.update_devices({"SERIAL_A": record()})
+        self.assertIsNotNone(self.manager.devices["SERIAL_A"]["scan_time"])
+        self.manager.update_devices({"SERIAL_A": {"td": None, "color": None, "scan_time": None}})
+        device = self.manager.devices["SERIAL_A"]
+        self.assertEqual((device["td"], device["color"], device["scan_time"]),
+                         (None, None, None))
+
+    def test_register_on_a_rebooted_scanner_reports_rather_than_shutting_down(self):
+        # MMU_TD1 INIT=1 then REGISTER=1 is the documented recovery flow. measurement()
+        # raises ValueError, which is not an MmuError - escaping a g-code handler makes
+        # klipper call invoke_shutdown() rather than print an error
+        self.manager.update_devices({"SERIAL_A": record()})
+        self.data = {"SERIAL_A": {"td": None, "color": None, "scan_time": None}}
+        with patch.object(self.mmu, "handle_mmu_error") as handled:
+            self.hh.run_gcode("MMU_TD1 GATE=0 REGISTER=1")
+        self.assertIsNone(self.mmu.gate_td[0])
+        self.assertTrue(handled.called, "reported as an MMU error, not raised")
+
+    def test_apply_never_raises_a_bare_value_error(self):
+        from extras.mmu.mmu_utils import MmuError
+        for bad in ({}, {"td": None}, dict(record(), error="optical error")):
+            with self.subTest(bad=bad), self.assertRaises(MmuError):
+                self.manager.apply(0, bad)
+
+
+class TestTd1ManualEditEvent(Td1Case):
+    def test_a_hand_entered_td_is_not_an_identity_change(self):
+        # The gate still holds the same filament; only the measurement was overridden.
+        # Announcing an identity change would make every future subscriber drop state
+        # it had no reason to
+        events = []
+        self.hh.printer.register_event_handler(
+            "mmu:gate_filament_changed", lambda gate: events.append(gate))
+        self.manager.apply(0, record())
+        self.hh.run_gcode("MMU_GATE_MAP GATE=0 TD=3.5 QUIET=1")
+        self.assertEqual(self.mmu.gate_td[0], 3.5)
+        self.assertEqual(self.mmu.gate_td1_color[0], "", "measured color no longer applies")
+        self.assertEqual(events, [])
+
+
+def rec_or_blank(ready):
+    return record(second=10, td=99.) if ready else {"td": None, "color": None, "scan_time": None}

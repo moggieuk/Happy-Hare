@@ -93,6 +93,8 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('default_gate_filament_name',    'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_material',         'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_vendor',           'list',    [], section="DEFAULT MAPS", hidden=True),
+        # Unset is None (never measured), which a floatlist can't express - so a
+        # configured default, if anyone ever sets one, has to cover every gate
         ParamSpec('default_gate_td',               'floatlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_td1_color',        'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_color',            'list',    [], section="DEFAULT MAPS", hidden=True),

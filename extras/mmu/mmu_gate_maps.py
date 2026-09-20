@@ -173,6 +173,17 @@ class MmuGateMaps:
         self.mmu.var_manager.write()
 
 
+    def clear_measurements(self, gate):
+        """
+        Drop the measured fields for 'gate' without claiming its filament changed.
+
+        For a hand-entered measurement, which supersedes what the scanner found but
+        leaves the gate holding the same filament it did before.
+        """
+        self.gate_td[gate] = None
+        self.gate_td1_color[gate] = ""
+
+
     def gate_filament_changed(self, gate):
         """
         The filament in 'gate' is no longer the filament it was.
@@ -186,8 +197,7 @@ class MmuGateMaps:
         old identity. Persistence is left to whichever gate-map write the caller was
         already going to make, so handlers must not persist or mutate the map themselves.
         """
-        self.gate_td[gate] = None
-        self.gate_td1_color[gate] = ""
+        self.clear_measurements(gate)
         self.printer.send_event("mmu:gate_filament_changed", gate)
 
 

@@ -261,7 +261,6 @@ class MmuUnitParameters(TunableParametersBase):
                 "endstop is '%s' - every gate shares the forward path through '%s' (got %.1f)"
                 % (SENSOR_EXIT_PREFIX, endstop, value))
 
-
     def _validate_nfc_clear_reach(self, name, value, parking_distance, homing_max):
         # The move is relative to park, but both its magnitude and its furthest backward
         # target must stay inside the profile's configured recovery reach. Otherwise the
@@ -317,8 +316,8 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Gate preloading
         ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [SENSOR_GATE_NONE, ''])}, validator=_validate_gate_preload_endstop, on_change=_on_gate_preload_endstop),
-        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING",        on_change=_on_gate_preload_homing_max),
-        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING",                                    validator=_validate_gate_preload_parking_distance, on_change=_on_gate_preload_parking_distance),
+        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING", on_change=_on_gate_preload_homing_max),
+        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance, on_change=_on_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
 
@@ -326,20 +325,20 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
 
         # NFC / RFID reading
-        ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC",                                   validator=_validate_nfc_gate_jog_scan_window),
-        ParamSpec('nfc_preload_jog_scan_window',      'floatlist', lambda self: self.nfc_gate_jog_scan_window, section="NFC",   validator=_validate_nfc_preload_jog_scan_window),
-        ParamSpec('nfc_neighbor_check',               'int',       0, section="NFC", limits=dict(minval=0, maxval=1)),
-        ParamSpec('nfc_neighbor_evict_distance',      'float',   0.0, section="NFC",                                            validator=_validate_nfc_neighbor_evict_distance),
-        ParamSpec('nfc_gate_clear_distance',          'float',   0.0, section="NFC",                                            validator=_validate_nfc_gate_clear_distance),
-        ParamSpec('nfc_preload_clear_distance',       'float', lambda self: self.nfc_gate_clear_distance, section="NFC",        validator=_validate_nfc_preload_clear_distance),
-        ParamSpec('nfc_field_probe_reads',            'int',       3, section="NFC", limits=dict(minval=1, maxval=10)),
-        ParamSpec('nfc_deep_read',                    'int',       0, section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
+        ParamSpec('nfc_preload_jog_scan_window',      'floatlist', lambda self: self.nfc_gate_jog_scan_window, section="NFC", validator=_validate_nfc_preload_jog_scan_window),
+        ParamSpec('nfc_neighbor_check',                'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('nfc_neighbor_evict_distance',       'float',  0.0,  section="NFC", validator=_validate_nfc_neighbor_evict_distance),
+        ParamSpec('nfc_gate_clear_distance',           'float',  0.0,  section="NFC", validator=_validate_nfc_gate_clear_distance),
+        ParamSpec('nfc_preload_clear_distance',        'float',  lambda self: self.nfc_gate_clear_distance, section="NFC", validator=_validate_nfc_preload_clear_distance),
+        ParamSpec('nfc_field_probe_reads',              'int',    3,    section="NFC", limits=dict(minval=1, maxval=10)),
+        ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
 
         # TD-1 filament measurement
-        ParamSpec('td1_capture_timeout',              'float',   5.0, section="TD-1", limits=dict(above=0.0),                   guard=_guard_has_td1),
-        ParamSpec('td1_auto_update',                  'int',       0, section="TD-1", limits=dict(minval=0, maxval=1),          guard=_guard_has_td1),
-        ParamSpec('td1_capture_on_load',              'int',       0, section="TD-1", limits=dict(minval=0, maxval=1),          guard=_guard_has_td1),
+        ParamSpec('td1_capture_timeout',              'float',  5.0,  section="TD-1", limits=dict(above=0.0), guard=_guard_has_td1),
+        ParamSpec('td1_auto_update',                   'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1), guard=_guard_has_td1),
+        ParamSpec('td1_capture_on_load',               'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1), guard=_guard_has_td1),
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),

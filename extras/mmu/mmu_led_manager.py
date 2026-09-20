@@ -750,7 +750,7 @@ class MmuLedManager:
                         # filament color when a gate has no measurement - both are cached
                         # parallel maps maintained by update_gate_color_rgb()
                         td1 = effect == "td1_color"
-                        color = self.mmu.gate_td1_color[g] or self.mmu.gate_color[g] if td1 else self.mmu.gate_color[g]
+                        color = (self.mmu.gate_td1_color[g] or self.mmu.gate_color[g]) if td1 else self.mmu.gate_color[g]
                         rgb = self.mmu.gate_td1_color_rgb[g] if td1 else self.mmu.gate_color_rgb[g]
                         if self.mmu.gate_status[g] == GATE_EMPTY:
                             return mmu_unit.leds.empty_light
@@ -829,7 +829,7 @@ class MmuLedManager:
                 if self.mmu.gate_selected >= 0 and self.mmu.filament_pos > FILAMENT_POS_UNLOADED:
                     gate = self.mmu.gate_selected
                     td1 = effect == "td1_color"
-                    color = self.mmu.gate_td1_color[gate] or self.mmu.gate_color[gate] if td1 else self.mmu.gate_color[gate]
+                    color = (self.mmu.gate_td1_color[gate] or self.mmu.gate_color[gate]) if td1 else self.mmu.gate_color[gate]
                     if effects[segment] != "on" and color != "":
                         rgb = self.mmu.gate_td1_color_rgb[gate] if td1 else self.mmu.gate_color_rgb[gate]
                         if rgb == (0,0,0):

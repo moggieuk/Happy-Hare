@@ -15,7 +15,11 @@
 #
 # Per-gate:
 #   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
-#   PARAM_TD1_DEVICE_GATE_$(i)  (whether this gate has a scanner at all)
+#
+#   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt.
+#                                Named to match PARAM_NFC_READER_GATE_$(i) in the
+#                                per-gate NFC block this mirrors. The template reads it
+#                                so switching a gate off wins over a serial left behind)
 #
 # Capture policy (rendered into [mmu_unit_parameters] in mmu_parameters.cfg):
 #   PARAM_TD1_AUTO_UPDATE
@@ -71,6 +75,15 @@ if MMU_HAS_TD1
           config PARAM_TD1_DEVICE_$(i)
             string
 
+          # Presentation only - it collapses the serial prompt below. Unlike the NFC
+          # reader block this was modelled on, the serial's default is "" either way,
+          # so this toggle contributes no value of its own; the template consults it
+          # because kconfig keeps a hidden prompt's value and build.py reads the raw
+          # user value regardless of visibility. Named PARAM_ for symmetry with
+          # PARAM_NFC_READER_GATE_$(i) rather than the BOOL_ the naming contract would
+          # suggest for a presentation-only switch. Both prefixes behave identically
+          # for the #~DEFAULT~# mechanism, so an 'off' the user chose survives an
+          # upgrade either way - see TestTd1UpgradeRetention
           menuconfig PARAM_TD1_DEVICE_GATE_$(i)
             bool "Gate $(i) TD-1 scanner"
             default y

@@ -39,6 +39,7 @@ class MmuTd1Command(BaseCommand):
         + "GATE         = g (the scanner serving this gate)\n"
         + "GATES        = comma,separated,gates (for ENABLE/AUTO across several)\n"
         + "SERIAL       = # Address one physical scanner by USB serial\n"
+        + "UNIT         = Restrict/validate the gate selection to one unit\n"
 
         + "REGISTER     = [0|1] Apply the scanner's cached measurement to GATE\n"
         + "ENABLE       = [0|1] Enable/disable Happy Hare's use of the device\n"
@@ -120,8 +121,6 @@ class MmuTd1Command(BaseCommand):
             if bad:
                 raise gcmd.error("Invalid gate(s) in %s: %s" % (key, ",".join(map(str, bad))))
 
-        if any(not (0 <= v < mmu.num_gates) for v in values):
-            raise gcmd.error("Select a valid gate")
         return list(dict.fromkeys(values)) # Deduplicate, preserving order
 
 
@@ -184,7 +183,6 @@ class MmuTd1Command(BaseCommand):
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
-        manager = mmu.td1
         if self.check_if_disabled(): return
 
         operation = self._resolve_operation(gcmd)
@@ -258,7 +256,7 @@ class MmuTd1Command(BaseCommand):
 
             elif operation == 'REGISTER':
                 gate = gates[0]
-                manager.apply(gate, manager.device(gate))
+                manager.apply(gate, manager.reading(gate))
                 scanned = datetime.fromisoformat(device['scan_time'])
                 age = max(0., (datetime.now(timezone.utc) - scanned).total_seconds())
                 mmu.log_always("TD-1: applied cached measurement to gate %d from %s (%.0fs old)"

@@ -1797,8 +1797,14 @@ class MmuServer:
         except Exception as exc:
             logging.exception("MMU: unexpected TD-1 bridge failure")
             error = str(exc) or type(exc).__name__
-        await self.klippy_apis._send_klippy_request(
-            "mmu/td1", {"request_id": request_id, "devices": devices, "error": error})
+        try:
+            await self.klippy_apis._send_klippy_request(
+                "mmu/td1", {"request_id": request_id, "devices": devices, "error": error})
+        except Exception:
+            # Klipper going away is exactly when the error above is worth reporting, and
+            # exactly when it cannot be delivered. Happy Hare's own deadline covers the
+            # silence; an unhandled task exception here would only add noise
+            logging.exception("MMU: could not deliver TD-1 response %s" % request_id)
 
     async def push_lane_data(self, gate_ids):
         '''
