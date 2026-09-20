@@ -151,21 +151,21 @@ menu "Purging"
 
       config PIN_BLOBIFIER_STEPPER_UART
         string
-        prompt "Stepper TMC uart pin       " if PARAM_BLOBIFIER_TMC != "" && !BOOL_BLOBIFIER_TMC_SPI
+        prompt "Stepper TMC UART pin       " if PARAM_BLOBIFIER_TMC != "" && !BOOL_BLOBIFIER_TMC_SPI
       config PIN_BLOBIFIER_STEPPER_CS
         string
-        prompt "Stepper TMC cs pin         " if BOOL_BLOBIFIER_TMC_SPI
+        prompt "Stepper TMC CS pin         " if BOOL_BLOBIFIER_TMC_SPI
       config PIN_BLOBIFIER_STEPPER_SPI_SCLK
         string
-        prompt "Stepper TMC spi sclk pin   " if BOOL_BLOBIFIER_TMC_SPI
+        prompt "Stepper TMC SPI SCLK pin   " if BOOL_BLOBIFIER_TMC_SPI
         help
-          Leave all three spi pins blank to use the MCU's hardware SPI bus
+          Leave all three SPI pins blank to use the MCU's hardware SPI bus
       config PIN_BLOBIFIER_STEPPER_SPI_MOSI
         string
-        prompt "Stepper TMC spi mosi pin   " if BOOL_BLOBIFIER_TMC_SPI
+        prompt "Stepper TMC SPI MOSI pin   " if BOOL_BLOBIFIER_TMC_SPI
       config PIN_BLOBIFIER_STEPPER_SPI_MISO
         string
-        prompt "Stepper TMC spi miso pin   " if BOOL_BLOBIFIER_TMC_SPI
+        prompt "Stepper TMC SPI MISO pin   " if BOOL_BLOBIFIER_TMC_SPI
 
       config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
         string

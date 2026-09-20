@@ -653,6 +653,19 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         # tmc2240 takes 'rref', not 'sense_resistor' - Klipper rejects the unknown option
         self.assertNotIn('sense_resistor', driver)
 
+    def test_partial_spi_pins_fall_back_to_hardware_spi(self):
+        """A half-filled software SPI trio would render blank pins Klipper cannot parse."""
+        mmu = self._render_mmu('blobifier_tmc2240_partial_spi', {
+            'CHOICE_BLOBIFIER_TMC2240': True,
+            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
+            'PIN_BLOBIFIER_STEPPER_SPI_SCLK': 'unit0:PG8',
+        })
+        driver = dict(cfg.assemble({MMU: mmu}).items(
+            'tmc2240 manual_stepper stepper_blobifier'))
+        self.assertEqual(driver['cs_pin'], 'unit0:PC14')
+        for key in ('spi_software_sclk_pin', 'spi_software_mosi_pin', 'spi_software_miso_pin'):
+            self.assertNotIn(key, driver)
+
     def test_hardware_controlled_driver_emits_no_section(self):
         mmu = self._render_mmu('blobifier_tmc_none', {'CHOICE_BLOBIFIER_TMC_NONE': True})
         self.assertIn('manual_stepper stepper_blobifier', cfg.sections(mmu))

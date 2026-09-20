@@ -169,7 +169,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Toolhead sensor is enabled but no MCU pin defined"                                if SW2
     comment "Extruder sensor is enabled but no MCU pin defined"                                if SW3
     comment "Blobifier bucket switch is enabled but no valid MCU pin is defined"               if SW4
-    comment "Blobifier tray stepper TMC is selected but no uart/cs pin is defined"             if SW5
+    comment "Blobifier tray stepper TMC is selected but no UART/CS pin is defined"             if SW5
   endif
 
   if SHOW_PER_UNIT_WARNINGS
