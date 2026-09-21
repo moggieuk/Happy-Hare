@@ -150,28 +150,28 @@ class MmuTd1Command(BaseCommand):
         lines = []
         for serial in serials:
             device = manager.devices[serial]
-            owner = manager.owners.get(serial)
+            owner = device.owner
             device_gates = manager.gates_for(serial)
             gates = ",".join(str(g) for g in device_gates) or "none"
-            state = "connected" if device['connected'] else "DISCONNECTED"
-            if not device['enabled']:
+            state = "connected" if device.connected else "DISCONNECTED"
+            if not device.enabled:
                 state += ", disabled"
-            if device['auto']:
+            if device.auto:
                 state += ", auto-update"
             lines.append("TD-1 %s: %s" % (serial, state))
             lines.append("  Gates: %s%s" % (
                 gates, " (capturing)" if manager.active_serial == serial else ""))
-            if device['td'] is not None:
+            if device.td is not None:
                 lines.append("  Latest: TD %.2f, color %s at %s" % (
-                    device['td'], device['color'], device['scan_time']))
+                    device.td, device.color, device.scan_time))
             else:
                 lines.append("  Latest: no measurement yet")
-            if device['error']:
-                lines.append("  Note: %s" % device['error'])
+            if device.error:
+                lines.append("  Note: %s" % device.error)
             if details:
                 if owner is not None:
                     lines.append("  Attributable gate: %d" % owner['gate'])
-                lines.append("  Last outcome: %s" % (device['last_outcome'] or "none"))
+                lines.append("  Last outcome: %s" % (device.last_outcome or "none"))
                 for gate in device_gates:
                     lines.append("  Gate %d: TD %s, measured color %s" % (
                         gate,
@@ -222,8 +222,9 @@ class MmuTd1Command(BaseCommand):
         if serial:
             targets = [serial]
         else:
-            targets = [s for s in dict.fromkeys(manager.paths[g]['serial'] for g in gates) if s]
-            unassigned = [g for g in gates if not manager.paths[g]['serial']]
+            serials = {g: mmu.mmu_unit(g).td1_manager.serial_for(g) for g in gates}
+            targets = [s for s in dict.fromkeys(serials[g] for g in gates) if s]
+            unassigned = [g for g in gates if not serials[g]]
             if unassigned:
                 message = "No TD-1 scanner configured for gate(s) %s" % (
                     ",".join(str(g) for g in unassigned))
@@ -250,17 +251,18 @@ class MmuTd1Command(BaseCommand):
                     ",".join(str(g) for g in affected) or "none"))
 
             elif operation == 'INIT':
-                manager.owners.pop(device_id, None)
+                device.owner = None
                 manager.refresh(device_id, reset=True)
                 mmu.log_always("TD-1 %s: rebooted and rediscovered" % device_id)
 
             elif operation == 'REGISTER':
                 gate = gates[0]
-                manager.apply(gate, manager.reading(gate))
-                scanned = datetime.fromisoformat(device['scan_time'])
+                gate_manager = mmu.mmu_unit(gate).td1_manager
+                gate_manager.apply(gate, gate_manager.reading(gate))
+                scanned = datetime.fromisoformat(device.scan_time)
                 age = max(0., (datetime.now(timezone.utc) - scanned).total_seconds())
                 mmu.log_always("TD-1: applied cached measurement to gate %d from %s (%.0fs old)"
-                               % (gate, device['scan_time'], age))
+                               % (gate, device.scan_time, age))
                 # Establishing the gate's filament identity clears its measurement, so
                 # registering before a spool or tag is assigned silently loses this
                 if mmu.gate_spool_id[gate] <= 0 and not mmu.gate_spool_rfid[gate]:

@@ -217,14 +217,13 @@ class MmuCheckGateCommand(BaseCommand):
                                             # scanner, wherever that happens to be. Skip
                                             # gates that already have a reading unless
                                             # TD1_UPDATE=1 asks for a fresh one
-                                            measure = bool(td1 and (td1_force or mmu.td1.needs_measurement(gate)))
-                                            if measure and not mmu.td1.paths[gate]['serial']:
-                                                measure = False
+                                            td1_mgr = mmu.mmu_unit(gate).td1_manager
+                                            measure = bool(td1 and (td1_force or td1_mgr.needs_measurement(gate)))
                                             baseline = None
                                             try:
                                                 if measure:
                                                     try:
-                                                        baseline = mmu.td1.baseline(gate)
+                                                        baseline = td1_mgr.baseline(gate)
                                                     except MmuError as ee:
                                                         # Don't pay for a bowden traverse
                                                         # we already know can't produce one
@@ -267,7 +266,7 @@ class MmuCheckGateCommand(BaseCommand):
                                                 try:
                                                     mmu.load_sequence(skip_extruder=True)
                                                     try:
-                                                        mmu.td1.capture(gate, baseline)
+                                                        td1_mgr.capture(gate, baseline)
                                                     except MmuError as ee:
                                                         # Availability is a fact about the
                                                         # gate, not about the scanner
@@ -277,7 +276,7 @@ class MmuCheckGateCommand(BaseCommand):
                                                     recover_on_error = False
                                                     raise
                                             else:
-                                                if td1 and mmu.td1.paths[gate]['serial']:
+                                                if td1 and td1_mgr.has_gate_td1(gate):
                                                     mmu.log_info("Gate %d already measured - use TD1_UPDATE=1 to re-read" % gate)
                                                 elif td1:
                                                     mmu.log_info("Gate %d has no TD-1 scanner - availability checked only" % gate)

@@ -48,6 +48,7 @@ from .unit.selectors.mmu_base_selectors import VirtualSelector
 from .unit.mmu_environment_manager      import MmuEnvironmentManager
 from .unit.mmu_fan_manager              import MmuFanManager
 from .unit.mmu_nfc_manager              import MmuNfcManager
+from .unit.mmu_td1_manager              import MmuTd1Manager
 from .mmu_utils                         import MmuError
 
 
@@ -530,6 +531,10 @@ class MmuUnit:
         self.nfc_manager = MmuNfcManager(params, self, self.p)
         logging.info("MMU: Created: nfc manager for unit %s" % self.name)
 
+        # Create TD-1 manager
+        self.td1_manager = MmuTd1Manager(params, self, self.p)
+        logging.info("MMU: Created: td1 manager for unit %s" % self.name)
+
         self.subcomponents = [
             self.calibrator,
             self.toolhead_wrapper,
@@ -543,6 +548,7 @@ class MmuUnit:
             self.environment_manager,
             self.fan_manager,
             self.nfc_manager,
+            self.td1_manager,
         ]
 
 

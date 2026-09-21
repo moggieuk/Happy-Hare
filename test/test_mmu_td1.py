@@ -63,17 +63,18 @@ class Td1Case(unittest.TestCase):
         self.hh.boot(calibrate=True)
         self.assertEqual(self.hh.errors, [])
         self.mmu = self.hh.mmu
-        self.manager = self.mmu.td1
+        self.bridge = self.mmu.td1                        # Moonraker transport
+        self.manager = self.mmu.mmu_unit(0).td1_manager   # this profile has one unit
         self.data = {"SERIAL_A": record()}
         self.hh.webhooks.sink = self.respond
-        self.manager.pending.clear()
+        self.bridge.pending.clear()
 
     def tearDown(self):
         self.hh.close()
 
     def respond(self, method, values):
         if method == "mmu_td1_request":
-            self.manager._callback(Request(
+            self.bridge._callback(Request(
                 request_id=values["request_id"], devices=self.data, error=None))
 
     def param(self, gate, name, value):
@@ -82,10 +83,23 @@ class Td1Case(unittest.TestCase):
 
     def owner(self, gate, serial="SERIAL_A", capture=False):
         """Arm attribution the way begin_load() would, without a load sequence."""
-        token = {'gate': gate, 'revision': self.manager.revisions[gate],
+        token = {'gate': gate, 'revision': self.manager.revision(gate),
                  'baseline': None, 'capture': capture, 'satisfied': False}
-        self.manager.owners[serial] = token
+        self.device(serial).arm(token)
         return token
+
+    def owners(self):
+        """Armed attribution across every device, in the old {serial: token} shape."""
+        return {s: d.owner for s, d in self.bridge.devices.items() if d.owner is not None}
+
+    def clear_owners(self):
+        """Drop every armed token WITHOUT recording a debt (test setup, not a release)."""
+        for d in self.bridge.devices.values():
+            d.owner = None
+
+    def device(self, serial="SERIAL_A"):
+        """The MmuTd1Device object for a serial, adopting an unconfigured one."""
+        return self.bridge.devices.get(serial) or self.bridge._adopt(serial)
 
 
 class TestMeasurement(Td1Case):
@@ -116,16 +130,16 @@ class TestMeasurement(Td1Case):
 
 class TestTd1Setup(Td1Case):
     def test_shared_config_and_status(self):
-        self.assertEqual([p["serial"] for p in self.manager.paths], ["SERIAL_A"] * 4)
-        self.manager.refresh()
-        self.assertEqual(self.manager.gates_for("SERIAL_A"), [0, 1, 2, 3])
-        self.assertTrue(self.manager.devices["SERIAL_A"]["connected"])
+        self.assertEqual([self.manager.serial_for(g) for g in range(4)], ["SERIAL_A"] * 4)
+        self.bridge.refresh()
+        self.assertEqual(self.bridge.gates_for("SERIAL_A"), [0, 1, 2, 3])
+        self.assertTrue(self.bridge.devices["SERIAL_A"].connected)
 
     def test_nothing_about_the_device_is_republished_in_printer_status(self):
         # Live device data belongs to Moonraker's own [td1] endpoint and the gate
         # assignment is already in printer.mmu_machine - relaying either would be a
         # staler second copy. Only HH's own policy and the measurements are reported
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         status = self.mmu.get_status(0)
         for key in ("td1_devices", "td1_busy", "gate_td1_scan_time",
                     "gate_td1_scan_distance", "gate_td1_distance_source",
@@ -140,19 +154,19 @@ class TestTd1Setup(Td1Case):
         status = self.mmu.get_status(0)
         self.assertEqual(status["td1"], ["enabled"] * 4)
         self.assertEqual(len(status["td1"]), self.mmu.num_gates)
-        self.manager.set_device_state("SERIAL_A", auto=True)
+        self.bridge.set_device_state("SERIAL_A", auto=True)
         self.assertEqual(self.mmu.get_status(0)["td1"], ["auto"] * 4)
-        self.manager.set_device_state("SERIAL_A", enabled=False)
+        self.bridge.set_device_state("SERIAL_A", enabled=False)
         self.assertEqual(self.mmu.get_status(0)["td1"], ["disabled"] * 4)
 
     def test_gates_without_a_scanner_report_empty(self):
-        self.manager.paths[2]["serial"] = ""
+        self.manager.gate_devices[2] = None
         self.assertEqual(self.mmu.get_status(0)["td1"],
                          ["enabled", "enabled", "", "enabled"])
 
     def test_disabled_outranks_auto(self):
         # A disabled scanner isn't auto-updating anything, whatever the flag says
-        self.manager.set_device_state("SERIAL_A", auto=True, enabled=False)
+        self.bridge.set_device_state("SERIAL_A", auto=True, enabled=False)
         self.assertEqual(self.mmu.get_status(0)["td1"], ["disabled"] * 4)
 
     def test_assignment_is_discoverable_from_the_machine_object(self):
@@ -214,7 +228,7 @@ class TestTd1Invalidate(Td1Case):
         self.mmu.gate_maps.assign_spool_id(0, 99)
         self.assertIsNone(self.mmu.gate_td[0])
         self.assertEqual(self.mmu.gate_td1_color[0], "")
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
         self.assertEqual(self.manager.revisions[0], revision + 1)
 
     def test_the_gate_map_does_not_know_td1_exists(self):
@@ -235,7 +249,7 @@ class TestTd1Invalidate(Td1Case):
         self.assertEqual(self.mmu.gate_td1_color[2], "")
         # ...and TD-1 drops only what it derived from that identity
         self.assertEqual(self.manager.revisions[2], revision + 1)
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
 
     def test_a_handler_is_reached_through_the_event_bus(self):
         # Not a direct call - the registration is what wires it up
@@ -244,7 +258,7 @@ class TestTd1Invalidate(Td1Case):
         revision = self.manager.revisions[0]
         self.mmu.printer.send_event("mmu:gate_filament_changed", 0)
         self.assertEqual(self.manager.revisions[0], revision + 1)
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
 
 
 class TestTd1Color(Td1Case):
@@ -282,45 +296,45 @@ class TestTd1Staleness(Td1Case):
         self.assertTrue(self.manager.needs_measurement(0))
 
     def test_a_gate_without_a_scanner_is_never_stale(self):
-        self.manager.paths[1]["serial"] = ""
+        self.manager.gate_devices[1] = None
         self.assertFalse(self.manager.needs_measurement(1))
 
 
 class TestTd1UpdateDevices(Td1Case):
     def test_auto_only_updates_known_owner_and_new_record(self):
-        self.manager.refresh()
-        device = self.manager.devices["SERIAL_A"]
-        device["auto"] = True
+        self.bridge.refresh()
+        device = self.bridge.devices["SERIAL_A"]
+        device.auto = True
         self.mmu.select_gate(0)
         self.mmu.set_filament_pos_state(10)
         self.owner(0)
-        self.manager.update_devices({"SERIAL_A": record(second=1)})
+        self.bridge.update_devices({"SERIAL_A": record(second=1)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
-        self.manager.update_devices({"SERIAL_A": record(second=1, td=9.)})
+        self.bridge.update_devices({"SERIAL_A": record(second=1, td=9.)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
-        self.manager.owners.clear()
-        self.manager.update_devices({"SERIAL_A": record(second=2, td=9.)})
+        self.clear_owners()
+        self.bridge.update_devices({"SERIAL_A": record(second=2, td=9.)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
-        self.assertEqual(device["td"], 9.)
-        self.manager.update_devices({})
-        self.assertFalse(device["connected"])
+        self.assertEqual(device.td, 9.)
+        self.bridge.update_devices({})
+        self.assertFalse(device.connected)
 
     def test_invalid_data_and_unknown_device_are_status_only(self):
-        self.manager.update_devices({"B": record(), "SERIAL_A": {"error": "bad optics"}})
-        self.assertEqual(self.manager.devices["SERIAL_A"]["error"], "bad optics")
-        self.assertEqual(self.manager.devices["SERIAL_A"]["error_kind"], "device")
-        self.assertEqual(self.manager.devices["B"]["td"], 4.)
+        self.bridge.update_devices({"B": record(), "SERIAL_A": {"error": "bad optics"}})
+        self.assertEqual(self.bridge.devices["SERIAL_A"].error, "bad optics")
+        self.assertEqual(self.bridge.devices["SERIAL_A"].error_kind, "device")
+        self.assertEqual(self.bridge.devices["B"].td, 4.)
         self.assertEqual(self.mmu.gate_td, [None] * 4)
 
     def test_unmeasured_is_classified_not_matched_on_message(self):
         # device() must tell "nothing measured yet" from "measured badly" structurally
         from extras.mmu.mmu_td1 import TD1_ERR_NO_READING, TD1_ERR_INVALID
-        self.manager.update_devices({"SERIAL_A": {}})
-        device = self.manager.devices["SERIAL_A"]
-        self.assertEqual(device["error_kind"], TD1_ERR_NO_READING)
+        self.bridge.update_devices({"SERIAL_A": {}})
+        device = self.bridge.devices["SERIAL_A"]
+        self.assertEqual(device.error_kind, TD1_ERR_NO_READING)
         self.manager.device(0) # Healthy: simply hasn't seen filament yet
-        self.manager.update_devices({"SERIAL_A": {"td": "nonsense"}})
-        self.assertEqual(device["error_kind"], TD1_ERR_INVALID)
+        self.bridge.update_devices({"SERIAL_A": {"td": "nonsense"}})
+        self.assertEqual(device.error_kind, TD1_ERR_INVALID)
         with self.assertRaises(Exception):
             self.manager.device(0)
 
@@ -328,9 +342,9 @@ class TestTd1UpdateDevices(Td1Case):
 class TestTd1Callback(Td1Case):
     def test_late_callback_is_ignored(self):
         request = Request(request_id=999, devices=self.data)
-        self.manager._callback(request)
+        self.bridge._callback(request)
         self.assertEqual(request.response, {})
-        self.assertIsNone(self.manager.devices["SERIAL_A"]["td"])
+        self.assertIsNone(self.bridge.devices["SERIAL_A"].td)
 
 
 class TestTd1Command(Td1Case):
@@ -341,10 +355,10 @@ class TestTd1Command(Td1Case):
 
     def test_enable_and_auto_control(self):
         self.hh.run_gcode("MMU_TD1 GATE=0 ENABLE=0")
-        self.assertFalse(self.manager.devices["SERIAL_A"]["enabled"])
+        self.assertFalse(self.bridge.devices["SERIAL_A"].enabled)
         self.hh.run_gcode("MMU_TD1 SERIAL=SERIAL_A ENABLE=1")
         self.hh.run_gcode("MMU_TD1 GATES=0,1 AUTO=1")
-        self.assertTrue(self.manager.devices["SERIAL_A"]["auto"])
+        self.assertTrue(self.bridge.devices["SERIAL_A"].auto)
         self.assertEqual(self.hh.errors, [])
 
     def test_the_command_never_moves_filament(self):
@@ -355,7 +369,7 @@ class TestTd1Command(Td1Case):
         self.assertEqual(self.hh.filament().history, [])
 
     def test_status_report_is_formatted_not_json(self):
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         with patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1 DETAILS=1")
         message = "\n".join(c.args[0] for c in report.call_args_list)
@@ -386,7 +400,7 @@ class TestTd1Restore(Td1Case):
         # TD is a property of the filament, not of the device that read it. Rewiring
         # scanners must not silently wipe what the machine already measured
         self.manager.apply(0, record())
-        self.manager.paths[0]["serial"] = "A_DIFFERENT_SCANNER"
+        self.manager.gate_devices[0] = self.bridge._adopt("A_DIFFERENT_SCANNER")
         errors = self.mmu.gate_maps.load_persisted_state()
         self.assertEqual(errors, [])
         self.assertEqual(self.mmu.gate_td[0], 4.)
@@ -396,36 +410,36 @@ class TestTd1Restore(Td1Case):
 class TestTd1Poll(Td1Case):
     def test_poll_then_disconnect_and_expiry(self):
         now = self.hh.reactor.monotonic()
-        self.manager._poll(now)
-        self.assertEqual(self.manager.pending, {})
-        self.assertEqual(self.manager.devices["SERIAL_A"]["td"], 4.)
-        self.manager.pending[500] = {"deadline": now - 1, "done": False}
-        self.manager._poll(now)
-        self.assertFalse(self.manager.devices["SERIAL_A"]["connected"])
+        self.bridge._poll(now)
+        self.assertEqual(self.bridge.pending, {})
+        self.assertEqual(self.bridge.devices["SERIAL_A"].td, 4.)
+        self.bridge.pending[500] = {"deadline": now - 1, "done": False}
+        self.bridge._poll(now)
+        self.assertFalse(self.bridge.devices["SERIAL_A"].connected)
         self.owner(0)
-        self.manager._disconnect()
-        self.assertFalse(self.manager.connected)
-        self.assertEqual(self.manager.owners, {})
-        self.assertEqual(self.manager._poll(now), self.hh.reactor.NEVER)
+        self.bridge._disconnect()
+        self.assertFalse(self.bridge.connected)
+        self.assertEqual(self.owners(), {})
+        self.assertEqual(self.bridge._poll(now), self.hh.reactor.NEVER)
 
     def test_poll_backs_off_when_nothing_consumes_readings(self):
         from extras.mmu.mmu_td1 import TD1_POLL_ACTIVE, TD1_POLL_IDLE
         now = self.hh.reactor.monotonic()
         # Nothing is auto-updating and nothing is capturing: don't hammer Moonraker
-        self.assertEqual(self.manager._poll(now), now + TD1_POLL_IDLE)
-        self.manager.devices["SERIAL_A"]["auto"] = True
-        self.manager.pending.clear()
-        self.assertEqual(self.manager._poll(now), now + TD1_POLL_ACTIVE)
-        self.manager.devices["SERIAL_A"]["auto"] = False
-        self.manager.pending.clear()
+        self.assertEqual(self.bridge._poll(now), now + TD1_POLL_IDLE)
+        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.pending.clear()
+        self.assertEqual(self.bridge._poll(now), now + TD1_POLL_ACTIVE)
+        self.bridge.devices["SERIAL_A"].auto = False
+        self.bridge.pending.clear()
         self.owner(0)
-        self.assertEqual(self.manager._poll(now), now + TD1_POLL_ACTIVE)
+        self.assertEqual(self.bridge._poll(now), now + TD1_POLL_ACTIVE)
 
     def test_missing_remote_method_is_nonfatal(self):
         with patch.object(self.hh.webhooks, "call_remote_method",
                           side_effect=self.mmu.printer.command_error("missing")):
-            self.manager._poll(self.hh.reactor.monotonic())
-        self.assertEqual(self.manager.pending, {})
+            self.bridge._poll(self.hh.reactor.monotonic())
+        self.assertEqual(self.bridge.pending, {})
 
 
 class TestTd1Refresh(Td1Case):
@@ -433,39 +447,40 @@ class TestTd1Refresh(Td1Case):
         from extras.mmu.mmu_td1 import MmuTd1BridgeError
         self.hh.webhooks.sink = lambda *args: None
         with self.assertRaisesRegex(MmuTd1BridgeError, "timed out"):
-            self.manager.refresh()
-        self.assertEqual(self.manager.pending, {})
+            self.bridge.refresh()
+        self.assertEqual(self.bridge.pending, {})
 
     def test_failure_and_reset(self):
         from extras.mmu.mmu_td1 import MmuTd1BridgeError
         def failed(method, values):
             if method == "mmu_td1_request":
-                self.manager._callback(Request(request_id=values["request_id"],
+                self.bridge._callback(Request(request_id=values["request_id"],
                                                error="offline", devices={}))
         self.hh.webhooks.sink = failed
         with self.assertRaisesRegex(MmuTd1BridgeError, "offline"):
-            self.manager.refresh()
-        self.assertFalse(self.manager.devices["SERIAL_A"]["connected"])
+            self.bridge.refresh()
+        self.assertFalse(self.bridge.devices["SERIAL_A"].connected)
         self.hh.webhooks.sink = self.respond
-        self.manager.pending.clear()
-        self.manager.refresh("SERIAL_A", reset=True)
-        self.assertTrue(self.manager.devices["SERIAL_A"]["connected"])
+        self.bridge.pending.clear()
+        self.bridge.refresh("SERIAL_A", reset=True)
+        self.assertTrue(self.bridge.devices["SERIAL_A"].connected)
         self.assertTrue(self.hh.webhooks.calls_to("mmu_td1_request")[-1]["reset"])
 
 
 class TestTd1Device(Td1Case):
     def test_missing_disabled_disconnected_and_error(self):
         from extras.mmu.mmu_utils import MmuError
-        device = self.manager.devices["SERIAL_A"]
+        device = self.bridge.devices["SERIAL_A"]
         with self.assertRaisesRegex(MmuError, "disconnected"):
             self.manager.device(0)
-        device["enabled"] = False
+        device.enabled = False
         with self.assertRaisesRegex(MmuError, "disabled"):
             self.manager.device(0)
-        device.update(enabled=True, connected=True, error="optics", error_kind="device")
+        device.enabled, device.connected = True, True
+        device.error, device.error_kind = "optics", "device"
         with self.assertRaisesRegex(MmuError, "optics"):
             self.manager.device(0)
-        self.manager.paths[0]["serial"] = "MISSING"
+        self.manager.gate_devices[0] = None
         with self.assertRaisesRegex(MmuError, "no scanner"):
             self.manager.device(0)
 
@@ -475,13 +490,13 @@ class TestTd1WaitMeasurement(Td1Case):
         # The default bridge deadline is longer than the default capture timeout, so an
         # uncapped round trip would silently overrun the caller's own deadline
         from extras.mmu.mmu_td1 import MmuTd1NoReading, TD1_REQUEST_TIMEOUT
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         timeouts = []
-        original = self.manager.refresh
+        original = self.bridge.refresh
         def capped(*args, **kwargs):
             timeouts.append(kwargs.get("timeout"))
             return original(*args, **kwargs)
-        with patch.object(self.manager, "refresh", side_effect=capped):
+        with patch.object(self.bridge, "refresh", side_effect=capped):
             with self.assertRaises(MmuTd1NoReading):
                 self.manager.wait_measurement(0, "2026-09-19T00:00:00+00:00", 1.)
         self.assertTrue(timeouts)
@@ -491,29 +506,29 @@ class TestTd1WaitMeasurement(Td1Case):
     def test_a_transport_stall_is_not_a_hard_failure(self):
         # One slow round trip inside a longer wait is just "no reading yet"
         from extras.mmu.mmu_td1 import MmuTd1BridgeTimeout
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         attempts = []
         def flaky(*args, **kwargs):
             attempts.append(1)
             if len(attempts) < 3:
                 raise MmuTd1BridgeTimeout("TD-1: Moonraker response timed out")
-            self.manager.update_devices({"SERIAL_A": record(second=5)})
-        with patch.object(self.manager, "refresh", side_effect=flaky):
+            self.bridge.update_devices({"SERIAL_A": record(second=5)})
+        with patch.object(self.bridge, "refresh", side_effect=flaky):
             result = self.manager.wait_measurement(0, "2026-09-19T00:00:00+00:00", 5.)
         self.assertEqual(result["scan_time"], "2026-09-19T00:00:05+00:00")
         self.assertEqual(len(attempts), 3)
 
     def test_an_unusable_bridge_propagates_instead_of_spinning(self):
         from extras.mmu.mmu_td1 import MmuTd1BridgeError
-        self.manager.update_devices({"SERIAL_A": record()})
-        with patch.object(self.manager, "refresh",
+        self.bridge.update_devices({"SERIAL_A": record()})
+        with patch.object(self.bridge, "refresh",
                           side_effect=MmuTd1BridgeError("TD-1: bridge unavailable")):
             with self.assertRaisesRegex(MmuTd1BridgeError, "bridge unavailable"):
                 self.manager.wait_measurement(0, "2026-09-19T00:00:00+00:00", 5.)
 
     def test_returns_immediately_when_a_newer_reading_is_already_cached(self):
-        self.manager.update_devices({"SERIAL_A": record(second=5)})
-        with patch.object(self.manager, "refresh", side_effect=AssertionError("refreshed")):
+        self.bridge.update_devices({"SERIAL_A": record(second=5)})
+        with patch.object(self.bridge, "refresh", side_effect=AssertionError("refreshed")):
             result = self.manager.wait_measurement(0, "2026-09-19T00:00:00+00:00", 5.)
         self.assertEqual(result["scan_time"], "2026-09-19T00:00:05+00:00")
 
@@ -522,29 +537,29 @@ class TestTd1BeginLoad(Td1Case):
     def test_disabled_and_unconfigured_skip(self):
         self.assertIsNone(self.manager.begin_load(-1))
         self.assertIsNone(self.manager.begin_load(0))
-        self.manager.devices["SERIAL_A"]["auto"] = True
-        self.manager.devices["SERIAL_A"]["enabled"] = False
+        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].enabled = False
         self.assertIsNone(self.manager.begin_load(0))
-        self.manager.paths[1]["serial"] = ""
+        self.manager.gate_devices[1] = None
         self.assertIsNone(self.manager.begin_load(1))
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
 
     def test_arms_without_a_blocking_bridge_call(self):
         # begin_load runs inside every tool change - it must never wait on Moonraker
         self.param(0, "td1_capture_on_load", 1)
-        self.manager.update_devices({"SERIAL_A": record()})
-        with patch.object(self.manager, "refresh", side_effect=AssertionError("blocked")):
+        self.bridge.update_devices({"SERIAL_A": record()})
+        with patch.object(self.bridge, "refresh", side_effect=AssertionError("blocked")):
             token = self.manager.begin_load(0)
         self.assertEqual(token["gate"], 0)
         self.assertTrue(token["capture"])
-        self.assertIs(self.manager.owners["SERIAL_A"], token)
+        self.assertIs(self.owners()["SERIAL_A"], token)
 
     def test_unhealthy_device_disarms_quietly(self):
         self.param(0, "td1_capture_on_load", 1)
-        self.manager.update_devices({}) # Disconnected
+        self.bridge.update_devices({}) # Disconnected
         with patch.object(self.mmu, "log_debug") as debug:
             self.assertIsNone(self.manager.begin_load(0))
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
         self.assertTrue(any("disconnected" in c.args[0] for c in debug.call_args_list))
 
 
@@ -552,20 +567,20 @@ class TestTd1EndLoad(Td1Case):
     def test_success_and_failure(self):
         self.param(0, "td1_capture_on_load", 1)
         self.mmu.select_gate(0)
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
-        self.manager.update_devices({"SERIAL_A": record(second=1)})
+        self.bridge.update_devices({"SERIAL_A": record(second=1)})
         self.manager.end_load(token, True)
         self.assertEqual(self.mmu.gate_td[0], 4.)
         self.manager.end_load(token, False)
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
         self.manager.end_load(None, True)
 
     def test_identity_change_and_timeout_do_not_apply(self):
         from extras.mmu.mmu_td1 import MmuTd1NoReading
         self.mmu.select_gate(0)
         self.param(0, "td1_capture_on_load", 1)
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
         self.manager.filament_changed(0)
         self.manager.end_load(token, True)
@@ -582,15 +597,15 @@ class TestTd1EndLoad(Td1Case):
         # Tool changes must not pay for TD-1: stay armed and let the poller deliver
         self.mmu.select_gate(0)
         self.param(0, "td1_capture_on_load", 1)
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
         with patch.object(self.mmu, "is_printing", return_value=True), \
                 patch.object(self.manager, "wait_measurement") as wait:
             self.manager.end_load(token, True)
         wait.assert_not_called()
-        self.assertIs(self.manager.owners["SERIAL_A"], token)
+        self.assertIs(self.owners()["SERIAL_A"], token)
         self.mmu.set_filament_pos_state(10)
-        self.manager.update_devices({"SERIAL_A": record(second=1)})
+        self.bridge.update_devices({"SERIAL_A": record(second=1)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
 
 
@@ -622,7 +637,7 @@ class TestTd1CommandSelection(Td1Case):
     def test_register_warns_when_the_gate_has_no_identity_yet(self):
         # Assigning a spool or tag later clears the measurement, so registering first
         # silently loses it. The order isn't guessable - say so
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         with patch.object(self.mmu, "log_warning") as warning:
             self.hh.run_gcode("MMU_TD1 GATE=0 REGISTER=1")
         self.assertEqual(self.mmu.gate_td[0], 4.)
@@ -633,7 +648,7 @@ class TestTd1CommandSelection(Td1Case):
         self.assertIsNone(self.mmu.gate_td[0])
 
     def test_register_is_quiet_once_the_gate_has_a_spool(self):
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.mmu.gate_maps.assign_spool_id(0, 42)
         with patch.object(self.mmu, "log_warning") as warning:
             self.hh.run_gcode("MMU_TD1 GATE=0 REGISTER=1")
@@ -643,7 +658,7 @@ class TestTd1CommandSelection(Td1Case):
 
     def test_register_is_quiet_when_only_a_tag_is_known(self):
         # Spoolman off, NFC only: a tag is identity enough
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.mmu.gate_maps.set_gate_rfid(1, "04a1b2c3")
         with patch.object(self.mmu, "log_warning") as warning:
             self.hh.run_gcode("MMU_TD1 GATE=1 REGISTER=1")
@@ -652,12 +667,12 @@ class TestTd1CommandSelection(Td1Case):
                              for c in warning.call_args_list))
 
     def test_register_on_a_gate_without_a_scanner_says_so(self):
-        self.manager.paths[1]["serial"] = ""
+        self.manager.gate_devices[1] = None
         with self.assertRaisesRegex(Exception, r"No TD-1 scanner configured for gate\(s\) 1"):
             self.hh.run_gcode("MMU_TD1 GATE=1 REGISTER=1")
 
     def test_bare_status_on_a_gate_without_a_scanner_just_says_so(self):
-        self.manager.paths[1]["serial"] = ""
+        self.manager.gate_devices[1] = None
         with patch.object(self.mmu, "log_info") as info:
             self.hh.run_gcode("MMU_TD1 GATE=1")
         self.assertEqual(self.hh.errors, [])
@@ -728,10 +743,13 @@ class TestTd1MultiUnit(unittest.TestCase):
         with session(profile) as hh:
             hh.boot(calibrate=True)
             self.assertEqual(hh.errors, [])
-            manager = hh.mmu.td1
-            self.assertEqual(len(manager.paths), 8)
-            self.assertEqual(list(manager.devices), ["SERIAL_A"])
-            self.assertEqual(manager.gates_for("SERIAL_A"), list(range(8)))
+            bridge = hh.mmu.td1
+            self.assertEqual(list(bridge.devices), ["SERIAL_A"])
+            self.assertEqual(bridge.gates_for("SERIAL_A"), list(range(8)))
+            # One serial named by two units is ONE device object, so the debt and the
+            # armed token are shared rather than duplicated per unit
+            devices = {id(hh.mmu.mmu_unit(g).td1_manager.device_for(g)) for g in range(8)}
+            self.assertEqual(len(devices), 1)
 
 
 
@@ -826,7 +844,7 @@ class TestTd1CheckGate(Td1Case):
         from extras.mmu.mmu_td1 import MmuTd1BridgeError
         self.hh.place_filament(0)
         self.mmu.gate_maps.set_gate_status(0, -1)
-        with patch.object(self.manager, "refresh",
+        with patch.object(self.bridge, "refresh",
                           side_effect=MmuTd1BridgeError("TD-1: bridge unavailable")), \
                 patch.object(self.mmu, "load_sequence") as load:
             self.hh.run_gcode("MMU_CHECK_GATE GATE=0 TD1=1")
@@ -852,7 +870,7 @@ class TestTd1CheckGate(Td1Case):
 
     def test_unconfigured_gate_uses_normal_availability_check(self):
         self.hh.place_filament(0)
-        self.manager.paths[0]["serial"] = ""
+        self.manager.gate_devices[0] = None
         self.hh.run_gcode("MMU_CHECK_GATE GATE=0 TD1=1")
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.mmu.gate_status[0], 1)
@@ -867,85 +885,85 @@ class TestTd1AutoGuards(Td1Case):
         for scenario in scenarios:
             with self.subTest(scenario=scenario):
                 self.manager.filament_changed(0)
-                self.manager.update_devices({"SERIAL_A": record()})
+                self.bridge.update_devices({"SERIAL_A": record()})
                 self.mmu.gate_selected = 0
                 self.mmu.filament_pos = FILAMENT_POS_LOADED
-                device = self.manager.devices["SERIAL_A"]
-                device.update(enabled=True, auto=True, connected=True)
-                self.manager.busy = False
+                device = self.bridge.devices["SERIAL_A"]
+                device.enabled = device.auto = device.connected = True
+                self.bridge.busy = False
                 self.owner(0)
                 data = record(second=1)
                 if scenario == "unknown":
-                    self.manager.owners.clear()
+                    self.clear_owners()
                 elif scenario == "disabled":
-                    device["enabled"] = False
+                    device.enabled = False
                 elif scenario == "manual":
-                    device["auto"] = False
+                    device.auto = False
                 elif scenario == "reconnect":
-                    device["connected"] = False
+                    device.connected = False
                 elif scenario == "same":
                     data = record()
                 elif scenario == "busy":
-                    self.manager.busy = True
+                    self.bridge.busy = True
                 elif scenario == "revision":
                     self.manager.revisions[0] += 1
                 elif scenario == "selected":
                     self.mmu.gate_selected = 1
                 elif scenario == "unloaded":
                     self.mmu.filament_pos = 0
-                self.manager.update_devices({"SERIAL_A": data})
+                self.bridge.update_devices({"SERIAL_A": data})
                 self.assertIsNone(self.mmu.gate_td[0])
-                self.assertEqual(device["td"], 4.)
-        self.manager.busy = False
+                self.assertEqual(device.td, 4.)
+        self.bridge.busy = False
 
     def test_capture_on_load_arms_attribution_without_auto(self):
         from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.mmu.gate_selected = 0
         self.mmu.filament_pos = FILAMENT_POS_LOADED
-        self.assertFalse(self.manager.devices["SERIAL_A"]["auto"])
+        self.assertFalse(self.bridge.devices["SERIAL_A"].auto)
         self.owner(0, capture=True)
-        self.manager.update_devices({"SERIAL_A": record(second=1)})
+        self.bridge.update_devices({"SERIAL_A": record(second=1)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
 
     def test_first_reading_with_known_owner_applies_and_disconnect_clears_owner(self):
         from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
-        self.manager.update_devices({"SERIAL_A": {}})
+        self.bridge.update_devices({"SERIAL_A": {}})
         self.mmu.gate_selected = 0
         self.mmu.filament_pos = FILAMENT_POS_LOADED
-        self.manager.devices["SERIAL_A"]["auto"] = True
+        self.bridge.devices["SERIAL_A"].auto = True
         self.owner(0)
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.assertEqual(self.mmu.gate_td[0], 4.)
-        self.assertEqual(self.manager.devices["SERIAL_A"]["last_outcome"], "applied to gate 0")
-        self.manager.update_devices({})
-        self.assertEqual(self.manager.owners, {})
-        self.assertFalse(self.manager.devices["SERIAL_A"]["connected"])
+        self.assertEqual(self.bridge.devices["SERIAL_A"].last_outcome, "applied to gate 0")
+        self.bridge.update_devices({})
+        self.assertEqual(self.owners(), {})
+        self.assertFalse(self.bridge.devices["SERIAL_A"].connected)
         self.assertEqual(self.mmu.gate_td[0], 4.)
 
     def test_malformed_payload_and_unassigned_discovery(self):
-        self.manager.update_devices([])
-        self.assertEqual(self.manager.devices["SERIAL_A"]["error"], "Invalid TD-1 device list")
-        self.manager.update_devices({"UNASSIGNED": record()})
-        self.assertEqual(self.manager.gates_for("UNASSIGNED"), [])
+        self.bridge.update_devices([])
+        self.assertEqual(self.bridge.devices["SERIAL_A"].error, "Invalid TD-1 device list")
+        self.bridge.update_devices({"UNASSIGNED": record()})
+        self.assertEqual(self.bridge.gates_for("UNASSIGNED"), [])
         self.assertEqual(self.mmu.gate_td, [None] * 4)
 
 
 class TestTd1ResponseOrdering(Td1Case):
     def test_older_pending_reply_cannot_overwrite_newer_device_state(self):
-        self.manager.pending = {10: {"wait": True}, 11: {"wait": True}}
-        self.manager._callback(Request(request_id=11, devices={"SERIAL_A": record(td=7)}))
-        self.manager._callback(Request(request_id=10, devices={"SERIAL_A": record(td=3)}))
-        self.assertTrue(self.manager.pending[10]["done"])
-        self.assertEqual(self.manager.devices["SERIAL_A"]["td"], 7.)
-        self.assertEqual(self.manager.last_response, 11)
+        self.bridge.pending = {10: {"wait": True}, 11: {"wait": True}}
+        self.bridge._callback(Request(request_id=11, devices={"SERIAL_A": record(td=7)}))
+        self.bridge._callback(Request(request_id=10, devices={"SERIAL_A": record(td=3)}))
+        self.assertTrue(self.bridge.pending[10]["done"])
+        self.assertEqual(self.bridge.devices["SERIAL_A"].td, 7.)
+        self.assertEqual(self.bridge.last_response, 11)
 
     def test_expired_poll_clears_ownership(self):
         self.owner(0)
-        self.manager.pending[90] = {"deadline": 0, "done": False}
-        self.manager._poll(self.hh.reactor.monotonic())
-        self.assertEqual(self.manager.owners, {})
-        self.assertEqual(self.manager.devices["SERIAL_A"]["last_outcome"], "disconnected")
+        self.bridge.pending[90] = {"deadline": 0, "done": False}
+        self.bridge._poll(self.hh.reactor.monotonic())
+        self.assertEqual(self.owners(), {})
+        self.assertEqual(self.bridge.devices["SERIAL_A"].last_outcome, "disconnected")
 
 
 class TestTd1ConfigRender(unittest.TestCase):
@@ -963,12 +981,13 @@ class TestTd1ConfigRender(unittest.TestCase):
         with session(advanced) as hh:
             hh.boot(calibrate=True)
             self.assertEqual(hh.errors, [])
-            manager = hh.mmu.td1
+            bridge = hh.mmu.td1
+            manager = hh.mmu.mmu_unit(0).td1_manager
             p = hh.mmu.mmu_unit(0).p
-            self.assertEqual([x["serial"] for x in manager.paths], ["A", "B", "", "A"])
+            self.assertEqual([manager.serial_for(g) for g in range(4)], ["A", "B", "", "A"])
             self.assertEqual(p.td1_capture_timeout, 8)
             self.assertTrue(p.td1_capture_on_load)
-            self.assertTrue(manager.devices["A"]["auto"])
+            self.assertTrue(bridge.devices["A"].auto)
 
     def test_advanced_options_hidden_still_render_their_defaults(self):
         # The prompts are conditional, not the symbols - hiding them must not leave the
@@ -1044,7 +1063,7 @@ class TestTd1ExtraCommands(Td1Case):
         self.hh.run_gcode("MMU_TD1 GATE=0 UNIT=0 DETAILS=1")
         self.assertEqual(self.hh.errors, [])
         # A disabled scanner is reported as such rather than raising
-        self.manager.set_device_state("SERIAL_A", enabled=False)
+        self.bridge.set_device_state("SERIAL_A", enabled=False)
         with patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1 GATE=0")
         self.assertEqual(self.hh.errors, [])
@@ -1071,29 +1090,29 @@ class TestTd1ExtraCommands(Td1Case):
 
 class TestTd1LoadHooks(Td1Case):
     def test_normal_load_establishes_owner_and_unload_clears_it(self):
-        self.manager.devices["SERIAL_A"]["auto"] = True
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.hh.place_filament(0)
         self.mmu.gate_maps.set_gate_status(0, 1)
         self.hh.heat_extruder()
         self.hh.run_gcode("MMU_LOAD")
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.mmu.filament_pos, 10)
-        self.assertEqual(self.manager.owners["SERIAL_A"]["gate"], 0)
-        self.manager.update_devices({"SERIAL_A": record(second=1)})
+        self.assertEqual(self.owners()["SERIAL_A"]["gate"], 0)
+        self.bridge.update_devices({"SERIAL_A": record(second=1)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
         self.hh.run_gcode("MMU_UNLOAD")
         self.assertEqual(self.hh.errors, [])
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
         self.assertEqual(self.mmu.filament_pos, 0)
 
     def test_loading_never_blocks_on_moonraker(self):
-        self.manager.devices["SERIAL_A"]["auto"] = True
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.hh.place_filament(0)
         self.mmu.gate_maps.set_gate_status(0, 1)
         self.hh.heat_extruder()
-        with patch.object(self.manager, "refresh", side_effect=AssertionError("blocked")):
+        with patch.object(self.bridge, "refresh", side_effect=AssertionError("blocked")):
             self.hh.run_gcode("MMU_LOAD")
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.mmu.filament_pos, 10)
@@ -1134,38 +1153,38 @@ class TestTd1LoadCaptureIdentity(Td1Case):
     def test_identity_change_while_waiting_is_not_applied(self):
         self.mmu.select_gate(0)
         self.param(0, "td1_capture_on_load", 1)
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
         def replace(*args):
             self.manager.filament_changed(0)
             return record(second=1)
         with patch.object(self.manager, "wait_measurement", side_effect=replace):
             self.manager.end_load(token, True)
-        self.assertEqual(self.manager.owners, {})
+        self.assertEqual(self.owners(), {})
         self.assertIsNone(self.mmu.gate_td[0])
 
     def test_auto_without_explicit_capture_keeps_owner(self):
         self.mmu.select_gate(0)
-        self.manager.devices["SERIAL_A"]["auto"] = True
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
         with patch.object(self.manager, "wait_measurement") as wait:
             self.manager.end_load(token, True)
         wait.assert_not_called()
-        self.assertIs(self.manager.owners["SERIAL_A"], token)
+        self.assertIs(self.owners()["SERIAL_A"], token)
 
 
 class TestTd1InFlightAuto(Td1Case):
     def test_reading_received_during_load_is_applied_after_success(self):
         self.mmu.select_gate(0)
-        self.manager.devices["SERIAL_A"]["auto"] = True
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
         self.mmu.filament_pos = 2
-        self.manager.update_devices({"SERIAL_A": record(second=1)})
+        self.bridge.update_devices({"SERIAL_A": record(second=1)})
         self.assertIsNone(self.mmu.gate_td[0])
         self.mmu.filament_pos = 10
-        self.manager.update_devices({"SERIAL_A": record(second=2)})
+        self.bridge.update_devices({"SERIAL_A": record(second=2)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
         del token
 
@@ -1196,8 +1215,8 @@ class TestTd1MultiUnitValidation(unittest.TestCase):
 
 class TestTd1CaptureStatus(Td1Case):
     def test_only_the_active_reader_reports_as_capturing(self):
-        self.manager.update_devices({"SERIAL_A": record(), "OTHER": record()})
-        self.manager.active_serial = "SERIAL_A"
+        self.bridge.update_devices({"SERIAL_A": record(), "OTHER": record()})
+        self.bridge.active_serial = "SERIAL_A"
         with patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1")
         message = "\n".join(c.args[0] for c in report.call_args_list)
@@ -1207,9 +1226,9 @@ class TestTd1CaptureStatus(Td1Case):
     def test_owner_loss_during_load_prevents_application(self):
         self.mmu.select_gate(0)
         self.param(0, "td1_capture_on_load", 1)
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
-        self.manager.owners.clear()
+        self.clear_owners()
         with patch.object(self.manager, "wait_measurement") as wait:
             self.manager.end_load(token, True)
         wait.assert_not_called()
@@ -1224,9 +1243,10 @@ class TestTd1DeviceState(Td1Case):
         self.hh.run_gcode("MMU_TD1 SERIAL=SERIAL_A AUTO=1")
         self.assertEqual(self.mmu.var_manager.get("mmu_state_td1_devices", None), None)
         # A restart rebuilds from configuration alone
-        self.manager.devices["SERIAL_A"] = self.manager._new_device("SERIAL_A", auto=False)
-        self.assertTrue(self.manager.devices["SERIAL_A"]["enabled"])
-        self.assertFalse(self.manager.devices["SERIAL_A"]["auto"])
+        from extras.mmu.unit.td1.mmu_td1_device import MmuTd1Device
+        self.bridge.devices["SERIAL_A"] = MmuTd1Device("SERIAL_A")
+        self.assertTrue(self.bridge.devices["SERIAL_A"].enabled)
+        self.assertFalse(self.bridge.devices["SERIAL_A"].auto)
 
     def test_command_reports_the_runtime_scope(self):
         with patch.object(self.mmu, "log_always") as report:
@@ -1235,17 +1255,17 @@ class TestTd1DeviceState(Td1Case):
 
     def test_changing_policy_drops_stale_attribution(self):
         self.owner(0)
-        self.manager.set_device_state("SERIAL_A", auto=True)
-        self.assertEqual(self.manager.owners, {})
+        self.bridge.set_device_state("SERIAL_A", auto=True)
+        self.assertEqual(self.owners(), {})
 
 
 class TestTd1Ready(Td1Case):
     def test_no_configured_reader_does_not_start_polling(self):
-        self.manager.devices.clear()
-        self.manager.connected = False
+        self.bridge.devices.clear()
+        self.bridge.connected = False
         with patch.object(self.hh.reactor, "register_timer") as timer:
-            self.manager._ready()
-        self.assertTrue(self.manager.connected)
+            self.bridge._ready()
+        self.assertTrue(self.bridge.connected)
         timer.assert_not_called()
 
 
@@ -1254,7 +1274,7 @@ class TestTd1InvalidateOtherOwner(Td1Case):
         token = self.owner(1, serial="OTHER")
         self.manager.apply(0, record())
         self.mmu.gate_maps.gate_filament_changed(0)
-        self.assertEqual(self.manager.owners, {"OTHER": token})
+        self.assertEqual(self.owners(), {"OTHER": token})
         self.assertIsNone(self.mmu.gate_td[0])
 
 
@@ -1277,7 +1297,7 @@ class TestTd1Attribution(Td1Case):
         """Answer every bridge poll from 'plan', which returns a Moonraker payload."""
         def sink(method, values):
             if method == "mmu_td1_request":
-                self.manager._callback(Request(
+                self.bridge._callback(Request(
                     request_id=values["request_id"], devices=plan(), error=None))
         self.hh.webhooks.sink = sink
 
@@ -1304,8 +1324,8 @@ class TestTd1Attribution(Td1Case):
         # Settling a debt costs one reading, not the whole capture: the gate keeps
         # waiting and takes the next one
         blank = {"SERIAL_A": {"td": None, "color": None, "scan_time": None}}
-        self.manager.update_devices(blank) # Connected, nothing measured yet
-        self.manager.owe("SERIAL_A", 0)
+        self.bridge.update_devices(blank) # Connected, nothing measured yet
+        self.device().owe(0)
         readings = iter([record(second=1, td=7.), record(second=2, td=8.)])
         current = {"data": blank}
         def plan():
@@ -1321,68 +1341,68 @@ class TestTd1Attribution(Td1Case):
     def test_an_owner_dropped_without_a_reading_leaves_a_debt(self):
         # The printing path never waits, so nothing times out - the token is simply
         # discarded at the next tool change, and that is equally a debt
-        self.manager.update_devices({"SERIAL_A": record()})
-        self.manager.owners.clear()
+        self.bridge.update_devices({"SERIAL_A": record()})
+        self.clear_owners()
         self.owner(0, capture=False)
         self.manager.release(gate=0)
-        self.assertEqual(self.manager.devices["SERIAL_A"]["unclaimed"], 0)
-        self.assertFalse(self.manager.claimable("SERIAL_A", 1))
-        self.assertTrue(self.manager.claimable("SERIAL_A", 0),
+        self.assertEqual(self.bridge.devices["SERIAL_A"].unclaimed, 0)
+        self.assertFalse(self.device().claimable(1))
+        self.assertTrue(self.device().claimable(0),
                         "the gate that is owed can still claim its own reading")
 
     def test_a_satisfied_owner_leaves_no_debt(self):
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         token = self.owner(0, capture=False)
         token["satisfied"] = True
         self.manager.release(gate=0)
-        self.assertIsNone(self.manager.devices["SERIAL_A"]["unclaimed"])
+        self.assertIsNone(self.bridge.devices["SERIAL_A"].unclaimed)
 
     def test_the_passive_path_refuses_a_reading_owed_elsewhere(self):
         from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.mmu.select_gate(1)
         self.mmu.filament_pos = FILAMENT_POS_LOADED
-        self.manager.devices["SERIAL_A"]["auto"] = True
+        self.bridge.devices["SERIAL_A"].auto = True
         self.owner(1, capture=False)
-        self.manager.owe("SERIAL_A", 0)
-        self.manager.update_devices({"SERIAL_A": record(second=5, td=9.)})
+        self.device().owe(0)
+        self.bridge.update_devices({"SERIAL_A": record(second=5, td=9.)})
         self.assertIsNone(self.mmu.gate_td[1], "owed to gate 0, so attributed to nobody")
-        self.assertIsNone(self.manager.devices["SERIAL_A"]["unclaimed"], "debt settled")
+        self.assertIsNone(self.bridge.devices["SERIAL_A"].unclaimed, "debt settled")
         # ...and with the debt gone the next reading is genuinely gate 1's
-        self.manager.update_devices({"SERIAL_A": record(second=6, td=9.5)})
+        self.bridge.update_devices({"SERIAL_A": record(second=6, td=9.5)})
         self.assertEqual(self.mmu.gate_td[1], 9.5)
 
     def test_busy_is_set_while_waiting_and_always_cleared(self):
         # A leaked 'busy' would silence the passive path and pin polling for the rest
         # of the session, so the flag has to survive the failure case too
         blank = {"SERIAL_A": {"td": None, "color": None, "scan_time": None}}
-        self.manager.update_devices(blank) # Connected, nothing measured yet
+        self.bridge.update_devices(blank) # Connected, nothing measured yet
         seen = []
-        self.feed(lambda: (seen.append(self.manager.busy), blank)[1])
+        self.feed(lambda: (seen.append(self.bridge.busy), blank)[1])
         self.param(0, "td1_capture_timeout", 0.2)
         with self.assertRaises(Exception):
             self.manager.capture(0, None)
         self.assertTrue(any(seen), "busy must be set while a capture is waiting")
-        self.assertFalse(self.manager.busy)
-        self.assertEqual(self.manager.active_serial, "")
+        self.assertFalse(self.bridge.busy)
+        self.assertEqual(self.bridge.active_serial, "")
 
 
 class TestTd1RebootedScanner(Td1Case):
     def test_a_rebooted_scanner_drops_its_cached_reading(self):
         # Moonraker reports every field null after a power cycle. Keeping the old
         # values made status quote a measurement the device no longer stands behind
-        self.manager.update_devices({"SERIAL_A": record()})
-        self.assertIsNotNone(self.manager.devices["SERIAL_A"]["scan_time"])
-        self.manager.update_devices({"SERIAL_A": {"td": None, "color": None, "scan_time": None}})
-        device = self.manager.devices["SERIAL_A"]
-        self.assertEqual((device["td"], device["color"], device["scan_time"]),
+        self.bridge.update_devices({"SERIAL_A": record()})
+        self.assertIsNotNone(self.bridge.devices["SERIAL_A"].scan_time)
+        self.bridge.update_devices({"SERIAL_A": {"td": None, "color": None, "scan_time": None}})
+        device = self.bridge.devices["SERIAL_A"]
+        self.assertEqual((device.td, device.color, device.scan_time),
                          (None, None, None))
 
     def test_register_on_a_rebooted_scanner_reports_rather_than_shutting_down(self):
         # MMU_TD1 INIT=1 then REGISTER=1 is the documented recovery flow. measurement()
         # raises ValueError, which is not an MmuError - escaping a g-code handler makes
         # klipper call invoke_shutdown() rather than print an error
-        self.manager.update_devices({"SERIAL_A": record()})
+        self.bridge.update_devices({"SERIAL_A": record()})
         self.data = {"SERIAL_A": {"td": None, "color": None, "scan_time": None}}
         with patch.object(self.mmu, "handle_mmu_error") as handled:
             self.hh.run_gcode("MMU_TD1 GATE=0 REGISTER=1")

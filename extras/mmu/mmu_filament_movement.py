@@ -2440,8 +2440,9 @@ class MmuFilamentMovement:
         self.set_filament_direction(DIRECTION_LOAD)
         self.initialize_filament_position(dwell=None) # Reset measurement to 0
         td1_token = None
-        if not extruder_only and full and not skip_extruder:
-            td1_token = self.td1.begin_load(self.gate_selected)
+        td1_mgr = self.mmu_unit().td1_manager if self.gate_selected >= 0 else None
+        if td1_mgr is not None and not extruder_only and full and not skip_extruder:
+            td1_token = td1_mgr.begin_load(self.gate_selected)
         td1_success = False
 
         try:
@@ -2627,7 +2628,8 @@ class MmuFilamentMovement:
             raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
 
         finally:
-            self.td1.end_load(td1_token, td1_success)
+            if td1_mgr is not None:
+                td1_mgr.end_load(td1_token, td1_success)
             self._track_gate_statistics('loads', self.gate_selected)
 
             if not extruder_only:

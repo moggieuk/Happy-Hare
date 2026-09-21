@@ -181,7 +181,8 @@ class TestTd1InvalidInput(unittest.TestCase):
         with session(profile) as hh:
             hh.boot(calibrate=True)
             self.assertEqual(hh.errors, [])
-            self.assertEqual([p["serial"] for p in hh.mmu.td1.paths], [""] * 4)
+            mgr = hh.mmu.mmu_unit(0).td1_manager
+            self.assertEqual([mgr.serial_for(g) for g in range(4)], [""] * 4)
 
     def test_a_switched_off_gate_renders_no_serial_even_if_one_was_typed(self):
         # kconfig keeps the value behind a hidden prompt, and build.py reads the raw
@@ -197,9 +198,10 @@ class TestTd1InvalidInput(unittest.TestCase):
         with session(profile) as hh:
             hh.boot(calibrate=True)
             self.assertEqual(hh.errors, [])
-            self.assertEqual([p["serial"] for p in hh.mmu.td1.paths],
+            mgr = hh.mmu.mmu_unit(0).td1_manager
+            self.assertEqual([mgr.serial_for(g) for g in range(4)],
                              ["TD1-0042", "TD1-0043", "", "TD1-0042"])
-            self.assertFalse(hh.mmu.td1.needs_measurement(2),
+            self.assertFalse(mgr.needs_measurement(2),
                              "gate 2 has no scanner, so it must not cost a traverse")
 
 
@@ -229,7 +231,8 @@ class TestTd1BlankEntries(unittest.TestCase):
         with session(profile) as hh:
             hh.boot(calibrate=True)
             self.assertEqual(hh.errors, [])
-            return [p["serial"] for p in hh.mmu.td1.paths]
+            mgr = hh.mmu.mmu_unit(0).td1_manager
+            return [mgr.serial_for(g) for g in range(4)]
 
     def test_a_blank_survives_in_every_position(self):
         cases = {

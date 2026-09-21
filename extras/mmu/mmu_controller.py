@@ -29,7 +29,7 @@ from .mmu_led_manager           import MmuLedManager
 from .mmu_filament_movement     import MmuFilamentMovement
 from .mmu_print_state_machine   import MmuPrintStateMachine
 from .mmu_gate_maps             import MmuGateMaps
-from .mmu_td1                   import MmuTd1
+from .mmu_td1                   import MmuTd1Bridge
 from .mmu_nfc_arbiter           import MmuNfcFieldArbiter
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
@@ -87,7 +87,7 @@ class MmuController(MmuFilamentMovement):
         self.led_manager    = MmuLedManager(self)        # Manages leds across all units
         self.sensor_manager = MmuSensorManager(self)     # Manages sensors across all units
         self.gate_maps      = MmuGateMaps(self)          # Gate map / TTG map / EndlessSpool state
-        self.td1            = MmuTd1(self)
+        self.td1            = MmuTd1Bridge(self)   # Moonraker transport for every TD-1 scanner
         self.nfc_arbiter    = MmuNfcFieldArbiter(self)   # NFC "noisy neighbor" field arbitration
 
 
