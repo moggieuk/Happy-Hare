@@ -2034,6 +2034,23 @@ class MmuController(MmuFilamentMovement):
         return self.reactor.NEVER
 
 
+    def clear_pending_tag(self):
+        """
+        Drop what a shared NFC read staged, leaving any other source alone.
+
+        Takes the resolved spool_id with the tag, because that is what resolving the tag
+        produced - keeping it would apply a spool to a gate whose RFID was just discarded.
+        A spool_id staged by hand has no tag beside it and is therefore left, which is how
+        the two are told apart without tracking provenance. Returns whether anything went.
+        """
+        if self.pending_tag is None:
+            return False
+        self.pending_tag = None
+        self.pending_spool_id = -1
+        self._settle_pending()
+        return True
+
+
     def clear_pending_measurement(self):
         """
         Drop what an off-path TD-1 read staged, leaving any other source alone.

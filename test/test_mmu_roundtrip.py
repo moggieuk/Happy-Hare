@@ -352,6 +352,34 @@ class TestPendingCancellation(RoundTripTestCase):
         self.assertEqual(self.rt.mmu.pending_spool_id, -1)
         self.assertIsNone(self.rt.mmu.pending_phase, 'and the overlay with it')
 
+    def test_mmu_nfc_clear_pending_discards_the_tag_and_its_spool(self):
+        """
+        The targeted counterpart of NEXT_SPOOLID=0. A resolved spool_id goes with the tag
+        that produced it - keeping it would assign a spool to a gate whose RFID was just
+        discarded. Nothing else is staged here, so the countdown ends too.
+        """
+        self._pend()                                     # TAG_A resolves to spool 1
+        self.assertEqual(self.rt.mmu.pending_spool_id, 1)
+        self.assertIsNotNone(self.rt.mmu.pending_tag)
+
+        self.rt.run_gcode('MMU_NFC CLEAR_PENDING=1')
+        self.assertIsNone(self.rt.mmu.pending_tag)
+        self.assertEqual(self.rt.mmu.pending_spool_id, -1,
+                         'the spool id was the tag\'s resolution, so it goes too')
+        self.assertIsNone(self.rt.mmu.pending_phase)
+
+    def test_mmu_nfc_clear_pending_leaves_a_hand_set_spool_id_alone(self):
+        """
+        A spool_id typed by hand has no tag beside it, which is how the two are told
+        apart. MMU_NFC has nothing of its own to discard, so it must not touch it.
+        """
+        self.rt.run_gcode('MMU_GATE_MAP NEXT_SPOOLID=77')
+        self.assertEqual(self.rt.mmu.pending_spool_id, 77)
+
+        self.rt.run_gcode('MMU_NFC CLEAR_PENDING=1')
+        self.assertEqual(self.rt.mmu.pending_spool_id, 77, 'not the NFC reader\'s to clear')
+        self.assertEqual(self.rt.mmu.pending_phase, 'pending')
+
     def test_a_cancelled_tag_does_not_re_stage_itself(self):
         """
         The tag is still sitting in front of the shared reader after the cancel. The read
