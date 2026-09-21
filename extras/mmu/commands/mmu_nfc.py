@@ -43,6 +43,9 @@ class MmuNfcCommand(BaseCommand):
         + "APPEND   = [0|1] With REGISTER=1 on a gate that already has a spool assigned, bind the newly scanned tag onto that spool instead of resolving/auto-creating (e.g. a second tag on the same spool)\n"
         + "INIT     = [0|1] (Re)initialize the addressed reader\n"
         + "RELEASE  = [0|1] Release the current target on the addressed reader\n"
+        + "CLEAR_PENDING = [0|1] Discard a tag staged by the shared reader (and any spool id resolved\n"
+        + "           from it). Leaves a TD-1 measurement or a hand-set NEXT_SPOOLID in place, and only\n"
+        + "           ends the pending countdown if nothing is left to apply\n"
         + "INIT_ALL = [0|1] (Re)initialize every reader on every unit\n"
         + "DETAILS  = [0|1] Include actual cached tag UIDs in the status report\n"
         + "(no parameters for status report of all readers)"
@@ -52,6 +55,7 @@ class MmuNfcCommand(BaseCommand):
         + f"{CMD}                        ...Report status of all readers (which have a cached tag)\n"
         + f"{CMD} DETAILS=1              ...As above but show the actual cached UIDs\n"
         + f"{CMD} SHARED=1 ENABLE=0      ...Disable the shared reader\n"
+        + f"{CMD} CLEAR_PENDING=1        ...Discard a staged tag without touching other pending data\n"
         + f"{CMD} GATE=3 READ=1          ...Read the reader on gate 3 and report the result\n"
         + f"{CMD} SHARED=1 READ=1 DEEP=1 ...Read the shared reader and report the parsed tag metadata\n"
         + f"{CMD} SHARED=1 REGISTER=1    ...Read tag and resolve/register it in Spoolman (report only, no assignment)\n"
@@ -95,6 +99,14 @@ class MmuNfcCommand(BaseCommand):
             deep = True
 
         units = mmu.mmu_machine.units
+
+        # Independent of reader addressing - the pending is machine-level, not per-gate -
+        # so handle it and fall through to whatever else was asked for
+        if gcmd.get_int('CLEAR_PENDING', 0, minval=0, maxval=1):
+            if mmu.clear_pending_tag():
+                mmu.log_always("NFC: discarded the staged tag")
+            else:
+                mmu.log_always("NFC: no staged tag to discard")
 
         # INIT_ALL: reset everything quickly (does not touch enable/active flags)
         if init_all:

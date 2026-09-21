@@ -33,6 +33,7 @@ HH_GLOBS = (
     'extras/mmu/*.py',
     'extras/mmu/unit/*.py',
     'extras/mmu/unit/nfc/*.py',
+    'extras/mmu/unit/td1/*.py',
     'extras/mmu/unit/selectors/*.py',
     'extras/mmu/commands/*.py',
 )

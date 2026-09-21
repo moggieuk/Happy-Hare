@@ -204,7 +204,8 @@ class MmuServer:
             self.server.register_remote_method("spoolman_get_spool_by_uid", self.get_spool_by_uid)     # tag scan -> pending spool_id
             self.server.register_remote_method("spoolman_set_spool_uid", self.set_spool_uid)           # register a tag UID onto a spool
 
-        # Moonraker lane data push for slicer integration
+        # TD-1 bridge and lane data push for slicer integration
+        self.server.register_remote_method("mmu_td1_request", self.td1_request)
         self.server.register_remote_method("moonraker_push_lane_data", self.push_lane_data)
         self.server.register_remote_method("moonraker_cleanup_lane_data", self.cleanup_lane_data)
 
@@ -1743,6 +1744,57 @@ class MmuServer:
             await self._log_n_send(msg)
 
 
+    async def td1_request(self, request_id: int, serial: str = "",
+                          reset: bool = False) -> None:
+        '''
+        Replies to the mmu/td1 webhook endpoint, never the G-code queue: Happy Hare needs
+        the result during a command already running, so a queued reply would deadlock
+        behind it. klippy_apis._send_klippy_request() is private because Moonraker offers
+        no public equivalent for a custom endpoint; switch if one appears.
+
+        Needs machine.td1.data / machine.td1.reboot and the internal API transport. Any
+        of that missing comes back as an error string rather than raising, so Happy Hare
+        sees "bridge unavailable" instead of the component failing to load.
+        request_id: Klipper transaction id; serial/reset: reboot one device and await it
+        '''
+        devices = {}
+        error = None
+        try:
+            transport = self.server.lookup_component("internal_transport")
+            if reset:
+                response = await asyncio.wait_for(
+                    transport.call_method("machine.td1.reboot", {"serial": serial}), 5.)
+                if response.get("status") != "ok":
+                    raise ValueError("TD-1 reboot rejected")
+                deadline = time.monotonic() + 25.
+                while True:
+                    await asyncio.sleep(.5)
+                    response = await asyncio.wait_for(
+                        transport.call_method("machine.td1.data"), 5.)
+                    devices = response.get("devices", {})
+                    if serial in devices and not devices[serial].get("error"):
+                        break
+                    if time.monotonic() >= deadline:
+                        raise ValueError("TD-1 reboot recovery timed out")
+            else:
+                response = await asyncio.wait_for(
+                    transport.call_method("machine.td1.data"), 5.)
+                devices = response.get("devices", {})
+        except asyncio.TimeoutError:
+            error = "TD-1 request timed out"
+        except (ValueError, KeyError, AttributeError, TypeError) as exc:
+            # Missing component or endpoint, or a malformed response - "no usable bridge"
+            error = str(exc) or type(exc).__name__
+        except Exception as exc:
+            logging.exception("MMU: unexpected TD-1 bridge failure")
+            error = str(exc) or type(exc).__name__
+        try:
+            await self.klippy_apis._send_klippy_request(
+                "mmu/td1", {"request_id": request_id, "devices": devices, "error": error})
+        except Exception:
+            # Klipper went away. Happy Hare's own deadline covers the silence
+            logging.exception("MMU: could not deliver TD-1 response %s" % request_id)
+
     async def push_lane_data(self, gate_ids):
         '''
         Pushes lane data to Moonraker database for slicer integration (OrcaSlicer)
@@ -1758,6 +1810,7 @@ class MmuServer:
             gate_material = mmu.get('gate_material', [])
             gate_vendor = mmu.get('gate_vendor', [])
             gate_color = mmu.get('gate_color', [])
+            gate_td = mmu.get('gate_td', [])
             gate_temperature = mmu.get('gate_temperature', [])
             gate_status = mmu.get('gate_status', [])
             gate_filament_name = mmu.get('gate_filament_name', [])
@@ -1799,11 +1852,11 @@ class MmuServer:
                         "vendor_name": (gate_vendor[gate] if gate < len(gate_vendor) else None) or spool_attrs.get('vendor', None) or None,
                         "name": (gate_filament_name[gate] if gate < len(gate_filament_name) else None) or spool_attrs.get('name', None) or None,
                         "color": gate_color[gate] if gate < len(gate_color) else None,
-                        "td": None, # we don't currently capture transmission distance and isn't standard in spoolman
+                        "td": gate_td[gate] if gate < len(gate_td) else None,
                         "material": gate_material[gate] if gate < len(gate_material) else None,
                         "bed_temp": spool_attrs.get('bed_temp', None) or None,
                         "nozzle_temp": gate_temperature[gate] if gate < len(gate_temperature) else 200,
-                        "scan_time": None,
+                        "scan_time": None, # Happy Hare does not record when a gate was measured
                         "lane": str(lane), # currently orca reads this as a string, but it is actually an int representing the gate number
                         "spool_id": spool_id if spool_id > 0 else None,
                         "filament_id": spool_attrs.get('filament_id', None) or None

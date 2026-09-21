@@ -249,6 +249,23 @@ FILAMENT_RELEASE_STATE = 0
 FILAMENT_DRIVE_STATE   = 1
 FILAMENT_HOLD_STATE    = 2
 
+# TD-1 filament measurement
+# How far apart two readings must be to be different filament rather than the same
+# filament read twice. A TD-1 is analogue (AJAX quote +/-7.5%), so both sit outside that
+TD1_SAME_TD_FRACTION   = 0.15  # Relative difference in transmission distance
+TD1_SAME_RGB_DISTANCE  = 12    # Largest per-channel color difference, out of 255
+
+# The TD at which filament reads as fully transparent when deriving an alpha channel.
+# AJAX's own examples anchor the scale: black ~0.1, white ~4.6, transparent natural ~100
+TD1_CLEAR_TD           = 100.0
+
+# Per-gate TD-1 state in printer.mmu - Happy Hare's policy only. Device connectivity
+# belongs to Moonraker's [td1]
+TD1_STATE_NONE         = ''          # No scanner serves this gate
+TD1_STATE_ENABLED      = 'enabled'   # Scanner in use, readings applied on request only
+TD1_STATE_AUTO         = 'auto'      # Scanner in use, new readings applied automatically
+TD1_STATE_DISABLED     = 'disabled'  # Scanner present but Happy Hare is ignoring it
+
 # mmu_vars.cfg variables
 VARS_MMU_REVISION                  = "mmu__revision"
 VARS_MMU_ENABLE_ENDLESS_SPOOL      = "mmu_state_enable_endless_spool"
@@ -258,6 +275,8 @@ VARS_MMU_TOOL_TO_GATE_MAP          = "mmu_state_tool_to_gate_map"
 VARS_MMU_GATE_STATUS               = "mmu_state_gate_status"
 VARS_MMU_GATE_MATERIAL             = "mmu_state_gate_material"
 VARS_MMU_GATE_VENDOR               = "mmu_state_gate_vendor"
+VARS_MMU_GATE_TD                   = "mmu_state_gate_td"
+VARS_MMU_GATE_TD1_COLOR            = "mmu_state_gate_td1_color"
 VARS_MMU_GATE_COLOR                = "mmu_state_gate_color"
 VARS_MMU_GATE_FILAMENT_NAME        = "mmu_state_gate_filament_name"
 VARS_MMU_GATE_TEMPERATURE          = "mmu_state_gate_temperature"

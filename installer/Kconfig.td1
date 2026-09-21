@@ -1,0 +1,207 @@
+# TD-1 filament measurement (transmission distance + measured color)
+#
+# Unlike NFC readers, TD-1 scanners are USB devices owned by Moonraker's [td1] component,
+# not Klipper MCU peripherals - no pins, no bus settings, no klipper section to create.
+# All that is collected here is the USB serial number.
+#
+# Responsible for setting:
+#
+# MMU_HAS_TD1
+# MMU_HAS_PER_GATE_TD1
+# MMU_HAS_OFFPATH_TD1
+#
+# In-path, one scanner in the shared bowden (rendered as one entry per gate):
+#   PARAM_TD1_BOWDEN_DEVICE
+#
+# In-path, per-gate:
+#   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
+#   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt)
+#
+# Off-path (presented to by hand; readings are staged as pending):
+#   PARAM_TD1_DEVICE
+#
+# Capture policy (rendered into [mmu_unit_parameters] in mmu_parameters.cfg):
+#   PARAM_TD1_AUTO_UPDATE
+#   PARAM_TD1_CAPTURE_ON_LOAD
+#   PARAM_TD1_CAPTURE_TIMEOUT
+#   PARAM_TD1_LED_SEGMENT       (from CHOICE_TD1_LED_SEGMENT)
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_TD1
+#
+
+
+comment "_"
+comment "_TD-1 [[B]](BETA)[[/B]]"
+
+config UNSELECT_MMU_HAS_TD1
+  def_bool n
+
+if !UNSELECT_MMU_HAS_TD1
+  config MMU_HAS_TD1
+    bool "Has TD-1 scanner(s)?"
+    forceshow
+    default n
+    help
+      Capture filament transmission distance (TD) and measured RGB color using
+      Moonraker's [td1] component. The scanner plugs into a host USB port - no MCU
+      pins are needed.
+
+      Add [td1] to moonraker.conf and restart Moonraker, then read the serials from
+      the /machine/td1/data endpoint. Hardware need not be connected to configure
+      this. Gates are measured on demand with MMU_CHECK_GATE TD1=1.
+endif
+
+
+# ------------------------------------
+# TD-1 scanner config
+# ------------------------------------
+
+if MMU_HAS_TD1
+
+  menu "TD-1 scanner config"
+
+    # ------------------------------------------
+    # Off-path: filament is presented by hand
+    # ------------------------------------------
+
+    config MMU_HAS_OFFPATH_TD1
+      bool "Separate scanner to present filament to?"
+      default n
+      help
+        A scanner sitting off the filament path - on the bench, or beside the spools.
+        You present filament to it by hand and the reading is held for the next gate
+        you preload, exactly like presenting a tag to a shared NFC reader.
+
+        Independent of the in-path scanners below; a machine may have both.
+
+    if MMU_HAS_OFFPATH_TD1
+      config PARAM_TD1_DEVICE
+        string "Off-path TD-1 USB serial       "
+        default ""
+        help
+          USB serial number of the scanner you present filament to, exactly as
+          Moonraker reports it. E.g. "TD1-0099".
+    endif
+
+    # ------------------------------------------
+    # In-path: filament crosses the scanner
+    # ------------------------------------------
+
+    config MMU_HAS_PER_GATE_TD1
+      bool "Per-gate TD-1 scanners?"
+      default n
+      help
+        Most designs have a single scanner in a shared part of the bowden, serving
+        every gate. Select this only if each gate has its own.
+
+    if !MMU_HAS_PER_GATE_TD1
+      config PARAM_TD1_BOWDEN_DEVICE
+        string "Shared bowden TD-1 USB serial  "
+        default ""
+        help
+          USB serial number of the scanner in the shared bowden path, exactly as
+          Moonraker reports it. E.g. "TD1-0042". Leave blank if there is none.
+
+          Rendered as one entry per gate, since that is what it is: every gate's
+          filament crosses it.
+    endif
+
+    if MMU_HAS_PER_GATE_TD1
+      @repeat var=i min=0 max=11@
+        if PARAM_NUM_GATES > $(i)
+
+          config PARAM_TD1_DEVICE_$(i)
+            string
+
+          menuconfig PARAM_TD1_DEVICE_GATE_$(i)
+            bool "Gate $(i) TD-1 scanner"
+            default y
+            help
+              Deselect for a gate that has no scanner of its own.
+
+          if PARAM_TD1_DEVICE_GATE_$(i)
+            config PARAM_TD1_DEVICE_$(i)
+              string "Gate $(i) USB serial       "
+              default ""
+              help
+                USB serial number of this gate's scanner, exactly as Moonraker reports
+                it. Repeat a serial to share one physical scanner between gates.
+          endif
+
+        endif
+      @endrepeat@
+    endif # per gate
+
+  endmenu
+
+
+  # -------------------------------------
+  # TD-1 related params
+  # -------------------------------------
+
+  menu "TD-1 params"
+
+    config PARAM_TD1_AUTO_UPDATE
+      boolint "Apply new readings automatically?"
+      default n
+      help
+        Update measured TD and color whenever a new reading arrives and Happy Hare knows
+        which filament owns the path. This never moves filament.
+
+        Set per unit, so units sharing one scanner need not agree.
+
+    config PARAM_TD1_CAPTURE_ON_LOAD
+      boolint "Wait for a reading when loading?"
+      default n
+      help
+        Wait briefly for a fresh reading after a normal load completes, rather than
+        relying on it arriving by itself. Skipped while printing, so tool changes are
+        never delayed.
+
+        Needs an in-path scanner. Filament crosses one during any normal load, so this
+        costs no extra movement - only the wait.
+
+    config PARAM_TD1_CAPTURE_TIMEOUT
+      string "Measurement wait (secs) "
+      default "5"
+      help
+        How long to wait for a fresh reading once filament has passed the scanner. The
+        device takes a moment to report, so a second or two is normal.
+
+        Only applies where Happy Hare actually waits: MMU_CHECK_GATE TD1=1 and the
+        capture-on-load option above. Automatic updates never wait.
+
+    choice CHOICE_TD1_LED_SEGMENT
+      prompt "TD-1 led feedback segment"
+      help
+        TD-1 transient LED feedback: which segment the measured/failed effects render on.
+        auto = 'status' for an off-path scanner, 'exit' for a per-gate one.
+      default CHOICE_TD1_LED_SEGMENT_AUTO
+
+      config CHOICE_TD1_LED_SEGMENT_AUTO
+        bool "Auto"
+        help
+          Auto: 'status' for an off-path scanner, 'exit' for a per-gate one
+
+      config CHOICE_TD1_LED_SEGMENT_STATUS
+        bool "Status"
+
+      config CHOICE_TD1_LED_SEGMENT_EXIT
+        bool "Exit"
+
+      config CHOICE_TD1_LED_SEGMENT_ENTRY
+        bool "Entry"
+
+    endchoice
+
+    # Create no-prompt param from choice
+    config PARAM_TD1_LED_SEGMENT
+      string
+      default "auto"   if CHOICE_TD1_LED_SEGMENT_AUTO
+      default "status" if CHOICE_TD1_LED_SEGMENT_STATUS
+      default "exit"   if CHOICE_TD1_LED_SEGMENT_EXIT
+      default "entry"  if CHOICE_TD1_LED_SEGMENT_ENTRY
+
+  endmenu
+endif

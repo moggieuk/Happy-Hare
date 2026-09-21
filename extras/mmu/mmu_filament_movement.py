@@ -247,8 +247,9 @@ class MmuFilamentMovement:
         # NFC read) rather than have both try to assign the gate. A weak pending (bare uid only)
         # is not trusted enough to skip the gate's own reader - it's applied below only as a
         # fallback if that reader finds nothing.
-        spool_id, tag = pending if pending is not None else (-1, None)
+        spool_id, tag, _measured = pending if pending is not None else (-1, None, None)
         has_material = tag is not None and isinstance(tag[1], dict) and tag[1].get('material')
+        # A staged measurement is not identity, so it never makes a pending "strong"
         have_strong_pending = spool_id > 0 or has_material
 
         # A neighboring gate's spool could satisfy the NFC leg below and get misattributed -
@@ -2439,6 +2440,11 @@ class MmuFilamentMovement:
 
         self.set_filament_direction(DIRECTION_LOAD)
         self.initialize_filament_position(dwell=None) # Reset measurement to 0
+        td1_token = None
+        td1_mgr = self.mmu_unit().td1_manager if self.gate_selected >= 0 else None
+        if td1_mgr is not None and not extruder_only and full and not skip_extruder:
+            td1_token = td1_mgr.begin_load(self.gate_selected)
+        td1_success = False
 
         try:
             must_home = False
@@ -2616,11 +2622,15 @@ class MmuFilamentMovement:
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
+            td1_success = True
+
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
             raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
 
         finally:
+            if td1_mgr is not None:
+                td1_mgr.end_load(td1_token, td1_success)
             self._track_gate_statistics('loads', self.gate_selected)
 
             if not extruder_only:
