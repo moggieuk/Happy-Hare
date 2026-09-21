@@ -1965,6 +1965,134 @@ class TestTd1Removal(Td1OffPathCase):
         self.assertFalse(staged.called)
 
 
+class TestTd1PendingLed(Td1OffPathCase):
+    """
+    A staged measurement drives the same countdown overlay a pending spool_id does.
+
+    The overlay is base functionality keyed on the pending lifecycle, not on any one
+    source of it, so TD-1 lights it without a TD-1-specific effect.
+    """
+
+    def test_a_staged_measurement_starts_the_countdown(self):
+        self.assertIsNone(self.mmu.pending_phase)
+        self.present()
+        self.assertEqual(self.mmu.pending_phase, 'pending')
+
+    def test_it_reaches_expiring_before_the_deadline(self):
+        self.present()
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout - 1)
+        self.assertEqual(self.mmu.pending_phase, 'expiring')
+
+    def test_it_clears_when_the_pending_times_out(self):
+        self.present()
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout + 1)
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.assertIsNone(self.mmu.pending_phase)
+
+    def test_it_clears_when_the_pending_is_consumed(self):
+        self.present()
+        self.mmu._check_pending_filament(0)
+        self.assertIsNone(self.mmu.pending_phase)
+
+    def test_a_restage_restarts_the_countdown(self):
+        # Every staging restarts the timeout, so the overlay has to restart with it or
+        # it would sit in 'expiring' against a deadline that has already moved
+        self.present(second=1, td=4.)
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout - 1)
+        self.assertEqual(self.mmu.pending_phase, 'expiring')
+        self.present(second=2, td=9.)
+        self.assertEqual(self.mmu.pending_phase, 'pending')
+
+
+class TestTd1PendingLedScope(Td1Case):
+    """What counts as a pending worth showing - the NFC side must not change."""
+
+    def test_a_bare_uid_left_by_a_cancel_does_not_light_it(self):
+        # NEXT_SPOOLID=0 is a deliberate cancel. The uid survives so the gate's RFID is
+        # still recorded, but it is bookkeeping, not a result anyone is waiting on
+        self.mmu.pending_tag = ("0451ABCD", None)
+        self.assertFalse(self.mmu.pending_active)
+
+    def test_a_tag_carrying_filament_data_does_light_it(self):
+        self.mmu.pending_tag = ("0451ABCD", {"material": "PLA"})
+        self.assertTrue(self.mmu.pending_active)
+
+    def test_a_resolved_spool_still_lights_it(self):
+        self.mmu.pending_spool_id = 7
+        self.assertTrue(self.mmu.pending_active)
+
+    def test_a_measurement_alone_lights_it(self):
+        self.mmu.pending_measurement = record()
+        self.assertTrue(self.mmu.pending_active)
+
+
+class TestTd1Flash(Td1Case):
+    """The transient 'measured' / 'no measurement' flashes."""
+
+    def flashes(self):
+        return patch.object(self.mmu.led_manager, "set_transient_effect",
+                            wraps=self.mmu.led_manager.set_transient_effect)
+
+    def test_a_measurement_applied_flashes_that_gates_leds(self):
+        with self.flashes() as flash:
+            self.manager.apply(2, record())
+        self.assertEqual(flash.call_count, 1)
+        self.assertEqual(flash.call_args.kwargs["gate"], 2)
+        self.assertEqual(flash.call_args.kwargs["segment"], "exit")
+
+    def test_a_repeat_reading_does_not_flash(self):
+        # The whole point of the dedupe: a scanner re-measuring filament left in front
+        # of it must not strobe on every poll
+        self.manager.apply(0, record())
+        with self.flashes() as flash:
+            self.manager.apply(0, record())
+        self.assertEqual(flash.call_count, 0)
+
+    def test_a_timed_out_capture_flashes_fail(self):
+        from extras.mmu.mmu_utils import MmuError
+        self.bridge.update_devices(self.data) # Connected, with one cached reading
+        baseline = self.manager.baseline(0)   # Nothing newer will arrive
+        with self.flashes() as flash:
+            with self.assertRaises(MmuError):
+                self.manager.wait_measurement(0, baseline, 0.)
+        self.assertEqual(flash.call_count, 1)
+        self.assertEqual(flash.call_args.args[1],
+                         self.mmu.led_manager.effect_name(0, 'td1_fail'))
+        self.assertTrue(flash.call_args.kwargs["defer"], "must queue behind a read flash")
+
+    def test_an_unmapped_effect_is_a_no_op(self):
+        # Opt-in: a user who maps no td1 effect sees exactly the old behavior
+        self.mmu.mmu_unit(0).leds.effects['td1_read'] = ''
+        with self.flashes() as flash:
+            self.manager.apply(1, record())
+        self.assertEqual(flash.call_count, 0)
+
+    def test_the_segment_can_be_configured(self):
+        self.hh.run_gcode("MMU_TEST_CONFIG TD1_LED_SEGMENT=entry")
+        self.assertEqual(self.hh.errors, [])
+        with self.flashes() as flash:
+            self.manager.apply(3, record())
+        self.assertEqual(flash.call_args.kwargs["segment"], "entry")
+
+
+class TestTd1OffPathFlash(Td1OffPathCase):
+    def test_a_staged_reading_flashes_the_units_segment(self):
+        # No gate to attribute to, so the whole segment flashes rather than one gate's
+        with patch.object(self.mmu.led_manager, "set_transient_effect",
+                          wraps=self.mmu.led_manager.set_transient_effect) as flash:
+            self.present()
+        self.assertEqual(flash.call_count, 1)
+        self.assertIsNone(flash.call_args.kwargs["gate"])
+
+    def test_filament_left_in_the_scanner_flashes_once(self):
+        with patch.object(self.mmu.led_manager, "set_transient_effect",
+                          wraps=self.mmu.led_manager.set_transient_effect) as flash:
+            self.present(second=1)
+            self.present(second=2)
+            self.present(second=3)
+        self.assertEqual(flash.call_count, 1)
+
+
 class TestTd1AutoUnitQualification(unittest.TestCase):
     """
     An AUTO= override says which unit's policy it stands in for.

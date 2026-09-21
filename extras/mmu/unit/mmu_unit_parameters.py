@@ -339,6 +339,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('td1_capture_timeout',              'float',  5.0,  section="TD-1", limits=dict(above=0.0),                   guard=_guard_has_td1),
         ParamSpec('td1_auto_update',                  'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1),          guard=_guard_has_td1),
         ParamSpec('td1_capture_on_load',              'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1),          guard=_guard_has_td1),
+        ParamSpec('td1_led_segment',                  'str',  'auto', section="TD-1",                                           guard=_guard_has_td1),
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),

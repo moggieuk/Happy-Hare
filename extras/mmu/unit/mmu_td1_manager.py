@@ -247,6 +247,7 @@ class MmuTd1Manager:
         self.adopt_color(gate)
         maps.update_gate_color_rgb()
         maps.persist_gate_map(changed_gate=gate)
+        self.mmu._td1_led_on_measure(self.mmu_unit, gate=gate)
 
 
     def adopt_color(self, gate, force=False):
@@ -358,6 +359,7 @@ class MmuTd1Manager:
                     device = self.device_for(gate)
                     if device is not None:
                         device.owe(gate)
+                    self.mmu._td1_led_on_fail(self.mmu_unit, gate=gate)
                     raise MmuTd1NoReading("TD-1: no fresh measurement for gate %d" % gate)
                 try:
                     bridge.refresh(timeout=min(remaining, TD1_REQUEST_TIMEOUT))
@@ -528,6 +530,7 @@ class MmuTd1Manager:
             return
         self._staged = valid
         self.mmu.stage_pending_measurement(valid)
+        self.mmu._td1_led_on_measure(self.mmu_unit)
         device.last_outcome = 'staged as pending for the next gate'
 
 

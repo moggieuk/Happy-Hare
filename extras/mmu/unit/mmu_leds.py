@@ -156,6 +156,8 @@ class MmuLeds:
             'effect_nfc_read',      # Transient effect
             'effect_nfc_deep_read', # Transient effect
             'effect_nfc_fail',      # Transient effect
+            'effect_td1_read',      # Transient effect
+            'effect_td1_fail',      # Transient effect
         ]
         for key in effect_keys:
             operation = key[len('effect_'):]

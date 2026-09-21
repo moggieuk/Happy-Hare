@@ -24,6 +24,7 @@
 #   PARAM_TD1_AUTO_UPDATE
 #   PARAM_TD1_CAPTURE_ON_LOAD
 #   PARAM_TD1_CAPTURE_TIMEOUT
+#   PARAM_TD1_LED_SEGMENT       (from CHOICE_TD1_LED_SEGMENT)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_TD1
@@ -170,6 +171,37 @@ if MMU_HAS_TD1
 
         Only applies where Happy Hare actually waits: MMU_CHECK_GATE TD1=1 and the
         capture-on-load option above. Automatic updates never wait.
+
+    choice CHOICE_TD1_LED_SEGMENT
+      prompt "TD-1 led feedback segment"
+      help
+        TD-1 transient LED feedback: which segment the measured/failed effects render on.
+        auto = 'status' for an off-path scanner, 'exit' for a per-gate one.
+      default CHOICE_TD1_LED_SEGMENT_AUTO
+
+      config CHOICE_TD1_LED_SEGMENT_AUTO
+        bool "Auto"
+        help
+          Auto: 'status' for an off-path scanner, 'exit' for a per-gate one
+
+      config CHOICE_TD1_LED_SEGMENT_STATUS
+        bool "Status"
+
+      config CHOICE_TD1_LED_SEGMENT_EXIT
+        bool "Exit"
+
+      config CHOICE_TD1_LED_SEGMENT_ENTRY
+        bool "Entry"
+
+    endchoice
+
+    # Create no-prompt param from choice
+    config PARAM_TD1_LED_SEGMENT
+      string
+      default "auto"   if CHOICE_TD1_LED_SEGMENT_AUTO
+      default "status" if CHOICE_TD1_LED_SEGMENT_STATUS
+      default "exit"   if CHOICE_TD1_LED_SEGMENT_EXIT
+      default "entry"  if CHOICE_TD1_LED_SEGMENT_ENTRY
 
   endmenu
 endif
