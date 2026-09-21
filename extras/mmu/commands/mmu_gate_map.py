@@ -43,6 +43,7 @@ class MmuGateMapCommand(BaseCommand):
         + "SPOOLID      = # Optionally the spoolman ID for the filament (don't need to specify other attributes)\n"
         + "TEMP         = # Default temperature of filament\n"
         + "TD           = Positive transmission distance, or blank to clear (also clears measured color)\n"
+        + "               With BYPASS=1 sets the measured TD of the bypass filament\n"
         + "SPEED        = % Speed override (use <100 for soft TPU types)\n"
         + "RFID         = # Single hexadecimal RFID tag UID read at the gate (blank to clear)\n"
         + "AVAILABLE    = [-1|0|1|2] Filament availability: Unknown | Empty | Available | Available from filament buffer\n"
@@ -156,11 +157,17 @@ class MmuGateMapCommand(BaseCommand):
             if validated_color is None:
                 mmu.log_debug("Invalid COLOR '%s' in bypass filament update - ignored" % color)
                 validated_color = ''
+            # Spoolman does not model TD, so the async attribute callback never sends
+            # one. Keep whatever was measured unless TD= explicitly says otherwise,
+            # or a refresh arriving moments after a bypass load would wipe it
+            given, td_value = self._td_value(gcmd)
+            td = td_value if given else mmu.active_filament.get('td')
             mmu.active_filament = {
                 'filament_name': gcmd.get('NAME', ''),
                 'material': gcmd.get('MATERIAL', '').upper(),
                 'vendor': gcmd.get('VENDOR', ''),
                 'color': validated_color,
+                'td': td,
                 'spool_id': gcmd.get_int('SPOOLID', -1),
                 'temperature': max(gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp)), int(mmu.p.default_extruder_temp)),
             }
@@ -350,16 +357,8 @@ class MmuGateMapCommand(BaseCommand):
             # Transmission distance is a local measurement that Spoolman does not model,
             # so unlike the filament attributes above it stays editable in every spoolman
             # mode - including SPOOLMAN_PULL, which owns the rest of the gate's metadata
-            td = gcmd.get('TD', None)
-            if td is not None:
-                value = None
-                if td.strip():
-                    try:
-                        value = float(td)
-                    except ValueError:
-                        raise gcmd.error("TD must be a finite positive number, or blank to clear")
-                    if not math.isfinite(value) or value <= 0:
-                        raise gcmd.error("TD must be a finite positive number, or blank to clear")
+            given, value = self._td_value(gcmd)
+            if given:
                 for gate_idx in gatelist:
                     if mmu.gate_td[gate_idx] == value:
                         continue
@@ -383,6 +382,27 @@ class MmuGateMapCommand(BaseCommand):
 
 
     # Helper to ensure int when strings may be passed from UI
+    def _td_value(self, gcmd):
+        """
+        Parse TD=, returning (given, value).
+
+        Blank clears, so None is a real value and "was it given at all" has to be
+        reported separately.
+        """
+        td = gcmd.get('TD', None)
+        if td is None:
+            return False, None
+        if not td.strip():
+            return True, None
+        try:
+            value = float(td)
+        except ValueError:
+            raise gcmd.error("TD must be a finite positive number, or blank to clear")
+        if not math.isfinite(value) or value <= 0:
+            raise gcmd.error("TD must be a finite positive number, or blank to clear")
+        return True, value
+
+
     def _safe_int(self, i, default=0):
         try:
             return int(i)

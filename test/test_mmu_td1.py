@@ -1605,3 +1605,70 @@ class TestTd1BothTopologies(Td1Case):
             bridge.update_devices({"SERIAL_A": record(second=1, td=1.),
                                    "BENCH": record(second=2, td=9.)})
             self.assertEqual(mmu.pending_measurement["td"], 9.)
+
+
+class TestTd1Bypass(Td1OffPathCase):
+    """
+    The bypass has no gate-map row, so a measurement rides on 'active_filament'.
+
+    Only the TD. Measured color is a per-gate LED source (gate_td1_color) with no
+    bypass equivalent, so there would be nothing to read it.
+    """
+
+    def select_bypass(self):
+        from extras.mmu.mmu_constants import TOOL_GATE_BYPASS
+        self.mmu.select_bypass()
+        self.assertEqual(self.mmu.gate_selected, TOOL_GATE_BYPASS)
+
+    def test_a_staged_measurement_lands_on_the_bypass(self):
+        self.present()
+        self.select_bypass()
+        self.mmu._check_pending_bypass()
+        self.assertEqual(self.mmu.active_filament["td"], 4.)
+
+    def test_no_measured_color_is_carried(self):
+        self.present()
+        self.select_bypass()
+        self.mmu._check_pending_bypass()
+        self.assertNotIn("td1_color", self.mmu.active_filament)
+
+    def test_a_spoolman_refresh_does_not_wipe_it(self):
+        # Spoolman does not model TD, so its async BYPASS=1 callback sends none and
+        # rebuilds the whole dict. Arriving moments after a bypass load, it would
+        # otherwise erase what was just measured
+        self.present()
+        self.select_bypass()
+        self.mmu._check_pending_bypass()
+        self.hh.run_gcode('MMU_GATE_MAP BYPASS=1 SPOOLID=7 NAME="PLA Black" '
+                          'MATERIAL="PLA" VENDOR="Acme" COLOR="000000" QUIET=1')
+        self.assertEqual(self.mmu.active_filament["spool_id"], 7)
+        self.assertEqual(self.mmu.active_filament["td"], 4.)
+
+    def test_it_can_be_set_and_cleared_by_hand(self):
+        self.select_bypass()
+        self.hh.run_gcode("MMU_GATE_MAP BYPASS=1 TD=3.5 QUIET=1")
+        self.assertEqual(self.mmu.active_filament["td"], 3.5)
+        # A blank parameter has to come last or klipper's parser swallows the next one
+        self.hh.run_gcode("MMU_GATE_MAP BYPASS=1 QUIET=1 TD=")
+        self.assertIsNone(self.mmu.active_filament["td"])
+
+    def test_a_bad_value_is_refused_on_the_bypass_too(self):
+        self.select_bypass()
+        for bad in ("0", "-1", "abc"):
+            with self.subTest(td=bad), self.assertRaises(Exception):
+                self.hh.run_gcode("MMU_GATE_MAP BYPASS=1 TD=%s QUIET=1" % bad)
+
+
+class TestTd1ActiveFilament(Td1Case):
+    def test_selecting_a_gate_publishes_its_measured_td(self):
+        self.manager.apply(2, record(td=6.5))
+        self.mmu.select_gate(2)
+        self.assertEqual(self.mmu.active_filament["td"], 6.5)
+
+    def test_an_unmeasured_gate_publishes_none(self):
+        self.mmu.select_gate(1)
+        self.assertIsNone(self.mmu.active_filament["td"])
+
+    def test_the_key_is_always_present_so_consumers_need_no_special_case(self):
+        self.mmu.select_gate(0)
+        self.assertIn("td", self.mmu.active_filament)

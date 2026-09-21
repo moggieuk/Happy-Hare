@@ -2163,12 +2163,22 @@ class MmuController(MmuFilamentMovement):
         Without a spool_id, staged tag metadata populates active_filament locally
         (works with spoolman off). Consumes/clears the pending state.
         """
-        spool_id, tag, _measured = self._grab_pending()
+        spool_id, tag, measured = self._grab_pending()
+        # The bypass has no gate-map row, so a measurement rides on active_filament.
+        # Only the TD: measured color is a per-gate LED source with no bypass equivalent
+        measured_td = measured['td'] if measured else None
         if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
             self.log_info("Spool ID: %s activated for bypass load" % spool_id)
             self._spoolman_activate_spool(spool_id)
-            self.active_filament = {'spool_id': spool_id} # Attributes filled by async BYPASS=1 callback
+            # Attributes filled by the async BYPASS=1 callback, which preserves 'td'
+            self.active_filament = {'spool_id': spool_id, 'td': measured_td}
             self._spoolman_update_filaments([(TOOL_GATE_BYPASS, spool_id)])
+        elif measured_td is not None and tag is None:
+            # A measurement with no identity attached: the bypass filament is still
+            # whatever it was, it just has a TD now
+            self.active_filament = dict(self.active_filament, td=measured_td)
+            self.log_info("TD-1: measured TD %.2f applied to bypass filament" % measured_td)
+
         elif tag is not None:
             uid, metadata = tag
             if isinstance(metadata, dict) and metadata.get('material'):
@@ -2179,6 +2189,7 @@ class MmuController(MmuFilamentMovement):
                     'material': material,
                     'vendor': vendor,
                     'color': color,
+                    'td': measured_td,
                     'spool_id': -1,
                     'temperature': temperature,
                 }
@@ -3366,6 +3377,7 @@ class MmuController(MmuFilamentMovement):
             'material': self.gate_material[gate],
             'vendor': self.gate_vendor[gate],
             'color': self.gate_color[gate],
+            'td': self.gate_td[gate],
             'spool_id': self.gate_spool_id[gate],
             'temperature': self.gate_temperature[gate],
         } if gate >= 0 else {}
