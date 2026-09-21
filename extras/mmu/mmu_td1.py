@@ -370,6 +370,14 @@ class MmuTd1Bridge:
                 manager = self.manager_for(token['gate'])
                 if manager is not None:
                     manager.consider(device, valid, previous, was_connected)
+                continue
+            # Nobody armed for this reading. If it came from a unit's off-path scanner
+            # it is staged as pending instead, for the gate preloaded next. Only the
+            # first unit naming it stages: 'pending' is machine level
+            for manager in self.managers():
+                if manager.shared_device is device:
+                    manager.stage(device, valid, previous, was_connected)
+                    break
 
 
 # -----------------------------------------------------------------------------------------------------------

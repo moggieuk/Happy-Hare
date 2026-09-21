@@ -10,10 +10,14 @@
 # MMU_HAS_TD1
 # MMU_HAS_PER_GATE_TD1
 #
-# Shared:
+# Off-path (presented to by hand; readings are staged as pending):
+#   BOOL_TD1_OFFPATH
 #   PARAM_TD1_DEVICE
 #
-# Per-gate:
+# In-path, one scanner in the shared bowden (rendered as one entry per gate):
+#   PARAM_TD1_BOWDEN_DEVICE
+#
+# In-path, per-gate:
 #   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
 #
 #   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt.
@@ -51,21 +55,25 @@ config MMU_HAS_TD1
 if MMU_HAS_TD1
   menu "TD-1 setup"
 
+    comment "_Scanners filament passes through"
+
     config MMU_HAS_PER_GATE_TD1
       bool "Per-gate TD-1 scanners?"
       default n
       help
-        Most designs have a single scanner serving every gate on the unit. Select this
-        only if each gate has its own. Either way, repeating the same serial number in
-        another unit shares that physical scanner - access is serialized automatically.
+        Most designs have a single scanner in a shared part of the bowden, serving
+        every gate. Select this only if each gate has its own.
 
     if !MMU_HAS_PER_GATE_TD1
-      config PARAM_TD1_DEVICE
-        string "Shared TD-1 USB serial  "
+      config PARAM_TD1_BOWDEN_DEVICE
+        string "Bowden TD-1 USB serial  "
         default ""
         help
-          USB serial number of the scanner serving every gate on this unit, exactly as
+          USB serial number of the scanner in the shared bowden path, exactly as
           Moonraker reports it. E.g. "TD1-0042".
+
+          Rendered as one entry per gate, since that is what it is: every gate's
+          filament crosses it.
     endif
 
     if MMU_HAS_PER_GATE_TD1
@@ -101,6 +109,27 @@ if MMU_HAS_TD1
 
         endif
       @endrepeat@
+    endif
+
+    comment "_A scanner filament does NOT pass through"
+
+    config BOOL_TD1_OFFPATH
+      bool "Separate scanner to present filament to?"
+      default n
+      help
+        A scanner sitting off the filament path - on the bench, or beside the spools.
+        You present filament to it by hand and the reading is held for the next gate
+        you preload, exactly like presenting a tag to a shared NFC reader.
+
+        Independent of the scanners above; a machine may have both.
+
+    if BOOL_TD1_OFFPATH
+      config PARAM_TD1_DEVICE
+        string "Off-path TD-1 USB serial "
+        default ""
+        help
+          USB serial number of the scanner you present filament to, exactly as
+          Moonraker reports it.
     endif
 
     comment "_"

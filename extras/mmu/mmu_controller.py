@@ -180,6 +180,7 @@ class MmuController(MmuFilamentMovement):
 
         self.pending_spool_id = -1      # For automatic assignment of spool_id if set perhaps by rfid reader
         self.pending_tag = None         # (uid, metadata) staged from a shared NFC read, applied to the next gate
+        self.pending_measurement = None # TD/color staged from an off-path TD-1 read, applied to the next gate
         self.nfc_lookup_pending = False # A shared NFC reader UID lookup is in flight (guards further shared reads)
         self._nfc_led_unit = None       # mmu_unit that initiated the current NFC read (for the fail flash)
         self.pending_phase = None       # Base spoolman pending spool_id LED phase: None | 'pending' | 'expiring'
@@ -656,6 +657,7 @@ class MmuController(MmuFilamentMovement):
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'pending_spool_id': self.pending_spool_id,
+            'pending_td': self.pending_measurement['td'] if self.pending_measurement else None,
             'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'action': self._get_action_string(),
@@ -2033,11 +2035,12 @@ class MmuController(MmuFilamentMovement):
 
     def _clear_pending(self):
         """
-        Clear any pending spool_id and staged tag together, and
-        disable the timeout timer. Keeps the two in lockstep from a single place.
+        Clear any pending spool_id, staged tag and staged measurement together, and
+        disable the timeout timer. Keeps the three in lockstep from a single place.
         """
         self.pending_spool_id = -1
         self.pending_tag = None
+        self.pending_measurement = None
         self.reactor.update_timer(self.pending_timer, self.reactor.NEVER)
         self._pending_led_stop() # End the base pending overlay (phase + warn timer + repaint)
 
@@ -2055,7 +2058,9 @@ class MmuController(MmuFilamentMovement):
         otherwise, if a staged tag exists (uid, with or without metadata), apply that to the
         gate map directly. Either way the (live) pending state is cleared afterwards.
         """
-        spool_id, tag = (self.pending_spool_id, self.pending_tag) if pending is None else pending
+        spool_id, tag, measured = (
+            (self.pending_spool_id, self.pending_tag, self.pending_measurement)
+            if pending is None else pending)
 
         if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
             self.log_info("Spool ID: %s automatically assigned to gate %d" % (spool_id, gate))
@@ -2075,6 +2080,18 @@ class MmuController(MmuFilamentMovement):
         elif tag is not None:
             uid, metadata = tag
             self._apply_tag_to_gate(gate, uid, metadata)
+
+        # Last, and deliberately after the branches above: establishing identity clears
+        # a gate's measurements, so applying here is what lets a measurement taken
+        # before the gate had a spool survive being given one. A gate with its own
+        # in-path scanner is overwritten too - the user just presented this filament by
+        # hand, and the next load re-reads it anyway if td1_auto_update is on
+        if measured is not None:
+            try:
+                self.mmu_unit(gate).td1_manager.apply(gate, measured)
+            except MmuError as ee:
+                self.log_warning("TD-1: staged measurement not applied to gate %d: %s"
+                                 % (gate, str(ee)))
 
         self._clear_pending()
 
@@ -2128,9 +2145,10 @@ class MmuController(MmuFilamentMovement):
         Atomically capture and clear the pending spool_id/tag so a long operation
         (preload) owns the result locally - immune to the timeout, the LED countdown, and the
         generic cancellation done in _set_action for non-preload movement. Apply the returned
-        value later with _check_pending_filament(gate, pending=...). Returns (spool_id, tag).
+        value later with _check_pending_filament(gate, pending=...).
+        Returns (spool_id, tag, measurement).
         """
-        grabbed = (self.pending_spool_id, self.pending_tag)
+        grabbed = (self.pending_spool_id, self.pending_tag, self.pending_measurement)
         self._clear_pending()
         return grabbed
 
@@ -2145,7 +2163,7 @@ class MmuController(MmuFilamentMovement):
         Without a spool_id, staged tag metadata populates active_filament locally
         (works with spoolman off). Consumes/clears the pending state.
         """
-        spool_id, tag = self._grab_pending()
+        spool_id, tag, _measured = self._grab_pending()
         if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
             self.log_info("Spool ID: %s activated for bypass load" % spool_id)
             self._spoolman_activate_spool(spool_id)
@@ -3670,6 +3688,23 @@ class MmuController(MmuFilamentMovement):
             self.gate_maps.set_gate_rfid(gate, uid)
         if self.p.spoolman_support != SPOOLMAN_OFF:
             self._spoolman_get_spool_by_uid(uid, gate=gate, metadata=metadata, unit=unit)
+
+
+    def stage_pending_measurement(self, record):
+        """
+        Stage an off-path TD-1 reading to be applied to the gate preloaded next.
+
+        Mirrors _stage_pending_tag, and shares its timeout: a measurement presented and
+        then walked away from is as stale as an identity presented and walked away from.
+        No LED overlay - the base pending phase belongs to a pending spool_id.
+        """
+        self.pending_measurement = record
+        self.reactor.update_timer(self.pending_timer,
+                                  self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
+        # log_info, not log_debug: like a shared tag read this is the only acknowledgment
+        # an off-path scanner produces
+        self.log_info("TD-1: measured TD %.2f, color %s - staged for the next gate loaded"
+                      % (record['td'], record['color']))
 
 
     def _stage_pending_tag(self, uid, metadata):

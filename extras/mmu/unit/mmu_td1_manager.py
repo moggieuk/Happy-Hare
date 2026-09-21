@@ -52,10 +52,11 @@ class MmuTd1Manager:
         self.reactor = self.printer.get_reactor()
         self.mmu = None                         # Set at klippy:connect
 
-        # Per-local-gate device objects (or None per slot). Looked up before being
-        # created so a serial repeated across gates - or named by another unit - is one
-        # object, which is what keeps "one scanner, one debt" true by construction.
-        self.gate_devices = []
+        # Device objects. Looked up before being created so a serial repeated across
+        # gates - or named by another unit - is one object, which is what keeps "one
+        # scanner, one debt" true by construction.
+        self.shared_device = None   # Off-path: filament is presented to it by hand
+        self.gate_devices = []      # Per-local-gate, in the filament path (or None)
         self._setup_devices()
 
         # Bumped when a gate's filament identity changes, so a capture already in flight
@@ -77,12 +78,13 @@ class MmuTd1Manager:
 
     def _setup_devices(self):
         """
-        Build (or look up) the device objects this unit's gates reference.
+        Build (or look up) the device objects this unit references.
 
-        'td1_device' is one scanner shared by every gate on the unit; 'td1_devices' is
-        one entry per gate in local gate order.
+        The two are independent, as with the NFC readers: a unit may have per-gate
+        scanners, an off-path one, both, or neither.
         """
-        serials = self.mmu_unit.td1_devices or [self.mmu_unit.td1_device] * self.mmu_unit.num_gates
+        self.shared_device = self._lookup_or_create_device(self.mmu_unit.td1_device)
+        serials = self.mmu_unit.td1_devices or [''] * self.mmu_unit.num_gates
         self.gate_devices = [self._lookup_or_create_device(serial) for serial in serials]
 
 
@@ -110,7 +112,11 @@ class MmuTd1Manager:
     #
 
     def has_td1(self):
-        return any(self.gate_devices)
+        return bool(self.shared_device) or any(self.gate_devices)
+
+
+    def has_shared_td1(self):
+        return self.shared_device is not None
 
 
     def has_gate_td1(self, gate):
@@ -119,6 +125,21 @@ class MmuTd1Manager:
 
     def serial_for(self, gate):
         device = self.device_for(gate)
+        return device.serial if device is not None else ""
+
+
+    def addressed_device(self, gate):
+        """
+        The device MMU_TD1 acts on when the user names a gate.
+
+        The gate's own in-path scanner, else this unit's off-path one - the same order
+        register_reading() resolves in, so reporting and acting agree.
+        """
+        return self.device_for(gate) or self.shared_device
+
+
+    def addressed_serial(self, gate):
+        device = self.addressed_device(gate)
         return device.serial if device is not None else ""
 
 
@@ -133,7 +154,7 @@ class MmuTd1Manager:
     def devices(self):
         """Every distinct device this unit references."""
         seen = {}
-        for device in self.gate_devices:
+        for device in [self.shared_device] + self.gate_devices:
             if device is not None:
                 seen.setdefault(device.serial, device)
         return list(seen.values())
@@ -212,16 +233,13 @@ class MmuTd1Manager:
         maps.persist_gate_map(changed_gate=gate)
 
 
-    def device(self, gate):
+    def healthy(self, device):
         """
-        Resolve an enabled, connected and healthy scanner for a gate.
+        Raise unless this scanner is enabled, connected and fault free.
 
         A scanner that has simply not measured anything yet counts as healthy - that is
         the normal state before filament first reaches it.
         """
-        device = self.device_for(gate)
-        if device is None:
-            raise MmuTd1Error("TD-1: no scanner configured for gate %d" % gate)
         if not device.enabled:
             raise MmuTd1Error("TD-1: scanner %s is disabled" % device.serial)
         if not device.connected:
@@ -233,19 +251,51 @@ class MmuTd1Manager:
         return device
 
 
-    def reading(self, gate):
-        """
-        The scanner's latest valid measurement for 'gate', as a normalized record.
+    def device(self, gate):
+        """Resolve an enabled, connected and healthy in-path scanner for a gate."""
+        device = self.device_for(gate)
+        if device is None:
+            raise MmuTd1Error("TD-1: no scanner configured for gate %d" % gate)
+        return self.healthy(device)
 
-        device() lets a scanner that has simply not measured yet through as healthy, so
-        this is where "healthy but nothing to report" becomes a proper MmuError rather
-        than the ValueError that measurement() raises.
+
+    def validated(self, device):
         """
-        device = self.device(gate)
+        A healthy scanner's latest measurement, as a normalized record.
+
+        healthy() lets a scanner that has simply not measured yet through, so this is
+        where "healthy but nothing to report" becomes a proper MmuError rather than the
+        ValueError that measurement() raises.
+        """
+        self.healthy(device)
         try:
             return measurement(device.record())
         except (ValueError, TypeError) as exc:
             raise MmuTd1NoReading("TD-1: %s" % exc) from exc
+
+
+    def reading(self, gate):
+        """The latest valid measurement from the in-path scanner serving 'gate'."""
+        return self.validated(self.device(gate))
+
+
+    def register_reading(self, gate):
+        """
+        The measurement MMU_TD1 REGISTER should attribute to 'gate'.
+
+        A gate's own in-path scanner first, since it is the one filament actually
+        crossed. Then this unit's off-path scanner, which is the whole point of
+        REGISTER - you presented filament to it by hand. Then anything already staged
+        as pending, so a reading taken before the gate had an identity is not lost.
+        """
+        if self.has_gate_td1(gate):
+            return self.reading(gate)
+        if self.shared_device is not None:
+            return self.validated(self.shared_device)
+        pending = self.mmu.pending_measurement
+        if pending is not None:
+            return pending
+        raise MmuTd1Error("TD-1: no scanner configured for gate %d" % gate)
 
 
     def wait_measurement(self, gate, baseline, timeout):
@@ -402,6 +452,26 @@ class MmuTd1Manager:
 # -----------------------------------------------------------------------------------------------------------
 # PASSIVE ATTRIBUTION
 # -----------------------------------------------------------------------------------------------------------
+
+    def stage(self, device, valid, previous, was_connected):
+        """
+        Stage an off-path reading as pending, for the gate preloaded next.
+
+        The mirror of a shared NFC tag read: the scanner serves no filament path, so
+        there is no gate to attribute to yet and guessing at the loaded one would be
+        exactly the misattribution the in-path rules exist to prevent. The user says
+        which gate it was by preloading one (or by MMU_TD1 GATE=n REGISTER=1).
+        """
+        if device is not self.shared_device or not device.enabled or not was_connected:
+            return
+        # Filament left in the reader is reported on every poll, with the scan_time it
+        # was first read at. Staging only a reading newer than the cached one is the
+        # dedupe - MmuNfcManager does the same job by UID
+        if previous is not None and valid['scan_time'] <= previous:
+            return
+        self.mmu.stage_pending_measurement(valid)
+        device.last_outcome = 'staged as pending for the next gate'
+
 
     def consider(self, device, valid, previous, was_connected):
         """

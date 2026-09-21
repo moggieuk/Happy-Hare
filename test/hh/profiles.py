@@ -215,8 +215,24 @@ NFC_NEIGHBOR_EVICT = NFC_PER_GATE.derive(
 # its normal path past the scanner - so enabling the feature is the whole of the setup.
 TD1_SHARED = BOXTURTLE_TEST.derive(
     'td1_shared',
-    syms={'MMU_HAS_TD1': True, 'PARAM_TD1_DEVICE': 'TD1-0042'},
-    description='BoxTurtle + one shared TD-1 scanner')
+    syms={'MMU_HAS_TD1': True, 'PARAM_TD1_BOWDEN_DEVICE': 'TD1-0042'},
+    description='BoxTurtle + one TD-1 scanner in the shared bowden')
+
+# The other topology: a scanner filament never passes through, that you present filament
+# to by hand. Its readings are staged as pending for the next gate preloaded, exactly as
+# a shared NFC reader's tag is - so it needs no gate assignment at all.
+TD1_OFFPATH = BOXTURTLE_TEST.derive(
+    'td1_offpath',
+    syms={'MMU_HAS_TD1': True, 'BOOL_TD1_OFFPATH': True,
+          'PARAM_TD1_DEVICE': 'TD1-0099'},
+    description='BoxTurtle + an off-path TD-1 you present filament to')
+
+# Both at once, which the NFC readers have always allowed and TD-1 now does too
+TD1_BOTH = BOXTURTLE_TEST.derive(
+    'td1_both',
+    syms={'MMU_HAS_TD1': True, 'PARAM_TD1_BOWDEN_DEVICE': 'TD1-0042',
+          'BOOL_TD1_OFFPATH': True, 'PARAM_TD1_DEVICE': 'TD1-0099'},
+    description='BoxTurtle + a bowden TD-1 and an off-path one')
 
 # One scanner per gate, with gate 2 deliberately left without one: the per-gate list has
 # to carry a placeholder for that gate so the list index stays the local gate number.
@@ -740,7 +756,8 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
                     NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                     NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
-                    TD1_SHARED, TD1_PER_GATE, TD1_ADVANCED, TD1_UNCONFIGURED)
+                    TD1_SHARED, TD1_PER_GATE, TD1_ADVANCED, TD1_UNCONFIGURED,
+                    TD1_OFFPATH, TD1_BOTH)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
             (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}

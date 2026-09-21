@@ -253,9 +253,16 @@ class MmuUnit:
 
         # TD-1 scanners are USB devices owned by Moonraker's [td1] component, not klipper
         # objects, so unlike NFC readers there is no section to validate - we only store
-        # the USB serial numbers here. MmuTd1 resolves them against Moonraker at runtime.
-        # 'td1_device' is one scanner shared by every gate on this unit; 'td1_devices' is
-        # one entry per gate in local gate order. They are mutually exclusive.
+        # the USB serial numbers here. MmuTd1Bridge resolves them against Moonraker.
+        #
+        # Same split as the NFC readers, and for the same reason:
+        #   'td1_device'  - a scanner filament does NOT pass through, that you present
+        #                   filament to by hand. Its readings are staged as pending and
+        #                   applied to the next gate preloaded, like a shared tag read.
+        #   'td1_devices' - one entry per gate in local gate order, in the filament path.
+        #                   Repeat a serial for a scanner sitting in a shared part of the
+        #                   bowden; leave an entry blank for a gate with no scanner.
+        # Both are optional and any combination is possible.
         self.td1_device = config.get('td1_device', '').strip()
         self.td1_devices = [
             name.strip() for name in config.getlist('td1_devices', [])
@@ -269,9 +276,6 @@ class MmuUnit:
                 "'td1_devices' uses a blank entry for a gate with no scanner, not '-' "
                 "(unit %s)" % self.name)
 
-        if self.td1_device and self.td1_devices:
-            raise config.error("Specify 'td1_device' or 'td1_devices' for unit %s, not both" % self.name)
-
         if config.get('td1_device', None) is not None and not self.td1_device:
             raise config.error("'td1_device' requires a Moonraker TD-1 USB serial number")
 
@@ -279,8 +283,8 @@ class MmuUnit:
             raise config.error("'td1_devices' must be empty or a comma separated list of 'num_gates' elements")
 
         # A serial may repeat within 'td1_devices' and across units - that is intentional:
-        # one physical scanner can serve several gates or even several units. MmuTd1 owns
-        # each serial once. Leave an entry blank for a gate with no scanner.
+        # one physical scanner can serve several gates or even several units, and one
+        # MmuTd1Device object is shared by all of them.
 
 
         # ---------------------------------------------------------------------------------------------------
@@ -1050,11 +1054,11 @@ class MmuUnit:
             unit_info['nfc_readers'] = self.nfc_readers
 
         if self.td1_device:
-            # Single (shared) TD-1 scanner
+            # Off-path TD-1 scanner, presented to by hand
             unit_info['td1_device'] = self.td1_device
 
-        elif self.td1_devices:
-            # Per-gate TD-1 scanners
+        if self.td1_devices:
+            # Per-gate TD-1 scanners, in the filament path
             unit_info['td1_devices'] = self.td1_devices
 
         return unit_info

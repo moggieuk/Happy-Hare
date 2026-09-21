@@ -15,14 +15,22 @@ import unittest
 from test.hh import cfg, profiles
 
 
+# One scanner in the shared bowden: in the filament path, so it renders as one
+# td1_devices entry per gate. 'td1_device' is the OFF-path one - see OFFPATH
 SHARED = {
     "MMU_HAS_TD1": True,
-    "PARAM_TD1_DEVICE": "TD1-0042",
+    "PARAM_TD1_BOWDEN_DEVICE": "TD1-0042",
+}
+
+OFFPATH = {
+    "MMU_HAS_TD1": True,
+    "BOOL_TD1_OFFPATH": True,
+    "PARAM_TD1_DEVICE": "TD1-0099",
 }
 
 PER_GATE = dict(SHARED, **{
     "MMU_HAS_PER_GATE_TD1": True,
-    "PARAM_TD1_DEVICE": "",
+    "PARAM_TD1_BOWDEN_DEVICE": "",
     "PARAM_TD1_DEVICE_0": "TD1-0042",
     "PARAM_TD1_DEVICE_1": "TD1-0043",
     # Gate 2's scanner is switched off but its serial is left behind on purpose:
@@ -73,8 +81,9 @@ class TestTd1SharedScanner(unittest.TestCase):
         rendered = assembled("td1_shared_split", SHARED)
         unit = rendered["mmu_unit unit0"]
         params = rendered["mmu_unit_parameters unit0"]
-        self.assertEqual(unit.get("td1_device"), "TD1-0042")
-        self.assertNotIn("td1_devices", unit)
+        # A bowden scanner is IN the filament path, so it lands as one entry per gate
+        self.assertEqual(unit.get("td1_devices"), "TD1-0042, TD1-0042, TD1-0042, TD1-0042")
+        self.assertNotIn("td1_device", unit)
         # Tunables belong with every other unit tunable, not on the hardware section
         self.assertNotIn("td1_auto_update", unit)
         self.assertEqual(params.get("td1_auto_update"), "0")
@@ -144,6 +153,44 @@ class TestTd1Advanced(unittest.TestCase):
         cfg.assert_sane(rendered)
 
 
+class TestTd1OffPathScanner(unittest.TestCase):
+    """
+    'td1_device' is the scanner filament does NOT pass through.
+
+    The same split as nfc_reader / nfc_readers, and for the same reason: an off-path
+    scanner serves no gate, so it gets no gate assignment. Its readings are staged as
+    pending for the next gate preloaded.
+    """
+
+    def test_it_lands_as_td1_device_with_no_gate_assignment(self):
+        unit = assembled("td1_offpath", OFFPATH)["mmu_unit unit0"]
+        self.assertEqual(unit.get("td1_device"), "TD1-0099")
+        self.assertNotIn("td1_devices", unit)
+
+    def test_the_two_topologies_are_independent(self):
+        # Not alternatives. A machine may have a bowden scanner AND a bench one
+        unit = assembled("td1_both_kinds", dict(SHARED, **OFFPATH))["mmu_unit unit0"]
+        self.assertEqual(unit.get("td1_device"), "TD1-0099")
+        self.assertEqual(unit.get("td1_devices"), "TD1-0042, TD1-0042, TD1-0042, TD1-0042")
+
+    def test_per_gate_and_off_path_together(self):
+        unit = assembled("td1_pergate_offpath", dict(PER_GATE, **OFFPATH))["mmu_unit unit0"]
+        self.assertEqual(unit.get("td1_device"), "TD1-0099")
+        self.assertEqual(unit.get("td1_devices"), "TD1-0042, TD1-0043, , TD1-0042")
+
+    def test_an_off_path_scanner_serves_no_gate_at_runtime(self):
+        from test.hh import session
+        profile = profiles.get("boxturtle").derive("td1_offpath_boot", syms=OFFPATH)
+        with session(profile) as hh:
+            hh.boot(calibrate=True)
+            self.assertEqual(hh.errors, [])
+            mgr = hh.mmu.mmu_unit(0).td1_manager
+            self.assertEqual(mgr.shared_device.serial, "TD1-0099")
+            self.assertEqual([mgr.serial_for(g) for g in range(4)], [""] * 4)
+            # ...so it costs no bowden traverse
+            self.assertFalse(any(mgr.needs_measurement(g) for g in range(4)))
+
+
 class TestTd1MultiUnit(unittest.TestCase):
     def test_a_serial_may_be_reused_across_units(self):
         # One physical scanner serving two units is legal and needs no second definition
@@ -151,8 +198,9 @@ class TestTd1MultiUnit(unittest.TestCase):
             "td1_two_units", profiles.get("boxturtle").derive("td1_base", syms=SHARED),
             ["unit0", "unit1"])
         rendered = cfg.assemble(cfg.render(profile))
-        self.assertEqual(rendered["mmu_unit unit0"].get("td1_device"), "TD1-0042")
-        self.assertEqual(rendered["mmu_unit unit1"].get("td1_device"), "TD1-0042")
+        for unit in ("mmu_unit unit0", "mmu_unit unit1"):
+            self.assertEqual(rendered[unit].get("td1_devices"),
+                             "TD1-0042, TD1-0042, TD1-0042, TD1-0042")
 
 
 class TestTd1InvalidInput(unittest.TestCase):
@@ -174,7 +222,7 @@ class TestTd1InvalidInput(unittest.TestCase):
         # a hand-written mmu_hardware.cfg
         from test.hh import session
         profile = profiles.get("boxturtle").derive("td1_blank", syms=dict(
-            SHARED, PARAM_TD1_DEVICE=""))
+            SHARED, PARAM_TD1_BOWDEN_DEVICE=""))
         unit = cfg.assemble(cfg.render(profile))["mmu_unit unit0"]
         self.assertNotIn("td1_device", unit)
         self.assertNotIn("td1_devices", unit)

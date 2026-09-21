@@ -22,8 +22,13 @@ from test.hh.moonraker import harness
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
+# One scanner in a shared part of the bowden: every gate names the same serial, which
+# is how an in-path scanner serving several gates is expressed (and the topology the
+# attribution debt exists for). An off-path scanner is 'td1_device' - see TestTd1Pending
 PROFILE = profiles.get("boxturtle").derive("td1", syms={
-    "MMU_HAS_TD1": True, "PARAM_TD1_DEVICE": "SERIAL_A",
+    "MMU_HAS_TD1": True, "MMU_HAS_PER_GATE_TD1": True,
+    "PARAM_TD1_DEVICE_0": "SERIAL_A", "PARAM_TD1_DEVICE_1": "SERIAL_A",
+    "PARAM_TD1_DEVICE_2": "SERIAL_A", "PARAM_TD1_DEVICE_3": "SERIAL_A",
     "BOOL_TD1_ADVANCED": True, "PARAM_TD1_CAPTURE_TIMEOUT": "1",
 })
 
@@ -171,8 +176,23 @@ class TestTd1Setup(Td1Case):
 
     def test_assignment_is_discoverable_from_the_machine_object(self):
         machine = self.mmu.mmu_machine.get_status(0)
-        self.assertEqual(machine["unit_0"]["td1_device"], "SERIAL_A")
-        self.assertNotIn("td1_devices", machine["unit_0"])
+        self.assertEqual(machine["unit_0"]["td1_devices"], ["SERIAL_A"] * 4)
+        self.assertNotIn("td1_device", machine["unit_0"])
+
+    def test_both_topologies_are_published_independently(self):
+        # They are not alternatives: a unit may have per-gate scanners AND one you
+        # present filament to, exactly as with the NFC readers
+        profile = PROFILE.derive("td1_both", syms={
+            "BOOL_TD1_OFFPATH": True, "PARAM_TD1_DEVICE": "BENCH"})
+        with session(profile) as hh:
+            hh.boot(calibrate=True)
+            self.assertEqual(hh.errors, [])
+            unit = hh.mmu.mmu_machine.get_status(0)["unit_0"]
+            self.assertEqual(unit["td1_device"], "BENCH")
+            self.assertEqual(unit["td1_devices"], ["SERIAL_A"] * 4)
+            mgr = hh.mmu.mmu_unit(0).td1_manager
+            self.assertEqual(mgr.shared_device.serial, "BENCH")
+            self.assertEqual([mgr.serial_for(g) for g in range(4)], ["SERIAL_A"] * 4)
 
     def test_per_gate_template(self):
         profile = PROFILE.derive("td1_per_gate", syms=PER_GATE_SYMS)
@@ -1433,3 +1453,155 @@ class TestTd1ManualEditEvent(Td1Case):
 
 def rec_or_blank(ready):
     return record(second=10, td=99.) if ready else {"td": None, "color": None, "scan_time": None}
+
+
+# An off-path scanner: filament never passes through it. Readings are staged as pending
+# and applied to the gate preloaded next, exactly as a shared NFC tag read is
+OFFPATH = profiles.get("boxturtle").derive("td1_offpath", syms={
+    "MMU_HAS_TD1": True, "BOOL_TD1_OFFPATH": True, "PARAM_TD1_DEVICE": "BENCH",
+    "BOOL_TD1_ADVANCED": True, "PARAM_TD1_CAPTURE_TIMEOUT": "1",
+})
+
+
+class Td1OffPathCase(unittest.TestCase):
+    def setUp(self):
+        self.hh = session(OFFPATH)
+        self.hh.boot(calibrate=True)
+        self.assertEqual(self.hh.errors, [])
+        self.mmu = self.hh.mmu
+        self.bridge = self.mmu.td1
+        self.manager = self.mmu.mmu_unit(0).td1_manager
+        self.bridge.pending.clear()
+        self.data = {"BENCH": {"td": None, "color": None, "scan_time": None}}
+        self.hh.webhooks.sink = self.respond
+        # Connected, nothing measured yet - the state a scanner is in before anyone
+        # presents filament to it. Staging requires the device to have been connected
+        # already, so a reading cached across a reconnect is never mistaken for a new one
+        self.bridge.update_devices(
+            {"BENCH": {"td": None, "color": None, "scan_time": None}})
+
+    def tearDown(self):
+        self.hh.close()
+
+    def respond(self, method, values):
+        if method == "mmu_td1_request":
+            self.bridge._callback(Request(
+                request_id=values["request_id"], devices=self.data, error=None))
+
+    def present(self, second=0, td=4., color="123456"):
+        """Present filament to the off-path scanner by hand."""
+        self.data = {"BENCH": record(second=second, td=td, color=color)}
+        self.bridge.update_devices(self.data)
+
+
+class TestTd1OffPathStaging(Td1OffPathCase):
+    def test_it_serves_no_gate(self):
+        self.assertEqual(self.manager.shared_device.serial, "BENCH")
+        self.assertEqual([self.manager.serial_for(g) for g in range(4)], [""] * 4)
+        # No gate has a scanner, so MMU_CHECK_GATE TD1=1 must not pay a traverse
+        self.assertFalse(any(self.manager.needs_measurement(g) for g in range(4)))
+
+    def test_a_reading_is_staged_rather_than_attributed(self):
+        # The crux: an off-path reading has no gate, and guessing at the loaded one is
+        # exactly the misattribution the in-path rules exist to prevent
+        self.mmu.select_gate(1)
+        self.present()
+        self.assertEqual(self.mmu.gate_td, [None] * 4)
+        self.assertEqual(self.mmu.pending_measurement["td"], 4.)
+        self.assertEqual(self.mmu.get_status(0)["pending_td"], 4.)
+
+    def test_the_same_reading_is_staged_once(self):
+        # Filament left in the reader is reported on every poll
+        with patch.object(self.mmu, "stage_pending_measurement",
+                          wraps=self.mmu.stage_pending_measurement) as staged:
+            self.present()
+            self.present()
+            self.present()
+        self.assertEqual(staged.call_count, 1)
+
+    def test_a_new_reading_restages(self):
+        self.present(second=1, td=4.)
+        self.present(second=2, td=9.)
+        self.assertEqual(self.mmu.pending_measurement["td"], 9.)
+
+    def test_preload_applies_it_together_with_the_spool(self):
+        # The order trap that REGISTER had: assigning identity clears measurements, so
+        # the measurement has to land in the same call that assigns the spool
+        self.present()
+        self.mmu.set_pending_spool_id(42)
+        pending = self.mmu._grab_pending()
+        self.mmu._check_pending_filament(2, pending=pending)
+        self.assertEqual(self.mmu.gate_spool_id[2], 42)
+        self.assertEqual(self.mmu.gate_td[2], 4.)
+        self.assertEqual(self.mmu.gate_td1_color[2], "123456")
+
+    def test_it_is_applied_even_with_no_spool_or_tag(self):
+        self.present()
+        self.mmu._check_pending_filament(3)
+        self.assertEqual(self.mmu.gate_td[3], 4.)
+        self.assertIsNone(self.mmu.pending_measurement)
+
+    def test_grab_and_clear_keep_all_three_in_lockstep(self):
+        self.present()
+        self.mmu.set_pending_spool_id(42)
+        spool_id, tag, measured = self.mmu._grab_pending()
+        self.assertEqual((spool_id, measured["td"]), (42, 4.))
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.assertEqual(self.mmu.pending_spool_id, -1)
+
+    def test_consuming_a_staging_does_not_restage_the_same_reading(self):
+        # Filament left in the reader keeps being reported with the scan_time it was
+        # first read at. That is not a new measurement, so it must not be staged onto
+        # a second gate - presenting it again produces a new scan_time and does
+        self.present(second=1)
+        self.mmu._check_pending_filament(0)
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.present(second=1)
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.present(second=2, td=7.)
+        self.assertEqual(self.mmu.pending_measurement["td"], 7.)
+
+    def test_register_takes_the_off_path_reading_without_a_gate_assignment(self):
+        # The workflow that previously needed the scanner assigned to gates
+        self.present()
+        self.hh.run_gcode("MMU_GATE_MAP GATE=2 SPOOLID=42 QUIET=1")
+        self.hh.run_gcode("MMU_TD1 GATE=2 REGISTER=1 QUIET=1")
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.mmu.gate_td[2], 4.)
+
+
+class TestTd1BothTopologies(Td1Case):
+    """A unit may have in-path scanners AND an off-path one, as NFC always could."""
+
+    def profile(self):
+        return PROFILE.derive("td1_mixed", syms={
+            "BOOL_TD1_OFFPATH": True, "PARAM_TD1_DEVICE": "BENCH"})
+
+    def test_pending_beats_a_gate_s_own_in_path_reading_at_preload(self):
+        # The user just presented this filament by hand; an in-path reader corrects it
+        # on the next load if td1_auto_update is on
+        with session(self.profile()) as hh:
+            hh.boot(calibrate=True)
+            bridge, mmu = hh.mmu.td1, hh.mmu
+            bridge.pending.clear()
+            blank = {"td": None, "color": None, "scan_time": None}
+            bridge.update_devices({"SERIAL_A": blank, "BENCH": blank})
+            bridge.update_devices({"SERIAL_A": record(second=1, td=1.),
+                                   "BENCH": record(second=2, td=9.)})
+            hh.mmu.mmu_unit(0).td1_manager.apply(0, record(second=1, td=1.))
+            self.assertEqual(mmu.gate_td[0], 1.)
+            mmu._check_pending_filament(0)
+            self.assertEqual(mmu.gate_td[0], 9.)
+
+    def test_only_the_off_path_device_stages(self):
+        with session(self.profile()) as hh:
+            hh.boot(calibrate=True)
+            bridge, mmu = hh.mmu.td1, hh.mmu
+            bridge.pending.clear()
+            blank = {"td": None, "color": None, "scan_time": None}
+            bridge.update_devices({"SERIAL_A": blank, "BENCH": blank})
+            bridge.update_devices({"SERIAL_A": record(second=1, td=1.), "BENCH": blank})
+            self.assertIsNone(mmu.pending_measurement)
+            bridge.update_devices({"SERIAL_A": record(second=1, td=1.),
+                                   "BENCH": record(second=2, td=9.)})
+            self.assertEqual(mmu.pending_measurement["td"], 9.)

@@ -222,7 +222,7 @@ class MmuTd1Command(BaseCommand):
         if serial:
             targets = [serial]
         else:
-            serials = {g: mmu.mmu_unit(g).td1_manager.serial_for(g) for g in gates}
+            serials = {g: mmu.mmu_unit(g).td1_manager.addressed_serial(g) for g in gates}
             targets = [s for s in dict.fromkeys(serials[g] for g in gates) if s]
             unassigned = [g for g in gates if not serials[g]]
             if unassigned:
@@ -258,11 +258,14 @@ class MmuTd1Command(BaseCommand):
             elif operation == 'REGISTER':
                 gate = gates[0]
                 gate_manager = mmu.mmu_unit(gate).td1_manager
-                gate_manager.apply(gate, gate_manager.reading(gate))
-                scanned = datetime.fromisoformat(device.scan_time)
+                # Age comes from the record actually applied, which may have been
+                # staged as pending rather than read from this device
+                record = gate_manager.register_reading(gate)
+                gate_manager.apply(gate, record)
+                scanned = datetime.fromisoformat(record['scan_time'])
                 age = max(0., (datetime.now(timezone.utc) - scanned).total_seconds())
                 mmu.log_always("TD-1: applied cached measurement to gate %d from %s (%.0fs old)"
-                               % (gate, device.scan_time, age))
+                               % (gate, record['scan_time'], age))
                 # Establishing the gate's filament identity clears its measurement, so
                 # registering before a spool or tag is assigned silently loses this
                 if mmu.gate_spool_id[gate] <= 0 and not mmu.gate_spool_rfid[gate]:

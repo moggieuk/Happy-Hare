@@ -247,8 +247,10 @@ class MmuFilamentMovement:
         # NFC read) rather than have both try to assign the gate. A weak pending (bare uid only)
         # is not trusted enough to skip the gate's own reader - it's applied below only as a
         # fallback if that reader finds nothing.
-        spool_id, tag = pending if pending is not None else (-1, None)
+        spool_id, tag, _measured = pending if pending is not None else (-1, None, None)
         has_material = tag is not None and isinstance(tag[1], dict) and tag[1].get('material')
+        # A staged measurement is not identity, so it never makes a pending "strong" -
+        # it says what the filament measures, not which filament it is
         have_strong_pending = spool_id > 0 or has_material
 
         # A neighboring gate's spool could satisfy the NFC leg below and get misattributed -
