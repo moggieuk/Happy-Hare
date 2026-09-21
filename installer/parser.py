@@ -189,6 +189,15 @@ class Tokenizer(object):
             if match:
                 value = match.group(0)
 
+                # Regexes match the remaining slice, not the original line. A
+                # semicolon is only a config comment at line start or after
+                # whitespace, which may already have been consumed as a token.
+                # Check both comment rules here; keep '#' handling unchanged.
+                if token_type == "comment" and value.lstrip(" \t").startswith(";"):
+                    marker_pos = start_pos + len(value) - len(value.lstrip(" \t"))
+                    if marker_pos and not self.buf[marker_pos - 1].isspace():
+                        continue
+
                 # Advance absolute position counters
                 self.pos += len(value)
                 self._recompute_line_col()

@@ -435,5 +435,51 @@ class TestSetPreservesLayout(unittest.TestCase):
         self.assertEqual(klipper_value(builder.write(), "s", "extra_endstops").split(), ["c=3,", "d=4"])
 
 
+class TestSemicolonComments(unittest.TestCase):
+
+    def test_inline_semicolons_match_configparser(self):
+        for value in (
+            "abc;def", "abc;def ; comment", "abc ; comment",
+            "abc\t; comment", "; comment", '"abc;def"',
+            '"abc ; def"', "abc;{PIN_EXAMPLE}",
+            "abc ; comment {PIN_EXAMPLE}",
+        ):
+            with self.subTest(value=value):
+                buf = "[s]\nvalue: " + value + "\n"
+                builder = build(buf)
+                self.assertEqual(builder.parse_errors(), [])
+                self.assertEqual(builder.get("s", "value"), klipper_value(buf, "s", "value"))
+                self.assertEqual(builder.write(), buf)
+
+    def test_full_line_comments_preserve_layout_and_continuation(self):
+        buf = "; first line\n[s]\nvalue:\n; comment\n  first;literal\n\t; comment\n  second\nnext: 1\n"
+        builder = build(buf)
+        self.assertEqual(builder.parse_errors(), [])
+        self.assertEqual(builder.get("s", "value").split(), ["first;literal", "second"])
+        self.assertEqual(builder.get("s", "next"), "1")
+        self.assertEqual(builder.write(), buf)
+
+    def test_hash_comment_behavior_is_unchanged(self):
+        buf = "[s]\nvalue: abc#comment\n"
+        builder = build(buf)
+        self.assertEqual(builder.get("s", "value"), "abc")
+        self.assertEqual(builder.write(), buf)
+
+    def test_button_gcode_messages_keep_their_closing_quotes(self):
+        for option in ("press_gcode", "release_gcode"):
+            for message in (
+                "Bucket switch released (bucket removed); resetting count",
+                "Bucket switch released during startup; reset ignored",
+            ):
+                with self.subTest(option=option, message=message):
+                    command = 'RESPOND PREFIX="BLOBIFIER" MSG="' + message + '"'
+                    buf = "[gcode_button bucket]\n" + option + ":\n  " + command + "\nnext: 1\n"
+                    builder = build(buf)
+                    self.assertEqual(builder.parse_errors(), [])
+                    self.assertEqual(builder.get("gcode_button bucket", option), command)
+                    self.assertEqual(builder.get("gcode_button bucket", "next"), "1")
+                    self.assertEqual(builder.write(), buf)
+
+
 if __name__ == "__main__":
     unittest.main()
