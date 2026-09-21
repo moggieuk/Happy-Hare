@@ -933,7 +933,7 @@ class _PN532Base:
             self._release_current_target(reason="mifare_read_complete")
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Initialisation and lifecycle
+    # Initialization and lifecycle
     # ─────────────────────────────────────────────────────────────────────────
 
     def _wake_pn532(self, attempts=3):

@@ -205,7 +205,7 @@ class TestUnpackPayload(unittest.TestCase):
         """
         Documents a real edge: samples[-1] on an empty batch raises IndexError, not the
         TypeError the arity guard produces. Klipper is not expected to deliver an empty
-        batch, so this pins the behaviour rather than endorsing it - a caller that ever
+        batch, so this pins the behavior rather than endorsing it - a caller that ever
         sees one gets an IndexError out of an ADC callback.
         """
         with self.assertRaises(IndexError):
@@ -215,7 +215,7 @@ class TestUnpackPayload(unittest.TestCase):
 class TestHarnessAdcMatchesTheShim(unittest.TestCase):
     """
     The harness's own fake MCU_adc offers the same three shapes so a bootup test can be
-    parameterised across them (Session(adc_api=..., adc_payload=...)). If the fake and the
+    parameterized across them (Session(adc_api=..., adc_payload=...)). If the fake and the
     shim ever disagreed, those runs would silently exercise one branch - so pin them here,
     where the shim's expectations are written down.
     """

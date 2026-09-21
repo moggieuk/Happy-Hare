@@ -49,7 +49,7 @@ def read_vars_file(hh):
 
 
 class SensorEnableTestCase(unittest.TestCase):
-    """Single-unit (boxturtle): the core enable/disable/report/validation behaviour."""
+    """Single-unit (boxturtle): the core enable/disable/report/validation behavior."""
 
     def setUp(self):
         self.hh = session('boxturtle')

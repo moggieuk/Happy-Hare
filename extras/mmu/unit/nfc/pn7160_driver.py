@@ -1507,7 +1507,7 @@ class PN7160Driver:
     # nfc_gate_jog_scan_window at 100mm/s is 5 seconds of entirely normal silence, and
     # tearing down partway through costs probe_start()'s blocking NCI setup (a VEN
     # toggle plus full bring-up, ~124ms = 12mm of travel at that speed) with discovery
-    # DOWN for all of it. Worse, a restart storm destabilises the chip: repeated
+    # DOWN for all of it. Worse, a restart storm destabilizes the chip: repeated
     # hardware resets provoke I2C START_NACKs, whose recovery is slower again.
     #
     # Note this is NOT the same situation as pn532_driver's watchdog, which is correct
@@ -1581,7 +1581,7 @@ class PN7160Driver:
         except Exception as e:
             # warning, and ungated, unlike rc522's equivalent: this path also marks
             # the reader not-alive and forces a full re-init, so the user needs to
-            # see it. Do not "normalise" it down to a debug-gated info.
+            # see it. Do not "normalize" it down to a debug-gated info.
             logger.warning("[%s pn7160] probe_start failed: %s", self._name, e)
             self._probe_active = False
             self._alive = False

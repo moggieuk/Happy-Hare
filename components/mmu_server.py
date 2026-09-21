@@ -169,11 +169,11 @@ class MmuServer:
         # Example: {2: ('BigRed', 0, {"material": "pla", "color": "ff56e0"}), 3: ('BigRed', 3, {"material": "abs"}), ...
         self.spool_location = {}
 
-        # Reverse map of normalised NFC/RFID tag UID -> spool_id, built alongside
+        # Reverse map of normalized NFC/RFID tag UID -> spool_id, built alongside
         # spool_location so a tag scan can be resolved without a per-lookup fetch
         self.uid_to_spool_id = {}
 
-        # Negative cache of normalised UID -> expiry (monotonic) for tags recently
+        # Negative cache of normalized UID -> expiry (monotonic) for tags recently
         # confirmed absent from Spoolman, so frequent scans of an unknown tag
         # don't trigger a full spool fetch every time
         self.uid_miss_cache = {}
@@ -424,7 +424,7 @@ class MmuServer:
     @staticmethod
     def _parse_uid_list(raw) -> list[str]:
         '''
-        Split a (possibly comma-separated) UID value into normalised UIDs.
+        Split a (possibly comma-separated) UID value into normalized UIDs.
         Blank entries are dropped and duplicates removed, order preserved.
         None/'' -> [].
         '''
@@ -1492,7 +1492,7 @@ class MmuServer:
     async def _fetch_spoolmandb_bambu(self) -> list:
         '''
         Fetch + cache the SpoolmanDB Bambu Lab filament list (bambulab.json) and
-        the top-level manufacturer name (used for vendor normalisation). Returns
+        the top-level manufacturer name (used for vendor normalization). Returns
         [] on failure (cached so it isn't retried on every scan).
         '''
         if self._spoolmandb_bambu is not None:

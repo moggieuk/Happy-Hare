@@ -10,10 +10,10 @@
 #             outer's percentage rather than being ignored.
 #
 # Nothing pinned that until now: the only test touching either wrapper asserts "did not throw".
-# This file is a characterisation pin, written ahead of a refactor that moves the current record
+# This file is a characterization pin, written ahead of a refactor that moves the current record
 # onto the per-stepper objects. Its job is to fail if that refactor quietly unifies the policies.
 #
-# A characterisation test passes on current code by construction, so its value rests entirely on
+# A characterization test passes on current code by construction, so its value rests entirely on
 # having been mutation-checked: giving the gear wrapper the extruder's policy must take the gear
 # count from 2 to 4.
 #

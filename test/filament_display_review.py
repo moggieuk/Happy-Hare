@@ -557,7 +557,7 @@ class TestFilamentDisplayAllSensorsAlwaysFalse(unittest.TestCase):
     All 5 real, independently-fittable sensors (entry/exit/shared_exit/
     extruder/toolhead) fitted, but forced to read False at every single
     filament_position -- regardless of how far the tip has actually
-    travelled, unlike _derive_sensors' physically-consistent derivation used
+    traveled, unlike _derive_sensors' physically-consistent derivation used
     by TestFilamentDisplayVisualReview. This is a broken/miscalibrated-sensor
     scenario: it exercises the "sensor fitted but never triggers" fallback
     glyph (empty_sensor, not trig_sensor) at positions where a working sensor
@@ -743,7 +743,7 @@ class TestFilamentDisplayGateArea(unittest.TestCase):
                 self.assertTrue(visual)
 
     def test_entry_sensor_optional(self):
-        """No entry sensor fitted -> P1 falls back to the plain past(UNLOADED) arrow (old behaviour)."""
+        """No entry sensor fitted -> P1 falls back to the plain past(UNLOADED) arrow (old behavior)."""
         print()
         for style_name, is_bold in BOLD_STYLES:
             style_header(style_name, is_bold)

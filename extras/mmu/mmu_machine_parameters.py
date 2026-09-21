@@ -78,7 +78,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('unload_sequence_macro',         'str',   '_MMU_UNLOAD_SEQUENCE',    section="MACROS", hidden=True),
         ParamSpec('load_sequence_macro',           'str',   '_MMU_LOAD_SEQUENCE',      section="MACROS", hidden=True),
 
-        # These macros are not currently exposed but provide future flexability
+        # These macros are not currently exposed but provide future flexibility
         ParamSpec('error_dialog_macro',            'str',   '_MMU_ERROR_DIALOG',       section="MACROS", hidden=True),
         ParamSpec('error_macro',                   'str',   '_MMU_ERROR',              section="MACROS", hidden=True),
         ParamSpec('toolhead_homing_macro',         'str',   '_MMU_AUTO_HOME',          section="MACROS", hidden=True),

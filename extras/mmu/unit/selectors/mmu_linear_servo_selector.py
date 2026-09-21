@@ -157,7 +157,7 @@ class LinearSelectorServo:
 
         self.params = self.p = selector.p
 
-        # Default to config angles. This will be overrided by calibration in connect()
+        # Default to config angles. This will be overridden by calibration in connect()
         self.servo_angles = {
             'down': self.p.servo_down_angle,
             'up': self.p.servo_up_angle,

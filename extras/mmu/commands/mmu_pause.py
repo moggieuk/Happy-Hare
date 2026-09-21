@@ -33,7 +33,7 @@ class MmuPauseCommand(BaseCommand):
         "Examples:\n"
         + f'{CMD}                          ...Pause the MMU and enter the error/recovery state\n'
         + f'{CMD} MSG="Filament tangle"    ...Pause with a custom reason shown to the user\n'
-        + f'{CMD} FORCE_IN_PRINT=1         ...Pause using in-print behaviour even when not detected as printing\n'
+        + f'{CMD} FORCE_IN_PRINT=1         ...Pause using in-print behavior even when not detected as printing\n'
     )
 
     def __init__(self, mmu):
@@ -53,7 +53,7 @@ class MmuPauseCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimic in-print
         msg = gcmd.get('MSG', "MMU_PAUSE macro was directly called")
 
         mmu.handle_mmu_error(msg, force_in_print)

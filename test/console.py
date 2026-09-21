@@ -107,7 +107,7 @@ def _hex_to_rgb(digits):
 
 
 def _rgb_to_256(r, g, b):
-    """Nearest xterm-256 index: the 6x6x6 cube, or the greyscale ramp when near-grey."""
+    """Nearest xterm-256 index: the 6x6x6 cube, or the grayscale ramp when near-grey."""
     if abs(r - g) < 11 and abs(g - b) < 11:
         if r < 8:
             return 16
@@ -131,7 +131,7 @@ def truecolor_supported():
     return os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit')
 
 
-# The 16 ANSI colours, in SGR order (30-37 then 90-97). Used for nearest-match in '16'
+# The 16 ANSI colors, in SGR order (30-37 then 90-97). Used for nearest-match in '16'
 # mode; a per-channel threshold collapsed every pastel to white.
 _ANSI16 = ((0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0),
            (0, 0, 128), (128, 0, 128), (0, 128, 128), (192, 192, 192),
@@ -287,7 +287,7 @@ def paint(text, code, enabled=True):
 # the comment marker in every config and G-code file the reader is already looking at, which
 # carries exactly the "not an instruction, just a remark" sense wanted here.
 INFO_PREFIX = '# '
-# Grey rather than SGR 2 (faint) on purpose: _sgr_state() tracks foreground colours and
+# Grey rather than SGR 2 (faint) on purpose: _sgr_state() tracks foreground colors and
 # bold, so a grey line re-opens its colour correctly when the pager wraps it. Faint would be
 # dropped at the wrap and the continuation rows would come back at full brightness.
 INFO_COLOUR = '90'
@@ -395,7 +395,7 @@ def readline_backend():
 
     readline.backend only exists on 3.13+, and `make console` picks whichever interpreter it
     finds - klippy-env's or the venv's - so the docstring probe is the working path on older
-    ones, not redundant defence.
+    ones, not redundant defense.
     """
     if not HAVE_READLINE:
         return 'readline'
@@ -1187,7 +1187,7 @@ class Console:
 
     # A lit LED is a SOLID BLOCK, not '##'. The old glyph was painted in the LED's own
     # colour, which made a white or grey LED - mmu_breathing_white_fast (0.2,0.2,0.2) on
-    # 'selecting', mmu_sparkle on 'complete', white_light (1,1,1) for an uncoloured gate
+    # 'selecting', mmu_sparkle on 'complete', white_light (1,1,1) for an uncolored gate
     # under filament_color - indistinguishable from ordinary text, because the terminal's
     # default foreground IS white/grey. A block in that same colour still reads as a block.
     # Foreground only: _sgr_state() tracks fg and bold, so a background colour would not
@@ -2581,7 +2581,7 @@ def parse_args(argv=None):
     p.add_argument('--trace', type=int, default=0, metavar='0-4',
                    help="Happy Hare log_level; 4 is full narration")
     p.add_argument('--virtual-nfc', dest='virtual_nfc', action='store_true', default=True,
-                   help='virtualise NFC readers so /tag works (default: on)')
+                   help='virtualize NFC readers so /tag works (default: on)')
     p.add_argument('--no-virtual-nfc', dest='virtual_nfc', action='store_false',
                    help='use the real reader driver instead, against a fake bus scripted '
                         'with a finite number of init cycles (test/hh/nfc_fixtures.py) - '

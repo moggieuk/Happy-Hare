@@ -399,7 +399,7 @@ class TestClogDetectionLength(EncoderTestCase):
     def test_effective_length_ignores_the_calibration_in_static_mode(self):
         """
         Static mode never consults the calibrated length, so reporting one would describe
-        behaviour the machine is not going to exhibit.
+        behavior the machine is not going to exhibit.
         """
         self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=1')
         self.calibrator.update_clog_detection_length(30.0, push=True)

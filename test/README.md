@@ -350,7 +350,7 @@ Useful flags — `make console ARGS='...'`:
 --scrollback 5000              # lines kept for /scroll; 0 disables it
 --no-live                      # freeze the clock (default: live at a terminal)
 --no-timestamp                 # no clock in the output (default: on at a terminal)
---color 256|truecolor|16|auto  # colour depth (see below)
+--color 256|truecolor|16|auto  # color depth (see below)
 --log-dir /tmp                 # where mmu.log goes; --no-log to discard it
 --trace 4                      # full Happy Hare narration
 --no-preload                   # leave every gate empty
@@ -370,7 +370,7 @@ boots the machine cold and the calibration warnings then appear for real.
 
 Two more things happen at startup that a printer does for itself and a frozen clock does not:
 
-- **The gate map is primed** — every gate gets a vendor, material, colour and temperature, so
+- **The gate map is primed** — every gate gets a vendor, material, color and temperature, so
   the gate table and the LED `filament_color` effect have something to show instead of
   `Unknown | 200C | Unknown`. Seeded, so a session is reproducible; `--seed N` for a different
   spread, `--no-prime` for none.
@@ -498,14 +498,14 @@ how the console runs.
 
 ### If a warning shows up on a pink background
 
-Run `make console ARGS='--color 16'`. Happy Hare's console messages carry HTML colours which
+Run `make console ARGS='--color 16'`. Happy Hare's console messages carry HTML colors which
 the console translates to ANSI, and 24-bit `ESC[38;2;R;G;Bm` is **not** safely ignored by a
 terminal that lacks truecolor — the channels get read as separate SGR codes. HH's warning
-colour is `#FF69B4`, whose green channel is `0x69` = 105, and SGR 105 means *bright magenta
+color is `#FF69B4`, whose green channel is `0x69` = 105, and SGR 105 means *bright magenta
 background*. So the warning arrives on a pink background.
 
 `--color` defaults to `auto`, which only uses truecolor when `$COLORTERM` says `truecolor`
-or `24bit` and otherwise emits 256-colour (`38;5;N`). `--color 16` is the belt-and-braces
+or `24bit` and otherwise emits 256-color (`38;5;N`). `--color 16` is the belt-and-braces
 option: it emits nothing but plain `30-37`/`90-97`, which no terminal can misread.
 
 The header is **pinned to the top of the terminal** while output scrolls beneath it, and it
@@ -526,7 +526,7 @@ it falls back to reprinting above each prompt.
   led unit1 exit     ██████████████ ██████████████ ██████████████ ██████████████  [gate_status]
 ```
 
-One block per **physical** LED, in that LED's own colour: `██` lit, `▓▓` lit but too dim to
+One block per **physical** LED, in that LED's own color: `██` lit, `▓▓` lit but too dim to
 show honestly, `··` off (grey). The LEDs of one gate run together and the gates are separated
 by a space, so ViViD's seven-per-gate strip reads as four groups rather than 28
 undifferentiated cells — and fits in 100 columns, which the ungrouped 117-column version did
@@ -540,10 +540,10 @@ below 25% is therefore painted at 25% with its hue kept, and the lighter glyph i
 you the brightness on screen is a floor rather than a reading.
 
 A lit LED used to be `##`, which was a problem rather than a shorthand: the glyph was painted
-in the LED's colour, and a white or grey LED — `mmu_breathing_white_fast` on `selecting`,
-`mmu_sparkle` on `complete`, `white_light` for an uncoloured gate under `filament_color` — came
+in the LED's color, and a white or grey LED — `mmu_breathing_white_fast` on `selecting`,
+`mmu_sparkle` on `complete`, `white_light` for an uncolored gate under `filament_color` — came
 out indistinguishable from ordinary text, because the terminal's default foreground *is* white.
-A block in the same colour still reads as a block.
+A block in the same color still reads as a block.
 
 All four segments are shown. `ercf_vvd`'s unit0 configures every one of them (9 exit, 9 entry,
 4 status, 3 logo) precisely so every effect path has somewhere to land. Note `define_on` in
@@ -786,7 +786,7 @@ timeout, a 5-second warning window, a 2.5-second boot delay. Real waiting would 
 suite unusable. `advance()` runs every timer that falls due, in order.
 
 **The filament model.** Two numbers per gate: where the filament's leading edge (the *tip*)
-is and where its trailing end (the *tail*) is, in millimetres, measured so that `0` is the
+is and where its trailing end (the *tail*) is, in millimeters, measured so that `0` is the
 gate's sensor. Filament occupies everything between them, so a switch reads "triggered"
 when it sits inside that span. When Happy Hare commands a move, the harness works out which
 sensor trips first and how far the filament actually gets. Default layout:
@@ -978,7 +978,7 @@ involved. `RoundTrip` pumps messages between the two sides until everything sett
 
 ## 5. Six things that will bite you
 
-These are all real behaviours, learned by getting them wrong.
+These are all real behaviors, learned by getting them wrong.
 
 **1. Placing filament is an event.** Covering the entry switch is an *insert*, and Happy
 Hare responds by preloading that gate. `place_filament()` suppresses that by default so
@@ -1051,7 +1051,7 @@ log file at `hh.tmpdir + '/mmu.log'`.
 ```python
 print(hh.filament().history)
 # [(0, 100.0, 'homing -> mmu_exit_0'), (0, -100.0, 'move')]
-#  gate, millimetres, why
+#  gate, millimeters, why
 print(hh.filament().describe(0))
 # gate 0 tip=-100.0 mmu_entry_0=0 mmu_exit_0=0 mmu_shared_exit=0 filament_compression=0
 ```
@@ -1083,7 +1083,7 @@ A reasonable loop:
    fix and pass after — check that, or you don't know it's testing anything.
 
 **When you find a bug you're not fixing now**, write it as an `@unittest.expectedFailure`
-describing the correct behaviour, with a comment explaining the cause. It documents the
+describing the correct behavior, with a comment explaining the cause. It documents the
 problem, proves it's real, and cleans itself up when fixed.
 
 **Prefer driving real commands** (`hh.run_gcode('MMU_PRELOAD GATE=1')`) over calling
@@ -1103,15 +1103,15 @@ per-area picture; these are the structural limits behind it.
 - **No real hardware protocol.** The RC522 init sequence is exercised, but tag *reads* are
   faked at the driver level. The PN532 and PN7160 I²C drivers aren't covered at all.
 - **Proprietary tag formats are untested.** Bambu, Creality, QIDI and Anycubic parsing
-  needs captured dumps from real spools — synthesising them would only prove the test
+  needs captured dumps from real spools — synthesizing them would only prove the test
   agrees with itself.
 - **Encoder and gear calibration are seeded, never measured.** `MMU_CALIBRATE_ENCODER` and
   `MMU_CALIBRATE_GEAR` would only re-derive the numbers the harness generates its moves
   from, so they would confirm arithmetic rather than test anything.
 - **Macros load but mostly don't run.** The shipped `config/macros/*.cfg` are read
-  verbatim so sequences can find them, but a test that asserts on macro *behaviour* would
+  verbatim so sequences can find them, but a test that asserts on macro *behavior* would
   be testing Klipper's Jinja, not Happy Hare.
-- **The fakes could be wrong.** They're written against real Klipper's behaviour, but
+- **The fakes could be wrong.** They're written against real Klipper's behavior, but
   where they diverge, a test can pass while the real thing fails.
 
 Green means "Happy Hare's logic does what we think" — not "this will work on a printer".

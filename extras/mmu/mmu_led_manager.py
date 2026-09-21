@@ -56,7 +56,7 @@ class MmuLedManager:
         self.pending_update = [False] * num_units
         self.deferred = [None] * num_units         # Per-unit last _set_led request blocked by a timed effect, replayed when it ends
         self.led_timers = [None] * num_units       # Per-unit "return to default" timers (registered at ready)
-        self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
+        self.effect_state = {} # Current state used to minimize updates {unit: {segment: effect}}
         self.transient_flash = {}  # Active transient flash per (unit, segment): {'prior', 'flash', 'gate'}
         self.transient_timers = {} # Lazily registered restore timer per (unit, segment)
         self.transient_pending = {} # Optional queued flash per (unit, segment), promoted when the active flash ends

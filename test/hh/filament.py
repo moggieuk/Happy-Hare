@@ -330,7 +330,7 @@ class FilamentPath:
            multi-unit printer unit0's shared-exit switch read TRIGGERED whenever unit1 had
            filament loaded - while every one of unit0's own gates was empty. Harmless on a
            one-unit machine, which is why it went unnoticed; `units` is populated by the
-           Session and empty for a single-unit session, so behaviour there is unchanged.
+           Session and empty for a single-unit session, so behavior there is unchanged.
         3. Anything else (default:toolhead, and the extruder/compression sensors) is genuinely
            printer-wide and sees every gate.
         """

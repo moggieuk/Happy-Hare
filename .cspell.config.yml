@@ -1,7 +1,7 @@
 ---
 $schema: https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json
 version: '0.2'
-language: 'en-US, en-GB'
+language: 'en-US'
 dictionaryDefinitions:
     - name: project-words
       path: './.project-words.txt'
@@ -11,6 +11,15 @@ dictionaries:
 ignorePaths:
     - '/venv/'
     - '/.project-words.txt'
+# Preserve existing identifiers and literal option syntax without accepting British
+# spellings or arbitrary option-letter sequences as general project vocabulary.
+ignoreRegExpList:
+    # Existing constant and a documented historical typo; neither is prose.
+    - '/\bAUTHORZIED_SLICERS\b|\bLINEAR_MUTLI_GEAR_SELECTOR\b/'
+    - '/\b_normalise_uid\b/'
+    - '/\bNFC_FIELD_NEIGHBOUR\b|\bNEIGHBOUR\b/'
+    - '/\breturn travelled\b|\bassertAlmostEqual\(travelled,/'
+    - '/\bgetopts "rehfiudylpzsb:nk:c:m:a:toqv"/'
 overrides:
   - filename: "**/*.py"
     ignoreRegExpList:

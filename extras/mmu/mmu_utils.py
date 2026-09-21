@@ -70,7 +70,7 @@ class SaveVariableManager:
 
     SAVE_VARIABLE snapshots klipper's variable dict up front, then pauses and finally
     replaces it with a re-read of the file, so anything set mid-command is silently lost.
-    Every set()/delete() is therefore journalled in _pending and only dropped once a
+    Every set()/delete() is therefore recorded in _pending and only dropped once a
     post-write re-read proves it reached disk. Writes are coalesced onto a reactor timer.
     """
 

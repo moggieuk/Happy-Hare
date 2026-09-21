@@ -111,7 +111,7 @@ def _fire_nfc(endstop, eventtime):
 
     This matters because the poll loop IS the mechanism under test. A homing move ticks
     a non-blocking presence probe, and probe_poll() may answer None several times before
-    a scan completes (see MmuNfcReader's probe contract) - behaviour that only exists if
+    a scan completes (see MmuNfcReader's probe contract) - behavior that only exists if
     something actually ticks it. Calling trigger_handler() directly would bypass the
     probe entirely and any test about it would be vacuous.
 
@@ -205,7 +205,7 @@ class HomingMove:
         # MmuStepper.commanded_pos at position_endstop for _home_selector.
         #
         # A FILAMENT move is resolved against the filament model, which already tracks
-        # position independently, and halts at start_axis + travel. That is the behaviour the
+        # position independently, and halts at start_axis + travel. That is the behavior the
         # whole filament/sensor model was built and validated against; it does not register
         # motion because HH measures it from commanded coordinates (do_homing_move returns
         # trig_pos/halt_pos), never from the mcu step count.

@@ -2,7 +2,7 @@
 #
 # Only calc_move_time is used (extras/mmu_stepper.py:857) and it is pure
 # arithmetic, so it is ported VERBATIM from Klipper rather than stubbed - there is
-# no behaviour to fake and a divergence here would silently change move timing.
+# no behavior to fake and a divergence here would silently change move timing.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 

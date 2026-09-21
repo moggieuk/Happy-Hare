@@ -88,7 +88,7 @@ class MmuEspoolerCommand(BaseCommand):
                 mmu_unit.espooler.reset_print_assist_mode()
 
             if trigger:
-                # Mimick in-print assist trigger
+                # Mimic in-print assist trigger
                 # No gate specified = similar to extruder movement
                 # With gate specified = similar to filament tension trigger
                 mmu_unit.espooler.advance(gate)

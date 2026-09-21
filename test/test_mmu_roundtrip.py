@@ -477,7 +477,7 @@ class TestSpoolmanRfidCommand(RoundTripTestCase):
 
     def test_separators_are_stripped(self):
         self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=bb:bb:22:22')
-        self.assertEqual(self.rt.db.spool_uid(2), TAG_B, 'normalised uppercase, no separators')
+        self.assertEqual(self.rt.db.spool_uid(2), TAG_B, 'normalized uppercase, no separators')
 
     def test_does_not_unset_the_gate_assignment(self):
         """

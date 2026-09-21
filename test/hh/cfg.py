@@ -282,7 +282,7 @@ def _render_kconfig_key():
     recursive preprocessor functions. Keying on the complete environment is intentionally
     conservative: an unrelated change merely costs another parse, while omitting a relevant
     value could render valid-looking pins for the wrong unit. Dynamic discovery is already
-    assumed stable for a process by `_render_cache`, which memoises final output.
+    assumed stable for a process by `_render_cache`, which memoizes final output.
     """
     return tuple(sorted(os.environ.items()))
 
@@ -568,7 +568,7 @@ def assemble(rendered, printer_stub='', macros=True):
     if printer_stub:
         fileconfig.read_string(printer_stub, source='printer_stub.cfg')
     # Insertion order IS include order. render() builds its dict by iterating
-    # BASE_TEMPLATES so this is identical for a profile, and it generalises to the
+    # BASE_TEMPLATES so this is identical for a profile, and it generalizes to the
     # arbitrary file set load_install_dir() produces.
     for name, text in rendered.items():
         fileconfig.read_string(text, source=name)

@@ -65,7 +65,7 @@ class MmuController(MmuFilamentMovement):
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
         self.bowden_start_pos = None            # If set then we can measure bowden progress
-        self.has_blobifier = False              # Post load blobbling macro (like BLOBIFIER)
+        self.has_blobifier = False              # Post load purging macro (like BLOBIFIER)
         self.has_mmu_cutter = False             # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False        # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False           # True while running QA or soak tests
@@ -100,7 +100,7 @@ class MmuController(MmuFilamentMovement):
 
         # Bootup tasks --------------------------------------------------------------------------------------
 
-        # Scheduled as regular gcode command to ensure everything is copecetic prior to running
+        # Scheduled as regular gcode command to ensure everything is ready prior to running
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help)
 
 
@@ -2437,7 +2437,7 @@ class MmuController(MmuFilamentMovement):
 
                 self.saved_toolhead_operation = operation # Update operation in progress
                 # Force re-park now because user may not be using HH client_macros. This can result
-                # in duplicate calls to parking macro but it is itempotent and will ignore
+                # in duplicate calls to parking macro but it is idempotent and will ignore
                 self.wrap_gcode_command(self.p.park_macro)
         else:
             self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
@@ -2581,7 +2581,7 @@ class MmuController(MmuFilamentMovement):
 
         Separate from wrap_suspend_filament_monitoring, which only disables the runout
         branch. The case this covers is a USER insertion arriving mid-operation - typically
-        filament pushed in just after MMU_PRELOAD was issued. gcode.run_script serialises
+        filament pushed in just after MMU_PRELOAD was issued. gcode.run_script serializes
         the handler behind the running command, so without this the event fires the instant
         the operation completes and starts a second, redundant preload. Suspension drops
         the edge rather than deferring it, which is the whole point.
@@ -2929,11 +2929,11 @@ class MmuController(MmuFilamentMovement):
 
 
     # On type-B MMUs the filament is permanently gripped by the gear so an idle lane
-    # doesn't need its driver energised. Disabling saves power/heat and Klipper
+    # doesn't need its driver energized. Disabling saves power/heat and Klipper
     # re-enables on the next move
 
     def disable_idle_gear_stepper(self, gate=None):
-        # No-op unless gate is a type-B lane. Leave a gear synced to extruder (printing) energised
+        # No-op unless gate is a type-B lane. Leave a gear synced to extruder (printing) energized
         if gate is None:
             gate = self.gate_selected
         if gate < 0:
@@ -2961,7 +2961,7 @@ class MmuController(MmuFilamentMovement):
                     drive.mmu_gear_stepper.do_enable(False)
                     disabled_any = True
         if disabled_any:
-            self.log_stepper("All type-B idle gear steppers de-energised")
+            self.log_stepper("All type-B idle gear steppers de-energized")
 
 
     def _random_failure(self):
@@ -3745,7 +3745,7 @@ class MmuController(MmuFilamentMovement):
         """
         True when 'unit's NFC reader should perform a deep read (read and parse the
         full tag contents, not just the UID). Per-unit master switch for all metadata
-        behaviour on that unit: parsing tag data, populating the local gate map from it,
+        behavior on that unit: parsing tag data, populating the local gate map from it,
         and (with the flags below) auto-creating a Spoolman spool. False for a None unit.
         """
         return unit is not None and bool(unit.p.nfc_deep_read)
@@ -3996,7 +3996,7 @@ class MmuWrapperResumeCommand(BaseCommand):
             self.mmu.log_always("Print is not paused. Resume ignored.")
             return
 
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimic in-print
         try:
             self.mmu._clear_mmu_error_dialog()
             if self.mmu.is_mmu_paused_and_locked():

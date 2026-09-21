@@ -516,7 +516,7 @@ class MmuNfcReader:
 
         Returns (uid, metadata): metadata is the parsed tag dict (material,
         color_hex, brand, weight_g, temps, tag_format, ...) from
-        tag_parser, or None if the tag carries no recognised rich data
+        tag_parser, or None if the tag carries no recognized rich data
         or the driver can't do structured reads. Updates last_uid/present.
 
         The UID is banked (and returned) BEFORE any metadata work, so a deep read

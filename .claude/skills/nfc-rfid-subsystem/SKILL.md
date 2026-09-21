@@ -1,6 +1,6 @@
 ---
 name: nfc-rfid-subsystem
-description: Explains Happy Hare's NFC/RFID subsystem — the driver abstraction for pn532/pn5180/pn7160/rc522 readers, jog_scan mechanics, and shipped reader-pair sharing — plus a clearly-flagged PROPOSED, UNMERGED, untested-on-hardware design for mitigating RF-crosstalk between neighbouring gate readers (a "noisy neighbour" classification ladder and eviction-by-jogging) that a future contributor may need to resume rather than re-invent. Use this whenever touching NFC/RFID reader code, mmu_nfc_manager.py, reader_factory.py, jog_scan, Spoolman tag lookups or auto-create, nfc_readers config, or debugging cross-gate tag misattribution — even for something as simple as "the NFC reader isn't detecting the right spool" or "how do I wire two gates to one reader."
+description: Explains Happy Hare's NFC/RFID subsystem — the driver abstraction for pn532/pn5180/pn7160/rc522 readers, jog_scan mechanics, and shipped reader-pair sharing — plus a clearly-flagged PROPOSED, UNMERGED, untested-on-hardware design for mitigating RF-crosstalk between neighboring gate readers (a "noisy neighbor" classification ladder and eviction-by-jogging) that a future contributor may need to resume rather than re-invent. Use this whenever touching NFC/RFID reader code, mmu_nfc_manager.py, reader_factory.py, jog_scan, Spoolman tag lookups or auto-create, nfc_readers config, or debugging cross-gate tag misattribution — even for something as simple as "the NFC reader isn't detecting the right spool" or "how do I wire two gates to one reader."
 ---
 
 # NFC/RFID subsystem
@@ -10,7 +10,7 @@ alone:
 
 1. There are **two different sharing problems** that sound similar and are
    easy to conflate: reader-*pairing* (one physical chip serving two gates,
-   shipped and working) vs. RF-*crosstalk* (a neighbour's tag showing up in
+   shipped and working) vs. RF-*crosstalk* (a neighbor's tag showing up in
    your reader's field even though each gate has its own chip, proposed but
    never merged). If you're debugging a misattributed tag, work out which
    one you're actually looking at before reaching for either fix.
@@ -18,7 +18,7 @@ alone:
    sibling local checkout's git history — it never got a PR, was never
    pushed anywhere else, and only survives in one commit message and this
    skill. If you're picking this up, read
-   [references/noisy-neighbour-unmerged.md](references/noisy-neighbour-unmerged.md)
+   [references/noisy-neighbor-unmerged.md](references/noisy-neighbour-unmerged.md)
    before writing new code — it's likely faster to resume than redesign.
 
 ## Current architecture (shipped)
@@ -62,9 +62,9 @@ different (separate-reader) case — see the reference doc.
 Full file:line citations for all of the above are in
 [references/driver-architecture.md](references/driver-architecture.md).
 
-## Unmerged design: RF-crosstalk / "noisy neighbour" mitigation
+## Unmerged design: RF-crosstalk / "noisy neighbor" mitigation
 
-Per-gate readers can sit close enough that a neighbouring gate's spool is
+Per-gate readers can sit close enough that a neighboring gate's spool is
 inside gate G's own RF field — `_jog_scan`'s fast path and the preload
 compound endstop both trusted "a tag is at my reader" to mean "this gate's
 tag," which is only sometimes true. A classification ladder
@@ -73,6 +73,6 @@ partially implemented to fix this — **it never made it into `private_v4`**.
 It exists as one commit on a branch in a sibling local checkout, off by
 default, with an explicitly-noted test gap (the eviction *motion* itself
 can't be exercised by the harness). Read
-[references/noisy-neighbour-unmerged.md](references/noisy-neighbour-unmerged.md)
+[references/noisy-neighbor-unmerged.md](references/noisy-neighbour-unmerged.md)
 for the full design, the exact commit to pull from, and the caveats that
 matter most if you resume it.

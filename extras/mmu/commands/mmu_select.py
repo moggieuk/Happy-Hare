@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_SELECT and MMU_SELECTO_BYPASS commands
+# Implements the MMU_SELECT command (including BYPASS=1)
 #
 #
 # (\_/)

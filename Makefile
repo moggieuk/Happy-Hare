@@ -10,7 +10,7 @@ Q  ?= @
 # For verbose output (mostly from python builder), set to -v to enable
 V  ?=
 
-# For unittests, e.g. make UT=test_build.py test
+# For unit tests, e.g. make UT=test_build.py test
 # A UT pattern skips the interactive picker, as do ALL=1 (run everything) and LAST=1
 # (re-run the last selection). See test/README.md section 1
 UT ?= *

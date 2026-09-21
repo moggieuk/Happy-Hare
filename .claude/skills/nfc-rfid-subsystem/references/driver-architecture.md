@@ -67,7 +67,7 @@ invocations.
 
 User-facing config (`config/base/mmu_hardware.cfg:196-205`): with
 `MMU_HAS_PER_GATE_NFC_READERS` set, list one `nfc_readers` name per gate;
-**repeating a name shares one physical reader between neighbouring gates**:
+**repeating a name shares one physical reader between neighboring gates**:
 
 ```
 nfc_readers: a, a, b, b   # reader 'a' serves gates 0/1, reader 'b' serves gates 2/3
@@ -102,4 +102,4 @@ shared reader's field between the two paired gates — the manager trusts
 whichever tag the chip reports. This is a *different* gap from the
 crosstalk problem below (this is one chip genuinely shared by two gates by
 config; crosstalk is two *separate* chips picking up each other's field) —
-see [noisy-neighbour-unmerged.md](noisy-neighbour-unmerged.md).
+see [noisy-neighbor-unmerged.md](noisy-neighbour-unmerged.md).

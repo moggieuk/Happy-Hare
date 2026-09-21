@@ -239,7 +239,7 @@ class TestBufferSpringRelease(unittest.TestCase):
                         'expected a skip explanation, got %r' % logged)
 
     def test_adjust_tension_still_targets_neutral(self):
-        """Regression: the existing behaviour must be untouched by the new target."""
+        """Regression: the existing behavior must be untouched by the new target."""
         hh = self._session(spring='tension')
 
         moves, logged = self._run(

@@ -5,14 +5,14 @@
 # validates ~200 tunables through this API (MmuUnitParameters, MmuMachineParameters,
 # via the reflective _SourceAdapter in extras/mmu/mmu_base_parameters.py), so a fake
 # that quietly ignored a limit would turn every config-validation test into a no-op.
-# For the same reason the getters do NOT absorb **kwargs - an unrecognised keyword
+# For the same reason the getters do NOT absorb **kwargs - an unrecognized keyword
 # raises, so a Klipper API change surfaces instead of being swallowed.
 #
 # `fileconfig` is a genuine mutable RawConfigParser because four HH sites mutate it
 # in place and must keep working:
 #   extras/mmu/unit/mmu_leds.py:32-35        add_section/getsection/remove_section to
 #                                            build a real led.LEDHelper
-#   extras/mmu_led_effect.py:107-113         synthesises [_led_effect ...] sections
+#   extras/mmu_led_effect.py:107-113         synthesizes [_led_effect ...] sections
 #   extras/mmu/unit/mmu_extruder_wrapper.py:67-69,96-98
 #                                            removes then restores [extruder] options
 #   extras/mmu/mmu_unit.py:277-292           fileconfig.set to share gear/TMC params

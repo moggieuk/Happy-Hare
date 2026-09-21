@@ -652,7 +652,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         excluded_vars = []   # Don't filter out any existing macro variables
 
     elif refresh_mode == 'replace':
-        # Here we (re)create prestine cfg files based on kconfig settings
+        # Here we (re)create pristine cfg files based on kconfig settings
         pass
 
     elif refresh_mode == 'merge':

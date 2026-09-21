@@ -127,7 +127,7 @@ class TestPerGateNfcBoots(unittest.TestCase):
 
     def test_defaults_inheritance_is_currently_inert(self):
         """
-        Documents a KNOWN LIMITATION rather than asserting desired behaviour.
+        Documents a KNOWN LIMITATION rather than asserting desired behavior.
 
         With the argument order fixed, the call still yields None: nothing ever
         registers a bare 'mmu_nfc_reader' printer object (the manager only ever

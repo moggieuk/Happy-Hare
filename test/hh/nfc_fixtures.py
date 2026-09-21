@@ -189,7 +189,7 @@ class PN532UartChip:
     Wire it up with `fake_port.on_write = chip.on_write`.
 
     Preferred over a flat chunk script for anything about command ORDER, because a
-    flat script silently desynchronises the moment the driver issues one more or
+    flat script silently loses synchronization the moment the driver issues one more or
     one fewer command than expected. Flat scripts stay the right tool for framer
     edge cases (partial frames, garbage, NACK, extended frames) where the exact
     byte boundaries ARE the test.
@@ -443,7 +443,7 @@ class VirtualNfcChip:
 def virtualise(printer, model=None, probe_support=False):
     """
     Swap every reader's chip driver for a VirtualNfcChip. Must run BEFORE the readers
-    are initialised, which is when MmuNfcReader.init() first talks to the chip - these
+    are initialized, which is when MmuNfcReader.init() first talks to the chip - these
     days that is MmuNfcManager's delayed post-bootup init, not klippy:connect (see
     Session._settle_nfc_init), so anywhere before boot() is early enough.
 
