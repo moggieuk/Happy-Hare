@@ -67,7 +67,7 @@
 
 
 comment "_"
-comment "_RFID"
+comment "_RFID [[B]](BETA)[[/B]]"
 
 config UNSELECT_MMU_HAS_NFC_READER
   def_bool n
