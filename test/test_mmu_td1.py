@@ -2071,3 +2071,59 @@ class TestTd1Removal(Td1OffPathCase):
         with patch.object(self.mmu, "stage_pending_measurement") as staged:
             self.remove()
         self.assertFalse(staged.called)
+
+
+class TestTd1AutoUnitQualification(unittest.TestCase):
+    """
+    An AUTO= override says which unit's policy it stands in for.
+
+    td1_auto_update is resolved per unit, so an override that lands on a device has
+    to be attributed to someone. Anything that already implies a unit is enough -
+    UNIT= is only demanded when nothing does. ENABLE= needs none of this: switching
+    a scanner off is about the device, not about a unit's policy.
+    """
+
+    MULTI = profiles.Profile("td1_auto_units", units=[
+        profiles.UnitProfile("unit0", syms=dict(
+            profiles.get("boxturtle").syms, MMU_HAS_TD1=True,
+            PARAM_TD1_BOWDEN_DEVICE="ONE"), index=0),
+        profiles.UnitProfile("unit1", syms=dict(
+            profiles.get("boxturtle").syms, MMU_HAS_TD1=True,
+            PARAM_TD1_BOWDEN_DEVICE="ONE"), index=1)])
+
+    def test_one_unit_never_needs_it(self):
+        single = profiles.get("boxturtle").derive("td1_auto_one", syms={
+            "MMU_HAS_TD1": True, "PARAM_TD1_BOWDEN_DEVICE": "ONE"})
+        with session(single) as hh:
+            hh.boot(calibrate=True)
+            hh.run_gcode("MMU_TD1 SERIAL=ONE AUTO=1 QUIET=1")
+            self.assertEqual(hh.errors, [])
+            self.assertTrue(hh.mmu.td1.devices["ONE"].auto_override)
+
+    def test_a_gate_selection_implies_the_unit(self):
+        with session(self.MULTI) as hh:
+            hh.boot(calibrate=True)
+            for cmd in ("MMU_TD1 GATE=0 AUTO=1", "MMU_TD1 GATES=4,5 AUTO=1"):
+                with self.subTest(cmd=cmd):
+                    hh.run_gcode(cmd + " QUIET=1")
+                    self.assertEqual(hh.errors, [])
+
+    def test_an_explicit_unit_is_accepted(self):
+        with session(self.MULTI) as hh:
+            hh.boot(calibrate=True)
+            hh.run_gcode("MMU_TD1 UNIT=1 SERIAL=ONE AUTO=1 QUIET=1")
+            self.assertEqual(hh.errors, [])
+
+    def test_a_bare_serial_on_a_multi_unit_machine_is_refused(self):
+        # Nothing here says whose policy is being overridden
+        with session(self.MULTI) as hh:
+            hh.boot(calibrate=True)
+            with self.assertRaisesRegex(Exception, "UNIT parameter is required"):
+                hh.run_gcode("MMU_TD1 SERIAL=ONE AUTO=1 QUIET=1")
+
+    def test_enable_needs_no_unit(self):
+        with session(self.MULTI) as hh:
+            hh.boot(calibrate=True)
+            hh.run_gcode("MMU_TD1 SERIAL=ONE ENABLE=0 QUIET=1")
+            self.assertEqual(hh.errors, [])
+            self.assertFalse(hh.mmu.td1.devices["ONE"].enabled)

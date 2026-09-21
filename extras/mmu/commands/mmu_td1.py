@@ -43,6 +43,7 @@ class MmuTd1Command(BaseCommand):
         + "SERIAL   = # Target one physical scanner by USB serial (including one no gate uses)\n"
         + "ENABLE   = [0|1] Top-level on/off for Happy Hare's use of the scanner\n"
         + "AUTO     = [0|1] Apply new readings automatically when the owning gate is known\n"
+        + "           (overrides the unit's td1_auto_update; needs UNIT= if nothing else implies one)\n"
         + "READ     = [0|1] Poll Moonraker for the addressed scanner now, instead of using the cache\n"
         + "REGISTER  = [0|1] Apply the addressed scanner's measurement to GATE\n"
         + "SET_COLOR = [0|1] Overwrite GATE/GATES filament_color with the measured color\n"
@@ -232,6 +233,15 @@ class MmuTd1Command(BaseCommand):
         if sum([shared, bool(gates), bool(serial)]) > 1:
             raise gcmd.error(
                 "Specify only one of SHARED=1, GATE=<n>, GATES=<n,n,...> or SERIAL=<serial>")
+        if operation == 'AUTO' and not gates and not shared:
+            # Auto-update is a unit's policy resolved where it is used, so an override
+            # has to say whose policy it is standing in for. A gate selection or
+            # SHARED=1 already says; a bare SERIAL= does not. Only actually demands
+            # UNIT= on a multi-unit machine - get_unit() resolves the single-unit case
+            # on its own. ENABLE needs none of this: switching a scanner off is about
+            # the device, not about any unit's policy
+            self.get_unit(gcmd, mode="required")
+
         if operation == 'SET_COLOR' and not gates:
             raise gcmd.error("SET_COLOR=1 needs GATE=<n> or GATES=<n,n,...>")
         if operation == 'REGISTER' and gcmd.get('GATE', None) is None:
