@@ -652,7 +652,7 @@ flyos-fast)  echo "${C_INFO}Detected FlyOS-Fast${C_OFF}" ;;
 guppy-k1)    echo "${C_INFO}Detected Guppy K1 Mod${C_OFF}" ;;
 esac
 
-# Summarise directory overrides
+# Summarize directory overrides
 [ -n "${CONFIG_KLIPPER_HOME:-}" ]        && echo "${C_INFO}KLIPPER_HOME=${CONFIG_KLIPPER_HOME}${C_OFF}"
 [ -n "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] && echo "${C_INFO}KLIPPER_CONFIG_HOME=${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
 [ -n "${CONFIG_MOONRAKER_HOME:-}" ]      && echo "${C_INFO}MOONRAKER_HOME=${CONFIG_MOONRAKER_HOME}${C_OFF}"

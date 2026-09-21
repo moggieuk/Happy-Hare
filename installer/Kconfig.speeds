@@ -66,10 +66,10 @@ menu "Speeds"
         float "From buffer load acceleration   "
         default 400
         help
-          Bowden load accelaration for long movements when loading from filament buffer.
+          Bowden load acceleration for long movements when loading from filament buffer.
           It is employed after the initial load/unload when Happy Hare knows the filament
           won't tug on the spool.
-          Generally this can be at least 100% higher than the normal load accelaration and
+          Generally this can be at least 100% higher than the normal load acceleration and
           allows for optimization of filament swap times.
     endif
 

@@ -400,7 +400,7 @@ def _job_count(value):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog='make test', add_help=False,
-        description='Pick which test files to run. Unrecognised flags go to unittest.')
+        description='Pick which test files to run. Unrecognized flags go to unittest.')
     parser.add_argument('--all', action='store_true', help='run everything, no menu')
     parser.add_argument('--last', action='store_true', help='re-run the last selection, no menu')
     parser.add_argument('--pattern', help='run files matching a glob, no menu (make UT=...)')

@@ -1,4 +1,4 @@
-# RF-crosstalk / "noisy neighbour" mitigation — unmerged design
+# RF-crosstalk / "noisy neighbor" mitigation — unmerged design
 
 **Status: proposed, never merged into `private_v4`. Off by default even
 where it exists. The riskiest part (actual eviction motion) has zero test
@@ -24,15 +24,15 @@ rely on the `git show` above.)
 Related but *not* this: `FUTURE/*.md` in that same sibling checkout is a
 different, earlier, now-superseded body of session notes about the general
 NFC→Spoolman architecture (most of which has since shipped). None of those
-files mention crosstalk, neighbours, or eviction — don't confuse the two.
+files mention crosstalk, neighbors, or eviction — don't confuse the two.
 
 ## The problem
 
 Per-gate NFC readers can sit close enough together that a spool parked at a
-*neighbouring* gate is physically inside gate G's own RF field. Two code
+*neighboring* gate is physically inside gate G's own RF field. Two code
 paths trusted "a tag is at my reader" to mean "this gate's tag":
 `_jog_scan`'s fast path, and the preload compound endstop (which fires on
-*any* UID in the field). Either can mis-assign a neighbour's spool to the
+*any* UID in the field). Either can mis-assign a neighbor's spool to the
 wrong gate, or let a foreign tag win anticollision and block the real one.
 
 This is distinct from reader-*pair sharing* (shipped, see
@@ -48,7 +48,7 @@ New constants (in the diff, destined for `mmu_constants.py`):
 NFC_FIELD_CLEAR     = 0  # nothing in the field
 NFC_FIELD_MINE      = 1  # this gate's own tag, or unknown to the gate map (assumed ours)
 NFC_FIELD_NEIGHBOUR = 2  # registered to another gate on the SAME unit — evictable
-NFC_FIELD_FOREIGN   = 3  # registered to a gate on a DIFFERENT unit, or a NEIGHBOUR that
+NFC_FIELD_FOREIGN   = 3  # registered to a gate on a DIFFERENT unit, or a NEIGHBOR that
                          # couldn't be cleared
 ```
 
@@ -59,7 +59,7 @@ whatever's in it against the gate map before trusting the read:
 - `NEIGHBOUR` → evict by temporarily loading that other gate and jogging
   its filament off its park position, for the duration of this operation,
   re-parking it afterwards **even on error**.
-- `FOREIGN` → a stale map (a tag from another unit, or a neighbour that
+- `FOREIGN` → a stale map (a tag from another unit, or a neighbor that
   couldn't be evicted) — warn and fall back to a plain non-NFC operation
   rather than attribute the tag to the wrong gate.
 
@@ -85,7 +85,7 @@ A forward eviction jog is rejected at config load unless
 menuconfig warning (`W17`). **This constraint has to be preserved in any
 rework**: on a shared-exit path — including the extruder entry sensor,
 which registers as `mmu_shared_exit` on no-bowden designs — every gate's
-filament merges downstream, so jogging a neighbour's filament *forward* to
+filament merges downstream, so jogging a neighbor's filament *forward* to
 evict it would push it into the path of the gate being read. The fix jogs
 **backward** in that case instead. This is the same shared-path hazard the
 [gate-endstop-invariants skill](../../gate-endstop-invariants/SKILL.md)
@@ -95,7 +95,7 @@ guards against elsewhere — read that skill too if you're touching this.
 
 `rx_gain` is added as a per-reader tuning parameter (rc522/pn532; pn5180 and
 pn7160 log unsupported). The commit is explicit that this is **not** a
-mitigation for this problem — a neighbour's tag can sit physically closer to
+mitigation for this problem — a neighbor's tag can sit physically closer to
 the antenna than your own gate's tag, so gain alone can't discriminate them.
 
 ## Test coverage — read this before trusting "0 failures"
@@ -109,7 +109,7 @@ failures."
 
 **What is explicitly not covered: the eviction movement itself.** The test
 harness's virtual NFC chip is per-gate isolated by design — no fixture can
-put one gate's tag inside a neighbouring gate's field, so there is no way
+put one gate's tag inside a neighboring gate's field, so there is no way
 for this test suite to exercise the actual physical mechanism the feature
 exists to fix. That's left to on-hardware verification, per the commit
 message. **A green run of these tests validates the bookkeeping around

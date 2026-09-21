@@ -278,7 +278,7 @@ class MmuChangeToolCommand(BaseCommand):
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
                             retract_fallback = True
 
-                    # Restore to print deliberately outside of _wrap_gear_synced_to_extruder() to minimise delay after restoring position
+                    # Restore to print deliberately outside of _wrap_gear_synced_to_extruder() to minimize delay after restoring position
                     mmu._continue_after('toolchange', restore=restore)
 
                     # Fall back / edge case - if _mmu_park parking/retraction is bypassed or slicer retraction > retracted_length

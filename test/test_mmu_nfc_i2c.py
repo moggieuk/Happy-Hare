@@ -139,7 +139,7 @@ class TestBusDefaultConfig(unittest.TestCase):
     """
     The wrapper exists to inject bus defaults inherited from a base [mmu_nfc_reader]
     section. It must do that WITHOUT flattening Klipper's "this option is required"
-    behaviour, because Klipper fetches the software pins with a bare config.get(name).
+    behavior, because Klipper fetches the software pins with a bare config.get(name).
     """
 
     def wrap(self, cfg_obj, bus='i2c9', speed=100000):

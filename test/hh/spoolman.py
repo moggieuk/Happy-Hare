@@ -10,13 +10,13 @@
 #     json.loads(extra.get('printer_name', '""')) at mmu_server.py:437 and tolerates a
 #     bare string for the RFID field (_get_uid_list_from_extra). The RFID field may hold
 #     more than one UID, comma-separated (a spool can have a tag on each side) -
-#     _parse_uid_list splits/normalises/dedupes it; a single UID is just a one-element
+#     _parse_uid_list splits/normalizes/dedupes it; a single UID is just a one-element
 #     case of the same format. `mmu_gate` is read with int() so it is stored as a plain
 #     numeric string.
 #   - a spool embeds its filament, which embeds its vendor:
 #     spool['filament']['vendor']['name'] (_get_filament_attr, :404-415).
-#   - UIDs are normalised uppercase with ':', '-' and ' ' stripped (_normalise_uid,
-#     :376-385), so the store normalises on write too.
+#   - UIDs are normalized uppercase with ':', '-' and ' ' stripped (_normalise_uid,
+#     :376-385), so the store normalizes on write too.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -59,7 +59,7 @@ def normalise_uid(uid):
 
 
 def parse_uid_list(raw):
-    """Split a (possibly comma-separated) UID value into normalised UIDs. Mirrors
+    """Split a (possibly comma-separated) UID value into normalized UIDs. Mirrors
     MmuServer._parse_uid_list (mmu_server.py) so the store's notion of 'the UIDs
     on a spool' matches what HH itself would parse from the same extra value."""
     if not raw:
@@ -163,7 +163,7 @@ class InMemorySpoolman:
         return sid
 
     def spool_uids(self, spool_id):
-        """The list of normalised UIDs registered against a spool ([] if none)."""
+        """The list of normalized UIDs registered against a spool ([] if none)."""
         raw = self.spools[spool_id]['extra'].get(FIELD_RFID)
         if not raw:
             return []

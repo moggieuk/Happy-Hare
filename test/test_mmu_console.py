@@ -4,10 +4,10 @@
 # as the prompt, so the loop, the renderer, the meta-commands and the header are all
 # exercised without a TTY.
 #
-# The install-directory tests deliberately SYNTHESISE an install-shaped tree from the
+# The install-directory tests deliberately SYNTHESIZE an install-shaped tree from the
 # harness's own render rather than running ./install.sh. Running the installer needs
 # menuconfig (a curses TUI), and a headless `olddefconfig` config does not produce a
-# bootable machine - it leaves the gate-0 gear pins empty. Synthesising keeps the test
+# bootable machine - it leaves the gate-0 gear pins empty. Synthesizing keeps the test
 # deterministic and offline while still exercising the real loader.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
@@ -70,7 +70,7 @@ def no_tty():
 
     Console derives its interactive defaults from sys.stdout.isatty() (test/console.py:478)
     and _arm_tick re-checks stdout AND stdin at call time, so a test that pins the
-    NON-interactive behaviour has to say so rather than inherit it. Without this the
+    NON-interactive behavior has to say so rather than inherit it. Without this the
     affected tests pass under `make test | cat` - and under CI, and under an agent's piped
     shell - then fail for anyone running the same suite straight from a terminal, which is
     the one way it is most often run by hand.
@@ -503,8 +503,8 @@ class TestRenderer(unittest.TestCase):
         probe = ('FF69B4', '90EE90', '87CEEB')      # HH's pink, green and cyan
         for mode in ('truecolor', '256'):
             seqs = {console_mod.fg(*console_mod._hex_to_rgb(h), mode=mode) for h in probe}
-            self.assertEqual(len(seqs), 3, 'mode %s collapsed distinct colours' % mode)
-        # 16 colours genuinely cannot represent everything, but these three are different
+            self.assertEqual(len(seqs), 3, 'mode %s collapsed distinct colors' % mode)
+        # 16 colors genuinely cannot represent everything, but these three are different
         # hues and must not all land on the same slot (they used to all become white).
         seqs = {console_mod.fg(*console_mod._hex_to_rgb(h), mode='16') for h in probe}
         self.assertEqual(len(seqs), 3, '16-colour mode collapsed three distinct hues')
@@ -1128,8 +1128,8 @@ class TestLedSwatches(unittest.TestCase):
 
     A lit LED is a solid block rather than '##' because '##' was painted in the LED's own
     colour, and a white or grey LED (mmu_breathing_white_fast, mmu_sparkle, white_light for
-    an uncoloured gate) then looked exactly like ordinary text - which is what made a lit
-    row read as "some default-coloured thing I do not recognise".
+    an uncolored gate) then looked exactly like ordinary text - which is what made a lit
+    row read as "some default-coloured thing I do not recognize".
     """
 
     def swatches(self, data, per_gate, color=False, mode='auto'):
@@ -1449,7 +1449,7 @@ class TestLiveClock(unittest.TestCase):
     A signal and not a thread, and that is not a style choice: the reactor is greenlet-based
     and greenlets belong to the thread that created them, so pumping it from a worker dies
     with 'greenlet.error: Cannot switch to a different thread'. Everything here therefore
-    checks main-thread behaviour and the arm/disarm discipline that keeps a tick out of a
+    checks main-thread behavior and the arm/disarm discipline that keeps a tick out of a
     dispatch.
     """
 

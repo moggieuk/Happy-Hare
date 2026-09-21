@@ -696,7 +696,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         parked at its normal park position (park -100, reader -80, tag_pos = tip - offset).
         The sweep's own motion moves the tag out of range briefly (e.g. while homing to the
         gate datum at position 0), but the FINAL park brings it right back into range - by
-        construction, indistinguishable from a stationary neighbour's tag that just happens
+        construction, indistinguishable from a stationary neighbor's tag that just happens
         to sit at this reader. This is the actual point of the deferred-commit fix: before
         it, the read taken mid-sweep would already have been committed to the gate map by
         the time this assertion runs, warning or no warning.

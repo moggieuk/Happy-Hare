@@ -3,7 +3,7 @@
 # The UART transport is structurally unlike I2C and SPI, and the differences are all
 # invisible from higher up. I2C/SPI are query-then-read with a host-chosen length;
 # UART is a push stream with neither. So the risk sits in three places, and this
-# file is organised around them:
+# file is organized around them:
 #
 #   1. THE FRAMER. Reassembling frames out of a byte stream: leading padding,
 #      garbage resync, partial frames held across ticks, both checksums. Tested as a
@@ -138,7 +138,7 @@ class TestHsuFramer(unittest.TestCase):
         f, got = self._one([PN532_UART_ACK])
         self.assertEqual(got[0], FRAME_ACK)
         self.assertEqual(list(got[1]), PN532_ACK,
-                         'the framer must normalise an ACK back to the canonical '
+                         'the framer must normalize an ACK back to the canonical '
                          'preamble-first form the driver compares against')
 
     def test_nack(self):
@@ -149,7 +149,7 @@ class TestHsuFramer(unittest.TestCase):
         """
         A real chip emits 0x00 padding ahead of a frame. Note the discard count is
         padding + 1: the frame's own preamble 0x00 is indistinguishable from padding,
-        so the framer syncs on the two-byte start code and re-synthesises a preamble.
+        so the framer syncs on the two-byte start code and re-synthesizes a preamble.
         """
         f, got = self._one([PN532_HSU_PADDING + PN532_UART_ACK])
         self.assertEqual(list(got[1]), PN532_ACK)

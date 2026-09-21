@@ -201,7 +201,7 @@ class RC522Driver:
         return val
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Initialisation
+    # Initialization
     # ─────────────────────────────────────────────────────────────────────────
 
     _INIT_ATTEMPTS = 3          # As PN532's _wake_pn532; a soft reset per attempt

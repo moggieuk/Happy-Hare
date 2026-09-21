@@ -4,7 +4,7 @@
 #                          moggieuk@hotmail.com
 #
 # Goal: Implementation of Rotary Selector
-# - Rotary Selector for 3D Chamelon using stepper selection
+# - Rotary Selector for 3D Chameleon using stepper selection
 #   without servo
 #
 # Implements commands:

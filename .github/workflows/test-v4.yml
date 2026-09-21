@@ -1,4 +1,4 @@
-# Runs the test/ suite on PRs against v4, main, and development and after merge.
+# Runs the test/ suite on PRs against main and development and after merge.
 # Uses NO_VENV=1 per test/README.md's own CI guidance - a GitHub Actions runner is
 # already the throwaway, dependencies-installed-directly environment that mode is for,
 # so there's no reason to pay for venv creation on every run.
@@ -6,11 +6,30 @@ name: Test Suite
 
 on:
   push:
-    branches: [v4, main, development]
+    branches: [main, development]
   pull_request:
-    branches: [v4, main, development]
+    branches: [main, development]
 
 jobs:
+  spellcheck:
+    # Only enforce spelling on development while the other branches catch up.
+    # For PRs, base_ref is the target branch, not the contributor's branch.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/development') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'development')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check US English spelling
+        run: make spellcheck
+
   test:
     runs-on: ubuntu-latest
     steps:

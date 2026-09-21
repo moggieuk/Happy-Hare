@@ -293,7 +293,7 @@ class TestToolChange(ToolchangeTestCase):
 
         Consequence: anything driven purely by a macro body - Tx, the print start/end
         sequences, park/cut/purge - is NOT covered. Address the underlying command
-        (MMU_CHANGE_TOOL) to test the real behaviour.
+        (MMU_CHANGE_TOOL) to test the real behavior.
         """
         self.assertIn('gcode_macro T1', self.hh.printer.objects)
         before = self.hh.mmu.tool_selected

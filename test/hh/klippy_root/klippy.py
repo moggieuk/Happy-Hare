@@ -9,7 +9,7 @@
 #   arguments are shifted: config='mmu_nfc_reader', section=None, no default. Real
 #   Klipper then does None.split() -> AttributeError, crashing config load for
 #   anyone with an [mmu_nfc_reader NAME] section. A permissive fake would paper over
-#   a genuine crash-on-load bug, so we keep the exact behaviour.
+#   a genuine crash-on-load bug, so we keep the exact behavior.
 #
 #   Keeping the on-disk check is the second half: even with the arguments fixed the
 #   call returns None, because HH's reader lives at extras/mmu/unit/nfc/ and there is

@@ -109,7 +109,7 @@ class TestRunoutSwapsGate(EndlessSpoolTestCase):
 
     def test_runout_remaps_the_tool_to_another_gate(self):
         """
-        The headline behaviour. The TOOL stays T0 - the slicer keeps asking for T0 - but
+        The headline behavior. The TOOL stays T0 - the slicer keeps asking for T0 - but
         it now resolves to a different gate.
         """
         original = self.load_and_run_out(tool=0)

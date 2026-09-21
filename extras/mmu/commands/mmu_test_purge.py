@@ -72,7 +72,7 @@ class MmuTestPurgeCommand(BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
 
-                # Determine purge volume for test (mimick regular call to purge macro)
+                # Determine purge volume for test (mimic regular call to purge macro)
                 mmu.toolchange_purge_volume, mmu._slicer_purge_volume = mmu._calc_purge_volume(last_tool, next_tool)
 
                 msg = "Note that the suggested purge volume is based on the current MMU_SLICER_TOOL_MAP"

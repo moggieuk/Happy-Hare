@@ -449,7 +449,7 @@ class TestBootup(BootedSessionMixin, unittest.TestCase):
 
 class TestSensorDriving(BootedSessionMixin, unittest.TestCase):
     """
-    First test of HH BEHAVIOUR rather than construction: drive a sensor through its
+    First test of HH BEHAVIOR rather than construction: drive a sensor through its
     real button callback and observe HH react.
     """
 

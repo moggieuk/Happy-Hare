@@ -8,7 +8,7 @@
 # A neighboring gate's tag can trigger gate G's own reader. MmuNfcFieldArbiter settles
 # ownership before trusting it: registered to G -> mine; registered to a same-unit
 # neighbor -> evict by jogging it aside; different unit -> impossible, map stale, ignore;
-# unrecognised and un-evictable -> PROVISIONAL, confirmed later by the caller's own motion.
+# unrecognized and un-evictable -> PROVISIONAL, confirmed later by the caller's own motion.
 #
 # Off by default: nfc_neighbor_check, nfc_neighbor_evict_distance, nfc_gate_clear_distance,
 # nfc_preload_clear_distance are all independent and all 0/off out of the box.

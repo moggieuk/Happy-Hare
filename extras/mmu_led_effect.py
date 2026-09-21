@@ -32,7 +32,7 @@ from .mmu.unit.mmu_leds import MmuLeds
 # E.g. You define "my_flash" like this:
 #   [mmu_led_effect my_flash]
 #
-# This will create effects on each of these segments elements without laborous
+# This will create effects on each of these segments elements without laborious
 # error prone repetition:
 #   "unit0_mmu_flash_exit" on 'exit' portion of the strip (leds 1,2,3,4)
 #   "unit0_mmu_flash_status" on the status LED (led 5)
@@ -395,7 +395,7 @@ class ledFrameHandler:
         filament_color / slicer_color / explicit-(r,g,b) branches all do
         "_MMU_STOP_LED_EFFECTS, then SET_LED per gate" (stop_effect_and_set_gate_rgb), and
         SET_LED applies synchronously - ToolHead.register_lookahead_callback calls straight
-        through when the move queue is empty, which it is for an idle printer. So the colours
+        through when the move queue is empty, which it is for an idle printer. So the colors
         landed, the timer fired, and the segment went black. It only looked right from the
         SECOND repaint onwards, because by then the effect had latched nextEventTime = NEVER
         and no longer emitted the blank.

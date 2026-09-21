@@ -399,7 +399,7 @@ class MmuGateMaps:
         """
         Set per-gate filament attributes from a scanned NFC/RFID tag (local only;
         does NOT touch spool_id - a resolved Spoolman spool remains the source of
-        truth). Attributes passed as None are left unchanged. Validates/normalises
+        truth). Attributes passed as None are left unchanged. Validates/normalizes
         color, persists, and refreshes derived state (RGB/LEDs/t-macros).
         """
         if not (0 <= gate < self.num_gates):
@@ -803,7 +803,7 @@ class MmuGateMaps:
                                 if distance > 0.5:
                                     warnings.append("Color matching is significantly different ! %s" % (UI_EMOTICONS[7] if t == 'emoticon' else ''))
                                 elif distance > 0.2:
-                                    warnings.append("Color matching might be noticebly different %s" % (UI_EMOTICONS[5] if t == 'emoticon' else ''))
+                                    warnings.append("Color matching might be noticeably different %s" % (UI_EMOTICONS[5] if t == 'emoticon' else ''))
                                 elif distance > 0.05:
                                     warnings.append("Color matching seems quite good %s" % (UI_EMOTICONS[3] if t == 'emoticon' else ''))
                                 elif distance > 0.02:

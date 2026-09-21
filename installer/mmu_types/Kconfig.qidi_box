@@ -52,7 +52,7 @@ if MMU_TYPE_QIDI_BOX_1_0
   config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
     default -70
 
-  # One physical reader serves two gates, so a neighbour's spool can sit in
+  # One physical reader serves two gates, so a neighbor's spool can sit in
   # the same RF field and be attributed to the wrong gate.
   config PARAM_NFC_NEIGHBOR_CHECK
     default y

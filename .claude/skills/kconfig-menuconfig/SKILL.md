@@ -75,7 +75,7 @@ Load-bearing facts about the flow:
   on a real `.mmu_config`: a bool the user had explicitly set to `n` came back
   `y`, no warning emitted. Harmless for a value still at its default (it
   carries a `#~DEFAULT~#` token and recomputes identically), a silent
-  behaviour change for anything explicitly set — and every upgrade touches
+  behavior change for anything explicitly set — and every upgrade touches
   `installer/Kconfig*`, so the staleness check runs `olddefconfig`
   unprompted. Note `installer/upgrades.py` does NOT help: it renames options
   and sections in the generated Klipper `.cfg` files, not Kconfig symbols.
@@ -109,7 +109,7 @@ kconfiglib fork. Three prefix lists are hard-coded in different places and
 | `CHOICE_X` / `CHOICE_X_*` | Named choice "X" and its members |
 | `UNSELECT_*` | Force-off switch: a type/board does `select UNSELECT_X` to hide/disable feature X's prompt (`if !UNSELECT_X` in the Kconfig) |
 
-**The special-default behaviour**: symbols (and `CHOICE_`-named choices) whose
+**The special-default behavior**: symbols (and `CHOICE_`-named choices) whose
 name matches the list are written into `.mmu_config` with a trailing
 ` #~DEFAULT~#` magic token whenever they were *not* user-set (i.e. the saved
 value is just the computed default). On the next menuconfig/olddefconfig load
@@ -137,7 +137,7 @@ The three lists (verified anchors, will drift — re-grep):
 Note the three lists are *deliberately not identical* (e.g. `UNSELECT_` gets
 a default token but no `(NOT DEFAULT)` marker — it's a hidden switch the user
 isn't meant to fiddle with). Don't "simplify" them into one without deciding
-what the UI behaviour should be.
+what the UI behavior should be.
 
 **`VAR_*`** (macro variables) and **`PIN_*`** get the token but their *cfg*
 landing spot differs: `VAR_*` values are copied into `gcode_macro` sections
@@ -258,7 +258,7 @@ to avoid wrapping beyond that limit; put longer explanations in documentation.
      reached via `./install.sh -i`).
 7. **If you touched the fork itself** (`as_dict`, load/write, menuconfig):
    the tests for it are `make verify_pickle` (pickle consistency),
-   `make test UT=test_menuconfig.py` (menuconfig cursor behaviour), and
+   `make test UT=test_menuconfig.py` (menuconfig cursor behavior), and
    profile tests. The vendored base is kconfiglib **v14.1** — the HH patches
    are marked `# Happy Hare:` inline; if you re-sync upstream, that grep is
    your change list.

@@ -296,7 +296,7 @@ class TestRotarySelector(SelectorTestCase):
 
     def test_the_machine_still_has_the_geometry_these_tests_assume(self):
         """
-        A guard, not a behaviour test. Everything below is only interesting because release
+        A guard, not a behavior test. Everything below is only interesting because release
         goes to a DIFFERENT gate and because the machine is allowed to release at all - if a
         vendor default ever changes, this fails first and says so, rather than the assertions
         quietly becoming tautologies.
@@ -315,7 +315,7 @@ class TestRotarySelector(SelectorTestCase):
         """
         THE regression test for this class. mmu_rotary_selector.py:229 read
         `self.selector_release_gates`, but that name is a ParamSpec and so lives on `self.p`
-        (the same line's neighbour at :257 gets it right) - so every release raised
+        (the same line's neighbor at :257 gets it right) - so every release raised
         AttributeError: 'RotarySelector' object has no attribute 'selector_release_gates'.
 
         Reached from MMU_RELEASE, and on this machine from plain MMU_SELECT as well:

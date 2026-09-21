@@ -324,7 +324,7 @@ class MoonrakerHarness:
     """
     One fake-Moonraker session holding a REAL MmuServer.
 
-    Drives its own asyncio loop: mmu_server is async and serialises everything
+    Drives its own asyncio loop: mmu_server is async and serializes everything
     through an asyncio.Lock (mmu_server.py:151), so tests need a loop to run
     coroutines on. run() is the pump.
     """
@@ -336,7 +336,7 @@ class MoonrakerHarness:
         self.mmu_server_mod = install_component_stubs()
         self.db = spoolman_mod.InMemorySpoolman(version=spoolman_version)
         if with_extra_fields:
-            # A Spoolman that HH has already initialised once. Without this the very
+            # A Spoolman that HH has already initialized once. Without this the very
             # first _init_spoolman POSTs the three extra fields, which is itself
             # worth testing - hence the flag.
             for key in (spoolman_mod.FIELD_PRINTER, spoolman_mod.FIELD_GATE,

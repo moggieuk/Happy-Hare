@@ -540,7 +540,7 @@ class TestSuspendEvents(RunoutFilterTestCase):
 class TestDuplicateSuppression(unittest.TestCase):
     """
     One physical runout trips more than one sensor, and each MmuRunoutHelper gates events
-    independently - so the second sensor's event must be recognised as belonging to the
+    independently - so the second sensor's event must be recognized as belonging to the
     runout already handled, not treated as a fresh one.
     """
 

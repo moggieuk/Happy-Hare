@@ -2253,7 +2253,7 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
         sku: str               vendor SKU
         tag_format: str        one of the format identifiers listed above
         writable: bool         False for Bambu (RSA-signed, read-only)
-    or None if the format is unrecognised or the tag cannot be parsed.
+    or None if the format is unrecognized or the tag cannot be parsed.
     """
     trace = _make_trace(trace)
     # --- Authenticated MIFARE Classic block dict (from read_authenticated_blocks) ---
@@ -2448,7 +2448,7 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
     except Exception:
         pass
 
-    trace("info", "parse_tag: unrecognised tag format raw_len=%d", len(raw))
+    trace("info", "parse_tag: unrecognized tag format raw_len=%d", len(raw))
     return None
 
 

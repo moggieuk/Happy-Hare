@@ -745,7 +745,7 @@ class TestPn7160FastPolledFrames(unittest.TestCase):
                         '%s' % (reactor.pauses,))
 
     def test_status_less_firmware_keeps_the_conservative_settle(self):
-        """No way to tell a NACK from data there, so minimise speculative reads."""
+        """No way to tell a NACK from data there, so minimize speculative reads."""
         handler, reactor = self.build([RF_DISCOVER_NTF[:3], RF_DISCOVER_NTF[3:]],
                                       status_support=False)
         self.assertFalse(handler.no_irq_fast_poll)

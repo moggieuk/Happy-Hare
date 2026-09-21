@@ -116,7 +116,7 @@ class Session:
         # where SAVE_VARIABLE goes through aio_executor and PAUSES the calling
         # greenlet, and where the klippy:ready dispatch loop runs inside
         # reactor.assert_no_pause(). False models everything before that: a plain
-        # synchronous write and no pause guard. Defaults to the modern behaviour.
+        # synchronous write and no pause guard. Defaults to the modern behavior.
         self.klipper_aio = klipper_aio
         # Pre-motion_queuing generations (MmuStepper then emulates the module
         # via MotionQueuingEmulator): kalico adds the is_kalico() marker on top
@@ -173,7 +173,7 @@ class Session:
         argument (and its trigger-position return): swap the fake
         PrinterHoming's for the old signature, so do_homing_move's signature
         introspection takes the HomingMove-direct path exactly as on those
-        klippys. Must run after the toolhead phase: the homing object is
+        Klipper versions. Must run after the toolhead phase: the homing object is
         registered by the toolhead module as it loads.
         """
         from extras.homing import HomingMove
@@ -320,7 +320,7 @@ class Session:
             if section not in printer.objects:
                 printer.load_object(self.config, section, None)
 
-        # Both of these MUST happen before the readers are initialised: they are
+        # Both of these MUST happen before the readers are initialized: they are
         # constructed during the section loop above, but the chip is only talked to at
         # init, and a failed init is never retried - so doing either later leaves every
         # reader dead for the whole session. Init used to be at klippy:connect; it is now
@@ -443,7 +443,7 @@ class Session:
         # derive. Forcing the virtual sensors directly instead leaves them stuck: the
         # proportional sensor only re-evaluates them on a threshold crossing, so a
         # subsequently-fed neutral reading does not clear a hand-set tension flag - which
-        # showed up as EMU reading "tension" at a normalised value of 0.0.
+        # showed up as EMU reading "tension" at a normalized value of 0.0.
         derived = set()
         for name, sensor in self.sensors().items():
             handle = _SensorHandle(self, name, sensor)
@@ -912,7 +912,7 @@ class Session:
         (mmu.drive(gate) -> MmuDrive.driving_stepper()).
 
         Falls back to the gear stepper if either is missing, so the harness degrades to its
-        older behaviour against a checkout that predates them rather than advancing nothing.
+        older behavior against a checkout that predates them rather than advancing nothing.
         """
         drive = self.mmu.drive(gate) if hasattr(self.mmu, 'drive') else None
         driving = getattr(drive, 'driving_stepper', None)
@@ -949,7 +949,7 @@ class Session:
 
         Needed because a filament state change is a real event: putting filament at a
         gate trips the entry switch, which HH treats as an insert and responds to by
-        preloading that gate. Correct behaviour, but not what you want while arranging
+        preloading that gate. Correct behavior, but not what you want while arranging
         a starting position.
 
         Suppression uses min_event_systime = reactor.NEVER, which is exactly what
@@ -1010,7 +1010,7 @@ class Session:
         return model
 
     # Plausible spool metadata for prime_gate_map(). Vendors and materials are real names a
-    # user would recognise, so the gate table, the LED filament_color render and the Spoolman
+    # user would recognize, so the gate table, the LED filament_color render and the Spoolman
     # paths all have something to show that is not "Unknown".
     FILAMENT_VENDORS = ('eSun', 'KVS', 'Bambu Labs', 'Prusa')
     FILAMENT_MATERIALS = ('ABS', 'ABS+', 'PLA', 'TPU', 'PLA+')
@@ -1605,7 +1605,7 @@ class _SensorHandle:
 
     # -- proportional (ADC) sensors ----------------------------------------
     def neutral_value(self):
-        """The raw ADC reading meaning "no force" - normalises to 0.0."""
+        """The raw ADC reading meaning "no force" - normalizes to 0.0."""
         return getattr(self.sensor, '_neutral_point', 0.5)
 
     def _extreme_value(self):
@@ -1627,7 +1627,7 @@ class _SensorHandle:
 
     @property
     def value(self):
-        """Normalised [-1.0, 1.0] reading, for proportional sensors."""
+        """Normalized [-1.0, 1.0] reading, for proportional sensors."""
         return getattr(self.sensor, 'value', None)
 
     def clear(self, settle=True):

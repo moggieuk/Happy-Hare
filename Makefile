@@ -10,7 +10,7 @@ Q  ?= @
 # For verbose output (mostly from python builder), set to -v to enable
 V  ?=
 
-# For unittests, e.g. make UT=test_build.py test
+# For unit tests, e.g. make UT=test_build.py test
 # A UT pattern skips the interactive picker, as do ALL=1 (run everything) and LAST=1
 # (re-run the last selection). See test/README.md section 1
 UT ?= *
@@ -24,7 +24,7 @@ JOBS ?= 4
 # vars: export PIP_ARGS='--user --break-system-packages' on a PEP 668 python with no venv
 PIP_ARGS ?=
 
-# CSpell version used by the opt-in spellcheck target. Keep this compatible with
+# CSpell version used by the spellcheck target and CI. Keep this compatible with
 # Node versions commonly found on contributor machines.
 CSPELL_VERSION ?= 9.8.0
 

@@ -673,7 +673,7 @@ class TestMultiUnitMachine(unittest.TestCase):
         """
         IndexedSelector marks itself homed and calibrated at handle_ready
         (mmu_indexed_selector.py:137-140) - "design doesn't need homing or calibration".
-        Its LinearServoSelector neighbour does NOT, so this asserts the two coexist.
+        Its LinearServoSelector neighbor does NOT, so this asserts the two coexist.
         """
         by_name = {u.name: u for u in self.hh.mmu.mmu_machine.units}
         self.assertTrue(by_name['unit1'].selector.is_homed)
@@ -768,7 +768,7 @@ class TestProportionalBufferSensor(unittest.TestCase):
     """
     EMU's analog buffer sensor - the only place a shipped profile exercises the ADC path.
 
-    A proportional sensor reports a normalised value in [-1.0, +1.0] and DERIVES the
+    A proportional sensor reports a normalized value in [-1.0, +1.0] and DERIVES the
     virtual filament_compression / filament_tension sensors from it by threshold, rather
     than reading switches. Those derived sensors have no switch_pin at all, which is what
     made this profile fail to load before the harness learned to dispatch by sensor kind.
@@ -847,7 +847,7 @@ class TestProportionalVirtualSensorThresholds(unittest.TestCase):
         self.hh.close()
 
     def feed_normalised(self, value):
-        """Feed a raw reading that normalises to `value` in [-1, +1]."""
+        """Feed a raw reading that normalizes to `value` in [-1, +1]."""
         span = self.sensor._d_pos if value >= 0 else self.sensor._d_neg
         self.prop.feed(self.sensor._neutral_point + value * span)
         return self.sensor.value

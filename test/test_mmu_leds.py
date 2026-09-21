@@ -101,7 +101,7 @@ class TestSetLedReachesTheChain(LedTestCase):
         """
         set_gate_rgb sends TRANSMIT=0 for every index but the last, so honouring it is what
         makes a whole-segment repaint one flush instead of N. Ignoring the flag would still
-        LOOK right - the colours land either way - so assert the transmit count.
+        LOOK right - the colors land either way - so assert the transmit count.
         """
         physical = self.hh.printer.lookup_object('neopixel _unit0_leds')
         before = len(physical.updates)
@@ -138,7 +138,7 @@ class TestStopReleasesTheLedsImmediately(LedTestCase):
     getFrame emits on the pass after that, and _getFrames zeroes every LED of an updating
     effect before it sums. So "_MMU_STOP_LED_EFFECTS then SET_LED" - which is exactly what
     mmu_led_manager's filament_color, slicer_color and (r,g,b) branches emit - landed the
-    colours and then had them wiped by the timer. It came right only from the SECOND repaint,
+    colors and then had them wiped by the timer. It came right only from the SECOND repaint,
     because by then the effect had latched nextEventTime = NEVER.
 
     cmd_STOP_LED_EFFECTS now flushes the pass before returning (ledFrameHandler.flush_frames).

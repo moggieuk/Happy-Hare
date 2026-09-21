@@ -267,8 +267,8 @@ class PhysicalSelector(BaseSelector, object):
         settled by the time mmu_gate_maps.load_persisted_state() decides whether to keep the
         persisted gate.
 
-        NOTE: a bare M84 / TURN_OFF_MOTORS de-energises the selector through klipper's
-        stepper_enable without Happy Hare seeing it, so last_pos survives a de-energising we
+        NOTE: a bare M84 / TURN_OFF_MOTORS de-energizes the selector through klipper's
+        stepper_enable without Happy Hare seeing it, so last_pos survives a de-energizing we
         never observed. Trusting it is a pre-existing assumption of this scheme, not something
         the gate fallback adds.
         """

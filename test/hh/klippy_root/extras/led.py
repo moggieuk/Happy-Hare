@@ -1,7 +1,7 @@
 # Fake Klipper `klippy/extras/led.py` for the Happy Hare test harness.
 #
 # extras/mmu/unit/mmu_leds.py:21 imports this module and :34 builds a REAL
-# LEDHelper from a config section it synthesises on the fly (add_section ->
+# LEDHelper from a config section it synthesizes on the fly (add_section ->
 # getsection -> remove_section, :32-36). So LEDHelper must be constructible from a
 # bare, optionless `[led <name>]` section.
 #
@@ -32,7 +32,7 @@ class LEDHelper:
         self.update_func = update_func
         self.led_count = led_count
         self.need_transmit = False
-        # Klipper seeds from initial_RED/GREEN/BLUE/WHITE; bare synthesised
+        # Klipper seeds from initial_RED/GREEN/BLUE/WHITE; bare synthesized
         # sections have none, so default to off.
         red = config.getfloat('initial_RED', 0., minval=0., maxval=1.)
         green = config.getfloat('initial_GREEN', 0., minval=0., maxval=1.)

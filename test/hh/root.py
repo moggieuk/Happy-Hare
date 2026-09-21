@@ -26,7 +26,7 @@ FAKE_SRC    = os.path.join(HARNESS_DIR, 'klippy_root')
 REPO_ROOT   = os.path.dirname(os.path.dirname(HARNESS_DIR))
 
 # Must stay in lockstep with Makefile:114 `hh_klipper_extras_files`. Each pattern
-# is asserted non-empty so a repo reorganisation fails loudly here rather than
+# is asserted non-empty so a repo reorganization fails loudly here rather than
 # silently shipping a partial overlay.
 HH_GLOBS = (
     'extras/*.py',

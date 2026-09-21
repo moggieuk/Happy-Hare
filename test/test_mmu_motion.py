@@ -433,7 +433,7 @@ class TestLoadGate(MotionTestCase):
 
     def test_kalico_homing_drives_homing_move_directly(self):
         """
-        Klippys whose manual_home predates the probe_pos argument (Kalico,
+        Klipper versions whose manual_home predates the probe_pos argument (Kalico,
         mainline v0.13.0-111) return no trigger position either: going through
         manual_home, homing_move runs with probe_pos=False and reports the move
         TARGET as the position - a bowden calibration on Kalico measured the
@@ -441,7 +441,7 @@ class TestLoadGate(MotionTestCase):
         therefore introspects manual_home's signature and, when probe_pos is
         absent, drives HomingMove directly (the approach the verified v3 code
         used on Kalico), passing probe_pos through, and never calls manual_home.
-        Klippys with the probe_pos parameter keep using manual_home.
+        Klipper versions with the probe_pos parameter keep using manual_home.
 
         Simulate the old generation by swapping the fake PrinterHoming's
         manual_home for a probe_pos-less version that returns the move target,
@@ -1062,7 +1062,7 @@ class TestKalico(MotionTestCase):
 
     def test_bootup_disables_idle_gear_steppers(self):
         """
-        MMU_BOOTUP de-energises the idle type-B gear steppers. On the
+        MMU_BOOTUP de-energizes the idle type-B gear steppers. On the
         pre-set_motors_enable generation this must go through the per-stepper
         path - on-printer it crashed with "'PrinterStepperEnable' object has
         no attribute 'set_motors_enable'".
@@ -1079,7 +1079,7 @@ class TestKalico(MotionTestCase):
         for d in gear_drives:
             el = se.lookup_enable(d.mmu_gear_stepper.stepper.get_name())
             self.assertFalse(el.is_enabled,
-                             'gear stepper %s must be de-energised' % el.name)
+                             'gear stepper %s must be de-energized' % el.name)
             self.assertEqual(el.transitions[-1][1], False)
         self.assertEqual(self.hh.errors, [])
 

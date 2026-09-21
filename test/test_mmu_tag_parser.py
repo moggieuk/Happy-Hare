@@ -10,7 +10,7 @@
 # trade: a captured dump proves one real tag parses, whereas a constructed one lets us
 # state exactly which byte made the difference - and for the NDEF formats the wire format
 # is a published standard, so a hand-built image is just as real. Formats whose payloads
-# are proprietary binary (Bambu, Creality, QIDI, Anycubic) are NOT synthesised here;
+# are proprietary binary (Bambu, Creality, QIDI, Anycubic) are NOT synthesized here;
 # faking those convincingly would mean reimplementing the format, and a test that only
 # proves my encoder matches my decoder is worthless. Those need captured dumps - see the
 # graceful-degradation tests at the bottom for what is checked in the meantime.
@@ -179,7 +179,7 @@ class TestOpenSpool(TagParserTestCase):
 
 
 class TestGenericNdefJson(TagParserTestCase):
-    """Fallback for a JSON text record with recognisable filament fields."""
+    """Fallback for a JSON text record with recognizable filament fields."""
 
     def test_material_and_brand(self):
         raw = ndef_tlv(text_record(json.dumps(
@@ -213,7 +213,7 @@ class TestSimplyPrintUrl(TagParserTestCase):
         raw = ndef_tlv(uri_record(
             'simplyprint.io/f?m=PLA&c=00FF00&mint=195&maxt=225', prefix=0x04))
         info = self.parse(raw)
-        self.assertIsNotNone(info, 'a simplyprint.io URI was not recognised')
+        self.assertIsNotNone(info, 'a simplyprint.io URI was not recognized')
         self.assertEqual(info['material'], 'PLA')
         self.assertEqual(info['tag_format'], 'simplyprint_url')
 
@@ -260,7 +260,7 @@ class TestUnparseableInputIsSafe(TagParserTestCase):
 class TestProprietaryFormatsDegrade(TagParserTestCase):
     """
     Bambu, Creality, QIDI and Anycubic use proprietary binary payloads, and the first two
-    need AES/HKDF that pycryptodome provides. No convincing image can be synthesised
+    need AES/HKDF that pycryptodome provides. No convincing image can be synthesized
     without reimplementing the format, and no crypto library is installed here, so what is
     asserted is that these paths DEGRADE rather than crash or false-positive.
 
@@ -277,7 +277,7 @@ class TestProprietaryFormatsDegrade(TagParserTestCase):
         self.assertIsNone(self.parse({'uid_bytes': b'\x04\x01\x02\x03', 'blocks': {}}))
 
     def test_zeroed_blocks_do_not_false_positive(self):
-        """An unwritten card must not be reported as a recognised branded spool."""
+        """An unwritten card must not be reported as a recognized branded spool."""
         blocks = {i: bytes(16) for i in range(64)}
         info = self.parse({'uid_bytes': bytes.fromhex('04A1B2C3'), 'blocks': blocks})
         if info is not None:
@@ -373,5 +373,5 @@ class TestParseDiagnostics(TagParserTestCase):
         seen = []
         tag_parser.parse_tag(b'\x00' * 32,
                              trace=lambda level, msg, *a: seen.append(msg % a))
-        self.assertTrue(any('unrecognised' in line or 'no NDEF' in line
+        self.assertTrue(any('unrecognized' in line or 'no NDEF' in line
                             for line in seen), seen)
