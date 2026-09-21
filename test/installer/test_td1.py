@@ -3,7 +3,7 @@
 # TD-1 is the one optional feature with no Klipper hardware behind it: the scanner is a
 # USB device owned by Moonraker, so the installer collects a serial number and a capture
 # policy, and nothing else. There is deliberately no scan geometry - a reading comes from
-# filament travelling its normal path past the scanner. These tests pin that split down:
+# filament traveling its normal path past the scanner. These tests pin that split down:
 # serials land on [mmu_unit], policy lands on [mmu_unit_parameters], and a machine with
 # the feature switched off gets neither.
 #
@@ -156,7 +156,7 @@ class TestTd1OffPathScanner(unittest.TestCase):
         self.assertEqual(unit.get("td1_devices"), "TD1-0042, TD1-0042, TD1-0042, TD1-0042")
 
     def test_per_gate_and_off_path_together(self):
-        unit = assembled("td1_pergate_offpath", dict(PER_GATE, **OFFPATH))["mmu_unit unit0"]
+        unit = assembled("td1_per_gate_offpath", dict(PER_GATE, **OFFPATH))["mmu_unit unit0"]
         self.assertEqual(unit.get("td1_device"), "TD1-0099")
         self.assertEqual(unit.get("td1_devices"), "TD1-0042, TD1-0043, , TD1-0042")
 
@@ -276,13 +276,13 @@ class TestTd1BlankEntries(unittest.TestCase):
         for name, (syms, line, serials) in cases.items():
             with self.subTest(position=name):
                 self.assertEqual(self.rendered("td1_blank_" + name, syms), line)
-                self.assertEqual(self.booted("td1_blankboot_" + name, syms), serials)
+                self.assertEqual(self.booted("td1_blank_boot_" + name, syms), serials)
 
     def test_no_gate_with_a_scanner_renders_no_list_at_all(self):
         # Rather than a line reading ', , ,'
         syms = {"PARAM_TD1_DEVICE_GATE_%d" % g: False for g in range(4)}
         self.assertIsNone(self.rendered("td1_none", syms))
-        self.assertEqual(self.booted("td1_noneboot", syms), [""] * 4)
+        self.assertEqual(self.booted("td1_none_boot", syms), [""] * 4)
 
     def test_the_old_dash_placeholder_is_rejected_rather_than_taken_as_a_serial(self):
         # A hand-written or copied config might carry one. Accepting it would give a

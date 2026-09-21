@@ -2352,7 +2352,7 @@ class MmuController(MmuFilamentMovement):
         """A measurement landed: on the gate's own LEDs when it was attributed to one, on
         the unit's segment when it was staged from the off-path scanner instead. Only fires
         for a reading that actually changed something - apply() and stage() both drop a
-        repeat, which is what stops filament left in the scanner strobing on every poll."""
+        repeat, which is what stops filament left in the scanner flashing on every poll."""
         self._td1_led_flash('td1_read', unit, default=TD1_LED_READ_FLASH, gate=gate)
 
     def _td1_led_on_fail(self, unit, gate=None):

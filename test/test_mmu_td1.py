@@ -4,7 +4,7 @@
 # transport standing in for the [td1] component. The scanner itself is imaginary; the
 # gate homing, filament movement and gate-map persistence are all real.
 #
-# There is no scan geometry: a measurement is produced by filament travelling its normal
+# There is no scan geometry: a measurement is produced by filament traveling its normal
 # path past the scanner, so Happy Hare never needs to know where the scanner sits.
 # MMU_CHECK_GATE TD1=1 measures a gate by loading to the extruder (never into it) and
 # unloading again; everything else is passive.
