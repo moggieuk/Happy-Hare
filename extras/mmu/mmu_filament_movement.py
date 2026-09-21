@@ -249,8 +249,7 @@ class MmuFilamentMovement:
         # fallback if that reader finds nothing.
         spool_id, tag, _measured = pending if pending is not None else (-1, None, None)
         has_material = tag is not None and isinstance(tag[1], dict) and tag[1].get('material')
-        # A staged measurement is not identity, so it never makes a pending "strong" -
-        # it says what the filament measures, not which filament it is
+        # A staged measurement is not identity, so it never makes a pending "strong"
         have_strong_pending = spool_id > 0 or has_material
 
         # A neighboring gate's spool could satisfy the NFC leg below and get misattributed -

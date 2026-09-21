@@ -1,9 +1,8 @@
 # TD-1 filament measurement (transmission distance + measured color)
 #
 # Unlike NFC readers, TD-1 scanners are USB devices owned by Moonraker's [td1] component,
-# not Klipper MCU peripherals - so there are no pins, no bus settings and no klipper
-# section to create. All we collect here is the USB serial number and the filament-path
-# geometry Happy Hare needs to drive filament to the scanner and back.
+# not Klipper MCU peripherals - no pins, no bus settings, no klipper section to create.
+# All that is collected here is the USB serial number.
 #
 # Responsible for setting:
 #
@@ -21,9 +20,7 @@
 #   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
 #
 #   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt.
-#                                Named to match PARAM_NFC_READER_GATE_$(i) in the
-#                                per-gate NFC block this mirrors. The template reads it
-#                                so switching a gate off wins over a serial left behind)
+#                                Named to match PARAM_NFC_READER_GATE_$(i))
 #
 # Capture policy (rendered into [mmu_unit_parameters] in mmu_parameters.cfg):
 #   PARAM_TD1_AUTO_UPDATE
@@ -32,9 +29,8 @@
 #
 #   BOOL_TD1_ADVANCED            (reveals the timeout; not rendered otherwise)
 #
-# There is deliberately no scan geometry here. A reading is produced by filament
-# travelling its normal path past the scanner, so its position never has to be
-# described - see MMU_CHECK_GATE TD1=1.
+# No scan geometry: a reading comes from filament travelling its normal path past the
+# scanner, so its position never has to be described - see MMU_CHECK_GATE TD1=1.
 #
 
 comment "_"
@@ -83,15 +79,11 @@ if MMU_HAS_TD1
           config PARAM_TD1_DEVICE_$(i)
             string
 
-          # Presentation only - it collapses the serial prompt below. Unlike the NFC
-          # reader block this was modelled on, the serial's default is "" either way,
-          # so this toggle contributes no value of its own; the template consults it
-          # because kconfig keeps a hidden prompt's value and build.py reads the raw
-          # user value regardless of visibility. Named PARAM_ for symmetry with
-          # PARAM_NFC_READER_GATE_$(i) rather than the BOOL_ the naming contract would
-          # suggest for a presentation-only switch. Both prefixes behave identically
-          # for the #~DEFAULT~# mechanism, so an 'off' the user chose survives an
-          # upgrade either way - see TestTd1UpgradeRetention
+          # Presentation only, but the template consults it: kconfig keeps a hidden
+          # prompt's value and build.py reads the raw user value regardless of
+          # visibility, so a serial can outlive the decision to switch the gate off.
+          # PARAM_ for symmetry with PARAM_NFC_READER_GATE_$(i) - see the naming
+          # contract in installer/Kconfig, and TestTd1UpgradeRetention
           menuconfig PARAM_TD1_DEVICE_GATE_$(i)
             bool "Gate $(i) TD-1 scanner"
             default y
@@ -141,7 +133,7 @@ if MMU_HAS_TD1
         Update measured TD and color whenever a new reading arrives and Happy Hare knows
         which filament owns the path. This never moves filament.
 
-        Units sharing one physical scanner must agree on this setting.
+        Set per unit, so units sharing one scanner need not agree.
 
     config PARAM_TD1_CAPTURE_ON_LOAD
       boolint "Wait for a reading when loading?"

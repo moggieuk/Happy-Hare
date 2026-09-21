@@ -250,21 +250,17 @@ FILAMENT_DRIVE_STATE   = 1
 FILAMENT_HOLD_STATE    = 2
 
 # TD-1 filament measurement
-# A TD-1 is an analogue instrument - AJAX quote +/-7.5% - so two reads of the same
-# filament never give the same numbers. These say how far apart two readings must be
-# before they describe different filament rather than the same filament read twice.
-# Both sit well outside the quoted error
+# How far apart two readings must be to be different filament rather than the same
+# filament read twice. A TD-1 is analogue (AJAX quote +/-7.5%), so both sit outside that
 TD1_SAME_TD_FRACTION   = 0.15  # Relative difference in transmission distance
 TD1_SAME_RGB_DISTANCE  = 12    # Largest per-channel color difference, out of 255
 
-# The transmission distance at which filament is treated as fully transparent when
-# deriving an alpha channel from a measurement. TD is how far light gets into the
-# filament, so low is opaque and high is clear; AJAX's own examples anchor the scale
-# (black ~0.1, white ~4.6, transparent natural ~100)
+# The TD at which filament reads as fully transparent when deriving an alpha channel.
+# AJAX's own examples anchor the scale: black ~0.1, white ~4.6, transparent natural ~100
 TD1_CLEAR_TD           = 100.0
 
-# Per-gate TD-1 state reported in printer.mmu. Happy Hare's own policy toward the gate's
-# scanner - device connectivity belongs to Moonraker's [td1] and isn't repeated here
+# Per-gate TD-1 state in printer.mmu - Happy Hare's policy only. Device connectivity
+# belongs to Moonraker's [td1]
 TD1_STATE_NONE         = ''          # No scanner serves this gate
 TD1_STATE_ENABLED      = 'enabled'   # Scanner in use, readings applied on request only
 TD1_STATE_AUTO         = 'auto'      # Scanner in use, new readings applied automatically
