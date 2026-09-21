@@ -31,7 +31,7 @@
 
 
 comment "_"
-comment "_TD-1 filament measurement"
+comment "_TD-1 [[B]](BETA)[[/B]]"
 
 config UNSELECT_MMU_HAS_TD1
   def_bool n
