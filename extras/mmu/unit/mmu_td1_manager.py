@@ -249,7 +249,9 @@ class MmuTd1Manager:
         Returns True if the gate's color changed; the caller persists.
         """
         maps = self.mmu.gate_maps
-        measured = maps.gate_td1_color[gate]
+        # Carries an alpha channel derived from the TD, so a translucent filament
+        # renders as one rather than as flat color
+        measured = maps.td1_rgba(gate)
         if not measured or maps.gate_color[gate] == measured:
             return False
         if maps.gate_color[gate] and not force:

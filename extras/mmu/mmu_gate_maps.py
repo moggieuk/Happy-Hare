@@ -173,6 +173,26 @@ class MmuGateMaps:
         self.mmu.var_manager.write()
 
 
+    def td1_rgba(self, gate):
+        """
+        The measured color, with an alpha channel derived from the measured TD.
+
+        TD is a transmission distance - how far light gets into the filament - so a
+        low value is opaque and a high one is clear, and alpha (ff = opaque) is its
+        inverse. Anything at or beyond TD1_CLEAR_TD reads as fully transparent.
+
+        Returns "" when there is no measured color, and plain RRGGBB when there is a
+        color but no TD to derive an alpha from.
+        """
+        color = self.gate_td1_color[gate]
+        if not color:
+            return ""
+        td = self.gate_td[gate]
+        if td is None:
+            return color
+        return "%s%02x" % (color, int(round(255 * max(0., 1. - td / TD1_CLEAR_TD))))
+
+
     def clear_measurements(self, gate):
         """
         Drop the measured fields for 'gate' without claiming its filament changed.
@@ -184,7 +204,7 @@ class MmuGateMaps:
         color never outlives the reading it came from. A color Spoolman or the user
         set is left alone - it is only ours while it still matches what we measured.
         """
-        if self.gate_td1_color[gate] and self.gate_color[gate] == self.gate_td1_color[gate]:
+        if self.gate_td1_color[gate] and self.gate_color[gate] == self.td1_rgba(gate):
             self.gate_color[gate] = ""
             self.update_gate_color_rgb()
         self.gate_td[gate] = None

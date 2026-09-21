@@ -293,9 +293,9 @@ class TestTd1Color(Td1Case):
     def test_it_fills_an_empty_filament_color(self):
         self.assertEqual(self.mmu.gate_color[0], "")
         self.manager.apply(0, record(color="00ff00"))
-        self.assertEqual(self.mmu.gate_color[0], "00ff00")
+        self.assertEqual(self.mmu.gate_color[0], rgba("00ff00"))
         self.assertEqual(self.mmu.gate_color_rgb[0], (0., 1., 0.))
-        # ...and is still recorded separately, so its provenance is not lost
+        # ...and the raw measurement is still recorded, so provenance is not lost
         self.assertEqual(self.mmu.gate_td1_color[0], "00ff00")
 
     def test_it_never_overwrites_a_color_that_is_already_set(self):
@@ -309,7 +309,7 @@ class TestTd1Color(Td1Case):
     def test_black_is_a_measurement_not_a_missing_one(self):
         self.manager.apply(0, record(color="000000"))
         self.assertEqual(self.mmu.gate_td1_color[0], "000000")
-        self.assertEqual(self.mmu.gate_color[0], "000000")
+        self.assertEqual(self.mmu.gate_color[0], rgba("000000"))
         self.assertEqual(self.mmu.gate_color_rgb[0], (0., 0., 0.))
 
     def test_no_parallel_rgb_cache_is_published_or_kept(self):
@@ -324,7 +324,7 @@ class TestTd1SetColor(Td1Case):
         self.manager.apply(1, record(color="00ff00"))
         self.assertEqual(self.mmu.gate_color[1], "ff0000")
         self.hh.run_gcode("MMU_TD1 GATE=1 SET_COLOR=1 QUIET=1")
-        self.assertEqual(self.mmu.gate_color[1], "00ff00")
+        self.assertEqual(self.mmu.gate_color[1], rgba("00ff00"))
 
     def test_it_takes_a_list(self):
         for gate in (0, 1, 2):
@@ -332,7 +332,7 @@ class TestTd1SetColor(Td1Case):
             self.manager.apply(gate, record(color="00ff00"))
         self.hh.run_gcode("MMU_TD1 GATES=0,2 SET_COLOR=1 QUIET=1")
         self.assertEqual([self.mmu.gate_color[g] for g in (0, 1, 2)],
-                         ["00ff00", "ff0000", "00ff00"])
+                         [rgba("00ff00"), "ff0000", rgba("00ff00")])
 
     def test_it_says_so_when_there_is_nothing_measured(self):
         with patch.object(self.mmu, "log_info") as info:
@@ -794,7 +794,7 @@ class TestTd1Led(Td1Case):
         after = unit.leds.virtual_chains["exit"].get_status()["color_data"][:]
         self.assertNotEqual(before, after)
         self.assertGreater(after[0][1], after[0][0])
-        self.assertEqual(self.mmu.gate_color[0], "00ff00")
+        self.assertEqual(self.mmu.gate_color[0], rgba("00ff00"))
 
     def test_td1_color_is_not_a_selectable_effect(self):
         with self.assertRaises(Exception):
@@ -1506,6 +1506,11 @@ class TestTd1ManualEditEvent(Td1Case):
         self.assertEqual(events, [])
 
 
+def rgba(color, td=4.):
+    """The color a measurement adopts into filament_color: RGB plus TD-derived alpha."""
+    return "%s%02x" % (color, int(round(255 * max(0., 1. - td / 100.))))
+
+
 def rec_or_blank(ready):
     return record(second=10, td=99.) if ready else {"td": None, "color": None, "scan_time": None}
 
@@ -1784,7 +1789,7 @@ class TestTd1AdoptedColorLifetime(Td1Case):
 
     def test_it_is_dropped_when_the_measurement_is(self):
         self.manager.apply(0, record(color="00ff00"))
-        self.assertEqual(self.mmu.gate_color[0], "00ff00")
+        self.assertEqual(self.mmu.gate_color[0], rgba("00ff00"))
         self.mmu.gate_maps.gate_filament_changed(0)
         self.assertEqual(self.mmu.gate_color[0], "", "adopted color outlived its reading")
         self.assertEqual(self.mmu.gate_color_rgb[0], (0., 0., 0.))
@@ -1808,3 +1813,42 @@ class TestTd1AdoptedColorLifetime(Td1Case):
         self.hh.run_gcode("MMU_GATE_MAP GATE=3 TD=2.5 QUIET=1")
         self.assertEqual(self.mmu.gate_td[3], 2.5)
         self.assertEqual(self.mmu.gate_color[3], "")
+
+
+class TestTd1Alpha(Td1Case):
+    """
+    The adopted color carries an alpha channel derived from the TD.
+
+    TD is a transmission distance - how far light gets into the filament - so a low
+    value is opaque and a high one is clear. AJAX's own examples anchor the scale:
+    black ~0.1, white ~4.6, transparent natural ~100.
+    """
+
+    def test_opaque_translucent_and_clear(self):
+        for gate, (td, expect) in enumerate(((0.1, "ff"),    # black, opaque
+                                             (4.6, "f3"),    # white, near opaque
+                                             (50., "80"),    # half way
+                                             (100., "00"))): # transparent natural
+            with self.subTest(td=td):
+                self.mmu.gate_maps.gate_color[gate] = ""
+                self.manager.apply(gate, record(second=gate, td=td, color="112233"))
+                self.assertEqual(self.mmu.gate_color[gate], "112233" + expect)
+
+    def test_beyond_the_clear_point_stays_fully_transparent(self):
+        self.manager.apply(0, record(td=250., color="112233"))
+        self.assertEqual(self.mmu.gate_color[0], "11223300")
+
+    def test_the_alpha_does_not_disturb_the_rgb_leds_read(self):
+        self.manager.apply(0, record(td=50., color="00ff00"))
+        self.assertEqual(self.mmu.gate_color_rgb[0], (0., 1., 0.))
+
+    def test_the_recorded_measurement_stays_plain_rgb(self):
+        # gate_td1_color is what the scanner said; the alpha is derived from a
+        # different measurement and composed only where the two are used together
+        self.manager.apply(0, record(td=50., color="00ff00"))
+        self.assertEqual(self.mmu.gate_td1_color[0], "00ff00")
+
+    def test_an_adopted_color_with_alpha_is_still_recognised_as_ours(self):
+        self.manager.apply(0, record(td=50., color="00ff00"))
+        self.mmu.gate_maps.gate_filament_changed(0)
+        self.assertEqual(self.mmu.gate_color[0], "")

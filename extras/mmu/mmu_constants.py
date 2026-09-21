@@ -250,6 +250,12 @@ FILAMENT_DRIVE_STATE   = 1
 FILAMENT_HOLD_STATE    = 2
 
 # TD-1 filament measurement
+# The transmission distance at which filament is treated as fully transparent when
+# deriving an alpha channel from a measurement. TD is how far light gets into the
+# filament, so low is opaque and high is clear; AJAX's own examples anchor the scale
+# (black ~0.1, white ~4.6, transparent natural ~100)
+TD1_CLEAR_TD           = 100.0
+
 # Per-gate TD-1 state reported in printer.mmu. Happy Hare's own policy toward the gate's
 # scanner - device connectivity belongs to Moonraker's [td1] and isn't repeated here
 TD1_STATE_NONE         = ''          # No scanner serves this gate

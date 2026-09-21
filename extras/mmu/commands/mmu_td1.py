@@ -73,7 +73,9 @@ class MmuTd1Command(BaseCommand):
         + "assign a spool afterwards.\n"
         + "A measured color becomes the gate's filament_color when nothing else has set\n"
         + "one - Spoolman and a hand-set color both win. SET_COLOR=1 overrides that, though\n"
-        + "on a gate with a Spoolman spool the next refresh will put Spoolman's color back."
+        + "on a gate with a Spoolman spool the next refresh will put Spoolman's color back.\n"
+        + "It carries an alpha channel derived from the TD (RRGGBBaa), so a translucent\n"
+        + "filament reads as one: a low TD is opaque, a high one is clear."
     )
 
     # Operation flags, in the order they are reported when the user asks for too many
