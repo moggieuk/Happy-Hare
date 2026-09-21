@@ -59,6 +59,9 @@ class MmuTd1Manager:
         self.gate_devices = []      # Per-local-gate, in the filament path (or None)
         self._setup_devices()
 
+        # (td, color) last staged from the off-path scanner - see stage()
+        self._staged = None
+
         # Bumped when a gate's filament identity changes, so a capture already in flight
         # discards its own result rather than applying it to a new spool
         self.revisions = [0] * mmu_unit.num_gates
@@ -70,6 +73,21 @@ class MmuTd1Manager:
     def reinit(self):
         # State reset on (re)initialization. Called by mmu_unit.reinit().
         self.release()
+        self._staged = None
+
+
+    def allow_restage(self):
+        """
+        Let filament still sitting in the off-path scanner be staged again.
+
+        The counterpart of MmuNfcManager.allow_reread(), called from the same place
+        for the same reason: once a pending has timed out, filament the user left in
+        the reader should be able to re-establish it without being taken out and
+        presented again. Deliberately NOT called when a pending is consumed - the
+        measurement of a spool just loaded must not immediately stage itself for the
+        next gate.
+        """
+        self._staged = None
 
 
     def _handle_connect(self):
@@ -491,16 +509,22 @@ class MmuTd1Manager:
         """
         if device is not self.shared_device or not device.enabled:
             return
-        # Filament left in the reader is reported on every poll, with the scan_time it
-        # was first read at. Staging only a reading newer than the cached one is the
-        # dedupe - MmuNfcManager does the same job by UID.
-        #
-        # Deliberately no was_connected guard, unlike consider(): the cached reading
-        # survives a disconnect, so this same test already rejects a stale re-report
-        # after one. The guard would only throw away the first genuine reading after a
-        # Moonraker hiccup, silently, leaving the user to present filament twice
+        # Nothing new at all. Deliberately no was_connected guard here, unlike
+        # consider(): the cached reading survives a disconnect, so this test already
+        # rejects a stale re-report after one. The guard would only throw away the
+        # first genuine reading after a Moonraker hiccup, silently
         if previous is not None and valid['scan_time'] <= previous:
             return
+        # Filament left in the reader keeps being measured, and a device that
+        # re-measures advances scan_time every time - so the timestamp alone is not a
+        # dedupe. What matters is whether the MEASUREMENT changed: the same filament
+        # sitting there is not a new reading to stage, however often it is re-read.
+        # MmuNfcManager does the same job by UID. allow_restage() lifts this once a
+        # pending times out, so the user need not present the filament again
+        if self._staged == (valid['td'], valid['color']):
+            device.last_outcome = 'status_only: already staged'
+            return
+        self._staged = (valid['td'], valid['color'])
         self.mmu.stage_pending_measurement(valid)
         device.last_outcome = 'staged as pending for the next gate'
 

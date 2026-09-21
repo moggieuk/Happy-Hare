@@ -1848,7 +1848,7 @@ class TestTd1Alpha(Td1Case):
         self.manager.apply(0, record(td=50., color="00ff00"))
         self.assertEqual(self.mmu.gate_td1_color[0], "00ff00")
 
-    def test_an_adopted_color_with_alpha_is_still_recognised_as_ours(self):
+    def test_an_adopted_color_with_alpha_is_still_recognized_as_ours(self):
         self.manager.apply(0, record(td=50., color="00ff00"))
         self.mmu.gate_maps.gate_filament_changed(0)
         self.assertEqual(self.mmu.gate_color[0], "")
@@ -1896,3 +1896,50 @@ class TestTd1OffPathResponsiveness(Td1OffPathCase):
         self.bridge.update_devices({}, "moonraker hiccup", "bridge")
         self.present(second=1)
         self.assertIsNone(self.mmu.pending_measurement)
+
+
+class TestTd1LeftInTheReader(Td1OffPathCase):
+    """
+    Filament left sitting in the off-path scanner must stage exactly once.
+
+    A device that re-measures advances scan_time every time it does, so the
+    timestamp alone is not a dedupe. What decides is whether the MEASUREMENT
+    changed - the same filament sitting there is not new, however often it is read.
+    """
+
+    def stagings(self, readings):
+        with patch.object(self.mmu, "stage_pending_measurement",
+                          wraps=self.mmu.stage_pending_measurement) as staged:
+            for second, td in readings:
+                self.present(second=second, td=td)
+            return staged.call_count
+
+    def test_a_device_that_re_measures_still_stages_once(self):
+        # scan_time advances on every poll; the measurement does not
+        self.assertEqual(self.stagings([(s, 4.) for s in range(10, 16)]), 1)
+        self.assertEqual(self.mmu.pending_measurement["td"], 4.)
+
+    def test_a_device_that_reports_one_reading_also_stages_once(self):
+        self.assertEqual(self.stagings([(1, 4.)] * 5), 1)
+
+    def test_a_genuinely_different_measurement_restages(self):
+        # Swap the filament for another: the measurement changes, so it is new
+        self.assertEqual(self.stagings([(1, 4.), (2, 4.), (3, 9.)]), 2)
+        self.assertEqual(self.mmu.pending_measurement["td"], 9.)
+
+    def test_consuming_a_pending_does_not_restage_what_is_still_sitting_there(self):
+        # A spool just loaded must not immediately stage itself for the next gate -
+        # the same rule NFC applies to a tag left on its shared reader
+        self.present(second=1)
+        self.mmu._check_pending_filament(0)
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.assertEqual(self.stagings([(s, 4.) for s in range(10, 14)]), 0)
+
+    def test_a_timed_out_pending_can_be_re_established_without_re_presenting(self):
+        # allow_restage(), the counterpart of the NFC reader's allow_reread()
+        self.present(second=1)
+        self.assertIsNotNone(self.mmu.pending_measurement)
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout + 1)
+        self.assertIsNone(self.mmu.pending_measurement, "should have timed out")
+        self.assertEqual(self.stagings([(10, 4.)]), 1, "filament still in the reader")
+        self.assertEqual(self.mmu.pending_measurement["td"], 4.)

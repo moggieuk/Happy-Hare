@@ -2026,6 +2026,7 @@ class MmuController(MmuFilamentMovement):
         for unit in self.mmu_machine.units:
             if unit.nfc_manager is not None:
                 unit.nfc_manager.allow_reread()
+            unit.td1_manager.allow_restage()
         return self.reactor.NEVER
 
 
