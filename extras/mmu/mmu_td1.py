@@ -186,7 +186,7 @@ class MmuTd1Bridge:
         if enabled is not None:
             device.enabled = bool(enabled)
         if auto is not None:
-            device.auto = bool(auto)
+            device.auto_override = bool(auto)
         device.release()
 
 
@@ -228,7 +228,7 @@ class MmuTd1Bridge:
         """
         if self.busy or any(d.owner is not None for d in self.devices.values()):
             return True
-        if any(d.auto and d.enabled for d in self.devices.values()):
+        if any(m.auto_wanted() for m in self.managers()):
             return True
         # An off-path scanner exists to produce readings to stage, so one is always
         # wanted. Nothing arms for it and it has no gate to auto-update, so without
@@ -358,6 +358,14 @@ class MmuTd1Bridge:
                 # or rebooted, so drop the cached one with it: leaving it behind makes
                 # status quote a measurement the scanner no longer stands behind, and
                 # hands measurement() a record carrying both a value and an error
+                if previous is not None:
+                    # Had a reading, now reports none. On an off-path scanner that is
+                    # filament being taken out, which is the better moment to start
+                    # the pending window - see MmuTd1Manager.removed()
+                    for manager in self.managers():
+                        if manager.shared_device is device:
+                            manager.removed(device)
+                            break
                 device.forget_reading()
                 device.error = "TD-1 has not measured anything yet"
                 device.error_kind = TD1_ERR_NO_READING

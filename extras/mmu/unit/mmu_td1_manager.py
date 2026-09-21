@@ -59,7 +59,7 @@ class MmuTd1Manager:
         self.gate_devices = []      # Per-local-gate, in the filament path (or None)
         self._setup_devices()
 
-        # (td, color) last staged from the off-path scanner - see stage()
+        # The reading last staged from the off-path scanner - see stage()
         self._staged = None
 
         # Bumped when a gate's filament identity changes, so a capture already in flight
@@ -111,15 +111,9 @@ class MmuTd1Manager:
             return None
         section = 'mmu_td1_device %s' % serial
         obj = self.printer.lookup_object(section, None)
-        auto = bool(self.p.td1_auto_update)
         if obj is not None:
-            # Shared between gates, or with another unit. One physical scanner cannot
-            # be auto-updating for one unit and not another
-            if obj.auto != auto:
-                raise self.config.error(
-                    "Units sharing TD-1 scanner '%s' must agree on td1_auto_update" % serial)
-            return obj
-        obj = MmuTd1Device(serial, auto=auto)
+            return obj # Shared between gates, or with another unit
+        obj = MmuTd1Device(serial)
         self.printer.add_object(section, obj)
         logging.info("MMU: Created: [%s]" % section)
         return obj
@@ -176,6 +170,25 @@ class MmuTd1Manager:
             if device is not None:
                 seen.setdefault(device.serial, device)
         return list(seen.values())
+
+
+    def auto_for(self, device):
+        """
+        Whether a new reading from this device is applied automatically, for THIS unit.
+
+        Resolved at the point of use, like td1_capture_timeout and
+        td1_capture_on_load, so an MMU_TEST_CONFIG edit takes effect immediately and
+        two units sharing one physical scanner can configure it differently. The
+        device only carries a runtime override, set by MMU_TD1 AUTO=.
+        """
+        if device.auto_override is not None:
+            return device.auto_override
+        return bool(self.p.td1_auto_update)
+
+
+    def auto_wanted(self):
+        """True if any of this unit's scanners is auto-updating right now."""
+        return any(d.enabled and self.auto_for(d) for d in self.devices())
 
 
     def _local_index(self, gate):
@@ -442,7 +455,7 @@ class MmuTd1Manager:
         if device is None:
             return None
         capture = bool(self.p.td1_capture_on_load)
-        if not device.enabled or not (device.auto or capture):
+        if not device.enabled or not (self.auto_for(device) or capture):
             return None
         # Whatever was armed before is finished with either way, and if it never
         # produced a reading the scanner still owes that gate one
@@ -498,6 +511,50 @@ class MmuTd1Manager:
 # PASSIVE ATTRIBUTION
 # -----------------------------------------------------------------------------------------------------------
 
+    def same_filament(self, a, b):
+        """
+        True if two readings plausibly describe the same filament.
+
+        Equality is the wrong test for an analogue instrument: the same filament read
+        twice never gives the same numbers, so an exact comparison would call every
+        re-measurement a new filament. The thresholds sit well outside the quoted
+        accuracy, so jitter reads as unchanged while a swap reads as new. Two
+        filaments genuinely this close measure the same to within the instrument's
+        error anyway, so treating them as one costs nothing.
+        """
+        if a is None or b is None:
+            return False
+        if abs(a['td'] - b['td']) > TD1_SAME_TD_FRACTION * max(a['td'], b['td']):
+            return False
+        return all(abs(int(a['color'][i:i + 2], 16) - int(b['color'][i:i + 2], 16))
+                   <= TD1_SAME_RGB_DISTANCE for i in (0, 2, 4))
+
+
+    def removed(self, device):
+        """
+        Filament has left the off-path scanner.
+
+        Optional by design. It only fires if the scanner reports nothing once filament
+        is taken out, which Moonraker's API does not document either way - where it
+        does not, stage() alone still carries the feature. Where it does, this is the
+        better moment to start the pending window: the user has finished at the bench
+        and is walking to the printer, so the deadline moves to now.
+
+        Only ever extends a pending that is still live and still describes this
+        reading. A consumed one must never be resurrected - the spool it was applied
+        to would then stage itself for the next gate as well.
+        """
+        if device is not self.shared_device or not device.enabled:
+            return
+        try:
+            record = measurement(device.record())
+        except (ValueError, TypeError):
+            return
+        if not self.same_filament(self.mmu.pending_measurement, record):
+            return
+        self.mmu.stage_pending_measurement(record, removed=True)
+
+
     def stage(self, device, valid, previous):
         """
         Stage an off-path reading as pending, for the gate preloaded next.
@@ -517,14 +574,15 @@ class MmuTd1Manager:
             return
         # Filament left in the reader keeps being measured, and a device that
         # re-measures advances scan_time every time - so the timestamp alone is not a
-        # dedupe. What matters is whether the MEASUREMENT changed: the same filament
-        # sitting there is not a new reading to stage, however often it is re-read.
-        # MmuNfcManager does the same job by UID. allow_restage() lifts this once a
-        # pending times out, so the user need not present the filament again
-        if self._staged == (valid['td'], valid['color']):
+        # dedupe. What matters is whether the MEASUREMENT changed, to within the
+        # instrument's accuracy: the same filament sitting there is not a new reading
+        # to stage, however often it is re-read. MmuNfcManager does the same job by
+        # UID. allow_restage() lifts this once a pending times out, so the user need
+        # not present the filament again
+        if self.same_filament(self._staged, valid):
             device.last_outcome = 'status_only: already staged'
             return
-        self._staged = (valid['td'], valid['color'])
+        self._staged = valid
         self.mmu.stage_pending_measurement(valid)
         device.last_outcome = 'staged as pending for the next gate'
 
@@ -540,7 +598,7 @@ class MmuTd1Manager:
         if token is None:
             return
         if not (device.enabled
-                and (device.auto or token['capture'])
+                and (self.auto_for(device) or token['capture'])
                 and was_connected
                 and (previous is None or valid['scan_time'] > previous)
                 and not self.bridge.busy):
@@ -579,7 +637,7 @@ class MmuTd1Manager:
                 states.append(TD1_STATE_NONE)
             elif not device.enabled:
                 states.append(TD1_STATE_DISABLED)
-            elif device.auto:
+            elif self.auto_for(device):
                 states.append(TD1_STATE_AUTO)
             else:
                 states.append(TD1_STATE_ENABLED)

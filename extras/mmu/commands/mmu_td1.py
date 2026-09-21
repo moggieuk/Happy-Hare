@@ -167,8 +167,13 @@ class MmuTd1Command(BaseCommand):
             state = "connected" if device.connected else "DISCONNECTED"
             if not device.enabled:
                 state += ", disabled"
-            if device.auto:
+            # Effective policy comes from the unit's parameter unless overridden, so
+            # report it through a manager that actually references this device
+            owners_of = [m for m in manager.managers() if device in m.devices()]
+            if any(m.auto_for(device) for m in owners_of):
                 state += ", auto-update"
+                if device.auto_override is not None:
+                    state += " (override)"
             lines.append("TD-1 %s: %s" % (serial, state))
             if offpath:
                 # An off-path scanner serves no gate by design - saying "Gates: none"

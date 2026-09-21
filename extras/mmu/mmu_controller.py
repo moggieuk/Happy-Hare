@@ -3699,7 +3699,7 @@ class MmuController(MmuFilamentMovement):
             self._spoolman_get_spool_by_uid(uid, gate=gate, metadata=metadata, unit=unit)
 
 
-    def stage_pending_measurement(self, record):
+    def stage_pending_measurement(self, record, removed=False):
         """
         Stage an off-path TD-1 reading to be applied to the gate preloaded next.
 
@@ -3712,8 +3712,9 @@ class MmuController(MmuFilamentMovement):
                                   self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
         # log_info, not log_debug: like a shared tag read this is the only acknowledgment
         # an off-path scanner produces
-        self.log_info("TD-1: measured TD %.2f, color %s - staged for the next gate loaded"
-                      % (record['td'], record['color']))
+        self.log_info("TD-1: %s TD %.2f, color %s - staged for the next gate loaded"
+                      % ("filament removed," if removed else "measured",
+                         record['td'], record['color']))
 
 
     def _stage_pending_tag(self, uid, metadata):

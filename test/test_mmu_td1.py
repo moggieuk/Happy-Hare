@@ -374,7 +374,7 @@ class TestTd1UpdateDevices(Td1Case):
     def test_auto_only_updates_known_owner_and_new_record(self):
         self.bridge.refresh()
         device = self.bridge.devices["SERIAL_A"]
-        device.auto = True
+        device.auto_override = True
         self.mmu.select_gate(0)
         self.mmu.set_filament_pos_state(10)
         self.owner(0)
@@ -428,7 +428,7 @@ class TestTd1Command(Td1Case):
         self.assertFalse(self.bridge.devices["SERIAL_A"].enabled)
         self.hh.run_gcode("MMU_TD1 SERIAL=SERIAL_A ENABLE=1")
         self.hh.run_gcode("MMU_TD1 GATES=0,1 AUTO=1")
-        self.assertTrue(self.bridge.devices["SERIAL_A"].auto)
+        self.assertTrue(self.bridge.devices["SERIAL_A"].auto_override)
         self.assertEqual(self.hh.errors, [])
 
     def test_the_command_never_moves_filament(self):
@@ -497,10 +497,10 @@ class TestTd1Poll(Td1Case):
         now = self.hh.reactor.monotonic()
         # Nothing is auto-updating and nothing is capturing: don't hammer Moonraker
         self.assertEqual(self.bridge._poll(now), now + TD1_POLL_IDLE)
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.bridge.pending.clear()
         self.assertEqual(self.bridge._poll(now), now + TD1_POLL_ACTIVE)
-        self.bridge.devices["SERIAL_A"].auto = False
+        self.bridge.devices["SERIAL_A"].auto_override = False
         self.bridge.pending.clear()
         self.owner(0)
         self.assertEqual(self.bridge._poll(now), now + TD1_POLL_ACTIVE)
@@ -607,7 +607,7 @@ class TestTd1BeginLoad(Td1Case):
     def test_disabled_and_unconfigured_skip(self):
         self.assertIsNone(self.manager.begin_load(-1))
         self.assertIsNone(self.manager.begin_load(0))
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.bridge.devices["SERIAL_A"].enabled = False
         self.assertIsNone(self.manager.begin_load(0))
         self.manager.gate_devices[1] = None
@@ -964,7 +964,8 @@ class TestTd1AutoGuards(Td1Case):
                 self.mmu.gate_selected = 0
                 self.mmu.filament_pos = FILAMENT_POS_LOADED
                 device = self.bridge.devices["SERIAL_A"]
-                device.enabled = device.auto = device.connected = True
+                device.enabled = device.connected = True
+                device.auto_override = True
                 self.bridge.busy = False
                 self.owner(0)
                 data = record(second=1)
@@ -973,7 +974,7 @@ class TestTd1AutoGuards(Td1Case):
                 elif scenario == "disabled":
                     device.enabled = False
                 elif scenario == "manual":
-                    device.auto = False
+                    device.auto_override = False
                 elif scenario == "reconnect":
                     device.connected = False
                 elif scenario == "same":
@@ -996,7 +997,7 @@ class TestTd1AutoGuards(Td1Case):
         self.bridge.update_devices({"SERIAL_A": record()})
         self.mmu.gate_selected = 0
         self.mmu.filament_pos = FILAMENT_POS_LOADED
-        self.assertFalse(self.bridge.devices["SERIAL_A"].auto)
+        self.assertFalse(self.bridge.devices["SERIAL_A"].auto_override)
         self.owner(0, capture=True)
         self.bridge.update_devices({"SERIAL_A": record(second=1)})
         self.assertEqual(self.mmu.gate_td[0], 4.)
@@ -1006,7 +1007,7 @@ class TestTd1AutoGuards(Td1Case):
         self.bridge.update_devices({"SERIAL_A": {}})
         self.mmu.gate_selected = 0
         self.mmu.filament_pos = FILAMENT_POS_LOADED
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.owner(0)
         self.bridge.update_devices({"SERIAL_A": record()})
         self.assertEqual(self.mmu.gate_td[0], 4.)
@@ -1062,7 +1063,7 @@ class TestTd1ConfigRender(unittest.TestCase):
             self.assertEqual([manager.serial_for(g) for g in range(4)], ["A", "B", "", "A"])
             self.assertEqual(p.td1_capture_timeout, 8)
             self.assertTrue(p.td1_capture_on_load)
-            self.assertTrue(bridge.devices["A"].auto)
+            self.assertTrue(manager.auto_for(bridge.devices["A"]))
 
     def test_advanced_options_hidden_still_render_their_defaults(self):
         # The prompts are conditional, not the symbols - hiding them must not leave the
@@ -1165,7 +1166,7 @@ class TestTd1ExtraCommands(Td1Case):
 
 class TestTd1LoadHooks(Td1Case):
     def test_normal_load_establishes_owner_and_unload_clears_it(self):
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.bridge.update_devices({"SERIAL_A": record()})
         self.hh.place_filament(0)
         self.mmu.gate_maps.set_gate_status(0, 1)
@@ -1182,7 +1183,7 @@ class TestTd1LoadHooks(Td1Case):
         self.assertEqual(self.mmu.filament_pos, 0)
 
     def test_loading_never_blocks_on_moonraker(self):
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.bridge.update_devices({"SERIAL_A": record()})
         self.hh.place_filament(0)
         self.mmu.gate_maps.set_gate_status(0, 1)
@@ -1240,7 +1241,7 @@ class TestTd1LoadCaptureIdentity(Td1Case):
 
     def test_auto_without_explicit_capture_keeps_owner(self):
         self.mmu.select_gate(0)
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
         with patch.object(self.manager, "wait_measurement") as wait:
@@ -1252,7 +1253,7 @@ class TestTd1LoadCaptureIdentity(Td1Case):
 class TestTd1InFlightAuto(Td1Case):
     def test_reading_received_during_load_is_applied_after_success(self):
         self.mmu.select_gate(0)
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.bridge.update_devices({"SERIAL_A": record()})
         token = self.manager.begin_load(0)
         self.mmu.filament_pos = 2
@@ -1265,12 +1266,20 @@ class TestTd1InFlightAuto(Td1Case):
 
 
 class TestTd1MultiUnitValidation(unittest.TestCase):
-    def test_conflicting_auto_policies_rejected(self):
-        profile = profiles.clone_across_units("td1_conflict", PROFILE, ["unit0", "unit1"])
+    def test_units_sharing_a_scanner_may_differ_on_auto_update(self):
+        # td1_auto_update is resolved at the point of use, like the other two
+        # tunables, so it describes a unit's policy rather than the device - two
+        # units sharing one physical scanner need not agree
+        profile = profiles.clone_across_units("td1_differ", PROFILE, ["unit0", "unit1"])
         profile.units[1] = profile.units[1].derive(syms={"PARAM_TD1_AUTO_UPDATE": True})
-        with self.assertRaisesRegex(Exception, "must agree"):
-            with session(profile):
-                pass
+        with session(profile) as hh:
+            hh.boot(calibrate=True)
+            self.assertEqual(hh.errors, [])
+            device = hh.mmu.td1.devices["SERIAL_A"]
+            self.assertFalse(hh.mmu.mmu_unit(0).td1_manager.auto_for(device))
+            self.assertTrue(hh.mmu.mmu_unit(4).td1_manager.auto_for(device))
+
+
 
     def test_gate_unit_conflicts_are_rejected(self):
         profile = profiles.clone_across_units("td1_targets", PROFILE, ["unit0", "unit1"])
@@ -1321,7 +1330,7 @@ class TestTd1DeviceState(Td1Case):
         from extras.mmu.unit.td1.mmu_td1_device import MmuTd1Device
         self.bridge.devices["SERIAL_A"] = MmuTd1Device("SERIAL_A")
         self.assertTrue(self.bridge.devices["SERIAL_A"].enabled)
-        self.assertFalse(self.bridge.devices["SERIAL_A"].auto)
+        self.assertFalse(self.bridge.devices["SERIAL_A"].auto_override)
 
     def test_command_reports_the_runtime_scope(self):
         with patch.object(self.mmu, "log_always") as report:
@@ -1437,7 +1446,7 @@ class TestTd1Attribution(Td1Case):
         self.bridge.update_devices({"SERIAL_A": record()})
         self.mmu.select_gate(1)
         self.mmu.filament_pos = FILAMENT_POS_LOADED
-        self.bridge.devices["SERIAL_A"].auto = True
+        self.bridge.devices["SERIAL_A"].auto_override = True
         self.owner(1, capture=False)
         self.device().owe(0)
         self.bridge.update_devices({"SERIAL_A": record(second=5, td=9.)})
@@ -1943,3 +1952,122 @@ class TestTd1LeftInTheReader(Td1OffPathCase):
         self.assertIsNone(self.mmu.pending_measurement, "should have timed out")
         self.assertEqual(self.stagings([(10, 4.)]), 1, "filament still in the reader")
         self.assertEqual(self.mmu.pending_measurement["td"], 4.)
+
+
+class TestTd1AutoPolicy(Td1Case):
+    """
+    td1_auto_update is resolved where it is used, like the other two tunables.
+
+    It describes a unit's policy, not the scanner, so a runtime edit takes effect at
+    once and two units sharing one physical scanner need not agree. The device holds
+    only the MMU_TD1 AUTO= override.
+    """
+
+    def test_a_runtime_config_edit_takes_effect_immediately(self):
+        # It used to be read once at boot and cached on the device, so MMU_TEST_CONFIG
+        # changed the parameter while the machine went on using its boot-time value
+        device = self.bridge.devices["SERIAL_A"]
+        manager = self.mmu.mmu_unit(0).td1_manager
+        self.assertFalse(manager.auto_for(device))
+        self.hh.run_gcode("MMU_TEST_CONFIG td1_auto_update=1")
+        self.assertTrue(manager.auto_for(device))
+        self.assertTrue(self.bridge._wants_readings(), "polling should follow it too")
+
+    def test_the_command_override_beats_the_configured_value(self):
+        device = self.bridge.devices["SERIAL_A"]
+        manager = self.mmu.mmu_unit(0).td1_manager
+        self.hh.run_gcode("MMU_TEST_CONFIG td1_auto_update=1")
+        self.hh.run_gcode("MMU_TD1 SERIAL=SERIAL_A AUTO=0 QUIET=1")
+        self.assertFalse(manager.auto_for(device), "override should win until restart")
+
+    def test_clearing_nothing_falls_back_to_the_configured_value(self):
+        device = self.bridge.devices["SERIAL_A"]
+        manager = self.mmu.mmu_unit(0).td1_manager
+        self.assertIsNone(device.auto_override, "no override until asked for one")
+        self.hh.run_gcode("MMU_TEST_CONFIG td1_auto_update=1")
+        self.assertTrue(manager.auto_for(device))
+
+
+class TestTd1MeasurementJitter(Td1OffPathCase):
+    """
+    A TD-1 is an analogue instrument, so equality is the wrong dedupe.
+
+    AJAX quote +/-7.5%: the same filament read twice never gives the same numbers.
+    Comparing exactly would call every re-measurement a new filament and re-stage on
+    every poll, which is the bug value-equality was meant to fix and did not.
+    """
+
+    def stagings(self, readings):
+        with patch.object(self.mmu, "stage_pending_measurement",
+                          wraps=self.mmu.stage_pending_measurement) as staged:
+            for second, td, color in readings:
+                self.present(second=second, td=td, color=color)
+            return staged.call_count
+
+    def test_jitter_within_the_instrument_error_is_not_a_new_filament(self):
+        # +/-7.5% around 4.0, with the low color bits wobbling too
+        jittery = [(10, 4.00, "123456"), (11, 4.28, "123457"), (12, 3.72, "123455"),
+                   (13, 4.11, "123458"), (14, 3.85, "123454")]
+        self.assertEqual(self.stagings(jittery), 1)
+
+    def test_a_real_filament_swap_still_restages(self):
+        self.assertEqual(self.stagings([(10, 4.0, "123456"), (11, 0.1, "000000")]), 2)
+        self.assertEqual(self.mmu.pending_measurement["td"], 0.1)
+
+    def test_a_color_change_alone_restages(self):
+        self.assertEqual(self.stagings([(10, 4.0, "112233"), (11, 4.0, "ff8800")]), 2)
+
+    def test_the_threshold_sits_outside_the_quoted_accuracy(self):
+        from extras.mmu.mmu_constants import TD1_SAME_TD_FRACTION
+        self.assertGreater(TD1_SAME_TD_FRACTION, 0.075)
+
+
+class TestTd1Removal(Td1OffPathCase):
+    """
+    Taking filament out restarts the pending window - where the device says so.
+
+    Optional: Moonraker's API has no presence field and does not document whether
+    the values clear on removal. Where they do, this is the better moment to start
+    the clock; where they do not, staging on insertion still carries the feature.
+    """
+
+    def remove(self):
+        """The device reports nothing again - if that is what it does on removal."""
+        self.present_none()
+
+    def present_none(self):
+        self.data = {"BENCH": {"td": None, "color": None, "scan_time": None}}
+        self.bridge.update_devices(self.data)
+
+    def test_removal_moves_the_deadline(self):
+        self.present(second=1)
+        self.hh.reactor.advance(15)        # most of the window spent at the bench
+        with patch.object(self.mmu, "stage_pending_measurement",
+                          wraps=self.mmu.stage_pending_measurement) as staged:
+            self.remove()
+        self.assertTrue(staged.called, "removal should re-stage to move the deadline")
+        self.assertEqual(staged.call_args.kwargs.get("removed"), True)
+        self.hh.reactor.advance(10)        # past the ORIGINAL deadline
+        self.assertIsNotNone(self.mmu.pending_measurement, "window should have moved")
+
+    def test_a_consumed_measurement_is_never_resurrected(self):
+        # Otherwise the spool just loaded would stage itself for the next gate too
+        self.present(second=1)
+        self.mmu._check_pending_filament(0)
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.remove()
+        self.assertIsNone(self.mmu.pending_measurement)
+
+    def test_a_device_that_never_reports_removal_still_works(self):
+        # The whole feature must not depend on undocumented device behavior
+        self.present(second=1)
+        self.assertEqual(self.mmu.pending_measurement["td"], 4.)
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout + 1)
+        self.assertIsNone(self.mmu.pending_measurement)
+
+    def test_removal_of_something_else_does_not_extend(self):
+        self.present(second=1, td=4.)
+        self.mmu.pending_measurement = dict(self.mmu.pending_measurement, td=99.)
+        with patch.object(self.mmu, "stage_pending_measurement") as staged:
+            self.remove()
+        self.assertFalse(staged.called)

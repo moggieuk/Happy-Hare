@@ -23,17 +23,21 @@ class MmuTd1Device:
     """
     The live state of one TD-1 scanner.
 
-    Everything here is runtime state. 'enabled' and 'auto' deliberately do not persist,
-    following the NFC readers rather than the filament sensors - turning a scanner off
-    is a "not right now" action, and the configuration is the record of what the machine
-    is supposed to do.
+    Everything here is runtime state. 'enabled' and the auto override deliberately do
+    not persist, following the NFC readers rather than the filament sensors - turning a
+    scanner off is a "not right now" action, and the configuration is the record of what
+    the machine is supposed to do.
     """
 
-    def __init__(self, serial, auto=False):
+    def __init__(self, serial):
         self.serial = serial
         self.connected = False
         self.enabled = True
-        self.auto = auto
+
+        # Runtime override of td1_auto_update, set by MMU_TD1 AUTO=. None means
+        # "follow the configuration", which is a per-unit parameter read at the point
+        # of use - so this is the only piece of auto-update policy that lives here
+        self.auto_override = None
 
         # Latest reading, as reported by Moonraker and normalized by measurement()
         self.td = None

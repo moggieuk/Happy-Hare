@@ -250,6 +250,13 @@ FILAMENT_DRIVE_STATE   = 1
 FILAMENT_HOLD_STATE    = 2
 
 # TD-1 filament measurement
+# A TD-1 is an analogue instrument - AJAX quote +/-7.5% - so two reads of the same
+# filament never give the same numbers. These say how far apart two readings must be
+# before they describe different filament rather than the same filament read twice.
+# Both sit well outside the quoted error
+TD1_SAME_TD_FRACTION   = 0.15  # Relative difference in transmission distance
+TD1_SAME_RGB_DISTANCE  = 12    # Largest per-channel color difference, out of 255
+
 # The transmission distance at which filament is treated as fully transparent when
 # deriving an alpha channel from a measurement. TD is how far light gets into the
 # filament, so low is opaque and high is clear; AJAX's own examples anchor the scale
