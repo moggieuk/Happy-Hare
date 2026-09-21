@@ -1852,3 +1852,47 @@ class TestTd1Alpha(Td1Case):
         self.manager.apply(0, record(td=50., color="00ff00"))
         self.mmu.gate_maps.gate_filament_changed(0)
         self.assertEqual(self.mmu.gate_color[0], "")
+
+
+class TestTd1OffPathResponsiveness(Td1OffPathCase):
+    """
+    An off-path scanner's whole job is producing readings to stage.
+
+    Nothing arms for it and it has no gate to auto-update, so without being counted
+    explicitly it falls to the idle poll interval - the user presents filament and
+    waits, with nothing to say the pending clock has not started yet.
+    """
+
+    def test_a_configured_off_path_scanner_keeps_polling_active(self):
+        self.assertTrue(self.bridge._wants_readings())
+
+    def test_disabling_it_backs_the_polling_off_again(self):
+        self.bridge.set_device_state("BENCH", enabled=False)
+        self.assertFalse(self.bridge._wants_readings())
+
+    def test_in_path_scanners_alone_still_idle(self):
+        # Unchanged: they are only read when something is actually capturing
+        with session(PROFILE) as hh:
+            hh.boot(calibrate=True)
+            self.assertFalse(hh.mmu.td1._wants_readings())
+
+    def test_the_first_reading_after_a_bridge_blip_is_not_lost(self):
+        # consider() must not attribute a reading cached across a disconnect, but
+        # staging is judged on the timestamp alone - so a hiccup must not cost the
+        # user a presentation
+        self.present(second=1)
+        self.mmu._clear_pending()
+        self.bridge.update_devices({}, "moonraker hiccup", "bridge")
+        self.assertFalse(self.bridge.devices["BENCH"].connected)
+        self.present(second=5, td=7.)
+        self.assertEqual(self.mmu.pending_measurement["td"], 7.)
+
+    def test_a_stale_re_report_after_a_blip_is_still_refused(self):
+        # The property the was_connected guard was protecting, kept by the timestamp
+        # test: the cached reading survives a disconnect, so re-reporting it stages
+        # nothing
+        self.present(second=1)
+        self.mmu._clear_pending()
+        self.bridge.update_devices({}, "moonraker hiccup", "bridge")
+        self.present(second=1)
+        self.assertIsNone(self.mmu.pending_measurement)

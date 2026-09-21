@@ -228,7 +228,14 @@ class MmuTd1Bridge:
         """
         if self.busy or any(d.owner is not None for d in self.devices.values()):
             return True
-        return any(d.auto and d.enabled for d in self.devices.values())
+        if any(d.auto and d.enabled for d in self.devices.values()):
+            return True
+        # An off-path scanner exists to produce readings to stage, so one is always
+        # wanted. Nothing arms for it and it has no gate to auto-update, so without
+        # this it would be polled at the idle interval - the user presents filament
+        # and waits, with nothing to say the clock has not started yet
+        return any(m.shared_device is not None and m.shared_device.enabled
+                   for m in self.managers())
 
 
     def _poll(self, eventtime):
@@ -376,7 +383,7 @@ class MmuTd1Bridge:
             # first unit naming it stages: 'pending' is machine level
             for manager in self.managers():
                 if manager.shared_device is device:
-                    manager.stage(device, valid, previous, was_connected)
+                    manager.stage(device, valid, previous)
                     break
 
 

@@ -480,7 +480,7 @@ class MmuTd1Manager:
 # PASSIVE ATTRIBUTION
 # -----------------------------------------------------------------------------------------------------------
 
-    def stage(self, device, valid, previous, was_connected):
+    def stage(self, device, valid, previous):
         """
         Stage an off-path reading as pending, for the gate preloaded next.
 
@@ -489,11 +489,16 @@ class MmuTd1Manager:
         exactly the misattribution the in-path rules exist to prevent. The user says
         which gate it was by preloading one (or by MMU_TD1 GATE=n REGISTER=1).
         """
-        if device is not self.shared_device or not device.enabled or not was_connected:
+        if device is not self.shared_device or not device.enabled:
             return
         # Filament left in the reader is reported on every poll, with the scan_time it
         # was first read at. Staging only a reading newer than the cached one is the
-        # dedupe - MmuNfcManager does the same job by UID
+        # dedupe - MmuNfcManager does the same job by UID.
+        #
+        # Deliberately no was_connected guard, unlike consider(): the cached reading
+        # survives a disconnect, so this same test already rejects a stale re-report
+        # after one. The guard would only throw away the first genuine reading after a
+        # Moonraker hiccup, silently, leaving the user to present filament twice
         if previous is not None and valid['scan_time'] <= previous:
             return
         self.mmu.stage_pending_measurement(valid)
