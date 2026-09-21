@@ -221,9 +221,9 @@ class LedMixin:
       MMU_LED, MMU_SET_LED
     """
 
-    EXIT_OPTIONS =   ["off", "gate_status", "filament_color", "td1_color", "slicer_color"]
-    ENTRY_OPTIONS =  ["off", "gate_status", "filament_color", "td1_color", "slicer_color"]
-    STATUS_OPTIONS = ["off", "on",          "filament_color", "td1_color", "slicer_color"]
+    EXIT_OPTIONS =   ["off", "gate_status", "filament_color", "slicer_color"]
+    ENTRY_OPTIONS =  ["off", "gate_status", "filament_color", "slicer_color"]
+    STATUS_OPTIONS = ["off", "on",          "filament_color", "slicer_color"]
     LOGO_OPTIONS =   ["off"]
 
 

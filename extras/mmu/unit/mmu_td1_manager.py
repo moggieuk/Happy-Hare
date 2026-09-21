@@ -229,8 +229,33 @@ class MmuTd1Manager:
         maps.renew_gate_map()
         maps.gate_td[gate] = valid['td']
         maps.gate_td1_color[gate] = valid['color']
+        self.adopt_color(gate)
         maps.update_gate_color_rgb()
         maps.persist_gate_map(changed_gate=gate)
+
+
+    def adopt_color(self, gate, force=False):
+        """
+        Use the measured color as the gate's filament color.
+
+        Only when nothing else has claimed that field. Spoolman owns filament_color
+        whenever it has an opinion, and a manually set color is the user's, so a
+        non-empty value is left alone - a scanner's guess should not overwrite a
+        answer that came from the spool itself.
+
+        'force' is the explicit override (MMU_TD1 SET_COLOR=1). Note that on a gate
+        with a Spoolman spool the next refresh will put Spoolman's color back.
+
+        Returns True if the gate's color changed; the caller persists.
+        """
+        maps = self.mmu.gate_maps
+        measured = maps.gate_td1_color[gate]
+        if not measured or maps.gate_color[gate] == measured:
+            return False
+        if maps.gate_color[gate] and not force:
+            return False
+        maps.gate_color[gate] = measured
+        return True
 
 
     def healthy(self, device):

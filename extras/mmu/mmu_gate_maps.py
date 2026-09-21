@@ -179,7 +179,14 @@ class MmuGateMaps:
 
         For a hand-entered measurement, which supersedes what the scanner found but
         leaves the gate holding the same filament it did before.
+
+        A filament color the measurement was adopted into goes with it, so an adopted
+        color never outlives the reading it came from. A color Spoolman or the user
+        set is left alone - it is only ours while it still matches what we measured.
         """
+        if self.gate_td1_color[gate] and self.gate_color[gate] == self.gate_td1_color[gate]:
+            self.gate_color[gate] = ""
+            self.update_gate_color_rgb()
         self.gate_td[gate] = None
         self.gate_td1_color[gate] = ""
 
@@ -547,16 +554,12 @@ class MmuGateMaps:
 # COLOR / MACRO SUPPORT
 # -----------------------------------------------------------------------------------------------------------
 
-    # Keep parallel RGB color maps updated when color changes
+    # Keep parallel RGB color map updated when color changes
     def update_gate_color_rgb(self):
-        # Recalculate RGB maps for easy LED support. 'td1_color' falls back to the ordinary
-        # filament color per gate, so an unmeasured gate renders exactly as 'filament_color'.
-        # gate_td1_color_rgb is an internal LED cache only - gate_td1_color is what's published
+        # Recalculate RGB map for easy LED support. A measured TD-1 color needs no
+        # cache of its own: it is adopted into gate_color when nothing else claims
+        # that field, so the LEDs see it through the ordinary 'filament_color' route
         self.gate_color_rgb = [MmuColorUtils.color_to_rgb_tuple(i) for i in self.gate_color]
-        self.gate_td1_color_rgb = [
-            MmuColorUtils.color_to_rgb_tuple(td1 or color)
-            for td1, color in zip(self.gate_td1_color, self.gate_color)
-        ]
 
 
     # Keep parallel RGB color map updated when slicer color or TTG changes
@@ -897,7 +900,6 @@ class MmuGateMaps:
         self.gate_vendor = list(self.gate_vendor)
         self.gate_td = list(self.gate_td)
         self.gate_td1_color = list(self.gate_td1_color)
-        self.gate_td1_color_rgb = list(self.gate_td1_color_rgb)
         self.gate_color = list(self.gate_color)
         self.gate_temperature = list(self.gate_temperature)
         self.gate_spool_id = list(self.gate_spool_id)
@@ -919,8 +921,6 @@ class MmuGateMaps:
             'gate_vendor': self.gate_vendor,
             'gate_td': self.gate_td,
             'gate_td1_color': self.gate_td1_color,
-            # gate_td1_color_rgb is deliberately absent: an internal LED cache derived
-            # from gate_td1_color, with nothing to tell a consumer that the source doesn't.
             'gate_color': self.gate_color,
             'gate_temperature': self.gate_temperature,
             'gate_spool_id': self.gate_spool_id,

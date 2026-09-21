@@ -282,24 +282,74 @@ class TestTd1Invalidate(Td1Case):
 
 
 class TestTd1Color(Td1Case):
-    def test_black_and_fallback(self):
-        self.mmu.gate_maps.gate_color[0] = "ff0000"
-        self.mmu.gate_maps.update_gate_color_rgb()
-        self.assertEqual(self.mmu.gate_td1_color[0] or self.mmu.gate_color[0], "ff0000")
-        self.manager.apply(0, record(color="000000"))
-        self.assertEqual(self.mmu.gate_td1_color[0], "000000")
-        # Black is a valid measurement, not a missing one
-        self.assertEqual(self.mmu.gate_td1_color_rgb[0], (0., 0., 0.))
+    """
+    A measured color fills in filament_color, it does not compete with it.
 
-    def test_rgb_cache_tracks_both_sources(self):
+    There is no separate LED source and no parallel RGB cache: the measurement is
+    adopted into gate_color when nothing else has claimed that field, so every
+    existing color consumer sees it through the ordinary route.
+    """
+
+    def test_it_fills_an_empty_filament_color(self):
+        self.assertEqual(self.mmu.gate_color[0], "")
+        self.manager.apply(0, record(color="00ff00"))
+        self.assertEqual(self.mmu.gate_color[0], "00ff00")
+        self.assertEqual(self.mmu.gate_color_rgb[0], (0., 1., 0.))
+        # ...and is still recorded separately, so its provenance is not lost
+        self.assertEqual(self.mmu.gate_td1_color[0], "00ff00")
+
+    def test_it_never_overwrites_a_color_that_is_already_set(self):
+        # Spoolman owns filament_color whenever it has an opinion, and a hand-set
+        # color is the user's. A scanner's guess does not beat either
         self.mmu.gate_maps.gate_color[1] = "ff0000"
         self.manager.apply(1, record(color="00ff00"))
-        self.assertEqual(self.mmu.gate_color_rgb[1], (1., 0., 0.))
-        self.assertEqual(self.mmu.gate_td1_color_rgb[1], (0., 1., 0.))
-        # Unmeasured gates fall back to the ordinary filament color
-        self.mmu.gate_maps.gate_color[3] = "0000ff"
-        self.mmu.gate_maps.update_gate_color_rgb()
-        self.assertEqual(self.mmu.gate_td1_color_rgb[3], (0., 0., 1.))
+        self.assertEqual(self.mmu.gate_color[1], "ff0000")
+        self.assertEqual(self.mmu.gate_td1_color[1], "00ff00")
+
+    def test_black_is_a_measurement_not_a_missing_one(self):
+        self.manager.apply(0, record(color="000000"))
+        self.assertEqual(self.mmu.gate_td1_color[0], "000000")
+        self.assertEqual(self.mmu.gate_color[0], "000000")
+        self.assertEqual(self.mmu.gate_color_rgb[0], (0., 0., 0.))
+
+    def test_no_parallel_rgb_cache_is_published_or_kept(self):
+        self.manager.apply(0, record(color="00ff00"))
+        self.assertFalse(hasattr(self.mmu.gate_maps, "gate_td1_color_rgb"))
+        self.assertNotIn("gate_td1_color_rgb", self.mmu.get_status(0))
+
+
+class TestTd1SetColor(Td1Case):
+    def test_it_overrides_a_color_that_is_already_set(self):
+        self.mmu.gate_maps.gate_color[1] = "ff0000"
+        self.manager.apply(1, record(color="00ff00"))
+        self.assertEqual(self.mmu.gate_color[1], "ff0000")
+        self.hh.run_gcode("MMU_TD1 GATE=1 SET_COLOR=1 QUIET=1")
+        self.assertEqual(self.mmu.gate_color[1], "00ff00")
+
+    def test_it_takes_a_list(self):
+        for gate in (0, 1, 2):
+            self.mmu.gate_maps.gate_color[gate] = "ff0000"
+            self.manager.apply(gate, record(color="00ff00"))
+        self.hh.run_gcode("MMU_TD1 GATES=0,2 SET_COLOR=1 QUIET=1")
+        self.assertEqual([self.mmu.gate_color[g] for g in (0, 1, 2)],
+                         ["00ff00", "ff0000", "00ff00"])
+
+    def test_it_says_so_when_there_is_nothing_measured(self):
+        with patch.object(self.mmu, "log_info") as info:
+            self.hh.run_gcode("MMU_TD1 GATE=3 SET_COLOR=1 QUIET=1")
+        self.assertTrue(any("No measured color" in c.args[0] for c in info.call_args_list))
+
+    def test_it_warns_that_spoolman_will_win_again(self):
+        self.mmu.gate_maps.assign_spool_id(0, 42)
+        self.manager.apply(0, record(color="00ff00"))
+        self.mmu.gate_maps.gate_color[0] = "ff0000"
+        with patch.object(self.mmu, "log_warning") as warning:
+            self.hh.run_gcode("MMU_TD1 GATE=0 SET_COLOR=1 QUIET=1")
+        self.assertTrue(any("Spoolman refresh" in c.args[0] for c in warning.call_args_list))
+
+    def test_it_needs_a_gate(self):
+        with self.assertRaisesRegex(Exception, "SET_COLOR=1 needs GATE"):
+            self.hh.run_gcode("MMU_TD1 SET_COLOR=1")
 
 
 class TestTd1Staleness(Td1Case):
@@ -732,19 +782,23 @@ class TestTd1ManualMap(Td1Case):
 
 
 class TestTd1Led(Td1Case):
-    def test_td1_color_uses_measured_then_fallback(self):
+    def test_a_measurement_reaches_the_leds_through_filament_color(self):
+        # There is no separate 'td1_color' effect: the measurement is adopted into
+        # filament_color, so the existing effect shows it with no extra wiring
         self.hh.reactor.advance(12)
         self.mmu.gate_maps.gate_status[0] = 1
-        self.mmu.gate_maps.gate_color[0] = "ff0000"
-        self.mmu.gate_maps.update_gate_color_rgb()
-        self.hh.run_gcode("MMU_LED EXIT_EFFECT=td1_color")
+        self.hh.run_gcode("MMU_LED EXIT_EFFECT=filament_color")
         unit = self.mmu.mmu_unit(0)
         before = unit.leds.virtual_chains["exit"].get_status()["color_data"][:]
         self.manager.apply(0, record(color="00ff00"))
         after = unit.leds.virtual_chains["exit"].get_status()["color_data"][:]
         self.assertNotEqual(before, after)
         self.assertGreater(after[0][1], after[0][0])
-        self.assertEqual(self.mmu.gate_color[0], "ff0000")
+        self.assertEqual(self.mmu.gate_color[0], "00ff00")
+
+    def test_td1_color_is_not_a_selectable_effect(self):
+        with self.assertRaises(Exception):
+            self.hh.run_gcode("MMU_LED EXIT_EFFECT=td1_color")
 
     def test_filament_color_still_reads_the_cache(self):
         # The cache exists because effects animate at 24fps - don't reconvert per frame
@@ -1723,3 +1777,34 @@ class TestTd1CommandAlignment(Td1OffPathCase):
         text = "\n".join(c.args[0] for c in report.call_args_list)
         self.assertIn("Staged for the next gate loaded", text)
         self.assertIn("TD 4.00", text)
+
+
+class TestTd1AdoptedColorLifetime(Td1Case):
+    """An adopted filament color belongs to the measurement, and goes with it."""
+
+    def test_it_is_dropped_when_the_measurement_is(self):
+        self.manager.apply(0, record(color="00ff00"))
+        self.assertEqual(self.mmu.gate_color[0], "00ff00")
+        self.mmu.gate_maps.gate_filament_changed(0)
+        self.assertEqual(self.mmu.gate_color[0], "", "adopted color outlived its reading")
+        self.assertEqual(self.mmu.gate_color_rgb[0], (0., 0., 0.))
+
+    def test_a_color_we_did_not_set_is_left_alone(self):
+        self.mmu.gate_maps.gate_color[1] = "ff0000"
+        self.manager.apply(1, record(color="00ff00"))
+        self.mmu.gate_maps.gate_filament_changed(1)
+        self.assertEqual(self.mmu.gate_color[1], "ff0000")
+
+    def test_a_forced_color_is_ours_afterwards(self):
+        # SET_COLOR makes the measured color the gate's, so it is adopted from then on
+        self.mmu.gate_maps.gate_color[2] = "ff0000"
+        self.manager.apply(2, record(color="00ff00"))
+        self.hh.run_gcode("MMU_TD1 GATE=2 SET_COLOR=1 QUIET=1")
+        self.mmu.gate_maps.gate_filament_changed(2)
+        self.assertEqual(self.mmu.gate_color[2], "")
+
+    def test_a_hand_entered_td_drops_it_too(self):
+        self.manager.apply(3, record(color="00ff00"))
+        self.hh.run_gcode("MMU_GATE_MAP GATE=3 TD=2.5 QUIET=1")
+        self.assertEqual(self.mmu.gate_td[3], 2.5)
+        self.assertEqual(self.mmu.gate_color[3], "")

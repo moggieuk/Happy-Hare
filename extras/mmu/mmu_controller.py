@@ -1810,10 +1810,6 @@ class MmuController(MmuFilamentMovement):
         return self.gate_maps.gate_td1_color
 
     @property
-    def gate_td1_color_rgb(self):
-        return self.gate_maps.gate_td1_color_rgb
-
-    @property
     def endless_spool_enabled(self):
         return self.gate_maps.endless_spool_enabled
 

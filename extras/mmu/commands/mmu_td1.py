@@ -44,7 +44,8 @@ class MmuTd1Command(BaseCommand):
         + "ENABLE   = [0|1] Top-level on/off for Happy Hare's use of the scanner\n"
         + "AUTO     = [0|1] Apply new readings automatically when the owning gate is known\n"
         + "READ     = [0|1] Poll Moonraker for the addressed scanner now, instead of using the cache\n"
-        + "REGISTER = [0|1] Apply the addressed scanner's measurement to GATE\n"
+        + "REGISTER  = [0|1] Apply the addressed scanner's measurement to GATE\n"
+        + "SET_COLOR = [0|1] Overwrite GATE/GATES filament_color with the measured color\n"
         + "INIT     = [0|1] Reboot the addressed scanner through Moonraker and await recovery\n"
         + "INIT_ALL = [0|1] Reboot every scanner on every unit\n"
         + "DETAILS  = [0|1] Include attribution and per-gate measurements\n"
@@ -59,6 +60,7 @@ class MmuTd1Command(BaseCommand):
         + f"{CMD} GATE=3 READ=1          ...Poll the scanner serving gate 3 and report the result\n"
         + f"{CMD} GATE=2 REGISTER=1      ...Apply a measurement to gate 2 (as if auto-scanned)\n"
         + f"{CMD} GATES=0,1 ENABLE=0     ...Disable selected per-gate scanners\n"
+        + f"{CMD} GATES=0,1 SET_COLOR=1  ...Use the measured color as those gates' filament color\n"
         + f"{CMD} GATE=2 INIT=1          ...Reboot the scanner on gate 2\n"
         + f"{CMD} INIT_ALL=1             ...Reboot every scanner on all units\n"
         + "\n"
@@ -69,12 +71,13 @@ class MmuTd1Command(BaseCommand):
         + "reading is held for the next gate you preload, like a tag on a shared NFC reader.\n"
         + "REGISTER attributes it to a gate you won't preload; the gate keeps it even if you\n"
         + "assign a spool afterwards.\n"
-        + "Measured color is kept separate from filament_color - select 'td1_color' in the\n"
-        + "LED effect options to display it. Unmeasured gates fall back to filament_color."
+        + "A measured color becomes the gate's filament_color when nothing else has set\n"
+        + "one - Spoolman and a hand-set color both win. SET_COLOR=1 overrides that, though\n"
+        + "on a gate with a Spoolman spool the next refresh will put Spoolman's color back."
     )
 
     # Operation flags, in the order they are reported when the user asks for too many
-    OPERATIONS = ('REGISTER', 'INIT')
+    OPERATIONS = ('REGISTER', 'SET_COLOR', 'INIT')
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -222,6 +225,8 @@ class MmuTd1Command(BaseCommand):
         if sum([shared, bool(gates), bool(serial)]) > 1:
             raise gcmd.error(
                 "Specify only one of SHARED=1, GATE=<n>, GATES=<n,n,...> or SERIAL=<serial>")
+        if operation == 'SET_COLOR' and not gates:
+            raise gcmd.error("SET_COLOR=1 needs GATE=<n> or GATES=<n,n,...>")
         if operation == 'REGISTER' and gcmd.get('GATE', None) is None:
             raise gcmd.error("REGISTER=1 requires exactly one explicit GATE - "
                              "you are asserting which filament produced the reading")
@@ -258,6 +263,32 @@ class MmuTd1Command(BaseCommand):
 
         if gcmd.get_int('READ', 0, minval=0, maxval=1) or operation == 'REGISTER':
             manager.refresh()
+
+        if operation == 'SET_COLOR':
+            maps = mmu.gate_maps
+            maps.renew_gate_map()
+            changed, skipped = [], []
+            for gate in gates:
+                if mmu.mmu_unit(gate).td1_manager.adopt_color(gate, force=True):
+                    changed.append(gate)
+                elif not maps.gate_td1_color[gate]:
+                    skipped.append(gate)
+            if changed:
+                maps.update_gate_color_rgb()
+                maps.persist_gate_map(spoolman_sync=False) # Local only; Spoolman has no TD-1 color
+                mmu.log_always("TD-1: filament color set from the measured color on gate(s) %s"
+                               % ",".join(str(g) for g in changed))
+                spooled = [g for g in changed if mmu.gate_spool_id[g] > 0]
+                if spooled:
+                    mmu.log_warning(
+                        "Gate(s) %s have a Spoolman spool - the next Spoolman refresh will "
+                        "put its color back" % ",".join(str(g) for g in spooled))
+            if skipped:
+                mmu.log_info("No measured color on gate(s) %s"
+                             % ",".join(str(g) for g in skipped))
+            if not changed and not skipped:
+                mmu.log_info("Filament color already matches the measured color")
+            return
 
         if serial:
             targets = [serial]
