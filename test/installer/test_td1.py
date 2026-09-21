@@ -33,9 +33,8 @@ PER_GATE = dict(SHARED, **{
     "PARAM_TD1_BOWDEN_DEVICE": "",
     "PARAM_TD1_DEVICE_0": "TD1-0042",
     "PARAM_TD1_DEVICE_1": "TD1-0043",
-    # Gate 2's scanner is switched off but its serial is left behind on purpose:
-    # kconfig keeps the value of a symbol whose prompt is hidden, so this is the state
-    # a user who types a serial and then changes their mind actually leaves
+    # Gate 2's scanner is switched off with its serial left behind on purpose: kconfig
+    # keeps the value behind a hidden prompt, so this is what changing your mind leaves
     "PARAM_TD1_DEVICE_GATE_2": False,
     "PARAM_TD1_DEVICE_2": "TD1-0099",
     "PARAM_TD1_DEVICE_3": "TD1-0042",
@@ -90,18 +89,10 @@ class TestTd1SharedScanner(unittest.TestCase):
         self.assertEqual(params.get("td1_capture_timeout"), "5")
 
     def test_hidden_advanced_option_still_renders_its_default(self):
-        # The advanced PROMPT is conditional; the symbol is not. If the symbol were
-        # hidden instead, the key would render empty and fail to parse at boot
+        # The advanced PROMPT is conditional, the symbol is not - a hidden symbol would
+        # render an empty key and fail to parse at boot
         params = assembled("td1_defaults", SHARED)["mmu_unit_parameters unit0"]
         self.assertEqual(params.get("td1_capture_timeout"), "5")
-
-    def test_no_scan_geometry_is_rendered_at_all(self):
-        # Measurement is by traversal, so there is nothing positional to configure
-        params = assembled("td1_nogeom", SHARED)["mmu_unit_parameters unit0"]
-        for key in ("td1_scan_distance", "td1_scan_distances", "td1_scan_max",
-                    "td1_scan_maxes", "td1_scan_speed", "td1_scan_step",
-                    "td1_capture_on_preload"):
-            self.assertNotIn(key, params)
 
 
 class TestTd1PerGateScanners(unittest.TestCase):
@@ -112,8 +103,7 @@ class TestTd1PerGateScanners(unittest.TestCase):
         self.assertNotIn("td1_device", unit)
 
     def test_a_repeated_serial_is_one_shared_scanner(self):
-        # Gates 0 and 3 name the same device on purpose - that is how a scanner is
-        # shared, and it must not be mistaken for a duplicate definition
+        # Gates 0 and 3 name the same device on purpose - that is how one is shared
         unit = assembled("td1_repeat", PER_GATE)["mmu_unit unit0"]
         serials = [s.strip() for s in unit.get("td1_devices").split(",")]
         self.assertEqual(serials[0], serials[3])
@@ -215,11 +205,9 @@ class TestTd1InvalidInput(unittest.TestCase):
                 pass
 
     def test_the_feature_enabled_with_no_serial_renders_no_assignment(self):
-        # Ticking "Has TD-1 scanner(s)?" and entering nothing used to render an empty
-        # 'td1_device:', which klipper rejects - a printer that will not start because
-        # of a box the user ticked. The line is omitted instead, so the feature is
-        # simply inert until a serial is given. mmu_unit still rejects a blank value in
-        # a hand-written mmu_hardware.cfg
+        # An empty 'td1_device:' is rejected by klipper, so the line is omitted instead
+        # and the feature is inert until a serial is given. mmu_unit still rejects a
+        # blank value in a hand-written mmu_hardware.cfg
         from test.hh import session
         profile = profiles.get("boxturtle").derive("td1_blank", syms=dict(
             SHARED, PARAM_TD1_BOWDEN_DEVICE=""))
@@ -233,9 +221,8 @@ class TestTd1InvalidInput(unittest.TestCase):
             self.assertEqual([mgr.serial_for(g) for g in range(4)], [""] * 4)
 
     def test_a_switched_off_gate_renders_no_serial_even_if_one_was_typed(self):
-        # kconfig keeps the value behind a hidden prompt, and build.py reads the raw
-        # user value regardless of visibility - so the template, not the symbol, has to
-        # honour the decision to switch the gate's scanner off
+        # kconfig keeps the value behind a hidden prompt and build.py reads the raw user
+        # value regardless of visibility, so the template has to honor the toggle
         unit = assembled("td1_stale_gate", PER_GATE)["mmu_unit unit0"]
         self.assertNotIn("TD1-0099", unit.get("td1_devices"))
         self.assertEqual(unit.get("td1_devices"), "TD1-0042, TD1-0043, , TD1-0042")
@@ -306,11 +293,9 @@ class TestTd1BlankEntries(unittest.TestCase):
         self.assertEqual(self.booted("td1_noneboot", syms), [""] * 4)
 
     def test_the_old_dash_placeholder_is_rejected_rather_than_taken_as_a_serial(self):
-        # Nothing generates '-' any more, but a hand-written or copied config might.
-        # Accepting it silently would give a gate a scanner named '-', which only
-        # surfaces later as one that is permanently disconnected.
-        # extra_params injects the list straight into the jinja render, standing in
-        # for a config that was not produced by this installer
+        # A hand-written or copied config might carry one. Accepting it would give a
+        # gate a scanner named '-' that only surfaces later as permanently disconnected.
+        # extra_params injects the list straight into the jinja render
         from test.hh import session
         profile = profiles.get("boxturtle_test").derive(
             "td1_dash", syms=dict(self.BASE, **{

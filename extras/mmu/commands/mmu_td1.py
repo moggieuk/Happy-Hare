@@ -98,18 +98,10 @@ class MmuTd1Command(BaseCommand):
         """
         Resolve GATE/GATES to unique gates, in the order requested.
 
-        Gates only - deliberately no TOOL/TOOLS, and no bypass. A scanner belongs to a
-        physical filament path, and remapping a tool doesn't move it, so a tool selector
-        here would only add a layer of indirection to reason about. Tool-driven work goes
-        through MMU_CHECK_GATE TD1=1, which already owns tool semantics and EndlessSpool
-        remapping. The bypass is excluded because scanner assignment is gate-scoped
-        (td1_device / td1_devices) and has no bypass equivalent - bypass filament identity
-        lives in 'active_filament' rather than the gate map.
-
-        Contradictory selectors are rejected rather than resolved by precedence (which is
-        what MMU_CHECK_GATE does): every operation here either moves filament or writes
-        gate metadata, so silently picking one of two selectors the user typed is the
-        wrong kind of helpful.
+        Gates only - a scanner belongs to a physical filament path, so no TOOL/TOOLS
+        (use MMU_CHECK_GATE TD1=1) and no bypass (scanner assignment is gate-scoped).
+        Contradictory selectors are rejected rather than resolved by precedence, since
+        every operation here writes gate metadata.
         """
         mmu = self.mmu
         selectors = [key for key in ('GATE', 'GATES') if gcmd.get(key, None) is not None]
@@ -139,8 +131,7 @@ class MmuTd1Command(BaseCommand):
         """
         Resolve exactly one operation, or none for a plain status report.
 
-        Operations are mutually exclusive, so a device reboot can never be bundled with
-        anything else. READ/DETAILS/QUIET are modifiers and combine freely.
+        Operations are mutually exclusive; READ/DETAILS/QUIET are modifiers.
         """
         flags = {key: gcmd.get_int(key, 0, minval=0, maxval=1) for key in self.OPERATIONS}
         operations = [key for key in self.OPERATIONS if flags[key]]
@@ -154,9 +145,8 @@ class MmuTd1Command(BaseCommand):
         """
         Build the console status block, as one message in the order requested.
 
-        This is the reporting surface for TD-1: little of it is published in printer.mmu,
-        because the live device data is Moonraker's own and the gate assignment is already
-        in printer.mmu_machine.
+        The reporting surface for TD-1 - little is published in printer.mmu, since the
+        live data is Moonraker's and the assignment is in printer.mmu_machine.
         """
         lines = []
         for serial in serials:
@@ -168,8 +158,7 @@ class MmuTd1Command(BaseCommand):
             state = "connected" if device.connected else "DISCONNECTED"
             if not device.enabled:
                 state += ", disabled"
-            # Effective policy comes from the unit's parameter unless overridden, so
-            # report it through a manager that actually references this device
+            # Policy comes from the unit's parameter, so ask a manager that references it
             owners_of = [m for m in manager.managers() if device in m.devices()]
             if any(m.auto_for(device) for m in owners_of):
                 state += ", auto-update"
@@ -177,8 +166,7 @@ class MmuTd1Command(BaseCommand):
                     state += " (override)"
             lines.append("TD-1 %s: %s" % (serial, state))
             if offpath:
-                # An off-path scanner serves no gate by design - saying "Gates: none"
-                # would read as a misconfiguration rather than the whole point of it
+                # Serves no gate by design, so "Gates: none" would read as a fault
                 lines.append("  Off-path on unit %s - present filament by hand"
                              % ",".join(offpath))
             if device_gates or not offpath:
@@ -234,12 +222,9 @@ class MmuTd1Command(BaseCommand):
             raise gcmd.error(
                 "Specify only one of SHARED=1, GATE=<n>, GATES=<n,n,...> or SERIAL=<serial>")
         if operation == 'AUTO' and not gates and not shared:
-            # Auto-update is a unit's policy resolved where it is used, so an override
-            # has to say whose policy it is standing in for. A gate selection or
-            # SHARED=1 already says; a bare SERIAL= does not. Only actually demands
-            # UNIT= on a multi-unit machine - get_unit() resolves the single-unit case
-            # on its own. ENABLE needs none of this: switching a scanner off is about
-            # the device, not about any unit's policy
+            # An override of a unit's policy has to say whose. GATE/GATES/SHARED already
+            # do; a bare SERIAL= does not. Only bites on a multi-unit machine. ENABLE is
+            # about the device, not a unit's policy, so it needs none of this
             self.get_unit(gcmd, mode="required")
 
         if operation == 'SET_COLOR' and not gates:
@@ -249,8 +234,7 @@ class MmuTd1Command(BaseCommand):
                              "you are asserting which filament produced the reading")
 
         if shared:
-            # The off-path scanner belongs to a unit, not a gate, so it is addressed the
-            # way MMU_NFC addresses its shared reader
+            # Belongs to a unit, not a gate - addressed as MMU_NFC does its shared reader
             unit = self.get_unit(gcmd, mode="required")
             device = unit.td1_manager.shared_device
             if device is None:
@@ -271,9 +255,8 @@ class MmuTd1Command(BaseCommand):
         """
         Everything this command does: status, REGISTER, ENABLE, AUTO and INIT.
 
-        A plain status report reads the poller's cache, so it still works - and is still
-        worth running - when Moonraker's [td1] component is missing. READ=1 asks for a
-        live poll first, which REGISTER does anyway since it is about to commit a value.
+        A plain status report reads the poller's cache, so it still works when
+        Moonraker's [td1] component is missing. READ=1 polls first, as REGISTER always does.
         """
         mmu = self.mmu
         manager = mmu.td1
@@ -346,16 +329,14 @@ class MmuTd1Command(BaseCommand):
             elif operation == 'REGISTER':
                 gate = gates[0]
                 gate_manager = mmu.mmu_unit(gate).td1_manager
-                # Age comes from the record actually applied, which may have been
-                # staged as pending rather than read from this device
+                # From the record actually applied, which may be a staged pending one
                 record = gate_manager.register_reading(gate)
                 gate_manager.apply(gate, record)
                 scanned = datetime.fromisoformat(record['scan_time'])
                 age = max(0., (datetime.now(timezone.utc) - scanned).total_seconds())
                 mmu.log_always("TD-1: applied cached measurement to gate %d from %s (%.0fs old)"
                                % (gate, record['scan_time'], age))
-                # Establishing the gate's filament identity clears its measurement, so
-                # registering before a spool or tag is assigned silently loses this
+                # Establishing identity clears measurements, so this would be lost
                 if mmu.gate_spool_id[gate] <= 0 and not mmu.gate_spool_rfid[gate]:
                     mmu.log_warning(
                         "Gate %d has no spool or tag assigned yet - assigning one will clear "

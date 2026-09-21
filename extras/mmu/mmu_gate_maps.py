@@ -177,12 +177,9 @@ class MmuGateMaps:
         """
         The measured color, with an alpha channel derived from the measured TD.
 
-        TD is a transmission distance - how far light gets into the filament - so a
-        low value is opaque and a high one is clear, and alpha (ff = opaque) is its
-        inverse. Anything at or beyond TD1_CLEAR_TD reads as fully transparent.
-
-        Returns "" when there is no measured color, and plain RRGGBB when there is a
-        color but no TD to derive an alpha from.
+        TD is how far light gets into the filament, so alpha is its inverse: low TD is
+        opaque, TD1_CLEAR_TD and beyond is fully transparent. Returns "" with no measured
+        color, or plain RRGGBB with no TD to derive an alpha from.
         """
         color = self.gate_td1_color[gate]
         if not color:
@@ -197,12 +194,9 @@ class MmuGateMaps:
         """
         Drop the measured fields for 'gate' without claiming its filament changed.
 
-        For a hand-entered measurement, which supersedes what the scanner found but
-        leaves the gate holding the same filament it did before.
-
-        A filament color the measurement was adopted into goes with it, so an adopted
-        color never outlives the reading it came from. A color Spoolman or the user
-        set is left alone - it is only ours while it still matches what we measured.
+        For a hand-entered measurement, which supersedes the scanner's but leaves the
+        same filament in the gate. An adopted filament_color goes with it; a color
+        Spoolman or the user set does not - it is only ours while it still matches.
         """
         if self.gate_td1_color[gate] and self.gate_color[gate] == self.td1_rgba(gate):
             self.gate_color[gate] = ""
@@ -216,13 +210,10 @@ class MmuGateMaps:
         The filament in 'gate' is no longer the filament it was.
 
         Called for spool assignment/removal, RFID changes, gate reset and gates going
-        EMPTY - anything meaning that measurements taken from the old filament no longer
-        describe what is in the gate. Those measurements are fields of this map, so they
-        are dropped here rather than by whoever produced them.
-
-        'mmu:gate_filament_changed' then lets subsystems drop what they derived from the
-        old identity. Persistence is left to whichever gate-map write the caller was
-        already going to make, so handlers must not persist or mutate the map themselves.
+        EMPTY. Measurements are fields of this map so they are dropped here;
+        'mmu:gate_filament_changed' lets subsystems drop what they derived from the old
+        identity. Handlers must not persist or mutate the map - the caller's own
+        gate-map write does that.
         """
         self.clear_measurements(gate)
         self.printer.send_event("mmu:gate_filament_changed", gate)

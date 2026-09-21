@@ -48,42 +48,24 @@ TD1_ERR_NO_READING   = 'no_reading'  # Connected but hasn't measured yet - norma
 
 
 class MmuTd1Error(MmuError):
-    """
-    Base for every TD-1 failure.
-
-    Subclasses MmuError so the existing pause/recovery paths still catch TD-1 problems
-    without knowing anything about them.
-    """
+    """Base for every TD-1 failure. MmuError, so existing recovery paths catch it."""
 
 class MmuTd1BridgeError(MmuTd1Error):
-    """
-    The Moonraker bridge is unavailable or rejected the request.
-
-    No amount of waiting fixes this, so callers propagate rather than retry.
-    """
+    """Bridge unavailable or request rejected. Waiting won't fix it, so callers propagate."""
 
 class MmuTd1BridgeTimeout(MmuTd1BridgeError):
-    """
-    One bridge round trip ran out of time.
-
-    Recoverable where a longer wait is still running - the next round trip may answer.
-    """
+    """One round trip ran out of time. Recoverable - the next may answer."""
 
 class MmuTd1NoReading(MmuTd1Error):
-    """
-    No fresh measurement arrived in time.
-
-    Raised only once the filament is safely parked, so callers can treat it as "the
-    scanner failed" rather than "the gate failed".
-    """
+    """No fresh measurement in time. The scanner failed, not the gate."""
 
 
 def measurement(data):
     """
     Validate and normalize a Moonraker measurement.
 
-    Raises ValueError for anything that isn't a complete, plausible reading. Callers
-    that need to distinguish "not measured yet" from "measured badly" use has_reading().
+    Raises ValueError for anything incomplete or implausible. Use has_reading() to tell
+    "not measured yet" from "measured badly".
     """
     if not isinstance(data, dict):
         raise ValueError("TD-1 returned an invalid record")
@@ -113,12 +95,7 @@ def measurement(data):
 
 
 def has_reading(data):
-    """
-    True if the record carries a measurement at all, right or wrong.
-
-    Distinguishes a scanner that has simply not seen filament yet (normal before the
-    first insertion) from one that reported something unusable.
-    """
+    """True if the record carries a measurement at all, right or wrong."""
     return isinstance(data, dict) and data.get('td') is not None
 
 
@@ -126,8 +103,8 @@ class MmuTd1Bridge:
     """
     The one Moonraker transport for every TD-1 scanner on the machine.
 
-    Owns the webhook endpoint, the poll cadence and the device cache keyed by serial.
-    Owns no policy: which gate a reading belongs to is the owning unit's manager.
+    Owns the webhook endpoint, poll cadence and per-serial device cache. No policy:
+    which gate a reading belongs to is the owning unit's manager.
     """
 
     def __init__(self, mmu):
@@ -135,8 +112,8 @@ class MmuTd1Bridge:
         self.reactor = mmu.reactor
         self.webhooks = mmu.printer.lookup_object('webhooks')
 
-        # serial -> MmuTd1Device. Seeded from the units' managers so a device referenced
-        # by config is the same object here; Moonraker may add unreferenced ones
+        # serial -> MmuTd1Device, seeded from the managers so a configured device is the
+        # same object here. Moonraker may report unreferenced ones too
         self.devices = {}
         for manager in self.managers():
             for device in manager.devices():
@@ -176,11 +153,9 @@ class MmuTd1Bridge:
 
     def set_device_state(self, serial, enabled=None, auto=None):
         """
-        Change a scanner's runtime enable/auto state.
+        Change a scanner's runtime enable/auto state. Lasts until restart.
 
-        Lasts until restart, when the configured td1_auto_update takes over again. Any
-        attribution armed under the previous policy is dropped, since a reading arriving
-        now was requested under rules that no longer apply.
+        Attribution armed under the previous policy is dropped.
         """
         device = self.devices[serial]
         if enabled is not None:
@@ -195,11 +170,7 @@ class MmuTd1Bridge:
 # -----------------------------------------------------------------------------------------------------------
 
     def _ready(self):
-        """
-        Start polling, but only once Klipper is ready.
-
-        Nothing is polled at all when no scanner is configured.
-        """
+        """Start polling once Klipper is ready. Nothing polls if no scanner is configured."""
         self.connected = True
         if self.devices:
             self.reactor.register_timer(self._poll, self.reactor.monotonic() + TD1_READY_DELAY)
@@ -209,8 +180,7 @@ class MmuTd1Bridge:
         """
         Invalidate ownership and pending transactions on disconnect.
 
-        Nothing observed before a disconnect can be trusted to describe what is in a
-        gate afterwards, so attribution is dropped rather than carried over.
+        Nothing observed beforehand describes what is in a gate afterwards.
         """
         self.connected = False
         self.pending.clear()
@@ -222,18 +192,16 @@ class MmuTd1Bridge:
         """
         True while a reading would actually be consumed.
 
-        Polling exists to feed automatic updates and in-flight captures. When no device
-        is auto-updating and nothing is capturing, readings are only wanted for status,
-        so we back right off rather than talking to Moonraker every second forever.
+        Polling feeds automatic updates and in-flight captures. With neither, readings
+        are only wanted for status, so the interval backs right off.
         """
         if self.busy or any(d.owner is not None for d in self.devices.values()):
             return True
         if any(m.auto_wanted() for m in self.managers()):
             return True
         # An off-path scanner exists to produce readings to stage, so one is always
-        # wanted. Nothing arms for it and it has no gate to auto-update, so without
-        # this it would be polled at the idle interval - the user presents filament
-        # and waits, with nothing to say the clock has not started yet
+        # wanted. Nothing arms for it, so otherwise it would poll at the idle interval
+        # while the user stands there waiting
         return any(m.shared_device is not None and m.shared_device.enabled
                    for m in self.managers())
 
@@ -242,8 +210,7 @@ class MmuTd1Bridge:
         """
         Poll every device without blocking Klipper's reactor.
 
-        One request services all scanners, and the interval backs right off when nothing
-        is consuming readings - see _wants_readings().
+        One request services all scanners; the interval follows _wants_readings().
         """
         if not self.connected:
             return self.reactor.NEVER
@@ -267,8 +234,7 @@ class MmuTd1Bridge:
         """
         Deliver a Moonraker response without entering the G-code queue.
 
-        Replies can overtake each other, so anything older than the newest already seen
-        is acknowledged but not allowed to overwrite device state.
+        Replies can overtake each other, so a stale one is acknowledged but not applied.
         """
         request_id = request.get_int('request_id')
         pending = self.pending.get(request_id)
@@ -291,9 +257,8 @@ class MmuTd1Bridge:
         """
         Wait cooperatively for a bounded Moonraker response.
 
-        'timeout' lets a caller cap the round trip to the time it actually has - without
-        it a slow bridge would silently overrun the caller's own deadline. The filament
-        load path deliberately does not call this at all (see MmuTd1Manager.begin_load).
+        'timeout' caps the round trip to the time the caller actually has. The filament
+        load path never calls this - see MmuTd1Manager.begin_load.
         """
         if timeout is None:
             timeout = TD1_REBOOT_TIMEOUT if reset else TD1_REQUEST_TIMEOUT
@@ -321,8 +286,7 @@ class MmuTd1Bridge:
         """
         Start tracking a scanner Moonraker reports that no gate references.
 
-        Kept deliberately: MMU_TD1 listing it with "Gates: none" is how you find a
-        serial to configure in the first place.
+        MMU_TD1 listing it with "Gates: none" is how you find a serial to configure.
         """
         from .unit.td1.mmu_td1_device import MmuTd1Device
         device = MmuTd1Device(serial)
@@ -334,8 +298,7 @@ class MmuTd1Bridge:
         """
         Refresh the scanner caches from one Moonraker response.
 
-        Cache only. Whether a new reading may be written to a gate is decided by the
-        manager owning the gate that armed the token - see MmuTd1Manager.consider().
+        Cache only - MmuTd1Manager.consider() decides what may be written to a gate.
         """
         if not isinstance(data, dict):
             data, error, error_kind = {}, "Invalid TD-1 device list", TD1_ERR_BRIDGE
@@ -353,15 +316,10 @@ class MmuTd1Bridge:
             record = data[serial]
             reported = record.get('error') if isinstance(record, dict) else None
             if not reported and not has_reading(record):
-                # Normal before the first insertion - not a fault, just nothing to report.
-                # A device that HAD a reading and now reports none has been power cycled
-                # or rebooted, so drop the cached one with it: leaving it behind makes
-                # status quote a measurement the scanner no longer stands behind, and
-                # hands measurement() a record carrying both a value and an error
+                # Normal before the first insertion - not a fault, just nothing to report
                 if previous is not None:
                     # Had a reading, now reports none. On an off-path scanner that is
-                    # filament being taken out, which is the better moment to start
-                    # the pending window - see MmuTd1Manager.removed()
+                    # filament being taken out - see MmuTd1Manager.removed()
                     for manager in self.managers():
                         if manager.shared_device is device:
                             manager.removed(device)
@@ -386,9 +344,9 @@ class MmuTd1Bridge:
                 if manager is not None:
                     manager.consider(device, valid, previous, was_connected)
                 continue
-            # Nobody armed for this reading. If it came from a unit's off-path scanner
-            # it is staged as pending instead, for the gate preloaded next. Only the
-            # first unit naming it stages: 'pending' is machine level
+            # Nobody armed for this reading. From an off-path scanner it is staged as
+            # pending instead. Only the first unit naming it stages - 'pending' is
+            # machine level
             for manager in self.managers():
                 if manager.shared_device is device:
                     manager.stage(device, valid, previous)
@@ -404,9 +362,8 @@ class MmuTd1Bridge:
         Report Happy Hare's own policy toward each gate's scanner, indexed by gate.
 
         A flat per-gate list aggregated across units, like 'espooler' and 'drying_state'.
-        NFC reports a per-unit dict instead because its shared reader serves the unit and
-        the bypass rather than any gate, so it has no per-gate answer to give; every TD-1
-        gate either has a scanner or doesn't, so the flat list says everything.
+        NFC publishes a per-unit dict instead: its shared reader serves the unit rather
+        than a gate, so it has no per-gate answer to give. Every TD-1 gate does.
         """
         states = [TD1_STATE_NONE] * self.mmu.num_gates
         for manager in self.managers():
@@ -420,8 +377,8 @@ class MmuTd1Bridge:
         """
         Global gates served by one physical scanner.
 
-        A serial may be named by several gates, and by several units, so this is the
-        only way to answer "what does disabling this device affect?".
+        A serial may be named by several gates and several units, so this is what
+        answers "what does disabling this device affect?".
         """
         gates = []
         for manager in self.managers():

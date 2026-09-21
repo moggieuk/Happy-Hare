@@ -63,15 +63,9 @@ class MmuCheckGateCommand(BaseCommand):
         mmu.fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
-        # Measuring is the same kind of operation this command already performs - a gate
-        # load and unload, just carried further down the bowden - and it never enters the
-        # extruder, so it needs no heat and no idle printer. That matters because the
-        # pre-print check in _MMU_PRINT_START runs with print_state 'started', which
-        # counts as printing: refusing there would disable TD1= exactly where it is most
-        # wanted. It does cost a bowden traverse per unmeasured gate, which is why only
-        # unmeasured gates are measured unless TD1_UPDATE=1 asks for more
+        # Never enters the extruder, so no heat or idle-printer check - TD1= must work
+        # from _MMU_PRINT_START, which runs with print_state 'started'
         td1 = gcmd.get_int('TD1', 0, minval=0, maxval=1)
-        # Forcing a re-measure implies wanting measurement at all
         td1_force = gcmd.get_int('TD1_UPDATE', 0, minval=0, maxval=1)
         td1 = td1 or td1_force
         # These three parameters are mutually exclusive so we only process one
@@ -175,8 +169,8 @@ class MmuCheckGateCommand(BaseCommand):
                                 failed_gates = set()
                                 failures = []
                                 if td1:
-                                    # One probe for the whole batch: a missing or unhealthy
-                                    # bridge must not turn every gate into a failure
+                                    # One probe for the batch - a dead bridge must not
+                                    # turn every gate into a failure
                                     try:
                                         mmu.td1.refresh()
                                     except MmuError as ee:
@@ -212,11 +206,8 @@ class MmuCheckGateCommand(BaseCommand):
                                         # Suspension snapshots the selected gate's sensors.
                                         with mmu.wrap_suspend_insert_events():
                                             mmu.log_info("Checking gate %d..." % gate)
-                                            # Measuring means walking the filament down
-                                            # its normal path until it has passed the
-                                            # scanner, wherever that happens to be. Skip
-                                            # gates that already have a reading unless
-                                            # TD1_UPDATE=1 asks for a fresh one
+                                            # Skip gates that already have a reading
+                                            # unless TD1_UPDATE=1 asks for a fresh one
                                             td1_mgr = mmu.mmu_unit(gate).td1_manager
                                             measure = bool(td1 and (td1_force or td1_mgr.needs_measurement(gate)))
                                             baseline = None
@@ -225,13 +216,10 @@ class MmuCheckGateCommand(BaseCommand):
                                                     try:
                                                         baseline = td1_mgr.baseline(gate)
                                                     except MmuError as ee:
-                                                        # Don't pay for a bowden traverse
-                                                        # we already know can't produce one
+                                                        # Don't pay for a traverse that can't produce a reading
                                                         mmu.log_warning("Gate %d - TD-1 unavailable: %s" % (gate, str(ee)))
                                                         measure = False
-                                                mmu._load_gate(
-                                                    allow_retry=False,
-                                                    mark_empty_on_failure=False)
+                                                mmu._load_gate(allow_retry=False, mark_empty_on_failure=False)
                                             except MmuGateHomingMiss:
                                                 # Empty, but discovered by a failed pickup rather
                                                 # than a switch - not grounds for a remap.
@@ -259,17 +247,14 @@ class MmuCheckGateCommand(BaseCommand):
                                                 mmu.log_info("Gate %d - Filament detected. Marked available" % gate)
                                             mmu.gate_maps.set_gate_status(gate, max(mmu.gate_status[gate], GATE_AVAILABLE))
                                             if measure:
-                                                # Filament is proven present; now run it down
-                                                # the bowden to the extruder (never into it,
-                                                # so no tip forming on the way back) and read
-                                                # whatever the scanner saw en route
+                                                # Down the bowden past the scanner, never
+                                                # into the extruder (so no tip forming)
                                                 try:
                                                     mmu.load_sequence(skip_extruder=True)
                                                     try:
                                                         td1_mgr.capture(gate, baseline)
                                                     except MmuError as ee:
-                                                        # Availability is a fact about the
-                                                        # gate, not about the scanner
+                                                        # A scanner failure doesn't make the gate unavailable
                                                         mmu.log_warning("Gate %d - filament found but not measured: %s" % (gate, str(ee)))
                                                     mmu.unload_sequence()
                                                 except MmuError:
@@ -281,10 +266,7 @@ class MmuCheckGateCommand(BaseCommand):
                                                 elif td1:
                                                     mmu.log_info("Gate %d has no TD-1 scanner - availability checked only" % gate)
                                                 u = mmu.mmu_unit(gate)
-                                                extra_homing = (
-                                                    u.p.gate_homing_max
-                                                    if u.p.gate_homing_endstop == SENSOR_ENCODER
-                                                    else 0)
+                                                extra_homing = u.p.gate_homing_max if u.p.gate_homing_endstop == SENSOR_ENCODER else 0
                                                 try:
                                                     mmu._unload_gate(extra_homing)
                                                 except MmuError:

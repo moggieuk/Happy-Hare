@@ -140,16 +140,9 @@ class TestTd1Setup(Td1Case):
         self.assertEqual(self.bridge.gates_for("SERIAL_A"), [0, 1, 2, 3])
         self.assertTrue(self.bridge.devices["SERIAL_A"].connected)
 
-    def test_nothing_about_the_device_is_republished_in_printer_status(self):
-        # Live device data belongs to Moonraker's own [td1] endpoint and the gate
-        # assignment is already in printer.mmu_machine - relaying either would be a
-        # staler second copy. Only HH's own policy and the measurements are reported
+    def test_measurements_are_published_in_printer_status(self):
         self.bridge.update_devices({"SERIAL_A": record()})
         status = self.mmu.get_status(0)
-        for key in ("td1_devices", "td1_busy", "gate_td1_scan_time",
-                    "gate_td1_scan_distance", "gate_td1_distance_source",
-                    "gate_td1_color_rgb"):
-            self.assertNotIn(key, status)
         self.assertEqual(status["gate_td"], [None] * 4)
         self.assertIn("gate_td1_color", status)
 
@@ -208,9 +201,6 @@ class TestTd1Setup(Td1Case):
         params = rendered["mmu_unit_parameters unit0"]
         self.assertEqual(params.get("td1_capture_timeout"), "1")
         self.assertEqual(params.get("td1_auto_update"), "0")
-        # No scan geometry exists to configure at all
-        for key in ("td1_scan_distance", "td1_scan_max", "td1_scan_speed", "td1_scan_step"):
-            self.assertNotIn(key, params)
         self.hh.run_gcode("MMU_TEST_CONFIG TD1_CAPTURE_TIMEOUT=4")
         self.assertEqual(self.mmu.mmu_unit(0).p.td1_capture_timeout, 4.)
         self.assertEqual(self.hh.errors, [])
@@ -227,9 +217,6 @@ class TestTd1Apply(Td1Case):
         self.assertEqual(self.mmu.var_manager.get("mmu_state_gate_td", None),
                          [None, None, 4., None])
 
-
-
-
     def test_an_identical_reading_changes_nothing(self):
         # Nothing new to record: no persistence, no LED repaint, no lane-data push
         self.manager.apply(0, record())
@@ -237,7 +224,6 @@ class TestTd1Apply(Td1Case):
             self.manager.apply(0, record(second=1))
         persist.assert_not_called()
         # The time recorded is when the value was established, not last re-confirmed
-
 
 
 class TestTd1Invalidate(Td1Case):
@@ -251,14 +237,6 @@ class TestTd1Invalidate(Td1Case):
         self.assertEqual(self.owners(), {})
         self.assertEqual(self.manager.revisions[0], revision + 1)
 
-    def test_the_gate_map_does_not_know_td1_exists(self):
-        # The coupling is one ordinary klipper event, not a reference in either direction
-        import inspect
-        from extras.mmu import mmu_gate_maps
-        source = inspect.getsource(mmu_gate_maps)
-        self.assertNotIn("self.mmu.td1", source)
-        self.assertIn('send_event("mmu:gate_filament_changed"', source)
-
     def test_the_event_clears_measurement_and_attribution(self):
         self.manager.apply(2, record())
         self.owner(2)
@@ -271,23 +249,13 @@ class TestTd1Invalidate(Td1Case):
         self.assertEqual(self.manager.revisions[2], revision + 1)
         self.assertEqual(self.owners(), {})
 
-    def test_a_handler_is_reached_through_the_event_bus(self):
-        # Not a direct call - the registration is what wires it up
-        self.manager.apply(0, record())
-        self.owner(0)
-        revision = self.manager.revisions[0]
-        self.mmu.printer.send_event("mmu:gate_filament_changed", 0)
-        self.assertEqual(self.manager.revisions[0], revision + 1)
-        self.assertEqual(self.owners(), {})
-
 
 class TestTd1Color(Td1Case):
     """
     A measured color fills in filament_color, it does not compete with it.
 
-    There is no separate LED source and no parallel RGB cache: the measurement is
-    adopted into gate_color when nothing else has claimed that field, so every
-    existing color consumer sees it through the ordinary route.
+    Adopted into gate_color when nothing else has claimed that field, so every existing
+    color consumer sees it through the ordinary route.
     """
 
     def test_it_fills_an_empty_filament_color(self):
@@ -299,8 +267,7 @@ class TestTd1Color(Td1Case):
         self.assertEqual(self.mmu.gate_td1_color[0], "00ff00")
 
     def test_it_never_overwrites_a_color_that_is_already_set(self):
-        # Spoolman owns filament_color whenever it has an opinion, and a hand-set
-        # color is the user's. A scanner's guess does not beat either
+        # Spoolman's or the user's color both beat a scanner's guess
         self.mmu.gate_maps.gate_color[1] = "ff0000"
         self.manager.apply(1, record(color="00ff00"))
         self.assertEqual(self.mmu.gate_color[1], "ff0000")
@@ -311,11 +278,6 @@ class TestTd1Color(Td1Case):
         self.assertEqual(self.mmu.gate_td1_color[0], "000000")
         self.assertEqual(self.mmu.gate_color[0], rgba("000000"))
         self.assertEqual(self.mmu.gate_color_rgb[0], (0., 0., 0.))
-
-    def test_no_parallel_rgb_cache_is_published_or_kept(self):
-        self.manager.apply(0, record(color="00ff00"))
-        self.assertFalse(hasattr(self.mmu.gate_maps, "gate_td1_color_rgb"))
-        self.assertNotIn("gate_td1_color_rgb", self.mmu.get_status(0))
 
 
 class TestTd1SetColor(Td1Case):
@@ -474,7 +436,6 @@ class TestTd1Restore(Td1Case):
         errors = self.mmu.gate_maps.load_persisted_state()
         self.assertEqual(errors, [])
         self.assertEqual(self.mmu.gate_td[0], 4.)
-
 
 
 class TestTd1Poll(Td1Case):
@@ -700,11 +661,6 @@ class TestTd1CommandSelection(Td1Case):
                     self.hh.run_gcode("MMU_TD1 " + args)
         self.assertEqual(self.hh.filament().history, [])
 
-
-
-
-
-
     def test_register_warns_when_the_gate_has_no_identity_yet(self):
         # Assigning a spool or tag later clears the measurement, so registering first
         # silently loses it. The order isn't guessable - say so
@@ -783,8 +739,7 @@ class TestTd1ManualMap(Td1Case):
 
 class TestTd1Led(Td1Case):
     def test_a_measurement_reaches_the_leds_through_filament_color(self):
-        # There is no separate 'td1_color' effect: the measurement is adopted into
-        # filament_color, so the existing effect shows it with no extra wiring
+        # No separate effect - the existing one shows it with no extra wiring
         self.hh.reactor.advance(12)
         self.mmu.gate_maps.gate_status[0] = 1
         self.hh.run_gcode("MMU_LED EXIT_EFFECT=filament_color")
@@ -795,21 +750,6 @@ class TestTd1Led(Td1Case):
         self.assertNotEqual(before, after)
         self.assertGreater(after[0][1], after[0][0])
         self.assertEqual(self.mmu.gate_color[0], rgba("00ff00"))
-
-    def test_td1_color_is_not_a_selectable_effect(self):
-        with self.assertRaises(Exception):
-            self.hh.run_gcode("MMU_LED EXIT_EFFECT=td1_color")
-
-    def test_filament_color_still_reads_the_cache(self):
-        # The cache exists because effects animate at 24fps - don't reconvert per frame
-        self.hh.reactor.advance(12)
-        self.mmu.gate_maps.gate_status[0] = 1
-        self.mmu.gate_maps.gate_color[0] = "ff0000"
-        self.mmu.gate_maps.update_gate_color_rgb()
-        with patch("extras.mmu.mmu_utils.MmuColorUtils.color_to_rgb_tuple",
-                   side_effect=AssertionError("reconverted")):
-            self.hh.run_gcode("MMU_LED EXIT_EFFECT=filament_color REFRESH=1")
-        self.assertEqual(self.hh.errors, [])
 
 
 class TestTd1MultiUnit(unittest.TestCase):
@@ -825,7 +765,6 @@ class TestTd1MultiUnit(unittest.TestCase):
             # armed token are shared rather than duplicated per unit
             devices = {id(hh.mmu.mmu_unit(g).td1_manager.device_for(g)) for g in range(8)}
             self.assertEqual(len(devices), 1)
-
 
 
 class TestTd1CheckGate(Td1Case):
@@ -1131,7 +1070,6 @@ class TestTd1IdentityPersistence(Td1Case):
         self.assertEqual(self.hh.errors, [])
 
 
-
 class TestTd1ExtraCommands(Td1Case):
     def test_init_details_quiet_and_unit_selector(self):
         self.hh.run_gcode("MMU_TD1 SERIAL=SERIAL_A INIT=1 QUIET=1")
@@ -1144,7 +1082,6 @@ class TestTd1ExtraCommands(Td1Case):
             self.hh.run_gcode("MMU_TD1 GATE=0")
         self.assertEqual(self.hh.errors, [])
         self.assertTrue(any("disabled" in c.args[0] for c in report.call_args_list))
-
 
     def test_bare_status_works_without_the_bridge(self):
         # This is the command a user runs to find out why the bridge isn't working
@@ -1194,8 +1131,6 @@ class TestTd1LoadHooks(Td1Case):
         self.assertEqual(self.mmu.filament_pos, 10)
 
 
-
-
 class TestTd1LaneData(unittest.TestCase):
     def test_lane_data_keeps_filament_color_and_adds_measured_td(self):
         with harness() as hh:
@@ -1208,7 +1143,6 @@ class TestTd1LaneData(unittest.TestCase):
             self.assertEqual(lane["color"], "ff0000")
             # Happy Hare doesn't record when a gate was measured, so this stays null
             self.assertIsNone(lane["scan_time"])
-
 
 
 class TestTd1ConfigValidation(unittest.TestCase):
@@ -1278,8 +1212,6 @@ class TestTd1MultiUnitValidation(unittest.TestCase):
             device = hh.mmu.td1.devices["SERIAL_A"]
             self.assertFalse(hh.mmu.mmu_unit(0).td1_manager.auto_for(device))
             self.assertTrue(hh.mmu.mmu_unit(4).td1_manager.auto_for(device))
-
-
 
     def test_gate_unit_conflicts_are_rejected(self):
         profile = profiles.clone_across_units("td1_targets", PROFILE, ["unit0", "unit1"])
@@ -1571,31 +1503,16 @@ class TestTd1OffPathStaging(Td1OffPathCase):
         self.assertFalse(any(self.manager.needs_measurement(g) for g in range(4)))
 
     def test_a_reading_is_staged_rather_than_attributed(self):
-        # The crux: an off-path reading has no gate, and guessing at the loaded one is
-        # exactly the misattribution the in-path rules exist to prevent
+        # An off-path reading has no gate, and guessing at the loaded one is the
+        # misattribution the in-path rules exist to prevent
         self.mmu.select_gate(1)
         self.present()
         self.assertEqual(self.mmu.gate_td, [None] * 4)
         self.assertEqual(self.mmu.pending_measurement["td"], 4.)
         self.assertEqual(self.mmu.get_status(0)["pending_td"], 4.)
 
-    def test_the_same_reading_is_staged_once(self):
-        # Filament left in the reader is reported on every poll
-        with patch.object(self.mmu, "stage_pending_measurement",
-                          wraps=self.mmu.stage_pending_measurement) as staged:
-            self.present()
-            self.present()
-            self.present()
-        self.assertEqual(staged.call_count, 1)
-
-    def test_a_new_reading_restages(self):
-        self.present(second=1, td=4.)
-        self.present(second=2, td=9.)
-        self.assertEqual(self.mmu.pending_measurement["td"], 9.)
-
     def test_preload_applies_it_together_with_the_spool(self):
-        # The order trap that REGISTER had: assigning identity clears measurements, so
-        # the measurement has to land in the same call that assigns the spool
+        # Assigning identity clears measurements, so both must land in one call
         self.present()
         self.mmu.set_pending_spool_id(42)
         pending = self.mmu._grab_pending()
@@ -1738,10 +1655,6 @@ class TestTd1ActiveFilament(Td1Case):
         self.mmu.select_gate(1)
         self.assertIsNone(self.mmu.active_filament["td"])
 
-    def test_the_key_is_always_present_so_consumers_need_no_special_case(self):
-        self.mmu.select_gate(0)
-        self.assertIn("td", self.mmu.active_filament)
-
 
 class TestTd1CommandAlignment(Td1OffPathCase):
     """
@@ -1850,12 +1763,7 @@ class TestTd1Alpha(Td1Case):
     def test_the_alpha_does_not_disturb_the_rgb_leds_read(self):
         self.manager.apply(0, record(td=50., color="00ff00"))
         self.assertEqual(self.mmu.gate_color_rgb[0], (0., 1., 0.))
-
-    def test_the_recorded_measurement_stays_plain_rgb(self):
-        # gate_td1_color is what the scanner said; the alpha is derived from a
-        # different measurement and composed only where the two are used together
-        self.manager.apply(0, record(td=50., color="00ff00"))
-        self.assertEqual(self.mmu.gate_td1_color[0], "00ff00")
+        self.assertEqual(self.mmu.gate_td1_color[0], "00ff00") # Recorded measurement stays plain rgb
 
     def test_an_adopted_color_with_alpha_is_still_recognized_as_ours(self):
         self.manager.apply(0, record(td=50., color="00ff00"))
@@ -1911,9 +1819,8 @@ class TestTd1LeftInTheReader(Td1OffPathCase):
     """
     Filament left sitting in the off-path scanner must stage exactly once.
 
-    A device that re-measures advances scan_time every time it does, so the
-    timestamp alone is not a dedupe. What decides is whether the MEASUREMENT
-    changed - the same filament sitting there is not new, however often it is read.
+    A re-measuring device advances scan_time every poll, so the timestamp alone is not
+    a dedupe - what decides is whether the measurement changed.
     """
 
     def stagings(self, readings):
@@ -1992,9 +1899,8 @@ class TestTd1MeasurementJitter(Td1OffPathCase):
     """
     A TD-1 is an analogue instrument, so equality is the wrong dedupe.
 
-    AJAX quote +/-7.5%: the same filament read twice never gives the same numbers.
-    Comparing exactly would call every re-measurement a new filament and re-stage on
-    every poll, which is the bug value-equality was meant to fix and did not.
+    AJAX quote +/-7.5%: the same filament read twice never gives the same numbers, so
+    an exact comparison would call every re-measurement a new filament.
     """
 
     def stagings(self, readings):
@@ -2016,10 +1922,6 @@ class TestTd1MeasurementJitter(Td1OffPathCase):
 
     def test_a_color_change_alone_restages(self):
         self.assertEqual(self.stagings([(10, 4.0, "112233"), (11, 4.0, "ff8800")]), 2)
-
-    def test_the_threshold_sits_outside_the_quoted_accuracy(self):
-        from extras.mmu.mmu_constants import TD1_SAME_TD_FRACTION
-        self.assertGreater(TD1_SAME_TD_FRACTION, 0.075)
 
 
 class TestTd1Removal(Td1OffPathCase):

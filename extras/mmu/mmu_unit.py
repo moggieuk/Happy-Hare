@@ -251,11 +251,10 @@ class MmuUnit:
         # Optional TD-1 filament measurement scanners
         # ---------------------------------------------------------------------------------------------------
 
-        # TD-1 scanners are USB devices owned by Moonraker's [td1] component, not klipper
-        # objects, so unlike NFC readers there is no section to validate - we only store
-        # the USB serial numbers here. MmuTd1Bridge resolves them against Moonraker.
+        # USB devices owned by Moonraker's [td1] component, not klipper objects, so
+        # unlike NFC readers there is no section to validate - only serials to store.
         #
-        # Same split as the NFC readers, and for the same reason:
+        # Same split as the NFC readers:
         #   'td1_device'  - a scanner filament does NOT pass through, that you present
         #                   filament to by hand. Its readings are staged as pending and
         #                   applied to the next gate preloaded, like a shared tag read.
@@ -268,9 +267,8 @@ class MmuUnit:
             name.strip() for name in config.getlist('td1_devices', [])
         ]
 
-        # A blank entry means "no scanner on this gate", as in 'nfc_readers'. A literal
-        # '-' used to mean that; reject it rather than treat it as a USB serial, which
-        # would only surface later as a scanner that is permanently disconnected
+        # A blank entry means "no scanner on this gate", as in 'nfc_readers'. Reject a
+        # literal '-' rather than treat it as a serial that never connects
         if any(name == '-' for name in self.td1_devices):
             raise config.error(
                 "'td1_devices' uses a blank entry for a gate with no scanner, not '-' "
@@ -282,9 +280,8 @@ class MmuUnit:
         if len(self.td1_devices) not in [0, self.num_gates]:
             raise config.error("'td1_devices' must be empty or a comma separated list of 'num_gates' elements")
 
-        # A serial may repeat within 'td1_devices' and across units - that is intentional:
-        # one physical scanner can serve several gates or even several units, and one
-        # MmuTd1Device object is shared by all of them.
+        # A serial may repeat within 'td1_devices' and across units: one physical scanner
+        # can serve several gates or units, sharing one MmuTd1Device
 
 
         # ---------------------------------------------------------------------------------------------------

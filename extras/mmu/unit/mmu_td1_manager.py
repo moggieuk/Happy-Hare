@@ -52,9 +52,8 @@ class MmuTd1Manager:
         self.reactor = self.printer.get_reactor()
         self.mmu = None                         # Set at klippy:connect
 
-        # Device objects. Looked up before being created so a serial repeated across
-        # gates - or named by another unit - is one object, which is what keeps "one
-        # scanner, one debt" true by construction.
+        # Looked up before created, so a serial repeated across gates - or named by
+        # another unit - resolves to one object
         self.shared_device = None   # Off-path: filament is presented to it by hand
         self.gate_devices = []      # Per-local-gate, in the filament path (or None)
         self._setup_devices()
@@ -78,14 +77,10 @@ class MmuTd1Manager:
 
     def allow_restage(self):
         """
-        Let filament still sitting in the off-path scanner be staged again.
+        Let filament still in the off-path scanner be staged again (MmuNfcManager.allow_reread).
 
-        The counterpart of MmuNfcManager.allow_reread(), called from the same place
-        for the same reason: once a pending has timed out, filament the user left in
-        the reader should be able to re-establish it without being taken out and
-        presented again. Deliberately NOT called when a pending is consumed - the
-        measurement of a spool just loaded must not immediately stage itself for the
-        next gate.
+        Called when a pending times out, never when one is consumed - a measurement just
+        applied must not immediately stage itself for the next gate.
         """
         self._staged = None
 
@@ -95,12 +90,7 @@ class MmuTd1Manager:
 
 
     def _setup_devices(self):
-        """
-        Build (or look up) the device objects this unit references.
-
-        The two are independent, as with the NFC readers: a unit may have per-gate
-        scanners, an off-path one, both, or neither.
-        """
+        """Build (or look up) this unit's devices. Per-gate and off-path are independent."""
         self.shared_device = self._lookup_or_create_device(self.mmu_unit.td1_device)
         serials = self.mmu_unit.td1_devices or [''] * self.mmu_unit.num_gates
         self.gate_devices = [self._lookup_or_create_device(serial) for serial in serials]
@@ -144,8 +134,7 @@ class MmuTd1Manager:
         """
         The device MMU_TD1 acts on when the user names a gate.
 
-        The gate's own in-path scanner, else this unit's off-path one - the same order
-        register_reading() resolves in, so reporting and acting agree.
+        In-path scanner first, then the off-path one - the order register_reading() uses.
         """
         return self.device_for(gate) or self.shared_device
 
@@ -176,10 +165,9 @@ class MmuTd1Manager:
         """
         Whether a new reading from this device is applied automatically, for THIS unit.
 
-        Resolved at the point of use, like td1_capture_timeout and
-        td1_capture_on_load, so an MMU_TEST_CONFIG edit takes effect immediately and
-        two units sharing one physical scanner can configure it differently. The
-        device only carries a runtime override, set by MMU_TD1 AUTO=.
+        Resolved at point of use, so an MMU_TEST_CONFIG edit takes effect immediately and
+        two units sharing a scanner can differ. The device carries only the MMU_TD1 AUTO=
+        runtime override.
         """
         if device.auto_override is not None:
             return device.auto_override
@@ -215,11 +203,9 @@ class MmuTd1Manager:
         """
         Drop attribution for a gate whose filament identity has changed.
 
-        Handles 'mmu:gate_filament_changed' for this unit's gates only. The measurements
-        themselves are gate-map fields and the gate map clears them; what goes here is
-        Happy Hare's belief about which filament a scanner is looking at. Bumping the
-        revision makes any capture already in flight discard its own result rather than
-        apply it to a new spool.
+        Handles 'mmu:gate_filament_changed' for this unit's gates. The measurements are
+        gate-map fields and the gate map clears them; the revision bump makes a capture
+        already in flight discard its result rather than apply it to a new spool.
         """
         local = self._local_index(gate)
         if local is None:
@@ -242,17 +228,15 @@ class MmuTd1Manager:
 
     def apply(self, gate, record):
         """
-        Apply a measured TD and its separate measured color to one gate.
+        Apply a measured TD and measured color to one gate.
 
-        Both are ordinary gate-map fields, so one write persists them together and
-        notifies LEDs, macros and the lane-data push exactly once. A reading identical to
-        what the gate already holds is dropped rather than churning any of that.
+        Both are gate-map fields, so one write persists and notifies once. An identical
+        reading is dropped rather than churning that.
         """
         try:
             valid = measurement(record)
         except (ValueError, TypeError) as exc:
-            # Callers reach here from g-code handlers, where anything that isn't an
-            # MmuError becomes a Klipper shutdown rather than a reported error
+            # Reached from g-code handlers, where a non-MmuError is a Klipper shutdown
             raise MmuTd1NoReading("TD-1: %s" % exc) from exc
         maps = self.mmu.gate_maps
         if maps.gate_td[gate] == valid['td'] and maps.gate_td1_color[gate] == valid['color']:
@@ -267,22 +251,14 @@ class MmuTd1Manager:
 
     def adopt_color(self, gate, force=False):
         """
-        Use the measured color as the gate's filament color.
+        Use the measured color as the gate's filament color, if nothing else claimed it.
 
-        Only when nothing else has claimed that field. Spoolman owns filament_color
-        whenever it has an opinion, and a manually set color is the user's, so a
-        non-empty value is left alone - a scanner's guess should not overwrite a
-        answer that came from the spool itself.
-
-        'force' is the explicit override (MMU_TD1 SET_COLOR=1). Note that on a gate
-        with a Spoolman spool the next refresh will put Spoolman's color back.
-
-        Returns True if the gate's color changed; the caller persists.
+        A non-empty filament_color belongs to Spoolman or the user and is left alone.
+        'force' (MMU_TD1 SET_COLOR=1) overrides, though a Spoolman refresh will win it
+        back. Returns True if the color changed; the caller persists.
         """
         maps = self.mmu.gate_maps
-        # Carries an alpha channel derived from the TD, so a translucent filament
-        # renders as one rather than as flat color
-        measured = maps.td1_rgba(gate)
+        measured = maps.td1_rgba(gate) # Carries the TD-derived alpha
         if not measured or maps.gate_color[gate] == measured:
             return False
         if maps.gate_color[gate] and not force:
@@ -295,15 +271,13 @@ class MmuTd1Manager:
         """
         Raise unless this scanner is enabled, connected and fault free.
 
-        A scanner that has simply not measured anything yet counts as healthy - that is
-        the normal state before filament first reaches it.
+        Not having measured anything yet is healthy - it is the state before filament
+        first reaches the scanner.
         """
         if not device.enabled:
             raise MmuTd1Error("TD-1: scanner %s is disabled" % device.serial)
         if not device.connected:
             raise MmuTd1BridgeError("TD-1: scanner %s is disconnected" % device.serial)
-        # A device that simply hasn't measured yet is healthy - that's the normal state
-        # before filament first reaches it, and the whole point of scanning
         if device.error and device.error_kind != TD1_ERR_NO_READING:
             raise MmuTd1Error("TD-1: %s" % device.error)
         return device
@@ -321,9 +295,8 @@ class MmuTd1Manager:
         """
         A healthy scanner's latest measurement, as a normalized record.
 
-        healthy() lets a scanner that has simply not measured yet through, so this is
-        where "healthy but nothing to report" becomes a proper MmuError rather than the
-        ValueError that measurement() raises.
+        healthy() passes an unmeasured scanner, so this is where "nothing to report"
+        becomes an MmuError rather than measurement()'s ValueError.
         """
         self.healthy(device)
         try:
@@ -341,10 +314,8 @@ class MmuTd1Manager:
         """
         The measurement MMU_TD1 REGISTER should attribute to 'gate'.
 
-        A gate's own in-path scanner first, since it is the one filament actually
-        crossed. Then this unit's off-path scanner, which is the whole point of
-        REGISTER - you presented filament to it by hand. Then anything already staged
-        as pending, so a reading taken before the gate had an identity is not lost.
+        In-path scanner (filament actually crossed it), then the off-path one, then
+        anything already staged as pending.
         """
         if self.has_gate_td1(gate):
             return self.reading(gate)
@@ -360,10 +331,8 @@ class MmuTd1Manager:
         """
         Wait for a measurement newer than 'baseline', for at most 'timeout' seconds.
 
-        Every round trip is capped to the time actually remaining, so the caller's
-        timeout means what it says. A transport stall inside that window is just another
-        reason we don't have a reading yet, and is reported as one - only a bridge that
-        is genuinely unusable propagates, because no amount of waiting will fix it.
+        Each round trip is capped to the time remaining. A stall inside the window is
+        reported as "no reading"; only an unusable bridge propagates.
         """
         deadline = self.reactor.monotonic() + timeout
         bridge = self.bridge
@@ -377,8 +346,7 @@ class MmuTd1Manager:
                     if device.claimable(gate):
                         device.settle()
                         return self.reading(gate)
-                    # Owed to a gate that already gave up waiting. Take it off the
-                    # scanner's books and keep waiting for one that is ours
+                    # Owed to a gate that gave up waiting - settle it and keep waiting
                     self.mmu.log_debug(
                         "TD-1: discarded a reading still owed to gate %d" % device.unclaimed)
                     device.settle()
@@ -386,8 +354,7 @@ class MmuTd1Manager:
                     continue
                 remaining = deadline - self.reactor.monotonic()
                 if remaining <= 0:
-                    # Filament crossed the scanner and we stopped waiting for what it
-                    # measured, so whatever turns up next is not the next gate's
+                    # We stopped waiting, so the next reading is not the next gate's
                     device = self.device_for(gate)
                     if device is not None:
                         device.owe(gate)
@@ -399,8 +366,7 @@ class MmuTd1Manager:
                 if self.reactor.monotonic() < deadline:
                     self.reactor.pause(self.reactor.monotonic() + TD1_WAIT_GRANULARITY)
         finally:
-            # Must not leak: a stuck 'busy' silences the passive path and pins polling
-            # at its active interval for the rest of the session
+            # A stuck 'busy' silences the passive path and pins polling active
             bridge.busy = False
             bridge.active_serial = ""
 
@@ -409,10 +375,8 @@ class MmuTd1Manager:
         """
         True when this gate has a scanner but nothing measured to show for it.
 
-        "Unmeasured" is the whole staleness rule, and it costs nothing to maintain:
-        gate_td is cleared whenever a gate's filament identity changes - spool swap,
-        RFID change, gate emptied, manual TD edit - so a gate that still holds a value
-        holds one that describes the filament actually in it.
+        "Unmeasured" is the whole staleness rule: gate_td is cleared on any filament
+        identity change, so a surviving value describes the filament actually in the gate.
         """
         return self.has_gate_td1(gate) and self.mmu.gate_td[gate] is None
 
@@ -421,8 +385,7 @@ class MmuTd1Manager:
         """
         The scanner's latest reading time, sampled before filament is moved past it.
 
-        Raises if the scanner is unusable, letting a caller decide not to move at all
-        rather than discovering the problem after a bowden's worth of travel.
+        Raises if the scanner is unusable, so a caller can decline to move at all.
         """
         return self.device(gate).scan_time
 
@@ -431,9 +394,8 @@ class MmuTd1Manager:
         """
         Wait for a reading newer than 'baseline' and apply it to the gate.
 
-        Called once filament has traversed the scanner. Raises MmuTd1NoReading when
-        nothing arrives in time; the filament is left exactly where the caller put it,
-        so unloading and recovery remain the caller's business.
+        Called once filament has traversed the scanner. Raises MmuTd1NoReading on
+        timeout, leaving the filament where it is - recovery is the caller's business.
         """
         record = self.wait_measurement(gate, baseline, self.p.td1_capture_timeout)
         self.apply(gate, record)
@@ -445,11 +407,10 @@ class MmuTd1Manager:
 
     def begin_load(self, gate):
         """
-        Establish ownership before a normal load crosses the scanner.
+        Arm ownership before a normal load crosses the scanner.
 
-        Deliberately passive: it reads the poller's cache and never waits on Moonraker,
-        because this runs inside every tool change. Arming ownership here is what lets a
-        reading that arrives later be attributed to the right gate without guessing.
+        Passive: reads the poller's cache and never waits on Moonraker, because this runs
+        inside every tool change.
         """
         device = self.device_for(gate) if gate >= 0 else None
         if device is None:
@@ -457,8 +418,7 @@ class MmuTd1Manager:
         capture = bool(self.p.td1_capture_on_load)
         if not device.enabled or not (self.auto_for(device) or capture):
             return None
-        # Whatever was armed before is finished with either way, and if it never
-        # produced a reading the scanner still owes that gate one
+        # Anything armed before is finished with - release() records the debt
         device.release()
         try:
             self.device(gate)
@@ -476,8 +436,8 @@ class MmuTd1Manager:
         """
         Capture after loading while preserving explicit ownership.
 
-        While printing we never wait: ownership stays armed and the bridge's poll applies
-        whatever it delivers, so opting into capture costs no tool-change time.
+        Never waits while printing: ownership stays armed and the poll applies whatever
+        arrives, so capture costs no tool-change time.
         """
         if token is None:
             return
@@ -515,12 +475,8 @@ class MmuTd1Manager:
         """
         True if two readings plausibly describe the same filament.
 
-        Equality is the wrong test for an analogue instrument: the same filament read
-        twice never gives the same numbers, so an exact comparison would call every
-        re-measurement a new filament. The thresholds sit well outside the quoted
-        accuracy, so jitter reads as unchanged while a swap reads as new. Two
-        filaments genuinely this close measure the same to within the instrument's
-        error anyway, so treating them as one costs nothing.
+        Tolerance, not equality: an analogue instrument never repeats a reading exactly.
+        The thresholds sit outside the quoted accuracy, so jitter reads as unchanged.
         """
         if a is None or b is None:
             return False
@@ -532,17 +488,12 @@ class MmuTd1Manager:
 
     def removed(self, device):
         """
-        Filament has left the off-path scanner.
+        Filament has left the off-path scanner - restart the pending window from now.
 
-        Optional by design. It only fires if the scanner reports nothing once filament
-        is taken out, which Moonraker's API does not document either way - where it
-        does not, stage() alone still carries the feature. Where it does, this is the
-        better moment to start the pending window: the user has finished at the bench
-        and is walking to the printer, so the deadline moves to now.
-
-        Only ever extends a pending that is still live and still describes this
-        reading. A consumed one must never be resurrected - the spool it was applied
-        to would then stage itself for the next gate as well.
+        Optional: only fires if the scanner reports nothing once filament is taken out,
+        which Moonraker's API does not promise. Where it doesn't, stage() alone carries
+        the feature. Only ever extends a live pending that still describes this reading;
+        a consumed one must never be resurrected.
         """
         if device is not self.shared_device or not device.enabled:
             return
@@ -560,25 +511,18 @@ class MmuTd1Manager:
         Stage an off-path reading as pending, for the gate preloaded next.
 
         The mirror of a shared NFC tag read: the scanner serves no filament path, so
-        there is no gate to attribute to yet and guessing at the loaded one would be
-        exactly the misattribution the in-path rules exist to prevent. The user says
-        which gate it was by preloading one (or by MMU_TD1 GATE=n REGISTER=1).
+        there is no gate to attribute to. The user names one by preloading it (or with
+        MMU_TD1 GATE=n REGISTER=1).
         """
         if device is not self.shared_device or not device.enabled:
             return
-        # Nothing new at all. Deliberately no was_connected guard here, unlike
-        # consider(): the cached reading survives a disconnect, so this test already
-        # rejects a stale re-report after one. The guard would only throw away the
-        # first genuine reading after a Moonraker hiccup, silently
+        # No was_connected guard, unlike consider(): the cached reading survives a
+        # disconnect, so this already rejects a stale re-report after one
         if previous is not None and valid['scan_time'] <= previous:
             return
-        # Filament left in the reader keeps being measured, and a device that
-        # re-measures advances scan_time every time - so the timestamp alone is not a
-        # dedupe. What matters is whether the MEASUREMENT changed, to within the
-        # instrument's accuracy: the same filament sitting there is not a new reading
-        # to stage, however often it is re-read. MmuNfcManager does the same job by
-        # UID. allow_restage() lifts this once a pending times out, so the user need
-        # not present the filament again
+        # A device re-measuring filament left in it advances scan_time every time, so
+        # dedupe on the measurement (MmuNfcManager does the same by UID). allow_restage()
+        # lifts this once a pending times out
         if self.same_filament(self._staged, valid):
             device.last_outcome = 'status_only: already staged'
             return
@@ -591,8 +535,7 @@ class MmuTd1Manager:
         """
         Decide whether a reading the bridge just cached belongs to a gate.
 
-        Called for a device this unit's armed token belongs to. A reading is only
-        written when this manager can say which filament produced it.
+        Only written when this manager can say which filament produced it.
         """
         token = device.owner
         if token is None:
@@ -605,8 +548,7 @@ class MmuTd1Manager:
             return
         gate = token['gate']
         if not device.claimable(gate):
-            # Owed to a gate that has already stopped waiting; this reading settles
-            # that debt and is attributed to nobody
+            # Settles a debt to a gate that stopped waiting; attributed to nobody
             device.last_outcome = ("status_only: settled an unclaimed reading from gate %d"
                                    % device.unclaimed)
             device.settle()
@@ -627,9 +569,8 @@ class MmuTd1Manager:
         """
         This unit's per-gate policy, in local gate order.
 
-        Policy only. Connectivity, the latest reading and any device fault come from
-        Moonraker's own [td1] endpoint, and the gate/serial assignment is already in
-        printer.mmu_machine - none of that is repeated here.
+        Policy only - connectivity and readings come from Moonraker's [td1] endpoint,
+        and the gate/serial assignment from printer.mmu_machine.
         """
         states = []
         for device in self.gate_devices:

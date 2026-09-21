@@ -2078,11 +2078,9 @@ class MmuController(MmuFilamentMovement):
             uid, metadata = tag
             self._apply_tag_to_gate(gate, uid, metadata)
 
-        # Last, and deliberately after the branches above: establishing identity clears
-        # a gate's measurements, so applying here is what lets a measurement taken
-        # before the gate had a spool survive being given one. A gate with its own
-        # in-path scanner is overwritten too - the user just presented this filament by
-        # hand, and the next load re-reads it anyway if td1_auto_update is on
+        # After the branches above: establishing identity clears measurements, so
+        # applying here is what lets one taken beforehand survive. Overwrites an in-path
+        # reading too - the user just presented this filament by hand
         if measured is not None:
             try:
                 self.mmu_unit(gate).td1_manager.apply(gate, measured)
@@ -2161,8 +2159,8 @@ class MmuController(MmuFilamentMovement):
         (works with spoolman off). Consumes/clears the pending state.
         """
         spool_id, tag, measured = self._grab_pending()
-        # The bypass has no gate-map row, so a measurement rides on active_filament.
-        # Only the TD: measured color is a per-gate LED source with no bypass equivalent
+        # No gate-map row, so a measurement rides on active_filament. TD only: measured
+        # color is a per-gate LED source with no bypass equivalent
         measured_td = measured['td'] if measured else None
         if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
             self.log_info("Spool ID: %s activated for bypass load" % spool_id)
@@ -3703,15 +3701,13 @@ class MmuController(MmuFilamentMovement):
         """
         Stage an off-path TD-1 reading to be applied to the gate preloaded next.
 
-        Mirrors _stage_pending_tag, and shares its timeout: a measurement presented and
-        then walked away from is as stale as an identity presented and walked away from.
-        No LED overlay - the base pending phase belongs to a pending spool_id.
+        Mirrors _stage_pending_tag and shares its timeout. No LED overlay - the base
+        pending phase belongs to a pending spool_id.
         """
         self.pending_measurement = record
         self.reactor.update_timer(self.pending_timer,
                                   self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
-        # log_info, not log_debug: like a shared tag read this is the only acknowledgment
-        # an off-path scanner produces
+        # log_info, not log_debug - the only acknowledgment an off-path scanner produces
         self.log_info("TD-1: %s TD %.2f, color %s - staged for the next gate loaded"
                       % ("filament removed," if removed else "measured",
                          record['td'], record['color']))
