@@ -11,6 +11,25 @@ on:
     branches: [v4, main, development]
 
 jobs:
+  spellcheck:
+    # Only enforce spelling on development while the other branches catch up.
+    # For PRs, base_ref is the target branch, not the contributor's branch.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/development') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'development')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check US English spelling
+        run: make spellcheck
+
   test:
     runs-on: ubuntu-latest
     steps:

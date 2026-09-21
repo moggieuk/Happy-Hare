@@ -24,7 +24,7 @@ JOBS ?= 4
 # vars: export PIP_ARGS='--user --break-system-packages' on a PEP 668 python with no venv
 PIP_ARGS ?=
 
-# CSpell version used by the opt-in spellcheck target. Keep this compatible with
+# CSpell version used by the spellcheck target and CI. Keep this compatible with
 # Node versions commonly found on contributor machines.
 CSPELL_VERSION ?= 9.8.0
 
