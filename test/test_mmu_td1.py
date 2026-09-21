@@ -369,7 +369,7 @@ class TestTd1Callback(Td1Case):
 
 class TestTd1Command(Td1Case):
     def test_status_has_no_gate_side_effects(self):
-        self.hh.run_gcode("MMU_TD1 REFRESH=1")
+        self.hh.run_gcode("MMU_TD1 READ=1")
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.mmu.gate_td, [None] * 4)
 
@@ -640,7 +640,8 @@ class TestTd1CommandSelection(Td1Case):
                 ("GATES=99", r"Invalid gate\(s\)"),
                 ("REGISTER=1", "exactly one explicit GATE"),
                 ("GATES=0,1 REGISTER=1", "exactly one explicit GATE"),
-                ("GATE=0 SERIAL=A", "not both"),
+                ("GATE=0 SERIAL=A", "only one of SHARED"),
+                ("SHARED=1 GATE=0", "only one of SHARED"),
                 ("REGISTER=1 INIT=1", "only one operation"),
                 ("SERIAL=UNKNOWN", "Unknown TD-1 device"),
                 ("ENABLE=0", "Select a gate or device")):
@@ -1103,7 +1104,7 @@ class TestTd1ExtraCommands(Td1Case):
     def test_operations_that_need_a_value_still_report_a_missing_bridge(self):
         with patch.object(self.hh.webhooks, "call_remote_method",
                           side_effect=self.mmu.printer.command_error("not installed")):
-            self.hh.run_gcode("MMU_TD1 REFRESH=1")
+            self.hh.run_gcode("MMU_TD1 READ=1")
         self.assertTrue(any("bridge unavailable" in str(e) for e in self.hh.errors))
         self.assertEqual(self.hh.filament().history, [])
 
@@ -1672,3 +1673,53 @@ class TestTd1ActiveFilament(Td1Case):
     def test_the_key_is_always_present_so_consumers_need_no_special_case(self):
         self.mmu.select_gate(0)
         self.assertIn("td", self.mmu.active_filament)
+
+
+class TestTd1CommandAlignment(Td1OffPathCase):
+    """
+    MMU_TD1 addresses scanners the way MMU_NFC addresses readers.
+
+    Same verbs for the same jobs, so what you learn on one command carries to the
+    other: SHARED/GATE/GATES/UNIT to address, ENABLE to switch off, READ to go and
+    look now, INIT / INIT_ALL to reset, DETAILS to say more.
+    """
+
+    def test_shared_addresses_the_off_path_scanner(self):
+        with patch.object(self.mmu, "log_always") as report:
+            self.hh.run_gcode("MMU_TD1 SHARED=1")
+        text = "\n".join(c.args[0] for c in report.call_args_list)
+        self.assertIn("BENCH", text)
+        self.assertIn("Off-path on unit", text)
+        # It serves no gate on purpose, so it must not read as a misconfiguration
+        self.assertNotIn("Gates: none", text)
+
+    def test_shared_enable_needs_no_serial(self):
+        self.hh.run_gcode("MMU_TD1 SHARED=1 ENABLE=0 QUIET=1")
+        self.assertEqual(self.hh.errors, [])
+        self.assertFalse(self.bridge.devices["BENCH"].enabled)
+
+    def test_shared_on_a_unit_without_one_says_so(self):
+        with session(PROFILE) as hh:   # in-path scanners only
+            hh.boot(calibrate=True)
+            with self.assertRaisesRegex(Exception, "No off-path TD-1 scanner"):
+                hh.run_gcode("MMU_TD1 SHARED=1")
+
+    def test_read_polls_instead_of_using_the_cache(self):
+        with patch.object(self.bridge, "refresh") as refresh:
+            self.hh.run_gcode("MMU_TD1 READ=1 QUIET=1")
+        self.assertTrue(refresh.called)
+
+    def test_init_all_reboots_every_scanner(self):
+        with patch.object(self.bridge, "refresh") as refresh:
+            self.hh.run_gcode("MMU_TD1 INIT_ALL=1")
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(all(c.kwargs.get("reset") for c in refresh.call_args_list))
+        self.assertEqual({c.args[0] for c in refresh.call_args_list}, {"BENCH"})
+
+    def test_a_staged_measurement_is_reported(self):
+        self.present()
+        with patch.object(self.mmu, "log_always") as report:
+            self.hh.run_gcode("MMU_TD1")
+        text = "\n".join(c.args[0] for c in report.call_args_list)
+        self.assertIn("Staged for the next gate loaded", text)
+        self.assertIn("TD 4.00", text)

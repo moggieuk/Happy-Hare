@@ -36,34 +36,39 @@ class MmuTd1Command(BaseCommand):
     HELP_BRIEF = "Inspect TD-1 scanners or capture filament TD and measured color"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "GATE         = g (the scanner serving this gate)\n"
-        + "GATES        = comma,separated,gates (for ENABLE/AUTO across several)\n"
-        + "SERIAL       = # Address one physical scanner by USB serial\n"
-        + "UNIT         = Restrict/validate the gate selection to one unit\n"
-
-        + "REGISTER     = [0|1] Apply the scanner's cached measurement to GATE\n"
-        + "ENABLE       = [0|1] Enable/disable Happy Hare's use of the device\n"
-        + "AUTO         = [0|1] Enable/disable passive metadata updates\n"
-        + "INIT         = [0|1] Reboot the device through Moonraker and await recovery\n"
-
-        + "REFRESH      = [0|1] Poll Moonraker before reporting, instead of using the cache\n"
-        + "DETAILS      = [0|1] Include attribution and per-gate measurements\n"
-        + "QUIET        = [0|1] Don't report non-essential status\n"
+        + "SHARED   = [0|1] Target the unit's off-path scanner (the one you present filament to)\n"
+        + "GATE     = #(int) Target the scanner for this gate (implies the unit)\n"
+        + "GATES    = g,g,g Target multiple gates' scanners (don't mix with GATE/SHARED)\n"
+        + "UNIT     = #(int)/name Only needed to disambiguate multiple units with off-path scanners\n"
+        + "SERIAL   = # Target one physical scanner by USB serial (including one no gate uses)\n"
+        + "ENABLE   = [0|1] Top-level on/off for Happy Hare's use of the scanner\n"
+        + "AUTO     = [0|1] Apply new readings automatically when the owning gate is known\n"
+        + "READ     = [0|1] Poll Moonraker for the addressed scanner now, instead of using the cache\n"
+        + "REGISTER = [0|1] Apply the addressed scanner's measurement to GATE\n"
+        + "INIT     = [0|1] Reboot the addressed scanner through Moonraker and await recovery\n"
+        + "INIT_ALL = [0|1] Reboot every scanner on every unit\n"
+        + "DETAILS  = [0|1] Include attribution and per-gate measurements\n"
+        + "QUIET    = [0|1] Don't report non-essential status\n"
+        + "(no parameters for status report of all scanners)"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD}                           ...Status of every known scanner\n"
-        + f"{CMD} GATE=2                    ...Just the scanner serving gate 2\n"
-        + f"{CMD} GATE=2 REGISTER=1         ...Apply its cached measurement to gate 2\n"
-        + f"{CMD} GATES=0,1 ENABLE=0        ...Stop using those gates' scanners\n"
-        + f"{CMD} SERIAL=ABC123 INIT=1      ...Reboot a scanner that came up with an error\n"
+        + f"{CMD}                        ...Report status of all scanners\n"
+        + f"{CMD} DETAILS=1              ...As above but show attribution and per-gate measurements\n"
+        + f"{CMD} SHARED=1 ENABLE=0      ...Disable the off-path scanner\n"
+        + f"{CMD} GATE=3 READ=1          ...Poll the scanner serving gate 3 and report the result\n"
+        + f"{CMD} GATE=2 REGISTER=1      ...Apply a measurement to gate 2 (as if auto-scanned)\n"
+        + f"{CMD} GATES=0,1 ENABLE=0     ...Disable selected per-gate scanners\n"
+        + f"{CMD} GATE=2 INIT=1          ...Reboot the scanner on gate 2\n"
+        + f"{CMD} INIT_ALL=1             ...Reboot every scanner on all units\n"
         + "\n"
         + "This command never moves filament. To measure gates, use MMU_CHECK_GATE TD1=1,\n"
         + "which runs filament down its normal path past the scanner (TD1_UPDATE=1 to\n"
         + "re-read gates that already have a measurement).\n"
-        + "REGISTER is for a scanner filament does not pass through - present filament to\n"
-        + "it by hand, then attribute the reading to a gate. Do that LAST, after the gate's\n"
-        + "spool/tag is assigned, since assigning one clears the gate's measurement.\n"
+        + "An off-path scanner ('td1_device') needs no gate: present filament to it and the\n"
+        + "reading is held for the next gate you preload, like a tag on a shared NFC reader.\n"
+        + "REGISTER attributes it to a gate you won't preload; the gate keeps it even if you\n"
+        + "assign a spool afterwards.\n"
         + "Measured color is kept separate from filament_color - select 'td1_color' in the\n"
         + "LED effect options to display it. Unmeasured gates fall back to filament_color."
     )
@@ -129,7 +134,7 @@ class MmuTd1Command(BaseCommand):
         Resolve exactly one operation, or none for a plain status report.
 
         Operations are mutually exclusive, so a device reboot can never be bundled with
-        anything else. REFRESH/DETAILS/QUIET are modifiers and combine freely.
+        anything else. READ/DETAILS/QUIET are modifiers and combine freely.
         """
         flags = {key: gcmd.get_int(key, 0, minval=0, maxval=1) for key in self.OPERATIONS}
         operations = [key for key in self.OPERATIONS if flags[key]]
@@ -152,15 +157,23 @@ class MmuTd1Command(BaseCommand):
             device = manager.devices[serial]
             owner = device.owner
             device_gates = manager.gates_for(serial)
-            gates = ",".join(str(g) for g in device_gates) or "none"
+            offpath = [m.mmu_unit.name for m in manager.managers()
+                       if m.shared_device is device]
             state = "connected" if device.connected else "DISCONNECTED"
             if not device.enabled:
                 state += ", disabled"
             if device.auto:
                 state += ", auto-update"
             lines.append("TD-1 %s: %s" % (serial, state))
-            lines.append("  Gates: %s%s" % (
-                gates, " (capturing)" if manager.active_serial == serial else ""))
+            if offpath:
+                # An off-path scanner serves no gate by design - saying "Gates: none"
+                # would read as a misconfiguration rather than the whole point of it
+                lines.append("  Off-path on unit %s - present filament by hand"
+                             % ",".join(offpath))
+            if device_gates or not offpath:
+                lines.append("  Gates: %s%s" % (
+                    ",".join(str(g) for g in device_gates) or "none",
+                    " (capturing)" if manager.active_serial == serial else ""))
             if device.td is not None:
                 lines.append("  Latest: TD %.2f, color %s at %s" % (
                     device.td, device.color, device.scan_time))
@@ -177,6 +190,10 @@ class MmuTd1Command(BaseCommand):
                         gate,
                         self.mmu.gate_td[gate] if self.mmu.gate_td[gate] is not None else "none",
                         self.mmu.gate_td1_color[gate] or "none"))
+        staged = self.mmu.pending_measurement
+        if staged is not None:
+            lines.append("Staged for the next gate loaded: TD %.2f, color %s at %s"
+                         % (staged['td'], staged['color'], staged['scan_time']))
         return "\n".join(lines) if lines else "TD-1: no scanners known"
 
 
@@ -185,16 +202,39 @@ class MmuTd1Command(BaseCommand):
         mmu = self.mmu
         if self.check_if_disabled(): return
 
+        # INIT_ALL: reboot everything, like MMU_NFC INIT_ALL re-initializes every reader
+        if gcmd.get_int('INIT_ALL', 0, minval=0, maxval=1):
+            try:
+                for serial in sorted(mmu.td1.devices):
+                    mmu.td1.devices[serial].owner = None
+                    mmu.td1.refresh(serial, reset=True)
+            except MmuError as ee:
+                mmu.handle_mmu_error(str(ee), recover=False)
+                return
+            mmu.log_always("TD-1: rebooted all scanners on all units")
+            return
+
         operation = self._resolve_operation(gcmd)
         serial = gcmd.get('SERIAL', "")
+        shared = bool(gcmd.get_int('SHARED', 0, minval=0, maxval=1))
         gates = self._resolve_gates(gcmd, default=False)
-        if gates and serial:
-            raise gcmd.error("Specify gate selection or SERIAL=<serial>, not both")
+
+        if sum([shared, bool(gates), bool(serial)]) > 1:
+            raise gcmd.error(
+                "Specify only one of SHARED=1, GATE=<n>, GATES=<n,n,...> or SERIAL=<serial>")
         if operation == 'REGISTER' and gcmd.get('GATE', None) is None:
             raise gcmd.error("REGISTER=1 requires exactly one explicit GATE - "
-                             "you are asserting which filament produced the cached reading")
+                             "you are asserting which filament produced the reading")
 
-        if gcmd.get('UNIT', None) is not None:
+        if shared:
+            # The off-path scanner belongs to a unit, not a gate, so it is addressed the
+            # way MMU_NFC addresses its shared reader
+            unit = self.get_unit(gcmd, mode="required")
+            device = unit.td1_manager.shared_device
+            if device is None:
+                raise gcmd.error("No off-path TD-1 scanner ('td1_device') on unit %s" % unit.name)
+            serial = device.serial
+        elif gcmd.get('UNIT', None) is not None:
             unit = self.get_unit(gcmd, mode="required")
             if any(mmu.mmu_unit(g) is not unit for g in gates):
                 raise gcmd.error("UNIT conflicts with the requested gate selection")
@@ -210,13 +250,13 @@ class MmuTd1Command(BaseCommand):
         Everything this command does: status, REGISTER, ENABLE, AUTO and INIT.
 
         A plain status report reads the poller's cache, so it still works - and is still
-        worth running - when Moonraker's [td1] component is missing. REFRESH=1 asks for a
+        worth running - when Moonraker's [td1] component is missing. READ=1 asks for a
         live poll first, which REGISTER does anyway since it is about to commit a value.
         """
         mmu = self.mmu
         manager = mmu.td1
 
-        if gcmd.get_int('REFRESH', 0, minval=0, maxval=1) or operation == 'REGISTER':
+        if gcmd.get_int('READ', 0, minval=0, maxval=1) or operation == 'REGISTER':
             manager.refresh()
 
         if serial:
