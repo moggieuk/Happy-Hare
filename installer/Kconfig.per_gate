@@ -99,22 +99,18 @@ if MMU_HAS_PER_GATE_CONFIG
             if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
               choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
                 prompt "i2c bus name      "
-                default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3_$(i) if BOARD_TYPE_EBB_GEN1
-                default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2_$(i)
                 help
                   Select the hardware i2c bus used by this gate's sensor.
+                  Board files offer the buses this board actually routes;
+                  "Custom bus name" accepts any Klipper i2c bus name.
 
-                config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2_$(i)
-                  bool "i2c2_PB10_PB11"
-
-                config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3_$(i)
-                  bool "i2c3_PB3_PB4"
+                config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
+                  bool "Custom bus name"
               endchoice
 
               config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
-                string
-                default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2_$(i)
-                default "i2c3_PB3_PB4"   if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3_$(i)
+                string "Custom i2c bus name    " if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
+                default "" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
             endif
 
             config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS_$(i)

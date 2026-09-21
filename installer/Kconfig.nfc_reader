@@ -538,11 +538,23 @@ if MMU_HAS_NFC_READER
                 default "hardware"
 
               if CHOICE_NFC_READER_I2C_HARDWARE_$(i)
-                config PARAM_NFC_READER_I2C_BUS_$(i)
-                  string "Gate $(i) I2C bus name      "
-                  default ""
+                choice CHOICE_NFC_READER_I2C_BUS_$(i)
+                  prompt "Gate $(i) I2C bus name      "
                   help
-                    Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
+                    Select the hardware i2c bus used by this gate's reader.
+                    Board files offer the buses this board actually routes;
+                    "Custom bus name" accepts any Klipper i2c bus name.
+
+                  config CHOICE_NFC_READER_I2C_BUS_OTHER_$(i)
+                    bool "Custom bus name"
+                endchoice
+
+                config PARAM_NFC_READER_I2C_BUS_$(i)
+                  string "Custom i2c bus name    " if CHOICE_NFC_READER_I2C_BUS_OTHER_$(i)
+                  default "" if CHOICE_NFC_READER_I2C_BUS_OTHER_$(i)
+                  help
+                    Klipper i2c bus name (the chipdef name, e.g. i2c3_PB3_PB4),
+                    or the name of a custom i2c bus defined for this gate.
               endif
 
               if CHOICE_NFC_READER_I2C_SOFTWARE_$(i)

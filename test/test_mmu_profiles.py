@@ -513,6 +513,13 @@ class TestEveryBootableProfile(unittest.TestCase):
                 dict(parser.items('neopixel _unit0_gate%d_leds' % gate))['pin'],
                 'unit0_gate%d:PA4' % gate)
 
+        # The SLB routes exactly one hardware i2c bus (i2c2) to every gate MCU, and
+        # the board file offers it to the per-gate sensor by chipdef name.
+        for gate in range(5):
+            sensor = dict(parser.items('temperature_sensor unit0_Env%d' % gate))
+            self.assertEqual(sensor['i2c_mcu'], 'unit0_gate%d' % gate)
+            self.assertEqual(sensor['i2c_bus'], 'i2c2_PB10_PB11')
+
     def test_emu_ebb(self):
         hh = self._check('emu_ebb')
 
@@ -544,6 +551,10 @@ class TestEveryBootableProfile(unittest.TestCase):
             chain = dict(parser.items('neopixel _unit0_gate%d_leds' % gate))
             self.assertEqual(chain['pin'], 'unit0_gate%d:PD3' % gate)
             self.assertEqual(chain['chain_count'], '5')
+            # Same single-bus fact on the EBB: i2c3 carries the per-gate sensor.
+            sensor = dict(parser.items('temperature_sensor unit0_Env%d' % gate))
+            self.assertEqual(sensor['i2c_mcu'], 'unit0_gate%d' % gate)
+            self.assertEqual(sensor['i2c_bus'], 'i2c3_PB3_PB4')
         leds = dict(parser.items('mmu_leds unit0'))
         self.assertEqual(leds['entry_leds'], '')
         self.assertEqual(leds['exit_leds'], 'neopixel:_unit0_gate0_leds (1-5)')
@@ -622,6 +633,88 @@ class TestMachineNfcDefaults(unittest.TestCase):
             'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': '-70',
             'PARAM_NFC_NEIGHBOR_CHECK': '1',
         })
+
+
+class TestMachinePerGateI2cBus(unittest.TestCase):
+    """
+    Board files offer the per-gate i2c buses the board actually routes, by chipdef name,
+    to both per-gate i2c consumers (environment sensor and NFC reader). The feature
+    files carry no chipdef knowledge of their own.
+    """
+
+    def _nfc_profile(self, profile_name):
+        from test.hh import cfg, profiles
+        base = profiles.get(profile_name)
+        syms = dict(base.syms)
+        syms['MMU_HAS_NFC_READER'] = True
+        syms['MMU_HAS_PER_GATE_NFC_READERS'] = True
+        for gate in range(5):
+            syms['CHOICE_NFC_READER_TYPE_PN532_%d' % gate] = True
+        return base.derive('%s_per_gate_nfc_i2c' % profile_name, syms=syms)
+
+    def _check_gates(self, profile, expected_bus):
+        from test.hh import cfg, profiles
+        parser = cfg.assemble(cfg.render(profile))
+        for gate in range(5):
+            with self.subTest(gate=gate):
+                sensor = dict(parser.items('temperature_sensor unit0_Env%d' % gate))
+                self.assertEqual(sensor['i2c_mcu'], 'unit0_gate%d' % gate)
+                self.assertEqual(sensor['i2c_bus'], expected_bus)
+                reader = dict(parser.items('mmu_nfc_reader unit0_nfc%d' % gate))
+                self.assertEqual(reader['i2c_mcu'], 'unit0_gate%d' % gate)
+                self.assertEqual(reader['i2c_bus'], expected_bus)
+
+    def test_emu(self):
+        self._check_gates(self._nfc_profile('emu'), 'i2c2_PB10_PB11')
+
+    def test_emu_ebb(self):
+        self._check_gates(self._nfc_profile('emu_ebb'), 'i2c3_PB3_PB4')
+
+    def test_env_sensor_custom_bus_name(self):
+        from test.hh import cfg, profiles
+        base = profiles.get('emu')
+        syms = dict(base.syms)
+        syms['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_0'] = True
+        syms['PARAM_ENVIRONMENT_SENSOR_I2C_BUS_0'] = 'i2c1_PB6_PB7'
+        parser = cfg.assemble(cfg.render(
+            base.derive('emu_env_custom_bus', syms=syms)))
+        self.assertEqual(
+            dict(parser.items('temperature_sensor unit0_Env0'))['i2c_bus'],
+            'i2c1_PB6_PB7')
+        self.assertEqual(
+            dict(parser.items('temperature_sensor unit0_Env1'))['i2c_bus'],
+            'i2c2_PB10_PB11')
+
+    def test_nfc_reader_custom_bus_name(self):
+        from test.hh import cfg, profiles
+        base = self._nfc_profile('emu')
+        syms = dict(base.syms)
+        syms['CHOICE_NFC_READER_I2C_BUS_OTHER_0'] = True
+        syms['PARAM_NFC_READER_I2C_BUS_0'] = 'i2c1_PB6_PB7'
+        parser = cfg.assemble(cfg.render(
+            base.derive('emu_nfc_custom_bus', syms=syms)))
+        self.assertEqual(
+            dict(parser.items('mmu_nfc_reader unit0_nfc0'))['i2c_bus'],
+            'i2c1_PB6_PB7')
+        self.assertEqual(
+            dict(parser.items('mmu_nfc_reader unit0_nfc1'))['i2c_bus'],
+            'i2c2_PB10_PB11')
+
+    def test_bus_members_are_only_offered_by_the_selected_board(self):
+        """Members are declared in board files and depend on the board type."""
+        from test.hh import cfg, profiles
+        ebb = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4_0'
+        slb = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_SLB_I2C2_PB10_PB11_0'
+        for label, (offered, withheld) in {
+            'emu': (slb, ebb),
+            'emu_ebb': (ebb, slb),
+        }.items():
+            with self.subTest(machine=label):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kc = cfg._kconfig('%s_i2c_bus_members' % label,
+                                      profiles.get(label).syms)
+                self.assertGreater(kc.syms[offered].visibility, 0)
+                self.assertEqual(kc.syms[withheld].visibility, 0)
 
 
 class TestMultiUnitMachine(unittest.TestCase):
