@@ -1972,7 +1972,7 @@ class MmuController(MmuFilamentMovement):
             # timer to prevent reuse. Anything staged renews the window, including a bare
             # uid: too weak to light the overlay, but it must still expire on time rather
             # than stay armed until a restart.
-            if self.pending_tag is not None or self.pending_measurement is not None:
+            if self.pending_staged:
                 self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
             else:
                 self.reactor.update_timer(self.pending_timer, self.reactor.NEVER)
@@ -2032,6 +2032,20 @@ class MmuController(MmuFilamentMovement):
                 unit.nfc_manager.allow_reread()
             unit.td1_manager.allow_restage()
         return self.reactor.NEVER
+
+
+    def cancel_pending(self):
+        """
+        Drop everything staged for the next gate - spool_id, tag and measurement.
+
+        For a deliberate user cancel, which is a different thing from a failed lookup: a
+        failure keeps a staged tag so it can still populate whichever gate loads next,
+        whereas the user has said no. The read dedupe is left alone, so a tag still
+        presented to a shared reader does not immediately re-stage itself.
+        """
+        if self.pending_staged:
+            self.log_info("Spool ID: Pending assignment cancelled")
+        self._clear_pending()
 
 
     def _clear_pending(self):
@@ -2103,6 +2117,19 @@ class MmuController(MmuFilamentMovement):
 # machine param spoolman_led_segment (gate_status | status | both), swapping to an
 # "expiring" overlay ~PENDING_LED_WARN_WINDOW seconds before the timeout.
 # -----------------------------------------------------------------------------------------------------------
+
+    @property
+    def pending_staged(self):
+        """
+        True while anything at all is staged for the next gate, however weak.
+
+        Governs lifetime - the timeout window and what a cancel has to clear. Its
+        counterpart pending_active governs only whether the LED overlay is worth showing,
+        and is deliberately stricter; don't substitute one for the other.
+        """
+        return (self.pending_spool_id > 0 or self.pending_tag is not None
+                or self.pending_measurement is not None)
+
 
     @property
     def pending_active(self):

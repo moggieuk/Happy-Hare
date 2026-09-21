@@ -337,6 +337,35 @@ class TestPendingCancellation(RoundTripTestCase):
         self.rt.run_gcode('MMU_GATE_MAP NEXT_SPOOLID=-1')
         self.assertEqual(len(self.rt.errors), errors_before)
 
+    def test_zero_clears_a_staged_tag_as_well_as_the_spool_id(self):
+        """
+        NEXT_SPOOLID=0 is documented as the cancel, so it clears the whole pending. A
+        failed lookup is the case that keeps a tag staged for the next gate; a user
+        saying no is not - and previously 0 not only kept it but handed it a fresh
+        timeout window, so a cancel extended the very thing it claimed to cancel.
+        """
+        self.rt.present_tag(UNKNOWN_TAG, gate=None, deep=False)   # miss -> weak pending
+        self.assertEqual(self.rt.mmu.pending_tag, (UNKNOWN_TAG, None))
+
+        self.rt.run_gcode('MMU_GATE_MAP NEXT_SPOOLID=0')
+        self.assertIsNone(self.rt.mmu.pending_tag, 'the staged tag must go too')
+        self.assertEqual(self.rt.mmu.pending_spool_id, -1)
+        self.assertIsNone(self.rt.mmu.pending_phase, 'and the overlay with it')
+
+    def test_a_cancelled_tag_does_not_re_stage_itself(self):
+        """
+        The tag is still sitting in front of the shared reader after the cancel. The read
+        dedupe is what stops it being picked up again, so a cancel must not clear it the
+        way a timeout does (allow_reread) - otherwise nothing was really cancelled.
+        """
+        self.rt.present_tag(UNKNOWN_TAG, gate=None, deep=False)
+        self.rt.run_gcode('MMU_GATE_MAP NEXT_SPOOLID=0')
+        self.assertIsNone(self.rt.mmu.pending_tag)
+        self.rt.advance(self.rt.mmu.p.spoolman_pending_id_timeout + 5.0)
+        self.assertIsNone(self.rt.mmu.pending_tag,
+                          'a cancelled tag must not come back on its own')
+        self.assertEqual(self.rt.mmu.pending_spool_id, -1)
+
 
 class TestGateMapMaintenance(RoundTripTestCase):
     SPOOLS = (dict(uid=TAG_A, material='ABS', vendor='Polymaker'),)

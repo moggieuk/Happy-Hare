@@ -35,7 +35,7 @@ class MmuGateMapCommand(BaseCommand):
         + "GATES        = g,g,g comma separated list of gates; required with RESET unless GATE is used\n"
         + "GATE         = g Specify a single gate; required with RESET unless GATES is used\n"
         + "BYPASS       = 1 Set filament attributes for the bypass\n"
-        + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned (0 to cancel)\n"
+        + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned (0 cancels anything staged)\n"
         + "NAME         = # Filament name\n"
         + "MATERIAL     = # Material type\n"
         + "VENDOR       = # Filament vendor/brand name\n"
@@ -111,7 +111,12 @@ class MmuGateMapCommand(BaseCommand):
             if next_spool_id <= 0:
                 # 0 (or a negative with no lookup in flight) is a deliberate cancel, not a failure
                 failed_lookup = mmu.nfc_lookup_pending and next_spool_id < 0
-                mmu.set_pending_spool_id(-1) # Cancel any stale pending assignment
+                if next_spool_id == 0:
+                    # The user said no, so the whole pending goes. A failure (-1/-2) keeps
+                    # a staged tag instead, to populate whichever gate loads next
+                    mmu.cancel_pending()
+                else:
+                    mmu.set_pending_spool_id(-1) # Cancel any stale pending assignment
                 if failed_lookup:
                     mmu._nfc_led_on_fail()   # Shared-reader lookup failed -> failure flash
                     # Surface to console too (LED alone is easy to miss), matching per-gate

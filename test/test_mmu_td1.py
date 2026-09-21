@@ -1850,6 +1850,24 @@ class TestTd1LeftInTheReader(Td1OffPathCase):
         self.assertEqual(self.stagings([(10, 4.)]), 1, "filament still in the reader")
         self.assertEqual(self.mmu.pending_measurement["td"], 4.)
 
+    def test_a_cancelled_pending_is_not_re_established(self):
+        # The opposite of the timeout above: MMU_GATE_MAP NEXT_SPOOLID=0 cancels whatever
+        # is staged, a measurement included, and must not call allow_restage(). Filament
+        # left at the bench scanner would otherwise re-stage on the next poll and there
+        # would be no way to cancel at all
+        self.present(second=1)
+        self.assertEqual(self.mmu.pending_measurement["td"], 4.)
+        self.assertEqual(self.mmu.pending_phase, "pending")
+
+        self.hh.run_gcode("MMU_GATE_MAP NEXT_SPOOLID=0")
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.assertIsNone(self.mmu.pending_phase, "the countdown goes out with it")
+
+        self.assertEqual(self.stagings([(s, 4.) for s in range(10, 16)]), 0,
+                         "still in the reader, but cancelled means cancelled")
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout + 1)
+        self.assertIsNone(self.mmu.pending_measurement)
+
 
 class TestTd1AutoPolicy(Td1Case):
     """
