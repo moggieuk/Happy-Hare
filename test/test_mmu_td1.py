@@ -1903,6 +1903,63 @@ class TestTd1AutoPolicy(Td1Case):
         self.assertTrue(manager.auto_for(device))
 
 
+class TestTd1ClearPending(Td1OffPathCase):
+    """
+    MMU_TD1 CLEAR_PENDING=1 - the targeted counterpart of MMU_GATE_MAP NEXT_SPOOLID=0.
+    Discards what this scanner staged and nothing else.
+    """
+
+    def stagings(self, readings):
+        with patch.object(self.mmu, "stage_pending_measurement",
+                          wraps=self.mmu.stage_pending_measurement) as staged:
+            for second, td in readings:
+                self.present(second=second, td=td)
+            return staged.call_count
+
+    def test_it_discards_the_measurement(self):
+        self.present(second=1)
+        self.assertEqual(self.mmu.pending_measurement["td"], 4.)
+        self.hh.run_gcode("MMU_TD1 CLEAR_PENDING=1")
+        self.assertIsNone(self.mmu.pending_measurement)
+        # Nothing else was staged, so the countdown goes with it
+        self.assertIsNone(self.mmu.pending_phase)
+
+    def test_it_says_so_when_there_is_nothing_staged(self):
+        self.hh.run_gcode("MMU_TD1 CLEAR_PENDING=1")
+        self.assertIsNone(self.mmu.pending_measurement)
+
+    def test_it_leaves_a_hand_set_spool_id_pending(self):
+        # The point of a targeted clear: a wrong measurement should not cost the
+        # spool assignment staged beside it
+        self.present(second=1)
+        self.mmu.set_pending_spool_id(77)
+        self.hh.run_gcode("MMU_TD1 CLEAR_PENDING=1")
+        self.assertIsNone(self.mmu.pending_measurement)
+        self.assertEqual(self.mmu.pending_spool_id, 77)
+        self.assertEqual(self.mmu.pending_phase, "pending", "still something to apply")
+
+    def test_the_survivor_keeps_its_original_deadline(self):
+        # A clear is not a staging, so it must not renew the window - otherwise
+        # discarding one source would extend the life of the other
+        timeout = self.mmu.p.spoolman_pending_id_timeout
+        self.present(second=1)
+        self.mmu.set_pending_spool_id(77)
+        self.hh.reactor.advance(timeout - 5)
+        self.hh.run_gcode("MMU_TD1 CLEAR_PENDING=1")
+        self.assertEqual(self.mmu.pending_spool_id, 77)
+        self.hh.reactor.advance(6)   # past the ORIGINAL deadline, not a fresh one
+        self.assertEqual(self.mmu.pending_spool_id, -1, "the window was not renewed")
+
+    def test_a_cleared_measurement_does_not_re_stage_itself(self):
+        # Same rule as the cancel: the dedupe is left alone, or the next poll would
+        # bring back what was just discarded and the command would do nothing
+        self.present(second=1)
+        self.hh.run_gcode("MMU_TD1 CLEAR_PENDING=1")
+        self.assertEqual(self.stagings([(s, 4.) for s in range(10, 16)]), 0,
+                         "still in the reader, but cleared means cleared")
+        self.assertIsNone(self.mmu.pending_measurement)
+
+
 class TestTd1MeasurementJitter(Td1OffPathCase):
     """
     A TD-1 is an analogue instrument, so equality is the wrong dedupe.

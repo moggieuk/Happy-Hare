@@ -49,6 +49,9 @@ class MmuTd1Command(BaseCommand):
         + "SET_COLOR = [0|1] Overwrite GATE/GATES filament_color with the measured color\n"
         + "INIT     = [0|1] Reboot the addressed scanner through Moonraker and await recovery\n"
         + "INIT_ALL = [0|1] Reboot every scanner on every unit\n"
+        + "CLEAR_PENDING = [0|1] Discard a measurement staged by the off-path scanner. Leaves a\n"
+        + "           staged tag or a hand-set NEXT_SPOOLID in place, and only ends the pending\n"
+        + "           countdown if nothing is left to apply\n"
         + "DETAILS  = [0|1] Include attribution and per-gate measurements\n"
         + "QUIET    = [0|1] Don't report non-essential status\n"
         + "(no parameters for status report of all scanners)"
@@ -58,6 +61,7 @@ class MmuTd1Command(BaseCommand):
         + f"{CMD}                        ...Report status of all scanners\n"
         + f"{CMD} DETAILS=1              ...As above but show attribution and per-gate measurements\n"
         + f"{CMD} SHARED=1 ENABLE=0      ...Disable the off-path scanner\n"
+        + f"{CMD} CLEAR_PENDING=1        ...Discard a staged measurement, keeping other pending data\n"
         + f"{CMD} GATE=3 READ=1          ...Poll the scanner serving gate 3 and report the result\n"
         + f"{CMD} GATE=2 REGISTER=1      ...Apply a measurement to gate 2 (as if auto-scanned)\n"
         + f"{CMD} GATES=0,1 ENABLE=0     ...Disable selected per-gate scanners\n"
@@ -200,6 +204,14 @@ class MmuTd1Command(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
         if self.check_if_disabled(): return
+
+        # Independent of scanner addressing - only the off-path scanner ever stages, and
+        # the pending is machine-level - so handle it and fall through
+        if gcmd.get_int('CLEAR_PENDING', 0, minval=0, maxval=1):
+            if mmu.clear_pending_measurement():
+                mmu.log_always("TD-1: discarded the staged measurement")
+            else:
+                mmu.log_always("TD-1: no staged measurement to discard")
 
         # INIT_ALL: reboot everything, like MMU_NFC INIT_ALL re-initializes every reader
         if gcmd.get_int('INIT_ALL', 0, minval=0, maxval=1):

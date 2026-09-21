@@ -2034,6 +2034,33 @@ class MmuController(MmuFilamentMovement):
         return self.reactor.NEVER
 
 
+    def clear_pending_measurement(self):
+        """
+        Drop what an off-path TD-1 read staged, leaving any other source alone.
+
+        Returns whether anything went.
+        """
+        if self.pending_measurement is None:
+            return False
+        self.pending_measurement = None
+        self._settle_pending()
+        return True
+
+
+    def _settle_pending(self):
+        """
+        Tidy up after clearing one source of a pending.
+
+        End the pending outright once nothing is left to apply; otherwise leave the
+        deadline where it is and just re-sync the overlay. Deliberately not a restart: a
+        clear is not a staging, so whatever survives keeps the window it already had.
+        """
+        if self.pending_staged:
+            self._pending_led_sync()
+        else:
+            self._clear_pending()
+
+
     def cancel_pending(self):
         """
         Drop everything staged for the next gate - spool_id, tag and measurement.
