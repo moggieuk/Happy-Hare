@@ -157,9 +157,8 @@ class MmuGateMapCommand(BaseCommand):
             if validated_color is None:
                 mmu.log_debug("Invalid COLOR '%s' in bypass filament update - ignored" % color)
                 validated_color = ''
-            # Spoolman does not model TD, so the async attribute callback never sends
-            # one. Keep whatever was measured unless TD= explicitly says otherwise,
-            # or a refresh arriving moments after a bypass load would wipe it
+            # Spoolman does not model TD, so its async callback never sends one - keep
+            # what was measured unless TD= says otherwise
             given, td_value = self._td_value(gcmd)
             td = td_value if given else mmu.active_filament.get('td')
             mmu.active_filament = {
@@ -354,18 +353,15 @@ class MmuGateMapCommand(BaseCommand):
                         mmu.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % SPOOLMAN_PULL)
                         break
 
-            # Transmission distance is a local measurement that Spoolman does not model,
-            # so unlike the filament attributes above it stays editable in every spoolman
-            # mode - including SPOOLMAN_PULL, which owns the rest of the gate's metadata
+            # Spoolman does not model TD, so unlike the attributes above it stays
+            # editable in every spoolman mode, including SPOOLMAN_PULL
             given, value = self._td_value(gcmd)
             if given:
                 for gate_idx in gatelist:
                     if mmu.gate_td[gate_idx] == value:
                         continue
-                    # A hand-entered TD supersedes whatever the scanner measured, so the
-                    # measured color that came with it is no longer trustworthy either.
-                    # The gate still holds the same filament though, so this is not a
-                    # 'mmu:gate_filament_changed' - nobody's attribution state is stale
+                    # Supersedes the scanner's reading, so the measured color goes too.
+                    # Same filament though, so not a 'mmu:gate_filament_changed'
                     mmu.gate_maps.clear_measurements(gate_idx)
                     mmu.gate_maps.gate_td[gate_idx] = value
 
@@ -381,13 +377,10 @@ class MmuGateMapCommand(BaseCommand):
             mmu.log_always(mmu.gate_maps.gate_map_to_string(details=details), color=True)
 
 
-    # Helper to ensure int when strings may be passed from UI
     def _td_value(self, gcmd):
         """
-        Parse TD=, returning (given, value).
-
-        Blank clears, so None is a real value and "was it given at all" has to be
-        reported separately.
+        Parse TD=, returning (given, value). Blank clears, so None is a real value and
+        "was it given at all" has to be reported separately.
         """
         td = gcmd.get('TD', None)
         if td is None:
@@ -403,6 +396,7 @@ class MmuGateMapCommand(BaseCommand):
         return True, value
 
 
+    # Helper to ensure int when strings may be passed from UI
     def _safe_int(self, i, default=0):
         try:
             return int(i)

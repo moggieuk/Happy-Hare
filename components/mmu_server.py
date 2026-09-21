@@ -1746,25 +1746,17 @@ class MmuServer:
 
     async def td1_request(self, request_id: int, serial: str = "",
                           reset: bool = False) -> None:
-        """
-        Return TD-1 data through a Klipper webhook, never the G-code queue.
+        '''
+        Replies to the mmu/td1 webhook endpoint, never the G-code queue: Happy Hare needs
+        the result during a command already running, so a queued reply would deadlock
+        behind it. klippy_apis._send_klippy_request() is private because Moonraker offers
+        no public equivalent for a custom endpoint; switch if one appears.
 
-        Unlike every Spoolman path in this file, the answer cannot come back as an
-        MMU_* g-code: Happy Hare needs the result *during* a command that is already
-        running, and anything queued as g-code would deadlock behind it. So the reply
-        goes straight to the mmu/td1 webhook endpoint registered in extras/mmu/mmu_td1.py
-        via klippy_apis._send_klippy_request(). That method is private because Moonraker
-        exposes no public equivalent for a custom endpoint; if one appears, switch to it.
-
-        Requires a Moonraker with the machine.td1.data / machine.td1.reboot endpoints and
-        the internal API transport. Where any of that is missing the failure is reported
-        back as an error string rather than raised, so Happy Hare degrades to "bridge
-        unavailable" instead of the whole component failing to load.
-
-        :param request_id: Klipper transaction identifier.
-        :param serial: Device serial for reset.
-        :param reset: Reboot and wait for rediscovery.
-        """
+        Needs machine.td1.data / machine.td1.reboot and the internal API transport. Any
+        of that missing comes back as an error string rather than raising, so Happy Hare
+        sees "bridge unavailable" instead of the component failing to load.
+        request_id: Klipper transaction id; serial/reset: reboot one device and await it
+        '''
         devices = {}
         error = None
         try:
@@ -1791,8 +1783,7 @@ class MmuServer:
         except asyncio.TimeoutError:
             error = "TD-1 request timed out"
         except (ValueError, KeyError, AttributeError, TypeError) as exc:
-            # Missing component, missing endpoint, or a malformed response - all of which
-            # mean "no usable bridge" rather than a bug worth propagating
+            # Missing component or endpoint, or a malformed response - "no usable bridge"
             error = str(exc) or type(exc).__name__
         except Exception as exc:
             logging.exception("MMU: unexpected TD-1 bridge failure")
@@ -1801,9 +1792,7 @@ class MmuServer:
             await self.klippy_apis._send_klippy_request(
                 "mmu/td1", {"request_id": request_id, "devices": devices, "error": error})
         except Exception:
-            # Klipper going away is exactly when the error above is worth reporting, and
-            # exactly when it cannot be delivered. Happy Hare's own deadline covers the
-            # silence; an unhandled task exception here would only add noise
+            # Klipper went away. Happy Hare's own deadline covers the silence
             logging.exception("MMU: could not deliver TD-1 response %s" % request_id)
 
     async def push_lane_data(self, gate_ids):

@@ -205,14 +205,9 @@ NFC_NEIGHBOR_EVICT = NFC_PER_GATE.derive(
 # BoxTurtle + one TD-1 scanner serving every gate on the unit.
 #
 # TD-1 is the odd one out among the optional features: the scanner is a USB device owned
-# by Moonraker's [td1] component, so there are no pins, no bus and no klipper section -
-# MMU_HAS_TD1 renders a serial on [mmu_unit] and a block of path geometry on
-# [mmu_unit_parameters]. Registering these profiles is what makes test_mmu_profiles /
-# test_mmu_config render the real shipped templates for the feature; without one, a
-# template regression here is invisible to the rest of the suite.
-#
-# There is no scan geometry to configure - measurement happens by filament traversing
-# its normal path past the scanner - so enabling the feature is the whole of the setup.
+# by Moonraker's [td1] component, so there are no pins, no bus and no klipper section.
+# MMU_HAS_TD1 renders a serial on [mmu_unit] and the capture policy on
+# [mmu_unit_parameters]; there is no scan geometry, so that is the whole of the setup.
 TD1_SHARED = BOXTURTLE_TEST.derive(
     'td1_shared',
     syms={'MMU_HAS_TD1': True, 'PARAM_TD1_BOWDEN_DEVICE': 'TD1-0042'},
@@ -227,7 +222,7 @@ TD1_OFFPATH = BOXTURTLE_TEST.derive(
           'PARAM_TD1_DEVICE': 'TD1-0099'},
     description='BoxTurtle + an off-path TD-1 you present filament to')
 
-# Both at once, which the NFC readers have always allowed and TD-1 now does too
+# Both at once, as the NFC readers allow
 TD1_BOTH = BOXTURTLE_TEST.derive(
     'td1_both',
     syms={'MMU_HAS_TD1': True, 'PARAM_TD1_BOWDEN_DEVICE': 'TD1-0042',
@@ -237,10 +232,9 @@ TD1_BOTH = BOXTURTLE_TEST.derive(
 # One scanner per gate, with gate 2 deliberately left without one: the per-gate list has
 # to carry a placeholder for that gate so the list index stays the local gate number.
 #
-# Gate 2 keeps a serial ON PURPOSE. Switching a gate's scanner off only hides the
-# prompt, and kconfig keeps the value behind a hidden prompt - so this is what a user
-# who enters a serial and then changes their mind actually leaves behind, and the
-# template has to render '-' for it regardless.
+# Gate 2 keeps a serial ON PURPOSE. Switching a gate's scanner off only hides the prompt
+# and kconfig keeps the hidden value, so this is what changing your mind leaves behind -
+# the template has to render the entry blank regardless.
 TD1_PER_GATE = BOXTURTLE_TEST.derive(
     'td1_per_gate',
     syms={'MMU_HAS_TD1': True, 'MMU_HAS_PER_GATE_TD1': True,
