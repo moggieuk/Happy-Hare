@@ -129,5 +129,46 @@ class TestV400Refresh(unittest.TestCase):
                 self.assertEqual(first_bytes, second_bytes)
 
 
+class TestButtonGcodeRefresh(unittest.TestCase):
+
+    def test_existing_semicolon_messages_survive_repeated_refresh(self):
+        from installer.build import HHConfig
+
+        commands = [
+            'RESPOND PREFIX="BLOBIFIER" MSG="Bucket switch released (bucket removed); resetting count"',
+            'RESPOND PREFIX="BLOBIFIER" MSG="Bucket switch released during startup; reset ignored"',
+        ]
+        installed = (
+            '[gcode_button bucket]\n'
+            'pin: ^PA0\n'
+            'press_gcode:\n  RESPOND MSG="User message; keep me"\n'
+            'release_gcode:\n'
+            '  {% if printer["gcode_macro _BLOBIFIER_BUCKET_SWITCH"].armed|int %}\n'
+            '    ' + commands[0] + '\n'
+            '    _BLOBIFIER_COUNT_RESET\n'
+            '  {% else %}\n'
+            '    ' + commands[1] + '\n'
+            '  {% endif %}\n'
+        )
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "mmu.cfg")
+            previous = installed
+            for _ in range(2):
+                with open(path, "w") as f:
+                    f.write(previous)
+                existing = HHConfig([path])
+                # New templates use commas, but upgrades preserve user commands.
+                target = ConfigBuilder()
+                target.read_buf(installed.replace(";", ","))
+                existing.update_builder(target, [], [])
+                output = target.write()
+                self.assertEqual(output, previous)
+                self.assertEqual(target.parse_errors(), [])
+                for command in commands:
+                    self.assertIn(command, target.get("gcode_button bucket", "release_gcode"))
+                self.assertIn('"User message; keep me"', target.get("gcode_button bucket", "press_gcode"))
+                previous = output
+
+
 if __name__ == "__main__":
     unittest.main()
