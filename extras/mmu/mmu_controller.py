@@ -1969,8 +1969,10 @@ class MmuController(MmuFilamentMovement):
             self.pending_spool_id = -1
             # Keep a staged tag or measurement pending (with a fresh timeout window) so it
             # still populates the gate on an unknown-tag result; otherwise disable the
-            # timer to prevent reuse.
-            if self.pending_active:
+            # timer to prevent reuse. Anything staged renews the window, including a bare
+            # uid: too weak to light the overlay, but it must still expire on time rather
+            # than stay armed until a restart.
+            if self.pending_tag is not None or self.pending_measurement is not None:
                 self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
             else:
                 self.reactor.update_timer(self.pending_timer, self.reactor.NEVER)
@@ -2107,12 +2109,11 @@ class MmuController(MmuFilamentMovement):
         """
         True while something worth showing is staged for the next gate.
 
-        A resolved spool_id, a tag carrying usable filament data, or a TD-1 measurement.
-        A bare uid with neither is deliberately excluded: it is bookkeeping that rides
-        along to record the gate's RFID rather than a result the user is waiting on, and
-        it is exactly what survives a deliberate NEXT_SPOOLID=0 cancel. Same notion of
-        "strong" that _check_pending_filament's caller uses to decide whether a pending
-        can stand in for a gate's own reader.
+        Drives the LED overlay only. A resolved spool_id, a tag carrying usable filament
+        data, or a TD-1 measurement. A bare uid with neither is deliberately excluded: it
+        is bookkeeping that rides along to record the gate's RFID rather than a result the
+        user is waiting on. Being excluded here says nothing about how long it lives - the
+        pending timeout is keyed on whether anything is staged at all, not on this.
         """
         if self.pending_spool_id > 0 or self.pending_measurement is not None:
             return True

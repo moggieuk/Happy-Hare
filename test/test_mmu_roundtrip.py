@@ -150,6 +150,23 @@ class TestSharedReaderAutoCreate(RoundTripTestCase):
         self.rt.present_tag(UNKNOWN_TAG, gate=None, deep=False)
         self.assertEqual(self.rt.mmu.pending_tag, (UNKNOWN_TAG, None))
 
+    def test_weak_pending_still_expires_after_the_miss(self):
+        """
+        Retained is not the same as permanent. The miss reports NEXT_SPOOLID=-2, which
+        takes set_pending_spool_id's cancel branch, and that branch must still renew the
+        timeout window for a bare uid - it is excluded from the LED overlay, not from
+        expiry. Left armed indefinitely it would land on whichever gate is preloaded
+        next, however much later, stamping a stale RFID onto it.
+        """
+        self.rt.present_tag(UNKNOWN_TAG, gate=None, deep=False)
+        self.assertEqual(self.rt.mmu.pending_tag, (UNKNOWN_TAG, None))
+        self.assertIsNone(self.rt.mmu.pending_phase,
+                          'a bare uid carries no spool_id, so no overlay')
+        timeout = self.rt.mmu.p.spoolman_pending_id_timeout
+        self.rt.advance(timeout + 2.0)
+        self.assertIsNone(self.rt.mmu.pending_tag,
+                          'the weak pending must expire rather than stay armed')
+
 
 class TestKnownTagResolution(RoundTripTestCase):
     SPOOLS = (dict(uid=TAG_A, material='PLA', vendor='Prusament',
