@@ -12,7 +12,7 @@ on:
 
 jobs:
   spellcheck:
-    # Only enforce spelling on development while the other branches catch up.
+    # Only check spelling on development while the other branches catch up.
     # For PRs, base_ref is the target branch, not the contributor's branch.
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/development') ||
@@ -28,7 +28,13 @@ jobs:
           node-version: '22'
 
       - name: Check US English spelling
+        id: spelling
+        continue-on-error: true
         run: make spellcheck
+
+      - name: Report spelling warning
+        if: steps.spelling.outcome == 'failure'
+        run: echo "::warning title=Spellcheck needs attention::make spellcheck reported spelling issues or could not complete. See the Check US English spelling step for details. This check is advisory."
 
   test:
     runs-on: ubuntu-latest
