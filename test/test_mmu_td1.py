@@ -29,7 +29,7 @@ PROFILE = profiles.get("boxturtle").derive("td1", syms={
     "MMU_HAS_TD1": True, "MMU_HAS_PER_GATE_TD1": True,
     "PARAM_TD1_DEVICE_0": "SERIAL_A", "PARAM_TD1_DEVICE_1": "SERIAL_A",
     "PARAM_TD1_DEVICE_2": "SERIAL_A", "PARAM_TD1_DEVICE_3": "SERIAL_A",
-    "BOOL_TD1_ADVANCED": True, "PARAM_TD1_CAPTURE_TIMEOUT": "1",
+    "PARAM_TD1_CAPTURE_TIMEOUT": "1",
 })
 
 # Per-gate assignment: gate 2 deliberately has no scanner
@@ -988,7 +988,6 @@ class TestTd1ConfigRender(unittest.TestCase):
         self.assertNotIn("td1_scan_distance", disabled["config/base/mmu_parameters.cfg"])
         advanced = PROFILE.derive("td1_advanced", syms=dict(
             PER_GATE_SYMS,
-            BOOL_TD1_ADVANCED=True,
             PARAM_TD1_CAPTURE_TIMEOUT="8",
             PARAM_TD1_AUTO_UPDATE=True, PARAM_TD1_CAPTURE_ON_LOAD=True))
         rendered = cfg.render(advanced)
@@ -1003,14 +1002,6 @@ class TestTd1ConfigRender(unittest.TestCase):
             self.assertEqual(p.td1_capture_timeout, 8)
             self.assertTrue(p.td1_capture_on_load)
             self.assertTrue(manager.auto_for(bridge.devices["A"]))
-
-    def test_advanced_options_hidden_still_render_their_defaults(self):
-        # The prompts are conditional, not the symbols - hiding them must not leave the
-        # rendered configuration with empty, unparseable values
-        plain = profiles.get("boxturtle").derive("td1_plain", syms={
-            "MMU_HAS_TD1": True, "PARAM_TD1_DEVICE": "SERIAL_A"})
-        params = cfg.assemble(cfg.render(plain))["mmu_unit_parameters unit0"]
-        self.assertEqual(params.get("td1_capture_timeout"), "5")
 
 
 class TestTd1BridgeReboot(unittest.TestCase):
@@ -1152,8 +1143,7 @@ class TestTd1ConfigValidation(unittest.TestCase):
         ]
         for syms, message in cases:
             with self.subTest(syms=syms):
-                profile = PROFILE.derive("td1_invalid", syms=dict(
-                    syms, BOOL_TD1_ADVANCED=True))
+                profile = PROFILE.derive("td1_invalid", syms=dict(syms))
                 with self.assertRaisesRegex(Exception, message):
                     with session(profile):
                         pass
@@ -1460,7 +1450,7 @@ def rec_or_blank(ready):
 # and applied to the gate preloaded next, exactly as a shared NFC tag read is
 OFFPATH = profiles.get("boxturtle").derive("td1_offpath", syms={
     "MMU_HAS_TD1": True, "BOOL_TD1_OFFPATH": True, "PARAM_TD1_DEVICE": "BENCH",
-    "BOOL_TD1_ADVANCED": True, "PARAM_TD1_CAPTURE_TIMEOUT": "1",
+    "PARAM_TD1_CAPTURE_TIMEOUT": "1",
 })
 
 

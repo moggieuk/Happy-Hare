@@ -251,13 +251,10 @@ TD1_UNCONFIGURED = BOXTURTLE_TEST.derive(
     syms={'MMU_HAS_TD1': True},
     description='BoxTurtle + TD-1 enabled but no scanner serial entered')
 
-# Both capture policies on, plus the advanced timeout. This is the profile that proves
-# the advanced prompt is conditional but its SYMBOL is not - hiding it must still render
-# a valid default rather than an empty value.
+# Both capture policies on, plus a non-default measurement wait.
 TD1_ADVANCED = TD1_PER_GATE.derive(
     'td1_advanced',
-    syms={'BOOL_TD1_ADVANCED': True,
-          'PARAM_TD1_CAPTURE_TIMEOUT': '8',
+    syms={'PARAM_TD1_CAPTURE_TIMEOUT': '8',
           'PARAM_TD1_AUTO_UPDATE': True,
           'PARAM_TD1_CAPTURE_ON_LOAD': True},
     description='BoxTurtle + per-gate TD-1 scanners, automatic capture enabled')

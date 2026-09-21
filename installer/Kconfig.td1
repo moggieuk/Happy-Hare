@@ -19,18 +19,12 @@
 # In-path, per-gate:
 #   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
 #
-#   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt.
-#                                Named to match PARAM_NFC_READER_GATE_$(i))
+#   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt)
 #
 # Capture policy (rendered into [mmu_unit_parameters] in mmu_parameters.cfg):
 #   PARAM_TD1_AUTO_UPDATE
 #   PARAM_TD1_CAPTURE_ON_LOAD
 #   PARAM_TD1_CAPTURE_TIMEOUT
-#
-#   BOOL_TD1_ADVANCED            (reveals the timeout; not rendered otherwise)
-#
-# No scan geometry: a reading comes from filament travelling its normal path past the
-# scanner, so its position never has to be described - see MMU_CHECK_GATE TD1=1.
 #
 
 comment "_"
@@ -79,11 +73,6 @@ if MMU_HAS_TD1
           config PARAM_TD1_DEVICE_$(i)
             string
 
-          # Presentation only, but the template consults it: kconfig keeps a hidden
-          # prompt's value and build.py reads the raw user value regardless of
-          # visibility, so a serial can outlive the decision to switch the gate off.
-          # PARAM_ for symmetry with PARAM_NFC_READER_GATE_$(i) - see the naming
-          # contract in installer/Kconfig, and TestTd1UpgradeRetention
           menuconfig PARAM_TD1_DEVICE_GATE_$(i)
             bool "Gate $(i) TD-1 scanner"
             default y
@@ -146,16 +135,8 @@ if MMU_HAS_TD1
         Filament passes through the scanner during any normal load, so this costs no
         extra movement - only the wait.
 
-    config BOOL_TD1_ADVANCED
-      bool "Advanced settings"
-      default n
-      help
-        Measurement timing. The default suits most setups.
-
-    # The prompt is conditional, not the symbol: hiding it must reveal the default,
-    # not leave the rendered configuration with an empty value
     config PARAM_TD1_CAPTURE_TIMEOUT
-      string "Measurement wait (secs) " if BOOL_TD1_ADVANCED
+      string "Measurement wait (secs) "
       default "5"
       help
         How long to wait for a fresh reading once filament has passed the scanner. The

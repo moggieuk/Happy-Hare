@@ -57,7 +57,6 @@ class TestTd1Disabled(unittest.TestCase):
         kc = kconfig("td1_default", {})
         self.assertFalse(kc.is_enabled("MMU_HAS_TD1"))
         self.assertFalse(kc.is_enabled("MMU_HAS_PER_GATE_TD1"))
-        self.assertFalse(kc.is_enabled("BOOL_TD1_ADVANCED"))
 
     def test_nothing_is_rendered_when_disabled(self):
         rendered = cfg.render(profiles.get("boxturtle"))
@@ -88,12 +87,6 @@ class TestTd1SharedScanner(unittest.TestCase):
         self.assertEqual(params.get("td1_auto_update"), "0")
         self.assertEqual(params.get("td1_capture_timeout"), "5")
 
-    def test_hidden_advanced_option_still_renders_its_default(self):
-        # The advanced PROMPT is conditional, the symbol is not - a hidden symbol would
-        # render an empty key and fail to parse at boot
-        params = assembled("td1_defaults", SHARED)["mmu_unit_parameters unit0"]
-        self.assertEqual(params.get("td1_capture_timeout"), "5")
-
 
 class TestTd1PerGateScanners(unittest.TestCase):
     def test_list_follows_local_gate_order_with_a_placeholder(self):
@@ -119,7 +112,6 @@ class TestTd1PerGateScanners(unittest.TestCase):
 
 class TestTd1Advanced(unittest.TestCase):
     ADVANCED = dict(PER_GATE, **{
-        "BOOL_TD1_ADVANCED": True,
         "PARAM_TD1_CAPTURE_TIMEOUT": "8",
         "PARAM_TD1_AUTO_UPDATE": True,
         "PARAM_TD1_CAPTURE_ON_LOAD": True,
@@ -199,7 +191,7 @@ class TestTd1InvalidInput(unittest.TestCase):
     def test_non_positive_timeout_is_rejected(self):
         from test.hh import session
         profile = profiles.get("boxturtle").derive("td1_zero_timeout", syms=dict(
-            SHARED, BOOL_TD1_ADVANCED=True, PARAM_TD1_CAPTURE_TIMEOUT="0"))
+            SHARED, PARAM_TD1_CAPTURE_TIMEOUT="0"))
         with self.assertRaisesRegex(Exception, "td1_capture_timeout"):
             with session(profile):
                 pass
