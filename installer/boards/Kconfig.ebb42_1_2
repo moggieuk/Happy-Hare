@@ -1,7 +1,7 @@
-config BOARD_TYPE_EBB42_1_2
+config BOARD_TYPE_EBB_GEN1
   bool "BTT EBB 42 CANbus V1.2"
 
-if BOARD_TYPE_EBB42_1_2
+if BOARD_TYPE_EBB_GEN1
   config PARAM_BOARD_TYPE
     default "BTT EBB42 v1.2"
   
