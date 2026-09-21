@@ -325,20 +325,20 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
 
         # NFC / RFID reading
-        ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
-        ParamSpec('nfc_preload_jog_scan_window',      'floatlist', lambda self: self.nfc_gate_jog_scan_window, section="NFC", validator=_validate_nfc_preload_jog_scan_window),
-        ParamSpec('nfc_neighbor_check',                'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
-        ParamSpec('nfc_neighbor_evict_distance',       'float',  0.0,  section="NFC", validator=_validate_nfc_neighbor_evict_distance),
-        ParamSpec('nfc_gate_clear_distance',           'float',  0.0,  section="NFC", validator=_validate_nfc_gate_clear_distance),
-        ParamSpec('nfc_preload_clear_distance',        'float',  lambda self: self.nfc_gate_clear_distance, section="NFC", validator=_validate_nfc_preload_clear_distance),
-        ParamSpec('nfc_field_probe_reads',              'int',    3,    section="NFC", limits=dict(minval=1, maxval=10)),
-        ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC",                                   validator=_validate_nfc_gate_jog_scan_window),
+        ParamSpec('nfc_preload_jog_scan_window',      'floatlist', lambda self: self.nfc_gate_jog_scan_window, section="NFC",   validator=_validate_nfc_preload_jog_scan_window),
+        ParamSpec('nfc_neighbor_check',               'int',       0, section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('nfc_neighbor_evict_distance',      'float',   0.0, section="NFC",                                           validator=_validate_nfc_neighbor_evict_distance),
+        ParamSpec('nfc_gate_clear_distance',          'float',   0.0, section="NFC",                                           validator=_validate_nfc_gate_clear_distance),
+        ParamSpec('nfc_preload_clear_distance',       'float', lambda self: self.nfc_gate_clear_distance, section="NFC",      validator=_validate_nfc_preload_clear_distance),
+        ParamSpec('nfc_field_probe_reads',            'int',       3, section="NFC", limits=dict(minval=1, maxval=10)),
+        ParamSpec('nfc_deep_read',                    'int',       0, section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
 
         # TD-1 filament measurement
-        ParamSpec('td1_capture_timeout',              'float',  5.0,  section="TD-1", limits=dict(above=0.0), guard=_guard_has_td1),
-        ParamSpec('td1_auto_update',                  'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1), guard=_guard_has_td1),
-        ParamSpec('td1_capture_on_load',              'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1), guard=_guard_has_td1),
+        ParamSpec('td1_capture_timeout',              'float',  5.0,  section="TD-1", limits=dict(above=0.0),                   guard=_guard_has_td1),
+        ParamSpec('td1_auto_update',                  'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1),          guard=_guard_has_td1),
+        ParamSpec('td1_capture_on_load',              'int',    0,    section="TD-1", limits=dict(minval=0, maxval=1),          guard=_guard_has_td1),
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),
@@ -372,8 +372,8 @@ class MmuUnitParameters(TunableParametersBase):
         # Filament motion
         ParamSpec('gear_load_speed',                  'float', 100.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0)),
         ParamSpec('gear_load_accel',                  'float', 100.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0)),
-        ParamSpec('gear_from_filament_buffer_speed',  'float', 150.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0), guard=_guard_has_filament_buffer),
-        ParamSpec('gear_from_filament_buffer_accel',  'float', 400.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0), guard=_guard_has_filament_buffer),
+        ParamSpec('gear_from_filament_buffer_speed',  'float', 150.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0),   guard=_guard_has_filament_buffer),
+        ParamSpec('gear_from_filament_buffer_accel',  'float', 400.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0),   guard=_guard_has_filament_buffer),
         ParamSpec('gear_unload_speed',                'float', lambda self: self.gear_load_speed, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0)),
         ParamSpec('gear_unload_accel',                'float', lambda self: self.gear_load_accel, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0)),
         ParamSpec('gear_short_move_speed',            'float',  80.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=1.0)),
