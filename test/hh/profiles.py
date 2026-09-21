@@ -218,7 +218,7 @@ TD1_SHARED = BOXTURTLE_TEST.derive(
 # a shared NFC reader's tag is - so it needs no gate assignment at all.
 TD1_OFFPATH = BOXTURTLE_TEST.derive(
     'td1_offpath',
-    syms={'MMU_HAS_TD1': True, 'BOOL_TD1_OFFPATH': True,
+    syms={'MMU_HAS_TD1': True, 'MMU_HAS_OFFPATH_TD1': True,
           'PARAM_TD1_DEVICE': 'TD1-0099'},
     description='BoxTurtle + an off-path TD-1 you present filament to')
 
@@ -226,7 +226,7 @@ TD1_OFFPATH = BOXTURTLE_TEST.derive(
 TD1_BOTH = BOXTURTLE_TEST.derive(
     'td1_both',
     syms={'MMU_HAS_TD1': True, 'PARAM_TD1_BOWDEN_DEVICE': 'TD1-0042',
-          'BOOL_TD1_OFFPATH': True, 'PARAM_TD1_DEVICE': 'TD1-0099'},
+          'MMU_HAS_OFFPATH_TD1': True, 'PARAM_TD1_DEVICE': 'TD1-0099'},
     description='BoxTurtle + a bowden TD-1 and an off-path one')
 
 # One scanner per gate, with gate 2 deliberately left without one: the per-gate list has

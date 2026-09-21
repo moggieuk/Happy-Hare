@@ -24,7 +24,7 @@ SHARED = {
 
 OFFPATH = {
     "MMU_HAS_TD1": True,
-    "BOOL_TD1_OFFPATH": True,
+    "MMU_HAS_OFFPATH_TD1": True,
     "PARAM_TD1_DEVICE": "TD1-0099",
 }
 

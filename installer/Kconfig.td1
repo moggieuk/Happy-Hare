@@ -8,18 +8,17 @@
 #
 # MMU_HAS_TD1
 # MMU_HAS_PER_GATE_TD1
-#
-# Off-path (presented to by hand; readings are staged as pending):
-#   BOOL_TD1_OFFPATH
-#   PARAM_TD1_DEVICE
+# MMU_HAS_OFFPATH_TD1
 #
 # In-path, one scanner in the shared bowden (rendered as one entry per gate):
 #   PARAM_TD1_BOWDEN_DEVICE
 #
 # In-path, per-gate:
 #   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
-#
 #   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt)
+#
+# Off-path (presented to by hand; readings are staged as pending):
+#   PARAM_TD1_DEVICE
 #
 # Capture policy (rendered into [mmu_unit_parameters] in mmu_parameters.cfg):
 #   PARAM_TD1_AUTO_UPDATE
@@ -27,25 +26,34 @@
 #   PARAM_TD1_CAPTURE_TIMEOUT
 #
 
+
 comment "_"
 comment "_TD-1 filament measurement"
 
 config MMU_HAS_TD1
   bool "Has TD-1 scanner(s)?"
-  default n
   forceshow
+  default n
   help
     Capture filament transmission distance (TD) and measured RGB color using Moonraker's
     [td1] component. The scanner plugs into a host USB port - no MCU pins are needed.
 
     Add [td1] to moonraker.conf and restart Moonraker, then read the serial numbers from
-    the /machine/td1/data endpoint. Hardware does not need to be connected to complete
-    this configuration.
+    the /machine/td1/data endpoint. Hardware need not be connected to configure this.
+    Gates are measured on demand with MMU_CHECK_GATE TD1=1.
+
+
+# ------------------------------------
+# TD-1 scanner config
+# ------------------------------------
 
 if MMU_HAS_TD1
-  menu "TD-1 setup"
 
-    comment "_Scanners filament passes through"
+  menu "TD-1 scanner config"
+
+    # ------------------------------------------
+    # In-path: filament crosses the scanner
+    # ------------------------------------------
 
     config MMU_HAS_PER_GATE_TD1
       bool "Per-gate TD-1 scanners?"
@@ -60,7 +68,7 @@ if MMU_HAS_TD1
         default ""
         help
           USB serial number of the scanner in the shared bowden path, exactly as
-          Moonraker reports it. E.g. "TD1-0042".
+          Moonraker reports it. E.g. "TD1-0042". Leave blank if there is none.
 
           Rendered as one entry per gate, since that is what it is: every gate's
           filament crosses it.
@@ -84,17 +92,19 @@ if MMU_HAS_TD1
               string "Gate $(i) USB serial       "
               default ""
               help
-                USB serial number of this gate's scanner. Repeat a serial to share one
-                physical scanner between neighboring gates.
+                USB serial number of this gate's scanner, exactly as Moonraker reports
+                it. Repeat a serial to share one physical scanner between gates.
           endif
 
         endif
       @endrepeat@
-    endif
+    endif # per gate
 
-    comment "_A scanner filament does NOT pass through"
+    # ------------------------------------------
+    # Off-path: filament is presented by hand
+    # ------------------------------------------
 
-    config BOOL_TD1_OFFPATH
+    config MMU_HAS_OFFPATH_TD1
       bool "Separate scanner to present filament to?"
       default n
       help
@@ -102,18 +112,25 @@ if MMU_HAS_TD1
         You present filament to it by hand and the reading is held for the next gate
         you preload, exactly like presenting a tag to a shared NFC reader.
 
-        Independent of the scanners above; a machine may have both.
+        Independent of the in-path scanners above; a machine may have both.
 
-    if BOOL_TD1_OFFPATH
+    if MMU_HAS_OFFPATH_TD1
       config PARAM_TD1_DEVICE
         string "Off-path TD-1 USB serial "
         default ""
         help
           USB serial number of the scanner you present filament to, exactly as
-          Moonraker reports it.
+          Moonraker reports it. E.g. "TD1-0099".
     endif
 
-    comment "_"
+  endmenu
+
+
+  # -------------------------------------
+  # TD-1 related params
+  # -------------------------------------
+
+  menu "TD-1 params"
 
     config PARAM_TD1_AUTO_UPDATE
       boolint "Apply new readings automatically?"
@@ -132,8 +149,8 @@ if MMU_HAS_TD1
         relying on it arriving by itself. Skipped while printing, so tool changes are
         never delayed.
 
-        Filament passes through the scanner during any normal load, so this costs no
-        extra movement - only the wait.
+        Needs an in-path scanner. Filament crosses one during any normal load, so this
+        costs no extra movement - only the wait.
 
     config PARAM_TD1_CAPTURE_TIMEOUT
       string "Measurement wait (secs) "
@@ -141,6 +158,9 @@ if MMU_HAS_TD1
       help
         How long to wait for a fresh reading once filament has passed the scanner. The
         device takes a moment to report, so a second or two is normal.
+
+        Only applies where Happy Hare actually waits: MMU_CHECK_GATE TD1=1 and the
+        capture-on-load option above. Automatic updates never wait.
 
   endmenu
 endif

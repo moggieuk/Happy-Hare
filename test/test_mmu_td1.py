@@ -176,7 +176,7 @@ class TestTd1Setup(Td1Case):
         # They are not alternatives: a unit may have per-gate scanners AND one you
         # present filament to, exactly as with the NFC readers
         profile = PROFILE.derive("td1_both", syms={
-            "BOOL_TD1_OFFPATH": True, "PARAM_TD1_DEVICE": "BENCH"})
+            "MMU_HAS_OFFPATH_TD1": True, "PARAM_TD1_DEVICE": "BENCH"})
         with session(profile) as hh:
             hh.boot(calibrate=True)
             self.assertEqual(hh.errors, [])
@@ -1449,7 +1449,7 @@ def rec_or_blank(ready):
 # An off-path scanner: filament never passes through it. Readings are staged as pending
 # and applied to the gate preloaded next, exactly as a shared NFC tag read is
 OFFPATH = profiles.get("boxturtle").derive("td1_offpath", syms={
-    "MMU_HAS_TD1": True, "BOOL_TD1_OFFPATH": True, "PARAM_TD1_DEVICE": "BENCH",
+    "MMU_HAS_TD1": True, "MMU_HAS_OFFPATH_TD1": True, "PARAM_TD1_DEVICE": "BENCH",
     "PARAM_TD1_CAPTURE_TIMEOUT": "1",
 })
 
@@ -1551,7 +1551,7 @@ class TestTd1BothTopologies(Td1Case):
 
     def profile(self):
         return PROFILE.derive("td1_mixed", syms={
-            "BOOL_TD1_OFFPATH": True, "PARAM_TD1_DEVICE": "BENCH"})
+            "MMU_HAS_OFFPATH_TD1": True, "PARAM_TD1_DEVICE": "BENCH"})
 
     def test_pending_beats_a_gate_s_own_in_path_reading_at_preload(self):
         # The user just presented this filament by hand; an in-path reader corrects it
