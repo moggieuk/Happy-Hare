@@ -358,7 +358,6 @@ NRSTPD
 ntag
 NVBC
 Octoprint
-offpath
 oldconfig
 olddefconfig
 omsg
@@ -516,8 +515,6 @@ TAGCMD
 Taulman
 tcpobex
 TCRT
-td
-td1
 testprinter
 tetn
 Tianse
@@ -585,3 +582,6 @@ YYMM
 Ziro
 ZORDER
 zsign
+td
+td1
+offpath
