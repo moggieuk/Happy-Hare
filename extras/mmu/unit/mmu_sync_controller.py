@@ -901,6 +901,7 @@ class _FlowguardEngine:
             self._relief_comp_mm = 0.0
             self._tens_motion_mm = 0.0
             self._relief_tens_mm = 0.0
+            self._level = 0.0 # Nothing consumed on either side, so the dial returns to center
 
         return self.status()
 
