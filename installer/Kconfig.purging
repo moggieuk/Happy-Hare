@@ -105,7 +105,7 @@ config PARAM_BLOBIFIER_TMC
   default "tmc2240" if CHOICE_BLOBIFIER_TMC2240
   default ""
 
-# The supported 2240 connection is SPI; 2209 uses UART.
+# The supported 2240 and 5160 connections are SPI; 2209 uses UART.
 config BOOL_BLOBIFIER_TMC_SPI
   bool
   default y if CHOICE_BLOBIFIER_TMC5160 || CHOICE_BLOBIFIER_TMC2240
@@ -163,7 +163,7 @@ menu "Purging"
       config CHOICE_BLOBIFIER_TYPE_SERVO
         bool "Servo"
       config CHOICE_BLOBIFIER_TYPE_STEPPER
-        bool "Stepper (manual_stepper)"
+        bool "Stepper"
     endchoice
 
     if CHOICE_BLOBIFIER_TYPE_SERVO
@@ -205,14 +205,13 @@ menu "Purging"
           Select correct TMC chip type for the Blobifier tray stepper.
 
         config CHOICE_BLOBIFIER_TMC2209
-          bool "TMC2209"
+          bool "TMC2209 / UART"
         config CHOICE_BLOBIFIER_TMC5160
-          bool "TMC5160"
+          bool "TMC5160 / SPI"
         config CHOICE_BLOBIFIER_TMC2240
-          bool "TMC2240 (SPI)"
+          bool "TMC2240 / SPI"
           help
-            This installer configures TMC2240 over SPI. UART wiring is not
-            supported by this menu.
+            This installer supports TMC2240 and TMC5160 over SPI and TMC2209 over UART
         config CHOICE_BLOBIFIER_TMC_NONE
           bool "None / hardware controlled"
       endchoice
