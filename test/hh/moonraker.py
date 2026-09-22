@@ -27,6 +27,7 @@ import json
 import types
 import asyncio
 import logging
+import datetime
 
 from . import spoolman as spoolman_mod
 
@@ -149,6 +150,10 @@ class FakeKlippyApis:
         self.sink = None
         self.pause_calls = 0
         self.extra_status = {}
+        # The second channel back into Klipper, for the TD-1 bridge alone: an endpoint
+        # reply rather than a gcode command, queued for the same reason
+        self.endpoint_requests = []  # [(path, args)] every request, in order
+        self.endpoint_queue = []     # undrained requests
 
     async def get_object_list(self):
         objects = ['gcode', 'toolhead', 'print_stats']
@@ -178,15 +183,140 @@ class FakeKlippyApis:
         self.pause_calls += 1
         return 'ok'
 
+    async def _send_klippy_request(self, path, args=None, default=None):
+        """
+        Moonraker's private endpoint call. mmu_server uses it for the 'mmu/td1' reply
+        because Moonraker offers no public equivalent for a custom endpoint
+        (components/mmu_server.py:1785-1789) - so the fake has to be private too.
+        """
+        self.endpoint_requests.append((path, args))
+        self.endpoint_queue.append((path, args))
+        return {}
+
     # -- test-facing --------------------------------------------------------
     def drain(self):
         pending, self.queue = self.queue, []
+        return pending
+
+    def drain_endpoints(self):
+        pending, self.endpoint_queue = self.endpoint_queue, []
         return pending
 
     def commands(self, startswith=None):
         if startswith is None:
             return list(self.gcode)
         return [c for c in self.gcode if c.startswith(startswith)]
+
+
+class FakeTd1Transport:
+    """
+    Moonraker's `internal_transport`, backed by a virtual [td1] component.
+
+    components/mmu_server.py:1763-1781 is the only caller, and wants just
+    machine.td1.data and machine.td1.reboot.
+
+    A scanner is modelled as a lens, not an event stream: present() puts filament in
+    front of it and remove() takes it away, and in between it RE-MEASURES on every
+    poll with a fresh scan_time. That is what the device does, and an in-path capture
+    depends on it - it waits for a reading newer than the baseline it armed with, so
+    a frozen stamp reads as "filament crossed the scanner and it said nothing".
+
+    Three states Happy Hare treats differently:
+        present(serial, ...)  a measurement           -> staged/attributed
+        remove(serial)        connected, nothing read -> "not measured anything yet"
+        unplug(serial)        absent from the list    -> disconnected
+    """
+
+    # The device's own clock, not the printer's. All Happy Hare asks is that it move
+    # forward, so a strict counter is enough and stays reproducible
+    EPOCH = '2026-01-01T00:00:00+00:00'
+
+    def __init__(self):
+        self.readings = {}      # serial -> {'td', 'color', 'scan_time'}, or None
+        self.errors = {}        # serial -> device-level error string
+        self.calls = []         # [(method, args)] every round trip, in order
+        self.reboots = []       # serials rebooted, in order
+        self.offline = False    # no [td1] component at all - "bridge unavailable"
+        self.measurements = 0   # readings stamped, which is what drives the clock
+
+    # -- the device table --------------------------------------------------
+    def attach(self, *serials):
+        """Plug a scanner in. It reports no measurement until something is presented."""
+        for serial in serials:
+            self.readings.setdefault(serial, None)
+        return self
+
+    def unplug(self, serial):
+        """Unplug it: Moonraker stops listing it and Happy Hare sees a disconnect."""
+        self.readings.pop(serial, None)
+        self.errors.pop(serial, None)
+        return self
+
+    def present(self, serial, td, color, scan_time=None):
+        """
+        Hold filament in front of the scanner. It reads it, and keeps re-reading it.
+
+        Pass scan_time to pin the stamp, modelling a device that answered once and
+        then went quiet.
+        """
+        self.attach(serial)
+        self.readings[serial] = {'td': float(td), 'color': str(color).lower(),
+                                 'scan_time': scan_time}
+        self.errors.pop(serial, None)
+        return self
+
+    def remove(self, serial):
+        """Take the filament away. Still plugged in, simply nothing to report."""
+        self.attach(serial)
+        self.readings[serial] = None
+        return self
+
+    def fail(self, serial, error):
+        """A device-level fault, as opposed to a bridge one."""
+        self.attach(serial)
+        self.errors[serial] = error
+        return self
+
+    def record(self, serial):
+        return self.readings.get(serial)
+
+    # -- the transport -----------------------------------------------------
+    def _stamp(self):
+        self.measurements += 1
+        base = datetime.datetime.fromisoformat(self.EPOCH)
+        return (base + datetime.timedelta(seconds=self.measurements)).isoformat()
+
+    def _devices(self):
+        devices = {}
+        for serial, reading in self.readings.items():
+            if serial in self.errors:
+                devices[serial] = {'error': self.errors[serial]}
+            elif reading is None:
+                devices[serial] = {}
+            else:
+                devices[serial] = dict(reading,
+                                       scan_time=reading['scan_time'] or self._stamp())
+        return devices
+
+    async def call_method(self, method, args=None):
+        self.calls.append((method, args))
+        if self.offline:
+            # What a missing endpoint looks like from mmu_server's side. It catches
+            # ValueError and reports it rather than letting the component fail
+            raise ValueError("Method %s not found" % method)
+        if method == 'machine.td1.data':
+            return {'devices': self._devices()}
+        if method == 'machine.td1.reboot':
+            serial = (args or {}).get('serial', '')
+            if serial not in self.readings:
+                return {'status': 'error'}
+            self.reboots.append(serial)
+            # A reboot loses whatever the device was holding; it re-reads on the next
+            # insertion. mmu_server then polls until the serial is back and error-free
+            self.readings[serial] = None
+            self.errors.pop(serial, None)
+            return {'status': 'ok'}
+        raise ValueError("Method %s not found" % method)
 
 
 class FakeDatabase:
@@ -269,12 +399,14 @@ class FakeServer:
                                          mmu_enabled=mmu_enabled)
         self.database = FakeDatabase()
         self.spoolman = FakeSpoolmanComponent(self.http_client)
+        self.internal_transport = FakeTd1Transport()
         self.hostname = hostname
         self.components = {
             'http_client': self.http_client,
             'klippy_apis': self.klippy_apis,
             'database': self.database,
             'spoolman': self.spoolman,
+            'internal_transport': self.internal_transport,
         }
         # -- assertion surfaces -------------------------------------------
         self.remote_methods = {}    # name -> handler
@@ -426,6 +558,11 @@ class MoonrakerHarness:
     @property
     def http(self):
         return self.server.http_client
+
+    @property
+    def td1(self):
+        """The virtual TD-1 scanners - see FakeTd1Transport."""
+        return self.server.internal_transport
 
     def gcode(self, startswith=None):
         return self.klippy.commands(startswith)

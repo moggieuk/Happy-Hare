@@ -22,6 +22,13 @@
 #     gcode.run_script("MMU_GATE_MAP ...") <---  klippy_apis.queue
 #          ^  settle() drains
 #
+# A THIRD QUEUE, for TD-1 only. Its reply may not go through the gcode queue - Happy
+# Hare wants the measurement during a command that is already running - so mmu_server
+# answers the 'mmu/td1' endpoint instead:
+#
+#     webhooks.deliver("mmu/td1", ...) <---  klippy_apis.endpoint_queue
+#          ^  settle() drains
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
@@ -67,6 +74,11 @@ class MoonrakerLink:
                     logging.debug('roundtrip: klipper <- %s', command)
                     self.klipper.gcode.run_script(command)
                     progressed = True
+                # Moonraker -> Klipper: endpoint replies (TD-1)
+                for path, args in self.moonraker.klippy.drain_endpoints():
+                    logging.debug('roundtrip: klipper <- %s %r', path, args)
+                    self.klipper.webhooks.deliver(path, **(args or {}))
+                    progressed = True
                 # Let any timers those handlers armed run (LED flashes, pending warn)
                 self.klipper.reactor.advance(0.)
 
@@ -85,6 +97,26 @@ class MoonrakerLink:
                    self.klipper.webhooks.calls[-3:]))
         finally:
             self._settling = False
+
+    def enable_td1_bridge(self):
+        """
+        Answer TD-1 polls in the caller's own stack instead of from the queue.
+
+        MmuTd1Bridge.refresh() blocks on reactor.pause() waiting for its reply, and a
+        pause from the main greenlet runs no timers here (reactor.py:_sys_pause), so a
+        queued reply would never arrive. Opt-in, since it breaks the two-queue
+        discipline: attach_moonraker turns it on, RoundTrip leaves it off. The cost is
+        that Moonraker latency is no longer modelled.
+        """
+        self.klipper.webhooks.sinks['mmu_td1_request'] = self._pump_td1
+        return self
+
+    def _pump_td1(self, name, kwargs):
+        """One TD-1 round trip, out and back, without touching the other two queues."""
+        self._dispatch(name, kwargs)
+        for path, args in self.moonraker.klippy.drain_endpoints():
+            logging.debug('roundtrip: klipper <- %s %r', path, args)
+            self.klipper.webhooks.deliver(path, **(args or {}))
 
     def _dispatch(self, name, kwargs):
         if name in BUILTIN_METHODS:

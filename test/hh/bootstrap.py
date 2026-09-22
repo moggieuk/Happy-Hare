@@ -1086,6 +1086,11 @@ class Session:
             hostname=hostname, **kwargs)
         self.moonraker.component_init()
         self.moonraker_link = MoonrakerLink(self, self.moonraker)
+        # Plug in every configured TD-1 serial, with nothing in front of the lens yet.
+        # One Moonraker never lists would read as disconnected
+        if getattr(self.mmu, 'td1', None) is not None:
+            self.moonraker.td1.attach(*self.mmu.td1.devices)
+            self.moonraker_link.enable_td1_bridge()
         self.moonraker_link.settle()
         return self.moonraker_link
 

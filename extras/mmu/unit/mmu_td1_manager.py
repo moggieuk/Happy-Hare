@@ -75,16 +75,6 @@ class MmuTd1Manager:
         self._staged = None
 
 
-    def allow_restage(self):
-        """
-        Let filament still in the off-path scanner be staged again (MmuNfcManager.allow_reread).
-
-        Called when a pending times out, never when one is consumed - a measurement just
-        applied must not immediately stage itself for the next gate.
-        """
-        self._staged = None
-
-
     def _handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller
 
@@ -490,7 +480,8 @@ class MmuTd1Manager:
 
     def removed(self, device):
         """
-        Filament has left the off-path scanner - restart the pending window from now.
+        Filament has left the off-path scanner - restart the pending window from now,
+        and forget what it staged so re-inserting it stages afresh.
 
         Optional: only fires if the scanner reports nothing once filament is taken out,
         which Moonraker's API does not promise. Where it doesn't, stage() alone carries
@@ -499,6 +490,11 @@ class MmuTd1Manager:
         """
         if device is not self.shared_device or not device.enabled:
             return
+        # An empty lens holds nothing, so the dedupe has nothing left to suppress.
+        # This is what makes a remove/re-insert re-stage the SAME filament, while
+        # leaving it sitting there does not - unlike a tag, which is read at a
+        # distance and is normally taken out of range between presentations
+        self._staged = None
         try:
             record = measurement(device.record())
         except (ValueError, TypeError):
@@ -523,8 +519,8 @@ class MmuTd1Manager:
         if previous is not None and valid['scan_time'] <= previous:
             return
         # A device re-measuring filament left in it advances scan_time every time, so
-        # dedupe on the measurement (MmuNfcManager does the same by UID). allow_restage()
-        # lifts this once a pending times out
+        # dedupe on the measurement (MmuNfcManager does the same by UID). Only a
+        # materially different reading, or removal, lifts it - a timeout does not
         if self.same_filament(self._staged, valid):
             device.last_outcome = 'status_only: already staged'
             return

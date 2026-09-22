@@ -2027,10 +2027,15 @@ class MmuController(MmuFilamentMovement):
         # can re-trigger a fresh lookup (re-establishing the pending) without having to be
         # removed and re-presented. Deliberately NOT done when a pending is consumed - the
         # just-loaded spool's tag must not immediately create a new pending.
+        #
+        # NFC only. A tag is read at a distance and is normally lifted away between
+        # presentations, so one still in the field means the user is still holding it
+        # there. Filament sits in a TD-1 until somebody pulls it out, so re-staging on
+        # every timeout would re-arm for ever - it needs a different filament (see
+        # MmuTd1Manager.same_filament) or an actual removal.
         for unit in self.mmu_machine.units:
             if unit.nfc_manager is not None:
                 unit.nfc_manager.allow_reread()
-            unit.td1_manager.allow_restage()
         return self.reactor.NEVER
 
 

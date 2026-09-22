@@ -401,13 +401,38 @@ class TestTd1Command(Td1Case):
         self.assertEqual(self.hh.filament().history, [])
 
     def test_status_report_is_formatted_not_json(self):
+        """One line per reader, grouped by unit - the shape MMU_NFC reports in."""
         self.bridge.update_devices({"SERIAL_A": record()})
+        self.manager.apply(0, record())
         with patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1 DETAILS=1")
         message = "\n".join(c.args[0] for c in report.call_args_list)
-        self.assertIn("TD-1 SERIAL_A:", message)
-        self.assertIn("Latest: TD 4.00, color 123456", message)
+        self.assertIn("MMU TD-1 readers:", message)
+        # DETAILS appends to the row, it does not reorder it
+        self.assertIn("gate 0:   enabled=1, connected=1, mode=manual, td=4.00, "
+                      "td-color=123456, serial=SERIAL_A, last_measured=", message)
+        rows = [l for l in message.splitlines() if l.startswith("gate ")]
+        self.assertTrue(rows and all(", serial=SERIAL_A, last_measured=" in l for l in rows),
+                        message)
+        self.assertIn("scanned at 2026-09-19T00:00:00+00:00", message)
         self.assertNotIn("{", message)
+
+    def test_a_row_quotes_its_own_gate_not_the_device(self):
+        """
+        Four gates behind one bowden scanner must not all print the scanner's latest
+        reading - the question "what has gate 2 measured" is the one being asked.
+        """
+        self.bridge.update_devices({"SERIAL_A": record()})
+        self.manager.apply(1, record(td=7.5, color="abcdef"))
+        with patch.object(self.mmu, "log_always") as report:
+            self.hh.run_gcode("MMU_TD1")
+        message = "\n".join(c.args[0] for c in report.call_args_list)
+        self.assertIn("gate 1:   enabled=1, connected=1, mode=manual, "
+                      "td=7.50, td-color=abcdef", message)
+        self.assertIn("gate 2:   enabled=1, connected=1, mode=manual, "
+                      "td=None, td-color=None", message)
+        self.assertIn("serial=SERIAL_A", message, "the serial is always shown")
+        self.assertNotIn("last_measured=", message, "the scan time belongs to DETAILS")
 
 
 class TestTd1Moonraker(unittest.TestCase):
@@ -1072,7 +1097,7 @@ class TestTd1ExtraCommands(Td1Case):
         with patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1 GATE=0")
         self.assertEqual(self.hh.errors, [])
-        self.assertTrue(any("disabled" in c.args[0] for c in report.call_args_list))
+        self.assertTrue(any("enabled=0" in c.args[0] for c in report.call_args_list))
 
     def test_bare_status_works_without_the_bridge(self):
         # This is the command a user runs to find out why the bridge isn't working
@@ -1081,7 +1106,12 @@ class TestTd1ExtraCommands(Td1Case):
                 patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1")
         self.assertEqual(self.hh.errors, [])
-        self.assertTrue(any("SERIAL_A" in c.args[0] for c in report.call_args_list))
+        message = "\n".join(c.args[0] for c in report.call_args_list)
+        # Every row reports the scanner as unreachable rather than the command failing,
+        # and names the USB device to go and check
+        self.assertIn("connected=0", message)
+        self.assertNotIn("connected=1", message)
+        self.assertIn("serial=SERIAL_A", message)
         self.assertEqual(self.hh.filament().history, [])
 
     def test_operations_that_need_a_value_still_report_a_missing_bridge(self):
@@ -1226,8 +1256,13 @@ class TestTd1CaptureStatus(Td1Case):
         with patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1")
         message = "\n".join(c.args[0] for c in report.call_args_list)
-        self.assertIn("(capturing)", message.split("TD-1 OTHER")[0])
-        self.assertNotIn("(capturing)", message.split("TD-1 OTHER")[1])
+        gate_rows = [l for l in message.splitlines() if l.startswith("gate ")]
+        self.assertTrue(gate_rows and all("(capturing)" in l for l in gate_rows), message)
+        # OTHER serves no gate, so it lands in the unassigned section labelled by its
+        # own serial - the only name it has - and is not capturing
+        unused = [l for l in message.splitlines() if l.startswith("OTHER:")]
+        self.assertTrue(unused, message)
+        self.assertNotIn("(capturing)", unused[0])
 
     def test_owner_loss_during_load_prevents_application(self):
         self.mmu.select_gate(0)
@@ -1484,6 +1519,11 @@ class Td1OffPathCase(unittest.TestCase):
         self.data = {"BENCH": record(second=second, td=td, color=color)}
         self.bridge.update_devices(self.data)
 
+    def present_none(self):
+        """Take it away again - connected, but with nothing to report."""
+        self.data = {"BENCH": {"td": None, "color": None, "scan_time": None}}
+        self.bridge.update_devices(self.data)
+
 
 class TestTd1OffPathStaging(Td1OffPathCase):
     def test_it_serves_no_gate(self):
@@ -1659,10 +1699,12 @@ class TestTd1CommandAlignment(Td1OffPathCase):
         with patch.object(self.mmu, "log_always") as report:
             self.hh.run_gcode("MMU_TD1 SHARED=1")
         text = "\n".join(c.args[0] for c in report.call_args_list)
-        self.assertIn("BENCH", text)
-        self.assertIn("Off-path on unit", text)
-        # It serves no gate on purpose, so it must not read as a misconfiguration
-        self.assertNotIn("Gates: none", text)
+        self.assertIn("serial=BENCH", text)
+        # It serves no gate on purpose, so it must read as the bench scanner it is
+        # rather than as a gate reader that lost its gate
+        self.assertIn("shared:", text)
+        self.assertNotIn("gate ", text)
+        self.assertNotIn("Not assigned to any gate", text)
 
     def test_shared_enable_needs_no_serial(self):
         self.hh.run_gcode("MMU_TD1 SHARED=1 ENABLE=0 QUIET=1")
@@ -1693,7 +1735,7 @@ class TestTd1CommandAlignment(Td1OffPathCase):
             self.hh.run_gcode("MMU_TD1")
         text = "\n".join(c.args[0] for c in report.call_args_list)
         self.assertIn("Staged for the next gate loaded", text)
-        self.assertIn("TD 4.00", text)
+        self.assertIn("td=4.00", text)
 
 
 class TestTd1AdoptedColorLifetime(Td1Case):
@@ -1841,13 +1883,36 @@ class TestTd1LeftInTheReader(Td1OffPathCase):
         self.assertIsNone(self.mmu.pending_measurement)
         self.assertEqual(self.stagings([(s, 4.) for s in range(10, 14)]), 0)
 
-    def test_a_timed_out_pending_can_be_re_established_without_re_presenting(self):
-        # allow_restage(), the counterpart of the NFC reader's allow_reread()
+    def test_a_timed_out_pending_does_not_re_establish_itself(self):
+        """
+        Unlike the NFC reader, which DOES re-arm on timeout (allow_reread). A tag is
+        read at a distance and is normally lifted away between presentations, so one
+        still in the field means somebody is holding it there. Filament sits in a TD-1
+        until it is pulled out, so re-staging every timeout would re-arm for ever.
+        """
         self.present(second=1)
         self.assertIsNotNone(self.mmu.pending_measurement)
         self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout + 1)
         self.assertIsNone(self.mmu.pending_measurement, "should have timed out")
-        self.assertEqual(self.stagings([(10, 4.)]), 1, "filament still in the reader")
+        self.assertEqual(self.stagings([(s, 4.) for s in range(10, 16)]), 0,
+                         "left in the reader, so nothing new has happened")
+
+    def test_a_different_filament_re_stages_after_a_timeout(self):
+        """The first of the two ways back: swap what is in front of the lens."""
+        self.present(second=1)
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout + 1)
+        self.assertEqual(self.stagings([(10, 9.)]), 1, "a materially different reading")
+        self.assertEqual(self.mmu.pending_measurement["td"], 9.)
+
+    def test_removing_and_re_inserting_the_same_filament_re_stages(self):
+        """
+        The second: an empty lens holds nothing, so the dedupe has nothing left to
+        suppress and the same spool presented again is a fresh presentation.
+        """
+        self.present(second=1)
+        self.hh.reactor.advance(self.mmu.p.spoolman_pending_id_timeout + 1)
+        self.present_none()
+        self.assertEqual(self.stagings([(10, 4.)]), 1, "re-inserted after a removal")
         self.assertEqual(self.mmu.pending_measurement["td"], 4.)
 
     def test_a_cancelled_pending_is_not_re_established(self):
@@ -2001,10 +2066,6 @@ class TestTd1Removal(Td1OffPathCase):
     def remove(self):
         """The device reports nothing again - if that is what it does on removal."""
         self.present_none()
-
-    def present_none(self):
-        self.data = {"BENCH": {"td": None, "color": None, "scan_time": None}}
-        self.bridge.update_devices(self.data)
 
     def test_removal_moves_the_deadline(self):
         self.present(second=1)

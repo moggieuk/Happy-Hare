@@ -2112,6 +2112,22 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('Meta-commands', out)
         self.assertIn('unknown meta-command', out)
 
+    def test_help_lists_every_meta_command(self):
+        """
+        /help IS the discovery surface - a command missing from it does not exist as far
+        as anyone is concerned, and nothing else would catch that.
+        """
+        listed = {word.lstrip('/').rstrip(',')
+                  for name, _ in console_mod.Console.META_HELP
+                  for word in name.split() if word.startswith('/')}
+        implemented = ({name[len('_meta_'):] for name in dir(console_mod.Console)
+                        if name.startswith('_meta_')}
+                       | set(console_mod.Console.META_ALIASES))
+        # An alias need not be advertised; a command must be
+        self.assertEqual(implemented - listed - set(console_mod.Console.META_ALIASES),
+                         set(), 'meta-command missing from /help')
+        self.assertEqual(listed - implemented, set(), '/help lists a command that is gone')
+
     def test_an_install_directory_works_as_a_profile(self):
         root = tempfile.mkdtemp(prefix='hh-consoledir-')
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
@@ -2618,6 +2634,328 @@ class TestTheDefaultProfile(unittest.TestCase):
             self.assertAlmostEqual(axis.carriage, axis.travel_max, places=3)
             self.console.meta('/selector home')
             self.assertAlmostEqual(axis.carriage, axis.travel_min, places=3)
+
+
+class TestTd1Simulation(unittest.TestCase):
+    """
+    /td1 - holding filament in front of a virtual TD-1 scanner.
+
+    Two topologies, because they fail differently. The DEFAULT profile carries an
+    off-path ("off-bowden") scanner on unit0, so the bench gesture - present, then
+    preload - is reachable from `make console` with no arguments at all; `td1_shared`
+    puts one in the bowden, where a measurement is produced by a load rather than by
+    hand.
+
+    The scanner is modelled as a lens, not as an event: it re-measures whatever is in
+    front of it on every poll. That is what the device does, and getting it wrong is
+    silent - a frozen scan_time leaves an in-path capture reporting "filament found
+    but not measured", which looks like a Happy Hare bug rather than a harness one.
+    """
+
+    def _console(self, *argv):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--plain', '--no-log', '--header', 'off', '--pace', '0'] + list(argv)))
+        self.addCleanup(console.close)
+        console.boot()
+        return console
+
+    @staticmethod
+    def _meta(console, line):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            console.meta(line)
+        return out.getvalue()
+
+    # -- off-path, on the default profile ----------------------------------
+    def test_presenting_filament_stages_it_for_the_next_gate_preloaded(self):
+        console = self._console()
+        mmu = console.hh.mmu
+        self.assertIsNotNone(mmu.mmu_unit(0).td1_manager.shared_device,
+                             'the default profile lost its off-path TD-1')
+
+        self.assertIn('staged', self._meta(console, '/td1 4.2 ff8800'))
+        self.assertIsNotNone(mmu.pending_measurement)
+
+        self._meta(console, '/preload 3')
+        self.assertEqual(mmu.gate_td[3], 4.2)
+        self.assertEqual(mmu.gate_td1_color[3], 'ff8800')
+        self.assertEqual(console.hh.errors, [])
+
+    def test_the_outcome_line_only_appears_when_happy_hare_is_silent(self):
+        """
+        A measurement Happy Hare accepts is announced by Happy Hare, so echoing the
+        device outcome beside it says the same thing twice. The line earns its place
+        only where nothing else reports - a dedupe, a fault, a disconnect.
+        """
+        console = self._console()
+        accepted = self._meta(console, '/td1 4.2 ff8800')
+        self.assertIn('staged for the next gate loaded', accepted)
+        self.assertNotIn('TD-1 TD1-BENCH:', accepted)
+
+        deduped = self._meta(console, '/td1 4.2 ff8800')
+        self.assertIn('TD-1 TD1-BENCH: status_only: already staged', deduped)
+
+    def test_the_same_filament_presented_twice_only_stages_once(self):
+        """
+        A re-measurement is not a new filament. The dedupe is real behavior, so the
+        command has to SAY it declined - otherwise it reads as a broken command.
+        """
+        console = self._console()
+        self._meta(console, '/td1 4.2 ff8800')
+        self.assertIn('already staged', self._meta(console, '/td1 4.2 ff8800'))
+
+    def test_taking_the_filament_away_restarts_the_pending_window(self):
+        """
+        Removal is not a cancel. It is the BETTER moment to start the countdown - you
+        have finished at the bench and are walking to the printer - so the staged
+        measurement must survive it, and the scanner must read as present-but-idle
+        rather than as an unplug.
+        """
+        console = self._console()
+        self._meta(console, '/td1 4.2')
+        self._meta(console, '/td1 off')
+        device = console.hh.mmu.td1.devices['TD1-BENCH']
+        self.assertTrue(device.connected, 'removal must not read as an unplug')
+        self.assertIsNone(console.hh.moonraker.td1.record('TD1-BENCH'))
+        self.assertIsNotNone(console.hh.mmu.pending_measurement,
+                             'removal discarded the staged measurement')
+        self._meta(console, '/preload 3')
+        self.assertEqual(console.hh.mmu.gate_td[3], 4.2)
+
+    def test_unplugging_a_scanner_disconnects_it_and_plugging_it_back_recovers(self):
+        console = self._console()
+        self._meta(console, '/td1 unplug')
+        self.assertFalse(console.hh.mmu.td1.devices['TD1-BENCH'].connected)
+        self.assertIn('unplugged', self._meta(console, '/td1'))
+        self._meta(console, '/td1 plug')
+        self.assertTrue(console.hh.mmu.td1.devices['TD1-BENCH'].connected)
+
+    def test_a_device_fault_is_reported_as_one(self):
+        console = self._console()
+        self._meta(console, '/td1 fail')
+        device = console.hh.mmu.td1.devices['TD1-BENCH']
+        self.assertTrue(device.connected, 'a faulty scanner is still plugged in')
+        self.assertIn('simulated optical fault', device.error or '')
+
+    def test_a_bare_tag_lists_the_readers_and_the_spools_it_can_resolve(self):
+        console = self._console()
+        report = self._meta(console, '/tag')
+        self.assertIn('unit0_nfc', report)
+        self.assertIn('shared on unit0 - present by hand', report)
+        self.assertIn('BADCAFE005 (PLA Matte)', report)
+
+    def test_a_bare_td1_reports_every_scanner(self):
+        console = self._console()
+        self.assertIn('nothing presented', self._meta(console, '/td1'))
+        self._meta(console, '/td1 1.25 00ff00')
+        report = self._meta(console, '/td1')
+        self.assertIn('TD 1.25, color 00ff00', report)
+
+    def test_an_unparseable_measurement_explains_the_grammar(self):
+        console = self._console()
+        self.assertIn('usage:', self._meta(console, '/td1 bogus'))
+
+    def test_the_default_profile_carries_both_topologies_at_once(self):
+        """
+        unit0 off-path, unit1 in-path - the same split as the NFC readers, and for the
+        same reason: they are different code paths and one machine should exercise
+        both. unit1's is ONE scanner serving every gate on the unit, which is spelled
+        as the same serial repeated; unit0's gates have no in-path scanner at all.
+        """
+        console = self._console()
+        unit0 = console.hh.mmu.mmu_unit(0).td1_manager
+        unit1 = console.hh.mmu.mmu_unit(9).td1_manager
+        self.assertEqual(unit0.shared_device.serial, 'TD1-BENCH')
+        self.assertEqual([unit0.serial_for(g) for g in range(9)], [''] * 9)
+        self.assertIsNone(unit1.shared_device)
+        self.assertEqual([unit1.serial_for(g) for g in range(9, 13)], ['TD1-VVD'] * 4)
+        self.assertEqual(console.hh.mmu.td1.gates_for('TD1-VVD'), [9, 10, 11, 12])
+
+    def test_one_scanner_measures_several_gates_on_the_vvd_unit(self):
+        """
+        Two gates off one scanner, which is the case attribution has to get right: the
+        reading is written to whichever gate's filament produced it, not to whoever
+        asked last.
+        """
+        console = self._console()
+        self._meta(console, '/td1 3.3 00ff00 10')
+        console._dispatch('MMU_CHECK_GATE GATES=9,10 TD1=1')
+        self.assertEqual(console.hh.mmu.gate_td[9:11], [3.3, 3.3])
+        self.assertEqual(console.hh.mmu.gate_td[:9], [None] * 9, 'unit0 was measured too')
+        self.assertEqual(console.hh.errors, [])
+
+    def test_nfc_and_td1_report_in_the_same_shape(self):
+        """
+        The point of the default profile carrying both: the two status reports are
+        read side by side, so they are grouped and punctuated the same way. This is
+        the assertion that notices if one of them drifts.
+        """
+        console = self._console()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            console.run_command('MMU_NFC')
+            console.run_command('MMU_TD1')
+        message = out.getvalue()
+        self.assertIn('MMU NFC readers:', message)
+        self.assertIn('MMU TD-1 readers:', message)
+        for head in ('shared:   enabled=1, active=1, alive=1,',
+                     'shared:   enabled=1, connected=1, mode=',
+                     'gate 12:  enabled=1, active=1, alive=1,',
+                     'gate 12:  enabled=1, connected=1, mode='):
+            self.assertIn(head, message)
+        # Both group by unit, and only because this machine has more than one
+        self.assertEqual(message.count('Unit unit0:'), 2)
+        self.assertEqual(message.count('Unit unit1:'), 2)
+
+    # -- in-path, where filament crossing the scanner is the measurement ----
+    def test_an_in_path_scanner_measures_the_gates_check_gate_loads(self):
+        console = self._console('--profile', 'td1_shared')
+        self._meta(console, '/td1 3.3 00ff00')
+        console._dispatch('MMU_CHECK_GATE GATES=0,1 TD1=1')
+        self.assertEqual(console.hh.mmu.gate_td[:2], [3.3, 3.3])
+        self.assertEqual(console.hh.mmu.gate_td1_color[:2], ['00ff00', '00ff00'])
+        self.assertEqual(console.hh.errors, [])
+
+    def test_a_gate_with_no_scanner_of_its_own_says_so(self):
+        console = self._console('--profile', 'td1_per_gate')
+        self.assertIn('no TD-1 scanner serves gate 2', self._meta(console, '/td1 1.5 ffffff 2'))
+
+
+class TestPromptRedraw(unittest.TestCase):
+    """
+    Output arriving while you sit at the prompt - a pending timeout, the NFC poll - is
+    printed above the prompt, which is then rebuilt. What gets rebuilt must be what you
+    typed and nothing else.
+    """
+
+    PROFILE = 'boxturtle'
+
+    def _console(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', self.PROFILE, '--plain', '--no-log', '--header', 'off',
+             '--pace', '0']))
+        self.addCleanup(console.close)
+        console.boot()
+        return console
+
+    def test_a_stale_readline_buffer_is_not_redrawn_as_typing(self):
+        """
+        macOS libedit can hand back the PREVIOUS command from get_line_buffer() until
+        the first keystroke of the next line. Without the baseline, a timeout firing at
+        an untouched prompt redraws it as '> MMU_GATE_MAP', which reads as if the user
+        typed it.
+        """
+        console = self._console()
+        console._prompt_buffer = 'MMU_GATE_MAP'
+        with mock.patch.object(console_mod, 'HAVE_READLINE', True), \
+                mock.patch.object(console_mod, 'readline', create=True) as rl:
+            rl.get_line_buffer.return_value = 'MMU_GATE_MAP'
+            self.assertEqual(console._line_buffer(), '')
+            # Anything actually typed differs from the baseline and survives
+            rl.get_line_buffer.return_value = 'MMU_GATE_MAP GATE=1'
+            self.assertEqual(console._line_buffer(), 'MMU_GATE_MAP GATE=1')
+
+    def test_a_clean_prompt_keeps_real_typing(self):
+        console = self._console()
+        console._prompt_buffer = ''
+        with mock.patch.object(console_mod, 'HAVE_READLINE', True), \
+                mock.patch.object(console_mod, 'readline', create=True) as rl:
+            rl.get_line_buffer.return_value = 'MMU_HO'
+            self.assertEqual(console._line_buffer(), 'MMU_HO')
+            rl.get_line_buffer.return_value = ''
+            self.assertEqual(console._line_buffer(), '')
+
+
+class TestSharedNfcSimulation(unittest.TestCase):
+    """
+    /tag against a SHARED reader, which is the half /tag could not previously reach.
+
+    A common reader is bound to no gate, so VirtualNfcChip._visible_tag() never
+    consults the filament model for it - a tag attached to a gate's filament is
+    invisible to it however the selector is parked. Presenting by hand is the only
+    route, and it is the gesture the default profile's unit0 exists to exercise.
+
+    UIDs come from Session.spools_for_gate_map's 'BADCAFE%03X' scheme, so a lookup
+    actually resolves in the fake Spoolman rather than erroring as an unknown tag.
+    """
+
+    def setUp(self):
+        self.console = console_mod.Console(console_mod.parse_args(
+            ['--plain', '--no-log', '--header', 'off', '--pace', '0']))
+        self.addCleanup(self.console.close)
+        self.console.boot()
+
+    def _meta(self, line):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.console.meta(line)
+        return out.getvalue()
+
+    def test_presenting_a_tag_resolves_its_spool_onto_the_next_gate_preloaded(self):
+        self._meta('/tag BADCAFE005 unit0')
+        self._meta('/preload 0')
+        mmu = self.console.hh.mmu
+        self.assertEqual(mmu.gate_spool_rfid[0], 'BADCAFE005')
+        self.assertEqual(mmu.gate_filament_name[0], 'PLA Matte')
+        self.assertEqual(self.console.hh.errors, [])
+
+    def test_a_gate_with_no_reader_says_so_and_names_the_unit(self):
+        """
+        No fallback: acting on the shared reader would touch every other gate on the
+        unit. The error is the documentation - it prints the command to run.
+        """
+        for typed in ('/tag BADCAFE005 0', '/tag BADCAFE005'):
+            message = self._meta(typed)
+            self.assertIn('gate 0 has no NFC reader of its own', message)
+            self.assertIn('/tag BADCAFE005 unit0', message)
+        self.assertIsNone(self.console.hh.chip('unit0_nfc').presented)
+        self.assertIsNone(self.console.fil.tags.get(0))
+
+    def test_a_unit_addresses_its_shared_reader(self):
+        message = self._meta('/tag BADCAFE005 unit0')
+        self.assertNotIn('!!', message)
+        self.assertEqual(self.console.hh.chip('unit0_nfc').presented.uid, 'BADCAFE005')
+        self._meta('/preload 0')
+        self.assertEqual(self.console.hh.mmu.gate_spool_rfid[0], 'BADCAFE005')
+
+    def test_the_reader_name_is_accepted_too(self):
+        """What the config calls it, and what /tag prints in the listing."""
+        self._meta('/tag BADCAFE005 unit0_nfc')
+        self.assertEqual(self.console.hh.chip('unit0_nfc').presented.uid, 'BADCAFE005')
+
+    def test_a_unit_with_no_shared_reader_says_so(self):
+        self.assertIn('no shared NFC reader', self._meta('/tag BADCAFE005 unit1'))
+
+    def test_a_gate_with_its_own_reader_still_gets_a_filament_placement(self):
+        """The fallback must not swallow the per-gate form - unit1's gates have one."""
+        self._meta('/tag BADCAFE009 9')
+        self.assertIsNotNone(self.console.fil.tags.get(9))
+        self.assertIsNone(self.console.hh.chip('unit1_nfc01').presented)
+
+    def test_a_second_tag_is_read_once_the_cooldown_expires(self):
+        """
+        NFC_TAG_HOLD_TIME stands the reader down for 5s after it acts on a tag, which
+        is longer than the poll interval - so the wait has to outlast it or presenting
+        two tags in a row looks broken.
+        """
+        self._meta('/tag BADCAFE005 unit0')
+        chip = self.console.hh.chip('unit0_nfc')
+        before = chip.reads
+        self._meta('/tag BADCAFE007 unit0')
+        self.assertGreater(chip.reads, before, 'the second tag was never read')
+
+    def test_taking_the_tag_off_leaves_the_reader_seeing_nothing(self):
+        self._meta('/tag BADCAFE005 unit0')
+        self._meta('/tag off unit0')
+        self.assertIsNone(self.console.hh.chip('unit0_nfc').presented)
+
+    def test_an_unknown_target_names_the_shared_readers(self):
+        message = self._meta('/tag BADCAFE005 no_such_reader')
+        self.assertIn('unit0 (unit0_nfc)', message)
+
+    def test_off_on_a_gate_points_at_the_command_that_does_it(self):
+        # Gate 9's tag lives on its filament, so /remove is what takes it away
+        self.assertIn('/remove 9', self._meta('/tag off 9'))
 
 
 if __name__ == '__main__':

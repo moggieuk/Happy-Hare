@@ -286,7 +286,8 @@ class MmuTd1Bridge:
         """
         Start tracking a scanner Moonraker reports that no gate references.
 
-        MMU_TD1 listing it with "Gates: none" is how you find a serial to configure.
+        MMU_TD1 listing it under "Not assigned to any gate" is how you find a serial
+        to configure.
         """
         from .unit.td1.mmu_td1_device import MmuTd1Device
         device = MmuTd1Device(serial)

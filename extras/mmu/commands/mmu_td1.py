@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 # Happy Hare imports
 from ..mmu_constants   import *
 from ..mmu_utils       import MmuError
-from ..mmu_td1         import MmuTd1BridgeError
+from ..mmu_td1         import MmuTd1BridgeError, TD1_ERR_NO_READING
 from .mmu_base_command import *
 
 
@@ -36,51 +36,36 @@ class MmuTd1Command(BaseCommand):
     HELP_BRIEF = "Inspect TD-1 scanners or capture filament TD and measured color"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "SHARED   = [0|1] Target the unit's off-path scanner (the one you present filament to)\n"
-        + "GATE     = #(int) Target the scanner for this gate (implies the unit)\n"
-        + "GATES    = g,g,g Target multiple gates' scanners (don't mix with GATE/SHARED)\n"
-        + "UNIT     = #(int)/name Only needed to disambiguate multiple units with off-path scanners\n"
-        + "SERIAL   = # Target one physical scanner by USB serial (including one no gate uses)\n"
-        + "ENABLE   = [0|1] Top-level on/off for Happy Hare's use of the scanner\n"
-        + "AUTO     = [0|1] Apply new readings automatically when the owning gate is known\n"
-        + "           (overrides the unit's td1_auto_update; needs UNIT= if nothing else implies one)\n"
-        + "READ     = [0|1] Poll Moonraker for the addressed scanner now, instead of using the cache\n"
-        + "REGISTER  = [0|1] Apply the addressed scanner's measurement to GATE\n"
-        + "SET_COLOR = [0|1] Overwrite GATE/GATES filament_color with the measured color\n"
-        + "INIT     = [0|1] Reboot the addressed scanner through Moonraker and await recovery\n"
+        + "SHARED   = [0|1] Target the unit's off-path scanner\n"
+        + "GATE     = #(int) Target the scanner serving this gate\n"
+        + "GATES    = g,g,g Target several gates' scanners\n"
+        + "UNIT     = #(int)/name Disambiguate when several units qualify\n"
+        + "SERIAL   = # Target one scanner by USB serial\n"
+        + "ENABLE   = [0|1] Turn Happy Hare's use of the scanner on/off\n"
+        + "AUTO     = [0|1] Override the unit's td1_auto_update until restart\n"
+        + "READ     = [0|1] Poll Moonraker now instead of using the cache\n"
+        + "REGISTER = [0|1] Apply the scanner's measurement to GATE\n"
+        + "SET_COLOR = [0|1] Overwrite filament_color with the measured color\n"
+        + "INIT     = [0|1] Reboot the addressed scanner and await recovery\n"
         + "INIT_ALL = [0|1] Reboot every scanner on every unit\n"
-        + "CLEAR_PENDING = [0|1] Discard a measurement staged by the off-path scanner. Leaves a\n"
-        + "           staged tag or a hand-set NEXT_SPOOLID in place, and only ends the pending\n"
-        + "           countdown if nothing is left to apply\n"
-        + "DETAILS  = [0|1] Include attribution and per-gate measurements\n"
+        + "CLEAR_PENDING = [0|1] Discard a staged measurement\n"
+        + "DETAILS  = [0|1] Add scan time and attribution to the report\n"
         + "QUIET    = [0|1] Don't report non-essential status\n"
         + "(no parameters for status report of all scanners)"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
         + f"{CMD}                        ...Report status of all scanners\n"
-        + f"{CMD} DETAILS=1              ...As above but show attribution and per-gate measurements\n"
+        + f"{CMD} DETAILS=1              ...As above plus scan time and attribution\n"
         + f"{CMD} SHARED=1 ENABLE=0      ...Disable the off-path scanner\n"
-        + f"{CMD} CLEAR_PENDING=1        ...Discard a staged measurement, keeping other pending data\n"
+        + f"{CMD} CLEAR_PENDING=1        ...Discard a staged measurement, keep other pending data\n"
         + f"{CMD} GATE=3 READ=1          ...Poll the scanner serving gate 3 and report the result\n"
         + f"{CMD} GATE=2 REGISTER=1      ...Apply a measurement to gate 2 (as if auto-scanned)\n"
         + f"{CMD} GATES=0,1 ENABLE=0     ...Disable selected per-gate scanners\n"
         + f"{CMD} GATES=0,1 SET_COLOR=1  ...Use the measured color as those gates' filament color\n"
+        + f"{CMD} UNIT=0 AUTO=1          ...Auto-apply readings on unit 0's scanners\n"
         + f"{CMD} GATE=2 INIT=1          ...Reboot the scanner on gate 2\n"
         + f"{CMD} INIT_ALL=1             ...Reboot every scanner on all units\n"
-        + "\n"
-        + "This command never moves filament. To measure gates, use MMU_CHECK_GATE TD1=1,\n"
-        + "which runs filament down its normal path past the scanner (TD1_UPDATE=1 to\n"
-        + "re-read gates that already have a measurement).\n"
-        + "An off-path scanner ('td1_device') needs no gate: present filament to it and the\n"
-        + "reading is held for the next gate you preload, like a tag on a shared NFC reader.\n"
-        + "REGISTER attributes it to a gate you won't preload; the gate keeps it even if you\n"
-        + "assign a spool afterwards.\n"
-        + "A measured color becomes the gate's filament_color when nothing else has set\n"
-        + "one - Spoolman and a hand-set color both win. SET_COLOR=1 overrides that, though\n"
-        + "on a gate with a Spoolman spool the next refresh will put Spoolman's color back.\n"
-        + "It carries an alpha channel derived from the TD (RRGGBBaa), so a translucent\n"
-        + "filament reads as one: a low TD is opaque, a high one is clear."
     )
 
     # Operation flags, in the order they are reported when the user asks for too many
@@ -145,59 +130,108 @@ class MmuTd1Command(BaseCommand):
         return operations[0] if operations else ""
 
 
-    def _device_report(self, manager, serials, details):
+    def _reader_line(self, label, manager, device, gate, capturing, details):
         """
-        Build the console status block, as one message in the order requested.
+        One reader, one line, in MMU_NFC's shape.
 
-        The reporting surface for TD-1 - little is published in printer.mmu, since the
+        A gate row quotes that gate's recorded measurement; an off-path row has no
+        gate, so it quotes the device's own latest. last_measured is always the
+        device's - the gate map keeps no timestamp - so a row can read td=None with a
+        time beside it. The serial is omitted where the label already is the serial,
+        and DETAILS only ever appends to a row, never reorders it.
+        """
+        if gate is not None:
+            td, color = self.mmu.gate_td[gate], self.mmu.gate_td1_color[gate]
+        else:
+            td, color = device.td, device.color
+        mode = "auto" if manager is not None and manager.auto_for(device) else "manual"
+        if device.auto_override is not None:
+            mode += "(override)"
+        line = "%-9s enabled=%d, connected=%d, mode=%s, td=%s, td-color=%s" % (
+            label + ":", int(device.enabled), int(device.connected), mode,
+            "%.2f" % td if td is not None else "None", color or "None")
+        if label != device.serial:
+            line += ", serial=%s" % device.serial
+        if details:
+            line += ", last_measured=%s" % self._measured_at(device)
+        return line + (" (capturing)" if capturing else "")
+
+
+    @staticmethod
+    def _measured_at(device):
+        """The device's scan time as a local wall clock, or Never."""
+        if not device.scan_time:
+            return "Never"
+        try:
+            return datetime.fromisoformat(device.scan_time).astimezone().strftime("%H:%M:%S")
+        except ValueError:
+            return device.scan_time
+
+
+    def _device_report(self, bridge, serials, details):
+        """
+        Build the console status block, grouped by unit exactly as MMU_NFC's is.
+
+        A scanner shared by several gates appears on each of their rows. This is the
+        reporting surface for TD-1 - little is published in printer.mmu, since the
         live data is Moonraker's and the assignment is in printer.mmu_machine.
         """
-        lines = []
-        for serial in serials:
-            device = manager.devices[serial]
-            owner = device.owner
-            device_gates = manager.gates_for(serial)
-            offpath = [m.mmu_unit.name for m in manager.managers()
-                       if m.shared_device is device]
-            state = "connected" if device.connected else "DISCONNECTED"
-            if not device.enabled:
-                state += ", disabled"
-            # Policy comes from the unit's parameter, so ask a manager that references it
-            owners_of = [m for m in manager.managers() if device in m.devices()]
-            if any(m.auto_for(device) for m in owners_of):
-                state += ", auto-update"
-                if device.auto_override is not None:
-                    state += " (override)"
-            lines.append("TD-1 %s: %s" % (serial, state))
-            if offpath:
-                # Serves no gate by design, so "Gates: none" would read as a fault
-                lines.append("  Off-path on unit %s - present filament by hand"
-                             % ",".join(offpath))
-            if device_gates or not offpath:
-                lines.append("  Gates: %s%s" % (
-                    ",".join(str(g) for g in device_gates) or "none",
-                    " (capturing)" if manager.active_serial == serial else ""))
-            if device.td is not None:
-                lines.append("  Latest: TD %.2f, color %s at %s" % (
-                    device.td, device.color, device.scan_time))
-            else:
-                lines.append("  Latest: no measurement yet")
-            if device.error:
-                lines.append("  Note: %s" % device.error)
-            if details:
-                if owner is not None:
-                    lines.append("  Attributable gate: %d" % owner['gate'])
-                lines.append("  Last outcome: %s" % (device.last_outcome or "none"))
-                for gate in device_gates:
-                    lines.append("  Gate %d: TD %s, measured color %s" % (
-                        gate,
-                        self.mmu.gate_td[gate] if self.mmu.gate_td[gate] is not None else "none",
-                        self.mmu.gate_td1_color[gate] or "none"))
+        wanted = list(dict.fromkeys(serials))
+        managers = bridge.managers()
+        multi = len(managers) > 1
+        lines, shown, notes = [], set(), {}
+
+        def row(label, manager, device, gate):
+            shown.add(device.serial)
+            # Keyed by serial so a scanner serving four gates notes its fault once.
+            # "Not measured yet" is normal, and last_measured already says it
+            if device.error and device.error_kind != TD1_ERR_NO_READING:
+                notes[device.serial] = device.error
+            return self._reader_line(label, manager, device, gate,
+                                     bridge.active_serial == device.serial, details)
+
+        for manager in managers:
+            unit_lines = []
+            shared = manager.shared_device
+            if shared is not None and shared.serial in wanted:
+                unit_lines.append(row("shared", manager, shared, None))
+            for local, device in enumerate(manager.gate_devices):
+                if device is not None and device.serial in wanted:
+                    gate = manager.mmu_unit.first_gate + local
+                    unit_lines.append(row("gate %d" % gate, manager, device, gate))
+            if unit_lines:
+                if multi:
+                    lines.append("Unit %s:" % manager.mmu_unit.name)
+                lines.extend(unit_lines)
+
+        # Scanners Moonraker reports that nothing references. Listing them is how you
+        # find a serial to configure
+        spare = [s for s in wanted if s not in shown and s in bridge.devices]
+        if spare:
+            lines.append("Not assigned to any gate:")
+            for serial in spare:
+                # Labelled by serial: the only name such a scanner has
+                lines.append(row(serial, None, bridge.devices[serial], None))
+
+        lines.extend("Note %s: %s" % (serial, error) for serial, error in notes.items())
+        if details:
+            for serial in wanted:
+                device = bridge.devices.get(serial)
+                if device is None:
+                    continue
+                detail = "Detail %s: last outcome %s" % (serial, device.last_outcome or "none")
+                if device.owner is not None:
+                    detail += ", attributable to gate %d" % device.owner['gate']
+                if device.scan_time:
+                    detail += ", scanned at %s" % device.scan_time
+                lines.append(detail)
         staged = self.mmu.pending_measurement
         if staged is not None:
-            lines.append("Staged for the next gate loaded: TD %.2f, color %s at %s"
+            lines.append("Staged for the next gate loaded: td=%.2f, td-color=%s at %s"
                          % (staged['td'], staged['color'], staged['scan_time']))
-        return "\n".join(lines) if lines else "TD-1: no scanners known"
+        if not lines:
+            return "No TD-1 scanners configured"
+        return "MMU TD-1 readers:\n" + "\n".join(lines)
 
 
     def _run(self, gcmd):
