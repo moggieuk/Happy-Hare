@@ -1,12 +1,35 @@
 # Defines parameter token types and defaults for purging
 #
-# Responsible for defining/setting:
+# Feature flags and derived bus settings:
 #   MMU_HAS_BLOBIFIER
-#   MMU_HAS_BLOBIFIER_BUCKET_SWITCH (and PIN_BLOBIFIER_BUCKET_SWITCH)
+#   MMU_HAS_BLOBIFIER_BUCKET_SWITCH
+#   BOOL_BLOBIFIER_TMC_SPI
+#   BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE
 #
-# Responsible for setting:
-#   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH (if MMU_HAS_BLOBIFIER)
-#   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH (if MMU_HAS_BLOBIFIER)
+# Blobifier bucket switch:
+#   PIN_BLOBIFIER_BUCKET_SWITCH
+#
+# Blobifier servo tray:
+#   PIN_BLOBIFIER_SERVO
+#   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
+#   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
+#
+# Blobifier stepper tray: (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
+#   PIN_BLOBIFIER_STEPPER_STEP
+#   PIN_BLOBIFIER_STEPPER_DIR
+#   PIN_BLOBIFIER_STEPPER_ENABLE
+#   PIN_BLOBIFIER_STEPPER_ENDSTOP
+#   PARAM_BLOBIFIER_TMC
+#   PIN_BLOBIFIER_STEPPER_UART
+#   PIN_BLOBIFIER_STEPPER_CS
+#   PIN_BLOBIFIER_STEPPER_SPI_SCLK
+#   PIN_BLOBIFIER_STEPPER_SPI_MOSI
+#   PIN_BLOBIFIER_STEPPER_SPI_MISO
+#   PARAM_BLOBIFIER_STEPPER_SPI_BUS
+#   PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
+#   PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
+#
+# Purge macro and behavior:
 #   PARAM_PURGE_MACRO
 #   PARAM_FORCE_PURGE_STANDALONE
 #   PARAM_EXTRUDER_PURGE_CURRENT
@@ -26,34 +49,88 @@ config MMU_HAS_BLOBIFIER_BUCKET_SWITCH
   bool
   default y
 
-# Stepper-driven Blobifier tray (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
 config PIN_BLOBIFIER_STEPPER_STEP
   string
   default ""
+
 config PIN_BLOBIFIER_STEPPER_DIR
   string
   default ""
+
 config PIN_BLOBIFIER_STEPPER_ENABLE
   string
   default ""
+
 config PIN_BLOBIFIER_STEPPER_ENDSTOP
   string
   default ""
+
 config PIN_BLOBIFIER_STEPPER_UART
   string
   default ""
+
+config PIN_BLOBIFIER_STEPPER_CS
+  string
+  default ""
+
+config PIN_BLOBIFIER_STEPPER_SPI_SCLK
+  string
+  default ""
+
+config PIN_BLOBIFIER_STEPPER_SPI_MOSI
+  string
+  default ""
+
+config PIN_BLOBIFIER_STEPPER_SPI_MISO
+  string
+  default ""
+
+config PARAM_BLOBIFIER_STEPPER_SPI_BUS
+  string
+  default ""
+
 config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
   string
   default "0.6"
 
+config PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
+  float
+  default 0.075 if CHOICE_BLOBIFIER_TMC5160
+  default 0.110
+
+config PARAM_BLOBIFIER_TMC
+  string
+  default "tmc2209" if CHOICE_BLOBIFIER_TMC2209
+  default "tmc5160" if CHOICE_BLOBIFIER_TMC5160
+  default "tmc2240" if CHOICE_BLOBIFIER_TMC2240
+  default ""
+
+# The supported 2240 connection is SPI; 2209 uses UART.
+config BOOL_BLOBIFIER_TMC_SPI
+  bool
+  default y if CHOICE_BLOBIFIER_TMC5160 || CHOICE_BLOBIFIER_TMC2240
+
+# Any supplied pin means software SPI, even when the trio is incomplete.
+# SW6 warns about missing pins; never silently switch to a different bus.
+config BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE
+  bool
+  default y if BOOL_BLOBIFIER_TMC_SPI && \
+      (PIN_BLOBIFIER_STEPPER_SPI_SCLK != "" || \
+       PIN_BLOBIFIER_STEPPER_SPI_MOSI != "" || \
+       PIN_BLOBIFIER_STEPPER_SPI_MISO != "")
+
+
+# -------------------------------------
+# Purging menu
+# -------------------------------------
 
 menu "Purging"
   help
     Purging
 
-# -------------------------------------
-# Blobifier configuration
-# -------------------------------------
+  # -------------------------------------
+  # Blobifier configuration
+  # -------------------------------------
 
   config MMU_HAS_BLOBIFIER
     prompt "Have Blobifier?"
@@ -132,57 +209,46 @@ menu "Purging"
         config CHOICE_BLOBIFIER_TMC5160
           bool "TMC5160"
         config CHOICE_BLOBIFIER_TMC2240
-          bool "TMC2240"
+          bool "TMC2240 (SPI)"
+          help
+            This installer configures TMC2240 over SPI. UART wiring is not
+            supported by this menu.
         config CHOICE_BLOBIFIER_TMC_NONE
           bool "None / hardware controlled"
       endchoice
 
-      config PARAM_BLOBIFIER_TMC
-        string
-        default "tmc2209" if CHOICE_BLOBIFIER_TMC2209
-        default "tmc5160" if CHOICE_BLOBIFIER_TMC5160
-        default "tmc2240" if CHOICE_BLOBIFIER_TMC2240
-        default ""        if CHOICE_BLOBIFIER_TMC_NONE
-
-      # SPI drivers are addressed by cs_pin, UART drivers by uart_pin
-      config BOOL_BLOBIFIER_TMC_SPI
-        bool
-        default y if CHOICE_BLOBIFIER_TMC5160 || CHOICE_BLOBIFIER_TMC2240
-
       config PIN_BLOBIFIER_STEPPER_UART
-        string
         prompt "Stepper TMC UART pin       " if PARAM_BLOBIFIER_TMC != "" && !BOOL_BLOBIFIER_TMC_SPI
       config PIN_BLOBIFIER_STEPPER_CS
-        string
         prompt "Stepper TMC CS pin         " if BOOL_BLOBIFIER_TMC_SPI
+      config PARAM_BLOBIFIER_STEPPER_SPI_BUS
+        prompt "Stepper TMC SPI bus        " if BOOL_BLOBIFIER_TMC_SPI && !BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE
+        help
+          Hardware SPI bus name on the MCU owning the CS pin, e.g. spi2.
+          Leave blank to use Klipper's default bus for that MCU.
       config PIN_BLOBIFIER_STEPPER_SPI_SCLK
-        string
         prompt "Stepper TMC SPI SCLK pin   " if BOOL_BLOBIFIER_TMC_SPI
         help
-          Leave all three SPI pins blank to use the MCU's hardware SPI bus
+          Leave all three SPI pins blank to use hardware SPI. To use software
+          SPI, fill in all three pins. An incomplete set is an error.
+          Prefix each pin with its MCU name; all three must be on the same
+          MCU as the CS pin, e.g. mcu:PG8.
       config PIN_BLOBIFIER_STEPPER_SPI_MOSI
-        string
         prompt "Stepper TMC SPI MOSI pin   " if BOOL_BLOBIFIER_TMC_SPI
       config PIN_BLOBIFIER_STEPPER_SPI_MISO
-        string
         prompt "Stepper TMC SPI MISO pin   " if BOOL_BLOBIFIER_TMC_SPI
 
       config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
-        string
         prompt "Stepper run current        " if PARAM_BLOBIFIER_TMC != ""
-        default "0.6"
       config PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
-        float
         prompt "Stepper sense resistor     " if PARAM_BLOBIFIER_TMC != "" && !CHOICE_BLOBIFIER_TMC2240
-        default 0.075 if CHOICE_BLOBIFIER_TMC5160
-        default 0.110
     endif
   endif
 
 
-# -------------------------------------
-# Standalone purge choice
-# -------------------------------------
+  # -------------------------------------
+  # Standalone purge choice
+  # -------------------------------------
 
   comment "_"
   comment "_Essential purge configuration"
@@ -235,9 +301,9 @@ menu "Purging"
     default ""
 
 
-# -------------------------------------
-# Other purge options
-# -------------------------------------
+  # -------------------------------------
+  # Other purge options
+  # -------------------------------------
 
   config PARAM_FORCE_PURGE_STANDALONE
     boolint "Happy Hare controlled in-print purge"

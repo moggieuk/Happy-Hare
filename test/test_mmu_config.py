@@ -603,8 +603,8 @@ class TestOptionalBlobifierBucketSwitch(unittest.TestCase):
 class TestBlobifierTmcDriverChoice(unittest.TestCase):
     """Driver section comes from Kconfig; a hand edit is reverted on every install."""
 
-    def _render_mmu(self, name, syms):
-        profile = profiles.get('boxturtle').derive(
+    def _render_mmu(self, name, syms, base=None):
+        profile = (base or profiles.get('boxturtle')).derive(
             name,
             syms=dict({
                 'MMU_HAS_BLOBIFIER': True,
@@ -641,6 +641,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
             'PIN_BLOBIFIER_STEPPER_SPI_SCLK': 'unit0:PG8',
             'PIN_BLOBIFIER_STEPPER_SPI_MOSI': 'unit0:PG6',
             'PIN_BLOBIFIER_STEPPER_SPI_MISO': 'unit0:PG7',
+            # A saved hardware bus must not leak into software-SPI output.
+            'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
         })
         # Exactly one, or Klipper's mux registry rejects the second at boot
         self.assertEqual(self._drivers(mmu), ['tmc2240 manual_stepper stepper_blobifier'])
@@ -650,11 +652,12 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         self.assertEqual(driver['spi_software_sclk_pin'], 'unit0:PG8')
         self.assertEqual(driver['spi_software_miso_pin'], 'unit0:PG7')
         self.assertNotIn('uart_pin', driver)
+        self.assertNotIn('spi_bus', driver)
         # tmc2240 takes 'rref', not 'sense_resistor' - Klipper rejects the unknown option
         self.assertNotIn('sense_resistor', driver)
 
-    def test_partial_spi_pins_fall_back_to_hardware_spi(self):
-        """A half-filled software SPI trio would render blank pins Klipper cannot parse."""
+    def test_partial_spi_pins_do_not_silently_select_hardware_spi(self):
+        """Keep the requested wiring visible; missing pins must not select another bus."""
         mmu = self._render_mmu('blobifier_tmc2240_partial_spi', {
             'CHOICE_BLOBIFIER_TMC2240': True,
             'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
@@ -663,8 +666,113 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         driver = dict(cfg.assemble({MMU: mmu}).items(
             'tmc2240 manual_stepper stepper_blobifier'))
         self.assertEqual(driver['cs_pin'], 'unit0:PC14')
-        for key in ('spi_software_sclk_pin', 'spi_software_mosi_pin', 'spi_software_miso_pin'):
-            self.assertNotIn(key, driver)
+        self.assertEqual(driver['spi_software_sclk_pin'], 'unit0:PG8')
+        self.assertEqual(driver['spi_software_mosi_pin'], '')
+        self.assertEqual(driver['spi_software_miso_pin'], '')
+        self.assertNotIn('spi_bus', driver)
+
+    def test_partial_spi_pins_are_warned(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('blobifier_partial_spi_warning', {
+                'MMU_HAS_BLOBIFIER': True,
+                'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
+                'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+                'CHOICE_BLOBIFIER_TMC5160': True,
+                'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
+            })
+        pins = ('SCLK', 'MOSI', 'MISO')
+        for mask in range(8):
+            with self.subTest(mask=mask):
+                for index, pin in enumerate(pins):
+                    kc.syms['PIN_BLOBIFIER_STEPPER_SPI_' + pin].set_value(
+                        'unit0:PG%d' % index if mask & (1 << index) else '')
+                self.assertEqual(kc.is_enabled('SW6'), mask not in (0, 7))
+        kc.syms['PIN_BLOBIFIER_STEPPER_SPI_MISO'].set_value('')
+        for choice in ('CHOICE_BLOBIFIER_TMC2209', 'CHOICE_BLOBIFIER_TMC_NONE'):
+            kc.syms[choice].set_value(2)
+            self.assertFalse(kc.is_enabled('SW6'))
+
+    def test_named_hardware_spi_bus(self):
+        mmu = self._render_mmu('blobifier_named_spi', {
+            'CHOICE_BLOBIFIER_TMC5160': True,
+            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
+            'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
+        })
+        driver = dict(cfg.assemble({MMU: mmu}).items(
+            'tmc5160 manual_stepper stepper_blobifier'))
+        self.assertEqual(driver['spi_bus'], 'spi2')
+        self.assertNotIn('spi_software_sclk_pin', driver)
+        self.assertEqual(driver['sense_resistor'], '0.075')
+
+    def test_5160_default_bus_and_custom_resistor(self):
+        mmu = self._render_mmu('blobifier_5160_custom_resistor', {
+            'CHOICE_BLOBIFIER_TMC5160': True,
+            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
+            'PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR': '0.050',
+        })
+        self.assertEqual(self._drivers(mmu), ['tmc5160 manual_stepper stepper_blobifier'])
+        driver = dict(cfg.assemble({MMU: mmu}).items(self._drivers(mmu)[0]))
+        self.assertEqual(driver['sense_resistor'], '0.050')
+        self.assertNotIn('spi_bus', driver)
+        self.assertNotIn('spi_software_sclk_pin', driver)
+        self.assertNotIn('uart_pin', driver)
+        self.assertNotIn('driver_slope_control', driver)
+
+    def test_spi_settings_survive_save_and_reload(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('blobifier_save_spi', {
+                'MMU_HAS_BLOBIFIER': True,
+                'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+                'CHOICE_BLOBIFIER_TMC5160': True,
+                'PIN_BLOBIFIER_STEPPER_CS': 'mcu:PC14',
+                'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
+                'PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR': '0.050',
+            })
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, '.mmu_config')
+                kc.write_config(path)
+                for filter_defaults in (True, False):
+                    with self.subTest(filter_defaults=filter_defaults):
+                        loaded = cfg._new_kconfig('blobifier_reload_spi')
+                        # menuconfig filters defaults; the builder preserves them.
+                        loaded.load_config(path, filter_defaults=filter_defaults)
+                        mmu = cfg._render_templates(
+                            (MMU,), loaded, {'PARAM_TOTAL_NUM_GATES': 4})[MMU]
+                        driver = dict(cfg.assemble({MMU: mmu}).items(
+                            'tmc5160 manual_stepper stepper_blobifier'))
+                        self.assertEqual(driver['cs_pin'], 'mcu:PC14')
+                        self.assertEqual(driver['spi_bus'], 'spi2')
+                        self.assertEqual(driver['sense_resistor'], '0.050')
+                        self.assertNotIn('uart_pin', driver)
+
+    def test_multi_unit_renders_one_shared_blobifier_driver(self):
+        mmu = self._render_mmu('two_units_blobifier_spi', {
+            'CHOICE_BLOBIFIER_TMC5160': True,
+            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
+            'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
+        }, base=TWO_UNIT)
+        self.assertEqual(self._drivers(mmu), ['tmc5160 manual_stepper stepper_blobifier'])
+        driver = dict(cfg.assemble({MMU: mmu}).items(self._drivers(mmu)[0]))
+        self.assertEqual(driver['cs_pin'], 'unit0:PC14')
+        self.assertEqual(driver['spi_bus'], 'spi2')
+
+    def test_disabling_blobifier_hides_prompts_and_emits_no_driver(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('blobifier_disabled_spi', {'MMU_HAS_BLOBIFIER': False})
+        import kconfiglib
+        for name, sym_type in (
+                ('PIN_BLOBIFIER_STEPPER_CS', kconfiglib.STRING),
+                ('PIN_BLOBIFIER_STEPPER_SPI_SCLK', kconfiglib.STRING),
+                ('PARAM_BLOBIFIER_STEPPER_SPI_BUS', kconfiglib.STRING),
+                ('PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR', kconfiglib.FLOAT)):
+            self.assertEqual(kc.syms[name].orig_type, sym_type)
+            self.assertEqual(kc.syms[name].visibility, 0)
+        self.assertEqual(kc.syms['PARAM_BLOBIFIER_TMC'].str_value, '')
+        self.assertFalse(kc.is_enabled('BOOL_BLOBIFIER_TMC_SPI'))
+        self.assertFalse(kc.is_enabled('SW5'))
+        self.assertFalse(kc.is_enabled('SW6'))
+        mmu = self._render_mmu('blobifier_disabled_output', {'MMU_HAS_BLOBIFIER': False})
+        self.assertEqual(self._drivers(mmu), [])
 
     def test_hardware_controlled_driver_emits_no_section(self):
         mmu = self._render_mmu('blobifier_tmc_none', {'CHOICE_BLOBIFIER_TMC_NONE': True})
@@ -679,6 +787,14 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                 'PIN_BLOBIFIER_STEPPER_UART': '',
             })
         self.assertTrue(kc.is_enabled('SW5'))
+
+        for chip in ('CHOICE_BLOBIFIER_TMC5160', 'CHOICE_BLOBIFIER_TMC2240'):
+            with self.subTest(chip=chip):
+                kc.syms[chip].set_value(2)
+                self.assertTrue(kc.is_enabled('SW5'))
+                kc.syms['PIN_BLOBIFIER_STEPPER_CS'].set_value('unit0:PC14')
+                self.assertFalse(kc.is_enabled('SW5'))
+                kc.syms['PIN_BLOBIFIER_STEPPER_CS'].set_value('')
 
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig('blobifier_tmc_none_needs_no_pin', {
