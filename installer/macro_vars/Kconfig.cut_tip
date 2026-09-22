@@ -175,7 +175,7 @@ menu "Toolhead tip cutting (_MMU_CUT_TIP)"
     string "Safe margin (X,Y)            "
     default "30, 30"
     help
-      Safety margin used when approaching the cutter pin.
+      Safety margin used when approaching or leaving the cutter pin.
 
   config BOOL_CUT_TIP_GANTRY_SERVO_ENABLED
     bool "Enable gantry servo"
