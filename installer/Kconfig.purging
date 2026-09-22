@@ -211,7 +211,9 @@ menu "Purging"
         config CHOICE_BLOBIFIER_TMC2240
           bool "TMC2240 / SPI"
           help
-            This installer supports TMC2240 and TMC5160 over SPI and TMC2209 over UART
+            Klipper's TMC2240 driver speaks both SPI and UART. Most step
+            sticks ship wired for SPI and need a jumper or solder bridge
+            moved to use UART. This installer generates the SPI form.
         config CHOICE_BLOBIFIER_TMC_NONE
           bool "None / hardware controlled"
       endchoice
