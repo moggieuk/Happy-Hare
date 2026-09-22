@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import collections
 import contextlib
+import datetime
 import logging
 import os
 import re
@@ -488,6 +489,7 @@ class Console:
         self.clock_epoch = None                     # reactor.monotonic() at that moment
         self._ticking = False                       # re-entry guard for the live tick
         self._at_prompt = False                     # ... and the only place a tick may run
+        self._prompt_buffer = ''                    # stale readline content at prompt entry
         self._last_tick = None
         # Every line that reached the terminal, for the pager. Rendered, not raw: this is
         # what was displayed, which is not the same as self.sink (MMU responses only - no
@@ -1378,7 +1380,14 @@ class Console:
         ('/timestamp [on|off]', 'stamp MMU output with the virtual clock (no argument '
                                 'toggles)'),
         ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
-        ('/tag UID [GATE]', 'attach an NFC tag (needs --virtual-nfc)'),
+        ('/tag [UID [GATE|UNIT]]',
+         'present an NFC tag: a GATE puts it on that gate\'s filament, a UNIT holds it '
+         'on that unit\'s shared reader ("off" takes it away again). No argument lists '
+         'the readers and the UIDs the simulated Spoolman knows - e.g. '
+         '"/tag BADCAFE005 unit0" resolves to a real spool'),
+        ('/td1 [TD [COLOR]] [WHERE]',
+         'present filament measuring TD to a TD-1 scanner, or off|unplug|plug|fail '
+         'instead. WHERE is a gate or USB serial; bare /td1 reports every scanner'),
         ('/header [GROUPS]', 'set header groups: %s, or "all"/"off"' % ','.join(GROUPS)),
         ('/log [N]', 'path to mmu.log and its last N lines (default 20)'),
         ('/errors', 'every !! message this session'),
@@ -1386,6 +1395,10 @@ class Console:
         ('/help', 'this list'),
         ('/quit', 'exit (also Ctrl-D)'),
     )
+
+    # Beside META_HELP rather than inside meta(), so /help coverage can check both
+    META_ALIASES = {'wait': 'advance', 'q': 'quit', 'h': 'help', 's': 'scroll',
+                    'realtime': 'pace', 'td': 'td1'}
 
     def meta(self, line):
         self.meta_line = line                       # /scroll needs its arguments unsplit
@@ -1395,9 +1408,8 @@ class Console:
         name, rest = parts[0].lower(), parts[1:]
         fn = getattr(self, '_meta_' + name, None)
         if fn is None:
-            alias = {'wait': '_meta_advance', 'q': '_meta_quit', 'h': '_meta_help',
-                     's': '_meta_scroll', 'realtime': '_meta_pace'}.get(name)
-            fn = getattr(self, alias) if alias else None
+            alias = self.META_ALIASES.get(name)
+            fn = getattr(self, '_meta_' + alias) if alias else None
         if fn is None:
             print(paint('?? unknown meta-command /%s (try /help)' % name, '33', self.color))
             return
@@ -1410,14 +1422,6 @@ class Console:
         print('Meta-commands:')
         for name, desc in self.META_HELP:
             print('  %-22s %s' % (name, desc))
-        # The one part of the header that is not self-describing: a coloured block is not
-        # obviously "one LED" until someone says so, and the gate grouping is invisible on a
-        # one-LED-per-gate machine.
-        print("\nIn the 'leds' header group, one block is one physical LED painted in its "
-              'own\ncolour - %s lit, %s lit but too dim to see honestly (shown brighter), '
-              '%s off -\nwith a gate\'s LEDs run together and a space between gates. [...] '
-              "is the\nsegment's current effect."
-              % (self.LED_ON, self.LED_DIM, self.LED_OFF))
         print('\nEverything else is sent to the MMU as G-code. MMU_HELP lists Happy Hare\'s\n'
               'commands, and any of them accepts HELP=1 for its own parameters.')
 
@@ -1438,6 +1442,10 @@ class Console:
         while left > 0:
             step = min(ADVANCE_SLICE, left)
             self.hh.reactor.advance(step)
+            # Moonraker answers continuously on a real printer. Without this the live
+            # clock advances Klipper alone and every lookup the NFC poll dispatches
+            # banks up, to be delivered in one burst by the next command
+            self._settle_moonraker()
             left -= step
 
     def _meta_advance(self, args):
@@ -1856,25 +1864,37 @@ class Console:
         finally:
             self._ticking = False
 
+    def _line_buffer(self):
+        """
+        What the user has actually typed at this prompt, or ''.
+
+        get_line_buffer() is not reliably empty at the start of a line: macOS's libedit
+        build can still hand back the PREVIOUS command until the first keystroke syncs
+        it, which is how a timeout firing at an untouched prompt redraws '> MMU_GATE_MAP'
+        instead of '> '. So compare against what it read when this prompt opened and
+        treat "unchanged" as nothing typed.
+        """
+        if not HAVE_READLINE:
+            return ''
+        try:
+            pending = readline.get_line_buffer()
+        except Exception:                           # noqa: BLE001
+            return ''
+        return '' if pending == self._prompt_buffer else pending
+
     def _reprint(self, emit_output):
         """
         Print from under the prompt: wipe the prompt line, emit, put the prompt back.
 
         readline believes it still owns that line, so it has to be erased first and rebuilt
-        afterwards from get_line_buffer() - otherwise the output lands on top of what the
-        user is typing and the typing is lost.
+        afterwards - otherwise the output lands on top of what the user is typing and the
+        typing is lost.
         """
         out = raw_stdout()
         out.write('\r\033[2K')
         out.flush()
         emit_output()
-        pending = ''
-        if HAVE_READLINE:
-            try:
-                pending = readline.get_line_buffer()
-            except Exception:                       # noqa: BLE001
-                pending = ''
-        out.write(self.prompt() + pending)
+        out.write(self.prompt() + self._line_buffer())
         out.flush()
 
     def _meta_live(self, args):
@@ -1916,11 +1936,230 @@ class Console:
         self.hh.mmu.p.log_level = int(args[0]) if args else 1
         print('  log_level = %s' % self.hh.mmu.p.log_level)
 
+    # Long enough to outlast NFC_TAG_HOLD_TIME (5s), the cooldown after the reader
+    # acts on a tag - so a second tag presented straight after a first is still seen
+    TAG_POLL_WAIT, TAG_POLL_SLICE = 7.0, 0.25
+
     def _meta_tag(self, args):
+        """
+        Put an NFC tag where a reader can find it, addressed the way MMU_NFC is.
+
+        A GATE attaches the tag to that gate's filament, for the per-gate reader that
+        filament passes - nothing reads it until something scans, the same split as
+        /place and /preload. A UNIT presents the tag to that unit's shared reader by
+        hand, which is the only way to reach one: bound to no gate, it never consults
+        the filament model (nfc_fixtures.py:424).
+
+        No fallback between them. A gate with no reader of its own says so and names
+        the unit to address instead, rather than quietly acting on a reader that
+        serves every other gate on that unit too.
+        """
+        if not args:
+            self._tag_report()
+            return
         uid = args[0]
-        gate = int(args[1]) if len(args) > 1 else self.hh.mmu.gate_selected
+        where = args[1] if len(args) > 1 else None
+        if where is not None and not where.lstrip('-').isdigit():
+            self._present_tag(self._shared_reader(where), uid)
+            return
+        gate = int(where) if where is not None else self.hh.mmu.gate_selected
+        manager = getattr(self.hh.mmu.mmu_unit(gate), 'nfc_manager', None)
+        if manager is None or not manager.has_gate_nfc_reader(gate):
+            unit = self.hh.mmu.mmu_unit(gate)
+            hint = ('/tag %s %s' % (uid, unit.name) if unit.nfc_reader
+                    else 'and nor has unit %s' % unit.name)
+            raise ValueError('gate %d has no NFC reader of its own - %s' % (gate, hint))
+        if uid.lower() in ('off', 'none'):
+            raise ValueError('a gate\'s tag goes away with its filament: /remove %d' % gate)
         self.fil.attach_tag(gate, uid)
         self.hh.reactor.advance(0.)
+
+    def _shared_reader(self, name):
+        """
+        A unit name -> that unit's shared reader. Its reader name is accepted too,
+        being what the config calls it and what /tag prints.
+        """
+        for unit in self.hh.mmu.mmu_machine.units:
+            if name == unit.name:
+                if not unit.nfc_reader:
+                    raise ValueError('unit %s has no shared NFC reader' % name)
+                return unit.nfc_reader
+        if name in self.hh.nfc_chips:
+            return name
+        shared = ['%s (%s)' % (u.name, u.nfc_reader)
+                  for u in self.hh.mmu.mmu_machine.units if u.nfc_reader]
+        raise ValueError('no unit or reader %r; shared readers: %s'
+                         % (name, ', '.join(shared) or 'none'))
+
+    def _tag_report(self):
+        """Every reader, and the tag UIDs the simulated Spoolman actually knows."""
+        if not self.hh.nfc_chips:
+            print('  no virtual NFC readers (needs --virtual-nfc)')
+        shared = {u.nfc_reader: u.name for u in self.hh.mmu.mmu_machine.units if u.nfc_reader}
+        for name, chip in sorted(self.hh.nfc_chips.items()):
+            if name in shared:
+                serves = 'shared on %s - present by hand' % shared[name]
+            else:
+                serves = 'gates %s' % (','.join(str(g) for g in chip._gates) or 'none')
+            held = getattr(chip.presented, 'uid', None)
+            print('  %-14s %-34s holding %s' % (name, serves, held or 'nothing'))
+        known = self._spoolman_uids()
+        if known:
+            print('  Spoolman knows: %s' % ', '.join('%s (%s)' % kv for kv in known))
+
+    def _spoolman_uids(self):
+        """[(uid, filament name)] from the fake Spoolman, for tags that will resolve."""
+        if self.hh.moonraker is None:
+            return []
+        found = []
+        for spool in self.hh.moonraker.db.spools.values():
+            uid = (spool.get('extra', {}).get('rfid_tag') or '').strip('"')
+            if uid:
+                found.append((uid, spool.get('filament', {}).get('name', '?')))
+        return found
+
+    def _present_tag(self, reader, uid):
+        """
+        Hold a tag on one reader, and let its poll find it.
+
+        The wait is the point. Only the reader's own automatic poll stages a tag -
+        MMU_NFC READ=1 reports a UID and stages nothing - so without it a frozen-clock
+        session (any --script, and --live off) would present a tag that is never read,
+        which looks exactly like a broken command.
+        """
+        if not self.hh.nfc_chips:
+            raise ValueError('no virtual NFC readers in this session (needs --virtual-nfc)')
+        chip = self.hh.chip(reader)
+        mark = len(self.sink)
+        if uid.lower() in ('off', 'none'):
+            chip.clear()
+            self.info('tag taken off %s' % reader)
+            return
+        before = chip.reads
+        chip.present(uid)
+        waited = 0.
+        while chip.reads == before and waited < self.TAG_POLL_WAIT:
+            self.hh.reactor.advance(self.TAG_POLL_SLICE)
+            waited += self.TAG_POLL_SLICE
+        self._settle_moonraker()
+        self._drain(mark)
+        if chip.reads == before:
+            self.info('tag %s presented, but %s did not read it within %gs - it is '
+                      'disabled, or standing down for a move' % (uid, reader, waited))
+
+    # A mid-range opaque reading. TD is a transmission distance in mm, so LOW is
+    # opaque and HIGH is clear (black ~0.1, white ~4.6, transparent natural ~100)
+    TD1_DEFAULT_TD, TD1_DEFAULT_COLOR = 2.5, '7f7f7f'
+
+    def _td1_transport(self):
+        """The virtual [td1] component behind the fake Moonraker - see FakeTd1Transport."""
+        if getattr(self.hh.mmu, 'td1', None) is None:
+            raise ValueError('this profile configures no TD-1 scanner')
+        if self.hh.moonraker is None:
+            raise ValueError('no Moonraker attached - the scanners live on its side')
+        return self.hh.moonraker.td1
+
+    def _td1_serial(self, where=None):
+        """
+        Resolve a gate number, a USB serial, or nothing at all to one scanner.
+
+        A gate resolves the way MMU_TD1 does - its own in-path scanner first, then the
+        off-path one. An unrecognized word is taken as a serial and NOT rejected: a
+        scanner Moonraker reports that no gate references is how you find a serial to
+        configure, so it has to be possible to plug one in.
+        """
+        bridge = self.hh.mmu.td1
+        if where is not None and not where.lstrip('-').isdigit():
+            return where
+        gate = int(where) if where is not None else self.hh.mmu.gate_selected
+        manager = bridge.manager_for(gate)
+        device = manager.addressed_device(gate) if manager is not None else None
+        if device is not None:
+            return device.serial
+        # Nothing serves that gate - the bypass, or a unit with no scanner. One
+        # scanner on the machine is unambiguous anyway
+        serials = sorted(bridge.devices)
+        if len(serials) == 1:
+            return serials[0]
+        raise ValueError('no TD-1 scanner serves gate %s; name one of: %s'
+                         % (gate, ', '.join(serials) or 'none configured'))
+
+    # What a scanner can be doing beyond holding a measurement, one FakeTd1Transport
+    # state each
+    TD1_STATES = {'off': 'remove', 'unplug': 'unplug', 'plug': 'attach', 'fail': 'fail'}
+    TD1_USAGE = ('usage: /td1 [TD [RRGGBB]] [GATE|SERIAL], or /td1 %s [GATE|SERIAL]'
+                 % '|'.join(TD1_STATES))
+
+    def _meta_td1(self, args):
+        """
+        Put filament in front of a virtual TD-1 scanner, or take it away.
+
+        Deliberately models the LENS, not an event: a TD-1 re-measures whatever is
+        sitting in front of it on every poll, and the dedupe rules that stop that
+        flooding the gate map are real code worth exercising. So presenting the same
+        filament twice is SUPPOSED to do nothing the second time - which is the only
+        kind of case the outcome line below reports, Happy Hare announcing the rest.
+        """
+        transport = self._td1_transport()
+        if not args:
+            self._td1_report(transport)
+            return
+        state = self.TD1_STATES.get(args[0].lower())
+        if state is not None:
+            serial = self._td1_serial(args[1] if len(args) > 1 else None)
+            if state == 'fail':
+                transport.fail(serial, 'simulated optical fault')
+            else:
+                getattr(transport, state)(serial)
+        else:
+            try:
+                td = float(args[0])
+            except ValueError:
+                raise ValueError(self.TD1_USAGE) from None
+            color = self.TD1_DEFAULT_COLOR
+            rest = list(args[1:])
+            if rest and re.fullmatch(r'[0-9a-fA-F]{6}', rest[0]):
+                color = rest.pop(0).lower()
+            serial = self._td1_serial(rest[0] if rest else None)
+            transport.present(serial, td, color)
+        # Don't make the user wait out the poll interval (up to 10s of virtual time) to
+        # see what they just did. refresh() is the same round trip the poll makes
+        mark = len(self.sink)
+        outcome = None
+        try:
+            self.hh.mmu.td1.refresh(serial)
+            # Read before settling: that runs the reactor, and the background poll
+            # resets last_outcome on its way past
+            outcome = getattr(self.hh.mmu.td1.devices.get(serial), 'last_outcome', None)
+        except Exception as exc:                # noqa: BLE001 - MmuTd1Error and friends
+            print(paint('!! TD-1 %s: %s' % (serial, exc), '1;31', self.color))
+        self._settle_moonraker()
+        self._drain(mark)
+        # Only when Happy Hare stayed silent. It announces a measurement it accepts, so
+        # echoing the outcome there says the same thing twice; what needs saying is why
+        # nothing happened - deduped, disconnected, a bad reading
+        if outcome is not None and len(self.sink) == mark:
+            self.info('TD-1 %s: %s' % (serial, outcome))
+
+    def _td1_report(self, transport):
+        """What each scanner is holding, virtual side and Happy Hare's side together."""
+        serials = sorted(set(transport.readings) | set(self.hh.mmu.td1.devices))
+        if not serials:
+            print('  no TD-1 scanners')
+            return
+        for serial in serials:
+            reading = transport.record(serial)
+            if serial not in transport.readings:
+                seen = 'unplugged'
+            elif serial in transport.errors:
+                seen = 'error: %s' % transport.errors[serial]
+            elif reading is None:
+                seen = 'nothing presented'
+            else:
+                seen = 'TD %.2f, color %s' % (reading['td'], reading['color'])
+            device = self.hh.mmu.td1.devices.get(serial)
+            print('  %-16s %-30s %s' % (serial, seen,
+                                        getattr(device, 'last_outcome', None) or '-'))
 
     def _meta_header(self, args):
         if not args:
@@ -2088,6 +2327,14 @@ class Console:
                 # can never land inside a dispatch, inside the pager, or in the middle of
                 # the tee reassembling a line.
                 self._at_prompt = True
+                # Whatever get_line_buffer() says BEFORE a key is pressed is stale, not
+                # typed - see _line_buffer()
+                self._prompt_buffer = ''
+                if HAVE_READLINE:
+                    try:
+                        self._prompt_buffer = readline.get_line_buffer()
+                    except Exception:               # noqa: BLE001
+                        pass
                 self._arm_tick(True)
                 try:
                     typed = input(prompt)

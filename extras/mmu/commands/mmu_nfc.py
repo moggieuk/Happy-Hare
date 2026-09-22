@@ -33,34 +33,32 @@ class MmuNfcCommand(BaseCommand):
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "SHARED   = [0|1] Target the unit's shared reader\n"
-        + "GATE     = #(int) Target the reader for this gate (implies the unit)\n"
-        + "GATES    = g,g,g Target multiple gates' readers (don't mix with GATE/SHARED)\n"
-        + "UNIT     = #(int)/name Only needed to disambiguate multiple units with shared readers\n"
-        + "ENABLE   = [0|1] Top-level on/off for the reader (re-inits when enabled)\n"
+        + "GATE     = #(int) Target the reader for this gate\n"
+        + "GATES    = g,g,g Target several gates' readers\n"
+        + "UNIT     = #(int)/name Disambiguate when several units qualify\n"
+        + "ENABLE   = [0|1] Turn the reader on/off (re-inits when enabled)\n"
         + "READ     = [0|1] Read the addressed reader once and report the UID\n"
-        + "DEEP     = [0|1] With READ=1, also parse and report the tag metadata (ignores nfc_deep_read setting)\n"
-        + "REGISTER = [0|1] Read tag (implies READ=1 DEEP=1) and resolve it in Spoolman (may auto-create). Shared reader: report-only, Per-gate: updates gate map\n"
-        + "APPEND   = [0|1] With REGISTER=1 on a gate that already has a spool assigned, bind the newly scanned tag onto that spool instead of resolving/auto-creating (e.g. a second tag on the same spool)\n"
+        + "DEEP     = [0|1] With READ=1, also parse and report tag metadata\n"
+        + "REGISTER = [0|1] Read a tag and resolve it in Spoolman\n"
+        + "APPEND   = [0|1] With REGISTER=1, bind the tag to the gate's spool\n"
         + "INIT     = [0|1] (Re)initialize the addressed reader\n"
         + "RELEASE  = [0|1] Release the current target on the addressed reader\n"
-        + "CLEAR_PENDING = [0|1] Discard a tag staged by the shared reader (and any spool id resolved\n"
-        + "           from it). Leaves a TD-1 measurement or a hand-set NEXT_SPOOLID in place, and only\n"
-        + "           ends the pending countdown if nothing is left to apply\n"
+        + "CLEAR_PENDING = [0|1] Discard a tag staged by the shared reader\n"
         + "INIT_ALL = [0|1] (Re)initialize every reader on every unit\n"
-        + "DETAILS  = [0|1] Include actual cached tag UIDs in the status report\n"
+        + "DETAILS  = [0|1] Include cached tag UIDs in the status report\n"
         + "(no parameters for status report of all readers)"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD}                        ...Report status of all readers (which have a cached tag)\n"
+        + f"{CMD}                        ...Report status of all readers\n"
         + f"{CMD} DETAILS=1              ...As above but show the actual cached UIDs\n"
         + f"{CMD} SHARED=1 ENABLE=0      ...Disable the shared reader\n"
-        + f"{CMD} CLEAR_PENDING=1        ...Discard a staged tag without touching other pending data\n"
+        + f"{CMD} CLEAR_PENDING=1        ...Discard a staged tag, keep other pending data\n"
         + f"{CMD} GATE=3 READ=1          ...Read the reader on gate 3 and report the result\n"
-        + f"{CMD} SHARED=1 READ=1 DEEP=1 ...Read the shared reader and report the parsed tag metadata\n"
-        + f"{CMD} SHARED=1 REGISTER=1    ...Read tag and resolve/register it in Spoolman (report only, no assignment)\n"
-        + f"{CMD} GATE=2 REGISTER=1      ...Read tag on gate 2 and apply to the gate map (as if auto-scanned)\n"
-        + f"{CMD} GATE=2 REGISTER=1 APPEND=1 ...Read a 2nd tag on gate 2 and bind it onto the spool already assigned there\n"
+        + f"{CMD} SHARED=1 READ=1 DEEP=1 ...Read the shared reader and show parsed metadata\n"
+        + f"{CMD} SHARED=1 REGISTER=1    ...Resolve the tag in Spoolman, report only\n"
+        + f"{CMD} GATE=2 REGISTER=1      ...Read tag on gate 2 and apply to the gate map\n"
+        + f"{CMD} GATE=2 REGISTER=1 APPEND=1 ...Bind a 2nd tag onto gate 2's existing spool\n"
         + f"{CMD} GATE=2 INIT=1          ...(Re)initialize the reader on gate 2\n"
         + f"{CMD} GATES=0,1,2,3 ENABLE=0 ...Disable selected per-gate readers\n"
         + f"{CMD} INIT_ALL=1             ...Re-initialize every reader on all units\n"
@@ -262,7 +260,7 @@ class MmuNfcCommand(BaseCommand):
             tag = rs['uid'] if details else "present"
         else:
             tag = "none"
-        return "%-9s enabled=%d active=%d alive=%d tag=%s" % (
+        return "%-9s enabled=%d, active=%d, alive=%d, tag=%s" % (
             label + ":", int(rs['enabled']), int(rs['active']), int(rs['alive']), tag)
 
     def _report_one(self, mmu_unit, mgr, shared, gate, details):

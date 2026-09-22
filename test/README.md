@@ -256,6 +256,8 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/scroll [N]`, `/s` | scroll back through the log (see below) |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
 | `/place`, `/insert`, `/remove`, `/preload`, `/exhaust` | quietly place filament, actively insert it, remove it, preload it, or run it out |
+| `/tag [UID [GATE\|UNIT]]` | present an NFC tag, addressed as `MMU_NFC` addresses one. A **gate** puts it on that gate's filament; a **unit** holds it on that unit's shared reader (`off` takes it away). Bare `/tag` lists the readers and the UIDs the fake Spoolman knows |
+| `/td1 [TD [RRGGBB]] [GATE\|SERIAL]` | hold filament measuring TD in front of a TD-1 scanner; `off` takes it away, no argument reports what each one sees |
 | `/reset` | rebuild the selected profile in the same state as a fresh simulator start |
 | `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
 | `/timestamp [on\|off]` | stamp MMU output with the virtual clock; **on by default** at a terminal |
@@ -264,7 +266,14 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 
 Multi-unit configs work, and `ercf_vvd` — **the console default** — is one: a real two-unit
 machine, ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) plus ViViD 1.0 (4 gates,
-`IndexedSelector`), 13 gates in total. You can also point `--profile` at a multi-unit install
+`IndexedSelector`), 13 gates in total. Its `unit0` also carries a shared NFC reader and an
+off-path TD-1, so the bench gesture works out of the box on both: `/tag <uid> unit0`
+or `/td1 <td>`, then `/preload` a gate and the pending data lands on it. Only unit1's
+gates have per-gate NFC readers, so `/tag <uid> <gate>` is for gates 9-12.
+The two optional scanners are split across the units on purpose, one topology each —
+unit0 has the off-path TD-1 and the common NFC reader, unit1 a single in-path TD-1 in its
+shared bowden (`td1_devices` is one serial repeated, so all four of its gates see it) and
+per-gate NFC readers in pairs. You can also point `--profile` at a multi-unit install
 directory. Either way the harness builds every unit, with gates numbered contiguously across
 them (here `unit0` 0-8, `unit1` 9-12). Sensors
 are qualified per unit (`unit0:mmu_shared_exit`), so the header keeps the prefix and `/sensor`

@@ -623,6 +623,9 @@ ERCF_VVD = Profile(
         # the happy path. NFC_SPOOLMAN covers push.
         'CHOICE_SPOOLMAN_SUPPORT_RO': True,
         'PARAM_SPOOLMAN_NFC_AUTO_CREATE': True,
+        # Longer than the 20s default: this is the window to walk from the bench
+        # scanner/reader to the printer and preload a gate
+        'PARAM_SPOOLMAN_PENDING_ID_TIMEOUT': 30,
         'CHOICE_LOG_FILE_LEVEL_STEPPER': True,
         # Both default y (macro_vars/Kconfig.software:30,41); turned off on this machine, so
         # mmu_macro_vars.cfg gets check_gates/load_initial_tool = False at print start.
@@ -676,6 +679,12 @@ ERCF_VVD = Profile(
             'MMU_HAS_COMMON_NFC_READER': True,
             'CHOICE_NFC_READER_TYPE_PN532_UART': True,
             'PARAM_NFC_READER_SERIAL': '/dev/serial/shared_nfc',
+            # An off-path TD-1, beside the shared NFC reader above and used the same
+            # way: present a spool by hand and the reading is staged for the next gate
+            # preloaded. No gate assignment, no scan geometry. unit1 has an in-path one
+            'MMU_HAS_TD1': True,
+            'MMU_HAS_OFFPATH_TD1': True,
+            'PARAM_TD1_DEVICE': 'TD1-BENCH',
         }),
         # ViViD 1.0. Its buffer lives on a SECOND mcu (OPTION_VVD_BUFFER selects
         # MMU_HAS_BUFFER_MCU), so this unit alone renders two [mcu] sections.
@@ -690,6 +699,12 @@ ERCF_VVD = Profile(
             'PIN_EJECT_BUTTON_1': 'unit1:pin1',
             'PIN_EJECT_BUTTON_2': 'unit1:pin2',
             'PIN_EJECT_BUTTON_3': 'unit1:pin3',
+            # An in-path TD-1 in this unit's shared bowden - the other topology, so
+            # one machine carries both. Without MMU_HAS_PER_GATE_TD1 the template
+            # renders the serial once per gate, which is how one scanner serving every
+            # gate is expressed, and is what the attribution debt exists for
+            'MMU_HAS_TD1': True,
+            'PARAM_TD1_BOWDEN_DEVICE': 'TD1-VVD',
         }),
     ],
     description='ERCF 1.1sb (9 gates) + ViViD 1.0 (4 gates) - the only multi-unit profile')

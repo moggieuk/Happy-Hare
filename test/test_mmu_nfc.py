@@ -422,6 +422,22 @@ class TestSharedGatePairReader(unittest.TestCase):
     def tearDown(self):
         self.hh.close()
 
+    def test_the_status_report_is_a_comma_separated_field_list(self):
+        """
+        The shape MMU_TD1 was aligned to, so it is worth pinning on this side too. One
+        line per reader, grouped by unit, fields separated by commas - without them
+        'enabled=1 active=1 alive=1' reads as one run-on token.
+        """
+        from unittest.mock import patch
+        with patch.object(self.hh.mmu, 'log_always') as report:
+            self.hh.run_gcode('MMU_NFC')
+        message = '\n'.join(c.args[0] for c in report.call_args_list)
+        self.assertIn('MMU NFC readers:', message)
+        self.assertIn('Unit unit0:', message)
+        self.assertIn('shared:   enabled=1, active=1, alive=1, tag=none', message)
+        self.assertIn('Unit unit1:', message)
+        self.assertIn('gate 12:  enabled=1, active=1, alive=1, tag=none', message)
+
     def test_reader_identity_is_shared_within_a_pair_not_across_pairs(self):
         self.assertIs(self.mgr.gate_readers[0], self.mgr.gate_readers[1])
         self.assertIs(self.mgr.gate_readers[2], self.mgr.gate_readers[3])
