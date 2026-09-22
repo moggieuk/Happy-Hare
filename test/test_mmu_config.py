@@ -1007,6 +1007,65 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         self.assertFalse(kc.is_enabled('SW5'))
 
 
+class TestSavedConfigLoading(unittest.TestCase):
+    """How a saved .mmu_config is applied - characterized, not yet changed.
+
+    Two behaviours here are load-bearing for any future symbol rename, and
+    neither is obvious from reading the loader. They are pinned now so that a
+    later change to either is a deliberate act with a failing test attached,
+    rather than a silent shift in what an installed machine renders.
+    """
+
+    LEGACY = ('CONFIG_MMU_HAS_BLOBIFIER=y\n'
+              'CONFIG_CHOICE_BLOBIFIER_TYPE_STEPPER=y\n'
+              'CONFIG_PIN_BLOBIFIER_STEPPER_UART="unit0:PC14"\n'
+              'CONFIG_PIN_MADE_UP_SYMBOL="ghost"\n'
+              'CONFIG_PARAM_BLOBIFIER_STEPPER_RUN_CURRENT="0.45" #~DEFAULT~#\n')
+
+    def _load(self, filter_defaults):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._new_kconfig('saved_config_%s' % filter_defaults)
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, '.mmu_config')
+                with open(path, 'w') as handle:
+                    handle.write(self.LEGACY)
+                kc.load_config(path, filter_defaults=filter_defaults)
+        return kc
+
+    def test_a_value_saved_for_an_unknown_symbol_is_dropped(self):
+        """Renaming a symbol therefore loses whatever the user had set.
+
+        kconfiglib records the orphaned assignment in missing_syms and carries
+        on - no error, no warning the user will see. That is the whole reason a
+        rename needs a migration rather than just an edit.
+        """
+        for filter_defaults in (True, False):
+            with self.subTest(filter_defaults=filter_defaults):
+                kc = self._load(filter_defaults)
+                self.assertEqual(kc.missing_syms,
+                                 [('PIN_MADE_UP_SYMBOL', '"ghost"')])
+                # ...while a symbol that still exists keeps its value
+                self.assertEqual(kc.get('PIN_BLOBIFIER_STEPPER_UART'),
+                                 'unit0:PC14')
+
+    def test_a_recorded_default_is_applied_when_building_but_not_in_menuconfig(self):
+        """The same line means different things to the two callers.
+
+        menuconfig and olddefconfig load with filter_defaults=True, which
+        clears a #~DEFAULT~# line so the symbol stays a modifiable default.
+        installer/build.py loads with False, which applies it. Anything that
+        rewrites these lines has to preserve the token, or a value that was
+        merely a recorded default becomes a pinned user value and the old
+        default is frozen in place forever.
+        """
+        self.assertEqual(
+            self._load(True).get('PARAM_BLOBIFIER_STEPPER_RUN_CURRENT'), '0.6',
+            'menuconfig should have cleared the recorded default')
+        self.assertEqual(
+            self._load(False).get('PARAM_BLOBIFIER_STEPPER_RUN_CURRENT'), '0.45',
+            'the builder should have applied the recorded default')
+
+
 # Deliberately TWO IDENTICAL BOXTURTLES rather than the real ercf_vvd profile. The point is
 # to test the multi-unit RENDER PATH, so both units being the machine every other test
 # already trusts means a failure here is the path and not an ERCF or ViViD quirk. It lives
