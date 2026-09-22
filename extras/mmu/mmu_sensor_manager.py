@@ -70,7 +70,11 @@ class MmuSensorManager:
             ])
 
             prefixed_unit_sensors = collect_sensors([
-                (sensor, self.get_prefixed_sensor_name(sensor_type, name)) if sensor and name else (sensor, None)
+                # No owner to prefix with means the sensor is registered under the bare
+                # type, so that is its name here too. Keying it None instead put an
+                # unnamed sensor in a map that is walked by name, and the runout sweep
+                # died on it with "expected string or bytes-like object, got NoneType".
+                (sensor, self.get_prefixed_sensor_name(sensor_type, name) if name else sensor_type)
                 for sensor, sensor_type, name in sensor_defs
             ])
 

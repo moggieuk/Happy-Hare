@@ -294,7 +294,9 @@ class TestNonGateInsertValidation(unittest.TestCase):
         self.hh = session('3ms')
         self.hh.boot()
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
-        self.sensor_name = 'default:extruder'
+        # Ask the machine what it called the sensor: a single unit with no name
+        # registers it bare, a named one keeps the "<toolhead>:" prefix.
+        self.sensor_name = self.hh.sensor('extruder').name
 
     def tearDown(self):
         self.hh.close()

@@ -89,7 +89,7 @@ class MmuToolheadWrapper():
         switch_pin = config.get('extruder_switch_pin', None)
         sensor = sf.create_mmu_sensor(
             config,
-            f"{self.name}:{SENSOR_EXTRUDER_ENTRY}",
+            extruder_entry_sensor_name,
             None,
             switch_pin,
             event_delay=event_delay,
@@ -110,7 +110,7 @@ class MmuToolheadWrapper():
         switch_pin = config.get('toolhead_switch_pin', None)
         sensor = sf.create_mmu_sensor(
             config,
-            f"{self.name}:{SENSOR_TOOLHEAD}",
+            toolhead_sensor_name,
             None,
             switch_pin,
             event_delay=event_delay,

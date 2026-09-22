@@ -427,6 +427,58 @@ class TestBareUnitNames(unittest.TestCase):
         allvars = vm.save_variables.allVariables
         self.assertEqual([k for k in allvars if k.startswith('mmu_unit0_')], [])
 
+    @staticmethod
+    def _strip_to_a_pre_marker_install(allvars):
+        """
+        Leave mmu_vars.cfg looking like one written before this option existed: no naming
+        markers, and no unnamed per-unit data, because there was no unnamed form to write.
+        Booting the harness stamps both, so a test has to undo them to reach that state.
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_PER_UNIT
+
+        for marker in ('mmu__bare_unit_names', 'mmu__unit_names'):
+            allvars.pop(marker, None)
+        for variable in VARS_MMU_PER_UNIT:
+            allvars.pop(variable, None)
+
+    def test_calibration_moves_across_with_no_markers_to_read(self):
+        """
+        The same upgrade, but from an install that predates the markers - which is every
+        install that exists today, since nothing wrote them before this option. There is
+        no "mmu__bare_unit_names" to consult, so the only evidence of the old naming is
+        the data itself, and missing it strands the whole calibration on first boot.
+        """
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertTrue(hh.mmu.mmu_machine.bare_unit_names)   # precondition
+
+        allvars = hh.mmu.var_manager.save_variables.allVariables
+        self._strip_to_a_pre_marker_install(allvars)
+        allvars.update({
+            'mmu_unit0_bowden_lengths': [1623.6],
+            'mmu_unit0_gear_rotation_distances': [22.7],
+        })
+
+        vm = self._rebuild_var_manager(hh)
+
+        self.assertEqual(vm.get(VARS_MMU_BOWDEN_LENGTHS, None), [1623.6])
+        self.assertEqual(vm.get('mmu_gear_rotation_distances', None), [22.7])
+        self.assertEqual(
+            [k for k in vm.save_variables.allVariables if k.startswith('mmu_unit0_')], [])
+
+    def test_a_first_boot_with_nothing_stored_moves_nothing(self):
+        """The other no-marker case: a fresh install has nothing to infer a naming from."""
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        allvars = hh.mmu.var_manager.save_variables.allVariables
+        self._strip_to_a_pre_marker_install(allvars)
+
+        vm = self._rebuild_var_manager(hh)
+        self.assertEqual(vm.get(VARS_MMU_BOWDEN_LENGTHS, None), None)
+
     def test_calibration_moves_back_when_the_name_is_restored(self):
         """The same switch in reverse, so turning the option off is equally safe."""
         hh = session('boxturtle_named_unit')

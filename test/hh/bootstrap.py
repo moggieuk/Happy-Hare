@@ -1515,6 +1515,18 @@ class Session:
         """The stub carries a `writes` list of every (name, value) SAVE_VARIABLE saw."""
         return self.printer.lookup_object('save_variables')
 
+    def unit_var(self, variable, unit=None):
+        """
+        Name a per-unit saved variable the way the machine under test names it.
+
+        A single unit with no name stores these bare ("mmu_bowden_lengths"); every other
+        machine prefixes them with the unit ("mmu_unit0_bowden_lengths"). A test that
+        hardcodes one spelling only covers half the machines Happy Hare supports, so ask
+        the same SaveVariableManager the production code asks.
+        """
+        owner = unit if unit is not None else self.mmu.mmu_machine.units[0]
+        return self.mmu.var_manager.namespace(variable, owner.name)
+
     @property
     def errors(self):
         """

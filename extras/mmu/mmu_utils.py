@@ -139,6 +139,17 @@ class SaveVariableManager:
             # is most likely to be stranded.
             if any(v in self.save_variables.allVariables for v in VARS_MMU_PER_UNIT):
                 return None
+            # The other half of the same signal, and the one every existing install hits:
+            # before this option there was no unnamed form, so a single unit's data sits
+            # under the unit's own name. Without reading that, the first boot after the
+            # upgrade finds nothing under the new bare names and the machine comes back
+            # uncalibrated with all of it still in mmu_vars.cfg. Safe to infer only with
+            # one unit - and one unit is the only shape whose naming can change.
+            if self.mmu_machine.num_units == 1:
+                unit = self.mmu_machine.unit_names[0]
+                if any(self._apply_namespace(v, unit) in self.save_variables.allVariables
+                       for v in VARS_MMU_PER_UNIT):
+                    return unit
             return _UNKNOWN                  # Nothing stored yet; nothing to compare
         if self.save_variables.allVariables.get(VARS_MMU_BARE_UNIT_NAMES):
             return None

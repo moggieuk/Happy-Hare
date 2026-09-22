@@ -868,7 +868,7 @@ class TestPersistedPositionRestore(unittest.TestCase):
         self.assertEqual(hh.mmu.gate_selected, self.GATE)
         self.assertAlmostEqual(self.believed_position(), selector.selector_offsets[self.GATE],
                                places=3)
-        self.assertAlmostEqual(self.var('mmu_unit0_selector_last_pos'),
+        self.assertAlmostEqual(self.var(self.hh.unit_var('mmu_selector_last_pos')),
                                selector.selector_offsets[self.GATE], places=3,
                                msg='the derived position should be written back')
 
@@ -933,7 +933,7 @@ class TestPersistedPositionRestore(unittest.TestCase):
         hh.run_gcode('MMU_MOTORS_OFF')
 
         self.assertFalse(self.selector().is_homed)
-        self.assertIsNone(self.var('mmu_unit0_selector_last_pos'))
+        self.assertIsNone(self.var(self.hh.unit_var('mmu_selector_last_pos')))
         self.assertEqual(self.var('mmu_state_gate_selected'), -1)
         self.assertEqual(self.var('mmu_state_tool_selected'), -1)
         self.assertEqual(hh.errors, [])
@@ -957,7 +957,7 @@ class TestPersistedPositionRestore(unittest.TestCase):
 
         self.assertEqual(self.var('mmu_state_gate_selected'), 12,
                          "unit0's motors-off cleared unit1's selection")
-        self.assertIsNone(self.var('mmu_unit0_selector_last_pos'))
+        self.assertIsNone(self.var(self.hh.unit_var('mmu_selector_last_pos')))
         self.assertEqual(hh.errors, [])
 
     def test_a_failed_home_invalidates_the_pair_too(self):
@@ -980,7 +980,7 @@ class TestPersistedPositionRestore(unittest.TestCase):
         hh.run_gcode('MMU_HOME UNIT=0')
 
         self.assertFalse(selector.is_homed)
-        self.assertIsNone(self.var('mmu_unit0_selector_last_pos'))
+        self.assertIsNone(self.var(self.hh.unit_var('mmu_selector_last_pos')))
         self.assertEqual(self.var('mmu_state_gate_selected'), -1)
 
     # -- interaction with startup_home_selector ------------------------------------------------
