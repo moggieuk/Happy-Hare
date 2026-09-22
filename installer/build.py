@@ -106,6 +106,14 @@ VAR_SECTION_MAP = {
     "var_purge_":        "gcode_macro _MMU_PURGE_VARS",
 }
 
+# Parameters that describe the shape of the machine rather than a user preference. Kconfig
+# derives these on every build, so carrying the existing file's copy forward lets a value
+# outlive the thing it describes: a retired unit left in [mmu_machine] units makes Klipper
+# refuse to start with "Expected [mmu_unit <name>] section not found".
+STRUCTURAL_PARAMS = {
+    ("mmu_machine", "units"),
+}
+
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
 unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 
@@ -400,10 +408,12 @@ class HHConfig(ConfigBuilder):
                         not is_macro_section
                         and option in excluded_params
                     )
+                    is_structural = (section, option) in STRUCTURAL_PARAMS
 
                     if (
                         not is_gcode
                         and not is_excluded_var
+                        and not is_structural
                         and (is_var_section or not is_excluded_param)
                     ):
                         builder.set(section, option, self.get(section, option))
