@@ -685,6 +685,33 @@ class TestMachinePerGateI2cBus(unittest.TestCase):
             dict(parser.items('temperature_sensor unit0_Env1'))['i2c_bus'],
             'i2c2_PB10_PB11')
 
+    def test_empty_custom_environment_bus_uses_hardware_default(self):
+        from test.hh import cfg, profiles
+        base = profiles.get('emu')
+        syms = dict(base.syms)
+        syms['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_0'] = True
+        syms['PARAM_ENVIRONMENT_SENSOR_I2C_BUS_0'] = ''
+        parser = cfg.assemble(cfg.render(
+            base.derive('emu_env_default_bus', syms=syms)))
+        sensor = dict(parser.items('temperature_sensor unit0_Env0'))
+        self.assertNotIn('i2c_bus', sensor)
+        self.assertNotIn('i2c_software_scl_pin', sensor)
+        self.assertNotIn('i2c_software_sda_pin', sensor)
+
+    def test_software_environment_pins_still_render(self):
+        from test.hh import cfg, profiles
+        base = profiles.get('emu')
+        syms = dict(base.syms)
+        syms['CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_0'] = True
+        syms['PIN_ENVIRONMENT_SENSOR_SCL_0'] = 'PB6'
+        syms['PIN_ENVIRONMENT_SENSOR_SDA_0'] = 'PB7'
+        parser = cfg.assemble(cfg.render(
+            base.derive('emu_env_software_bus', syms=syms)))
+        sensor = dict(parser.items('temperature_sensor unit0_Env0'))
+        self.assertNotIn('i2c_bus', sensor)
+        self.assertEqual(sensor['i2c_software_scl_pin'], 'unit0_gate0:PB6')
+        self.assertEqual(sensor['i2c_software_sda_pin'], 'unit0_gate0:PB7')
+
     def test_nfc_reader_custom_bus_name(self):
         from test.hh import cfg, profiles
         base = self._nfc_profile('emu')

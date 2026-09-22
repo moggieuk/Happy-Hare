@@ -96,6 +96,11 @@ if MMU_HAS_PER_GATE_CONFIG
                 bool "Software i2c"
             endchoice
 
+            config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
+              string
+              default "software" if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
+              default "hardware"
+
             if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
               choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
                 prompt "i2c bus name      "
@@ -111,6 +116,8 @@ if MMU_HAS_PER_GATE_CONFIG
               config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
                 string "Custom i2c bus name    " if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
                 default "" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
+                help
+                  Leave blank to use the MCU's default hardware i2c bus.
             endif
 
             config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS_$(i)
