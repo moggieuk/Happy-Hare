@@ -112,6 +112,7 @@ VAR_SECTION_MAP = {
 # refuse to start with "Expected [mmu_unit <name>] section not found".
 STRUCTURAL_PARAMS = {
     ("mmu_machine", "units"),
+    ("mmu_machine", "bare_unit_names"),
 }
 
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
