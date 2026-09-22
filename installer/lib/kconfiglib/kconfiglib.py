@@ -2784,13 +2784,34 @@ class Kconfig(object):
                     #
                     # Named choices ('choice FOO') also end up here.
 
+                    # Happy Hare: expand $(macro) references in a named choice,
+                    # mirroring the non-const-symbol branch above.
+                    # _id_keyword_match stops at the '(' of a '$(', so without
+                    # this 'choice CHOICE_$(prefix)_TMC' lexed to the literal
+                    # name 'CHOICE_$' followed by a stray '(' and always died in
+                    # _trailing_tokens_error. That is what lets a component
+                    # fragment be sourced once per 'prefix :=' and still declare
+                    # its own named choices.
+                    #
+                    # Restricted to _T_CHOICE on purpose. Every other lexeme
+                    # reaching this branch is a title or prompt, and the quoted
+                    # form of those already expands macros - only a choice NAME
+                    # cannot be quoted. Since '$(' here is a parse error today,
+                    # this cannot change the meaning of any Kconfig that parses,
+                    # and leaving the other tokens alone keeps that true with no
+                    # caveats. Expanding before the warning below would matter
+                    # if this ever widened; it does not fire for a choice.
+                    if token is _T_CHOICE and "$" in name:
+                        name, s, i = self._expand_name(s, i)
+                    else:
+                        i = match.end()
+
                     if token is not _T_CHOICE:
                         self._warn("style: quotes recommended around '{}' in '{}'"
                                    .format(name, self._line.strip()),
                                    self.filename, self.linenr)
 
                     token = name
-                    i = match.end()
 
             else:
                 # Neither a keyword nor a non-const symbol
