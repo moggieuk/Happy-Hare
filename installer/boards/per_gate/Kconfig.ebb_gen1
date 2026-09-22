@@ -126,6 +126,36 @@ if BOARD_TYPE_EBB_GEN1
         default "$(MCU_NAME)_gate0:PA3"
     endif
 
+    # i2c3 (PB3/PB4) is the only hardware i2c bus routed on the EBB; it
+    # carries both the per-gate environment sensors and the per-gate NFC
+    # readers. Offer it to both by chipdef name - the feature files carry
+    # no chipdef knowledge of their own.
+    @repeat var=gate min=0 max=11@
+    if PARAM_NUM_GATES > $(gate)
+
+      choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)
+        default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate) if BOARD_TYPE_EBB_GEN1
+
+        config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate)
+          bool "i2c3_PB3_PB4"
+          depends on BOARD_TYPE_EBB_GEN1
+      endchoice
+      config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)
+        default "i2c3_PB3_PB4" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate)
+
+      choice CHOICE_NFC_READER_I2C_BUS_$(gate)
+        default CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate) if BOARD_TYPE_EBB_GEN1
+
+        config CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate)
+          bool "i2c3_PB3_PB4"
+          depends on BOARD_TYPE_EBB_GEN1
+      endchoice
+      config PARAM_NFC_READER_I2C_BUS_$(gate)
+        default "i2c3_PB3_PB4" if CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate)
+
+    endif
+    @endrepeat@
+
   endif
 
 endif

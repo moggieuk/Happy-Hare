@@ -132,6 +132,36 @@ if BOARD_TYPE_SLB_1_0
         default "$(MCU_NAME)_gate0:PA3"
     endif
 
+    # i2c2 (PB10/PB11) is the only hardware i2c bus routed on the SLB; it
+    # carries both the per-gate environment sensors and the per-gate NFC
+    # readers. Offer it to both by chipdef name - the feature files carry
+    # no chipdef knowledge of their own.
+    @repeat var=gate min=0 max=11@
+    if PARAM_NUM_GATES > $(gate)
+
+      choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)
+        default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_SLB_I2C2_PB10_PB11_$(gate) if BOARD_TYPE_SLB_1_0
+
+        config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_SLB_I2C2_PB10_PB11_$(gate)
+          bool "i2c2_PB10_PB11"
+          depends on BOARD_TYPE_SLB_1_0
+      endchoice
+      config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)
+        default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_SLB_I2C2_PB10_PB11_$(gate)
+
+      choice CHOICE_NFC_READER_I2C_BUS_$(gate)
+        default CHOICE_NFC_READER_I2C_BUS_SLB_I2C2_PB10_PB11_$(gate) if BOARD_TYPE_SLB_1_0
+
+        config CHOICE_NFC_READER_I2C_BUS_SLB_I2C2_PB10_PB11_$(gate)
+          bool "i2c2_PB10_PB11"
+          depends on BOARD_TYPE_SLB_1_0
+      endchoice
+      config PARAM_NFC_READER_I2C_BUS_$(gate)
+        default "i2c2_PB10_PB11" if CHOICE_NFC_READER_I2C_BUS_SLB_I2C2_PB10_PB11_$(gate)
+
+    endif
+    @endrepeat@
+
   endif
 
 endif
