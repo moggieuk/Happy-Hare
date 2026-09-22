@@ -3,7 +3,12 @@
 # Feature flags and derived bus settings:
 #   MMU_HAS_BLOBIFIER
 #   MMU_HAS_BLOBIFIER_BUCKET_SWITCH
+#   BOOL_BLOBIFIER_TMC_CAN_UART
+#   BOOL_BLOBIFIER_TMC_CAN_SPI
 #   BOOL_BLOBIFIER_TMC_SPI
+#   BOOL_BLOBIFIER_TMC_HAS_HOLD_CURRENT
+#   BOOL_BLOBIFIER_TMC_HAS_STEALTHCHOP
+#   BOOL_BLOBIFIER_TMC_HAS_RREF
 #   BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE
 #
 # Blobifier bucket switch:
@@ -27,7 +32,9 @@
 #   PIN_BLOBIFIER_STEPPER_SPI_MISO
 #   PARAM_BLOBIFIER_STEPPER_SPI_BUS
 #   PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
+#   PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT
 #   PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
+#   PARAM_BLOBIFIER_STEPPER_RREF
 #
 # Purge macro and behavior:
 #   PARAM_PURGE_MACRO
@@ -93,22 +100,66 @@ config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
   string
   default "0.6"
 
+config PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT
+  string
+  default "0.1"
+
+# TMC2226 ships a 0.150 shunt, TMC5160 a 0.075 one; the rest use 0.110.
+# TMC2240 has no shunt at all - it sizes current from rref instead.
 config PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
   float
+  default 0.150 if CHOICE_BLOBIFIER_TMC2226
   default 0.075 if CHOICE_BLOBIFIER_TMC5160
   default 0.110
 
+config PARAM_BLOBIFIER_STEPPER_RREF
+  int
+  default 12000
+
+# Klipper module implementing each chip. TMC2226 is register-compatible
+# with the TMC2209 and has no module of its own.
 config PARAM_BLOBIFIER_TMC
   string
   default "tmc2209" if CHOICE_BLOBIFIER_TMC2209
+  default "tmc2209" if CHOICE_BLOBIFIER_TMC2226
+  default "tmc2208" if CHOICE_BLOBIFIER_TMC2208
+  default "tmc2130" if CHOICE_BLOBIFIER_TMC2130
+  default "tmc2660" if CHOICE_BLOBIFIER_TMC2660
   default "tmc5160" if CHOICE_BLOBIFIER_TMC5160
   default "tmc2240" if CHOICE_BLOBIFIER_TMC2240
   default ""
 
-# The supported 2240 and 5160 connections are SPI; 2209 uses UART.
+# Which buses the chosen chip can actually speak. Only the TMC2240 does
+# both, so only it gets a bus prompt; the rest are fixed by the silicon.
+config BOOL_BLOBIFIER_TMC_CAN_UART
+  bool
+  default y if CHOICE_BLOBIFIER_TMC2209 || CHOICE_BLOBIFIER_TMC2226 || \
+      CHOICE_BLOBIFIER_TMC2208 || CHOICE_BLOBIFIER_TMC2240
+
+config BOOL_BLOBIFIER_TMC_CAN_SPI
+  bool
+  default y if CHOICE_BLOBIFIER_TMC2130 || CHOICE_BLOBIFIER_TMC2660 || \
+      CHOICE_BLOBIFIER_TMC5160 || CHOICE_BLOBIFIER_TMC2240
+
 config BOOL_BLOBIFIER_TMC_SPI
   bool
-  default y if CHOICE_BLOBIFIER_TMC5160 || CHOICE_BLOBIFIER_TMC2240
+  default y if CHOICE_BLOBIFIER_TMC_BUS_SPI
+
+# Two flags, not one: the TMC2660 happens to lack both, but hold_current
+# and stealthchop are separate Klipper options that other chips may drop
+# independently. It idles via idle_current_percent, whose Klipper default
+# of 100 is what we want, so nothing replaces hold_current for it.
+config BOOL_BLOBIFIER_TMC_HAS_HOLD_CURRENT
+  bool
+  default y if PARAM_BLOBIFIER_TMC != "" && !CHOICE_BLOBIFIER_TMC2660
+
+config BOOL_BLOBIFIER_TMC_HAS_STEALTHCHOP
+  bool
+  default y if PARAM_BLOBIFIER_TMC != "" && !CHOICE_BLOBIFIER_TMC2660
+
+config BOOL_BLOBIFIER_TMC_HAS_RREF
+  bool
+  default y if CHOICE_BLOBIFIER_TMC2240
 
 # Any supplied pin means software SPI, even when the trio is incomplete.
 # SW6 warns about missing pins; never silently switch to a different bus.
@@ -203,19 +254,41 @@ menu "Purging"
         default CHOICE_BLOBIFIER_TMC2209
         help
           Select correct TMC chip type for the Blobifier tray stepper.
+          The bus (UART or SPI) is fixed by the chip, except on the
+          TMC2240 which can do either.
 
         config CHOICE_BLOBIFIER_TMC2209
-          bool "TMC2209 / UART"
+          bool "TMC2209"
+        config CHOICE_BLOBIFIER_TMC2226
+          bool "TMC2226"
+        config CHOICE_BLOBIFIER_TMC2208
+          bool "TMC2208"
+        config CHOICE_BLOBIFIER_TMC2130
+          bool "TMC2130"
+        config CHOICE_BLOBIFIER_TMC2660
+          bool "TMC2660"
         config CHOICE_BLOBIFIER_TMC5160
-          bool "TMC5160 / SPI"
+          bool "TMC5160"
         config CHOICE_BLOBIFIER_TMC2240
-          bool "TMC2240 / SPI"
-          help
-            Klipper's TMC2240 driver speaks both SPI and UART. Most step
-            sticks ship wired for SPI and need a jumper or solder bridge
-            moved to use UART. This installer generates the SPI form.
+          bool "TMC2240"
         config CHOICE_BLOBIFIER_TMC_NONE
           bool "None / hardware controlled"
+      endchoice
+
+      choice CHOICE_BLOBIFIER_TMC_BUS
+        prompt "Stepper TMC bus            " if PARAM_BLOBIFIER_TMC != ""
+        default CHOICE_BLOBIFIER_TMC_BUS_SPI
+        help
+          Only the TMC2240 offers a choice here. Most TMC2240 step sticks
+          ship wired for SPI and need a jumper or solder bridge moved to
+          use UART, so SPI is the default.
+
+        config CHOICE_BLOBIFIER_TMC_BUS_UART
+          bool "UART"
+          depends on BOOL_BLOBIFIER_TMC_CAN_UART
+        config CHOICE_BLOBIFIER_TMC_BUS_SPI
+          bool "SPI"
+          depends on BOOL_BLOBIFIER_TMC_CAN_SPI
       endchoice
 
       config PIN_BLOBIFIER_STEPPER_UART
@@ -241,8 +314,17 @@ menu "Purging"
 
       config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
         prompt "Stepper run current        " if PARAM_BLOBIFIER_TMC != ""
+      config PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT
+        prompt "Stepper hold current       " if BOOL_BLOBIFIER_TMC_HAS_HOLD_CURRENT
       config PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
-        prompt "Stepper sense resistor     " if PARAM_BLOBIFIER_TMC != "" && !CHOICE_BLOBIFIER_TMC2240
+        prompt "Stepper sense resistor     " if PARAM_BLOBIFIER_TMC != "" && !BOOL_BLOBIFIER_TMC_HAS_RREF
+      config PARAM_BLOBIFIER_STEPPER_RREF
+        prompt "Stepper rref (ohms)        " if BOOL_BLOBIFIER_TMC_HAS_RREF
+        range 12000 60000
+        help
+          TMC2240 sets its current range from an external reference
+          resistor rather than a shunt. 12000 is the value fitted to
+          almost every step stick; change it only if yours differs.
     endif
   endif
 
