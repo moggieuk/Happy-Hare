@@ -88,6 +88,48 @@ class TestComponentContract(unittest.TestCase):
                     all('components/Kconfig.tmc_driver' in f for f in files),
                     '%s is declared outside the component: %s' % (name, files))
 
+    # A prompt for the bus the chip is not on. It renders nothing - every
+    # template gates uart_address behind the UART branch - so it costs the
+    # user a meaningless question and nothing ever goes wrong loudly. Two of
+    # the three steppers had it.
+    BUS_PROMPTS = {
+        'GEAR': ('PIN_GEAR_UART', 'PARAM_GEAR_UART_ADDRESS',
+                 'PIN_GEAR_UART_1', 'PARAM_GEAR_UART_ADDRESS_1'),
+        'SELECTOR': ('PIN_SELECTOR_UART', 'PARAM_SELECTOR_UART_ADDRESS'),
+    }
+    SPI_PROMPTS = {
+        'GEAR': ('PIN_GEAR_CS', 'PIN_GEAR_CS_1'),
+        'SELECTOR': ('PIN_SELECTOR_CS',),
+    }
+    # A machine type that supplies that stepper, plus a board that asks for
+    # a UART address at all.
+    BASE = {'GEAR': {'MMU_TYPE_BOX_TURTLE_1_0': True,
+                     'BOARD_TYPE_MANUAL': True},
+            'SELECTOR': {'MMU_TYPE_TRADRACK_1_0': True,
+                         'BOARD_TYPE_MANUAL': True}}
+
+    def test_no_uart_prompt_is_offered_for_an_spi_chip(self):
+        for prefix in sorted(self.BUS_PROMPTS):
+            for chip, spi in (('TMC2209', False), ('TMC2130', True),
+                              ('TMC2660', True), ('TMC5160', True),
+                              ('TMC2240_UART', False), ('TMC2240_SPI', True)):
+                with self.subTest(stepper=prefix, chip=chip):
+                    syms = dict(self.BASE[prefix])
+                    syms['CHOICE_%s_%s' % (prefix, chip)] = True
+                    with cfg._env(cfg._SINGLE_UNIT_ENV):
+                        kc = cfg._kconfig('bus_prompts_%s_%s' % (prefix, chip),
+                                          syms)
+                    for name in self.BUS_PROMPTS[prefix]:
+                        self.assertEqual(
+                            bool(kc.syms[name].visibility), not spi,
+                            '%s is a UART prompt and this chip is on %s'
+                            % (name, 'SPI' if spi else 'UART'))
+                    for name in self.SPI_PROMPTS[prefix]:
+                        self.assertEqual(
+                            bool(kc.syms[name].visibility), spi,
+                            '%s is an SPI prompt and this chip is on %s'
+                            % (name, 'SPI' if spi else 'UART'))
+
     def test_all_three_parse_shapes_declare_the_same_tree(self):
         """`if MULTI_UNIT_ENTRY_POINT` attaches a dependency, it does not skip
         a source - so every shape declares the same symbols and only which
