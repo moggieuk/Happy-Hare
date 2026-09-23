@@ -1,9 +1,13 @@
 #
 # Highlight common config warnings as comments
+#
 # This is not exhaustive by any means.
 # It is just designed as an aid...
 #
 
+
+# Shared warnings should be checked on single unit configuration or
+# on the shared portion of a multi-unit config
 
 config SHOW_SHARED_WARNINGS
   bool
@@ -45,6 +49,10 @@ config SW7
          PIN_BLOBIFIER_STEPPER_ENDSTOP = "^" || \
          PIN_BLOBIFIER_STEPPER_ENDSTOP = "^!")
 
+
+
+# Per-unit warning are checked when not running the separate
+# shared config
 
 config SHOW_PER_UNIT_WARNINGS
   bool
@@ -172,6 +180,7 @@ config W25
 
 config W26
     def_bool y if PARAM_DESIGN_NUM_GATES > 0 && PARAM_NUM_GATES != PARAM_DESIGN_NUM_GATES
+
 
 
 # -------------------------------------
