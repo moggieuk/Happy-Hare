@@ -5,6 +5,7 @@
 #   prefix        name infix, e.g. BLOBIFIER -> PARAM_BLOBIFIER_TMC
 #   run_current   default run current for this stepper
 #   hold_current  default hold current for this stepper
+#   stallguard    tuned SGTHRS value for this stepper
 #
 # and must re-assign all of them immediately before each source, because
 # preprocessor variables are global for the whole parse and a file may be
@@ -29,6 +30,7 @@
 #   BOOL_*_TMC_HAS_HOLD_CURRENT BOOL_*_TMC_HAS_STEALTHCHOP
 #   BOOL_*_TMC_HAS_RREF BOOL_*_TMC_SPI_SOFTWARE
 #   BOOL_*_TMC_HAS_STALLGUARD PARAM_*_TMC_STALLGUARD_FIELD
+#   PARAM_*_STALLGUARD_THRESHOLD
 
 config PIN_$(prefix)_UART
   string
@@ -137,6 +139,15 @@ config PARAM_$(prefix)_TMC_STALLGUARD_FIELD
   default "SG4_THRS" if CHOICE_$(prefix)_TMC2240
   default "SGT"      if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC5160
   default ""
+
+# $(stallguard) is this stepper's tuned SGTHRS value. The other families get
+# Klipper's own field default of 0 rather than a converted number: SGT runs
+# -64..63 with lower being more sensitive, the inverse of SGTHRS, so no value
+# carries across and 0 is the neutral starting point for tuning.
+config PARAM_$(prefix)_STALLGUARD_THRESHOLD
+  int
+  default $(stallguard) if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226
+  default 0
 
 # Any supplied pin means software SPI, even when the trio is incomplete.
 # A warning covers missing pins; never silently switch to a different bus.
