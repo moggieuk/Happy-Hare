@@ -151,7 +151,7 @@ menu "Pins / TMC"
     default CHOICE_SELECTOR_TMC2209
     depends on MMU_HAS_SELECTOR_STEPPER
     help
-      Select correct TMC chip type for gear stepper.
+      Select correct TMC chip type for selector stepper.
       Can be changed by editing .cfg files directly.
 
     config CHOICE_SELECTOR_TMC2209

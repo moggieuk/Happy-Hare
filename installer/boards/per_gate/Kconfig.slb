@@ -31,10 +31,10 @@ if BOARD_TYPE_SLB_1_0
       default ""
 
     config PIN_ENTRY_SENSOR_0
-      default "^(MCU_NAME):PA1"
+      default "^$(MCU_NAME):PA1"
 
     config PIN_EXIT_SENSOR_0
-      default "^(MCU_NAME):PA0"
+      default "^$(MCU_NAME):PA0"
 
     config PIN_EJECT_BUTTON_0
       default "^!$(MCU_NAME):PB2"
