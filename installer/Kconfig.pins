@@ -41,6 +41,7 @@ menu "Pins / TMC"
   pad_width    := $(pin_pad)
   source "components/Kconfig.tmc_driver_menu"
 
+
   # -------------------------------------
   # Gear stepper
   # -------------------------------------
@@ -120,6 +121,7 @@ menu "Pins / TMC"
 
   endmenu
 
+
   # -------------------------------------
   # Selector stepper and servo
   # -------------------------------------
@@ -140,6 +142,7 @@ menu "Pins / TMC"
   @endrepeat@
 
   comment "_"
+
 
   # -------------------------------------
   # Selector TMC driver
@@ -202,7 +205,6 @@ menu "Pins / TMC"
 
   comment "_" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
-  comment "_Other"
 
   # -------------------------------------
   # eSpooler
@@ -233,6 +235,7 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
+
   # -------------------------------------
   # Eject buttons
   # -------------------------------------
@@ -246,6 +249,7 @@ menu "Pins / TMC"
         prompt "$(pad,$(pin_pad),Eject button $(i) pin)" if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
+
 
   # -------------------------------------
   # Sync-Feedback Buffer
@@ -273,6 +277,7 @@ menu "Pins / TMC"
       prompt "$(pad,$(pin_pad),Buffer neopixel pin)" if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
   endmenu
 
+
   # -------------------------------------
   # Entry sensor
   # -------------------------------------
@@ -286,6 +291,7 @@ menu "Pins / TMC"
         prompt "$(pad,$(pin_pad),Entry sensor $(i) pin)" if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
+
 
   # -------------------------------------
   # Exit sensor
@@ -301,12 +307,14 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
+
   # -------------------------------------
   # Shared Exit sensor
   # -------------------------------------
 
   config PIN_SHARED_EXIT_SENSOR
     string "$(pad,$(pin_pad),Shared exit sensor pin)" if MMU_HAS_SENSOR_SHARED_EXIT
+
 
   # -------------------------------------
   # Misc pins
@@ -338,6 +346,7 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
+
   # -------------------------------------
   # Managed fans
   # -------------------------------------
@@ -356,6 +365,7 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
+
   # -------------------------------------
   # Heater fans
   # -------------------------------------
@@ -373,6 +383,7 @@ menu "Pins / TMC"
         prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
     @endrepeat@
   endmenu
+
 
   # -------------------------------------
   # Per-printer pins

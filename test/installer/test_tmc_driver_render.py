@@ -137,5 +137,40 @@ class TestRenderedDriverSectionsAreValid(unittest.TestCase):
                         self.assertIn(field, options)
 
 
+class TestNoDriverMeansNoDriverSection(unittest.TestCase):
+    """A stepper set to no TMC at all must leave nothing behind.
+
+    The gear template wraps its whole driver block in PARAM_GEAR_TMC != "";
+    the selector one did not, so it emitted a section header with an empty
+    type and a touch endstop pointing at a driver that was never written.
+    Klipper rejects both.
+    """
+
+    HARDWARE = 'config/base/mmu_hardware.cfg'
+
+    CASES = {
+        'gear': ('boxturtle', 'GEAR', 'mmu_gear_touch'),
+        'selector': ('tradrack', 'SELECTOR', 'mmu_sel_touch'),
+    }
+
+    def test_nothing_references_a_driver_that_was_not_written(self):
+        for stepper, (profile_name, prefix, touch) in sorted(self.CASES.items()):
+            with self.subTest(stepper=stepper):
+                rendered = cfg.render(profiles.get(profile_name).derive(
+                    'no_tmc_' + stepper,
+                    syms={'CHOICE_%s_TMC_NONE' % prefix: True,
+                          'PIN_%s_DIAG' % prefix: 'mmu:PD2'}))[self.HARDWARE]
+                for name in cfg.sections(rendered):
+                    self.assertFalse(
+                        name.startswith(' '),
+                        'section [%s] has an empty driver type' % name)
+                live = [ln for ln in rendered.splitlines()
+                        if touch in ln and not ln.lstrip().startswith('#')]
+                self.assertEqual(
+                    live, [],
+                    '%s points at a driver section that is not rendered: %s'
+                    % (touch, live))
+
+
 if __name__ == '__main__':
     unittest.main()
