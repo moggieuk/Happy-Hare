@@ -180,7 +180,7 @@ menu "Pins / TMC"
       config PIN_SELECTOR_ENDSTOP
         prompt "$(pad,$(pin_pad),Selector endstop pin)"
       config PIN_SELECTOR_DIAG
-        prompt "$(pad,$(pin_pad),Selector diag pin)"
+        prompt "$(pad,$(pin_pad),Selector diag pin)" if PARAM_SELECTOR_TMC != ""
       config PARAM_SELECTOR_STALLGUARD_THRESHOLD
         prompt "$(pad,$(pin_pad),Selector stallguard)" if BOOL_SELECTOR_TMC_HAS_STALLGUARD && PIN_SELECTOR_DIAG != ""
         help
