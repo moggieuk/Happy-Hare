@@ -14,9 +14,6 @@ if MMU_TYPE_LOW_RIDER_1_0
   source "Kconfig.num_gates"
   source "servos/Kconfig"
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 

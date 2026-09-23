@@ -32,9 +32,6 @@ if MMU_TYPE_TRADRACK_1_0
       imply MMU_HAS_ENCODER
   endmenu
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 

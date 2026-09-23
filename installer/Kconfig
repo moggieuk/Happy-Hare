@@ -211,12 +211,6 @@ comment "$(pad,$(caption_pad),(\")_(\") $(caption))"
 comment "$(pad,50,)"
 comment "_"
 
-# UI rendering option:
-#  y to shows MMU additions menu inline with type
-#  n to show as top level menu
-config SHOW_MMU_ADDITIONS_WITH_TYPE
-  def_bool n
-
 config SHOW_HIDDEN
   def_bool n
 
@@ -273,9 +267,7 @@ if !MULTI_UNIT_ENTRY_POINT
   source "mmu_types/Kconfig"        # Base MMU type menu
   source "Kconfig.name"             # Simple display name
   source "boards/Kconfig"           # MCU Selection menu
-  if !SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with MMU type)
-  endif
+  source "Kconfig.mmu_additions"    # MMU Additions/Customization menu
   comment "_"
   source "connection/Kconfig"       # MCU Connection
   source "Kconfig.pins"             # Raw pin editing
