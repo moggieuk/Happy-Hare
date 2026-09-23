@@ -566,6 +566,21 @@ from os.path import dirname, exists, expandvars, islink, join, realpath
 VERSION = (14, 1, 0)
 HH_DEFAULT_TOKEN = " #~DEFAULT~#" # Happy Hare: Added
 
+# Happy Hare: Symbols renamed in a past release, old name -> new name. A saved
+# .mmu_config assignment to the old name is transplanted onto the new symbol
+# while loading; see Kconfig._migrate_renamed_symbols. Without this kconfiglib
+# records the orphaned assignment in missing_syms and drops it, so a rename
+# silently discards whatever the user had configured.
+#
+# Entries may be removed one major version after they ship.
+#
+# LIMIT: this runs during load_config, which is AFTER the Makefile has done
+# `-include $(KCONFIG_CONFIG)` and after install.sh has sourced the same file
+# as shell. A symbol that make or install.sh reads by name (MULTI_UNIT,
+# MMU_UNITS, KLIPPER_HOME, ...) cannot be renamed this way - that needs a
+# pass that rewrites the file itself.
+HH_RENAMED_SYMBOLS = {} # Happy Hare: Added
+
 
 # File layout:
 #
@@ -840,6 +855,7 @@ class Kconfig(object):
         "m",
         "menus",
         "missing_syms",
+        "_missing_sym_defaults",
         "modules",
         "n",
         "named_choices",
@@ -1001,6 +1017,7 @@ class Kconfig(object):
         self.const_syms = {}
         self.defined_syms = []
         self.missing_syms = []
+        self._missing_sym_defaults = [] # Happy Hare: Added
         self.named_choices = {}
         self.choices = []
         self.menus = []
@@ -1260,6 +1277,7 @@ class Kconfig(object):
         with self._open_config(filename) as f:
             if replace:
                 self.missing_syms = []
+                self._missing_sym_defaults = [] # Happy Hare: Added
 
                 # If we're replacing the configuration, keep track of which
                 # symbols and choices got set so that we can unset the rest
@@ -1289,7 +1307,7 @@ class Kconfig(object):
                     sym = get_sym(name)
 
                     if not sym or not sym.nodes:
-                        self._undef_assign(name, val, filename, linenr)
+                        self._undef_assign(name, val, filename, linenr, default)
                         continue
 
                     if sym.orig_type in _BOOL_TRISTATE:
@@ -1363,7 +1381,7 @@ class Kconfig(object):
 
                     sym = get_sym(name)
                     if not sym or not sym.nodes:
-                        self._undef_assign(name, "n", filename, linenr)
+                        self._undef_assign(name, "n", filename, linenr, default)
                         continue
 
                     if sym.orig_type not in _BOOL_TRISTATE:
@@ -1396,9 +1414,68 @@ class Kconfig(object):
                 if not choice._was_set:
                     choice.unset_value()
 
+        # Happy Hare: Added
+        if replace:
+            self._migrate_renamed_symbols(filter_defaults)
+
 # vvvv HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
         if replace and filter_defaults:
             self._migrate_legacy_boolint_pairs()
+
+    def _migrate_renamed_symbols(self, filter_defaults):
+        """Happy Hare: Carry a saved value from a renamed symbol to its successor.
+
+        Fires only while the old name is still present in the file, so it is
+        idempotent by construction: the next write_config emits the new name
+        and drops the old line, and every later load is a no-op. No marker, no
+        version stamp, no rewriting of the file.
+
+        The two callers load differently and must stay different here.
+        menuconfig and olddefconfig pass filter_defaults=True, where a
+        HH_DEFAULT_TOKEN line is a recorded default that gets cleared - so a
+        migrated one has to stay a modifiable default rather than become a
+        user value. installer/build.py passes False and applies recorded
+        defaults, so there the value is carried. Getting this wrong makes a
+        direct build render differently from a menuconfig-mediated one.
+        """
+        for (old_name, raw), was_default in zip(self.missing_syms,
+                                                self._missing_sym_defaults):
+            new_name = HH_RENAMED_SYMBOLS.get(old_name)
+            if not new_name:
+                continue
+
+            new_sym = self.syms.get(new_name)
+            if not new_sym or not new_sym.nodes:
+                continue
+
+            # A recorded default is not a user choice; leave it to resolve
+            # normally so the successor stays resettable in menuconfig.
+            if was_default and filter_defaults:
+                continue
+
+            # An explicit assignment to the new name always wins, so a
+            # hand-edited file keeps the name it actually asked for.
+            if new_sym._was_set:
+                continue
+
+            value = raw
+            if value.startswith('"'):
+                # The old symbol was string-typed. The new one may not be -
+                # dropping the quotes is what lets a string become a float.
+                match = _conf_string_match(value)
+                if not match:
+                    continue
+                value = unescape(match.group(1))
+
+            if new_sym.orig_type in _BOOL_TRISTATE:
+                value = "y" if value in ("y", "1") else "n"
+
+            # set_value validates and, on a type mismatch, warns and leaves
+            # the symbol at its default rather than raising.
+            if not new_sym.set_value(value):
+                continue
+            new_sym._was_set = True
+            new_sym._was_default = False
 
     def _migrate_legacy_boolint_pairs(self):
         """Migrate the temporary beta BOOL_X + PARAM_X representation.
@@ -1444,10 +1521,14 @@ class Kconfig(object):
             replacement._was_default = False
 # ^^^^ HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
 
-    def _undef_assign(self, name, val, filename, linenr):
+    def _undef_assign(self, name, val, filename, linenr, was_default=False):
         # Called for assignments to undefined symbols during .config loading
 
         self.missing_syms.append((name, val))
+        # Happy Hare: missing_syms stays 2-tuples because it is public API and
+        # menuconfig reads it; the default-marker flag rides alongside so
+        # _migrate_renamed_symbols can tell a user value from a saved default.
+        self._missing_sym_defaults.append(bool(was_default))
         if self.warn_assign_undef:
             self._warn(
                 "attempt to assign the value '{}' to the undefined symbol {}"
