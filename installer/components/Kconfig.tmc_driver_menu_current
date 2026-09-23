@@ -1,0 +1,19 @@
+# TMC stepper driver - the current and sense-resistor prompts.
+#
+# Split from Kconfig.tmc_driver_menu so a consumer can place these in a
+# different menu from the chip and wiring prompts. Takes the same prefix,
+# label and pad_width, re-assigned immediately before the source.
+
+config PARAM_$(prefix)_RUN_CURRENT
+  prompt "$(pad,$(pad_width),$(label) run current)" if PARAM_$(prefix)_TMC != ""
+config PARAM_$(prefix)_HOLD_CURRENT
+  prompt "$(pad,$(pad_width),$(label) hold current)" if BOOL_$(prefix)_TMC_HAS_HOLD_CURRENT
+config PARAM_$(prefix)_SENSE_RESISTOR
+  prompt "$(pad,$(pad_width),$(label) sense resistor)" if PARAM_$(prefix)_TMC != "" && !BOOL_$(prefix)_TMC_HAS_RREF
+config PARAM_$(prefix)_RREF
+  prompt "$(pad,$(pad_width),$(label) rref (ohms))" if BOOL_$(prefix)_TMC_HAS_RREF
+  range 12000 60000
+  help
+    TMC2240 sets its current range from an external reference
+    resistor rather than a shunt. 12000 is the value fitted to
+    almost every step stick; change it only if yours differs.

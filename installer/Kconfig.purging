@@ -163,6 +163,7 @@ menu "Purging"
       label      := Stepper
       pad_width  := 27
       source "components/Kconfig.tmc_driver_menu"
+      source "components/Kconfig.tmc_driver_menu_current"
     endif
   endif
 
