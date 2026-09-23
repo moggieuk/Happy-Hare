@@ -21,6 +21,11 @@ run_current  := 0.5
 hold_current := 0.2
 source "components/Kconfig.tmc_driver_types"
 
+# Prompt column for each group, set to its longest prompt so the menu lines
+# up. "Gear TMC SPI SCLK pin" and "Selector TMC SPI SCLK pin" are the longest.
+gear_pad     := 21
+selector_pad := 25
+
 menu "Pins / TMC"
   help
     Configure TMC driver types for gear and selector steppers and MCU pin assignments.
@@ -31,7 +36,7 @@ menu "Pins / TMC"
 
   prefix       := GEAR
   label        := Gear
-  pad_width    := 17
+  pad_width    := $(gear_pad)
   source "components/Kconfig.tmc_driver_menu"
 
 # -------------------------------------
@@ -41,19 +46,21 @@ menu "Pins / TMC"
   menu "Gear pins"
     config PARAM_GEAR_UART_ADDRESS
       int
-      prompt "Gear UART address" if PARAM_GEAR_TMC != ""
+      prompt "$(pad,$(gear_pad),Gear UART address)" if PARAM_GEAR_TMC != ""
       default 0
       range 0 3
       depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
-    config PIN_GEAR_STEP
-      string "Gear step pin    "
-    config PIN_GEAR_DIR
-      string "Gear dir pin     "
-    config PIN_GEAR_ENABLE
-      string "Gear enable pin  "
     config PIN_GEAR_DIAG
       string
-      prompt "Gear diag pin    " if PARAM_GEAR_TMC != ""
+      prompt "$(pad,$(gear_pad),Gear diag pin)" if PARAM_GEAR_TMC != ""
+
+    comment "_"
+    config PIN_GEAR_STEP
+      string "$(pad,$(gear_pad),Gear step pin)"
+    config PIN_GEAR_DIR
+      string "$(pad,$(gear_pad),Gear dir pin)"
+    config PIN_GEAR_ENABLE
+      string "$(pad,$(gear_pad),Gear enable pin)"
 
     @repeat var=i min=1 max=11@
       config PARAM_GEAR_UART_ADDRESS_$(i)
@@ -80,17 +87,17 @@ menu "Pins / TMC"
         if PARAM_NUM_GATES > $(i)
           comment "_"
           config PIN_GEAR_UART_$(i)
-            prompt "Gear $(i) UART pin  " if PARAM_GEAR_TMC != ""
+            prompt "$(pad,$(gear_pad),Gear $(i) UART pin)" if PARAM_GEAR_TMC != ""
           config PARAM_GEAR_UART_ADDRESS_$(i)
-            prompt "Gear $(i) UART addr " if PARAM_GEAR_TMC != "" && (BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL)
+            prompt "$(pad,$(gear_pad),Gear $(i) UART addr)" if PARAM_GEAR_TMC != "" && (BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL)
           config PIN_GEAR_STEP_$(i)
-            prompt "Gear $(i) step pin  "
+            prompt "$(pad,$(gear_pad),Gear $(i) step pin)"
           config PIN_GEAR_DIR_$(i)
-            prompt "Gear $(i) dir pin   "
+            prompt "$(pad,$(gear_pad),Gear $(i) dir pin)"
           config PIN_GEAR_ENABLE_$(i)
-            prompt "Gear $(i) enable pin"
+            prompt "$(pad,$(gear_pad),Gear $(i) enable pin)"
           config PIN_GEAR_DIAG_$(i)
-            prompt "Gear $(i) diag pin  " if PARAM_GEAR_TMC != ""
+            prompt "$(pad,$(gear_pad),Gear $(i) diag pin)" if PARAM_GEAR_TMC != ""
         endif
       @endrepeat@
     endif
@@ -116,14 +123,16 @@ menu "Pins / TMC"
       string
   @endrepeat@
 
+  comment "_"
+
 # -------------------------------------
-# Selector TMC chip
+# Selector TMC driver
 # -------------------------------------
 
   if MMU_HAS_SELECTOR_STEPPER
     prefix       := SELECTOR
     label        := Selector
-    pad_width    := 21
+    pad_width    := $(selector_pad)
     source "components/Kconfig.tmc_driver_menu"
   endif
 
@@ -132,20 +141,22 @@ menu "Pins / TMC"
 
     if MMU_HAS_SELECTOR_STEPPER
       config PARAM_SELECTOR_UART_ADDRESS
-        int "Selector UART address"
+        int "$(pad,$(selector_pad),Selector UART address)"
         default 1
         range 0 3
         depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
-      config PIN_SELECTOR_STEP
-        prompt "Selector step pin    "
-      config PIN_SELECTOR_DIR
-        prompt "Selector dir pin     "
-      config PIN_SELECTOR_ENABLE
-        prompt "Selector enable pin  "
       config PIN_SELECTOR_DIAG
-        prompt "Selector diag pin    "
+        prompt "$(pad,$(selector_pad),Selector diag pin)"
+
+      comment "_"
+      config PIN_SELECTOR_STEP
+        prompt "$(pad,$(selector_pad),Selector step pin)"
+      config PIN_SELECTOR_DIR
+        prompt "$(pad,$(selector_pad),Selector dir pin)"
+      config PIN_SELECTOR_ENABLE
+        prompt "$(pad,$(selector_pad),Selector enable pin)"
       config PIN_SELECTOR_ENDSTOP
-        prompt "Selector endstop pin "
+        prompt "$(pad,$(selector_pad),Selector endstop pin)"
     endif
 
     if INDEXED_SELECTOR
