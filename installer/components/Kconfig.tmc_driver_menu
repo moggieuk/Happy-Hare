@@ -46,18 +46,18 @@ choice CHOICE_$(prefix)_TMC
 endchoice
 
 config PARAM_$(prefix)_SPI_BUS
-  prompt "$(pad,$(pad_width),$(label) TMC SPI bus)" if BOOL_$(prefix)_TMC_SPI && !BOOL_$(prefix)_TMC_SPI_SOFTWARE
+  prompt "$(pad,$(pad_width),$(label) SPI bus)" if BOOL_$(prefix)_TMC_SPI && !BOOL_$(prefix)_TMC_SPI_SOFTWARE
   help
     Hardware SPI bus name on the MCU owning the CS pin, e.g. spi2.
     Leave blank to use Klipper's default bus for that MCU.
 config PIN_$(prefix)_SPI_SCLK
-  prompt "$(pad,$(pad_width),$(label) TMC SPI SCLK pin)" if BOOL_$(prefix)_TMC_SPI
+  prompt "$(pad,$(pad_width),$(label) SPI SCLK pin)" if BOOL_$(prefix)_TMC_SPI
   help
     Leave all three SPI pins blank to use hardware SPI. To use software
     SPI, fill in all three pins. An incomplete set is an error.
     Prefix each pin with its MCU name; all three must be on the same
     MCU as the CS pin, e.g. mcu:PG8.
 config PIN_$(prefix)_SPI_MOSI
-  prompt "$(pad,$(pad_width),$(label) TMC SPI MOSI pin)" if BOOL_$(prefix)_TMC_SPI
+  prompt "$(pad,$(pad_width),$(label) SPI MOSI pin)" if BOOL_$(prefix)_TMC_SPI
 config PIN_$(prefix)_SPI_MISO
-  prompt "$(pad,$(pad_width),$(label) TMC SPI MISO pin)" if BOOL_$(prefix)_TMC_SPI
+  prompt "$(pad,$(pad_width),$(label) SPI MISO pin)" if BOOL_$(prefix)_TMC_SPI
