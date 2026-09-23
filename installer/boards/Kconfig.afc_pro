@@ -194,7 +194,7 @@ if BOARD_TYPE_AFC_PRO_1_0
 
 
   # Aka "Buffer" - when filament is under tension (neck compressed) or compression (neck advances)
-  if !OPTION_TURTLE_NECK_V2_BUFFER
+  if !MMU_HAS_BUFFER_MCU
     config PIN_BUFFER_TENSION
       default "^$(MCU_NAME):PG15"
     config PIN_BUFFER_COMPRESSION
@@ -213,7 +213,7 @@ if BOARD_TYPE_AFC_PRO_1_0
 # Separate Buffer
 # -------------------------------------
 
-  if OPTION_TURTLE_NECK_V2_BUFFER
+  if MMU_HAS_BUFFER_MCU
 
     config PIN_BUFFER_SENSOR_0
       default "$(MCU_NAME)_buffer:PB5"
