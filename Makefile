@@ -532,11 +532,15 @@ $(STAMP_DIR)/.python-deps-installed-$(python_deps_pyid): $(SRC)/installer/requir
 	}
 	$(Q)touch $@
 
-$(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) | python_deps $(OUT)
+# The Kconfig sources are prerequisites too: the pickle holds the parsed TREE,
+# not just the saved values, so a pulled-in Kconfig change invalidates it even
+# when .mmu_config is untouched. install.sh hides this by running olddefconfig
+# first, but a bare `make install` after a `git pull` does not.
+$(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) $(kconfig_sources) | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG))$(C_OFF)"
 	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)"
 
-$(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle: $(KCONFIG_CONFIG)_% | python_deps $(OUT)
+$(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle: $(KCONFIG_CONFIG)_% $(kconfig_sources) | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG)_$*)$(C_OFF)"
 	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)_$*"
 

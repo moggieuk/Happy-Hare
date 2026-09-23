@@ -42,7 +42,7 @@ menu "MMU/Extruder sync"
 
   config PARAM_SYNC_FORM_TIP
     boolint "Enable syncing while tip forming?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
-    default 1 if ENABLE_SYNC_TO_EXTRUDER
+    default 1 if PARAM_SYNC_TO_EXTRUDER
     help
       This controls whether the extruder and gear steppers are synchronized
       during tip forming operation.
@@ -51,7 +51,7 @@ menu "MMU/Extruder sync"
 
   config PARAM_SYNC_PURGE
     boolint "Enable syncing while purging?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
-    default 1 if ENABLE_SYNC_TO_EXTRUDER
+    default 1 if PARAM_SYNC_TO_EXTRUDER
     help
       This controls whether the extruder and gear steppers are synchronized
       during purging operation.

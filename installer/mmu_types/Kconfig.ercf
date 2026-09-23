@@ -106,9 +106,6 @@ if MMU_FAMILY_ERCF
     endmenu
   endif
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 

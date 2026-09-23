@@ -1,0 +1,76 @@
+### tmc2209_uart
+[manual_stepper stepper_blobifier]
+step_pin: unit0:PD4
+dir_pin: !unit0:PD3
+enable_pin: !unit0:PD6
+endstop_pin: ^!unit0:PC15
+microsteps: 4
+gear_ratio: 1:1
+rotation_distance: 62.83
+position_min: 0
+position_max: 21
+homing_speed: 20
+velocity: 150
+accel: 1000
+[tmc2209 manual_stepper stepper_blobifier]
+uart_pin: unit0:PC14
+run_current: 0.6
+hold_current: 0.1
+interpolate: true
+stealthchop_threshold: 99999999
+sense_resistor: 0.110
+[gcode_macro _BLOBIFIER_BUCKET_SWITCH]
+variable_armed: 0
+gcode: 
+### tmc2240_spi
+[manual_stepper stepper_blobifier]
+step_pin: unit0:PD4
+dir_pin: !unit0:PD3
+enable_pin: !unit0:PD6
+endstop_pin: ^!unit0:PC15
+microsteps: 4
+gear_ratio: 1:1
+rotation_distance: 62.83
+position_min: 0
+position_max: 21
+homing_speed: 20
+velocity: 150
+accel: 1000
+[tmc2240 manual_stepper stepper_blobifier]
+cs_pin: unit0:PC14
+run_current: 0.6
+hold_current: 0.1
+interpolate: true
+stealthchop_threshold: 99999999
+rref: 12000
+driver_SLOPE_CONTROL: 2
+[gcode_macro _BLOBIFIER_BUCKET_SWITCH]
+variable_armed: 0
+gcode: 
+### tmc5160_swspi
+[manual_stepper stepper_blobifier]
+step_pin: unit0:PD4
+dir_pin: !unit0:PD3
+enable_pin: !unit0:PD6
+endstop_pin: ^!unit0:PC15
+microsteps: 4
+gear_ratio: 1:1
+rotation_distance: 62.83
+position_min: 0
+position_max: 21
+homing_speed: 20
+velocity: 150
+accel: 1000
+[tmc5160 manual_stepper stepper_blobifier]
+cs_pin: unit0:PC14
+spi_software_sclk_pin: unit0:PG8
+spi_software_mosi_pin: unit0:PG6
+spi_software_miso_pin: unit0:PG7
+run_current: 0.6
+hold_current: 0.1
+interpolate: true
+stealthchop_threshold: 99999999
+sense_resistor: 0.075
+[gcode_macro _BLOBIFIER_BUCKET_SWITCH]
+variable_armed: 0
+gcode: 

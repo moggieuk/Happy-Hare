@@ -66,9 +66,6 @@ if MMU_TYPE_BOX_TURTLE_1_0
       default 12
   endif
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 
