@@ -8,7 +8,7 @@
 config SHOW_SHARED_WARNINGS
   bool
   depends on MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
-  @repeat var=i min=1 max=6@
+  @repeat var=i min=1 max=7@
     default y if SW$(i)
   @endrepeat@
 
@@ -35,6 +35,15 @@ config SW6
         (PIN_BLOBIFIER_STEPPER_SPI_SCLK = "" || \
          PIN_BLOBIFIER_STEPPER_SPI_MOSI = "" || \
          PIN_BLOBIFIER_STEPPER_SPI_MISO = "")
+
+config SW7
+    def_bool y if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_STEPPER && \
+        (PIN_BLOBIFIER_STEPPER_STEP = "" || \
+         PIN_BLOBIFIER_STEPPER_DIR = "" || \
+         PIN_BLOBIFIER_STEPPER_ENABLE = "" || \
+         PIN_BLOBIFIER_STEPPER_ENDSTOP = "" || \
+         PIN_BLOBIFIER_STEPPER_ENDSTOP = "^" || \
+         PIN_BLOBIFIER_STEPPER_ENDSTOP = "^!")
 
 
 config SHOW_PER_UNIT_WARNINGS
@@ -180,6 +189,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Blobifier bucket switch is enabled but no valid MCU pin is defined"               if SW4
     comment "Blobifier tray stepper TMC is selected but no UART/CS pin is defined"             if SW5
     comment "Blobifier software SPI requires all three SCLK/MOSI/MISO pins"                    if SW6
+    comment "Blobifier tray stepper is missing a step, dir, enable or endstop pin"             if SW7
   endif
 
   if SHOW_PER_UNIT_WARNINGS

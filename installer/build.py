@@ -869,11 +869,6 @@ def get_target_version():
     return target_version
 
 
-def get_config_version(kcfg):
-    version = kcfg.get("HAPPY_HARE_VERSION")
-    return version
-
-
 def check_version(kconfig, input_files):
     hhcfg = HHConfig(input_files)
     kcfg = load_parsed_kconfig(kconfig)
