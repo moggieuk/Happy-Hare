@@ -9,7 +9,7 @@
 #   BOOL_BLOBIFIER_TMC_HAS_HOLD_CURRENT
 #   BOOL_BLOBIFIER_TMC_HAS_STEALTHCHOP
 #   BOOL_BLOBIFIER_TMC_HAS_RREF
-#   BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE
+#   BOOL_BLOBIFIER_TMC_SPI_SOFTWARE
 #
 # Blobifier bucket switch:
 #   PIN_BLOBIFIER_BUCKET_SWITCH
@@ -20,21 +20,21 @@
 #   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
 #
 # Blobifier stepper tray: (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
-#   PIN_BLOBIFIER_STEPPER_STEP
-#   PIN_BLOBIFIER_STEPPER_DIR
-#   PIN_BLOBIFIER_STEPPER_ENABLE
-#   PIN_BLOBIFIER_STEPPER_ENDSTOP
+#   PIN_BLOBIFIER_STEP
+#   PIN_BLOBIFIER_DIR
+#   PIN_BLOBIFIER_ENABLE
+#   PIN_BLOBIFIER_ENDSTOP
 #   PARAM_BLOBIFIER_TMC
-#   PIN_BLOBIFIER_STEPPER_UART
-#   PIN_BLOBIFIER_STEPPER_CS
-#   PIN_BLOBIFIER_STEPPER_SPI_SCLK
-#   PIN_BLOBIFIER_STEPPER_SPI_MOSI
-#   PIN_BLOBIFIER_STEPPER_SPI_MISO
-#   PARAM_BLOBIFIER_STEPPER_SPI_BUS
-#   PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
-#   PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT
-#   PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
-#   PARAM_BLOBIFIER_STEPPER_RREF
+#   PIN_BLOBIFIER_UART
+#   PIN_BLOBIFIER_CS
+#   PIN_BLOBIFIER_SPI_SCLK
+#   PIN_BLOBIFIER_SPI_MOSI
+#   PIN_BLOBIFIER_SPI_MISO
+#   PARAM_BLOBIFIER_SPI_BUS
+#   PARAM_BLOBIFIER_RUN_CURRENT
+#   PARAM_BLOBIFIER_HOLD_CURRENT
+#   PARAM_BLOBIFIER_SENSE_RESISTOR
+#   PARAM_BLOBIFIER_RREF
 #
 # Purge macro and behavior:
 #   PARAM_PURGE_MACRO
@@ -56,63 +56,63 @@ config MMU_HAS_BLOBIFIER_BUCKET_SWITCH
   bool
   default y
 
-config PIN_BLOBIFIER_STEPPER_STEP
+config PIN_BLOBIFIER_STEP
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_DIR
+config PIN_BLOBIFIER_DIR
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_ENABLE
+config PIN_BLOBIFIER_ENABLE
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_ENDSTOP
+config PIN_BLOBIFIER_ENDSTOP
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_UART
+config PIN_BLOBIFIER_UART
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_CS
+config PIN_BLOBIFIER_CS
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_SPI_SCLK
+config PIN_BLOBIFIER_SPI_SCLK
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_SPI_MOSI
+config PIN_BLOBIFIER_SPI_MOSI
   string
   default ""
 
-config PIN_BLOBIFIER_STEPPER_SPI_MISO
+config PIN_BLOBIFIER_SPI_MISO
   string
   default ""
 
-config PARAM_BLOBIFIER_STEPPER_SPI_BUS
+config PARAM_BLOBIFIER_SPI_BUS
   string
   default ""
 
-config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
-  string
-  default "0.6"
+config PARAM_BLOBIFIER_RUN_CURRENT
+  float
+  default 0.6
 
-config PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT
-  string
-  default "0.1"
+config PARAM_BLOBIFIER_HOLD_CURRENT
+  float
+  default 0.1
 
 # TMC2226 ships a 0.150 shunt, TMC5160 a 0.075 one; the rest use 0.110.
 # TMC2240 has no shunt at all - it sizes current from rref instead.
-config PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
+config PARAM_BLOBIFIER_SENSE_RESISTOR
   float
   default 0.150 if CHOICE_BLOBIFIER_TMC2226
   default 0.075 if CHOICE_BLOBIFIER_TMC5160
   default 0.110
 
-config PARAM_BLOBIFIER_STEPPER_RREF
+config PARAM_BLOBIFIER_RREF
   int
   default 12000
 
@@ -163,12 +163,12 @@ config BOOL_BLOBIFIER_TMC_HAS_RREF
 
 # Any supplied pin means software SPI, even when the trio is incomplete.
 # SW6 warns about missing pins; never silently switch to a different bus.
-config BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE
+config BOOL_BLOBIFIER_TMC_SPI_SOFTWARE
   bool
   default y if BOOL_BLOBIFIER_TMC_SPI && \
-      (PIN_BLOBIFIER_STEPPER_SPI_SCLK != "" || \
-       PIN_BLOBIFIER_STEPPER_SPI_MOSI != "" || \
-       PIN_BLOBIFIER_STEPPER_SPI_MISO != "")
+      (PIN_BLOBIFIER_SPI_SCLK != "" || \
+       PIN_BLOBIFIER_SPI_MOSI != "" || \
+       PIN_BLOBIFIER_SPI_MISO != "")
 
 
 # -------------------------------------
@@ -239,13 +239,13 @@ menu "Purging"
     endif
 
     if CHOICE_BLOBIFIER_TYPE_STEPPER
-      config PIN_BLOBIFIER_STEPPER_STEP
+      config PIN_BLOBIFIER_STEP
         prompt "Stepper step pin           "
-      config PIN_BLOBIFIER_STEPPER_DIR
+      config PIN_BLOBIFIER_DIR
         prompt "Stepper dir pin            "
-      config PIN_BLOBIFIER_STEPPER_ENABLE
+      config PIN_BLOBIFIER_ENABLE
         prompt "Stepper enable pin         "
-      config PIN_BLOBIFIER_STEPPER_ENDSTOP
+      config PIN_BLOBIFIER_ENDSTOP
         prompt "Stepper endstop pin        "
         help
           The pull-up/invert ( ^! ) is typically required here
@@ -291,34 +291,34 @@ menu "Purging"
           depends on BOOL_BLOBIFIER_TMC_CAN_SPI
       endchoice
 
-      config PIN_BLOBIFIER_STEPPER_UART
+      config PIN_BLOBIFIER_UART
         prompt "Stepper TMC UART pin       " if PARAM_BLOBIFIER_TMC != "" && !BOOL_BLOBIFIER_TMC_SPI
-      config PIN_BLOBIFIER_STEPPER_CS
+      config PIN_BLOBIFIER_CS
         prompt "Stepper TMC CS pin         " if BOOL_BLOBIFIER_TMC_SPI
-      config PARAM_BLOBIFIER_STEPPER_SPI_BUS
-        prompt "Stepper TMC SPI bus        " if BOOL_BLOBIFIER_TMC_SPI && !BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE
+      config PARAM_BLOBIFIER_SPI_BUS
+        prompt "Stepper TMC SPI bus        " if BOOL_BLOBIFIER_TMC_SPI && !BOOL_BLOBIFIER_TMC_SPI_SOFTWARE
         help
           Hardware SPI bus name on the MCU owning the CS pin, e.g. spi2.
           Leave blank to use Klipper's default bus for that MCU.
-      config PIN_BLOBIFIER_STEPPER_SPI_SCLK
+      config PIN_BLOBIFIER_SPI_SCLK
         prompt "Stepper TMC SPI SCLK pin   " if BOOL_BLOBIFIER_TMC_SPI
         help
           Leave all three SPI pins blank to use hardware SPI. To use software
           SPI, fill in all three pins. An incomplete set is an error.
           Prefix each pin with its MCU name; all three must be on the same
           MCU as the CS pin, e.g. mcu:PG8.
-      config PIN_BLOBIFIER_STEPPER_SPI_MOSI
+      config PIN_BLOBIFIER_SPI_MOSI
         prompt "Stepper TMC SPI MOSI pin   " if BOOL_BLOBIFIER_TMC_SPI
-      config PIN_BLOBIFIER_STEPPER_SPI_MISO
+      config PIN_BLOBIFIER_SPI_MISO
         prompt "Stepper TMC SPI MISO pin   " if BOOL_BLOBIFIER_TMC_SPI
 
-      config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
+      config PARAM_BLOBIFIER_RUN_CURRENT
         prompt "Stepper run current        " if PARAM_BLOBIFIER_TMC != ""
-      config PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT
+      config PARAM_BLOBIFIER_HOLD_CURRENT
         prompt "Stepper hold current       " if BOOL_BLOBIFIER_TMC_HAS_HOLD_CURRENT
-      config PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR
+      config PARAM_BLOBIFIER_SENSE_RESISTOR
         prompt "Stepper sense resistor     " if PARAM_BLOBIFIER_TMC != "" && !BOOL_BLOBIFIER_TMC_HAS_RREF
-      config PARAM_BLOBIFIER_STEPPER_RREF
+      config PARAM_BLOBIFIER_RREF
         prompt "Stepper rref (ohms)        " if BOOL_BLOBIFIER_TMC_HAS_RREF
         range 12000 60000
         help

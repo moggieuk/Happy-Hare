@@ -609,10 +609,10 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
             syms=dict({
                 'MMU_HAS_BLOBIFIER': True,
                 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
-                'PIN_BLOBIFIER_STEPPER_STEP': 'unit0:PD4',
-                'PIN_BLOBIFIER_STEPPER_DIR': '!unit0:PD3',
-                'PIN_BLOBIFIER_STEPPER_ENABLE': '!unit0:PD6',
-                'PIN_BLOBIFIER_STEPPER_ENDSTOP': '^!unit0:PC15',
+                'PIN_BLOBIFIER_STEP': 'unit0:PD4',
+                'PIN_BLOBIFIER_DIR': '!unit0:PD3',
+                'PIN_BLOBIFIER_ENABLE': '!unit0:PD6',
+                'PIN_BLOBIFIER_ENDSTOP': '^!unit0:PC15',
             }, **syms))
         return cfg.render(profile)[MMU]
 
@@ -623,7 +623,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
 
     def test_uart_driver_is_the_default(self):
         mmu = self._render_mmu('blobifier_tmc_default', {
-            'PIN_BLOBIFIER_STEPPER_UART': 'unit0:PC14',
+            'PIN_BLOBIFIER_UART': 'unit0:PC14',
         })
         self.assertEqual(self._drivers(mmu), ['tmc2209 manual_stepper stepper_blobifier'])
         driver = dict(cfg.assemble({MMU: mmu}).items(
@@ -637,12 +637,12 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
     def test_spi_driver_replaces_the_section_rather_than_adding_one(self):
         mmu = self._render_mmu('blobifier_tmc2240', {
             'CHOICE_BLOBIFIER_TMC2240': True,
-            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
-            'PIN_BLOBIFIER_STEPPER_SPI_SCLK': 'unit0:PG8',
-            'PIN_BLOBIFIER_STEPPER_SPI_MOSI': 'unit0:PG6',
-            'PIN_BLOBIFIER_STEPPER_SPI_MISO': 'unit0:PG7',
+            'PIN_BLOBIFIER_CS': 'unit0:PC14',
+            'PIN_BLOBIFIER_SPI_SCLK': 'unit0:PG8',
+            'PIN_BLOBIFIER_SPI_MOSI': 'unit0:PG6',
+            'PIN_BLOBIFIER_SPI_MISO': 'unit0:PG7',
             # A saved hardware bus must not leak into software-SPI output.
-            'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
+            'PARAM_BLOBIFIER_SPI_BUS': 'spi2',
         })
         # Exactly one, or Klipper's mux registry rejects the second at boot
         self.assertEqual(self._drivers(mmu), ['tmc2240 manual_stepper stepper_blobifier'])
@@ -660,8 +660,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         """Keep the requested wiring visible; missing pins must not select another bus."""
         mmu = self._render_mmu('blobifier_tmc2240_partial_spi', {
             'CHOICE_BLOBIFIER_TMC2240': True,
-            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
-            'PIN_BLOBIFIER_STEPPER_SPI_SCLK': 'unit0:PG8',
+            'PIN_BLOBIFIER_CS': 'unit0:PC14',
+            'PIN_BLOBIFIER_SPI_SCLK': 'unit0:PG8',
         })
         driver = dict(cfg.assemble({MMU: mmu}).items(
             'tmc2240 manual_stepper stepper_blobifier'))
@@ -678,16 +678,16 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                 'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
                 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
                 'CHOICE_BLOBIFIER_TMC5160': True,
-                'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
+                'PIN_BLOBIFIER_CS': 'unit0:PC14',
             })
         pins = ('SCLK', 'MOSI', 'MISO')
         for mask in range(8):
             with self.subTest(mask=mask):
                 for index, pin in enumerate(pins):
-                    kc.syms['PIN_BLOBIFIER_STEPPER_SPI_' + pin].set_value(
+                    kc.syms['PIN_BLOBIFIER_SPI_' + pin].set_value(
                         'unit0:PG%d' % index if mask & (1 << index) else '')
                 self.assertEqual(kc.is_enabled('SW6'), mask not in (0, 7))
-        kc.syms['PIN_BLOBIFIER_STEPPER_SPI_MISO'].set_value('')
+        kc.syms['PIN_BLOBIFIER_SPI_MISO'].set_value('')
         for choice in ('CHOICE_BLOBIFIER_TMC2209', 'CHOICE_BLOBIFIER_TMC_NONE'):
             kc.syms[choice].set_value(2)
             self.assertFalse(kc.is_enabled('SW6'))
@@ -695,8 +695,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
     def test_named_hardware_spi_bus(self):
         mmu = self._render_mmu('blobifier_named_spi', {
             'CHOICE_BLOBIFIER_TMC5160': True,
-            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
-            'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
+            'PIN_BLOBIFIER_CS': 'unit0:PC14',
+            'PARAM_BLOBIFIER_SPI_BUS': 'spi2',
         })
         driver = dict(cfg.assemble({MMU: mmu}).items(
             'tmc5160 manual_stepper stepper_blobifier'))
@@ -707,8 +707,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
     def test_5160_default_bus_and_custom_resistor(self):
         mmu = self._render_mmu('blobifier_5160_custom_resistor', {
             'CHOICE_BLOBIFIER_TMC5160': True,
-            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
-            'PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR': '0.050',
+            'PIN_BLOBIFIER_CS': 'unit0:PC14',
+            'PARAM_BLOBIFIER_SENSE_RESISTOR': '0.050',
         })
         self.assertEqual(self._drivers(mmu), ['tmc5160 manual_stepper stepper_blobifier'])
         driver = dict(cfg.assemble({MMU: mmu}).items(self._drivers(mmu)[0]))
@@ -724,9 +724,9 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                 'MMU_HAS_BLOBIFIER': True,
                 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
                 'CHOICE_BLOBIFIER_TMC5160': True,
-                'PIN_BLOBIFIER_STEPPER_CS': 'mcu:PC14',
-                'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
-                'PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR': '0.050',
+                'PIN_BLOBIFIER_CS': 'mcu:PC14',
+                'PARAM_BLOBIFIER_SPI_BUS': 'spi2',
+                'PARAM_BLOBIFIER_SENSE_RESISTOR': '0.050',
             })
             with tempfile.TemporaryDirectory() as tmp:
                 path = os.path.join(tmp, '.mmu_config')
@@ -748,8 +748,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
     def test_multi_unit_renders_one_shared_blobifier_driver(self):
         mmu = self._render_mmu('two_units_blobifier_spi', {
             'CHOICE_BLOBIFIER_TMC5160': True,
-            'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14',
-            'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2',
+            'PIN_BLOBIFIER_CS': 'unit0:PC14',
+            'PARAM_BLOBIFIER_SPI_BUS': 'spi2',
         }, base=TWO_UNIT)
         self.assertEqual(self._drivers(mmu), ['tmc5160 manual_stepper stepper_blobifier'])
         driver = dict(cfg.assemble({MMU: mmu}).items(self._drivers(mmu)[0]))
@@ -761,10 +761,10 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
             kc = cfg._kconfig('blobifier_disabled_spi', {'MMU_HAS_BLOBIFIER': False})
         import kconfiglib
         for name, sym_type in (
-                ('PIN_BLOBIFIER_STEPPER_CS', kconfiglib.STRING),
-                ('PIN_BLOBIFIER_STEPPER_SPI_SCLK', kconfiglib.STRING),
-                ('PARAM_BLOBIFIER_STEPPER_SPI_BUS', kconfiglib.STRING),
-                ('PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR', kconfiglib.FLOAT)):
+                ('PIN_BLOBIFIER_CS', kconfiglib.STRING),
+                ('PIN_BLOBIFIER_SPI_SCLK', kconfiglib.STRING),
+                ('PARAM_BLOBIFIER_SPI_BUS', kconfiglib.STRING),
+                ('PARAM_BLOBIFIER_SENSE_RESISTOR', kconfiglib.FLOAT)):
             self.assertEqual(kc.syms[name].orig_type, sym_type)
             self.assertEqual(kc.syms[name].visibility, 0)
         self.assertEqual(kc.syms['PARAM_BLOBIFIER_TMC'].str_value, '')
@@ -819,7 +819,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
 
     def _render_driver(self, label, choice, section, bus_pin, extra):
         syms = {'CHOICE_BLOBIFIER_' + choice: True}
-        syms['PIN_BLOBIFIER_STEPPER_' +
+        syms['PIN_BLOBIFIER_' +
              ('UART' if bus_pin == 'uart_pin' else 'CS')] = 'unit0:PC14'
         syms.update(extra)
         mmu = self._render_mmu('blobifier_matrix_' + label, syms)
@@ -911,19 +911,19 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         """
         unchanged = {
             'tmc2209': ({'CHOICE_BLOBIFIER_TMC2209': True,
-                         'PIN_BLOBIFIER_STEPPER_UART': 'unit0:PC14'},
+                         'PIN_BLOBIFIER_UART': 'unit0:PC14'},
                         {'uart_pin': 'unit0:PC14', 'run_current': '0.6',
                          'hold_current': '0.1', 'interpolate': 'true',
                          'stealthchop_threshold': '99999999',
                          'sense_resistor': '0.110'}),
             'tmc5160': ({'CHOICE_BLOBIFIER_TMC5160': True,
-                         'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14'},
+                         'PIN_BLOBIFIER_CS': 'unit0:PC14'},
                         {'cs_pin': 'unit0:PC14', 'run_current': '0.6',
                          'hold_current': '0.1', 'interpolate': 'true',
                          'stealthchop_threshold': '99999999',
                          'sense_resistor': '0.075'}),
             'tmc2240': ({'CHOICE_BLOBIFIER_TMC2240': True,
-                         'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14'},
+                         'PIN_BLOBIFIER_CS': 'unit0:PC14'},
                         {'cs_pin': 'unit0:PC14', 'run_current': '0.6',
                          'hold_current': '0.1', 'interpolate': 'true',
                          'stealthchop_threshold': '99999999',
@@ -937,10 +937,15 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                 self.assertEqual(dict(cfg.assemble({MMU: mmu}).items(full)), expected)
 
     def test_config_saved_before_the_bus_split_still_resolves(self):
-        """An installed .mmu_config has no CHOICE_BLOBIFIER_TMC_BUS_* line at all.
+        """A real installed .mmu_config, predating both changes at once.
 
-        The bus must then fall out of the chip, or olddefconfig silently
-        moves an installed machine onto the wrong bus.
+        It has no CHOICE_BLOBIFIER_TMC_BUS_* line, so the bus has to fall out
+        of the chip or olddefconfig moves the machine onto the wrong one. And
+        it still spells the pins with the STEPPER infix, so the value only
+        survives if HH_RENAMED_SYMBOLS carries it across. Those are the two
+        ways this change could silently break an installed machine, and this
+        is the fixture where they meet - so the pin names here are
+        deliberately the OLD ones and must not be renamed.
         """
         legacy = ('CONFIG_MMU_HAS_BLOBIFIER=y\n'
                   'CONFIG_CHOICE_BLOBIFIER_TYPE_STEPPER=y\n'
@@ -972,7 +977,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
             kc = cfg._kconfig('blobifier_tmc_missing_uart_pin', {
                 'MMU_HAS_BLOBIFIER': True,
                 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
-                'PIN_BLOBIFIER_STEPPER_UART': '',
+                'PIN_BLOBIFIER_UART': '',
             })
         self.assertTrue(kc.is_enabled('SW5'))
 
@@ -983,19 +988,19 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
             with self.subTest(chip=chip):
                 kc.syms['CHOICE_BLOBIFIER_' + chip].set_value(2)
                 self.assertTrue(kc.is_enabled('SW5'))
-                kc.syms['PIN_BLOBIFIER_STEPPER_' + pin].set_value('unit0:PC14')
+                kc.syms['PIN_BLOBIFIER_' + pin].set_value('unit0:PC14')
                 self.assertFalse(kc.is_enabled('SW5'))
-                kc.syms['PIN_BLOBIFIER_STEPPER_' + pin].set_value('')
+                kc.syms['PIN_BLOBIFIER_' + pin].set_value('')
 
         # A TMC2240 moved to UART must warn about the UART pin, not the CS one
         kc.syms['CHOICE_BLOBIFIER_TMC2240'].set_value(2)
         kc.syms['CHOICE_BLOBIFIER_TMC_BUS_UART'].set_value(2)
-        kc.syms['PIN_BLOBIFIER_STEPPER_CS'].set_value('unit0:PC14')
+        kc.syms['PIN_BLOBIFIER_CS'].set_value('unit0:PC14')
         self.assertTrue(kc.is_enabled('SW5'))
-        kc.syms['PIN_BLOBIFIER_STEPPER_UART'].set_value('unit0:PC13')
+        kc.syms['PIN_BLOBIFIER_UART'].set_value('unit0:PC13')
         self.assertFalse(kc.is_enabled('SW5'))
-        kc.syms['PIN_BLOBIFIER_STEPPER_CS'].set_value('')
-        kc.syms['PIN_BLOBIFIER_STEPPER_UART'].set_value('')
+        kc.syms['PIN_BLOBIFIER_CS'].set_value('')
+        kc.syms['PIN_BLOBIFIER_UART'].set_value('')
         kc.syms['CHOICE_BLOBIFIER_TMC_BUS_SPI'].set_value(2)
 
         with cfg._env(cfg._SINGLE_UNIT_ENV):
@@ -1018,9 +1023,9 @@ class TestSavedConfigLoading(unittest.TestCase):
 
     LEGACY = ('CONFIG_MMU_HAS_BLOBIFIER=y\n'
               'CONFIG_CHOICE_BLOBIFIER_TYPE_STEPPER=y\n'
-              'CONFIG_PIN_BLOBIFIER_STEPPER_UART="unit0:PC14"\n'
+              'CONFIG_PIN_BLOBIFIER_UART="unit0:PC14"\n'
               'CONFIG_PIN_MADE_UP_SYMBOL="ghost"\n'
-              'CONFIG_PARAM_BLOBIFIER_STEPPER_RUN_CURRENT="0.45" #~DEFAULT~#\n')
+              'CONFIG_PARAM_BLOBIFIER_RUN_CURRENT=0.45 #~DEFAULT~#\n')
 
     def _load(self, filter_defaults):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
@@ -1045,7 +1050,7 @@ class TestSavedConfigLoading(unittest.TestCase):
                 self.assertEqual(kc.missing_syms,
                                  [('PIN_MADE_UP_SYMBOL', '"ghost"')])
                 # ...while a symbol that still exists keeps its value
-                self.assertEqual(kc.get('PIN_BLOBIFIER_STEPPER_UART'),
+                self.assertEqual(kc.get('PIN_BLOBIFIER_UART'),
                                  'unit0:PC14')
 
     def test_a_recorded_default_is_applied_when_building_but_not_in_menuconfig(self):
@@ -1059,10 +1064,10 @@ class TestSavedConfigLoading(unittest.TestCase):
         default is frozen in place forever.
         """
         self.assertEqual(
-            self._load(True).get('PARAM_BLOBIFIER_STEPPER_RUN_CURRENT'), '0.6',
+            self._load(True).get('PARAM_BLOBIFIER_RUN_CURRENT'), '0.6',
             'menuconfig should have cleared the recorded default')
         self.assertEqual(
-            self._load(False).get('PARAM_BLOBIFIER_STEPPER_RUN_CURRENT'), '0.45',
+            self._load(False).get('PARAM_BLOBIFIER_RUN_CURRENT'), '0.45',
             'the builder should have applied the recorded default')
 
 

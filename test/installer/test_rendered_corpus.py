@@ -33,19 +33,19 @@ BLOBIFIER_TEXT = os.path.join(GOLDEN_DIR, 'blobifier_reference.txt')
 _BLOBIFIER_BASE = {
     'MMU_HAS_BLOBIFIER': True,
     'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
-    'PIN_BLOBIFIER_STEPPER_STEP': 'unit0:PD4',
-    'PIN_BLOBIFIER_STEPPER_DIR': '!unit0:PD3',
-    'PIN_BLOBIFIER_STEPPER_ENABLE': '!unit0:PD6',
-    'PIN_BLOBIFIER_STEPPER_ENDSTOP': '^!unit0:PC15',
+    'PIN_BLOBIFIER_STEP': 'unit0:PD4',
+    'PIN_BLOBIFIER_DIR': '!unit0:PD3',
+    'PIN_BLOBIFIER_ENABLE': '!unit0:PD6',
+    'PIN_BLOBIFIER_ENDSTOP': '^!unit0:PC15',
 }
-_UART = {'PIN_BLOBIFIER_STEPPER_UART': 'unit0:PC14'}
-_CS = {'PIN_BLOBIFIER_STEPPER_CS': 'unit0:PC14'}
+_UART = {'PIN_BLOBIFIER_UART': 'unit0:PC14'}
+_CS = {'PIN_BLOBIFIER_CS': 'unit0:PC14'}
 _SW_SPI = dict(_CS, **{
-    'PIN_BLOBIFIER_STEPPER_SPI_SCLK': 'unit0:PG8',
-    'PIN_BLOBIFIER_STEPPER_SPI_MOSI': 'unit0:PG6',
-    'PIN_BLOBIFIER_STEPPER_SPI_MISO': 'unit0:PG7',
+    'PIN_BLOBIFIER_SPI_SCLK': 'unit0:PG8',
+    'PIN_BLOBIFIER_SPI_MOSI': 'unit0:PG6',
+    'PIN_BLOBIFIER_SPI_MISO': 'unit0:PG7',
 })
-_NAMED_BUS = dict(_CS, **{'PARAM_BLOBIFIER_STEPPER_SPI_BUS': 'spi2'})
+_NAMED_BUS = dict(_CS, **{'PARAM_BLOBIFIER_SPI_BUS': 'spi2'})
 
 # Every chip, both buses for the one that has a choice, and all three SPI
 # wiring modes. The names are the golden's keys, so keep them stable.

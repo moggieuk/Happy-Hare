@@ -579,7 +579,31 @@ HH_DEFAULT_TOKEN = " #~DEFAULT~#" # Happy Hare: Added
 # as shell. A symbol that make or install.sh reads by name (MULTI_UNIT,
 # MMU_UNITS, KLIPPER_HOME, ...) cannot be renamed this way - that needs a
 # pass that rewrites the file itself.
-HH_RENAMED_SYMBOLS = {} # Happy Hare: Added
+HH_RENAMED_SYMBOLS = { # Happy Hare: Added
+    # v4.x: the Blobifier stepper dropped its "STEPPER" infix so the TMC
+    # driver definitions could be shared with the gear and selector steppers.
+    # The infix was never consistent - the chip-identity symbols
+    # (PARAM_BLOBIFIER_TMC, CHOICE_BLOBIFIER_TMC*) never carried it.
+    "PIN_BLOBIFIER_STEPPER_STEP":            "PIN_BLOBIFIER_STEP",
+    "PIN_BLOBIFIER_STEPPER_DIR":             "PIN_BLOBIFIER_DIR",
+    "PIN_BLOBIFIER_STEPPER_ENABLE":          "PIN_BLOBIFIER_ENABLE",
+    "PIN_BLOBIFIER_STEPPER_ENDSTOP":         "PIN_BLOBIFIER_ENDSTOP",
+    "PIN_BLOBIFIER_STEPPER_UART":            "PIN_BLOBIFIER_UART",
+    "PIN_BLOBIFIER_STEPPER_CS":              "PIN_BLOBIFIER_CS",
+    "PIN_BLOBIFIER_STEPPER_SPI_SCLK":        "PIN_BLOBIFIER_SPI_SCLK",
+    "PIN_BLOBIFIER_STEPPER_SPI_MOSI":        "PIN_BLOBIFIER_SPI_MOSI",
+    "PIN_BLOBIFIER_STEPPER_SPI_MISO":        "PIN_BLOBIFIER_SPI_MISO",
+    "PARAM_BLOBIFIER_STEPPER_SPI_BUS":       "PARAM_BLOBIFIER_SPI_BUS",
+    "PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR": "PARAM_BLOBIFIER_SENSE_RESISTOR",
+    "PARAM_BLOBIFIER_STEPPER_RREF":          "PARAM_BLOBIFIER_RREF",
+    # These two also changed string -> float, to match gear and selector. The
+    # migration unquotes, so a saved "0.45" lands on the float as 0.45.
+    "PARAM_BLOBIFIER_STEPPER_RUN_CURRENT":   "PARAM_BLOBIFIER_RUN_CURRENT",
+    "PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT":  "PARAM_BLOBIFIER_HOLD_CURRENT",
+    # Folded into the BOOL_*_TMC_* capability family rather than just losing
+    # the infix, so the whole family reads consistently.
+    "BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE":   "BOOL_BLOBIFIER_TMC_SPI_SOFTWARE",
+}
 
 
 # File layout:
