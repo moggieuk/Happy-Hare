@@ -1,0 +1,128 @@
+# TMC stepper driver - symbol types, defaults and capability flags.
+#
+# Sourced once per stepper that has a TMC driver. The caller sets:
+#
+#   prefix        name infix, e.g. BLOBIFIER -> PARAM_BLOBIFIER_TMC
+#   run_current   default run current for this stepper
+#   hold_current  default hold current for this stepper
+#
+# and must re-assign all of them immediately before each source, because
+# preprocessor variables are global for the whole parse and a file may be
+# sourced from more than one place.
+#
+# This half declares types and defaults ONLY. The prompts live in
+# Kconfig.tmc_driver_menu and are sourced at the right menu position.
+# Keeping them apart is not cosmetic: _propagate_deps ANDs an enclosing `if`
+# into a node's defaults as well as its prompt, so declaring these inside a
+# feature's `if` block would make them compute empty whenever the feature is
+# off, instead of merely hiding them.
+#
+# What it does NOT cover: step/dir/enable/endstop pins (stepper wiring, not
+# driver, and the gear stepper has per-gate indexed variants of them), the
+# diag pin and stallguard, and uart_address. Those stay with the caller.
+#
+# Defines, for each $(prefix):
+#   PIN_*_UART PIN_*_CS PIN_*_SPI_SCLK PIN_*_SPI_MOSI PIN_*_SPI_MISO
+#   PARAM_*_SPI_BUS PARAM_*_RUN_CURRENT PARAM_*_HOLD_CURRENT
+#   PARAM_*_SENSE_RESISTOR PARAM_*_RREF PARAM_*_TMC
+#   BOOL_*_TMC_CAN_UART BOOL_*_TMC_CAN_SPI BOOL_*_TMC_SPI
+#   BOOL_*_TMC_HAS_HOLD_CURRENT BOOL_*_TMC_HAS_STEALTHCHOP
+#   BOOL_*_TMC_HAS_RREF BOOL_*_TMC_SPI_SOFTWARE
+
+config PIN_$(prefix)_UART
+  string
+  default ""
+
+config PIN_$(prefix)_CS
+  string
+  default ""
+
+config PIN_$(prefix)_SPI_SCLK
+  string
+  default ""
+
+config PIN_$(prefix)_SPI_MOSI
+  string
+  default ""
+
+config PIN_$(prefix)_SPI_MISO
+  string
+  default ""
+
+config PARAM_$(prefix)_SPI_BUS
+  string
+  default ""
+
+config PARAM_$(prefix)_RUN_CURRENT
+  float
+  default $(run_current)
+
+config PARAM_$(prefix)_HOLD_CURRENT
+  float
+  default $(hold_current)
+
+# TMC2226 ships a 0.150 shunt, TMC5160 a 0.075 one; the rest use 0.110.
+# TMC2240 has no shunt at all - it sizes current from rref instead.
+config PARAM_$(prefix)_SENSE_RESISTOR
+  float
+  default 0.150 if CHOICE_$(prefix)_TMC2226
+  default 0.075 if CHOICE_$(prefix)_TMC5160
+  default 0.110
+
+config PARAM_$(prefix)_RREF
+  int
+  default 12000
+
+# Klipper module implementing each chip. TMC2226 is register-compatible
+# with the TMC2209 and has no module of its own.
+config PARAM_$(prefix)_TMC
+  string
+  default "tmc2209" if CHOICE_$(prefix)_TMC2209
+  default "tmc2209" if CHOICE_$(prefix)_TMC2226
+  default "tmc2208" if CHOICE_$(prefix)_TMC2208
+  default "tmc2130" if CHOICE_$(prefix)_TMC2130
+  default "tmc2660" if CHOICE_$(prefix)_TMC2660
+  default "tmc5160" if CHOICE_$(prefix)_TMC5160
+  default "tmc2240" if CHOICE_$(prefix)_TMC2240
+  default ""
+
+# Which buses the chosen chip can actually speak. Only the TMC2240 does
+# both, so only it gets a bus prompt; the rest are fixed by the silicon.
+config BOOL_$(prefix)_TMC_CAN_UART
+  bool
+  default y if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226 || \
+      CHOICE_$(prefix)_TMC2208 || CHOICE_$(prefix)_TMC2240
+
+config BOOL_$(prefix)_TMC_CAN_SPI
+  bool
+  default y if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC2660 || \
+      CHOICE_$(prefix)_TMC5160 || CHOICE_$(prefix)_TMC2240
+
+config BOOL_$(prefix)_TMC_SPI
+  bool
+  default y if CHOICE_$(prefix)_TMC_BUS_SPI
+
+# Two flags, not one: the TMC2660 happens to lack both, but hold_current
+# and stealthchop are separate Klipper options that other chips may drop
+# independently. It idles via idle_current_percent, whose Klipper default
+# of 100 is what we want, so nothing replaces hold_current for it.
+config BOOL_$(prefix)_TMC_HAS_HOLD_CURRENT
+  bool
+  default y if PARAM_$(prefix)_TMC != "" && !CHOICE_$(prefix)_TMC2660
+
+config BOOL_$(prefix)_TMC_HAS_STEALTHCHOP
+  bool
+  default y if PARAM_$(prefix)_TMC != "" && !CHOICE_$(prefix)_TMC2660
+
+config BOOL_$(prefix)_TMC_HAS_RREF
+  bool
+  default y if CHOICE_$(prefix)_TMC2240
+
+# Any supplied pin means software SPI, even when the trio is incomplete.
+# A warning covers missing pins; never silently switch to a different bus.
+config BOOL_$(prefix)_TMC_SPI_SOFTWARE
+  bool
+  default y if BOOL_$(prefix)_TMC_SPI && \
+      (PIN_$(prefix)_SPI_SCLK != "" || \
+       PIN_$(prefix)_SPI_MOSI != "" || \
+       PIN_$(prefix)_SPI_MISO != "")

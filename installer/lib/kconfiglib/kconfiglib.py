@@ -566,6 +566,45 @@ from os.path import dirname, exists, expandvars, islink, join, realpath
 VERSION = (14, 1, 0)
 HH_DEFAULT_TOKEN = " #~DEFAULT~#" # Happy Hare: Added
 
+# Happy Hare: Symbols renamed in a past release, old name -> new name. A saved
+# .mmu_config assignment to the old name is transplanted onto the new symbol
+# while loading; see Kconfig._migrate_renamed_symbols. Without this kconfiglib
+# records the orphaned assignment in missing_syms and drops it, so a rename
+# silently discards whatever the user had configured.
+#
+# Entries may be removed one major version after they ship.
+#
+# LIMIT: this runs during load_config, which is AFTER the Makefile has done
+# `-include $(KCONFIG_CONFIG)` and after install.sh has sourced the same file
+# as shell. A symbol that make or install.sh reads by name (MULTI_UNIT,
+# MMU_UNITS, KLIPPER_HOME, ...) cannot be renamed this way - that needs a
+# pass that rewrites the file itself.
+HH_RENAMED_SYMBOLS = { # Happy Hare: Added
+    # v4.x: the Blobifier stepper dropped its "STEPPER" infix so the TMC
+    # driver definitions could be shared with the gear and selector steppers.
+    # The infix was never consistent - the chip-identity symbols
+    # (PARAM_BLOBIFIER_TMC, CHOICE_BLOBIFIER_TMC*) never carried it.
+    "PIN_BLOBIFIER_STEPPER_STEP":            "PIN_BLOBIFIER_STEP",
+    "PIN_BLOBIFIER_STEPPER_DIR":             "PIN_BLOBIFIER_DIR",
+    "PIN_BLOBIFIER_STEPPER_ENABLE":          "PIN_BLOBIFIER_ENABLE",
+    "PIN_BLOBIFIER_STEPPER_ENDSTOP":         "PIN_BLOBIFIER_ENDSTOP",
+    "PIN_BLOBIFIER_STEPPER_UART":            "PIN_BLOBIFIER_UART",
+    "PIN_BLOBIFIER_STEPPER_CS":              "PIN_BLOBIFIER_CS",
+    "PIN_BLOBIFIER_STEPPER_SPI_SCLK":        "PIN_BLOBIFIER_SPI_SCLK",
+    "PIN_BLOBIFIER_STEPPER_SPI_MOSI":        "PIN_BLOBIFIER_SPI_MOSI",
+    "PIN_BLOBIFIER_STEPPER_SPI_MISO":        "PIN_BLOBIFIER_SPI_MISO",
+    "PARAM_BLOBIFIER_STEPPER_SPI_BUS":       "PARAM_BLOBIFIER_SPI_BUS",
+    "PARAM_BLOBIFIER_STEPPER_SENSE_RESISTOR": "PARAM_BLOBIFIER_SENSE_RESISTOR",
+    "PARAM_BLOBIFIER_STEPPER_RREF":          "PARAM_BLOBIFIER_RREF",
+    # These two also changed string -> float, to match gear and selector. The
+    # migration unquotes, so a saved "0.45" lands on the float as 0.45.
+    "PARAM_BLOBIFIER_STEPPER_RUN_CURRENT":   "PARAM_BLOBIFIER_RUN_CURRENT",
+    "PARAM_BLOBIFIER_STEPPER_HOLD_CURRENT":  "PARAM_BLOBIFIER_HOLD_CURRENT",
+    # Folded into the BOOL_*_TMC_* capability family rather than just losing
+    # the infix, so the whole family reads consistently.
+    "BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE":   "BOOL_BLOBIFIER_TMC_SPI_SOFTWARE",
+}
+
 
 # File layout:
 #
@@ -840,6 +879,7 @@ class Kconfig(object):
         "m",
         "menus",
         "missing_syms",
+        "_missing_sym_defaults",
         "modules",
         "n",
         "named_choices",
@@ -1001,6 +1041,7 @@ class Kconfig(object):
         self.const_syms = {}
         self.defined_syms = []
         self.missing_syms = []
+        self._missing_sym_defaults = [] # Happy Hare: Added
         self.named_choices = {}
         self.choices = []
         self.menus = []
@@ -1260,6 +1301,7 @@ class Kconfig(object):
         with self._open_config(filename) as f:
             if replace:
                 self.missing_syms = []
+                self._missing_sym_defaults = [] # Happy Hare: Added
 
                 # If we're replacing the configuration, keep track of which
                 # symbols and choices got set so that we can unset the rest
@@ -1289,7 +1331,7 @@ class Kconfig(object):
                     sym = get_sym(name)
 
                     if not sym or not sym.nodes:
-                        self._undef_assign(name, val, filename, linenr)
+                        self._undef_assign(name, val, filename, linenr, default)
                         continue
 
                     if sym.orig_type in _BOOL_TRISTATE:
@@ -1363,7 +1405,7 @@ class Kconfig(object):
 
                     sym = get_sym(name)
                     if not sym or not sym.nodes:
-                        self._undef_assign(name, "n", filename, linenr)
+                        self._undef_assign(name, "n", filename, linenr, default)
                         continue
 
                     if sym.orig_type not in _BOOL_TRISTATE:
@@ -1396,58 +1438,74 @@ class Kconfig(object):
                 if not choice._was_set:
                     choice.unset_value()
 
-# vvvv HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
-        if replace and filter_defaults:
-            self._migrate_legacy_boolint_pairs()
+        # Happy Hare: Added
+        if replace:
+            self._migrate_renamed_symbols(filter_defaults)
 
-    def _migrate_legacy_boolint_pairs(self):
-        """Migrate the temporary beta BOOL_X + PARAM_X representation.
+    def _migrate_renamed_symbols(self, filter_defaults):
+        """Happy Hare: Carry a saved value from a renamed symbol to its successor.
 
-        Before BOOLINT existed, a prompted BOOL symbol drove a promptless INT
-        PARAM containing 0/1. The PARAM assignment was saved with
-        HH_DEFAULT_TOKEN, so normal menuconfig loading now treats it as a
-        default and clears it. If the old BOOL symbol is no longer defined,
-        recover its explicit selection into the replacement BOOLINT symbol.
+        Fires only while the old name is still present in the file, so it is
+        idempotent by construction: the next write_config emits the new name
+        and drops the old line, and every later load is a no-op. No marker, no
+        version stamp, no rewriting of the file.
 
-        Requiring the replacement assignment to have been marked as a default
-        prevents a stale BOOL line from overriding a new explicit BOOLINT
-        value. This compatibility helper and its aliases can be removed after
-        the v4 beta migration window.
+        The two callers load differently and must stay different here.
+        menuconfig and olddefconfig pass filter_defaults=True, where a
+        HH_DEFAULT_TOKEN line is a recorded default that gets cleared - so a
+        migrated one has to stay a modifiable default rather than become a
+        user value. installer/build.py passes False and applies recorded
+        defaults, so there the value is carried. Getting this wrong makes a
+        direct build render differently from a menuconfig-mediated one.
         """
-        aliases = {
-            "BOOL_ENABLE_SYNC_FEEDBACK": "PARAM_SYNC_FEEDBACK_ENABLED",
-            "BOOL_ENABLE_SYNC_TO_EXTRUDER": "PARAM_SYNC_TO_EXTRUDER",
-            "BOOL_ENABLE_SYNC_FORM_TIP": "PARAM_SYNC_FORM_TIP",
-            "BOOL_ENABLE_SYNC_PURGE": "PARAM_SYNC_PURGE",
-            "BOOL_BLOBIFIER_ENABLE_SHAKER": "VAR_BLOBIFIER_ENABLE_SHAKER",
-        }
-
-        for legacy_name, legacy_value in self.missing_syms:
-            if not legacy_name.startswith("BOOL_"):
+        for (old_name, raw), was_default in zip(self.missing_syms,
+                                                self._missing_sym_defaults):
+            new_name = HH_RENAMED_SYMBOLS.get(old_name)
+            if not new_name:
                 continue
 
-            replacement_name = aliases.get(
-                legacy_name, "PARAM_" + legacy_name[len("BOOL_"):])
-            replacement = self.syms.get(replacement_name)
-
-            if not replacement or replacement.orig_type is not BOOLINT or \
-               not replacement._was_default:
+            new_sym = self.syms.get(new_name)
+            if not new_sym or not new_sym.nodes:
                 continue
 
-            if legacy_value in ("y", "1"):
-                replacement.set_value("1")
-            elif legacy_value in ("n", "0"):
-                replacement.set_value("0")
-            else:
+            # A recorded default is not a user choice; leave it to resolve
+            # normally so the successor stays resettable in menuconfig.
+            if was_default and filter_defaults:
                 continue
 
-            replacement._was_default = False
-# ^^^^ HAPPY HARE v4 BETA ---- Remove after all beta tester have upgraded to production v4
+            # An explicit assignment to the new name always wins, so a
+            # hand-edited file keeps the name it actually asked for.
+            if new_sym._was_set:
+                continue
 
-    def _undef_assign(self, name, val, filename, linenr):
+            value = raw
+            if value.startswith('"'):
+                # The old symbol was string-typed. The new one may not be -
+                # dropping the quotes is what lets a string become a float.
+                match = _conf_string_match(value)
+                if not match:
+                    continue
+                value = unescape(match.group(1))
+
+            if new_sym.orig_type in _BOOL_TRISTATE:
+                value = "y" if value in ("y", "1") else "n"
+
+            # set_value validates and, on a type mismatch, warns and leaves
+            # the symbol at its default rather than raising.
+            if not new_sym.set_value(value):
+                continue
+            new_sym._was_set = True
+            new_sym._was_default = False
+
+
+    def _undef_assign(self, name, val, filename, linenr, was_default=False):
         # Called for assignments to undefined symbols during .config loading
 
         self.missing_syms.append((name, val))
+        # Happy Hare: missing_syms stays 2-tuples because it is public API and
+        # menuconfig reads it; the default-marker flag rides alongside so
+        # _migrate_renamed_symbols can tell a user value from a saved default.
+        self._missing_sym_defaults.append(bool(was_default))
         if self.warn_assign_undef:
             self._warn(
                 "attempt to assign the value '{}' to the undefined symbol {}"
@@ -2784,13 +2842,34 @@ class Kconfig(object):
                     #
                     # Named choices ('choice FOO') also end up here.
 
+                    # Happy Hare: expand $(macro) references in a named choice,
+                    # mirroring the non-const-symbol branch above.
+                    # _id_keyword_match stops at the '(' of a '$(', so without
+                    # this 'choice CHOICE_$(prefix)_TMC' lexed to the literal
+                    # name 'CHOICE_$' followed by a stray '(' and always died in
+                    # _trailing_tokens_error. That is what lets a component
+                    # fragment be sourced once per 'prefix :=' and still declare
+                    # its own named choices.
+                    #
+                    # Restricted to _T_CHOICE on purpose. Every other lexeme
+                    # reaching this branch is a title or prompt, and the quoted
+                    # form of those already expands macros - only a choice NAME
+                    # cannot be quoted. Since '$(' here is a parse error today,
+                    # this cannot change the meaning of any Kconfig that parses,
+                    # and leaving the other tokens alone keeps that true with no
+                    # caveats. Expanding before the warning below would matter
+                    # if this ever widened; it does not fire for a choice.
+                    if token is _T_CHOICE and "$" in name:
+                        name, s, i = self._expand_name(s, i)
+                    else:
+                        i = match.end()
+
                     if token is not _T_CHOICE:
                         self._warn("style: quotes recommended around '{}' in '{}'"
                                    .format(name, self._line.strip()),
                                    self.filename, self.linenr)
 
                     token = name
-                    i = match.end()
 
             else:
                 # Neither a keyword nor a non-const symbol

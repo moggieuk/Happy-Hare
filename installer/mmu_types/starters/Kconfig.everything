@@ -39,9 +39,6 @@ config MMU_CUSTOM_TYPE_EVERYTHING
 
 if MMU_CUSTOM_TYPE_EVERYTHING
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 

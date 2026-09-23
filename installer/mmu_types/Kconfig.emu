@@ -73,9 +73,6 @@ if MMU_TYPE_EMU_1_0
     default CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU if FAN_HAS_MCU_TEMPERATURE
   endchoice
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 

@@ -72,9 +72,6 @@ if MMU_TYPE_QIDI_BOX_1_0
   # the gate's own path. A fixed move cannot do this: the parking retract is
   # not applied when the preload endstop is 'none'.
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 

@@ -14,9 +14,6 @@ config MMU_TYPE_MMX6_1_0
 
 if MMU_TYPE_MMX6_1_0
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 
