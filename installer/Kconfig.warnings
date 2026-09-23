@@ -40,7 +40,7 @@ config SW6
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=25@
+  @repeat var=i min=1 max=26@
     default y if W$(i)
   @endrepeat@
 
@@ -161,6 +161,12 @@ config W24
 config W25
     def_bool y if MMU_HAS_SELECTOR_STEPPER && PARAM_SELECTOR_TMC != "" && PIN_SELECTOR_UART = ""
 
+# The designer fixed this machine's gate count, and the configured one differs.
+# A warning rather than a hidden prompt: hiding it would make the symbol
+# invisible, and kconfiglib discards a user value for an invisible symbol.
+config W26
+    def_bool y if PARAM_DESIGN_NUM_GATES > 0 && PARAM_NUM_GATES != PARAM_DESIGN_NUM_GATES
+
 
 # -------------------------------------
 # Warning messages
@@ -205,5 +211,6 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Gear TMC driver(s) missing UART pins [Pins / TMC]"                                if W23
     comment "Selector stepper missing step or direction pins [Pins / TMC]"                     if W24
     comment "Selector TMC driver missing UART pin [Pins / TMC]"                                if W25
+    comment "Gate count differs from the number this MMU design is built for"                   if W26
   endif
 endif
