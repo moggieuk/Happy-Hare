@@ -18,44 +18,31 @@
 # varies with the label and hand-padding each instance would drift.
 
 choice CHOICE_$(prefix)_TMC
-  prompt "$(pad,$(pad_width),$(label) TMC chip)"
+  prompt "$(pad,$(pad_width),$(label) TMC chip/bus)"
   default CHOICE_$(prefix)_TMC2209
   help
-    Select correct TMC chip type for this stepper. The bus (UART or SPI)
-    is fixed by the chip, except on the TMC2240 which can do either.
+    Select the TMC chip and, where the chip can do either, the bus it is
+    wired for. Only the TMC2240 offers a choice - most of its step sticks
+    ship wired for SPI and need a jumper or solder bridge moved for UART.
 
   config CHOICE_$(prefix)_TMC2209
-    bool "TMC2209"
+    bool "TMC2209 (UART)"
   config CHOICE_$(prefix)_TMC2226
-    bool "TMC2226"
+    bool "TMC2226 (UART)"
   config CHOICE_$(prefix)_TMC2208
-    bool "TMC2208"
+    bool "TMC2208 (UART)"
   config CHOICE_$(prefix)_TMC2130
-    bool "TMC2130"
+    bool "TMC2130 (SPI)"
   config CHOICE_$(prefix)_TMC2660
-    bool "TMC2660"
+    bool "TMC2660 (SPI)"
   config CHOICE_$(prefix)_TMC5160
-    bool "TMC5160"
+    bool "TMC5160 (SPI)"
   config CHOICE_$(prefix)_TMC2240
-    bool "TMC2240"
+    bool "TMC2240 (SPI)"
+  config CHOICE_$(prefix)_TMC2240_UART
+    bool "TMC2240 (UART)"
   config CHOICE_$(prefix)_TMC_NONE
     bool "None / hardware controlled"
-endchoice
-
-choice CHOICE_$(prefix)_TMC_BUS
-  prompt "$(pad,$(pad_width),$(label) TMC bus)" if PARAM_$(prefix)_TMC != ""
-  default CHOICE_$(prefix)_TMC_BUS_SPI
-  help
-    Only the TMC2240 offers a choice here. Most TMC2240 step sticks
-    ship wired for SPI and need a jumper or solder bridge moved to
-    use UART, so SPI is the default.
-
-  config CHOICE_$(prefix)_TMC_BUS_UART
-    bool "UART"
-    depends on BOOL_$(prefix)_TMC_CAN_UART
-  config CHOICE_$(prefix)_TMC_BUS_SPI
-    bool "SPI"
-    depends on BOOL_$(prefix)_TMC_CAN_SPI
 endchoice
 
 config PARAM_$(prefix)_SPI_BUS
