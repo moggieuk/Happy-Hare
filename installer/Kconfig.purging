@@ -78,6 +78,7 @@ config PIN_BLOBIFIER_ENDSTOP
 prefix       := BLOBIFIER
 run_current  := 0.6
 hold_current := 0.1
+stallguard   := 0
 source "components/Kconfig.tmc_driver_types"
 
 

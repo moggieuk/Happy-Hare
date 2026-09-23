@@ -14,11 +14,13 @@
 prefix       := GEAR
 run_current  := 0.7
 hold_current := 0.1
+stallguard   := 60
 source "components/Kconfig.tmc_driver_types"
 
 prefix       := SELECTOR
 run_current  := 0.5
 hold_current := 0.2
+stallguard   := 75
 source "components/Kconfig.tmc_driver_types"
 
 # Prompt column for each group, set to its longest prompt so the menu lines
@@ -46,13 +48,20 @@ menu "Pins / TMC"
   menu "Gear pins"
     config PARAM_GEAR_UART_ADDRESS
       int
-      prompt "$(pad,$(gear_pad),Gear UART address)" if PARAM_GEAR_TMC != ""
+      prompt "$(pad,$(gear_pad),Gear UART address)" if PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_SPI
       default 0
       range 0 3
       depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
     config PIN_GEAR_DIAG
       string
       prompt "$(pad,$(gear_pad),Gear diag pin)" if PARAM_GEAR_TMC != ""
+    config PARAM_GEAR_STALLGUARD_THRESHOLD
+      prompt "$(pad,$(gear_pad),Gear stallguard)" if BOOL_GEAR_TMC_HAS_STALLGUARD && PIN_GEAR_DIAG != ""
+      help
+        Sensitivity for "touch" homing, written only when a diag pin is set.
+        Expect to tune it. The scale depends on the chip: SGTHRS is 0-255
+        and higher is more sensitive, SGT is -64..63 and lower is more
+        sensitive.
 
     comment "_"
     config PIN_GEAR_STEP
@@ -72,6 +81,8 @@ menu "Pins / TMC"
     @repeat var=i min=1 max=11@
       config PIN_GEAR_UART_$(i)
         string
+      config PIN_GEAR_CS_$(i)
+        string
       config PIN_GEAR_STEP_$(i)
         string
       config PIN_GEAR_DIR_$(i)
@@ -87,7 +98,9 @@ menu "Pins / TMC"
         if PARAM_NUM_GATES > $(i)
           comment "_"
           config PIN_GEAR_UART_$(i)
-            prompt "$(pad,$(gear_pad),Gear $(i) UART pin)" if PARAM_GEAR_TMC != ""
+            prompt "$(pad,$(gear_pad),Gear $(i) UART pin)" if PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_SPI
+          config PIN_GEAR_CS_$(i)
+            prompt "$(pad,$(gear_pad),Gear $(i) CS pin)" if BOOL_GEAR_TMC_SPI
           config PARAM_GEAR_UART_ADDRESS_$(i)
             prompt "$(pad,$(gear_pad),Gear $(i) UART addr)" if PARAM_GEAR_TMC != "" && (BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL)
           config PIN_GEAR_STEP_$(i)
@@ -147,6 +160,13 @@ menu "Pins / TMC"
         depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
       config PIN_SELECTOR_DIAG
         prompt "$(pad,$(selector_pad),Selector diag pin)"
+      config PARAM_SELECTOR_STALLGUARD_THRESHOLD
+        prompt "$(pad,$(selector_pad),Selector stallguard)" if BOOL_SELECTOR_TMC_HAS_STALLGUARD && PIN_SELECTOR_DIAG != ""
+        help
+          Sensitivity for selector "touch" movement, written only when a
+          diag pin is set. Expect to tune it. The scale depends on the chip:
+          SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
+          lower is more sensitive.
 
       comment "_"
       config PIN_SELECTOR_STEP
