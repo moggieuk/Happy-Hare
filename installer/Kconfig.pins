@@ -25,7 +25,7 @@ source "components/Kconfig.tmc_driver_types"
 
 # One column for every prompt on this page, so values line up wherever they
 # appear. Stated once, so adding a prompt never means re-measuring by hand.
-pin_pad      := 25
+pin_pad      := 29
 
 menu "Pins / TMC"
   help
@@ -216,16 +216,16 @@ menu "Pins / TMC"
         comment "_"
         config PIN_ESPOOLER_EN_$(i)
           string
-          prompt "eSpooler enable $(i) pin " if HAS_ESPOOLER_ENABLE_PIN
+          prompt "$(pad,$(pin_pad),eSpooler enable $(i) pin)" if HAS_ESPOOLER_ENABLE_PIN
         config PIN_ESPOOLER_RWD_$(i)
           string
-          prompt "eSpooler rewind $(i) pin "
+          prompt "$(pad,$(pin_pad),eSpooler rewind $(i) pin)"
         config PIN_ESPOOLER_FWD_$(i)
           string
-          prompt "eSpooler forward $(i) pin"
+          prompt "$(pad,$(pin_pad),eSpooler forward $(i) pin)"
         config PIN_ESPOOLER_TRIG_$(i)
           string
-          prompt "eSpooler trigger $(i) pin"
+          prompt "$(pad,$(pin_pad),eSpooler trigger $(i) pin)"
       endif
     @endrepeat@
   endmenu
@@ -240,7 +240,7 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_EJECT_BUTTON_$(i)
         string
-        prompt "Eject button $(i) pin " if PARAM_NUM_GATES > $(i)
+        prompt "$(pad,$(pin_pad),Eject button $(i) pin)" if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
 
@@ -258,16 +258,16 @@ menu "Pins / TMC"
 
     config PIN_BUFFER_TENSION
       string
-      prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION
+      prompt "$(pad,$(pin_pad),Sync feedback tension pin)" if MMU_HAS_SENSOR_BUFFER_TENSION
     config PIN_BUFFER_COMPRESSION
       string
-      prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
+      prompt "$(pad,$(pin_pad),Sync feedback compression pin)" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
     config PIN_BUFFER_ANALOG
       string
-      prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      prompt "$(pad,$(pin_pad),Proportional (analog) pin)" if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
     config PIN_BUFFER_NEOPIXEL
       string
-      prompt "Buffer neopixel pin          " if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
+      prompt "$(pad,$(pin_pad),Buffer neopixel pin)" if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
   endmenu
 
 # -------------------------------------
@@ -280,7 +280,7 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_ENTRY_SENSOR_$(i)
         string
-        prompt "Entry sensor $(i) pin " if PARAM_NUM_GATES > $(i)
+        prompt "$(pad,$(pin_pad),Entry sensor $(i) pin)" if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
 
@@ -294,7 +294,7 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_EXIT_SENSOR_$(i)
         string
-        prompt "Exit sensor $(i) pin " if PARAM_NUM_GATES > $(i)
+        prompt "$(pad,$(pin_pad),Exit sensor $(i) pin)" if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
 
@@ -303,7 +303,7 @@ menu "Pins / TMC"
 # -------------------------------------
 
   config PIN_SHARED_EXIT_SENSOR
-    string "Shared exit sensor pin" if MMU_HAS_SENSOR_SHARED_EXIT
+    string "$(pad,$(pin_pad),Shared exit sensor pin)" if MMU_HAS_SENSOR_SHARED_EXIT
 
 # -------------------------------------
 # Misc pins
@@ -311,18 +311,18 @@ menu "Pins / TMC"
 
   config PIN_ENCODER
     string
-    prompt "Encoder pin           " if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER
+    prompt "$(pad,$(pin_pad),Encoder pin)" if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER
 
   config PIN_NEOPIXEL
     string
-    prompt "Neopixel pin          " if MMU_HAS_LEDS && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
+    prompt "$(pad,$(pin_pad),Neopixel pin)" if MMU_HAS_LEDS && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
 
   menu "Neopixel per-gate pins" 
     depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
 
     @repeat var=i min=0 max=11@
       config PIN_NEOPIXEL_$(i)
-        string "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
+        string "$(pad,$(pin_pad),Neopixel gate $(i) pin)" if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
 
@@ -331,7 +331,7 @@ menu "Pins / TMC"
 
     @repeat var=i min=0 max=11@
       config PIN_NEOPIXEL_BOX_$(i)
-        string "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)
+        string "$(pad,$(pin_pad),Neopixel box gate $(i) pin)" if PARAM_NUM_GATES > $(i)
     @endrepeat@
   endmenu
 
@@ -341,7 +341,7 @@ menu "Pins / TMC"
 
   config PIN_FAN
     string
-    prompt "Managed fan pin       " if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
+    prompt "$(pad,$(pin_pad),Managed fan pin)" if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
 
   menu "Managed fan per-gate pins"
     depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
@@ -349,7 +349,7 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_FAN_$(i)
         string
-        prompt "Managed fan gate $(i) pin" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
+        prompt "$(pad,$(pin_pad),Managed fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
     @endrepeat@
   endmenu
 
@@ -359,7 +359,7 @@ menu "Pins / TMC"
 
   config PIN_HEATER_FAN
     string
-    prompt "Heater fan pin        " if MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
+    prompt "$(pad,$(pin_pad),Heater fan pin)" if MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
 
   menu "Heater fan per-gate pins"
     depends on MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
@@ -367,7 +367,7 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_HEATER_FAN_$(i)
         string
-        prompt "Heater fan gate $(i) pin" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
+        prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
     @endrepeat@
   endmenu
 

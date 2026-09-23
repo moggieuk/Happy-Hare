@@ -636,7 +636,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
 
     def test_spi_driver_replaces_the_section_rather_than_adding_one(self):
         mmu = self._render_mmu('blobifier_tmc2240', {
-            'CHOICE_BLOBIFIER_TMC2240': True,
+            'CHOICE_BLOBIFIER_TMC2240_SPI': True,
             'PIN_BLOBIFIER_CS': 'unit0:PC14',
             'PIN_BLOBIFIER_SPI_SCLK': 'unit0:PG8',
             'PIN_BLOBIFIER_SPI_MOSI': 'unit0:PG6',
@@ -659,7 +659,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
     def test_partial_spi_pins_do_not_silently_select_hardware_spi(self):
         """Keep the requested wiring visible; missing pins must not select another bus."""
         mmu = self._render_mmu('blobifier_tmc2240_partial_spi', {
-            'CHOICE_BLOBIFIER_TMC2240': True,
+            'CHOICE_BLOBIFIER_TMC2240_SPI': True,
             'PIN_BLOBIFIER_CS': 'unit0:PC14',
             'PIN_BLOBIFIER_SPI_SCLK': 'unit0:PG8',
         })
@@ -791,7 +791,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         ('2130',     'TMC2130',    'tmc2130', 'cs_pin',   {}),
         ('2660',     'TMC2660',    'tmc2660', 'cs_pin',   {}),
         ('5160',     'TMC5160',    'tmc5160', 'cs_pin',   {}),
-        ('2240_spi', 'TMC2240',    'tmc2240', 'cs_pin',   {}),
+        ('2240_spi', 'TMC2240_SPI','tmc2240', 'cs_pin',   {}),
         ('2240_uart','TMC2240_UART','tmc2240', 'uart_pin', {}),
     )
 
@@ -875,7 +875,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
             })
         expected = {'TMC2209': False, 'TMC2226': False, 'TMC2208': False,
                     'TMC2130': True, 'TMC2660': True, 'TMC5160': True,
-                    'TMC2240': True, 'TMC2240_UART': False, 'TMC_NONE': False}
+                    'TMC2240_SPI': True, 'TMC2240_UART': False,
+                    'TMC_NONE': False}
         # Kconfig.purging is sourced by both the shared and the per-unit
         # tree, so every member appears twice - dedupe.
         members = list(dict.fromkeys(
@@ -893,7 +894,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                 'MMU_HAS_BLOBIFIER': True,
                 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
             })
-        for chip in ('TMC2240', 'TMC2240_UART'):
+        for chip in ('TMC2240_SPI', 'TMC2240_UART'):
             with self.subTest(chip=chip):
                 kc.syms['CHOICE_BLOBIFIER_' + chip].set_value(2)
                 self.assertEqual(kc.get('PARAM_BLOBIFIER_TMC'), 'tmc2240')
@@ -918,7 +919,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                          'hold_current': '0.1', 'interpolate': 'true',
                          'stealthchop_threshold': '99999999',
                          'sense_resistor': '0.075'}),
-            'tmc2240': ({'CHOICE_BLOBIFIER_TMC2240': True,
+            'tmc2240': ({'CHOICE_BLOBIFIER_TMC2240_SPI': True,
                          'PIN_BLOBIFIER_CS': 'unit0:PC14'},
                         {'cs_pin': 'unit0:PC14', 'run_current': '0.6',
                          'hold_current': '0.1', 'interpolate': 'true',
@@ -980,7 +981,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         # Whichever bus the chip lands on, SW5 must key off that bus's pin.
         for chip, pin in (('TMC2226', 'UART'), ('TMC2208', 'UART'),
                           ('TMC2130', 'CS'), ('TMC2660', 'CS'),
-                          ('TMC5160', 'CS'), ('TMC2240', 'CS')):
+                          ('TMC5160', 'CS'), ('TMC2240_SPI', 'CS')):
             with self.subTest(chip=chip):
                 kc.syms['CHOICE_BLOBIFIER_' + chip].set_value(2)
                 self.assertTrue(kc.is_enabled('SW5'))
