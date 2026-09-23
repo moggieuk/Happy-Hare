@@ -11,4 +11,4 @@
 config PIN_$(prefix)_UART
   prompt "$(pad,$(pad_width),$(label) UART pin)" if PARAM_$(prefix)_TMC != "" && !BOOL_$(prefix)_TMC_SPI
 config PIN_$(prefix)_CS
-  prompt "$(pad,$(pad_width),$(label) TMC CS pin)" if BOOL_$(prefix)_TMC_SPI
+  prompt "$(pad,$(pad_width),$(label) CS pin)" if BOOL_$(prefix)_TMC_SPI
