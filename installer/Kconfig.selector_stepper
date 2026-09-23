@@ -32,13 +32,10 @@ if MMU_HAS_SELECTOR_STEPPER
       float "Selector rotation distance      "
       default 40
 
-    config PARAM_SELECTOR_RUN_CURRENT
-      float "Selector run current            "
-      default 0.5
-
-    config PARAM_SELECTOR_HOLD_CURRENT
-      float "Selector hold current           "
-      default 0.2
+    prefix    := SELECTOR
+    label     := Selector
+    pad_width := 32
+    source "components/Kconfig.tmc_driver_menu_current"
 
     config PARAM_SELECTOR_ENDSTOP_NAME
       string
@@ -49,13 +46,6 @@ if MMU_HAS_SELECTOR_STEPPER
       default 200
       help
         200 for 1.8 degree, 400 for 0.9 degree
-
-    config PARAM_SELECTOR_SENSE_RESISTOR
-      float "TMC sense resistor              "
-      default 0.150 if CHOICE_SELECTOR_TMC2226
-      default 0.110
-      help
-        Current-sense resistor value used by the selector stepper driver.
 
     config PARAM_STARTUP_HOME_SELECTOR
       boolint "Home selector at startup?"

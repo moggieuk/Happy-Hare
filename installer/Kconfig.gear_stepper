@@ -18,13 +18,10 @@ menu "Gear stepper"
     float "Gear rotation distance "
     default 22.7316868
 
-  config PARAM_GEAR_RUN_CURRENT
-    float "Gear run current       "
-    default 0.7
-
-  config PARAM_GEAR_HOLD_CURRENT
-    float "Gear hold current      "
-    default 0.1
+  prefix    := GEAR
+  label     := Gear
+  pad_width := 23
+  source "components/Kconfig.tmc_driver_menu_current"
 
   config PARAM_GEAR_MICROSTEPS
     int "Microsteps             "
@@ -35,12 +32,5 @@ menu "Gear stepper"
     default 200
     help
       200 for 1.8 degree, 400 for 0.9 degree
-
-  config PARAM_GEAR_SENSE_RESISTOR
-    float "TMC sense resistor     "
-    default 0.150 if CHOICE_GEAR_TMC2226
-    default 0.110
-    help
-      Current-sense resistor value used by the gear stepper driver.
 
 endmenu

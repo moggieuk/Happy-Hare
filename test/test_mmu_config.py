@@ -636,7 +636,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
 
     def test_spi_driver_replaces_the_section_rather_than_adding_one(self):
         mmu = self._render_mmu('blobifier_tmc2240', {
-            'CHOICE_BLOBIFIER_TMC2240': True,
+            'CHOICE_BLOBIFIER_TMC2240_SPI': True,
             'PIN_BLOBIFIER_CS': 'unit0:PC14',
             'PIN_BLOBIFIER_SPI_SCLK': 'unit0:PG8',
             'PIN_BLOBIFIER_SPI_MOSI': 'unit0:PG6',
@@ -659,7 +659,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
     def test_partial_spi_pins_do_not_silently_select_hardware_spi(self):
         """Keep the requested wiring visible; missing pins must not select another bus."""
         mmu = self._render_mmu('blobifier_tmc2240_partial_spi', {
-            'CHOICE_BLOBIFIER_TMC2240': True,
+            'CHOICE_BLOBIFIER_TMC2240_SPI': True,
             'PIN_BLOBIFIER_CS': 'unit0:PC14',
             'PIN_BLOBIFIER_SPI_SCLK': 'unit0:PG8',
         })
@@ -791,9 +791,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         ('2130',     'TMC2130',    'tmc2130', 'cs_pin',   {}),
         ('2660',     'TMC2660',    'tmc2660', 'cs_pin',   {}),
         ('5160',     'TMC5160',    'tmc5160', 'cs_pin',   {}),
-        ('2240_spi', 'TMC2240',    'tmc2240', 'cs_pin',   {}),
-        ('2240_uart','TMC2240',    'tmc2240', 'uart_pin',
-         {'CHOICE_BLOBIFIER_TMC_BUS_UART': True}),
+        ('2240_spi', 'TMC2240_SPI','tmc2240', 'cs_pin',   {}),
+        ('2240_uart','TMC2240_UART','tmc2240', 'uart_pin', {}),
     )
 
     # sense_resistor is the shunt value; the TMC2240 has no shunt and sizes
@@ -862,46 +861,44 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         # sense_resistor has no Klipper default for this chip - it must be emitted
         self.assertEqual(driver['sense_resistor'], '0.110')
 
-    def test_only_the_tmc2240_offers_a_bus_choice(self):
-        """Every other chip is single-bus, so the prompt would be a dead end."""
+    def test_the_chip_choice_carries_the_bus(self):
+        """One choice, not two.
+
+        Every chip but the TMC2240 is single-bus, so a separate bus prompt
+        showed a single option almost everywhere. The bus is part of the
+        chip entry instead, and the TMC2240 simply appears twice.
+        """
         with cfg._env(cfg._SINGLE_UNIT_ENV):
-            kc = cfg._kconfig('blobifier_bus_prompt', {
+            kc = cfg._kconfig('blobifier_chip_bus', {
                 'MMU_HAS_BLOBIFIER': True,
                 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
             })
-        bus = kc.named_choices['CHOICE_BLOBIFIER_TMC_BUS']
-        expected = {'TMC2209': 'UART', 'TMC2226': 'UART', 'TMC2208': 'UART',
-                    'TMC2130': 'SPI', 'TMC2660': 'SPI', 'TMC5160': 'SPI',
-                    'TMC2240': 'SPI', 'TMC_NONE': None}
-        for chip, wanted in expected.items():
+        expected = {'TMC2209': False, 'TMC2226': False, 'TMC2208': False,
+                    'TMC2130': True, 'TMC2660': True, 'TMC5160': True,
+                    'TMC2240_SPI': True, 'TMC2240_UART': False,
+                    'TMC_NONE': False}
+        # Kconfig.purging is sourced by both the shared and the per-unit
+        # tree, so every member appears twice - dedupe.
+        members = list(dict.fromkeys(
+            m.name for m in kc.named_choices['CHOICE_BLOBIFIER_TMC'].syms))
+        self.assertEqual(members, ['CHOICE_BLOBIFIER_' + c for c in expected])
+        for chip, spi in expected.items():
             with self.subTest(chip=chip):
                 kc.syms['CHOICE_BLOBIFIER_' + chip].set_value(2)
-                # Kconfig.purging is sourced by both the shared and the
-                # per-unit tree, so every member appears twice - dedupe.
-                selectable = list(dict.fromkeys(
-                    m.name.rsplit('_', 1)[-1] for m in bus.syms if m.visibility))
-                self.assertEqual(selectable,
-                                 [] if wanted is None else
-                                 ['UART', 'SPI'] if chip == 'TMC2240' else [wanted])
-                selection = bus.selection.name.rsplit('_', 1)[-1] if bus.selection else None
-                self.assertEqual(selection, wanted)
-                self.assertEqual(kc.is_enabled('BOOL_BLOBIFIER_TMC_SPI'),
-                                 wanted == 'SPI')
+                self.assertEqual(kc.is_enabled('BOOL_BLOBIFIER_TMC_SPI'), spi)
 
-    def test_tmc2240_uart_selection_survives_a_chip_round_trip(self):
-        """Switching away to a single-bus chip and back must not lose the override."""
+    def test_both_tmc2240_entries_use_the_same_klipper_module(self):
+        """They differ in how the chip is wired, not in the driver."""
         with cfg._env(cfg._SINGLE_UNIT_ENV):
-            kc = cfg._kconfig('blobifier_bus_roundtrip', {
+            kc = cfg._kconfig('blobifier_2240_pair', {
                 'MMU_HAS_BLOBIFIER': True,
                 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
-                'CHOICE_BLOBIFIER_TMC2240': True,
-                'CHOICE_BLOBIFIER_TMC_BUS_UART': True,
             })
-        self.assertFalse(kc.is_enabled('BOOL_BLOBIFIER_TMC_SPI'))
-        kc.syms['CHOICE_BLOBIFIER_TMC5160'].set_value(2)
-        self.assertTrue(kc.is_enabled('BOOL_BLOBIFIER_TMC_SPI'))
-        kc.syms['CHOICE_BLOBIFIER_TMC2240'].set_value(2)
-        self.assertFalse(kc.is_enabled('BOOL_BLOBIFIER_TMC_SPI'))
+        for chip in ('TMC2240_SPI', 'TMC2240_UART'):
+            with self.subTest(chip=chip):
+                kc.syms['CHOICE_BLOBIFIER_' + chip].set_value(2)
+                self.assertEqual(kc.get('PARAM_BLOBIFIER_TMC'), 'tmc2240')
+                self.assertTrue(kc.is_enabled('BOOL_BLOBIFIER_TMC_HAS_RREF'))
 
     def test_existing_chips_render_exactly_as_before_the_bus_split(self):
         """Pins the three chips that shipped in #1235 so this stays additive.
@@ -922,7 +919,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                          'hold_current': '0.1', 'interpolate': 'true',
                          'stealthchop_threshold': '99999999',
                          'sense_resistor': '0.075'}),
-            'tmc2240': ({'CHOICE_BLOBIFIER_TMC2240': True,
+            'tmc2240': ({'CHOICE_BLOBIFIER_TMC2240_SPI': True,
                          'PIN_BLOBIFIER_CS': 'unit0:PC14'},
                         {'cs_pin': 'unit0:PC14', 'run_current': '0.6',
                          'hold_current': '0.1', 'interpolate': 'true',
@@ -939,8 +936,8 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
     def test_config_saved_before_the_bus_split_still_resolves(self):
         """A real installed .mmu_config, predating both changes at once.
 
-        It has no CHOICE_BLOBIFIER_TMC_BUS_* line, so the bus has to fall out
-        of the chip or olddefconfig moves the machine onto the wrong one. And
+        It names no bus at all, so the bus has to fall out of the chip
+        choice or olddefconfig moves the machine onto the wrong one. And
         it still spells the pins with the STEPPER infix, so the value only
         survives if HH_RENAMED_SYMBOLS carries it across. Those are the two
         ways this change could silently break an installed machine, and this
@@ -984,7 +981,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         # Whichever bus the chip lands on, SW5 must key off that bus's pin.
         for chip, pin in (('TMC2226', 'UART'), ('TMC2208', 'UART'),
                           ('TMC2130', 'CS'), ('TMC2660', 'CS'),
-                          ('TMC5160', 'CS'), ('TMC2240', 'CS')):
+                          ('TMC5160', 'CS'), ('TMC2240_SPI', 'CS')):
             with self.subTest(chip=chip):
                 kc.syms['CHOICE_BLOBIFIER_' + chip].set_value(2)
                 self.assertTrue(kc.is_enabled('SW5'))
@@ -993,15 +990,13 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                 kc.syms['PIN_BLOBIFIER_' + pin].set_value('')
 
         # A TMC2240 moved to UART must warn about the UART pin, not the CS one
-        kc.syms['CHOICE_BLOBIFIER_TMC2240'].set_value(2)
-        kc.syms['CHOICE_BLOBIFIER_TMC_BUS_UART'].set_value(2)
+        kc.syms['CHOICE_BLOBIFIER_TMC2240_UART'].set_value(2)
         kc.syms['PIN_BLOBIFIER_CS'].set_value('unit0:PC14')
         self.assertTrue(kc.is_enabled('SW5'))
         kc.syms['PIN_BLOBIFIER_UART'].set_value('unit0:PC13')
         self.assertFalse(kc.is_enabled('SW5'))
         kc.syms['PIN_BLOBIFIER_CS'].set_value('')
         kc.syms['PIN_BLOBIFIER_UART'].set_value('')
-        kc.syms['CHOICE_BLOBIFIER_TMC_BUS_SPI'].set_value(2)
 
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig('blobifier_tmc_none_needs_no_pin', {

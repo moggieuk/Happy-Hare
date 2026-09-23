@@ -1,7 +1,14 @@
-# TMC stepper driver - the prompts, sourced at its position in the menu.
+# TMC stepper driver - the prompts shared by every driver of this kind.
 #
-# Companion to Kconfig.tmc_driver_types, which declares the symbols. The
-# caller sets, immediately before sourcing this:
+# Companion to Kconfig.tmc_driver_types, which declares the symbols, to
+# Kconfig.tmc_driver_menu_pins for the per-device pins, and to
+# Kconfig.tmc_driver_menu_current for the currents. They are
+# separate because a consumer may place them in different menus: the
+# Blobifier shows both together, while the gear and selector steppers keep
+# their currents in their own stepper menu alongside gear ratio and
+# microsteps.
+#
+# The caller sets, immediately before sourcing this:
 #
 #   prefix     name infix, matching the one used for the types fragment
 #   label      prompt text stem, e.g. Stepper -> "Stepper TMC chip"
@@ -11,77 +18,46 @@
 # varies with the label and hand-padding each instance would drift.
 
 choice CHOICE_$(prefix)_TMC
-  prompt "$(pad,$(pad_width),$(label) TMC chip)"
+  prompt "$(pad,$(pad_width),$(label) TMC chip/bus)"
   default CHOICE_$(prefix)_TMC2209
   help
-    Select correct TMC chip type for this stepper. The bus (UART or SPI)
-    is fixed by the chip, except on the TMC2240 which can do either.
+    Select the TMC chip and, where the chip can do either, the bus it is
+    wired for. Only the TMC2240 offers a choice - most of its step sticks
+    ship wired for SPI and need a jumper or solder bridge moved for UART.
 
   config CHOICE_$(prefix)_TMC2209
-    bool "TMC2209"
+    bool "TMC2209 / UART"
   config CHOICE_$(prefix)_TMC2226
-    bool "TMC2226"
+    bool "TMC2226 / UART"
   config CHOICE_$(prefix)_TMC2208
-    bool "TMC2208"
+    bool "TMC2208 / UART"
   config CHOICE_$(prefix)_TMC2130
-    bool "TMC2130"
+    bool "TMC2130 / SPI"
   config CHOICE_$(prefix)_TMC2660
-    bool "TMC2660"
+    bool "TMC2660 / SPI"
   config CHOICE_$(prefix)_TMC5160
-    bool "TMC5160"
-  config CHOICE_$(prefix)_TMC2240
-    bool "TMC2240"
+    bool "TMC5160 / SPI"
+  config CHOICE_$(prefix)_TMC2240_SPI
+    bool "TMC2240 / SPI"
+  config CHOICE_$(prefix)_TMC2240_UART
+    bool "TMC2240 / UART"
   config CHOICE_$(prefix)_TMC_NONE
     bool "None / hardware controlled"
 endchoice
 
-choice CHOICE_$(prefix)_TMC_BUS
-  prompt "$(pad,$(pad_width),$(label) TMC bus)" if PARAM_$(prefix)_TMC != ""
-  default CHOICE_$(prefix)_TMC_BUS_SPI
-  help
-    Only the TMC2240 offers a choice here. Most TMC2240 step sticks
-    ship wired for SPI and need a jumper or solder bridge moved to
-    use UART, so SPI is the default.
-
-  config CHOICE_$(prefix)_TMC_BUS_UART
-    bool "UART"
-    depends on BOOL_$(prefix)_TMC_CAN_UART
-  config CHOICE_$(prefix)_TMC_BUS_SPI
-    bool "SPI"
-    depends on BOOL_$(prefix)_TMC_CAN_SPI
-endchoice
-
-config PIN_$(prefix)_UART
-  prompt "$(pad,$(pad_width),$(label) TMC UART pin)" if PARAM_$(prefix)_TMC != "" && !BOOL_$(prefix)_TMC_SPI
-config PIN_$(prefix)_CS
-  prompt "$(pad,$(pad_width),$(label) TMC CS pin)" if BOOL_$(prefix)_TMC_SPI
 config PARAM_$(prefix)_SPI_BUS
-  prompt "$(pad,$(pad_width),$(label) TMC SPI bus)" if BOOL_$(prefix)_TMC_SPI && !BOOL_$(prefix)_TMC_SPI_SOFTWARE
+  prompt "$(pad,$(pad_width),$(label) SPI bus)" if BOOL_$(prefix)_TMC_SPI && !BOOL_$(prefix)_TMC_SPI_SOFTWARE
   help
     Hardware SPI bus name on the MCU owning the CS pin, e.g. spi2.
     Leave blank to use Klipper's default bus for that MCU.
 config PIN_$(prefix)_SPI_SCLK
-  prompt "$(pad,$(pad_width),$(label) TMC SPI SCLK pin)" if BOOL_$(prefix)_TMC_SPI
+  prompt "$(pad,$(pad_width),$(label) SPI SCLK pin)" if BOOL_$(prefix)_TMC_SPI
   help
     Leave all three SPI pins blank to use hardware SPI. To use software
     SPI, fill in all three pins. An incomplete set is an error.
     Prefix each pin with its MCU name; all three must be on the same
     MCU as the CS pin, e.g. mcu:PG8.
 config PIN_$(prefix)_SPI_MOSI
-  prompt "$(pad,$(pad_width),$(label) TMC SPI MOSI pin)" if BOOL_$(prefix)_TMC_SPI
+  prompt "$(pad,$(pad_width),$(label) SPI MOSI pin)" if BOOL_$(prefix)_TMC_SPI
 config PIN_$(prefix)_SPI_MISO
-  prompt "$(pad,$(pad_width),$(label) TMC SPI MISO pin)" if BOOL_$(prefix)_TMC_SPI
-
-config PARAM_$(prefix)_RUN_CURRENT
-  prompt "$(pad,$(pad_width),$(label) run current)" if PARAM_$(prefix)_TMC != ""
-config PARAM_$(prefix)_HOLD_CURRENT
-  prompt "$(pad,$(pad_width),$(label) hold current)" if BOOL_$(prefix)_TMC_HAS_HOLD_CURRENT
-config PARAM_$(prefix)_SENSE_RESISTOR
-  prompt "$(pad,$(pad_width),$(label) sense resistor)" if PARAM_$(prefix)_TMC != "" && !BOOL_$(prefix)_TMC_HAS_RREF
-config PARAM_$(prefix)_RREF
-  prompt "$(pad,$(pad_width),$(label) rref (ohms))" if BOOL_$(prefix)_TMC_HAS_RREF
-  range 12000 60000
-  help
-    TMC2240 sets its current range from an external reference
-    resistor rather than a shunt. 12000 is the value fitted to
-    almost every step stick; change it only if yours differs.
+  prompt "$(pad,$(pad_width),$(label) SPI MISO pin)" if BOOL_$(prefix)_TMC_SPI

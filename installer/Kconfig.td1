@@ -93,7 +93,7 @@ if MMU_HAS_TD1
       default n
       help
         Most designs have a single scanner in a shared part of the bowden, serving
-        every gate. Select this only if each gate has its own.
+        every gate. Select this only if each gate has its own separate scanner.
 
     if !MMU_HAS_PER_GATE_TD1
       config PARAM_TD1_BOWDEN_DEVICE
@@ -163,7 +163,7 @@ if MMU_HAS_TD1
         costs no extra movement - only the wait.
 
     config PARAM_TD1_CAPTURE_TIMEOUT
-      string "Measurement wait (secs) "
+      string "Measurement wait (secs)  "
       default "5"
       help
         How long to wait for a fresh reading once filament has passed the scanner. The
