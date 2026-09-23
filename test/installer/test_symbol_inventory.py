@@ -106,6 +106,49 @@ class TestSymbolInventory(unittest.TestCase):
         _compare(self, _choice_inventory(self.kconfig), CHOICES_GOLDEN,
                  'choice inventory')
 
+    def test_component_symbols_follow_the_naming_contract(self):
+        """Generated names still have to earn their modifiable-default handling.
+
+        The `#~DEFAULT~#` marker, the `(NOT DEFAULT)` display and the `r`
+        reset key are all driven off a symbol's PREFIX. A fragment that
+        generated, say, TMC_BLOBIFIER_UART would parse and render fine and
+        silently lose all three.
+        """
+        allowed = ('PARAM_', 'PIN_', 'BOOL_', 'CHOICE_', 'MMU_HAS_',
+                   'UNSELECT_', 'VAR_')
+        generated = [
+            sym.name for sym in self.kconfig.unique_defined_syms
+            if any('components/' in node.filename for node in sym.nodes)]
+        self.assertTrue(generated, 'no component-generated symbols found at all')
+        self.assertEqual(
+            [name for name in generated if not name.startswith(allowed)], [])
+
+    def test_the_tmc_component_is_sourced_once_per_consumer(self):
+        """Node counts here are a product, and both factors matter.
+
+        The component is split in two - declarations and prompts - and its
+        only consumer, Kconfig.purging, is itself sourced twice (root
+        Kconfig:251 and :294). So a symbol appears twice per fragment that
+        mentions it: 2 for declaration-only, 2 for prompt-only, 4 for both.
+        Anything else means a stray or missing source, which is exactly what
+        goes wrong when a second stepper starts consuming the same fragment.
+        """
+        expected = {
+            'PARAM_BLOBIFIER_TMC': 2,          # declared, never prompted
+            'CHOICE_BLOBIFIER_TMC2209': 2,     # a choice member, menu only
+            'BOOL_BLOBIFIER_TMC_SPI': 2,       # derived, never prompted
+            'PIN_BLOBIFIER_UART': 4,           # declared and prompted
+            'PARAM_BLOBIFIER_RREF': 4,         # declared and prompted
+        }
+        for name, nodes in sorted(expected.items()):
+            with self.subTest(symbol=name):
+                sym = self.kconfig.syms[name]
+                files = {node.filename for node in sym.nodes}
+                self.assertEqual(len(sym.nodes), nodes)
+                self.assertTrue(
+                    all('components/Kconfig.tmc_driver' in f for f in files),
+                    '%s is declared outside the component: %s' % (name, files))
+
     def test_all_three_parse_shapes_declare_the_same_tree(self):
         baseline = (_inventory(self.kconfig), _choice_inventory(self.kconfig))
         for label, env in (('multi-unit entry point', _ENTRY_ENV),

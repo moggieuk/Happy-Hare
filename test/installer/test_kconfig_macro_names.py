@@ -175,7 +175,10 @@ class TestShippedTreeIsUnaffected(unittest.TestCase):
         tokenizer sees it. Those references never reach the branch and are not
         offenders - the tree has four of them today.
         """
-        keywords = '|'.join(sorted(OTHER_STRING_LEX_USES) + ['choice', 'source',
+        # `choice` is excluded: it is the construct the patch deliberately
+        # enables, and installer/components/ now uses it. Every OTHER keyword
+        # must still be macro-free here, which is what bounds the change.
+        keywords = '|'.join(sorted(OTHER_STRING_LEX_USES) + ['source',
                                                              'rsource', 'osource'])
         suspect = re.compile(r'^\s*(?:%s)\s+[A-Za-z0-9_/.-]*\$\((\w+)\)' % keywords)
         repeat_start = re.compile(r'^\s*@repeat\s+var=(\w+)')
@@ -200,6 +203,34 @@ class TestShippedTreeIsUnaffected(unittest.TestCase):
             offenders, [],
             'these lines would change meaning under the expansion patch:\n%s'
             % '\n'.join(offenders))
+
+    def test_the_only_user_of_the_feature_is_the_shared_component(self):
+        """Keeps the blast radius visible.
+
+        If a macro-named choice ever appears outside installer/components/,
+        that is worth a deliberate look rather than a silent spread: the
+        construct only pays for itself where a fragment is sourced more than
+        once, and anywhere else it just obscures the symbol's real name.
+        """
+        pattern = re.compile(r'^\s*choice\s+[A-Za-z0-9_]*\$\(')
+        users = set()
+        for glob_pattern in ('installer/Kconfig*', 'installer/*/Kconfig*',
+                             'installer/*/*/Kconfig*'):
+            for path in glob.glob(os.path.join(REPO_ROOT, glob_pattern)):
+                active = []
+                for line in open(path, encoding='utf-8'):
+                    started = re.match(r'^\s*@repeat\s+var=(\w+)', line)
+                    if started:
+                        active.append(started.group(1))
+                        continue
+                    if line.strip() == '@endrepeat@':
+                        active.pop()
+                        continue
+                    found = pattern.match(line)
+                    if found and not active:
+                        users.add(os.path.relpath(path, REPO_ROOT))
+        self.assertEqual(
+            sorted(users), ['installer/components/Kconfig.tmc_driver_menu'])
 
     def test_no_symbol_or_choice_name_survives_unexpanded(self):
         """Tripwire for a fragment sourced without re-assigning its variables.
