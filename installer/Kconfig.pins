@@ -8,61 +8,37 @@
 #   for type-A boards is 12 (although currently max is 8)
 #   for type-B boards is 5 (Chameleon X5)
 
+# Gear and selector TMC drivers share one definition with the Blobifier.
+# Every variable is re-assigned immediately before each source, because they
+# are global for the whole parse.
+prefix       := GEAR
+run_current  := 0.7
+hold_current := 0.1
+source "components/Kconfig.tmc_driver_types"
+
+prefix       := SELECTOR
+run_current  := 0.5
+hold_current := 0.2
+source "components/Kconfig.tmc_driver_types"
+
 menu "Pins / TMC"
   help
     Configure TMC driver types for gear and selector steppers and MCU pin assignments.
 
 # -------------------------------------
-# Gear TMC chip
+# Gear TMC driver
 # -------------------------------------
 
-  choice CHOICE_GEAR_TMC
-    prompt "Gear TMC chip"
-    default CHOICE_GEAR_TMC2209
-    help
-      Select correct TMC chip type for gear stepper.
-      Can be changed by editing .cfg files directly.
-
-    config CHOICE_GEAR_TMC2209
-      bool "TMC2209"
-    config CHOICE_GEAR_TMC2226
-      bool "TMC2226"
-    config CHOICE_GEAR_TMC2130
-      bool "TMC2130"
-    config CHOICE_GEAR_TMC2208
-      bool "TMC2208"
-    config CHOICE_GEAR_TMC2660
-      bool "TMC2660"
-    config CHOICE_GEAR_TMC5160
-      bool "TMC5160"
-    config CHOICE_GEAR_TMC2240
-      bool "TMC2240"
-    config CHOICE_GEAR_TMC_NONE
-      bool "None / hardware controlled"
-      help
-        Select this when motor current and driver mode are configured in
-        hardware and Klipper only controls step, direction and enable.
-  endchoice
-
-  config PARAM_GEAR_TMC
-    string
-    default "tmc2209" if CHOICE_GEAR_TMC2209
-    default "tmc2209" if CHOICE_GEAR_TMC2226 # TMC2226 uses Klipper's TMC2209 driver.
-    default "tmc2130" if CHOICE_GEAR_TMC2130
-    default "tmc2208" if CHOICE_GEAR_TMC2208
-    default "tmc2660" if CHOICE_GEAR_TMC2660
-    default "tmc5160" if CHOICE_GEAR_TMC5160
-    default "tmc2240" if CHOICE_GEAR_TMC2240
-    default ""        if CHOICE_GEAR_TMC_NONE
+  prefix       := GEAR
+  label        := Gear
+  pad_width    := 17
+  source "components/Kconfig.tmc_driver_menu"
 
 # -------------------------------------
 # Gear stepper
 # -------------------------------------
 
   menu "Gear pins"
-    config PIN_GEAR_UART
-      string
-      prompt "Gear UART pin    " if PARAM_GEAR_TMC != ""
     config PARAM_GEAR_UART_ADDRESS
       int
       prompt "Gear UART address" if PARAM_GEAR_TMC != ""
@@ -125,8 +101,6 @@ menu "Pins / TMC"
 # Selector stepper and servo
 # -------------------------------------
 
-  config PIN_SELECTOR_UART
-    string
   config PIN_SELECTOR_STEP
     string
   config PIN_SELECTOR_DIR
@@ -146,46 +120,17 @@ menu "Pins / TMC"
 # Selector TMC chip
 # -------------------------------------
 
-  choice CHOICE_SELECTOR_TMC
-    prompt "Selector TMC chip"
-    default CHOICE_SELECTOR_TMC2209
-    depends on MMU_HAS_SELECTOR_STEPPER
-    help
-      Select correct TMC chip type for selector stepper.
-      Can be changed by editing .cfg files directly.
-
-    config CHOICE_SELECTOR_TMC2209
-      bool "TMC2209"
-    config CHOICE_SELECTOR_TMC2226
-      bool "TMC2226"
-    config CHOICE_SELECTOR_TMC2130
-      bool "TMC2130"
-    config CHOICE_SELECTOR_TMC2208
-      bool "TMC2208"
-    config CHOICE_SELECTOR_TMC2660
-      bool "TMC2660"
-    config CHOICE_SELECTOR_TMC5160
-      bool "TMC5160"
-    config CHOICE_SELECTOR_TMC2240
-      bool "TMC2240"
-  endchoice
-
-  config PARAM_SELECTOR_TMC
-    string
-    default "tmc2209" if CHOICE_SELECTOR_TMC2209
-    default "tmc2209" if CHOICE_SELECTOR_TMC2226 # TMC2226 uses Klipper's TMC2209 driver.
-    default "tmc2130" if CHOICE_SELECTOR_TMC2130
-    default "tmc2208" if CHOICE_SELECTOR_TMC2208
-    default "tmc2660" if CHOICE_SELECTOR_TMC2660
-    default "tmc5160" if CHOICE_SELECTOR_TMC5160
-    default "tmc2240" if CHOICE_SELECTOR_TMC2240
+  if MMU_HAS_SELECTOR_STEPPER
+    prefix       := SELECTOR
+    label        := Selector
+    pad_width    := 21
+    source "components/Kconfig.tmc_driver_menu"
+  endif
 
   menu "Selector pins"
     depends on MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
     if MMU_HAS_SELECTOR_STEPPER
-      config PIN_SELECTOR_UART
-        prompt "Selector UART pin    "
       config PARAM_SELECTOR_UART_ADDRESS
         int "Selector UART address"
         default 1

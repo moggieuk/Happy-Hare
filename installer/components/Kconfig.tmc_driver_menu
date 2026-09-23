@@ -1,7 +1,13 @@
-# TMC stepper driver - the prompts, sourced at its position in the menu.
+# TMC stepper driver - chip, bus and wiring prompts.
 #
-# Companion to Kconfig.tmc_driver_types, which declares the symbols. The
-# caller sets, immediately before sourcing this:
+# Companion to Kconfig.tmc_driver_types, which declares the symbols, and to
+# Kconfig.tmc_driver_menu_current, which prompts for the currents. They are
+# separate because a consumer may place them in different menus: the
+# Blobifier shows both together, while the gear and selector steppers keep
+# their currents in their own stepper menu alongside gear ratio and
+# microsteps.
+#
+# The caller sets, immediately before sourcing this:
 #
 #   prefix     name infix, matching the one used for the types fragment
 #   label      prompt text stem, e.g. Stepper -> "Stepper TMC chip"
@@ -71,17 +77,3 @@ config PIN_$(prefix)_SPI_MOSI
   prompt "$(pad,$(pad_width),$(label) TMC SPI MOSI pin)" if BOOL_$(prefix)_TMC_SPI
 config PIN_$(prefix)_SPI_MISO
   prompt "$(pad,$(pad_width),$(label) TMC SPI MISO pin)" if BOOL_$(prefix)_TMC_SPI
-
-config PARAM_$(prefix)_RUN_CURRENT
-  prompt "$(pad,$(pad_width),$(label) run current)" if PARAM_$(prefix)_TMC != ""
-config PARAM_$(prefix)_HOLD_CURRENT
-  prompt "$(pad,$(pad_width),$(label) hold current)" if BOOL_$(prefix)_TMC_HAS_HOLD_CURRENT
-config PARAM_$(prefix)_SENSE_RESISTOR
-  prompt "$(pad,$(pad_width),$(label) sense resistor)" if PARAM_$(prefix)_TMC != "" && !BOOL_$(prefix)_TMC_HAS_RREF
-config PARAM_$(prefix)_RREF
-  prompt "$(pad,$(pad_width),$(label) rref (ohms))" if BOOL_$(prefix)_TMC_HAS_RREF
-  range 12000 60000
-  help
-    TMC2240 sets its current range from an external reference
-    resistor rather than a shunt. 12000 is the value fitted to
-    almost every step stick; change it only if yours differs.

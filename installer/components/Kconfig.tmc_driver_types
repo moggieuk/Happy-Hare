@@ -28,6 +28,7 @@
 #   BOOL_*_TMC_CAN_UART BOOL_*_TMC_CAN_SPI BOOL_*_TMC_SPI
 #   BOOL_*_TMC_HAS_HOLD_CURRENT BOOL_*_TMC_HAS_STEALTHCHOP
 #   BOOL_*_TMC_HAS_RREF BOOL_*_TMC_SPI_SOFTWARE
+#   BOOL_*_TMC_HAS_STALLGUARD PARAM_*_TMC_STALLGUARD_FIELD
 
 config PIN_$(prefix)_UART
   string
@@ -117,6 +118,25 @@ config BOOL_$(prefix)_TMC_HAS_STEALTHCHOP
 config BOOL_$(prefix)_TMC_HAS_RREF
   bool
   default y if CHOICE_$(prefix)_TMC2240
+
+# Stallguard "touch" homing needs Klipper's TMCVirtualPinHelper, which the
+# TMC2208 and TMC2660 drivers do not install - the 2208 has no stallguard at
+# all and the 2660 exposes no virtual endstop.
+config BOOL_$(prefix)_TMC_HAS_STALLGUARD
+  bool
+  default y if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226 || \
+      CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC5160 || \
+      CHOICE_$(prefix)_TMC2240
+
+# Which driver_* field carries the threshold. The scales differ as well as
+# the names: SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
+# lower is more sensitive, so a value cannot be carried between families.
+config PARAM_$(prefix)_TMC_STALLGUARD_FIELD
+  string
+  default "SGTHRS"   if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226
+  default "SG4_THRS" if CHOICE_$(prefix)_TMC2240
+  default "SGT"      if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC5160
+  default ""
 
 # Any supplied pin means software SPI, even when the trio is incomplete.
 # A warning covers missing pins; never silently switch to a different bus.
