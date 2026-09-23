@@ -5,6 +5,7 @@
 #   prefix        name infix, e.g. BLOBIFIER -> PARAM_BLOBIFIER_TMC
 #   run_current   default run current for this stepper
 #   hold_current  default hold current for this stepper
+#   stallguard    tuned SGTHRS value for this stepper
 #
 # and must re-assign all of them immediately before each source, because
 # preprocessor variables are global for the whole parse and a file may be
@@ -28,6 +29,8 @@
 #   BOOL_*_TMC_CAN_UART BOOL_*_TMC_CAN_SPI BOOL_*_TMC_SPI
 #   BOOL_*_TMC_HAS_HOLD_CURRENT BOOL_*_TMC_HAS_STEALTHCHOP
 #   BOOL_*_TMC_HAS_RREF BOOL_*_TMC_SPI_SOFTWARE
+#   BOOL_*_TMC_HAS_STALLGUARD PARAM_*_TMC_STALLGUARD_FIELD
+#   PARAM_*_STALLGUARD_THRESHOLD
 
 config PIN_$(prefix)_UART
   string
@@ -83,24 +86,16 @@ config PARAM_$(prefix)_TMC
   default "tmc2130" if CHOICE_$(prefix)_TMC2130
   default "tmc2660" if CHOICE_$(prefix)_TMC2660
   default "tmc5160" if CHOICE_$(prefix)_TMC5160
-  default "tmc2240" if CHOICE_$(prefix)_TMC2240
+  default "tmc2240" if CHOICE_$(prefix)_TMC2240_SPI || CHOICE_$(prefix)_TMC2240_UART
   default ""
 
-# Which buses the chosen chip can actually speak. Only the TMC2240 does
-# both, so only it gets a bus prompt; the rest are fixed by the silicon.
-config BOOL_$(prefix)_TMC_CAN_UART
-  bool
-  default y if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226 || \
-      CHOICE_$(prefix)_TMC2208 || CHOICE_$(prefix)_TMC2240
-
-config BOOL_$(prefix)_TMC_CAN_SPI
-  bool
-  default y if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC2660 || \
-      CHOICE_$(prefix)_TMC5160 || CHOICE_$(prefix)_TMC2240
-
+# The bus is part of the chip choice, because only the TMC2240 can do
+# either and a separate prompt showing one option for every other chip was
+# more noise than help.
 config BOOL_$(prefix)_TMC_SPI
   bool
-  default y if CHOICE_$(prefix)_TMC_BUS_SPI
+  default y if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC2660 || \
+      CHOICE_$(prefix)_TMC5160 || CHOICE_$(prefix)_TMC2240_SPI
 
 # Two flags, not one: the TMC2660 happens to lack both, but hold_current
 # and stealthchop are separate Klipper options that other chips may drop
@@ -116,7 +111,35 @@ config BOOL_$(prefix)_TMC_HAS_STEALTHCHOP
 
 config BOOL_$(prefix)_TMC_HAS_RREF
   bool
-  default y if CHOICE_$(prefix)_TMC2240
+  default y if CHOICE_$(prefix)_TMC2240_SPI || CHOICE_$(prefix)_TMC2240_UART
+
+# Stallguard "touch" homing needs Klipper's TMCVirtualPinHelper, which the
+# TMC2208 and TMC2660 drivers do not install - the 2208 has no stallguard at
+# all and the 2660 exposes no virtual endstop.
+config BOOL_$(prefix)_TMC_HAS_STALLGUARD
+  bool
+  default y if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226 || \
+      CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC5160 || \
+      CHOICE_$(prefix)_TMC2240_SPI || CHOICE_$(prefix)_TMC2240_UART
+
+# Which driver_* field carries the threshold. The scales differ as well as
+# the names: SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
+# lower is more sensitive, so a value cannot be carried between families.
+config PARAM_$(prefix)_TMC_STALLGUARD_FIELD
+  string
+  default "SGTHRS"   if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226
+  default "SG4_THRS" if CHOICE_$(prefix)_TMC2240_SPI || CHOICE_$(prefix)_TMC2240_UART
+  default "SGT"      if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC5160
+  default ""
+
+# $(stallguard) is this stepper's tuned SGTHRS value. The other families get
+# Klipper's own field default of 0 rather than a converted number: SGT runs
+# -64..63 with lower being more sensitive, the inverse of SGTHRS, so no value
+# carries across and 0 is the neutral starting point for tuning.
+config PARAM_$(prefix)_STALLGUARD_THRESHOLD
+  int
+  default $(stallguard) if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226
+  default 0
 
 # Any supplied pin means software SPI, even when the trio is incomplete.
 # A warning covers missing pins; never silently switch to a different bus.

@@ -153,7 +153,7 @@ if MMU_HAS_ENCODER
         and is not recommended for very high speed loading >350mm/s)
 
     config PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
-      float "Bowden allowable encoder delta"
+      float "Bowden allowable encoder delta  "
       default 20.0
       help
         How close in mm the correction moves will attempt to get to target

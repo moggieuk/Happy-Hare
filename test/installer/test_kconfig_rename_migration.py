@@ -237,6 +237,65 @@ class TestBlobifierRenameEndToEnd(unittest.TestCase):
         self.assertEqual(unmigrated.get('run_current'), '0.6')
 
 
+class TestGearAndSelectorChipRename(unittest.TestCase):
+    """The TMC2240 is the one chip that can be wired either way.
+
+    Folding the bus into the chip choice turns its single entry into two,
+    so the old name has to land on the bus it used to mean. For gear and
+    selector that is UART: there was no CS pin to set, so a saved TMC2240
+    is a UART one whatever the user intended.
+    """
+
+    HARDWARE = 'config/base/mmu_hardware.cfg'
+
+    # What an installed TMC2240 gear or selector looks like.
+    PRE_SPLIT = {
+        'gear': ('CONFIG_CHOICE_GEAR_TMC2240=y\n'
+                 'CONFIG_PIN_GEAR_UART="mmu:PC14"\n'),
+        'selector': ('CONFIG_MMU_TYPE_TRADRACK_1_0=y\n'
+                     'CONFIG_CHOICE_SELECTOR_TMC2240=y\n'
+                     'CONFIG_PIN_SELECTOR_UART="mmu:PC14"\n'),
+    }
+
+    def _driver(self, stepper, table=None):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._new_kconfig('chip_rename_' + stepper)
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, '.mmu_config')
+                with open(path, 'w') as handle:
+                    handle.write(self.PRE_SPLIT[stepper])
+                if table is None:
+                    kc.load_config(path, filter_defaults=True)
+                else:
+                    with mock.patch.dict(kconfiglib.HH_RENAMED_SYMBOLS,
+                                         table, clear=True):
+                        kc.load_config(path, filter_defaults=True)
+            rendered = cfg._render_templates(
+                (self.HARDWARE,), kc,
+                {'PARAM_TOTAL_NUM_GATES': 4})[self.HARDWARE]
+        names = [n for n in cfg.sections(rendered)
+                 if n.startswith('tmc') and n.endswith('_' + stepper)]
+        parsed = cfg.assemble({self.HARDWARE: rendered})
+        return names[0].split()[0], dict(parsed.items(names[0]))
+
+    def test_a_saved_tmc2240_still_renders_as_a_uart_tmc2240(self):
+        for stepper in sorted(self.PRE_SPLIT):
+            with self.subTest(stepper=stepper):
+                module, driver = self._driver(stepper)
+                self.assertEqual(module, 'tmc2240')
+                self.assertEqual(driver.get('uart_pin'), 'mmu:PC14')
+                self.assertNotIn('cs_pin', driver)
+                # The bug this whole change exists for: a 2240 takes rref
+                self.assertIn('rref', driver)
+                self.assertNotIn('sense_resistor', driver)
+
+    def test_without_the_table_it_silently_becomes_another_chip(self):
+        for stepper in sorted(self.PRE_SPLIT):
+            with self.subTest(stepper=stepper):
+                module, _ = self._driver(stepper, table={})
+                self.assertNotEqual(module, 'tmc2240')
+
+
 class TestShippedRenameTable(unittest.TestCase):
 
     def test_every_entry_names_a_retired_symbol_and_a_live_one(self):
