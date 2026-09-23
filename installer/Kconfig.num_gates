@@ -6,13 +6,6 @@
 # any count. Set by the machine type, and only used to warn (W26) when the
 # configured count disagrees with it.
 #
-# This replaces a DISABLE_NUM_GATES_OPTION bool that hid the prompt outright.
-# That was never declared, so `select` on it silently did nothing and the
-# prompt always showed. Declaring it would have worked, but hiding the prompt
-# makes the symbol invisible, and kconfiglib discards a user value for an
-# invisible symbol - so the first olddefconfig after the fix would have
-# rewritten any non-default count back to the design value, with no warning.
-# Telling the user is the safe half of the same intent.
 config PARAM_DESIGN_NUM_GATES
   int
   default 0

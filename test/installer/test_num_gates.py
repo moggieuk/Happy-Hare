@@ -1,15 +1,13 @@
 # Gate count against the count the machine was designed for.
 #
-# Six machine types have a gate count fixed by the design. They used to
-# `select DISABLE_NUM_GATES_OPTION` to hide the prompt, but that symbol was
-# never declared anywhere, so the select silently did nothing and the prompt
-# always showed.
+# Six machine types have a gate count fixed by their design, carried in
+# PARAM_DESIGN_NUM_GATES; 0 means the design permits any count. W26 warns
+# when the configured count disagrees.
 #
-# Declaring it would have worked, and would also have lost data: hiding a
-# prompt makes the symbol invisible, kconfiglib discards a user value for an
-# invisible symbol, and the next olddefconfig would have written the design
-# count over whatever the user had set. So the count stays editable and W26
-# says when it disagrees with the design instead.
+# The count stays editable rather than being hidden on those machines,
+# because hiding a prompt makes the symbol invisible, kconfiglib discards a
+# user value for an invisible symbol, and the next olddefconfig would write
+# the design count over whatever the user had set.
 
 import os
 import re
