@@ -1,14 +1,19 @@
 # Sets parameter tokens:
 #   PARAM_NUM_GATES
+#   PARAM_DESIGN_NUM_GATES
+
+# The gate count the machine's designer fixed, or 0 where the design allows
+# any count. Set by the machine type, and only used to warn (W26) when the
+# configured count disagrees with it.
+#
+config PARAM_DESIGN_NUM_GATES
+  int
+  default 0
 
 config PARAM_NUM_GATES
   int
-
-if !DISABLE_NUM_GATES_OPTION
-config PARAM_NUM_GATES
   prompt "Number of gates/lanes?"
   help
     The number of gates is set based on MMU type but some
     designs allow for a configurable number. Ensure this
     matches the number in your specific build.
-endif

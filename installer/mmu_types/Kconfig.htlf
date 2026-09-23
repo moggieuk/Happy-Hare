@@ -7,7 +7,6 @@ config MMU_TYPE_HTLF_1_0
   select MMU_HAS_LEDS
   select PARAM_FILAMENT_ALWAYS_GRIPPED
   select PARAM_VARIABLE_ROTATION_DISTANCES
-  select DISABLE_NUM_GATES_OPTION
 
 
 if MMU_TYPE_HTLF_1_0
@@ -24,6 +23,8 @@ if MMU_TYPE_HTLF_1_0
     default "1.0"
 
   config PARAM_NUM_GATES
+    default 4
+  config PARAM_DESIGN_NUM_GATES
     default 4
 
   # ----------------------------------------

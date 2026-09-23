@@ -246,8 +246,12 @@ install_targets := \
 	$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) \
 	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
 
+# GNU make has no globstar: installer/**/Kconfig* matches one level only, so
+# the nested board and starter files need their own patterns or a change to
+# them never marks a config stale.
 kconfig_sources := \
-	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*) \
+	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/*/Kconfig* \
+	           $(SRC)/installer/*/*/Kconfig*) \
 	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py
 
 
