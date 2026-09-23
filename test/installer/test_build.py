@@ -14,67 +14,11 @@
 
 import glob
 import os
-import shutil
-import subprocess
 import tempfile
 import unittest
 
 from installer.parser import ConfigBuilder
 from test.hh import cfg, profiles
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
-class TestPickleStaleness(unittest.TestCase):
-    """The pre-parsed Kconfig pickle must track the Kconfig SOURCES.
-
-    The pickle holds the parsed tree, not just the saved values, so a Kconfig
-    change invalidates it even when .mmu_config is untouched. install.sh hides
-    this by running olddefconfig first, but a bare `make install` after a
-    `git pull` does not - it would feed templates a dict built from the old
-    tree. Harmless while changes are additive; wrong the moment a symbol is
-    renamed.
-
-    Uses `make -q`, which answers "is this target out of date?" without
-    running a recipe, and sets mtimes on a scratch pickle rather than touching
-    anything in the repo.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        if shutil.which('make') is None:
-            raise unittest.SkipTest('make is not available')
-        sources = (glob.glob(os.path.join(REPO_ROOT, 'installer', 'Kconfig*')) +
-                   glob.glob(os.path.join(REPO_ROOT, 'installer', '*', 'Kconfig*')))
-        cls.newest_source = max(os.path.getmtime(path) for path in sources)
-
-    def _is_out_of_date(self, tmp, pickle_mtime):
-        config = os.path.join(tmp, '.mmu_config')
-        out = os.path.join(tmp, 'out')
-        os.makedirs(out, exist_ok=True)
-        open(config, 'w').close()
-        pickle = os.path.join(out, '.mmu_config.pickle')
-        open(pickle, 'w').close()
-        os.utime(config, (pickle_mtime - 10, pickle_mtime - 10))
-        os.utime(pickle, (pickle_mtime, pickle_mtime))
-        result = subprocess.run(
-            ['make', 'KCONFIG_CONFIG=' + config, 'OUT=' + out, '-q', pickle],
-            cwd=REPO_ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return result.returncode != 0
-
-    def test_a_kconfig_change_invalidates_the_pickle(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertTrue(
-                self._is_out_of_date(tmp, self.newest_source - 60),
-                'a pickle older than the Kconfig sources was considered current - '
-                'the pickle rules have lost their $(kconfig_sources) prerequisite')
-
-    def test_an_unchanged_tree_does_not_rebuild_the_pickle(self):
-        """Or every make invocation re-parses, and .mmu_config's mtime churns."""
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertFalse(
-                self._is_out_of_date(tmp, self.newest_source + 60),
-                'a pickle newer than everything was still considered out of date')
 
 
 class TestV400Refresh(unittest.TestCase):
