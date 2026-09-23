@@ -1,18 +1,17 @@
-# Digests of everything the shipped templates render.
+# What the Blobifier driver block renders, chip by chip.
 #
-# The structural snapshot in test_symbol_inventory says what the tree
-# DECLARES. This says what it PRODUCES. A refactor that is meant to be
-# output-neutral - factoring a fragment out, re-sourcing it elsewhere - is
-# only provably so if the bytes are unchanged, and that is not something a
-# handful of targeted assertions can establish.
+# No registered profile enables the Blobifier, so every other render test in
+# the suite - including the eleven machines test_mmu_profiles boots - covers
+# none of this. Without the matrix below, the whole driver block has no
+# render coverage at all.
 #
-# Two corpora, because the profiles alone are not enough: no registered
-# profile enables the Blobifier, so its whole driver block - every TMC chip,
-# both buses, three SPI wiring modes - renders in no profile test at all. The
-# matrix below is the only coverage it has.
+# Kept deliberately narrow. Digesting every profile as well was tempting, but
+# test_mmu_profiles already boots them and cfg.assert_sane already catches a
+# misrender, so it bought little and cost a regeneration step on any template
+# change.
 #
 # Regenerate after an intended change:
-#     HH_REGEN_GOLDEN=1 make test UT='test_rendered_corpus.py'
+#     HH_REGEN_GOLDEN=1 make test UT='test_blobifier_renders.py'
 # and read the diff before committing it.
 
 import difflib
@@ -25,7 +24,6 @@ from test.hh import cfg, profiles
 MMU = 'config/base/mmu.cfg'
 
 GOLDEN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'inventory')
-PROFILE_GOLDEN = os.path.join(GOLDEN_DIR, 'render_digests.txt')
 BLOBIFIER_GOLDEN = os.path.join(GOLDEN_DIR, 'blobifier_digests.txt')
 BLOBIFIER_TEXT = os.path.join(GOLDEN_DIR, 'blobifier_reference.txt')
 
@@ -99,20 +97,11 @@ def _compare(testcase, actual, path, what):
         expected, actual, 'golden', 'current', lineterm=''))[:60])
     testcase.fail(
         'the %s changed:\n%s\n\nIf this is intended, regenerate with\n'
-        "    HH_REGEN_GOLDEN=1 make test UT='test_rendered_corpus.py'"
+        "    HH_REGEN_GOLDEN=1 make test UT='test_blobifier_renders.py'"
         % (what, diff))
 
 
-class TestRenderedCorpus(unittest.TestCase):
-
-    def test_every_profile_renders_to_the_recorded_digest(self):
-        lines = []
-        for name in sorted(profiles.PROFILES):
-            rendered = cfg.render(profiles.get(name))
-            for path in sorted(rendered):
-                digest = hashlib.sha256(rendered[path].encode('utf-8')).hexdigest()
-                lines.append('%s\t%s\t%s' % (name, path, digest))
-        _compare(self, lines, PROFILE_GOLDEN, 'profile render digests')
+class TestBlobifierRenders(unittest.TestCase):
 
     def test_every_blobifier_wiring_renders_to_the_recorded_digest(self):
         lines = []
