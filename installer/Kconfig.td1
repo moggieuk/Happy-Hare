@@ -163,7 +163,7 @@ if MMU_HAS_TD1
         costs no extra movement - only the wait.
 
     config PARAM_TD1_CAPTURE_TIMEOUT
-      string "Measurement wait (secs) "
+      string "Measurement wait (secs)  "
       default "5"
       help
         How long to wait for a fresh reading once filament has passed the scanner. The

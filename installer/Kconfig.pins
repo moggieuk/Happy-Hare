@@ -23,17 +23,16 @@ hold_current := 0.2
 stallguard   := 75
 source "components/Kconfig.tmc_driver_types"
 
-# One column for every prompt on this page, so values line up wherever they
-# appear. Stated once, so adding a prompt never means re-measuring by hand.
+# One column for every prompt on this page, so values line up wherever they appear.
 pin_pad      := 29
 
 menu "Pins / TMC"
   help
     Configure TMC driver types for gear and selector steppers and MCU pin assignments.
 
-# -------------------------------------
-# Gear TMC driver
-# -------------------------------------
+  # -------------------------------------
+  # Gear TMC driver
+  # -------------------------------------
 
   comment "_Gear Stepper(s)"
 
@@ -42,9 +41,9 @@ menu "Pins / TMC"
   pad_width    := $(pin_pad)
   source "components/Kconfig.tmc_driver_menu"
 
-# -------------------------------------
-# Gear stepper
-# -------------------------------------
+  # -------------------------------------
+  # Gear stepper
+  # -------------------------------------
 
   menu "Gear pins"
     prefix    := GEAR
@@ -120,9 +119,9 @@ menu "Pins / TMC"
 
   endmenu
 
-# -------------------------------------
-# Selector stepper and servo
-# -------------------------------------
+  # -------------------------------------
+  # Selector stepper and servo
+  # -------------------------------------
 
   config PIN_SELECTOR_STEP
     string
@@ -141,11 +140,11 @@ menu "Pins / TMC"
 
   comment "_"
 
-# -------------------------------------
-# Selector TMC driver
-# -------------------------------------
+  # -------------------------------------
+  # Selector TMC driver
+  # -------------------------------------
 
-  comment "_Selector Stepper" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
+  comment "_Selector" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
   if MMU_HAS_SELECTOR_STEPPER
     prefix       := SELECTOR
@@ -199,14 +198,16 @@ menu "Pins / TMC"
       prompt "$(pad,$(pin_pad),Servo pin)" if MMU_HAS_SELECTOR_SERVO
   endmenu
 
-# -------------------------------------
-# eSpooler
-# -------------------------------------
+  comment "_" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
+
+  comment "_Other"
+
+  # -------------------------------------
+  # eSpooler
+  # -------------------------------------
 
   config HAS_ESPOOLER_ENABLE_PIN
     def_bool n
-
-  comment "_" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
   menu "eSpooler pins"
     depends on MMU_HAS_ESPOOLER
@@ -230,9 +231,9 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
-# -------------------------------------
-# Eject buttons
-# -------------------------------------
+  # -------------------------------------
+  # Eject buttons
+  # -------------------------------------
 
   menu "Mmu eject buttons"
     depends on MMU_HAS_EJECT_BUTTONS
@@ -244,9 +245,9 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
-# -------------------------------------
-# Sync-Feedback Buffer
-# -------------------------------------
+  # -------------------------------------
+  # Sync-Feedback Buffer
+  # -------------------------------------
 
   @repeat var=i min=0 max=3@
     config PIN_BUFFER_SENSOR_$(i)
@@ -270,9 +271,9 @@ menu "Pins / TMC"
       prompt "$(pad,$(pin_pad),Buffer neopixel pin)" if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
   endmenu
 
-# -------------------------------------
-# Entry sensor
-# -------------------------------------
+  # -------------------------------------
+  # Entry sensor
+  # -------------------------------------
 
   menu "Mmu entry sensor pins"
     depends on MMU_HAS_SENSOR_ENTRY
@@ -284,9 +285,9 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
-# -------------------------------------
-# Exit sensor
-# -------------------------------------
+  # -------------------------------------
+  # Exit sensor
+  # -------------------------------------
 
   menu "Mmu exit sensor pins"
     depends on MMU_HAS_SENSOR_EXIT
@@ -298,16 +299,16 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
-# -------------------------------------
-# Shared Exit sensor
-# -------------------------------------
+  # -------------------------------------
+  # Shared Exit sensor
+  # -------------------------------------
 
   config PIN_SHARED_EXIT_SENSOR
     string "$(pad,$(pin_pad),Shared exit sensor pin)" if MMU_HAS_SENSOR_SHARED_EXIT
 
-# -------------------------------------
-# Misc pins
-# -------------------------------------
+  # -------------------------------------
+  # Misc pins
+  # -------------------------------------
 
   config PIN_ENCODER
     string
@@ -335,9 +336,9 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
-# -------------------------------------
-# Managed fans
-# -------------------------------------
+  # -------------------------------------
+  # Managed fans
+  # -------------------------------------
 
   config PIN_FAN
     string
@@ -353,9 +354,9 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
-# -------------------------------------
-# Heater fans
-# -------------------------------------
+  # -------------------------------------
+  # Heater fans
+  # -------------------------------------
 
   config PIN_HEATER_FAN
     string
@@ -371,9 +372,9 @@ menu "Pins / TMC"
     @endrepeat@
   endmenu
 
-# -------------------------------------
-# Per-printer pins
-# -------------------------------------
+  # -------------------------------------
+  # Per-printer pins
+  # -------------------------------------
 
   source "Kconfig.shared_pins"
 

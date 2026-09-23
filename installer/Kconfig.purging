@@ -117,7 +117,7 @@ menu "Purging"
     endif
 
     choice CHOICE_BLOBIFIER_TYPE
-      prompt "Blobifier tray actuator    "
+      prompt "Blobifier tray actuator        "
       default CHOICE_BLOBIFIER_TYPE_SERVO
       help
         How the Blobifier tray is actuated: a servo (default) or a manual_stepper.
@@ -130,10 +130,10 @@ menu "Purging"
 
     if CHOICE_BLOBIFIER_TYPE_SERVO
       config PIN_BLOBIFIER_SERVO
-        prompt "Blobifier servo pin        "
+        prompt "Blobifier servo pin            "
 
       config PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
-        float "Servo min pulse width      "
+        float "Servo min pulse width          "
         default 0.00053
         help
           Adjust until a 'BLOBIFIER_SERVO POS=out' extends the tray fully without a buzzing sound
@@ -141,7 +141,7 @@ menu "Purging"
           The default value is likely to be close so don't worry about this for now
 
       config PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
-        float "Servo max pulse width      "
+        float "Servo max pulse width          "
         default 0.0023
         help
           Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
@@ -150,22 +150,26 @@ menu "Purging"
     endif
 
     if CHOICE_BLOBIFIER_TYPE_STEPPER
-      config PIN_BLOBIFIER_STEP
-        prompt "Stepper step pin           "
-      config PIN_BLOBIFIER_DIR
-        prompt "Stepper dir pin            "
-      config PIN_BLOBIFIER_ENABLE
-        prompt "Stepper enable pin         "
-      config PIN_BLOBIFIER_ENDSTOP
-        prompt "Stepper endstop pin        "
-        help
-          The pull-up/invert ( ^! ) is typically required here
       prefix     := BLOBIFIER
       label      := Stepper
-      pad_width  := 27
+      pad_width  := 31
       source "components/Kconfig.tmc_driver_menu"
       source "components/Kconfig.tmc_driver_menu_pins"
       source "components/Kconfig.tmc_driver_menu_current"
+
+      config PIN_BLOBIFIER_STEP
+        prompt "Stepper step pin               "
+
+      config PIN_BLOBIFIER_DIR
+        prompt "Stepper dir pin                "
+
+      config PIN_BLOBIFIER_ENABLE
+        prompt "Stepper enable pin             "
+
+      config PIN_BLOBIFIER_ENDSTOP
+        prompt "Stepper endstop pin            "
+        help
+          The pull-up/invert ( ^! ) is typically required here
     endif
   endif
 
@@ -178,7 +182,7 @@ menu "Purging"
   comment "_Essential purge configuration"
 
   choice CHOICE_PURGE_MACRO
-    prompt "Select standalone purging option"
+    prompt "Select standalone purging option   "
     default CHOICE_PURGE_MACRO_BLOBIFIER if MMU_HAS_BLOBIFIER
     default CHOICE_PURGE_MACRO_PURGE
     help
@@ -238,7 +242,7 @@ menu "Purging"
       To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
       and be sure to TURN OFF in your slicer
   config PARAM_EXTRUDER_PURGE_CURRENT
-    int "Extruder purging current       "
+    int "Extruder purging current           "
     default 100
     help
       % of extruder current (100%-150%) to use when purging (100 to disable feature)

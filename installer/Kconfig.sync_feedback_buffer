@@ -108,7 +108,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
           compression   tension        compression-only                      tension-only
 
       choice CHOICE_BUFFER_SPRING_STATE
-        prompt "Buffer resting spring state"
+        prompt "Buffer resting spring state      "
         default CHOICE_BUFFER_SPRING_STATE_NONE
         help
           If the buffer is sprung and reliably rests in one position it can be set here. This aids
