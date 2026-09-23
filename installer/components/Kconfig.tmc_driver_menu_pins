@@ -1,0 +1,14 @@
+# TMC stepper driver - the per-device pins.
+#
+# Split from Kconfig.tmc_driver_menu because these identify one physical
+# driver, so a multigear stepper needs a set per gate and they belong in the
+# same submenu as the indexed ones. The chip, the bus and the SPI bus itself
+# are shared and stay with the chip prompt.
+#
+# Takes the same prefix, label and pad_width, re-assigned immediately before
+# the source.
+
+config PIN_$(prefix)_UART
+  prompt "$(pad,$(pad_width),$(label) TMC UART pin)" if PARAM_$(prefix)_TMC != "" && !BOOL_$(prefix)_TMC_SPI
+config PIN_$(prefix)_CS
+  prompt "$(pad,$(pad_width),$(label) TMC CS pin)" if BOOL_$(prefix)_TMC_SPI

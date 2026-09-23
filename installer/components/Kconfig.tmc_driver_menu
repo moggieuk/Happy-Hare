@@ -1,7 +1,8 @@
-# TMC stepper driver - chip, bus and wiring prompts.
+# TMC stepper driver - the prompts shared by every driver of this kind.
 #
-# Companion to Kconfig.tmc_driver_types, which declares the symbols, and to
-# Kconfig.tmc_driver_menu_current, which prompts for the currents. They are
+# Companion to Kconfig.tmc_driver_types, which declares the symbols, to
+# Kconfig.tmc_driver_menu_pins for the per-device pins, and to
+# Kconfig.tmc_driver_menu_current for the currents. They are
 # separate because a consumer may place them in different menus: the
 # Blobifier shows both together, while the gear and selector steppers keep
 # their currents in their own stepper menu alongside gear ratio and
@@ -57,10 +58,6 @@ choice CHOICE_$(prefix)_TMC_BUS
     depends on BOOL_$(prefix)_TMC_CAN_SPI
 endchoice
 
-config PIN_$(prefix)_UART
-  prompt "$(pad,$(pad_width),$(label) TMC UART pin)" if PARAM_$(prefix)_TMC != "" && !BOOL_$(prefix)_TMC_SPI
-config PIN_$(prefix)_CS
-  prompt "$(pad,$(pad_width),$(label) TMC CS pin)" if BOOL_$(prefix)_TMC_SPI
 config PARAM_$(prefix)_SPI_BUS
   prompt "$(pad,$(pad_width),$(label) TMC SPI bus)" if BOOL_$(prefix)_TMC_SPI && !BOOL_$(prefix)_TMC_SPI_SOFTWARE
   help

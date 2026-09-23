@@ -23,10 +23,11 @@ hold_current := 0.2
 stallguard   := 75
 source "components/Kconfig.tmc_driver_types"
 
-# Prompt column for each group, set to its longest prompt so the menu lines
-# up. "Gear TMC SPI SCLK pin" and "Selector TMC SPI SCLK pin" are the longest.
-gear_pad     := 21
-selector_pad := 25
+# One column for the top level so the gear and selector blocks line up with
+# each other, and one per submenu set to that screen's longest prompt.
+tmc_pad      := 25
+gear_pad     := 18
+selector_pad := 21
 
 menu "Pins / TMC"
   help
@@ -38,7 +39,7 @@ menu "Pins / TMC"
 
   prefix       := GEAR
   label        := Gear
-  pad_width    := $(gear_pad)
+  pad_width    := $(tmc_pad)
   source "components/Kconfig.tmc_driver_menu"
 
 # -------------------------------------
@@ -46,6 +47,10 @@ menu "Pins / TMC"
 # -------------------------------------
 
   menu "Gear pins"
+    prefix    := GEAR
+    label     := Gear
+    pad_width := $(gear_pad)
+    source "components/Kconfig.tmc_driver_menu_pins"
     config PARAM_GEAR_UART_ADDRESS
       int
       prompt "$(pad,$(gear_pad),Gear UART address)" if PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_SPI
@@ -145,7 +150,7 @@ menu "Pins / TMC"
   if MMU_HAS_SELECTOR_STEPPER
     prefix       := SELECTOR
     label        := Selector
-    pad_width    := $(selector_pad)
+    pad_width    := $(tmc_pad)
     source "components/Kconfig.tmc_driver_menu"
   endif
 
@@ -153,6 +158,10 @@ menu "Pins / TMC"
     depends on MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
     if MMU_HAS_SELECTOR_STEPPER
+      prefix    := SELECTOR
+      label     := Selector
+      pad_width := $(selector_pad)
+      source "components/Kconfig.tmc_driver_menu_pins"
       config PARAM_SELECTOR_UART_ADDRESS
         int "$(pad,$(selector_pad),Selector UART address)"
         default 1
@@ -198,6 +207,8 @@ menu "Pins / TMC"
 
   config HAS_ESPOOLER_ENABLE_PIN
     def_bool n
+
+  comment "_" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
   menu "eSpooler pins"
     depends on MMU_HAS_ESPOOLER
