@@ -108,6 +108,28 @@ class TestComponentContract(unittest.TestCase):
             'SELECTOR': {'MMU_TYPE_TRADRACK_1_0': True,
                          'BOARD_TYPE_MANUAL': True}}
 
+    NO_TMC_PROMPTS = {
+        'GEAR': ('PIN_GEAR_UART', 'PIN_GEAR_CS', 'PIN_GEAR_DIAG',
+                 'PARAM_GEAR_UART_ADDRESS', 'PARAM_GEAR_STALLGUARD_THRESHOLD'),
+        'SELECTOR': ('PIN_SELECTOR_UART', 'PIN_SELECTOR_CS',
+                     'PIN_SELECTOR_DIAG', 'PARAM_SELECTOR_UART_ADDRESS',
+                     'PARAM_SELECTOR_STALLGUARD_THRESHOLD'),
+    }
+
+    def test_a_stepper_with_no_tmc_is_asked_nothing_about_one(self):
+        for prefix in sorted(self.NO_TMC_PROMPTS):
+            with self.subTest(stepper=prefix):
+                syms = dict(self.BASE[prefix])
+                syms['CHOICE_%s_TMC_NONE' % prefix] = True
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kc = cfg._kconfig('no_tmc_' + prefix, syms)
+                shown = [n for n in self.NO_TMC_PROMPTS[prefix]
+                         if kc.syms[n].visibility]
+                self.assertEqual(
+                    shown, [],
+                    'no driver is written for this stepper, so these prompts '
+                    'cannot affect anything: %s' % ', '.join(shown))
+
     def test_no_uart_prompt_is_offered_for_an_spi_chip(self):
         for prefix in sorted(self.BUS_PROMPTS):
             for chip, spi in (('TMC2209', False), ('TMC2130', True),
