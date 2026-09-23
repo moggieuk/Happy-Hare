@@ -40,16 +40,20 @@ ACCEPTED = {
                 'run_current', 'hold_current', 'interpolate',
                 'sense_resistor', 'stealthchop_threshold', 'diag_pin',
                 'driver_SGT'},
-    # rref, not sense_resistor - it sizes current from a reference resistor.
+    # The only chip that takes either bus - tmc2240.py:352 picks UART when
+    # uart_pin is set and SPI otherwise. rref, not sense_resistor: it sizes
+    # current from a reference resistor.
     'tmc2240': {'cs_pin', 'spi_bus', 'spi_software_sclk_pin',
                 'spi_software_mosi_pin', 'spi_software_miso_pin',
+                'uart_pin', 'uart_address',
                 'run_current', 'hold_current', 'interpolate', 'rref',
                 'stealthchop_threshold', 'diag_pin', 'driver_SG4_THRS',
                 'driver_SLOPE_CONTROL'},
 }
 
+# The bus is part of the chip choice, so the dual-bus TMC2240 has two.
 CHIPS = ('TMC2209', 'TMC2226', 'TMC2208', 'TMC2130', 'TMC2660', 'TMC5160',
-         'TMC2240')
+         'TMC2240_SPI', 'TMC2240_UART')
 
 # stepper -> (profile, symbol prefix, rendered file, section suffix)
 STEPPERS = {
@@ -92,8 +96,8 @@ class TestRenderedDriverSectionsAreValid(unittest.TestCase):
 
     def test_the_bus_matches_the_chip(self):
         """A UART-only chip must never get cs_pin, and vice versa."""
-        uart_only = {'TMC2209', 'TMC2226', 'TMC2208'}
-        spi_only = {'TMC2130', 'TMC2660', 'TMC5160'}
+        uart_only = {'TMC2209', 'TMC2226', 'TMC2208', 'TMC2240_UART'}
+        spi_only = {'TMC2130', 'TMC2660', 'TMC5160', 'TMC2240_SPI'}
         for stepper in sorted(STEPPERS):
             for chip in CHIPS:
                 with self.subTest(stepper=stepper, chip=chip):
@@ -109,7 +113,8 @@ class TestRenderedDriverSectionsAreValid(unittest.TestCase):
         """The field name differs per family, and so does its scale."""
         expected = {'TMC2209': 'driver_SGTHRS', 'TMC2226': 'driver_SGTHRS',
                     'TMC2130': 'driver_SGT', 'TMC5160': 'driver_SGT',
-                    'TMC2240': 'driver_SG4_THRS'}
+                    'TMC2240_SPI': 'driver_SG4_THRS',
+                    'TMC2240_UART': 'driver_SG4_THRS'}
         for stepper in ('gear', 'selector'):
             _, prefix, path, suffix = STEPPERS[stepper]
             for chip in CHIPS:

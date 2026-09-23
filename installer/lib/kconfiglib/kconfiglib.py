@@ -603,6 +603,14 @@ HH_RENAMED_SYMBOLS = { # Happy Hare: Added
     # Folded into the BOOL_*_TMC_* capability family rather than just losing
     # the infix, so the whole family reads consistently.
     "BOOL_BLOBIFIER_STEPPER_SPI_SOFTWARE":   "BOOL_BLOBIFIER_TMC_SPI_SOFTWARE",
+
+    # v4.x: the TMC bus became part of the chip choice, so the TMC2240 - the
+    # only chip that speaks either - has one entry per bus. Each old name
+    # maps to whichever bus it used to mean: gear and selector had no CS pin
+    # at all, the Blobifier's separate bus choice defaulted to SPI.
+    "CHOICE_GEAR_TMC2240":                   "CHOICE_GEAR_TMC2240_UART",
+    "CHOICE_SELECTOR_TMC2240":               "CHOICE_SELECTOR_TMC2240_UART",
+    "CHOICE_BLOBIFIER_TMC2240":              "CHOICE_BLOBIFIER_TMC2240_SPI",
 }
 
 

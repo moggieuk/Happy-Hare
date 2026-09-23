@@ -26,21 +26,21 @@ choice CHOICE_$(prefix)_TMC
     ship wired for SPI and need a jumper or solder bridge moved for UART.
 
   config CHOICE_$(prefix)_TMC2209
-    bool "TMC2209 (UART)"
+    bool "TMC2209 / UART"
   config CHOICE_$(prefix)_TMC2226
-    bool "TMC2226 (UART)"
+    bool "TMC2226 / UART"
   config CHOICE_$(prefix)_TMC2208
-    bool "TMC2208 (UART)"
+    bool "TMC2208 / UART"
   config CHOICE_$(prefix)_TMC2130
-    bool "TMC2130 (SPI)"
+    bool "TMC2130 / SPI"
   config CHOICE_$(prefix)_TMC2660
-    bool "TMC2660 (SPI)"
+    bool "TMC2660 / SPI"
   config CHOICE_$(prefix)_TMC5160
-    bool "TMC5160 (SPI)"
-  config CHOICE_$(prefix)_TMC2240
-    bool "TMC2240 (SPI)"
+    bool "TMC5160 / SPI"
+  config CHOICE_$(prefix)_TMC2240_SPI
+    bool "TMC2240 / SPI"
   config CHOICE_$(prefix)_TMC2240_UART
-    bool "TMC2240 (UART)"
+    bool "TMC2240 / UART"
   config CHOICE_$(prefix)_TMC_NONE
     bool "None / hardware controlled"
 endchoice
