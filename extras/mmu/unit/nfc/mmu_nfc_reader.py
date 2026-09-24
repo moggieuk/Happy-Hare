@@ -772,7 +772,7 @@ class MmuNfcReader:
         for warning in self.startup_warnings:
             msg = "NFC: reader '%s': %s" % (self.name, warning)
             if mmu is not None:
-                mmu.log_warning(msg)
+                (mmu.log_debug if mmu.p.suppress_klipper_warnings else mmu.log_warning)(msg)
             else:
                 gcmd.respond_info(msg)
 

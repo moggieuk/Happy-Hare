@@ -539,6 +539,16 @@ class TestStartupWarningsReachTheConsole(unittest.TestCase):
             self.hh.run_gcode('MMU_RFID_INIT NAME=%s' % name)
         self.assertEqual(len(self.warnings(logged)), 1)
 
+    def test_suppress_klipper_warnings_demotes_to_debug(self):
+        self.hh.mmu.p.suppress_klipper_warnings = 1
+        name = self.mgr.gate_readers[0].name
+        with mock.patch.object(self.hh.mmu, 'log_warning') as warned, \
+                mock.patch.object(self.hh.mmu, 'log_debug') as debugged:
+            self.mgr._init_all_readers()
+            self.hh.run_gcode('MMU_RFID_INIT NAME=%s' % name)
+        self.assertEqual(self.warnings(warned), [])
+        self.assertEqual(len(self.warnings(debugged)), 2, 'bootup init and MMU_RFID_INIT')
+
     def test_readers_without_warnings_log_none(self):
         self.hh.chip(9).startup_warnings = []
         with mock.patch.object(self.hh.mmu, 'log_warning') as logged:
