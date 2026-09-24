@@ -65,10 +65,9 @@ def read_values(kconf, filename):
 
 def change_report(kconf, before, after):
     """Lines describing how 'after' differs from 'before' (empty when nothing changed)."""
+    before = _renamed_to_current(before)
     changed, dropped, choices_seen = [], [], set()
     for name, (old, was_default) in before.items():
-        if name in kconfiglib.HH_RENAMED_SYMBOLS:
-            continue
         sym = kconf.syms.get(name)
         if sym is None or not sym.nodes:
             dropped.append(name)
@@ -88,7 +87,7 @@ def change_report(kconf, before, after):
             continue
 
         new = after.get(name, (None,))[0]
-        if new != old and name.startswith(_SETTING_PREFIXES):
+        if _canonical(sym, new) != _canonical(sym, old) and name.startswith(_SETTING_PREFIXES):
             changed.append((name, old, new if new is not None else "(no longer applies)", was_default))
 
     added = [name for name in after if name not in before and
@@ -106,6 +105,30 @@ def change_report(kconf, before, after):
     if added:
         lines.append("  {} new option(s) set to their defaults".format(len(added)))
     return lines
+
+
+def _renamed_to_current(values):
+    """File a value saved under a renamed symbol under its successor, as load_config migrates it."""
+    renamed = {}
+    for name, value in values.items():
+        new_name = kconfiglib.HH_RENAMED_SYMBOLS.get(name)
+        if new_name and new_name not in values:
+            renamed[new_name] = value
+        elif name not in kconfiglib.HH_RENAMED_SYMBOLS:
+            renamed.setdefault(name, value)
+    return renamed
+
+
+def _canonical(sym, raw):
+    """A raw value in a form comparable across a type change (a migrated "0.45" is 0.45)."""
+    if raw is None:
+        return None
+    match = kconfiglib._conf_string_match(raw)
+    if match:
+        raw = kconfiglib.unescape(match.group(1))
+    if sym.orig_type in (kconfiglib.BOOL, kconfiglib.TRISTATE, kconfiglib.BOOLINT):
+        raw = "y" if raw in ("y", "1") else "m" if raw == "m" else "n"
+    return raw
 
 
 def _choice_selection(choice, values):

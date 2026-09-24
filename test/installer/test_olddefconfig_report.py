@@ -62,6 +62,36 @@ class TestOlddefconfigReport(unittest.TestCase):
                 with self.subTest(profile=profile.name, unit=unit.name):
                     self.assertEqual(self._refresh(kc.write_config, unit_env), [])
 
+    def _refresh_renamed(self, syms, renames):
+        """Write syms, then spell each line the way a config from before the rename did."""
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('olddefconfig_renamed', syms)
+
+        def write(path):
+            kc.write_config(path)
+            with open(path) as handle:
+                text = handle.read()
+            for current, old in renames.items():
+                self.assertIn(current, text)
+                text = text.replace(current, old)
+            with open(path, 'w') as handle:
+                handle.write(text)
+        return self._refresh(write)
+
+    def test_migrated_choice_selection_is_not_reported(self):
+        report = self._refresh_renamed(
+            {'MMU_TYPE_ERCF_2_0': True, 'CHOICE_GEAR_TMC2240_UART': True},
+            {'CONFIG_CHOICE_GEAR_TMC2240_UART=y\n': 'CONFIG_CHOICE_GEAR_TMC2240=y\n'})
+        self.assertEqual(report, [])
+
+    def test_migrated_string_to_float_value_is_not_reported(self):
+        report = self._refresh_renamed(
+            {'MMU_HAS_BLOBIFIER': True, 'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+             'PARAM_BLOBIFIER_RUN_CURRENT': '0.45'},
+            {'CONFIG_PARAM_BLOBIFIER_RUN_CURRENT=0.45\n':
+             'CONFIG_PARAM_BLOBIFIER_STEPPER_RUN_CURRENT="0.45"\n'})
+        self.assertEqual(report, [])
+
     def test_moved_choice_default_is_reported(self):
         report = self._refresh_text(
             'CONFIG_MMU_HAS_BLOBIFIER=y\n'
