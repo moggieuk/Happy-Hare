@@ -52,11 +52,7 @@ class TestOlddefconfigReport(unittest.TestCase):
             with self.subTest(profile=profile.name, unit='entry point'):
                 self.assertEqual(self._refresh(entry.write_config, entry_env), [])
 
-            handed_down = {
-                'HAS_SENSOR_TOOLHEAD': cfg._flag(entry, 'MMU_HAS_SENSOR_TOOLHEAD'),
-                'HAS_SENSOR_EXTRUDER': cfg._flag(entry, 'MMU_HAS_SENSOR_EXTRUDER'),
-                'HAS_TOOLHEAD_CUTTER': cfg._flag(entry, 'MMU_HAS_TOOLHEAD_CUTTER'),
-            }
+            handed_down = cfg.handed_down_env(entry)
             for unit in profile.units:
                 unit_env = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='',
                                 UNIT_NAME=unit.name, MCU_NAME=unit.mcu_name,
