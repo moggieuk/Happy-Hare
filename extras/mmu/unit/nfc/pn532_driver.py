@@ -1145,6 +1145,17 @@ class PN532Driver(_PN532Base):
         super().__init__(name, transceive_delay, crc_delay, debug, low_level_debug,
                          sleep_fn=sleep_fn, time_fn=time_fn)
 
+    def init(self):
+        # Checked here, not in __init__: i2c_transfer_cmd is bound in build_config()
+        if not status_supported(self._i2c):
+            logger.warning(
+                "[%s pn532/i2c] WARNING: this Klipper/Kalico MCU firmware cannot "
+                "report an I2C NACK (no i2c_transfer command), so a wiring fault or "
+                "bus glitch on this reader will shut down the MCU instead of taking "
+                "the reader offline. Update to a Klipper with i2c_transfer to remove "
+                "this risk", self._name)
+        super().init()
+
     # ─────────────────────────────────────────────────────────────────────────
     # Frame parsing — I2C frames include a leading STATUS byte
     # ─────────────────────────────────────────────────────────────────────────

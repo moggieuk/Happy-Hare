@@ -48,7 +48,8 @@ NACK and so no equivalent.
 Only the supported path is shared. Each driver keeps its own fallback, and the
 two are deliberately different:
 - PN532 calls `i2c_read(write, n)` with no `retry=`, so it works on
-  Klipper ≤ v0.13.0.
+  Klipper ≤ v0.13.0. Its `init()` logs a warning there (and on Kalico) that
+  a NACK will shut down the MCU.
 - PN7160 refuses all bus traffic in polled (no `irq_pin`) mode without
   status support, raising `PN7160PolledUnsupported` before any byte is sent,
   and `init()` fails fast with the reason. Polled mode learns "nothing

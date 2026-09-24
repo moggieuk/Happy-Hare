@@ -172,6 +172,21 @@ class TestOldFirmwareFallsBack(unittest.TestCase):
         self.assertEqual(ops(i2c), {'i2c_write', 'i2c_read'})
 
 
+class TestStartupWarning(unittest.TestCase):
+
+    def test_warns_when_a_nack_would_shut_down_the_mcu(self):
+        drv, _ = pn532(transfer_support=False, low_level_debug=True)
+        with self.assertLogs('mmu_rfid.reader', level='WARNING') as captured:
+            drv.init()
+        self.assertTrue(any('shut down the MCU' in line for line in captured.output))
+
+    def test_no_warning_with_i2c_transfer(self):
+        drv, _ = pn532(low_level_debug=True)
+        with self.assertLogs('mmu_rfid.reader', level='INFO') as captured:
+            drv.init()
+        self.assertFalse(any('WARNING' in line for line in captured.output))
+
+
 class TestSupportIsCheckedPerCall(unittest.TestCase):
 
     def test_transfer_cmd_bound_after_construction_is_used(self):

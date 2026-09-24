@@ -45,7 +45,8 @@
 #   #i2c_bus:
 #   #i2c_speed: 100000              # Klipper rejects anything below 100000
 #                                   # With MCU firmware new enough for i2c_transfer, an I2C
-#                                   # NACK takes the reader offline instead of the MCU
+#                                   # NACK takes the reader offline instead of the MCU. A
+#                                   # pn532 on older firmware (or Kalico) warns at startup
 #   #ven_pin: mcu:PG13              # pn7160 only, optional hardware enable/reset
 #   #irq_pin: mcu:PG14              # pn7160 only, recommended for tag homing. Wired, the
 #                                   # presence probe asks the IRQ line and costs no bus
