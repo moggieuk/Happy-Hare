@@ -64,8 +64,34 @@ Don't unify the two fallbacks.
 Driver warnings reach the console through `startup_warnings`: a driver's
 `init()` resets the list and appends to it, `MmuNfcReader.init()` copies it,
 and `MmuNfcManager._init_reader()` and `MMU_RFID_INIT` log each entry with
-`mmu.log_warning()`. The driver's own `logger.warning()` only reaches
-klippy.log, because drivers have no gcode or MMU access by design.
+`mmu.log_warning()`, or `log_debug()` when `suppress_klipper_warnings` is
+set. The driver's own `logger.warning()` only reaches klippy.log, because
+drivers have no gcode or MMU access by design.
+
+**I2C support matrix.** What decides NACK safety is each MCU's firmware, not
+the host version. A new Klipper host with un-reflashed MCU firmware behaves
+like the Kalico column.
+
+| Reader | New Klipper (has `i2c_transfer`) | Old Klipper (≤ v0.13.0) | Kalico |
+|---|---|---|---|
+| PN532 over I2C | Works. A NACK takes the reader offline | Works, with a startup warning. A NACK shuts down the MCU | Works, with a startup warning. A NACK shuts down the MCU |
+| PN7160 with `irq_pin` | Works. A NACK is reported | Doesn't start (`i2c_read()` rejects `retry=`) | Works, with a startup warning. A NACK shuts down the MCU |
+| PN7160 without `irq_pin` | Works, including the polled homing probe. A NACK is reported | Refused at startup (`PN7160PolledUnsupported`) | Refused at startup (`PN7160PolledUnsupported`) |
+
+- The startup warnings go through `log_warning()`, so they reach the console
+  and `mmu.log`, one line per physical reader, at bootup and on
+  `MMU_RFID_INIT`. The PN7160 refusal is a startup error, so it always
+  reaches the console.
+- Retries: the status-checked path sends `retry=False` in both drivers,
+  because resending a read or write to an NFC chip could consume or send a
+  frame twice. The PN532 fallback omits `retry`, so that Klipper's default
+  applies; the PN7160 fallback passes `retry=False`.
+- Tag homing probe: the PN532 probe works everywhere the reader starts,
+  because it polls a status byte that doesn't NACK in normal use. The
+  PN7160's no-`irq_pin` polled probe only exists on new Klipper.
+- Software (bit-banged) I2C behaves the same as hardware I2C. SPI and UART
+  readers (RC522, PN5180, PN532 over SPI or UART) have no NACK and aren't
+  affected.
 
 `MmuNfcReader` (`mmu_nfc_reader.py`, ~785 lines) is the per-instance facade
 above drivers. Its own docstring (`:11-12`) states it excludes lane state
