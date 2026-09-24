@@ -75,10 +75,7 @@ class TestV400Refresh(unittest.TestCase):
 
     @classmethod
     def output_files(cls, root):
-        return sorted(
-            glob.glob(os.path.join(root, "mmu", "base", "*.cfg"))
-            + glob.glob(os.path.join(root, "mmu", "led_theme", "*.cfg"))
-        )
+        return sorted(glob.glob(os.path.join(root, "mmu", "base", "*.cfg")))
 
     @classmethod
     def _build_pass(cls, kconfig, input_files, out_root):
@@ -251,13 +248,12 @@ class TestHardwareThemeUpdateModes(unittest.TestCase):
                 self.assertEqual(result.get("mmu_led_effect mmu_static_white_unit0", "layers"),
                                  "static 0 0 top (0.123, 0, 0)")
 
-    def test_replace_custom_uses_machine_default_and_ignores_missing_legacy_include(self):
+    def test_replace_custom_uses_machine_default(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             self.kconfig = cfg._kconfig("theme-replace-custom", dict(
                 profiles.get("boxturtle").syms, CHOICE_LED_THEME_CUSTOM=True))
         with open(self.source, "w") as f:
-            f.write("# HH_LED_THEME unit0: custom emu_leds\n"
-                    "[include ../led_theme/custom_unit0.cfg]\n")
+            f.write("# HH_LED_THEME unit0: custom emu_leds\n")
         result = self.build_mode("replace")
         self.assertEqual(effect_value(result, "mmu_leds unit0", "effect_gate_available")[0], "mmu_static_green")
         with open(self.dest) as f:
@@ -408,44 +404,6 @@ class TestSelectedThemeBuild(unittest.TestCase):
         self.assertTrue(built.has_section("mmu_led_effect mmu_static_white_unit0"))
         with open(self.hardware()) as f:
             self.assertIn("# HH_LED_THEME unit0: custom emu_leds", f.read())
-
-    def test_separate_theme_migrates_only_included_file(self):
-        self.save()
-        base = os.path.join(self.live, "mmu", "base")
-        themes = os.path.join(self.live, "mmu", "led_theme")
-        os.makedirs(base)
-        os.makedirs(themes)
-        with open(os.path.join(base, "mmu_hardware_unit0.cfg"), "w") as f:
-            f.write("[mmu_leds unit0]\nwhite_light: (0.25, 0.25, 0.25)\n"
-                    "[include ../led_theme/emu_leds_unit0.cfg]\n")
-        for name, color in (("emu_leds", "0.123"), ("mmu_leds", "0.999")):
-            with open(os.path.join(themes, name + "_unit0.cfg"), "w") as f:
-                f.write("[mmu_leds unit0]\neffect_error: mmu_red_strobe, (%s, 0, 0), 7\n" % color)
-        self.make("build")
-        built = ConfigBuilder(self.hardware())
-        self.assertEqual(effect_value(built, "mmu_leds unit0", "effect_error")[1], (0.123, 0, 0))
-        self.assertFalse(any(s.startswith("include ") for s in built.sections()))
-
-    def test_custom_file_migration_preserves_user_defined_effects(self):
-        self.save(theme="custom")
-        base = os.path.join(self.live, "mmu", "base")
-        themes = os.path.join(self.live, "mmu", "led_theme")
-        os.makedirs(base)
-        os.makedirs(themes)
-        with open(os.path.join(base, "mmu_hardware_unit0.cfg"), "w") as f:
-            f.write("[include ../led_theme/custom_unit0.cfg]\n")
-        with open(os.path.join(themes, "custom_unit0.cfg"), "w") as f:
-            f.write("[mmu_leds unit0]\neffect_error: my_custom_flash, (0.123, 0, 0), 7\n"
-                    "[mmu_led_effect my_custom_flash]\nunit: unit0\ndefine_on: gates, exit\n"
-                    "layers: static 0 0 top (0.123, 0, 0)\n")
-        for _ in range(2):
-            self.make("build")
-            built = ConfigBuilder(self.hardware())
-            self.assertEqual(effect_value(built, "mmu_leds unit0", "effect_error")[0],
-                             "my_custom_flash")
-            self.assertEqual(built.get("mmu_led_effect my_custom_flash", "layers"),
-                             "static 0 0 top (0.123, 0, 0)")
-            self.install_output()
 
 
 class TestOldPickleReparsing(unittest.TestCase):

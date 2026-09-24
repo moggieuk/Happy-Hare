@@ -223,7 +223,7 @@ hh_config_files := \
 # Look for installed configs that would need be parsed by the build script
 # This allows for easy upgrades and option movement across files
 hh_configs_to_parse := \
-	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg $(KLIPPER_CONFIG_HOME)/mmu/led_theme/*.cfg))
+	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg))
 
 # Set of config files (one if single unit, else n + 1)
 kconfig_files := $(KCONFIG_CONFIG) \

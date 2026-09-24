@@ -648,30 +648,17 @@ def _selected_theme(kcfg):
 
 
 def prepare_led_theme(kcfg, input_files, dest_file, refresh_mode):
-    """Choose the preset for this update mode and migrate an old theme include."""
+    """Choose the preset for this update mode."""
     selected = _selected_theme(kcfg)
     source = kcfg.default_theme_name() if selected == "custom" else selected
     unit = kcfg.get("UNIT_NAME")
-    previous = None
     previous_source = None
-    inputs = [p for p in input_files if Path(p).parent.name != "led_theme"]
-    hardware = next((p for p in inputs if Path(p).name == Path(dest_file).name), None)
+    hardware = next((p for p in input_files if Path(p).name == Path(dest_file).name), None)
     if hardware and refresh_mode != "replace":
-        text = Path(hardware).read_text()
-        marker = re.search(r"^# HH_LED_THEME " + re.escape(unit) + r": (\w+) (\w+)$", text, re.M)
+        marker = re.search(r"^# HH_LED_THEME " + re.escape(unit) + r": (\w+) (\w+)$",
+                           Path(hardware).read_text(), re.M)
         if marker:
             previous, previous_source = marker.groups()
-        else:
-            # Migration from the separate-file implementation. Follow only this
-            # unit's theme include, never glob other units or inactive themes.
-            include = re.search(r"^\[include (\.\./led_theme/(\w+)_" + re.escape(unit) + r"\.cfg)\]$", text, re.M)
-            if include:
-                previous = include.group(2)
-                previous_source = kcfg.default_theme_name() if previous == "custom" else previous
-                path = Path(hardware).resolve().parent / include.group(1)
-                if not path.is_file():
-                    raise ValueError("Included LED theme does not exist: %s" % path)
-                inputs.append(str(path))
     if previous_source:
         if refresh_mode == "refresh" and selected != "custom":
             # Refresh ignores changed menuconfig values, including the preset.
@@ -681,7 +668,7 @@ def prepare_led_theme(kcfg, input_files, dest_file, refresh_mode):
             source = previous_source
     if not Path("config/led_theme/%s.cfg" % source).is_file():
         raise ValueError("Unknown LED theme preset: %s" % source)
-    return inputs, {"LED_THEME_SELECTION": selected, "LED_THEME_SOURCE": source}
+    return {"LED_THEME_SELECTION": selected, "LED_THEME_SOURCE": source}
 
 
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
@@ -691,10 +678,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     hardware_theme = cfg_file_basename == "config/base/mmu_hardware.cfg" and kcfg.is_enabled("MMU_HAS_LEDS")
     refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
     if hardware_theme:
-        input_files, theme_params = prepare_led_theme(kcfg, input_files, dest_file, refresh_mode)
-        extra_params = dict(extra_params, **theme_params)
-    else:
-        input_files = [p for p in input_files if Path(p).parent.name != "led_theme"]
+        extra_params = dict(extra_params, **prepare_led_theme(kcfg, input_files, dest_file, refresh_mode))
 
     # 1.Generate an aggregated master HHConfig for all HH input_files
     hhcfg = HHConfig(input_files)
@@ -724,10 +708,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     report_parse_errors(builder, cfg_file_basename)
 
     if hardware_theme and refresh_mode != "replace":
-        # Carry user-added definitions along with their mappings, including when
-        # migrating a Custom file. Only this unit's source files participate.
+        # Carry user-added definitions along with their mappings. Only this
+        # unit's hardware file participates.
         for path in input_files:
-            if Path(path).name != Path(dest_file).name and Path(path).parent.name != "led_theme":
+            if Path(path).name != Path(dest_file).name:
                 continue
             previous = ConfigBuilder(path)
             for section in previous.sections(scope="included"):
