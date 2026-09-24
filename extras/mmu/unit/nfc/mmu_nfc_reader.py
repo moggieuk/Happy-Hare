@@ -51,8 +51,8 @@
 #                                   # presence probe asks the IRQ line and costs no bus
 #                                   # traffic at all; without it every read is on spec,
 #                                   # which needs MCU firmware with i2c_transfer to report
-#                                   # an I2C NACK. On older Klipper or Kalico, irq_pin is
-#                                   # required and the reader refuses to start without it
+#                                   # an I2C NACK. On Kalico irq_pin is required, and the
+#                                   # reader refuses to start without it
 #
 # Transport selection - 'interface'
 # ─────────────────────────────────

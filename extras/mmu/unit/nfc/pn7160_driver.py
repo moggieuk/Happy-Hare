@@ -128,7 +128,7 @@ class PN7160PolledUnsupported(PN7160Error):
 POLLED_UNSUPPORTED_MSG = (
     "no irq_pin is wired and this Klipper/Kalico MCU firmware cannot report an I2C "
     "NACK (no i2c_transfer command), so a polled read would risk an MCU shutdown. "
-    "Wire irq_pin, or update to a Klipper with i2c_transfer")
+    "Update to a Klipper with i2c_transfer, or on Kalico wire irq_pin")
 
 
 def _hex(data, sep=' '):
@@ -386,12 +386,10 @@ class PN7160Handler:
     def _i2c_transfer_safe(self, write, read_len, label=None):
         if not self.i2c_status_supported:
             # No status to inspect on this firmware, so this branch can never raise
-            # PN7160I2CStatusError, and polled mode is refused outright above.
-            #
-            # IRQ mode only reads once the NFCC has raised IRQ. 'retry' is still not
-            # a kwarg of bus.MCU_I2C.i2c_read() on Klipper <= v0.13.0, so there this
-            # raises TypeError and the reader reports not-alive without a byte
-            # reaching the bus; Kalico's i2c_read() accepts it.
+            # PN7160I2CStatusError; polled mode is refused. IRQ mode only reads once
+            # the NFCC has raised IRQ. 'retry' is not a kwarg of i2c_read() on
+            # Klipper <= v0.13.0, so there this raises TypeError and the reader
+            # reports not-alive; Kalico's i2c_read() accepts it.
             self._refuse_unreported_polling(label)
             params = self.i2c.i2c_read(write, read_len, retry=False)
             return "SUCCESS", list(bytearray(params.get("response", [])))
