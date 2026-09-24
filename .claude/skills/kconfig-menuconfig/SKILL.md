@@ -57,16 +57,20 @@ Load-bearing facts about the flow:
   (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_KLIPPER_HOME`, ...)
   steers the build (e.g. `unit_names`). Renaming such a symbol is a Makefile
   change too.
-- **Staleness**: `kconfig_sources` (Makefile:244) = every `installer/**/Kconfig*`
-  plus `kconfigfunctions.py`, compared by mtime against the value file; when
+- **Staleness**: `kconfig_sources` (Makefile:252) = every `installer/**/Kconfig*`
+  plus `kconfigfunctions.py` and `kconfiglib.py`, compared by mtime against the value file
+  (a unit file is also compared against its top-level file, `KCONFIG_PARENT`); when
   stale, `olddefconfig` (never menuconfig) refreshes the file with new
   defaults. New `Kconfig*` files are picked up automatically by the wildcard;
   files with any other name are invisible to this mechanism.
-- **User values survive by design**: `olddefconfig` only fills in *new*
-  symbols' defaults; explicit user assignments in an existing `.mmu_config`
-  are preserved. This is why changing the *default or meaning of an existing*
-  symbol is a breaking change for installed machines (see CONTRIBUTING: such
-  changes "will probably be rejected").
+- **User values survive by design; recorded defaults do not**: explicit user
+  assignments in an existing `.mmu_config` are preserved, but a value saved
+  with `#~DEFAULT~#` (choices included) is recomputed by every `olddefconfig`
+  and menuconfig load. So changing the *default or meaning of an existing*
+  symbol or choice reaches installed machines that accepted it (see
+  CONTRIBUTING: such changes "will probably be rejected"). `olddefconfig.py`
+  prints every such change to stderr (`change_report`), which is what
+  `install.sh` shows under "Updating Kconfig defaults".
 - **Renaming a symbol discards the user's value unless it is in the rename
   table.** kconfiglib drops an assignment whose symbol no longer exists,
   `build.KConfig` runs with `warn_assign_undef = False`, and `Makefile` sends
