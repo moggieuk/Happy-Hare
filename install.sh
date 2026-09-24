@@ -966,6 +966,7 @@ run_kconfig_units() {
             [ -n "$name" ] || continue
 
             run_kconfig_one "${KCONFIG_CONFIG}_${name}" "${action}" "${only_if_stale}" \
+                KCONFIG_PARENT="${KCONFIG_CONFIG}" \
                 F_MULTI_UNIT=y \
                 UNIT_INDEX="$i" \
                 UNIT_NAME="$name" \

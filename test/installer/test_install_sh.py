@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -295,6 +296,29 @@ class TestInstallSh(unittest.TestCase):
             "$(call backup,$(basename $@),$(F_NO_MMU_BACKUP))",
             MAKEFILE.read_text(encoding="utf-8"),
         )
+
+    def test_unit_config_is_stale_when_parent_config_is_newer(self):
+        # Future mtimes put both files after every Kconfig source, so only
+        # their order relative to each other decides.
+        now = time.time()
+        unit = self.write(self.root / ".mmu_config_unit0", "CONFIG_MULTI_UNIT=y\n")
+        parent = self.write(self.root / ".mmu_config", "CONFIG_MULTI_UNIT=y\n")
+
+        def needs_update(parent_mtime, *extra):
+            os.utime(unit, (now + 1000, now + 1000))
+            os.utime(parent, (parent_mtime, parent_mtime))
+            return subprocess.run(
+                ["make", "--no-print-directory", "-s", "kconfig_needs_update",
+                 "KCONFIG_CONFIG={}".format(unit), *extra],
+                cwd=REPO_ROOT, text=True, capture_output=True, check=True,
+            ).stdout.strip()
+
+        parent_arg = "KCONFIG_PARENT={}".format(parent)
+        self.assertEqual(needs_update(now + 2000, parent_arg), "y")
+        self.assertEqual(needs_update(now + 500, parent_arg), "n")
+        self.assertEqual(needs_update(now + 2000), "n")
+        self.assertIn('KCONFIG_PARENT="${KCONFIG_CONFIG}"',
+                      INSTALL_SH.read_text(encoding="utf-8"))
 
     def test_git_is_isolated_from_developer_configuration(self):
         """Developer git configuration must not affect temporary repos."""
