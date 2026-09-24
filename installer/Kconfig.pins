@@ -46,7 +46,7 @@ menu "Pins / TMC"
   # Gear stepper
   # -------------------------------------
 
-  menu "Gear pins"
+  menu "Gear stepper pins"
     prefix    := GEAR
     label     := Gear
     pad_width := $(pin_pad)
@@ -157,8 +157,8 @@ menu "Pins / TMC"
     source "components/Kconfig.tmc_driver_menu"
   endif
 
-  menu "Selector pins"
-    depends on MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
+  menu "Selector stepper pins"
+    depends on MMU_HAS_SELECTOR_STEPPER
 
     if MMU_HAS_SELECTOR_STEPPER
       prefix    := SELECTOR
@@ -189,19 +189,19 @@ menu "Pins / TMC"
           SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
           lower is more sensitive.
     endif
-
-    if INDEXED_SELECTOR
-      @repeat var=i min=0 max=3@
-        config PIN_GATE_ENDSTOP_$(i)
-          string
-          prompt "$(pad,$(pin_pad),Gate $(i) endstop pin)" if PARAM_NUM_GATES > $(i)
-      @endrepeat@
-    endif
-
-    config PIN_SELECTOR_SERVO
-      string
-      prompt "$(pad,$(pin_pad),Servo pin)" if MMU_HAS_SELECTOR_SERVO
   endmenu
+
+  if INDEXED_SELECTOR
+    @repeat var=i min=0 max=3@
+      config PIN_GATE_ENDSTOP_$(i)
+        string
+        prompt "$(pad,$(pin_pad),Gate $(i) endstop pin)" if PARAM_NUM_GATES > $(i)
+    @endrepeat@
+  endif
+
+  config PIN_SELECTOR_SERVO
+    string
+    prompt "$(pad,$(pin_pad),Servo pin)" if MMU_HAS_SELECTOR_SERVO
 
   comment "_" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
