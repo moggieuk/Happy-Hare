@@ -1041,55 +1041,28 @@ class TestAdcCompatMatrixOnRealMachine(unittest.TestCase):
 
 
 class TestLedThemes(unittest.TestCase):
-    """
-    The per-unit [mmu_leds <unit>] effect_* assignments live in a swappable theme file
-    (mmu/led_theme/<name>_<unit>.cfg) that the unit's hardware file includes, selected by
-    the PARAM_LED_THEME Kconfig (CHOICE_LED_THEME in menuconfig). This pins the whole
-    mechanism: what moves, what stays, and that the assembled config is the merge of the
-    two halves of the section.
-    """
+    """Theme presets render directly into hardware, retaining unit-scoped effects."""
 
     def _rendered(self, name):
         from test.hh import cfg, profiles
         return cfg.render(profiles.get(name))
 
-    def test_stock_profile_includes_the_stock_theme(self):
-        rendered = self._rendered('boxturtle')
-
-        hardware = [v for k, v in rendered.items() if k.startswith('config/base/mmu_hardware')]
-        self.assertEqual(len(hardware), 1)
-        includes = [l.strip() for l in hardware[0].splitlines() if l.startswith('[include ')]
-        self.assertEqual(includes, ['[include ../led_theme/mmu_leds_unit0.cfg]'])
-        # The effect_* assignments moved out of the hardware file entirely.
-        self.assertFalse(any(l.startswith('effect_') for l in hardware[0].splitlines()))
-
-        theme = [v for k, v in rendered.items() if k.startswith('config/led_theme/mmu_leds')]
-        self.assertEqual(len(theme), 1)
-        effect_lines = [l for l in theme[0].splitlines() if l.startswith('effect_')]
-        # 23 stock defaults + the 2 TD-1 scanner indicators upstream added.
-        self.assertEqual(len(effect_lines), 25)
-        self.assertIn('[mmu_leds unit0]', theme[0])
-        self.assertIn("effect_td1_read                 : mmu_green_strobe_fast", theme[0])
-
-        # The assembled config merges both halves of the section, and the include line
-        # itself leaves no trace in the parsed config.
+    def test_stock_profile_renders_the_stock_theme_in_hardware(self):
         from test.hh import cfg
+        rendered = self._rendered('boxturtle')
+        self.assertFalse(any('led_theme/' in name for name in rendered))
+        hardware = rendered['config/base/mmu_hardware.cfg']
+        self.assertNotIn('[include ', hardware)
+        self.assertEqual(sum(line.startswith('effect_') for line in hardware.splitlines()), 25)
         parser = cfg.assemble(rendered)
-        section = dict(parser.items('mmu_leds unit0'))
-        self.assertTrue(any(o.endswith('_leds') for o in section), 'hardware half missing')
-        # The refresh machinery re-aligns the value column, so compare the effect name and
-        # the color, not the inter-column whitespace.
-        self.assertEqual(section['effect_error'].split(',')[0], 'mmu_red_strobe')
-        self.assertIn('(1, 0, 0)', section['effect_error'])
-        self.assertNotIn('include', section)
-        self.assertFalse(any(o.startswith('include') for o in parser.defaults()))
+        self.assertEqual(dict(parser.items('mmu_leds unit0'))['effect_error'].split(',')[0], 'mmu_red_strobe')
 
     def test_emu_profile_includes_the_vendor_theme(self):
         rendered = self._rendered('emu')
 
         hardware = [v for k, v in rendered.items() if k.startswith('config/base/mmu_hardware')]
         includes = [l.strip() for l in hardware[0].splitlines() if l.startswith('[include ')]
-        self.assertEqual(includes, ['[include ../led_theme/emu_leds_unit0.cfg]'])
+        self.assertEqual(includes, [])
 
         from test.hh import cfg
         parser = cfg.assemble(rendered)
@@ -1139,7 +1112,7 @@ class TestLedThemes(unittest.TestCase):
                                           description='two EMUs')
         rendered = cfg.render(two)
         names = [l.split()[1].rstrip(']') for k, v in rendered.items()
-                 if k.startswith('config/led_theme/emu_leds')
+                 if k.startswith('config/base/mmu_hardware')
                  for l in v.splitlines() if l.startswith('[mmu_led_effect ')]
         self.assertEqual(len(names), 6)
         self.assertEqual(len(set(names)), 6, names)
@@ -1150,12 +1123,63 @@ class TestLedThemes(unittest.TestCase):
                 self.assertTrue(parser.has_section('mmu_led_effect %s_%s' % (name, unit)),
                                 '%s_%s' % (name, unit))
 
-        # The whole chain - both suffixed effect sets instantiated against both units -
+        # The whole chain - each suffixed effect set instantiated on its own unit -
         # must survive a boot.
         hh = session(two)
         try:
             hh.boot()
             self.assertEqual(hh.errors, [])
+        finally:
+            hh.close()
+
+    def test_emu_theme_effects_only_target_their_own_unit(self):
+        # Vendor definitions must stay on their explicitly selected unit.
+        from test.hh import profiles
+        two = profiles.clone_across_units('scoped_emus', profiles.get('emu'),
+                                          ('unit0', 'unit1'), description='two EMUs')
+        hh = session(two)
+        try:
+            hh.boot()
+            handler = hh.printer.lookup_object('mmu_led_effect')
+            effects = [e for e in handler.effects if 'mmu_static_white_unit0' in e.name]
+            self.assertTrue(effects)
+            for effect in effects:
+                self.assertTrue(all(chain.startswith('unit0_mmu_')
+                                    for chain in effect.configChains), effect.name)
+        finally:
+            hh.close()
+
+    def test_mixed_themes_keep_shared_effects_and_scope_vendor_effects(self):
+        from test.hh import cfg, profiles
+        two = profiles.clone_across_units('mixed_themes', profiles.get('emu'),
+                                          ('unit0', 'unit1'), description='mixed LED themes')
+        two.units[1] = two.units[1].derive(syms={'CHOICE_LED_THEME_STANDARD': True})
+        rendered = cfg.render(two)
+        self.assertFalse(any('led_theme/' in name for name in rendered))
+        hh = session(two)
+        try:
+            hh.boot()
+            self.assertEqual(hh.errors, [])
+            effects = hh.printer.lookup_object('mmu_led_effect').effects
+            vendor = [e for e in effects if 'mmu_static_white_unit0' in e.name]
+            self.assertTrue(vendor)
+            self.assertTrue(all(chain.startswith('unit0_mmu_')
+                                for e in vendor for chain in e.configChains))
+            shared = [e for e in effects if 'mmu_blue_clockwise_slow' in e.name]
+            self.assertEqual({chain.split('_mmu_')[0] for e in shared for chain in e.configChains},
+                             {'unit0', 'unit1'})
+        finally:
+            hh.close()
+
+    def test_unknown_effect_unit_is_rejected(self):
+        hh = session('emu')
+        try:
+            hh.boot()
+            from extras.mmu_led_effect import MmuLedEffect
+            section = 'mmu_led_effect mmu_static_white_unit0'
+            hh.fileconfig.set(section, 'unit', 'typo')
+            with self.assertRaisesRegex(Exception, "Unknown MMU unit 'typo'"):
+                MmuLedEffect(hh.config.getsection(section))
         finally:
             hh.close()
 

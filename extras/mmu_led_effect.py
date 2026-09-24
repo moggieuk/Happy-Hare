@@ -43,7 +43,8 @@ from .mmu.unit.mmu_leds import MmuLeds
 #
 # Created effects can be restricted by specifying 'define_on' and a list of segment
 # names or 'gates' to indicate creation on exit/entry gates. If omitted all possible
-# effects will be created
+# effects will be created. Optional "unit: <name>" restricts a definition to one
+# unit; omitted, it creates effects on every LED-equipped unit as before.
 #
 # Then you can set effects with commands like:
 #   _MMU_SET_LED_EFFECT EFFECT=my_flash_exit     # apply effect to all exit leds
@@ -64,11 +65,17 @@ class MmuLedEffect:
         if mmu_machine is None:
             raise config.error("[mmu_led_effect] requires [mmu_machine] to be loaded first")
 
+        # Unscoped definitions retain the shared, all-unit behavior.
+        unit = config.get('unit', None)
+        if unit is not None and unit not in mmu_machine.unit_names:
+            raise config.error("Unknown MMU unit '%s' in [%s]" % (unit, config.get_name()))
         define_on_str = config.get('define_on', "").strip()
         _ = config.get('layers')
 
         for unit_index, mmu_unit in enumerate(mmu_machine.units):
             unit_name = mmu_unit.name
+            if unit is not None and unit_name != unit:
+                continue
             mmu_leds = self.printer.lookup_object('mmu_leds %s' % unit_name, None)
             if mmu_leds:
                 frame_rate = mmu_leds.frame_rate
@@ -106,7 +113,7 @@ class MmuLedEffect:
         config.fileconfig.add_section(section_to)
         config.fileconfig.set(section_to, 'leds', leds)
         items = config.fileconfig.items(config.get_name())
-        for item in (i for i in items if i[0] != 'define_on'):
+        for item in (i for i in items if i[0] not in ('define_on', 'unit')):
             config.fileconfig.set(section_to, item[0], item[1])
  
         c = config.getsection(section_to)

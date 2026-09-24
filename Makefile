@@ -202,51 +202,18 @@ hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_le
 hh_old_config_files     := macros/mmu_fan_control.cfg # These will get removed upon install
 hh_moonraker_components := $(wildcard components/*.py)
 
+# LED theme templates are rendered into hardware config, never installed separately.
 # All repo configs files less mmu_vars.cfg. Zero-length files (e.g. config/base/*.cfg
 # upgrade-path placeholders, see config/base/README.md) are deliberately excluded here:
 # $(wildcard) can't test size, so use find -size +0c instead, or every fresh install
 # would build and install those empty stubs as real (if empty) config files.
-#
-# config/led_theme/*.cfg are per-unit templates only (see hh_unit_config_files below):
-# they are included from the unit's hardware file, never globbed from printer.cfg.
 repo_cfgs := \
 	$(filter-out led_theme/%,$(patsubst config/%,%, $(shell find config -mindepth 1 -maxdepth 2 -name '*.cfg' -size +0c)))
 
-# Shipped LED theme templates (config/led_theme/<theme>.cfg), rendered once per unit
-led_theme_names := $(basename $(notdir $(wildcard $(SRC)/config/led_theme/*.cfg)))
-
-# Theme a unit selected in menuconfig (Kconfig PARAM_LED_THEME, read from the unit's
-# values file; the value may carry a trailing comment, e.g. the #~DEFAULT~# marker).
-led_theme_of = $(strip $(subst ",,$(shell sed -n 's/^CONFIG_PARAM_LED_THEME=//p' $(1) 2>/dev/null | sed 's/#.*//')))
-
-# The machine's default LED theme (build.py reads the pre-parsed pickle;
-# without one it parses the values file against the real Kconfig tree, so
-# this invocation must carry srctree too - kconfiglib resolves the tree
-# through it). An empty result is a hard error — it would otherwise bake a
-# broken led_theme/_<unit>.cfg prerequisite. The env prefix matters: GNU
-# make 4.3 does not pass exported variables into $(shell) expansions, so
-# the builder here must carry its own PYTHONPATH/srctree/OUT (the values-
-# file argument is this function's only input, by design so that parse-time
-# state stays out of the builder call).
-define led_default_theme_of
-$(eval _led_theme_default := $(strip $(shell srctree='$(SRC)/installer' PYTHONPATH='$(SRC)/installer/lib/kconfiglib$(if $(PYTHONPATH),:$(PYTHONPATH))' OUT='$(OUT)' $(PY) -m installer.build --resolved-theme-default $(1))))$(if $(strip $(_led_theme_default)),$(_led_theme_default),$(error could not resolve the default LED theme for $(1); see above))
-endef
-
-# The machine-local custom theme file per unit, when that unit selected 'custom':
-# no template of its own - the unit's default theme build seeds it
-# (build.py:seed_custom_theme). It joins the install set only; once created it
-# belongs to the user, so no build reads or rewrites it.
-hh_custom_theme_files := $(foreach u,$(unit_names), \
-	$(if $(filter custom,$(call led_theme_of,$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$(u),$(KCONFIG_CONFIG)))), \
-		led_theme/custom_$(u).cfg))
-
-# Per-unit files: <unit>_{hardware,parameters}.cfg and the LED theme files
-# (<theme>_<unit>.cfg; the unit's hardware file includes the one selected by Kconfig
-# PARAM_LED_THEME)
+# Per-unit files: <unit>_{hardware,parameters}.cfg
 hh_unit_config_files := \
 	$(addprefix base/mmu_hardware_,$(addsuffix .cfg,$(unit_names))) \
-	$(addprefix base/mmu_parameters_,$(addsuffix .cfg,$(unit_names))) \
-	$(foreach u,$(unit_names),$(addprefix led_theme/,$(addsuffix _$(u).cfg,$(led_theme_names))))
+	$(addprefix base/mmu_parameters_,$(addsuffix .cfg,$(unit_names)))
 
 # Final config set: all repo cfgs (minus the single-unit defaults) + per-unit files
 hh_config_files := \
@@ -255,17 +222,8 @@ hh_config_files := \
 
 # Look for installed configs that would need be parsed by the build script
 # This allows for easy upgrades and option movement across files
-#
-# Only the LED theme a unit actually includes joins in, so its user edits survive a
-# refresh. Every shipped theme is installed (none are pruned), but the others must
-# not be parsed: the parser keeps the last file's value for a shared option, so
-# parsing them would stamp their effect_* onto the theme being rendered. 'custom'
-# and user-maintained themes contribute nothing - the build never rewrites them.
-# The $(eval) binds the per-unit selection so led_theme_of runs once per unit.
-hh_theme_to_parse_for = $(eval _hh_parse_theme := $(filter $(led_theme_names),$(call led_theme_of,$(1))))$(if $(_hh_parse_theme),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/led_theme/$(_hh_parse_theme)_$(2).cfg))
 hh_configs_to_parse := \
-	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg)) \
-	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(foreach u,$(unit_names),$(call hh_theme_to_parse_for,$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$(u),$(KCONFIG_CONFIG)),$(u))))
+	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg $(KLIPPER_CONFIG_HOME)/mmu/led_theme/*.cfg))
 
 # Set of config files (one if single unit, else n + 1)
 kconfig_files := $(KCONFIG_CONFIG) \
@@ -283,7 +241,7 @@ processed_targets := \
 
 # Files/targets that need to be installed
 install_targets := \
-	$(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, $(hh_config_files) $(hh_custom_theme_files)) \
+	$(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, $(hh_config_files)) \
 	$(addprefix $(KLIPPER_HOME)/klippy/, $(hh_klipper_extras_files)) \
 	$(addprefix $(MOONRAKER_HOME)/moonraker/, $(hh_moonraker_components)) \
 	$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) \
@@ -383,7 +341,7 @@ $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse) $(KCONFIG_PREREQS)
 
 # Shared target rules don't work on old make so separate for portability
 $(OUT)/mmu/base/mmu_hardware_%.cfg: \
-  $(SRC)/config/base/mmu_hardware.cfg $(hh_configs_to_parse) $(KCONF_REQS)
+  $(SRC)/config/base/mmu_hardware.cfg $(wildcard $(SRC)/config/led_theme/*.cfg) $(hh_configs_to_parse) $(KCONF_REQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
 		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
@@ -393,40 +351,6 @@ $(OUT)/mmu/base/mmu_parameters_%.cfg: \
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
 		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
-
-# Per-unit LED theme files: config/led_theme/<theme>.cfg -> mmu/led_theme/<theme>_<unit>.cfg.
-# One rule per shipped theme, generated per theme. The recipe is inlined instead of going
-# through the 'link' macro, and the unit is spelled out with $$*: this rule's text is
-# expanded by $(call) at parse time, when automatic variables are empty, so any $(dir ...),
-# $(abspath ...) or bare $</$@/$* in here would bake an empty string into the recipe
-# (observed on a printer make: 'mkdir -p' and 'ln -sf "" ""').
-# installer.build skips the write when a theme renders empty for this machine and
-# creates the machine-local custom_<unit>.cfg on first use (see build_config_file).
-define led_theme_unit_rule
-$(OUT)/mmu/led_theme/$(1)_%.cfg: \
-  $(SRC)/config/led_theme/$(1).cfg $(hh_configs_to_parse) $(KCONF_REQS)
-	$(Q)mkdir -p $(OUT)/mmu/led_theme
-	$(Q)ln -sf "$(SRC)/config/led_theme/$(1).cfg" "$(OUT)/mmu/led_theme/$(1)_$$*.cfg"
-	$(Q)$(PY) -m installer.build $(V) --build "$(SRC)/config/led_theme/$(1).cfg" \
-		"$(OUT)/mmu/led_theme/$(1)_$$*.cfg" \
-		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
-endef
-$(foreach t,$(led_theme_names),$(eval $(call led_theme_unit_rule,$(t))))
-
-# Machine-local custom theme files: no template to build from - the unit's
-# default theme build seeds them (build.py:seed_custom_theme). The rule only
-# orders that seed (the prerequisite) and verifies the file appeared; being
-# explicit, it outranks the generic $(OUT)/mmu/%.cfg pattern, which would look
-# for a nonexistent template.
-# The file is spelled out with $(1) instead of $@: this rule's text is
-# expanded by $(call) at parse time, when automatic variables are empty, so a
-# bare $@ would bake an empty string into the recipe (as in led_theme_unit_rule).
-define custom_theme_out_rule
-$(OUT)/mmu/led_theme/custom_$(1).cfg: \
-  $(OUT)/mmu/led_theme/$(call led_default_theme_of,$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$(1),$(KCONFIG_CONFIG)))_$(1).cfg
-	$(Q)test -f "$(OUT)/mmu/led_theme/custom_$(1).cfg"
-endef
-$(foreach u,$(unit_names),$(eval $(call custom_theme_out_rule,$(u))))
 
 # Python files are linked to the out directory
 $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
@@ -478,28 +402,6 @@ $(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_nam
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 endif
-
-# Machine-local custom theme: install only where absent - the seeded file is
-# created once and then owned by the user, so no install may overwrite it
-# (same no-clobber treatment as the mmu_vars.cfg rule below). Explicit per-unit
-# rules, not a pattern rule: pattern targets ending in a built-in suffix like
-# .cfg are looked up by suffix, and a pattern like custom_%.cfg with
-# prerequisites is never found that way, so the generic rule below would win.
-# $(call) expands at parse time, so every path is spelled out and $@/$* are
-# unavailable (as in led_theme_unit_rule); $$(eval ...) keeps the
-# restart_klipper assignment in the recipe's run-time expansion.
-# restart_klipper is set only when the file is about to be copied: make expands
-# the recipe before running it, so the $(wildcard) below sees the pre-copy state
-# (absent => the cp will fire => klipper restarts). The file exists on every
-# later install, so the flag stays down and no needless restart happens.
-define custom_theme_install_rule
-$(KLIPPER_CONFIG_HOME)/mmu/led_theme/custom_$(1).cfg: \
-  | $(OUT)/mmu/led_theme/custom_$(1).cfg $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)
-	$(Q)$(SUDO)mkdir -p "$(dir $(KLIPPER_CONFIG_HOME)/mmu/led_theme/custom_$(1).cfg)"
-	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/mmu/led_theme/custom_$(1).cfg" ] || $(SUDO)cp -p "$(OUT)/mmu/led_theme/custom_$(1).cfg" "$(KLIPPER_CONFIG_HOME)/mmu/led_theme/custom_$(1).cfg"
-	$(Q)$(if $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/led_theme/custom_$(1).cfg),,$$(eval restart_klipper = 1))
-endef
-$(foreach u,$(unit_names),$(eval $(call custom_theme_install_rule,$(u))))
 
 # Install Happy-Hare *.cfg files
 $(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) 
@@ -782,7 +684,6 @@ variables:
 	@echo "$(C_NOTICE)repo_cfgs                      =$(C_INFO) $(repo_cfgs)$(C_OFF)"
 	@echo "$(C_NOTICE)unit_names                     =$(C_INFO) $(unit_names)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_unit_config_files           =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_custom_theme_files          =$(C_INFO) $(hh_custom_theme_files)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_config_files                =$(C_INFO) $(hh_config_files)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_configs_to_parse            =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
 	@echo "$(C_NOTICE)kconfig_files                  =$(C_INFO) $(kconfig_files)$(C_OFF)"

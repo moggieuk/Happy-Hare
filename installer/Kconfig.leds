@@ -192,10 +192,10 @@ if MMU_HAS_LEDS
       prompt "Led theme       "
       default CHOICE_LED_THEME_STANDARD
       help
-        The LED theme is a per-unit file holding the effect_* defaults for
-        [mmu_leds <unit>]. It is installed to mmu/led_theme/ and included
-        from the unit's hardware config, so a machine can swap in a
-        completely different set of effects.
+        Choose the effect defaults rendered into this unit's hardware config.
+        Refresh keeps the existing preset and edits. Merge uses this preset
+        for missing settings but retains existing effect mappings and edits.
+        Use Replace to fully apply the preset defaults.
 
       config CHOICE_LED_THEME_STANDARD
         bool "Standard"
@@ -210,10 +210,9 @@ if MMU_HAS_LEDS
       config CHOICE_LED_THEME_CUSTOM
         bool "Custom"
         help
-          A machine-local theme file (mmu/led_theme/custom_<unit>.cfg).
-          The installer creates it once, from this machine's default set,
-          and never modifies it again - upgrades leave it untouched, so it is
-          yours to edit freely.
+          Keep the current theme and its edits in Refresh and Merge modes.
+          New installations and Replace start from the machine's default preset.
+          No separate theme file is installed.
     endchoice
 
     config PARAM_LED_THEME
@@ -223,11 +222,9 @@ if MMU_HAS_LEDS
       default "custom"   if CHOICE_LED_THEME_CUSTOM
       default "mmu_leds"
       help
-        The name of the LED theme file. Shipped themes are mmu_leds and
-        emu_leds; 'custom' uses the machine-local theme file the installer
-        creates once. Any other value is taken as the name of your own
-        theme file - you create and maintain mmu/led_theme/<name>_<unit>.cfg
-        yourself; the installer never writes it.
+        Source preset: mmu_leds or emu_leds. Custom preserves the current
+        preset's settings in mmu_hardware_<unit>.cfg. Theme source templates
+        are build-time inputs, not installed Klipper includes.
 
     comment "_"
 

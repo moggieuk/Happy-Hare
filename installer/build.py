@@ -586,6 +586,10 @@ def render_template(template_file, kcfg, extra_params):
         template = env.get_template(os.path.relpath(template_file))
         params = kcfg.as_dict()
         params.update(extra_params)
+        if os.path.relpath(template_file) == "config/base/mmu_hardware.cfg":
+            selected = _selected_theme(kcfg)
+            params.setdefault("LED_THEME_SELECTION", selected)
+            params.setdefault("LED_THEME_SOURCE", kcfg.default_theme_name() if selected == "custom" else selected)
         return template.render(params)
     except UndefinedError as ue:
         logging.error("%s while rendering '%s' with KConfig '%s'" % (str(ue), template_file, kcfg.config_file))
@@ -643,39 +647,54 @@ def _selected_theme(kcfg):
     return value if value else _default_theme_name(kcfg)
 
 
-def seed_custom_theme(kcfg, builder, dest_file, template_theme):
-    """Create mmu/led_theme/custom_<unit>.cfg once, seeded from this
-    machine's default shipped theme (the user's current values were already
-    reapplied above). The Makefile keeps custom_*.cfg out of a build's
-    inputs, so no build reads or rewrites it afterwards - the user owns it.
-    template_theme is the rendered template's stem, not the dest's: the dest
-    is <theme>_<unit>.cfg and a theme name itself contains an underscore.
-    """
-    if _selected_theme(kcfg) != "custom":
-        return
-
-    # Only the default theme seeds, so building the other shipped theme
-    # cannot double-create the file for the same unit.
-    if template_theme != _default_theme_name(kcfg):
-        return
-
-    name = Path(dest_file).name
-    unit_name = name[len(template_theme) + 1:-len(".cfg")]
-    custom_file = os.path.join(os.path.dirname(dest_file), "custom_%s.cfg" % unit_name)
-
-    if os.path.exists(custom_file):
-        logging.info("Custom LED theme '%s' already exists - leaving it untouched" % custom_file)
-        return
-
-    logging.info("Creating machine-local LED theme '%s' (seeded from the %s theme)" % (custom_file, template_theme))
-    data = builder.write()
-    with open(custom_file, "wb") as f:
-        f.write(data.encode("utf-8"))
+def prepare_led_theme(kcfg, input_files, dest_file, refresh_mode):
+    """Choose the preset for this update mode and migrate an old theme include."""
+    selected = _selected_theme(kcfg)
+    source = kcfg.default_theme_name() if selected == "custom" else selected
+    unit = kcfg.get("UNIT_NAME")
+    previous = None
+    previous_source = None
+    inputs = [p for p in input_files if Path(p).parent.name != "led_theme"]
+    hardware = next((p for p in inputs if Path(p).name == Path(dest_file).name), None)
+    if hardware and refresh_mode != "replace":
+        text = Path(hardware).read_text()
+        marker = re.search(r"^# HH_LED_THEME " + re.escape(unit) + r": (\w+) (\w+)$", text, re.M)
+        if marker:
+            previous, previous_source = marker.groups()
+        else:
+            # Migration from the separate-file implementation. Follow only this
+            # unit's theme include, never glob other units or inactive themes.
+            include = re.search(r"^\[include (\.\./led_theme/(\w+)_" + re.escape(unit) + r"\.cfg)\]$", text, re.M)
+            if include:
+                previous = include.group(2)
+                previous_source = kcfg.default_theme_name() if previous == "custom" else previous
+                path = Path(hardware).resolve().parent / include.group(1)
+                if not path.is_file():
+                    raise ValueError("Included LED theme does not exist: %s" % path)
+                inputs.append(str(path))
+    if previous_source:
+        if refresh_mode == "refresh" and selected != "custom":
+            # Refresh ignores changed menuconfig values, including the preset.
+            # Keep its marker too, so a later Merge can still apply the selection.
+            selected, source = previous, previous_source
+        elif selected == "custom":
+            source = previous_source
+    if not Path("config/led_theme/%s.cfg" % source).is_file():
+        raise ValueError("Unknown LED theme preset: %s" % source)
+    return inputs, {"LED_THEME_SELECTION": selected, "LED_THEME_SOURCE": source}
 
 
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
     dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
     logging.info("Building config file: %s" % dest_file_basename)
+
+    hardware_theme = cfg_file_basename == "config/base/mmu_hardware.cfg" and kcfg.is_enabled("MMU_HAS_LEDS")
+    refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
+    if hardware_theme:
+        input_files, theme_params = prepare_led_theme(kcfg, input_files, dest_file, refresh_mode)
+        extra_params = dict(extra_params, **theme_params)
+    else:
+        input_files = [p for p in input_files if Path(p).parent.name != "led_theme"]
 
     # 1.Generate an aggregated master HHConfig for all HH input_files
     hhcfg = HHConfig(input_files)
@@ -704,6 +723,19 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder.read_buf(buffer)
     report_parse_errors(builder, cfg_file_basename)
 
+    if hardware_theme and refresh_mode != "replace":
+        # Carry user-added definitions along with their mappings, including when
+        # migrating a Custom file. Only this unit's source files participate.
+        for path in input_files:
+            if Path(path).name != Path(dest_file).name and Path(path).parent.name != "led_theme":
+                continue
+            previous = ConfigBuilder(path)
+            for section in previous.sections(scope="included"):
+                if section.startswith("mmu_led_effect ") and not builder.has_section(section):
+                    builder.add_section(section)
+                    for option in previous.options(section):
+                        builder.copy_option(previous, section, option)
+
     # 5.Special case cfg files that contains parameters so we can add back any optional,
     #   hidden or supplemental params because they are not present in cfg template
     if cfg_file_basename == "config/base/mmu_parameters.cfg":
@@ -720,20 +752,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     elif cfg_file_basename == "config/base/mmu.cfg":
         add_supplemental_params(builder, hhcfg, "mmu_parameters")
 
-    # LED theme templates (config/led_theme/*.cfg) render to per-unit files in
-    # mmu/led_theme/. They are NOT glob-included from printer.cfg: the unit's
-    # hardware file includes exactly the one named by PARAM_LED_THEME, so a
-    # theme that renders empty for this machine must not produce a file at all
-    # (a dangling include would otherwise break klippy startup).
-    if cfg_file_basename.startswith("config/led_theme/") and \
-            not builder.sections():
-        logging.info(
-            "LED theme '%s' has no content for this machine - not writing %s"
-            % (Path(cfg_file_basename).stem, dest_file_basename))
-        return
-
     # 6.Determine how much of the HHConfig (existing .cfg's) do we re-apply
-    refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
 
     if refresh_mode == 'refresh':
         # Default choice (always used when menuconfig UI is not run)
@@ -795,11 +814,6 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     data = builder.write()
     with open(dest_file, "wb") as f:
         f.write(data.encode("utf-8"))
-
-    # 'custom' theme seeding: a no-op unless the selected theme is 'custom'
-    # and this build is of the machine's default shipped theme.
-    if cfg_file_basename.startswith("config/led_theme/"):
-        seed_custom_theme(kcfg, builder, dest_file, Path(cfg_file_basename).stem)
 
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
@@ -1266,7 +1280,6 @@ def main():
     parser.add_argument("--restart-service", nargs=3)
     parser.add_argument("--pre-parse-kconfig", nargs=1)
     parser.add_argument("--gen-kconfig-options", nargs=1)
-    parser.add_argument("--resolved-theme-default", nargs=1)
     args = parser.parse_args()
 
     if args.verbose:
@@ -1304,37 +1317,6 @@ def main():
     if args.gen_kconfig_options:
         gen_kconfig_options(args.gen_kconfig_options[0:])
 
-    if args.resolved_theme_default:
-        # Query the resolved LED theme default for the Makefile.
-        # Reads from the pre-parsed pickle when it exists (O(1), and the only
-        # source that matters). Without one (first build, deleted out/ dir,
-        # old schema) the source of truth is still the Kconfig tree: parse
-        # the values file fresh and ask it, exactly as the pickle writer
-        # would have - never a hardcoded type->theme copy, which would go
-        # stale the moment a new vendor type ships its own theme.
-        values_file = args.resolved_theme_default[0]
-        base = os.path.basename(values_file)
-        pkl = os.path.join(os.environ.get("OUT", "out"), base + ".pickle")
-        if os.path.isfile(pkl):
-            try:
-                with open(pkl, "rb") as f:
-                    data = pickle.load(f)
-                if "default_theme_name" in data:
-                    print(data["default_theme_name"])
-                    return
-            except Exception:
-                pass  # unreadable pickle: fall through to the real parse
-        try:
-            print(KConfig(values_file).default_theme_name())
-        except Exception as e:
-            # No values file yet (first run) or values file that predates the
-            # theme choice: a Makefile parse-time query must not hard-fail,
-            # so answer the stock theme. Keep the caveat off stdout - the
-            # Makefile reads only that.
-            print("no parsed Kconfig and no '%s'; LED theme default "
-                  "assumed '%s' (%s)" % (values_file, DEFAULT_LED_THEME, e),
-                  file=sys.stderr)
-            print(DEFAULT_LED_THEME)
 
 
 if __name__ == "__main__":

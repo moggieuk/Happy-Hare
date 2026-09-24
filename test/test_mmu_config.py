@@ -1042,8 +1042,7 @@ class TestMultiUnitRender(unittest.TestCase):
         """
         Per-unit files carry a _<unit> suffix (Makefile:151-158) while mmu.cfg and
         mmu_macro_vars.cfg stay single. Insertion order IS include order for assemble(),
-        and Klipper's glob is sorted. The LED theme files (mmu/led_theme/) come last: the
-        unit's hardware file includes them, so their standalone position is irrelevant.
+        and Klipper's glob is sorted.
         """
         self.assertEqual(list(self.rendered), [
             'config/base/mmu.cfg',
@@ -1052,10 +1051,6 @@ class TestMultiUnitRender(unittest.TestCase):
             'config/base/mmu_macro_vars.cfg',
             'config/base/mmu_parameters_unit0.cfg',
             'config/base/mmu_parameters_unit1.cfg',
-            'config/led_theme/emu_leds_unit0.cfg',
-            'config/led_theme/emu_leds_unit1.cfg',
-            'config/led_theme/mmu_leds_unit0.cfg',
-            'config/led_theme/mmu_leds_unit1.cfg',
         ])
 
     def test_each_unit_gets_its_own_mcu_pins(self):
