@@ -42,6 +42,48 @@ class TestPinWarnings(unittest.TestCase):
                     self.set_symbols(**{pin: 'mcu:PA1'})
                     self.assertFalse(self.enabled(warning))
 
+    def test_the_bus_warning_follows_the_chip(self):
+        """An SPI chip needs a CS pin, not a UART one, and the reverse."""
+        for prefix, warning in (('GEAR', 'W23'), ('SELECTOR', 'W25')):
+            for chip, wanted, other in (('TMC2209', 'UART', 'CS'),
+                                        ('TMC2130', 'CS', 'UART'),
+                                        ('TMC5160', 'CS', 'UART'),
+                                        ('TMC2240_SPI', 'CS', 'UART'),
+                                        ('TMC2240_UART', 'UART', 'CS')):
+                with self.subTest(stepper=prefix, chip=chip):
+                    self.set_symbols(**{
+                        'CHOICE_%s_%s' % (prefix, chip): True,
+                        'PIN_%s_STEP' % prefix: 'mcu:PA1',
+                        'PIN_%s_DIR' % prefix: 'mcu:PA2',
+                        'PIN_%s_%s' % (prefix, wanted): '',
+                        'PIN_%s_%s' % (prefix, other): ''})
+                    self.assertTrue(self.enabled(warning),
+                                    'no %s pin for a %s' % (wanted, chip))
+                    self.set_symbols(**{'PIN_%s_%s' % (prefix, wanted): 'mcu:PC14'})
+                    self.assertFalse(self.enabled(warning))
+                    # The pin for the bus this chip does not speak is irrelevant
+                    self.set_symbols(**{'PIN_%s_%s' % (prefix, other): ''})
+                    self.assertFalse(self.enabled(warning))
+
+    def test_software_spi_needs_all_three_pins(self):
+        """Any one of the trio means software SPI, so all three must be set."""
+        for prefix, warning in (('GEAR', 'W27'), ('SELECTOR', 'W28')):
+            trio = ['PIN_%s_SPI_%s' % (prefix, p)
+                    for p in ('SCLK', 'MOSI', 'MISO')]
+            self.set_symbols(**{'CHOICE_%s_TMC5160' % prefix: True,
+                                'PIN_%s_CS' % prefix: 'mcu:PC14'})
+            self.set_symbols(**{pin: '' for pin in trio})
+            self.assertFalse(self.enabled(warning),
+                             'all three blank is hardware SPI, not a mistake')
+            for missing in trio:
+                with self.subTest(stepper=prefix, pin=missing):
+                    self.set_symbols(**{pin: 'mcu:PG%d' % i
+                                        for i, pin in enumerate(trio)})
+                    self.assertFalse(self.enabled(warning))
+                    self.set_symbols(**{missing: ''})
+                    self.assertTrue(self.enabled(warning))
+            self.set_symbols(**{pin: '' for pin in trio})
+
     def test_optional_pins_and_hardware_controlled_gear(self):
         self.set_symbols(PIN_GEAR_STEP='mcu:PA1', PIN_GEAR_DIR='mcu:PA2',
                          CHOICE_GEAR_TMC_NONE=True,

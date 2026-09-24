@@ -156,12 +156,21 @@ config W21
 @endrepeat@
 
 # Step/direction are required; enable and diagnostic pins may be unused.
-# UART is required only when a driver section is generated.
+# The bus pin is required only when a driver section is generated, and which
+# pin that is follows the chip.
 config W22
     def_bool y if PIN_GEAR_STEP = "" || PIN_GEAR_DIR = ""
 
 config W23
-    def_bool y if PARAM_GEAR_TMC != "" && PIN_GEAR_UART = ""
+    def_bool y if PARAM_GEAR_TMC != "" && \
+        ((BOOL_GEAR_TMC_SPI && PIN_GEAR_CS = "") || \
+         (!BOOL_GEAR_TMC_SPI && PIN_GEAR_UART = ""))
+
+config W27
+    def_bool y if BOOL_GEAR_TMC_SPI_SOFTWARE && \
+        (PIN_GEAR_SPI_SCLK = "" || \
+         PIN_GEAR_SPI_MOSI = "" || \
+         PIN_GEAR_SPI_MISO = "")
 
 # Only check additional motors that are present in the rendered configuration.
 @repeat var=i min=1 max=11@
@@ -169,14 +178,24 @@ config W22
     def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && (PIN_GEAR_STEP_$(i) = "" || PIN_GEAR_DIR_$(i) = "")
 
 config W23
-    def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && PARAM_GEAR_TMC != "" && PIN_GEAR_UART_$(i) = ""
+    def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && PARAM_GEAR_TMC != "" && \
+        ((BOOL_GEAR_TMC_SPI && PIN_GEAR_CS_$(i) = "") || \
+         (!BOOL_GEAR_TMC_SPI && PIN_GEAR_UART_$(i) = ""))
 @endrepeat@
 
 config W24
     def_bool y if MMU_HAS_SELECTOR_STEPPER && (PIN_SELECTOR_STEP = "" || PIN_SELECTOR_DIR = "")
 
 config W25
-    def_bool y if MMU_HAS_SELECTOR_STEPPER && PARAM_SELECTOR_TMC != "" && PIN_SELECTOR_UART = ""
+    def_bool y if MMU_HAS_SELECTOR_STEPPER && PARAM_SELECTOR_TMC != "" && \
+        ((BOOL_SELECTOR_TMC_SPI && PIN_SELECTOR_CS = "") || \
+         (!BOOL_SELECTOR_TMC_SPI && PIN_SELECTOR_UART = ""))
+
+config W28
+    def_bool y if MMU_HAS_SELECTOR_STEPPER && BOOL_SELECTOR_TMC_SPI_SOFTWARE && \
+        (PIN_SELECTOR_SPI_SCLK = "" || \
+         PIN_SELECTOR_SPI_MOSI = "" || \
+         PIN_SELECTOR_SPI_MISO = "")
 
 config W26
     def_bool y if PARAM_DESIGN_NUM_GATES > 0 && PARAM_NUM_GATES != PARAM_DESIGN_NUM_GATES
@@ -224,9 +243,11 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Servo gate angle count must match the number of gates"                            if W20
     comment "MMU heater is configured without a fixed heater fan"                              if W21
     comment "Gear motor(s) missing step or direction pins [Pins / TMC]"                        if W22
-    comment "Gear TMC driver(s) missing UART pins [Pins / TMC]"                                if W23
+    comment "Gear TMC driver(s) missing a UART or CS pin [Pins / TMC]"                         if W23
+    comment "Gear software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"            if W27
     comment "Selector stepper missing step or direction pins [Pins / TMC]"                     if W24
-    comment "Selector TMC driver missing UART pin [Pins / TMC]"                                if W25
+    comment "Selector TMC driver missing a UART or CS pin [Pins / TMC]"                        if W25
+    comment "Selector software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"        if W28
     comment "Gate count differs from the number expected for this MMU design"                  if W26
   endif
 endif
