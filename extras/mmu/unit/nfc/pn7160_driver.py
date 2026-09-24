@@ -1422,6 +1422,7 @@ class PN7160Driver:
 
 
     def init(self):
+        self.startup_warnings = []
         if self._handler.no_irq_mode and not self._handler.i2c_status_supported:
             raise PN7160PolledUnsupported(
                 "[%s pn7160] %s" % (self._name, POLLED_UNSUPPORTED_MSG))
@@ -1431,6 +1432,7 @@ class PN7160Driver:
         if not self._handler.i2c_status_supported:
             # Only IRQ mode gets here
             logger.warning("[%s pn7160] WARNING: %s", self._name, NO_STATUS_WARNING)
+            self.startup_warnings.append(NO_STATUS_WARNING)
         # Report WHY, not just whether. The two ways to lose the probe need completely
         # different responses from the user - "you turned it off with probe_polled" and
         # "your Klipper can't report an I2C NACK, so wire irq_pin or update"

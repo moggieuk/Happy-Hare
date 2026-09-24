@@ -179,12 +179,15 @@ class TestStartupWarning(unittest.TestCase):
         with self.assertLogs('mmu_rfid.reader', level='WARNING') as captured:
             drv.init()
         self.assertTrue(any('shut down the MCU' in line for line in captured.output))
+        self.assertEqual(len(drv.startup_warnings), 1)
+        self.assertIn('shut down the MCU', drv.startup_warnings[0])
 
     def test_no_warning_with_i2c_transfer(self):
         drv, _ = pn532(low_level_debug=True)
         with self.assertLogs('mmu_rfid.reader', level='INFO') as captured:
             drv.init()
         self.assertFalse(any('WARNING' in line for line in captured.output))
+        self.assertEqual(drv.startup_warnings, [])
 
 
 class TestSupportIsCheckedPerCall(unittest.TestCase):

@@ -61,6 +61,12 @@ two are deliberately different:
 
 Don't unify the two fallbacks.
 
+Driver warnings reach the console through `startup_warnings`: a driver's
+`init()` resets the list and appends to it, `MmuNfcReader.init()` copies it,
+and `MmuNfcManager._init_reader()` and `MMU_RFID_INIT` log each entry with
+`mmu.log_warning()`. The driver's own `logger.warning()` only reaches
+klippy.log, because drivers have no gcode or MMU access by design.
+
 `MmuNfcReader` (`mmu_nfc_reader.py`, ~785 lines) is the per-instance facade
 above drivers. Its own docstring (`:11-12`) states it excludes lane state
 machines, Spoolman lookups, LEDs, and scan-jog motion by design — those live

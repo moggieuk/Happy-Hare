@@ -787,12 +787,14 @@ class TestPn7160FastPolledFrames(unittest.TestCase):
             drv.init()
         self.assertTrue(drv.is_alive())
         self.assertTrue(any('shut down the MCU' in line for line in captured.output))
+        self.assertEqual(len(drv.startup_warnings), 1)
 
     def test_init_does_not_warn_with_status_support(self):
         drv = self._irq_driver(status_support=True)
         with self.assertLogs('mmu_rfid.reader', level='INFO') as captured:
             drv.init()
         self.assertFalse(any('WARNING' in line for line in captured.output))
+        self.assertEqual(drv.startup_warnings, [])
 
     def test_init_does_not_warn_when_setup_fails(self):
         """Klipper <= v0.13.0 never gets the reader up, so 'it works, but' would mislead."""
@@ -803,6 +805,7 @@ class TestPn7160FastPolledFrames(unittest.TestCase):
             with self.assertRaises(pn7160_driver.PN7160Error):
                 drv.init()
         warning.assert_not_called()
+        self.assertEqual(drv.startup_warnings, [])
 
     def test_init_refuses_polled_mode_on_status_less_firmware(self):
         reactor = _FakeReactor()

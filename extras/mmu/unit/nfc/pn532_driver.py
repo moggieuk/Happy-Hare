@@ -1148,8 +1148,10 @@ class PN532Driver(_PN532Base):
 
     def init(self):
         # Checked here, not in __init__: i2c_transfer_cmd is bound in build_config()
+        self.startup_warnings = []
         if not status_supported(self._i2c):
             logger.warning("[%s pn532/i2c] WARNING: %s", self._name, NO_STATUS_WARNING)
+            self.startup_warnings.append(NO_STATUS_WARNING)
         super().init()
 
     # ─────────────────────────────────────────────────────────────────────────

@@ -279,6 +279,7 @@ class MmuNfcReader:
                                                    interface=self.interface)
 
         self.alive = False
+        self.startup_warnings = []   # Driver warnings from the last init(), for the console
         self.last_uid = None
         self.last_target_info = None
         self.present = False
@@ -342,7 +343,10 @@ class MmuNfcReader:
         self.last_uid = None
         self.last_target_info = None
         self.present = False
+        self.startup_warnings = []
         self.reader.init()
+        # Drivers without the attribute (SPI, UART) have nothing to report
+        self.startup_warnings = list(getattr(self.reader, 'startup_warnings', None) or [])
         self._apply_rx_gain()
         self.alive = bool(self.reader.is_alive())
         return self.alive
@@ -764,6 +768,13 @@ class MmuNfcReader:
             gcmd.respond_info("mmu_nfc_reader %s: init error: %s" % (self.name, e))
             return
         gcmd.respond_info("mmu_nfc_reader %s: %s %s" % (self.name, self.reader_type, "OK" if alive else "not responding"))
+        mmu = getattr(getattr(self.mmu_unit, 'mmu_machine', None), 'mmu_controller', None)
+        for warning in self.startup_warnings:
+            msg = "NFC: reader '%s': %s" % (self.name, warning)
+            if mmu is not None:
+                mmu.log_warning(msg)
+            else:
+                gcmd.respond_info(msg)
 
 
     def _do_read(self, gcmd):
