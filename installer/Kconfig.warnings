@@ -1,13 +1,12 @@
 #
 # Highlight common config warnings as comments
 #
-# This is not exhaustive by any means.
-# It is just designed as an aid...
-#
 
 
+# -------------------------------------
 # Shared warnings should be checked on single unit configuration or
 # on the shared portion of a multi-unit config
+# -------------------------------------
 
 config SHOW_SHARED_WARNINGS
   bool
@@ -30,15 +29,15 @@ config SW4
         (PIN_BLOBIFIER_BUCKET_SWITCH = "" || PIN_BLOBIFIER_BUCKET_SWITCH = "^")
 
 config SW5
-    def_bool y if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_STEPPER && PARAM_BLOBIFIER_TMC != "" && \
+    def_bool y if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_STEPPER && \
+        PARAM_BLOBIFIER_TMC != "" && \
         ((BOOL_BLOBIFIER_TMC_SPI && PIN_BLOBIFIER_CS = "") || \
          (!BOOL_BLOBIFIER_TMC_SPI && PIN_BLOBIFIER_UART = ""))
 
 config SW6
-    def_bool y if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_STEPPER && BOOL_BLOBIFIER_TMC_SPI_SOFTWARE && \
-        (PIN_BLOBIFIER_SPI_SCLK = "" || \
-         PIN_BLOBIFIER_SPI_MOSI = "" || \
-         PIN_BLOBIFIER_SPI_MISO = "")
+    def_bool y if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_STEPPER && \
+        BOOL_BLOBIFIER_TMC_SPI_SOFTWARE && \
+        (PIN_BLOBIFIER_SPI_SCLK = "" || PIN_BLOBIFIER_SPI_MOSI = "" || PIN_BLOBIFIER_SPI_MISO = "")
 
 config SW7
     def_bool y if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_STEPPER && \
@@ -51,13 +50,14 @@ config SW7
 
 
 
-# Per-unit warning are checked when not running the separate
-# shared config
+# -------------------------------------
+# Per-unit warning are checked when not running the separate shared config
+# -------------------------------------
 
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=26@
+  @repeat var=i min=1 max=28@
     default y if W$(i)
   @endrepeat@
 
@@ -74,17 +74,22 @@ config W4
     def_bool y if PARAM_GATE_HOMING_ENDSTOP = ""
 
 config W5
-    def_bool y if !CHOICE_GATE_HOMING_ENDSTOP_EXIT && (PARAM_GATE_PARKING_DISTANCE > 0 || (!CHOICE_GATE_PRELOAD_ENDSTOP_EXIT && PARAM_GATE_PRELOAD_PARKING_DISTANCE > 0))
+    def_bool y if !CHOICE_GATE_HOMING_ENDSTOP_EXIT && \
+        (PARAM_GATE_PARKING_DISTANCE > 0 || \
+         (!CHOICE_GATE_PRELOAD_ENDSTOP_EXIT && \
+          PARAM_GATE_PRELOAD_PARKING_DISTANCE > 0))
 
 config W6
-    def_bool y if MMU_HAS_LEDS && PIN_NEOPIXEL = "" && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
+    def_bool y if MMU_HAS_LEDS && PIN_NEOPIXEL = "" && !MMU_HAS_PER_GATE_MCU && \
+        !CUSTOM_LED_SETUP
 
 config W7
     def_bool y if MMU_HAS_FANS && PIN_FAN = "" && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
 
 @repeat var=i min=0 max=11@
 config W7
-    def_bool y if MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP && PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i) && PIN_FAN_$(i) = ""
+    def_bool y if MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP && \
+        PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i) && PIN_FAN_$(i) = ""
 @endrepeat@
 
 config W8
@@ -94,20 +99,26 @@ config W9
     def_bool y if MMU_HAS_SENSOR_SHARED_EXIT && PIN_SHARED_EXIT_SENSOR = ""
 
 config W10
-    def_bool y if MMU_HAS_SENSOR_BUFFER_TENSION && PIN_BUFFER_TENSION = "" && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    def_bool y if MMU_HAS_SENSOR_BUFFER_TENSION && PIN_BUFFER_TENSION = "" && \
+        !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
 config W11
-    def_bool y if MMU_HAS_SENSOR_BUFFER_COMPRESSION && PIN_BUFFER_COMPRESSION = "" && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    def_bool y if MMU_HAS_SENSOR_BUFFER_COMPRESSION && PIN_BUFFER_COMPRESSION = "" && \
+        !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
 config W12
-    def_bool y if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL && PIN_BUFFER_ANALOG = "" && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    def_bool y if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL && PIN_BUFFER_ANALOG = "" && \
+        !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
 config W13
-    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER = ""
+    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && \
+        PARAM_FILAMENT_HEATER = ""
 
 @repeat var=i min=0 max=11@
 config W13
-    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && PARAM_NUM_GATES > $(i) && PARAM_FILAMENT_HEATER_GATE_$(i) && PARAM_FILAMENT_HEATER_$(i) = ""
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && \
+        PARAM_NUM_GATES > $(i) && PARAM_FILAMENT_HEATER_GATE_$(i) && \
+        PARAM_FILAMENT_HEATER_$(i) = ""
 @endrepeat@
 
 config W14
@@ -120,10 +131,15 @@ config W14
         PARAM_ENVIRONMENT_SENSOR_10 = "" && PARAM_ENVIRONMENT_SENSOR_11 = ""
 
 config W15
-    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && !(MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION || MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)
+    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && \
+        !(MMU_HAS_SENSOR_BUFFER_TENSION || \
+          MMU_HAS_SENSOR_BUFFER_COMPRESSION || \
+          MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)
 
 config W16
-    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && (MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION) && MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && \
+        (MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION) && \
+        MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
 
 # A forward NFC neighbor-eviction jog pushes a neighbor's filament past its gate, which is
 # only safe when each gate has its own exit path. Same rule (and same reason) as W5.
@@ -138,26 +154,31 @@ config W18
 # Same rule again, for the preload-context clear distance - preload can home/park via its own
 # endstop, so this is checked against that one instead (see W5's same nesting for why).
 config W19
-    def_bool y if !CHOICE_GATE_PRELOAD_ENDSTOP_EXIT && !CHOICE_GATE_HOMING_ENDSTOP_EXIT && PARAM_NFC_PRELOAD_CLEAR_DISTANCE > 0
+    def_bool y if !CHOICE_GATE_PRELOAD_ENDSTOP_EXIT && !CHOICE_GATE_HOMING_ENDSTOP_EXIT && \
+        PARAM_NFC_PRELOAD_CLEAR_DISTANCE > 0
 
 config W20
     bool
     array_size_mismatch PARAM_SERVO_GATE_ANGLES
 
 config W21
-    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && !MMU_HAS_HEATER_FANS
+    def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && \
+        !MMU_HAS_HEATER_FANS
 
 config W21
-    def_bool y if MMU_HAS_HEATER && MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && PIN_HEATER_FAN = ""
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && \
+        !CUSTOM_HEATER_FAN_SETUP && PIN_HEATER_FAN = ""
 
 @repeat var=i min=0 max=11@
 config W21
-    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && PARAM_NUM_GATES > $(i) && ((!CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_GATE_$(i)) || (CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_$(i) != "")) && (!PARAM_HEATER_FAN_GATE_$(i) || PIN_HEATER_FAN_$(i) = "")
+    def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && \
+        PARAM_NUM_GATES > $(i) && \
+        ((!CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_GATE_$(i)) || \
+         (CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_$(i) != "")) && \
+        (!PARAM_HEATER_FAN_GATE_$(i) || PIN_HEATER_FAN_$(i) = "")
 @endrepeat@
 
 # Step/direction are required; enable and diagnostic pins may be unused.
-# The bus pin is required only when a driver section is generated, and which
-# pin that is follows the chip.
 config W22
     def_bool y if PIN_GEAR_STEP = "" || PIN_GEAR_DIR = ""
 
@@ -166,16 +187,11 @@ config W23
         ((BOOL_GEAR_TMC_SPI && PIN_GEAR_CS = "") || \
          (!BOOL_GEAR_TMC_SPI && PIN_GEAR_UART = ""))
 
-config W27
-    def_bool y if BOOL_GEAR_TMC_SPI_SOFTWARE && \
-        (PIN_GEAR_SPI_SCLK = "" || \
-         PIN_GEAR_SPI_MOSI = "" || \
-         PIN_GEAR_SPI_MISO = "")
-
-# Only check additional motors that are present in the rendered configuration.
+# Check additional motors that are present in the rendered configuration.
 @repeat var=i min=1 max=11@
 config W22
-    def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && (PIN_GEAR_STEP_$(i) = "" || PIN_GEAR_DIR_$(i) = "")
+    def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && \
+        (PIN_GEAR_STEP_$(i) = "" || PIN_GEAR_DIR_$(i) = "")
 
 config W23
     def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && PARAM_GEAR_TMC != "" && \
@@ -191,14 +207,20 @@ config W25
         ((BOOL_SELECTOR_TMC_SPI && PIN_SELECTOR_CS = "") || \
          (!BOOL_SELECTOR_TMC_SPI && PIN_SELECTOR_UART = ""))
 
+config W26
+    def_bool y if PARAM_DESIGN_NUM_GATES > 0 && PARAM_NUM_GATES != PARAM_DESIGN_NUM_GATES
+
+config W27
+    def_bool y if BOOL_GEAR_TMC_SPI_SOFTWARE && \
+        (PIN_GEAR_SPI_SCLK = "" || \
+         PIN_GEAR_SPI_MOSI = "" || \
+         PIN_GEAR_SPI_MISO = "")
+
 config W28
     def_bool y if MMU_HAS_SELECTOR_STEPPER && BOOL_SELECTOR_TMC_SPI_SOFTWARE && \
         (PIN_SELECTOR_SPI_SCLK = "" || \
          PIN_SELECTOR_SPI_MOSI = "" || \
          PIN_SELECTOR_SPI_MISO = "")
-
-config W26
-    def_bool y if PARAM_DESIGN_NUM_GATES > 0 && PARAM_NUM_GATES != PARAM_DESIGN_NUM_GATES
 
 
 
@@ -244,10 +266,10 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "MMU heater is configured without a fixed heater fan"                              if W21
     comment "Gear motor(s) missing step or direction pins [Pins / TMC]"                        if W22
     comment "Gear TMC driver(s) missing a UART or CS pin [Pins / TMC]"                         if W23
-    comment "Gear software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"            if W27
     comment "Selector stepper missing step or direction pins [Pins / TMC]"                     if W24
     comment "Selector TMC driver missing a UART or CS pin [Pins / TMC]"                        if W25
-    comment "Selector software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"        if W28
     comment "Gate count differs from the number expected for this MMU design"                  if W26
+    comment "Gear software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"            if W27
+    comment "Selector software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"        if W28
   endif
 endif

@@ -1,6 +1,9 @@
 """Required motor pins must produce actionable menuconfig warnings."""
 
+import re
 import unittest
+
+import kconfiglib
 
 from test.hh import cfg
 
@@ -129,3 +132,30 @@ class TestPinWarnings(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestEveryWarningIsReachable(unittest.TestCase):
+    """The visibility gate is a @repeat over a fixed range.
+
+    Nothing ties that range to the warnings that exist, so a warning numbered
+    past the end is defined, evaluates correctly, and is never displayed -
+    which is exactly what happened to W27 and W28.
+    """
+
+    def test_the_gate_covers_every_warning_that_exists(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._new_kconfig('warning_gate')
+        for gate, prefix in (('SHOW_PER_UNIT_WARNINGS', 'W'),
+                             ('SHOW_SHARED_WARNINGS', 'SW')):
+            with self.subTest(gate=gate):
+                gated = {kconfiglib.expr_str(cond).split(' &&')[0]
+                         for _value, cond in kc.syms[gate].defaults}
+                defined = {name for name in kc.syms
+                           if re.fullmatch(prefix + r'\d+', name)
+                           and kc.syms[name].nodes}
+                missing = sorted(defined - gated,
+                                 key=lambda n: int(n[len(prefix):]))
+                self.assertEqual(
+                    missing, [],
+                    'these warnings can fire but %s will not show the block, '
+                    'so raise its @repeat max: %s' % (gate, ', '.join(missing)))
