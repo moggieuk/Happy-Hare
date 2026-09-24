@@ -31,6 +31,7 @@
 
 import logging
 import unittest
+from unittest import mock
 
 from collections import deque
 
@@ -769,6 +770,39 @@ class TestPn7160FastPolledFrames(unittest.TestCase):
         handler.irq_enabled = True
         handler.irq_state = 1
         self.assertEqual(handler.read_frame_once(), RF_DISCOVER_NTF)
+
+    def _irq_driver(self, status_support, setup=None):
+        reactor = _FakeReactor()
+        drv = PN7160Driver(_FakeConfig(_FakePrinter(reactor)),
+                           FakeI2c([], status_support=status_support),
+                           name="gate0", debug=0)
+        drv._handler.irq_enabled = True
+        drv._handler.initialized = True
+        drv._setup_for_read = setup or (lambda full=None: None)
+        return drv
+
+    def test_init_warns_in_irq_mode_on_status_less_firmware(self):
+        drv = self._irq_driver(status_support=False)
+        with self.assertLogs('mmu_rfid.reader', level='WARNING') as captured:
+            drv.init()
+        self.assertTrue(drv.is_alive())
+        self.assertTrue(any('shut down the MCU' in line for line in captured.output))
+
+    def test_init_does_not_warn_with_status_support(self):
+        drv = self._irq_driver(status_support=True)
+        with self.assertLogs('mmu_rfid.reader', level='INFO') as captured:
+            drv.init()
+        self.assertFalse(any('WARNING' in line for line in captured.output))
+
+    def test_init_does_not_warn_when_setup_fails(self):
+        """Klipper <= v0.13.0 never gets the reader up, so 'it works, but' would mislead."""
+        def fail(full=None):
+            raise pn7160_driver.PN7160Error("setup failed")
+        drv = self._irq_driver(status_support=False, setup=fail)
+        with mock.patch.object(pn7160_driver.logger, 'warning') as warning:
+            with self.assertRaises(pn7160_driver.PN7160Error):
+                drv.init()
+        warning.assert_not_called()
 
     def test_init_refuses_polled_mode_on_status_less_firmware(self):
         reactor = _FakeReactor()

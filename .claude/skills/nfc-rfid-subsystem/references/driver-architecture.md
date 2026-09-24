@@ -56,7 +56,8 @@ two are deliberately different:
   pending" from a NACK, and there a NACK is an MCU shutdown. Don't rely on
   the `retry=False` `TypeError` for this: it happens on Klipper ≤ v0.13.0,
   but Kalico's `i2c_read()` accepts `retry`. IRQ-mode reads still go through
-  `i2c_read(..., retry=False)`.
+  `i2c_read(..., retry=False)`, and once setup succeeds there (Kalico)
+  `init()` logs the same MCU-shutdown warning as the PN532.
 
 Don't unify the two fallbacks.
 

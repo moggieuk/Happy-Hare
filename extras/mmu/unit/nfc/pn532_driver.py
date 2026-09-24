@@ -104,7 +104,8 @@
 import time
 import traceback
 
-from .i2c_transport import I2CStatusError, status_supported, transfer_checked
+from .i2c_transport import (NO_STATUS_WARNING, I2CStatusError, status_supported,
+                            transfer_checked)
 from .log import logger
 from .rx_gain import RX_GAIN_CODES
 
@@ -1148,12 +1149,7 @@ class PN532Driver(_PN532Base):
     def init(self):
         # Checked here, not in __init__: i2c_transfer_cmd is bound in build_config()
         if not status_supported(self._i2c):
-            logger.warning(
-                "[%s pn532/i2c] WARNING: this Klipper/Kalico MCU firmware cannot "
-                "report an I2C NACK (no i2c_transfer command), so a wiring fault or "
-                "bus glitch on this reader will shut down the MCU instead of taking "
-                "the reader offline. Update to a Klipper with i2c_transfer to remove "
-                "this risk", self._name)
+            logger.warning("[%s pn532/i2c] WARNING: %s", self._name, NO_STATUS_WARNING)
         super().init()
 
     # ─────────────────────────────────────────────────────────────────────────

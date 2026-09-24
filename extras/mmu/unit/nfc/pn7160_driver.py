@@ -8,7 +8,8 @@
 # owns NCI and raw tag commands; tag_handler owns retry windows, payload parsing,
 # Spoolman lookups, and Happy Hare side effects.
 
-from .i2c_transport import I2CStatusError, status_supported, transfer_checked
+from .i2c_transport import (NO_STATUS_WARNING, I2CStatusError, status_supported,
+                            transfer_checked)
 from .log import logger
 from .rx_gain import RX_GAIN_CODES
 
@@ -1427,6 +1428,9 @@ class PN7160Driver:
         # connect_nci raises once its retries are exhausted, so this only runs on success
         self._setup_for_read(full=True)
         self._alive = True
+        if not self._handler.i2c_status_supported:
+            # Only IRQ mode gets here
+            logger.warning("[%s pn7160] WARNING: %s", self._name, NO_STATUS_WARNING)
         # Report WHY, not just whether. The two ways to lose the probe need completely
         # different responses from the user - "you turned it off with probe_polled" and
         # "your Klipper can't report an I2C NACK, so wire irq_pin or update"

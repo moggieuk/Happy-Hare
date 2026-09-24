@@ -15,6 +15,13 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 
+NO_STATUS_WARNING = (
+    "this Klipper/Kalico MCU firmware cannot report an I2C NACK (no i2c_transfer "
+    "command), so a wiring fault or bus glitch on this reader will shut down the MCU "
+    "instead of taking the reader offline. Update to a Klipper with i2c_transfer to "
+    "remove this risk")
+
+
 class I2CStatusError(Exception):
     def __init__(self, status, response=None, label=None):
         self.status = status

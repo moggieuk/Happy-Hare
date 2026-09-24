@@ -53,7 +53,8 @@
 #                                   # traffic at all; without it every read is on spec,
 #                                   # which needs MCU firmware with i2c_transfer to report
 #                                   # an I2C NACK. On Kalico irq_pin is required, and the
-#                                   # reader refuses to start without it
+#                                   # reader refuses to start without it; with it, it
+#                                   # warns at startup that an I2C fault stops the MCU
 #
 # Transport selection - 'interface'
 # ─────────────────────────────────
