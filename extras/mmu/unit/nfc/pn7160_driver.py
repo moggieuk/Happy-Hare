@@ -120,6 +120,17 @@ class PN7160I2CStatusError(I2CStatusError, PN7160Error):
     pass
 
 
+class PN7160PolledUnsupported(PN7160Error):
+    """Polled (no irq_pin) I/O refused: this firmware cannot report an I2C NACK."""
+    pass
+
+
+POLLED_UNSUPPORTED_MSG = (
+    "no irq_pin is wired and this Klipper/Kalico MCU firmware cannot report an I2C "
+    "NACK (no i2c_transfer command), so a polled read would risk an MCU shutdown. "
+    "Wire irq_pin, or update to a Klipper with i2c_transfer")
+
+
 def _hex(data, sep=' '):
     return sep.join("%02X" % (b & 0xff,) for b in data)
 
@@ -350,8 +361,19 @@ class PN7160Handler:
         self.initialized = False
 
 
+    def _refuse_unreported_polling(self, label):
+        # Polled mode learns "nothing pending" from a NACK. Where the MCU cannot
+        # report one (old Klipper, Kalico) command_i2c_read/_write shut the MCU
+        # down instead, so refuse before any byte reaches the bus.
+        if self.no_irq_mode:
+            raise PN7160PolledUnsupported(
+                "I2C%s refused: %s"
+                % ("" if label is None else " " + label, POLLED_UNSUPPORTED_MSG))
+
+
     def _i2c_write_safe(self, data, label=None):
         if not self.i2c_status_supported:
+            self._refuse_unreported_polling(label)
             try:
                 self.i2c.i2c_write(data, retry=False)
             except TypeError:
@@ -364,19 +386,13 @@ class PN7160Handler:
     def _i2c_transfer_safe(self, write, read_len, label=None):
         if not self.i2c_status_supported:
             # No status to inspect on this firmware, so this branch can never raise
-            # PN7160I2CStatusError - which is exactly what i2c_status_supported
-            # gates on: nothing may read on spec here.
+            # PN7160I2CStatusError, and polled mode is refused outright above.
             #
-            # And note what is deliberately NOT done: 'retry' is not a kwarg of
-            # bus.MCU_I2C.i2c_read() on released Klipper (<= v0.13.0), so this line
-            # raises TypeError there, wait_frame()'s bare except swallows it, and
-            # the reader reports not-alive without a single byte reaching the bus.
-            # Guarding the TypeError the way _i2c_write_safe above does would turn
-            # every polled read into a real read against firmware that SHUTS THE
-            # MCU DOWN on a NACK - and the PN7160 is not guaranteed to answer
-            # within no_irq_read_delay on a cold connect_nci. That trades a
-            # dead-reader message for a dead printer, so it stays as it is until
-            # polled mode itself is refused on such firmware.
+            # IRQ mode only reads once the NFCC has raised IRQ. 'retry' is still not
+            # a kwarg of bus.MCU_I2C.i2c_read() on Klipper <= v0.13.0, so there this
+            # raises TypeError and the reader reports not-alive without a byte
+            # reaching the bus; Kalico's i2c_read() accepts it.
+            self._refuse_unreported_polling(label)
             params = self.i2c.i2c_read(write, read_len, retry=False)
             return "SUCCESS", list(bytearray(params.get("response", [])))
         return transfer_checked(self.i2c, write, read_len, label=label,
@@ -1407,6 +1423,9 @@ class PN7160Driver:
 
 
     def init(self):
+        if self._handler.no_irq_mode and not self._handler.i2c_status_supported:
+            raise PN7160PolledUnsupported(
+                "[%s pn7160] %s" % (self._name, POLLED_UNSUPPORTED_MSG))
         # connect_nci raises once its retries are exhausted, so this only runs on success
         self._setup_for_read(full=True)
         self._alive = True

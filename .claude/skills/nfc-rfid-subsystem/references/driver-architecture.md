@@ -49,8 +49,13 @@ Only the supported path is shared. Each driver keeps its own fallback, and the
 two are deliberately different:
 - PN532 calls `i2c_read(write, n)` with no `retry=`, so it works on
   Klipper ≤ v0.13.0.
-- PN7160 passes `retry=False`, which raises `TypeError` on an old host. Its
-  polled reads therefore fail closed, and that is intentional.
+- PN7160 refuses all bus traffic in polled (no `irq_pin`) mode without
+  status support, raising `PN7160PolledUnsupported` before any byte is sent,
+  and `init()` fails fast with the reason. Polled mode learns "nothing
+  pending" from a NACK, and there a NACK is an MCU shutdown. Don't rely on
+  the `retry=False` `TypeError` for this: it happens on Klipper ≤ v0.13.0,
+  but Kalico's `i2c_read()` accepts `retry`. IRQ-mode reads still go through
+  `i2c_read(..., retry=False)`.
 
 Don't unify the two fallbacks.
 

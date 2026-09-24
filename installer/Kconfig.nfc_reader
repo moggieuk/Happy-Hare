@@ -326,6 +326,9 @@ if MMU_HAS_NFC_READER
           help
             Optional IRQ pin for the PN7160 reader.
             Don't forget to prefix with mcu name. E.g. mmu:PG13
+            Required unless the MCU firmware has Klipper's i2c_transfer
+            command: without it (older Klipper, Kalico) the reader
+            refuses to start rather than risk an MCU shutdown.
       endif
 
       config PARAM_NFC_READER_RX_GAIN
@@ -599,6 +602,9 @@ if MMU_HAS_NFC_READER
                 help
                   Optional IRQ pin for this gate's PN7160 reader.
                   Don't forget to prefix with mcu name. E.g. mmu:PG13
+                  Required unless the MCU firmware has Klipper's i2c_transfer
+                  command: without it (older Klipper, Kalico) the reader
+                  refuses to start rather than risk an MCU shutdown.
             endif
 
             config PARAM_NFC_READER_RX_GAIN_$(i)

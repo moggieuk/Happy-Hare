@@ -47,11 +47,12 @@
 #                                   # With MCU firmware new enough for i2c_transfer, an I2C
 #                                   # NACK takes the reader offline instead of the MCU
 #   #ven_pin: mcu:PG13              # pn7160 only, optional hardware enable/reset
-#   #irq_pin: mcu:PG14              # pn7160 only, optional - recommended for tag homing.
-#                                   # Wired, the presence probe asks the IRQ line and costs
-#                                   # no bus traffic at all; without it the probe reads on
-#                                   # spec once per tick, which works but needs a Klipper
-#                                   # new enough to report an I2C NACK
+#   #irq_pin: mcu:PG14              # pn7160 only, recommended for tag homing. Wired, the
+#                                   # presence probe asks the IRQ line and costs no bus
+#                                   # traffic at all; without it every read is on spec,
+#                                   # which needs MCU firmware with i2c_transfer to report
+#                                   # an I2C NACK. On older Klipper or Kalico, irq_pin is
+#                                   # required and the reader refuses to start without it
 #
 # Transport selection - 'interface'
 # ─────────────────────────────────
