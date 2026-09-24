@@ -44,6 +44,8 @@
 #   #i2c_mcu: mcu                   # which MCU owns the bus (default 'mcu')
 #   #i2c_bus:
 #   #i2c_speed: 100000              # Klipper rejects anything below 100000
+#                                   # With MCU firmware new enough for i2c_transfer, an I2C
+#                                   # NACK takes the reader offline instead of the MCU
 #   #ven_pin: mcu:PG13              # pn7160 only, optional hardware enable/reset
 #   #irq_pin: mcu:PG14              # pn7160 only, optional - recommended for tag homing.
 #                                   # Wired, the presence probe asks the IRQ line and costs

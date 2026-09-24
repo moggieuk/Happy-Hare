@@ -11,8 +11,13 @@
 # closely on purpose - see _lookup_sw_pins for what must stay faithful and why.
 #
 # Methods the drivers actually invoke: spi_send, spi_transfer (pn532_driver.py,
-# rc522_driver.py); i2c_write, i2c_read, i2c_transfer_cmd.send, get_i2c_address
-# (pn7160_driver.py:195,297-313).
+# rc522_driver.py); i2c_transfer_cmd.send, i2c_write, i2c_read, get_i2c_address
+# (pn532_driver.py, pn7160_driver.py, via i2c_transport.py).
+#
+# MCU_I2C models NEW firmware by default: i2c_transfer_cmd is set and the drivers
+# use it. Pass transfer_support=False (or set the attribute to None) to model
+# firmware that predates it, where they fall back to i2c_read/i2c_write - which,
+# like Klipper <= v0.13.0, take no retry= argument.
 #
 # Responses are SCRIPTED: a test loads a deque of canned byte replies and the real
 # driver code runs against them. When the script runs dry we raise ScriptExhausted
@@ -73,15 +78,17 @@ class MCU_SPI(_BusRecorder):
 
 
 class MCU_I2C(_BusRecorder):
-    def __init__(self, mcu, bus=None, addr=0, speed=100000, sw_pins=None):
+    def __init__(self, mcu, bus=None, addr=0, speed=100000, sw_pins=None,
+                 transfer_support=True):
         _BusRecorder.__init__(self, 'i2c[0x%02x]' % (addr,))
+        self.oid = 0
         self._mcu = mcu
         self.bus, self.addr, self.speed = bus, addr, speed
         # Software (bit-banged) I2C pins, or None for a hardware bus. Real
         # Klipper keeps these only to build the i2c_set_sw_bus command; the
         # harness stores them so tests can assert which mode was selected.
         self.sw_pins = sw_pins
-        self.i2c_transfer_cmd = _I2CTransferCmd(self)
+        self.i2c_transfer_cmd = _I2CTransferCmd(self) if transfer_support else None
 
     def get_mcu(self):
         return self._mcu
@@ -103,13 +110,22 @@ class MCU_I2C(_BusRecorder):
 
 
 class _I2CTransferCmd:
-    """pn7160_driver.py calls `i2c_transfer_cmd.send([oid, data])`."""
+    """i2c_transport.transfer_checked calls `send([oid, write, read_len], retry=False)`.
+
+    A scripted entry is either the response bytes (status SUCCESS) or a dict with
+    'i2c_bus_status' (and optionally 'response') to inject a NACK or bus timeout.
+    """
 
     def __init__(self, owner):
         self._owner = owner
 
-    def send(self, args, minclock=0, reqclock=0):
-        return {'response': self._owner._next('i2c_transfer', list(args))}
+    def send(self, args, minclock=0, reqclock=0, retry=True):
+        _oid, write, read_len = args
+        item = self._owner._next('i2c_transfer', (list(write), read_len))
+        if isinstance(item, dict):
+            return {'i2c_bus_status': item.get('i2c_bus_status', 'SUCCESS'),
+                    'response': list(item.get('response', []))}
+        return {'i2c_bus_status': 'SUCCESS', 'response': list(item)}
 
 
 def _lookup_sw_pins(config, prefix, names):

@@ -34,6 +34,26 @@ Four chip drivers, `extras/mmu/unit/nfc/`:
 - PN7160 only gets full-rate non-blocking probing with a wired `irq_pin`;
   without it, same blocking-shim fallback.
 
+**I2C NACK handling (`i2c_transport.py`).** Klipper's `bus.MCU_I2C.i2c_read()`
+and `i2c_write()` shut the printer down on a NACK. On new firmware that is the
+host-side `i2c_transfer()` wrapper calling `invoke_shutdown()`; on old firmware
+it is `command_i2c_read` in the MCU. So PN532-over-I2C and PN7160 send
+`i2c_transfer_cmd` themselves through `transfer_checked()`, which raises
+`I2CStatusError` (`PN7160I2CStatusError` is a subclass). Whether that path is
+available depends on each MCU's firmware, and `i2c_transfer_cmd` is only bound
+in `build_config()`, after the driver has been built. So `status_supported()`
+is checked on every call and never cached. The SPI and UART drivers have no
+NACK and so no equivalent.
+
+Only the supported path is shared. Each driver keeps its own fallback, and the
+two are deliberately different:
+- PN532 calls `i2c_read(write, n)` with no `retry=`, so it works on
+  Klipper ≤ v0.13.0.
+- PN7160 passes `retry=False`, which raises `TypeError` on an old host. Its
+  polled reads therefore fail closed, and that is intentional.
+
+Don't unify the two fallbacks.
+
 `MmuNfcReader` (`mmu_nfc_reader.py`, ~785 lines) is the per-instance facade
 above drivers. Its own docstring (`:11-12`) states it excludes lane state
 machines, Spoolman lookups, LEDs, and scan-jog motion by design — those live

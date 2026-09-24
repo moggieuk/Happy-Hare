@@ -104,6 +104,7 @@
 import time
 import traceback
 
+from .i2c_transport import I2CStatusError, status_supported, transfer_checked
 from .log import logger
 from .rx_gain import RX_GAIN_CODES
 
@@ -444,7 +445,12 @@ class _PN532Base:
     def _transceive(self, cmd_and_params, expected_cmd_resp,
                     read_len=_MAX_RESPONSE_BYTES, timeout=1.0):
         """Send a command frame and return the parsed response payload."""
-        self._send(cmd_and_params)
+        try:
+            self._send(cmd_and_params)
+        except I2CStatusError as e:
+            logger.info("[%s %s] _transceive: cmd=0x%02X write failed: %s",
+                        self._name, self._transport_name, cmd_and_params[0], e)
+            return None
         if not self._read_ack(timeout=min(max(timeout, 0.050), 1.000)):
             if self._debug >= 3:
                 logger.info("[%s %s] _transceive: no valid ACK for "
@@ -1179,6 +1185,22 @@ class PN532Driver(_PN532Base):
     # I2C transport
     # ─────────────────────────────────────────────────────────────────────────
 
+    # Status-checked when the MCU firmware has i2c_transfer, so a NACK raises
+    # I2CStatusError instead of shutting the MCU down. The fallback must not pass
+    # retry=: bus.MCU_I2C on Klipper <= v0.13.0 does not accept it.
+
+    def _i2c_read(self, length, label=None):
+        if status_supported(self._i2c):
+            return bytearray(transfer_checked(
+                self._i2c, [], length, label=label)[1])
+        return bytearray(self._i2c.i2c_read([], length)['response'])
+
+    def _i2c_write(self, data, label=None):
+        if status_supported(self._i2c):
+            transfer_checked(self._i2c, data, 0, label=label)
+            return
+        self._i2c.i2c_write(data)
+
     def _send(self, cmd_and_params):
         """Write a command frame to the PN532."""
         frame = self._build_frame(cmd_and_params)
@@ -1186,7 +1208,7 @@ class PN532Driver(_PN532Base):
             logger.info("[%s pn532/i2c] _send: TX  cmd=0x%02X  frame=%s",
                         self._name, cmd_and_params[0],
                         ' '.join('%02X' % b for b in frame))
-        self._i2c.i2c_write(frame)
+        self._i2c_write(frame, label='cmd')
 
     # -- Non-blocking probe primitives (see _PN532Base) ----------------------
     #
@@ -1196,24 +1218,24 @@ class PN532Driver(_PN532Base):
 
     def _probe_status_ready(self):
         """True if the PN532 has a frame waiting (one 1-byte status read)."""
-        raw = bytearray(self._i2c.i2c_read([], 1)['response'])
+        raw = self._i2c_read(1, label='status')
         return (raw[0] if raw else 0xFF) == 0x01
 
     def _probe_fetch_ack(self):
         """Read and validate the ACK frame. Only call when status is ready."""
-        raw = bytearray(self._i2c.i2c_read([], 7)['response'])
+        raw = self._i2c_read(7, label='ack')
         # The I2C read includes the leading status byte, so a good ACK is
         # 0x01 followed by the 6 ACK bytes.
         return len(raw) >= 7 and raw[0] == 0x01 and list(raw[1:]) == PN532_ACK
 
     def _probe_fetch_response(self, expected_cmd_resp, read_len):
         """Read and parse a response frame. Only call when status is ready."""
-        raw = bytearray(self._i2c.i2c_read([], read_len)['response'])
+        raw = self._i2c_read(read_len, label='response')
         return self._check_frame(raw, expected_cmd_resp)
 
     def _probe_send_abort(self):
         """Write a bare ACK frame to cancel the command in flight."""
-        self._i2c.i2c_write(list(PN532_ACK))
+        self._i2c_write(list(PN532_ACK), label='abort')
 
     def _read_ack(self, timeout=1.0, poll_interval=0.005):
         """
@@ -1226,9 +1248,11 @@ class PN532Driver(_PN532Base):
         deadline = self._now() + timeout
         while self._now() < deadline:
             try:
-                ready_result = self._i2c.i2c_read([], 1)
-                ready_raw = bytearray(ready_result['response'])
+                ready_raw = self._i2c_read(1, label='status')
                 status = ready_raw[0] if ready_raw else 0xFF
+            except I2CStatusError as e:
+                logger.info("[%s pn532/i2c] _read_ack: ready read failed: %s", self._name, e)
+                return False
             except Exception as e:
                 logger.error("[%s pn532/i2c] _read_ack: ready read failed: %s\n%s",
                           self._name, e, traceback.format_exc())
@@ -1241,8 +1265,7 @@ class PN532Driver(_PN532Base):
 
             if status == 0x01:
                 try:
-                    ack_result = self._i2c.i2c_read([], 7)
-                    raw = bytearray(ack_result['response'])
+                    raw = self._i2c_read(7, label='ack')
                     ack = list(raw[1:])
                     ok = len(raw) >= 7 and raw[0] == 0x01 and ack == PN532_ACK
                     if self._debug >= 4:
@@ -1251,6 +1274,9 @@ class PN532Driver(_PN532Base):
                                     ' '.join('%02X' % b for b in raw),
                                     ok)
                     return ok
+                except I2CStatusError as e:
+                    logger.info("[%s pn532/i2c] _read_ack: ACK read failed: %s", self._name, e)
+                    return False
                 except Exception as e:
                     logger.error("[%s pn532/i2c] _read_ack: ACK read failed: %s\n%s",
                               self._name, e, traceback.format_exc())
@@ -1283,9 +1309,11 @@ class PN532Driver(_PN532Base):
         deadline = self._now() + timeout
         while self._now() < deadline:
             try:
-                result = self._i2c.i2c_read([], 1)
-                raw1 = bytearray(result['response'])
+                raw1 = self._i2c_read(1, label='status')
                 pn_status = raw1[0] if raw1 else 0xFF
+            except I2CStatusError as e:
+                logger.info("[%s pn532/i2c] _recv: poll failed: %s", self._name, e)
+                return None
             except Exception as e:
                 logger.error("[%s pn532/i2c] _recv: poll failed: %s\n%s",
                           self._name, e, traceback.format_exc())
@@ -1299,8 +1327,7 @@ class PN532Driver(_PN532Base):
 
             if pn_status == 0x01:
                 try:
-                    params = self._i2c.i2c_read([], read_len)
-                    raw = bytearray(params['response'])
+                    raw = self._i2c_read(read_len, label='response')
                     payload = self._check_frame(raw, expected_cmd_resp)
                     if self._debug >= 4:
                         status_byte = raw[0] if raw else 0xFF
@@ -1320,6 +1347,9 @@ class PN532Driver(_PN532Base):
                                 self._name, expected_cmd_resp, status_byte,
                                 ' '.join('%02X' % b for b in raw) if raw else '(empty)')
                     return payload
+                except I2CStatusError as e:
+                    logger.info("[%s pn532/i2c] _recv: DATA read failed: %s", self._name, e)
+                    return None
                 except Exception as e:
                     logger.error("[%s pn532/i2c] _recv: DATA read failed: %s\n%s",
                               self._name, e, traceback.format_exc())
@@ -1345,7 +1375,7 @@ class PN532Driver(_PN532Base):
         """
         self._require_low_level_debug()
         payload = [b & 0xFF for b in data]
-        self._i2c.i2c_write(payload)
+        self._i2c_write(payload, label='raw_write')
         return payload
 
     def low_level_raw_read(self, length):
@@ -1355,14 +1385,13 @@ class PN532Driver(_PN532Base):
         The first byte returned by PN532 I2C reads is the PN532 status byte.
         """
         self._require_low_level_debug()
-        result = self._i2c.i2c_read([], length)
-        return list(bytearray(result.get('response', [])))
+        return list(self._i2c_read(length, label='raw_read'))
 
     def low_level_command_write(self, cmd_and_params):
         """Build and write a PN532 command frame without reading ACK/response."""
         self._require_low_level_debug()
         frame = self.low_level_command_frame(cmd_and_params)
-        self._i2c.i2c_write(frame)
+        self._i2c_write(frame, label='raw_cmd')
         return frame
 
     def low_level_ready_read(self):
@@ -1793,7 +1822,11 @@ def _ll_next(gcmd, label, command_base, next_args):
 
 def _ll_write(gcmd, reader, label, op, data):
     _ll_response(gcmd, label, "%s WRITE before: %s" % (op, _ll_hex(data)))
-    written = reader.low_level_raw_write(data)
+    try:
+        written = reader.low_level_raw_write(data)
+    except I2CStatusError as e:
+        # Anything but gcmd.error reaching the gcode dispatcher shuts Klipper down
+        raise gcmd.error("[%s]: %s WRITE failed: %s" % (label, op, e))
     _ll_response(gcmd, label, "%s WRITE after: OK" % op)
     return written
 
@@ -1806,7 +1839,10 @@ def _ll_command_write(gcmd, reader, label, op, cmd_and_params):
 
 def _ll_read(gcmd, reader, label, op, length):
     _ll_response(gcmd, label, "%s READ before: %d byte(s)" % (op, length))
-    data = reader.low_level_raw_read(length)
+    try:
+        data = reader.low_level_raw_read(length)
+    except I2CStatusError as e:
+        raise gcmd.error("[%s]: %s READ failed: %s" % (label, op, e))
     _ll_response(gcmd, label, "%s READ after: %s" % (op, _ll_hex(data)))
     return data
 

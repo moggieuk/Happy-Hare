@@ -8,6 +8,7 @@
 # owns NCI and raw tag commands; tag_handler owns retry windows, payload parsing,
 # Spoolman lookups, and Happy Hare side effects.
 
+from .i2c_transport import I2CStatusError, status_supported, transfer_checked
 from .log import logger
 from .rx_gain import RX_GAIN_CODES
 
@@ -115,15 +116,8 @@ class PN7160NoTag(PN7160Error):
     pass
 
 
-class PN7160I2CStatusError(PN7160Error):
-    def __init__(self, status, response=None, label=None):
-        self.status = status
-        self.response = [] if response is None else response
-        self.label = label
-        label_text = "" if label is None else " label=%s" % (label,)
-        PN7160Error.__init__(
-            self, "I2C%s status=%s response=%s"
-            % (label_text, status, _hex(self.response)))
+class PN7160I2CStatusError(I2CStatusError, PN7160Error):
+    pass
 
 
 def _hex(data, sep=' '):
@@ -286,7 +280,7 @@ class PN7160Handler:
         bus.MCU_I2C.i2c_transfer() wrapper invoke_shutdown()s on a NACK too, which
         is why _i2c_transfer_safe calls the raw command and reads the status itself.
         """
-        return getattr(self.i2c, "i2c_transfer_cmd", None) is not None
+        return status_supported(self.i2c)
 
     def _debug(self, msg, *args):
         if self.debug >= 4:
@@ -363,12 +357,8 @@ class PN7160Handler:
             except TypeError:
                 self.i2c.i2c_write(data)
             return
-        params = self.i2c.i2c_transfer_cmd.send(
-            [self.i2c.oid, data, 0], retry=False)
-        status = params.get("i2c_bus_status", "SUCCESS")
-        response = list(bytearray(params.get("response", [])))
-        if status != "SUCCESS":
-            raise PN7160I2CStatusError(status, response, label=label)
+        transfer_checked(self.i2c, data, 0, label=label,
+                         error_cls=PN7160I2CStatusError)
 
 
     def _i2c_transfer_safe(self, write, read_len, label=None):
@@ -389,13 +379,8 @@ class PN7160Handler:
             # polled mode itself is refused on such firmware.
             params = self.i2c.i2c_read(write, read_len, retry=False)
             return "SUCCESS", list(bytearray(params.get("response", [])))
-        params = self.i2c.i2c_transfer_cmd.send(
-            [self.i2c.oid, write, read_len], retry=False)
-        status = params.get("i2c_bus_status", "SUCCESS")
-        response = list(bytearray(params.get("response", [])))
-        if status != "SUCCESS":
-            raise PN7160I2CStatusError(status, response, label=label)
-        return status, response
+        return transfer_checked(self.i2c, write, read_len, label=label,
+                                error_cls=PN7160I2CStatusError)
 
 
     def write_frame(self, frame, label=None):
