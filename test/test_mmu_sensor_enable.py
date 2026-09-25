@@ -260,6 +260,50 @@ class SensorEnableRestartAndMainsailTestCase(unittest.TestCase):
         finally:
             hh.close()
 
+    def test_mainsail_toggle_by_short_name_persists_under_qualified_name(self):
+        """On a single-unit machine Mainsail sees 'mmu_shared_exit', not 'unit0:mmu_shared_exit'.
+        Its toggle must drive the same sensor, persist under the qualified name MMU_SENSORS uses,
+        and stay in step with MMU_SENSORS in both directions."""
+        hh = session('boxturtle')
+        hh.boot()
+        try:
+            sensor = hh.mmu.sensor_manager.all_sensors_map['unit0:mmu_shared_exit']
+            ui_obj = hh.printer.lookup_object('filament_switch_sensor mmu_shared_exit')
+            self.assertIs(ui_obj, sensor)
+            self.assertIsNone(hh.printer.lookup_object('filament_switch_sensor unit0:mmu_shared_exit', None))
+
+            hh.run_gcode('SET_FILAMENT_SENSOR SENSOR=mmu_shared_exit ENABLE=0')
+            self.assertFalse(sensor.runout_helper.sensor_enabled)
+            self.assertIsNone(hh.mmu.sensor_manager.check_sensor('mmu_shared_exit'))
+            self.assertEqual(hh.mmu.var_manager.get(VARS_MMU_SENSOR_ENABLED, {}),
+                             {'unit0:mmu_shared_exit': False})
+            hh.reactor.advance(0.) # let the SAVE_VARIABLE flush timer fire
+            self.assertEqual(read_vars_file(hh).get(VARS_MMU_SENSOR_ENABLED),
+                             {'unit0:mmu_shared_exit': False})
+
+            hh.run_gcode('MMU_SENSORS SENSOR=unit0:mmu_shared_exit ENABLE=1')
+            self.assertTrue(ui_obj.get_status(0)['enabled'])
+            self.assertEqual(hh.mmu.var_manager.get(VARS_MMU_SENSOR_ENABLED, {}), {})
+
+            hh.run_gcode('MMU_SENSORS SENSOR=unit0:mmu_shared_exit ENABLE=0')
+            self.assertFalse(ui_obj.get_status(0)['enabled'])
+            self.assertEqual(hh.errors, [])
+        finally:
+            hh.close()
+
+        hh2 = session('boxturtle')
+        hh2.boot(sensors_disabled=['unit0:mmu_shared_exit'])
+        try:
+            self.assertEqual(hh2.errors, [])
+            ui_obj = hh2.printer.lookup_object('filament_switch_sensor mmu_shared_exit')
+            self.assertFalse(ui_obj.get_status(0)['enabled'])
+
+            hh2.run_gcode('SET_FILAMENT_SENSOR SENSOR=mmu_shared_exit ENABLE=1')
+            self.assertTrue(ui_obj.runout_helper.sensor_enabled)
+            self.assertEqual(hh2.mmu.var_manager.get(VARS_MMU_SENSOR_ENABLED, {}), {})
+        finally:
+            hh2.close()
+
 
 class FlowGuardSuppressionTestCase(unittest.TestCase):
     """
