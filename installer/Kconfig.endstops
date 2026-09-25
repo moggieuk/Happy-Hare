@@ -337,4 +337,8 @@ menu "Endstops and Bowden movement"
     help
       Additional distance to advance in order to attempt to home to toolhead sensor
 
+  config PARAM_TOOLHEAD_UNLOAD_SAFETY_MARGIN
+    float
+    default 10
+
 endmenu
