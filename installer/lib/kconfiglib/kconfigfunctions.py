@@ -160,6 +160,58 @@ def menu_caption(_kconf, _name, multi_unit, message, suffix):
     return "Configuration - " + suffix
 
 
+_LED_THEME_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "..", "..", "..", "config", "led_theme")
+_LED_THEME_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_LED_THEME_HEADER_RE = re.compile(r"^\[#\s*LED THEME:\s*(.*?)\s*(#\])?\s*$")
+
+
+def led_themes(_kconf, _name, max_themes):
+    """Space separated, sorted theme names found in config/led_theme/."""
+    import kconfiglib
+    names = sorted(f[:-4] for f in os.listdir(_LED_THEME_DIR) if f.endswith(".cfg"))
+    bad = [n for n in names if not _LED_THEME_NAME_RE.match(n)]
+    if bad:
+        raise kconfiglib.KconfigError(
+            "LED theme file names must be lowercase [a-z0-9_]: %s" % ", ".join(bad))
+    if len(names) > int(max_themes):
+        raise kconfiglib.KconfigError(
+            "%d LED themes found but only %s are supported" % (len(names), max_themes))
+    return " ".join(names)
+
+
+def led_theme_choice(_kconf, _name, theme):
+    return "CHOICE_LED_THEME_" + theme.upper() if theme else "CHOICE_LED_THEME_NONE"
+
+
+def _led_theme_header(theme):
+    """(label, help) from a theme file's leading Jinja comment:
+    '[# LED THEME: <label>' then optional help lines, closed by '#]'."""
+    try:
+        with open(os.path.join(_LED_THEME_DIR, theme + ".cfg"), encoding="utf-8") as f:
+            match = _LED_THEME_HEADER_RE.match(f.readline())
+            if not match:
+                return theme, ""
+            help_lines = []
+            if not match.group(2):
+                for line in f:
+                    if line.strip().endswith("#]"):
+                        help_lines.append(line.rstrip()[:-2])
+                        break
+                    help_lines.append(line.rstrip())
+    except (OSError, ValueError):
+        return theme, ""
+    return match.group(1), "\n".join(line.strip() for line in help_lines).strip()
+
+
+def led_theme_label(_kconf, _name, theme):
+    return _led_theme_header(theme)[0]
+
+
+def led_theme_help(_kconf, _name, theme):
+    return _led_theme_header(theme)[1] or "LED effects from config/led_theme/%s.cfg" % theme
+
+
 def _config_path(kconf):
     filename = os.environ.get("KCONFIG_CONFIG", ".config")
     if os.path.exists(filename):
@@ -228,6 +280,10 @@ functions = {
     "hh-multiline": (multiline, 1, 1),
     "nonempty": (nonempty, 1, 1),
     "hh-pad": (pad, 2, 2),
+    "led-theme-choice": (led_theme_choice, 1, 1),
+    "led-theme-help": (led_theme_help, 1, 1),
+    "led-theme-label": (led_theme_label, 1, 1),
+    "led-themes": (led_themes, 1, 1),
     "path-exists": (path_exists, 1, 1),
     "path-is-dir": (path_is_dir, 1, 1),
     "path-join": (path_join, 2, 2),

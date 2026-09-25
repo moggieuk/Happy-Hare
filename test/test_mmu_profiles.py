@@ -49,6 +49,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
+import os
 import re
 import unittest
 
@@ -1041,133 +1042,102 @@ class TestAdcCompatMatrixOnRealMachine(unittest.TestCase):
 
 
 class TestLedThemes(unittest.TestCase):
-    """Theme presets render directly into hardware, retaining unit-scoped effects."""
+    """LED themes are config/led_theme/*.cfg files included into [mmu_leds]."""
 
-    def _rendered(self, name):
+    THEME_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             'config', 'led_theme')
+
+    def _kconfig(self, name, **syms):
         from test.hh import cfg, profiles
-        return cfg.render(profiles.get(name))
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            return cfg._kconfig('led_theme_%s_%s' % (name, len(syms)),
+                                dict(profiles.get(name).syms, **syms))
 
-    def test_stock_profile_renders_the_stock_theme_in_hardware(self):
+    def _leds(self, profile, unit='unit0'):
         from test.hh import cfg
-        rendered = self._rendered('boxturtle')
-        self.assertFalse(any('led_theme/' in name for name in rendered))
-        hardware = rendered['config/base/mmu_hardware.cfg']
-        self.assertNotIn('[include ', hardware)
-        self.assertEqual(sum(line.startswith('effect_') for line in hardware.splitlines()), 25)
-        parser = cfg.assemble(rendered)
-        self.assertEqual(dict(parser.items('mmu_leds unit0'))['effect_error'].split(',')[0], 'mmu_red_strobe')
+        return dict(cfg.assemble(cfg.render(profile)).items('mmu_leds %s' % unit))
 
-    def test_emu_profile_includes_the_vendor_theme(self):
-        rendered = self._rendered('emu')
+    def test_choice_members_match_the_theme_files(self):
+        themes = sorted(f[:-4] for f in os.listdir(self.THEME_DIR) if f.endswith('.cfg'))
+        choice = self._kconfig('boxturtle').named_choices['CHOICE_LED_THEME']
+        members = {s.name: s.nodes[0] for s in choice.syms if s.visibility}
+        self.assertEqual(sorted(members), ['CHOICE_LED_THEME_' + t.upper() for t in themes])
+        for theme in themes:
+            with open(os.path.join(self.THEME_DIR, theme + '.cfg')) as f:
+                header = re.match(r'\[# LED THEME: (.*?)\n(.*?)#\]', f.read(), re.S)
+            node = members['CHOICE_LED_THEME_' + theme.upper()]
+            self.assertEqual(node.prompt[0], header.group(1))
+            self.assertEqual(node.help, header.group(2).strip())
+            # menuconfig shows at most seven help lines
+            self.assertLessEqual(len(node.help.splitlines()), 7, theme)
 
-        hardware = [v for k, v in rendered.items() if k.startswith('config/base/mmu_hardware')]
-        includes = [l.strip() for l in hardware[0].splitlines() if l.startswith('[include ')]
-        self.assertEqual(includes, [])
+    def test_steering_defaults_name_existing_themes(self):
+        # Kconfig.leds defaults to 'standard' and Kconfig.emu to 'emu'
+        self.assertEqual(self._kconfig('boxturtle').get('PARAM_LED_THEME'), 'standard')
+        self.assertEqual(self._kconfig('emu').get('PARAM_LED_THEME'), 'emu')
+        self.assertEqual(self._kconfig('boxturtle', CHOICE_LED_THEME_EMU=True).get('PARAM_LED_THEME'), 'emu')
 
-        from test.hh import cfg
-        parser = cfg.assemble(rendered)
-        section = dict(parser.items('mmu_leds unit0'))
-        self.assertEqual(section['effect_gate_available'].split(',')[0],
-                         'mmu_static_white_dim_unit0')
-        self.assertIn('(0.1, 0.1, 0.1)', section['effect_gate_available'])
-        self.assertEqual(section['effect_gate_available_sel'].split(',')[0],
-                         'mmu_static_white_unit0')
-        self.assertIn('(0.75, 0.75, 0.75)', section['effect_gate_available_sel'])
-        self.assertEqual(section['effect_gate_empty_sel'].split(',')[0],
-                         'mmu_static_red_unit0')
-        self.assertIn('(0.2, 0, 0)', section['effect_gate_empty_sel'])
-        # The rest of the vendor theme is the stock set, so only these differ: the gate
-        # availability/selection effects, the loading/unloading speeds (swapped), and the
-        # checking effect. The comparison must be whitespace-insensitive for the same
-        # re-alignment reason as above.
-        stock = cfg.assemble(self._rendered('boxturtle'))
-        stock_section = dict(stock.items('mmu_leds unit0'))
+    def test_theme_label_is_not_rendered(self):
+        from test.hh import cfg, profiles
+        hardware = cfg.render(profiles.get('emu'))['config/base/mmu_hardware.cfg']
+        self.assertNotIn('LED THEME', hardware)
+
+    def test_stock_profile_renders_the_standard_theme(self):
+        from test.hh import profiles
+        leds = self._leds(profiles.get('boxturtle'))
+        self.assertEqual(sum(o.startswith('effect_') for o in leds), 25)
+        self.assertEqual(leds['effect_gate_available'].split(',')[0], 'mmu_static_green')
+
+    def test_emu_profile_renders_the_emu_theme(self):
+        from test.hh import profiles
 
         def canonical(value):
             return re.sub(r'\s+', ' ', value).strip()
 
-        differing = {o for o in stock_section
-                     if o.startswith('effect_')
-                     and canonical(stock_section[o]) != canonical(section[o])}
+        emu = self._leds(profiles.get('emu'))
+        stock = self._leds(profiles.get('boxturtle'))
+        differing = {o for o in stock if o.startswith('effect_')
+                     and canonical(stock[o]) != canonical(emu[o])}
         self.assertEqual(differing, {'effect_gate_available', 'effect_gate_available_sel',
                                      'effect_gate_empty_sel', 'effect_loading',
                                      'effect_loading_extruder', 'effect_unloading',
                                      'effect_unloading_extruder', 'effect_checking'})
+        self.assertEqual(emu['effect_gate_available'].split(',')[0], 'mmu_static_white_dim_unit0')
 
-        # The vendor theme's own effects are DEFINED in the theme file, named per unit (a
-        # section name is global, so an unsuffixed name would be defined once per unit);
-        # the stock theme defines none.
-        for name in ('mmu_static_white', 'mmu_static_white_dim', 'mmu_static_red'):
-            self.assertTrue(parser.has_section('mmu_led_effect %s_unit0' % name), name)
-        for k, v in rendered.items():
-            if k.startswith('config/led_theme/mmu_leds'):
-                self.assertFalse(any(l.startswith('[mmu_led_effect') for l in v.splitlines()),
-                                 'stock theme %s defines effects' % k)
-
-    def test_emu_theme_effects_are_defined_once_per_unit(self):
-        """Each unit's copy of the theme defines its own suffixed [mmu_led_effect] set, so
-        a multi-unit install never sees the same section name twice."""
-        from test.hh import cfg, profiles
-        two = profiles.clone_across_units('two_emus', profiles.get('emu'), ('unit0', 'unit1'),
-                                          description='two EMUs')
-        rendered = cfg.render(two)
-        names = [l.split()[1].rstrip(']') for k, v in rendered.items()
-                 if k.startswith('config/base/mmu_hardware')
-                 for l in v.splitlines() if l.startswith('[mmu_led_effect ')]
-        self.assertEqual(len(names), 6)
-        self.assertEqual(len(set(names)), 6, names)
-
-        parser = cfg.assemble(rendered)
-        for unit in ('unit0', 'unit1'):
-            for name in ('mmu_static_white', 'mmu_static_white_dim', 'mmu_static_red'):
-                self.assertTrue(parser.has_section('mmu_led_effect %s_%s' % (name, unit)),
-                                '%s_%s' % (name, unit))
-
-        # The whole chain - each suffixed effect set instantiated on its own unit -
-        # must survive a boot.
-        hh = session(two)
-        try:
-            hh.boot()
-            self.assertEqual(hh.errors, [])
-        finally:
-            hh.close()
-
-    def test_emu_theme_effects_only_target_their_own_unit(self):
-        # Vendor definitions must stay on their explicitly selected unit.
-        from test.hh import profiles
-        two = profiles.clone_across_units('scoped_emus', profiles.get('emu'),
-                                          ('unit0', 'unit1'), description='two EMUs')
-        hh = session(two)
-        try:
-            hh.boot()
-            handler = hh.printer.lookup_object('mmu_led_effect')
-            effects = [e for e in handler.effects if 'mmu_static_white_unit0' in e.name]
-            self.assertTrue(effects)
-            for effect in effects:
-                self.assertTrue(all(chain.startswith('unit0_mmu_')
-                                    for chain in effect.configChains), effect.name)
-        finally:
-            hh.close()
-
-    def test_mixed_themes_keep_shared_effects_and_scope_vendor_effects(self):
+    def test_mixed_themes_boot(self):
         from test.hh import cfg, profiles
         two = profiles.clone_across_units('mixed_themes', profiles.get('emu'),
                                           ('unit0', 'unit1'), description='mixed LED themes')
         two.units[1] = two.units[1].derive(syms={'CHOICE_LED_THEME_STANDARD': True})
-        rendered = cfg.render(two)
-        self.assertFalse(any('led_theme/' in name for name in rendered))
+        self.assertEqual(self._leds(two, 'unit0')['effect_gate_available'].split(',')[0],
+                         'mmu_static_white_dim_unit0')
+        self.assertEqual(self._leds(two, 'unit1')['effect_gate_available'].split(',')[0],
+                         'mmu_static_green')
         hh = session(two)
         try:
             hh.boot()
             self.assertEqual(hh.errors, [])
-            effects = hh.printer.lookup_object('mmu_led_effect').effects
-            vendor = [e for e in effects if 'mmu_static_white_unit0' in e.name]
-            self.assertTrue(vendor)
+        finally:
+            hh.close()
+
+    def test_emu_effects_are_defined_once_per_unit_and_only_on_it(self):
+        from test.hh import cfg, profiles
+        two = profiles.clone_across_units('two_emus', profiles.get('emu'), ('unit0', 'unit1'),
+                                          description='two EMUs')
+        parser = cfg.assemble(cfg.render(two))
+        for unit in ('unit0', 'unit1'):
+            for name in ('mmu_static_white', 'mmu_static_white_dim', 'mmu_static_red'):
+                section = 'mmu_led_effect %s_%s' % (name, unit)
+                self.assertEqual(parser.get(section, 'unit'), unit)
+        hh = session(two)
+        try:
+            hh.boot()
+            self.assertEqual(hh.errors, [])
+            effects = [e for e in hh.printer.lookup_object('mmu_led_effect').effects
+                       if 'mmu_static_white_unit0' in e.name]
+            self.assertTrue(effects)
             self.assertTrue(all(chain.startswith('unit0_mmu_')
-                                for e in vendor for chain in e.configChains))
-            shared = [e for e in effects if 'mmu_blue_clockwise_slow' in e.name]
-            self.assertEqual({chain.split('_mmu_')[0] for e in shared for chain in e.configChains},
-                             {'unit0', 'unit1'})
+                                for e in effects for chain in e.configChains))
         finally:
             hh.close()
 
@@ -1180,30 +1150,6 @@ class TestLedThemes(unittest.TestCase):
             hh.fileconfig.set(section, 'unit', 'typo')
             with self.assertRaisesRegex(Exception, "Unknown MMU unit 'typo'"):
                 MmuLedEffect(hh.config.getsection(section))
-        finally:
-            hh.close()
-
-    def test_choice_defaults_to_the_vendor_theme_on_emu(self):
-        """Selecting the EMU design must default the theme CHOICE itself, so the
-        LED submenu already reads EMU - the param may only follow from it."""
-        from test.hh import cfg, profiles
-        with cfg._env(cfg._SINGLE_UNIT_ENV):
-            kc = cfg._kconfig('emu_led_theme_choice_default', profiles.get('emu').syms)
-        self.assertEqual(kc.named_choices['CHOICE_LED_THEME'].selection.name,
-                         'CHOICE_LED_THEME_EMU')
-        self.assertEqual(kc.syms['PARAM_LED_THEME'].str_value, 'emu_leds')
-
-        with cfg._env(cfg._SINGLE_UNIT_ENV):
-            kc = cfg._kconfig('stock_led_theme_choice_default', profiles.get('boxturtle').syms)
-        self.assertEqual(kc.named_choices['CHOICE_LED_THEME'].selection.name,
-                         'CHOICE_LED_THEME_STANDARD')
-
-    def test_selected_theme_survives_a_boot(self):
-        """The EMU boot must not trip on the split section (it used to be one file)."""
-        hh = session('emu')
-        try:
-            hh.boot()
-            self.assertEqual(hh.errors, [])
         finally:
             hh.close()
 

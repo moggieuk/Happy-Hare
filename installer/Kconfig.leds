@@ -188,43 +188,35 @@ if MMU_HAS_LEDS
       default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
       default "filament_color"
 
+    # Choice members, labels and help are generated from config/led_theme/*.cfg (up to 10)
+    led_themes      := $(led-themes,10)
+    led_theme_count := $(word-count,$(led_themes))
+    led_theme        = $(word-at,$(led_themes),$(1))
+
     choice CHOICE_LED_THEME
-      prompt "Led theme       "
+      prompt "LED theme       "
       default CHOICE_LED_THEME_STANDARD
       help
-        Choose the effect defaults rendered into this unit's hardware config.
-        Refresh keeps the existing preset and edits. Merge uses this preset
-        for missing settings but retains existing effect mappings and edits.
-        Use Replace to fully apply the preset defaults.
+        The set of default LED effects for this unit's actions.
+        A theme change is fully applied only by a Replace install;
+        Refresh and Merge keep the effect settings already in
+        mmu_hardware.cfg and only fill in missing ones.
 
-      config CHOICE_LED_THEME_STANDARD
-        bool "Standard"
+      @repeat var=i min=1 max=10@
+      config $(led-theme-choice,$(led_theme,$(i)))
+        bool "$(led-theme-label,$(led_theme,$(i)))"
+        depends on $(led_theme_count) >= $(i)
         help
-          The stock effect set shipped with Happy Hare.
-
-      config CHOICE_LED_THEME_EMU
-        bool "EMU"
-        help
-          The EMU vendor effect set. The default for EMU machines.
-
-      config CHOICE_LED_THEME_CUSTOM
-        bool "Custom"
-        help
-          Keep the current theme and its edits in Refresh and Merge modes.
-          New installations and Replace start from the machine's default preset.
-          No separate theme file is installed.
+          $(led-theme-help,$(led_theme,$(i)))
+      @endrepeat@
     endchoice
 
     config PARAM_LED_THEME
       string
-      default "mmu_leds" if CHOICE_LED_THEME_STANDARD
-      default "emu_leds" if CHOICE_LED_THEME_EMU
-      default "custom"   if CHOICE_LED_THEME_CUSTOM
-      default "mmu_leds"
-      help
-        Source preset: mmu_leds or emu_leds. Custom preserves the current
-        preset's settings in mmu_hardware_<unit>.cfg. Theme source templates
-        are build-time inputs, not installed Klipper includes.
+      @repeat var=i min=1 max=10@
+      default "$(led_theme,$(i))" if $(led-theme-choice,$(led_theme,$(i)))
+      @endrepeat@
+      default "standard"
 
     comment "_"
 

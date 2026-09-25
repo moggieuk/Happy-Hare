@@ -249,11 +249,13 @@ install_targets := \
 
 # GNU make has no globstar: installer/**/Kconfig* matches one level only, so
 # the nested board and starter files need their own patterns or a change to
-# them never marks a config stale.
+# them never marks a config stale. The led_theme directory is listed because
+# its file names become CHOICE_LED_THEME members.
 kconfig_sources := \
 	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/*/Kconfig* \
 	           $(SRC)/installer/*/*/Kconfig*) \
-	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py
+	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py \
+	$(SRC)/config/led_theme
 
 
 ############################

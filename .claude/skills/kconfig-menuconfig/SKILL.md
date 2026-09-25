@@ -24,7 +24,7 @@ env vars ──(expanded at PARSE time)──▶ installer/Kconfig tree
                      .mmu_config  (+ .mmu_config_<unit> per unit in multi-unit)
                                           │ python -m installer.build --pre-parse-kconfig
                                           ▼   (KConfig.as_dict() → values + choices)
-                     out/.mmu_config.pickle   (regenerated only when .mmu_config is newer)
+                     out/.mmu_config.pickle   (regenerated when .mmu_config or a kconfig_source is newer)
                                           │ build_config_file(): render_template (Jinja, [[ ]] / [% %])
                                           ▼                              + HHConfig merge of the
                      out/mmu/*.cfg                              user's existing .cfg values
@@ -57,16 +57,21 @@ Load-bearing facts about the flow:
   (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_KLIPPER_HOME`, ...)
   steers the build (e.g. `unit_names`). Renaming such a symbol is a Makefile
   change too.
-- **Staleness**: `kconfig_sources` (Makefile:244) = every `installer/**/Kconfig*`
-  plus `kconfigfunctions.py`, compared by mtime against the value file; when
+- **Staleness**: `kconfig_sources` (Makefile:252) = every `installer/**/Kconfig*`
+  plus `kconfigfunctions.py`, `kconfiglib.py` and the `config/led_theme` directory
+  (its file names become `CHOICE_LED_THEME` members), compared by mtime against the value file
+  (a unit file is also compared against its top-level file, `KCONFIG_PARENT`); when
   stale, `olddefconfig` (never menuconfig) refreshes the file with new
   defaults. New `Kconfig*` files are picked up automatically by the wildcard;
   files with any other name are invisible to this mechanism.
-- **User values survive by design**: `olddefconfig` only fills in *new*
-  symbols' defaults; explicit user assignments in an existing `.mmu_config`
-  are preserved. This is why changing the *default or meaning of an existing*
-  symbol is a breaking change for installed machines (see CONTRIBUTING: such
-  changes "will probably be rejected").
+- **User values survive by design; recorded defaults do not**: explicit user
+  assignments in an existing `.mmu_config` are preserved, but a value saved
+  with `#~DEFAULT~#` (choices included) is recomputed by every `olddefconfig`
+  and menuconfig load. So changing the *default or meaning of an existing*
+  symbol or choice reaches installed machines that accepted it (see
+  CONTRIBUTING: such changes "will probably be rejected"). `olddefconfig.py`
+  prints every such change to stderr (`change_report`), which is what
+  `install.sh` shows under "Updating Kconfig defaults".
 - **Renaming a symbol discards the user's value unless it is in the rename
   table.** kconfiglib drops an assignment whose symbol no longer exists,
   `build.KConfig` runs with `warn_assign_undef = False`, and `Makefile` sends
@@ -180,8 +185,6 @@ installer/
                           # fans, leds, encoder, espooler, nfc_reader, ...
                           # Convention: "# Sets/Defines parameter tokens:" header
   mmu_types/ (+ starters/)  # rsource "Kconfig.*" — one file per machine type
-                            # (each inlines Kconfig.mmu_additions; see the
-                            #  cross-file section below)
   boards/ (+ custom/, per_gate/)  # MCU/board selection; pin defaults
   connection/           # MCU serial/CAN auto-discovery ($(shell) heavy)
   servos/  sensors/  toolheads/  macro_vars/
@@ -297,10 +300,10 @@ in this repo:
   do with scoping.
 - **The earliest-parsed default wins** for strings (`_node_ordered_string_default()`,
   kconfiglib.py:~5613 — also used by the *value-computation* path at :~5010,
-  so it decides both the computed value and the min-config write). `boards/Kconfig`
-  is sourced at Kconfig:275, *before* `Kconfig.mmu_additions` (:277), so a
-  satisfied machine-type (`mmu_types/Kconfig`, :273) or board default
-  beats a feature file's later `default ""`.
+  so it decides both the computed value and the min-config write). `mmu_types/Kconfig`
+  (Kconfig:~278) and `boards/Kconfig` (:~280) are sourced *before*
+  `Kconfig.mmu_additions` (:~281), so a satisfied machine-type or board
+  default beats a feature file's later `default ""`.
 - **`choice` members cannot come from another file.** A machine/board file may steer
   an *existing* choice with `default <CHOICE_MEMBER> if <cond>` only;
   the members themselves must be declared inside the `choice ... endchoice`
@@ -308,29 +311,23 @@ in this repo:
   first-satisfied over the merged `choice.defaults` list, in parse order
   (`Choice._selection_from_defaults`, kconfiglib.py:~6130) — put the new
   board-specific default line *above* the older, more general ones in that
-  order (for choices declared in a feature file, "above" is not the same as
-  "in an earlier-sourced file" — see the inlining bullet below).
-- **Feature files are inlined once per machine type.** Every
-  `mmu_types/Kconfig.*` (all 19, incl. `starters/`) sources
-  `Kconfig.mmu_additions` inside its own `if MMU_TYPE_X` block, wrapped in
-  `if SHOW_MMU_ADDITIONS_WITH_TYPE` (a `def_bool n`, no prompt, nothing
-  selects it — dormant UI option, root `Kconfig:~217`); the root also has a
-  fallback source at `Kconfig:~277` under `if !SHOW_MMU_ADDITIONS_WITH_TYPE`.
-  So a feature-file symbol has ~20 definition sites that all merge into ONE
-  object (for a choice: one shared Choice, `choice.defaults` accumulating in
-  parse order — introspect `kc.choices`, evaluate conditions with
-  module-level `kconfiglib.expr_value`; fork expr nodes are tuples, the tree
-  root is `kc.top_node`, line numbers are `linenr`). `_propagate_deps` ANDs
-  each copy's guards into its defaults, so while the dormant guard is n the
-  ~19 inlined copies' defaults are dead and the *live* general defaults are
-  the untyped root fallback's. Consequences: steering a feature-file choice
-  from anywhere in `mmu_types/` (sourced `Kconfig:~273`, before `:~277`) beats
-  the live general default — "above the older, more general ones" means
-  before the fallback copy in parse order, not "in an earlier-sourced file".
-  Keep the steering line above the type file's own additions source anyway
-  (it still wins if the dormant guard is ever enabled). This is also why a
-  `default ... if MMU_TYPE_X` left in the feature file happens to work:
-  the fallback copy carries it, first-satisfied.
+  order. A machine type or board file is parsed before the feature files
+  (next bullet), so its steering default is already ahead of theirs.
+  Members *can* be generated inside the block: an `@repeat` over a
+  `:=` list from a preprocessor function, each member hidden with
+  `depends on $(count) >= $(i)` and named from its value, not its index.
+  `Kconfig.leds`' `CHOICE_LED_THEME` (from `config/led_theme/*.cfg`) and
+  the CANbus UUID choice in `connection/Kconfig.mmu_mcu` are the examples.
+- **Feature files are sourced once.** `Kconfig.mmu_additions` (which
+  sources `Kconfig.leds`, `Kconfig.nfc_reader`, `Kconfig.td1`, ...) is
+  sourced only from the root, at `Kconfig:~281`, after `mmu_types/Kconfig`
+  (:~278) and `boards/Kconfig` (:~280). A feature-file symbol therefore has
+  one definition site of its own plus any re-declarations in type or board
+  files, all merged into ONE object (for a choice, `choice.defaults`
+  accumulates in parse order: introspect `kc.choices`, evaluate conditions
+  with module-level `kconfiglib.expr_value`; fork expr nodes are tuples, the
+  tree root is `kc.top_node`, line numbers are `linenr`). A `default ... if
+  MMU_TYPE_X` left in a feature file works, but belongs in the type file.
 - **Board type and per-gate MCU are mutually exclusive in the tree.**
   `boards/Kconfig` sources `boards/per_gate/` (EBB Gen1 / SLB) *instead of*
   the normal board set when `MMU_HAS_PER_GATE_MCU` is set — so
@@ -409,7 +406,9 @@ in this repo:
    new `@repeat` block. The established per-gate blocks (`Kconfig.pins`,
    `Kconfig.nfc_reader`, `Kconfig.environment_sensor`, ...) predate this
    guidance — don't add to that footprint, and unroll when you end up
-   editing one of them per-board anyway.
+   editing one of them per-board anyway. A list only known at parse time
+   (discovered devices, `config/led_theme/*.cfg`) is the justified
+   exception: fixed `max`, unused slots hidden by `depends on`.
 
 ## Quick reference
 

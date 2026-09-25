@@ -26,7 +26,6 @@ from jinja2  import Environment, FileSystemLoader, UndefinedError
 from pathlib import Path
 
 import kconfiglib
-from kconfiglib import _expr_depends_on
 from .parser   import ConfigBuilder, WhitespaceNode, PARSE_ERROR_MARKER
 from .upgrades import Upgrades
 
@@ -112,8 +111,6 @@ unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 
 LEVEL_NOTICE = 25
 
-DEFAULT_LED_THEME = "mmu_leds"  # no-LED units + fallback when unresolvable
-
 
 def kconfig_truthy(value):
     return value is True or value in ("y", "m", "1", 1)
@@ -125,37 +122,10 @@ class KConfig(kconfiglib.Kconfig):
     that provides a few convenience methods
     """
 
-    # Bump when the pickle schema changes (old pickles then reparse).
-    PICKLE_VERSION = 2
-
     def __init__(self, config_file):
         super(KConfig, self).__init__("Kconfig")
         self.load_config(config_file, filter_defaults=False)
         self.config_file = config_file
-
-    def default_theme_name(self):
-        """Machine's default LED theme from Kconfig, independent of the user's
-        selection; 'mmu_leds' for no-LED units (invisible choice)."""
-        if "PARAM_LED_THEME" not in self.syms:
-            return DEFAULT_LED_THEME
-        # _selection_from_defaults() ignores user selection; the answer relies
-        # on the EMU steering default being first-satisfied in choice.defaults.
-        member = self.named_choices["CHOICE_LED_THEME"]._selection_from_defaults()
-        if member is None:
-            return DEFAULT_LED_THEME  # no-LED unit (choice not visible)
-        # Find the PARAM_LED_THEME default whose condition depends on this member.
-        for val, cond in self.syms["PARAM_LED_THEME"].defaults:
-            if _expr_depends_on(cond, member):
-                return val.str_value
-        # A visible choice must map to a PARAM default; arriving here means the
-        # Kconfig mapping is misconfigured (e.g. a missing steering default in a
-        # vendor type file). Silently seeding a user-owned custom_<unit>.cfg from
-        # the wrong set would be the only symptom, so announce the fallback.
-        logging.warning(
-            "LED theme choice resolved to '%s' but no PARAM_LED_THEME default "
-            "matches it - assuming the '%s' theme; check the CHOICE_LED_THEME "
-            "steering default for this machine type" % (member.name, DEFAULT_LED_THEME))
-        return DEFAULT_LED_THEME
 
     def load_unit(self, unit_config_file):
         self.load_config(unit_config_file, filter_defaults=False)
@@ -315,15 +285,10 @@ class ParsedKConfig:
     Lightweight Kconfig with just essentials for pickling without getting to
     silly recursion depths pickling the Kconfig object graph. Depth was >20000!
     """
-    def __init__(self, config_file, values, choices, default_theme_name=DEFAULT_LED_THEME):
+    def __init__(self, config_file, values, choices):
         self.config_file = config_file
         self.values = values
         self.choices = choices
-        self._default_theme_name = default_theme_name
-
-    def default_theme_name(self):
-        """Return the machine's default LED theme (from pickle)."""
-        return self._default_theme_name
 
     def is_selected(self, choice, value):
         if isinstance(value, list):
@@ -586,10 +551,6 @@ def render_template(template_file, kcfg, extra_params):
         template = env.get_template(os.path.relpath(template_file))
         params = kcfg.as_dict()
         params.update(extra_params)
-        if os.path.relpath(template_file) == "config/base/mmu_hardware.cfg":
-            selected = _selected_theme(kcfg)
-            params.setdefault("LED_THEME_SELECTION", selected)
-            params.setdefault("LED_THEME_SOURCE", kcfg.default_theme_name() if selected == "custom" else selected)
         return template.render(params)
     except UndefinedError as ue:
         logging.error("%s while rendering '%s' with KConfig '%s'" % (str(ue), template_file, kcfg.config_file))
@@ -632,53 +593,9 @@ def build(cfg_file, dest_file, kconfig, input_files):
 #     v
 # OUT files installed back to live locations
 #
-
-def _default_theme_name(kcfg):
-    return kcfg.default_theme_name()
-
-
-def _selected_theme(kcfg):
-    """PARAM_LED_THEME, falling back to the machine default when it was never
-    explicitly set (a pickled ParsedKConfig may not carry it)."""
-    try:
-        value = kcfg.get("PARAM_LED_THEME")
-    except KeyError:
-        return _default_theme_name(kcfg)
-    return value if value else _default_theme_name(kcfg)
-
-
-def prepare_led_theme(kcfg, input_files, dest_file, refresh_mode):
-    """Choose the preset for this update mode."""
-    selected = _selected_theme(kcfg)
-    source = kcfg.default_theme_name() if selected == "custom" else selected
-    unit = kcfg.get("UNIT_NAME")
-    previous_source = None
-    hardware = next((p for p in input_files if Path(p).name == Path(dest_file).name), None)
-    if hardware and refresh_mode != "replace":
-        marker = re.search(r"^# HH_LED_THEME " + re.escape(unit) + r": (\w+) (\w+)$",
-                           Path(hardware).read_text(), re.M)
-        if marker:
-            previous, previous_source = marker.groups()
-    if previous_source:
-        if refresh_mode == "refresh" and selected != "custom":
-            # Refresh ignores changed menuconfig values, including the preset.
-            # Keep its marker too, so a later Merge can still apply the selection.
-            selected, source = previous, previous_source
-        elif selected == "custom":
-            source = previous_source
-    if not Path("config/led_theme/%s.cfg" % source).is_file():
-        raise ValueError("Unknown LED theme preset: %s" % source)
-    return {"LED_THEME_SELECTION": selected, "LED_THEME_SOURCE": source}
-
-
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
     dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
     logging.info("Building config file: %s" % dest_file_basename)
-
-    hardware_theme = cfg_file_basename == "config/base/mmu_hardware.cfg" and kcfg.is_enabled("MMU_HAS_LEDS")
-    refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
-    if hardware_theme:
-        extra_params = dict(extra_params, **prepare_led_theme(kcfg, input_files, dest_file, refresh_mode))
 
     # 1.Generate an aggregated master HHConfig for all HH input_files
     hhcfg = HHConfig(input_files)
@@ -707,18 +624,18 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder.read_buf(buffer)
     report_parse_errors(builder, cfg_file_basename)
 
-    if hardware_theme and refresh_mode != "replace":
-        # Carry user-added definitions along with their mappings. Only this
-        # unit's hardware file participates.
-        for path in input_files:
-            if Path(path).name != Path(dest_file).name:
-                continue
-            previous = ConfigBuilder(path)
-            for section in previous.sections(scope="included"):
+    refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
+
+    if cfg_file_basename == "config/base/mmu_hardware.cfg" and refresh_mode != "replace":
+        # Installed effect mappings are kept, so keep the [mmu_led_effect] sections they
+        # may reference even when the selected LED theme no longer defines them
+        for path in (p for p in input_files if Path(p).name == Path(dest_file).name):
+            installed = ConfigBuilder(path)
+            for section in installed.sections(scope="included"):
                 if section.startswith("mmu_led_effect ") and not builder.has_section(section):
                     builder.add_section(section)
-                    for option in previous.options(section):
-                        builder.copy_option(previous, section, option)
+                    for option in installed.options(section):
+                        builder.copy_option(installed, section, option)
 
     # 5.Special case cfg files that contains parameters so we can add back any optional,
     #   hidden or supplemental params because they are not present in cfg template
@@ -737,7 +654,6 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         add_supplemental_params(builder, hhcfg, "mmu_parameters")
 
     # 6.Determine how much of the HHConfig (existing .cfg's) do we re-apply
-
     if refresh_mode == 'refresh':
         # Default choice (always used when menuconfig UI is not run)
         # Here we use the refreshed cfg templates as a starting point but
@@ -1047,8 +963,6 @@ def pre_parse_kconfig(kconfig):
                 for name, choice in kcfg.named_choices.items()
                 if choice.user_selection or choice.selection
             },
-            "pickle_version": KConfig.PICKLE_VERSION,
-            "default_theme_name": kcfg.default_theme_name(),
         }
         with open(tmp_file, "wb") as f:
             pickle.dump(data, f)
@@ -1073,18 +987,10 @@ def load_parsed_kconfig(kconfig):
         with open(pickle_file, "rb") as f:
             data = pickle.load(f)
 
-            # Outdated pickle (schema bump or missing key) -> reparse.
-            if data.get("pickle_version") != KConfig.PICKLE_VERSION or \
-               "default_theme_name" not in data:
-                logging.info("Pickle %s is outdated (v%s, expected v%s); reparsing from source each build until the values file is refreshed (menuconfig/olddefconfig)" % (
-                    pickle_file, data.get("pickle_version", "(none)"), KConfig.PICKLE_VERSION))
-                return KConfig(kconfig)
-
             return ParsedKConfig(
                 data["config_file"],
                 data["values"],
-                data.get("choices", {}),
-                data.get("default_theme_name", DEFAULT_LED_THEME)
+                data.get("choices", {})
             )
 
     except FileNotFoundError:
@@ -1300,7 +1206,6 @@ def main():
 
     if args.gen_kconfig_options:
         gen_kconfig_options(args.gen_kconfig_options[0:])
-
 
 
 if __name__ == "__main__":

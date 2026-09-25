@@ -3961,6 +3961,9 @@ class Kconfig(object):
                 add_line(expline[indent:])
 
         node.help = "".join(lines).rstrip()
+        # Happy Hare: expand macros so help text can come from a function
+        if "$(" in node.help:
+            node.help = self._expand_whole(node.help, ()).rstrip()
 
         if line:
             self._line_after_help(line)

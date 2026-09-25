@@ -72,6 +72,8 @@
 #     from a renamed symbol to its replacement at load time. Add an entry in
 #     the same commit as the rename. Cannot be used for a symbol that make or
 #     install.sh reads by name, since both read the file before this runs.
+# 15. $(macro) references expand in help text, so a function can supply it
+#     (e.g. the LED theme help read from config/led_theme/<theme>.cfg).
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

@@ -118,7 +118,10 @@ once expanded and can be nested.
   dynamic — it is a source-author convenience, not a mechanism. A new
   loop with a static count should be **unrolled in the file**; keep
   `@repeat` for the established per-gate blocks where editing one block
-  beats editing twelve, and don't grow that footprint.
+  beats editing twelve, and don't grow that footprint. The exception is a
+  list only known at parse time (discovered serial/CAN devices, LED theme
+  files): a fixed `max` with `depends on $(count) >= $(i)` hiding the
+  unused slots, as in `connection/Kconfig.mmu_mcu` and `Kconfig.leds`.
 - `@if <ENV_VAR>@ ... @endif@` / `@ifnot <ENV_VAR>@ ... @endif@` — the
   block's lines are only fed to the tokenizer when the *environment* variable
   named by the arg is set to a truthy value (`y/yes/1/true`, case-insensitive;
@@ -206,8 +209,8 @@ pickleable dict — `values` (from `as_dict()`) plus `choices`
 `ParsedKConfig` that implements the same accessor surface
 (`get/getint/is_enabled/is_selected/as_dict`). Full-`Kconfig` pickling was
 abandoned at >20 000 recursion depth. The Makefile regenerates the pickle
-only when the source value file is newer (`out/*.pickle: $(KCONFIG_CONFIG)`,
-:524-528), and `make verify_pickle` runs
+when the source value file or any of `kconfig_sources` is newer
+(`out/*.pickle: $(KCONFIG_CONFIG) $(kconfig_sources)`), and `make verify_pickle` runs
 `lib/kconfiglib/test_kconfig_pickle_consistency.py` against each — that
 script re-reads the raw file with *stock* kconfiglib semantics and compares,
 so it catches `as_dict` regressions without importing HH code.
@@ -224,18 +227,27 @@ are why board files can override feature-file defaults):
   satisfied — plain `default` and `generated_default` entries interleave in
   that order. First-satisfied wins, NOT last-wins (unlike stock C kconfig's
   later-override).
-- **Conditions are evaluated exactly as written**: the parser
-  (kconfiglib.py:3608-3610) stores only the explicit `default <val> if <cond>`
-  expression; the node's enclosing `if`/`depends` block is **not** auto-ANDed
-  in. When re-declaring a symbol from another file, repeat the relevant
-  symbol in the default's own `if`.
-- **Parse order decides**: `installer/Kconfig` sources `boards/Kconfig` at
-  :277, *before* `Kconfig.mmu_additions` at :279 (and the per-topic feature
-  files it pulls in) — so a board file's satisfied default beats a later
-  feature-file `default ""`.
+- **Enclosing blocks scope a default**: the parser stores the explicit
+  `default <val> if <cond>` expression, then `_propagate_deps` ANDs in the
+  node's `depends on` and every enclosing `if`/`menu`. So a plain `default`
+  inside a type file's `if MMU_TYPE_X` block needs no repeated condition.
+- **Parse order decides**: `installer/Kconfig` sources `mmu_types/Kconfig`
+  (:~278) and `boards/Kconfig` (:~280) *before* `Kconfig.mmu_additions`
+  (:~281, and the per-topic feature files it pulls in) — so a type or board
+  file's satisfied default beats a later feature-file `default ""`.
 - **Choices**: selection from defaults is first-satisfied in the order the
   `default <member>` lines are written (`Choice._selection_from_defaults`,
   kconfiglib.py:~6130; member visibility is also checked). Only members of
   the *same* choice (same file) can be defaulted; steering an existing
   choice from another file means adding a `default <member> if <cond>` line
   above the older ones.
+
+## 16. Macros expand in help text
+
+`_parse_help` runs the collected help text through `_expand_whole` when it
+contains `$(`, so a preprocessor function can supply help. `Kconfig.leds`
+uses it for each generated `CHOICE_LED_THEME` member:
+`$(led-theme-help,$(led_theme,$(i)))` returns the help lines from the theme
+file's leading `[# LED THEME: <label> ... #]` Jinja comment. `@repeat` has
+already substituted `$(i)` by then, so existing help that mentions a gate
+number is unaffected.

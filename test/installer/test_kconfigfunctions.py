@@ -55,6 +55,50 @@ class TestBasicFunctions(unittest.TestCase):
         self.assertEqual(funcs.multiline(None, None, ''), '')
 
 
+class TestLedThemeFunctions(unittest.TestCase):
+
+    def themes(self, files, max_themes='10'):
+        with tempfile.TemporaryDirectory() as root:
+            for name, first_line in files.items():
+                with open(os.path.join(root, name), 'w') as handle:
+                    handle.write(first_line + '\neffect_error: mmu_red_strobe, (1, 0, 0)\n')
+            with mock.patch.object(funcs, '_LED_THEME_DIR', root):
+                names = funcs.led_themes(None, None, max_themes)
+                return names, [funcs.led_theme_label(None, None, n) for n in names.split()]
+
+    def test_names_are_sorted_and_labelled_from_the_header(self):
+        self.assertEqual(self.themes({'standard.cfg': '[# LED THEME: Standard #]',
+                                      'emu.cfg': '[# LED THEME: EMU #]',
+                                      'README': 'not a theme'}),
+                         ('emu standard', ['EMU', 'Standard']))
+
+    def test_label_falls_back_to_the_name(self):
+        self.assertEqual(self.themes({'plain.cfg': '# no label'}), ('plain', ['plain']))
+
+    def test_help_is_read_from_the_header_comment(self):
+        with tempfile.TemporaryDirectory() as root:
+            with open(os.path.join(root, 'emu.cfg'), 'w') as handle:
+                handle.write('[# LED THEME: EMU\n  First line.\n  Second line.\n#]\neffect_error: x\n')
+            with open(os.path.join(root, 'plain.cfg'), 'w') as handle:
+                handle.write('[# LED THEME: Plain #]\neffect_error: x\n')
+            with mock.patch.object(funcs, '_LED_THEME_DIR', root):
+                self.assertEqual(funcs.led_theme_label(None, None, 'emu'), 'EMU')
+                self.assertEqual(funcs.led_theme_help(None, None, 'emu'), 'First line.\nSecond line.')
+                self.assertEqual(funcs.led_theme_label(None, None, 'plain'), 'Plain')
+                self.assertEqual(funcs.led_theme_help(None, None, 'plain'),
+                                 'LED effects from config/led_theme/plain.cfg')
+
+    def test_bad_names_and_too_many_themes_are_errors(self):
+        import kconfiglib
+        with self.assertRaisesRegex(kconfiglib.KconfigError, 'lowercase'):
+            self.themes({'My-Theme.cfg': ''})
+        with self.assertRaisesRegex(kconfiglib.KconfigError, 'only 1'):
+            self.themes({'a.cfg': '', 'b.cfg': ''}, max_themes='1')
+
+    def test_choice_names(self):
+        self.assertEqual(funcs.led_theme_choice(None, None, 'emu'), 'CHOICE_LED_THEME_EMU')
+        self.assertEqual(funcs.led_theme_choice(None, None, ''), 'CHOICE_LED_THEME_NONE')
+
 class TestConnectionFunctions(unittest.TestCase):
 
     DEVICES = ('/dev/serial/by-id/usb-Klipper_stm32-AAA '
