@@ -1496,7 +1496,7 @@ def _draw_main():
         help_text = getattr(node, "help", None)
         help_lines = help_text.split("\n") if help_text else []  # Happy Hare: Retain line formatting
         for i in range(min(_SHOW_HELP_HEIGHT, len(help_lines))):
-            _safe_addstr(_help_win, i, 1, help_lines[i])
+            _safe_addstr_markup(_help_win, i, 1, help_lines[i], _style["show-help"]) # Happy Hare: Allow markup
 
         # Happy Hare: Reset the background of the main help lines
         _set_style(_help_win, "help")
@@ -2924,7 +2924,7 @@ def _draw_info_dialog(node, lines, scroll, top_line_win, text_win,
     text_win.erase()
 
     for i, line in enumerate(lines[scroll:scroll + text_win_height]):
-        _safe_addstr(text_win, i, 0, line)
+        _safe_addstr_markup(text_win, i, 0, line, _style["text"]) # Happy Hare: Allow markup
 
     text_win.noutrefresh()
 

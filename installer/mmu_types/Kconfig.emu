@@ -151,6 +151,42 @@ if MMU_TYPE_EMU_1_0
   config PARAM_COLOR_ORDER
     default "GRBW"
   
+  # LED effects override -------------------
+  config PARAM_EFFECT_LOADING
+    default "mmu_blue_clockwise_fast,   (0, 0, 0.4)"
+  config PARAM_EFFECT_LOADING_EXTRUDER
+    default "mmu_blue_clockwise_slow,   (0, 0, 1)"
+  config PARAM_EFFECT_UNLOADING
+    default "mmu_blue_anticlock_fast,   (0, 0, 0.4)"
+  config PARAM_EFFECT_UNLOADING_EXTRUDER
+    default "mmu_blue_anticlock_slow,   (0, 0, 1)"
+  config PARAM_EFFECT_CHECKING
+    default "mmu_breathing_white_fast,  (0.8, 0.8, 0.8)"
+  config PARAM_EFFECT_GATE_AVAILABLE
+    default "mmu_static_white_dim_$(UNIT_NAME), (0.1, 0.1, 0.1)"
+  config PARAM_EFFECT_GATE_AVAILABLE_SEL
+    default "mmu_static_white_$(UNIT_NAME),    (0.75, 0.75, 0.75)"
+  config PARAM_EFFECT_GATE_EMPTY_SEL
+    default "mmu_static_red_$(UNIT_NAME),      (0.2, 0, 0)"
+
+  config PARAM_MISC_LED_EFFECTS
+    default "$(ml,\
+[mmu_led_effect mmu_static_white_$(UNIT_NAME)]\n\
+unit      : $(UNIT_NAME)\n\
+define_on : gates$(comma) exit\n\
+layers    : static 0 0 top (1.0$(comma)1.0$(comma)1.0$(comma) 1.0)\n\
+\n\
+[mmu_led_effect mmu_static_white_dim_$(UNIT_NAME)]\n\
+unit      : $(UNIT_NAME)\n\
+define_on : gates$(comma) exit\n\
+layers    : static 0 0 top (0.1$(comma)0.1$(comma)0.1$(comma) 0.1)\n\
+\n\
+[mmu_led_effect mmu_static_red_$(UNIT_NAME)]\n\
+unit      : $(UNIT_NAME)\n\
+define_on : gates$(comma) exit\n\
+layers    : static 0 0 top (0.5$(comma)0.0$(comma)0.0)\n\
+)"
+
   if BOARD_TYPE_SLB_1_0
     config PARAM_ENTRY_LEDS
       generated_default "neopixel:_$(UNIT_NAME)_gate%i_box (1)" "" "; " PARAM_NUM_GATES

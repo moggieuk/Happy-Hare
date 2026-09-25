@@ -1824,7 +1824,7 @@ class Kconfig(object):
                 # as such so they can be ignored on reloading .config and thus reset
                 if (
                     isinstance(item, Symbol) and
-                    not item._was_set and
+                    (not item._was_set or _saved_as_default(item)) and
                     item.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_'))
                 ) or (
                     isinstance(item, Choice) and
@@ -3629,6 +3629,12 @@ class Kconfig(object):
                     self._parse_error("forceshow is only valid for symbols and menus")
 
                 node.forceshow = True
+
+            elif t0 is _T_DEFAULT_WHEN_HIDDEN: # Happy Hare: Added to save hidden symbols as defaults
+                if node.item.__class__ is not Symbol and node.item is not MENU:
+                    self._parse_error("default_when_hidden is only valid for symbols and menus")
+
+                node.default_when_hidden = True
 
             elif t0 is _T_ARRAY_EDITOR: # Happy Hare: Added multi-line/array editor for STRING symbols
                 if node.item.__class__ is not Symbol:
@@ -6407,6 +6413,7 @@ class MenuNode(object):
         "implies",
         "ranges",
         "forceshow",   # Happy Hare: Added to force UI visibility
+        "default_when_hidden", # Happy Hare: Added, see _saved_as_default()
     )
 
     def __init__(self):
@@ -7377,6 +7384,21 @@ def _locs(sc):
 # Menu manipulation
 
 
+# Happy Hare: Added
+def _saved_as_default(sym):
+    # A symbol whose prompt is hidden is written with its default value. Under a
+    # 'default_when_hidden' node, record it as a default too, so a user value that
+    # no longer applies is not frozen in the saved configuration.
+    if sym.visibility or not any(node.prompt for node in sym.nodes):
+        return False
+    for node in sym.nodes:
+        while node is not None:
+            if hasattr(node, "default_when_hidden"):
+                return True
+            node = node.parent
+    return False
+
+
 def _expr_depends_on(expr, sym):
     # Reimplementation of expr_depends_symbol() from mconf.c. Used to determine
     # if a submenu should be implicitly created. This also influences which
@@ -7853,7 +7875,8 @@ except AttributeError:
     _T_BOOLINT,      # Happy Hare: Added; appended to preserve existing token values
     _T_DEF_BOOLINT,  # Happy Hare: Added; appended to preserve existing token values
     _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 59) # Happy Hare: Added custom tokens through ARRAY_SIZE_MISMATCH
+    _T_DEFAULT_WHEN_HIDDEN, # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 60) # Happy Hare: Added custom tokens through DEFAULT_WHEN_HIDDEN
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -7884,6 +7907,7 @@ _get_keyword = {
     "endmenu":        _T_ENDMENU,
     "env":            _T_ENV,
     "forceshow":      _T_FORCESHOW, # Happy Hare: Added
+    "default_when_hidden": _T_DEFAULT_WHEN_HIDDEN, # Happy Hare: Added
     "float":          _T_FLOAT,     # Happy Hare: Added
     "grsource":       _T_ORSOURCE,  # Backwards compatibility
     "gsource":        _T_OSOURCE,   # Backwards compatibility

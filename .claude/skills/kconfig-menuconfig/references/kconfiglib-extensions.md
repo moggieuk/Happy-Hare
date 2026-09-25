@@ -157,11 +157,14 @@ BOOLINT branch and `getint`'s special case).
   cursor skips comment runs when navigating (regression-tested in
   `test/installer/test_menuconfig.py` — a comment-only menu is not entered).
 
-## 10. Font markup in prompts/comments
+## 10. Font markup in prompts/comments/help
 
 `[[B]]…[[/B]]` (bold) plus `DIM`, `U`/`UNDERLINE`, `REV`/`REVERSE`,
 `C:<n>`/`COLOR:<n>`, `RESET` can be embedded in `mainmenu`/`menu`/`comment`
-text and prompts; menuconfig renders them with the terminal's ANSI escapes.
+text, prompts and help text (the help panel and the `?` information screen);
+menuconfig renders them with curses attributes (`_safe_addstr_markup`).
+Only those whitelisted names inside `[[...]]` are tags (`_TAG_RE`), so other
+brackets such as `[, duration]` or `[[mmu_leds]]` stay literal.
 The root Kconfig's `title`/`caption` macros use `[[B]]` to bold the unit
 name. (This is a menuconfig-side concern — it never reaches the value file.)
 
@@ -239,3 +242,16 @@ are why board files can override feature-file defaults):
   the *same* choice (same file) can be defaulted; steering an existing
   choice from another file means adding a `default <member> if <cond>` line
   above the older ones.
+
+## 16. `default_when_hidden`
+
+kconfiglib writes a symbol whose prompt is hidden with its *default* value,
+but as a plain assignment if the user had set it, so on reload that frozen
+default counts as a user value (NOT DEFAULT, stops tracking default changes).
+`default_when_hidden` on a `menuconfig`, `menu` or symbol opts the symbols
+under it into writing the #~DEFAULT~# token in that case
+(`_saved_as_default()`, used by the write-side token check). Symbols without
+a prompt, and visible ones, are unaffected. `Kconfig.leds` uses it on
+`BOOL_CUSTOMIZE_LED_EFFECTS`, so unticking "Customize LED effects?" reverts
+the effects to the per-type defaults. Within one menuconfig session a
+re-ticked entry still shows the old values; the reset happens on save.
