@@ -1378,12 +1378,6 @@ class Kconfig(object):
                             # Set the choice's mode
                             sym.choice.set_value(val)
 
-                            # Happy Hare - now clear value if implicitity saved as default and mark accordingly
-                            if filter_defaults and default is not None:
-                                sym.choice.unset_value()
-                                sym.choice._was_set = False
-                                sym.choice._was_default = True
-
                     elif sym.orig_type is STRING:
                         match = _conf_string_match(val)
                         if not match:
@@ -1433,6 +1427,12 @@ class Kconfig(object):
                     sym.unset_value()
                     sym._was_set = False
                     sym._was_default = True
+
+                    # sym.set_value() above also made sym the choice's user selection
+                    if sym.choice and sym.choice.user_selection is sym:
+                        sym.choice.unset_value()
+                        sym.choice._was_set = False
+                        sym.choice._was_default = True
 
         if replace:
             # If we're replacing the configuration, unset the symbols that

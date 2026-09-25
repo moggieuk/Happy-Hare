@@ -255,6 +255,7 @@ kconfig_sources := \
 	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/*/Kconfig* \
 	           $(SRC)/installer/*/*/Kconfig*) \
 	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py \
+	$(SRC)/installer/lib/kconfiglib/kconfiglib.py \
 	$(SRC)/config/led_theme
 
 
@@ -733,12 +734,14 @@ menuconfig: $(SRC)/installer/Kconfig | python_deps
 ##### Upgrade helper targets #####
 ##################################
 
+# KCONFIG_PARENT is the top-level config a per-unit config inherits printer-level
+# values from, so saving the top level also marks every unit stale.
 kconfig_needs_update:
 	$(Q)if [ ! -f "$(KCONFIG_CONFIG)" ]; then \
 		echo y; \
 		exit 0; \
 	fi; \
-	for f in $(kconfig_sources); do \
+	for f in $(kconfig_sources) $(KCONFIG_PARENT); do \
 		[ "$$f" -nt "$(KCONFIG_CONFIG)" ] && { echo y; exit 0; }; \
 	done; \
 	echo n
