@@ -103,6 +103,7 @@ class MmuRunoutHelper:
             insert_remove_in_print=False,
             button_handler=None,
             register=True,
+            registration_name=None,
         ):
         """
         gcodes: dict of gcode macros to call for each event type.
@@ -131,14 +132,14 @@ class MmuRunoutHelper:
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
-        if register:
+        for sensor_name in dict.fromkeys((name, registration_name or name)) if register else ():
             self.gcode.register_mux_command(
-                "QUERY_FILAMENT_SENSOR", "SENSOR", self.name,
+                "QUERY_FILAMENT_SENSOR", "SENSOR", sensor_name,
                 self.cmd_QUERY_FILAMENT_SENSOR,
                 desc=self.cmd_QUERY_FILAMENT_SENSOR_help)
 
             self.gcode.register_mux_command(
-                "SET_FILAMENT_SENSOR", "SENSOR", self.name,
+                "SET_FILAMENT_SENSOR", "SENSOR", sensor_name,
                 self.cmd_SET_FILAMENT_SENSOR,
                 desc=self.cmd_SET_FILAMENT_SENSOR_help)
 
@@ -360,6 +361,11 @@ class MmuSensor:
     ):
         self.printer = config.get_printer()
         name = self.name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
+        self.registration_name = name
+
+        # Simple way to shorten the Mailsail/Fluidd displayed names if only a single mmu unit
+        if register and len(config.getsection('mmu_machine').getlist('units')) == 1:
+            self.registration_name = name.split(':', 1)[-1]
 
         gate_arg = (" GATE=%d" % gate) if gate is not None else ""
 
@@ -378,6 +384,7 @@ class MmuSensor:
             insert_remove_in_print=insert_remove_in_print,
             button_handler=button_handler,
             register=register,
+            registration_name=self.registration_name,
         )
 
         self.runout_helper = ro_helper
@@ -385,7 +392,7 @@ class MmuSensor:
 
         # This will make sensor visible in UI's like Mainsail/Fluidd and allow it to be disabled
         if register:
-            self.printer.add_object(f"filament_switch_sensor {name}", self)
+            self.printer.add_object(f"filament_switch_sensor {self.registration_name}", self)
 
         logging.info(f"MMU: Created MmuSensor({name})")
 
