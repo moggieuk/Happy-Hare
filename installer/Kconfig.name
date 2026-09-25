@@ -1,8 +1,25 @@
 # Responsible for setting:
+#   PARAM_BARE_UNIT_NAMES
 #   PARAM_DISPLAY_NAME
 
+config PARAM_BARE_UNIT_NAMES
+  boolint "Single Unit"
+  default 1
+  depends on !MULTI_UNIT
+  help
+    A unit name only exists to tell several units apart, so with just one there is
+    nothing to tell apart and it is left out: saved variables are stored as
+    "mmu_bowden_lengths" rather than "mmu_<unit>_bowden_lengths", and the encoder and
+    extruder entry sensors show up as "Encoder" and "Extruder" rather than
+    "Unit0:encoder" and "Unit0:extruder". The display name is hidden for the same
+    reason - an unnamed unit has nothing to display.
+    Turn this off to keep the unit name in both, matching how a multi-unit machine
+    stores things. Saved data is moved across either way, so switching this is safe.
+    Only offered for single-unit installs - a real multi-unit machine always needs the
+    name to keep each unit's data and sensors distinct.
+
 config PARAM_DISPLAY_NAME
-  string "Display name"
+  string "Display name" if !PARAM_BARE_UNIT_NAMES
   generated_default "%s-%d" "PARAM_VENDOR UNIT_INDEX" if PARAM_VENDOR != "Other"
   default UNIT_NAME
   help

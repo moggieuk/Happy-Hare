@@ -73,10 +73,14 @@ class MmuESpooler:
         start_value = config.getfloat('value', 0., minval=0., maxval=self.scale) / self.scale
 
         for gate in range(self.first_gate, self.first_gate + self.num_gates):
-            self.respool_motor_pin = config.get('respool_motor_pin_%d' % gate, None)
-            self.assist_motor_pin = config.get('assist_motor_pin_%d' % gate, None)
-            self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None)
-            self.assist_trigger_pin = config.get('assist_trigger_pin_%d' % gate, None)
+            # Espooler pins are numbered per-unit and always start at '_0', so the second
+            # and subsequent units have to translate the global gate back to a local one.
+            # Everything downstream (pin names, operation state) stays keyed on the global gate.
+            local_gate = gate - self.first_gate
+            self.respool_motor_pin = config.get('respool_motor_pin_%d' % local_gate, None)
+            self.assist_motor_pin = config.get('assist_motor_pin_%d' % local_gate, None)
+            self.enable_motor_pin = config.get('enable_motor_pin_%d' % local_gate, None)
+            self.assist_trigger_pin = config.get('assist_trigger_pin_%d' % local_gate, None)
 
             # Setup pins
             if self.respool_motor_pin and not self._is_empty_pin(self.respool_motor_pin):

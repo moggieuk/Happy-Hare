@@ -62,6 +62,7 @@ class MmuGateHomingMiss(MmuError):
 # -----------------------------------------------------------------------------------------------------------
 
 _DELETED = object() # Journal sentinel: "this key must not exist on disk"
+_UNKNOWN = object() # "Cannot tell what naming the saved data uses" - never migrate on a guess
 
 
 class SaveVariableManager:
@@ -113,8 +114,159 @@ class SaveVariableManager:
                 "If not, add this line and restart"
             )
 
+        # Order matters: migrate first so the warning only reports what migration could
+        # not move, then record this boot's naming for the next one to compare against.
+        self._migrate_unit_namespace()
+        self._warn_on_orphaned_units()
+        self._record_naming_markers()
+
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
+
+
+    def _saved_namespace(self):
+        """
+        The namespace saved data currently sits under, or None if it is stored unnamed.
+
+        Derived from the two markers written on every boot rather than from the shape of
+        the keys, which cannot be read reliably: "mmu_statistics_gate_3" is per-unit while
+        "mmu_statistics_swaps" is not.
+        """
+        if VARS_MMU_BARE_UNIT_NAMES not in self.save_variables.allVariables:
+            # Pre-dates the markers. The exact per-unit variable names are still a
+            # reliable signal on their own - unlike the prefixes, no global shares one of
+            # those names - so data stored unnamed is recognizable without a marker. This
+            # matters: an install that never wrote a marker is exactly the one whose data
+            # is most likely to be stranded.
+            if any(v in self.save_variables.allVariables for v in VARS_MMU_PER_UNIT):
+                return None
+            # The other half of the same signal, and the one every existing install hits:
+            # before this option there was no unnamed form, so a single unit's data sits
+            # under the unit's own name. Without reading that, the first boot after the
+            # upgrade finds nothing under the new bare names and the machine comes back
+            # uncalibrated with all of it still in mmu_vars.cfg. Safe to infer only with
+            # one unit - and one unit is the only shape whose naming can change.
+            if self.mmu_machine.num_units == 1:
+                unit = self.mmu_machine.unit_names[0]
+                if any(self._apply_namespace(v, unit) in self.save_variables.allVariables
+                       for v in VARS_MMU_PER_UNIT):
+                    return unit
+            return _UNKNOWN                  # Nothing stored yet; nothing to compare
+        if self.save_variables.allVariables.get(VARS_MMU_BARE_UNIT_NAMES):
+            return None
+        previous_units = self.save_variables.allVariables.get(VARS_MMU_UNIT_NAMES) or []
+        return previous_units[0] if len(previous_units) == 1 else _UNKNOWN
+
+
+    def _migrate_unit_namespace(self):
+        """
+        Move a single unit's saved data across when its variable naming changes.
+
+        A single unit has no name to disambiguate, so its data is stored unnamed
+        ("mmu_bowden_lengths"); with more than one unit each is stored under its own name
+        ("mmu_unit0_bowden_lengths"). Anything that changes which of those applies -
+        turning bare_unit_names off, collapsing a multi-unit install back to one unit,
+        renaming the unit - would otherwise leave every calibrated value stranded under a
+        name nothing looks up any more, and the MMU would come back reporting itself
+        uncalibrated with the data still sitting in mmu_vars.cfg.
+
+        Data already stored per unit is left alone on a multi-unit machine - there is no
+        single answer to which unit would inherit it. Unnamed data is different: only a
+        single unit can have written it, so the first unit takes it. Whatever is still
+        stranded after that - data under a unit name nothing configures any more - is
+        reported by _warn_on_orphaned_units rather than guessed at.
+        """
+        old = self._saved_namespace()
+        if old is _UNKNOWN:
+            return
+
+        if self.mmu_machine.num_units == 1:
+            new = None if self.mmu_machine.bare_unit_names else self.mmu_machine.unit_names[0]
+        elif old is None:
+            # Converting a single unit to multi-unit. Unnamed data can only belong to the
+            # single unit this machine used to be, and install.sh requires that unit to
+            # stay first ("the first name must be unit0 because that is how it was
+            # configured"), so the first unit inherits it. Without this the conversion
+            # silently strands every calibrated value.
+            new = self.mmu_machine.unit_names[0]
+        else:
+            return                           # Already named per unit; nothing to move
+
+        if old == new:
+            return
+
+        renames = {}
+        for variable in VARS_MMU_PER_UNIT:
+            renames[self._apply_namespace(variable, old)] = self._apply_namespace(variable, new)
+        for prefix in VARS_MMU_PER_UNIT_PREFIXES:
+            old_prefix = self._apply_namespace(prefix, old)
+            new_prefix = self._apply_namespace(prefix, new)
+            for key in self.save_variables.allVariables:
+                if key.startswith(old_prefix):
+                    renames[key] = new_prefix + key[len(old_prefix):]
+
+        moved = 0
+        for old_key, new_key in renames.items():
+            if old_key == new_key or old_key not in self.save_variables.allVariables:
+                continue
+            # Into the journal, not to disk: physical writes are refused until klippy:ready,
+            # whose flush picks these up along with everything else staged at startup.
+            self.set(new_key, self.save_variables.allVariables[old_key])
+            self.delete(old_key)
+            moved += 1
+
+        if moved:
+            logging.info(
+                "MMU: Moved %d saved value(s) to match this machine's variable naming (%s -> %s)"
+                % (moved, "unnamed" if old is None else "'%s'" % old,
+                   "unnamed" if new is None else "'%s'" % new)
+            )
+
+
+    def _warn_on_orphaned_units(self):
+        """
+        Warn when a unit that owned saved data is no longer configured.
+
+        Every persisted per-unit value (bowden lengths, rotation distances, encoder
+        resolution, selector offsets/angles, gate stats) is stored under "mmu_<unit>_...",
+        so renaming a unit silently orphans all of it and the MMU comes back reporting
+        itself uncalibrated. The switch that makes this easy to hit is single -> multi:
+        install.sh carries the old single-unit config over to whichever name is listed
+        first (install.sh's tmpconfig rename), and the default first name is the single
+        unit's own "unit0" - but nothing stops a user replacing it, e.g. "left,right".
+
+        Comparing against the names recorded on the previous boot catches every case
+        (rename, reorder, single <-> multi) without having to reason about the shape of
+        individual variable names. Only warns while the orphaned data is still there, so
+        it goes quiet by itself once the keys are migrated or removed.
+        """
+        previous = self.save_variables.allVariables.get(VARS_MMU_UNIT_NAMES, None)
+        current = list(self.mmu_machine.unit_names)
+        for old in (previous or []):
+            if old in current:
+                continue
+            prefix = "mmu_%s_" % old
+            orphaned = sorted(k for k in self.save_variables.allVariables if k.startswith(prefix))
+            if orphaned:
+                logging.warning(
+                    "MMU: mmu_vars.cfg still holds %d saved value(s) for a unit named '%s', which "
+                    "is no longer configured (units are now: %s). That data - calibration "
+                    "included - is orphaned and the affected unit will report as uncalibrated. "
+                    "To recover, either name a unit '%s' again, or rename those keys to "
+                    "'mmu_<unit>_*' for the unit that replaced it: %s"
+                    % (len(orphaned), old, ", ".join(current) or "none", old, ", ".join(orphaned))
+                )
+
+
+    def _record_naming_markers(self):
+        """
+        Record how this boot names saved variables, for the next boot to compare against.
+
+        Both are stored unprefixed themselves (like the revision var) so they stay
+        readable whichever naming is in force.
+        """
+        self.save_variables.allVariables[VARS_MMU_BARE_UNIT_NAMES] = self.mmu_machine.bare_unit_names
+        self.save_variables.allVariables[VARS_MMU_UNIT_NAMES] = list(self.mmu_machine.unit_names)
 
 
     def handle_ready(self):
@@ -143,10 +295,28 @@ class SaveVariableManager:
     def namespace(self, variable, namespace):
         """
         Return a variable name namespaced to an MMU unit (if provided).
+
+        Skipped when the install-time 'bare_unit_names' option is set. MmuMachine forces that
+        flag off whenever more than one unit is configured, so a genuine multi-unit machine
+        always falls through to the namespaced behavior below and its units cannot collide on
+        one shared set of bare names.
         """
-        if namespace is not None:
-            return variable.replace("mmu_", "mmu_%s_" % namespace)
-        return variable
+        if self.mmu_machine.bare_unit_names:
+            return variable
+        return self._apply_namespace(variable, namespace)
+
+
+    @staticmethod
+    def _apply_namespace(variable, namespace):
+        """
+        Name a variable under a given namespace, regardless of the machine's own naming.
+
+        Kept separate from namespace() because migration has to be able to build names in
+        the naming it is moving FROM, which is by definition not the one in force.
+        """
+        if namespace is None:
+            return variable
+        return variable.replace("mmu_", "mmu_%s_" % namespace)
 
 
     @staticmethod

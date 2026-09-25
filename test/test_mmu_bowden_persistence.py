@@ -81,8 +81,8 @@ class BowdenRestartTestCase(unittest.TestCase):
         unit = hh.mmu.mmu_unit()
         self.assertEqual(unit.calibrator._bowden_lengths, [123.4] * unit.num_gates)
         on_disk = read_vars_file(path)
-        self.assertEqual(on_disk['mmu_unit0_bowden_lengths'], [123.4] * unit.num_gates)
-        self.assertEqual(on_disk['mmu_unit0_bowden_home'], unit.p.gate_homing_endstop)
+        self.assertEqual(on_disk[hh.unit_var('mmu_bowden_lengths')], [123.4] * unit.num_gates)
+        self.assertEqual(on_disk[hh.unit_var('mmu_bowden_home')], unit.p.gate_homing_endstop)
 
         hh2, _ = self._boot('boxturtle', vars_file=path)
         self.assertEqual(hh2.mmu.mmu_unit().calibrator._bowden_lengths,
@@ -95,8 +95,8 @@ class BowdenRestartTestCase(unittest.TestCase):
         unit = hh.mmu.mmu_unit()
         self.assertEqual(unit.calibrator._bowden_lengths, [123.4] * unit.num_gates)
         on_disk = read_vars_file(path)
-        self.assertEqual(on_disk['mmu_unit0_bowden_lengths'], [123.4] * unit.num_gates)
-        self.assertEqual(on_disk['mmu_unit0_bowden_home'], 'mmu_shared_exit')
+        self.assertEqual(on_disk[hh.unit_var('mmu_bowden_lengths')], [123.4] * unit.num_gates)
+        self.assertEqual(on_disk[hh.unit_var('mmu_bowden_home')], 'mmu_shared_exit')
 
     def test_stale_v3_bowden_home_encoder_restart_does_not_reset(self):
         path = self._stale_home_vars(30.0)
@@ -106,13 +106,13 @@ class BowdenRestartTestCase(unittest.TestCase):
 
         hh2, _ = self._boot('encoder', vars_file=path, endstop_to_encoder=47.0)
         self.assertEqual(hh2.mmu.mmu_unit().calibrator._bowden_lengths, [30.0] * 4)
-        self.assertEqual(read_vars_file(path)['mmu_unit0_bowden_lengths'], [30.0] * 4)
+        self.assertEqual(read_vars_file(path)[hh2.unit_var('mmu_bowden_lengths')], [30.0] * 4)
 
     def test_calibration_persists_bowden_home(self):
         hh, _ = self._boot('boxturtle')
         path = self._calibrate_all(hh, 123.4)
         on_disk = read_vars_file(path)
-        self.assertEqual(on_disk['mmu_unit0_bowden_home'], 'mmu_shared_exit')
+        self.assertEqual(on_disk[hh.unit_var('mmu_bowden_home')], 'mmu_shared_exit')
 
     def test_calibrated_lengths_survive_restart(self):
         hh, _ = self._boot('boxturtle')
@@ -137,7 +137,7 @@ class BowdenRestartTestCase(unittest.TestCase):
         hh2, _ = self._boot('encoder', vars_file=path, endstop_to_encoder=47.0)
         self.assertEqual(hh2.mmu.mmu_unit().calibrator._bowden_lengths, [30.0] * 4)
         on_disk = read_vars_file(path)
-        self.assertEqual(on_disk['mmu_unit0_bowden_lengths'], [30.0] * 4)
+        self.assertEqual(on_disk[hh2.unit_var('mmu_bowden_lengths')], [30.0] * 4)
 
     def test_partially_calibrated_restart_does_not_warn_negative(self):
         path = self._seed_vars({

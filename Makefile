@@ -433,9 +433,30 @@ install: $(install_targets)
 	done
 	@# Remove config files retired by this release. The mmu directory backup above preserves them.
 	$(Q)$(SUDO)rm -f $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/,$(hh_old_config_files))
+	@# Retire per-unit config belonging to units this machine no longer has. printer.cfg
+	@# includes mmu/base/*.cfg as a GLOB, so a file left behind by a dropped unit is still
+	@# loaded and its pins collide with the units that do own them - the machine will not
+	@# boot until someone deletes it by hand.
+	$(Q)for f in $(KLIPPER_CONFIG_HOME)/mmu/base/mmu_hardware_*.cfg $(KLIPPER_CONFIG_HOME)/mmu/base/mmu_parameters_*.cfg; do \
+		[ -e "$$f" ] || continue; \
+		b=$$(basename "$$f"); \
+		case " $(notdir $(hh_unit_config_files)) " in *" $$b "*) continue;; esac; \
+		echo "$(C_NOTICE)Retiring $$b - its unit is no longer configured$(C_OFF)"; \
+		$(SUDO)rm -f "$$f"; \
+	done
+	@# Same for the per-unit menuconfig files, so a later install does not resurrect them.
+	$(Q)for f in $(KCONFIG_CONFIG)_*; do \
+		[ -e "$$f" ] || continue; \
+		case "$$f" in *.old) continue;; esac; \
+		case " $(addprefix $(KCONFIG_CONFIG)_,$(unit_names)) " in *" $$f "*) continue;; esac; \
+		echo "$(C_NOTICE)Retiring $$f - its unit is no longer configured$(C_OFF)"; \
+		rm -f "$$f"; \
+	done
 	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
+	@# A single unnamed unit has nothing to label in the UI - see set_ui_defaults
+	$(Q)$(PY) -m installer.build $(V) --set-ui-defaults "$(KCONFIG_CONFIG)"
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION)is ready!"
 
 uninstall: clean | python_deps

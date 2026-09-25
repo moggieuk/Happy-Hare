@@ -507,6 +507,7 @@ rgbw
 rmsg
 roundtripped
 rqueue
+rref
 rrggbb
 rrggbbaa
 rsource

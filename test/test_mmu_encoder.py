@@ -166,9 +166,9 @@ class TestEncoderMeasuresTravel(EncoderTestCase):
         own this sensor - it has no position in the layout - so seeing it change proves
         Happy Hare's own callback ran.
         """
-        self.assertFalse(self.hh.sensor('unit0:encoder').present)
+        self.assertFalse(self.hh.sensor('encoder').present)
         self.preload()
-        self.assertTrue(self.hh.sensor('unit0:encoder').present)
+        self.assertTrue(self.hh.sensor('encoder').present)
 
     def test_movement_stays_latched_until_flowguard_consumes_it(self):
         """

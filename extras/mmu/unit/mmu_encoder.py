@@ -85,7 +85,12 @@ class MmuEncoder:
         self.flowrate_samples = config.getint('flowrate_samples', 20, minval=5)
 
         # Create virtual endstop (for giggles and experimental use)
-        endstop_sensor_name = f"{self.name}:{SENSOR_ENCODER}"
+        # "bare_unit_names" (single-unit installs only) drops the "<unit>:" prefix, which
+        # otherwise only exists to keep multiple units' sensors from colliding.
+        if self.mmu_machine.bare_unit_names:
+            endstop_sensor_name = SENSOR_ENCODER
+        else:
+            endstop_sensor_name = f"{self.name}:{SENSOR_ENCODER}"
         self.endstop_sensor = MmuVirtualEndstopSensor(config, endstop_sensor_name, None, register=register_as_sensor)
 
         # Register event handlers

@@ -22,14 +22,16 @@
 
 import ast
 import configparser
+import contextlib
 import logging
 import unittest
 
-from test.hh import session
+from test.hh import cfg, profiles, session
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
 VARS_MMU_REVISION = 'mmu__revision'
+VARS_MMU_BOWDEN_LENGTHS = 'mmu_bowden_lengths'
 
 
 def read_vars_file(hh):
@@ -264,6 +266,307 @@ class TestDisconnectFlush(SaveVariablesMixin, unittest.TestCase):
                 # Deliberately NOT pumped - the value is in memory only.
                 hh.printer.send_event('klippy:disconnect')
                 self.assertEqual(read_vars_file(hh).get('mmu_last_gasp'), 99)
+
+
+class TestBareUnitNames(unittest.TestCase):
+    """
+    The single-unit "bare_unit_names" install option (installer/Kconfig.options),
+    end-to-end through a real boot rather than just the rendered .cfg - see
+    test.test_mmu_config.TestBareUnitNames for the render-only checks.
+    """
+
+    def test_a_single_unit_is_unnamed_by_default(self):
+        """One unit has nothing to be told apart from, so its name is left out."""
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        self.assertTrue(hh.mmu.mmu_machine.bare_unit_names)
+        vm = hh.mmu.var_manager
+        self.assertEqual(vm.namespace('mmu_foo', namespace='unit0'), 'mmu_foo')
+
+    def test_keeping_the_name_is_still_available(self):
+        hh = session('boxturtle_named_unit')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        self.assertFalse(hh.mmu.mmu_machine.bare_unit_names)
+        vm = hh.mmu.var_manager
+        self.assertEqual(vm.namespace('mmu_foo', namespace='unit0'), 'mmu_unit0_foo')
+
+        vm.set('mmu_foo', 1, namespace='unit0', write=True)
+        hh.reactor.advance(0.)
+        self.assertEqual(read_vars_file(hh).get('mmu_unit0_foo'), 1)
+        self.assertNotIn('mmu_foo', read_vars_file(hh))
+
+    def test_enabled_keys_are_bare(self):
+        hh = session('boxturtle_bare_names')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        self.assertTrue(hh.mmu.mmu_machine.bare_unit_names)
+        vm = hh.mmu.var_manager
+        # Same call, same unit - only the install option differs from the test above.
+        self.assertEqual(vm.namespace('mmu_foo', namespace='unit0'), 'mmu_foo')
+
+        vm.set('mmu_foo', 1, namespace='unit0', write=True)
+        hh.reactor.advance(0.)
+        self.assertEqual(read_vars_file(hh).get('mmu_foo'), 1)
+        self.assertNotIn('mmu_unit0_foo', read_vars_file(hh))
+
+    def test_encoder_and_extruder_sensor_names_drop_the_prefix(self):
+        """
+        The other two call sites the option touches (mmu_encoder.py, mmu_toolhead_wrapper.py)
+        - covered here rather than in test_mmu_config since the sensor object only exists
+        after a real boot, not in a rendered .cfg string.
+        """
+        hh = session('boxturtle_bare_names')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        unit = hh.mmu.mmu_machine.units[0]
+        self.assertEqual(unit.encoder.endstop_sensor.name, 'encoder')
+        self.assertIn('extruder', unit.toolhead_wrapper.sensors)
+
+    def test_a_multi_unit_machine_refuses_the_setting(self):
+        """
+        The installer never offers bare_unit_names on multi-unit, but mmu.cfg is a
+        hand-editable file and adding a second unit to 'units' is a one-line edit. Honoring
+        the stale setting would give both units ONE set of unprefixed variable and sensor
+        names - i.e. silent cross-unit calibration corruption - so MmuMachine forces it off.
+
+        extra_params overrides the jinja render context, which is how a config the installer
+        would never produce gets built here.
+        """
+        profile = profiles.get('ercf_vvd').derive(
+            'ercf_vvd_stale_bare_unit_names',
+            extra_params={'MULTI_UNIT': False, 'PARAM_BARE_UNIT_NAMES': '1'})
+
+        # Not vacuous: prove the malformed setting really is in the config being booted.
+        machine = dict(cfg.assemble(cfg.render(profile)).items('mmu_machine'))
+        self.assertEqual(machine['bare_unit_names'], '1')
+
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        self.assertGreater(hh.mmu.mmu_machine.num_units, 1)
+        self.assertFalse(hh.mmu.mmu_machine.bare_unit_names)
+        vm = hh.mmu.var_manager
+        self.assertEqual(vm.namespace('mmu_foo', namespace='unit0'), 'mmu_unit0_foo')
+        self.assertEqual(vm.namespace('mmu_foo', namespace='unit1'), 'mmu_unit1_foo')
+
+    def _rebuild_var_manager(self, hh):
+        """Re-run SaveVariableManager.__init__ against the same printer, i.e. a restart."""
+        from extras.mmu.mmu_utils import SaveVariableManager
+        return SaveVariableManager(hh.mmu.var_manager.config, hh.mmu.mmu_machine)
+
+    @contextlib.contextmanager
+    def captured_warnings(self):
+        """
+        Collect root-logger warnings, so a test can assert on their ABSENCE.
+
+        assertNoLogs would say this in one line but needs Python 3.10, and klipper hosts
+        run whatever the distro ships - same constraint that produced
+        test_mmu_nfc_uart.capture_records. The level dance is needed because this module
+        pins the root logger to CRITICAL, which would otherwise filter the records out
+        before any handler sees them and make every assertion here vacuously true.
+        """
+        collected = []
+
+        class Collector(logging.Handler):
+            def emit(self, record):
+                collected.append(record.getMessage())
+
+        root = logging.getLogger()
+        handler = Collector(level=logging.WARNING)
+        previous = root.level
+        root.setLevel(logging.WARNING)
+        root.addHandler(handler)
+        try:
+            yield collected
+        finally:
+            root.removeHandler(handler)
+            root.setLevel(previous)
+
+    def test_a_renamed_unit_warns_that_its_saved_data_is_orphaned(self):
+        """
+        The single -> multi trap: install.sh carries the old single-unit config over to
+        whichever unit is listed FIRST, and the default first name is the single unit's own
+        'unit0' - but a user who types 'left,right' instead keeps their hardware config and
+        silently loses every calibrated value, which stays behind as mmu_unit0_*.
+        """
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        # Calibration as the previous boot left it, under a unit that no longer exists.
+        hh.mmu.var_manager.save_variables.allVariables.update({
+            'mmu__unit_names': ['left'],
+            'mmu_left_bowden_lengths': [1623.6],
+            'mmu_left_gear_rotation_distances': [22.7],
+        })
+
+        with self.assertLogs(level='WARNING') as cm:
+            self._rebuild_var_manager(hh)
+
+        warning = '\n'.join(cm.output)
+        self.assertIn("unit named 'left'", warning)
+        self.assertIn('mmu_left_bowden_lengths', warning)          # names what to migrate
+        self.assertIn('unit0', warning)                            # names what it is now
+
+    def test_no_warning_when_the_orphaned_data_is_gone(self):
+        """Self-clearing: the warning is about data that is actually there, not history."""
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        hh.mmu.var_manager.save_variables.allVariables['mmu__unit_names'] = ['left']
+
+        with self.captured_warnings() as warnings:
+            self._rebuild_var_manager(hh)
+        self.assertEqual(warnings, [])
+
+    def test_no_warning_on_first_boot_after_upgrade(self):
+        """An existing install has no recorded names yet - that must not read as a rename."""
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        allvars = hh.mmu.var_manager.save_variables.allVariables
+        allvars.pop('mmu__unit_names', None)
+        allvars['mmu_unit0_bowden_lengths'] = [1623.6]
+
+        with self.captured_warnings() as warnings:
+            self._rebuild_var_manager(hh)
+        self.assertEqual(warnings, [])
+
+    def test_unit_names_are_recorded_for_the_next_boot(self):
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        hh.reactor.advance(0.)
+        self.assertEqual(read_vars_file(hh).get('mmu__unit_names'), ['unit0'])
+
+    def test_calibration_moves_across_when_the_name_is_dropped(self):
+        """
+        The upgrade path for every existing single-unit install: their data is stored under
+        'unit0', the installer now leaves a single unit unnamed, and the switch happens on
+        the reinstall that regenerates mmu.cfg. Nothing may be lost in the move.
+        """
+        hh = session('boxturtle')       # unnamed - the "after" side of the switch
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertTrue(hh.mmu.mmu_machine.bare_unit_names)   # precondition
+
+        # mmu_vars.cfg as the previous, named, boot left it.
+        hh.mmu.var_manager.save_variables.allVariables.update({
+            'mmu__bare_unit_names': False,
+            'mmu__unit_names': ['unit0'],
+            'mmu_unit0_bowden_lengths': [1623.6],
+            'mmu_unit0_gear_rotation_distances': [22.7],
+            'mmu_unit0_encoder_resolution': 1.05,
+            'mmu_unit0_statistics_gate_0': {'pauses': 2},
+        })
+
+        vm = self._rebuild_var_manager(hh)
+
+        self.assertEqual(vm.get(VARS_MMU_BOWDEN_LENGTHS, None), [1623.6])
+        self.assertEqual(vm.get('mmu_gear_rotation_distances', None), [22.7])
+        self.assertEqual(vm.get('mmu_encoder_resolution', None), 1.05)
+        self.assertEqual(vm.get('mmu_statistics_gate_0', None), {'pauses': 2})
+        # ...and the named copies are gone, not merely duplicated.
+        allvars = vm.save_variables.allVariables
+        self.assertEqual([k for k in allvars if k.startswith('mmu_unit0_')], [])
+
+    @staticmethod
+    def _strip_to_a_pre_marker_install(allvars):
+        """
+        Leave mmu_vars.cfg looking like one written before this option existed: no naming
+        markers, and no unnamed per-unit data, because there was no unnamed form to write.
+        Booting the harness stamps both, so a test has to undo them to reach that state.
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_PER_UNIT
+
+        for marker in ('mmu__bare_unit_names', 'mmu__unit_names'):
+            allvars.pop(marker, None)
+        for variable in VARS_MMU_PER_UNIT:
+            allvars.pop(variable, None)
+
+    def test_calibration_moves_across_with_no_markers_to_read(self):
+        """
+        The same upgrade, but from an install that predates the markers - which is every
+        install that exists today, since nothing wrote them before this option. There is
+        no "mmu__bare_unit_names" to consult, so the only evidence of the old naming is
+        the data itself, and missing it strands the whole calibration on first boot.
+        """
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertTrue(hh.mmu.mmu_machine.bare_unit_names)   # precondition
+
+        allvars = hh.mmu.var_manager.save_variables.allVariables
+        self._strip_to_a_pre_marker_install(allvars)
+        allvars.update({
+            'mmu_unit0_bowden_lengths': [1623.6],
+            'mmu_unit0_gear_rotation_distances': [22.7],
+        })
+
+        vm = self._rebuild_var_manager(hh)
+
+        self.assertEqual(vm.get(VARS_MMU_BOWDEN_LENGTHS, None), [1623.6])
+        self.assertEqual(vm.get('mmu_gear_rotation_distances', None), [22.7])
+        self.assertEqual(
+            [k for k in vm.save_variables.allVariables if k.startswith('mmu_unit0_')], [])
+
+    def test_a_first_boot_with_nothing_stored_moves_nothing(self):
+        """The other no-marker case: a fresh install has nothing to infer a naming from."""
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+
+        allvars = hh.mmu.var_manager.save_variables.allVariables
+        self._strip_to_a_pre_marker_install(allvars)
+
+        vm = self._rebuild_var_manager(hh)
+        self.assertEqual(vm.get(VARS_MMU_BOWDEN_LENGTHS, None), None)
+
+    def test_calibration_moves_back_when_the_name_is_restored(self):
+        """The same switch in reverse, so turning the option off is equally safe."""
+        hh = session('boxturtle_named_unit')
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertFalse(hh.mmu.mmu_machine.bare_unit_names)  # precondition
+
+        hh.mmu.var_manager.save_variables.allVariables.update({
+            'mmu__bare_unit_names': True,
+            'mmu__unit_names': ['unit0'],
+            'mmu_bowden_lengths': [1623.6],
+        })
+
+        vm = self._rebuild_var_manager(hh)
+
+        self.assertEqual(vm.get(VARS_MMU_BOWDEN_LENGTHS, None, namespace='unit0'), [1623.6])
+        self.assertIn('mmu_unit0_bowden_lengths', vm.save_variables.allVariables)
+        self.assertNotIn('mmu_bowden_lengths', vm.save_variables.allVariables)
+
+    def test_global_variables_are_not_swept_up_in_the_move(self):
+        """
+        'mmu_statistics_gate_0' is per-unit but 'mmu_statistics_swaps' is not, and neither
+        is anything under 'mmu_state_'. Renaming those would corrupt printer-wide state.
+        """
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.boot()
+        hh.mmu.var_manager.save_variables.allVariables.update({
+            'mmu__bare_unit_names': False,
+            'mmu__unit_names': ['unit0'],
+            'mmu_statistics_swaps': {'total_swaps': 12},
+            'mmu_state_gate_status': [1, 1, 0, 0],
+        })
+
+        vm = self._rebuild_var_manager(hh)
+
+        self.assertEqual(vm.get('mmu_statistics_swaps', None), {'total_swaps': 12})
+        self.assertEqual(vm.get('mmu_state_gate_status', None), [1, 1, 0, 0])
 
 
 if __name__ == '__main__':
