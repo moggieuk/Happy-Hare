@@ -504,5 +504,57 @@ class TestSharedGatePairReader(unittest.TestCase):
             chip.clear()
 
 
+class TestStartupWarningsReachTheConsole(unittest.TestCase):
+    """
+    A driver's startup_warnings (e.g. "this firmware cannot report an I2C NACK") are
+    only in klippy.log unless Happy Hare forwards them. They must go through
+    mmu.log_warning, once per physical reader - a gate pair shares one.
+    """
+
+    WARNING = 'test firmware warning'
+
+    def setUp(self):
+        self.hh = session('ercf_vvd', virtual_nfc=True)
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.mgr = {u.name: u for u in self.hh.mmu.mmu_machine.units}['unit1'].nfc_manager
+        self.hh.chip(9).startup_warnings = [self.WARNING]
+
+    def tearDown(self):
+        self.hh.close()
+
+    def warnings(self, logged):
+        return [c.args[0] for c in logged.call_args_list if self.WARNING in c.args[0]]
+
+    def test_bootup_init_logs_one_warning_per_physical_reader(self):
+        with mock.patch.object(self.hh.mmu, 'log_warning') as logged:
+            self.mgr._init_all_readers()
+        warnings = self.warnings(logged)
+        self.assertEqual(len(warnings), 1, 'gates 9/10 share one reader: %r' % warnings)
+        self.assertIn("reader '%s'" % self.mgr.gate_readers[0].name, warnings[0])
+
+    def test_mmu_rfid_init_logs_the_warning(self):
+        name = self.mgr.gate_readers[0].name
+        with mock.patch.object(self.hh.mmu, 'log_warning') as logged:
+            self.hh.run_gcode('MMU_RFID_INIT NAME=%s' % name)
+        self.assertEqual(len(self.warnings(logged)), 1)
+
+    def test_suppress_klipper_warnings_demotes_to_debug(self):
+        self.hh.mmu.p.suppress_klipper_warnings = 1
+        name = self.mgr.gate_readers[0].name
+        with mock.patch.object(self.hh.mmu, 'log_warning') as warned, \
+                mock.patch.object(self.hh.mmu, 'log_debug') as debugged:
+            self.mgr._init_all_readers()
+            self.hh.run_gcode('MMU_RFID_INIT NAME=%s' % name)
+        self.assertEqual(self.warnings(warned), [])
+        self.assertEqual(len(self.warnings(debugged)), 2, 'bootup init and MMU_RFID_INIT')
+
+    def test_readers_without_warnings_log_none(self):
+        self.hh.chip(9).startup_warnings = []
+        with mock.patch.object(self.hh.mmu, 'log_warning') as logged:
+            self.mgr._init_all_readers()
+        self.assertEqual(self.warnings(logged), [])
+
+
 if __name__ == '__main__':
     unittest.main()
