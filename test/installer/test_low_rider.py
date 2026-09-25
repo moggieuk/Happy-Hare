@@ -79,6 +79,7 @@ class TestLowRiderProfile(unittest.TestCase):
 
     def test_extruder_gate_keeps_bowden_and_toolhead_defaults_hidden(self):
         hidden_defaults = {
+            "PARAM_BOWDEN_HOMING_MAX": "2000",
             "PARAM_BOWDEN_LOAD_HOMING_BUFFER": "20",
             "PARAM_BOWDEN_UNLOAD_HOMING_BUFFER": "40",
             "PARAM_EXTRUDER_FORCE_HOMING": "0",

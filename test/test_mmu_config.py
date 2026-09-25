@@ -168,6 +168,23 @@ class TestBoxTurtleRender(unittest.TestCase):
                          'gcode_macro _MMU_SEQUENCE_VARS'):
             self.assertIn(expected, secs)
 
+    def test_bowden_homing_max_is_menuconfigurable(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(
+                'boxturtle_bowden_homing_max', profiles.get('boxturtle').syms)
+        self.assertGreater(
+            kconfig.syms['PARAM_BOWDEN_HOMING_MAX'].visibility, 0)
+        self.assertEqual(kconfig.get('PARAM_BOWDEN_HOMING_MAX'), '2000')
+
+        params = cfg.assemble(self.rendered)['mmu_unit_parameters unit0']
+        self.assertEqual(params.getfloat('bowden_homing_max'), 2000.0)
+
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_custom_bowden_homing_max',
+            syms={'PARAM_BOWDEN_HOMING_MAX': 2750.5})
+        params = cfg.assemble(cfg.render(profile))['mmu_unit_parameters unit0']
+        self.assertEqual(params.getfloat('bowden_homing_max'), 2750.5)
+
     def test_sensorless_preload_choice_renders_none_and_one_attempt(self):
         profile = profiles.get('boxturtle').derive(
             'boxturtle_sensorless_preload',
