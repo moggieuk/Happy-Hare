@@ -1040,5 +1040,113 @@ class TestAdcCompatMatrixOnRealMachine(unittest.TestCase):
                         hh.close()
 
 
+class TestLedEffectParams(unittest.TestCase):
+    """The [mmu_leds] effect_* options come from PARAM_EFFECT_* Kconfig tokens; EMU
+    overrides some of them and defines unit-scoped effects in PARAM_MISC_LED_EFFECTS."""
+
+    EMU_EFFECTS = ('mmu_static_white', 'mmu_static_white_dim', 'mmu_static_red')
+
+    def _leds(self, profile, unit='unit0'):
+        from test.hh import cfg, profiles
+        if isinstance(profile, str):
+            profile = profiles.get(profile)
+        parser = cfg.assemble(cfg.render(profile))
+        return parser, dict(parser.items('mmu_leds %s' % unit))
+
+    @staticmethod
+    def _canonical(value):
+        return re.sub(r'\s+', ' ', value).strip()
+
+    def test_stock_defaults_match_the_previous_template(self):
+        _, leds = self._leds('boxturtle')
+        effects = {o: self._canonical(v) for o, v in leds.items() if o.startswith('effect_')}
+        self.assertEqual(len(effects), 25)
+        self.assertEqual(effects['effect_gate_available'], 'mmu_static_green, (0, 0.5, 0)')
+        self.assertEqual(effects['effect_error'], 'mmu_red_strobe, (1, 0, 0), 10')
+        self.assertEqual(effects['effect_td1_fail'], 'mmu_red_strobe, (1, 0, 0), 3')
+
+    def test_emu_overrides_only_its_effects(self):
+        _, stock = self._leds('boxturtle')
+        parser, emu = self._leds('emu')
+        differing = {o for o in stock if o.startswith('effect_')
+                     and self._canonical(stock[o]) != self._canonical(emu[o])}
+        self.assertEqual(differing, {'effect_gate_available', 'effect_gate_available_sel',
+                                     'effect_gate_empty_sel', 'effect_loading',
+                                     'effect_loading_extruder', 'effect_unloading',
+                                     'effect_unloading_extruder', 'effect_checking'})
+        self.assertEqual(emu['effect_gate_available'].split(',')[0], 'mmu_static_white_dim_unit0')
+        for name in self.EMU_EFFECTS:
+            self.assertEqual(parser.get('mmu_led_effect %s_unit0' % name, 'unit'), 'unit0')
+
+    def test_stock_machines_define_no_extra_effects(self):
+        parser, _ = self._leds('boxturtle')
+        self.assertFalse([s for s in parser.sections() if s.startswith('mmu_led_effect')
+                          and s.endswith('_unit0')])
+
+    def test_menuconfig_value_renders(self):
+        from test.hh import profiles
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_led_effect_param',
+            syms={'BOOL_CUSTOMIZE_LED_EFFECTS': True,
+                  'PARAM_EFFECT_ERROR': 'mmu_sparkle, (1, 0, 0), 5'})
+        _, leds = self._leds(profile)
+        self.assertEqual(self._canonical(leds['effect_error']), 'mmu_sparkle, (1, 0, 0), 5')
+
+    def test_menu_is_shown_by_the_flag_and_defaults_apply_while_hidden(self):
+        from test.hh import cfg, profiles
+        for name, flag, value in (('boxturtle', False, 'mmu_static_green, (0, 0.5, 0)'),
+                                  ('emu', False, 'mmu_static_white_dim_unit0, (0.1, 0.1, 0.1)'),
+                                  ('boxturtle', True, 'mmu_static_green, (0, 0.5, 0)')):
+            with self.subTest(profile=name, flag=flag):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kc = cfg._kconfig('led_effect_flag_%s_%s' % (name, flag), dict(
+                        profiles.get(name).syms, BOOL_CUSTOMIZE_LED_EFFECTS=flag))
+                self.assertEqual(kc.syms['PARAM_EFFECT_GATE_AVAILABLE'].visibility > 0, flag)
+                self.assertEqual(self._canonical(kc.get('PARAM_EFFECT_GATE_AVAILABLE')), value)
+                # Every effect prompt sits in the menuconfig's submenu
+                node, children = kc.syms['BOOL_CUSTOMIZE_LED_EFFECTS'].nodes[0], []
+                self.assertTrue(node.is_menuconfig)
+                child = node.list
+                while child:
+                    children.append(child.item.name)
+                    child = child.next
+                self.assertEqual(len(children), 25)
+                self.assertTrue(all(c.startswith('PARAM_EFFECT_') for c in children), children)
+
+    def test_two_emus_define_their_own_effects_on_their_own_unit(self):
+        from test.hh import profiles
+        two = profiles.clone_across_units('two_emus', profiles.get('emu'), ('unit0', 'unit1'),
+                                          description='two EMUs')
+        for unit in ('unit0', 'unit1'):
+            parser, leds = self._leds(two, unit)
+            self.assertEqual(leds['effect_gate_available'].split(',')[0],
+                             'mmu_static_white_dim_%s' % unit)
+            for name in self.EMU_EFFECTS:
+                self.assertEqual(parser.get('mmu_led_effect %s_%s' % (name, unit), 'unit'), unit)
+        hh = session(two)
+        try:
+            hh.boot()
+            self.assertEqual(hh.errors, [])
+            effects = hh.printer.lookup_object('mmu_led_effect').effects
+            for unit in ('unit0', 'unit1'):
+                scoped = [e for e in effects if 'mmu_static_white_%s' % unit in e.name]
+                self.assertTrue(scoped, unit)
+                self.assertTrue(all(chain.startswith('%s_mmu_' % unit)
+                                    for e in scoped for chain in e.configChains))
+        finally:
+            hh.close()
+
+    def test_unknown_effect_unit_is_rejected(self):
+        hh = session('emu')
+        try:
+            hh.boot()
+            from extras.mmu_led_effect import MmuLedEffect
+            section = 'mmu_led_effect mmu_static_white_unit0'
+            hh.fileconfig.set(section, 'unit', 'typo')
+            with self.assertRaisesRegex(Exception, "Unknown MMU unit 'typo'"):
+                MmuLedEffect(hh.config.getsection(section))
+        finally:
+            hh.close()
+
 if __name__ == '__main__':
     unittest.main()

@@ -172,3 +172,53 @@ class TestButtonGcodeRefresh(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLedEffectUpgrade(unittest.TestCase):
+    """An existing EMU install (stock effect lines, no EMU effect sections, an excluded
+    block) must never end up with effect mappings whose definitions are missing."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.source = os.path.join(self.tmp.name, "mmu_hardware_unit0.cfg")
+        self.dest = os.path.join(self.tmp.name, "out", "mmu_hardware_unit0.cfg")
+        os.makedirs(os.path.dirname(self.dest))
+        with open(self.source, "w") as f:
+            f.write("[mmu_leds unit0]\n"
+                    "effect_gate_available: mmu_static_green, (0, 0.5, 0)\n"
+                    "effect_error: mmu_sparkle, (0.123, 0, 0), 7\n\n"
+                    "# EXCLUDE FROM CONFIG BUILDER -- IMPORTANT do not alter or remove this line. "
+                    "Config below is never upgraded\n"
+                    "[temperature_sensor user_sensor]\nsensor_type: Generic 3950\n"
+                    "sensor_pin: unit0:PA0\n")
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            self.kconfig = cfg._kconfig("led-effect-upgrade", profiles.get("emu").syms)
+
+    def build(self, mode):
+        from installer import build
+        env = dict(cfg._SINGLE_UNIT_ENV, OUT=os.path.dirname(self.dest), F_CFG_UPGRADE_MODE=mode)
+        with cfg._env(env), cfg._chdir(cfg.REPO_ROOT):
+            build.build_config_file("config/base/mmu_hardware.cfg", self.dest,
+                                    self.kconfig, [self.source], {})
+        return ConfigBuilder(self.dest)
+
+    def effect(self, built, option):
+        return built.get("mmu_leds unit0", option).split(",")[0].strip()
+
+    def test_merge_applies_emu_mappings_with_their_definitions(self):
+        built = self.build("merge")
+        self.assertEqual(self.effect(built, "effect_gate_available"), "mmu_static_white_dim_unit0")
+        self.assertTrue(built.has_section("mmu_led_effect mmu_static_white_dim_unit0"))
+        self.assertEqual(self.effect(built, "effect_error"), "mmu_red_strobe")
+
+    def test_refresh_keeps_installed_mappings_and_adds_definitions(self):
+        built = self.build("refresh")
+        self.assertEqual(self.effect(built, "effect_gate_available"), "mmu_static_green")
+        self.assertEqual(self.effect(built, "effect_error"), "mmu_sparkle")
+        self.assertTrue(built.has_section("mmu_led_effect mmu_static_white_dim_unit0"))
+
+    def test_excluded_block_is_preserved(self):
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                self.assertTrue(self.build(mode).has_section("temperature_sensor user_sensor"))

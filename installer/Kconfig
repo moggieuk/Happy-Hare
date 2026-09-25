@@ -55,7 +55,7 @@
 # 9. Added 'array_editor <separator> [size]' option for strings that represent lists
 #    E.g. `array_editor ";" PARAM_NUM_GATES
 # 10. Added 'boolint' and 'defboolint' types: Boolean UI/logic with numeric 0/1 output
-# 11. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
+# 11. Font manipulators like [[B]]xx[[/B]] can be used in prompts, comments and help
 #    and include: B,BOLD,DIM,U,UNDERLINE,REV,REVERSE,C:n,COLOR:n (color), RESET
 # 12. Derived array-size mismatch checks for warnings:
 #      config WARN_ARRAY_LENGTH
@@ -72,6 +72,9 @@
 #     from a renamed symbol to its replacement at load time. Add an entry in
 #     the same commit as the rename. Cannot be used for a symbol that make or
 #     install.sh reads by name, since both read the file before this runs.
+# 15. 'default_when_hidden' on a menuconfig/menu (or symbol) saves a symbol
+#     under it whose prompt is hidden as a #~DEFAULT~# value, so turning the
+#     entry off reverts any customization to the (still tracked) default.
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
