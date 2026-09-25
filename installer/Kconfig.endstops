@@ -10,6 +10,9 @@
 #   PARAM_GATE_PARKING_DISTANCE
 #   PARAM_GATE_HOMING_MAX
 #   PARAM_GATE_LOAD_ATTEMPTS
+#   PARAM_BOWDEN_HOMING_MAX
+#   PARAM_BOWDEN_LOAD_HOMING_BUFFER
+#   PARAM_BOWDEN_UNLOAD_HOMING_BUFFER
 #   PARAM_EXTRUDER_HOMING_ENDSTOP
 #   PARAM_EXTRUDER_HOMING_MAX
 
@@ -173,6 +176,14 @@ menu "Endstops and Bowden movement"
 
   comment "No bowden move required - gate homing to extruder"
     depends on !PARAM_REQUIRE_BOWDEN_MOVE
+
+  config PARAM_BOWDEN_HOMING_MAX
+    float
+    prompt "Maximum bowden move         " if PARAM_REQUIRE_BOWDEN_MOVE
+    default 2000
+    help
+      Maximum attempted bowden move (mm) used during calibration.
+      Set this larger than the actual Bowden length.
 
   config PARAM_BOWDEN_LOAD_HOMING_BUFFER
     float
