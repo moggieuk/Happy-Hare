@@ -203,39 +203,25 @@ class MmuTestCommand(BaseCommand):
                 sensors_to_remove = {}
                 compression_sensor_filament_present = tension_sensor_filament_present = False
 
-                # Create phony sensors for testing purposes (removed again after the test)
+                # Create phony sensors for testing purposes (removed again after the test).
+                # Unregistered: on a single-unit machine the real buffer sensors already own
+                # the short "filament_switch_sensor <name>" object and mux names
                 def create_test_sensor(sensor_name, button_handler):
                     return factory.create_mmu_sensor(
                         config, sensor_name, None, 'test_' + sensor_name + '_pin',
-                        event_delay=0, button_handler=button_handler
+                        event_delay=0, button_handler=button_handler, register=False
                     )
 
                 def remove_test_sensors():
                     """
-                    Unregister anything create_test_sensor() made.
-
-                    Runs on EVERY exit path, not just the 'loop' one. It used to live inside
-                    the loop branch, so a second plain SYNC_STATE call died with "mux command
-                    QUERY_FILAMENT_SENSOR SENSOR filament_compression already registered".
-
-                    Keyed off each sensor's OWN name - MmuSensor registers as
-                    "filament_switch_sensor <name>" (mmu_sensor_utils.py:379) - rather than a
-                    reconstructed "<x>_sensor", which stopped matching when that suffix was
-                    dropped.
+                    Release the pins create_test_sensor() claimed. Runs on EVERY exit path so a
+                    repeated SYNC_STATE call can claim them again.
                     """
                     ppins = mmu.printer.lookup_object('pins')
-                    for sensor, sensor_obj in sensors_to_remove.items():
-                        object_name = "filament_switch_sensor %s" % sensor_obj.name
-                        mmu.printer.objects.pop(object_name, None)
-                        config.fileconfig.pop(object_name, None)
-
+                    for sensor in sensors_to_remove:
                         pin_params = ppins.parse_pin('test_' + sensor + '_pin')
                         ppins.active_pins.pop(
                             "%s:%s" % (pin_params['chip_name'], pin_params['pin']), None)
-
-                        for cmd, (__, val) in mmu.gcode.mux_commands.items():
-                            if sensor_obj.name in [k for k in [v for v in val.keys() if v]]:
-                                mmu.gcode.mux_commands[cmd][1].pop(sensor_obj.name)
                     sensors_to_remove.clear()
 
                 # Use the temporary sensors for the test if the real ones are not present or disabled

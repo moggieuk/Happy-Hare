@@ -212,6 +212,30 @@ class TestSensorProbes(DevTestCase):
                 self.run_option(args)
 
 
+class TestSingleUnitSyncState(DevTestCase):
+    """
+    On a single-unit machine the real buffer sensors also register under their short names
+    (filament_compression / filament_tension) - the same names the phony SYNC_STATE sensors
+    use. The phony ones must not collide with, or clean up, the real registrations.
+    """
+
+    PROFILE = 'boxturtle'
+
+    def test_sync_state_with_the_real_sensors_disabled(self):
+        buffer = self.hh.mmu.mmu_unit().buffer
+        buffer.compression_sensor.runout_helper.sensor_enabled = False
+        buffer.tension_sensor.runout_helper.sensor_enabled = False
+        before = set(self.hh.printer.objects)
+        mux_before = set(self.hh.printer.lookup_object('gcode').mux_commands['QUERY_FILAMENT_SENSOR'][1])
+        for state in ('compression', 'tension', 'neutral'):
+            with self.subTest(state=state):
+                self.run_option('SYNC_STATE=%s' % state)
+        self.assertEqual(set(self.hh.printer.objects), before)
+        self.assertEqual(
+            set(self.hh.printer.lookup_object('gcode').mux_commands['QUERY_FILAMENT_SENSOR'][1]),
+            mux_before)
+
+
 class TestNfcReadFeedback(DevTestCase):
     """
     What a user actually sees when a tag is read: a console line and an LED flash.
