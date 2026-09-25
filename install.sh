@@ -966,13 +966,14 @@ run_kconfig_units() {
             [ -n "$name" ] || continue
 
             run_kconfig_one "${KCONFIG_CONFIG}_${name}" "${action}" "${only_if_stale}" \
+                KCONFIG_PARENT="${KCONFIG_CONFIG}" \
                 F_MULTI_UNIT=y \
                 UNIT_INDEX="$i" \
                 UNIT_NAME="$name" \
                 MCU_NAME="$name" \
                 HAS_SENSOR_TOOLHEAD="$CONFIG_MMU_HAS_SENSOR_TOOLHEAD" \
                 HAS_SENSOR_EXTRUDER="$CONFIG_MMU_HAS_SENSOR_EXTRUDER" \
-                HAS_SENSOR_TOOLHEAD_CUTTER="$CONFIG_MMU_HAS_TOOLHEAD_CUTTER"
+                HAS_TOOLHEAD_CUTTER="$CONFIG_MMU_HAS_TOOLHEAD_CUTTER"
 
             i=$((i + 1))
         done

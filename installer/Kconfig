@@ -55,12 +55,26 @@
 # 9. Added 'array_editor <separator> [size]' option for strings that represent lists
 #    E.g. `array_editor ";" PARAM_NUM_GATES
 # 10. Added 'boolint' and 'defboolint' types: Boolean UI/logic with numeric 0/1 output
-# 11. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
+# 11. Font manipulators like [[B]]xx[[/B]] can be used in prompts, comments and help
 #    and include: B,BOLD,DIM,U,UNDERLINE,REV,REVERSE,C:n,COLOR:n (color), RESET
 # 12. Derived array-size mismatch checks for warnings:
 #      config WARN_ARRAY_LENGTH
 #        bool
 #        array_size_mismatch PARAM_ARRAY
+# 13. $(macro) references expand in a named choice, not just a config name.
+#     This is what lets a shared fragment under components/ be sourced once
+#     per consumer and still declare its own choices:
+#       prefix := GEAR
+#       source "components/Kconfig.tmc_driver_types"
+#     Re-assign every variable immediately before each source - they are
+#     global for the whole parse.
+# 14. HH_RENAMED_SYMBOLS in kconfiglib.py carries a saved .mmu_config value
+#     from a renamed symbol to its replacement at load time. Add an entry in
+#     the same commit as the rename. Cannot be used for a symbol that make or
+#     install.sh reads by name, since both read the file before this runs.
+# 15. 'default_when_hidden' on a menuconfig/menu (or symbol) saves a symbol
+#     under it whose prompt is hidden as a #~DEFAULT~# value, so turning the
+#     entry off reverts any customization to the (still tracked) default.
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -211,12 +225,6 @@ comment "$(pad,$(caption_pad),(\")_(\") $(caption))"
 comment "$(pad,50,)"
 comment "_"
 
-# UI rendering option:
-#  y to shows MMU additions menu inline with type
-#  n to show as top level menu
-config SHOW_MMU_ADDITIONS_WITH_TYPE
-  def_bool n
-
 config SHOW_HIDDEN
   def_bool n
 
@@ -273,9 +281,7 @@ if !MULTI_UNIT_ENTRY_POINT
   source "mmu_types/Kconfig"        # Base MMU type menu
   source "Kconfig.name"             # Simple display name
   source "boards/Kconfig"           # MCU Selection menu
-  if !SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with MMU type)
-  endif
+  source "Kconfig.mmu_additions"    # MMU Additions/Customization menu
   comment "_"
   source "connection/Kconfig"       # MCU Connection
   source "Kconfig.pins"             # Raw pin editing

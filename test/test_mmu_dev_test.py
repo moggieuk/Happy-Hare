@@ -4,14 +4,11 @@
 #
 # _MMU_TEST is a bag of ~30 independent developer probes and NOTHING exercised it. That is
 # exactly the shape of code that rots silently: it reaches deep into internals by name, so
-# every rename lands everywhere except here, and nobody notices because nobody runs it. Six
+# every rename lands everywhere except here, and nobody notices because nobody runs it. Several
 # options had gone stale that way, all against APIs that moved during the per-unit refactor:
 #
 #   SET_RD        mmu.calibration_manager      -> mmu_unit.calibrator
 #   RUNOUT        mmu._enable_runout           -> mmu.sensor_manager.enable_runout
-#   SYNC_STATE    lookup_object('mmu_sensors') -> mmu_unit.buffer (the sync sensors moved
-#                                                 to MmuBuffer, and MmuSensors lost the
-#                                                 `sensors` dict and the callbacks entirely)
 #   SEL_MOVE      mmu.selector.move(...)       -> mmu.selector().move(...) - `selector`
 #   SEL_HOMING_MOVE                               became a method; five call sites missed it
 #   SEL_LOAD_TEST
@@ -24,9 +21,6 @@
 #
 # WHAT IS NOT COVERED, and why:
 #
-#   SYNC_STATE=loop     Cannot complete anywhere, harness or hardware - it busy-waits and
-#                       wedges the reactor. Now REFUSED with an explanation rather than left to
-#                       hang; see test_sync_state_loop_is_refused_rather_than_hanging.
 #   TTC_TEST*,          Provoke timing faults in real Klipper step generation, which the
 #   STEPCOMPRESS_TEST,  harness does not model at all (test/README.md section 9). They run
 #   QUIESCE_TEST,       clean here and prove nothing; covered below only to the extent that
@@ -163,77 +157,12 @@ class TestSensorProbes(DevTestCase):
         self.run_option('RUNOUT=0')
         self.run_option('RUNOUT=1')
 
-    def test_each_sync_state_can_be_driven(self):
-        """
-        The sync feedback sensors live on the unit's BUFFER now. This whole block used to die
-        on lookup_object('mmu_sensors') before doing anything.
-        """
-        for state in ('compression', 'tension', 'both', 'neutral'):
-            with self.subTest(state=state):
-                self.run_option('SYNC_STATE=%s' % state)
-
-    def test_sync_state_is_repeatable_when_it_has_to_fake_the_sensors(self):
-        """
-        With the real sensors disabled the command builds phony ones. Removing them used to
-        happen only on the SYNC_STATE=loop path, so a second call died with "mux command
-        QUERY_FILAMENT_SENSOR SENSOR filament_compression already registered".
-        """
-        buffer = self.hh.mmu.mmu_unit().buffer
-        buffer.compression_sensor.runout_helper.sensor_enabled = False
-        buffer.tension_sensor.runout_helper.sensor_enabled = False
-        before = set(self.hh.printer.objects)
-        for state in ('compression', 'tension', 'neutral'):
-            with self.subTest(state=state):
-                self.run_option('SYNC_STATE=%s' % state)
-        self.assertEqual(set(self.hh.printer.objects) - before, set(),
-                         'phony sensors were left registered')
-
-    def test_sync_state_loop_is_refused_rather_than_hanging(self):
-        """
-        SYNC_STATE=loop gathers results with `while <cond>: pass` inside a gcode handler,
-        which blocks the single reactor greenlet - so the mmu:sync_feedback_finished events it
-        waits on, delivered by MmuSyncFeedback's settle timers, can never arrive. It wedges the
-        reactor on a printer just as much as here.
-
-        It only ever appeared to be "just broken" because the setup ahead of it died first on a
-        stale lookup_object('mmu_sensors'). Repairing that made the busy-wait reachable, so it
-        is refused explicitly. If someone rewrites the choreography to yield, this test is the
-        thing to delete.
-        """
-        with self.assertRaises(Exception) as caught:
-            self.hh.run_gcode('_MMU_TEST SYNC_STATE=loop LOOP=2')
-        self.assertIn('busy-wait', str(caught.exception))
-
     def test_the_event_and_sensor_path_probes(self):
         for args in ('SYNC_EVENT=0.5', 'SYNC_EVENT=-0.5', 'SEND_PRINTING_EVENT=1',
                      'SEND_PRINTING_EVENT=0', 'ACTIVATE_FLOWGUARD=1',
                      'SENSOR=1 POS=3 GATE=0 LOADING=1', 'NFC_READ=1 UID=04A1B2C3D4E5'):
             with self.subTest(option=args):
                 self.run_option(args)
-
-
-class TestSingleUnitSyncState(DevTestCase):
-    """
-    On a single-unit machine the real buffer sensors also register under their short names
-    (filament_compression / filament_tension) - the same names the phony SYNC_STATE sensors
-    use. The phony ones must not collide with, or clean up, the real registrations.
-    """
-
-    PROFILE = 'boxturtle'
-
-    def test_sync_state_with_the_real_sensors_disabled(self):
-        buffer = self.hh.mmu.mmu_unit().buffer
-        buffer.compression_sensor.runout_helper.sensor_enabled = False
-        buffer.tension_sensor.runout_helper.sensor_enabled = False
-        before = set(self.hh.printer.objects)
-        mux_before = set(self.hh.printer.lookup_object('gcode').mux_commands['QUERY_FILAMENT_SENSOR'][1])
-        for state in ('compression', 'tension', 'neutral'):
-            with self.subTest(state=state):
-                self.run_option('SYNC_STATE=%s' % state)
-        self.assertEqual(set(self.hh.printer.objects), before)
-        self.assertEqual(
-            set(self.hh.printer.lookup_object('gcode').mux_commands['QUERY_FILAMENT_SENSOR'][1]),
-            mux_before)
 
 
 class TestNfcReadFeedback(DevTestCase):

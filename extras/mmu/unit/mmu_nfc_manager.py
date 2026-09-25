@@ -664,6 +664,9 @@ class MmuNfcManager:
         name = getattr(reader, 'name', '?')
         try:
             alive = reader.init(gate)
+            log = self.mmu.log_debug if self.mmu.p.suppress_klipper_warnings else self.mmu.log_warning
+            for warning in reader.startup_warnings:
+                log("NFC: reader '%s': %s" % (name, warning))
             if alive:
                 # 'gate' is a logging label, not always a gate: _init_all_readers passes
                 # the unit name for the shared reader, which has no gate. Report it as

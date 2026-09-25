@@ -11,6 +11,8 @@
 #   PARAM_EXIT_EFFECT
 #   PARAM_ENTRY_EFFECT
 #   PARAM_STATUS_EFFECT
+#   PARAM_EFFECT_* (one per effect_* option in [mmu_leds])
+#   PARAM_MISC_LED_EFFECTS
 #   PARAM_CHAIN_COUNT
 #   PARAM_COLOR_ORDER
 #   PARAM_EXIT_LEDS
@@ -186,6 +188,223 @@ if MMU_HAS_LEDS
       default "filament_color" if CHOICE_STATUS_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
       default "filament_color"
+
+    menuconfig BOOL_CUSTOMIZE_LED_EFFECTS
+      bool "Customize LED effects?"
+      default n
+      default_when_hidden
+      help
+        ADVANCED: Edit the effect used for each action, otherwise the defaults for this MMU type are used.
+        Format:
+          [[B]]effect_name, (r,g,b) [, duration][[/B]]
+
+        The effect must be an [mmu_led_effect] (see mmu.cfg); (r,g,b) is used when animation is off.
+        The optional duration (seconds) is how long a timed effect shows before reverting.
+
+    config PARAM_EFFECT_LOADING
+      string
+      prompt "Loading              " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_blue_clockwise_slow,   (0, 0, 0.4)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_LOADING_EXTRUDER
+      string
+      prompt "Loading extruder     " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_blue_clockwise_fast,   (0, 0, 1)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_UNLOADING
+      string
+      prompt "Unloading            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_blue_anticlock_slow,   (0, 0, 0.4)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_UNLOADING_EXTRUDER
+      string
+      prompt "Unloading extruder   " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_blue_anticlock_fast,   (0, 0, 1)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_HEATING
+      string
+      prompt "Heating              " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_breathing_red_slow,    (0.3, 0, 0)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_SELECTING
+      string
+      prompt "Selecting            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_breathing_white_fast,  (0.2, 0.2, 0.2)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_CHECKING
+      string
+      prompt "Checking             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_breathing_cyan_fast,   (0, 0.4, 0.5)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_PRELOADING
+      string
+      prompt "Preloading           " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_breathing_cyan_fast,   (0, 0.4, 0.5)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_INITIALIZED
+      string
+      prompt "Initialized          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_rainbow,               (0.5, 0.2, 0),   8"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    config PARAM_EFFECT_ERROR
+      string
+      prompt "Error                " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_red_strobe,            (1, 0, 0),       10"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    config PARAM_EFFECT_COMPLETE
+      string
+      prompt "Complete             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_sparkle,               (0.3, 0.3, 0.3), 10"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    config PARAM_EFFECT_GATE_SELECTED
+      string
+      prompt "Gate selected        " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_static_blue,           (0, 0, 1)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_GATE_AVAILABLE
+      string
+      prompt "Gate available       " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_static_green,          (0, 0.5, 0)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_GATE_AVAILABLE_SEL
+      string
+      prompt "Gate available (sel) " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_ready_green,           (0, 0.75, 0)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_GATE_UNKNOWN
+      string
+      prompt "Gate unknown         " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_static_orange,         (0.5, 0.2, 0)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_GATE_UNKNOWN_SEL
+      string
+      prompt "Gate unknown (sel)   " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_ready_orange,          (0.75, 0.3, 0)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_GATE_EMPTY
+      string
+      prompt "Gate empty           " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_static_black,          (0, 0, 0)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_GATE_EMPTY_SEL
+      string
+      prompt "Gate empty (sel)     " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_ready_orange2,         (0.1, 0.04, 0)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_PENDING_SPOOLID
+      string
+      prompt "Pending spool ID     " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_breathing_purple_slow, (0.4, 0, 0.5)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_PENDING_SPOOLID_EXPIRING
+      string
+      prompt "Spool ID expiring    " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_breathing_purple_fast, (0.4, 0, 0.5)"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b)[[/REV]]
+
+    config PARAM_EFFECT_NFC_READ
+      string
+      prompt "NFC read             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_green_strobe_fast,     (0, 1, 0),       0.8"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    config PARAM_EFFECT_NFC_DEEP_READ
+      string
+      prompt "NFC deep read        " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_green_strobe_fast,     (0, 1, 0),       1.6"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    config PARAM_EFFECT_NFC_FAIL
+      string
+      prompt "NFC fail             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_red_strobe,            (1, 0, 0),       3"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    config PARAM_EFFECT_TD1_READ
+      string
+      prompt "TD-1 read            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_green_strobe_fast,     (0, 1, 0),       0.8"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    config PARAM_EFFECT_TD1_FAIL
+      string
+      prompt "TD-1 fail            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "mmu_red_strobe,            (1, 0, 0),       3"
+      help
+        Format:
+          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+
+    # Unit-specific [mmu_led_effect] sections for the effects above (set by vendor types)
+    config PARAM_MISC_LED_EFFECTS
+      string
+      default ""
 
     comment "_"
 

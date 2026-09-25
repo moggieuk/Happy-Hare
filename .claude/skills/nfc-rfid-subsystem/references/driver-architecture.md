@@ -34,6 +34,65 @@ Four chip drivers, `extras/mmu/unit/nfc/`:
 - PN7160 only gets full-rate non-blocking probing with a wired `irq_pin`;
   without it, same blocking-shim fallback.
 
+**I2C NACK handling (`i2c_transport.py`).** Klipper's `bus.MCU_I2C.i2c_read()`
+and `i2c_write()` shut the printer down on a NACK. On new firmware that is the
+host-side `i2c_transfer()` wrapper calling `invoke_shutdown()`; on old firmware
+it is `command_i2c_read` in the MCU. So PN532-over-I2C and PN7160 send
+`i2c_transfer_cmd` themselves through `transfer_checked()`, which raises
+`I2CStatusError` (`PN7160I2CStatusError` is a subclass). Whether that path is
+available depends on each MCU's firmware, and `i2c_transfer_cmd` is only bound
+in `build_config()`, after the driver has been built. So `status_supported()`
+is checked on every call and never cached. The SPI and UART drivers have no
+NACK and so no equivalent.
+
+Only the supported path is shared. Each driver keeps its own fallback, and the
+two are deliberately different:
+- PN532 calls `i2c_read(write, n)` with no `retry=`, so it works on
+  Klipper ≤ v0.13.0. Its `init()` logs a warning there (and on Kalico) that
+  a NACK will shut down the MCU.
+- PN7160 refuses all bus traffic in polled (no `irq_pin`) mode without
+  status support, raising `PN7160PolledUnsupported` before any byte is sent,
+  and `init()` fails fast with the reason. Polled mode learns "nothing
+  pending" from a NACK, and there a NACK is an MCU shutdown. Don't rely on
+  the `retry=False` `TypeError` for this: it happens on Klipper ≤ v0.13.0,
+  but Kalico's `i2c_read()` accepts `retry`. IRQ-mode reads still go through
+  `i2c_read(..., retry=False)`, and once setup succeeds there (Kalico)
+  `init()` logs the same MCU-shutdown warning as the PN532.
+
+Don't unify the two fallbacks.
+
+Driver warnings reach the console through `startup_warnings`: a driver's
+`init()` resets the list and appends to it, `MmuNfcReader.init()` copies it,
+and `MmuNfcManager._init_reader()` and `MMU_RFID_INIT` log each entry with
+`mmu.log_warning()`, or `log_debug()` when `suppress_klipper_warnings` is
+set. The driver's own `logger.warning()` only reaches klippy.log, because
+drivers have no gcode or MMU access by design.
+
+**I2C support matrix.** What decides NACK safety is each MCU's firmware, not
+the host version. A new Klipper host with un-reflashed MCU firmware behaves
+like the Kalico column.
+
+| Reader | New Klipper (has `i2c_transfer`) | Old Klipper (≤ v0.13.0) | Kalico |
+|---|---|---|---|
+| PN532 over I2C | Works. A NACK takes the reader offline | Works, with a startup warning. A NACK shuts down the MCU | Works, with a startup warning. A NACK shuts down the MCU |
+| PN7160 with `irq_pin` | Works. A NACK is reported | Doesn't start (`i2c_read()` rejects `retry=`) | Works, with a startup warning. A NACK shuts down the MCU |
+| PN7160 without `irq_pin` | Works, including the polled homing probe. A NACK is reported | Refused at startup (`PN7160PolledUnsupported`) | Refused at startup (`PN7160PolledUnsupported`) |
+
+- The startup warnings go through `log_warning()`, so they reach the console
+  and `mmu.log`, one line per physical reader, at bootup and on
+  `MMU_RFID_INIT`. The PN7160 refusal is a startup error, so it always
+  reaches the console.
+- Retries: the status-checked path sends `retry=False` in both drivers,
+  because resending a read or write to an NFC chip could consume or send a
+  frame twice. The PN532 fallback omits `retry`, so that Klipper's default
+  applies; the PN7160 fallback passes `retry=False`.
+- Tag homing probe: the PN532 probe works everywhere the reader starts,
+  because it polls a status byte that doesn't NACK in normal use. The
+  PN7160's no-`irq_pin` polled probe only exists on new Klipper.
+- Software (bit-banged) I2C behaves the same as hardware I2C. SPI and UART
+  readers (RC522, PN5180, PN532 over SPI or UART) have no NACK and aren't
+  affected.
+
 `MmuNfcReader` (`mmu_nfc_reader.py`, ~785 lines) is the per-instance facade
 above drivers. Its own docstring (`:11-12`) states it excludes lane state
 machines, Spoolman lookups, LEDs, and scan-jog motion by design — those live

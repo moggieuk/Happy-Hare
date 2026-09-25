@@ -1,6 +1,9 @@
 """Required motor pins must produce actionable menuconfig warnings."""
 
+import re
 import unittest
+
+import kconfiglib
 
 from test.hh import cfg
 
@@ -41,6 +44,48 @@ class TestPinWarnings(unittest.TestCase):
                     self.assertTrue(self.enabled('SHOW_PER_UNIT_WARNINGS'))
                     self.set_symbols(**{pin: 'mcu:PA1'})
                     self.assertFalse(self.enabled(warning))
+
+    def test_the_bus_warning_follows_the_chip(self):
+        """An SPI chip needs a CS pin, not a UART one, and the reverse."""
+        for prefix, warning in (('GEAR', 'W23'), ('SELECTOR', 'W25')):
+            for chip, wanted, other in (('TMC2209', 'UART', 'CS'),
+                                        ('TMC2130', 'CS', 'UART'),
+                                        ('TMC5160', 'CS', 'UART'),
+                                        ('TMC2240_SPI', 'CS', 'UART'),
+                                        ('TMC2240_UART', 'UART', 'CS')):
+                with self.subTest(stepper=prefix, chip=chip):
+                    self.set_symbols(**{
+                        'CHOICE_%s_%s' % (prefix, chip): True,
+                        'PIN_%s_STEP' % prefix: 'mcu:PA1',
+                        'PIN_%s_DIR' % prefix: 'mcu:PA2',
+                        'PIN_%s_%s' % (prefix, wanted): '',
+                        'PIN_%s_%s' % (prefix, other): ''})
+                    self.assertTrue(self.enabled(warning),
+                                    'no %s pin for a %s' % (wanted, chip))
+                    self.set_symbols(**{'PIN_%s_%s' % (prefix, wanted): 'mcu:PC14'})
+                    self.assertFalse(self.enabled(warning))
+                    # The pin for the bus this chip does not speak is irrelevant
+                    self.set_symbols(**{'PIN_%s_%s' % (prefix, other): ''})
+                    self.assertFalse(self.enabled(warning))
+
+    def test_software_spi_needs_all_three_pins(self):
+        """Any one of the trio means software SPI, so all three must be set."""
+        for prefix, warning in (('GEAR', 'W27'), ('SELECTOR', 'W28')):
+            trio = ['PIN_%s_SPI_%s' % (prefix, p)
+                    for p in ('SCLK', 'MOSI', 'MISO')]
+            self.set_symbols(**{'CHOICE_%s_TMC5160' % prefix: True,
+                                'PIN_%s_CS' % prefix: 'mcu:PC14'})
+            self.set_symbols(**{pin: '' for pin in trio})
+            self.assertFalse(self.enabled(warning),
+                             'all three blank is hardware SPI, not a mistake')
+            for missing in trio:
+                with self.subTest(stepper=prefix, pin=missing):
+                    self.set_symbols(**{pin: 'mcu:PG%d' % i
+                                        for i, pin in enumerate(trio)})
+                    self.assertFalse(self.enabled(warning))
+                    self.set_symbols(**{missing: ''})
+                    self.assertTrue(self.enabled(warning))
+            self.set_symbols(**{pin: '' for pin in trio})
 
     def test_optional_pins_and_hardware_controlled_gear(self):
         self.set_symbols(PIN_GEAR_STEP='mcu:PA1', PIN_GEAR_DIR='mcu:PA2',
@@ -87,3 +132,30 @@ class TestPinWarnings(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestEveryWarningIsReachable(unittest.TestCase):
+    """The visibility gate is a @repeat over a fixed range.
+
+    Nothing ties that range to the warnings that exist, so a warning numbered
+    past the end is defined, evaluates correctly, and is never displayed -
+    which is exactly what happened to W27 and W28.
+    """
+
+    def test_the_gate_covers_every_warning_that_exists(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._new_kconfig('warning_gate')
+        for gate, prefix in (('SHOW_PER_UNIT_WARNINGS', 'W'),
+                             ('SHOW_SHARED_WARNINGS', 'SW')):
+            with self.subTest(gate=gate):
+                gated = {kconfiglib.expr_str(cond).split(' &&')[0]
+                         for _value, cond in kc.syms[gate].defaults}
+                defined = {name for name in kc.syms
+                           if re.fullmatch(prefix + r'\d+', name)
+                           and kc.syms[name].nodes}
+                missing = sorted(defined - gated,
+                                 key=lambda n: int(n[len(prefix):]))
+                self.assertEqual(
+                    missing, [],
+                    'these warnings can fire but %s will not show the block, '
+                    'so raise its @repeat max: %s' % (gate, ', '.join(missing)))

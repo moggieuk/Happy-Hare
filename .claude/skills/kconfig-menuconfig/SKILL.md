@@ -57,41 +57,54 @@ Load-bearing facts about the flow:
   (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_KLIPPER_HOME`, ...)
   steers the build (e.g. `unit_names`). Renaming such a symbol is a Makefile
   change too.
-- **Staleness**: `kconfig_sources` (Makefile:244) = every `installer/**/Kconfig*`
-  plus `kconfigfunctions.py`, compared by mtime against the value file; when
+- **Staleness**: `kconfig_sources` (Makefile:252) = every `installer/**/Kconfig*`
+  plus `kconfigfunctions.py` and `kconfiglib.py`, compared by mtime against the value file
+  (a unit file is also compared against its top-level file, `KCONFIG_PARENT`); when
   stale, `olddefconfig` (never menuconfig) refreshes the file with new
   defaults. New `Kconfig*` files are picked up automatically by the wildcard;
   files with any other name are invisible to this mechanism.
-- **User values survive by design**: `olddefconfig` only fills in *new*
-  symbols' defaults; explicit user assignments in an existing `.mmu_config`
-  are preserved. This is why changing the *default or meaning of an existing*
-  symbol is a breaking change for installed machines (see CONTRIBUTING: such
-  changes "will probably be rejected").
-- **Renaming a symbol silently discards the user's value, and there is no
-  migration hook.** kconfiglib drops an assignment whose symbol no longer
-  exists, `build.KConfig` runs with `warn_assign_undef = False`, and
-  `Makefile:736` sends `olddefconfig`'s output to `/dev/null` — so the old line
-  vanishes with *zero* diagnostics and the new name takes its default. Measured
-  on a real `.mmu_config`: a bool the user had explicitly set to `n` came back
-  `y`, no warning emitted. Harmless for a value still at its default (it
-  carries a `#~DEFAULT~#` token and recomputes identically), a silent
-  behavior change for anything explicitly set — and every upgrade touches
-  `installer/Kconfig*`, so the staleness check runs `olddefconfig`
-  unprompted. Note `installer/upgrades.py` does NOT help: it renames options
-  and sections in the generated Klipper `.cfg` files, not Kconfig symbols.
-  So renaming a symbol users have set is a breaking change unless it ships
-  with a migration, and one would have to: rewrite every `.mmu_config*`
-  (glob — per-unit files are where the per-unit tree's symbols live), handle
-  both the `CONFIG_X=v` and `# CONFIG_X is not set` spellings, preserve the
-  trailing `#~DEFAULT~#` token, preserve each file's **mtime** (or
-  `kconfig_needs_update` stops seeing the file as stale and suppresses the
-  very `olddefconfig` pass the migration precedes), and run before
-  *menuconfig*, not just before `olddefconfig`, or an interactive install
-  builds its screen from the already-lost value. Cheapest answer is usually
-  to leave the name alone: `PARAM_NFC_READER_GATE_$(i)` keeps its prefix for
-  exactly this reason, matching its four siblings (`PARAM_FILAMENT_HEATER_GATE_`,
-  `PARAM_FAN_GATE_`, `PARAM_HEATER_FAN_GATE_`, `PARAM_TD1_DEVICE_GATE_`) even
-  though they are all presentation-only bools that `BOOL_` would describe better.
+- **User values survive by design; recorded defaults do not**: explicit user
+  assignments in an existing `.mmu_config` are preserved, but a value saved
+  with `#~DEFAULT~#` (choices included) is recomputed by every `olddefconfig`
+  and menuconfig load. So changing the *default or meaning of an existing*
+  symbol or choice reaches installed machines that accepted it (see
+  CONTRIBUTING: such changes "will probably be rejected"). `olddefconfig.py`
+  prints every such change to stderr (`change_report`), which is what
+  `install.sh` shows under "Updating Kconfig defaults".
+- **Renaming a symbol discards the user's value unless it is in the rename
+  table.** kconfiglib drops an assignment whose symbol no longer exists,
+  `build.KConfig` runs with `warn_assign_undef = False`, and `Makefile` sends
+  `olddefconfig`'s output to `/dev/null` — so an unhandled rename loses the
+  old line with *zero* diagnostics and the new name takes its default.
+  `installer/upgrades.py` does not help: it renames options and sections in
+  the generated Klipper `.cfg` files, not Kconfig symbols.
+  **The hook is `HH_RENAMED_SYMBOLS`** in the kconfiglib fork (old name → new
+  name), applied by `Kconfig._migrate_renamed_symbols` during `load_config`.
+  Add an entry in the same commit as the rename; entries can be dropped a
+  major version later. Because it runs inside the loader, every caller gets
+  it (menuconfig, olddefconfig, `build.KConfig`, the test harness), per-unit
+  `.mmu_config_<unit>` files are covered for free, and there is no file
+  rewriting — so none of the mtime/glob/ordering hazards of a text pass apply.
+  Two things it must keep doing, both covered by
+  `test/installer/test_kconfig_rename_migration.py`:
+  - **Honour `filter_defaults`.** menuconfig/olddefconfig pass `True` and
+    clear a `#~DEFAULT~#` line; `build.py` passes `False` and applies it.
+    Treating them alike freezes an old default as a user value.
+  - **Handle `# CONFIG_X is not set`**, a different regex from `KEY=VALUE`,
+    and how a saved config records what was turned *off*.
+  **Its one limit:** it runs after `make` has done `-include $(KCONFIG_CONFIG)`
+  and after `install.sh` has sourced the same file as shell, so a symbol that
+  *those* read by name (`MULTI_UNIT`, `MMU_UNITS`, `KLIPPER_HOME`, …) still
+  cannot be renamed this way — that needs a pass that rewrites the file.
+- **A shared definition can be a component.** `installer/components/Kconfig.*`
+  is sourced once per consumer with `prefix := X` preprocessor variables, so
+  one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
+  and `installer/components/Kconfig.tmc_driver_*` are the worked example.
+  Three rules: re-assign every variable immediately before each `source`
+  (they are global for the whole parse); keep declarations and prompts in
+  separate fragments, because `_propagate_deps` ANDs an enclosing `if` into
+  defaults as well as prompts; and pad prompts with `$(pad,width,text)`
+  rather than literal spaces.
 
 ## The symbol-naming contract
 

@@ -31,6 +31,7 @@
 
 import logging
 import unittest
+from unittest import mock
 
 from collections import deque
 
@@ -744,16 +745,79 @@ class TestPn7160FastPolledFrames(unittest.TestCase):
                         'must not settle for no_irq_read_delay each time: pauses were '
                         '%s' % (reactor.pauses,))
 
-    def test_status_less_firmware_keeps_the_conservative_settle(self):
-        """No way to tell a NACK from data there, so minimize speculative reads."""
-        handler, reactor = self.build([RF_DISCOVER_NTF[:3], RF_DISCOVER_NTF[3:]],
-                                      status_support=False)
+    def test_status_less_firmware_refuses_polled_reads(self):
+        """No way to tell a NACK from data there - command_i2c_read shuts the MCU down
+        (old Klipper, Kalico) - so a polled read must never reach the bus. Kalico's
+        i2c_read() accepts retry=, so the old TypeError is no guard there."""
+        handler, _reactor = self.build([RF_DISCOVER_NTF[:3], RF_DISCOVER_NTF[3:]],
+                                       status_support=False)
         self.assertFalse(handler.no_irq_fast_poll)
-        handler.wait_frame(timeout=0.5, poll_interval=0.020)
-        self.assertAlmostEqual(max(reactor.pauses), handler.no_irq_read_delay, places=6,
-                               msg='without status support the full no_irq_read_delay '
-                                   'settle must stay - reading early there risks an '
-                                   'MCU shutdown')
+        with self.assertRaises(pn7160_driver.PN7160Error) as ctx:
+            handler.wait_frame(timeout=0.5, poll_interval=0.020)
+        self.assertIn('irq_pin', str(ctx.exception))
+        self.assertEqual(handler.i2c.transcript, [])
+
+    def test_status_less_firmware_refuses_polled_writes(self):
+        handler, _reactor = self.build([], status_support=False)
+        with self.assertRaises(pn7160_driver.PN7160PolledUnsupported):
+            handler.write_frame([0x20, 0x00, 0x01, 0x01], label="CORE_RESET")
+        self.assertEqual(handler.i2c.transcript, [])
+
+    def test_status_less_firmware_still_reads_in_irq_mode(self):
+        """IRQ mode only reads once the NFCC has asserted IRQ, so it is not refused."""
+        handler, _reactor = self.build([RF_DISCOVER_NTF[:3], RF_DISCOVER_NTF[3:]],
+                                       status_support=False)
+        handler.irq_enabled = True
+        handler.irq_state = 1
+        self.assertEqual(handler.read_frame_once(), RF_DISCOVER_NTF)
+
+    def _irq_driver(self, status_support, setup=None):
+        reactor = _FakeReactor()
+        drv = PN7160Driver(_FakeConfig(_FakePrinter(reactor)),
+                           FakeI2c([], status_support=status_support),
+                           name="gate0", debug=0)
+        drv._handler.irq_enabled = True
+        drv._handler.initialized = True
+        drv._setup_for_read = setup or (lambda full=None: None)
+        return drv
+
+    def test_init_warns_in_irq_mode_on_status_less_firmware(self):
+        drv = self._irq_driver(status_support=False)
+        with self.assertLogs('mmu_rfid.reader', level='WARNING') as captured:
+            drv.init()
+        self.assertTrue(drv.is_alive())
+        self.assertTrue(any('shut down the MCU' in line for line in captured.output))
+        self.assertEqual(len(drv.startup_warnings), 1)
+
+    def test_init_does_not_warn_with_status_support(self):
+        drv = self._irq_driver(status_support=True)
+        with self.assertLogs('mmu_rfid.reader', level='INFO') as captured:
+            drv.init()
+        self.assertFalse(any('WARNING' in line for line in captured.output))
+        self.assertEqual(drv.startup_warnings, [])
+
+    def test_init_does_not_warn_when_setup_fails(self):
+        """Klipper <= v0.13.0 never gets the reader up, so 'it works, but' would mislead."""
+        def fail(full=None):
+            raise pn7160_driver.PN7160Error("setup failed")
+        drv = self._irq_driver(status_support=False, setup=fail)
+        with mock.patch.object(pn7160_driver.logger, 'warning') as warning:
+            with self.assertRaises(pn7160_driver.PN7160Error):
+                drv.init()
+        warning.assert_not_called()
+        self.assertEqual(drv.startup_warnings, [])
+
+    def test_init_refuses_polled_mode_on_status_less_firmware(self):
+        reactor = _FakeReactor()
+        i2c = FakeI2c([], status_support=False)
+        drv = PN7160Driver(_FakeConfig(_FakePrinter(reactor)), i2c,
+                           name="gate0", debug=0)
+        drv._handler.irq_enabled = False
+        with self.assertRaises(pn7160_driver.PN7160PolledUnsupported) as ctx:
+            drv.init()
+        self.assertIn('irq_pin', str(ctx.exception))
+        self.assertEqual(i2c.transcript, [])
+        self.assertFalse(drv.is_alive())
 
 
 class TestPn7160ProbeStartCost(unittest.TestCase):

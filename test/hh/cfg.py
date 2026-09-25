@@ -351,6 +351,20 @@ def _render_single_unit(profile):
     return _render_templates(BASE_TEMPLATES, kc, extra)
 
 
+# Printer-level capabilities each unit parse is told about, as install.sh run_kconfig_units
+# passes them: env var read by installer/Kconfig -> symbol in the top-level config.
+HANDED_DOWN_ENV = {
+    'HAS_SENSOR_TOOLHEAD': 'MMU_HAS_SENSOR_TOOLHEAD',
+    'HAS_SENSOR_EXTRUDER': 'MMU_HAS_SENSOR_EXTRUDER',
+    'HAS_TOOLHEAD_CUTTER': 'MMU_HAS_TOOLHEAD_CUTTER',
+}
+
+
+def handed_down_env(entry_kc):
+    """The HANDED_DOWN_ENV values, read back off an entry-point parse."""
+    return {env: _flag(entry_kc, sym) for env, sym in HANDED_DOWN_ENV.items()}
+
+
 def _render_multi_unit(profile, units):
     """
     Three parses, mirroring install.sh run_kconfig_top (:385-399) + run_kconfig_units
@@ -372,13 +386,7 @@ def _render_multi_unit(profile, units):
                    MCU_NAME=','.join(names))):
         entry_kc = _kconfig_for_render(profile.name, profile.syms)
 
-    # Printer-level capabilities the units need to know about, read back off the entry parse
-    # exactly as install.sh:418-427 reads them back out of the top-level config file.
-    handed_down = {
-        'HAS_SENSOR_TOOLHEAD': _flag(entry_kc, 'MMU_HAS_SENSOR_TOOLHEAD'),
-        'HAS_SENSOR_EXTRUDER': _flag(entry_kc, 'MMU_HAS_SENSOR_EXTRUDER'),
-        'HAS_SENSOR_TOOLHEAD_CUTTER': _flag(entry_kc, 'MMU_HAS_TOOLHEAD_CUTTER'),
-    }
+    handed_down = handed_down_env(entry_kc)
 
     unit_kcs = []
     for unit in units:

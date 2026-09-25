@@ -115,6 +115,38 @@ class TestMenuRendering(unittest.TestCase):
             win.writes, ["------- > FANS (^C); other arrows: ? ? ?"])
 
 
+class FakeRecordingWindow(FakeWindow):
+    def __init__(self):
+        self.writes = []
+        self.x = 0
+
+    def move(self, y, x):
+        self.x = x
+
+    def getyx(self):
+        return 0, self.x
+
+    def addnstr(self, y, x, text, maxlen, *attr):
+        self.writes.append((text[:maxlen], attr[0] if attr else None))
+        self.x += len(text[:maxlen])
+
+
+class TestHelpMarkup(unittest.TestCase):
+
+    def test_bold_tags_render_and_other_brackets_stay_literal(self):
+        win = FakeRecordingWindow()
+        base = 7
+
+        menuconfig._safe_addstr_markup(
+            win, 0, 1, "  [[B]]effect_name, (r,g,b) [, duration][[/B]] here", base)
+
+        self.assertEqual(win.writes, [
+            ("  ", base),
+            ("effect_name, (r,g,b) [, duration]", base | menuconfig.curses.A_BOLD),
+            (" here", base),
+        ])
+
+
 class TestArrayEditorValidation(unittest.TestCase):
 
     @staticmethod

@@ -44,12 +44,17 @@
 #   #i2c_mcu: mcu                   # which MCU owns the bus (default 'mcu')
 #   #i2c_bus:
 #   #i2c_speed: 100000              # Klipper rejects anything below 100000
+#                                   # With MCU firmware new enough for i2c_transfer, an I2C
+#                                   # NACK takes the reader offline instead of the MCU. A
+#                                   # pn532 on older firmware (or Kalico) warns at startup
 #   #ven_pin: mcu:PG13              # pn7160 only, optional hardware enable/reset
-#   #irq_pin: mcu:PG14              # pn7160 only, optional - recommended for tag homing.
-#                                   # Wired, the presence probe asks the IRQ line and costs
-#                                   # no bus traffic at all; without it the probe reads on
-#                                   # spec once per tick, which works but needs a Klipper
-#                                   # new enough to report an I2C NACK
+#   #irq_pin: mcu:PG14              # pn7160 only, recommended for tag homing. Wired, the
+#                                   # presence probe asks the IRQ line and costs no bus
+#                                   # traffic at all; without it every read is on spec,
+#                                   # which needs MCU firmware with i2c_transfer to report
+#                                   # an I2C NACK. On Kalico irq_pin is required, and the
+#                                   # reader refuses to start without it; with it, it
+#                                   # warns at startup that an I2C fault stops the MCU
 #
 # Transport selection - 'interface'
 # ─────────────────────────────────
@@ -274,6 +279,7 @@ class MmuNfcReader:
                                                    interface=self.interface)
 
         self.alive = False
+        self.startup_warnings = []   # Driver warnings from the last init(), for the console
         self.last_uid = None
         self.last_target_info = None
         self.present = False
@@ -337,7 +343,10 @@ class MmuNfcReader:
         self.last_uid = None
         self.last_target_info = None
         self.present = False
+        self.startup_warnings = []
         self.reader.init()
+        # Drivers without the attribute (SPI, UART) have nothing to report
+        self.startup_warnings = list(getattr(self.reader, 'startup_warnings', None) or [])
         self._apply_rx_gain()
         self.alive = bool(self.reader.is_alive())
         return self.alive
@@ -759,6 +768,13 @@ class MmuNfcReader:
             gcmd.respond_info("mmu_nfc_reader %s: init error: %s" % (self.name, e))
             return
         gcmd.respond_info("mmu_nfc_reader %s: %s %s" % (self.name, self.reader_type, "OK" if alive else "not responding"))
+        mmu = getattr(getattr(self.mmu_unit, 'mmu_machine', None), 'mmu_controller', None)
+        for warning in self.startup_warnings:
+            msg = "NFC: reader '%s': %s" % (self.name, warning)
+            if mmu is not None:
+                (mmu.log_debug if mmu.p.suppress_klipper_warnings else mmu.log_warning)(msg)
+            else:
+                gcmd.respond_info(msg)
 
 
     def _do_read(self, gcmd):

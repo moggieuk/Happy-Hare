@@ -18,7 +18,6 @@ config MMU_TYPE_BOX_TURTLE_1_0
   select PARAM_SYNC_TO_EXTRUDER
   select PARAM_SYNC_FORM_TIP
   select PARAM_SYNC_PURGE
-  select DISABLE_NUM_GATES_OPTION
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
 
 
@@ -67,9 +66,6 @@ if MMU_TYPE_BOX_TURTLE_1_0
       default 12
   endif
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 
@@ -83,6 +79,8 @@ if MMU_TYPE_BOX_TURTLE_1_0
   config PARAM_VERSION
     default "1.0"  
   config PARAM_NUM_GATES
+    default 4
+  config PARAM_DESIGN_NUM_GATES
     default 4
   choice BOARD_TYPE
     default BOARD_TYPE_AFC_LITE_1_0

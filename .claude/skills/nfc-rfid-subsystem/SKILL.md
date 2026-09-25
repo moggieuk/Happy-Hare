@@ -1,6 +1,6 @@
 ---
 name: nfc-rfid-subsystem
-description: Explains Happy Hare's NFC/RFID subsystem — the driver abstraction for pn532/pn5180/pn7160/rc522 readers, jog_scan mechanics, and shipped reader-pair sharing — plus a clearly-flagged PROPOSED, UNMERGED, untested-on-hardware design for mitigating RF-crosstalk between neighboring gate readers (a "noisy neighbor" classification ladder and eviction-by-jogging) that a future contributor may need to resume rather than re-invent. Use this whenever touching NFC/RFID reader code, mmu_nfc_manager.py, reader_factory.py, jog_scan, Spoolman tag lookups or auto-create, nfc_readers config, or debugging cross-gate tag misattribution — even for something as simple as "the NFC reader isn't detecting the right spool" or "how do I wire two gates to one reader."
+description: Explains Happy Hare's NFC/RFID subsystem — the driver abstraction for pn532/pn5180/pn7160/rc522 readers, jog_scan mechanics, and shipped reader-pair sharing — plus a clearly-flagged PROPOSED, UNMERGED, untested-on-hardware design for mitigating RF-crosstalk between neighboring gate readers (a "noisy neighbor" classification ladder and eviction-by-jogging) that a future contributor may need to resume rather than re-invent. Use this whenever touching NFC/RFID reader code, mmu_nfc_manager.py, reader_factory.py, jog_scan, Spoolman tag lookups or auto-create, nfc_readers config, I2C NACK handling / i2c_transfer / Kalico or old-Klipper compatibility of the I2C readers, or debugging cross-gate tag misattribution — even for something as simple as "the NFC reader isn't detecting the right spool" or "how do I wire two gates to one reader."
 ---
 
 # NFC/RFID subsystem
@@ -32,7 +32,10 @@ non-blocking homing). Maturity isn't uniform — PN532-over-SPI logs
 "UNTESTED against real hardware" on every build, PN5180 has no
 non-blocking probe at all, PN7160 needs a wired `irq_pin` for full-rate
 probing. Check the factory's own warnings before assuming a driver is as
-solid as another.
+solid as another. I2C readers (PN532, PN7160) also depend on the MCU
+firmware having Klipper's `i2c_transfer` command: see the I2C support matrix
+in [references/driver-architecture.md](references/driver-architecture.md)
+before assuming how one behaves on Kalico or old Klipper.
 
 `MmuNfcReader` (`extras/mmu/unit/nfc/mmu_nfc_reader.py`) is the per-instance
 facade above the drivers; it deliberately excludes lane state machines,

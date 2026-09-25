@@ -22,7 +22,6 @@ config MMU_TYPE_QIDI_BOX_1_0
   select PARAM_SYNC_TO_EXTRUDER
   select PARAM_SYNC_FORM_TIP
   select PARAM_SYNC_PURGE
-  select DISABLE_NUM_GATES_OPTION
 
 if MMU_TYPE_QIDI_BOX_1_0
 
@@ -73,9 +72,6 @@ if MMU_TYPE_QIDI_BOX_1_0
   # the gate's own path. A fixed move cannot do this: the parking retract is
   # not applied when the preload endstop is 'none'.
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 
@@ -89,6 +85,8 @@ if MMU_TYPE_QIDI_BOX_1_0
   config PARAM_VERSION
     default "1.0"
   config PARAM_NUM_GATES
+    default 4
+  config PARAM_DESIGN_NUM_GATES
     default 4
   choice BOARD_TYPE
     default BOARD_TYPE_QIDI_BOX_2_0

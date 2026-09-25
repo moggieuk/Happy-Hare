@@ -7,7 +7,6 @@ config MMU_TYPE_MMX6_1_0
   select MMU_HAS_LEDS
   imply  PARAM_FILAMENT_ALWAYS_GRIPPED
   imply  PARAM_VARIABLE_ROTATION_DISTANCES
-  select DISABLE_NUM_GATES_OPTION
 
 ####################
 ##### Defaults #####
@@ -15,9 +14,6 @@ config MMU_TYPE_MMX6_1_0
 
 if MMU_TYPE_MMX6_1_0
 
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"
-  endif
 
   source "Kconfig.capabilities"
 
@@ -26,6 +22,8 @@ if MMU_TYPE_MMX6_1_0
   config PARAM_VERSION
     default "1.0"
   config PARAM_NUM_GATES
+    default 6
+  config PARAM_DESIGN_NUM_GATES
     default 6
 
   config PARAM_GEAR_GEAR_RATIO
