@@ -1,4 +1,9 @@
-# PN7160 reader driver for Happy Hare RFID Reader.
+# Happy Hare MMU Software
+# PN7160 reader driver
+#
+# Copyright (C) 2026  WoodWorker
+#
+# Goal: Drive a PN7160 over I2C behind the same reader-facing API as the PN532
 #
 # This is not the standalone [pn7160] Klipper plugin.  It adapts the PN7160
 # NCI controller flow to the small reader interface used by nfc_manager:
@@ -7,6 +12,13 @@
 # PN7160 uses the same reader-facing API as PN532 where possible.  The driver
 # owns NCI and raw tag commands; tag_handler owns retry windows, payload parsing,
 # Spoolman lookups, and Happy Hare side effects.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 from .i2c_transport import (NO_STATUS_WARNING, I2CStatusError, status_supported,
                             transfer_checked)

@@ -1,6 +1,13 @@
-# klippy/extras/mmu/unit/nfc/reader_factory.py
+# Happy Hare MMU Software
+# Reader driver factory
 #
-# Reader driver factory for mmu_nfc_reader.
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Original NFC gate reader extension
+# Copyright (C) 2026  WoodWorker
+#
+# Goal: Build the right chip driver for an [mmu_nfc_reader] section from config
 #
 # Originally part of a larger NFC gate-management extension; extracted here
 # as a standalone hardware layer for use with Happy Hare.  Reader drivers own
@@ -8,6 +15,13 @@
 # init(), is_alive(), read_tag(), read_target(), plus optional rich-read
 # helpers (ntag_read_user_memory, mifare_authenticate, etc.). They know
 # nothing about lanes, Spoolman, or Happy Hare.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 from .... import bus as bus_module
 
