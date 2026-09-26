@@ -1045,6 +1045,11 @@ class TestLedEffectParams(unittest.TestCase):
     overrides some of them and defines unit-scoped effects in PARAM_MISC_LED_EFFECTS."""
 
     EMU_EFFECTS = ('mmu_static_white', 'mmu_static_white_dim', 'mmu_static_red')
+    COLORS = {'logo_effect': '(0, 0, 0.3)', 'white_light': '(1, 1, 1)',
+              'black_light': '(.01, 0, .02)', 'empty_light': '(0, 0, 0)',
+              'filament_color_intensity': '0.5'}
+    COLOR_PARAMS = ('PARAM_WHITE_LIGHT', 'PARAM_BLACK_LIGHT', 'PARAM_EMPTY_LIGHT',
+                    'PARAM_FILAMENT_COLOR_INTENSITY')
 
     def _leds(self, profile, unit='unit0'):
         from test.hh import cfg, profiles
@@ -1064,6 +1069,42 @@ class TestLedEffectParams(unittest.TestCase):
         self.assertEqual(effects['effect_gate_available'], 'mmu_static_green, (0, 0.5, 0)')
         self.assertEqual(effects['effect_error'], 'mmu_red_strobe, (1, 0, 0), 10')
         self.assertEqual(effects['effect_td1_fail'], 'mmu_red_strobe, (1, 0, 0), 3')
+
+    def test_stock_colors_match_the_previous_template(self):
+        for name in ('boxturtle', 'emu'):
+            with self.subTest(profile=name):
+                _, leds = self._leds(name)
+                self.assertEqual({o: leds[o] for o in self.COLORS}, self.COLORS)
+
+    def test_menuconfig_colors_render(self):
+        from test.hh import profiles
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_led_color_param',
+            syms={'BOOL_CUSTOMIZE_LED_EFFECTS': True,
+                  'PARAM_WHITE_LIGHT': '(0.8, 0.8, 0.8)',
+                  'PARAM_FILAMENT_COLOR_INTENSITY': '0.25'})
+        _, leds = self._leds(profile)
+        self.assertEqual(leds['white_light'], '(0.8, 0.8, 0.8)')
+        self.assertEqual(leds['filament_color_intensity'], '0.25')
+        self.assertEqual(leds['black_light'], '(.01, 0, .02)')
+
+    def test_logo_effect_accepts_off_rgb_and_effect_names(self):
+        from test.hh import profiles
+        for value, expected in (('off', 'off'), ('(0, 0.5, 1)', (0.0, 0.5, 1.0)),
+                                ('mmu_rainbow', 'mmu_rainbow')):
+            with self.subTest(value=value):
+                profile = profiles.get('boxturtle').derive(
+                    'boxturtle_logo_effect_%s' % re.sub(r'\W', '', value),
+                    syms={'PARAM_LOGO_EFFECT': value})
+                _, leds = self._leds(profile)
+                self.assertEqual(leds['logo_effect'], value)
+                hh = session(profile)
+                try:
+                    hh.boot()
+                    self.assertEqual(hh.errors, [])
+                    self.assertEqual(hh.mmu.mmu_unit(0).leds.logo_effect, expected)
+                finally:
+                    hh.close()
 
     def test_emu_overrides_only_its_effects(self):
         _, stock = self._leds('boxturtle')
@@ -1110,8 +1151,9 @@ class TestLedEffectParams(unittest.TestCase):
                 while child:
                     children.append(child.item.name)
                     child = child.next
-                self.assertEqual(len(children), 25)
-                self.assertTrue(all(c.startswith('PARAM_EFFECT_') for c in children), children)
+                self.assertEqual(tuple(children[:4]), self.COLOR_PARAMS)
+                self.assertEqual(len(children), 29)
+                self.assertTrue(all(c.startswith('PARAM_EFFECT_') for c in children[4:]), children)
 
     def test_two_emus_define_their_own_effects_on_their_own_unit(self):
         from test.hh import profiles
@@ -1147,6 +1189,24 @@ class TestLedEffectParams(unittest.TestCase):
                 MmuLedEffect(hh.config.getsection(section))
         finally:
             hh.close()
+
+class TestSelectorMicrosteps(unittest.TestCase):
+    """[mmu_stepper <unit>_selector] microsteps comes from PARAM_SELECTOR_MICROSTEPS."""
+
+    def _microsteps(self, profile):
+        from test.hh import cfg
+        return cfg.assemble(cfg.render(profile)).get('mmu_stepper unit0_selector', 'microsteps')
+
+    def test_default_matches_the_previous_template(self):
+        from test.hh import profiles
+        self.assertEqual(self._microsteps(profiles.get('tradrack')), '16')
+
+    def test_menuconfig_value_renders(self):
+        from test.hh import profiles
+        profile = profiles.get('tradrack').derive(
+            'tradrack_selector_microsteps', syms={'PARAM_SELECTOR_MICROSTEPS': 8})
+        self.assertEqual(self._microsteps(profile), '8')
+
 
 if __name__ == '__main__':
     unittest.main()

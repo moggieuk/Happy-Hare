@@ -11,6 +11,11 @@
 #   PARAM_EXIT_EFFECT
 #   PARAM_ENTRY_EFFECT
 #   PARAM_STATUS_EFFECT
+#   PARAM_LOGO_EFFECT
+#   PARAM_WHITE_LIGHT
+#   PARAM_BLACK_LIGHT
+#   PARAM_EMPTY_LIGHT
+#   PARAM_FILAMENT_COLOR_INTENSITY
 #   PARAM_EFFECT_* (one per effect_* option in [mmu_leds])
 #   PARAM_MISC_LED_EFFECTS
 #   PARAM_CHAIN_COUNT
@@ -189,17 +194,65 @@ if MMU_HAS_LEDS
       default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
       default "filament_color"
 
+    config PARAM_LOGO_EFFECT
+      string "Logo effect     "
+      default "(0, 0, 0.3)"
+      help
+        off turns the logo segment off. Otherwise an (r,g,b) color, each value 0.0 to 1.0,
+        or the name of an [mmu_led_effect] (see mmu.cfg).
+        Format:
+          [[REV]]off | (r,g,b) | effect_name[[/REV]]
+
     menuconfig BOOL_CUSTOMIZE_LED_EFFECTS
-      bool "Customize LED effects?"
+      bool "Customize LED colors and effects?"
       default n
       default_when_hidden
       help
-        ADVANCED: Edit the effect used for each action, otherwise the defaults for this MMU type are used.
+        ADVANCED: Edit the base colors and the effect used for each action,
+        otherwise the defaults for this MMU type are used.
         Format:
           [[B]]effect_name, (r,g,b) [, duration][[/B]]
 
         The effect must be an [mmu_led_effect] (see mmu.cfg); (r,g,b) is used when animation is off.
         The optional duration (seconds) is how long a timed effect shows before reverting.
+
+    config PARAM_WHITE_LIGHT
+      string
+      prompt "White light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "(1, 1, 1)"
+      help
+        Color used for white light, e.g. when a gate's filament color is not known.
+        Each value 0.0 to 1.0.
+        Format:
+          [[REV]](r,g,b)[[/REV]]
+
+    config PARAM_BLACK_LIGHT
+      string
+      prompt "Black light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "(.01, 0, .02)"
+      help
+        Color used to represent black filament (LEDs can't show black), and the status
+        segment when nothing is loaded. Each value 0.0 to 1.0.
+        Format:
+          [[REV]](r,g,b)[[/REV]]
+
+    config PARAM_EMPTY_LIGHT
+      string
+      prompt "Empty light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "(0, 0, 0)"
+      help
+        Color used to represent an empty gate. Each value 0.0 to 1.0.
+        Format:
+          [[REV]](r,g,b)[[/REV]]
+
+    config PARAM_FILAMENT_COLOR_INTENSITY
+      float
+      prompt "Color intensity      " if BOOL_CUSTOMIZE_LED_EFFECTS
+      range 0.0 1.0
+      default 0.5
+      help
+        Brightness multiplier (0.0 to 1.0) applied when displaying filament or slicer colors.
+        Lower values dim the colors. White, black and empty light are not affected.
 
     config PARAM_EFFECT_LOADING
       string
