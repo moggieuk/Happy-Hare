@@ -1,0 +1,27 @@
+# Validates that a PR title follows conventional commits: <type>: <subject>
+name: "Enforce PR Type"
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check-pr-title:
+    # Skip PRs opened before the rule takes effect, so that touching one
+    # doesn't force its author to rename it. GitHub renders pull_request
+    # .created_at as a UTC ISO 8601 string, so the comparison below is a
+    # lexicographic one. This timestamp is the moment the rule takes effect.
+    if: github.event.pull_request.created_at > '2026-09-28T00:00:00Z'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR Title Prefix
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Permitted types:
+          types: |
+            feat
+            fix
+            chore
+            docs
