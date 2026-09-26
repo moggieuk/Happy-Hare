@@ -164,11 +164,12 @@ documentation site are a substantial undertaking:
   <tr>
     <td width="50%" align="center" valign="middle" style="border: 0;">
       <sub>
-      ~55,000 lines: driver code<br>
-      ~28,000 lines: installer/configurator<br>
-      ~6,900 lines: macros/configuration<br>
-      ~16,000 lines: docs across 67 pages<br>
-      170+ documentation images
+      ~58,500 lines: driver code<br>
+      ~30,000 lines: installer/configurator<br>
+      ~7,000 lines: macros/configuration<br>
+      ~46,000 lines: 1,900+ automated tests<br>
+      ~19,500 lines: docs across 73 pages<br>
+      260+ documentation images
       </sub>
     </td>
     <td width="50%" align="center" valign="middle" style="border: 0;">

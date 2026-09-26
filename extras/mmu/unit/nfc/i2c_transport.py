@@ -1,4 +1,10 @@
-# Status-checked I2C transfers for the NFC reader drivers.
+# Happy Hare MMU Software
+# Status-checked I2C transfers for the NFC reader drivers
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Let an I2C reader driver survive a NACK instead of shutting down the MCU
 #
 # Klipper's 'i2c_transfer' MCU command reports i2c_bus_status instead of shutting
 # the MCU down on a NACK, but bus.MCU_I2C's own i2c_read()/i2c_write()/i2c_transfer()
@@ -12,7 +18,12 @@
 # Only the supported path lives here. Each driver keeps its own fallback because
 # they deliberately differ (see pn7160_driver._i2c_transfer_safe).
 #
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 
 NO_STATUS_WARNING = (

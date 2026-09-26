@@ -1,15 +1,27 @@
-# klippy/extras/mmu_nfc_reader.py
+# Happy Hare MMU Software
+# RFID/NFC reader chip driver
 #
-# mmu_nfc_reader — standalone RFID/NFC reader chip driver for Happy Hare
-# Version 1.1.0
-# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
-# Extracted from a larger NFC gate-management extension. This module keeps
-# only the hardware layer: it builds the configured reader chip driver
-# (PN532 / PN5180 / PN7160 / RC522) from config and exposes read_tag/read_target as
-# both a Python API (for other extras) and GCode commands (for macros).
-# It deliberately does not do lane state machines, Spoolman lookups, LED
-# effects, or scan-jog motion — those live in your macros if you want them.
+# Original NFC gate reader extension
+# Copyright (C) 2026  WoodWorker
+#
+# Goal: Build the configured reader chip driver (PN532 / PN5180 / PN7160 / RC522)
+#       from config and expose read_tag/read_target as both a Python API (for other
+#       extras) and GCode commands (for macros)
+#
+# Extracted from a larger NFC gate-management extension, this module keeps only
+# the hardware layer. It deliberately does not do lane state machines, Spoolman
+# lookups, LED effects, or scan-jog motion — those live in your macros if you
+# want them.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license, or
+# (at your option) any later version.
 #
 # Config
 # ──────

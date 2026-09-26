@@ -1,18 +1,11 @@
-# klippy/extras/mmu/unit/nfc/rc522_driver.py
+# Happy Hare MMU Software
+# RC522 SPI reader driver
 #
-# EMU NFC Gate Reader — RC522 SPI driver
-# Version 1.0.0  |  2026-04-14
 # Copyright (C) 2026  WoodWorker
-# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Goal: Communicate with the RC522 chip over SPI using Klipper's MCU_SPI interface
 #
-# ─────────────────────────────────────────────────────────────────────────────
-# RC522 NFC reader driver — communicates with the RC522 chip over SPI using
-# Klipper's MCU_SPI interface.
+# Based on the EMU NFC Gate Reader RC522 SPI driver, v1.0.0 (2026-04-14).
 #
 # Integration model
 # ─────────────────
@@ -43,6 +36,14 @@
 #   next segment of a drip-homing move.  sleep_fn defaults to time.sleep(),
 #   which *does* block the reactor: reactor-thread callers must pass
 #   reactor.pause (MmuNfcReader injects self._reactor_sleep).
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license, or
+# (at your option) any later version.
+#
 
 
 import time
