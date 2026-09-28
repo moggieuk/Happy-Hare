@@ -48,8 +48,8 @@ def read_vars_file(hh):
 
 
 class SaveVariablesMixin:
-    def booted(self, klipper_aio=True):
-        hh = session('boxturtle', klipper_aio=klipper_aio)
+    def booted(self, klipper_aio=True, profile='boxturtle'):
+        hh = session(profile, klipper_aio=klipper_aio)
         self.addCleanup(hh.close)
         hh.boot()
         return hh
@@ -264,6 +264,114 @@ class TestDisconnectFlush(SaveVariablesMixin, unittest.TestCase):
                 # Deliberately NOT pumped - the value is in memory only.
                 hh.printer.send_event('klippy:disconnect')
                 self.assertEqual(read_vars_file(hh).get('mmu_last_gasp'), 99)
+
+
+class TestNamespacedKeyCase(SaveVariablesMixin, unittest.TestCase):
+    """
+    A unit name with capitals must not fork the spelling of its saved variables.
+
+    mmu_vars.cfg is an INI file: configparser's optionxform folds every option name to
+    lower case on write and on read, and klipper's SAVE_VARIABLE refuses an upper case
+    VARIABLE outright. HH stages into save_variables.allVariables and triggers the
+    rewrite with a legal lower case key (mmu_utils.py _write_now), so klipper's guard
+    never sees the illegal one - it rode along in the snapshot instead.
+
+    The result, before the fold: HH looked up 'mmu_KCM_gear_rotation_distances', the
+    file held 'mmu_kcm_...', so every boot re-read it as missing ("Probably not
+    calibrated yet"), re-stamped [-1]*num_gates, and MMU_CALIBRATE_GEAR appeared to
+    work only until the next restart. Worse, once both spellings were in allVariables
+    they collapsed onto one option on write, and klipper writes sorted(newvars.items())
+    (save_variables.py:53) - 'mmu_KCM_...' sorts before 'mmu_kcm_...', so the STALE
+    [-1,...] was written last and won. _reconcile then never matched the re-read and
+    the value stayed in the journal forever: "N save_variable(s) not confirmed on disk".
+
+    Every shipped profile and both multi-unit fixtures name their units unit0/unit1, so
+    no existing test could reach this. The machine in the bug report is two units with
+    upper case names, which is what clone_across_units gives us here.
+    """
+
+    UPPER = ('KCM', 'ECM')
+
+    def _upper_case_session(self):
+        from test.hh.profiles import clone_across_units, get
+        profile = clone_across_units('upper_case_units', get('boxturtle'), list(self.UPPER))
+        return self.booted(profile=profile)
+
+    def test_namespace_folds_case_for_both_spellings_of_the_variable(self):
+        """
+        The unit name is the only part that can carry capitals - the variable half is a
+        constant from mmu_constants. Assert the whole key anyway, so a future constant
+        that does carry capitals is caught here too.
+        """
+        hh = self._upper_case_session()
+        vm = hh.mmu.var_manager
+        for unit in hh.mmu.mmu_machine.units:
+            with self.subTest(unit=unit.name):
+                self.assertEqual(vm.namespace('mmu_gear_rotation_distances', unit.name),
+                                 'mmu_%s_gear_rotation_distances' % unit.name.lower())
+        # Un-namespaced keys are lower case constants today; folding must be a no-op.
+        self.assertEqual(vm.namespace('mmu_gate_selected', None), 'mmu_gate_selected')
+        self.assertEqual(hh.errors, [])
+
+    def test_lower_case_unit_names_are_untouched(self):
+        """The common case must not move: 'unit0' keys are what every other test uses."""
+        hh = self.booted()
+        vm = hh.mmu.var_manager
+        self.assertEqual(vm.namespace('mmu_gear_rotation_distances', 'unit0'),
+                         'mmu_unit0_gear_rotation_distances')
+
+        hh.mmu.mmu_machine.units[0].calibrator.update_gear_rd(22.7, gate=0)
+        hh.reactor.advance(0.)
+        self.assertEqual(read_vars_file(hh).get('mmu_unit0_gear_rotation_distances'),
+                         [22.7, -1, -1, -1])
+        self.assertEqual(hh.errors, [])
+
+    def test_calibration_survives_a_reboot(self):
+        """
+        Calibrate both units, then re-read the file the way the next boot will.
+
+        Dropping the journal and calling loadVariables() is the read half of a restart
+        against the real file: it republishes allVariables exactly as klipper does at
+        startup, which is where the mixed case key used to go missing.
+        """
+        hh = self._upper_case_session()
+        vm = hh.mmu.var_manager
+        calibrated = {}
+        for unit, rd in zip(hh.mmu.mmu_machine.units, (22.7, 31.1)):
+            unit.calibrator.update_gear_rd(rd, gate=unit.first_gate)
+            calibrated['mmu_%s_gear_rotation_distances' % unit.name.lower()] = [rd, -1, -1, -1]
+
+        hh.reactor.advance(0.)
+        on_disk = read_vars_file(hh)
+        for key, expected in calibrated.items():
+            self.assertEqual(on_disk.get(key), expected, 'not on disk under the folded key')
+        # Nothing may remain in the journal: that is the "not confirmed on disk" state.
+        self.assertEqual(vm._pending, {},
+                         'values were written but never confirmed: %s' % sorted(vm._pending))
+
+        # ... and the next boot must find them again.
+        vm._pending.clear()
+        hh.save_variables.loadVariables()
+        for unit in hh.mmu.mmu_machine.units:
+            with self.subTest(unit=unit.name):
+                self.assertEqual(
+                    vm.get('mmu_gear_rotation_distances', None, namespace=unit.name),
+                    calibrated['mmu_%s_gear_rotation_distances' % unit.name.lower()])
+        self.assertEqual(hh.errors, [])
+
+    def test_boot_warns_that_the_unit_name_is_folded(self):
+        """
+        The fold is silent by design - it has to be, to keep existing files readable -
+        so the user gets told once at config load that the file key and the config
+        name differ.
+        """
+        with self.assertLogs(level='WARNING') as logged:
+            hh = self._upper_case_session()
+        warnings = '\n'.join(logged.output)
+        for name in self.UPPER:
+            self.assertIn("Unit name '%s' contains upper case" % name, warnings)
+        self.assertNotIn("Unit name 'unit0' contains upper case", warnings)
+        self.assertEqual(hh.errors, [])
 
 
 if __name__ == '__main__':

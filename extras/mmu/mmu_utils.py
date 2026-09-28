@@ -143,10 +143,13 @@ class SaveVariableManager:
     def namespace(self, variable, namespace):
         """
         Return a variable name namespaced to an MMU unit (if provided).
+
+        Always lower case: configparser case folds mmu_vars.cfg option names, so a
+        unit name with capitals would be written under one spelling, read under another.
         """
         if namespace is not None:
-            return variable.replace("mmu_", "mmu_%s_" % namespace)
-        return variable
+            return variable.replace("mmu_", "mmu_%s_" % namespace).lower()
+        return variable.lower()
 
 
     @staticmethod

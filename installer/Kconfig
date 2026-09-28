@@ -243,7 +243,8 @@ if MULTI_UNIT_ENTRY_POINT
     prompt "MMU unit names"
     array_editor ","
     help
-      Comma-separated list of unit names. Careful: Use only alphanumeric characters.
+      Comma-separated list of unit names. Careful: Use only alphanumeric lower case
+      characters.
       If this is the first time configuring multi-unit from previous single-unit install
       then the first name must be unit0 because that is how it was configured.
       E.g. "unit0,unit1"

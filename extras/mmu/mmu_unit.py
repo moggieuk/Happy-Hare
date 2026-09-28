@@ -72,6 +72,13 @@ class MmuUnit:
         self.unit_index = unit_index
         self.first_gate = first_gate
         self.name = config.get_name().split()[-1]
+        if self.name != self.name.lower():
+            logging.warning(
+                "MMU: Unit name '%s' contains upper case characters, so its saved variables "
+                "(rotation distances, bowden lengths, gate statistics...) are stored lower cased "
+                "as 'mmu_%s_*' in mmu_vars.cfg - klipper case folds save_variables keys"
+                % (self.name, self.name.lower())
+            )
         self.printer = config.get_printer()
 
         self.num_gates = config.getint('num_gates')
