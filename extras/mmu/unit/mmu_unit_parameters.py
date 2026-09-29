@@ -90,9 +90,10 @@ class MmuUnitParameters(TunableParametersBase):
 
     def _on_encoder_change(self, old, new):
         if new != old:
-            if self._mmu_unit.sync_feedback.flowguard_active:
-                # If we are currently active make sure config change gets to encoder immediately
-                self._mmu_unit.encoder.enable_flowguard(self._mmu_unit)
+            u = self._mmu_unit
+            if u.sync_feedback.flowguard_active and u.encoder.active_mmu_unit is u:
+                # If we own the active encoder make sure config change gets to it immediately
+                u.encoder.enable_flowguard(u)
 
     def _on_gate_homing_endstop(self, old, new):
         if new != old:

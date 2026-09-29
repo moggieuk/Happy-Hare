@@ -181,10 +181,10 @@ class MmuSyncFeedback:
             self.ctrl.autotune.resume()
             msg = "FlowGuard monitoring activated and Autotune resumed"
 
-        # Enable encoder based Flowguard
-        if u.has_encoder() and not u.encoder.is_flowguard_enabled():
+        # Enable encoder based Flowguard, taking over a shared encoder armed by another unit
+        if u.has_encoder() and (not u.encoder.is_flowguard_enabled() or u.encoder.active_mmu_unit is not u):
             if not u.encoder.enable_flowguard(u):
-                return # Must in in off mode
+                return # Must be in off mode
             self.flowguard_active = True
             msg = msg or "FlowGuard monitoring with encoder activated"
 
@@ -201,13 +201,13 @@ class MmuSyncFeedback:
             self.ctrl.autotune.pause()
             msg = "FlowGuard monitoring deactivated and Autotune paused"
 
-        # Enable encoder based "flowguard". Only the unit that armed the encoder may disarm it
+        # Disable encoder based Flowguard. Only the unit that armed the encoder may disarm it
         if u.has_encoder():
             if u.encoder.active_mmu_unit is not u:
                 self.flowguard_active = False
             elif u.encoder.is_flowguard_enabled():
                 if not u.encoder.disable_flowguard():
-                    return # Must in in off mode
+                    return # Must be in off mode
                 self.flowguard_active = False
                 msg = msg or "FlowGuard monitoring with encoder deactivated"
 

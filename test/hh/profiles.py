@@ -556,19 +556,10 @@ ENCODER = BOXTURTLE_TEST.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
-# TWO encoder-only units sharing ONE [mmu_encoder] section. The `encoder` key in
-# [mmu_unit] is documented as shareable (config/base/mmu_hardware.cfg:151) and mmu_unit.py
-# hands the same MmuEncoder object to every unit that names it (add_unit/connected_units),
-# but no other profile puts two units on one encoder, so nothing covered this shape.
-#
-# It is the only configuration in which MmuController._apply_flowguard_scope() can arm and
-# disarm the same encoder in a SINGLE pass: it activates the selected unit and deactivates
-# every other one, and here those are the same object. That is what a real two-head machine
-# with one coder per bowden looks like from Happy Hare's side, and it is why this profile is
-# encoder-only (no buffer on either unit) - it keeps flowguard_active a pure encoder flag.
-#
-# unit1 points at unit0's encoder via PARAM_ENCODER_NAME, so unit1's own [mmu_encoder unit1]
-# section renders but is never instantiated (nothing looks it up).
+# Two encoder-only units sharing one [mmu_encoder] (the [mmu_unit] `encoder` key is
+# shareable). No buffers, so flowguard_active is a pure encoder flag. unit1 points at
+# unit0's encoder via PARAM_ENCODER_NAME, so its own [mmu_encoder unit1] section renders
+# but is never instantiated.
 ENCODER_SHARED = Profile(
     'encoder_shared',
     units=[
