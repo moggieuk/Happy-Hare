@@ -174,5 +174,32 @@ class TestComponentContract(unittest.TestCase):
                     'single-unit parse' % label)
 
 
+
+class TestMenuText(unittest.TestCase):
+    """Macro arguments reach the Python preprocessor functions unescaped, so a
+    shell-era escape inside $(pad,...) renders literally in menuconfig."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.prompts = {}
+        for label, env in (('unit', cfg._SINGLE_UNIT_ENV), ('entry', _ENTRY_ENV)):
+            with cfg._env(env):
+                kc = cfg._new_kconfig('menu_text_' + label)
+            cls.prompts[label] = [node.prompt[0].rstrip() for node in kc.node_iter()
+                                  if node.prompt]
+
+    def test_no_prompt_or_comment_shows_a_leftover_escape(self):
+        for label, prompts in self.prompts.items():
+            with self.subTest(tree=label):
+                self.assertEqual([p for p in prompts if '\\\\' in p or '\\"' in p], [])
+
+    def test_the_banner_hare(self):
+        for label, prompts in self.prompts.items():
+            with self.subTest(tree=label):
+                top = prompts.index('(\\_/)')
+                self.assertEqual(prompts[top + 1], '( *,*)')
+                self.assertTrue(prompts[top + 2].startswith('(")_(") '), prompts[top + 2])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -239,9 +239,9 @@ if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
 endif
 
 comment "$(pad,50,)"
-comment "$(pad,50,(\\_/))"
+comment "$(pad,50,(\_/))"
 comment "$(pad,50,( *,*))"
-comment "$(pad,$(caption_pad),(\")_(\") $(caption))"
+comment "$(pad,$(caption_pad),($(quote))_($(quote)) $(caption))"
 comment "$(pad,50,)"
 comment "_"
 
