@@ -222,6 +222,7 @@ if MMU_HAS_LEDS
 
       config PIN_NEOPIXEL
         prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU
+        validator "$(pin_validator)"
         help
           Set the MCU pin connected to the data input of the generated Neopixel
           chain for this unit.
@@ -236,6 +237,7 @@ if MMU_HAS_LEDS
           config PIN_NEOPIXEL_$(i)
             string
             prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
+            validator "$(pin_validator)"
             help
               Set the data pin for the Neopixel chain connected to gate $(i)'s MCU.
         @endrepeat@
@@ -252,6 +254,7 @@ if MMU_HAS_LEDS
           config PIN_NEOPIXEL_BOX_$(i)
             string
             prompt "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)
+            validator "$(pin_validator)"
             help
               Set the box-side Neopixel data pin associated with gate $(i).
         @endrepeat@

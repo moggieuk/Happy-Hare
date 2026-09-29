@@ -128,11 +128,17 @@ if MMU_HAS_PER_GATE_CONFIG
             if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
               config PIN_ENVIRONMENT_SENSOR_SCL_$(i)
                 string "SCL pin           "
+                validator "$(pin_validator)"
                 default ""
+                help
+                  $(pin_help)
 
               config PIN_ENVIRONMENT_SENSOR_SDA_$(i)
                 string "SDA pin           "
+                validator "$(pin_validator)"
                 default ""
+                help
+                  $(pin_help)
             endif
           endif
         endif
@@ -188,6 +194,7 @@ if MMU_HAS_PER_GATE_CONFIG
 
               config PIN_FAN_$(i)
                 string "Fan pin            "
+                validator "$(pin_validator)"
                 help
                   Leave blank if this gate does not have a managed fan installed.
 
@@ -243,6 +250,7 @@ if MMU_HAS_PER_GATE_CONFIG
 
               config PIN_HEATER_FAN_$(i)
                 string "Heater fan pin     "
+                validator "$(pin_validator)"
                 help
                   Leave blank if this gate does not have a heater fan installed.
 

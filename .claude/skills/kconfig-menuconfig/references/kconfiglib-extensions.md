@@ -11,7 +11,7 @@ most of items 1-11 below, numbered differently (its `array_size_mismatch`
 item is part of item 7, its "if XX" comment-line construct of item 6, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
 generated file, the pickle, default-resolution semantics) are not in the
-header; items 16-17 are its items 15-16. When you add an extension, update **both** this file and that header
+header; items 16-18 are its items 15-17. When you add an extension, update **both** this file and that header
 block.
 
 ## 1. `generated_default`
@@ -275,6 +275,23 @@ existing saved value keeps working.
   macro, so prefer `[0-9]`, `[(]`, `[.]`. A `:=` variable expanded inside the
   quotes is not re-scanned, which is how `Kconfig.leds` shares `led_rgb` /
   `led_effect` across the LED color and effect symbols.
+- Pins: the root `installer/Kconfig` defines `pin_validator`
+  (`[^|~] [!] [chip_name:]pin_name`, Klipper's `parse_pin` order; empty is
+  valid) and `pin_help`. Every prompted `PIN_*` node carries
+  `validator "$(pin_validator)"`, and gets `$(pin_help)` as its help when it has
+  none. Add both to any new pin prompt; `TestPinValidator` fails otherwise and
+  also checks every shipped pin default and every profile's pin values.
 - `test/installer/test_kconfig_validator.py` checks every shipped LED default
   against its validator — extend it when you add a validator to a symbol
   whose defaults vary by type.
+
+## 18. Macros in help text
+
+`_parse_help` runs `_expand_whole` on a help text containing `$(`, after the
+indentation is stripped, so a preprocessor variable can supply shared help
+(`$(pin_help)`). The `hh-newline` function (`nl := $(hh-newline)` in the root
+Kconfig) gives a real newline, so one variable can hold several lines:
+`pin_help := $(pin_syntax)$(nl)$(pin_example)`. `hh-multiline` is not a
+substitute: it writes a literal `\n` for Klipper values. Assignment strips
+leading spaces, so a line can't start indented. No help text used `$(`
+before this, so nothing else changed.

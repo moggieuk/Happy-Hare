@@ -52,6 +52,7 @@ config PARAM_$(prefix)_SPI_BUS
     Leave blank to use Klipper's default bus for that MCU.
 config PIN_$(prefix)_SPI_SCLK
   prompt "$(pad,$(pad_width),$(label) SPI SCLK pin)" if BOOL_$(prefix)_TMC_SPI
+  validator "$(pin_validator)"
   help
     Leave all three SPI pins blank to use hardware SPI. To use software
     SPI, fill in all three pins. An incomplete set is an error.
@@ -59,5 +60,11 @@ config PIN_$(prefix)_SPI_SCLK
     MCU as the CS pin, e.g. mcu:PG8.
 config PIN_$(prefix)_SPI_MOSI
   prompt "$(pad,$(pad_width),$(label) SPI MOSI pin)" if BOOL_$(prefix)_TMC_SPI
+  validator "$(pin_validator)"
+  help
+    $(pin_help)
 config PIN_$(prefix)_SPI_MISO
   prompt "$(pad,$(pad_width),$(label) SPI MISO pin)" if BOOL_$(prefix)_TMC_SPI
+  validator "$(pin_validator)"
+  help
+    $(pin_help)

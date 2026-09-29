@@ -54,6 +54,10 @@ class TestBasicFunctions(unittest.TestCase):
         self.assertEqual(funcs.multiline(None, None, r'one\ntwo'), r'one\ntwo\n')
         self.assertEqual(funcs.multiline(None, None, ''), '')
 
+    def test_newline_is_a_real_newline(self):
+        self.assertEqual(funcs.newline(None, None), '\n')
+        self.assertEqual(funcs.functions['hh-newline'][1:], (0, 0))
+
 
 class TestConnectionFunctions(unittest.TestCase):
 

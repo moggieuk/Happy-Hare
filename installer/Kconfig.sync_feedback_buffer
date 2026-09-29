@@ -166,6 +166,9 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
       config PIN_BUFFER_COMPRESSION
         prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
         
       config UNSELECT_MMU_HAS_SENSOR_BUFFER_TENSION
           bool
@@ -183,6 +186,9 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
       config PIN_BUFFER_TENSION
         prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
  
       config UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
           bool
@@ -203,6 +209,9 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
         config PIN_BUFFER_ANALOG
           prompt "Proportional (analog) pin    "
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
 
         config PARAM_ANALOG_SENSOR_THRESHOLD
           float "Sensor trigger threshold     "

@@ -127,6 +127,9 @@ if MMU_HAS_ENCODER
 
       config PIN_ENCODER
         prompt "Encoder pin                     "
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
 
       config PARAM_REGISTER_AS_SENSOR
         boolint "Register as virtual switch sensor"

@@ -3987,6 +3987,11 @@ class Kconfig(object):
 
         node.help = "".join(lines).rstrip()
 
+        # Happy Hare: Expand $(macro) references so help text can be shared
+        # through a preprocessor variable
+        if "$(" in node.help:
+            node.help = self._expand_whole(node.help, ())
+
         if line:
             self._line_after_help(line)
 

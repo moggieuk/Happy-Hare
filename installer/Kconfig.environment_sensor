@@ -175,12 +175,14 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
       if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
         config PIN_ENVIRONMENT_SENSOR_SCL
           string "SCL pin           "
+          validator "$(pin_validator)"
           default ""
           help
             Software i2c SCL pin (e.g., "PB10")
 
         config PIN_ENVIRONMENT_SENSOR_SDA
           string "SDA pin           "
+          validator "$(pin_validator)"
           default ""
           help
             Software i2c SDA pin (e.g., "PB11")
