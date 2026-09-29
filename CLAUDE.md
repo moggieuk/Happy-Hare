@@ -49,6 +49,16 @@ exercises the option you touched.
   feature requests, not proposals.
 - Setup-specific questions belong in Discord, not GitHub issues.
 
+## Commit and PR titles
+
+- **PR titles and commit messages are conventional commits** — `feat`, `fix`,
+  `chore` or `docs`, then `: ` and a subject. A CI check enforces the title
+  format; write your commit subjects to the same standard, since they're what
+  carries the history however the PR is merged.
+- **Prefer a scope**, in brackets after the type: `feat(nfc): ...`,
+  `fix(gate): ...`. It tells a log-scanning reader what the change touched;
+  leave it off for something that spans most of the whole repo.
+
 ## Subsystem knowledge (loads automatically when relevant)
 
 - **`gate-endstop-invariants`** — the shared-gate endstop occupancy rule and
