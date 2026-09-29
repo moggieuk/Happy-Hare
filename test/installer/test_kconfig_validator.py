@@ -4,6 +4,7 @@
 # value: to the whole string, or to each element of an 'array_editor' string.
 
 import os
+import re
 import tempfile
 import unittest
 
@@ -108,6 +109,30 @@ class TestLedEffectValidators(unittest.TestCase):
         for bad in ('1, 1, 1', '(1, 1)', '(2, 0, 0)', '(1, 1, 1), 5', 'white'):
             with self.subTest(value=bad):
                 self.assertIsNone(validator.fullmatch(bad))
+
+    def test_color_order_format(self):
+        validator = self.trees['boxturtle'].syms['PARAM_COLOR_ORDER'].validator
+        for good in ('GRBW', 'grb', 'RGB, GRBW,   RBG,RGB', 'GRB GRBW', 'GRB , GRB'):
+            with self.subTest(value=good):
+                self.assertIsNotNone(validator.fullmatch(good))
+        for bad in ('', 'GRBX', 'GRB,,GRB', 'GRB,', ',GRB', 'GRB;GRB', 'G-R-B'):
+            with self.subTest(value=bad):
+                self.assertIsNone(validator.fullmatch(bad))
+
+    def test_every_type_color_order_default_passes(self):
+        validator = self.trees['boxturtle'].syms['PARAM_COLOR_ORDER'].validator
+        root = os.path.join(os.path.dirname(__file__), '..', '..', 'installer')
+        default = re.compile(r'config PARAM_COLOR_ORDER\n(?:[^\n]*\n)*?\s*default "([^"]*)"')
+        found = []
+        for dirpath, _, files in os.walk(root):
+            for name in files:
+                if name.startswith('Kconfig'):
+                    with open(os.path.join(dirpath, name)) as handle:
+                        found += default.findall(handle.read())
+        self.assertGreaterEqual(len(found), 5)
+        for value in found:
+            with self.subTest(value=value):
+                self.assertIsNotNone(validator.fullmatch(value))
 
 
 if __name__ == '__main__':

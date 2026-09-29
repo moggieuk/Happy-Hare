@@ -154,10 +154,13 @@ if MMU_HAS_LEDS
 
       config PARAM_COLOR_ORDER
         string "Color order     "
+        validator "[GRBWgrbw]+(( *, *| +)[GRBWgrbw]+)*"
         default "GRBW"
         help
           Set the channel order expected by the LEDs, for example RGB, GRB, RGBW
-          or GRBW. This must match the physical LED type and wiring.
+          or GRBW. This must match the physical LED type and wiring. For a chain
+          of mixed LEDs, list one order per LED separated by commas or spaces,
+          e.g. "GRBW, GRBW, GRB".
 
 
       config PARAM_EXIT_LEDS
