@@ -98,3 +98,129 @@ class SharedEncoderFlowGuardTestCase(unittest.TestCase):
         # Once disarmed, the live length is no longer reported to either unit
         for unit in self.units:
             self.assertNotEqual(self.encoder.get_effective_clog_detection_length(unit), 999.)
+
+
+class SharedEncoderPrintTestCase(unittest.TestCase):
+    """Toolchanges between the two units during a print."""
+
+    TIP_AT_GATE = -40.0
+
+    def setUp(self):
+        self.hh = session('encoder_shared')
+        self.hh.boot(calibrate=True)
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.mmu = self.hh.mmu
+        self.unit0, self.unit1 = self.mmu.mmu_machine.units
+        self.encoder = self.unit0.encoder
+        self.t0, self.t1 = self.unit0.first_gate, self.unit1.first_gate   # default 1:1 TTG map
+        self.hh.heat_extruder(220)
+        for gate in (self.t0, self.t1):
+            self.hh.place_filament(gate, position=self.TIP_AT_GATE)
+            self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+        self.assertEqual(self.hh.errors, [], 'preload failed')
+
+    def tearDown(self):
+        self.hh.close()
+
+    def gcode(self, script, settle=0.5):
+        del self.hh.gcode.console[:]
+        self.hh.run_gcode(script)
+        self.hh.settle(settle)
+        return [l for l in self.hh.gcode.console if 'FlowGuard monitoring' in l]
+
+    def start_print(self, tool):
+        self.gcode('MMU_CHANGE_TOOL TOOL=%d' % tool)
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.gcode('MMU_PRINT_START', settle=1.0)
+        self.assertEqual(self.hh.errors, [], 'print start failed')
+
+    def change_tool(self, tool):
+        messages = self.gcode('MMU_CHANGE_TOOL TOOL=%d' % tool)
+        self.assertEqual(self.hh.errors, [], 'toolchange to T%d failed' % tool)
+        return messages
+
+    def assert_owned_by(self, owner, other, messages=None):
+        self.assertTrue(self.encoder.is_flowguard_enabled(),
+                        "encoder FlowGuard should be armed for %s: %s" % (owner.name, messages))
+        self.assertIs(self.encoder.active_mmu_unit, owner)
+        self.assertEqual(self.encoder.extruder.name, owner.extruder_name())
+        self.assertTrue(owner.sync_feedback.flowguard_active)
+        self.assertFalse(other.sync_feedback.flowguard_active)
+
+    def test_toolchanges_between_units_hand_over_the_encoder(self):
+        self.start_print(self.t0)
+        self.assert_owned_by(self.unit0, self.unit1)
+
+        for tool, owner, other in ((self.t1, self.unit1, self.unit0),
+                                   (self.t0, self.unit0, self.unit1),
+                                   (self.t1, self.unit1, self.unit0)):
+            messages = self.change_tool(tool)
+            self.assert_owned_by(owner, other, messages)
+            self.assertEqual(messages, ['FlowGuard monitoring with encoder deactivated',
+                                        'FlowGuard monitoring with encoder activated'])
+
+    def test_each_unit_arms_the_encoder_with_its_own_settings(self):
+        self.unit0.calibrator.update_clog_detection_length(12.3)
+        self.unit1.p.flowguard_encoder_mode = 1        # static
+        self.unit1.p.flowguard_encoder_max_motion = 33.
+
+        self.start_print(self.t0)
+        self.assertEqual((self.encoder.detection_mode, self.encoder.detection_length), (2, 12.3))
+        self.encoder.detection_length = 17.7           # unpersisted drift must not follow unit0
+
+        self.change_tool(self.t1)
+        self.assert_owned_by(self.unit1, self.unit0)
+        self.assertEqual((self.encoder.detection_mode, self.encoder.detection_length), (1, 33.))
+
+        self.change_tool(self.t0)
+        self.assert_owned_by(self.unit0, self.unit1)
+        self.assertEqual((self.encoder.detection_mode, self.encoder.detection_length), (2, 12.3))
+
+    def test_a_unit_with_encoder_flowguard_off_leaves_it_off(self):
+        self.unit1.p.flowguard_encoder_mode = 0
+        self.start_print(self.t0)
+
+        self.change_tool(self.t1)
+        self.assertFalse(self.encoder.is_flowguard_enabled())
+        self.assertFalse(self.unit0.sync_feedback.flowguard_active)
+        self.assertFalse(self.unit1.sync_feedback.flowguard_active)
+
+        self.change_tool(self.t0)
+        self.assert_owned_by(self.unit0, self.unit1)
+
+    def test_pause_and_resume_rearm_for_the_selected_unit(self):
+        self.start_print(self.t1)
+        self.assert_owned_by(self.unit1, self.unit0)
+
+        self.gcode('MMU_PAUSE')
+        self.assertFalse(self.encoder.is_flowguard_enabled())
+        self.assertFalse(self.unit1.sync_feedback.flowguard_active)
+
+        self.gcode('RESUME')
+        self.assert_owned_by(self.unit1, self.unit0)
+
+    def test_a_runout_on_the_second_unit_is_handled_for_its_tool(self):
+        self.start_print(self.t0)
+        self.change_tool(self.t1)
+
+        emitted = []
+        run_script = self.hh.gcode.run_script
+        def spy(script):
+            if '__MMU_ENCODER_RUNOUT' in script:
+                emitted.append(script)
+            return run_script(script)
+        self.hh.gcode.run_script = spy
+        self.hh.printer.lookup_object('idle_timeout').state = 'Printing'
+
+        # Extruder advances past the detection length with no encoder movement
+        extruder_pos = [self.encoder._get_extruder_pos()]
+        self.encoder._get_extruder_pos = lambda eventtime=None: extruder_pos[0]
+        self.hh.settle(3.)
+        generation = self.encoder.get_flowguard_generation()
+        extruder_pos[0] += self.encoder.detection_length + 50.
+        self.hh.settle(3.)
+
+        self.assertEqual(len(emitted), 1, 'no encoder runout was raised: %s' % emitted)
+        self.assertIn('GENERATION=%d' % generation, emitted[0])
+        self.assertTrue(any('clog/tangle' in e for e in self.hh.errors), self.hh.errors)
+        self.assertEqual(self.mmu.tool_selected, self.t1)
