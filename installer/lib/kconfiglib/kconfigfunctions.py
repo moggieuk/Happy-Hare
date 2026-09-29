@@ -144,6 +144,11 @@ def multiline(_kconf, _name, value):
     return r"\n".join(value.splitlines()) + r"\n"
 
 
+def newline(_kconf, _name):
+    """A real newline, for building multi-line help text from variables."""
+    return "\n"
+
+
 def unit_suffix(_kconf, _name, unit):
     return "Unit: [[B]]{}[[/B]]".format(unit) if unit else ""
 
@@ -226,6 +231,7 @@ functions = {
     "mmu-serial-choice": (mmu_serial_choice, 1, 1),
     "mmu-serial-gate-choice": (mmu_serial_gate_choice, 2, 2),
     "hh-multiline": (multiline, 1, 1),
+    "hh-newline": (newline, 0, 0),
     "nonempty": (nonempty, 1, 1),
     "hh-pad": (pad, 2, 2),
     "path-exists": (path_exists, 1, 1),

@@ -59,13 +59,25 @@ menu "Pins / TMC"
       depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
     config PIN_GEAR_STEP
       string "$(pad,$(pin_pad),Gear step pin)"
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
     config PIN_GEAR_DIR
       string "$(pad,$(pin_pad),Gear dir pin)"
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
     config PIN_GEAR_ENABLE
       string "$(pad,$(pin_pad),Gear enable pin)"
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
     config PIN_GEAR_DIAG
       string
       prompt "$(pad,$(pin_pad),Gear diag pin)" if PARAM_GEAR_TMC != ""
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
     config PARAM_GEAR_STALLGUARD_THRESHOLD
       prompt "$(pad,$(pin_pad),Gear stallguard)" if BOOL_GEAR_TMC_HAS_STALLGUARD && PIN_GEAR_DIAG != ""
       help
@@ -102,19 +114,37 @@ menu "Pins / TMC"
           comment "_"
           config PIN_GEAR_UART_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) UART pin)" if PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_SPI
+            validator "$(pin_validator)"
+            help
+              $(pin_help)
           config PIN_GEAR_CS_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) CS pin)" if BOOL_GEAR_TMC_SPI
+            validator "$(pin_validator)"
+            help
+              $(pin_help)
           config PARAM_GEAR_UART_ADDRESS_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) UART addr)" if PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_SPI && \
                 (BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL)
           config PIN_GEAR_STEP_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) step pin)"
+            validator "$(pin_validator)"
+            help
+              $(pin_help)
           config PIN_GEAR_DIR_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) dir pin)"
+            validator "$(pin_validator)"
+            help
+              $(pin_help)
           config PIN_GEAR_ENABLE_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) enable pin)"
+            validator "$(pin_validator)"
+            help
+              $(pin_help)
           config PIN_GEAR_DIAG_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) diag pin)" if PARAM_GEAR_TMC != ""
+            validator "$(pin_validator)"
+            help
+              $(pin_help)
         endif
       @endrepeat@
     endif
@@ -173,14 +203,29 @@ menu "Pins / TMC"
         depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
       config PIN_SELECTOR_STEP
         prompt "$(pad,$(pin_pad),Selector step pin)"
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
       config PIN_SELECTOR_DIR
         prompt "$(pad,$(pin_pad),Selector dir pin)"
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
       config PIN_SELECTOR_ENABLE
         prompt "$(pad,$(pin_pad),Selector enable pin)"
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
       config PIN_SELECTOR_ENDSTOP
         prompt "$(pad,$(pin_pad),Selector endstop pin)"
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
       config PIN_SELECTOR_DIAG
         prompt "$(pad,$(pin_pad),Selector diag pin)" if PARAM_SELECTOR_TMC != ""
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
       config PARAM_SELECTOR_STALLGUARD_THRESHOLD
         prompt "$(pad,$(pin_pad),Selector stallguard)" if BOOL_SELECTOR_TMC_HAS_STALLGUARD && PIN_SELECTOR_DIAG != ""
         help
@@ -196,12 +241,18 @@ menu "Pins / TMC"
       config PIN_GATE_ENDSTOP_$(i)
         string
         prompt "$(pad,$(pin_pad),Gate $(i) endstop pin)" if PARAM_NUM_GATES > $(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endif
 
   config PIN_SELECTOR_SERVO
     string
     prompt "$(pad,$(pin_pad),Servo pin)" if MMU_HAS_SELECTOR_SERVO
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
 
   comment "_" if MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
@@ -222,15 +273,27 @@ menu "Pins / TMC"
         config PIN_ESPOOLER_EN_$(i)
           string
           prompt "$(pad,$(pin_pad),eSpooler enable $(i) pin)" if HAS_ESPOOLER_ENABLE_PIN
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
         config PIN_ESPOOLER_RWD_$(i)
           string
           prompt "$(pad,$(pin_pad),eSpooler rewind $(i) pin)"
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
         config PIN_ESPOOLER_FWD_$(i)
           string
           prompt "$(pad,$(pin_pad),eSpooler forward $(i) pin)"
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
         config PIN_ESPOOLER_TRIG_$(i)
           string
           prompt "$(pad,$(pin_pad),eSpooler trigger $(i) pin)"
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
       endif
     @endrepeat@
   endmenu
@@ -247,6 +310,9 @@ menu "Pins / TMC"
       config PIN_EJECT_BUTTON_$(i)
         string
         prompt "$(pad,$(pin_pad),Eject button $(i) pin)" if PARAM_NUM_GATES > $(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 
@@ -266,15 +332,27 @@ menu "Pins / TMC"
     config PIN_BUFFER_TENSION
       string
       prompt "$(pad,$(pin_pad),Sync feedback tension pin)" if MMU_HAS_SENSOR_BUFFER_TENSION
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
     config PIN_BUFFER_COMPRESSION
       string
       prompt "$(pad,$(pin_pad),Sync feedback compression pin)" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
     config PIN_BUFFER_ANALOG
       string
       prompt "$(pad,$(pin_pad),Proportional (analog) pin)" if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
     config PIN_BUFFER_NEOPIXEL
       string
       prompt "$(pad,$(pin_pad),Buffer neopixel pin)" if MMU_HAS_LEDS && !CUSTOM_LED_SETUP
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
   endmenu
 
 
@@ -289,6 +367,9 @@ menu "Pins / TMC"
       config PIN_ENTRY_SENSOR_$(i)
         string
         prompt "$(pad,$(pin_pad),Entry sensor $(i) pin)" if PARAM_NUM_GATES > $(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 
@@ -304,6 +385,9 @@ menu "Pins / TMC"
       config PIN_EXIT_SENSOR_$(i)
         string
         prompt "$(pad,$(pin_pad),Exit sensor $(i) pin)" if PARAM_NUM_GATES > $(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 
@@ -314,6 +398,9 @@ menu "Pins / TMC"
 
   config PIN_SHARED_EXIT_SENSOR
     string "$(pad,$(pin_pad),Shared exit sensor pin)" if MMU_HAS_SENSOR_SHARED_EXIT
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
 
 
   # -------------------------------------
@@ -323,10 +410,16 @@ menu "Pins / TMC"
   config PIN_ENCODER
     string
     prompt "$(pad,$(pin_pad),Encoder pin)" if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
 
   config PIN_NEOPIXEL
     string
     prompt "$(pad,$(pin_pad),Neopixel pin)" if MMU_HAS_LEDS && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
 
   menu "Neopixel per-gate pins" 
     depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
@@ -334,6 +427,9 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_NEOPIXEL_$(i)
         string "$(pad,$(pin_pad),Neopixel gate $(i) pin)" if PARAM_NUM_GATES > $(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 
@@ -343,6 +439,9 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_NEOPIXEL_BOX_$(i)
         string "$(pad,$(pin_pad),Neopixel box gate $(i) pin)" if PARAM_NUM_GATES > $(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 
@@ -354,6 +453,9 @@ menu "Pins / TMC"
   config PIN_FAN
     string
     prompt "$(pad,$(pin_pad),Managed fan pin)" if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
 
   menu "Managed fan per-gate pins"
     depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
@@ -362,6 +464,9 @@ menu "Pins / TMC"
       config PIN_FAN_$(i)
         string
         prompt "$(pad,$(pin_pad),Managed fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 
@@ -373,6 +478,9 @@ menu "Pins / TMC"
   config PIN_HEATER_FAN
     string
     prompt "$(pad,$(pin_pad),Heater fan pin)" if MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
 
   menu "Heater fan per-gate pins"
     depends on MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
@@ -381,6 +489,9 @@ menu "Pins / TMC"
       config PIN_HEATER_FAN_$(i)
         string
         prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 

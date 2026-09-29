@@ -247,5 +247,27 @@ class TestShippedTreeIsUnaffected(unittest.TestCase):
         self.assertEqual([n for n in names if '$' in n or '__' in n], [])
 
 
+
+class TestMacroReferencesKeepTheirDollar(unittest.TestCase):
+    """A '$(NAME)' typed as '(NAME)' is not an error - it renders literally."""
+
+    def test_no_known_macro_is_referenced_without_its_dollar(self):
+        paths = glob.glob(os.path.join(REPO_ROOT, 'installer', '**', 'Kconfig*'), recursive=True)
+        texts = {}
+        for path in paths:
+            with open(path) as handle:
+                texts[path] = handle.read()
+        names = set()
+        for text in texts.values():
+            names |= {n for n in re.findall(r'\$\((\w+)[,)]', text) if not n.isdigit()}
+        bare = re.compile(r'(?<![$\w])\((%s)\)' % '|'.join(sorted(names)))
+        found = []
+        for path, text in sorted(texts.items()):
+            for linenr, line in enumerate(text.splitlines(), 1):
+                if not line.lstrip().startswith('#') and bare.search(line):
+                    found.append('%s:%d: %s' % (os.path.relpath(path, REPO_ROOT), linenr,
+                                                line.strip()))
+        self.assertEqual(found, [])
+
 if __name__ == '__main__':
     unittest.main()

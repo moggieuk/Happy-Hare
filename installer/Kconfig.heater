@@ -198,6 +198,7 @@ menu "Heater fan h/w config"
 
   config PIN_HEATER_FAN
     string "Heater fan pin     "
+    validator "$(pin_validator)"
     default ""
     help
       Pin for the fan associated with the shared enclosure heater.

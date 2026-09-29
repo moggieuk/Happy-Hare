@@ -11,7 +11,7 @@ most of items 1-11 below, numbered differently (its `array_size_mismatch`
 item is part of item 7, its "if XX" comment-line construct of item 6, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
 generated file, the pickle, default-resolution semantics) are not in the
-header. When you add an extension, update **both** this file and that header
+header; items 16-18 are its items 15-17. When you add an extension, update **both** this file and that header
 block.
 
 ## 1. `generated_default`
@@ -255,3 +255,43 @@ a prompt, and visible ones, are unaffected. `Kconfig.leds` uses it on
 `BOOL_CUSTOMIZE_LED_EFFECTS`, so unticking "Customize LED colors and effects?"
 reverts the colors and effects to the per-type defaults. Within one menuconfig session a
 re-ticked entry still shows the old values; the reset happens on save.
+
+## 17. `validator "<regexp>"`
+
+Optional property on a STRING symbol (`_T_VALIDATOR`; parsed in
+`_parse_props`, stored compiled on `Symbol.validator`, so value-only
+redeclarations in type/board files keep it). menuconfig's `_check_valid`
+rejects an edit unless the stripped value `fullmatch`es — per element for an
+`array_editor` symbol (an empty array has no elements; an empty plain string
+is checked like any other value). The error dialog names the value (and
+element) and says "not valid syntax -- see help" -- the regexp is never shown,
+so the symbol's help must document the format -- and the edit dialog reopens
+with the rejected text. Only
+edits are checked: loading, olddefconfig and the build never validate, so an
+existing saved value keeps working.
+
+- An invalid regexp is a parse error.
+- Kconfig string lexing drops backslashes (`\\d` → `\d`) and `$(` starts a
+  macro, so prefer `[0-9]`, `[(]`, `[.]`. A `:=` variable expanded inside the
+  quotes is not re-scanned, which is how `Kconfig.leds` shares `led_rgb` /
+  `led_effect` across the LED color and effect symbols.
+- Pins: the root `installer/Kconfig` defines `pin_validator`
+  (`[^|~] [!] [chip_name:]pin_name`, Klipper's `parse_pin` order; empty is
+  valid) and `pin_help`. Every prompted `PIN_*` node carries
+  `validator "$(pin_validator)"`, and gets `$(pin_help)` as its help when it has
+  none. Add both to any new pin prompt; `TestPinValidator` fails otherwise and
+  also checks every shipped pin default and every profile's pin values.
+- `test/installer/test_kconfig_validator.py` checks every shipped LED default
+  against its validator — extend it when you add a validator to a symbol
+  whose defaults vary by type.
+
+## 18. Macros in help text
+
+`_parse_help` runs `_expand_whole` on a help text containing `$(`, after the
+indentation is stripped, so a preprocessor variable can supply shared help
+(`$(pin_help)`). The `hh-newline` function (`nl := $(hh-newline)` in the root
+Kconfig) gives a real newline, so one variable can hold several lines:
+`pin_help := $(pin_syntax)$(nl)$(pin_example)`. `hh-multiline` is not a
+substitute: it writes a literal `\n` for Klipper values. Assignment strips
+leading spaces, so a line can't start indented. No help text used `$(`
+before this, so nothing else changed.

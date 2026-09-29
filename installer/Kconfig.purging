@@ -110,6 +110,7 @@ menu "Purging"
     if MMU_HAS_BLOBIFIER_BUCKET_SWITCH
       config PIN_BLOBIFIER_BUCKET_SWITCH
         prompt "Blobifier bucket switch pin"
+        validator "$(pin_validator)"
         help
           The pull-up ( ^ ) is important here. For example: ^mcu:PA1
     endif
@@ -129,6 +130,9 @@ menu "Purging"
     if CHOICE_BLOBIFIER_TYPE_SERVO
       config PIN_BLOBIFIER_SERVO
         prompt "Blobifier servo pin            "
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
 
       config PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
         float "Servo min pulse width          "
@@ -157,15 +161,25 @@ menu "Purging"
 
       config PIN_BLOBIFIER_STEP
         prompt "Stepper step pin               "
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
 
       config PIN_BLOBIFIER_DIR
         prompt "Stepper dir pin                "
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
 
       config PIN_BLOBIFIER_ENABLE
         prompt "Stepper enable pin             "
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
 
       config PIN_BLOBIFIER_ENDSTOP
         prompt "Stepper endstop pin            "
+        validator "$(pin_validator)"
         help
           The pull-up/invert ( ^! ) is typically required here
     endif

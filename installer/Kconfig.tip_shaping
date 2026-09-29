@@ -44,6 +44,9 @@ menu "Tip Forming / Cutting"
 
     config PIN_SERVO_CUTTER_SERVO
       prompt "Cutting servo pin                  "
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
 
   endif
 
@@ -114,6 +117,7 @@ menu "Tip Forming / Cutting"
 
     config PIN_GANTRY_BUMPER_SERVO
       prompt "Gantry servo pin" if MMU_HAS_GANTRY_BUMPER_SERVO
+      validator "$(pin_validator)"
       help
         Optional. Used to deploy fold-down "bumper" for tip cutting
         when using a toolhead mounted filament cutting blade

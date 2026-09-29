@@ -188,12 +188,24 @@ if MMU_HAS_ESPOOLER
         comment "_" if $(i) > 0
         config PIN_ESPOOLER_EN_$(i)
           prompt "eSpooler enable $(i) pin " if HAS_ESPOOLER_ENABLE_PIN
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
         config PIN_ESPOOLER_RWD_$(i)
           prompt "eSpooler rewind $(i) pin "
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
         config PIN_ESPOOLER_FWD_$(i)
           prompt "eSpooler forward $(i) pin"
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
         config PIN_ESPOOLER_TRIG_$(i)
           prompt "eSpooler trigger $(i) pin"
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
       endif
     @endrepeat@
 

@@ -2,6 +2,7 @@
 
 # Regression tests for Happy Hare's custom menuconfig cursor behavior.
 
+import re
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -174,6 +175,66 @@ class TestArrayEditorValidation(unittest.TestCase):
             self.assertTrue(menuconfig._check_valid(self.angle_symbol(), ""))
 
         error.assert_not_called()
+
+
+class TestValidatorValidation(unittest.TestCase):
+
+    @staticmethod
+    def symbol(array_editor=None):
+        return SimpleNamespace(
+            orig_type=menuconfig.STRING,
+            array_editor=array_editor,
+            array_size_sym=None,
+            validator=re.compile("[a-z]+, [0-9]+"),
+        )
+
+    def check(self, sym, value):
+        with patch.object(menuconfig, "_error") as error:
+            result = menuconfig._check_valid(sym, value)
+        return result, error
+
+    def test_whole_string_must_match(self):
+        valid, error = self.check(self.symbol(), "abc, 12x")
+
+        self.assertFalse(valid)
+        error.assert_called_once()
+        self.assertIn("'abc, 12x' is not valid syntax", error.call_args.args[0])
+
+    def test_matching_string_is_accepted_ignoring_surrounding_whitespace(self):
+        valid, error = self.check(self.symbol(), "  abc, 12 ")
+
+        self.assertTrue(valid)
+        error.assert_not_called()
+
+    def test_each_array_element_must_match(self):
+        valid, error = self.check(self.symbol(";"), "abc, 1; def, 2;ghi")
+
+        self.assertFalse(valid)
+        self.assertIn("Element 3 'ghi' is not valid syntax", error.call_args.args[0])
+
+    def test_matching_array_is_accepted(self):
+        valid, error = self.check(self.symbol(";"), "abc, 1; def, 2")
+
+        self.assertTrue(valid)
+        error.assert_not_called()
+
+    def test_empty_array_has_no_elements_to_check(self):
+        valid, error = self.check(self.symbol(";"), "")
+
+        self.assertTrue(valid)
+        error.assert_not_called()
+
+    def test_empty_string_must_match(self):
+        valid, _ = self.check(self.symbol(), "")
+
+        self.assertFalse(valid)
+
+    def test_error_points_to_help_without_the_regexp(self):
+        sym = self.symbol()
+        _, error = self.check(sym, "bad")
+
+        self.assertEqual(error.call_args.args[0], "'bad' is not valid syntax -- see help")
+        self.assertNotIn(sym.validator.pattern, error.call_args.args[0])
 
 
 if __name__ == "__main__":

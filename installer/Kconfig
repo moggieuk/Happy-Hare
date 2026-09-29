@@ -80,6 +80,12 @@
 # 15. 'default_when_hidden' on a menuconfig/menu (or symbol) saves a symbol
 #     under it whose prompt is hidden as a #~DEFAULT~# value, so turning the
 #     entry off reverts any customization to the (still tracked) default.
+# 16. 'validator "<regexp>"' on a string symbol makes menuconfig reject an edit whose value
+#     (or, with array_editor, any element) doesn't fullmatch the regexp, ignoring surrounding
+#     whitespace. Kconfig strings drop backslashes, so write '\\d' for \d, or prefer
+#     classes like [0-9] and [(]. A $(macro) can hold a shared pattern (see Kconfig.leds)
+# 17. $(macro) references are expanded in help text, e.g. the shared $(pin_help).
+#     $(nl) is a newline, so one variable can hold several help lines
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -87,6 +93,7 @@
 # 3. Lots of formatting changes and style options
 # 4. Variable input dialogs with better parsing
 # 5. Added array editor - used on "," or ";" separated strings
+# 6. Edited strings are checked against their 'validator' regexp
 #
 #
 # Capability params:
@@ -166,6 +173,14 @@ buffer_canbus_config = $(buffer-canbus-choice,$(canbus_connection,$(1)))
 # Used for comment padding
 pad = $(hh-pad,$(1),$(2))
 
+# Validator and help syntax shared by every PIN_ prompt. An empty pin is valid.
+# $(nl) is a real newline, so help text can span lines
+nl            := $(hh-newline)
+pin_validator := ([~^]?!?([A-Za-z0-9_-]+:)?[A-Za-z0-9_./-]+)?
+pin_syntax    := Syntax:  [[REV]][^|~] [!] [chip_name:] pin_or_alias_name[[/REV]]
+pin_example   := Eg:      ^unit0:gpio4, !unit0:PA4
+pin_help      := $(pin_syntax)$(nl)$(pin_example)
+
 # To allow multiline config strings.
 # Important: Use $(comma) & $(quote) instead of real comma's or double quotes in multiline strings
 # The Python preprocessor keeps this portable without launching awk for every board.
@@ -224,9 +239,9 @@ if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
 endif
 
 comment "$(pad,50,)"
-comment "$(pad,50,(\\_/))"
+comment "$(pad,50,(\_/))"
 comment "$(pad,50,( *,*))"
-comment "$(pad,$(caption_pad),(\")_(\") $(caption))"
+comment "$(pad,$(caption_pad),($(quote))_($(quote)) $(caption))"
 comment "$(pad,50,)"
 comment "_"
 
@@ -247,12 +262,14 @@ if MULTI_UNIT_ENTRY_POINT
   config MMU_UNITS
     prompt "MMU unit names"
     array_editor ","
+    validator "[a-z][a-z0-9_-]*"
     help
-      Comma-separated list of unit names. Careful: Use only alphanumeric characters.
+      List of unit names. Use only lowercase letters, digits,
+      "_" and "-", starting with a letter.
       If this is the first time configuring multi-unit from previous single-unit install
       then the first name must be unit0 because that is how it was configured.
-      E.g. "unit0,unit1"
-
+        E.g. [[REV]]unit0[[/REV]]
+             [[REV]]unit1[[/REV]]
       A separate configurator will be run for each MMU after this initial screen is closed
 
   comment "_"

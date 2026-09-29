@@ -69,6 +69,7 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
 
       config PIN_FAN
         string "Fan pin            "
+        validator "$(pin_validator)"
         default ""
         help
           Pin for the fan shared by this MMU unit.

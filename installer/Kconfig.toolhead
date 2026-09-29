@@ -70,9 +70,11 @@ menu "Toolhead sensors/settings"
 
   config PIN_TOOLHEAD_SENSOR
     prompt "Toolhead sensor pin    "
+    validator "$(pin_validator)"
     depends on MMU_HAS_SENSOR_TOOLHEAD
     help
       Can also be set under "Pins" section
+      $(pin_help)
 
   config MMU_HAS_SENSOR_EXTRUDER
     prompt "Has extruder (entry) sensor?"
@@ -83,9 +85,11 @@ menu "Toolhead sensors/settings"
   
   config PIN_EXTRUDER_SENSOR
     prompt "Extruder sensor pin    "
+    validator "$(pin_validator)"
     depends on MMU_HAS_SENSOR_EXTRUDER
     help
       Can also be set under "Pins" section
+      $(pin_help)
 
   config PARAM_REGISTER_TOOLHEAD_SENSORS
     boolint "Register toolhead sensors in Mainsail / Fluidd"
