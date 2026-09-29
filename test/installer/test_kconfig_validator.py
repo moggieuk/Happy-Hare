@@ -135,5 +135,32 @@ class TestLedEffectValidators(unittest.TestCase):
                 self.assertIsNotNone(validator.fullmatch(value))
 
 
+class TestMmuUnitsValidator(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        entry_env = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='y',
+                         UNIT_NAME='unit0,unit1', MCU_NAME='unit0,unit1')
+        with cfg._env(entry_env):
+            cls.sym = cfg._kconfig('mmu_units_validator', {}).syms['MMU_UNITS']
+
+    def test_is_an_array_with_a_validator(self):
+        self.assertEqual(self.sym.array_editor, ',')
+        self.assertIsNotNone(self.sym.validator)
+
+    def test_default_units_pass(self):
+        for name in self.sym.str_value.split(','):
+            with self.subTest(name=name):
+                self.assertIsNotNone(self.sym.validator.fullmatch(name.strip()))
+
+    def test_unit_name_format(self):
+        for good in ('unit0', 'u', '_box', 'box-turtle_2', 'a1-b2'):
+            with self.subTest(name=good):
+                self.assertIsNotNone(self.sym.validator.fullmatch(good))
+        for bad in ('', '0unit', '-unit', 'Unit0', 'unit 0', 'unit.0', 'unit:0'):
+            with self.subTest(name=bad):
+                self.assertIsNone(self.sym.validator.fullmatch(bad))
+
+
 if __name__ == '__main__':
     unittest.main()
