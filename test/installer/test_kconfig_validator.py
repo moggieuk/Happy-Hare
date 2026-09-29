@@ -97,11 +97,12 @@ class TestLedEffectValidators(unittest.TestCase):
 
     def test_effect_format(self):
         validator = self.trees['boxturtle'].syms['PARAM_EFFECT_LOADING'].validator
-        for good in ('mmu_blue, (0, 0, 0.4)', 'Mmu-Blue_2,(1,1,1)',
+        for good in ('', 'mmu_blue', 'Mmu-Blue_2', 'mmu_blue, (0, 0, 0.4)', 'Mmu-Blue_2,(1,1,1)',
                      'mmu_rainbow,   (0.5, 0.2, 0),   8', 'mmu_x, (.01, 0, 1.0), 0.8'):
             with self.subTest(value=good):
                 self.assertIsNotNone(validator.fullmatch(good))
-        for bad in ('', 'mmu_blue', 'mmu blue, (0, 0, 1)', 'mmu_blue, (0, 0)',
+        for bad in ('mmu blue', 'mmu_blue,', 'mmu_blue, 8', 'mmu blue, (0, 0, 1)', ', (0, 0, 1)',
+                    'mmu_blue, (0, 0)',
                     'mmu_blue, (0, 0, 1.5)', 'mmu_blue, (0, 0, -1)', 'mmu_blue, 0, 0, 1',
                     'mmu_blue, (0, 0, 1), 8, 9', 'mmu_blue, (0, 0, 1), fast'):
             with self.subTest(value=bad):
