@@ -1093,9 +1093,11 @@ class TestLedEffectParams(unittest.TestCase):
         for value, expected in (('off', 'off'), ('(0, 0.5, 1)', (0.0, 0.5, 1.0)),
                                 ('mmu_rainbow', 'mmu_rainbow')):
             with self.subTest(value=value):
+                syms = ({'CHOICE_LOGO_EFFECT_OFF': True} if value == 'off' else
+                        {'CHOICE_LOGO_EFFECT_CUSTOM': True, 'PARAM_LOGO_EFFECT_CUSTOM': value})
+                syms.update(PARAM_CHAIN_COUNT=5, PARAM_LOGO_LEDS='neopixel:_unit0_leds (5)')
                 profile = profiles.get('boxturtle').derive(
-                    'boxturtle_logo_effect_%s' % re.sub(r'\W', '', value),
-                    syms={'PARAM_LOGO_EFFECT': value})
+                    'boxturtle_logo_effect_%s' % re.sub(r'\W', '', value), syms=syms)
                 _, leds = self._leds(profile)
                 self.assertEqual(leds['logo_effect'], value)
                 hh = session(profile)
@@ -1144,12 +1146,13 @@ class TestLedEffectParams(unittest.TestCase):
                         profiles.get(name).syms, BOOL_CUSTOMIZE_LED_EFFECTS=flag))
                 self.assertEqual(kc.syms['PARAM_EFFECT_GATE_AVAILABLE'].visibility > 0, flag)
                 self.assertEqual(self._canonical(kc.get('PARAM_EFFECT_GATE_AVAILABLE')), value)
-                # Every effect prompt sits in the menuconfig's submenu
+                # Every effect prompt sits in the menuconfig's submenu (separator comments aside)
                 node, children = kc.syms['BOOL_CUSTOMIZE_LED_EFFECTS'].nodes[0], []
                 self.assertTrue(node.is_menuconfig)
                 child = node.list
                 while child:
-                    children.append(child.item.name)
+                    if hasattr(child.item, 'name'):
+                        children.append(child.item.name)
                     child = child.next
                 self.assertEqual(tuple(children[:4]), self.COLOR_PARAMS)
                 self.assertEqual(len(children), 29)
