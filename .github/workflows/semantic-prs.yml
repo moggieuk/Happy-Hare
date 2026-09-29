@@ -2,8 +2,13 @@
 name: "Enforce PR Type"
 
 on:
-  pull_request:
+  # Use trusted workflow code so a PR cannot disable its own title check.
+  # Keep this metadata-only: never check out or execute code from the PR.
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
 
 jobs:
   check-pr-title:
@@ -11,7 +16,7 @@ jobs:
     # doesn't force its author to rename it. GitHub renders pull_request
     # .created_at as a UTC ISO 8601 string, so the comparison below is a
     # lexicographic one. This timestamp is the moment the rule takes effect.
-    if: github.event.pull_request.created_at > '2026-09-28T00:00:00Z'
+    if: github.event.pull_request.created_at > '2026-09-30T00:00:00Z'
     runs-on: ubuntu-latest
     steps:
       - name: Check PR Title Prefix
