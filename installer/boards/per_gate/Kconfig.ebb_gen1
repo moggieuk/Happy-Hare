@@ -34,10 +34,10 @@ if BOARD_TYPE_EBB_GEN1
       default ""
 
     config PIN_ENTRY_SENSOR_0
-      default "^(MCU_NAME):PB7"
+      default "^$(MCU_NAME):PB7"
 
     config PIN_EXIT_SENSOR_0
-      default "^(MCU_NAME):PB5"
+      default "^$(MCU_NAME):PB5"
 
     config PIN_EJECT_BUTTON_0
       default "^!$(MCU_NAME):PB6"
