@@ -1,7 +1,12 @@
-# klippy/extras/mmu/unit/nfc/log.py
+# Happy Hare MMU Software
+# NFC/RFID hardware-layer logging
 #
-# The one logging surface for the NFC/RFID layer. Every driver, mmu_nfc_reader and
-# tag_parser go through here, so channel names and levels are decided in one place.
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: The one logging surface for the NFC/RFID layer. Every driver, mmu_nfc_reader
+#       and tag_parser go through here, so channel names and levels are decided in
+#       one place
 #
 # Channels
 # ────────
@@ -36,6 +41,13 @@
 # Note the MANAGER (mmu_nfc_manager) deliberately does NOT use this module. It logs
 # through self.mmu.log_* so its messages reach mmu.log with the rest of the MMU's
 # narrative; this module is for the hardware layer, which belongs in klippy.log.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 import logging
 

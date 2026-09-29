@@ -1,4 +1,17 @@
-"""Discrete receiver-gain tables shared by NFC config and chip drivers."""
+# Happy Hare MMU Software
+# NFC receiver gain tables
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Discrete receiver-gain tables shared by NFC config and chip drivers
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 # Values are dB -> the chip register encoding. Zero is intentionally absent:
 # at the config layer it means "do not write a gain; retain the chip/profile

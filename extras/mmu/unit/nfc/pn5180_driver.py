@@ -1,6 +1,9 @@
-# klippy/extras/mmu/unit/nfc/pn5180_driver.py
+# Happy Hare MMU Software
+# PN5180 SPI reader driver
 #
-# PN5180 SPI reader driver for Happy Hare RFID Reader.
+# Copyright (C) 2026  WoodWorker
+#
+# Goal: Drive a PN5180 over SPI behind the common reader interface
 #
 # This module deliberately owns only PN5180 transport and RF protocol work.
 # Gate state, tag parsing, Spoolman, and Happy Hare dispatch remain in the
@@ -32,6 +35,13 @@
 #   reactor keeps servicing timers and moves while a read is in progress.
 #   Unlike the RC522 driver, sleep_fn defaults to reactor.pause here, so an
 #   instance built without one is still reactor-friendly.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 from .log import logger
 from .rx_gain import RX_GAIN_CODES

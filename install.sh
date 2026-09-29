@@ -2,6 +2,9 @@
 #
 # Happy Hare v4 MMU Software
 #
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
 # Installer / Updater launch script with familiar options
 #
 # Carefully written to only use shell options that are widely available

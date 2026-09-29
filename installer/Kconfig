@@ -1,3 +1,8 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
 # IMPORTANT: Happy Hare TOKEN naming convention and kconfig features:
 #   PARAM_*                Symbols of various types used in template rendering
 #   PIN_*                  Used for string symbols representing pins

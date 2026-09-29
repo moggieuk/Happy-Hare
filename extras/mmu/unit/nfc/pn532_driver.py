@@ -1,20 +1,22 @@
-# klippy/extras/mmu/unit/nfc/pn532_driver.py
+# Happy Hare MMU Software
+# PN532 NFC reader driver — I2C and SPI variants
 #
-# EMU NFC Gate Reader — PN532 I2C driver
-# Version 1.0.0  |  2026-04-14
 # Copyright (C) 2026  WoodWorker
-# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Goal: Own only the PN532 hardware protocol, handing tag identity (UID, ATQA, SAK)
+#       up to the reader pipeline
 #
-# ─────────────────────────────────────────────────────────────────────────────
-# PN532 NFC reader driver — I2C and SPI variants.
+# Based on the EMU NFC Gate Reader PN532 I2C driver, v1.0.0 (2026-04-14).
 #
 # init(), is_alive(), and read_tag() are the public reader interface used by
 # NFCGate.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license, or
+# (at your option) any later version.
 #
 # Integration model
 # ─────────────────

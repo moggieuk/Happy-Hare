@@ -1,7 +1,18 @@
-# klippy/extras/mmu/unit/nfc/pn532_uart_driver.py
+# Happy Hare MMU Software
+# PN532 HSU (High Speed UART) transport
 #
-# PN532 HSU (High Speed UART) transport, over a host serial port.
-# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Drive a PN532 over a host serial port - the one reader transport that is
+#       not mediated by an MCU
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license, or
+# (at your option) any later version.
 #
 # PN532 HSU protocol overview
 # ───────────────────────────
