@@ -154,10 +154,10 @@ class TestMmuUnitsValidator(unittest.TestCase):
                 self.assertIsNotNone(self.sym.validator.fullmatch(name.strip()))
 
     def test_unit_name_format(self):
-        for good in ('unit0', 'u', '_box', 'box-turtle_2', 'a1-b2'):
+        for good in ('unit0', 'u', 'box-turtle_2', 'a1-b2', 'a_'):
             with self.subTest(name=good):
                 self.assertIsNotNone(self.sym.validator.fullmatch(good))
-        for bad in ('', '0unit', '-unit', 'Unit0', 'unit 0', 'unit.0', 'unit:0'):
+        for bad in ('', '0unit', '-unit', '_box', 'Unit0', 'unit 0', 'unit.0', 'unit:0'):
             with self.subTest(name=bad):
                 self.assertIsNone(self.sym.validator.fullmatch(bad))
 
