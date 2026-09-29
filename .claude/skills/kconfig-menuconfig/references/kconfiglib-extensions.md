@@ -252,6 +252,6 @@ default counts as a user value (NOT DEFAULT, stops tracking default changes).
 under it into writing the #~DEFAULT~# token in that case
 (`_saved_as_default()`, used by the write-side token check). Symbols without
 a prompt, and visible ones, are unaffected. `Kconfig.leds` uses it on
-`BOOL_CUSTOMIZE_LED_EFFECTS`, so unticking "Customize LED effects?" reverts
-the effects to the per-type defaults. Within one menuconfig session a
+`BOOL_CUSTOMIZE_LED_EFFECTS`, so unticking "Customize LED colors and effects?"
+reverts the colors and effects to the per-type defaults. Within one menuconfig session a
 re-ticked entry still shows the old values; the reset happens on save.

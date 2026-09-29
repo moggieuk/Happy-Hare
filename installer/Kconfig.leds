@@ -11,6 +11,12 @@
 #   PARAM_EXIT_EFFECT
 #   PARAM_ENTRY_EFFECT
 #   PARAM_STATUS_EFFECT
+#   PARAM_LOGO_EFFECT
+#   PARAM_{EXIT,ENTRY,STATUS,LOGO}_EFFECT_CUSTOM (only when that choice is custom)
+#   PARAM_WHITE_LIGHT
+#   PARAM_BLACK_LIGHT
+#   PARAM_EMPTY_LIGHT
+#   PARAM_FILAMENT_COLOR_INTENSITY
 #   PARAM_EFFECT_* (one per effect_* option in [mmu_leds])
 #   PARAM_MISC_LED_EFFECTS
 #   PARAM_CHAIN_COUNT
@@ -26,7 +32,6 @@
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_LEDS
 
-#comment "_"
 comment "_Leds"
 
 config UNSELECT_MMU_HAS_LEDS
@@ -78,13 +83,197 @@ if MMU_HAS_LEDS
       default "True" if BOOL_ENABLE_LEDS_ANIMATION
       default "False"
 
+
+    # -------------------------------------
+    # Hardware setup
+    # -------------------------------------
+
+    comment "_"
+    comment "_Hardware"
+
+    config PARAM_FRAME_RATE
+      int "Frame rate      "
+      range 6 32
+      default 24
+      help
+        Set the LED animation frame rate. The default is 24 frames per second.
+        Reducing this to 15 can slightly reduce Klipper CPU load, although lower
+        values may make some effects look less smooth.
+
+    config PARAM_EXIT_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+    config PARAM_ENTRY_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+    config PARAM_EXIT_LED_COUNTS
+      string
+      array_editor "," PARAM_NUM_GATES
+      default ""
+
+    config PARAM_ENTRY_LED_COUNTS
+      string
+      array_editor "," PARAM_NUM_GATES
+      default ""
+
+    config PARAM_STATUS_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+    config PARAM_LOGO_LEDS
+      string
+      array_editor ";"
+      default "" if CUSTOM_LED_SETUP
+
+
+    if !CUSTOM_LED_SETUP
+
+      config BOOL_EMU_SLB_HACK
+        bool
+        default y if MMU_HAS_PER_GATE_MCU && PARAM_VENDOR = "EMU" && PARAM_BOARD_TYPE = "SLB v1"
+
+      config PARAM_CHAIN_COUNT
+        int "Chain count     "
+        default 4 if BOOL_EMU_SLB_HACK
+        default 1 if MMU_HAS_PER_GATE_MCU
+        default PARAM_NUM_GATES
+        help
+          Set the number of physical LEDs in each generated Neopixel chain. The
+          chain must contain every LED index referenced by the segment mappings.
+
+      config PARAM_COLOR_ORDER
+        string "Color order     "
+        default "GRBW"
+        help
+          Set the channel order expected by the LEDs, for example RGB, GRB, RGBW
+          or GRBW. This must match the physical LED type and wiring.
+
+
+      config PARAM_EXIT_LEDS
+        prompt "Exit leds       "
+        generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
+        generated_default "neopixel:_$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
+        help
+          Assign the LEDs mounted at the filament exit for each gate. Use a
+          virtual-chain specification such as "neopixel:my_leds (1-4)". Multiple
+          chains can be entered in the array editor, and ranges may be reversed
+          when the physical chain runs in the opposite gate order.
+
+      config PARAM_EXIT_LED_COUNTS
+        prompt "Exit led counts "
+        depends on PARAM_EXIT_LEDS != ""
+        help
+          NORMALLY LEAVE THIS EMPTY.
+          LEDs are then distributed equally among all gates. For an uneven
+          split, enter one positive integer per gate. The number of entries
+          MUST equal num_gates, and the sum of the counts MUST equal the number
+          of LEDs specified by exit_leds. Counts consume the virtual chain in
+          gate order. Example for 10 LEDs over 4 gates: "1, 1, 2, 6".
+
+
+      config PARAM_ENTRY_LEDS
+        prompt "Entry leds      "
+        help
+          Assign the LEDs mounted at the filament entry for each gate. Use a
+          virtual-chain specification such as "neopixel:my_leds (5-8)". Leave
+          this empty when the unit has no entry LED segment.
+
+      config PARAM_ENTRY_LED_COUNTS
+        prompt "Entry led counts"
+        depends on PARAM_ENTRY_LEDS != ""
+        help
+          NORMALLY LEAVE THIS EMPTY.
+          LEDs are then distributed equally among all gates. For an uneven
+          split, enter one positive integer per gate. The number of entries
+          MUST equal num_gates, and the sum of the counts MUST equal the number
+          of LEDs specified by entry_leds. Counts consume the virtual chain in
+          gate order. Example for 8 LEDs over 4 gates: "1, 1, 2, 4".
+
+
+      config PARAM_STATUS_LEDS
+        prompt "Status leds     "
+        help
+          Assign one or more LEDs used to show the overall MMU and selected
+          filament status. Use a virtual-chain specification such as
+          "neopixel:my_leds (9)". Leave this empty when no status LEDs are fitted.
+
+
+      config PARAM_LOGO_LEDS
+        prompt "Logo leds       "
+        help
+          Assign any decorative LEDs used to illuminate an MMU logo. Use a
+          virtual-chain specification such as "neopixel:my_leds (10-12)". Leave
+          this empty when no logo LEDs are fitted.
+
+
+      config PIN_NEOPIXEL
+        prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU
+        help
+          Set the MCU pin connected to the data input of the generated Neopixel
+          chain for this unit.
+
+      menu "Neopixel per-gate pins" 
+        depends on MMU_HAS_PER_GATE_MCU
+        help
+          Set the Neopixel data pin on each gate MCU. Each configured gate gets
+          its own generated LED chain.
+
+        @repeat var=i min=0 max=11@
+          config PIN_NEOPIXEL_$(i)
+            string
+            prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
+            help
+              Set the data pin for the Neopixel chain connected to gate $(i)'s MCU.
+        @endrepeat@
+      endmenu
+
+      # Hack to special case SLB v1 board wiring with EMU
+      menu "Neopixel per-gate box pins" 
+        depends on BOOL_EMU_SLB_HACK
+        help
+          Set the additional box-side Neopixel data pin for each EMU gate using
+          an SLB v1 board.
+
+        @repeat var=i min=0 max=11@
+          config PIN_NEOPIXEL_BOX_$(i)
+            string
+            prompt "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)
+            help
+              Set the box-side Neopixel data pin associated with gate $(i).
+        @endrepeat@
+
+        config PARAM_CHAIN_COUNT
+          int "Chain count     "
+          default PARAM_NUM_GATES
+          help
+            Set the number of physical LEDs in the generated box-side chain.
+
+      endmenu
+
+    endif # CUSTOM_LED_SETUP
+
+
+    comment "_"
+    comment "_Effects"
+
+    # -------------------------------------
+    # Exit LED effects
+    # -------------------------------------
+
     choice CHOICE_EXIT_EFFECT
-      prompt "Exit effect     "
+      prompt "Exit effect mode  "
       default CHOICE_EXIT_EFFECT_GATE_STATUS
+      depends on PARAM_EXIT_LEDS != ""
       help
         off turns the segment off. gate_status shows gate availability and state.
         filament_color shows the filament color stored in the gate map.
         slicer_color shows the color assigned by the slicer.
+        r,g,b or custom effect name takes an (r,g,b) color or an [mmu_led_effect] name.
 
       config CHOICE_EXIT_EFFECT_OFF
         bool "off"
@@ -105,6 +294,21 @@ if MMU_HAS_LEDS
         bool "slicer_color"
         help
           Show the color assigned to each gate by the slicer.
+
+      config CHOICE_EXIT_EFFECT_CUSTOM
+        bool "r,g,b or custom effect name"
+        help
+          Use a fixed (r,g,b) color or a named [mmu_led_effect], entered below.
+
+      config PARAM_EXIT_EFFECT_CUSTOM
+        string "Custom value"
+        depends on CHOICE_EXIT_EFFECT_CUSTOM
+        default "(1, 1, 1)"
+        help
+          An (r,g,b) color, each value 0.0 to 1.0, or the name of an [mmu_led_effect]
+          (see mmu.cfg).
+          Format:
+            [[REV]](r,g,b) | effect_name[[/REV]]
     endchoice
 
     config PARAM_EXIT_EFFECT
@@ -113,15 +317,23 @@ if MMU_HAS_LEDS
       default "gate_status"    if CHOICE_EXIT_EFFECT_GATE_STATUS
       default "filament_color" if CHOICE_EXIT_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_EXIT_EFFECT_SLICER_COLOR
+      default PARAM_EXIT_EFFECT_CUSTOM if CHOICE_EXIT_EFFECT_CUSTOM
       default "gate_status"
 
+
+    # -------------------------------------
+    # Entry LED effects
+    # -------------------------------------
+
     choice CHOICE_ENTRY_EFFECT
-      prompt "Entry effect    "
+      prompt "Entry effect mode "
       default CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
+      depends on PARAM_ENTRY_LEDS != ""
       help
         off turns the segment off. gate_status shows gate availability and state.
         filament_color shows the filament color stored in the gate map.
         slicer_color shows the color assigned by the slicer.
+        r,g,b or custom effect name takes an (r,g,b) color or an [mmu_led_effect] name.
 
       config CHOICE_ENTRY_EFFECT_OFF
         bool "off"
@@ -142,6 +354,21 @@ if MMU_HAS_LEDS
         bool "slicer_color"
         help
           Show the color assigned to each gate by the slicer.
+
+      config CHOICE_ENTRY_EFFECT_CUSTOM
+        bool "r,g,b or custom effect name"
+        help
+          Use a fixed (r,g,b) color or a named [mmu_led_effect], entered below.
+
+      config PARAM_ENTRY_EFFECT_CUSTOM
+        string "Custom value"
+        depends on CHOICE_ENTRY_EFFECT_CUSTOM
+        default "(1, 1, 1)"
+        help
+          An (r,g,b) color, each value 0.0 to 1.0, or the name of an [mmu_led_effect]
+          (see mmu.cfg).
+          Format:
+            [[REV]](r,g,b) | effect_name[[/REV]]
     endchoice
 
     config PARAM_ENTRY_EFFECT
@@ -150,25 +377,33 @@ if MMU_HAS_LEDS
       default "gate_status"    if CHOICE_ENTRY_EFFECT_GATE_STATUS
       default "filament_color" if CHOICE_ENTRY_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_ENTRY_EFFECT_SLICER_COLOR
+      default PARAM_ENTRY_EFFECT_CUSTOM if CHOICE_ENTRY_EFFECT_CUSTOM
       default "filament_color"
 
+
+    # -------------------------------------
+    # Status LED effects
+    # -------------------------------------
+
     choice CHOICE_STATUS_EFFECT
-      prompt "Status effect   "
+      prompt "Status effect mode"
       default CHOICE_STATUS_EFFECT_FILAMENT_COLOR
+      depends on PARAM_STATUS_LEDS != ""
       help
-        off turns the segment off. gate_status shows gate availability and state.
+        off turns the segment off. on shows white light while filament is loaded.
         filament_color shows the selected filament color from the gate map.
         slicer_color shows the selected color assigned by the slicer.
+        r,g,b or custom effect name takes an (r,g,b) color or an [mmu_led_effect] name.
 
       config CHOICE_STATUS_EFFECT_OFF
         bool "off"
         help
           Keep the status LEDs off when no temporary or action effect is active.
 
-      config CHOICE_STATUS_EFFECT_GATE_STATUS
-        bool "gate_status"
+      config CHOICE_STATUS_EFFECT_ON
+        bool "on"
         help
-          Show the status of the selected gate on the status LEDs.
+          Show white light while filament is loaded, otherwise black light.
 
       config CHOICE_STATUS_EFFECT_FILAMENT_COLOR
         bool "filament_color"
@@ -179,27 +414,131 @@ if MMU_HAS_LEDS
         bool "slicer_color"
         help
           Show the selected gate's color assigned by the slicer.
+
+      config CHOICE_STATUS_EFFECT_CUSTOM
+        bool "r,g,b or custom effect name"
+        help
+          Use a fixed (r,g,b) color or a named [mmu_led_effect], entered below.
+
+      config PARAM_STATUS_EFFECT_CUSTOM
+        string "Custom value"
+        depends on CHOICE_STATUS_EFFECT_CUSTOM
+        default "(1, 1, 1)"
+        help
+          An (r,g,b) color, each value 0.0 to 1.0, or the name of an [mmu_led_effect]
+          (see mmu.cfg).
+          Format:
+            [[REV]](r,g,b) | effect_name[[/REV]]
     endchoice
 
     config PARAM_STATUS_EFFECT
       string
       default "off"            if CHOICE_STATUS_EFFECT_OFF
-      default "gate_status"    if CHOICE_STATUS_EFFECT_GATE_STATUS
+      default "on"             if CHOICE_STATUS_EFFECT_ON
       default "filament_color" if CHOICE_STATUS_EFFECT_FILAMENT_COLOR
       default "slicer_color"   if CHOICE_STATUS_EFFECT_SLICER_COLOR
+      default PARAM_STATUS_EFFECT_CUSTOM if CHOICE_STATUS_EFFECT_CUSTOM
       default "filament_color"
 
+
+    # -------------------------------------
+    # Logo LED effects
+    # -------------------------------------
+
+    choice CHOICE_LOGO_EFFECT
+      prompt "Logo effect mode  "
+      default CHOICE_LOGO_EFFECT_CUSTOM
+      depends on PARAM_LOGO_LEDS != ""
+      help
+        off turns the segment off.
+        r,g,b or custom effect name takes an (r,g,b) color or an [mmu_led_effect] name.
+
+      config CHOICE_LOGO_EFFECT_OFF
+        bool "off"
+        help
+          Keep the logo LEDs off when no temporary or action effect is active.
+
+      config CHOICE_LOGO_EFFECT_CUSTOM
+        bool "r,g,b or custom effect name"
+        help
+          Use a fixed (r,g,b) color or a named [mmu_led_effect], entered below.
+
+      config PARAM_LOGO_EFFECT_CUSTOM
+        string "Custom value"
+        depends on CHOICE_LOGO_EFFECT_CUSTOM
+        default "(0, 0, 0.3)"
+        help
+          An (r,g,b) color, each value 0.0 to 1.0, or the name of an [mmu_led_effect]
+          (see mmu.cfg).
+          Format:
+            [[REV]](r,g,b) | effect_name[[/REV]]
+    endchoice
+
+    config PARAM_LOGO_EFFECT
+      string
+      default "off"            if CHOICE_LOGO_EFFECT_OFF
+      default PARAM_LOGO_EFFECT_CUSTOM if CHOICE_LOGO_EFFECT_CUSTOM
+      default "(0, 0, 0.3)"
+
+
+    # -------------------------------------
+    # Advanced effect customization
+    # Note: The if BOOL_CUSTOMIZE_LED_EFFECTS on every item must
+    # exist and ensures defaults defined even if menu is not enabled
+    # -------------------------------------
+
     menuconfig BOOL_CUSTOMIZE_LED_EFFECTS
-      bool "Customize LED effects?"
+      bool "Customize LED colors and effects?"
       default n
       default_when_hidden
       help
-        ADVANCED: Edit the effect used for each action, otherwise the defaults for this MMU type are used.
+        ADVANCED: Edit the base colors and the effect used for each action,
+        otherwise the defaults for this MMU type are used.
         Format:
           [[B]]effect_name, (r,g,b) [, duration][[/B]]
 
         The effect must be an [mmu_led_effect] (see mmu.cfg); (r,g,b) is used when animation is off.
         The optional duration (seconds) is how long a timed effect shows before reverting.
+
+    config PARAM_WHITE_LIGHT
+      string
+      prompt "White light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "(1, 1, 1)"
+      help
+        Color used for white light, e.g. when a gate's filament color is not known.
+        Each value 0.0 to 1.0.
+        Format:
+          [[REV]](r,g,b)[[/REV]]
+
+    config PARAM_BLACK_LIGHT
+      string
+      prompt "Black light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "(.01, 0, .02)"
+      help
+        Color used to represent black filament (LEDs can't show black), and the status
+        segment when nothing is loaded. Each value 0.0 to 1.0.
+        Format:
+          [[REV]](r,g,b)[[/REV]]
+
+    config PARAM_EMPTY_LIGHT
+      string
+      prompt "Empty light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      default "(0, 0, 0)"
+      help
+        Color used to represent an empty gate. Each value 0.0 to 1.0.
+        Format:
+          [[REV]](r,g,b)[[/REV]]
+
+    config PARAM_FILAMENT_COLOR_INTENSITY
+      float
+      prompt "Color intensity      " if BOOL_CUSTOMIZE_LED_EFFECTS
+      range 0.0 1.0
+      default 0.5
+      help
+        Brightness multiplier (0.0 to 1.0) applied when displaying filament or slicer colors.
+        Lower values dim the colors. White, black and empty light are not affected.
+
+    comment "_" if BOOL_CUSTOMIZE_LED_EFFECTS
 
     config PARAM_EFFECT_LOADING
       string
@@ -407,167 +746,6 @@ if MMU_HAS_LEDS
       default ""
 
     comment "_"
-
-
-    config PARAM_FRAME_RATE
-      int "Frame rate      "
-      range 6 32
-      default 24
-      help
-        Set the LED animation frame rate. The default is 24 frames per second.
-        Reducing this to 15 can slightly reduce Klipper CPU load, although lower
-        values may make some effects look less smooth.
-
-    config PARAM_EXIT_LEDS
-      string
-      array_editor ";"
-      default "" if CUSTOM_LED_SETUP
-
-    config PARAM_ENTRY_LEDS
-      string
-      array_editor ";"
-      default "" if CUSTOM_LED_SETUP
-
-    config PARAM_EXIT_LED_COUNTS
-      string
-      array_editor "," PARAM_NUM_GATES
-      default ""
-
-    config PARAM_ENTRY_LED_COUNTS
-      string
-      array_editor "," PARAM_NUM_GATES
-      default ""
-
-    config PARAM_STATUS_LEDS
-      string
-      array_editor ";"
-      default "" if CUSTOM_LED_SETUP
-
-    config PARAM_LOGO_LEDS
-      string
-      array_editor ";"
-      default "" if CUSTOM_LED_SETUP
-
-    if !CUSTOM_LED_SETUP
-
-      config BOOL_EMU_SLB_HACK
-        bool
-        default y if MMU_HAS_PER_GATE_MCU && PARAM_VENDOR = "EMU" && PARAM_BOARD_TYPE = "SLB v1"
-
-      config PARAM_CHAIN_COUNT
-        int "Chain count     "
-        default 4 if BOOL_EMU_SLB_HACK
-        default 1 if MMU_HAS_PER_GATE_MCU
-        default PARAM_NUM_GATES
-        help
-          Set the number of physical LEDs in each generated Neopixel chain. The
-          chain must contain every LED index referenced by the segment mappings.
-
-      config PARAM_COLOR_ORDER
-        string "Color order     "
-        default "GRBW"
-        help
-          Set the channel order expected by the LEDs, for example RGB, GRB, RGBW
-          or GRBW. This must match the physical LED type and wiring.
-
-      config PARAM_EXIT_LEDS
-        prompt "Exit leds       "
-        generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
-        generated_default "neopixel:_$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
-        help
-          Assign the LEDs mounted at the filament exit for each gate. Use a
-          virtual-chain specification such as "neopixel:my_leds (1-4)". Multiple
-          chains can be entered in the array editor, and ranges may be reversed
-          when the physical chain runs in the opposite gate order.
-
-      config PARAM_EXIT_LED_COUNTS
-        prompt "Exit led counts "
-        depends on PARAM_EXIT_LEDS != ""
-        help
-          NORMALLY LEAVE THIS EMPTY.
-          LEDs are then distributed equally among all gates. For an uneven
-          split, enter one positive integer per gate. The number of entries
-          MUST equal num_gates, and the sum of the counts MUST equal the number
-          of LEDs specified by exit_leds. Counts consume the virtual chain in
-          gate order. Example for 10 LEDs over 4 gates: "1, 1, 2, 6".
-
-      config PARAM_ENTRY_LEDS
-        prompt "Entry leds      "
-        help
-          Assign the LEDs mounted at the filament entry for each gate. Use a
-          virtual-chain specification such as "neopixel:my_leds (5-8)". Leave
-          this empty when the unit has no entry LED segment.
-
-      config PARAM_ENTRY_LED_COUNTS
-        prompt "Entry led counts"
-        depends on PARAM_ENTRY_LEDS != ""
-        help
-          NORMALLY LEAVE THIS EMPTY.
-          LEDs are then distributed equally among all gates. For an uneven
-          split, enter one positive integer per gate. The number of entries
-          MUST equal num_gates, and the sum of the counts MUST equal the number
-          of LEDs specified by entry_leds. Counts consume the virtual chain in
-          gate order. Example for 8 LEDs over 4 gates: "1, 1, 2, 4".
-
-      config PARAM_STATUS_LEDS
-        prompt "Status leds     "
-        help
-          Assign one or more LEDs used to show the overall MMU and selected
-          filament status. Use a virtual-chain specification such as
-          "neopixel:my_leds (9)". Leave this empty when no status LEDs are fitted.
-
-      config PARAM_LOGO_LEDS
-        prompt "Logo leds       "
-        help
-          Assign any decorative LEDs used to illuminate an MMU logo. Use a
-          virtual-chain specification such as "neopixel:my_leds (10-12)". Leave
-          this empty when no logo LEDs are fitted.
-
-      config PIN_NEOPIXEL
-        prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU
-        help
-          Set the MCU pin connected to the data input of the generated Neopixel
-          chain for this unit.
-
-      menu "Neopixel per-gate pins" 
-        depends on MMU_HAS_PER_GATE_MCU
-        help
-          Set the Neopixel data pin on each gate MCU. Each configured gate gets
-          its own generated LED chain.
-
-        @repeat var=i min=0 max=11@
-          config PIN_NEOPIXEL_$(i)
-            string
-            prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
-            help
-              Set the data pin for the Neopixel chain connected to gate $(i)'s MCU.
-        @endrepeat@
-      endmenu
-
-      # Hack to special case SLB v1 board wiring with EMU
-      menu "Neopixel per-gate box pins" 
-        depends on BOOL_EMU_SLB_HACK
-        help
-          Set the additional box-side Neopixel data pin for each EMU gate using
-          an SLB v1 board.
-
-        @repeat var=i min=0 max=11@
-          config PIN_NEOPIXEL_BOX_$(i)
-            string
-            prompt "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)
-            help
-              Set the box-side Neopixel data pin associated with gate $(i).
-        @endrepeat@
-
-        config PARAM_CHAIN_COUNT
-          int "Chain count     "
-          default PARAM_NUM_GATES
-          help
-            Set the number of physical LEDs in the generated box-side chain.
-
-      endmenu
-
-    endif
 
   endmenu
 endif

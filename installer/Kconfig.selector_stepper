@@ -7,6 +7,7 @@
 #   PARAM_SELECTOR_RUN_CURRENT
 #   PARAM_SELECTOR_HOLD_CURRENT
 #   PARAM_SELECTOR_ENDSTOP_NAME
+#   PARAM_SELECTOR_MICROSTEPS
 #   PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
 #   PARAM_SELECTOR_SENSE_RESISTOR
 #   PARAM_STARTUP_HOME_SELECTOR
@@ -40,6 +41,12 @@ if MMU_HAS_SELECTOR_STEPPER
     config PARAM_SELECTOR_ENDSTOP_NAME
       string
       default "mmu_sel_home"
+
+    config PARAM_SELECTOR_MICROSTEPS
+      int "Selector microsteps             "
+      default 16
+      help
+        16 is plenty, the selector doesn't need high fidelity
 
     config PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
       int "Selector full steps per rotation"

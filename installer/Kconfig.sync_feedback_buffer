@@ -147,7 +147,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         default "none"
 
       comment "_"
-      comment "Fitted Sensors"
+      comment "_Fitted Sensors"
 
       config UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
           bool

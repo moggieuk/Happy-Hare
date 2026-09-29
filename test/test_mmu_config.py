@@ -92,15 +92,100 @@ class TestBoxTurtleRender(unittest.TestCase):
         self.assertEqual(leds['entry_effect'], 'filament_color')
         self.assertEqual(leds['status_effect'], 'filament_color')
 
-    def test_led_effect_choices_remain_visible_for_empty_segments(self):
+    SEGMENT_LEDS = {
+        'PARAM_ENTRY_LEDS': 'neopixel:_unit0_leds (5-8)',
+        'PARAM_STATUS_LEDS': 'neopixel:_unit0_leds (9)',
+        'PARAM_LOGO_LEDS': 'neopixel:_unit0_leds (10)',
+    }
+
+    def test_led_effect_choices_are_hidden_for_empty_segments(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig(
                 'boxturtle_led_effect_visibility',
                 profiles.get('boxturtle').syms)
 
+        self.assertGreater(kconfig.named_choices['CHOICE_EXIT_EFFECT'].visibility, 0)
+        for choice in ('CHOICE_ENTRY_EFFECT', 'CHOICE_STATUS_EFFECT', 'CHOICE_LOGO_EFFECT'):
+            self.assertEqual(kconfig.named_choices[choice].visibility, 0, choice)
+
+        # The template still gets each segment's default
+        leds = dict(cfg.assemble(self.rendered).items('mmu_leds unit0'))
+        self.assertEqual(leds['logo_effect'], '(0, 0, 0.3)')
+
+    def test_exit_effect_choice_is_hidden_without_exit_leds(self):
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_no_exit_leds',
+            syms=dict(PARAM_EXIT_LEDS='', PARAM_ENTRY_LEDS='neopixel:_unit0_leds (1-4)'))
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(profile.name, profile.syms)
+        self.assertEqual(kconfig.named_choices['CHOICE_EXIT_EFFECT'].visibility, 0)
+        self.assertGreater(kconfig.named_choices['CHOICE_ENTRY_EFFECT'].visibility, 0)
+        leds = dict(cfg.assemble(cfg.render(profile)).items('mmu_leds unit0'))
+        self.assertEqual(leds['exit_effect'], 'gate_status')
+
+    def test_led_effect_choices_are_shown_when_segments_have_leds(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(
+                'boxturtle_led_effect_visible_segments',
+                dict(profiles.get('boxturtle').syms, **self.SEGMENT_LEDS))
+
         for choice in ('CHOICE_EXIT_EFFECT', 'CHOICE_ENTRY_EFFECT',
-                       'CHOICE_STATUS_EFFECT'):
-            self.assertGreater(kconfig.named_choices[choice].visibility, 0)
+                       'CHOICE_STATUS_EFFECT', 'CHOICE_LOGO_EFFECT'):
+            self.assertGreater(kconfig.named_choices[choice].visibility, 0, choice)
+
+    def test_led_effect_custom_and_on_choices_render(self):
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_led_effect_custom',
+            syms=dict(self.SEGMENT_LEDS, **{
+                'CHOICE_EXIT_EFFECT_CUSTOM': True,
+                'PARAM_EXIT_EFFECT_CUSTOM': '(0.25, 0.5, 0.75)',
+                'CHOICE_ENTRY_EFFECT_CUSTOM': True,
+                'PARAM_ENTRY_EFFECT_CUSTOM': 'mmu_rainbow',
+                'CHOICE_STATUS_EFFECT_ON': True,
+            }))
+        leds = dict(cfg.assemble(cfg.render(profile)).items('mmu_leds unit0'))
+        self.assertEqual(leds['exit_effect'], '(0.25, 0.5, 0.75)')
+        self.assertEqual(leds['entry_effect'], 'mmu_rainbow')
+        self.assertEqual(leds['status_effect'], 'on')
+        self.assertEqual(leds['logo_effect'], '(0, 0, 0.3)')
+
+    def test_led_effect_custom_value_is_nested_under_the_custom_choice(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('boxturtle_led_effect_nesting', profiles.get('boxturtle').syms)
+        for seg in ('EXIT', 'ENTRY', 'STATUS', 'LOGO'):
+            with self.subTest(segment=seg):
+                sym = kconfig.syms['PARAM_%s_EFFECT_CUSTOM' % seg]
+                self.assertIsNone(sym.choice)
+                self.assertEqual({n.parent.item.name for n in sym.nodes},
+                                 {'CHOICE_%s_EFFECT_CUSTOM' % seg})
+                self.assertNotIn(sym, kconfig.named_choices['CHOICE_%s_EFFECT' % seg].syms)
+
+    def test_led_effect_custom_value_defaults_when_selected(self):
+        profile = profiles.get('boxturtle').derive(
+            'boxturtle_led_effect_custom_default',
+            syms=dict(self.SEGMENT_LEDS, CHOICE_STATUS_EFFECT_CUSTOM=True))
+        leds = dict(cfg.assemble(cfg.render(profile)).items('mmu_leds unit0'))
+        self.assertEqual(leds['status_effect'], '(1, 1, 1)')
+
+    def test_saved_status_gate_status_falls_back_to_the_default(self):
+        # gate_status was offered for the status segment but never implemented there
+        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
+            kc = cfg._kconfig('status_gate_status_saved', dict(
+                profiles.get('boxturtle').syms, CHOICE_STATUS_EFFECT_SLICER_COLOR=True,
+                **self.SEGMENT_LEDS))
+            path = os.path.join(tmp, '.mmu_config')
+            kc.write_config(path)
+            with open(path) as f:
+                saved = f.read()
+            self.assertIn('CONFIG_CHOICE_STATUS_EFFECT_SLICER_COLOR=y\n', saved)
+            saved = saved.replace('CONFIG_CHOICE_STATUS_EFFECT_SLICER_COLOR=y',
+                                  'CONFIG_CHOICE_STATUS_EFFECT_GATE_STATUS=y')
+            with open(path, 'w') as f:
+                f.write(saved)
+            reloaded = cfg._new_kconfig('status_gate_status_reload')
+            reloaded.warn = False
+            reloaded.load_config(path, filter_defaults=True)
+        self.assertEqual(reloaded.syms['PARAM_STATUS_EFFECT'].str_value, 'filament_color')
 
     def test_led_effect_choices_render_into_the_unit_config(self):
         profile = profiles.get('boxturtle').derive(

@@ -122,7 +122,8 @@ class MmuLeds:
         self.exit_effect = config.get('exit_effect', 'gate_status')
         self.entry_effect = config.get('entry_effect', 'filament_color')
         self.status_effect = config.get('status_effect', 'filament_color')
-        self.logo_effect = MmuLeds.string_to_rgb(config.get('logo_effect', '(0,0,0.3)'))
+        logo_effect = config.get('logo_effect', '(0,0,0.3)').strip()
+        self.logo_effect = MmuLeds.string_to_rgb(logo_effect) if ',' in logo_effect else logo_effect
         self.white_light = MmuLeds.string_to_rgb(config.get('white_light', '(1,1,1)'))
         self.black_light = MmuLeds.string_to_rgb(config.get('black_light', '(0.01,0,0.02)'))
         self.empty_light = MmuLeds.string_to_rgb(config.get('empty_light', '(0,0,0)'))

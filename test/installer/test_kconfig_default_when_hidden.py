@@ -58,7 +58,8 @@ class TestDefaultWhenHidden(unittest.TestCase):
         with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
             kc = cfg._kconfig('led_effects_hidden', dict(
                 profiles.get('boxturtle').syms, BOOL_CUSTOMIZE_LED_EFFECTS=True,
-                PARAM_EFFECT_ERROR='mmu_sparkle, (1, 0, 0), 5'))
+                PARAM_EFFECT_ERROR='mmu_sparkle, (1, 0, 0), 5',
+                PARAM_WHITE_LIGHT='(0.8, 0.8, 0.8)', PARAM_FILAMENT_COLOR_INTENSITY='0.9'))
             kc.syms['BOOL_CUSTOMIZE_LED_EFFECTS'].set_value('n')
             path = os.path.join(tmp, '.mmu_config')
             kc.write_config(path)
@@ -67,6 +68,10 @@ class TestDefaultWhenHidden(unittest.TestCase):
         self.assertIsNone(reloaded.syms['PARAM_EFFECT_ERROR'].user_value)
         self.assertEqual(reloaded.syms['PARAM_EFFECT_ERROR'].str_value.split(',')[0],
                          'mmu_red_strobe')
+        self.assertIsNone(reloaded.syms['PARAM_WHITE_LIGHT'].user_value)
+        self.assertEqual(reloaded.syms['PARAM_WHITE_LIGHT'].str_value, '(1, 1, 1)')
+        self.assertIsNone(reloaded.syms['PARAM_FILAMENT_COLOR_INTENSITY'].user_value)
+        self.assertEqual(reloaded.syms['PARAM_FILAMENT_COLOR_INTENSITY'].str_value, '0.5')
 
 
 if __name__ == '__main__':
