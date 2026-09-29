@@ -1073,23 +1073,21 @@ class TestRenderedConfig(unittest.TestCase):
         for name in ('unit0_nfc1', 'unit0_nfc2', 'unit0_nfc3'):
             self.assertEqual(sections[name]['reader_type'], 'rc522', name)
             self.assertIn('cs_pin', sections[name], name)
-            self.assertNotIn('interface', sections[name],
-                             '%s uses its default transport, so the key is noise'
-                             % name)
+            self.assertEqual(sections[name]['interface'], 'spi', name)
 
-    def test_default_transports_emit_no_interface_key(self):
+    def test_default_transports_render_the_chip_default(self):
         """
-        Every chip keeps the transport it has always had, and the rendered config
-        stays byte-identical for those - `interface:` is written only when it differs
-        from the chip default. Guards against churn in everyone else's config.
+        Every chip keeps the transport it has always had. `interface:` is always
+        written, so for these it must be exactly what klippy would have defaulted to.
         """
+        from extras.mmu.unit.nfc import reader_factory
         for profile in ('nfc_single', 'nfc_pn5180', 'nfc_pn532',
                         'nfc_pn532_sw_i2c', 'nfc_per_gate',
                         'nfc_pn5180_per_gate'):
             for name, keys in self.reader_sections(profile).items():
-                self.assertNotIn('interface', keys,
-                                 '%s/%s should not have gained an interface key'
-                                 % (profile, name))
+                self.assertEqual(keys.get('interface'),
+                                 reader_factory.default_interface(keys['reader_type']),
+                                 '%s/%s' % (profile, name))
 
     def test_existing_transports_still_render_their_blocks(self):
         """The other half of the dispatch change: SPI and I2C still work."""

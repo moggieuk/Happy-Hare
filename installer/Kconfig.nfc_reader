@@ -54,13 +54,13 @@
 # SUPPORTED READER TYPES
 #   - rc522  (spi)
 #   - pn5180 (spi, also needs BUSY and RST pins)
-#   - pn532  (i2c at 0x24, or uart/HSU on a host USB serial adapter)
+#   - pn532  (i2c at 0x24, spi, or uart/HSU on a host USB serial adapter)
 #   - pn7160 (i2c, i2c_address=0x28-0x2B)
 #
 # Chip and transport are separate settings in the rendered config, but menuconfig
 # offers them as one flat list of chip/transport pairs because that is how the
-# hardware is actually chosen. PN532-over-SPI is deliberately NOT offered: the
-# driver exists but has never run against hardware, so it is hand-edit only.
+# hardware is actually chosen. PN532-over-SPI is offered but has never run against
+# hardware; the driver logs a warning at startup.
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_NFC_READER
@@ -132,7 +132,7 @@ if MMU_HAS_NFC_READER
             PN532 NFC reader using I2C, usually at address 0x24.
 
         config CHOICE_NFC_READER_TYPE_PN532_UART
-          bool "PN532 [[DIM]]/ UART"
+          bool "PN532 [[DIM]]/ UART[[/DIM]]"
           help
             PN532 in HSU mode on a USB serial adapter. One reader per adapter -
             for more than one, use "PN532 / I2C" with software I2C instead (a
@@ -141,11 +141,12 @@ if MMU_HAS_NFC_READER
             An unplugged adapter does not stop Klipper starting; reconnect it
             and run MMU_RFID_INIT to recover.
 
-       config CHOICE_NFC_READER_TYPE_PN532_SPI
-         bool "PN532 [[DIM]]/ SPI[[/DIM]]"
-         help
-           PN532 NFC reader using SPI. Set the breakout board's mode pads to
-           SEL0=0, SEL1=0.
+        config CHOICE_NFC_READER_TYPE_PN532_SPI
+          bool "PN532 [[DIM]]/ SPI[[/DIM]]"
+          help
+            PN532 NFC reader using SPI. Set the breakout board's mode pads to
+            SEL0=0, SEL1=0.
+            UNTESTED against real hardware - I2C or UART is the supported setup.
 
         config CHOICE_NFC_READER_TYPE_PN7160
           bool "PN7160 [[DIM]]/ I2C[[/DIM]]"
@@ -206,10 +207,11 @@ if MMU_HAS_NFC_READER
         config PARAM_NFC_READER_SPI_SPEED
           int "SPI speed (Hz)    "
           default 1000000
-          range 10 7000000 if CHOICE_NFC_READER_TYPE_PN5180
-          range 10 10000000
+          range 100000 7000000 if CHOICE_NFC_READER_TYPE_PN5180
+          range 100000 10000000
           help
-            SPI speed for the reader, in Hz.
+            SPI speed for the reader, in Hz. Klipper rejects anything below
+            100000, so that is the floor here.
             RC522 accepts up to 10MHz, PN5180 up to 7MHz.
       endif
 
@@ -243,7 +245,7 @@ if MMU_HAS_NFC_READER
             default 36 if CHOICE_NFC_READER_TYPE_PN532
             default 40 if CHOICE_NFC_READER_TYPE_PN7160
             range 36 36 if CHOICE_NFC_READER_TYPE_PN532
-            range 36 43 if CHOICE_NFC_READER_TYPE_PN7160
+            range 40 43 if CHOICE_NFC_READER_TYPE_PN7160
             help
               I2C address of the NFC reader.
               PN532 uses 36 (0x24)
@@ -408,11 +410,12 @@ if MMU_HAS_NFC_READER
                    bus off the MMU MCU with no extra hardware. Pick UART per gate only if you
                    actually have the adapters.
 
-              config CHOICE_NFC_READER_TYPE_PN532_SPI_$(i)
-                bool "PN532 [[DIM]]/ SPI[[/DIM]]"
-                help
-                  PN532 NFC reader using SPI. Set the breakout board's mode pads to
-                  SEL0=0, SEL1=0.
+               config CHOICE_NFC_READER_TYPE_PN532_SPI_$(i)
+                 bool "PN532 [[DIM]]/ SPI[[/DIM]]"
+                 help
+                   PN532 NFC reader using SPI. Set the breakout board's mode pads to
+                   SEL0=0, SEL1=0.
+                   UNTESTED against real hardware - I2C or UART is the supported setup.
 
               config CHOICE_NFC_READER_TYPE_PN7160_$(i)
                 bool "PN7160 [[DIM]]/ I2C[[/DIM]]"
@@ -473,10 +476,11 @@ if MMU_HAS_NFC_READER
               config PARAM_NFC_READER_SPI_SPEED_$(i)
                 int "Gate $(i) SPI speed (Hz)    "
                 default 1000000
-                range 1 7000000 if CHOICE_NFC_READER_TYPE_PN5180_$(i)
-                range 1 10000000
+                range 100000 7000000 if CHOICE_NFC_READER_TYPE_PN5180_$(i)
+                range 100000 10000000
                 help
-                  SPI speed for this gate's reader, in Hz.
+                  SPI speed for this gate's reader, in Hz. Klipper rejects
+                  anything below 100000, so that is the floor here.
                   RC522 accepts up to 10MHz, PN5180 up to 7MHz.
             endif
 
@@ -512,7 +516,7 @@ if MMU_HAS_NFC_READER
                 default 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
                 default 40 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
                 range 36 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
-                range 36 43 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                range 40 43 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
                 help
                   I2C address of the NFC reader.
                   PN532 uses 36 (0x24)

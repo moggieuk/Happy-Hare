@@ -368,6 +368,26 @@ NFC_PN532_UART_PER_GATE = BOXTURTLE.derive(
               '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'},
     description='BoxTurtle + per-gate readers, gate 0 PN532/UART and the rest RC522')
 
+# PN532 over SPI: a chip whose DEFAULT transport is i2c, on the SPI branch of the
+# template. RC522/PN5180 get away without an `interface:` key because spi is their
+# default; a pn532 does not, and without it klippy quietly builds an I2C reader and
+# then rejects the leftover cs_pin.
+NFC_PN532_SPI = BOXTURTLE.derive(
+    'nfc_pn532_spi',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
+          'CHOICE_NFC_READER_TYPE_PN532_SPI': True,
+          'PARAM_NFC_READER_CS_PIN': 'unit0:PA4'},
+    description='BoxTurtle + one common NFC reader (PN532/SPI)')
+
+# Mixed per-gate, for the same reason as NFC_PN532_UART_PER_GATE: gate 0 PN532/SPI
+# beside RC522 gates is where the interface key must appear on exactly one gate.
+NFC_PN532_SPI_PER_GATE = BOXTURTLE.derive(
+    'nfc_pn532_spi_per_gate',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
+          'CHOICE_NFC_READER_TYPE_PN532_SPI_0': True,
+          'PARAM_NFC_READER_CS_PIN_0': 'unit0:PA4'},
+    description='BoxTurtle + per-gate readers, gate 0 PN532/SPI and the rest RC522')
+
 # The round-trip profile: per-gate NFC + Spoolman in a WRITABLE mode + auto-create
 # + deep read. All four are needed or the interesting paths gate themselves off:
 #   spoolman_support defaults to 'off' (mmu_machine_parameters.py), and MMU_GATE_MAP
@@ -806,6 +826,7 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
                     NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
+                    NFC_PN532_SPI, NFC_PN532_SPI_PER_GATE,
                     NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
                     TD1_SHARED, TD1_PER_GATE, TD1_ADVANCED, TD1_UNCONFIGURED,
                     TD1_OFFPATH, TD1_BOTH)
