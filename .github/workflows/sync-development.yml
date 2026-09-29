@@ -52,7 +52,7 @@ jobs:
             if (!pr) {
               const { data } = await github.rest.pulls.create({
                 owner, repo, base, head,
-                title: 'Sync main into development',
+                title: 'chore: sync main into development',
                 body: [
                   'Bring changes merged into `main` into `development`.',
                   'This PR automatically includes subsequent pushes to `main`.',

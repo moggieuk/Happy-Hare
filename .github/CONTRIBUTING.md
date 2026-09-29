@@ -16,6 +16,16 @@
 
 * Ensure the PR description clearly describes the problem and solution. Include the relevant issue number if applicable.
 
+#### **What should the PR title look like?**
+
+* Titles follow [conventional commits](https://www.conventionalcommits.org/) - a type, an optional scope in brackets, a colon, then a short description. For example: `fix: endstop occupancy lost after a gate parking move`, or `feat(nfc): jog_scan support for a second reader`.
+
+* The type must be one of `feat` (new feature), `fix` (bug), `chore` (housekeeping, CI, build) or `docs`. The scope is optional, and everything after the colon is yours to write.
+
+* PRs that add a feature should target `development` rather than `main`.
+
+* A CI check validates this. If the `Enforce PR Type` check fails, the reason is in that check's log.
+
 #### **Do you intend to add a new feature or change an existing one?**
 
 * Do not open an issue on GitHub until you have collected positive feedback about the change. GitHub issues are primarily intended for bug reports and fixes.
