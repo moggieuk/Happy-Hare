@@ -1,0 +1,114 @@
+# The 'validator' keyword.
+#
+# A STRING symbol can carry a regexp that menuconfig applies to an edited
+# value: to the whole string, or to each element of an 'array_editor' string.
+
+import os
+import tempfile
+import unittest
+
+import kconfiglib
+
+from test.hh import cfg, profiles
+
+
+def _parse(text):
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'Kconfig')
+        with open(path, 'w') as handle:
+            handle.write(text)
+        return kconfiglib.Kconfig(path, warn=False)
+
+
+class TestValidatorParsing(unittest.TestCase):
+
+    def test_pattern_is_compiled_onto_the_symbol(self):
+        kc = _parse('config PARAM_TEST\n  string "Test"\n  validator "[(][a-z]+[)]"\n')
+        self.assertEqual(kc.syms['PARAM_TEST'].validator.pattern, '[(][a-z]+[)]')
+
+    def test_kconfig_string_escaping_applies_to_the_pattern(self):
+        kc = _parse('config PARAM_TEST\n  string "Test"\n  validator "\\\\d+"\n')
+        self.assertEqual(kc.syms['PARAM_TEST'].validator.pattern, r'\d+')
+
+    def test_macro_expands_into_the_pattern(self):
+        kc = _parse('num := [0-9]+\nconfig PARAM_TEST\n  string "Test"\n'
+                    '  validator "$(num)(,$(num))*"\n')
+        self.assertEqual(kc.syms['PARAM_TEST'].validator.pattern, '[0-9]+(,[0-9]+)*')
+
+    def test_redeclaration_keeps_the_validator(self):
+        kc = _parse('config PARAM_TEST\n  string "Test"\n  validator "[a-z]+"\n'
+                    'config PARAM_TEST\n  default "abc"\n')
+        self.assertEqual(kc.syms['PARAM_TEST'].validator.pattern, '[a-z]+')
+
+    def test_symbols_without_the_keyword_have_none(self):
+        kc = _parse('config PARAM_TEST\n  string "Test"\n')
+        self.assertIsNone(kc.syms['PARAM_TEST'].validator)
+
+    def test_invalid_regexp_is_a_parse_error(self):
+        with self.assertRaisesRegex(kconfiglib.KconfigError, 'invalid validator regexp'):
+            _parse('config PARAM_TEST\n  string "Test"\n  validator "[a-z"\n')
+
+    def test_trailing_tokens_are_a_parse_error(self):
+        with self.assertRaises(kconfiglib.KconfigError):
+            _parse('config PARAM_TEST\n  string "Test"\n  validator "[a-z]+" "extra"\n')
+
+
+LED_RGB_SYMS = ('PARAM_WHITE_LIGHT', 'PARAM_BLACK_LIGHT', 'PARAM_EMPTY_LIGHT')
+
+
+class TestLedEffectValidators(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.trees = {}
+        for name in ('boxturtle', 'emu'):
+            with cfg._env(cfg._SINGLE_UNIT_ENV):
+                cls.trees[name] = cfg._kconfig('led_validators_' + name, dict(
+                    profiles.get(name).syms, MMU_HAS_LEDS=True))
+
+    @staticmethod
+    def _effect_syms(kc):
+        return sorted(name for name in kc.syms if name.startswith('PARAM_EFFECT_'))
+
+    def test_every_customizable_color_and_effect_has_a_validator(self):
+        kc = self.trees['boxturtle']
+        names = LED_RGB_SYMS + tuple(self._effect_syms(kc))
+        self.assertEqual(len(self._effect_syms(kc)), 25)
+        self.assertEqual([n for n in names if kc.syms[n].validator is None], [])
+
+    def test_emu_tree_carries_its_effect_overrides(self):
+        self.assertTrue(self.trees['emu'].syms['PARAM_EFFECT_GATE_AVAILABLE'].str_value
+                        .startswith('mmu_static_white_dim_unit0'))
+
+    def test_shipped_defaults_pass_their_validator(self):
+        for profile, kc in self.trees.items():
+            for name in LED_RGB_SYMS + tuple(self._effect_syms(kc)):
+                sym = kc.syms[name]
+                with self.subTest(profile=profile, symbol=name):
+                    self.assertIsNotNone(sym.validator.fullmatch(sym.str_value.strip()),
+                                         sym.str_value)
+
+    def test_effect_format(self):
+        validator = self.trees['boxturtle'].syms['PARAM_EFFECT_LOADING'].validator
+        for good in ('mmu_blue, (0, 0, 0.4)', 'Mmu-Blue_2,(1,1,1)',
+                     'mmu_rainbow,   (0.5, 0.2, 0),   8', 'mmu_x, (.01, 0, 1.0), 0.8'):
+            with self.subTest(value=good):
+                self.assertIsNotNone(validator.fullmatch(good))
+        for bad in ('', 'mmu_blue', 'mmu blue, (0, 0, 1)', 'mmu_blue, (0, 0)',
+                    'mmu_blue, (0, 0, 1.5)', 'mmu_blue, (0, 0, -1)', 'mmu_blue, 0, 0, 1',
+                    'mmu_blue, (0, 0, 1), 8, 9', 'mmu_blue, (0, 0, 1), fast'):
+            with self.subTest(value=bad):
+                self.assertIsNone(validator.fullmatch(bad))
+
+    def test_rgb_format(self):
+        validator = self.trees['boxturtle'].syms['PARAM_WHITE_LIGHT'].validator
+        for good in ('(1, 1, 1)', '(.01,0,.02)', '( 0.5 , 1.0 , 0. )'):
+            with self.subTest(value=good):
+                self.assertIsNotNone(validator.fullmatch(good))
+        for bad in ('1, 1, 1', '(1, 1)', '(2, 0, 0)', '(1, 1, 1), 5', 'white'):
+            with self.subTest(value=bad):
+                self.assertIsNone(validator.fullmatch(bad))
+
+
+if __name__ == '__main__':
+    unittest.main()

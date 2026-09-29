@@ -3655,7 +3655,25 @@ def _check_valid(sym, s):
                                    expected, n))
                     return False
 
-        return True  # Anything goes for string symbols
+        # Happy Hare: Validate against the symbol's 'validator' regexp, per
+        # element for an array_editor STRING (an empty array has none)
+        validator = getattr(sym, "validator", None)
+        if validator is not None and sym.orig_type == STRING:
+            sep = getattr(sym, "array_editor", None)
+            if sep:
+                elements = s.split(sep) if s else []
+            else:
+                elements = [s]
+
+            for i, element in enumerate(elements):
+                element = element.strip()
+                if not validator.fullmatch(element):
+                    what = "Element {} '{}'".format(i + 1, element) if sep \
+                        else "'{}'".format(element)
+                    _error("{} is not valid syntax -- see help".format(what))
+                    return False
+
+        return True
 
     base = 10 if sym.orig_type == INT else 16
     try:

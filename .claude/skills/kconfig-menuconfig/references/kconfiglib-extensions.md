@@ -11,7 +11,7 @@ most of items 1-11 below, numbered differently (its `array_size_mismatch`
 item is part of item 7, its "if XX" comment-line construct of item 6, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
 generated file, the pickle, default-resolution semantics) are not in the
-header. When you add an extension, update **both** this file and that header
+header; items 16-17 are its items 15-16. When you add an extension, update **both** this file and that header
 block.
 
 ## 1. `generated_default`
@@ -255,3 +255,26 @@ a prompt, and visible ones, are unaffected. `Kconfig.leds` uses it on
 `BOOL_CUSTOMIZE_LED_EFFECTS`, so unticking "Customize LED colors and effects?"
 reverts the colors and effects to the per-type defaults. Within one menuconfig session a
 re-ticked entry still shows the old values; the reset happens on save.
+
+## 17. `validator "<regexp>"`
+
+Optional property on a STRING symbol (`_T_VALIDATOR`; parsed in
+`_parse_props`, stored compiled on `Symbol.validator`, so value-only
+redeclarations in type/board files keep it). menuconfig's `_check_valid`
+rejects an edit unless the stripped value `fullmatch`es — per element for an
+`array_editor` symbol (an empty array has no elements; an empty plain string
+is checked like any other value). The error dialog names the value (and
+element) and says "not valid syntax -- see help" -- the regexp is never shown,
+so the symbol's help must document the format -- and the edit dialog reopens
+with the rejected text. Only
+edits are checked: loading, olddefconfig and the build never validate, so an
+existing saved value keeps working.
+
+- An invalid regexp is a parse error.
+- Kconfig string lexing drops backslashes (`\\d` → `\d`) and `$(` starts a
+  macro, so prefer `[0-9]`, `[(]`, `[.]`. A `:=` variable expanded inside the
+  quotes is not re-scanned, which is how `Kconfig.leds` shares `led_rgb` /
+  `led_effect` across the LED color and effect symbols.
+- `test/installer/test_kconfig_validator.py` checks every shipped LED default
+  against its validator — extend it when you add a validator to a symbol
+  whose defaults vary by type.

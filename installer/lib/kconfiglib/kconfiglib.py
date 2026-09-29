@@ -3679,6 +3679,25 @@ class Kconfig(object):
                     if self._tokens[self._tokens_i] is not None:
                         self._trailing_tokens_error()
 
+            elif t0 is _T_VALIDATOR: # Happy Hare: Added regexp validation of STRING values
+                if node.item.__class__ is not Symbol:
+                    self._parse_error("validator is only valid for symbols")
+
+                pattern = self._tokens[self._tokens_i]
+                self._tokens_i += 1
+
+                if pattern.__class__ is not str:
+                    self._parse_error("expected string")
+
+                if self._tokens[self._tokens_i] is not None:
+                    self._trailing_tokens_error()
+
+                try:
+                    node.item.validator = re.compile(pattern)
+                except re.error as e:
+                    self._parse_error("invalid validator regexp '{}': {}"
+                                      .format(pattern, e))
+
             elif t0 is _T_ARRAY_SIZE_MISMATCH: # Happy Hare: Added derived array length check
                 if node.item.__class__ is not Symbol:
                     self._parse_error("array_size_mismatch is only valid for symbols")
@@ -4907,6 +4926,19 @@ class Symbol(object):
       valid because some selectors deliberately require calibration instead
       of shipping potentially unsafe gate angles.
 
+    validator:
+      Happy Hare: Added. None for symbols without a 'validator' property.
+      Otherwise, the compiled regular expression given to 'validator' on this
+      STRING symbol, e.g.
+
+        config FOO
+            string "Effect"
+            validator "[A-Za-z0-9_-]+"
+
+      Intended for use by UI front ends to reject an edited value that does
+      not fullmatch the pattern (surrounding whitespace ignored). For an
+      'array_editor' symbol the pattern applies to each element instead.
+
     is_allnoconfig_y:
       True if the symbol has 'option allnoconfig_y' set on it. This has no
       effect internally (except when printing symbols), but can be checked by
@@ -4932,6 +4964,7 @@ class Symbol(object):
         "array_editor", # Happy Hare: Added
         "array_size_sym", # Happy Hare: Added
         "array_size_mismatch", # Happy Hare: Added
+        "validator", # Happy Hare: Added
         "choice",
         "defaults",
         "generated_defaults", # Happy Hare: Added
@@ -5541,6 +5574,7 @@ class Symbol(object):
         self.array_editor = \
         self.array_size_sym = \
         self.array_size_mismatch = \
+        self.validator = \
         self._cached_str_val = self._cached_tri_val = self._cached_vis = \
         self._cached_assignable = None
 
@@ -7876,7 +7910,8 @@ except AttributeError:
     _T_DEF_BOOLINT,  # Happy Hare: Added; appended to preserve existing token values
     _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added; appended to preserve existing token values
     _T_DEFAULT_WHEN_HIDDEN, # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 60) # Happy Hare: Added custom tokens through DEFAULT_WHEN_HIDDEN
+    _T_VALIDATOR,    # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 61) # Happy Hare: Added custom tokens through VALIDATOR
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -7885,6 +7920,7 @@ _get_keyword = {
     "allnoconfig_y":  _T_ALLNOCONFIG_Y,
     "array_editor":   _T_ARRAY_EDITOR, # Happy Hare: Added
     "array_size_mismatch": _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added
+    "validator":      _T_VALIDATOR, # Happy Hare: Added
     "bool":           _T_BOOL,
     "boolean":        _T_BOOL,
     "boolint":        _T_BOOLINT, # Happy Hare: Added
@@ -8015,6 +8051,7 @@ _DEF_TOKEN_TO_TYPE = {
 # named choices.
 _STRING_LEX = frozenset({
     _T_ARRAY_EDITOR, # Happy Hare: Added
+    _T_VALIDATOR, # Happy Hare: Added
     _T_BOOL,
     _T_BOOLINT,
     _T_CHOICE,

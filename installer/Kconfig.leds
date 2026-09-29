@@ -32,6 +32,12 @@
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_LEDS
 
+# Validators for the customized colors and effects: (r,g,b) with each value
+# 0.0 to 1.0, and "effect_name, (r,g,b) [, duration]"
+led_num    := (0?[.][0-9]+|0([.][0-9]*)?|1([.]0*)?)
+led_rgb    := [(] *$(led_num) *, *$(led_num) *, *$(led_num) *[)]
+led_effect := [A-Za-z0-9_-]+ *, *$(led_rgb)( *, *([0-9]+([.][0-9]*)?|[.][0-9]+))?
+
 comment "_Leds"
 
 config UNSELECT_MMU_HAS_LEDS
@@ -503,6 +509,7 @@ if MMU_HAS_LEDS
     config PARAM_WHITE_LIGHT
       string
       prompt "White light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_rgb)"
       default "(1, 1, 1)"
       help
         Color used for white light, e.g. when a gate's filament color is not known.
@@ -513,6 +520,7 @@ if MMU_HAS_LEDS
     config PARAM_BLACK_LIGHT
       string
       prompt "Black light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_rgb)"
       default "(.01, 0, .02)"
       help
         Color used to represent black filament (LEDs can't show black), and the status
@@ -523,6 +531,7 @@ if MMU_HAS_LEDS
     config PARAM_EMPTY_LIGHT
       string
       prompt "Empty light          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_rgb)"
       default "(0, 0, 0)"
       help
         Color used to represent an empty gate. Each value 0.0 to 1.0.
@@ -543,6 +552,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_LOADING
       string
       prompt "Loading              " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_blue_clockwise_slow,   (0, 0, 0.4)"
       help
         Format:
@@ -551,6 +561,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_LOADING_EXTRUDER
       string
       prompt "Loading extruder     " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_blue_clockwise_fast,   (0, 0, 1)"
       help
         Format:
@@ -559,6 +570,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_UNLOADING
       string
       prompt "Unloading            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_blue_anticlock_slow,   (0, 0, 0.4)"
       help
         Format:
@@ -567,6 +579,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_UNLOADING_EXTRUDER
       string
       prompt "Unloading extruder   " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_blue_anticlock_fast,   (0, 0, 1)"
       help
         Format:
@@ -575,6 +588,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_HEATING
       string
       prompt "Heating              " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_breathing_red_slow,    (0.3, 0, 0)"
       help
         Format:
@@ -583,6 +597,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_SELECTING
       string
       prompt "Selecting            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_breathing_white_fast,  (0.2, 0.2, 0.2)"
       help
         Format:
@@ -591,6 +606,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_CHECKING
       string
       prompt "Checking             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_breathing_cyan_fast,   (0, 0.4, 0.5)"
       help
         Format:
@@ -599,6 +615,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_PRELOADING
       string
       prompt "Preloading           " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_breathing_cyan_fast,   (0, 0.4, 0.5)"
       help
         Format:
@@ -607,6 +624,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_INITIALIZED
       string
       prompt "Initialized          " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_rainbow,               (0.5, 0.2, 0),   8"
       help
         Format:
@@ -615,6 +633,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_ERROR
       string
       prompt "Error                " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_red_strobe,            (1, 0, 0),       10"
       help
         Format:
@@ -623,6 +642,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_COMPLETE
       string
       prompt "Complete             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_sparkle,               (0.3, 0.3, 0.3), 10"
       help
         Format:
@@ -631,6 +651,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_GATE_SELECTED
       string
       prompt "Gate selected        " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_static_blue,           (0, 0, 1)"
       help
         Format:
@@ -639,6 +660,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_GATE_AVAILABLE
       string
       prompt "Gate available       " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_static_green,          (0, 0.5, 0)"
       help
         Format:
@@ -647,6 +669,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_GATE_AVAILABLE_SEL
       string
       prompt "Gate available (sel) " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_ready_green,           (0, 0.75, 0)"
       help
         Format:
@@ -655,6 +678,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_GATE_UNKNOWN
       string
       prompt "Gate unknown         " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_static_orange,         (0.5, 0.2, 0)"
       help
         Format:
@@ -663,6 +687,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_GATE_UNKNOWN_SEL
       string
       prompt "Gate unknown (sel)   " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_ready_orange,          (0.75, 0.3, 0)"
       help
         Format:
@@ -671,6 +696,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_GATE_EMPTY
       string
       prompt "Gate empty           " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_static_black,          (0, 0, 0)"
       help
         Format:
@@ -679,6 +705,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_GATE_EMPTY_SEL
       string
       prompt "Gate empty (sel)     " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_ready_orange2,         (0.1, 0.04, 0)"
       help
         Format:
@@ -687,6 +714,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_PENDING_SPOOLID
       string
       prompt "Pending spool ID     " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_breathing_purple_slow, (0.4, 0, 0.5)"
       help
         Format:
@@ -695,6 +723,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_PENDING_SPOOLID_EXPIRING
       string
       prompt "Spool ID expiring    " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_breathing_purple_fast, (0.4, 0, 0.5)"
       help
         Format:
@@ -703,6 +732,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_NFC_READ
       string
       prompt "NFC read             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_green_strobe_fast,     (0, 1, 0),       0.8"
       help
         Format:
@@ -711,6 +741,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_NFC_DEEP_READ
       string
       prompt "NFC deep read        " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_green_strobe_fast,     (0, 1, 0),       1.6"
       help
         Format:
@@ -719,6 +750,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_NFC_FAIL
       string
       prompt "NFC fail             " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_red_strobe,            (1, 0, 0),       3"
       help
         Format:
@@ -727,6 +759,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_TD1_READ
       string
       prompt "TD-1 read            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_green_strobe_fast,     (0, 1, 0),       0.8"
       help
         Format:
@@ -735,6 +768,7 @@ if MMU_HAS_LEDS
     config PARAM_EFFECT_TD1_FAIL
       string
       prompt "TD-1 fail            " if BOOL_CUSTOMIZE_LED_EFFECTS
+      validator "$(led_effect)"
       default "mmu_red_strobe,            (1, 0, 0),       3"
       help
         Format:

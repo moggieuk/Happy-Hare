@@ -80,6 +80,10 @@
 # 15. 'default_when_hidden' on a menuconfig/menu (or symbol) saves a symbol
 #     under it whose prompt is hidden as a #~DEFAULT~# value, so turning the
 #     entry off reverts any customization to the (still tracked) default.
+# 16. 'validator "<regexp>"' on a string symbol makes menuconfig reject an edit whose value
+#     (or, with array_editor, any element) doesn't fullmatch the regexp, ignoring surrounding
+#     whitespace. Kconfig strings drop backslashes, so write '\\d' for \d, or prefer
+#     classes like [0-9] and [(]. A $(macro) can hold a shared pattern (see Kconfig.leds)
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -87,6 +91,7 @@
 # 3. Lots of formatting changes and style options
 # 4. Variable input dialogs with better parsing
 # 5. Added array editor - used on "," or ";" separated strings
+# 6. Edited strings are checked against their 'validator' regexp
 #
 #
 # Capability params:
