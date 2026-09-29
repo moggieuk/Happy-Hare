@@ -556,6 +556,38 @@ ENCODER = BOXTURTLE_TEST.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
+# Two encoder-only units sharing one [mmu_encoder] (the [mmu_unit] `encoder` key is
+# shareable). No buffers, so flowguard_active is a pure encoder flag. unit1 points at
+# unit0's encoder via PARAM_ENCODER_NAME, so its own [mmu_encoder unit1] section renders
+# but is never instantiated. Gates home to the encoder and the toolhead has entry and
+# toolhead sensors so the profile can load, and therefore run toolchanges in a print.
+ENCODER_SHARED = Profile(
+    'encoder_shared',
+    syms={
+        'MMU_HAS_SENSOR_TOOLHEAD': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_TOOLHEAD_SENSOR': 'PG13',
+        'PIN_EXTRUDER_SENSOR': 'PG14',
+    },
+    units=[
+        UnitProfile('unit0', index=0, syms={
+            'MMU_TYPE_TRADRACK_1_0': True,
+            'MMU_HAS_ENCODER': True,
+            'PIN_ENCODER': 'mcu:PA6',
+            'BOOL_FLOWGUARD_ENCODER_MODE': True,        # mode 2 (auto), as shipped
+            'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True,
+        }),
+        UnitProfile('unit1', index=1, syms={
+            'MMU_TYPE_TRADRACK_1_0': True,
+            'MMU_HAS_ENCODER': True,
+            'PIN_ENCODER': 'mcu:PA7',                    # dead section - see note above
+            'PARAM_ENCODER_NAME': 'unit0',               # the share
+            'BOOL_FLOWGUARD_ENCODER_MODE': True,
+            'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True,
+        }),
+    ],
+    description='Tradrack x2, encoder-only, both units on one shared encoder')
+
 # NOTE on ADC coverage: `emu` brings a proportional sensor with its machine type and is the
 # shipped profile used to exercise that path. MmuAdcHelper's compat shim is covered directly
 # by test_mmu_adc_compat.py.
@@ -779,7 +811,7 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU
                     TD1_OFFPATH, TD1_BOTH)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
-            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}
+            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER, ENCODER_SHARED)}
 
 
 def get(name):

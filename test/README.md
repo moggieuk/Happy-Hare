@@ -726,6 +726,7 @@ The test files, grouped by what they're about:
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |
 | `test_mmu_encoder.py` | 36 | gate homing by encoder motion instead of by switch |
+| `test_mmu_flowguard.py` | 11 | encoder FlowGuard on an encoder shared by two units: arming, handover on toolchange, pause/resume, runout |
 | `test_mmu_endless_spool.py` | 18 | runout detection, clog-vs-runout, gate remapping |
 | **NFC and Spoolman** | | |
 | `test_mmu_nfc.py` | 29 | NFC readers are configured and instantiated |

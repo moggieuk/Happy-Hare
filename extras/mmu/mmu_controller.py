@@ -2735,16 +2735,17 @@ class MmuController(MmuFilamentMovement):
         """
         FlowGuard raises clog/tangle without consulting the sensor arming, and it is per-unit,
         so it must be armed on the selected unit and disarmed on every other. Re-applied on
-        both a monitoring state change and a unit change.
+        both a monitoring state change and a unit change. Disarm first so hardware shared
+        between units (e.g. an encoder) ends up armed for the selected unit.
         """
         eventtime = self.reactor.monotonic() if eventtime is None else eventtime
         active_unit = self.mmu_unit() if self.filament_monitoring_enabled else None
 
         for unit in self.mmu_machine.units:
-            if unit is active_unit:
-                unit.sync_feedback.activate_flowguard(eventtime)
-            else:
+            if unit is not active_unit:
                 unit.sync_feedback.deactivate_flowguard(eventtime)
+        if active_unit is not None:
+            active_unit.sync_feedback.activate_flowguard(eventtime)
 
 
     @contextlib.contextmanager
