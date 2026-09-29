@@ -111,13 +111,13 @@ heater: $(UNIT_NAME)_heater\n\
 pin: $(MCU_NAME):PA14\n\
 stepper: mmu_stepper $(UNIT_NAME)_selector$(comma) mmu_stepper $(UNIT_NAME)_gear\n\
 \n\
-[temperature_sensor ptc_ntc100k]\n\
+[temperature_sensor $(UNIT_NAME)_ptc_ntc100k]\n\
 sensor_pin: $(MCU_NAME):PA4\n\
 sensor_type: Generic 3950\n\
 pullup_resistor: 2200\n\
 \n\
 # NFC reader gates 0/1\n\
-[mmu_nfc_reader unit1_nfc01]\n\
+[mmu_nfc_reader $(UNIT_NAME)_nfc01]\n\
 reader_type           : rc522\n\
 cs_pin                : $(MCU_NAME):PB14\n\
 spi_bus               : spi2_PB2_PB11_PB10\n\
@@ -125,7 +125,7 @@ spi_speed             : 1000000\n\
 debug                 : 0\n\
 \n\
 # NFC reader gates 2/3\n\
-[mmu_nfc_reader unit1_nfc23]\n\
+[mmu_nfc_reader $(UNIT_NAME)_nfc23]\n\
 reader_type           : rc522\n\
 cs_pin                : $(MCU_NAME):PA8\n\
 spi_bus               : spi2_PB2_PB11_PB10\n\
