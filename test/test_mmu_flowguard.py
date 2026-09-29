@@ -99,6 +99,37 @@ class SharedEncoderFlowGuardTestCase(unittest.TestCase):
         for unit in self.units:
             self.assertNotEqual(self.encoder.get_effective_clog_detection_length(unit), 999.)
 
+    def test_an_encoder_setting_change_on_a_non_owner_leaves_the_encoder_alone(self):
+        """
+        _on_encoder_change pushes a live encoder FlowGuard change (MMU_TEST_CONFIG) straight
+        into the encoder, so it must only do that for the unit that owns it. A non-owner
+        taking it over would retune the detection the selected unit is running.
+
+        No route through _apply_flowguard_scope leaves a non-owner's flowguard_active set, so
+        this pins the guard itself: the flag is set directly to stand in for any future way
+        into that state. What is asserted is the encoder's, not the flag's, bookkeeping -
+        clearing a stale flag is deactivate_flowguard's job, on the next scope pass.
+        """
+        self.arm_for_selected_unit()
+        self.assert_owned_by(self.unit0, self.unit1, [])
+
+        self.unit1.sync_feedback.flowguard_active = True    # a non-owner believing it is active
+        del self.hh.gcode.console[:]
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=1 flowguard_encoder_max_motion=45')
+        self.hh.settle(0.2)
+        self.assertEqual(self.hh.errors, [], 'config change failed')
+
+        self.assertTrue(self.encoder.is_flowguard_enabled(), "a non-owner disarmed the encoder")
+        self.assertIs(self.encoder.active_mmu_unit, self.unit0, "a non-owner took ownership")
+        self.assertNotEqual(
+            self.encoder.detection_length, 45.,
+            "unit1's flowguard_encoder_max_motion was applied to an encoder it does not own")
+
+        # The owner is still the one whose settings are in force, and it still reacts
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 flowguard_encoder_max_motion=45')
+        self.hh.settle(0.2)
+        self.assertEqual(self.encoder.detection_length, 45.)
+
 
 class SharedEncoderPrintTestCase(unittest.TestCase):
     """Toolchanges between the two units during a print."""
