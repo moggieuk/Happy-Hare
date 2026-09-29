@@ -372,6 +372,48 @@ class TestEffectConfiguration(LedTestCase):
         self.assertEqual(self.leds.effect_name(0, 'no_such_operation'), '')
 
 
+LEDS_OPTIONAL_RGB = profiles.BOXTURTLE.derive(
+    'leds_optional_rgb',
+    syms={
+        'BOOL_CUSTOMIZE_LED_EFFECTS': True,
+        'PARAM_EMPTY_LIGHT': '(0.1, 0.2, 0.3)',
+        'PARAM_EFFECT_LOADING': 'mmu_blue_clockwise_slow',
+        'PARAM_EFFECT_UNLOADING_EXTRUDER': '',
+    })
+
+
+class TestOptionalStaticRgb(LedTestCase):
+    """
+    The (r,g,b) of an effect_* mapping is optional, and the whole mapping may be empty.
+    With animation off a bare effect name paints empty_light; an empty mapping paints
+    nothing, leaving the segment as it was.
+    """
+    PROFILE = LEDS_OPTIONAL_RGB
+
+    def setUp(self):
+        super().setUp()
+        from extras.mmu.mmu_constants import ACTION_IDLE, ACTION_LOADING, ACTION_UNLOADING
+        self.IDLE, self.LOADING, self.UNLOADING = ACTION_IDLE, ACTION_LOADING, ACTION_UNLOADING
+        self.hh.run_gcode('MMU_LED ANIMATION=0')
+        self.leds.action_changed(self.IDLE, self.LOADING)
+
+    def exit_color(self):
+        return self.unit.leds.virtual_chains['exit'].get_status()['color_data'][0]
+
+    def test_bare_effect_falls_back_to_empty_light(self):
+        self.assertEqual(self.unit.leds.get_rgb_for_effect('mmu_blue_clockwise_slow'),
+                         (0.1, 0.2, 0.3))
+        self.leds.action_changed(self.LOADING, self.IDLE)
+        self.assertEqual(self.exit_color(), (0.1, 0.2, 0.3, 0.))
+
+    def test_empty_effect_leaves_the_segment_alone(self):
+        self.assertEqual(self.leds.effect_name(0, 'unloading_extruder'), '')
+        before = self.exit_color()
+        self.leds.action_changed(self.UNLOADING, self.IDLE)
+        self.assertEqual(self.exit_color(), before)
+        self.assertEqual(self.state(), 'gate_status')
+
+
 class TestTransientFlash(LedTestCase):
     """set_transient_effect: paint a segment, then put back what was there."""
 

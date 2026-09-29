@@ -33,10 +33,10 @@
 #   select UNSELECT_MMU_HAS_LEDS
 
 # Validators for the customized colors and effects: (r,g,b) with each value
-# 0.0 to 1.0, and "effect_name, (r,g,b) [, duration]"
+# 0.0 to 1.0, and "effect_name [, (r,g,b) [, duration]]" or empty for no effect
 led_num    := (0?[.][0-9]+|0([.][0-9]*)?|1([.]0*)?)
 led_rgb    := [(] *$(led_num) *, *$(led_num) *, *$(led_num) *[)]
-led_effect := [A-Za-z0-9_-]+ *, *$(led_rgb)( *, *([0-9]+([.][0-9]*)?|[.][0-9]+))?
+led_effect := ([A-Za-z0-9_-]+( *, *$(led_rgb)( *, *([0-9]+([.][0-9]*)?|[.][0-9]+))?)?)?
 
 comment "_Leds"
 
@@ -507,10 +507,12 @@ if MMU_HAS_LEDS
         ADVANCED: Edit the base colors and the effect used for each action,
         otherwise the defaults for this MMU type are used.
         Format:
-          [[B]]effect_name, (r,g,b) [, duration][[/B]]
+          [[B]]effect_name [, (r,g,b) [, duration]][[/B]]
 
-        The effect must be an [mmu_led_effect] (see mmu.cfg); (r,g,b) is used when animation is off.
+        The effect must be an [mmu_led_effect] (see mmu.cfg). The optional (r,g,b) is the static
+        color used when animation is off; without it the empty light color is used.
         The optional duration (seconds) is how long a timed effect shows before reverting.
+        Leave an action empty for no effect.
 
     config PARAM_WHITE_LIGHT
       string
@@ -562,7 +564,7 @@ if MMU_HAS_LEDS
       default "mmu_blue_clockwise_slow,   (0, 0, 0.4)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_LOADING_EXTRUDER
       string
@@ -571,7 +573,7 @@ if MMU_HAS_LEDS
       default "mmu_blue_clockwise_fast,   (0, 0, 1)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_UNLOADING
       string
@@ -580,7 +582,7 @@ if MMU_HAS_LEDS
       default "mmu_blue_anticlock_slow,   (0, 0, 0.4)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_UNLOADING_EXTRUDER
       string
@@ -589,7 +591,7 @@ if MMU_HAS_LEDS
       default "mmu_blue_anticlock_fast,   (0, 0, 1)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_HEATING
       string
@@ -598,7 +600,7 @@ if MMU_HAS_LEDS
       default "mmu_breathing_red_slow,    (0.3, 0, 0)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_SELECTING
       string
@@ -607,7 +609,7 @@ if MMU_HAS_LEDS
       default "mmu_breathing_white_fast,  (0.2, 0.2, 0.2)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_CHECKING
       string
@@ -616,7 +618,7 @@ if MMU_HAS_LEDS
       default "mmu_breathing_cyan_fast,   (0, 0.4, 0.5)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_PRELOADING
       string
@@ -625,7 +627,7 @@ if MMU_HAS_LEDS
       default "mmu_breathing_cyan_fast,   (0, 0.4, 0.5)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_INITIALIZED
       string
@@ -634,7 +636,7 @@ if MMU_HAS_LEDS
       default "mmu_rainbow,               (0.5, 0.2, 0),   8"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     config PARAM_EFFECT_ERROR
       string
@@ -643,7 +645,7 @@ if MMU_HAS_LEDS
       default "mmu_red_strobe,            (1, 0, 0),       10"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     config PARAM_EFFECT_COMPLETE
       string
@@ -652,7 +654,7 @@ if MMU_HAS_LEDS
       default "mmu_sparkle,               (0.3, 0.3, 0.3), 10"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     config PARAM_EFFECT_GATE_SELECTED
       string
@@ -661,7 +663,7 @@ if MMU_HAS_LEDS
       default "mmu_static_blue,           (0, 0, 1)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_GATE_AVAILABLE
       string
@@ -670,7 +672,7 @@ if MMU_HAS_LEDS
       default "mmu_static_green,          (0, 0.5, 0)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_GATE_AVAILABLE_SEL
       string
@@ -679,7 +681,7 @@ if MMU_HAS_LEDS
       default "mmu_ready_green,           (0, 0.75, 0)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_GATE_UNKNOWN
       string
@@ -688,7 +690,7 @@ if MMU_HAS_LEDS
       default "mmu_static_orange,         (0.5, 0.2, 0)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_GATE_UNKNOWN_SEL
       string
@@ -697,7 +699,7 @@ if MMU_HAS_LEDS
       default "mmu_ready_orange,          (0.75, 0.3, 0)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_GATE_EMPTY
       string
@@ -706,7 +708,7 @@ if MMU_HAS_LEDS
       default "mmu_static_black,          (0, 0, 0)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_GATE_EMPTY_SEL
       string
@@ -715,7 +717,7 @@ if MMU_HAS_LEDS
       default "mmu_ready_orange2,         (0.1, 0.04, 0)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_PENDING_SPOOLID
       string
@@ -724,7 +726,7 @@ if MMU_HAS_LEDS
       default "mmu_breathing_purple_slow, (0.4, 0, 0.5)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_PENDING_SPOOLID_EXPIRING
       string
@@ -733,7 +735,7 @@ if MMU_HAS_LEDS
       default "mmu_breathing_purple_fast, (0.4, 0, 0.5)"
       help
         Format:
-          [[REV]]effect_name, (r,g,b)[[/REV]]
+          [[REV]]effect_name [, (r,g,b)][[/REV]]
 
     config PARAM_EFFECT_NFC_READ
       string
@@ -742,7 +744,7 @@ if MMU_HAS_LEDS
       default "mmu_green_strobe_fast,     (0, 1, 0),       0.8"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     config PARAM_EFFECT_NFC_DEEP_READ
       string
@@ -751,7 +753,7 @@ if MMU_HAS_LEDS
       default "mmu_green_strobe_fast,     (0, 1, 0),       1.6"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     config PARAM_EFFECT_NFC_FAIL
       string
@@ -760,7 +762,7 @@ if MMU_HAS_LEDS
       default "mmu_red_strobe,            (1, 0, 0),       3"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     config PARAM_EFFECT_TD1_READ
       string
@@ -769,7 +771,7 @@ if MMU_HAS_LEDS
       default "mmu_green_strobe_fast,     (0, 1, 0),       0.8"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     config PARAM_EFFECT_TD1_FAIL
       string
@@ -778,7 +780,7 @@ if MMU_HAS_LEDS
       default "mmu_red_strobe,            (1, 0, 0),       3"
       help
         Format:
-          [[REV]]effect_name, (r,g,b) [, duration][[/REV]]
+          [[REV]]effect_name [, (r,g,b) [, duration]][[/REV]]
 
     # Unit-specific [mmu_led_effect] sections for the effects above (set by vendor types)
     config PARAM_MISC_LED_EFFECTS
