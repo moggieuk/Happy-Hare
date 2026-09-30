@@ -475,19 +475,20 @@ class MmuController(MmuFilamentMovement):
         self.mmu_macro_event(MACRO_EVENT_RESTART)
 
 
-    # Blobifier requires initialization, so do it when it is the selected purge macro.
+    # Blobifier requires initialization, so do it once if it is installed.
     def init_macros(self):
-        if self.p.purge_macro.upper() == MACRO_BLOBIFIER:
-            blobifier_vars = self.printer.lookup_object("gcode_macro _BLOBIFIER_VARS", None)
-            if blobifier_vars:
+        blobifier_vars = self.printer.lookup_object("gcode_macro _BLOBIFIER_VARS", None)
+        if blobifier_vars:
+            blobifier = self.printer.lookup_object("gcode_macro BLOBIFIER", None)
+            if blobifier and not int(blobifier.variables.get('initialized', 0)):
                 self.wrap_gcode_command("BLOBIFIER_INIT", exception=None)
-            else:
-                self.log_error(
-                    "Blobifier is not correctly installed. "
-                    "Re-run './install.sh -i' and enable Blobifier "
-                    "or turn off as the 'purge_macro' in mmu.cfg"
-                )
-                self.p.purge_macro = ""
+        elif self._macro_name(self.p.purge_macro).upper() == MACRO_BLOBIFIER:
+            self.log_error(
+                "Blobifier is not correctly installed. "
+                "Re-run './install.sh -i' and enable Blobifier "
+                "or turn off as the 'purge_macro' in mmu.cfg"
+            )
+            self.p.purge_macro = ""
 
 
     def _macro_name(self, command):
