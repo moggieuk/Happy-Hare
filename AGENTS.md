@@ -2,7 +2,8 @@
 
 A Klipper plugin for multi-material-unit (MMU) filament handling. This file
 is the always-loaded orientation; deeper subsystem knowledge lives in
-`.claude/skills/` and loads only when relevant — see the end of this file.
+`.agents/skills/` as [Agent Skills](https://agentskills.io) — see the end of
+this file.
 
 ## Testing — read `test/README.md`, don't duplicate it here
 
@@ -59,7 +60,10 @@ exercises the option you touched.
   `fix(gate): ...`. It tells a log-scanning reader what the change touched;
   leave it off for something that spans most of the whole repo.
 
-## Subsystem knowledge (loads automatically when relevant)
+## Subsystem knowledge (`.agents/skills/<name>/SKILL.md`)
+
+Agents that support Agent Skills load these automatically when relevant; if
+yours doesn't, read the matching `SKILL.md` before touching that area.
 
 - **`gate-endstop-invariants`** — the shared-gate endstop occupancy rule and
   `gate_parking_distance` validation. Relevant any time you're touching gate
