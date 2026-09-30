@@ -130,6 +130,28 @@ class TestInstallSh(unittest.TestCase):
         self.assertFalse((repo_dest / ".mmu_config.old").exists())
         self.assertEqual(list(config_home.glob("mmu.old-*")), [])
 
+    def test_recovery_discards_a_pending_unit_migration(self):
+        config_home = self.root / "printer_data" / "config"
+        current = config_home / "mmu"
+        repo_dest = self.root / "happy-hare"
+        self.make_mmu_config(current, ".mmu_config_unit0")
+        self.write(repo_dest / ".mmu_config.unit_migration", "{}\n")
+        self.write(repo_dest / ".mmu_config.MMU_UNITS.changes", "{}\n")
+
+        self.run_shell("""
+            SCRIPT_DIR={repo}
+            CONFIG_KLIPPER_CONFIG_HOME={config}
+            TESTDIR=
+            recover_last_config
+        """.format(
+            repo=shlex.quote(str(repo_dest)),
+            config=shlex.quote(str(config_home)),
+        ))
+
+        self.assertTrue((repo_dest / ".mmu_config_unit0").exists())
+        self.assertFalse((repo_dest / ".mmu_config.unit_migration").exists())
+        self.assertFalse((repo_dest / ".mmu_config.MMU_UNITS.changes").exists())
+
     def test_last_without_current_restores_newest_backup(self):
         config_home = self.root / "printer_data" / "config"
         older = config_home / "mmu.old-20260101-010203"
@@ -530,6 +552,99 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("[update_manager other]", moonraker)
         self.assertIn("[server]", moonraker)
         self.assertEqual(make_log.read_text().strip(), "F_NO_SERVICE=y fix_links")
+
+    # review_unit_changes() turns unit_migration check's exit status into go/no-go
+    def review_units(self, status, stdin="", **env):
+        result = self.run_shell("""
+            unit_migration() {{ return {status}; }}
+            if review_unit_changes; then echo RESULT=go; else echo RESULT=stop; fi
+            echo "RESTRUCTURED=${{F_UNITS_RESTRUCTURED:-}}"
+        """.format(status=status), stdin=stdin, env=env)
+        return result.stdout
+
+    def test_unit_review_no_change_and_append_go_without_asking(self):
+        for status in (0, 10):
+            with self.subTest(status=status):
+                out = self.review_units(status)
+                self.assertIn("RESULT=go", out)
+                self.assertNotIn("(y/n)", out)
+
+    def test_unit_review_unrecorded_change_goes_without_migrating(self):
+        result = self.run_shell("""
+            unit_migration() {
+                case "$1" in
+                check) return 12 ;;
+                current) echo "a,box" ;;
+                esac
+            }
+            F_UNITS_BASELINE=a,b
+            review_unit_changes && echo "BASELINE=${F_UNITS_BASELINE}"
+        """)
+        self.assertIn("BASELINE=a,box", result.stdout)
+
+    def test_unit_review_failed_migration_goes_without_migrating(self):
+        result = self.run_shell("""
+            unit_migration() { return 3; }
+            F_UNITS_BASELINE=a,b
+            review_unit_changes && echo "BASELINE=[${F_UNITS_BASELINE}]"
+        """)
+        self.assertIn("BASELINE=[]", result.stdout)
+
+    def test_unit_migration_step_failure_only_stops_a_confirmed_change(self):
+        result = self.run_shell("""
+            unit_migration() { return 1; }
+            unit_migration_step kconfig && echo RESULT=go
+            F_UNITS_RESTRUCTURED=y
+            unit_migration_step kconfig || echo RESULT=stop
+        """)
+        self.assertIn("RESULT=go", result.stdout)
+        self.assertIn("continuing without it", result.stdout)
+        self.assertIn("RESULT=stop", result.stdout)
+
+    def test_units_can_be_restructured_in_replace_mode_or_before_anything_exists(self):
+        result = self.run_shell("""
+            check() {
+                unset F_UNITS_RESTRUCTURE
+                F_CFG_UPGRADE_MODE=$1 F_UNITS_BASELINE=$2
+                set_units_restructure
+                echo "$1/$2=${F_UNITS_RESTRUCTURE:-n}"
+            }
+            check refresh unit0
+            check replace unit0
+            check refresh ""
+            check "" ""
+        """)
+        self.assertIn("refresh/unit0=n", result.stdout)
+        self.assertIn("replace/unit0=y", result.stdout)
+        self.assertIn("refresh/=y", result.stdout)
+        self.assertIn("/=y", result.stdout.splitlines()[-1])
+
+    def test_unit_review_refused_change_stops(self):
+        self.assertIn("RESULT=stop", self.review_units(2))
+
+    def test_unit_review_structural_change_is_confirmed(self):
+        out = self.review_units(11, stdin="y\n")
+        self.assertIn("RESULT=go", out)
+        self.assertIn("RESTRUCTURED=y", out)
+        self.assertIn("RESTRUCTURED=\n", self.review_units(10))
+        self.assertIn("RESULT=stop", self.review_units(11, stdin="n\n"))
+
+    def test_unit_review_skipped_restarts_need_klipper_stopped(self):
+        out = self.review_units(11, stdin="n\n", F_NO_SERVICE="y")
+        self.assertIn("Is it stopped", out)
+        self.assertIn("RESULT=stop", out)
+        self.assertIn("RESULT=go", self.review_units(11, stdin="y\ny\n", F_NO_SERVICE="y"))
+
+    def test_unit_migration_runs_from_the_repo(self):
+        kconfig = self.write(self.root / ".mmu_config",
+                             'CONFIG_MULTI_UNIT=y\nCONFIG_MMU_UNITS="a,b"\n')
+        result = self.run_shell("""
+            SCRIPT_DIR={repo}
+            KCONFIG_CONFIG={kconfig}
+            unit_migration baseline
+        """.format(repo=shlex.quote(str(REPO_ROOT)), kconfig=shlex.quote(str(kconfig))),
+            env={"INSTALLER_PY": sys.executable})
+        self.assertEqual(result.stdout.strip(), "a,b")
 
 
 if __name__ == "__main__":

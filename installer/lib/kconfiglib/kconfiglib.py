@@ -3679,6 +3679,47 @@ class Kconfig(object):
                     if self._tokens[self._tokens_i] is not None:
                         self._trailing_tokens_error()
 
+            elif t0 is _T_SEQUENCE_EDITOR: # Happy Hare: Added identity-tracking list editor for STRING symbols
+                if node.item.__class__ is not Symbol:
+                    self._parse_error("sequence_editor is only valid for symbols")
+
+                sep_token = self._tokens[self._tokens_i]
+                self._tokens_i += 1
+
+                if sep_token.__class__ is not str:
+                    self._parse_error("expected string")
+
+                if not sep_token:
+                    self._parse_error("sequence_editor separator cannot be empty")
+
+                node.item.sequence_editor = sep_token
+
+                # Optional second argument: the baseline sequence that
+                # renames/removals/moves are measured against, e.g.
+                #
+                #   sequence_editor "," "$(env-default,F_UNITS_BASELINE,)"
+                baseline = self._tokens[self._tokens_i]
+                if baseline is None:
+                    node.item.sequence_baseline = None
+                else:
+                    self._tokens_i += 1
+                    # Only the first argument is lexed as a string; a quoted
+                    # second one arrives as a constant symbol
+                    if baseline.__class__ is Symbol and baseline.is_constant:
+                        baseline = baseline.name
+                    if baseline.__class__ is not str:
+                        self._parse_error("expected quoted string for sequence_editor baseline")
+                    node.item.sequence_baseline = baseline
+
+                    if self._tokens[self._tokens_i] is not None:
+                        self._trailing_tokens_error()
+
+            elif t0 is _T_APPEND_ONLY_UNLESS: # Happy Hare: Added restriction of a sequence_editor to appending
+                if node.item.__class__ is not Symbol:
+                    self._parse_error("append_only_unless is only valid for symbols")
+
+                node.item.append_only_unless = self._expect_expr_and_eol()
+
             elif t0 is _T_VALIDATOR: # Happy Hare: Added regexp validation of STRING values
                 if node.item.__class__ is not Symbol:
                     self._parse_error("validator is only valid for symbols")
@@ -4944,6 +4985,31 @@ class Symbol(object):
       not fullmatch the pattern (surrounding whitespace ignored). For an
       'array_editor' symbol the pattern applies to each element instead.
 
+    sequence_editor:
+      Happy Hare: Added. None for symbols without a 'sequence_editor'
+      property. Otherwise, the separator string of a STRING symbol holding an
+      ordered list of unique names, e.g.
+
+        config UNITS
+            string "Units"
+            sequence_editor "," "$(env-default,F_UNITS_BASELINE,)"
+            append_only_unless "$(env-default,F_UNITS_RESTRUCTURE,n)"
+
+      UI front ends present a list editor that tracks where each entry came
+      from (added, renamed, removed or moved) and record that relative to
+      sequence_baseline in a '<config>.<SYMBOL>.changes' JSON sidecar, since
+      the value itself cannot tell a rename from a remove plus an add.
+
+    sequence_baseline:
+      Happy Hare: Added. None, or the optional second 'sequence_editor'
+      argument: the separator-joined list changes are measured against. An
+      empty baseline means the symbol's current value.
+
+    append_only_unless:
+      Happy Hare: Added. None, or the expression given to
+      'append_only_unless'. While it evaluates to n, a sequence_editor only
+      allows appending new entries.
+
     is_allnoconfig_y:
       True if the symbol has 'option allnoconfig_y' set on it. This has no
       effect internally (except when printing symbols), but can be checked by
@@ -4970,6 +5036,9 @@ class Symbol(object):
         "array_size_sym", # Happy Hare: Added
         "array_size_mismatch", # Happy Hare: Added
         "validator", # Happy Hare: Added
+        "sequence_editor", # Happy Hare: Added
+        "sequence_baseline", # Happy Hare: Added
+        "append_only_unless", # Happy Hare: Added
         "choice",
         "defaults",
         "generated_defaults", # Happy Hare: Added
@@ -5580,6 +5649,9 @@ class Symbol(object):
         self.array_size_sym = \
         self.array_size_mismatch = \
         self.validator = \
+        self.sequence_editor = \
+        self.sequence_baseline = \
+        self.append_only_unless = \
         self._cached_str_val = self._cached_tri_val = self._cached_vis = \
         self._cached_assignable = None
 
@@ -7916,7 +7988,9 @@ except AttributeError:
     _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added; appended to preserve existing token values
     _T_DEFAULT_WHEN_HIDDEN, # Happy Hare: Added; appended to preserve existing token values
     _T_VALIDATOR,    # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 61) # Happy Hare: Added custom tokens through VALIDATOR
+    _T_SEQUENCE_EDITOR,    # Happy Hare: Added; appended to preserve existing token values
+    _T_APPEND_ONLY_UNLESS, # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 63) # Happy Hare: Added custom tokens through APPEND_ONLY_UNLESS
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -7926,6 +8000,8 @@ _get_keyword = {
     "array_editor":   _T_ARRAY_EDITOR, # Happy Hare: Added
     "array_size_mismatch": _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added
     "validator":      _T_VALIDATOR, # Happy Hare: Added
+    "sequence_editor": _T_SEQUENCE_EDITOR, # Happy Hare: Added
+    "append_only_unless": _T_APPEND_ONLY_UNLESS, # Happy Hare: Added
     "bool":           _T_BOOL,
     "boolean":        _T_BOOL,
     "boolint":        _T_BOOLINT, # Happy Hare: Added
@@ -8056,6 +8132,7 @@ _DEF_TOKEN_TO_TYPE = {
 # named choices.
 _STRING_LEX = frozenset({
     _T_ARRAY_EDITOR, # Happy Hare: Added
+    _T_SEQUENCE_EDITOR, # Happy Hare: Added
     _T_VALIDATOR, # Happy Hare: Added
     _T_BOOL,
     _T_BOOLINT,
