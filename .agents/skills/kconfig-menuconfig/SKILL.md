@@ -55,11 +55,12 @@ Load-bearing facts about the flow:
   installed `.cfg` files both gain a `_<unit>` suffix.
 - **A unit's name is its identity** — per-unit Kconfig file, every section
   and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
-  is a `sequence_editor` symbol so the list editor can record renames,
-  removals and moves (a comma list alone can't) in
+  is a `sequence_editor` symbol (extension catalog item 21) so the list
+  editor can record renames, removals and moves (a comma list alone can't) in
   `.mmu_config.MMU_UNITS.changes`, relative to `F_UNITS_BASELINE` (the
   *installed* `units:`). `installer/unit_migration.py` acts on it: `check`
-  (only appending is allowed outside Replace mode), `kconfig` (renames/rewrites
+  (only appending is allowed outside Replace mode, except before anything is
+  installed), `kconfig` (renames/rewrites
   `.mmu_config_<unit>` before the per-unit menuconfig), `prepare` and `apply`
   (in `make install`, Klipper stopped: retire old unit files, rename unit
   keys and move global gate lists in the save_variables file). Its progress

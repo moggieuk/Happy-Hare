@@ -12,8 +12,8 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
-13 and 14. When you add an extension, update **both** this file and that
-header block.
+13 and 14, and item 21 is its item 18 (and `Menuconfig:` item 7). When you
+add an extension, update **both** this file and that header block.
 
 ## 1. `generated_default`
 
@@ -138,10 +138,11 @@ String symbols can opt into a list-editing dialog in menuconfig instead of
 raw text entry: `array_editor ","` (separator; optional second arg is an
 *unquoted* INT/HEX symbol giving the required element count — a quoted or
 literal value is a parse error; see the `_T_ARRAY_EDITOR` branch of
-`_parse_props` and the `array_size_sym` docstring on `Symbol`). `MMU_UNITS`
-(`array_editor ","`) is the canonical use. The editor splits/joins on the
-separator, and `_check_valid` in `menuconfig.py` rejects an edit whose
-element count differs from the size symbol's value.
+`_parse_props` and the `array_size_sym` docstring on `Symbol`). It suits
+value lists that may be empty or repeat values, e.g. per-gate angles. The
+editor splits/joins on the separator, and `_check_valid` in `menuconfig.py`
+rejects an edit whose element count differs from the size symbol's value.
+A list of *names* whose identity matters (`MMU_UNITS`) uses item 21 instead.
 
 `array_size_mismatch ARRAY` on a promptless BOOL makes it evaluate to `y`
 when the STRING symbol `ARRAY` is non-empty and its element count differs
@@ -194,6 +195,7 @@ name. (This is a menuconfig-side concern — it never reaches the value file.)
 - **`MENUCONFIG_STYLE`** env selects the screen theme; the Makefile forces
   `aquatic` for the multi-unit entry point (single unit: `default`).
 - Comment-aware cursor navigation (item 9).
+- The sequence editor dialog (item 21).
 
 ## 12. `source` family
 
@@ -345,3 +347,75 @@ Module-level dict in `kconfiglib.py` (old symbol name → new name), applied by
 so every caller carries a saved value across a rename. See SKILL.md
 ("Renaming a symbol discards the user's value…") for the rules and its one
 limit: a symbol `make` or `install.sh` reads by name cannot be renamed this way.
+
+## 21. `sequence_editor <separator> [baseline]` / `append_only_unless <expr>`
+
+An ordered list of **unique names** whose identity matters, edited as a list
+that knows what happened to each entry. `MMU_UNITS` is the only use:
+
+```
+config MMU_UNITS
+  prompt "MMU units"
+  sequence_editor "," "$(env-default,F_UNITS_BASELINE,)"
+  append_only_unless "$(env-default,F_UNITS_RESTRUCTURE,n)"
+  validator "[a-z][a-z0-9_-]*"
+```
+
+- **Not a type.** The symbol stays `string` and its value a plain
+  separator-joined list, so `make` and `install.sh` read it unchanged. The
+  attributes only pick a different dialog (`_change_node` → `_sequence_dialog`),
+  the way `array_editor` does.
+- **Parsing** (the `_T_SEQUENCE_EDITOR` / `_T_APPEND_ONLY_UNLESS` branches of
+  `_parse_props`): only the first argument is lexed as a string
+  (`_STRING_LEX`). A quoted second argument arrives as a *constant symbol*
+  and is unwrapped to its name, so the baseline must be quoted.
+  `append_only_unless` takes an expression, so a quoted `"$(env…)"` constant
+  works and no extra symbol is written to `.mmu_config`. Stored on the Symbol
+  as `sequence_editor`, `sequence_baseline` and `append_only_unless`.
+- **Baseline:** what renames/removals/moves are measured against. An empty
+  baseline means the current value.
+- **The model** is `installer/lib/kconfiglib/sequence_edit.py`, with no curses,
+  so it is shared with `installer/unit_migration.py` and tested directly.
+  `SequenceModel` rows are `[name, origin]`, where origin is the baseline
+  name it came from or `None` for new. Removed = baseline names no longer
+  used as an origin. `structural()` = anything other than appending new
+  entries (an insert mid-list is structural). Adding a removed baseline name
+  restores it instead of creating a new entry.
+- **Validation lives in the model, not `_check_valid`:** entries are unique
+  and at least one must remain (the last can't be deleted). `validator`
+  applies only to new or renamed names, so existing names are never
+  re-validated. `array_editor`'s duplicate/empty behaviour is untouched.
+- **Append-only** (while the expression is n): the rows up to the last one
+  that came from the baseline, plus the removed set, may not change
+  (`_fixed`). So appending still works after a pending structural change,
+  and `u` (reset) is always allowed. The refusal says "see help", so the
+  symbol's help must explain how to unlock it.
+- **The sidecar** is how identity survives. On menuconfig save
+  (`_write_config`, which wraps `write_config`), each symbol *edited this
+  session* is written to `<config>.<SYMBOL>.changes` as JSON
+  `{from, to, origin}`, or the file is removed when nothing changed. It is
+  trusted (`origins_from_changes`) only if `from` equals the baseline and `to`
+  equals the current value; otherwise origins fall back to matching by name.
+  olddefconfig and the build never touch it. The fork knows nothing about
+  units; `installer/unit_migration.py` is what gives the sidecar meaning.
+- **Dialog:** rows `> 2. box  (renamed from b)` (the selected row gets `>` and
+  bold on the list background), `[new]`, and `x  c  [will be removed]` for
+  removed entries (`d` on one restores it). A one-line summary goes below.
+  Keys: `a` add at end, `i` insert before, `r` rename, `d` delete/restore,
+  `K`/`J`, `-`/`+` or Shift-Up/Down to move, `u` undo all, `?` help,
+  Enter/Ctrl-D done, ESC cancel. Changing only origins (e.g. a swap by rename
+  instead of by move) still marks the config changed.
+- **Shift-arrows:** these arrive as `KEY_SR`/`KEY_SF`, as ncurses extended
+  keys (`kUP*`/`kDN*`), or, when the terminfo doesn't know them
+  (e.g. `screen-256color`), as a raw `ESC [1;2A`. Because `ESCDELAY` is 0 the
+  bytes can arrive split (e.g. over SSH), so after an ESC
+  `_read_escape_sequence` waits up to `_ESCAPE_SEQUENCE_WAIT_MS` per byte,
+  reads to the sequence's final byte, and maps it through
+  `_SEQUENCE_ESCAPE_KEYS`. An unknown sequence is ignored; only a lone ESC
+  cancels. macOS Terminal.app keeps Shift-Up/Down for scrolling, so they never
+  arrive there.
+- **Tests:** `test/installer/test_sequence_edit.py` (model, sidecar);
+  `TestSequenceEditor` in `test/installer/test_menuconfig.py` (parsing, dialog
+  keys driven by stubbing `_getch_compat`, drawing against `FakeDialogWindow`);
+  `TestMmuUnitsValidator` in `test_kconfig_validator.py`. For a real check,
+  drive `make menuconfig` in a pty (`pty.fork`, `TERM=xterm-256color`).
