@@ -72,6 +72,8 @@ class MmuUnit:
         self.unit_index = unit_index
         self.first_gate = first_gate
         self.name = config.get_name().split()[-1]
+        if not re.fullmatch(r"[a-z][a-z0-9_-]*", self.name):
+            raise config.error("MMU: Unit name '%s' is invalid. Use only lowercase letters, digits, '_' and '-', starting with a letter" % self.name)
         self.printer = config.get_printer()
 
         self.num_gates = config.getint('num_gates')

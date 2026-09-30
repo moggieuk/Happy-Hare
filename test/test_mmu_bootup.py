@@ -179,6 +179,47 @@ class TestVersionMismatch(unittest.TestCase):
         self.assertIn('3.99.0', str(cm.exception))
 
 
+class TestUnitName(unittest.TestCase):
+    """
+    Unit names must satisfy the same rule menuconfig's MMU_UNITS validator applies
+    ([a-z][a-z0-9_-]*). In particular mmu_vars.cfg (save_variables) lowercases keys,
+    so a mixed case name would never round-trip its persisted state.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from test.hh import install
+        install()
+
+    def _build_unit(self, name):
+        import configparser
+        from configfile import ConfigWrapper
+        from extras.mmu.mmu_unit import MmuUnit
+
+        section = 'mmu_unit %s' % name
+        fileconfig = configparser.RawConfigParser()
+        fileconfig.add_section(section)
+        config = ConfigWrapper(None, fileconfig, {}, section)
+        return MmuUnit(config, None, 0, 0)
+
+    def test_invalid_unit_names_raise_config_error(self):
+        from configfile import error as ConfigError
+        for name in ('BoxTurtle', 'unit0A', '0unit', '_unit', 'unit.0', 'unit#1'):
+            with self.subTest(name=name):
+                with self.assertRaises(ConfigError) as cm:
+                    self._build_unit(name)
+                self.assertIn("Unit name '%s' is invalid" % name, str(cm.exception))
+
+    def test_valid_unit_names_pass_name_check(self):
+        from configfile import error as ConfigError
+        for name in ('unit0', 'mmu', 'box_turtle', 'night-owl2'):
+            with self.subTest(name=name):
+                # Fails later on the missing num_gates option, not on the name
+                with self.assertRaises(ConfigError) as cm:
+                    self._build_unit(name)
+                self.assertIn('num_gates', str(cm.exception))
+
+
 class TestPinBindings(unittest.TestCase):
     """
     A2: every pin description is recorded with the type it was bound as. This is the
