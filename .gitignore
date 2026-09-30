@@ -11,5 +11,4 @@ venv/
 .hh-stamps/
 .DS_Store
 .claude/*
-!.claude/skills/
-!.claude/skills/**
+!.claude/skills
