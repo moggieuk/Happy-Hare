@@ -33,14 +33,17 @@ endstop in `SHARED_GATE_ENDSTOPS` (`mmu_constants.py`):
   check must run before `select_gate()`**, not after.
 
 Existing call sites to model a new one on: `commands/mmu_nfc_scan.py`,
-`commands/mmu_preload.py`, and the direct re-checks inside `_preload_gate`
-and `_jog_scan` in `mmu_filament_movement.py` itself.
+`commands/mmu_preload.py`, `_check_path_unloaded()` in
+`commands/mmu_check_gate.py` (checks every `SHARED_GATE_ENDSTOPS` entry),
+`_evict_reject()` in `mmu_nfc_arbiter.py`, and the direct re-checks inside
+`_preload_gate` and `_jog_scan` in `mmu_filament_movement.py` itself.
 
 If you're changing or extending this, read
 [references/occupancy-guard.md](references/occupancy-guard.md) first — it
-has exact file:line citations, the concrete failure scenario, and the
+has symbol-and-path citations, the concrete failure scenario, and the
 reference tests to run this against
-(`test/test_mmu_nfc_scan.py::TestSharedGateOccupancy`).
+(`TestSharedGateOccupancy` and `TestSharedGateOccupancyAcrossUnits` in
+`test/test_mmu_nfc_scan.py`).
 
 ## `gate_occupancy()` also reads shared sensors — PRESENT is not per-gate
 
@@ -67,9 +70,8 @@ shared endstop, because parking forward would leave filament sitting in the
 shared merge zone. The validator runs automatically when both fields are set
 in one `MMU_TEST_CONFIG` call (alphabetical field order saves you), but two
 *separate* commands — set a positive parking distance while on `mmu_exit`,
-then later switch to a shared endstop — used to leave the now-unsafe value
-unchecked. It's fixed via an `on_change` hook that re-validates when the
-endstop choice changes live; see
+then later switch to a shared endstop — are caught by an `on_change` hook
+that re-validates when the endstop choice changes live; see
 [references/occupancy-guard.md](references/occupancy-guard.md) §3 for the
 exact mechanism and where the equivalent preload-endstop hook lives.
 

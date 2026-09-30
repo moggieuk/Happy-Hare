@@ -3,16 +3,17 @@
 `installer/lib/kconfiglib/` is a vendored **kconfiglib v14.1** (Nordic/UMS
 upstream) carrying HH patches marked `# Happy Hare:` inline. Grep for that
 marker to get the full patch list; this catalog explains what each extension
-*does* and how to use it in a Kconfig file. Verified against the current
-tree — line anchors drift, re-grep the identifiers.
+*does* and how to use it in a Kconfig file. Anchors are function and
+symbol names; grep for them.
 
 The root `installer/Kconfig` header comment is the user-facing summary of
 most of items 1-11 below, numbered differently (its `array_size_mismatch`
-item is part of item 7, its "if XX" comment-line construct of item 6, its
+item is part of item 7, its "if XX" comment-line construct of item 9, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
-generated file, the pickle, default-resolution semantics) are not in the
-header; items 16-18 are its items 15-17. When you add an extension, update **both** this file and that header
-block.
+generated file, the pickle, default-resolution semantics) and the `@if`
+macros of item 6 are not in the header; items 16-20 are its items 15-17,
+13 and 14. When you add an extension, update **both** this file and that
+header block.
 
 ## 1. `generated_default`
 
@@ -31,9 +32,11 @@ generated_default "<template>" "<arg syms>" [<separator>] [[<start>] <stop>]
 - Without `<start>/<stop>` the template renders once; with them it renders
   once per value in `range(start, stop)` (start defaults to 0) and the
   results are joined with `<separator>` (default `", "`).
-- Can appear multiple times on a symbol (list of `(template, args, separator,
-  start_sym, stop_sym, cond)` tuples, `kconfiglib.py:~3739`); conditions
-  work; dependencies are registered so the value invalidates when its inputs
+- Can appear multiple times on a symbol (`node.generated_defaults`, a list of
+  `(template, args, separator, start_sym, stop_sym, cond)` tuples appended in
+  the `_T_GENERATED_DEFAULT` branch of `_parse_props`); conditions work, and
+  `_propagate_deps` ANDs enclosing dependencies into them as for `default`;
+  dependencies are registered so the value invalidates when its inputs
   change (`_build_dep`).
 
 Examples from the tree:
@@ -62,15 +65,18 @@ enable a capability the type didn't imply).
 The modifiable-defaults mechanism (see SKILL.md "naming contract").
 Lifecycle, all in `kconfiglib.py`:
 
-- Constant `HH_DEFAULT_TOKEN = " #~DEFAULT~#"` (line ~567).
-- **Write** (`write_config`, ~1758-1770): a symbol/choice's line is emitted
+- Constant `HH_DEFAULT_TOKEN = " #~DEFAULT~#"` (module level; a copy lives in
+  `kconfigfunctions.py`).
+- **Write** (`write_config`): a symbol/choice's line is emitted
   with the token appended iff it was *not* user-set (`_was_set`) — so the
-  value on the line is the computed default by construction — and its name
+  value on the line is the computed default by construction — or, for a
+  symbol, `_saved_as_default()` holds (item 16), and its name
   starts with one of `PARAM_ VAR_ PIN_ BOOL_ MMU_HAS_ CHOICE_ UNSELECT_`
   (choices: must be *named* `CHOICE_*`).
-- **Load** (`load_config(..., filter_defaults=True)`, ~1320-1400): the
+- **Load** (`load_config(..., filter_defaults=True)`): the
   `CONFIG_X=value #~DEFAULT~#` / `# CONFIG_X is not set #~DEFAULT~#` regexes
-  (~994) recognize the token; the value is applied, then *unset and marked*
+  (`_set_match` / `_unset_match`, built in `Kconfig._init`) recognize the
+  token; the value is applied, then *unset and marked*
   `_was_default`, so the computed default applies and menuconfig treats the
   symbol as unmodified (resettable with `r`).
 - **Who uses which**: `menuconfig`/`olddefconfig` go through
@@ -78,15 +84,14 @@ Lifecycle, all in `kconfiglib.py`:
   build.py::KConfig` calls `load_config(..., filter_defaults=False)` so the
   stored value — default or explicit — is kept verbatim for template
   rendering. Don't mix these up: the pickle path is the *falsy* one.
-- Legacy migration: `_migrate_legacy_boolint_pairs()` runs on
-  `load_config(replace=True, filter_defaults=True)` and recovers
-  pre-BOOLINT `BOOL_X`+`PARAM_X` pairs from beta-era files (remove after the
-  v4 beta window, per its docstring).
 
 ## 5. `saved-config-value` preprocessor function
 
-Registered in `kconfigfunctions.py` (`functions = {"saved-config-value":
-(fn, 1, 1)}`). Usable in Make-style `$(...)` expansions inside Kconfig files
+Registered in the `functions` dict of `kconfigfunctions.py`
+(`"saved-config-value": (saved_config_value, 1, 1)`), alongside the other
+HH preprocessor functions (`env-default`, `env-is-y`, `serial-device`,
+`word-at`, `hh-pad`, `hh-multiline`, `hh-newline`, ...) that keep
+deterministic helpers out of `$(shell, ...)`. Usable in Make-style `$(...)` expansions inside Kconfig files
 (see the root Kconfig's `saved_canbus_connection` macro): reads symbol
 `$(1)`'s **last assignment** from the `KCONFIG_CONFIG` file *before* normal
 config loading, including lines carrying the default token (stripped), with
@@ -97,7 +102,7 @@ was at parse start, not mid-session menuconfig changes.
 
 ## 6. `@repeat` / `@if` / `@ifnot` line macros
 
-Implemented in the line reader (`_next_line`, ~2384-2600; dispatch at ~2612):
+Implemented in the line reader (`_next_line`):
 the tokenizer sees expanded lines, so these look like ordinary Kconfig text
 once expanded and can be nested.
 
@@ -123,18 +128,25 @@ once expanded and can be nested.
   block's lines are only fed to the tokenizer when the *environment* variable
   named by the arg is set to a truthy value (`y/yes/1/true`, case-insensitive;
   nested `@if`/`@ifnot` supported, terminator is `@endif@`). It is **not** a
-  Kconfig expression — this is the root header's "'if XX' construct allowed
-  on comment lines" feature, evaluated by the line reader
-  (`_expand_if_macro`) before tokenization.
+  Kconfig expression — it is evaluated by the line reader
+  (`_expand_if_macro`) before tokenization. (The root header's "'if XX'
+  construct allowed on comment lines" is a different feature, item 9.)
 
 ## 7. `array_editor <separator> [size]`
 
 String symbols can opt into a list-editing dialog in menuconfig instead of
-raw text entry: `array_editor ","` (separator; optional second arg is a
-symbol naming the max element count — see the comment at ~3548-3580, it is
-*not* a number literal: quote it if you mean a literal). `MMU_UNITS`
+raw text entry: `array_editor ","` (separator; optional second arg is an
+*unquoted* INT/HEX symbol giving the required element count — a quoted or
+literal value is a parse error; see the `_T_ARRAY_EDITOR` branch of
+`_parse_props` and the `array_size_sym` docstring on `Symbol`). `MMU_UNITS`
 (`array_editor ","`) is the canonical use. The editor splits/joins on the
-separator and validates count against the size symbol.
+separator, and `_check_valid` in `menuconfig.py` rejects an edit whose
+element count differs from the size symbol's value.
+
+`array_size_mismatch ARRAY` on a promptless BOOL makes it evaluate to `y`
+when the STRING symbol `ARRAY` is non-empty and its element count differs
+from `ARRAY`'s size symbol — for Kconfig warnings about values loaded from an
+existing config, which the editor never saw.
 
 ## 8. `boolint` / `defboolint`
 
@@ -143,7 +155,7 @@ replace the historical `BOOL_X` (prompted) + `PARAM_X` (promptless int)
 pair: one symbol, checked-box in menuconfig, integer in the rendered cfg.
 `boolint` = user-settable, `defboolint` = default-only (like `def_bool`).
 Internal representation is the normal tristate machinery
-(`_normalize_boolint_default`, `kconfiglib.BOOLINT` type at ~7802); the
+(`_normalize_boolint_default`, `kconfiglib.BOOLINT` type); the
 pickle/`as_dict` path emits the strings `"0"`/`"1"` (see `KConfig.as_dict`'
 BOOLINT branch and `getint`'s special case).
 
@@ -151,6 +163,9 @@ BOOLINT branch and `getint`'s special case).
 
 - `help` text on `menu` nodes (upstream kconfiglib only allows help on
   symbols) — rendered in the menuconfig menu screens.
+- `comment "..." if <expr>` takes a condition directly on the comment line
+  (`_expect_str_and_cond` in the `_T_COMMENT` branch of `_parse_block`), e.g.
+  `comment "_" if SHOW_HIDDEN`.
 - Comment lines are first-class UI: `comment "_"` draws a full-width
   separator, `comment "_Heading"` a section heading, plain `comment "..."`
   an inline note; flexible/multi-line comments are preserved. The menuconfig
@@ -170,19 +185,20 @@ name. (This is a menuconfig-side concern — it never reaches the value file.)
 
 ## 11. menuconfig changes
 
-- **`r` resets to default** (key handler ~956): clears the user value of
-  the selected symbol (or choice, incl. siblings) and unmarks it as set —
-  only for names on the SKILL.md lists, and only when the value currently
-  differs from the computed default (`differs_from_default`, ~1738). The
-  `(NOT DEFAULT)` marker (~3512) is what tells the user `r` is available.
+- **`r` resets to default** (the `"r"` branch of the main key loop, calling
+  `_reset_node`): clears the user value of the selected symbol (or choice,
+  incl. siblings) and unmarks it as set — only for names on the SKILL.md
+  reset-side list, whether or not the value differs from the default. The
+  `(NOT DEFAULT)` marker (`_node_str`, using `differs_from_default`) is what
+  tells the user `r` would change anything.
 - **`MENUCONFIG_STYLE`** env selects the screen theme; the Makefile forces
   `aquatic` for the multi-unit entry point (single unit: `default`).
 - Comment-aware cursor navigation (item 9).
 
 ## 12. `source` family
 
-Upstream kconfiglib features HH relies on heavily (docs at kconfiglib.py
-~366-427): `source` is srctree-relative, `rsource` is *file*-relative
+Upstream kconfiglib features HH relies on heavily (documented in the
+`kconfiglib.py` module docstring's `rsource`/`osource` sections): `source` is srctree-relative, `rsource` is *file*-relative
 (`mmu_types/Kconfig` does `rsource "Kconfig.*"`), all accept **globs**, and
 `osource`/`orsource` are the "ignore if missing" variants (the root Kconfig
 does `osource "/tmp/.Kconfig.generated"` for the dynamic shared-component
@@ -195,7 +211,9 @@ generate extra Kconfig rules in `/tmp/.Kconfig.generated` that let
 printer-level shared components (toolhead name, encoder name,
 sync-feedback buffer name) offer "use an existing one from another unit"
 choices, derived by parsing the existing value files (`PARAM_REGEX`,
-`to_symbol`). **Currently incomplete/unused** — marked TODO in build.py;
+`to_symbol`). **Currently incomplete/unused** — the TODO in the comment
+block above it in build.py says it is never called, and neither the build
+nor `install.sh` invokes the `gen_kconfig` target;
 treat it as scaffolding, and if you resume it, the `MMU_SHARED_*` /
 `CHOICE_*_TYPE` symbols it emits are the integration point.
 
@@ -208,9 +226,10 @@ pickleable dict — `values` (from `as_dict()`) plus `choices`
 `out/<basename>.pickle`; `load_parsed_kconfig` reads it back into a
 `ParsedKConfig` that implements the same accessor surface
 (`get/getint/is_enabled/is_selected/as_dict`). Full-`Kconfig` pickling was
-abandoned at >20 000 recursion depth. The Makefile regenerates the pickle
-only when the source value file is newer (`out/*.pickle: $(KCONFIG_CONFIG)`,
-:524-528), and `make verify_pickle` runs
+abandoned at >20 000 recursion depth. The Makefile's pickle rules
+(`$(OUT)/<config name>.pickle` and its `_%` per-unit twin)
+depend on the value file *and* `$(kconfig_sources)`, so either changing
+re-pickles, and `make verify_pickle` runs
 `lib/kconfiglib/test_kconfig_pickle_consistency.py` against each — that
 script re-reads the raw file with *stock* kconfiglib semantics and compares,
 so it catches `as_dict` regressions without importing HH code.
@@ -220,25 +239,32 @@ so it catches `as_dict` regressions without importing HH code.
 Not an extension per se, but the resolution rules the fork implements (they
 are why board files can override feature-file defaults):
 
-- **Strings**: both the *value-computation* path (`Symbol` value calc,
-  kconfiglib.py:~5010) and the *min-config write* path (~5596-5608) call
-  `_node_ordered_string_default()` (~5613), which walks `self.nodes` in
+- **Strings**: both the *value-computation* path (`Symbol.str_value`) and
+  the *min-config write* path (`Symbol._str_default`) call
+  `_node_ordered_string_default()`, which walks `self.nodes` in
   **source parse order** and returns the **first** default whose condition is
   satisfied — plain `default` and `generated_default` entries interleave in
   that order. First-satisfied wins, NOT last-wins (unlike stock C kconfig's
   later-override).
-- **Conditions are evaluated exactly as written**: the parser
-  (kconfiglib.py:3608-3610) stores only the explicit `default <val> if <cond>`
-  expression; the node's enclosing `if`/`depends` block is **not** auto-ANDed
-  in. When re-declaring a symbol from another file, repeat the relevant
-  symbol in the default's own `if`.
-- **Parse order decides**: `installer/Kconfig` sources `boards/Kconfig` at
-  :277, *before* `Kconfig.mmu_additions` at :279 (and the per-topic feature
-  files it pulls in) — so a board file's satisfied default beats a later
-  feature-file `default ""`.
+- **Enclosing conditions are ANDed in**: the parser stores the explicit
+  `default <val> if <cond>` expression, then `_propagate_deps` ANDs the
+  node's own `depends on` and every enclosing `if`/`menu`/`choice`
+  dependency into each `default` and `generated_default` condition. A plain
+  `default` inside an `if BOARD_TYPE_X` block in a re-declaring file is
+  therefore already scoped to that board; there is no need to repeat the
+  condition.
+- **Parse order decides**: the per-unit branch of `installer/Kconfig` sources
+  `mmu_types/Kconfig`, then `boards/Kconfig`, *before* `Kconfig.mmu_additions`
+  (and the per-topic feature files it pulls in) — so a type or board file's
+  satisfied default beats a later feature-file `default ""`. Exception:
+  `Kconfig.capabilities` (with `Kconfig.selector_type`, `Kconfig.bypass`,
+  `Kconfig.filament_buffer`) and, in some types, `Kconfig.num_gates` and
+  `servos/Kconfig` are sourced from inside the type files, so they precede
+  `boards/Kconfig` and a board default for one of their symbols loses to a
+  satisfied default in the selected type's copy.
 - **Choices**: selection from defaults is first-satisfied in the order the
-  `default <member>` lines are written (`Choice._selection_from_defaults`,
-  kconfiglib.py:~6130; member visibility is also checked). Only members of
+  `default <member>` lines are parsed (`Choice._selection_from_defaults`;
+  member visibility is also checked). Only members of
   the *same* choice (same file) can be defaulted; steering an existing
   choice from another file means adding a `default <member> if <cond>` line
   above the older ones.
@@ -252,7 +278,7 @@ default counts as a user value (NOT DEFAULT, stops tracking default changes).
 under it into writing the #~DEFAULT~# token in that case
 (`_saved_as_default()`, used by the write-side token check). Symbols without
 a prompt, and visible ones, are unaffected. `Kconfig.leds` uses it on
-`BOOL_CUSTOMIZE_LED_EFFECTS`, so unticking "Customize LED colors and effects?"
+`BOOL_CUSTOMIZE_LED_EFFECTS`, so clearing "Customize LED colors and effects?"
 reverts the colors and effects to the per-type defaults. Within one menuconfig session a
 re-ticked entry still shows the old values; the reset happens on save.
 
@@ -261,7 +287,7 @@ re-ticked entry still shows the old values; the reset happens on save.
 Optional property on a STRING symbol (`_T_VALIDATOR`; parsed in
 `_parse_props`, stored compiled on `Symbol.validator`, so value-only
 redeclarations in type/board files keep it). menuconfig's `_check_valid`
-rejects an edit unless the stripped value `fullmatch`es — per element for an
+rejects an edit unless the stripped value matches it in full — per element for an
 `array_editor` symbol (an empty array has no elements; an empty plain string
 is checked like any other value). The error dialog names the value (and
 element) and says "not valid syntax -- see help" -- the regexp is never shown,
@@ -293,5 +319,29 @@ indentation is stripped, so a preprocessor variable can supply shared help
 Kconfig) gives a real newline, so one variable can hold several lines:
 `pin_help := $(pin_syntax)$(nl)$(pin_example)`. `hh-multiline` is not a
 substitute: it writes a literal `\n` for Klipper values. Assignment strips
-leading spaces, so a line can't start indented. No help text used `$(`
-before this, so nothing else changed.
+leading spaces, so a line can't start indented.
+
+## 19. Macros in named choices
+
+`$(macro)` references expand in a `choice <NAME>` line, not just in a
+`config` name (the Happy Hare branch for `_T_CHOICE` in `_tokenize`). This is what lets a
+shared fragment under `installer/components/` declare its own choices while
+being sourced once per consumer:
+
+```
+prefix := GEAR
+source "components/Kconfig.tmc_driver_types"
+```
+
+Preprocessor variables are global for the whole parse, so re-assign every
+one immediately before each `source`. `test/installer/test_kconfig_macro_names.py`
+covers the tokenizer change; `test_kconfig_structure.py` checks the generated
+names against the prefix contract.
+
+## 20. `HH_RENAMED_SYMBOLS`
+
+Module-level dict in `kconfiglib.py` (old symbol name → new name), applied by
+`Kconfig._migrate_renamed_symbols` at the end of `load_config(replace=True)`,
+so every caller carries a saved value across a rename. See SKILL.md
+("Renaming a symbol discards the user's value…") for the rules and its one
+limit: a symbol `make` or `install.sh` reads by name cannot be renamed this way.

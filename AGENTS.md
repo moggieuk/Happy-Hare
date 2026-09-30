@@ -69,9 +69,8 @@ yours doesn't, read the matching `SKILL.md` before touching that area.
   `gate_parking_distance` validation. Relevant any time you're touching gate
   homing, endstops, crossload logic, or `mmu_filament_movement.py`.
 - **`nfc-rfid-subsystem`** — reader driver architecture, `jog_scan`, reader-
-  pair sharing, and a preserved write-up of unmerged RF-crosstalk mitigation
-  design work. Relevant any time you're touching NFC/RFID code or debugging
-  tag misattribution.
+  pair sharing, and the "noisy neighbor" field arbiter. Relevant any time
+  you're touching NFC/RFID code or debugging tag misattribution.
 - **`kconfig-menuconfig`** — the `installer/` Kconfig tree, the HH-forked
   kconfiglib, the `.mmu_config` value flow (menuconfig → pickle → Jinja →
   merged `.cfg`), and the symbol-naming contract (`PARAM_`/`PIN_`/`BOOL_`/
