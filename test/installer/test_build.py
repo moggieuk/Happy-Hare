@@ -170,6 +170,35 @@ class TestButtonGcodeRefresh(unittest.TestCase):
                 previous = output
 
 
+class TestUnitListRefresh(unittest.TestCase):
+    """[mmu_machine] units is owned by Kconfig: an installed list must never win."""
+
+    MULTI_UNIT_ENV = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT="y", F_MULTI_UNIT_ENTRY_POINT="y")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.installed = self.build("replace", "unit0", [])
+
+    def build(self, mode, units, input_files):
+        out = tempfile.mkdtemp(dir=self.tmp.name)
+        dest = os.path.join(out, "mmu.cfg")
+        with cfg._env(dict(self.MULTI_UNIT_ENV, UNIT_NAME=units)):
+            kconfig = cfg._kconfig("unit-list-refresh", {"MMU_UNITS": units})
+        from installer import build
+        with cfg._env(dict(self.MULTI_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
+                cfg._chdir(cfg.REPO_ROOT):
+            build.build_config_file("config/base/mmu.cfg", dest, kconfig, input_files,
+                                    {"PARAM_TOTAL_NUM_GATES": 8})
+        return dest
+
+    def test_added_unit_reaches_the_installed_list(self):
+        for mode in ("refresh", "merge", "replace"):
+            with self.subTest(mode=mode):
+                built = self.build(mode, "unit0,unit1", [self.installed])
+                self.assertEqual(ConfigBuilder(built).get("mmu_machine", "units"), "unit0,unit1")
+
+
 if __name__ == "__main__":
     unittest.main()
 

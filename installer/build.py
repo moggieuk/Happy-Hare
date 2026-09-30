@@ -92,6 +92,11 @@ hidden_params = [
     "hall_max_diameter",
 ]
 
+# Structural options that always come from Kconfig, whatever the upgrade mode
+KCONFIG_OWNED_OPTIONS = {
+    ("mmu_machine", "units"),
+}
+
 # This mapping is used to identify Kconfig parameter names and map then to the
 # correct cfg config section. This is used for the "merge" (option 3) approach
 VAR_SECTION_MAP = {
@@ -395,7 +400,7 @@ class HHConfig(ConfigBuilder):
                     is_gcode = option.startswith("gcode")
                     is_macro_section = section.startswith("gcode_macro")
                     is_var_section = section in excluded_var_sections
-                    is_excluded_var = (section, option) in excluded_vars
+                    is_excluded_var = (section, option) in excluded_vars or (section, option) in KCONFIG_OWNED_OPTIONS
                     is_excluded_param = (
                         not is_macro_section
                         and option in excluded_params
@@ -569,8 +574,7 @@ def build(cfg_file, dest_file, kconfig, input_files):
     if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
         unit_kcfgs = dict()
         total_num_gates = 0
-        for unit in kcfg.get("MMU_UNITS").split(","):
-            unit = unit.strip()
+        for unit in split_csv(kcfg.get("MMU_UNITS")):
             unit_kcfgs[unit] = load_parsed_kconfig(kconfig + "_" + unit)
             total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
 
