@@ -5,6 +5,7 @@
 #
 # IMPORTANT: Happy Hare TOKEN naming convention and kconfig features:
 #   PARAM_*                Symbols of various types used in template rendering
+#   VAR_*                  String symbols for macro variables; written as '' rather than empty
 #   PIN_*                  Used for string symbols representing pins
 #   BOOL_*                 Boolean symbols often used to set prompt-less int PARAMS
 #   MMU_HAS_*              Used for MMU hardware components like encoder

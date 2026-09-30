@@ -46,7 +46,7 @@ if __package__ in (None, ''):                       # allow `python test/console
 
 from test.hh import session as hh_session           # noqa: E402
 
-# -- optional readline, mirroring utils/simulator.py -------------------------------
+# -- optional readline, mirroring utils/sync_feedback_sim.py -------------------------
 HAVE_READLINE = False
 try:
     import readline

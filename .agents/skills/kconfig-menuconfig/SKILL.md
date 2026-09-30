@@ -24,7 +24,7 @@ env vars ──(expanded at PARSE time)──▶ installer/Kconfig tree
                      .mmu_config  (+ .mmu_config_<unit> per unit in multi-unit)
                                           │ python -m installer.build --pre-parse-kconfig
                                           ▼   (KConfig.as_dict() → values + choices)
-                     out/.mmu_config.pickle   (regenerated only when .mmu_config is newer)
+                     out/.mmu_config.pickle   (rebuilt when .mmu_config or a kconfig_sources file is newer)
                                           │ build_config_file(): render_template (Jinja, [[ ]] / [% %])
                                           ▼                              + HHConfig merge of the
                      out/mmu/*.cfg                              user's existing .cfg values
@@ -44,7 +44,8 @@ Load-bearing facts about the flow:
   symbol sets appear/disappear behind `if MULTI_UNIT_ENTRY_POINT`).
   `test/hh/cfg.py::_env()` is the reference implementation: assign (never
   `setdefault`) and restore around each parse.
-- **Multi-unit = three parses, driven by `install.sh`**: one entry-point
+- **Multi-unit = one entry-point parse plus one per unit, driven by
+  `install.sh`**: one entry-point
   parse (`F_MULTI_UNIT_ENTRY_POINT=y F_MULTI_UNIT=y`, `UNIT_NAME="u0,u1,..."`
   becomes the `MMU_UNITS` list) plus one per unit
   (`F_MULTI_UNIT=y UNIT_NAME=uN MCU_NAME=uN UNIT_INDEX=N` plus the
@@ -53,16 +54,20 @@ Load-bearing facts about the flow:
   `run_kconfig_units` / `run_kconfig_one`. The per-unit config file and the
   installed `.cfg` files both gain a `_<unit>` suffix.
 - **`make` itself reads the value file**: the Makefile does
-  `-include $(KCONFIG_CONFIG)` (Makefile:47), so any `CONFIG_*` symbol
+  `-include $(KCONFIG_CONFIG)`, so any `CONFIG_*` symbol
   (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_KLIPPER_HOME`, ...)
   steers the build (e.g. `unit_names`). Renaming such a symbol is a Makefile
   change too.
-- **Staleness**: `kconfig_sources` (Makefile:252) = every `installer/**/Kconfig*`
-  plus `kconfigfunctions.py` and `kconfiglib.py`, compared by mtime against the value file
-  (a unit file is also compared against its top-level file, `KCONFIG_PARENT`); when
-  stale, `olddefconfig` (never menuconfig) refreshes the file with new
-  defaults. New `Kconfig*` files are picked up automatically by the wildcard;
-  files with any other name are invisible to this mechanism.
+- **Staleness**: `kconfig_sources` in the `Makefile` = every `Kconfig*` file in
+  `installer/` and up to two directory levels below it, plus `kconfigfunctions.py`
+  and `kconfiglib.py`. The `kconfig_needs_update` target compares them by mtime
+  against the value file (a unit file is also compared against its top-level
+  file, `KCONFIG_PARENT`); when stale, `olddefconfig` (never menuconfig)
+  refreshes the file with new defaults. New `Kconfig*` files are picked up
+  automatically by the wildcard; files with any other name, or nested deeper,
+  are invisible to this mechanism. The pickle rules list the same
+  `$(kconfig_sources)` as prerequisites, so a Kconfig change re-pickles even
+  when the value file is untouched.
 - **User values survive by design; recorded defaults do not**: explicit user
   assignments in an existing `.mmu_config` are preserved, but a value saved
   with `#~DEFAULT~#` (choices included) is recomputed by every `olddefconfig`
@@ -72,14 +77,15 @@ Load-bearing facts about the flow:
   prints every such change to stderr (`change_report`), which is what
   `install.sh` shows under "Updating Kconfig defaults".
 - **Renaming a symbol discards the user's value unless it is in the rename
-  table.** kconfiglib drops an assignment whose symbol no longer exists,
-  `build.KConfig` runs with `warn_assign_undef = False`, and `Makefile` sends
-  `olddefconfig`'s output to `/dev/null` — so an unhandled rename loses the
-  old line with *zero* diagnostics and the new name takes its default.
+  table.** kconfiglib drops an assignment whose symbol no longer exists, and
+  its `warn_assign_undef` is off unless `KCONFIG_WARN_UNDEF_ASSIGN=y` (nothing
+  here sets it), so an unhandled rename loses the old line with *zero*
+  diagnostics and the new name takes its default.
   `installer/upgrades.py` does not help: it renames options and sections in
   the generated Klipper `.cfg` files, not Kconfig symbols.
   **The hook is `HH_RENAMED_SYMBOLS`** in the kconfiglib fork (old name → new
-  name), applied by `Kconfig._migrate_renamed_symbols` during `load_config`.
+  name), applied by `Kconfig._migrate_renamed_symbols` at the end
+  of `load_config(replace=True)`.
   Add an entry in the same commit as the rename; entries can be dropped a
   major version later. Because it runs inside the loader, every caller gets
   it (menuconfig, olddefconfig, `build.KConfig`, the test harness), per-unit
@@ -133,14 +139,14 @@ default**: the user can change it, menuconfig shows
 name is a normal Kconfig variable whose saved value is always an explicit
 assignment that never falls back to the default.
 
-The three lists (verified anchors, will drift — re-grep):
+The three lists (re-grep the tuples when you touch one):
 
 1. **write side** — which values get the ` #~DEFAULT~#` token:
-   `kconfiglib.py:~1762` →
+   `Kconfig.write_config` in `kconfiglib.py` →
    `('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_')`
    plus unnamed-check: choices must be *named* `CHOICE_*`.
 2. **display side** — which get the `(NOT DEFAULT)` marker (i.e. are
-   `r`-resettable in the UI): `menuconfig.py:~3509` →
+   `r`-resettable in the UI): `_node_str()` in `menuconfig.py` →
    `('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_')` for prompted symbols;
    choices by name `CHOICE_*`.
 3. **reset side** — what `r` may actually clear:
@@ -159,7 +165,9 @@ not into hardware files.
 
 **Naming trap — array grouping.** `KConfig.as_dict()` collapses any symbol
 matching `^(.+_)(\d+)$` with index ≤ 12 into a **list** in the render dict
-(`PIN_EJECT_BUTTON_0..11` → `PIN_EJECT_BUTTON: [..]`) so Jinja can index it.
+keyed by the prefix *including its trailing underscore*
+(`PIN_EJECT_BUTTON_0..11` → `PIN_EJECT_BUTTON_: [..]`, used in templates as
+`(PIN_EJECT_BUTTON_|d)[i]`); the individual `FOO_<n>` keys are then absent.
 A *single* surviving match is ungrouped again (it's just a name that happens
 to end in digits). Choice members are exempt (checked *before* grouping) —
 which is exactly what keeps version-numbered names like
@@ -184,8 +192,9 @@ installer/
                           # fans, leds, encoder, espooler, nfc_reader, ...
                           # Convention: "# Sets/Defines parameter tokens:" header
   mmu_types/ (+ starters/)  # rsource "Kconfig.*" — one file per machine type
-                            # (each inlines Kconfig.mmu_additions; see the
+                            # (each inlines Kconfig.capabilities; see the
                             #  cross-file section below)
+  components/           # shared fragments sourced once per consumer (TMC driver)
   boards/ (+ custom/, per_gate/)  # MCU/board selection; pin defaults
   connection/           # MCU serial/CAN auto-discovery ($(shell) heavy)
   servos/  sensors/  toolheads/  macro_vars/
@@ -206,8 +215,9 @@ speeds, macro vars, shared pins, paths) vs `if !MULTI_UNIT_ENTRY_POINT`
 are excluded from the entry-point tree via `if !MULTI_UNIT` guards (e.g.
 toolheads/Kconfig appears in *both* — standalone machines keep it per-unit).
 Printer-level capabilities are handed down to unit parses as env
-(`HAS_SENSOR_TOOLHEAD`, ... → `$(shell)` macros at root `Kconfig:~116`,
-feeding promptless `MMU_HAS_*` defaults at `Kconfig:~203`).
+(`HAS_SENSOR_TOOLHEAD`, ... → `$(env-is-y,...)` variables in the root
+`Kconfig`, feeding promptless `MMU_HAS_*` defaults in its
+`if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT` block).
 
 ## Checklist: adding / changing a symbol
 
@@ -255,7 +265,8 @@ to avoid wrapping beyond that limit; put longer explanations in documentation.
    - **Pinning a *default* takes a profile that does NOT set the symbol.**
      Profile `syms` are explicit user values; an unset symbol is what
      exercises the computed default. Register render-only profiles in the
-     trailing `PROFILES` tuple (not `CONSOLE_PROFILES`) and assert on the
+     tuple appended to `CONSOLE_PROFILES` in the `PROFILES` dict (not in
+   `CONSOLE_PROFILES` itself) and assert on the
      rendered text from `cfg.render(profile)` (parse the section; see
      `TestBoxTurtleRender.test_led_effect_defaults_are_preserved`).
    - **The fake Klipper never validates an i2c bus name against a chipdef**
@@ -271,7 +282,8 @@ to avoid wrapping beyond that limit; put longer explanations in documentation.
      reached via `./install.sh -i`).
 7. **If you touched the fork itself** (`as_dict`, load/write, menuconfig):
    the tests for it are `make verify_pickle` (pickle consistency),
-   `make test UT=test_menuconfig.py` (menuconfig cursor behavior), and
+   `make test UT=test_menuconfig.py` (`test/installer/test_menuconfig.py`,
+   menuconfig cursor behavior), and
    profile tests. The vendored base is kconfiglib **v14.1** — the HH patches
    are marked `# Happy Hare:` inline; if you re-sync upstream, that grep is
    your change list.
@@ -289,8 +301,8 @@ in this repo:
 
 - **A default's condition is evaluated as an expression against the
   current values of the symbols it references.** The parser stores the
-  explicit `default <val> if <cond>` condition (kconfiglib.py:3608-3610);
-  `_propagate_deps` (kconfiglib.py:4166) then ANDs in the node's own
+  explicit `default <val> if <cond>` condition (the `_T_DEFAULT` branch of
+  `_parse_props`); `_propagate_deps` then ANDs in the node's own
   `depends on` and every enclosing `if`/`menu` dependency — so a plain
   `default <val>` inside an `if BOARD_TYPE_X` block is correctly scoped
   with no repeated condition (this is how all board/machine files are
@@ -299,42 +311,40 @@ in this repo:
   (invisible) symbol the user value is discarded (pitfall 2) — so a
   condition can silently fail to match for a reason that has nothing to
   do with scoping.
-- **The earliest-parsed default wins** for strings (`_node_ordered_string_default()`,
-  kconfiglib.py:~5613 — also used by the *value-computation* path at :~5010,
-  so it decides both the computed value and the min-config write). `boards/Kconfig`
-  is sourced at Kconfig:275, *before* `Kconfig.mmu_additions` (:277), so a
-  satisfied machine-type (`mmu_types/Kconfig`, :273) or board default
-  beats a feature file's later `default ""`.
+- **The earliest-parsed default wins** for strings (`Symbol._node_ordered_string_default()`,
+  called from both `Symbol.str_value` and `Symbol._str_default`, so it decides
+  both the computed value and the min-config write). The per-unit branch of
+  the root `Kconfig` sources `mmu_types/Kconfig`, then `boards/Kconfig`, ahead
+  of `Kconfig.mmu_additions` and the other feature files, so a satisfied
+  machine-type or board default beats a feature file's later `default ""`
+  (`test/installer/test_board_defaults.py` pins the board side of this).
+  Exception: the files the type files inline (the `Kconfig.capabilities`
+  bullet below) are parsed inside `mmu_types/`, *before* `boards/Kconfig`, so
+  for their symbols a satisfied default in the selected type's copy beats a
+  board's.
 - **`choice` members cannot come from another file.** A machine/board file may steer
   an *existing* choice with `default <CHOICE_MEMBER> if <cond>` only;
   the members themselves must be declared inside the `choice ... endchoice`
   block (per-gate variants in its `@repeat` block). Selection is
   first-satisfied over the merged `choice.defaults` list, in parse order
-  (`Choice._selection_from_defaults`, kconfiglib.py:~6130) — put the new
-  board-specific default line *above* the older, more general ones in that
-  order (for choices declared in a feature file, "above" is not the same as
-  "in an earlier-sourced file" — see the inlining bullet below).
-- **Feature files are inlined once per machine type.** Every
-  `mmu_types/Kconfig.*` (all 19, incl. `starters/`) sources
-  `Kconfig.mmu_additions` inside its own `if MMU_TYPE_X` block, wrapped in
-  `if SHOW_MMU_ADDITIONS_WITH_TYPE` (a `def_bool n`, no prompt, nothing
-  selects it — dormant UI option, root `Kconfig:~217`); the root also has a
-  fallback source at `Kconfig:~277` under `if !SHOW_MMU_ADDITIONS_WITH_TYPE`.
-  So a feature-file symbol has ~20 definition sites that all merge into ONE
-  object (for a choice: one shared Choice, `choice.defaults` accumulating in
-  parse order — introspect `kc.choices`, evaluate conditions with
-  module-level `kconfiglib.expr_value`; fork expr nodes are tuples, the tree
-  root is `kc.top_node`, line numbers are `linenr`). `_propagate_deps` ANDs
-  each copy's guards into its defaults, so while the dormant guard is n the
-  ~19 inlined copies' defaults are dead and the *live* general defaults are
-  the untyped root fallback's. Consequences: steering a feature-file choice
-  from anywhere in `mmu_types/` (sourced `Kconfig:~273`, before `:~277`) beats
-  the live general default — "above the older, more general ones" means
-  before the fallback copy in parse order, not "in an earlier-sourced file".
-  Keep the steering line above the type file's own additions source anyway
-  (it still wins if the dormant guard is ever enabled). This is also why a
-  `default ... if MMU_TYPE_X` left in the feature file happens to work:
-  the fallback copy carries it, first-satisfied.
+  (`Choice._selection_from_defaults`; the member must also be visible) —
+  a default in an earlier-sourced type or board file precedes the feature
+  file's own `default` lines (same exception as above); within one file, put the new board-specific
+  line *above* the older, more general ones.
+- **`Kconfig.capabilities` is inlined once per machine type.** Every
+  `mmu_types/Kconfig.*` (incl. `starters/`) sources it (and through it
+  `Kconfig.selector_type`, `Kconfig.bypass`, `Kconfig.filament_buffer`) inside its own
+  `if MMU_TYPE_X` / family block; some also source `Kconfig.num_gates` and
+  `servos/Kconfig` there. `Kconfig.mmu_additions` and the other feature files
+  are sourced only from the root. Each inlined copy is a definition site of
+  the same ONE object, and `_propagate_deps` ANDs the copy's type guard into
+  its defaults, so only the selected type's copy is live. To steer a
+  capabilities symbol from a type file, put the `default` line *above* that
+  file's own `source "Kconfig.capabilities"`. To see what actually merged,
+  introspect `sym.nodes` (parse order) or `kc.choices` (`choice.defaults`
+  accumulate in parse order) and evaluate conditions with module-level
+  `kconfiglib.expr_value`; fork expr nodes are tuples, the tree root is
+  `kc.top_node`, locations are `node.filename`/`node.linenr`.
 - **Board type and per-gate MCU are mutually exclusive in the tree.**
   `boards/Kconfig` sources `boards/per_gate/` (EBB Gen1 / SLB) *instead of*
   the normal board set when `MMU_HAS_PER_GATE_MCU` is set — so
@@ -365,18 +375,24 @@ in this repo:
    (a kconfiglib preprocessor function, `kconfigfunctions.py`, cached by
    mtime+size) and the load path both parse it. Tooling that rewrites value
    files must preserve the token.
-4. **`$(shell, ...)` is expensive.** The root Kconfig's serial/CAN discovery
-   macros are *parameterized* Make functions, so kconfiglib re-forks a shell
-   for **every reference** (~370 in one multi-unit parse; 22s of a 25s boot
-   before the harness's per-parse cache in `cfg.py::_install_shell_cache`).
-   Adding shell-heavy macros costs every menuconfig run — measure first, and
-   note the cache *must* stay scoped to one parse (env changes between
-   parses).
+4. **`$(shell, ...)` is expensive.** kconfiglib forks a shell each time a
+   `$(shell, ...)` is expanded, and a recursively-expanded (`=`)
+   *parameterized* macro re-expands on **every reference**. The root
+   Kconfig keeps its three discovery calls (serial devices, CAN interfaces,
+   CAN UUIDs) in simply-expanded `:=` variables, evaluated once per parse;
+   the per-gate lookups built on them (`serial_device`, `canbus_connection`,
+   ...) call Python preprocessor functions registered in the `functions`
+   dict of `kconfigfunctions.py` (tested by
+   `test/installer/test_kconfigfunctions.py`). Put a new deterministic
+   helper there, not in a `$(shell)` inside an `=` macro. The harness's
+   `_render_kconfig_cache` in `test/hh/cfg.py` reuses a parsed tree only
+   for an identical environment, because env changes between parses.
 5. **Makefile traps**: inline `#` comments pad values with leading spaces
-   (Makefile:3 — keep comments on their own line); any *new interactive*
-   make goal must be added to the `MAKECMDGOALS` exclusion list
-   (Makefile:39) or `--output-sync` buffers its prompt away; the value files
-   are `.PRECIOUS` (Makefile:183). `make variables` prints which interpreter
+   (see the comment at the top of the `Makefile` — keep comments on their
+   own line); any *new interactive* make goal must be added to the
+   `$(filter ...,$(MAKECMDGOALS))` exclusion list in the output-sync probe
+   or `--output-sync` buffers its prompt away; the value files are
+   `.PRECIOUS`. `make variables` prints which interpreter
    each half (test vs installer) settled on.
 6. **`Kconfig` resolves via `srctree`**: the Makefile exports
    `srctree := $(SRC)/installer`, which is why `make menuconfig Kconfig`
@@ -392,16 +408,16 @@ in this repo:
    survive verbatim (marked `# !! HAPPY HARE PARSE ERROR`) but lines in the
    HH-generated files are *lost* because those files are regenerated from
    templates. Loud warnings on both.
-9. **Array grouping can clobber a same-named scalar in `as_dict()`.**
-   `FOO_0..N` are grouped into `result["FOO"]` in a post-pass that runs
-   *after* the per-symbol loop, so a multi-element list silently overwrites
-   a non-indexed scalar `FOO` stored earlier (and Jinja then renders the
-   list's repr instead of the value). If a board file re-declares per-gate
-   indexed symbols, gate them on exactly the conditions the feature file
-   uses (e.g. `MMU_HAS_PER_GATE_NFC_READERS` && `PARAM_NUM_GATES > $(i)`) so
-   they only exist when the feature file defines them anyway. (Singletons
-   get ungrouped, so a clobber needs ≥2 — which `@repeat` happily
-   provides.)
+9. **Array grouping changes the shape of `as_dict()`.** `FOO_0..N` are
+   collected in a post-pass into `result["FOO_"]`, and the individual
+   `FOO_<n>` keys are not emitted — except a singleton, which is restored
+   under its own name. So a second symbol with the same prefix turns a
+   template's `[[FOO_0]]` into an undefined name, and a list key could
+   overwrite a scalar literally named `FOO_`. `as_dict()` iterates every
+   defined symbol, whether or not its `if` conditions hold, so conditions
+   don't prevent this: if a board file re-declares per-gate indexed
+   symbols, re-declare only the names the feature file already declares
+   (a re-declaration merges; a new index is a new list element).
 10. **`@repeat` is a per-parse multiplier — use sparingly.** It is a
    line-level preprocessor (reference item 6): the body is duplicated
    `max-min+1` times on *every* `Kconfig()` construction, uncached (multi-
