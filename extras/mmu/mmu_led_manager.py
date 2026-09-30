@@ -584,7 +584,7 @@ class MmuLedManager:
 
         # Get raw "LEDS=" spec to stop an effect on virtual chain for given segment
         def led_chain_spec(unit, segment):
-            return 'unit%d_mmu_%s_leds' % (unit, segment)
+            return '%s_mmu_%s_leds' % (self.mmu_machine.get_mmu_unit_by_index(unit).name, segment)
 
         # Get specific LEDS=" spec to stop an effect on whole segment or gate part of segment
         def effect_leds_spec(unit, segment, gate):
