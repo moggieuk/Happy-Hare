@@ -628,5 +628,33 @@ class TestPendingOverlay(LedTestCase):
         self.assertIsNone(self.overlay('exit'))
 
 
+class TestUnitsNotNamedByIndex(unittest.TestCase):
+    """
+    Virtual chains are named after the unit ('<unit>_mmu_<segment>_leds'), so painting
+    must not assume units are called unit0, unit1, ...
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        profile = profiles.clone_across_units(
+            'leds_named_units', LEDS_OPTIONAL_RGB, ['left', 'right'])
+        cls.hh = session(profile)
+        cls.hh.boot()
+        cls.hh.reactor.advance(WARMUP)
+        cls.hh.run_gcode('MMU_LED ANIMATION=0')
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def test_each_named_unit_is_painted(self):
+        leds = self.hh.mmu.led_manager
+        for index, unit in enumerate(self.hh.mmu.mmu_machine.units):
+            with self.subTest(unit=unit.name):
+                leds._set_led(index, None, exit_effect=(0.1, 0.2, 0.3))
+                chain = unit.leds.virtual_chains['exit']
+                self.assertEqual(chain.get_status()['color_data'], [(0.1, 0.2, 0.3, 0.)] * 4)
+
+
 if __name__ == '__main__':
     unittest.main()
