@@ -68,7 +68,7 @@ class BaseSelector:
 
     # Prevent overriding of methods with physical gate number as parameter
     # It is important and all selector logic works with local gates
-    _final_methods = {"select_gate, restore_gate"}
+    _final_methods = {"select_gate", "restore_gate"}
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
