@@ -72,13 +72,13 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
           Enter the name of shared sync-feedback buffer. If fitting a second MMU it is likely
           the buffer will be shared if it is after the bowden combiner near the toolhead.
 
-          If this is the second mmu unit it is likely that the name of the existing buffer
-          is 'unit0' (default name)
+          A buffer is always named after the unit that owns it, so this is that unit's
+          name (e.g. 'unit0')
     endif
 
     if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
       config PARAM_SYNC_FEEDBACK_BUFFER_NAME
-        string "Sync feedback buffer name        "
+        string
         default UNIT_NAME
 
       config PARAM_BUFFER_RANGE

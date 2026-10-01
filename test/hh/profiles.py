@@ -590,50 +590,36 @@ ENCODER = BOXTURTLE_TEST.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
-# A machine whose encoder is named off the UNIT_NAME default, which is what a user gets by
-# typing into the "Encoder name" prompt instead of accepting 'unit0'. unit0 owns the encoder
-# and calls it 'headcoder'; unit1 declares itself a sharer of that same name.
+# Two BoxTurtles where unit1 shares unit0's encoder AND buffer through the "Shared with
+# existing unit?" flags. A component's section is always named after the unit that owns it,
+# so the sharer names the owning unit and renders neither section of its own.
 #
-# What ONLY this covers: a component is named in TWO places in the generated config - the
-# `encoder : X` line in [mmu_unit] and the `[mmu_encoder X]` section that defines it - and
-# both have to follow the name that was typed. When they disagreed the config contradicted
-# itself and config load died with "Encoder section [mmu_encoder headcoder] not found!"
-# (extras/mmu/mmu_unit.py:501).
-#
-# Distinct from ENCODER_SHARED below, which shares by NAME alone: there both units claim an
-# encoder, so unit1's own section renders and is simply never instantiated. This is the
-# other shape - MMU_SHARED_ENCODER, which suppresses the section on the sharer - and nothing
-# else in the suite sets that flag, because nothing else could: a sharer rendered
-# `gate_endstop_to_encoder :` with no value and refused to load at all.
+# gate_endstop_to_encoder is a per-unit distance, so unit1 sets its own (25) rather than the
+# 10 unit0 gets by default.
 #
 # A test fixture, not a machine anyone would run, so - like the buffer and dual-extruder
 # variants - it is deliberately absent from the registry and the console picker.
 # PB7 rather than the ENCODER profile's PA6, which that profile spends on an espooler pin;
 # the fake klipper does not care about a double-booked pin, but a fixture that claims to
 # model a real machine should not carry one.
-SHARED_ENCODER_RENAMED = Profile(
-    'shared_encoder_renamed',
+SHARED_ENCODER = Profile(
+    'shared_encoder',
     units=[
         UnitProfile('unit0', index=0, syms=dict(
-            ENCODER.syms, PIN_ENCODER='unit0:PB7',
-            PARAM_ENCODER_NAME='headcoder')),
+            ENCODER.syms, PIN_ENCODER='unit0:PB7')),
         UnitProfile('unit1', index=1, syms=dict(
-            ENCODER.syms, PIN_ENCODER='unit1:PB7',
-            MMU_SHARED_ENCODER=True, PARAM_ENCODER_NAME='headcoder')),
+            {k: v for k, v in ENCODER.syms.items() if k != 'PIN_ENCODER'},
+            MMU_SHARED_ENCODER=True, PARAM_ENCODER_NAME='unit0',
+            MMU_SHARED_SYNC_FEEDBACK_BUFFER=True, PARAM_SYNC_FEEDBACK_BUFFER_NAME='unit0',
+            PARAM_GATE_ENDSTOP_TO_ENCODER=25)),
     ],
-    description="two BoxTurtles sharing an encoder renamed 'headcoder'")
+    description="two BoxTurtles, unit1 sharing unit0's encoder and buffer")
 
 # Two encoder-only units sharing one [mmu_encoder] (the [mmu_unit] `encoder` key is
-# shareable). No buffers, so flowguard_active is a pure encoder flag. unit1 points at
-# unit0's encoder via PARAM_ENCODER_NAME rather than via MMU_SHARED_ENCODER, so BOTH units
-# claim an encoder and BOTH render a section - now under the same name, since a section is
-# named after the encoder rather than after the unit, and the two collapse into one with
-# only the sharer's encoder_pin surviving. Still the right machine for the question it was
-# built for (a non-owning unit must not disarm the shared encoder's FlowGuard), but note
-# that a real machine should set MMU_SHARED_ENCODER on unit1 instead - that suppresses
-# unit1's section entirely, so there is nothing to collide. SHARED_ENCODER_RENAMED above is
-# that shape. Gates home to the encoder and the toolhead has entry and toolhead sensors so
-# the profile can load, and therefore run toolchanges in a print.
+# shareable). No buffers, so flowguard_active is a pure encoder flag. unit1 shares unit0's
+# encoder via MMU_SHARED_ENCODER, so only unit0 renders a section. Gates home to the encoder
+# and the toolhead has entry and toolhead sensors so the profile can load, and therefore run
+# toolchanges in a print.
 ENCODER_SHARED = Profile(
     'encoder_shared',
     syms={
@@ -653,8 +639,8 @@ ENCODER_SHARED = Profile(
         UnitProfile('unit1', index=1, syms={
             'MMU_TYPE_TRADRACK_1_0': True,
             'MMU_HAS_ENCODER': True,
-            'PIN_ENCODER': 'mcu:PA7',                    # dead section - see note above
-            'PARAM_ENCODER_NAME': 'unit0',               # the share
+            'MMU_SHARED_ENCODER': True,                  # the share
+            'PARAM_ENCODER_NAME': 'unit0',
             'BOOL_FLOWGUARD_ENCODER_MODE': True,
             'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True,
         }),

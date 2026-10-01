@@ -1214,24 +1214,16 @@ class TestMultiUnitRender(unittest.TestCase):
                              'leaked out of _env()' % name)
 
 
-# A component name appears TWICE in the generated config: the `encoder : X` / `buffer : X`
-# line in [mmu_unit] that points at it, and the `[mmu_encoder X]` / `[mmu_buffer X]` section
-# that defines it. Both have to follow the name the user typed in menuconfig.
-#
-# While only the first did, renaming a component produced a config that looked right at the
-# top of the file and contradicted itself below it - the definition kept the default section
-# name, so the reference dangled and config load raised "Encoder section [mmu_encoder
-# headcoder] not found!" (extras/mmu/mmu_unit.py:501).
-class TestCustomNamedComponents(unittest.TestCase):
+# A component is named in TWO places in the generated config: the `encoder : X` /
+# `buffer : X` line in [mmu_unit] and the `[mmu_encoder X]` / `[mmu_buffer X]` section that
+# defines it. The section is always named after the owning unit, and only a unit sharing
+# another's component chooses the name it points at, so the two cannot disagree.
+class TestComponentNames(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.shared = cfg.render(profiles.SHARED_ENCODER_RENAMED)
+        cls.shared = cfg.render(profiles.SHARED_ENCODER)
         cfg.assert_sane(cls.shared)
-
-    @staticmethod
-    def _named(syms):
-        return profiles.get('boxturtle').derive('custom_named', syms=syms)
 
     @staticmethod
     def _declared(hardware, unit, option):
@@ -1239,76 +1231,79 @@ class TestCustomNamedComponents(unittest.TestCase):
         parser = cfg.assemble({'mmu_hardware': hardware}, macros=False)
         return dict(parser.items('mmu_unit %s' % unit))[option]
 
-    def test_a_renamed_encoder_and_buffer_are_defined_under_that_name(self):
-        """
-        The reported case, single unit: the names in [mmu_unit] and the sections that
-        define them have moved together.
-        """
-        rendered = cfg.render(self._named({
+    def test_an_owned_component_is_named_after_its_unit(self):
+        rendered = cfg.render(profiles.get('boxturtle').derive('owned_names', syms={
             'MMU_HAS_ENCODER': True,
             'PIN_ENCODER': 'unit0:PB7',
-            'PARAM_ENCODER_NAME': 'headcoder',
-            'PARAM_SYNC_FEEDBACK_BUFFER_NAME': 'shared_bowden_buffer',
         }))
         cfg.assert_sane(rendered)
         sections = cfg.sections(rendered[HARDWARE])
-        self.assertIn('mmu_encoder headcoder', sections)
-        self.assertIn('mmu_buffer shared_bowden_buffer', sections)
-        self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', 'encoder'),
-                         'headcoder')
-        self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', 'buffer'),
-                         'shared_bowden_buffer')
+        for kind in ('encoder', 'buffer'):
+            with self.subTest(kind=kind):
+                self.assertIn('mmu_%s unit0' % kind, sections)
+                self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', kind), 'unit0')
 
-    def test_the_default_name_is_still_the_unit_name(self):
+    def test_a_name_saved_by_an_older_install_is_reset_on_upgrade(self):
         """
-        The upgrade guard on the other side. PARAM_*_NAME defaults to UNIT_NAME, so an
-        untouched machine must render exactly what it rendered before - byte for byte - or
-        every existing single-unit install gets a config diff it did not ask for.
+        Older installs prompted for these names on an owning unit, so .mmu_config may hold
+        one. The symbol is now promptless there, and the olddefconfig pass a stale config
+        gets on upgrade writes it back out as its UNIT_NAME default.
         """
-        rendered = cfg.render(self._named({
-            'MMU_HAS_ENCODER': True,
-            'PIN_ENCODER': 'unit0:PB7',
-        }))
-        sections = cfg.sections(rendered[HARDWARE])
-        self.assertIn('mmu_encoder unit0', sections)
-        self.assertIn('mmu_buffer unit0', sections)
-        self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', 'encoder'), 'unit0')
-        self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', 'buffer'), 'unit0')
+        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
+            kc = cfg._kconfig('stale_names', dict(
+                profiles.get('boxturtle').syms,
+                MMU_HAS_ENCODER=True,
+                PIN_ENCODER='unit0:PB7',
+                PARAM_ENCODER_NAME='headcoder',
+                PARAM_SYNC_FEEDBACK_BUFFER_NAME='shared_bowden_buffer'))
+            path = os.path.join(tmp, '.mmu_config')
+            kc.write_config(path)
+            with open(path) as handle:
+                saved = [line.strip() for line in handle if '_NAME=' in line]
+        self.assertIn('CONFIG_PARAM_ENCODER_NAME="unit0"', saved)
+        self.assertIn('CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="unit0"', saved)
 
-    def test_only_the_owning_unit_defines_the_shared_component(self):
-        """
-        The other half of a shared component: the sharer points at a section it does not
-        declare. Two definitions across the render would be a second, independent machine.
-        """
+    def test_only_the_owning_unit_defines_a_shared_component(self):
+        """The sharer points at the owner's sections and renders none of its own."""
         owner = self.shared['config/base/mmu_hardware_unit0.cfg']
         sharer = self.shared['config/base/mmu_hardware_unit1.cfg']
-        self.assertIn('mmu_encoder headcoder', cfg.sections(owner))
-        self.assertNotIn('mmu_encoder headcoder', cfg.sections(sharer))
-        self.assertEqual(self._declared(owner, 'unit0', 'encoder'), 'headcoder')
-        self.assertEqual(self._declared(sharer, 'unit1', 'encoder'), 'headcoder')
+        for kind in ('encoder', 'buffer'):
+            with self.subTest(kind=kind):
+                self.assertIn('mmu_%s unit0' % kind, cfg.sections(owner))
+                self.assertEqual(
+                    [s for s in cfg.sections(sharer) if s.startswith('mmu_%s ' % kind)], [])
+                self.assertEqual(self._declared(owner, 'unit0', kind), 'unit0')
+                self.assertEqual(self._declared(sharer, 'unit1', kind), 'unit0')
 
-    def test_a_sharer_omits_the_encoder_offset_it_has_no_prompt_for(self):
-        """
-        The rest of the same failure, and the reason a sharing unit could not boot even
-        once the section name was right.
-
-        PARAM_GATE_ENDSTOP_TO_ENCODER is defined only inside Kconfig.encoder's
-        `if !MMU_SHARED_ENCODER` branch, so on a sharer it is invisible, the template's
-        `[[PARAM_GATE_ENDSTOP_TO_ENCODER]]` rendered as NOTHING, and getfloat() refused the
-        resulting `gate_endstop_to_encoder :` with "Unable to parse option" at config load.
-
-        Not asserted as "no option may be empty" - gate_preload_endstop is empty on purpose
-        ("blank inherits gate_homing_endstop"), and telling those apart option by option is
-        the template's job rather than this test's. The value the omission falls back to is
-        asserted where it is actually read, in test_mmu_bootup.py.
-        """
-        for unit, expected in (('unit0', '10'), ('unit1', None)):
+    @staticmethod
+    def _encoder_offsets(rendered):
+        offsets = {}
+        for unit in ('unit0', 'unit1'):
             name = 'config/base/mmu_parameters_%s.cfg' % unit
-            params = dict(cfg.assemble({name: self.shared[name]},
-                                       macros=False).items(
-                                           'mmu_unit_parameters %s' % unit))
-            with self.subTest(unit=unit):
-                self.assertEqual(params.get('gate_endstop_to_encoder'), expected)
+            params = dict(cfg.assemble({name: rendered[name]}, macros=False).items(
+                'mmu_unit_parameters %s' % unit))
+            offsets[unit] = params.get('gate_endstop_to_encoder')
+        return offsets
+
+    def test_a_sharer_sets_its_own_encoder_offset(self):
+        """gate_endstop_to_encoder is per unit, so a sharer's own value is rendered."""
+        self.assertEqual(self._encoder_offsets(self.shared), {'unit0': '10', 'unit1': '25'})
+
+    def test_a_sharer_gets_its_own_encoder_offset_default(self):
+        """
+        With no value set, the sharer gets the Kconfig default from its own exit sensor.
+        The harness renders explicit values even on hidden symbols, so only the default
+        shows whether the prompt is visible on a sharer: hidden, it rendered as an empty,
+        unparsable `gate_endstop_to_encoder :`.
+        """
+        owner, sharer = profiles.SHARED_ENCODER.units
+        syms = dict(sharer.syms)
+        del syms['PARAM_GATE_ENDSTOP_TO_ENCODER']
+        rendered = cfg.render(profiles.SHARED_ENCODER.derive(
+            'shared_encoder_default_offset',
+            units=[owner, profiles.UnitProfile('unit1', syms, index=1)]))
+        cfg.assert_sane(rendered)
+        self.assertEqual(self._encoder_offsets(rendered), {'unit0': '10', 'unit1': '10'})
 
 
 class TestSelectorTypeChoice(unittest.TestCase):

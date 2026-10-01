@@ -5,8 +5,7 @@
 #   MMU_SHARED_ENCODER
 #   PARAM_ENCODER_NAME
 #   PARAM_ENCODER_RESOLUTION
-#   PARAM_GATE_ENDSTOP_TO_ENCODER (also 'and not MMU_SHARED_ENCODER' - prompted for the
-#     owning unit only, so on a sharer the token renders as an empty option)
+#   PARAM_GATE_ENDSTOP_TO_ENCODER
 #   PIN_ENCODER (duplicate with pins)
 #   PARAM_BOWDEN_APPLY_CORRECTION
 #   PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
@@ -49,23 +48,20 @@ if MMU_HAS_ENCODER
 
     if MMU_SHARED_ENCODER
       config PARAM_ENCODER_NAME
-        string "Shared encoder name             "
+        prompt "Shared encoder name             "
         default "-specify name-"
         help
           Enter the name of shared encoder. A shared encoder must be see the filament from
           each MMU and thus is not a common setup.
 
-          If this is the second mmu unit it is likely that the name of the existing encoder
-          is 'unit0' (default name)
+          An encoder is always named after the unit that owns it, so this is that unit's
+          name (e.g. 'unit0')
     endif
 
     if !MMU_SHARED_ENCODER
       config PARAM_ENCODER_NAME
-        string "Encoder name"
+        string
         default UNIT_NAME
-        help
-          The name of the klipper object for this encoder. Unless it is going to be shared
-          across multiple MMU units it is recommended to use the unit name.
 
       choice CHOICE_ENCODER_TYPE
         prompt "Type"
@@ -115,17 +111,6 @@ if MMU_HAS_ENCODER
         default 1.0    if CHOICE_ENCODER_TYPE_OTHER
         default 1.0
 
-      config PARAM_GATE_ENDSTOP_TO_ENCODER
-        float "Gate endstop to encoder distance"
-        default 10 if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
-        default 0
-        help
-          The distance from the gate endstop to when the encoder "sees" the filament.
-          If the gate endstop is the encoder then this is ignored, however, if using
-          a shared_exit endstop we need to know how much of the movement is not
-          seen by the encoder. If this is not set the encoder will always measure
-          less that the actual movement.
-
       config PIN_ENCODER
         prompt "Encoder pin                     "
         validator "$(pin_validator)"
@@ -142,6 +127,18 @@ if MMU_HAS_ENCODER
           just the visibility in UI's
 
     endif
+
+    config PARAM_GATE_ENDSTOP_TO_ENCODER
+      float "Gate endstop to encoder distance"
+      default 10 if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
+      default 0
+      help
+        The distance from the gate endstop to when the encoder "sees" the filament.
+        If the gate endstop is the encoder then this is ignored, however, if using
+        a shared_exit endstop we need to know how much of the movement is not
+        seen by the encoder. If this is not set the encoder will always measure
+        less that the actual movement. Set on every unit, including one that
+        shares another unit's encoder, because each unit has its own gate endstop.
 
     comment "_"
     comment "_Bowden movement"
