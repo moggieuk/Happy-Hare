@@ -1911,5 +1911,47 @@ class TestLedChainReferencesResolve(unittest.TestCase):
         self.assertEqual(len(self._unresolved(profile)), 3)
 
 
+class TestPerGateEffectsDefinedOnGates(unittest.TestCase):
+    """
+    mmu_led_manager.py paints these effects per gate (as '<effect>_<segment>_<gate>'), and
+    mmu_led_effect.py only creates the per-gate instances when define_on is empty or lists
+    'gates'. An effect assigned to one of these actions but defined only on whole segments
+    renders fine and then fails to light anything - EMU's effect_checking used
+    mmu_breathing_white_fast, which was defined on 'exit, status' only.
+    """
+
+    PER_GATE_ACTIONS = (
+        'checking', 'preloading', 'gate_selected',
+        'gate_available', 'gate_available_sel',
+        'gate_unknown', 'gate_unknown_sel',
+        'gate_empty', 'gate_empty_sel',
+        'pending_spoolid', 'pending_spoolid_expiring',
+    )
+
+    def _not_on_gates(self, profile):
+        parser = cfg.assemble(cfg.render(profile))
+        bad = []
+        for sec in parser.sections():
+            if not sec.startswith('mmu_leds '):
+                continue
+            items = dict(parser.items(sec))
+            for action in self.PER_GATE_ACTIONS:
+                effect = items.get('effect_' + action, '').split(',')[0].strip()
+                effect_sec = 'mmu_led_effect ' + effect
+                if not effect or not parser.has_section(effect_sec):
+                    continue
+                define_on = parser.get(effect_sec, 'define_on', fallback='')
+                segments = [s.strip() for s in define_on.split(',') if s.strip()]
+                if segments and 'gates' not in segments:
+                    bad.append('%s.effect_%s -> %s (define_on: %s)'
+                               % (sec, action, effect, define_on))
+        return bad
+
+    def test_every_per_gate_effect_is_defined_on_gates(self):
+        for profile in profiles.CONSOLE_PROFILES:
+            with self.subTest(profile=profile.name):
+                self.assertEqual(self._not_on_gates(profile), [])
+
+
 if __name__ == '__main__':
     unittest.main()
