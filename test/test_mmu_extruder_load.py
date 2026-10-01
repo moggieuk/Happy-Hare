@@ -131,6 +131,20 @@ class TestProportionalBuffer(GripCheckCases, ExtruderLoadTestCase):
     SESSION_KWARGS = {'virtual_nfc': True}
     GRIP_CHECK = 'extruder grip confirmed'
 
+    def test_load_fails_when_the_extruder_doesnt_grip(self):
+        move_filament = self.mmu.move_filament
+
+        def slipping_probe(trace_str, dist, *args, **kwargs):
+            if trace_str.startswith('Proportional extruder entry validation step'):
+                return dist, False, 0., dist # Extruder spins without moving the filament
+            return move_filament(trace_str, dist, *args, **kwargs)
+
+        with patch.object(self.mmu, 'move_filament', side_effect=slipping_probe):
+            with self.assertRaises(AssertionError): # Never reaches the move to the nozzle
+                self.load_with_encoder_reading(1.0)
+        self.assertTrue(self.nozzle_failures('proportional buffer did not relax'), self.hh.errors)
+        self.assertNotEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
+
 
 if __name__ == '__main__':
     unittest.main()

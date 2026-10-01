@@ -36,10 +36,12 @@ FRAGMENT = 10.0
 
 class UnloadTestCase(unittest.TestCase):
     PROFILE = '3ms'
+    SESSION_KWARGS = {}
     DISABLE_SENSORS = ()
+    LOAD_CONFIG = ''
 
     def setUp(self):
-        self.hh = session(self.PROFILE)
+        self.hh = session(self.PROFILE, **self.SESSION_KWARGS)
         self.hh.boot(calibrate=True)
         self.addCleanup(self.hh.close)
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
@@ -49,6 +51,8 @@ class UnloadTestCase(unittest.TestCase):
         self.hh.run_gcode('MMU_PRELOAD GATE=0')
         self.hh.heat_extruder(220)
         self.hh.mmu.select_gate(0)
+        if self.LOAD_CONFIG:
+            self.hh.run_gcode('MMU_TEST_CONFIG ' + self.LOAD_CONFIG)
         self.hh.run_gcode('MMU_LOAD')
         self.assertEqual(self.hh.errors, [], 'load was not clean')
         for sensor in self.DISABLE_SENSORS:
@@ -241,6 +245,36 @@ class TestEncoderCheck(UnloadTestCase):
         self.set_level(2)
         self.unload()
         self.assertTrue(any('Encoder not sensing any movement' in e for e in self.hh.errors), self.hh.errors)
+
+
+class TestProportionalCheck(UnloadTestCase):
+    """Without toolhead sensors a tension-sprung proportional buffer probes the extruder grip"""
+    PROFILE = 'quattrobox_v2'
+    SESSION_KWARGS = {'virtual_nfc': True}
+    LOAD_CONFIG = 'toolhead_entry_tension_test=0'
+
+    def setUp(self):
+        super().setUp()
+        move_filament = self.hh.mmu.move_filament
+        prop = self.hh.sensor('filament_proportional')
+
+        def extruder_still_grips(trace_str, dist, *args, **kwargs):
+            result = move_filament(trace_str, dist, *args, **kwargs)
+            if trace_str == 'Unloading extruder':
+                prop.feed(prop.neutral_value()) # Synced unload relaxes the buffer
+            elif trace_str.startswith('Proportional unload validation step'):
+                prop.feed(prop._extreme_value())
+            return result
+
+        patcher = mock.patch.object(self.hh.mmu, 'move_filament', side_effect=extruder_still_grips)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_pause_reports_the_grip_without_promising_to_continue(self):
+        self.set_level(2)
+        self.unload()
+        self.assertTrue(any('extruder is still gripping' in e for e in self.hh.errors), self.hh.errors)
+        self.assertFalse([w for w in self.warnings if 'Will attempt to continue' in w], self.warnings)
 
 
 class TestThreshold(UnloadTestCase):
