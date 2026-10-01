@@ -22,7 +22,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-import logging, importlib, math, os, time, re, traceback
+import logging, importlib, math, os, time, re, traceback, contextlib
 
 from dataclasses                        import dataclass, replace
 from itertools                          import chain
@@ -140,8 +140,8 @@ class MmuUnit:
         self.filament_buffer =             bool(config.getint('filament_buffer', profile.filament_buffer))
         self.gear_rotates_spool =          bool(config.getint('gear_rotates_spool', profile.gear_rotates_spool))
 
-        # Can selector mechanism allow selection of other gates on unit when filament is loaded
-        self.can_crossload = self.selector_type in [SELECTOR_VIRTUAL, SELECTOR_SERVO, SELECTOR_INDEXED, SELECTOR_MACRO, SELECTOR_ROTARY]
+        # When set, gate selections switch the active gate/drive without moving the selector (see wrap_hold_selector)
+        self.selector_held = False
 
 
         # ---------------------------------------------------------------------------------------------------
@@ -794,6 +794,49 @@ class MmuUnit:
 
     def gate_range(self):
         return list(range(self.first_gate, self.first_gate + self.num_gates))
+
+
+    @property
+    def can_crossload(self):
+        """
+        Whether other gates on this unit can be operated while filament is loaded. A type-C
+        selector can't move with filament loaded, so it crossloads in place: other gates must
+        home to their own exit sensor and park behind it, short of the selector.
+        """
+        if self.selector_type == SELECTOR_LINEAR_MULTI_GEAR:
+            return (
+                self.p.gate_preload_endstop == SENSOR_EXIT_PREFIX
+                and self.p.gate_preload_parking_distance < 0
+                and self.sensors is not None
+                and all(self.sensors.exit_sensors.get(gate) is not None for gate in self.gate_range())
+            )
+        return self.selector_type in [SELECTOR_VIRTUAL, SELECTOR_SERVO, SELECTOR_INDEXED, SELECTOR_MACRO, SELECTOR_ROTARY]
+
+
+    def crossload_in_place(self, gate):
+        """
+        True if operating on 'gate' is a type-C crossload, where the selector must stay put
+        because this unit has filament from another gate (or the bypass) loaded through it.
+        """
+        return (
+            self.selector_type == SELECTOR_LINEAR_MULTI_GEAR
+            and self.mmu.filament_pos != FILAMENT_POS_UNLOADED
+            and self is self.mmu.mmu_unit()
+            and gate != self.mmu.gate_selected
+        )
+
+
+    @contextlib.contextmanager
+    def wrap_hold_selector(self, hold=True):
+        """
+        Hold this unit's selector in place for the enclosed gate selections. hold=False is a no-op.
+        """
+        prev = self.selector_held
+        self.selector_held = prev or hold
+        try:
+            yield self
+        finally:
+            self.selector_held = prev
 
 
     def local_gate(self, gate, force_physical=False):

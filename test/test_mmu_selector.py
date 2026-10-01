@@ -37,6 +37,7 @@ FILAMENT_POS_LOADED = 10
 FILAMENT_POS_UNKNOWN = -1
 GATE_UNKNOWN = -1
 TOOL_GATE_UNKNOWN = -1
+GATE_AVAILABLE = 1
 TIP_AT_GATE = -40.0             # past the entry switch: where a user's push leaves it
 
 # mmu_constants.py:209-211, mirrored here for the same reason FILAMENT_POS_* is
@@ -62,6 +63,26 @@ LINEAR_MULTI_GEAR = Profile(
     },
     description='custom four-gate LinearMultiGearSelector with a separate selector driver')
 
+# Type-C with an independent exit sensor after every gear: the shape that can crossload by
+# driving another gate's own gear while the selector stays aligned with the loaded gate.
+LINEAR_MULTI_GEAR_EXIT = LINEAR_MULTI_GEAR.derive(
+    'linear_multi_gear_exit',
+    syms={
+        'MMU_HAS_SENSOR_EXIT': True,
+        'CHOICE_GATE_PRELOAD_ENDSTOP_EXIT': True,
+        'PARAM_GATE_PRELOAD_PARKING_DISTANCE': -10,
+    },
+    description='custom four-gate LinearMultiGearSelector with per-gate exit sensors')
+
+LINEAR_MULTI_GEAR_EXIT_NFC = LINEAR_MULTI_GEAR_EXIT.derive(
+    'linear_multi_gear_exit_nfc',
+    syms={
+        'CHOICE_GATE_HOMING_ENDSTOP_EXIT': True,
+        'MMU_HAS_NFC_READER': True,
+        'MMU_HAS_PER_GATE_NFC_READERS': True,
+    },
+    description='custom four-gate LinearMultiGearSelector with per-gate exit sensors and NFC readers')
+
 MACRO_SELECTOR = Profile(
     'macro_selector',
     syms={
@@ -85,9 +106,10 @@ class SelectorTestCase(unittest.TestCase):
 
     PROFILE = None
     HOME_UNITS = (0,)
+    SESSION_KWARGS = {}
 
     def setUp(self):
-        self.hh = session(self.PROFILE)
+        self.hh = session(self.PROFILE, **self.SESSION_KWARGS)
         self.hh.boot()
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
         self.seeded = self.hh.calibrate()
@@ -231,6 +253,289 @@ class TestLinearMultiGearSelector(SelectorTestCase):
         self.assertEqual(loaded, FILAMENT_POS_LOADED)
         self.assertEqual(unloaded, FILAMENT_POS_UNLOADED)
         self.assertEqual(self.hh.errors, [])
+
+
+class LinearMultiGearCrossloadCase(SelectorTestCase):
+    """
+    Type-C crossload: with gate 0 loaded through the selector, operations on another gate must
+    use that gate's own gear and leave the selector exactly where it is. The carriage ending
+    where it started is not enough - selecting the gate and restoring would also do that - so
+    every selector move is recorded.
+    """
+
+    LOADED_GATE = 0
+    OTHER_GATE = 2
+
+    def setUp(self):
+        super().setUp()
+        self.loaded_gate_0()
+        self.fil = self.hh.filament()
+        self.moves = []
+        selector = self.selector('unit0')
+        real_move = selector.move
+
+        def recording_move(trace_str, new_pos, *args, **kwargs):
+            self.moves.append(new_pos)
+            return real_move(trace_str, new_pos, *args, **kwargs)
+        selector.move = recording_move
+
+    def loaded_gate_0(self):
+        self.hh.place_filament(self.LOADED_GATE, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.LOADED_GATE)
+        self.hh.run_gcode('MMU_SELECT GATE=%d' % self.LOADED_GATE)
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(self.hh.errors, [])
+
+    def assert_loaded_state_preserved(self, loaded_tip):
+        mmu = self.hh.mmu
+        self.assertEqual(self.moves, [], 'selector moved while filament was loaded through it')
+        self.assertEqual(mmu.gate_selected, self.LOADED_GATE)
+        self.assertEqual(mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(self.fil.tip[self.LOADED_GATE], loaded_tip)
+
+
+
+class TestLinearMultiGearCrossload(LinearMultiGearCrossloadCase):
+
+    PROFILE = LINEAR_MULTI_GEAR_EXIT
+
+    def test_type_c_is_crossload_capable(self):
+        self.assertTrue(self.hh.mmu.mmu_unit(0).can_crossload)
+
+    def test_can_crossload_follows_live_config(self):
+        unit = self.hh.mmu.mmu_unit(0)
+        for param, unsafe, safe in (
+                ('gate_preload_parking_distance', '5', '-10'),
+                ('gate_preload_endstop', 'none', 'mmu_exit')):
+            with self.subTest(param=param):
+                self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 %s=%s' % (param, unsafe))
+                self.assertFalse(unit.can_crossload)
+                self.assertFalse(unit.get_status(0)['can_crossload'])
+                self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 %s=%s' % (param, safe))
+                self.assertTrue(unit.can_crossload)
+                self.assertEqual(self.hh.errors, [])
+
+    def test_preload_other_gate_holds_selector(self):
+        loaded_tip = self.fil.tip[self.LOADED_GATE]
+        self.hh.place_filament(self.OTHER_GATE, position=TIP_AT_GATE)
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.OTHER_GATE)
+
+        self.assertEqual(self.hh.errors, [])
+        self.assert_loaded_state_preserved(loaded_tip)
+        self.assertEqual(self.hh.mmu.gate_status[self.OTHER_GATE], GATE_AVAILABLE)
+        # Homed to its own exit sensor (0.0) and retracted behind it
+        self.assertAlmostEqual(self.fil.tip[self.OTHER_GATE], -10.0, places=1)
+
+    def test_eject_other_gate_holds_selector(self):
+        loaded_tip = self.fil.tip[self.LOADED_GATE]
+        self.hh.place_filament(self.OTHER_GATE, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.OTHER_GATE)
+        parked = self.fil.tip[self.OTHER_GATE]
+
+        self.hh.run_gcode('MMU_EJECT GATE=%d' % self.OTHER_GATE)
+
+        self.assertEqual(self.hh.errors, [])
+        self.assert_loaded_state_preserved(loaded_tip)
+        self.assertLess(self.fil.tip[self.OTHER_GATE], parked)
+
+    def test_selector_tracks_true_position_after_crossload(self):
+        """After unloading, selecting the crossloaded gate is a real move from the loaded gate."""
+        self.hh.place_filament(self.OTHER_GATE, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.OTHER_GATE)
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.hh.run_gcode('MMU_SELECT GATE=%d' % self.OTHER_GATE)
+
+        selector, axis = self.selector('unit0'), self.axis('unit0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertAlmostEqual(axis.carriage, selector.selector_offsets[self.OTHER_GATE], places=3)
+
+    def assert_preload_refused(self, message='Filament is loaded'):
+        loaded_tip = self.fil.tip[self.LOADED_GATE]
+        self.hh.place_filament(self.OTHER_GATE, position=TIP_AT_GATE)
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.OTHER_GATE)
+
+        self.assertEqual(self.fil.history, [], 'a refused crossload must not move filament')
+        self.assert_loaded_state_preserved(loaded_tip)
+        self.assertTrue(any(message in e for e in self.hh.errors), self.hh.errors)
+
+    def test_preload_refused_when_parking_past_exit_sensor(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_parking_distance=5')
+        self.assert_preload_refused()
+
+    def test_preload_refused_for_sensorless_fixed_move(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
+        self.assert_preload_refused()
+
+    def test_preload_refused_when_target_exit_sensor_is_disabled(self):
+        """Fitting is checked by can_crossload; a disabled sensor by MMU_PRELOAD's can_preload."""
+        self.hh.run_gcode('MMU_SENSORS ENABLE=0 SENSOR=mmu_exit_%d' % self.OTHER_GATE)
+        self.assertTrue(self.hh.mmu.mmu_unit(0).can_crossload)
+        self.assert_preload_refused('Perhaps no exit sensors')
+
+    def test_eject_refused_when_crossload_not_possible(self):
+        loaded_tip = self.fil.tip[self.LOADED_GATE]
+        self.hh.place_filament(self.OTHER_GATE, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.OTHER_GATE)
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=none')
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_EJECT GATE=%d' % self.OTHER_GATE)
+
+        self.assertEqual(self.fil.history, [])
+        self.assert_loaded_state_preserved(loaded_tip)
+        self.assertTrue(any('Filament is loaded' in e for e in self.hh.errors), self.hh.errors)
+
+    def test_plain_select_while_unloaded_still_moves_selector(self):
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.hh.run_gcode('MMU_SELECT GATE=%d' % self.OTHER_GATE)
+        self.assertEqual(self.moves[-1:], [self.selector('unit0').selector_offsets[self.OTHER_GATE]])
+
+
+class TestLinearMultiGearCrossloadNfc(LinearMultiGearCrossloadCase):
+    """Per-gate homing to mmu_exit, so only the in-place checks stand between NFC and the selector."""
+
+    PROFILE = LINEAR_MULTI_GEAR_EXIT_NFC
+    SESSION_KWARGS = {'virtual_nfc': True}
+
+    def test_nfc_scan_of_other_gate_is_refused(self):
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.gate_homing_endstop, 'mmu_exit')
+        loaded_tip = self.fil.tip[self.LOADED_GATE]
+        self.hh.place_filament(self.OTHER_GATE)
+        self.hh.mmu.gate_maps.set_gate_status(self.OTHER_GATE, GATE_AVAILABLE)
+        self.fil.history.clear()
+
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=%d' % self.OTHER_GATE)
+
+        self.assertEqual(self.fil.history, [], 'a refused scan must not move filament')
+        self.assert_loaded_state_preserved(loaded_tip)
+        self.assertTrue(any("Can't NFC scan another gate" in e for e in self.hh.errors), self.hh.errors)
+
+    def test_preload_with_reader_skips_nfc(self):
+        loaded_tip = self.fil.tip[self.LOADED_GATE]
+        self.fil.attach_tag(self.OTHER_GATE, '04A1B2C3')
+        self.hh.place_filament(self.OTHER_GATE, position=TIP_AT_GATE)
+        nfc = self.hh.mmu.mmu_unit(0).nfc_manager
+        self.assertTrue(nfc.has_gate_nfc_reader(self.OTHER_GATE))
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.OTHER_GATE)
+
+        self.assertEqual(self.hh.errors, [])
+        self.assert_loaded_state_preserved(loaded_tip)
+        self.assertEqual(self.hh.mmu.gate_status[self.OTHER_GATE], GATE_AVAILABLE)
+        console = ' '.join(self.hh.console)
+        self.assertIn('Preloading gate %d...' % self.OTHER_GATE, console)
+        self.assertNotIn('Preloading gate %d with NFC scan' % self.OTHER_GATE, console)
+
+    def test_preload_with_reader_uses_nfc_when_unloaded(self):
+        """Control for the test above: the same preload does scan once nothing is loaded."""
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.fil.attach_tag(self.OTHER_GATE, '04A1B2C3')
+        self.hh.place_filament(self.OTHER_GATE, position=TIP_AT_GATE)
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.OTHER_GATE)
+
+        self.assertIn('Preloading gate %d with NFC scan' % self.OTHER_GATE, ' '.join(self.hh.console))
+
+
+class TestLinearMultiGearCrossloadMultiUnit(SelectorTestCase):
+    """
+    Two type-C units with gate 0 (unit0) loaded. Only the loaded unit's selector is held: a
+    preload on unit1 is not a crossload, so unit1's selector still moves to the target gate.
+    """
+
+    PROFILE = clone_across_units(
+        'two_linear_multi_gear', LINEAR_MULTI_GEAR_EXIT, ('unit0', 'unit1'),
+        description='two type-C units with per-gate exit sensors')
+    HOME_UNITS = (0, 1)
+    UNIT1_GATE = 6
+
+    def setUp(self):
+        super().setUp()
+        self.fil = self.hh.filament()
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.moves = {}
+        for name in ('unit0', 'unit1'):
+            selector = self.selector(name)
+            self.moves[name] = []
+            selector.move = self._recorder(selector.move, self.moves[name])
+
+    @staticmethod
+    def _recorder(real_move, log):
+        def recording_move(trace_str, new_pos, *args, **kwargs):
+            log.append(new_pos)
+            return real_move(trace_str, new_pos, *args, **kwargs)
+        return recording_move
+
+    def assert_unit0_untouched(self, loaded_tip):
+        # Restoring gate 0 after working on unit1 re-selects it: a zero-length move is fine
+        home = self.selector('unit0').selector_offsets[0]
+        self.assertEqual(set(self.moves['unit0']) - {home}, set(), 'loaded unit selector moved')
+        self.assertAlmostEqual(self.axis('unit0').carriage, home, places=3)
+        self.assertEqual(self.hh.mmu.gate_selected, 0)
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(self.fil.tip[0], loaded_tip)
+        self.assertFalse(any(self.hh.mmu.mmu_machine.get_mmu_unit_by_index(i).selector_held for i in (0, 1)))
+
+    def test_preload_on_other_unit_moves_only_that_selector(self):
+        loaded_tip = self.fil.tip[0]
+        self.hh.place_filament(self.UNIT1_GATE, position=TIP_AT_GATE)
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.UNIT1_GATE)
+
+        self.assertEqual(self.hh.errors, [])
+        self.assert_unit0_untouched(loaded_tip)
+        unit1 = self.hh.mmu.mmu_unit(self.UNIT1_GATE)
+        self.assertIn(self.selector('unit1').selector_offsets[unit1.local_gate(self.UNIT1_GATE)],
+                      self.moves['unit1'])
+        self.assertEqual(self.hh.mmu.gate_status[self.UNIT1_GATE], GATE_AVAILABLE)
+
+    def test_crossload_on_loaded_unit_holds_only_that_selector(self):
+        loaded_tip = self.fil.tip[0]
+        self.hh.place_filament(2, position=TIP_AT_GATE)
+
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+
+        self.assertEqual(self.hh.errors, [])
+        self.assert_unit0_untouched(loaded_tip)
+        self.assertEqual(self.moves['unit1'], [])
+        self.assertEqual(self.hh.mmu.gate_status[2], GATE_AVAILABLE)
+
+
+class TestCrossloadCapability(unittest.TestCase):
+    """can_crossload for every selector type: unchanged for existing ones, sensor-dependent for type-C."""
+
+    EXPECTED = (
+        ('boxturtle_test', 'VirtualSelector', True),
+        ('tradrack', 'LinearServoSelector', False),
+        ('mmx', 'ServoSelector', True),
+        ('chameleon', 'RotarySelector', True),
+        ('ercf_vvd', 'IndexedSelector', True),
+        (MACRO_SELECTOR, 'MacroSelector', True),
+        (LINEAR_MULTI_GEAR, 'LinearMultiGearSelector', False),      # no per-gate exit sensors
+        (LINEAR_MULTI_GEAR_EXIT, 'LinearMultiGearSelector', True),
+    )
+
+    def test_can_crossload_by_selector_type(self):
+        for profile, selector_type, expected in self.EXPECTED:
+            with self.subTest(profile=getattr(profile, 'name', profile)):
+                hh = session(profile)
+                try:
+                    hh.boot()
+                    units = [u for u in hh.mmu.mmu_machine.units if u.selector_type == selector_type]
+                    self.assertTrue(units, 'profile has no %s unit' % selector_type)
+                    for unit in units:
+                        self.assertEqual(unit.can_crossload, expected, unit.name)
+                        self.assertEqual(unit.get_status(0)['can_crossload'], expected, unit.name)
+                finally:
+                    hh.close()
 
 
 class TestServoSelector(SelectorTestCase):

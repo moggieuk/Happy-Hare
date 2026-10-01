@@ -113,7 +113,7 @@ class MmuPreloadCommand(BaseCommand):
         # to the assignment timeout during the moves below; applied on preload success.
         pending = mmu._grab_pending()
         try:
-            with mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder(), preload_unit.wrap_hold_selector(preload_unit.crossload_in_place(gate)):
                 with mmu.wrap_suppress_visual_log():
                     with mmu.wrap_action(ACTION_PRELOAD):
                         if gate != current_gate:

@@ -254,9 +254,13 @@ class MmuFilamentMovement:
 
         # A neighboring gate's spool could satisfy the NFC leg below and get misattributed -
         # settle field ownership first. arb_mgr stays None (inert) if we wouldn't attempt an
-        # NFC leg anyway (strong pending, or encoder homing).
+        # NFC leg anyway (strong pending, encoder homing, or a selector held at another gate by
+        # an in-place crossload, where eviction and the forward scan sweep would drive filament
+        # toward it).
+        nfc_allowed = (not have_strong_pending and profile.endstop != SENSOR_ENCODER
+                       and not self.mmu_unit().selector_held)
         arb_mgr = None
-        if not have_strong_pending and profile.endstop != SENSOR_ENCODER:
+        if nfc_allowed:
             arb_mgr = self._nfc_field_arm(gate, profile.endstop, profile.clear_distance)
 
         with self.nfc_arbiter.clear_field(
@@ -272,7 +276,7 @@ class MmuFilamentMovement:
             # the NFC leg here would just risk misattributing it again, so fall back to a plain
             # preload instead (mechanically identical, nothing written to the gate map).
             nfc = None
-            if outcome.verdict != NFC_FIELD_FOREIGN and not have_strong_pending and profile.endstop != SENSOR_ENCODER:
+            if outcome.verdict != NFC_FIELD_FOREIGN and nfc_allowed:
                 gate_es_name = self.sensor_manager.get_qualified_endstop_name(profile.endstop)
                 compound, nfc_es_name, nfc_mgr = self._build_gate_nfc_compound(
                     gate, gate_es_name, name="preload_compound")

@@ -3435,7 +3435,7 @@ class MmuController(MmuFilamentMovement):
         # Keep homing outside the selection error handler. home_unit() preserves the owning
         # gate when an unload fails and invalidates it itself when selector homing fails; the
         # blanket unselect below would otherwise erase the recovery identity in the first case.
-        if gate != self.gate_selected and not selector.is_homed:
+        if gate != self.gate_selected and not selector.is_homed and not mmu_unit.selector_held:
             self.log_info(f"MMU selector for gate {gate} not homed, will home before continuing")
             self.home_unit(mmu_unit, reselect=False)
 
