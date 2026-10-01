@@ -126,8 +126,8 @@ class MmuCalibrateEncoderCommand(CalibrationMixin, BaseCommand):
         + "UNIT     = #(int)|_name_ Specify unit by name, number (optional if single unit)\n"
         + "LENGTH   = #(mm) Commanded distance (default: 400)\n"
         + "REPEATS  = #(count) Number of repetitions (default: 3, min: 1, max: 10)\n"
-        + "SPEED    = #(mm/s) Move speed\n"
-        + "ACCEL    = #(mm/s^2) Move accel\n"
+        + "SPEED    = #(mm/s) Move speed (default: gear_load_speed)\n"
+        + "ACCEL    = #(mm/s^2) Move accel (default: gear_load_accel)\n"
         + "MINSPEED = #(mm/s) Minimum speed, speed of first repeat (default: SPEED)\n"
         + "MAXSPEED = #(mm/s) Maximum speed, speed of last repeat (default: SPEED)\n"
         + "SAVE     = [0|1] Save calibration (default: 1)\n"
@@ -167,8 +167,8 @@ class MmuCalibrateEncoderCommand(CalibrationMixin, BaseCommand):
 
         length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
-        speed = gcmd.get_float('SPEED', mmu_unit.p.gear_from_filament_buffer_speed, minval=10.)
-        accel = gcmd.get_float('ACCEL', mmu_unit.p.gear_from_filament_buffer_accel, minval=10.)
+        speed = gcmd.get_float('SPEED', mmu_unit.p.gear_load_speed, minval=10.)
+        accel = gcmd.get_float('ACCEL', mmu_unit.p.gear_load_accel, minval=10.)
         min_speed = gcmd.get_float('MINSPEED', speed, above=0.)
         max_speed = gcmd.get_float('MAXSPEED', speed, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
