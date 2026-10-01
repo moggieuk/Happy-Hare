@@ -68,10 +68,12 @@ Load-bearing facts about the flow:
   A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
   name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT`, and the Makefile
   takes `UNIT_NAME`/`MCU_NAME` from the saved `CONFIG_UNIT_NAME` for a
-  single-unit config. Because the parse already ran with the old name,
-  install.sh spots a rename (`CONFIG_UNIT_NAME` != `CONFIG_MCU_NAME`), rewrites
-  explicit values and forces a top-level `olddefconfig`. In multi-unit the
-  prompt is hidden, so the name always comes from `MMU_UNITS`.
+  single-unit config. Its `reparse_env` (extension catalog item 22) makes
+  menuconfig re-parse on a rename so every derived default follows at once.
+  install.sh still spots a rename (`F_UNIT_NAME_BEFORE` or `CONFIG_MCU_NAME`
+  differ from `CONFIG_UNIT_NAME`), rewrites explicit values and forces a
+  top-level `olddefconfig`. In multi-unit the prompt is hidden, so the name
+  always comes from `MMU_UNITS`.
 - **`make` itself reads the value file**: the Makefile does
   `-include $(KCONFIG_CONFIG)`, so any `CONFIG_*` symbol
   (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_UNIT_NAME`, `CONFIG_KLIPPER_HOME`, ...)

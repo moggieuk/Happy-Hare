@@ -215,10 +215,13 @@ import locale
 import re
 import textwrap
 
+import contextlib # Happy Hare: Added
+import tempfile # Happy Hare: Added
+
 import sequence_edit # Happy Hare: Added
 
 # Happy Hare: Added FLOAT
-from kconfiglib import Symbol, Choice, MENU, COMMENT, MenuNode, \
+from kconfiglib import Kconfig, Symbol, Choice, MENU, COMMENT, MenuNode, \
                        BOOL, BOOLINT, TRISTATE, STRING, FLOAT, INT, HEX, \
                        AND, OR, \
                        expr_str, expr_value, split_expr, \
@@ -1947,6 +1950,112 @@ def _set_val(sc, val):
         # Changing the value of the symbol might have changed what items in the
         # current menu are visible. Recalculate the state.
         _update_menu()
+
+        if getattr(sc, "reparse_env", None): # Happy Hare: Added
+            _reparse(sc)
+
+
+# Happy Hare: Added. A 'reparse_env' symbol mirrors environment variables the
+# tree was built from (e.g. UNIT_NAME), so defaults derived from them are only
+# right after parsing again with the new value. Nodes are matched across the
+# two parses by where they are defined, which the reparse doesn't change.
+
+def _node_key(node):
+    if node is node.kconfig.top_node:
+        return ("top",)
+    item = node.item
+    name = item.name if isinstance(item, (Symbol, Choice)) else item
+    return (node.filename, node.linenr, name, node.prompt[0] if node.prompt else None)
+
+
+@contextlib.contextmanager
+def _quiet():
+    # Keep anything the parse prints, including from $(shell ...) commands,
+    # from landing on the curses screen
+    sys.stdout.flush()
+    sys.stderr.flush()
+    saved = [os.dup(1), os.dup(2)]
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, 1)
+        os.dup2(devnull, 2)
+        with open(os.devnull, "w") as sink, \
+                contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+            yield
+    finally:
+        os.dup2(saved[0], 1)
+        os.dup2(saved[1], 2)
+        for fd in saved + [devnull]:
+            os.close(fd)
+
+
+def _show_busy(text):
+    win = _styled_win("body")
+    screen_height, screen_width = _stdscr.getmaxyx()
+    width = min(len(text) + 6, screen_width)
+    win.resize(min(3, screen_height), width)
+    win.mvwin(max((screen_height - 3)//2, 0), max((screen_width - width)//2, 0))
+    win.erase()
+    _safe_addstr(win, 1, 3, text[:width - 6])
+    _draw_frame(win, "")
+    win.noutrefresh()
+    curses.doupdate()
+
+
+def _reparse(sym):
+    global _kconf
+    global _cur_menu
+    global _shown
+    global _sel_node_i
+    global _menu_scroll
+
+    value = sym.str_value
+    if all(os.environ.get(var) == value for var in sym.reparse_env):
+        return
+
+    _show_busy("Updating configuration for '{}'...".format(value))
+
+    menu_key = _node_key(_cur_menu)
+    sel_key = _node_key(_shown[_sel_node_i])
+    saved_env = {var: os.environ.get(var) for var in sym.reparse_env}
+
+    fd, tmp = tempfile.mkstemp(prefix=".reparse-", suffix=".config")
+    os.close(fd)
+    try:
+        _kconf.write_config(tmp, save_old=False)
+        for var in sym.reparse_env:
+            os.environ[var] = value
+        with _quiet():
+            kconf = Kconfig(_kconf.top_node.filename, warn=False)
+            kconf.load_config(tmp)
+    except Exception as e:
+        for var, old in saved_env.items():
+            if old is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = old
+        _error("Could not update the configuration for the new value:\n\n{}".format(e))
+        return
+    finally:
+        os.remove(tmp)
+
+    kconf.warn = False
+    _kconf = kconf
+
+    nodes = {_node_key(node): node for node in kconf.node_iter()}
+    nodes[("top",)] = kconf.top_node
+    _cur_menu = nodes.get(menu_key, kconf.top_node)
+    _shown = _shown_nodes(_cur_menu)
+    if not _shown:
+        _cur_menu = kconf.top_node
+        _shown = _shown_nodes(_cur_menu)
+
+    sel = nodes.get(sel_key)
+    if sel in _shown:
+        _sel_node_i = _shown.index(sel)
+    else:
+        _sel_node_i = _first_selectable_index(_shown) or 0
+    _menu_scroll = min(_menu_scroll, _sel_node_i)
 
 
 def _update_menu():

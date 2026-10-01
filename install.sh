@@ -195,14 +195,27 @@ set_units_restructure() {
     fi
 }
 
-# True if a single unit was renamed in this run's menuconfig. Its saved defaults
-# (and MCU_NAME) still carry the old name until the config is parsed again
+# The name a single unit has before menuconfig (unit0 when there is no config
+# yet), or nothing for multi-unit
+single_unit_name() {
+    (
+        unset CONFIG_MULTI_UNIT CONFIG_UNIT_NAME
+        [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
+        [ -z "${CONFIG_MULTI_UNIT:-}" ] && echo "${CONFIG_UNIT_NAME:-unit0}"
+    )
+}
+
+# True if a single unit was renamed in this run's menuconfig: its name differs
+# from the one before (F_UNIT_NAME_BEFORE) or from MCU_NAME, which keeps the old
+# name when menuconfig didn't re-parse after the rename
 single_unit_renamed() {
     (
         unset CONFIG_MULTI_UNIT CONFIG_UNIT_NAME CONFIG_MCU_NAME
         [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
-        [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${CONFIG_UNIT_NAME:-}" ] &&
-            [ "${CONFIG_UNIT_NAME}" != "${CONFIG_MCU_NAME:-}" ]
+        [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${CONFIG_UNIT_NAME:-}" ] && {
+            [ "${CONFIG_UNIT_NAME}" != "${CONFIG_MCU_NAME:-}" ] ||
+                { [ -n "${F_UNIT_NAME_BEFORE:-}" ] && [ "${CONFIG_UNIT_NAME}" != "${F_UNIT_NAME_BEFORE}" ]; }
+        }
     )
 }
 
@@ -1104,6 +1117,7 @@ run_kconfig_one() {
 # The unit list the installed config (and saved state) reflects, captured before
 # menuconfig can change it. Renames, removals and reorders are only allowed in Replace mode
 export F_UNITS_BASELINE="$(unit_migration baseline)"
+export F_UNIT_NAME_BEFORE="$(single_unit_name)"
 set_units_restructure
 
 if [ -n "${F_MENUCONFIG:-}" ]; then

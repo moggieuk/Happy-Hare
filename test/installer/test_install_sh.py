@@ -620,20 +620,41 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("refresh/=y", result.stdout)
         self.assertIn("/=y", result.stdout.splitlines()[-1])
 
-    def test_single_unit_renamed(self):
+    def test_single_unit_name(self):
         cases = {
-            "single, renamed": ('CONFIG_UNIT_NAME="box"\nCONFIG_MCU_NAME="unit0"\n', "yes"),
-            "single, unchanged": ('CONFIG_UNIT_NAME="unit0"\nCONFIG_MCU_NAME="unit0"\n', "no"),
-            "multi unit": ('CONFIG_MULTI_UNIT=y\nCONFIG_UNIT_NAME="box"\n', "no"),
+            "no config": (None, "unit0"),
+            "single": ('CONFIG_UNIT_NAME="box"\n', "box"),
+            "multi unit": ('CONFIG_MULTI_UNIT=y\nCONFIG_UNIT_NAME="box"\n', ""),
         }
         for label, (text, expected) in cases.items():
+            with self.subTest(label):
+                kconfig = self.root / ".mmu_config"
+                if text is None:
+                    kconfig.unlink(missing_ok=True)
+                else:
+                    self.write(kconfig, text)
+                result = self.run_shell("KCONFIG_CONFIG={k}; echo \"NAME=[$(single_unit_name)]\""
+                                        .format(k=shlex.quote(str(kconfig))))
+                self.assertIn("NAME=[%s]" % expected, result.stdout)
+
+    def test_single_unit_renamed(self):
+        cases = {
+            "single, renamed": ('CONFIG_UNIT_NAME="box"\nCONFIG_MCU_NAME="unit0"\n', "", "yes"),
+            "single, unchanged": ('CONFIG_UNIT_NAME="unit0"\nCONFIG_MCU_NAME="unit0"\n', "", "no"),
+            # menuconfig re-parsed after the rename, so MCU_NAME already follows it
+            "single, renamed and re-parsed": ('CONFIG_UNIT_NAME="box"\nCONFIG_MCU_NAME="box"\n', "unit0", "yes"),
+            "single, re-parsed but unchanged": ('CONFIG_UNIT_NAME="box"\nCONFIG_MCU_NAME="box"\n', "box", "no"),
+            "multi unit": ('CONFIG_MULTI_UNIT=y\nCONFIG_UNIT_NAME="box"\n', "unit0", "no"),
+        }
+        for label, (text, before, expected) in cases.items():
             with self.subTest(label):
                 kconfig = self.write(self.root / ".mmu_config", text)
                 result = self.run_shell("""
                     KCONFIG_CONFIG={k}
+                    F_UNIT_NAME_BEFORE={before}
                     if single_unit_renamed; then echo RESULT=yes; else echo RESULT=no; fi
                     echo "LEAK=${{CONFIG_UNIT_NAME:-}}"
-                """.format(k=shlex.quote(str(kconfig))))
+                """.format(k=shlex.quote(str(kconfig)), before=shlex.quote(before)))
                 self.assertIn("RESULT=" + expected, result.stdout)
                 self.assertIn("LEAK=\n", result.stdout)
 

@@ -450,7 +450,7 @@ def migrate_kconfig(kconfig, base, out=sys.stdout):
     """Bring the per-unit Kconfig files in line with the current unit list. Idempotent."""
     plan = Plan(kconfig, base)
     if plan.single:
-        _rename_single_unit(kconfig, out)
+        _rename_single_unit(kconfig, plan.baseline[:1], out)
         return
     if not plan.changed() and not read_state(kconfig):
         return
@@ -512,18 +512,21 @@ def migrate_kconfig(kconfig, base, out=sys.stdout):
     write_state(kconfig, state)
 
 
-def _rename_single_unit(kconfig, out):
-    # MCU_NAME keeps the name the last parse ran with, so it differs from UNIT_NAME
-    # right after the unit was renamed in menuconfig (including on a first install)
+def _rename_single_unit(kconfig, installed, out):
+    # The old name: the installed one, the one install.sh saw before menuconfig, or
+    # MCU_NAME, which keeps the name the last parse ran with unless menuconfig
+    # re-parsed after the rename
     values = read_kconfig(kconfig)
-    old, new = values.get("MCU_NAME"), values.get("UNIT_NAME")
-    if not old or not new or old == new:
+    new = values.get("UNIT_NAME")
+    olds = {values.get("MCU_NAME"), os.getenv("F_UNIT_NAME_BEFORE")} | set(installed)
+    olds = {o for o in olds if o and o != new}
+    if not new or not olds:
         return
     state = read_state(kconfig) or {}
     if "generated" not in state:
         state["generated"] = generated_hardware_lines(kconfig, [])
         write_state(kconfig, state)
-    rewritten, manual = rewrite_kconfig(kconfig, {old: new}, {old, new})
+    rewritten, manual = rewrite_kconfig(kconfig, {o: new for o in olds}, olds | {new})
     for line in rewritten:
         print("  %s: %s" % (os.path.basename(kconfig), line), file=out)
     for line in manual:

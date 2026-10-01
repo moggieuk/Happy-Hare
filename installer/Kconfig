@@ -93,6 +93,9 @@
 #     it as a list that tracks adds, renames, removals and moves relative to the baseline,
 #     recorded in a '<config>.<SYMBOL>.changes' sidecar on save. 'append_only_unless <expr>'
 #     limits it to appending while <expr> is n
+# 19. 'reparse_env "<VAR> [<VAR>...]"' on a symbol whose value the tree is built from via
+#     those env vars (UNIT_NAME): changing it in menuconfig re-parses with the new value
+#     so every default derived from them is recomputed in the same session
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

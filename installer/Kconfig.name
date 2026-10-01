@@ -10,6 +10,7 @@ menu "Name"
   config UNIT_NAME
     prompt "Klipper object name" if !MULTI_UNIT
     validator "[a-z][a-z0-9_-]*"
+    reparse_env "UNIT_NAME MCU_NAME"
     help
       The name Klipper knows this unit by. It is used in:
         Config sections:  [mmu_unit [[B]][[VALUE:UNIT_NAME]][[/B]]], [mcu [[B]][[VALUE:UNIT_NAME]][[/B]]]

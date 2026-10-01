@@ -12,8 +12,9 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
-13 and 14, and item 21 is its item 18 (and `Menuconfig:` item 7). When you
-add an extension, update **both** this file and that header block.
+13 and 14, and items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
+item 7). When you add an extension, update **both** this file and that
+header block.
 
 ## 1. `generated_default`
 
@@ -433,3 +434,33 @@ config MMU_UNITS
   keys driven by stubbing `_getch_compat`, drawing against `FakeDialogWindow`);
   `TestMmuUnitsValidator` in `test_kconfig_validator.py`. For a real check,
   drive `make menuconfig` in a pty (`pty.fork`, `TERM=xterm-256color`).
+
+## 22. `reparse_env "<VAR> [<VAR>...]"`
+
+For a symbol whose value the tree is *built from* through environment
+variables, which are expanded at parse time (`UNIT_NAME` → `$(UNIT_NAME)` and
+`$(MCU_NAME)` in ~850 defaults: pins, LED chains, NFC readers, `[mcu …]`).
+Changing such a symbol in menuconfig can't update those defaults, so
+`_set_val` calls `_reparse`, which:
+
+1. writes the current values to a temporary config (`write_config`);
+2. sets each named variable to the new value;
+3. builds a fresh `Kconfig` with output suppressed at the fd level, since
+   `$(shell …)` would otherwise write onto the curses screen;
+4. loads the temporary config with `filter_defaults=True`, so `#~DEFAULT~#`
+   values are recomputed while explicit values are kept;
+5. swaps `_kconf` and re-points `_cur_menu`/`_shown`/`_sel_node_i`.
+
+Nodes are matched by `_node_key` (file, line, item, prompt), which a re-parse
+of unchanged Kconfig files doesn't change. A failed parse restores the
+environment and keeps the old tree. It costs one menuconfig start-up and shows
+an "Updating configuration…" box.
+
+- Only values saved as defaults are recomputed: names on the `#~DEFAULT~#`
+  prefix list, which is every unit-derived prompted symbol in this tree.
+  An explicit value containing the old name stays as typed, and the installer
+  rewrites it (`unit_migration._rename_single_unit`).
+- `UNIT_NAME` uses `reparse_env "UNIT_NAME MCU_NAME"`. After a re-parse the
+  saved `MCU_NAME` already follows the rename, so install.sh records the name
+  before menuconfig (`F_UNIT_NAME_BEFORE`) to know a rename happened.
+- Tests: `TestReparseEnv` in `test/installer/test_menuconfig.py`.

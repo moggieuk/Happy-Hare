@@ -152,6 +152,7 @@ class TestUnitNamePrompt(unittest.TestCase):
     def test_single_unit_can_name_itself(self):
         sym = self.parse().syms['UNIT_NAME']
         self.assertEqual(sym.visibility, 2)
+        self.assertEqual(sym.reparse_env, ['UNIT_NAME', 'MCU_NAME'])
         self.assertIsNotNone(sym.validator)
         self.assertIsNotNone(sym.validator.fullmatch('box'))
         self.assertIsNone(sym.validator.fullmatch('Box'))

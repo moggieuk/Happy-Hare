@@ -291,6 +291,104 @@ comment "Unit: [[VALUE:NAME:8]]|"
         self.assertEqual(menuconfig._display_len("[[B]][[VALUE:NAME]][[/B]]x"), 6)
 
 
+class TestReparseEnv(unittest.TestCase):
+    """Changing a 'reparse_env' symbol re-parses with the new value, in place.
+
+    Only values saved as defaults (#~DEFAULT~#, i.e. PARAM_/PIN_ ... names) are
+    recomputed; an explicit value is the user's and is kept as it is.
+    """
+
+    KCONFIG = """
+config NAME
+    string "Name"
+    default "$(NAME)"
+    reparse_env "NAME MCU"
+
+config PIN_X
+    string "Pin"
+    default "$(MCU):PA1"
+
+config PARAM_OTHER
+    string "Other"
+    default "x"
+
+menu "Sub"
+config PARAM_INNER
+    string "Inner"
+    default "$(NAME)_inner"
+endmenu
+"""
+
+    def setUp(self):
+        import os
+        import tempfile
+        import kconfiglib
+        self.os = os
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "Kconfig")
+        with open(path, "w") as f:
+            f.write(self.KCONFIG)
+        for var in ("NAME", "MCU"):
+            self.addCleanup(lambda v=var, old=os.environ.get(var):
+                            os.environ.__setitem__(v, old) if old is not None else os.environ.pop(v, None))
+            os.environ[var] = "unit0"
+        self.kconf = kconfiglib.Kconfig(path, warn=False)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf, _show_all=False,
+                                 _show_name=False, _conf_changed=False, _menu_scroll=0,
+                                 _show_busy=lambda text: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def at(self, menu, symbol):
+        menuconfig._cur_menu = menu
+        menuconfig._shown = menuconfig._shown_nodes(menu)
+        menuconfig._sel_node_i = [n.item for n in menuconfig._shown].index(self.kconf.syms[symbol])
+
+    def selected(self):
+        return menuconfig._shown[menuconfig._sel_node_i].item.name
+
+    def test_defaults_follow_the_new_value_and_user_values_survive(self):
+        self.kconf.syms["PARAM_OTHER"].set_value("kept")
+        self.at(self.kconf.top_node, "NAME")
+        menuconfig._set_val(self.kconf.syms["NAME"], "box")
+
+        kconf = menuconfig._kconf
+        self.assertIsNot(kconf, self.kconf)
+        self.assertEqual(kconf.syms["NAME"].str_value, "box")
+        self.assertEqual(kconf.syms["PIN_X"].str_value, "box:PA1")
+        self.assertEqual(kconf.syms["PARAM_OTHER"].str_value, "kept")
+        self.assertEqual((self.os.environ["NAME"], self.os.environ["MCU"]), ("box", "box"))
+        self.assertTrue(menuconfig._conf_changed)
+        self.assertIs(menuconfig._cur_menu, kconf.top_node)
+        self.assertEqual(self.selected(), "NAME")
+
+    def test_navigation_inside_a_submenu_is_kept(self):
+        sub = [n for n in self.kconf.node_iter() if n.item is menuconfig.MENU][0]
+        self.at(sub, "PARAM_INNER")
+        self.kconf.syms["NAME"].set_value("box")
+        menuconfig._reparse(self.kconf.syms["NAME"])
+        self.assertEqual(menuconfig._cur_menu.prompt[0], "Sub")
+        self.assertIs(menuconfig._cur_menu.kconfig, menuconfig._kconf)
+        self.assertEqual(self.selected(), "PARAM_INNER")
+        self.assertEqual(menuconfig._kconf.syms["PARAM_INNER"].str_value, "box_inner")
+
+    def test_unchanged_value_does_not_reparse(self):
+        self.at(self.kconf.top_node, "NAME")
+        menuconfig._reparse(self.kconf.syms["NAME"])
+        self.assertIs(menuconfig._kconf, self.kconf)
+
+    def test_a_failed_parse_keeps_the_old_tree_and_environment(self):
+        self.at(self.kconf.top_node, "NAME")
+        self.kconf.syms["NAME"].set_value("box")
+        with patch.object(menuconfig, "Kconfig", side_effect=RuntimeError("boom")), \
+                patch.object(menuconfig, "_error") as error:
+            menuconfig._reparse(self.kconf.syms["NAME"])
+        self.assertIs(menuconfig._kconf, self.kconf)
+        self.assertEqual(self.os.environ["NAME"], "unit0")
+        self.assertIn("boom", error.call_args.args[0])
+
+
 class FakeDialogWindow(FakeWindow):
     def __init__(self, height=20, width=80):
         self.height, self.width = height, width

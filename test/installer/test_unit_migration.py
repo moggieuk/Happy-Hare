@@ -648,6 +648,20 @@ class TestSingleUnitRename(Scratch):
         um.migrate_kconfig(self.kconfig, [], io.StringIO())
         self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
 
+    def test_rename_after_menuconfig_re_parsed_still_rewrites_explicit_values(self):
+        # MCU_NAME already follows the new name, so the old one comes from install.sh
+        self.single("box", "box", 'CONFIG_PIN_X="unit0:PA1"')
+        with patch.dict(os.environ, {"F_UNIT_NAME_BEFORE": "unit0"}):
+            um.migrate_kconfig(self.kconfig, [], io.StringIO())
+        self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
+
+    def test_an_installed_name_is_an_old_name_too(self):
+        self.install(["unit0"])
+        self.single("box", "box", 'CONFIG_PIN_X="unit0:PA1"')
+        with patch.dict(os.environ, {"F_UNIT_NAME_BEFORE": ""}):
+            um.migrate_kconfig(self.kconfig, ["unit0"], io.StringIO())
+        self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
+
     def test_an_unchanged_single_unit_is_left_alone(self):
         self.install(["unit0"])
         self.single("unit0", "unit0")
