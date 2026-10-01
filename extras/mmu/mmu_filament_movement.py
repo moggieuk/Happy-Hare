@@ -3226,10 +3226,10 @@ class MmuFilamentMovement:
         elif motor in ["gear+extruder", "synced"]:
             if homing_move != 0:
                 speed = speed or min(u.p.gear_homing_speed, self.p.extruder_homing_speed)
-                accel = accel or min(max(u.p.gear_from_filament_buffer_accel, u.p.gear_load_accel), self.p.extruder_accel)
+                accel = accel or min(self.p.extruder_sync_accel, self.p.extruder_accel)
             else:
                 speed = speed or (self.p.extruder_sync_load_speed if dist > 0 else self.p.extruder_sync_unload_speed)
-                accel = accel or min(max(u.p.gear_from_filament_buffer_accel, u.p.gear_load_accel), self.p.extruder_accel)
+                accel = accel or min(self.p.extruder_sync_accel, self.p.extruder_accel)
 
         elif motor in ["extruder"]:
             if homing_move != 0:
@@ -3444,7 +3444,7 @@ class MmuFilamentMovement:
                         return null_rtn
 
                     if self.log_enabled(LOG_STEPPER):
-                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
+                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=toolhead, wait=%s" % (motor.upper(), dist, speed, wait))
 
                     ext_pos[3] += dist
                     self.toolhead.move(ext_pos, speed)

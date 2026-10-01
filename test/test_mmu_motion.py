@@ -35,7 +35,7 @@
 import logging
 import unittest
 
-from test.hh import session
+from test.hh import cfg, profiles, session
 from test.hh.filament import TIP_PARKED, TIP_PRESENTED
 
 # Past the entry switch (-50): the only state a preload can realistically start from
@@ -310,6 +310,54 @@ class TestEveryDriveModeMovesFilament(MotionTestCase):
         pos[3] += self.MOVE
         self.hh.mmu.toolhead.move(pos, 25.)
         self.assertAlmostEqual(self.fil.tip[0] - before, 0., places=3)
+
+
+class TestExtruderSyncAccel(MotionTestCase):
+    """
+    A gear-led synced move (gear+extruder) takes extruder_sync_accel, capped by extruder_accel.
+    It used to take max(gear_from_filament_buffer_accel, gear_load_accel), so on a unit with no
+    filament buffer the acceleration came from a parameter that was not even in its config.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.heat_extruder(220)
+        self.hh.mmu.select_gate(0)
+        self.assertEqual(self.hh.errors, [])
+
+    def accel_of_gear_led_synced_move(self):
+        drive = self.hh.mmu.drive()
+        real = drive.move
+        accels = []
+
+        def spy(dist, speed, accel, *args, **kwargs):
+            accels.append(accel)
+            return real(dist, speed, accel, *args, **kwargs)
+
+        drive.move = spy
+        try:
+            self.hh.run_gcode('MMU_TEST_MOVE MOVE=20 MOTOR=gear+extruder')
+        finally:
+            del drive.move
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(len(accels), 1)
+        return accels[0]
+
+    def test_the_default_is_rendered(self):
+        self.assertIn('extruder_sync_accel        : 400', cfg.render(profiles.get(self.PROFILE))['config/base/mmu.cfg'])
+        self.assertEqual(self.hh.mmu.p.extruder_sync_accel, 400.)
+
+    def test_gear_led_synced_move_uses_extruder_sync_accel(self):
+        self.hh.mmu.p.extruder_sync_accel = 250.
+        self.hh.mmu.mmu_unit().p.gear_from_filament_buffer_accel = 900.
+        self.assertEqual(self.accel_of_gear_led_synced_move(), 250.)
+
+    def test_extruder_accel_still_caps_it(self):
+        self.hh.mmu.p.extruder_sync_accel = 2000.
+        self.hh.mmu.p.extruder_accel = 300.
+        self.assertEqual(self.accel_of_gear_led_synced_move(), 300.)
 
 
 class TestQuietPlacement(MotionTestCase):
