@@ -306,7 +306,10 @@ class CalibrationMixin:
 
             for _ in range(repeats):
                 mmu.initialize_filament_position(dwell=True)
-                _,_,measured,delta = mmu.move_filament("Calibration load movement", length, encoder_dwell=True)
+                _,_,measured,delta = mmu.move_filament(
+                    "Calibration load movement", length,
+                    speed=mmu_unit.p.gear_load_speed, accel=mmu_unit.p.gear_load_accel, encoder_dwell=True
+                )
                 pos_values.append(measured)
                 mmu.log_always("%s+ measured: %.1fmm (counts: %d)" % (UI_SPACE*2, (length - delta), mmu.get_encoder_counts(dwell=None)))
 
