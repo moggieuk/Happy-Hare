@@ -46,23 +46,19 @@ if MMU_HAS_ENCODER
       bool "Shared with existing unit?"
       default n
 
-    if MMU_SHARED_ENCODER
-      config PARAM_ENCODER_NAME
-        prompt "Shared encoder name             "
-        default "-specify name-"
-        help
-          Enter the name of shared encoder. A shared encoder must be see the filament from
-          each MMU and thus is not a common setup.
+    config PARAM_ENCODER_NAME
+      string
+      prompt "Shared encoder name             " if MMU_SHARED_ENCODER
+      default "-specify name-" if MMU_SHARED_ENCODER
+      default UNIT_NAME
+      help
+        Enter the name of shared encoder. A shared encoder must be see the filament from
+        each MMU and thus is not a common setup.
 
-          An encoder is always named after the unit that owns it, so this is that unit's
-          name (e.g. 'unit0')
-    endif
+        An encoder is always named after the unit that owns it, so this is that unit's
+        name (e.g. 'unit0')
 
     if !MMU_SHARED_ENCODER
-      config PARAM_ENCODER_NAME
-        string
-        default UNIT_NAME
-
       choice CHOICE_ENCODER_TYPE
         prompt "Type"
         default CHOICE_ENCODER_TYPE_BINKY_12
