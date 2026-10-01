@@ -207,6 +207,10 @@ NFC_FIELD_NAMES = {
     NFC_FIELD_PROVISIONAL: "PROVISIONAL",
 }
 
+PROPORTIONAL_GRIP_SHIFT_MARGIN     = 0.3 # Min proportional shift confirming the extruder grips/moves filament
+PROPORTIONAL_COMPRESSION_FAULT     = 0.8 # Resting value (toward compression) => MMU gear failed to retract on unload
+PROPORTIONAL_BOWDEN_SLACK_FACTOR   = 2.0 # Over-move factor so retract probe overcomes bowden slack to shift the sensor
+
 # Gear/Extruder synchronization modes
 DRIVE_UNSYNCED                = 0
 DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'

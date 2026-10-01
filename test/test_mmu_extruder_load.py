@@ -56,6 +56,7 @@ class ExtruderLoadTestCase(unittest.TestCase):
         def under_read(trace_str, dist, *args, **kwargs):
             traces.append(trace_str)
             actual, homed, measured, delta = move_filament(trace_str, dist, *args, **kwargs)
+            self.after_move(trace_str)
             if trace_str == NOZZLE_MOVE:
                 self.nozzle_move_lengths.append(abs(actual))
                 measured = abs(actual) * fraction
@@ -66,6 +67,9 @@ class ExtruderLoadTestCase(unittest.TestCase):
             self.hh.run_gcode('MMU_LOAD')
         self.assertIn(NOZZLE_MOVE, traces, 'never made the final move to the nozzle')
         return '\n'.join(self.hh.console[start:])
+
+    def after_move(self, trace_str):
+        """Hook for buffer response the harness doesn't model"""
 
     def nozzle_failures(self, reason='Move to nozzle failed'):
         return [e for e in self.hh.errors if reason in e]
@@ -130,6 +134,23 @@ class TestProportionalBuffer(GripCheckCases, ExtruderLoadTestCase):
     PROFILE = 'quattrobox_v2'
     SESSION_KWARGS = {'virtual_nfc': True}
     GRIP_CHECK = 'extruder grip confirmed'
+    extruder_grips = True
+
+    def after_move(self, trace_str):
+        # Compression homing leaves the buffer compressed; a gripping extruder then
+        # draws it back toward tension
+        prop = self.hh.sensor('filament_proportional')
+        if trace_str == 'Synced feed to establish extruder grip':
+            prop.feed(prop._extreme_value())
+        elif trace_str.startswith('Proportional extruder entry validation step') and self.extruder_grips:
+            prop.feed(prop.neutral_value())
+
+    def test_load_fails_when_buffer_never_relaxes(self):
+        self.extruder_grips = False
+        with self.assertRaises(AssertionError): # Never reaches the move to the nozzle
+            self.load_with_encoder_reading(1.0)
+        self.assertTrue(self.nozzle_failures('proportional buffer did not relax'), self.hh.errors)
+        self.assertNotEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
 
 
 if __name__ == '__main__':
