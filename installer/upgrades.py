@@ -74,6 +74,11 @@ class Upgrades:
 
 
     HTLF_SELECTOR_ROTATION_DISTANCE = 360.0 # Selector distances are cam degrees
+    HTLF_OLD_SELECTOR_SPEEDS = {            # 4.0 rendered defaults (mm/s at rotation_distance 32)
+        "selector_move_speed": 50.0,
+        "selector_homing_speed": 60.0,
+        "selector_accel": 50.0,
+    }
 
     def upgrade_4_0_to_4_1(self, cfg):
         self._upgrade_htlf_selector_to_degrees(cfg)
@@ -107,10 +112,15 @@ class Upgrades:
             )
             cfg.set(stepper, "rotation_distance", "%g" % self.HTLF_SELECTOR_ROTATION_DISTANCE)
 
+            # Old defaults are dropped so the new ones render; anything tuned keeps its physical speed
             params = "mmu_unit_parameters %s" % unit
-            for option in ("selector_move_speed", "selector_homing_speed", "selector_accel"):
+            for option, old_default in self.HTLF_OLD_SELECTOR_SPEEDS.items():
                 if cfg.has_option(params, option):
-                    cfg.set(params, option, "%g" % round(float(cfg.get(params, option)) * scale, 1))
+                    value = float(cfg.get(params, option))
+                    if value == old_default:
+                        cfg.remove_option(params, option)
+                    else:
+                        cfg.set(params, option, "%g" % (50 * round(value * scale / 50)))
 
             # Hand-set mm geometry predates descending cam support, so let the new defaults through
             for option in ("cad_gate0_pos", "cad_gate_width", "cad_selector_tolerance"):

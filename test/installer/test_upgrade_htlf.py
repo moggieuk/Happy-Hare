@@ -65,12 +65,22 @@ class TestHtlfSelectorUpgrade(unittest.TestCase):
         cfg = self.upgraded()
         self.assertEqual(cfg.get("mmu_stepper unit0_selector", "rotation_distance"), "360")
 
-    def test_selector_speeds_keep_their_physical_speed(self):
+    def test_old_default_speeds_are_dropped_for_the_new_defaults(self):
         cfg = self.upgraded()
         params = "mmu_unit_parameters unit0"
-        self.assertEqual(cfg.get(params, "selector_move_speed"), "562.5")
-        self.assertEqual(cfg.get(params, "selector_homing_speed"), "675")
-        self.assertEqual(cfg.get(params, "selector_accel"), "562.5")
+        for option in ("selector_move_speed", "selector_homing_speed", "selector_accel"):
+            self.assertFalse(cfg.has_option(params, option), option)
+
+    def test_tuned_speeds_keep_their_physical_speed(self):
+        """Scaled by 360/32 then rounded to the nearest 50, as the fresh-install defaults are."""
+        text = (INSTALLED_4_0
+                .replace("selector_move_speed      : 50", "selector_move_speed      : 40")
+                .replace("selector_homing_speed    : 60", "selector_homing_speed    : 30"))
+        cfg = self.upgraded(text)
+        params = "mmu_unit_parameters unit0"
+        self.assertEqual(cfg.get(params, "selector_move_speed"), "450")
+        self.assertEqual(cfg.get(params, "selector_homing_speed"), "350")
+        self.assertFalse(cfg.has_option(params, "selector_accel"))
 
     def test_hand_set_mm_geometry_is_dropped(self):
         cfg = self.upgraded()
