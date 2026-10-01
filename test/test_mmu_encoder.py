@@ -579,5 +579,58 @@ class TestExtruderMonitorRebase(EncoderTestCase):
         self.assertIsNone(monitor._last_pos)
 
 
+class TestCalibrateEncoderSpeed(EncoderTestCase):
+    """
+    MMU_CALIBRATE_ENCODER's default speed. It defaulted to gear_from_filament_buffer_speed, a
+    speed only meant for filament already pulled into a filament buffer - and on a unit with
+    no buffer that parameter is not even rendered, so calibration silently ran at a hidden
+    default the user could not see. Calibration must use the normal load speed.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.hh.calibrate()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.preload(0)
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        # The command assumes filament already runs through the encoder (its docstring's "Start")
+        self.hh.place_filament(0, position=ENCODER_AT + 50.0)
+        self.assertEqual(self.hh.errors, [])
+
+    def calibration_moves(self, gcode):
+        moves = []
+        real = self.hh.mmu.move_filament
+
+        def spy(trace_str, dist, *args, **kwargs):
+            if trace_str is None:   # _calibrate_encoder's measured moves carry no trace string
+                moves.append((kwargs.get('speed'), kwargs.get('accel')))
+            return real(trace_str, dist, *args, **kwargs)
+
+        self.hh.mmu.move_filament = spy
+        try:
+            self.hh.run_gcode(gcode)
+        finally:
+            del self.hh.mmu.move_filament
+        return moves
+
+    def test_the_unit_has_no_filament_buffer(self):
+        """A guard: with a buffer, the two speeds would at least have a configured value."""
+        self.assertFalse(self.unit.has_filament_buffer())
+        self.assertNotEqual(self.unit.p.gear_load_speed, self.unit.p.gear_from_filament_buffer_speed)
+
+    def test_calibration_defaults_to_the_load_speed(self):
+        moves = self.calibration_moves('MMU_CALIBRATE_ENCODER LENGTH=100 REPEATS=1 SAVE=0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(moves, 'no calibration moves were made')
+        for speed, accel in moves:
+            self.assertEqual(speed, self.unit.p.gear_load_speed)
+            self.assertEqual(accel, self.unit.p.gear_load_accel)
+
+    def test_explicit_speed_still_wins(self):
+        moves = self.calibration_moves('MMU_CALIBRATE_ENCODER LENGTH=100 REPEATS=1 SAVE=0 SPEED=42 ACCEL=77')
+        self.assertTrue(moves, 'no calibration moves were made')
+        self.assertEqual(set(moves), {(42., 77.)})
+
+
 if __name__ == '__main__':
     unittest.main()

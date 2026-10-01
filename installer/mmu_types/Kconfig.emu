@@ -104,10 +104,6 @@ if MMU_TYPE_EMU_1_0
     default 250
   config PARAM_GEAR_LOAD_ACCEL
     default 120
-  config PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
-    default 250
-  config PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
-    default 120
   config PARAM_GEAR_UNLOAD_SPEED
     default 250
   config PARAM_GEAR_UNLOAD_ACCEL
