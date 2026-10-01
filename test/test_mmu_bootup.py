@@ -26,7 +26,7 @@ import re
 import unittest
 from unittest.mock import patch
 
-from test.hh import session
+from test.hh import profiles, session
 from test.hh.bootstrap import PRINTER_STUB
 
 # HH logs a lot at INFO during construction; keep test output readable.
@@ -522,6 +522,57 @@ class TestSensorDriving(BootedSessionMixin, unittest.TestCase):
     def test_sensor_lookup_errors_are_helpful(self):
         with self.assertRaises(KeyError):
             self.hh.sensor('no_such_sensor')
+
+
+class TestSharedEncoderAndBuffer(unittest.TestCase):
+    """
+    A second unit sharing the first unit's encoder and buffer through the "Shared with
+    existing unit?" flags boots, and both units resolve the same objects.
+
+    The sharer still needs its own gate_endstop_to_encoder: the distance is from THAT unit's
+    gate endstop to the shared encoder, and is read from the unit's parameters, not from the
+    encoder object. Asserted here because this is where the value is actually read.
+
+    Its own session rather than BootedSessionMixin: a multi-unit machine is three Kconfig
+    parses, and this profile is deliberately not in the PROFILES registry (a fixture, not a
+    machine anyone would run - see the note in profiles.py).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session(profiles.SHARED_ENCODER)
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def test_the_machine_boots(self):
+        self.assertEqual(self.hh.errors, [])
+
+    def test_both_units_resolved_the_one_encoder_and_buffer(self):
+        """
+        Not merely "no error" - the SAME objects. A sharer that quietly built its own would
+        be a second encoder or buffer with its own pins and calibration, which is the
+        failure the whole shared path exists to prevent.
+        """
+        units = self.hh.printer.lookup_object('mmu_machine').units
+        self.assertEqual([u.name for u in units], ['unit0', 'unit1'])
+        for kind in ('encoder', 'buffer'):
+            for unit in units:
+                with self.subTest(kind=kind, unit=unit.name):
+                    self.assertIsNotNone(getattr(unit, kind))
+                    self.assertIs(getattr(unit, kind), getattr(units[0], kind))
+            self.assertIn('mmu_%s unit0' % kind, self.hh.printer.objects)
+            self.assertNotIn('mmu_%s unit1' % kind, self.hh.printer.objects)
+
+    def test_each_unit_keeps_its_own_encoder_offset(self):
+        """
+        unit0 has a shared_exit endstop, so Kconfig gives it 10; unit1 shares the encoder
+        but sets its own 25, which must not be lost or replaced by the owner's value.
+        """
+        units = self.hh.printer.lookup_object('mmu_machine').units
+        self.assertEqual([u.p.gate_endstop_to_encoder for u in units], [10.0, 25.0])
 
 
 class TestNoExtruderTmc(BootedSessionMixin, unittest.TestCase):
