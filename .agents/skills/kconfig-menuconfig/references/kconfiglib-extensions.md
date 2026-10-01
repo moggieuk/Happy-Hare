@@ -184,6 +184,18 @@ brackets such as `[, duration]` or `[[mmu_leds]]` stay literal.
 The root Kconfig's `title`/`caption` macros use `[[B]]` to bold the unit
 name. (This is a menuconfig-side concern — it never reaches the value file.)
 
+`[[VALUE:SYM]]` is replaced by SYM's *current* value every time the text is
+drawn (`_expand_values`, called from `_safe_addstr_markup` and on prompts in
+`_node_str`), so it follows edits made in the same session. Text fixed at
+parse time can't do that. `[[VALUE:SYM:w]]` pads or truncates the value to `w`
+characters for fixed-width layouts. An undefined SYM shows `?`, and
+`TestValueMarkupNamesRealSymbols` in `test_kconfig_references.py` fails on one.
+The header `caption` uses `$(unit-suffix,$(UNIT_NAME),20)` so a single unit
+renamed in menuconfig shows its new name straight away. `$(pad,…)`
+(`hh-pad`) measures displayed width: markup counts 0 and `[[VALUE:SYM:w]]`
+counts `w`. A width-less `[[VALUE:SYM]]` can't be measured at parse time, so
+use a width inside anything padded.
+
 ## 11. menuconfig changes
 
 - **`r` resets to default** (the `"r"` branch of the main key loop, calling
@@ -305,7 +317,9 @@ existing saved value keeps working.
   `led_effect` across the LED color and effect symbols.
 - Pins: the root `installer/Kconfig` defines `pin_validator`
   (`[^|~] [!] [chip_name:]pin_name`, Klipper's `parse_pin` order; empty is
-  valid) and `pin_help`. Every prompted `PIN_*` node carries
+  valid) and `pin_help`. `pin_help`'s example (`hh-pin-example`) uses
+  `[[VALUE:UNIT_NAME]]` (item 10) so it shows the unit's live name, except on
+  the multi-unit entry screen, which has no unit. Every prompted `PIN_*` node carries
   `validator "$(pin_validator)"`, and gets `$(pin_help)` as its help when it has
   none. Add both to any new pin prompt; `TestPinValidator` fails otherwise and
   also checks every shipped pin default and every profile's pin values.

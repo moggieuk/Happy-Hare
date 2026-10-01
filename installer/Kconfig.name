@@ -11,11 +11,13 @@ menu "Name"
     prompt "Klipper object name" if !MULTI_UNIT
     validator "[a-z][a-z0-9_-]*"
     help
-      Names this unit's config sections, MCU and pins (e.g. [mmu_unit unit0],
-      unit0:PA1) and its saved state. Use lowercase letters, digits, "_" and
-      "-", starting with a letter.
-      Change it freely on a first install. Once installed, renaming needs the
-      installer's [[REV]]Replace[[/REV]] mode (option 2) to migrate saved state.
+      The name Klipper knows this unit by. It is used in:
+        Config sections:  [mmu_unit [[B]][[VALUE:UNIT_NAME]][[/B]]], [mcu [[B]][[VALUE:UNIT_NAME]][[/B]]]
+        Pins:             [[B]][[VALUE:UNIT_NAME]][[/B]]:PA1
+        Saved state:      mmu_[[B]][[VALUE:UNIT_NAME]][[/B]]_* in mmu_vars.cfg
+      Use lowercase letters, digits, "_" and "-", starting with a letter.
+      Change it freely on a first install. Once installed, renaming needs
+      the installer's [[REV]]Replace[[/REV]] mode (option 2) to migrate saved state.
 
   comment "Klipper object name: $(UNIT_NAME)  (set in the MMU units list)" if MULTI_UNIT
 

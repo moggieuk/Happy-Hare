@@ -237,6 +237,60 @@ class TestValidatorValidation(unittest.TestCase):
         self.assertNotIn(sym.validator.pattern, error.call_args.args[0])
 
 
+class TestValueMarkup(unittest.TestCase):
+    """[[VALUE:SYM]] shows a symbol's live value wherever menuconfig draws text."""
+
+    KCONFIG = """
+config NAME
+    string "Name"
+    default "unit0"
+
+comment "Unit: [[VALUE:NAME:8]]|"
+"""
+
+    def setUp(self):
+        import os
+        import tempfile
+        import kconfiglib
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "Kconfig")
+        with open(path, "w") as f:
+            f.write(self.KCONFIG)
+        self.kconf = kconfiglib.Kconfig(path, warn=False)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf,
+                                 _show_name=False, _show_all=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_value_follows_the_symbol(self):
+        self.assertEqual(menuconfig._expand_values("[[VALUE:NAME]]!"), "unit0!")
+        self.kconf.syms["NAME"].set_value("box")
+        self.assertEqual(menuconfig._expand_values("[[VALUE:NAME]]!"), "box!")
+
+    def test_width_pads_and_truncates(self):
+        self.assertEqual(menuconfig._expand_values("[[VALUE:NAME:7]]|"), "unit0  |")
+        self.assertEqual(menuconfig._expand_values("[[VALUE:NAME:3]]|"), "uni|")
+
+    def test_unknown_symbol_shows_a_question_mark(self):
+        self.assertEqual(menuconfig._expand_values("[[VALUE:NOPE]]"), "?")
+        with patch.object(menuconfig, "_kconf", None):
+            self.assertEqual(menuconfig._expand_values("[[VALUE:NAME]]"), "?")
+
+    def test_comment_rows_show_the_live_value(self):
+        node = [n for n in self.kconf.node_iter() if n.item is COMMENT][0]
+        self.kconf.syms["NAME"].set_value("box")
+        self.assertIn("*** Unit: box     | ***", menuconfig._node_str(node))
+
+    def test_drawn_text_is_expanded(self):
+        win = FakeRecordingWindow()
+        menuconfig._safe_addstr_markup(win, 0, 0, "[[B]][[VALUE:NAME]][[/B]]", 0)
+        self.assertEqual([text for text, _ in win.writes], ["unit0"])
+
+    def test_display_length_ignores_markup(self):
+        self.assertEqual(menuconfig._display_len("[[B]][[VALUE:NAME]][[/B]]x"), 6)
+
+
 class FakeDialogWindow(FakeWindow):
     def __init__(self, height=20, width=80):
         self.height, self.width = height, width

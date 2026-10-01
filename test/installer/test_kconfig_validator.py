@@ -245,7 +245,9 @@ class TestPinValidator(unittest.TestCase):
         self.assertTrue(help_text.startswith('Syntax:'), help_text)
 
     def test_examples_in_help_pass_the_validator(self):
-        examples = self.kc.variables['pin_example'].value.split(':', 1)[1].split(',')
+        # [[VALUE:UNIT_NAME]] is the live unit name in menuconfig
+        example = self.kc.variables['pin_example'].value.replace('[[VALUE:UNIT_NAME]]', 'box')
+        examples = example.split(':', 1)[1].split(',')
         self.assertGreater(len(examples), 0)
         for example in examples:
             with self.subTest(example=example):

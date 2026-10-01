@@ -1418,7 +1418,7 @@ def _draw_main():
 
     # Add the 'mainmenu' text as the title, centered at the top
     _safe_addstr_markup(_top_sep_win,
-                 0, max((term_width - len(_kconf.mainmenu_text))//2, 0),
+                 0, max((term_width - _display_len(_kconf.mainmenu_text))//2, 0),
                  _kconf.mainmenu_text)
 
     _top_sep_win.noutrefresh()
@@ -3703,12 +3703,13 @@ def _node_str(node):
             s += " " + standard_sc_expr_str(node.item)
 
     if node.prompt:
+        prompt = _expand_values(node.prompt[0]) # Happy Hare: Live [[VALUE:SYM]] markup
         if node.item == COMMENT:
-            if node.prompt[0] == '_': # Happy Hare
+            if prompt == '_': # Happy Hare
                 s = "    "
-            elif node.prompt[0].startswith('_'): # Happy Hare: Added special section header style for comments
+            elif prompt.startswith('_'): # Happy Hare: Added special section header style for comments
                 max_width = 62
-                text = node.prompt[0][1:]
+                text = prompt[1:]
                 middle = f" {text.upper()} "
                 heading = "───────" + middle
                 # Happy Hare: Markup tokens in the text are zero-width so discount them from the rule padding
@@ -3717,9 +3718,9 @@ def _node_str(node):
                     heading += "─" * (max_width - width)
                 s = "{}".format(heading)
             else:
-                s += " *** {} ***".format(node.prompt[0])
+                s += " *** {} ***".format(prompt)
         else:
-            s += " " + node.prompt[0]
+            s += " " + prompt
             if (
                 node.item not in (MENU, COMMENT) and
                 node.item.orig_type and
@@ -4120,6 +4121,33 @@ _TAG_RE = re.compile(r"""
 (?P<slash>/)?(?P<name>[A-Z]+)(?::(?P<digits>[0-9]+))?     # captures: /?, name, :digits
 \]\]
 """, re.X)
+# Happy Hare: [[VALUE:SYMBOL]] or [[VALUE:SYMBOL:width]] shows the symbol's current
+# value wherever text is drawn, padded or truncated to 'width' when given (so a
+# fixed-width layout such as the header box stays aligned)
+_VALUE_RE = re.compile(r"\[\[VALUE:([A-Za-z0-9_]+)(?::([0-9]+))?\]\]")
+
+
+def _expand_values(text):
+    if "[[VALUE:" not in text:
+        return text
+    kconf = globals().get("_kconf")
+
+    def value(m):
+        sym = kconf.syms.get(m.group(1)) if kconf is not None else None
+        s = sym.str_value if sym is not None and sym.nodes else "?"
+        if m.group(2):
+            width = int(m.group(2))
+            s = s[:width].ljust(width)
+        return s
+
+    return _VALUE_RE.sub(value, text)
+
+
+def _display_len(text):
+    text = _expand_values(text)
+    return len(text) - _token_char_count(text)
+
+
 # Happy Hare: Added to count how many "tag" characters there are in the string
 def _token_char_count(s):
     return sum(len(m.group(0)) for m in _TAG_RE.finditer(s))
@@ -4136,6 +4164,7 @@ def _safe_addstr_markup(win, *args):
     # [[DIM]]...[[/DIM]] → dim on/off
     # [[C:n]]...[[/C]]   → color_pair(n) on/off (n is an int)
     # [[RESET]]          → reset to base_attr (pushes a clean state)
+    # [[VALUE:SYM(:w)]]  → current value of symbol SYM (see _expand_values())
     # Parse args similar to _safe_addstr
     if isinstance(args[0], str):
         y, x = win.getyx()
@@ -4144,6 +4173,7 @@ def _safe_addstr_markup(win, *args):
     else:
         y, x, text = args[:3]
         base_attr = args[3] if len(args) == 4 else None
+    text = _expand_values(text)
 
     # Move to starting position once; subsequent _safe_addstr() calls will advance the cursor
     win.move(y, x)

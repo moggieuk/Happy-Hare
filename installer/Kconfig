@@ -87,6 +87,8 @@
 #     classes like [0-9] and [(]. A $(macro) can hold a shared pattern (see Kconfig.leds)
 # 17. $(macro) references are expanded in help text, e.g. the shared $(pin_help).
 #     $(nl) is a newline, so one variable can hold several help lines
+#     [[VALUE:SYM]] (or [[VALUE:SYM:width]]) in a prompt, comment or help shows SYM's
+#     live value in menuconfig; $(pad,...) counts it as 'width' and other markup as 0
 # 18. 'sequence_editor <separator> [baseline]' on a string symbol holding unique names edits
 #     it as a list that tracks adds, renames, removals and moves relative to the baseline,
 #     recorded in a '<config>.<SYMBOL>.changes' sidecar on save. 'append_only_unless <expr>'
@@ -143,8 +145,8 @@ happy_hare_version := $(HH_VERSION)
 hh_message  := Happy Hare v$(happy_hare_version)
 unit_suffix := $(unit-suffix,$(UNIT_NAME))
 title       := $(menu-title,$(F_MULTI_UNIT_ENTRY_POINT),$(hh_message),$(unit_suffix))
-caption     := $(menu-caption,$(F_MULTI_UNIT_ENTRY_POINT),$(hh_message),$(unit_suffix))
-caption_pad := 61
+caption     := $(menu-caption,$(F_MULTI_UNIT_ENTRY_POINT),$(hh_message),$(unit-suffix,$(UNIT_NAME),20))
+caption_pad := 50
 
 # Expose these capability params to each unit
 mmu_has_sensor_toolhead := $(env-is-y,HAS_SENSOR_TOOLHEAD)
@@ -184,7 +186,7 @@ pad = $(hh-pad,$(1),$(2))
 nl            := $(hh-newline)
 pin_validator := ([~^]?!?([A-Za-z0-9_-]+:)?[A-Za-z0-9_./-]+)?
 pin_syntax    := Syntax:  [[REV]][^|~] [!] [chip_name:] pin_or_alias_name[[/REV]]
-pin_example   := Eg:      ^unit0:gpio4, !unit0:PA4
+pin_example   := $(hh-pin-example,$(F_MULTI_UNIT_ENTRY_POINT))
 pin_help      := $(pin_syntax)$(nl)$(pin_example)
 
 # To allow multiline config strings.

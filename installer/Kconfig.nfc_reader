@@ -382,7 +382,7 @@ if MMU_HAS_NFC_READER
                default "$(UNIT_NAME)_nfc$(i)"
                help
                  Name of the NFC reader for this gate in the printer config.
-                 E.g., "unit0_nfc0".
+                 E.g., "[[VALUE:UNIT_NAME]]_nfc$(i)".
 
              choice CHOICE_NFC_READER_TYPE_$(i)
                prompt "Gate $(i) reader type       "
