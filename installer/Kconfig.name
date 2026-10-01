@@ -7,8 +7,9 @@ menu "Name"
     The Klipper object name identifies this MMU unit in config and saved
     state. The display name is what UIs show.
 
+  # Renaming an installed unit needs Replace mode, like the multi-unit MMU units list
   config UNIT_NAME
-    prompt "Klipper object name" if !MULTI_UNIT
+    prompt "Klipper object name" if !MULTI_UNIT && "$(env-default,F_UNITS_RESTRUCTURE,n)" = "y"
     validator "[a-z][a-z0-9_-]*"
     reparse_env "UNIT_NAME MCU_NAME"
     help
@@ -21,6 +22,7 @@ menu "Name"
       the installer's [[REV]]Replace[[/REV]] mode (option 2) to migrate saved state.
 
   comment "Klipper object name: $(UNIT_NAME)  (set in the MMU units list)" if MULTI_UNIT
+  comment "Klipper object name: $(UNIT_NAME)  (rename with './install.sh -i', REPLACE mode)" if !MULTI_UNIT && "$(env-default,F_UNITS_RESTRUCTURE,n)" != "y"
 
   config PARAM_DISPLAY_NAME
     string "Display name"

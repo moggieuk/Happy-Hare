@@ -149,13 +149,24 @@ class TestUnitNamePrompt(unittest.TestCase):
         with cfg._env(dict(cfg._SINGLE_UNIT_ENV, **env)):
             return cfg._kconfig('unit_name_prompt', {})
 
-    def test_single_unit_can_name_itself(self):
-        sym = self.parse().syms['UNIT_NAME']
+    def test_single_unit_can_name_itself_when_restructuring_is_allowed(self):
+        # install.sh allows it in Replace mode or before anything is installed
+        sym = self.parse(F_UNITS_RESTRUCTURE='y').syms['UNIT_NAME']
         self.assertEqual(sym.visibility, 2)
         self.assertEqual(sym.reparse_env, ['UNIT_NAME', 'MCU_NAME'])
         self.assertIsNotNone(sym.validator)
         self.assertIsNotNone(sym.validator.fullmatch('box'))
         self.assertIsNone(sym.validator.fullmatch('Box'))
+
+    def test_installed_single_unit_name_is_read_only_outside_replace(self):
+        import kconfiglib
+        kc = self.parse(UNIT_NAME='box', MCU_NAME='box')
+        self.assertEqual(kc.syms['UNIT_NAME'].visibility, 0)
+        self.assertEqual(kc.syms['UNIT_NAME'].str_value, 'box')
+        shown = [n.prompt[0] for n in kc.node_iter()
+                 if n.item == kconfiglib.COMMENT and n.prompt
+                 and kconfiglib.expr_value(n.prompt[1]) and 'Klipper object name' in n.prompt[0]]
+        self.assertEqual(shown, ["Klipper object name: box  (rename with './install.sh -i', REPLACE mode)"])
 
     def test_multi_unit_name_comes_from_the_unit_list(self):
         import kconfiglib

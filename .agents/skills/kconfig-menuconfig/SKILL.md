@@ -66,7 +66,9 @@ Load-bearing facts about the flow:
   keys and move global gate lists in the save_variables file). Its progress
   lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
   A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
-  name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT`, and the Makefile
+  name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT` and
+  `F_UNITS_RESTRUCTURE=y` (Replace mode or a first install, the same rule as
+  the MMU units list; otherwise a read-only comment shows it), and the Makefile
   takes `UNIT_NAME`/`MCU_NAME` from the saved `CONFIG_UNIT_NAME` for a
   single-unit config. Its `reparse_env` (extension catalog item 22) makes
   menuconfig re-parse on a rename so every derived default follows at once.
