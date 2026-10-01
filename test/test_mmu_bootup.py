@@ -26,7 +26,7 @@ import re
 import unittest
 from unittest.mock import patch
 
-from test.hh import session
+from test.hh import profiles, session
 from test.hh.bootstrap import PRINTER_STUB
 
 # HH logs a lot at INFO during construction; keep test output readable.
@@ -522,6 +522,65 @@ class TestSensorDriving(BootedSessionMixin, unittest.TestCase):
     def test_sensor_lookup_errors_are_helpful(self):
         with self.assertRaises(KeyError):
             self.hh.sensor('no_such_sensor')
+
+
+class TestSharedEncoderRenamed(unittest.TestCase):
+    """
+    The reported failure, end to end: a machine whose encoder is named off the UNIT_NAME
+    default, shared by a second unit.
+
+    A component name has to appear in TWO places in the generated config - the `encoder : X`
+    line in [mmu_unit] and the `[mmu_encoder X]` section that defines it. While the
+    definition kept the section name it inherited from UNIT_NAME, the reference dangled and
+    MmuUnit.__init__ (extras/mmu/mmu_unit.py:491-501) aborted the whole config load with
+    `Encoder section [mmu_encoder headcoder] not found!`, which is exactly what a user
+    renaming an encoder in menuconfig got - on the unit that OWNS it.
+
+    A sharing unit needs its own check: PARAM_GATE_ENDSTOP_TO_ENCODER is prompted only in
+    Kconfig.encoder's `if !MMU_SHARED_ENCODER` branch, so the token used to render as
+    nothing and getfloat() rejected `gate_endstop_to_encoder :` at config load. The line
+    being simply absent is fine - the parameter falls back to its 0.0 default
+    (mmu_unit_parameters.py:324), asserted here rather than in the render test because this
+    is where the value is actually read.
+
+    Its own session rather than BootedSessionMixin: a multi-unit machine is three Kconfig
+    parses, and this profile is deliberately not in the PROFILES registry (a fixture, not a
+    machine anyone would run - see the note in profiles.py).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session(profiles.SHARED_ENCODER_RENAMED)
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def test_the_machine_boots(self):
+        self.assertEqual(self.hh.errors, [])
+
+    def test_both_units_resolved_the_one_renamed_encoder(self):
+        """
+        Not merely "no error" - the SAME object. A sharer that quietly built its own would
+        be a second encoder with its own endstop, resolution and calibration, which is the
+        failure the whole shared-encoder path exists to prevent.
+        """
+        units = self.hh.printer.lookup_object('mmu_machine').units
+        self.assertEqual([u.name for u in units], ['unit0', 'unit1'])
+        for unit in units:
+            self.assertIsNotNone(unit.encoder, unit.name)
+            self.assertIs(unit.encoder, units[0].encoder)
+        self.assertIn('mmu_encoder headcoder', self.hh.printer.objects)
+
+    def test_the_encoder_offset_is_the_owner_setting_and_the_default_elsewhere(self):
+        """
+        The value the omitted option falls back to, and that dropping the line cost the
+        owner nothing: unit0 has a shared_exit endstop, so Kconfig gave it 10 and the line
+        is still rendered for it, while the sharer falls back to the 0.0 default.
+        """
+        units = self.hh.printer.lookup_object('mmu_machine').units
+        self.assertEqual([u.p.gate_endstop_to_encoder for u in units], [10.0, 0.0])
 
 
 class TestNoExtruderTmc(BootedSessionMixin, unittest.TestCase):

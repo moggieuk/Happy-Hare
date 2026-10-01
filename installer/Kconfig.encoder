@@ -5,7 +5,8 @@
 #   MMU_SHARED_ENCODER
 #   PARAM_ENCODER_NAME
 #   PARAM_ENCODER_RESOLUTION
-#   PARAM_GATE_ENDSTOP_TO_ENCODER
+#   PARAM_GATE_ENDSTOP_TO_ENCODER (also 'and not MMU_SHARED_ENCODER' - prompted for the
+#     owning unit only, so on a sharer the token renders as an empty option)
 #   PIN_ENCODER (duplicate with pins)
 #   PARAM_BOWDEN_APPLY_CORRECTION
 #   PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
@@ -48,7 +49,7 @@ if MMU_HAS_ENCODER
 
     if MMU_SHARED_ENCODER
       config PARAM_ENCODER_NAME
-        prompt "Shared encoder name             "
+        string "Shared encoder name             "
         default "-specify name-"
         help
           Enter the name of shared encoder. A shared encoder must be see the filament from
