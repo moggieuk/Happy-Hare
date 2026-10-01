@@ -1,6 +1,7 @@
 """Integration tests for install.sh recovery and v3 migration paths."""
 
 import os
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -618,6 +619,44 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("replace/unit0=y", result.stdout)
         self.assertIn("refresh/=y", result.stdout)
         self.assertIn("/=y", result.stdout.splitlines()[-1])
+
+    def test_single_unit_renamed(self):
+        cases = {
+            "single, renamed": ('CONFIG_UNIT_NAME="box"\nCONFIG_MCU_NAME="unit0"\n', "yes"),
+            "single, unchanged": ('CONFIG_UNIT_NAME="unit0"\nCONFIG_MCU_NAME="unit0"\n', "no"),
+            "multi unit": ('CONFIG_MULTI_UNIT=y\nCONFIG_UNIT_NAME="box"\n', "no"),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(label):
+                kconfig = self.write(self.root / ".mmu_config", text)
+                result = self.run_shell("""
+                    KCONFIG_CONFIG={k}
+                    if single_unit_renamed; then echo RESULT=yes; else echo RESULT=no; fi
+                    echo "LEAK=${{CONFIG_UNIT_NAME:-}}"
+                """.format(k=shlex.quote(str(kconfig))))
+                self.assertIn("RESULT=" + expected, result.stdout)
+                self.assertIn("LEAK=\n", result.stdout)
+
+    def test_single_unit_name_steers_the_makefile(self):
+        cases = {
+            'CONFIG_UNIT_NAME="box"\n': "box",
+            'CONFIG_UNIT_NAME="unit0"\n': "unit0",
+            "": "unit0",
+            'CONFIG_MULTI_UNIT=y\nCONFIG_MMU_UNITS="a,b"\nCONFIG_UNIT_NAME="box"\n': "a b",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text):
+                kconfig = self.write(self.root / ".mmu_config", text)
+                # As install.sh runs it: nothing else naming the unit (make test exports one)
+                env = {k: v for k, v in os.environ.items()
+                       if k not in ("UNIT_NAME", "MCU_NAME", "UNIT_INDEX", "KCONFIG_CONFIG")}
+                out = subprocess.run(
+                    ["make", "--no-print-directory", "-s", "variables",
+                     "KCONFIG_CONFIG={}".format(kconfig)],
+                    cwd=REPO_ROOT, env=env, text=True, capture_output=True).stdout
+                line = [l for l in out.splitlines() if "unit_names" in l][0]
+                self.assertEqual(re.sub(r"\x1b[^m]*m|\x1b\(B", "", line).split("=", 1)[1].strip(),
+                                 expected)
 
     def test_unit_review_refused_change_stops(self):
         self.assertIn("RESULT=stop", self.review_units(2))

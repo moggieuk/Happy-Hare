@@ -1,13 +1,31 @@
 # Responsible for setting:
+#   UNIT_NAME (prompt only for a single unit)
 #   PARAM_DISPLAY_NAME
 
-config PARAM_DISPLAY_NAME
-  string "Display name"
-  generated_default "%s-%d" "PARAM_VENDOR UNIT_INDEX" if PARAM_VENDOR != "Other"
-  default UNIT_NAME
+menu "Name"
   help
-    The display name identifies your MMU in various UI's.
-    It is NOT the klipper object identifier name used in config,
-    which is typically just "unit0" or similar
+    The Klipper object name identifies this MMU unit in config and saved
+    state. The display name is what UIs show.
 
-    Keep it reasonably short but it may contain spaces.
+  config UNIT_NAME
+    prompt "Klipper object name" if !MULTI_UNIT
+    validator "[a-z][a-z0-9_-]*"
+    help
+      Names this unit's config sections, MCU and pins (e.g. [mmu_unit unit0],
+      unit0:PA1) and its saved state. Use lowercase letters, digits, "_" and
+      "-", starting with a letter.
+      Change it freely on a first install. Once installed, renaming needs the
+      installer's [[REV]]Replace[[/REV]] mode (option 2) to migrate saved state.
+
+  comment "Klipper object name: $(UNIT_NAME)  (set in the MMU units list)" if MULTI_UNIT
+
+  config PARAM_DISPLAY_NAME
+    string "Display name"
+    generated_default "%s-%d" "PARAM_VENDOR UNIT_INDEX" if PARAM_VENDOR != "Other"
+    default UNIT_NAME
+    help
+      The display name identifies your MMU in various UI's.
+      It is NOT the Klipper object name used in config.
+
+      Keep it reasonably short but it may contain spaces.
+endmenu

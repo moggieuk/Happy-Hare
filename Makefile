@@ -143,9 +143,11 @@ endif
 export OUT ?= $(OUTDIR)/out
 export IN  := $(OUT)/in
 
-# Default unit and mcu naming
-export UNIT_NAME ?= unit0
-export MCU_NAME ?= unit0
+# Default unit and mcu naming. A single unit keeps the name set in its menuconfig;
+# in multi-unit install.sh passes each unit's name instead
+single_unit_name = $(if $(filter y,$(CONFIG_MULTI_UNIT)),,$(call unwrap,$(CONFIG_UNIT_NAME)))
+export UNIT_NAME ?= $(or $(single_unit_name),unit0)
+export MCU_NAME ?= $(or $(single_unit_name),unit0)
 
 # Helper functions/constants
 comma := ,
@@ -166,9 +168,9 @@ MOONRAKER_HOME          := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
 PRINTER_CONFIG_FILE     := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE   := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
-# unit_names: from CONFIG_MMU_UNITS in multi-unit, else default to unit0
+# unit_names: from CONFIG_MMU_UNITS in multi-unit, else the single unit's name
 #unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(call strip_ws_around_commas,$(CONFIG_MMU_UNITS))))),unit0)
-unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(call convert_list,$(subst ",,$(CONFIG_MMU_UNITS))),unit0)
+unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(call convert_list,$(subst ",,$(CONFIG_MMU_UNITS))),$(UNIT_NAME))
 
 # Use sudo if the klipper home is at a system location (not owned by user)
 SUDO := $(shell \

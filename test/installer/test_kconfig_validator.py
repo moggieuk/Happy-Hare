@@ -142,6 +142,31 @@ class TestLedEffectValidators(unittest.TestCase):
                 self.assertIsNotNone(validator.fullmatch(value))
 
 
+class TestUnitNamePrompt(unittest.TestCase):
+    """The Klipper object name is editable for a single unit only."""
+
+    def parse(self, **env):
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, **env)):
+            return cfg._kconfig('unit_name_prompt', {})
+
+    def test_single_unit_can_name_itself(self):
+        sym = self.parse().syms['UNIT_NAME']
+        self.assertEqual(sym.visibility, 2)
+        self.assertIsNotNone(sym.validator)
+        self.assertIsNotNone(sym.validator.fullmatch('box'))
+        self.assertIsNone(sym.validator.fullmatch('Box'))
+
+    def test_multi_unit_name_comes_from_the_unit_list(self):
+        import kconfiglib
+        kc = self.parse(F_MULTI_UNIT='y', UNIT_NAME='box', MCU_NAME='box', UNIT_INDEX='1')
+        self.assertEqual(kc.syms['UNIT_NAME'].visibility, 0)
+        self.assertEqual(kc.syms['UNIT_NAME'].str_value, 'box')
+        shown = [n.prompt[0] for n in kc.node_iter()
+                 if n.item == kconfiglib.COMMENT and n.prompt
+                 and kconfiglib.expr_value(n.prompt[1]) and 'Klipper object name' in n.prompt[0]]
+        self.assertEqual(shown, ['Klipper object name: box  (set in the MMU units list)'])
+
+
 class TestMmuUnitsValidator(unittest.TestCase):
 
     @classmethod

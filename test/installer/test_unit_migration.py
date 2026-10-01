@@ -626,6 +626,75 @@ class TestRenameIntoADeletedName(Scratch):
         self.assertTrue(os.path.exists(um._base(self.home, "mmu_hardware_unit1.cfg")))
 
 
+class TestSingleUnitRename(Scratch):
+    """A single unit is renamed through its own 'Klipper object name' prompt."""
+
+    def single(self, name, mcu, *lines):
+        body = ['CONFIG_UNIT_NAME="%s"' % name, 'CONFIG_MCU_NAME="%s"' % mcu, "CONFIG_UNIT_INDEX=0",
+                "CONFIG_PARAM_NUM_GATES=4 #~DEFAULT~#",
+                'CONFIG_KLIPPER_CONFIG_HOME="%s"' % self.home] + list(lines)
+        self.write(self.kconfig, "\n".join(body) + "\n")
+
+    def test_first_install_rename_fixes_the_kconfig_and_needs_no_migration(self):
+        # Menuconfig ran with UNIT_NAME=unit0, so MCU_NAME and defaults still say unit0
+        self.single("box", "unit0", 'CONFIG_PIN_X="unit0:PA1"',
+                    'CONFIG_PIN_Y="unit0:PA2" #~DEFAULT~#')
+        self.assertEqual(self.check("refresh", base=[]), (um.EXIT_NONE, ""))
+        um.migrate_kconfig(self.kconfig, [], io.StringIO())
+        values = self.kvalues()
+        self.assertEqual(values["MCU_NAME"], "box")
+        self.assertEqual(values["PIN_X"], "box:PA1")
+        self.assertEqual(values["PIN_Y"], "unit0:PA2")   # Recomputed by the forced olddefconfig
+        um.migrate_kconfig(self.kconfig, [], io.StringIO())
+        self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
+
+    def test_an_unchanged_single_unit_is_left_alone(self):
+        self.install(["unit0"])
+        self.single("unit0", "unit0")
+        before = self.read(self.kconfig)
+        self.assertEqual(self.check("refresh"), (um.EXIT_NONE, ""))
+        um.migrate_kconfig(self.kconfig, ["unit0"], io.StringIO())
+        um.prepare(self.kconfig, self.home, ["unit0"], io.StringIO())
+        self.assertEqual(self.read(self.kconfig), before)
+        self.assertFalse(os.path.exists(um.state_path(self.kconfig)))
+
+    def test_baseline_of_an_uninstalled_single_unit_is_its_name(self):
+        self.single("box", "box")
+        self.assertEqual(um.baseline(self.kconfig, self.home), ["box"])
+
+    def test_renaming_an_installed_single_unit_needs_replace(self):
+        self.install(["unit0"])
+        self.single("box", "unit0")
+        code, out = self.check("refresh")
+        self.assertEqual(code, um.EXIT_REFUSED)
+        self.assertIn("set 'Klipper object name' back to 'unit0'", out)
+        code, out = self.check("replace")
+        self.assertEqual(code, um.EXIT_STRUCTURAL)
+        self.assertIn("rename unit0 -> box", out)
+        self.assertNotIn("will be reset", out)
+
+    def test_renaming_an_installed_single_unit_end_to_end(self):
+        self.install(["unit0"], variables={
+            "mmu_unit0_bowden_lengths": [1, 2, 3, 4],
+            "mmu_state_gate_color": ["r", "g", "b", "w"],
+            "mmu_state_gate_selected": 2, "mmu_state_tool_selected": 1,
+        })
+        self.single("box", "unit0", 'CONFIG_PIN_X="unit0:PA1"')
+        self.run_all(um.baseline(self.kconfig, self.home))
+
+        self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
+        variables = um.read_vars(self.vars_file)
+        self.assertEqual(variables["mmu_box_bowden_lengths"], [1, 2, 3, 4])
+        self.assertNotIn("mmu_unit0_bowden_lengths", variables)
+        self.assertEqual(variables["mmu_state_gate_color"], ["r", "g", "b", "w"])
+        # A rename doesn't renumber any gate, so the selection stands
+        self.assertEqual(variables["mmu_state_gate_selected"], 2)
+        self.assertEqual(variables["mmu_state_tool_selected"], 1)
+        for name in ("mmu_hardware_unit0.cfg", "mmu_parameters_unit0.cfg"):
+            self.assertFalse(os.path.exists(um._base(self.home, name)))
+        self.assertFalse(os.path.exists(um.state_path(self.kconfig)))
+
+
 class TestManualEditWarnings(Scratch):
 
     def test_excluded_blocks_and_printer_cfg_are_scanned(self):

@@ -65,9 +65,16 @@ Load-bearing facts about the flow:
   (in `make install`, Klipper stopped: retire old unit files, rename unit
   keys and move global gate lists in the save_variables file). Its progress
   lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
+  A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
+  name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT`, and the Makefile
+  takes `UNIT_NAME`/`MCU_NAME` from the saved `CONFIG_UNIT_NAME` for a
+  single-unit config. Because the parse already ran with the old name,
+  install.sh spots a rename (`CONFIG_UNIT_NAME` != `CONFIG_MCU_NAME`), rewrites
+  explicit values and forces a top-level `olddefconfig`. In multi-unit the
+  prompt is hidden, so the name always comes from `MMU_UNITS`.
 - **`make` itself reads the value file**: the Makefile does
   `-include $(KCONFIG_CONFIG)`, so any `CONFIG_*` symbol
-  (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_KLIPPER_HOME`, ...)
+  (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_UNIT_NAME`, `CONFIG_KLIPPER_HOME`, ...)
   steers the build (e.g. `unit_names`). Renaming such a symbol is a Makefile
   change too.
 - **Staleness**: `kconfig_sources` in the `Makefile` = every `Kconfig*` file in

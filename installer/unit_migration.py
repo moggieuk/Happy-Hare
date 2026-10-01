@@ -309,7 +309,7 @@ def baseline(kconfig, config_home):
     values = read_kconfig(kconfig)
     if values.get("MULTI_UNIT") == "y":
         return sequence_edit.split_sequence(values.get(SYMBOL, ""), SEPARATOR)
-    return ["unit0"] if os.path.exists(kconfig) else []
+    return [values.get("UNIT_NAME") or "unit0"] if os.path.exists(kconfig) else []
 
 
 class Plan:
@@ -317,13 +317,15 @@ class Plan:
         values = read_kconfig(kconfig)
         self.kconfig = kconfig
         self.baseline = list(base)
-        if values.get("MULTI_UNIT") == "y":
-            self.current = sequence_edit.split_sequence(values.get(SYMBOL, ""), SEPARATOR)
+        self.single = values.get("MULTI_UNIT") != "y"
+        if self.single:
+            # A single unit is named by its own menuconfig, so any change is a rename
+            self.current = [values.get("UNIT_NAME") or "unit0"]
+            origins = {self.current[0]: self.baseline[0]} if len(self.baseline) == 1 else None
         else:
-            self.current = list(self.baseline) or ["unit0"]
-
-        changes = sequence_edit.read_changes(sequence_edit.changes_path(kconfig, SYMBOL))
-        origins = sequence_edit.origins_from_changes(changes, self.baseline, self.current)
+            self.current = sequence_edit.split_sequence(values.get(SYMBOL, ""), SEPARATOR)
+            changes = sequence_edit.read_changes(sequence_edit.changes_path(kconfig, SYMBOL))
+            origins = sequence_edit.origins_from_changes(changes, self.baseline, self.current)
         self.captured = origins is not None
         self.model = sequence_edit.SequenceModel(self.baseline, self.current, origins)
 
@@ -417,9 +419,11 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
                   " is migrated. Use './install.sh -i' (Replace mode) to rename, remove or reorder"
                   " units" % SYMBOL, file=out)
             return EXIT_UNTRACKED
+        undo = ("set 'Klipper object name' back to '%s'" % plan.baseline[0] if plan.single
+                else "open 'MMU units' and press [u]")
         print("ERROR: Renaming, removing or reordering units is only allowed in Replace upgrade mode."
-              " Re-run './install.sh -i' and choose option 2, or open 'MMU units' and press [u] to"
-              " undo the pending change", file=out)
+              " Re-run './install.sh -i' and choose option 2, or %s to undo the pending change"
+              % undo, file=out)
         return EXIT_REFUSED
 
     if config_home and installed_units(config_home) is not None:
@@ -445,6 +449,9 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
 def migrate_kconfig(kconfig, base, out=sys.stdout):
     """Bring the per-unit Kconfig files in line with the current unit list. Idempotent."""
     plan = Plan(kconfig, base)
+    if plan.single:
+        _rename_single_unit(kconfig, out)
+        return
     if not plan.changed() and not read_state(kconfig):
         return
     applied = _applied(kconfig, plan.baseline)
@@ -505,6 +512,24 @@ def migrate_kconfig(kconfig, base, out=sys.stdout):
     write_state(kconfig, state)
 
 
+def _rename_single_unit(kconfig, out):
+    # MCU_NAME keeps the name the last parse ran with, so it differs from UNIT_NAME
+    # right after the unit was renamed in menuconfig (including on a first install)
+    values = read_kconfig(kconfig)
+    old, new = values.get("MCU_NAME"), values.get("UNIT_NAME")
+    if not old or not new or old == new:
+        return
+    state = read_state(kconfig) or {}
+    if "generated" not in state:
+        state["generated"] = generated_hardware_lines(kconfig, [])
+        write_state(kconfig, state)
+    rewritten, manual = rewrite_kconfig(kconfig, {old: new}, {old, new})
+    for line in rewritten:
+        print("  %s: %s" % (os.path.basename(kconfig), line), file=out)
+    for line in manual:
+        print("WARNING: Check for an old unit name: %s" % line, file=out)
+
+
 # -----------------------------------------------------------------------------
 # prepare
 # -----------------------------------------------------------------------------
@@ -521,7 +546,7 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
             or values.get("PARAM_DEFAULT_EXTRUDER_TEMP") or 200
         new_gates = {}
         for name in plan.current:
-            gates = read_kconfig(unit_file(kconfig, name)).get("PARAM_NUM_GATES")
+            gates = read_kconfig(kconfig if plan.single else unit_file(kconfig, name)).get("PARAM_NUM_GATES")
             new_gates[name] = int(gates) if gates and gates.isdigit() else None
         state["install"] = {
             "config_home": config_home,
