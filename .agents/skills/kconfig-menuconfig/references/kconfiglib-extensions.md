@@ -463,4 +463,28 @@ an "Updating configuration…" box.
 - `UNIT_NAME` uses `reparse_env "UNIT_NAME MCU_NAME"`. After a re-parse the
   saved `MCU_NAME` already follows the rename, so install.sh records the name
   before menuconfig (`F_UNIT_NAME_BEFORE`) to know a rename happened.
-- Tests: `TestReparseEnv` in `test/installer/test_menuconfig.py`.
+- **The prompt is locked like `MMU_UNITS`:** `prompt "Klipper object name" if
+  !MULTI_UNIT && "$(env-default,F_UNITS_RESTRUCTURE,n)" = "y"` (Replace mode or
+  a first install), with a read-only comment otherwise. Hiding it is safe only
+  because the hidden symbol's default (`$(UNIT_NAME)`) is built by the Makefile
+  from the saved `CONFIG_UNIT_NAME`. A locked symbol whose default didn't
+  round-trip its value would lose it (SKILL.md pitfall 2).
+- **Adding another `reparse_env` symbol:**
+  - every prompted default derived from those variables needs a name on the
+    `#~DEFAULT~#` prefix list, or the re-parse keeps its stale value;
+  - whatever launches menuconfig (Makefile/install.sh) must pass the same
+    variables from the saved value, or the next parse goes back to the old one;
+  - keep the fork generic: it only knows which variables mirror the symbol.
+    Meaning (renaming files, saved state) belongs in the installer.
+- **Tests:** `TestReparseEnv` in `test/installer/test_menuconfig.py`. A fixture's
+  derived symbols must use `PARAM_`/`PIN_` names for their defaults to update.
+- **Checking it in a real terminal:** drive `make menuconfig` with `pty.fork`
+  (`TERM=xterm-256color`, and `F_UNITS_RESTRUCTURE=y` so the prompt is
+  editable outside install.sh).
+  - **Finding the row:** a single-unit menu marks the selection through the
+    help pane, not with `>`, so press `j` until the row's help text appears.
+  - **Confirming the row:** curses redraws only what changed, so press Enter
+    and look for the input dialog.
+  - **Checking the result:** after saving, `CONFIG_MCU_NAME` equal to the new
+    name proves the re-parse ran, and the `#~DEFAULT~#` pin lines should carry
+    the new prefix.
