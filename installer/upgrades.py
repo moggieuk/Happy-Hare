@@ -72,6 +72,47 @@ class Upgrades:
 
         self.upgrade(cfg, upgrade_path[1], to_version)
 
+
+    HTLF_SELECTOR_ROTATION_DISTANCE = 360.0 # Selector distances are cam degrees
+
+    def upgrade_4_0_to_4_1(self, cfg):
+        self._upgrade_htlf_selector_to_degrees(cfg)
+
+    def _upgrade_htlf_selector_to_degrees(self, cfg):
+        """
+        HTLF moved its selector to rotation_distance 360 with CAD geometry in cam degrees. A
+        refresh keeps the old rotation_distance but renders the new degree-based CAD lines, so
+        switch rotation_distance to match. Selector speeds are deliberately left alone.
+        """
+        for section in cfg.sections():
+            if not section.startswith("mmu_unit "):
+                continue
+            if (cfg.get(section, "vendor") or "").strip().lower() != "htlf":
+                continue
+
+            unit = section[len("mmu_unit "):]
+            stepper = "mmu_stepper %s" % (cfg.get(section, "selector_stepper") or "%s_selector" % unit)
+            if not cfg.has_option(stepper, "rotation_distance"):
+                continue
+
+            old_rd = float(cfg.get(stepper, "rotation_distance"))
+            if old_rd == self.HTLF_SELECTOR_ROTATION_DISTANCE:
+                continue
+
+            logging.warning(
+                "HTLF unit '%s': selector rotation_distance changed from %s to %g (cam degrees). "
+                "Re-run MMU_CALIBRATE_ROTARY_SELECTOR",
+                unit, cfg.get(stepper, "rotation_distance"), self.HTLF_SELECTOR_ROTATION_DISTANCE,
+            )
+            cfg.set(stepper, "rotation_distance", "%g" % self.HTLF_SELECTOR_ROTATION_DISTANCE)
+
+            # Hand-set mm geometry predates descending cam support, so let the new defaults through
+            params = "mmu_unit_parameters %s" % unit
+            for option in ("cad_gate0_pos", "cad_gate_width", "cad_selector_tolerance"):
+                if cfg.has_option(params, option):
+                    logging.warning("HTLF unit '%s': removing %s (now set by the cam angle)", unit, option)
+                    cfg.remove_option(params, option)
+
 # Upgrade from v3 is possible but difficult and requires a lot of testing. Therefore for
 # now I'm going to assume at least a v4.0.0 starting point for sanity. In case I ever
 # add upgrade from previous versions, the logic is mostly here:

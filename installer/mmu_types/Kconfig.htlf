@@ -11,6 +11,35 @@ config MMU_TYPE_HTLF_1_0
 
 if MMU_TYPE_HTLF_1_0
 
+  choice CHOICE_HTLF_CAM_ANGLE
+    prompt "Cam lobe angle"
+    default CHOICE_HTLF_CAM_ANGLE_60
+    help
+      The lobe angle of the printed cam. It sets the selector
+      position of each gate (60 is the recommended print)
+
+    config CHOICE_HTLF_CAM_ANGLE_30
+      bool "30 degrees"
+    config CHOICE_HTLF_CAM_ANGLE_45
+      bool "45 degrees"
+    config CHOICE_HTLF_CAM_ANGLE_60
+      bool "60 degrees"
+
+  endchoice
+
+  # Selector rotation_distance is 360 so selector "mm" are cam degrees. Gate 0's lobe
+  # engages 215 degrees from home and each later gate one cam angle closer
+  config PARAM_CAD_GATE0_POS
+    default "215"
+  config PARAM_CAD_GATE_WIDTH
+    default "-30" if CHOICE_HTLF_CAM_ANGLE_30
+    default "-45" if CHOICE_HTLF_CAM_ANGLE_45
+    default "-60"
+  config PARAM_CAD_SELECTOR_TOLERANCE
+    default "30" if CHOICE_HTLF_CAM_ANGLE_30
+    default "45" if CHOICE_HTLF_CAM_ANGLE_45
+    default "60"
+
 
   source "Kconfig.capabilities"
 
@@ -44,11 +73,13 @@ if MMU_TYPE_HTLF_1_0
   config PARAM_SELECTOR_GEAR_RATIO
     default "1:1"
   config PARAM_SELECTOR_ROTATION_DISTANCE
-    default 32
+    default 360
   config PARAM_SELECTOR_RUN_CURRENT
     default 0.6
   config PARAM_SELECTOR_HOLD_CURRENT
     default 0.3
+  config PARAM_SELECTOR_HOMING_RETRACT_DIST
+    default "55" # Cam degrees, about the 5mm stepper default at the old rotation_distance of 32
 
   config PARAM_SELECTOR_RELEASE_GATES
     default "1, 2, 3, 0"
@@ -59,9 +90,11 @@ if MMU_TYPE_HTLF_1_0
   config PARAM_GEAR_SHORT_MOVE_SPEED
     default 80
   config PARAM_SELECTOR_MOVE_SPEED
-    default 50
+    default 550
+  config PARAM_SELECTOR_HOMING_SPEED
+    default 350
   config PARAM_SELECTOR_ACCEL
-    default 50
+    default 550
   config PARAM_EXTRUDER_LOAD_SPEED
     default 16
 
