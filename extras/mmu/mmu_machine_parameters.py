@@ -113,6 +113,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('extruder_unload_speed',         'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
         ParamSpec('extruder_sync_load_speed',      'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
         ParamSpec('extruder_sync_unload_speed',    'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
+        ParamSpec('extruder_sync_accel',           'float', 400.0,section="TOOLHEAD/EXTRUDER", limits=dict(above=10.0)),
         ParamSpec('extruder_accel',                'float', 400.0,section="TOOLHEAD/EXTRUDER", limits=dict(above=10.0)),
         ParamSpec('extruder_homing_speed',         'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
 

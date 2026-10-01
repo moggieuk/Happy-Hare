@@ -163,6 +163,13 @@ menu "Speeds"
         Speed of unload moves inside of extruder when synced with MMU gear stepper
         (very initial move from meltzone is 50% of this)
 
+    config PARAM_EXTRUDER_SYNC_ACCEL
+      float "Extruder sync acceleration      "
+      default 400
+      help
+        Acceleration of moves led by the MMU gear stepper with the extruder synced
+        to it (limited to the extruder acceleration)
+
     config PARAM_EXTRUDER_HOMING_SPEED
       float "Extruder homing speed           "
       default 16
