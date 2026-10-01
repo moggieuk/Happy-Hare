@@ -63,14 +63,28 @@ class RotarySelectorParameters(TunableParametersBase):
         ParamSpec('selector_release_gates',  'intlist', [2, 3, 0, 1], section="SELECTOR", hidden=True,
             validator=lambda self, v: self._validate_int_list(v, minval=0, maxval=self._selector.mmu_unit.num_gates - 1)),
 
+        # Negative cad_gate_width means gate 0 is the farthest from home (e.g. HTLF)
         ParamSpec('cad_gate0_pos',           'float',   4.0,  section="CAD", limits=dict(minval=0.0), hidden=True),
-        ParamSpec('cad_gate_width',          'float',   25.0, section="CAD", limits=dict(above=0.0),  hidden=True),
+        ParamSpec('cad_gate_width',          'float',   25.0, section="CAD", hidden=True,
+            validator=lambda self, v: self._validate_gate_width(v)),
         ParamSpec('cad_selector_tolerance',  'float',   15.0, section="CAD", limits=dict(minval=0.0), hidden=True),
     )
 
     def __init__(self, config, selector):
         self._selector = selector
         super().__init__(config)
+
+    def _post_load_fixups(self):
+        last_pos = self.cad_gate0_pos + (self._selector.mmu_unit.num_gates - 1) * self.cad_gate_width
+        if last_pos < 0:
+            raise ValueError(
+                f"cad_gate0_pos ({self.cad_gate0_pos}) and cad_gate_width ({self.cad_gate_width}) "
+                f"place the last gate behind the home position"
+            )
+
+    def _validate_gate_width(self, value):
+        if value == 0:
+            raise ValueError("Must not be zero")
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -158,7 +172,7 @@ class RotarySelector(PhysicalSelector):
         """
         super().handle_ready()
 
-        # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
+        # Load selector offsets (calibration set with MMU_CALIBRATE_ROTARY_SELECTOR) ----------------------
 
         def ensure_list_size(lst, size, default_value=-1):
             lst = lst[:size]
@@ -322,11 +336,14 @@ class RotarySelector(PhysicalSelector):
 
     # Internal Implementation --------------------------------------------------
 
+    def _cad_gate_offsets(self):
+        return [round(self.p.cad_gate0_pos + i * self.p.cad_gate_width, 1) for i in range(self.mmu_unit.num_gates)]
+
+
     def _get_max_selector_movement(self, lgate=TOOL_GATE_UNKNOWN):
-        n = lgate if lgate >= 0 else self.mmu_unit.num_gates - 1
-        max_movement = self.p.cad_gate0_pos + (n * self.p.cad_gate_width)
-        max_movement += self.p.cad_selector_tolerance
-        return max_movement
+        offsets = self._cad_gate_offsets()
+        pos = offsets[lgate] if lgate >= 0 else max(offsets)
+        return pos + self.p.cad_selector_tolerance
 
 
     # Manual selector offset calibration
@@ -382,7 +399,7 @@ class RotarySelector(PhysicalSelector):
             elif extrapolate and lgate == 0 and self.selector_offsets[-1] == -1:
                 # Distribute using cad spacing
                 self.selector_offsets = [
-                    round(self.selector_offsets[0] + i * self.p.cad_gate_width, 1)
+                    max(0., round(self.selector_offsets[0] + i * self.p.cad_gate_width, 1))
                     for i in range(self.mmu_unit.num_gates)
                 ]
             else:
@@ -396,7 +413,7 @@ class RotarySelector(PhysicalSelector):
                 self.mmu.log_always(f"Selector offset ({traveled:.1f}mm) for {gate_str(gate)} has been saved")
                 if gate == 0:
                     self.mmu.log_always(
-                        f"Run MMU_CALIBRATE_SELECTOR again with GATE={self.mmu_unit.num_gates - 1} "
+                        f"Run MMU_CALIBRATE_ROTARY_SELECTOR again with GATE={self.mmu_unit.num_gates - 1} "
                         "to extrapolate all gate positions. Use SINGLE=1 to force calibration "
                         "of only one gate"
                     )
@@ -573,7 +590,7 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
                 successful = selector._calibrate_selector(gate, extrapolate=not single, save=save)
             else:
                 mmu.log_always("%s - will calculate gate offsets from cad_gate0_pos and cad_gate_width" % ("Quick method" if quick else "No endstop configured"))
-                selector.selector_offsets = [round(selector.p.cad_gate0_pos + i * selector.p.cad_gate_width, 1) for i in range(mmu_unit.num_gates)]
+                selector.selector_offsets = selector._cad_gate_offsets()
                 mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, selector.selector_offsets, write=True, namespace=mmu_unit.name)
                 successful = True
 
@@ -583,7 +600,12 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
             # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
             if successful and mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
                 mmu.log_always("Selector calibration complete")
-                selector._select_gate(0)
+                if not selector.is_homed:
+                    selector._home_selector()
+                mmu.select_gate(min_gate)
+
+                # Leave MMU is usable state with user visualization
+                mmu.refresh_tool_gate()
             else:
                 selector.disable_motors()
 

@@ -481,6 +481,20 @@ CHAMELEON = Profile(
           'MMU_HAS_SENSOR_SHARED_EXIT': True},
     description='3D Chameleon 1.0 - 4 gates, the only RotarySelector')
 
+# HTLF: the second RotarySelector, and the one whose gates run the other way. Gate 0's cam lobe
+# is the FARTHEST from home (AFC_HTLF.calculate_lobe_movement), so its CAD gate width is
+# negative and every "the last gate is the far one" assumption in the rotary selector shows up
+# here and nowhere on a Chameleon. ERB v2 is the board HTLF ships with, and its gear dir_pin
+# default is inverted ('!') - the pin the per-gate gear direction must be applied ON TOP OF,
+# rather than replace. The shared exit sensor is the same honest gate-homing answer Chameleon
+# needs, for the same reason: the type selects no sensor of its own.
+HTLF = Profile(
+    'htlf',
+    syms={'MMU_TYPE_HTLF_1_0': True,
+          'BOARD_TYPE_ERB_2': True,
+          'MMU_HAS_SENSOR_SHARED_EXIT': True},
+    description='HTLF 1.0 - 4 gates, RotarySelector with descending cam positions')
+
 # PicoMMU and MMX are the two shipped ServoSelector machines. Like Chameleon, neither
 # chooses a controller board or a gate-homing sensor on its own, so the harness supplies
 # the same complete, ordinary setup a user must choose in menuconfig.
@@ -820,7 +834,7 @@ run_current: 0.6
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
                     EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,

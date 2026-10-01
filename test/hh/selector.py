@@ -85,7 +85,8 @@ class SelectorAxis:
             spacing = self._cad('cad_gate_width') or 1.0
             self.circumference = self.unit.num_gates * spacing
         if offsets:
-            self.travel_max = offsets[-1] + (self._cad('cad_last_gate_offset') or 0.)
+            # max(), not the last gate: a rotary selector's gates can descend (HTLF)
+            self.travel_max = max(offsets) + (self._cad('cad_last_gate_offset') or 0.)
         elif positions:
             self.travel_max = max(positions.values())
         elif self.circumference is not None:

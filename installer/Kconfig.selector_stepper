@@ -16,6 +16,9 @@
 #
 #   PARAM_SELECTOR_GATE_DIRECTIONS
 #   PARAM_SELECTOR_RELEASE_GATES
+#   PARAM_CAD_GATE0_POS
+#   PARAM_CAD_GATE_WIDTH
+#   PARAM_CAD_SELECTOR_TOLERANCE
 
 
 if MMU_HAS_SELECTOR_STEPPER
@@ -99,8 +102,8 @@ if MMU_HAS_SELECTOR_STEPPER
         help
           An array with entry for each gate representing the direction of movement of the gear stepper
           when the gate is selected. This is used in the 3D-Chameleon design. E.g. "1, 1, 0, 0"
-            0 = normal direction
-            1 = reverse direction
+            0 = direction set by the gear dir_pin
+            1 = reverse of the gear dir_pin direction
           The length should match the number of gates
 
       config PARAM_SELECTOR_RELEASE_GATES
@@ -112,6 +115,18 @@ if MMU_HAS_SELECTOR_STEPPER
           the designated gate. (Only works if 'filament_always_gripped: 0').
           E.g. "2, 3, 0, 1" to release gate 0, select gate 2, to release gate 1, select gate 3, etc.
           The length should match the number of gates
+
+      # Selector geometry. Empty leaves the RotarySelector's own defaults; a machine type that
+      # needs different geometry sets these in its mmu_types/Kconfig.<mmu> file
+      config PARAM_CAD_GATE0_POS
+        string
+        default ""
+      config PARAM_CAD_GATE_WIDTH
+        string
+        default ""
+      config PARAM_CAD_SELECTOR_TOLERANCE
+        string
+        default ""
     endif
 
 

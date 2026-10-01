@@ -382,8 +382,8 @@ class TestRotarySelector(SelectorTestCase):
             with self.subTest(gate=gate):
                 self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
                 stepper = self.hh.mmu.drive(gate).mmu_gear_stepper.stepper
-                inverted, _original = stepper.get_dir_inverted()
-                self.assertEqual(bool(inverted), bool(direction),
+                inverted, original = stepper.get_dir_inverted()
+                self.assertEqual(bool(inverted), bool(original) ^ bool(direction),
                                  'gate %d should drive the gear %s'
                                  % (gate, 'reversed' if direction else 'forwards'))
 
@@ -462,8 +462,8 @@ class TestRotarySelectorOnALaterUnit(SelectorTestCase):
             with self.subTest(gate=gate):
                 self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
                 stepper = self.hh.mmu.drive(gate).mmu_gear_stepper.stepper
-                inverted, _original = stepper.get_dir_inverted()
-                self.assertEqual(bool(inverted), bool(direction))
+                inverted, original = stepper.get_dir_inverted()
+                self.assertEqual(bool(inverted), bool(original) ^ bool(direction))
                 self.assertEqual(self.hh.errors, [])
 
     def test_calibration_takes_a_machine_gate_not_a_local_one(self):
@@ -498,6 +498,136 @@ class TestRotarySelectorOnALaterUnit(SelectorTestCase):
 
         self.assertEqual(self.selector('unit1').selector_offsets, before)
         self.assertTrue(any('Filament may be loaded' in error for error in self.hh.errors))
+
+
+class TestRotarySelectorInvertedGearPin(SelectorTestCase):
+    """
+    selector_gate_directions is RELATIVE to the gear dir_pin, not a replacement for it.
+
+    It used to be handed straight to set_dir_inverted(), which overwrote the '!' Klipper read
+    from the pin - so inverting the pin did nothing once a gate had been gripped, and the gear
+    ran one way before the first grip and the other way after it. A Chameleon with an inverted
+    gear pin must now reverse exactly the gates its table does not.
+    """
+
+    PROFILE = PROFILES['chameleon'].derive(
+        'chameleon_inverted_gear', syms={'PIN_GEAR_DIR': '!unit0:PD3'},
+        description='3D Chameleon with the gear dir_pin inverted')
+
+    def test_the_gear_pin_really_is_inverted(self):
+        """A guard: without the '!' this class is TestRotarySelector over again."""
+        stepper = self.hh.mmu.drive(0).mmu_gear_stepper.stepper
+        _inverted, original = stepper.get_dir_inverted()
+        self.assertTrue(original, 'PIN_GEAR_DIR no longer renders inverted')
+
+    def test_the_gate_direction_flips_the_pin_rather_than_replacing_it(self):
+        expected = (False, False, True, True)   # (1, 1, 0, 0) applied on top of '!'
+        for gate, want in enumerate(expected):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.hh.run_gcode('MMU_GRIP')
+                stepper = self.hh.mmu.drive(gate).mmu_gear_stepper.stepper
+                inverted, _original = stepper.get_dir_inverted()
+                self.assertEqual(bool(inverted), want)
+                self.assertEqual(self.hh.errors, [])
+
+
+def htlf_cam_offsets(cam_angle, num_gates=4):
+    """Gate positions."""
+    return [float(215 - i * cam_angle) for i in range(num_gates)]
+
+
+class TestHtlfSelector(SelectorTestCase):
+    """
+    htlf: a RotarySelector whose gate 0 is the cam lobe FARTHEST from home, on an ERB v2 whose
+    gear dir_pin ships inverted. Both were broken for real users: the LEDs (in gate order) were
+    right but the cams were selected in reverse, and inverting the gear pin did nothing.
+    """
+
+    PROFILE = 'htlf'
+
+    def test_the_machine_still_has_the_shape_these_tests_assume(self):
+        selector = self.selector('unit0')
+        self.assertEqual(type(selector).__name__, 'RotarySelector')
+        self.assertEqual(tuple(selector.p.selector_gate_directions), (0, 0, 0, 0))
+        stepper = self.hh.mmu.drive(0).mmu_gear_stepper.stepper
+        _inverted, original = stepper.get_dir_inverted()
+        self.assertTrue(original, 'ERB v2 no longer defaults the gear dir_pin to inverted')
+
+    def test_the_inverted_gear_pin_survives_gate_selection(self):
+        """
+        THE direction regression. With directions 0,0,0,0 every grip used to set the gear to
+        NOT inverted, silently discarding the board's '!'.
+        """
+        for gate in range(self.hh.mmu.num_gates):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                stepper = self.hh.mmu.drive(gate).mmu_gear_stepper.stepper
+                inverted, _original = stepper.get_dir_inverted()
+                self.assertTrue(inverted, 'gate %d lost the dir_pin inversion' % gate)
+                self.assertEqual(self.hh.errors, [])
+
+    def test_gate_zero_is_the_cam_farthest_from_home(self):
+        selector = self.selector('unit0')
+        self.assertLess(selector.p.cad_gate_width, 0)
+        self.assertEqual(selector._cad_gate_offsets(), htlf_cam_offsets(60))
+
+    def test_selecting_a_gate_drives_to_its_own_cam(self):
+        """filament_always_gripped: selecting IS gripping, so the carriage sits on the gate's lobe."""
+        axis = self.axis('unit0')
+        expected = htlf_cam_offsets(60)
+        for gate in range(self.hh.mmu.num_gates):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.assertAlmostEqual(axis.carriage, expected[gate], places=1)
+                self.assertEqual(self.hh.errors, [])
+
+
+class TestHtlfCalibration(unittest.TestCase):
+    """
+    MMU_CALIBRATE_ROTARY_SELECTOR on an UNSEEDED HTLF. Every limit in the rotary selector used
+    to assume the last gate was the far one, so measuring gate 0 on its own - the natural thing
+    to do in LED order - exceeded gate 0's "maximum" and the save was refused.
+    """
+
+    STEP = 360. / (200 * 16)    # A measured offset is only as fine as one microstep
+
+    def boot(self, cam_angle=None):
+        profile = PROFILES['htlf']
+        if cam_angle is not None:
+            profile = profile.derive('htlf_cam_%d' % cam_angle,
+                                     syms={'CHOICE_HTLF_CAM_ANGLE_%d' % cam_angle: True})
+        self.hh = session(profile)
+        self.hh.boot()
+        self.addCleanup(self.hh.close)
+        self.axis = self.hh.printer.harness_selectors[0]
+        self.selector = self.axis.selector
+
+    def test_gate_zero_can_be_calibrated_on_its_own(self):
+        self.boot()
+        expected = htlf_cam_offsets(60)
+        self.axis.place(expected[0])
+        self.hh.run_gcode('MMU_CALIBRATE_ROTARY_SELECTOR UNIT=0 GATE=0 SINGLE=1')
+        self.assertAlmostEqual(self.selector.selector_offsets[0], expected[0], delta=self.STEP)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_first_and_last_gate_extrapolate_a_descending_layout(self):
+        self.boot()
+        expected = htlf_cam_offsets(60)
+        for gate in (0, 3):
+            self.axis.place(expected[gate])
+            self.hh.run_gcode('MMU_CALIBRATE_ROTARY_SELECTOR UNIT=0 GATE=%d' % gate)
+        for gate, offset in enumerate(self.selector.selector_offsets):
+            self.assertAlmostEqual(offset, expected[gate], delta=self.STEP)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_quick_calibration_follows_the_cam_angle(self):
+        for cam_angle in (30, 45, 60):
+            with self.subTest(cam_angle=cam_angle):
+                self.boot(cam_angle)
+                self.hh.run_gcode('MMU_CALIBRATE_ROTARY_SELECTOR UNIT=0 QUICK=1')
+                self.assertEqual(self.selector.selector_offsets, htlf_cam_offsets(cam_angle))
+                self.assertEqual(self.hh.errors, [])
 
 
 class TestSelectorCalibration(unittest.TestCase):

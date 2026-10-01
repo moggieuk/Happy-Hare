@@ -214,9 +214,12 @@ class MmuDrive():
     def set_gear_direction(self, direction):
         """
         Changes direction of rail. Useful for some MMU designs like
-        3DChameleon or for saved direction calibration
+        3DChameleon or for saved direction calibration. Direction is
+        relative to the configured dir_pin, so 1 reverses whatever '!' set
         """
-        self.mmu_gear_stepper.stepper.set_dir_inverted(direction)
+        stepper = self.mmu_gear_stepper.stepper
+        _, orig_inverted = stepper.get_dir_inverted()
+        stepper.set_dir_inverted(bool(orig_inverted) ^ bool(direction))
 
 
     def move(self, dist, speed, accel, homing_move=0, endstop_name="default"):
