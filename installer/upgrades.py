@@ -74,11 +74,6 @@ class Upgrades:
 
 
     HTLF_SELECTOR_ROTATION_DISTANCE = 360.0 # Selector distances are cam degrees
-    HTLF_OLD_SELECTOR_SPEEDS = {            # 4.0 rendered defaults (mm/s at rotation_distance 32)
-        "selector_move_speed": 50.0,
-        "selector_homing_speed": 60.0,
-        "selector_accel": 50.0,
-    }
 
     def upgrade_4_0_to_4_1(self, cfg):
         self._upgrade_htlf_selector_to_degrees(cfg)
@@ -87,7 +82,7 @@ class Upgrades:
         """
         HTLF moved its selector to rotation_distance 360 with CAD geometry in cam degrees. A
         refresh keeps the old rotation_distance but renders the new degree-based CAD lines, so
-        convert the existing mm-based selector settings to match.
+        switch rotation_distance to match. Selector speeds are deliberately left alone.
         """
         for section in cfg.sections():
             if not section.startswith("mmu_unit "):
@@ -104,7 +99,6 @@ class Upgrades:
             if old_rd == self.HTLF_SELECTOR_ROTATION_DISTANCE:
                 continue
 
-            scale = self.HTLF_SELECTOR_ROTATION_DISTANCE / old_rd
             logging.warning(
                 "HTLF unit '%s': selector rotation_distance changed from %s to %g (cam degrees). "
                 "Re-run MMU_CALIBRATE_ROTARY_SELECTOR",
@@ -112,17 +106,8 @@ class Upgrades:
             )
             cfg.set(stepper, "rotation_distance", "%g" % self.HTLF_SELECTOR_ROTATION_DISTANCE)
 
-            # Old defaults are dropped so the new ones render; anything tuned keeps its physical speed
-            params = "mmu_unit_parameters %s" % unit
-            for option, old_default in self.HTLF_OLD_SELECTOR_SPEEDS.items():
-                if cfg.has_option(params, option):
-                    value = float(cfg.get(params, option))
-                    if value == old_default:
-                        cfg.remove_option(params, option)
-                    else:
-                        cfg.set(params, option, "%g" % (50 * round(value * scale / 50)))
-
             # Hand-set mm geometry predates descending cam support, so let the new defaults through
+            params = "mmu_unit_parameters %s" % unit
             for option in ("cad_gate0_pos", "cad_gate_width", "cad_selector_tolerance"):
                 if cfg.has_option(params, option):
                     logging.warning("HTLF unit '%s': removing %s (now set by the cam angle)", unit, option)
