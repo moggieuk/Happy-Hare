@@ -37,9 +37,9 @@ if MMU_TYPE_EMU_1_0
       Don't select if using a different sync-feedback buffer system (instead add
       under MMU additions)
     select MMU_HAS_SYNC_FEEDBACK_BUFFER
-    select MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
-    select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
-    select UNSELECT_MMU_HAS_SENSOR_BUFFER_TENSION
+    select MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    select UNSELECT_MMU_HAS_SENSOR_BUFFER_TENSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
   if OPTION_PSF_BUFFER
     choice CHOICE_BUFFER_SPRING_STATE
@@ -50,6 +50,10 @@ if MMU_TYPE_EMU_1_0
       default 16
     config PARAM_BUFFER_MAXRANGE
       default 16
+
+    # A shared buffer's sensors still steer this unit's endstop and calibration defaults
+    config MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      default y if MMU_SHARED_SYNC_FEEDBACK_BUFFER
   endif
 
   if !OPTION_PSF_BUFFER

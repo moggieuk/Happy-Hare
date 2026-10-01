@@ -10,9 +10,9 @@ config MMU_TYPE_QIDI_BOX_1_0
   select MMU_HAS_SENSOR_SHARED_EXIT
   select MMU_HAS_SENSOR_EXTRUDER
   select MMU_HAS_SYNC_FEEDBACK_BUFFER
-  select MMU_HAS_SENSOR_BUFFER_TENSION
-  select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
-  select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+  select MMU_HAS_SENSOR_BUFFER_TENSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+  select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+  select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
   imply  MMU_HAS_ENVIRONMENT_SENSOR
   imply  MMU_HAS_HEATER
   select PARAM_FILAMENT_ALWAYS_GRIPPED
@@ -24,6 +24,10 @@ config MMU_TYPE_QIDI_BOX_1_0
   select PARAM_SYNC_PURGE
 
 if MMU_TYPE_QIDI_BOX_1_0
+
+  # A shared buffer's sensors still steer this unit's endstop and calibration defaults
+  config MMU_HAS_SENSOR_BUFFER_TENSION
+    default y if MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
   # The readers are declared by the board profile, one physical chip per pair
   # of gates, so the per-gate list repeats each name twice.
