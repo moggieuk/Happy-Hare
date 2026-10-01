@@ -31,3 +31,11 @@ class LinearMultiGearSelector(LinearSelector):
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
+
+
+    def _select_gate(self, lgate):
+        # In-place crossload: the selector stays at the loaded gate while this gate's own drive is used
+        if self.mmu_unit.selector_held:
+            self.mmu.log_trace("Selector held at current position for crossload of gate %d" % self._logical_gate(lgate))
+            return
+        super()._select_gate(lgate)

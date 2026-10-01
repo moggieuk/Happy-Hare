@@ -112,7 +112,7 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
         # names the gate ("Ejecting gate N..."). An unload that has to run first
         # announces itself the same way.
         try:
-            with mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder(), eject_unit.wrap_hold_selector(eject_unit.crossload_in_place(gate)):
                 with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during unload
 
                     # Same as MMU_UNLOAD logic
