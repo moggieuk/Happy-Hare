@@ -514,6 +514,10 @@ class TestRotarySelectorInvertedGearPin(SelectorTestCase):
         'chameleon_inverted_gear', syms={'PIN_GEAR_DIR': '!unit0:PD3'},
         description='3D Chameleon with the gear dir_pin inverted')
 
+    def test_other_rotary_machines_keep_the_stepper_retract_default(self):
+        homing = self.selector('unit0').selector_stepper.rail.get_homing_info()
+        self.assertEqual(homing.retract_dist, 5.)
+
     def test_the_gear_pin_really_is_inverted(self):
         """A guard: without the '!' this class is TestRotarySelector over again."""
         stepper = self.hh.mmu.drive(0).mmu_gear_stepper.stepper
@@ -566,6 +570,16 @@ class TestHtlfSelector(SelectorTestCase):
                 inverted, _original = stepper.get_dir_inverted()
                 self.assertTrue(inverted, 'gate %d lost the dir_pin inversion' % gate)
                 self.assertEqual(self.hh.errors, [])
+
+    def test_homing_backs_off_far_enough_to_clear_the_switch(self):
+        """
+        The stepper's default 5 was ~56 degrees of cam at the old rotation_distance of 32 but is
+        only 5 degrees at 360, which may not clear the switch ("Endstop still triggered after
+        retract"). HTLF keeps the back-off it was homing with.
+        """
+        homing = self.selector('unit0').selector_stepper.rail.get_homing_info()
+        self.assertEqual(homing.retract_dist, 55.)
+        self.assertEqual(homing.speed, 350.)
 
     def test_gate_zero_is_the_cam_farthest_from_home(self):
         selector = self.selector('unit0')

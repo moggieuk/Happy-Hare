@@ -7,6 +7,7 @@
 #   PARAM_SELECTOR_RUN_CURRENT
 #   PARAM_SELECTOR_HOLD_CURRENT
 #   PARAM_SELECTOR_ENDSTOP_NAME
+#   PARAM_SELECTOR_HOMING_RETRACT_DIST
 #   PARAM_SELECTOR_MICROSTEPS
 #   PARAM_SELECTOR_FULL_STEPS_PER_ROTATION
 #   PARAM_SELECTOR_SENSE_RESISTOR
@@ -44,6 +45,12 @@ if MMU_HAS_SELECTOR_STEPPER
     config PARAM_SELECTOR_ENDSTOP_NAME
       string
       default "mmu_sel_home"
+
+    # Back-off from the home switch before the slower second approach. Empty leaves the stepper
+    # default; a machine type that needs more sets it in its mmu_types/Kconfig.<mmu> file
+    config PARAM_SELECTOR_HOMING_RETRACT_DIST
+      string
+      default ""
 
     config PARAM_SELECTOR_MICROSTEPS
       int "Selector microsteps             "

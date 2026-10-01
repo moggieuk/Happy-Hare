@@ -78,6 +78,8 @@ if MMU_TYPE_HTLF_1_0
     default 0.6
   config PARAM_SELECTOR_HOLD_CURRENT
     default 0.3
+  config PARAM_SELECTOR_HOMING_RETRACT_DIST
+    default "55" # Cam degrees, about the 5mm stepper default at the old rotation_distance of 32
 
   config PARAM_SELECTOR_RELEASE_GATES
     default "1, 2, 3, 0"
@@ -90,7 +92,7 @@ if MMU_TYPE_HTLF_1_0
   config PARAM_SELECTOR_MOVE_SPEED
     default 550
   config PARAM_SELECTOR_HOMING_SPEED
-    default 550
+    default 350
   config PARAM_SELECTOR_ACCEL
     default 550
   config PARAM_EXTRUDER_LOAD_SPEED
