@@ -28,6 +28,7 @@ import logging
 import unittest
 
 from test.hh import session
+from test.hh.root import install
 from test.hh.profiles import PROFILES, Profile, clone_across_units
 
 logging.getLogger().setLevel(logging.CRITICAL)
@@ -1757,3 +1758,26 @@ class TestTipFormingEffect(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestSelectorFinalMethods(unittest.TestCase):
+    """select_gate/restore_gate translate global to local gates; subclasses override the _ variants."""
+
+    @classmethod
+    def setUpClass(cls):
+        install() # The selector module imports klippy, so it needs the fake tree on sys.path
+
+    def test_overriding_final_methods_is_rejected(self):
+        from extras.mmu.unit.selectors.mmu_base_selectors import BaseSelector
+        for name in ('select_gate', 'restore_gate'):
+            with self.subTest(method=name):
+                with self.assertRaises(TypeError) as cm:
+                    type('BadSelector', (BaseSelector,), {name: lambda self, gate: None})
+                self.assertIn(name, str(cm.exception))
+
+    def test_overriding_local_variants_is_allowed(self):
+        from extras.mmu.unit.selectors.mmu_base_selectors import BaseSelector
+        type('GoodSelector', (BaseSelector,), {
+            '_select_gate': lambda self, lgate: None,
+            '_restore_gate': lambda self, lgate: None,
+        })
