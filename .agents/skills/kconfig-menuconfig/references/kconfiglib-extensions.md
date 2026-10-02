@@ -185,7 +185,8 @@ Only those whitelisted names inside `[[...]]` are tags (`_TAG_RE`), so other
 brackets such as `[, duration]` or `[[mmu_leds]]` stay literal.
 The root Kconfig's `title`/`caption` macros use `[[B]]` to bold the unit
 name. Comments are saved to the value file as `#` lines with their tags left
-in, which is harmless because nothing parses them.
+in, which is harmless because nothing parses them. As in menuconfig, a comment
+whose own `if` condition is false isn't saved.
 
 `[[VALUE:SYM]]` is replaced by SYM's *current* value every time the text is
 drawn (`_expand_values`, called from `_safe_addstr_markup` and on prompts in
