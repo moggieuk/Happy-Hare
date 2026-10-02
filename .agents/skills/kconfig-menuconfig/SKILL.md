@@ -264,7 +264,7 @@ to avoid wrapping beyond that limit; put longer explanations in documentation.
    parent Kconfig file) at the right position. Use `menu "..."` with `help`
    for grouping, `comment "_"` / `comment "_Heading"` for separators,
    `if !UNSELECT_X` for disable-able features, `@repeat` for per-gate
-   expansions (**sparingly** — pitfall 10), `prompt "..." if PARAM_NUM_GATES > $(i)`
+   expansions (count = nodes per parse — pitfall 10), `prompt "..." if PARAM_NUM_GATES > $(i)`
    to hide surplus
    gates.
 4. **Land it in a .cfg** (if it should): update the Jinja template(s) under
@@ -448,18 +448,14 @@ in this repo:
    don't prevent this: if a board file re-declares per-gate indexed
    symbols, re-declare only the names the feature file already declares
    (a re-declaration merges; a new index is a new list element).
-10. **`@repeat` is a per-parse multiplier — use sparingly.** It is a
-   line-level preprocessor (reference item 6): the body is duplicated
-   `max-min+1` times on *every* `Kconfig()` construction, uncached (multi-
-   unit pays it per unit), and each expanded line becomes real symbol
-   nodes in the parse — so a `min=0 max=11` block costs 12× the body's
-   node count on every pass. In this fork `min`/`max` are literal
-   integers only, so a `@repeat` is never dynamic: when a loop's count is
-   static (here, always), **unroll it in the file** instead of adding a
-   new `@repeat` block. The established per-gate blocks (`Kconfig.pins`,
-   `Kconfig.nfc_reader`, `Kconfig.environment_sensor`, ...) predate this
-   guidance — don't add to that footprint, and unroll when you end up
-   editing one of them per-board anyway.
+10. **`@repeat`'s cost is the count, not the macro.** Each expanded line
+   becomes real symbol nodes on *every* `Kconfig()` construction (multi-
+   unit pays it per unit), so a `min=0 max=11` block costs 12× the body's
+   node count per parse — but writing the 12 copies out by hand costs
+   exactly the same, so don't unroll for speed. Keep counts to what is
+   needed and prefer `@repeat` over hand copies. `min`/`max` are literal
+   integers only; if Python depends on the same count (e.g.
+   `shared_components.MAX_SLOTS`), pin them together with a test.
 
 ## Quick reference
 

@@ -113,18 +113,17 @@ once expanded and can be nested.
   per-gate pin/prompt blocks where the gate count is compile-time fixed
   (max 12) and prompts are conditionally hidden via
   `prompt "..." if PARAM_NUM_GATES > $(i)`.
-- **Cost — use sparingly.** Expansion is not cached anywhere: every
-  `Kconfig()` construction (menuconfig, olddefconfig, pre-parse-kconfig —
-  and in multi-unit, one parse per unit *plus* the entry point) re-reads
-  the raw file and re-duplicates the body. Every expanded line then
-  tokenizes into real symbol nodes (prompts, defaults, dep-graph entries),
-  so a `min=0 max=11` block adds **12× the body's node count to every
-  parse**. In this fork `min`/`max` must be *literal* integers
-  (`_to_int`, a parse error otherwise), so a `@repeat` here is never
-  dynamic — it is a source-author convenience, not a mechanism. A new
-  loop with a static count should be **unrolled in the file**; keep
-  `@repeat` for the established per-gate blocks where editing one block
-  beats editing twelve, and don't grow that footprint.
+- **Cost is in the count, not the macro.** Every expanded line tokenizes
+  into real symbol nodes (prompts, defaults, dep-graph entries), so a
+  `min=0 max=11` block adds 12× the body's node count to **every parse**
+  (menuconfig, olddefconfig, pre-parse-kconfig — and in multi-unit, one
+  parse per unit *plus* the entry point). Writing the same 12 copies out
+  by hand costs exactly the same; the expansion itself is a cheap line
+  copy. So keep counts to what is actually needed, and when a body does
+  repeat, prefer `@repeat` over hand-unrolled copies — one place to edit.
+  In this fork `min`/`max` must be *literal* integers (`_to_int`, a parse
+  error otherwise); when Python code depends on the same count (e.g.
+  `shared_components.MAX_SLOTS`), pin the two together with a test.
 - `@if <ENV_VAR>@ ... @endif@` / `@ifnot <ENV_VAR>@ ... @endif@` — the
   block's lines are only fed to the tokenizer when the *environment* variable
   named by the arg is set to a truthy value (`y/yes/1/true`, case-insensitive;
@@ -236,8 +235,8 @@ choice name and the exported capability symbols) and registers the
   keep the saved values, so every cross-unit value must be decided by a
   menuconfig/olddefconfig unit pass and SAVED in the unit's own file.
 - **Consumers source two fragments** inside their `if <shared flag>` block:
-  `components/Kconfig.shared_choice` (a `CHOICE_SHARED_<KIND>` pick list of 8
-  unrolled slots whose member names come from unit names, plus the name
+  `components/Kconfig.shared_choice` (a `CHOICE_SHARED_<KIND>` pick list of `MAX_SLOTS` `@repeat`
+  slots whose member names come from unit names, plus the name
   symbol's per-slot defaults; source it BEFORE the name symbol's own
   definition so they win) and `components/Kconfig.shared_export` once per
   exported symbol (per-slot defaults from the owner, then the unit's own
