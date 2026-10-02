@@ -930,7 +930,7 @@ def main(argv=None):
         return _run(args)
     except Exception as e:
         traceback.print_exc()
-        print("WARNING: MMU unit migration '%s' failed: %s" % (args.action, e))
+        print("WARNING: MMU unit migration '%s' failed: %s" % (args.action, e), file=sys.stderr)
         return EXIT_FAILED
 
 
