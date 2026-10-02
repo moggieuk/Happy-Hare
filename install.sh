@@ -195,6 +195,30 @@ set_units_restructure() {
     fi
 }
 
+# The name a single unit has before menuconfig (unit0 when there is no config
+# yet), or nothing for multi-unit
+single_unit_name() {
+    (
+        unset CONFIG_MULTI_UNIT CONFIG_UNIT_NAME
+        [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
+        [ -z "${CONFIG_MULTI_UNIT:-}" ] && echo "${CONFIG_UNIT_NAME:-unit0}"
+    )
+}
+
+# True if a single unit was renamed in this run's menuconfig: its name differs
+# from the one before (F_UNIT_NAME_BEFORE) or from MCU_NAME, which keeps the old
+# name when menuconfig didn't re-parse after the rename
+single_unit_renamed() {
+    (
+        unset CONFIG_MULTI_UNIT CONFIG_UNIT_NAME CONFIG_MCU_NAME
+        [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
+        [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${CONFIG_UNIT_NAME:-}" ] && {
+            [ "${CONFIG_UNIT_NAME}" != "${CONFIG_MCU_NAME:-}" ] ||
+                { [ -n "${F_UNIT_NAME_BEFORE:-}" ] && [ "${CONFIG_UNIT_NAME}" != "${F_UNIT_NAME_BEFORE}" ]; }
+        }
+    )
+}
+
 # A failed migration step only stops the install once a confirmed unit change is
 # underway, otherwise it is skipped so it can never block an ordinary install
 unit_migration_step() {
@@ -1093,6 +1117,7 @@ run_kconfig_one() {
 # The unit list the installed config (and saved state) reflects, captured before
 # menuconfig can change it. Renames, removals and reorders are only allowed in Replace mode
 export F_UNITS_BASELINE="$(unit_migration baseline)"
+export F_UNIT_NAME_BEFORE="$(single_unit_name)"
 set_units_restructure
 
 if [ -n "${F_MENUCONFIG:-}" ]; then
@@ -1114,24 +1139,31 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         exit 1
     fi
 
-    # The single-unit config becomes unit0, which the unit migration then renames or
-    # sets aside to follow the edited unit list
+    # The single-unit config becomes that unit's file, which the unit migration then
+    # renames or sets aside to follow the edited unit list
     if [ -n "${tmpconfig:-}" ]; then
-        mv "${tmpconfig}" "${KCONFIG_CONFIG}_unit0"
+        first_unit=${F_UNITS_BASELINE%%,*}
+        mv "${tmpconfig}" "${KCONFIG_CONFIG}_${first_unit:-unit0}"
     fi
 
     review_unit_changes || exit 1
+    single_unit_renamed && F_UNIT_RENAMED=y
     unit_migration_step kconfig || exit 1
 
     run_kconfig_units menuconfig n
 else
     review_unit_changes || exit 1
+    single_unit_renamed && F_UNIT_RENAMED=y
     unit_migration_step kconfig || exit 1
 fi
 
 # Always refresh stale configs after any optional menuconfig pass. Renamed or moved
 # units must recompute their defaults (e.g. pin prefixes) even though not stale
-run_kconfig_top olddefconfig y
+if [ -n "${F_UNIT_RENAMED:-}" ]; then
+    run_kconfig_top olddefconfig n
+else
+    run_kconfig_top olddefconfig y
+fi
 if [ -n "${F_UNITS_RESTRUCTURED:-}" ]; then
     run_kconfig_units olddefconfig n
 else

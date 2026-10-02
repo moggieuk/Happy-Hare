@@ -65,9 +65,20 @@ Load-bearing facts about the flow:
   (in `make install`, Klipper stopped: retire old unit files, rename unit
   keys and move global gate lists in the save_variables file). Its progress
   lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
+  A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
+  name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT` and
+  `F_UNITS_RESTRUCTURE=y` (Replace mode or a first install, the same rule as
+  the MMU units list; otherwise a read-only comment shows it), and the Makefile
+  takes `UNIT_NAME`/`MCU_NAME` from the saved `CONFIG_UNIT_NAME` for a
+  single-unit config. Its `reparse_env` (extension catalog item 22) makes
+  menuconfig re-parse on a rename so every derived default follows at once.
+  install.sh still spots a rename (`F_UNIT_NAME_BEFORE` or `CONFIG_MCU_NAME`
+  differ from `CONFIG_UNIT_NAME`), rewrites explicit values and forces a
+  top-level `olddefconfig`. In multi-unit the prompt is hidden, so the name
+  always comes from `MMU_UNITS`.
 - **`make` itself reads the value file**: the Makefile does
   `-include $(KCONFIG_CONFIG)`, so any `CONFIG_*` symbol
-  (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_KLIPPER_HOME`, ...)
+  (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_UNIT_NAME`, `CONFIG_KLIPPER_HOME`, ...)
   steers the build (e.g. `unit_names`). Renaming such a symbol is a Makefile
   change too.
 - **Staleness**: `kconfig_sources` in the `Makefile` = every `Kconfig*` file in
@@ -291,7 +302,8 @@ to avoid wrapping beyond that limit; put longer explanations in documentation.
    - `make verify_pickle` — regression check that every explicit
      `CONFIG_*` assignment survives `as_dict()` (see pitfall 2).
    - `make menuconfig` interactively (needs the real env context; normally
-     reached via `./install.sh -i`).
+     reached via `./install.sh -i`). To automate it, drive it through a pty;
+     see the notes at the end of extension catalog item 22.
 7. **If you touched the fork itself** (`as_dict`, load/write, menuconfig):
    the tests for it are `make verify_pickle` (pickle consistency),
    `make test UT=test_menuconfig.py` (`test/installer/test_menuconfig.py`,
@@ -372,7 +384,10 @@ in this repo:
 1. **Env at parse time.** Get env wrong and pins silently render as `:PD5`
    (no chip) instead of `unit0:PD5` — wrong output, no error. `cfg.py`'s
    `assert_sane()` catches the chip-less form; only the per-parse
-   assign/restore discipline catches the wrong-chip form.
+   assign/restore discipline catches the wrong-chip form. The same fact means
+   editing a symbol in menuconfig can't change defaults derived from env —
+   unless the symbol has `reparse_env` (extension catalog item 22), which
+   re-parses with the new value.
 2. **The visibility trap.** kconfiglib discards `Symbol.user_value` (and
    `Choice.user_selection`) when the symbol is *not currently visible*,
    falling back to the computed default. `build.py`'s `KConfig.get/getint/

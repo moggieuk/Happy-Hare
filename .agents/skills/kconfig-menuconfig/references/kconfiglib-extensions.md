@@ -12,8 +12,9 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
-13 and 14, and item 21 is its item 18 (and `Menuconfig:` item 7). When you
-add an extension, update **both** this file and that header block.
+13 and 14, and items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
+item 7). When you add an extension, update **both** this file and that
+header block.
 
 ## 1. `generated_default`
 
@@ -184,6 +185,18 @@ brackets such as `[, duration]` or `[[mmu_leds]]` stay literal.
 The root Kconfig's `title`/`caption` macros use `[[B]]` to bold the unit
 name. (This is a menuconfig-side concern — it never reaches the value file.)
 
+`[[VALUE:SYM]]` is replaced by SYM's *current* value every time the text is
+drawn (`_expand_values`, called from `_safe_addstr_markup` and on prompts in
+`_node_str`), so it follows edits made in the same session. Text fixed at
+parse time can't do that. `[[VALUE:SYM:w]]` pads or truncates the value to `w`
+characters for fixed-width layouts. An undefined SYM shows `?`, and
+`TestValueMarkupNamesRealSymbols` in `test_kconfig_references.py` fails on one.
+The header `caption` uses `$(unit-suffix,$(UNIT_NAME),20)` so a single unit
+renamed in menuconfig shows its new name straight away. `$(pad,…)`
+(`hh-pad`) measures displayed width: markup counts 0 and `[[VALUE:SYM:w]]`
+counts `w`. A width-less `[[VALUE:SYM]]` can't be measured at parse time, so
+use a width inside anything padded.
+
 ## 11. menuconfig changes
 
 - **`r` resets to default** (the `"r"` branch of the main key loop, calling
@@ -305,7 +318,9 @@ existing saved value keeps working.
   `led_effect` across the LED color and effect symbols.
 - Pins: the root `installer/Kconfig` defines `pin_validator`
   (`[^|~] [!] [chip_name:]pin_name`, Klipper's `parse_pin` order; empty is
-  valid) and `pin_help`. Every prompted `PIN_*` node carries
+  valid) and `pin_help`. `pin_help`'s example (`hh-pin-example`) uses
+  `[[VALUE:UNIT_NAME]]` (item 10) so it shows the unit's live name, except on
+  the multi-unit entry screen, which has no unit. Every prompted `PIN_*` node carries
   `validator "$(pin_validator)"`, and gets `$(pin_help)` as its help when it has
   none. Add both to any new pin prompt; `TestPinValidator` fails otherwise and
   also checks every shipped pin default and every profile's pin values.
@@ -419,3 +434,57 @@ config MMU_UNITS
   keys driven by stubbing `_getch_compat`, drawing against `FakeDialogWindow`);
   `TestMmuUnitsValidator` in `test_kconfig_validator.py`. For a real check,
   drive `make menuconfig` in a pty (`pty.fork`, `TERM=xterm-256color`).
+
+## 22. `reparse_env "<VAR> [<VAR>...]"`
+
+For a symbol whose value the tree is *built from* through environment
+variables, which are expanded at parse time (`UNIT_NAME` → `$(UNIT_NAME)` and
+`$(MCU_NAME)` in ~850 defaults: pins, LED chains, NFC readers, `[mcu …]`).
+Changing such a symbol in menuconfig can't update those defaults, so
+`_set_val` calls `_reparse`, which:
+
+1. writes the current values to a temporary config (`write_config`);
+2. sets each named variable to the new value;
+3. builds a fresh `Kconfig` with output suppressed at the fd level, since
+   `$(shell …)` would otherwise write onto the curses screen;
+4. loads the temporary config with `filter_defaults=True`, so `#~DEFAULT~#`
+   values are recomputed while explicit values are kept;
+5. swaps `_kconf` and re-points `_cur_menu`/`_shown`/`_sel_node_i`.
+
+Nodes are matched by `_node_key` (file, line, item, prompt), which a re-parse
+of unchanged Kconfig files doesn't change. A failed parse restores the
+environment and keeps the old tree. It costs one menuconfig start-up and shows
+an "Updating configuration…" box.
+
+- Only values saved as defaults are recomputed: names on the `#~DEFAULT~#`
+  prefix list, which is every unit-derived prompted symbol in this tree.
+  An explicit value containing the old name stays as typed, and the installer
+  rewrites it (`unit_migration._rename_single_unit`).
+- `UNIT_NAME` uses `reparse_env "UNIT_NAME MCU_NAME"`. After a re-parse the
+  saved `MCU_NAME` already follows the rename, so install.sh records the name
+  before menuconfig (`F_UNIT_NAME_BEFORE`) to know a rename happened.
+- **The prompt is locked like `MMU_UNITS`:** `prompt "Klipper object name" if
+  !MULTI_UNIT && "$(env-default,F_UNITS_RESTRUCTURE,n)" = "y"` (Replace mode or
+  a first install), with a read-only comment otherwise. Hiding it is safe only
+  because the hidden symbol's default (`$(UNIT_NAME)`) is built by the Makefile
+  from the saved `CONFIG_UNIT_NAME`. A locked symbol whose default didn't
+  round-trip its value would lose it (SKILL.md pitfall 2).
+- **Adding another `reparse_env` symbol:**
+  - every prompted default derived from those variables needs a name on the
+    `#~DEFAULT~#` prefix list, or the re-parse keeps its stale value;
+  - whatever launches menuconfig (Makefile/install.sh) must pass the same
+    variables from the saved value, or the next parse goes back to the old one;
+  - keep the fork generic: it only knows which variables mirror the symbol.
+    Meaning (renaming files, saved state) belongs in the installer.
+- **Tests:** `TestReparseEnv` in `test/installer/test_menuconfig.py`. A fixture's
+  derived symbols must use `PARAM_`/`PIN_` names for their defaults to update.
+- **Checking it in a real terminal:** drive `make menuconfig` with `pty.fork`
+  (`TERM=xterm-256color`, and `F_UNITS_RESTRUCTURE=y` so the prompt is
+  editable outside install.sh).
+  - **Finding the row:** a single-unit menu marks the selection through the
+    help pane, not with `>`, so press `j` until the row's help text appears.
+  - **Confirming the row:** curses redraws only what changed, so press Enter
+    and look for the input dialog.
+  - **Checking the result:** after saving, `CONFIG_MCU_NAME` equal to the new
+    name proves the re-parse ran, and the `#~DEFAULT~#` pin lines should carry
+    the new prefix.

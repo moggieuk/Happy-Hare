@@ -215,10 +215,13 @@ import locale
 import re
 import textwrap
 
+import contextlib # Happy Hare: Added
+import tempfile # Happy Hare: Added
+
 import sequence_edit # Happy Hare: Added
 
 # Happy Hare: Added FLOAT
-from kconfiglib import Symbol, Choice, MENU, COMMENT, MenuNode, \
+from kconfiglib import Kconfig, Symbol, Choice, MENU, COMMENT, MenuNode, \
                        BOOL, BOOLINT, TRISTATE, STRING, FLOAT, INT, HEX, \
                        AND, OR, \
                        expr_str, expr_value, split_expr, \
@@ -1418,7 +1421,7 @@ def _draw_main():
 
     # Add the 'mainmenu' text as the title, centered at the top
     _safe_addstr_markup(_top_sep_win,
-                 0, max((term_width - len(_kconf.mainmenu_text))//2, 0),
+                 0, max((term_width - _display_len(_kconf.mainmenu_text))//2, 0),
                  _kconf.mainmenu_text)
 
     _top_sep_win.noutrefresh()
@@ -1947,6 +1950,112 @@ def _set_val(sc, val):
         # Changing the value of the symbol might have changed what items in the
         # current menu are visible. Recalculate the state.
         _update_menu()
+
+        if getattr(sc, "reparse_env", None): # Happy Hare: Added
+            _reparse(sc)
+
+
+# Happy Hare: Added. A 'reparse_env' symbol mirrors environment variables the
+# tree was built from (e.g. UNIT_NAME), so defaults derived from them are only
+# right after parsing again with the new value. Nodes are matched across the
+# two parses by where they are defined, which the reparse doesn't change.
+
+def _node_key(node):
+    if node is node.kconfig.top_node:
+        return ("top",)
+    item = node.item
+    name = item.name if isinstance(item, (Symbol, Choice)) else item
+    return (node.filename, node.linenr, name, node.prompt[0] if node.prompt else None)
+
+
+@contextlib.contextmanager
+def _quiet():
+    # Keep anything the parse prints, including from $(shell ...) commands,
+    # from landing on the curses screen
+    sys.stdout.flush()
+    sys.stderr.flush()
+    saved = [os.dup(1), os.dup(2)]
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, 1)
+        os.dup2(devnull, 2)
+        with open(os.devnull, "w") as sink, \
+                contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+            yield
+    finally:
+        os.dup2(saved[0], 1)
+        os.dup2(saved[1], 2)
+        for fd in saved + [devnull]:
+            os.close(fd)
+
+
+def _show_busy(text):
+    win = _styled_win("body")
+    screen_height, screen_width = _stdscr.getmaxyx()
+    width = min(len(text) + 6, screen_width)
+    win.resize(min(3, screen_height), width)
+    win.mvwin(max((screen_height - 3)//2, 0), max((screen_width - width)//2, 0))
+    win.erase()
+    _safe_addstr(win, 1, 3, text[:width - 6])
+    _draw_frame(win, "")
+    win.noutrefresh()
+    curses.doupdate()
+
+
+def _reparse(sym):
+    global _kconf
+    global _cur_menu
+    global _shown
+    global _sel_node_i
+    global _menu_scroll
+
+    value = sym.str_value
+    if all(os.environ.get(var) == value for var in sym.reparse_env):
+        return
+
+    _show_busy("Updating configuration for '{}'...".format(value))
+
+    menu_key = _node_key(_cur_menu)
+    sel_key = _node_key(_shown[_sel_node_i])
+    saved_env = {var: os.environ.get(var) for var in sym.reparse_env}
+
+    fd, tmp = tempfile.mkstemp(prefix=".reparse-", suffix=".config")
+    os.close(fd)
+    try:
+        _kconf.write_config(tmp, save_old=False)
+        for var in sym.reparse_env:
+            os.environ[var] = value
+        with _quiet():
+            kconf = Kconfig(_kconf.top_node.filename, warn=False)
+            kconf.load_config(tmp)
+    except Exception as e:
+        for var, old in saved_env.items():
+            if old is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = old
+        _error("Could not update the configuration for the new value:\n\n{}".format(e))
+        return
+    finally:
+        os.remove(tmp)
+
+    kconf.warn = False
+    _kconf = kconf
+
+    nodes = {_node_key(node): node for node in kconf.node_iter()}
+    nodes[("top",)] = kconf.top_node
+    _cur_menu = nodes.get(menu_key, kconf.top_node)
+    _shown = _shown_nodes(_cur_menu)
+    if not _shown:
+        _cur_menu = kconf.top_node
+        _shown = _shown_nodes(_cur_menu)
+
+    sel = nodes.get(sel_key)
+    if sel in _shown:
+        _sel_node_i = _shown.index(sel)
+    else:
+        _sel_node_i = _first_selectable_index(_shown) or 0
+    _menu_scroll = min(_menu_scroll, _sel_node_i)
 
 
 def _update_menu():
@@ -3703,12 +3812,13 @@ def _node_str(node):
             s += " " + standard_sc_expr_str(node.item)
 
     if node.prompt:
+        prompt = _expand_values(node.prompt[0]) # Happy Hare: Live [[VALUE:SYM]] markup
         if node.item == COMMENT:
-            if node.prompt[0] == '_': # Happy Hare
+            if prompt == '_': # Happy Hare
                 s = "    "
-            elif node.prompt[0].startswith('_'): # Happy Hare: Added special section header style for comments
+            elif prompt.startswith('_'): # Happy Hare: Added special section header style for comments
                 max_width = 62
-                text = node.prompt[0][1:]
+                text = prompt[1:]
                 middle = f" {text.upper()} "
                 heading = "───────" + middle
                 # Happy Hare: Markup tokens in the text are zero-width so discount them from the rule padding
@@ -3717,9 +3827,9 @@ def _node_str(node):
                     heading += "─" * (max_width - width)
                 s = "{}".format(heading)
             else:
-                s += " *** {} ***".format(node.prompt[0])
+                s += " *** {} ***".format(prompt)
         else:
-            s += " " + node.prompt[0]
+            s += " " + prompt
             if (
                 node.item not in (MENU, COMMENT) and
                 node.item.orig_type and
@@ -4120,6 +4230,33 @@ _TAG_RE = re.compile(r"""
 (?P<slash>/)?(?P<name>[A-Z]+)(?::(?P<digits>[0-9]+))?     # captures: /?, name, :digits
 \]\]
 """, re.X)
+# Happy Hare: [[VALUE:SYMBOL]] or [[VALUE:SYMBOL:width]] shows the symbol's current
+# value wherever text is drawn, padded or truncated to 'width' when given (so a
+# fixed-width layout such as the header box stays aligned)
+_VALUE_RE = re.compile(r"\[\[VALUE:([A-Za-z0-9_]+)(?::([0-9]+))?\]\]")
+
+
+def _expand_values(text):
+    if "[[VALUE:" not in text:
+        return text
+    kconf = globals().get("_kconf")
+
+    def value(m):
+        sym = kconf.syms.get(m.group(1)) if kconf is not None else None
+        s = sym.str_value if sym is not None and sym.nodes else "?"
+        if m.group(2):
+            width = int(m.group(2))
+            s = s[:width].ljust(width)
+        return s
+
+    return _VALUE_RE.sub(value, text)
+
+
+def _display_len(text):
+    text = _expand_values(text)
+    return len(text) - _token_char_count(text)
+
+
 # Happy Hare: Added to count how many "tag" characters there are in the string
 def _token_char_count(s):
     return sum(len(m.group(0)) for m in _TAG_RE.finditer(s))
@@ -4136,6 +4273,7 @@ def _safe_addstr_markup(win, *args):
     # [[DIM]]...[[/DIM]] → dim on/off
     # [[C:n]]...[[/C]]   → color_pair(n) on/off (n is an int)
     # [[RESET]]          → reset to base_attr (pushes a clean state)
+    # [[VALUE:SYM(:w)]]  → current value of symbol SYM (see _expand_values())
     # Parse args similar to _safe_addstr
     if isinstance(args[0], str):
         y, x = win.getyx()
@@ -4144,6 +4282,7 @@ def _safe_addstr_markup(win, *args):
     else:
         y, x, text = args[:3]
         base_attr = args[3] if len(args) == 4 else None
+    text = _expand_values(text)
 
     # Move to starting position once; subsequent _safe_addstr() calls will advance the cursor
     win.move(y, x)

@@ -1,13 +1,36 @@
 # Responsible for setting:
+#   UNIT_NAME (prompt only for a single unit)
 #   PARAM_DISPLAY_NAME
 
-config PARAM_DISPLAY_NAME
-  string "Display name"
-  generated_default "%s-%d" "PARAM_VENDOR UNIT_INDEX" if PARAM_VENDOR != "Other"
-  default UNIT_NAME
+menu "Name"
   help
-    The display name identifies your MMU in various UI's.
-    It is NOT the klipper object identifier name used in config,
-    which is typically just "unit0" or similar
+    The Klipper object name identifies this MMU unit in config and saved
+    state. The display name is what UIs show.
 
-    Keep it reasonably short but it may contain spaces.
+  # Renaming an installed unit needs Replace mode, like the multi-unit MMU units list
+  config UNIT_NAME
+    prompt "Klipper object name" if !MULTI_UNIT && "$(env-default,F_UNITS_RESTRUCTURE,n)" = "y"
+    validator "[a-z][a-z0-9_-]*"
+    reparse_env "UNIT_NAME MCU_NAME"
+    help
+      The name Klipper knows this unit by. It is used in:
+        Config sections:  [mmu_unit [[B]][[VALUE:UNIT_NAME]][[/B]]], [mcu [[B]][[VALUE:UNIT_NAME]][[/B]]]
+        Pins:             [[B]][[VALUE:UNIT_NAME]][[/B]]:PA1
+        Saved state:      mmu_[[B]][[VALUE:UNIT_NAME]][[/B]]_* in mmu_vars.cfg
+      Use lowercase letters, digits, "_" and "-", starting with a letter.
+      Change it freely on a first install. Once installed, renaming needs
+      the installer's [[REV]]Replace[[/REV]] mode (option 2) to migrate saved state.
+
+  comment "Klipper object name: $(UNIT_NAME)  (set in the MMU units list)" if MULTI_UNIT
+  comment "Klipper object name: $(UNIT_NAME)  (rename with './install.sh -i', REPLACE mode)" if !MULTI_UNIT && "$(env-default,F_UNITS_RESTRUCTURE,n)" != "y"
+
+  config PARAM_DISPLAY_NAME
+    string "Display name"
+    generated_default "%s-%d" "PARAM_VENDOR UNIT_INDEX" if PARAM_VENDOR != "Other"
+    default UNIT_NAME
+    help
+      The display name identifies your MMU in various UI's.
+      It is NOT the Klipper object name used in config.
+
+      Keep it reasonably short but it may contain spaces.
+endmenu

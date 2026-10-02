@@ -57,11 +57,14 @@ class Profile:
                   every profile below except ERCF_VVD is the one-unit case.
     filament_layout: optional simulator-only overrides for physical sensor positions.
                   This never affects rendered printer configuration.
+    unit_name:    single-unit only: the Klipper object name, as install.sh passes it
+                  once menuconfig has renamed the unit (default unit0).
     """
 
     def __init__(self, name, syms=None, extra_params=None, description='', units=None,
-                 filament_layout=None):
+                 filament_layout=None, unit_name=None):
         self.name = name
+        self.unit_name = unit_name
         self.syms = dict(syms or {})
         self.extra_params = dict(extra_params or {})
         self.description = description
@@ -69,7 +72,7 @@ class Profile:
         self.filament_layout = dict(filament_layout or {})
 
     def derive(self, name, syms=None, extra_params=None, description='', units=None,
-               filament_layout=None):
+               filament_layout=None, unit_name=None):
         merged_syms = dict(self.syms)
         merged_syms.update(syms or {})
         merged_params = dict(self.extra_params)
@@ -77,7 +80,8 @@ class Profile:
         return Profile(
             name, merged_syms, merged_params, description or self.description,
             units if units is not None else self.units,
-            self.filament_layout if filament_layout is None else filament_layout)
+            self.filament_layout if filament_layout is None else filament_layout,
+            unit_name or self.unit_name)
 
     def __repr__(self):
         return 'Profile(%r)' % (self.name,)

@@ -324,6 +324,7 @@ def render(profile):
     # multi-unit profiles differing only in a unit's config would collide, and - worse - the
     # unchanged-boxturtle leak test would pass by returning a cached render.
     key = (profile.name,
+           getattr(profile, 'unit_name', None),
            tuple(sorted(profile.syms.items())),
            tuple(sorted(profile.extra_params.items())),
            tuple((u.name, u.mcu_name, u.index, tuple(sorted(u.syms.items())))
@@ -339,7 +340,10 @@ def render(profile):
 
 
 def _render_single_unit(profile):
-    with _env(_SINGLE_UNIT_ENV):
+    env = dict(_SINGLE_UNIT_ENV)
+    if getattr(profile, 'unit_name', None):
+        env.update(UNIT_NAME=profile.unit_name, MCU_NAME=profile.unit_name)
+    with _env(env):
         kc = _kconfig_for_render(profile.name, profile.syms)
 
     # Note we do NOT inject UNIT_NAME/MCU_NAME as jinja params. Production does not

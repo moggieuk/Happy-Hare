@@ -3714,6 +3714,19 @@ class Kconfig(object):
                     if self._tokens[self._tokens_i] is not None:
                         self._trailing_tokens_error()
 
+            elif t0 is _T_REPARSE_ENV: # Happy Hare: Added re-parse when a symbol mirroring env vars changes
+                if node.item.__class__ is not Symbol:
+                    self._parse_error("reparse_env is only valid for symbols")
+
+                names = self._tokens[self._tokens_i]
+                self._tokens_i += 1
+                if names.__class__ is not str or not names.split():
+                    self._parse_error("expected a string of environment variable names")
+                if self._tokens[self._tokens_i] is not None:
+                    self._trailing_tokens_error()
+
+                node.item.reparse_env = names.split()
+
             elif t0 is _T_APPEND_ONLY_UNLESS: # Happy Hare: Added restriction of a sequence_editor to appending
                 if node.item.__class__ is not Symbol:
                     self._parse_error("append_only_unless is only valid for symbols")
@@ -5010,6 +5023,20 @@ class Symbol(object):
       'append_only_unless'. While it evaluates to n, a sequence_editor only
       allows appending new entries.
 
+    reparse_env:
+      Happy Hare: Added. None, or the list of environment variable names given
+      to 'reparse_env', e.g.
+
+        config UNIT_NAME
+            string "Name"
+            default "$(UNIT_NAME)"
+            reparse_env "UNIT_NAME MCU_NAME"
+
+      for a symbol whose value the tree was built from through those
+      variables. When the user changes it, menuconfig sets the variables to the
+      new value and parses the tree again, so every default derived from them
+      is recomputed in the same session.
+
     is_allnoconfig_y:
       True if the symbol has 'option allnoconfig_y' set on it. This has no
       effect internally (except when printing symbols), but can be checked by
@@ -5039,6 +5066,7 @@ class Symbol(object):
         "sequence_editor", # Happy Hare: Added
         "sequence_baseline", # Happy Hare: Added
         "append_only_unless", # Happy Hare: Added
+        "reparse_env", # Happy Hare: Added
         "choice",
         "defaults",
         "generated_defaults", # Happy Hare: Added
@@ -5652,6 +5680,7 @@ class Symbol(object):
         self.sequence_editor = \
         self.sequence_baseline = \
         self.append_only_unless = \
+        self.reparse_env = \
         self._cached_str_val = self._cached_tri_val = self._cached_vis = \
         self._cached_assignable = None
 
@@ -7990,7 +8019,8 @@ except AttributeError:
     _T_VALIDATOR,    # Happy Hare: Added; appended to preserve existing token values
     _T_SEQUENCE_EDITOR,    # Happy Hare: Added; appended to preserve existing token values
     _T_APPEND_ONLY_UNLESS, # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 63) # Happy Hare: Added custom tokens through APPEND_ONLY_UNLESS
+    _T_REPARSE_ENV,        # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 64) # Happy Hare: Added custom tokens through REPARSE_ENV
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -8002,6 +8032,7 @@ _get_keyword = {
     "validator":      _T_VALIDATOR, # Happy Hare: Added
     "sequence_editor": _T_SEQUENCE_EDITOR, # Happy Hare: Added
     "append_only_unless": _T_APPEND_ONLY_UNLESS, # Happy Hare: Added
+    "reparse_env":    _T_REPARSE_ENV, # Happy Hare: Added
     "bool":           _T_BOOL,
     "boolean":        _T_BOOL,
     "boolint":        _T_BOOLINT, # Happy Hare: Added
@@ -8133,6 +8164,7 @@ _DEF_TOKEN_TO_TYPE = {
 _STRING_LEX = frozenset({
     _T_ARRAY_EDITOR, # Happy Hare: Added
     _T_SEQUENCE_EDITOR, # Happy Hare: Added
+    _T_REPARSE_ENV, # Happy Hare: Added
     _T_VALIDATOR, # Happy Hare: Added
     _T_BOOL,
     _T_BOOLINT,

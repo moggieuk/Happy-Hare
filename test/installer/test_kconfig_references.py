@@ -54,5 +54,25 @@ class TestNoDanglingSymbolReferences(unittest.TestCase):
                     'never happens: %s' % ', '.join(dangling))
 
 
+class TestValueMarkupNamesRealSymbols(unittest.TestCase):
+    """[[VALUE:SYM]] in a prompt, comment, help or the title must name a defined symbol."""
+
+    VALUE = re.compile(r'\[\[VALUE:([A-Za-z0-9_]+)(?::[0-9]+)?\]\]')
+
+    def test_every_value_markup_resolves(self):
+        for shape, env in sorted(_SHAPES.items()):
+            with self.subTest(shape=shape):
+                with cfg._env(env):
+                    kconfig = cfg._new_kconfig('value_markup_' + shape)
+                texts = [kconfig.mainmenu_text]
+                for node in kconfig.node_iter():
+                    if node.prompt:
+                        texts.append(node.prompt[0])
+                    texts.append(getattr(node, 'help', None) or '')
+                missing = sorted({name for text in texts for name in self.VALUE.findall(text)
+                                  if not (kconfig.syms.get(name) and kconfig.syms[name].nodes)})
+                self.assertEqual(missing, [], 'menuconfig would show "?" for these')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -246,6 +246,20 @@ class TestUnitsNotNamedByIndex(unittest.TestCase):
         self.assertEqual([u.first_gate for u in units], [0, 4])
 
 
+class TestSingleUnitNamed(unittest.TestCase):
+    """A single unit renamed in menuconfig renders and boots under its own name."""
+
+    def test_boots_clean(self):
+        from test.hh import profiles, session
+        hh = session(profiles.BOXTURTLE.derive('boxturtle_named_box', unit_name='box'))
+        try:
+            hh.boot()
+            self.assertEqual(hh.errors, [])
+            self.assertEqual([u.name for u in hh.mmu.mmu_machine.units], ['box'])
+        finally:
+            hh.close()
+
+
 class TestSharedEncoderOwnerAfterSharer(unittest.TestCase):
     """Reordering units may put a unit sharing an encoder before the unit that owns it."""
 
