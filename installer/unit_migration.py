@@ -114,7 +114,6 @@ GATE_LIST_OPTIONS = [
     "default_gate_spool_rfid",
     "default_gate_speed_override",
     "default_endless_spool_groups",
-    "endless_spool_groups",
 ]
 
 GATE_SENSOR_KEY = re.compile(r"^(mmu_[a-z_]+?)_(\d+)$")

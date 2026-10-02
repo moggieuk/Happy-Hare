@@ -128,7 +128,6 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('spoolman_led_segment',          'choice', 'gate_status', section="FEATURES", choices={o: o for o in ('gate_status', 'status', 'both')}),
 
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),
-        ParamSpec('endless_spool_groups',          'intlist', [], section="FEATURES"),
         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
@@ -206,7 +205,6 @@ class MmuMachineParameters(TunableParametersBase):
         self.default_gate_speed_override  = list(self.default_gate_speed_override)
         self.default_endless_spool_groups = list(self.default_endless_spool_groups)
 
-        self.endless_spool_groups         = list(self.endless_spool_groups)
         self.console_stat_columns         = list(self.console_stat_columns)
         self.console_stat_rows            = list(self.console_stat_rows)
 

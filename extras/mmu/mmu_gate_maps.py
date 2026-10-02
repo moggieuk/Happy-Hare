@@ -41,7 +41,7 @@ class MmuGateMaps:
         self.endless_spool_enabled = self.p.endless_spool_enabled
         if len(self.p.default_endless_spool_groups) > 0:
             if len(self.p.default_endless_spool_groups) != self.num_gates:
-                raise self.config.error("endless_spool_groups has a different number of values than the number of gates")
+                raise self.config.error("default_endless_spool_groups has a different number of values than the number of gates")
         else:
             self.p.default_endless_spool_groups = list(range(self.num_gates))
         self.endless_spool_groups = list(self.p.default_endless_spool_groups)
