@@ -52,7 +52,10 @@ Load-bearing facts about the flow:
   printer-level `HAS_SENSOR_TOOLHEAD/EXTRUDER/TOOLHEAD_CUTTER` read back out
   of the top-level file). See `install.sh` `run_kconfig_top` /
   `run_kconfig_units` / `run_kconfig_one`. The per-unit config file and the
-  installed `.cfg` files both gain a `_<unit>` suffix.
+  installed `.cfg` files both gain a `_<unit>` suffix. A unit parse also
+  reads the OTHER units' saved files (`KCONFIG_PARENT`) for components one
+  unit shares with another — the pick list of owners and the owner's
+  capabilities; see [extensions item 13](references/kconfiglib-extensions.md).
 - **A unit's name is its identity** — per-unit Kconfig file, every section
   and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
   is a `sequence_editor` symbol (extension catalog item 21) so the list
@@ -209,7 +212,7 @@ which is exactly what keeps version-numbered names like
 installer/
   Kconfig                 # ROOT. Header = extension docs. Env plumbing,
                           # multi-unit branching (two different menu trees),
-                          # source order, osource /tmp/.Kconfig.generated
+                          # source order
   Kconfig.<topic>         # one file per feature: name, num_gates,
                           # selector_type, endstops, options, pins, heater,
                           # fans, leds, encoder, espooler, nfc_reader, ...

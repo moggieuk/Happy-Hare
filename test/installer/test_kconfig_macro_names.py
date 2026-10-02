@@ -230,7 +230,8 @@ class TestShippedTreeIsUnaffected(unittest.TestCase):
                     if found and not active:
                         users.add(os.path.relpath(path, REPO_ROOT))
         self.assertEqual(
-            sorted(users), ['installer/components/Kconfig.tmc_driver_menu'])
+            sorted(users), ['installer/components/Kconfig.shared_choice',
+                            'installer/components/Kconfig.tmc_driver_menu'])
 
     def test_no_symbol_or_choice_name_survives_unexpanded(self):
         """Tripwire for a fragment sourced without re-assigning its variables.

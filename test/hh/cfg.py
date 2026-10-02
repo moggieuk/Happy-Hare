@@ -35,9 +35,14 @@
 # behind `if MULTI_UNIT_ENTRY_POINT`. That is why a multi-unit profile cannot be expressed as
 # one larger syms dict, and why the env is per-parse rather than module state.
 #
+# A unit parse also reads the OTHER units' saved configs (KCONFIG_PARENT, see
+# installer/lib/kconfiglib/shared_components.py) to offer a shared component's owners and
+# their capabilities, so a multi-unit render writes each config, in order, into a private
+# scratch directory - the only files the harness writes.
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import os, re, sys, contextlib, configparser
+import os, re, sys, atexit, contextlib, configparser, glob, shutil, tempfile
 
 HARNESS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HARNESS_DIR))
@@ -113,6 +118,10 @@ _BASE_ENV = {
     'CONFIG_MOONRAKER_HOME': '/nonexistent/moonraker',
     'CONFIG_SERVICE_KLIPPER': 'klipper.service',
     'F_PER_GATE_MCU': '',
+    # `make test` exports KCONFIG_CONFIG=.mmu_config; saved-config-value must not read a
+    # developer's real one. A unit parse of a multi-unit render sets KCONFIG_PARENT itself.
+    'KCONFIG_CONFIG': '/nonexistent/.mmu_config',
+    'KCONFIG_PARENT': '',
 }
 
 # What install.sh passes when there is no MULTI_UNIT (install.sh:397-398 takes the else
@@ -279,12 +288,15 @@ def _render_kconfig_key():
     """Environment identity for a parsed tree used only during rendering.
 
     Kconfig expands environment variables while parsing, including variables referenced by
-    recursive preprocessor functions. Keying on the complete environment is intentionally
+    recursive preprocessor functions, and a unit parse's shared-component functions read the
+    other units' saved configs, so their view is part of the key too. Keying on the complete
+    environment is intentionally
     conservative: an unrelated change merely costs another parse, while omitting a relevant
     value could render valid-looking pins for the wrong unit. Dynamic discovery is already
     assumed stable for a process by `_render_cache`, which memoizes final output.
     """
-    return tuple(sorted(os.environ.items()))
+    import shared_components
+    return tuple(sorted(os.environ.items())), shared_components.context_key()
 
 
 def _kconfig_for_render(label, syms):
@@ -369,6 +381,19 @@ def handed_down_env(entry_kc):
     return {env: _flag(entry_kc, sym) for env, sym in HANDED_DOWN_ENV.items()}
 
 
+_scratch = []
+
+
+def _scratch_configs():
+    """The parent config path in a per-process directory, emptied of any earlier render."""
+    if not _scratch:
+        _scratch.append(tempfile.mkdtemp(prefix='hh-harness-'))
+        atexit.register(shutil.rmtree, _scratch[0], True)
+    for path in glob.glob(os.path.join(_scratch[0], '.mmu_config*')):
+        os.remove(path)
+    return os.path.join(_scratch[0], '.mmu_config')
+
+
 def _render_multi_unit(profile, units):
     """
     Three parses, mirroring install.sh run_kconfig_top (:385-399) + run_kconfig_units
@@ -391,19 +416,28 @@ def _render_multi_unit(profile, units):
         entry_kc = _kconfig_for_render(profile.name, profile.syms)
 
     handed_down = handed_down_env(entry_kc)
+    parent = _scratch_configs()
+    entry_kc.write_config(parent)
 
-    unit_kcs = []
-    for unit in units:
+    def unit_kconfig(unit):
         with _env(dict(_SINGLE_UNIT_ENV, **dict(
                 handed_down,
                 F_MULTI_UNIT='y',
                 F_MULTI_UNIT_ENTRY_POINT='',
                 UNIT_NAME=unit.name,
                 MCU_NAME=unit.mcu_name,
-                UNIT_INDEX=str(unit.index)))):
-            unit_kcs.append(
-                (unit, _kconfig_for_render(
-                    '%s:%s' % (profile.name, unit.name), unit.syms)))
+                UNIT_INDEX=str(unit.index),
+                KCONFIG_PARENT=parent))):
+            kc = _kconfig_for_render('%s:%s' % (profile.name, unit.name), unit.syms)
+        kc.write_config('%s_%s' % (parent, unit.name))
+        return kc
+
+    import shared_components
+    unit_kcs = [(unit, unit_kconfig(unit)) for unit in units]
+    # install.sh's second refresh: a sharer saved before its owner picks up the owner's values
+    unit_kcs = [(unit, unit_kconfig(unit)
+                 if shared_components.stale('%s_%s' % (parent, unit.name), parent) else kc)
+                for unit, kc in unit_kcs]
 
     # The SUM across units, not this unit's count - build.py:481-492. It drives the Tx macro
     # wrappers, which are printer-wide.

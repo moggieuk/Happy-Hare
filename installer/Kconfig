@@ -96,6 +96,10 @@
 # 19. 'reparse_env "<VAR> [<VAR>...]"' on a symbol whose value the tree is built from via
 #     those env vars (UNIT_NAME): changing it in menuconfig re-parses with the new value
 #     so every default derived from them is recomputed in the same session
+# 20. Shared components: 'shared-*' preprocessor functions (shared_components.py) let a unit
+#     parse read the OTHER units' saved configs via KCONFIG_PARENT, giving a pick list of the
+#     units owning a component and the owner's capabilities. Used through the
+#     components/Kconfig.shared_choice and Kconfig.shared_export fragments
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

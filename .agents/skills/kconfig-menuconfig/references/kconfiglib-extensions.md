@@ -12,8 +12,8 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 `Menuconfig:` items of items 7, 9-11). Items 12-15 (the source family, the
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
-13 and 14, and items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
-item 7). When you add an extension, update **both** this file and that
+13 and 14, items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
+item 7), and item 13 is its item 20. When you add an extension, update **both** this file and that
 header block.
 
 ## 1. `generated_default`
@@ -215,22 +215,51 @@ use a width inside anything padded.
 Upstream kconfiglib features HH relies on heavily (documented in the
 `kconfiglib.py` module docstring's `rsource`/`osource` sections): `source` is srctree-relative, `rsource` is *file*-relative
 (`mmu_types/Kconfig` does `rsource "Kconfig.*"`), all accept **globs**, and
-`osource`/`orsource` are the "ignore if missing" variants (the root Kconfig
-does `osource "/tmp/.Kconfig.generated"` for the dynamic shared-component
-choices — see item 13).
+`osource`/`orsource` are the "ignore if missing" variants. Never source
+anything from outside the tree: `test_kconfig_env_hygiene.py` fails the suite
+if a Kconfig sources an absolute path or a parse reads a file outside
+`installer/` (a generated `/tmp/.Kconfig.generated` used to leak into parses).
 
-## 13. `/tmp/.Kconfig.generated` (dynamic shared choices)
+## 13. Shared components (`shared_components.py`, `shared-*` functions)
 
-`installer/build.py::gen_kconfig_options` (make target `gen_kconfig`) can
-generate extra Kconfig rules in `/tmp/.Kconfig.generated` that let
-printer-level shared components (toolhead name, encoder name,
-sync-feedback buffer name) offer "use an existing one from another unit"
-choices, derived by parsing the existing value files (`PARAM_REGEX`,
-`to_symbol`). **Currently incomplete/unused** — the TODO in the comment
-block above it in build.py says it is never called, and neither the build
-nor `install.sh` invokes the `gen_kconfig` target;
-treat it as scaffolding, and if you resume it, the `MMU_SHARED_*` /
-`CHOICE_*_TYPE` symbols it emits are the integration point.
+A unit of a multi-unit machine can share a component another unit owns (the
+sync-feedback buffer today). Each unit is a separate parse, so the sharer
+reads what the other units SAVED: `KCONFIG_PARENT` (the top-level
+`.mmu_config`, for `MMU_UNITS`) and each sibling `<parent>_<unit>`.
+`installer/lib/kconfiglib/shared_components.py` holds the registry (`KINDS`:
+the component's has/shared flags, the name symbol the templates read, the
+choice name and the exported capability symbols) and registers the
+`shared-*` preprocessor functions in `kconfigfunctions.functions`.
+
+- **Only unit parses run by install.sh read anything** (`KCONFIG_PARENT`
+  set). The build's pickle parse and `verify_pickle` see no other units and
+  keep the saved values, so every cross-unit value must be decided by a
+  menuconfig/olddefconfig unit pass and SAVED in the unit's own file.
+- **Consumers source two fragments** inside their `if <shared flag>` block:
+  `components/Kconfig.shared_choice` (a `CHOICE_SHARED_<KIND>` pick list of 8
+  unrolled slots whose member names come from unit names, plus the name
+  symbol's per-slot defaults; source it BEFORE the name symbol's own
+  definition so they win) and `components/Kconfig.shared_export` once per
+  exported symbol (per-slot defaults from the owner, then the unit's own
+  saved value as a sticky fallback).
+- **The saved name is the identity**; the choice is a view of it. A name that
+  no longer matches an owner is kept as `CHOICE_SHARED_<KIND>_UNRESOLVED` and
+  warned (W29 for the buffer) — never re-pointed. Don't name that member
+  `_PREVIOUS` (olddefconfig hides those from its change report).
+  `unit_migration.rewrite_kconfig` rewrites the registry's name symbols on a
+  unit rename even though they're saved as `#~DEFAULT~#`.
+- **Exports come only from owners**, never another sharer, so one refresh
+  converges. `kconfig_needs_update` also marks a sharer stale when its saved
+  exports differ from its owner's (`python -m shared_components stale`), and
+  install.sh runs a second stale-only unit pass for an owner configured
+  after its sharer.
+- **Adding a shareable kind:** a `KINDS` entry, the two fragments sourced in
+  the component's Kconfig, a W-check for the unresolved member, and guard
+  every machine-type `select`/`imply`/`default` of an exported symbol with
+  `!<shared flag>` (otherwise it overrides the owner's value).
+- The test harness writes each unit's config to a scratch dir in order
+  (`cfg._render_multi_unit`) and keys its parse cache on
+  `shared_components.context_key()`.
 
 ## 14. The pickle (value transport)
 

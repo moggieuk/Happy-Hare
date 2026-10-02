@@ -1169,6 +1169,8 @@ if [ -n "${F_UNITS_RESTRUCTURED:-}" ]; then
 else
     run_kconfig_units olddefconfig y
 fi
+# A unit sharing a component owned by a unit refreshed after it reads the owner again
+run_kconfig_units olddefconfig y
 
 # Give the v3 -> v4 upgrade a clean start now that Kconfig has resolved real paths -
 # see v3_upgrade_cleanup for why this can't happen any earlier.

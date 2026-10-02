@@ -255,6 +255,7 @@ kconfig_sources := \
 	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/*/Kconfig* \
 	           $(SRC)/installer/*/*/Kconfig*) \
 	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py \
+	$(SRC)/installer/lib/kconfiglib/shared_components.py \
 	$(SRC)/installer/lib/kconfiglib/kconfiglib.py
 
 
@@ -734,7 +735,9 @@ menuconfig: $(SRC)/installer/Kconfig | python_deps
 ##################################
 
 # KCONFIG_PARENT is the top-level config a per-unit config inherits printer-level
-# values from, so saving the top level also marks every unit stale.
+# values from, so saving the top level also marks every unit stale. A unit sharing
+# another unit's component is also stale once that owner's saved values differ from
+# the ones it was configured against (shared_components.py).
 kconfig_needs_update:
 	$(Q)if [ ! -f "$(KCONFIG_CONFIG)" ]; then \
 		echo y; \
@@ -743,7 +746,11 @@ kconfig_needs_update:
 	for f in $(kconfig_sources) $(KCONFIG_PARENT); do \
 		[ "$$f" -nt "$(KCONFIG_CONFIG)" ] && { echo y; exit 0; }; \
 	done; \
-	echo n
+	if [ -n "$(KCONFIG_PARENT)" ]; then \
+		$(PY) -m shared_components stale "$(KCONFIG_CONFIG)" "$(KCONFIG_PARENT)" 2>/dev/null || echo n; \
+	else \
+		echo n; \
+	fi
 
 olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null

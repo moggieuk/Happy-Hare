@@ -4,6 +4,8 @@ import io
 import os
 import re
 
+import shared_components
+
 
 HH_DEFAULT_TOKEN = " #~DEFAULT~#"
 _STRING_VALUE_RE = re.compile(r'^"((?:[^\\"]|\\.)*)"$')
@@ -268,3 +270,4 @@ functions = {
     "word-at": (word_at, 2, 2),
     "word-count": (word_count, 1, 1),
 }
+functions.update(shared_components.FUNCTIONS)

@@ -50,13 +50,9 @@ if MMU_TYPE_EMU_1_0
       default 16
     config PARAM_BUFFER_MAXRANGE
       default 16
-
-    # A shared buffer's sensors still steer this unit's endstop and calibration defaults
-    config MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
-      default y if MMU_SHARED_SYNC_FEEDBACK_BUFFER
   endif
 
-  if !OPTION_PSF_BUFFER
+  if !OPTION_PSF_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
     config MMU_HAS_SENSOR_BUFFER_COMPRESSION
       default y
     config MMU_HAS_SENSOR_BUFFER_TENSION

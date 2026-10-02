@@ -614,7 +614,7 @@ SHARED_ENCODER = Profile(
         UnitProfile('unit1', index=1, syms=dict(
             {k: v for k, v in ENCODER.syms.items() if k != 'PIN_ENCODER'},
             MMU_SHARED_ENCODER=True, PARAM_ENCODER_NAME='unit0',
-            MMU_SHARED_SYNC_FEEDBACK_BUFFER=True, PARAM_SYNC_FEEDBACK_BUFFER_NAME='unit0',
+            MMU_SHARED_SYNC_FEEDBACK_BUFFER=True,       # the pick list's only owner: unit0
             PARAM_GATE_ENDSTOP_TO_ENCODER=25)),
     ],
     description="two BoxTurtles, unit1 sharing unit0's encoder and buffer")
