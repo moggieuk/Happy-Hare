@@ -43,7 +43,7 @@ class _Install:
     def env(self, name):
         return dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', UNIT_NAME=name, MCU_NAME=name,
                     UNIT_INDEX=str(self.names.index(name)), KCONFIG_PARENT=self.parent,
-                    KCONFIG_CONFIG=self.path(name), **cfg.handed_down_env(self.entry))
+                    KCONFIG_CONFIG=self.path(name))
 
     def parse(self, name, syms):
         with cfg._env(self.env(name)):

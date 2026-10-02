@@ -260,9 +260,9 @@ choice name and the exported capability symbols) and registers the
   every machine-type `select`/`imply`/`default` of an exported symbol with
   `!<shared flag>` (otherwise it overrides the owner's value).
 - **Printer-level capabilities** use the same reader with the top-level
-  config as the only owner: `$(printer-flag,SYM,ENV)` returns the parent's
-  saved value, else the env var install.sh passes (`PRINTER_FLAGS`). A unit
-  goes stale when the parent is newer, so no extra staleness check is needed.
+  config as the only owner: `$(printer-flag,SYM)` returns the parent's saved
+  value, n without one (`PRINTER_FLAGS`). A unit goes stale when the parent is
+  newer, so no extra staleness check is needed.
 - The test harness writes each unit's config to a scratch dir in order
   (`cfg._render_multi_unit`) and keys its parse cache on
   `shared_components.context_key()`.

@@ -54,13 +54,8 @@ KINDS = {
     ),
 }
 
-# Printer-level capabilities every unit takes from the top-level config (the printer owns
-# them), and the env var install.sh also hands each unit parse
-PRINTER_FLAGS = (
-    ("MMU_HAS_SENSOR_TOOLHEAD", "HAS_SENSOR_TOOLHEAD"),
-    ("MMU_HAS_SENSOR_EXTRUDER", "HAS_SENSOR_EXTRUDER"),
-    ("MMU_HAS_TOOLHEAD_CUTTER", "HAS_TOOLHEAD_CUTTER"),
-)
+# Printer-level capabilities every unit takes from the top-level config (the printer owns them)
+PRINTER_FLAGS = ("MMU_HAS_SENSOR_TOOLHEAD", "MMU_HAS_SENSOR_EXTRUDER", "MMU_HAS_TOOLHEAD_CUTTER")
 
 Slot = collections.namedtuple("Slot", "unit member owner values")
 
@@ -185,7 +180,9 @@ def context_key():
     if not parent:
         return ()
     saved = _saved()
-    key = [tuple(split_units(read_values(parent).get("MMU_UNITS", "")))]
+    top = read_values(parent)
+    key = [tuple(split_units(top.get("MMU_UNITS", ""))),
+           tuple(top.get(symbol) for symbol in PRINTER_FLAGS)]
     for kind_name, kind in sorted(KINDS.items()):
         key.append((kind_name, saved.get(kind.shared), saved.get(kind.name),
                     tuple((s.unit, s.member, s.owner,
@@ -281,12 +278,10 @@ def shared_unresolved(kconf, _name, kind):
     return _yn(unresolved(kind, _limit(kconf)))
 
 
-def printer_flag(_kconf, _name, symbol, variable):
-    """A printer-level flag for a unit parse: the top-level config's, else install.sh's env."""
+def printer_flag(_kconf, _name, symbol):
+    """A printer-level flag for a unit parse, from the top-level config (n without one)."""
     parent = _parent()
-    if parent:
-        return _yn(read_values(parent).get(symbol) == "y")
-    return _yn(os.environ.get(variable) == "y")
+    return _yn(parent and read_values(parent).get(symbol) == "y")
 
 
 def shared_unresolved_label(_kconf, _name, kind):
@@ -294,7 +289,7 @@ def shared_unresolved_label(_kconf, _name, kind):
 
 
 FUNCTIONS = {
-    "printer-flag": (printer_flag, 2, 2),
+    "printer-flag": (printer_flag, 1, 1),
     "shared-active": (shared_active, 0, 0),
     "shared-any": (shared_any, 1, 1),
     "shared-export": (shared_export, 3, 3),

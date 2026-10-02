@@ -1057,7 +1057,6 @@ run_kconfig_units() {
     [ -r "${KCONFIG_CONFIG}" ] || return 0
 
     unset CONFIG_MULTI_UNIT CONFIG_MMU_UNITS
-    unset CONFIG_MMU_HAS_SENSOR_TOOLHEAD CONFIG_MMU_HAS_SENSOR_EXTRUDER CONFIG_MMU_HAS_TOOLHEAD_CUTTER
     . "${KCONFIG_CONFIG}"
 
     if [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
@@ -1074,10 +1073,7 @@ run_kconfig_units() {
                 F_MULTI_UNIT=y \
                 UNIT_INDEX="$i" \
                 UNIT_NAME="$name" \
-                MCU_NAME="$name" \
-                HAS_SENSOR_TOOLHEAD="$CONFIG_MMU_HAS_SENSOR_TOOLHEAD" \
-                HAS_SENSOR_EXTRUDER="$CONFIG_MMU_HAS_SENSOR_EXTRUDER" \
-                HAS_TOOLHEAD_CUTTER="$CONFIG_MMU_HAS_TOOLHEAD_CUTTER"
+                MCU_NAME="$name"
 
             i=$((i + 1))
         done

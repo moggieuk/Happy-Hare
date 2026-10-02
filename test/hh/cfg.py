@@ -242,14 +242,6 @@ def _kconfig(label, syms):
     return _apply_syms(_new_kconfig(label), label, syms)
 
 
-def _flag(kc, name):
-    """
-    A Kconfig bool as the 'y'/'' shape install.sh:424-426 hands down to each unit. Guarded
-    on existence because the symbol lives behind an `if` in some configurations.
-    """
-    return 'y' if (name in kc.syms and kc.is_enabled(name)) else ''
-
-
 def _render_templates(templates, kc, extra, name_of=None):
     """
     Render `templates` with `kc`, keyed by the INSTALLED name. `name_of` maps a template
@@ -367,20 +359,6 @@ def _render_single_unit(profile):
     return _render_templates(BASE_TEMPLATES, kc, extra)
 
 
-# Printer-level capabilities each unit parse is told about, as install.sh run_kconfig_units
-# passes them: env var read by installer/Kconfig -> symbol in the top-level config.
-HANDED_DOWN_ENV = {
-    'HAS_SENSOR_TOOLHEAD': 'MMU_HAS_SENSOR_TOOLHEAD',
-    'HAS_SENSOR_EXTRUDER': 'MMU_HAS_SENSOR_EXTRUDER',
-    'HAS_TOOLHEAD_CUTTER': 'MMU_HAS_TOOLHEAD_CUTTER',
-}
-
-
-def handed_down_env(entry_kc):
-    """The HANDED_DOWN_ENV values, read back off an entry-point parse."""
-    return {env: _flag(entry_kc, sym) for env, sym in HANDED_DOWN_ENV.items()}
-
-
 _scratch = []
 
 
@@ -427,19 +405,17 @@ def _render_multi_unit(profile, units, via_files=False):
                    MCU_NAME=','.join(names))):
         entry_kc = _kconfig_for_render(profile.name, profile.syms)
 
-    handed_down = handed_down_env(entry_kc)
     parent = _scratch_configs()
     entry_kc.write_config(parent)
 
     def unit_kconfig(unit):
-        with _env(dict(_SINGLE_UNIT_ENV, **dict(
-                handed_down,
-                F_MULTI_UNIT='y',
-                F_MULTI_UNIT_ENTRY_POINT='',
-                UNIT_NAME=unit.name,
-                MCU_NAME=unit.mcu_name,
-                UNIT_INDEX=str(unit.index),
-                KCONFIG_PARENT=parent))):
+        with _env(dict(_SINGLE_UNIT_ENV,
+                       F_MULTI_UNIT='y',
+                       F_MULTI_UNIT_ENTRY_POINT='',
+                       UNIT_NAME=unit.name,
+                       MCU_NAME=unit.mcu_name,
+                       UNIT_INDEX=str(unit.index),
+                       KCONFIG_PARENT=parent)):
             kc = _kconfig_for_render('%s:%s' % (profile.name, unit.name), unit.syms)
         kc.write_config('%s_%s' % (parent, unit.name))
         return kc
