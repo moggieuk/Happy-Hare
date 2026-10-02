@@ -165,6 +165,17 @@ class TestCheck(Scratch):
         self.assertEqual(code, um.EXIT_STRUCTURAL)
         self.assertIn("rename b -> box", out)
 
+    def test_renumbering_is_only_mentioned_when_gates_move(self):
+        for label, fn, renumbered in (("rename", lambda m: m.rename(1, "box"), False),
+                                      ("reorder", lambda m: m.move(0, 1), True),
+                                      ("remove first", lambda m: m.remove(0), True)):
+            with self.subTest(label):
+                self.edit(["a", "b"], fn)
+                code, out = self.check("replace")
+                self.assertEqual(code, um.EXIT_STRUCTURAL)
+                self.assertIn("saved state move with each unit", out)
+                (self.assertIn if renumbered else self.assertNotIn)("renumbered", out)
+
     def test_the_saved_state_file_is_shown(self):
         self.edit(["a", "b"], lambda m: m.rename(1, "box"))
         self.assertIn("Saved state will be migrated in %s" % self.vars_file, self.check("replace")[1])
@@ -708,6 +719,7 @@ class TestSingleUnitRename(Scratch):
         self.assertEqual(code, um.EXIT_STRUCTURAL)
         self.assertIn("rename unit0 -> box", out)
         self.assertNotIn("will be reset", out)
+        self.assertNotIn("renumbered", out)
 
     def test_renaming_an_installed_single_unit_end_to_end(self):
         self.install(["unit0"], variables={
