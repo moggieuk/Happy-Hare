@@ -109,7 +109,8 @@ once expanded and can be nested.
 
 - `@repeat var=i min=0 max=11@ ... @endrepeat@` — the body lines are
   emitted once per `i` in `[min..max]` with `$(i)` substituted (`var=`
-  names the placeholder; `min`/`max` are required, integers). Used for
+  names the placeholder; `min`/`max` are required integers, or preprocessor
+  variables expanding to one, e.g. `max=$(shared_slots)`). Used for
   per-gate pin/prompt blocks where the gate count is compile-time fixed
   (max 12) and prompts are conditionally hidden via
   `prompt "..." if PARAM_NUM_GATES > $(i)`.
@@ -121,9 +122,10 @@ once expanded and can be nested.
   by hand costs exactly the same; the expansion itself is a cheap line
   copy. So keep counts to what is actually needed, and when a body does
   repeat, prefer `@repeat` over hand-unrolled copies — one place to edit.
-  In this fork `min`/`max` must be *literal* integers (`_to_int`, a parse
-  error otherwise); when Python code depends on the same count (e.g.
-  `shared_components.MAX_SLOTS`), pin the two together with a test.
+  When a count is shared — several blocks, or Python code — define it once
+  as a preprocessor variable (`max=$(var)`; an undefined one is a parse
+  error) and have Python read it from `kconf.variables` rather than keep a
+  copy (`shared_components._limit`).
 - `@if <ENV_VAR>@ ... @endif@` / `@ifnot <ENV_VAR>@ ... @endif@` — the
   block's lines are only fed to the tokenizer when the *environment* variable
   named by the arg is set to a truthy value (`y/yes/1/true`, case-insensitive;

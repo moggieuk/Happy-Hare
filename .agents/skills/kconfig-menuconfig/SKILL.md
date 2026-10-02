@@ -453,9 +453,9 @@ in this repo:
    unit pays it per unit), so a `min=0 max=11` block costs 12× the body's
    node count per parse — but writing the 12 copies out by hand costs
    exactly the same, so don't unroll for speed. Keep counts to what is
-   needed and prefer `@repeat` over hand copies. `min`/`max` are literal
-   integers only; if Python depends on the same count (e.g.
-   `shared_components.MAX_SLOTS`), pin them together with a test.
+   needed and prefer `@repeat` over hand copies. A count used in more than
+   one place belongs in a preprocessor variable (`max=$(var)`), which
+   Python can read from `kconf.variables` instead of keeping a copy.
 
 ## Quick reference
 
