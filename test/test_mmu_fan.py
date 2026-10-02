@@ -352,6 +352,34 @@ class TestMmuFanConfiguration(unittest.TestCase):
         self.assertEqual(gate_fan['fan_speed'], '0.8')
         self.assertEqual(gate_fan['shutdown_speed'], '0.9')
 
+    def test_shared_heater_fan_defaults_heater_temp(self):
+        profile = profiles.get('qidi').derive(
+            'qidi_heater_fan_temp',
+            syms={
+                'PARAM_FILAMENT_HEATER': 'qidi_heater',
+                'PIN_HEATER_FAN': 'unit0:PA8',
+            })
+        self.assertNotIn('PARAM_HEATER_FAN_HEATER_TEMP', profile.syms)
+        parser = cfg.assemble(cfg.render(profile))
+        fan = dict(parser.items('heater_fan _unit0_heater_fan'))
+        self.assertEqual(fan['heater_temp'], '45.0')
+
+    def test_per_gate_heater_fans_render_gate_aligned_heater_temp(self):
+        profile = profiles.get('emu').derive(
+            'emu_heater_fan_temps', syms=dict(
+                {
+                    'MMU_HAS_HEATER': True,
+                    'PARAM_HEATER_FAN_HEATER_TEMP_1': 60.0,
+                },
+                **{'PIN_HEATER_FAN_%d' % gate: 'unit0_gate%d:PA14' % gate
+                   for gate in range(5)}))
+        parser = cfg.assemble(cfg.render(profile))
+        for gate in range(5):
+            fan = dict(parser.items('heater_fan _unit0_heater_fan%d' % gate))
+            with self.subTest(gate=gate):
+                self.assertEqual(fan['heater_temp'],
+                                 '60.0' if gate == 1 else '45.0')
+
     def test_heater_without_fixed_fan_is_warned(self):
         base = dict(profiles.get('qidi').syms)
         self.assertTrue(
