@@ -536,15 +536,12 @@ def klipper_string_literal(value):
 
 
 def jinja_env():
-    # Keep compiled templates across renders, but isolate identical relative names
-    # in different working directories. Render-time values are never cached.
+    # One cached environment per template root so compiled templates are reused
     return _jinja_env(os.getcwd())
 
 
 @lru_cache(maxsize=8)
 def _jinja_env(template_root):
-    # An absolute loader root also anchors Jinja's automatic mtime reload checks
-    # when callers change cwd. Bound the number of retained template directories.
     env = Environment(
         loader=FileSystemLoader(template_root),
         block_start_string="[%",
