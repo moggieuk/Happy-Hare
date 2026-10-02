@@ -1,7 +1,7 @@
 # This module's purpose is to set the toolhead type and defaults for
 # associated dimensional parameters:
 #
-#   MMU_SHARED_TOOLHEAD - Currently not dynamically set (see gen-kconfig-options idea in build.py)
+#   MMU_SHARED_TOOLHEAD - Currently not dynamically set
 #
 #   PARAM_TOOLHEAD_TYPE
 #   PARAM_TOOLHEAD

@@ -259,12 +259,6 @@ comment "_"
 config SHOW_HIDDEN
   def_bool n
 
-# Optional auto generated config for shared components to
-# adds options for sharing previously defined components
-# (like mmu_toolhead, encoder, sync-feedback, ...)
-osource "/tmp/.Kconfig.generated"
-
-
 # -------------------------------------
 # Initial menuconfig for multi-unit
 # -------------------------------------
