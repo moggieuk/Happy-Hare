@@ -360,3 +360,34 @@ class TestEndlessSpoolGroupsRetired(MmuCfgBuild):
                 with self.subTest(value=self.value, mode=mode):
                     built, _ = self.build(mode, [source])
                     self.assertFalse(ConfigBuilder(built).has_option(self.SECTION, "endless_spool_groups"))
+
+
+class TestRefreshKeepsEditsAfterGcodeSequence(MmuCfgBuild):
+    """gcode_load_sequence was parsed as G-code, so it swallowed the rest of
+    [mmu_parameters] and a refresh reset every edit below it."""
+
+    EDITS = (("gcode_unload_sequence", "1"), ("pause_macro", "MY_PAUSE"),
+             ("default_ttg_map", "3, 2, 1, 0"), ("default_endless_spool_groups", "0, 1, 0, 1"))
+
+    def edit(self, line):
+        name = line.lstrip("#").split(":")[0].strip()
+        for option, value in self.EDITS:
+            if name == option and ":" in line:
+                return "%s: %s" % (option, value)
+        return line
+
+    def test_edits_after_gcode_load_sequence_survive_refresh(self):
+        source = self.installed(self.edit)
+        built, _ = self.build("refresh", [source])
+        for option, value in self.EDITS:
+            with self.subTest(option):
+                self.assertEqual(self.option(built, option), value)
+
+    def test_a_set_default_survives_every_mode_once(self):
+        source = self.installed(self.edit)
+        for mode in ("refresh", "merge", "replace"):
+            with self.subTest(mode=mode):
+                built, text = self.build(mode, [source])
+                self.assertEqual(self.option(built, "default_endless_spool_groups"), "0, 1, 0, 1")
+                self.assertEqual(sum(1 for line in text.splitlines()
+                                     if line.split(":")[0].strip() == "default_endless_spool_groups"), 1)

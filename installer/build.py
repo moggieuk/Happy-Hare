@@ -398,7 +398,7 @@ class HHConfig(ConfigBuilder):
             for option in sorted(builder.options(section)):
                 if self.has_option(section, option):
 
-                    is_gcode = option.startswith("gcode")
+                    is_gcode = option == "gcode"
                     is_macro_section = section.startswith("gcode_macro")
                     is_var_section = section in excluded_var_sections
                     is_excluded_var = (section, option) in excluded_vars or (section, option) in KCONFIG_OWNED_OPTIONS
