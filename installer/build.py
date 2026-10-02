@@ -21,6 +21,7 @@ import json
 import logging
 import subprocess
 import pickle
+from functools import lru_cache
 
 from jinja2  import Environment, FileSystemLoader, UndefinedError
 from pathlib import Path
@@ -535,8 +536,14 @@ def klipper_string_literal(value):
 
 
 def jinja_env():
+    # One cached environment per template root so compiled templates are reused
+    return _jinja_env(os.getcwd())
+
+
+@lru_cache(maxsize=8)
+def _jinja_env(template_root):
     env = Environment(
-        loader=FileSystemLoader("."),
+        loader=FileSystemLoader(template_root),
         block_start_string="[%",
         block_end_string="%]",
         variable_start_string="[[",
