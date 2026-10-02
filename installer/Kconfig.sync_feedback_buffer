@@ -81,7 +81,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       default "$(first-nonempty,$(saved-config-value,PARAM_SYNC_FEEDBACK_BUFFER_NAME),-specify name-)" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
       default UNIT_NAME
 
-    # The sensors of the buffer this unit shares, for its endstop and calibration defaults
+    # The buffer this unit shares, for its endstop and calibration defaults
     if MMU_SHARED_SYNC_FEEDBACK_BUFFER
       shared_kind   := buffer
       shared_export := MMU_HAS_SENSOR_BUFFER_COMPRESSION
@@ -91,6 +91,10 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       source "components/Kconfig.shared_export"
       shared_kind   := buffer
       shared_export := MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      source "components/Kconfig.shared_export"
+      # A physical property of the buffer, so it is fixed by the owner
+      shared_kind   := buffer
+      shared_export := PARAM_BUFFER_SPRING_STATE
       source "components/Kconfig.shared_export"
     endif
 

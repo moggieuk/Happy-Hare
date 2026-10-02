@@ -152,7 +152,8 @@ class TestSharedSyncFeedbackBuffer(unittest.TestCase):
             choice = kc.named_choices['CHOICE_SHARED_BUFFER']
             offered = [(s.name, s.nodes[0].prompt[0]) for s in choice.syms if s.visibility]
             # unit3 is the unit being configured; unit2 shares rather than owns
-            self.assertEqual(offered, [('CHOICE_SHARED_BUFFER_UNIT0', 'unit0 (tension)')])
+            self.assertEqual(offered, [('CHOICE_SHARED_BUFFER_UNIT0',
+                                        'unit0 (tension, spring: tension)')])
 
         with tempfile.TemporaryDirectory() as tmp:
             install = _Install(tmp, ('unit0', 'unit1'))
@@ -207,6 +208,36 @@ class TestSharedSyncFeedbackBuffer(unittest.TestCase):
             kc = install.refresh('unit1')
             self.assertEqual(kc.syms['MMU_SHARED_SYNC_FEEDBACK_BUFFER'].str_value, 'y')
             self.assertTrue(kc.is_enabled('W29'))
+
+    def test_the_spring_state_is_the_owners_and_steers_extruder_homing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', BUFFER_OWNERS['boxturtle'])            # Turtle Neck v2: tension
+            kc = install.parse('unit1', _sharing(BUFFER_SHARERS['tradrack']))
+            self.assertEqual(kc.syms['PARAM_BUFFER_SPRING_STATE'].str_value, 'tension')
+            self.assertEqual(kc.syms['PARAM_BUFFER_SPRING_STATE'].visibility, 0)  # not settable
+            self.assertEqual(kc.named_choices['CHOICE_EXTRUDER_HOMING_ENDSTOP'].selection.name,
+                             'CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION')
+
+            install.save('unit0', dict(BUFFER_OWNERS['boxturtle'],
+                                       CHOICE_BUFFER_SPRING_STATE_NONE=True))
+            kc = install.parse('unit1', _sharing(BUFFER_SHARERS['tradrack']))
+            self.assertEqual(kc.syms['PARAM_BUFFER_SPRING_STATE'].str_value, 'none')
+            self.assertNotEqual(kc.named_choices['CHOICE_EXTRUDER_HOMING_ENDSTOP'].selection.name,
+                                'CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION')
+
+    def test_a_sharer_is_stale_when_its_owners_spring_state_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', BUFFER_OWNERS['boxturtle'])
+            install.save('unit1', _sharing(BUFFER_SHARERS['tradrack']))
+            self.assertFalse(install.stale('unit1'))
+            install.save('unit0', dict(BUFFER_OWNERS['boxturtle'],
+                                       CHOICE_BUFFER_SPRING_STATE_NEUTRAL=True))
+            self.assertTrue(install.stale('unit1'))
+            self.assertEqual(install.refresh('unit1').syms['PARAM_BUFFER_SPRING_STATE'].str_value,
+                             'neutral')
+            self.assertFalse(install.stale('unit1'))
 
     def test_owners_and_resolved_sharers_are_not_warned(self):
         with tempfile.TemporaryDirectory() as tmp:

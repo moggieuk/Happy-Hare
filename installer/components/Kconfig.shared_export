@@ -4,7 +4,7 @@
 # Kconfig.shared_choice. The caller sets, immediately before each source:
 #
 #   shared_kind    key in shared_components.KINDS, e.g. buffer
-#   shared_export  the symbol, e.g. MMU_HAS_SENSOR_BUFFER_COMPRESSION
+#   shared_export  the symbol, e.g. MMU_HAS_SENSOR_BUFFER_COMPRESSION (a bool or a string)
 #
 # The last default keeps the value this unit saved when there is nothing to read: the owner
 # isn't configured yet, the saved owner is unresolved, or the parse isn't a unit parse run
@@ -12,6 +12,6 @@
 
 config $(shared_export)
   @repeat var=i min=1 max=$(shared_slots)@
-  default $(shared-export,$(shared_kind),$(i),$(shared_export)) if $(shared-member,$(shared_kind),$(i)) && $(shared-owner,$(shared_kind),$(i))
+  default "$(shared-export,$(shared_kind),$(i),$(shared_export))" if $(shared-member,$(shared_kind),$(i)) && $(shared-owner,$(shared_kind),$(i))
   @endrepeat@
-  default $(first-nonempty,$(saved-config-value,$(shared_export)),n)
+  default "$(shared-saved-export,$(shared_kind),$(shared_export))"

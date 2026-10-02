@@ -30,16 +30,20 @@ _UNESCAPE_RE = re.compile(r"\\(.)")
 
 Kind = collections.namedtuple("Kind", "has shared name choice exports")
 
-# exports: (symbol, word used in the pick list label) the sharer takes from its owner
+# What a sharer takes from its owner: a bool (absent "n", label shown when "y") or a string
+# (label a format, shown when not its absent value)
+Export = collections.namedtuple("Export", "symbol absent label")
+
 KINDS = {
     "buffer": Kind(
         has="MMU_HAS_SYNC_FEEDBACK_BUFFER",
         shared="MMU_SHARED_SYNC_FEEDBACK_BUFFER",
         name="PARAM_SYNC_FEEDBACK_BUFFER_NAME",
         choice="CHOICE_SHARED_BUFFER",
-        exports=(("MMU_HAS_SENSOR_BUFFER_COMPRESSION", "compression"),
-                 ("MMU_HAS_SENSOR_BUFFER_TENSION", "tension"),
-                 ("MMU_HAS_SENSOR_BUFFER_PROPORTIONAL", "proportional")),
+        exports=(Export("MMU_HAS_SENSOR_BUFFER_COMPRESSION", "n", "compression"),
+                 Export("MMU_HAS_SENSOR_BUFFER_TENSION", "n", "tension"),
+                 Export("MMU_HAS_SENSOR_BUFFER_PROPORTIONAL", "n", "proportional"),
+                 Export("PARAM_BUFFER_SPRING_STATE", "none", "spring: %s")),
     ),
     "encoder": Kind(
         has="MMU_HAS_ENCODER",
@@ -84,6 +88,10 @@ def split_units(raw):
 
 def unit_file(parent, unit):
     return "%s_%s" % (parent, unit)
+
+
+def export_value(values, export):
+    return values.get(export.symbol) or export.absent
 
 
 def is_owner(values, kind):
@@ -160,8 +168,12 @@ def label(slot, kind):
         return "%s (not configured yet)" % slot.unit
     if not kind.exports:
         return slot.unit
-    words = [word for sym, word in kind.exports if slot.values.get(sym) == "y"]
-    return "%s (%s)" % (slot.unit, " + ".join(words) if words else "no sensors")
+    flags = [e.label for e in kind.exports
+             if e.absent == "n" and export_value(slot.values, e) == "y"]
+    details = [" + ".join(flags) if flags else "no sensors"]
+    details += [e.label % export_value(slot.values, e) for e in kind.exports
+                if e.absent != "n" and export_value(slot.values, e) != e.absent]
+    return "%s (%s)" % (slot.unit, ", ".join(details))
 
 
 def context_key():
@@ -177,7 +189,7 @@ def context_key():
     for kind_name, kind in sorted(KINDS.items()):
         key.append((kind_name, saved.get(kind.shared), saved.get(kind.name),
                     tuple((s.unit, s.member, s.owner,
-                           tuple(s.values.get(sym) for sym, _ in kind.exports))
+                           tuple(export_value(s.values, e) for e in kind.exports))
                           for s in slots(kind_name))))
     return tuple(key)
 
@@ -194,7 +206,7 @@ def stale(config, parent):
         owner = read_values(unit_file(parent, saved.get(kind.name, "")))
         if not is_owner(owner, kind):
             continue
-        if any((owner.get(sym) == "y") != (saved.get(sym) == "y") for sym, _ in kind.exports):
+        if any(export_value(owner, e) != export_value(saved, e) for e in kind.exports):
             return True
     return False
 
@@ -239,9 +251,18 @@ def shared_label(kconf, _name, kind, index):
     return label(slot, KINDS[kind]) if slot else ""
 
 
+def _export(kind, symbol):
+    return next(e for e in KINDS[kind].exports if e.symbol == symbol)
+
+
 def shared_export(kconf, _name, kind, index, symbol):
     slot = _slot(kconf, kind, index)
-    return _yn(slot and slot.values.get(symbol) == "y")
+    return export_value(slot.values if slot else {}, _export(kind, symbol))
+
+
+def shared_saved_export(_kconf, _name, kind, symbol):
+    """The value this unit saved, for when there is no owner to read."""
+    return export_value(_saved(), _export(kind, symbol))
 
 
 def shared_saved_member(kconf, _name, kind):
@@ -272,6 +293,7 @@ FUNCTIONS = {
     "shared-member": (shared_member, 2, 2),
     "shared-name": (shared_name, 2, 2),
     "shared-owner": (shared_owner, 2, 2),
+    "shared-saved-export": (shared_saved_export, 2, 2),
     "shared-saved-member": (shared_saved_member, 1, 1),
     "shared-slot-used": (shared_slot_used, 2, 2),
     "shared-unresolved": (shared_unresolved, 1, 1),
