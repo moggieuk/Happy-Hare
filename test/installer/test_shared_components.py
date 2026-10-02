@@ -96,6 +96,52 @@ class TestSlots(Scratch):
             self.assertIn(name, kconfigfunctions.functions)
 
 
+class TestRegistryMatchesKconfig(unittest.TestCase):
+    """
+    A registry entry naming a symbol Kconfig doesn't define would just find no owners, so
+    check it against a real parse with an owner of every kind next door - the only parse in
+    which the pick list's members are the real CHOICE_SHARED_<KIND>_<UNIT> names.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from test.installer.test_shared_buffer import _Install
+        from test.hh import profiles
+        cls.tmp = tempfile.TemporaryDirectory()
+        install = _Install(cls.tmp.name, ("unit0", "unit1"))
+        install.save("unit0", profiles.get("encoder").syms)       # owns a buffer and an encoder
+        cls.kc = install.parse("unit1", dict(
+            profiles.get("encoder").syms,
+            **{kind.shared: True for kind in sc.KINDS.values()}))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_every_kind_names_symbols_kconfig_defines(self):
+        import kconfiglib
+        for name, kind in sc.KINDS.items():
+            with self.subTest(kind=name):
+                for sym in (kind.has, kind.shared):
+                    self.assertEqual(self.kc.syms[sym].orig_type, kconfiglib.BOOL, sym)
+                self.assertEqual(self.kc.syms[kind.name].orig_type, kconfiglib.STRING)
+                self.assertIn(kind.choice, self.kc.named_choices)
+                for export in kind.exports:
+                    self.assertEqual(self.kc.syms[export.symbol].orig_type,
+                                     kconfiglib.BOOL if export.absent == "n" else kconfiglib.STRING,
+                                     export.symbol)
+
+    def test_a_real_pick_list_follows_the_naming_contract(self):
+        for name, kind in sc.KINDS.items():
+            with self.subTest(kind=name):
+                choice = self.kc.named_choices[kind.choice]
+                offered = [s.name for s in choice.syms if s.visibility]
+                self.assertEqual(offered, ["%s_UNIT0" % kind.choice])
+                self.assertTrue(kind.choice.startswith("CHOICE_"))
+                self.assertEqual(choice.selection.name, "%s_UNIT0" % kind.choice)
+                self.assertEqual(self.kc.syms[kind.name].str_value, "unit0")
+
+
 class TestUnresolved(Scratch):
 
     def test_a_saved_name_that_is_not_offered_is_unresolved(self):

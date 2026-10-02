@@ -27,12 +27,15 @@ class _Install:
     do: each with KCONFIG_PARENT pointing at the top-level file, so a sharer reads its owner.
     """
 
-    def __init__(self, tmp, names):
+    def __init__(self, tmp, names, syms=None):
         self.parent = os.path.join(tmp, '.mmu_config')
         self.names = list(names)
-        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='y',
-                           UNIT_NAME=','.join(names), MCU_NAME=','.join(names))):
-            cfg._kconfig('install', {}).write_config(self.parent)
+        self.entry_env = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='y',
+                              UNIT_NAME=','.join(names), MCU_NAME=','.join(names),
+                              KCONFIG_CONFIG=self.parent)
+        with cfg._env(self.entry_env):
+            self.entry = cfg._kconfig('install', syms or {})
+        self.entry.write_config(self.parent)
 
     def path(self, name):
         return '%s_%s' % (self.parent, name)
@@ -40,7 +43,7 @@ class _Install:
     def env(self, name):
         return dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', UNIT_NAME=name, MCU_NAME=name,
                     UNIT_INDEX=str(self.names.index(name)), KCONFIG_PARENT=self.parent,
-                    KCONFIG_CONFIG=self.path(name))
+                    KCONFIG_CONFIG=self.path(name), **cfg.handed_down_env(self.entry))
 
     def parse(self, name, syms):
         with cfg._env(self.env(name)):

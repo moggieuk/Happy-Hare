@@ -394,7 +394,19 @@ def _scratch_configs():
     return os.path.join(_scratch[0], '.mmu_config')
 
 
-def _render_multi_unit(profile, units):
+def render_via_files(profile):
+    """
+    A multi-unit render the way `make install` builds it: each unit's config is written as in
+    render(), then loaded back with the real build.KConfig in the build's env (no
+    KCONFIG_PARENT, UNIT_NAME=unit0, filter_defaults=False) and rendered from that. Not
+    memoised. render() should equal this; a difference means the harness and the build
+    read a saved config differently.
+    """
+    _prepare_imports()
+    return _render_multi_unit(profile, tuple(profile.units), via_files=True)
+
+
+def _render_multi_unit(profile, units, via_files=False):
     """
     Three parses, mirroring install.sh run_kconfig_top (:385-399) + run_kconfig_units
     (:401-432): one entry-point parse for the shared files, then one per unit.
@@ -438,6 +450,13 @@ def _render_multi_unit(profile, units):
     unit_kcs = [(unit, unit_kconfig(unit)
                  if shared_components.stale('%s_%s' % (parent, unit.name), parent) else kc)
                 for unit, kc in unit_kcs]
+
+    if via_files:
+        import installer.build as build
+        with _env(dict(_SINGLE_UNIT_ENV, KCONFIG_CONFIG=parent)), _chdir(INSTALLER):
+            entry_kc = build.KConfig(parent)
+            unit_kcs = [(unit, build.KConfig('%s_%s' % (parent, unit.name)))
+                        for unit, _kc in unit_kcs]
 
     # The SUM across units, not this unit's count - build.py:481-492. It drives the Tx macro
     # wrappers, which are printer-wide.
