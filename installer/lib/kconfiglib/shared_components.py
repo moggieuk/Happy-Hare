@@ -1,5 +1,5 @@
 """
-Components one unit of a multi-unit MMU can share with another (the sync-feedback buffer).
+Components one unit of a multi-unit MMU can share with another (sync-feedback buffer, encoder).
 
 Each unit is configured by its own Kconfig parse, which can't see the other units' parses,
 so a sharing unit reads what the other units SAVED: the parent .mmu_config (for MMU_UNITS)
@@ -30,7 +30,7 @@ _UNESCAPE_RE = re.compile(r"\\(.)")
 
 Kind = collections.namedtuple("Kind", "has shared name choice exports")
 
-# exports: (symbol, word used in the pick list label)
+# exports: (symbol, word used in the pick list label) the sharer takes from its owner
 KINDS = {
     "buffer": Kind(
         has="MMU_HAS_SYNC_FEEDBACK_BUFFER",
@@ -40,6 +40,13 @@ KINDS = {
         exports=(("MMU_HAS_SENSOR_BUFFER_COMPRESSION", "compression"),
                  ("MMU_HAS_SENSOR_BUFFER_TENSION", "tension"),
                  ("MMU_HAS_SENSOR_BUFFER_PROPORTIONAL", "proportional")),
+    ),
+    "encoder": Kind(
+        has="MMU_HAS_ENCODER",
+        shared="MMU_SHARED_ENCODER",
+        name="PARAM_ENCODER_NAME",
+        choice="CHOICE_SHARED_ENCODER",
+        exports=(),
     ),
 }
 
@@ -151,6 +158,8 @@ def unresolved(kind_name, limit=None):
 def label(slot, kind):
     if not slot.owner:
         return "%s (not configured yet)" % slot.unit
+    if not kind.exports:
+        return slot.unit
     words = [word for sym, word in kind.exports if slot.values.get(sym) == "y"]
     return "%s (%s)" % (slot.unit, " + ".join(words) if words else "no sensors")
 

@@ -224,7 +224,7 @@ if a Kconfig sources an absolute path or a parse reads a file outside
 ## 13. Shared components (`shared_components.py`, `shared-*` functions)
 
 A unit of a multi-unit machine can share a component another unit owns (the
-sync-feedback buffer today). Each unit is a separate parse, so the sharer
+sync-feedback buffer and the encoder). Each unit is a separate parse, so the sharer
 reads what the other units SAVED: `KCONFIG_PARENT` (the top-level
 `.mmu_config`, for `MMU_UNITS`) and each sibling `<parent>_<unit>`.
 `installer/lib/kconfiglib/shared_components.py` holds the registry (`KINDS`:
@@ -242,10 +242,11 @@ choice name and the exported capability symbols) and registers the
   symbol's per-slot defaults; source it BEFORE the name symbol's own
   definition so they win) and `components/Kconfig.shared_export` once per
   exported symbol (per-slot defaults from the owner, then the unit's own
-  saved value as a sticky fallback).
+  saved value as a sticky fallback). A kind with nothing to export (the
+  encoder) sources only the first.
 - **The saved name is the identity**; the choice is a view of it. A name that
   no longer matches an owner is kept as `CHOICE_SHARED_<KIND>_UNRESOLVED` and
-  warned (W29 for the buffer) — never re-pointed. Don't name that member
+  warned (W29 buffer, W30 encoder) — never re-pointed. Don't name that member
   `_PREVIOUS` (olddefconfig hides those from its change report).
   `unit_migration.rewrite_kconfig` rewrites the registry's name symbols on a
   unit rename even though they're saved as `#~DEFAULT~#`.
