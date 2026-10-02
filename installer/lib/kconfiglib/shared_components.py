@@ -1,5 +1,6 @@
 """
-Components one unit of a multi-unit MMU can share with another (sync-feedback buffer, encoder).
+Components one unit of a multi-unit MMU can share with another (sync-feedback buffer, encoder),
+and the printer-level capabilities (toolhead sensors) every unit takes from the top level.
 
 Each unit is configured by its own Kconfig parse, which can't see the other units' parses,
 so a sharing unit reads what the other units SAVED: the parent .mmu_config (for MMU_UNITS)
@@ -52,6 +53,14 @@ KINDS = {
         exports=(),
     ),
 }
+
+# Printer-level capabilities every unit takes from the top-level config (the printer owns
+# them), and the env var install.sh also hands each unit parse
+PRINTER_FLAGS = (
+    ("MMU_HAS_SENSOR_TOOLHEAD", "HAS_SENSOR_TOOLHEAD"),
+    ("MMU_HAS_SENSOR_EXTRUDER", "HAS_SENSOR_EXTRUDER"),
+    ("MMU_HAS_TOOLHEAD_CUTTER", "HAS_TOOLHEAD_CUTTER"),
+)
 
 Slot = collections.namedtuple("Slot", "unit member owner values")
 
@@ -272,11 +281,20 @@ def shared_unresolved(kconf, _name, kind):
     return _yn(unresolved(kind, _limit(kconf)))
 
 
+def printer_flag(_kconf, _name, symbol, variable):
+    """A printer-level flag for a unit parse: the top-level config's, else install.sh's env."""
+    parent = _parent()
+    if parent:
+        return _yn(read_values(parent).get(symbol) == "y")
+    return _yn(os.environ.get(variable) == "y")
+
+
 def shared_unresolved_label(_kconf, _name, kind):
     return "%s (not an owner)" % (_saved().get(KINDS[kind].name) or "-")
 
 
 FUNCTIONS = {
+    "printer-flag": (printer_flag, 2, 2),
     "shared-active": (shared_active, 0, 0),
     "shared-any": (shared_any, 1, 1),
     "shared-export": (shared_export, 3, 3),

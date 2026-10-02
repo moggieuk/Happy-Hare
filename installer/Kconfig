@@ -100,7 +100,8 @@
 # 20. Shared components: 'shared-*' preprocessor functions (shared_components.py) let a unit
 #     parse read the OTHER units' saved configs via KCONFIG_PARENT, giving a pick list of the
 #     units owning a component and the owner's capabilities. Used through the
-#     components/Kconfig.shared_choice and Kconfig.shared_export fragments
+#     components/Kconfig.shared_choice and Kconfig.shared_export fragments.
+#     $(printer-flag,SYM,ENV) reads a printer-level flag from the top-level config
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -156,10 +157,11 @@ title       := $(menu-title,$(F_MULTI_UNIT_ENTRY_POINT),$(hh_message),$(unit_suf
 caption     := $(menu-caption,$(F_MULTI_UNIT_ENTRY_POINT),$(hh_message),$(unit-suffix,$(UNIT_NAME),20))
 caption_pad := 50
 
-# Expose these capability params to each unit
-mmu_has_sensor_toolhead := $(env-is-y,HAS_SENSOR_TOOLHEAD)
-mmu_has_sensor_extruder := $(env-is-y,HAS_SENSOR_EXTRUDER)
-mmu_has_toolhead_cutter := $(env-is-y,HAS_TOOLHEAD_CUTTER)
+# Printer-level capabilities each unit takes from the top-level config (KCONFIG_PARENT),
+# falling back to the env install.sh also passes
+mmu_has_sensor_toolhead := $(printer-flag,MMU_HAS_SENSOR_TOOLHEAD,HAS_SENSOR_TOOLHEAD)
+mmu_has_sensor_extruder := $(printer-flag,MMU_HAS_SENSOR_EXTRUDER,HAS_SENSOR_EXTRUDER)
+mmu_has_toolhead_cutter := $(printer-flag,MMU_HAS_TOOLHEAD_CUTTER,HAS_TOOLHEAD_CUTTER)
 
 # The most units a pick list offers for a shared component that another unit owns
 # (components/Kconfig.shared_*, read by shared_components.py too)

@@ -50,7 +50,8 @@ Load-bearing facts about the flow:
   becomes the `MMU_UNITS` list) plus one per unit
   (`F_MULTI_UNIT=y UNIT_NAME=uN MCU_NAME=uN UNIT_INDEX=N` plus the
   printer-level `HAS_SENSOR_TOOLHEAD/EXTRUDER/TOOLHEAD_CUTTER` read back out
-  of the top-level file). See `install.sh` `run_kconfig_top` /
+  of the top-level file, now a fallback: the unit parse reads them from
+  `KCONFIG_PARENT` itself). See `install.sh` `run_kconfig_top` /
   `run_kconfig_units` / `run_kconfig_one`. The per-unit config file and the
   installed `.cfg` files both gain a `_<unit>` suffix. A unit parse also
   reads the OTHER units' saved files (`KCONFIG_PARENT`) for components one
@@ -240,10 +241,12 @@ speeds, macro vars, shared pins, paths) vs `if !MULTI_UNIT_ENTRY_POINT`
 (per-unit: MMU type, board, connection, pins, endstops, ...). Per-unit files
 are excluded from the entry-point tree via `if !MULTI_UNIT` guards (e.g.
 toolheads/Kconfig appears in *both* — standalone machines keep it per-unit).
-Printer-level capabilities are handed down to unit parses as env
-(`HAS_SENSOR_TOOLHEAD`, ... → `$(env-is-y,...)` variables in the root
-`Kconfig`, feeding promptless `MMU_HAS_*` defaults in its
-`if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT` block).
+Printer-level capabilities (`MMU_HAS_SENSOR_TOOLHEAD/EXTRUDER/TOOLHEAD_CUTTER`)
+reach unit parses from the top-level config through `KCONFIG_PARENT`
+(`$(printer-flag,SYM,ENV)` in the root `Kconfig`, `shared_components.PRINTER_FLAGS`),
+falling back to the `HAS_SENSOR_*` env install.sh still passes; they feed
+promptless `MMU_HAS_*` defaults in its `if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT`
+block.
 
 ## Checklist: adding / changing a symbol
 
