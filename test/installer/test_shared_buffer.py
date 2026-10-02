@@ -152,8 +152,7 @@ class TestSharedSyncFeedbackBuffer(unittest.TestCase):
             choice = kc.named_choices['CHOICE_SHARED_BUFFER']
             offered = [(s.name, s.nodes[0].prompt[0]) for s in choice.syms if s.visibility]
             # unit3 is the unit being configured; unit2 shares rather than owns
-            self.assertEqual(offered, [('CHOICE_SHARED_BUFFER_UNIT0',
-                                        'unit0 (tension, spring: tension)')])
+            self.assertEqual(offered, [('CHOICE_SHARED_BUFFER_UNIT0', 'unit0')])
 
         with tempfile.TemporaryDirectory() as tmp:
             install = _Install(tmp, ('unit0', 'unit1'))

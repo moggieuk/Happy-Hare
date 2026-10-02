@@ -30,9 +30,8 @@ _UNESCAPE_RE = re.compile(r"\\(.)")
 
 Kind = collections.namedtuple("Kind", "has shared name choice exports")
 
-# What a sharer takes from its owner: a bool (absent "n", label shown when "y") or a string
-# (label a format, shown when not its absent value)
-Export = collections.namedtuple("Export", "symbol absent label")
+# What a sharer takes from its owner, and its value when the owner's file doesn't set it
+Export = collections.namedtuple("Export", "symbol absent")
 
 KINDS = {
     "buffer": Kind(
@@ -40,10 +39,10 @@ KINDS = {
         shared="MMU_SHARED_SYNC_FEEDBACK_BUFFER",
         name="PARAM_SYNC_FEEDBACK_BUFFER_NAME",
         choice="CHOICE_SHARED_BUFFER",
-        exports=(Export("MMU_HAS_SENSOR_BUFFER_COMPRESSION", "n", "compression"),
-                 Export("MMU_HAS_SENSOR_BUFFER_TENSION", "n", "tension"),
-                 Export("MMU_HAS_SENSOR_BUFFER_PROPORTIONAL", "n", "proportional"),
-                 Export("PARAM_BUFFER_SPRING_STATE", "none", "spring: %s")),
+        exports=(Export("MMU_HAS_SENSOR_BUFFER_COMPRESSION", "n"),
+                 Export("MMU_HAS_SENSOR_BUFFER_TENSION", "n"),
+                 Export("MMU_HAS_SENSOR_BUFFER_PROPORTIONAL", "n"),
+                 Export("PARAM_BUFFER_SPRING_STATE", "none")),
     ),
     "encoder": Kind(
         has="MMU_HAS_ENCODER",
@@ -163,17 +162,9 @@ def unresolved(kind_name, limit=None):
             and name not in [s.unit for s in slots(kind_name, limit=limit)])
 
 
-def label(slot, kind):
-    if not slot.owner:
-        return "%s (not configured yet)" % slot.unit
-    if not kind.exports:
-        return slot.unit
-    flags = [e.label for e in kind.exports
-             if e.absent == "n" and export_value(slot.values, e) == "y"]
-    details = [" + ".join(flags) if flags else "no sensors"]
-    details += [e.label % export_value(slot.values, e) for e in kind.exports
-                if e.absent != "n" and export_value(slot.values, e) != e.absent]
-    return "%s (%s)" % (slot.unit, ", ".join(details))
+def label(slot):
+    # The menu shows a buffer's fixed sensors right after the pick list
+    return slot.unit if slot.owner else "%s (not configured yet)" % slot.unit
 
 
 def context_key():
@@ -248,7 +239,7 @@ def shared_name(kconf, _name, kind, index):
 
 def shared_label(kconf, _name, kind, index):
     slot = _slot(kconf, kind, index)
-    return label(slot, KINDS[kind]) if slot else ""
+    return label(slot) if slot else ""
 
 
 def _export(kind, symbol):

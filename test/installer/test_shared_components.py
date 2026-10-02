@@ -64,8 +64,8 @@ class TestSlots(Scratch):
             found = [(s.unit, s.member, s.owner) for s in sc.slots("buffer")]
             self.assertEqual(found, [("unit0", "CHOICE_SHARED_BUFFER_UNIT0", True),
                                      ("unit3", "CHOICE_SHARED_BUFFER_UNIT3", False)])
-            self.assertEqual([sc.label(s, sc.KINDS["buffer"]) for s in sc.slots("buffer")],
-                             ["unit0 (tension)", "unit3 (not configured yet)"])
+            self.assertEqual([sc.label(s) for s in sc.slots("buffer")],
+                             ["unit0", "unit3 (not configured yet)"])
 
     def test_the_unit_being_configured_is_never_offered(self):
         self.install(["unit0", "unit1"], unit0=OWNER, unit1=OWNER)
