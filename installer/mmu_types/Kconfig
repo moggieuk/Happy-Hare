@@ -5,7 +5,7 @@ config PARAM_VERSION
   string
 
 choice
-  prompt "MMU Type"
+  prompt "MMU Type  "
   default MMU_CUSTOM
   help 
     MMU type and hardware
