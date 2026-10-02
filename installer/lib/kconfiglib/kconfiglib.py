@@ -566,6 +566,25 @@ from os.path import dirname, exists, expandvars, islink, join, realpath
 VERSION = (14, 1, 0)
 HH_DEFAULT_TOKEN = " #~DEFAULT~#" # Happy Hare: Added
 
+# Happy Hare: [[VALUE:SYMBOL]] or [[VALUE:SYMBOL:width]] stands for the symbol's current
+# value, padded or truncated to 'width' when given
+_VALUE_MARKUP_RE = re.compile(r"\[\[VALUE:([A-Za-z0-9_]+)(?::([0-9]+))?\]\]")
+
+
+def expand_value_markup(kconf, text):
+    if "[[VALUE:" not in text:
+        return text
+
+    def value(m):
+        sym = kconf.syms.get(m.group(1)) if kconf is not None else None
+        s = sym.str_value if sym is not None and sym.nodes else "?"
+        if m.group(2):
+            width = int(m.group(2))
+            s = s[:width].ljust(width)
+        return s
+
+    return _VALUE_MARKUP_RE.sub(value, text)
+
 # Happy Hare: Symbols renamed in a past release, old name -> new name. A saved
 # .mmu_config assignment to the old name is transplanted onto the new symbol
 # while loading; see Kconfig._migrate_renamed_symbols. Without this kconfiglib
@@ -1842,7 +1861,7 @@ class Kconfig(object):
                 # Happy Hare: Orig: add("\n#\n# {}\n#\n".format(node.prompt[0]))
                 # Happy Hare: Reformatted and indented
                 indent = "  " * menu_depth
-                add("# {}{}\n".format(indent, node.prompt[0]))
+                add("# {}{}\n".format(indent, expand_value_markup(self, node.prompt[0])))
                 after_end_comment = False
 
     def write_min_config(self, filename, header=None):

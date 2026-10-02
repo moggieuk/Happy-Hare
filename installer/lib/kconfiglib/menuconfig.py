@@ -227,7 +227,8 @@ from kconfiglib import Kconfig, Symbol, Choice, MENU, COMMENT, MenuNode, \
                        expr_str, expr_value, split_expr, \
                        standard_sc_expr_str, \
                        TRI_TO_STR, TYPE_TO_STR, \
-                       standard_kconfig, standard_config_filename
+                       standard_kconfig, standard_config_filename, \
+                       expand_value_markup
 
 
 #
@@ -4230,26 +4231,10 @@ _TAG_RE = re.compile(r"""
 (?P<slash>/)?(?P<name>[A-Z]+)(?::(?P<digits>[0-9]+))?     # captures: /?, name, :digits
 \]\]
 """, re.X)
-# Happy Hare: [[VALUE:SYMBOL]] or [[VALUE:SYMBOL:width]] shows the symbol's current
-# value wherever text is drawn, padded or truncated to 'width' when given (so a
-# fixed-width layout such as the header box stays aligned)
-_VALUE_RE = re.compile(r"\[\[VALUE:([A-Za-z0-9_]+)(?::([0-9]+))?\]\]")
-
-
+# Happy Hare: [[VALUE:SYMBOL]] markup shows the symbol's current value wherever text is
+# drawn (a width keeps a fixed-width layout such as the header box aligned)
 def _expand_values(text):
-    if "[[VALUE:" not in text:
-        return text
-    kconf = globals().get("_kconf")
-
-    def value(m):
-        sym = kconf.syms.get(m.group(1)) if kconf is not None else None
-        s = sym.str_value if sym is not None and sym.nodes else "?"
-        if m.group(2):
-            width = int(m.group(2))
-            s = s[:width].ljust(width)
-        return s
-
-    return _VALUE_RE.sub(value, text)
+    return expand_value_markup(globals().get("_kconf"), text)
 
 
 def _display_len(text):
