@@ -302,8 +302,8 @@ endif
 
 if !MULTI_UNIT_ENTRY_POINT
   source "mmu_types/Kconfig"        # Base MMU type menu
-  source "Kconfig.name"             # Simple display name
   source "boards/Kconfig"           # MCU Selection menu
+  source "Kconfig.name"             # Simple display name
   source "Kconfig.mmu_additions"    # MMU Additions/Customization menu
   comment "_"
   source "connection/Kconfig"       # MCU Connection
