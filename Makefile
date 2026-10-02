@@ -40,7 +40,7 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
   # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
   # the file picker in test/select.py
-  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test plot_sync,$(MAKECMDGOALS))),)
+  ifeq ($(strip $(filter menuconfig uninstall variables fix_links console test plot_sync,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -187,7 +187,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -255,6 +255,7 @@ kconfig_sources := \
 	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/*/Kconfig* \
 	           $(SRC)/installer/*/*/Kconfig*) \
 	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py \
+	$(SRC)/installer/lib/kconfiglib/shared_components.py \
 	$(SRC)/installer/lib/kconfiglib/kconfiglib.py
 
 
@@ -485,10 +486,6 @@ fix_links:
 # Look for version number in current config files and report
 check_version: $(hh_configs_to_parse) $(KCONFIG_PREREQS) | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
-
-gen_kconfig: | python_deps
-	@echo "$(C_NOTICE)kconfig=$(KCONFIG_CONFIG)$(C_OFF)"
-	$(Q)$(PY) -m installer.build $(V) --gen-kconfig-options "$(KCONFIG_CONFIG)"
 
 clean:
 	$(Q)rm -rf $(OUT)
@@ -738,7 +735,9 @@ menuconfig: $(SRC)/installer/Kconfig | python_deps
 ##################################
 
 # KCONFIG_PARENT is the top-level config a per-unit config inherits printer-level
-# values from, so saving the top level also marks every unit stale.
+# values from, so saving the top level also marks every unit stale. A unit sharing
+# another unit's component is also stale once that owner's saved values differ from
+# the ones it was configured against (shared_components.py).
 kconfig_needs_update:
 	$(Q)if [ ! -f "$(KCONFIG_CONFIG)" ]; then \
 		echo y; \
@@ -747,7 +746,11 @@ kconfig_needs_update:
 	for f in $(kconfig_sources) $(KCONFIG_PARENT); do \
 		[ "$$f" -nt "$(KCONFIG_CONFIG)" ] && { echo y; exit 0; }; \
 	done; \
-	echo n
+	if [ -n "$(KCONFIG_PARENT)" ]; then \
+		$(PY) -m shared_components stale "$(KCONFIG_CONFIG)" "$(KCONFIG_PARENT)" 2>/dev/null || echo n; \
+	else \
+		echo n; \
+	fi
 
 olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null

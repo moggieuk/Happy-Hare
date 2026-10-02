@@ -33,6 +33,7 @@ import sys
 import traceback
 
 import sequence_edit
+import shared_components
 
 from .parser import ConfigBuilder, MAGIC_EXCLUSION_COMMENT
 
@@ -127,6 +128,7 @@ def namespaced(variable, namespace):
 # Kconfig value files
 # -----------------------------------------------------------------------------
 
+SHARED_NAMES = {kind.name for kind in shared_components.KINDS.values()}
 KCONFIG_LINE = re.compile(r'^(CONFIG_[A-Za-z0-9_]+)=(.*?)(\s+' + DEFAULT_TOKEN + r')?\s*$')
 
 
@@ -173,7 +175,8 @@ def rewrite_kconfig(path, renames, known_names, identity=None):
     """
     Rewrite unit names in the explicit values of a Kconfig value file.
     Values saved with #~DEFAULT~# are left alone since they are recomputed on
-    the next load. 'identity' forces UNIT_NAME/MCU_NAME/UNIT_INDEX.
+    the next load, except the name of a shared component's owner: that default
+    is recomputed FROM the saved name. 'identity' forces UNIT_NAME/MCU_NAME/UNIT_INDEX.
 
     Returns (rewritten lines, lines that may still need a manual edit).
     """
@@ -195,7 +198,7 @@ def rewrite_kconfig(path, renames, known_names, identity=None):
 
         if identity and sym in identity:
             new_value = identity[sym]
-        elif default or pattern is None or sym == SYMBOL:
+        elif (default and sym not in SHARED_NAMES) or pattern is None or sym == SYMBOL:
             continue
         else:
             new_value = pattern.sub(lambda mm: mm.group(1) + renames.get(mm.group(2), mm.group(2)), value)

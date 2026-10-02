@@ -8,8 +8,11 @@ import tempfile
 import unittest
 
 import olddefconfig
+import shared_components
 
 from test.hh import cfg, profiles
+from test.installer.test_shared_buffer import (
+    BUFFER_OWNERS, BUFFER_SHARERS, _Install, _sharing)
 
 
 class TestOlddefconfigReport(unittest.TestCase):
@@ -41,26 +44,63 @@ class TestOlddefconfigReport(unittest.TestCase):
                 self.assertEqual(self._refresh(lambda path: kc.write_config(path)), [])
 
     def test_current_multi_unit_config_reports_nothing(self):
+        """
+        Saved and refreshed the way install.sh does: in one directory, in unit order, each
+        unit with KCONFIG_PARENT, so a unit sharing another's component can see its owner.
+        """
         multi = [p for p in profiles.PROFILES.values() if p.units]
         self.assertTrue(multi)
         for profile in multi:
-            names = [u.name for u in profile.units]
-            entry_env = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='y',
-                             UNIT_NAME=','.join(names), MCU_NAME=','.join(names))
-            with cfg._env(entry_env):
-                entry = cfg._kconfig(profile.name, profile.syms)
-            with self.subTest(profile=profile.name, unit='entry point'):
-                self.assertEqual(self._refresh(entry.write_config, entry_env), [])
+            with tempfile.TemporaryDirectory() as tmp:
+                install = _Install(tmp, [u.name for u in profile.units], profile.syms)
+                with self.subTest(profile=profile.name, unit='entry point'):
+                    self.assertEqual(self._refresh_install(install, None), [])
+                for unit in profile.units:
+                    install.save(unit.name, unit.syms)
+                for unit in profile.units:
+                    with self.subTest(profile=profile.name, unit=unit.name):
+                        self.assertEqual(self._refresh_install(install, unit.name), [])
+                        saved = shared_components.read_values(install.path(unit.name))
+                        for kind in shared_components.KINDS.values():
+                            if unit.syms.get(kind.shared):
+                                self.assertEqual(saved.get(kind.shared), 'y', kind.shared)
 
-            handed_down = cfg.handed_down_env(entry)
-            for unit in profile.units:
-                unit_env = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='',
-                                UNIT_NAME=unit.name, MCU_NAME=unit.mcu_name,
-                                UNIT_INDEX=str(unit.index), **handed_down)
-                with cfg._env(unit_env):
-                    kc = cfg._kconfig('%s:%s' % (profile.name, unit.name), unit.syms)
-                with self.subTest(profile=profile.name, unit=unit.name):
-                    self.assertEqual(self._refresh(kc.write_config, unit_env), [])
+    def _refresh_install(self, install, unit):
+        """olddefconfig over one of install's files (None: the top-level one)."""
+        path = install.parent if unit is None else install.path(unit)
+        env = install.entry_env if unit is None else install.env(unit)
+        with cfg._env(env):
+            kc = cfg._new_kconfig('olddefconfig_report')
+        kc.warn = False
+        before = olddefconfig.read_values(kc, path)
+        kc.load_config(path)
+        kc.write_config(path)
+        return olddefconfig.change_report(kc, before, olddefconfig.read_values(kc, path))
+
+    def test_a_sharer_whose_owner_changed_its_buffer_reports_only_derived_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', BUFFER_OWNERS['qidi'])           # tension only
+            install.save('unit1', _sharing(BUFFER_SHARERS['tradrack']))
+            self.assertEqual(self._refresh_install(install, 'unit1'), [])
+
+            install.save('unit0', BUFFER_OWNERS['boxturtle'])      # compression + tension
+            self.assertEqual(self._refresh_install(install, 'unit1'), [
+                '  Defaults recomputed:',
+                '    CHOICE_EXTRUDER_HOMING_ENDSTOP: NONE -> COMPRESSION',
+                '    PARAM_EXTRUDER_HOMING_ENDSTOP: "none" -> "filament_compression"',
+                '    PARAM_AUTOCAL_BOWDEN_LENGTH: 0 -> 1',
+                '  1 new option(s) set to their defaults'])
+
+    def test_a_sharer_whose_owner_lost_its_buffer_reports_the_pick_it_lost(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', BUFFER_OWNERS['boxturtle'])
+            install.save('unit1', _sharing(BUFFER_SHARERS['tradrack'], owner='unit0'))
+            install.save('unit0', profiles.get('tradrack').syms)
+            report = self._refresh_install(install, 'unit1')
+            self.assertIn('  No longer defined, dropped: CHOICE_SHARED_BUFFER_UNIT0', report)
+            self.assertNotIn('PARAM_SYNC_FEEDBACK_BUFFER_NAME', '\n'.join(report))
 
     def _refresh_renamed(self, syms, renames):
         """Write syms, then spell each line the way a config from before the rename did."""

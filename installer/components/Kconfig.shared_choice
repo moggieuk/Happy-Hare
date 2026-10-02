@@ -1,0 +1,40 @@
+# Pick list of the other units that own a shareable component (shared_components.py).
+#
+# Sourced inside the consumer's `if <shared flag>` block, BEFORE the consumer's own
+# definition of the name symbol, so the owner's name is the earliest satisfied default.
+# The caller sets, immediately before each source:
+#
+#   shared_kind      key in shared_components.KINDS, e.g. buffer
+#   shared_choice    the choice name, e.g. CHOICE_SHARED_BUFFER
+#   shared_name_sym  the string symbol the templates read, e.g. PARAM_SYNC_FEEDBACK_BUFFER_NAME
+#   shared_title     prompt text
+#
+# The saved name is the identity and the choice is a view of it: the default member is the
+# one for the saved name, and a saved name that no longer matches an owner is kept (as the
+# _UNRESOLVED member, with a warning) rather than silently re-pointed at another unit.
+# The slot count is $(shared_slots) in the root Kconfig; unused slots collapse into a hidden
+# _NONE member.
+
+choice $(shared_choice)
+  prompt "$(shared_title)"
+  default $(shared-saved-member,$(shared_kind))
+  help
+    Choose the unit whose component this unit uses. Only units that have
+    one of their own are listed. A unit not configured yet is listed too;
+    its details are filled in when the installer refreshes the configs.
+
+  @repeat var=i min=1 max=$(shared_slots)@
+  config $(shared-member,$(shared_kind),$(i))
+    bool "$(shared-label,$(shared_kind),$(i))"
+    depends on $(shared-slot-used,$(shared_kind),$(i))
+  @endrepeat@
+
+  config $(shared_choice)_UNRESOLVED
+    bool "$(shared-unresolved-label,$(shared_kind))"
+    depends on $(shared-unresolved,$(shared_kind))
+endchoice
+
+config $(shared_name_sym)
+  @repeat var=i min=1 max=$(shared_slots)@
+  default "$(shared-name,$(shared_kind),$(i))" if $(shared-member,$(shared_kind),$(i))
+  @endrepeat@

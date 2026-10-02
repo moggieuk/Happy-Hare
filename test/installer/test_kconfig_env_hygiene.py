@@ -1,28 +1,43 @@
 # Hermeticity of a harness Kconfig parse.
 #
 # Every golden-file test in this suite is only as trustworthy as the parse that
-# produced it, and a leftover generated Kconfig in /tmp quietly contaminates
-# one. It does not show up as an error - it just changes the answer.
+# produced it. A Kconfig file sourced from outside the repo (the root Kconfig once
+# osource'd a generated /tmp/.Kconfig.generated) survives a clean checkout and
+# quietly changes the answer - it does not show up as an error.
 
 import os
+import re
 import unittest
 
-# installer/Kconfig:226 osource's this, and installer/build.py:1027 writes it
-# during a multi-unit build. It is outside the repo, so a stale one survives a
-# clean checkout and silently joins every parse the harness makes.
-GENERATED_KCONFIG = "/tmp/.Kconfig.generated"
+from test.hh import cfg
+
+INSTALLER = os.path.realpath(cfg.INSTALLER)
+
+
+def _source_paths():
+    for root, _dirs, files in os.walk(INSTALLER):
+        for name in files:
+            if name.startswith("Kconfig"):
+                with open(os.path.join(root, name), encoding="utf-8") as f:
+                    for line in f:
+                        m = re.match(r'\s*o?r?source\s+"([^"]*)"', line)
+                        if m:
+                            yield os.path.join(root, name), m.group(1)
 
 
 class TestHarnessParseIsHermetic(unittest.TestCase):
 
-    def test_no_stale_generated_kconfig_joins_the_parse(self):
-        self.assertFalse(
-            os.path.exists(GENERATED_KCONFIG),
-            "%s exists and is osource'd by installer/Kconfig:226, so it is part "
-            "of every parse this suite makes - including the ones that capture "
-            "golden files. It is written by a multi-unit build (build.py:1027) "
-            "and lives outside the repo, so a clean checkout does not remove it. "
-            "Delete it and re-run." % GENERATED_KCONFIG)
+    def test_no_kconfig_sources_an_absolute_path(self):
+        absolute = ["%s: %s" % (f, p) for f, p in _source_paths() if p.startswith("/")]
+        self.assertEqual(absolute, [])
+
+    def test_a_parse_reads_only_files_inside_the_installer_tree(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig("hermetic", {})
+        self.assertGreater(len(kc.kconfig_filenames), 100)
+        outside = [f for f in kc.kconfig_filenames
+                   if not os.path.realpath(os.path.join(INSTALLER, f)).startswith(INSTALLER + os.sep)]
+        self.assertEqual(outside, [])
 
 
 if __name__ == "__main__":

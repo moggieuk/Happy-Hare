@@ -59,24 +59,51 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
   menu "Buffer config"
 
+    # Only offered when there is a unit to share from, or the setting is already saved
     config MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      bool
+      prompt "Use another unit's buffer?" if $(shared-any,buffer) || "$(saved-config-value,MMU_SHARED_SYNC_FEEDBACK_BUFFER)" = "y"
       depends on MULTI_UNIT
-      bool "Shared with existing unit?"
       default n
+      help
+        Select if this unit uses a buffer owned by another unit, e.g. one fitted
+        after the bowden combiner near the toolhead.
 
+    if MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      shared_kind     := buffer
+      shared_choice   := CHOICE_SHARED_BUFFER
+      shared_name_sym := PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      shared_title    := Shared buffer
+      source "components/Kconfig.shared_choice"
+    endif
+
+    # A buffer is always named after the unit that owns it
     config PARAM_SYNC_FEEDBACK_BUFFER_NAME
       string
-      prompt "Shared buffer name" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
-      default "-specify name-" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      default "$(first-nonempty,$(saved-config-value,PARAM_SYNC_FEEDBACK_BUFFER_NAME),-specify name-)" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
       default UNIT_NAME
-      help
-        Enter the name of shared sync-feedback buffer. If fitting a second MMU it is likely
-        the buffer will be shared if it is after the bowden combiner near the toolhead.
 
-        A buffer is always named after the unit that owns it, so this is that unit's
-        name (e.g. 'unit0')
+    # The buffer this unit shares, for its endstop and calibration defaults
+    if MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      shared_kind   := buffer
+      shared_export := MMU_HAS_SENSOR_BUFFER_COMPRESSION
+      source "components/Kconfig.shared_export"
+      shared_kind   := buffer
+      shared_export := MMU_HAS_SENSOR_BUFFER_TENSION
+      source "components/Kconfig.shared_export"
+      shared_kind   := buffer
+      shared_export := MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      source "components/Kconfig.shared_export"
+      # A physical property of the buffer, so it is fixed by the owner
+      shared_kind   := buffer
+      shared_export := PARAM_BUFFER_SPRING_STATE
+      source "components/Kconfig.shared_export"
+    endif
 
     if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      comment "_"
+        depends on MULTI_UNIT && ($(shared-any,buffer) || "$(saved-config-value,MMU_SHARED_SYNC_FEEDBACK_BUFFER)" = "y")
+
       config PARAM_BUFFER_RANGE
         float "Sync feedback buffer sensor range"
         range 0 30
@@ -141,10 +168,13 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         default "neutral"     if CHOICE_BUFFER_SPRING_STATE_NEUTRAL
         default "compression" if CHOICE_BUFFER_SPRING_STATE_COMPRESSION
         default "none"
+    endif
 
-      comment "_"
-      comment "_Fitted Sensors"
+    # Also shown to a sharer, whose fitted sensors are fixed to its owner's
+    comment "_"
+    comment "_Fitted Sensors"
 
+    if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
       config UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
           bool
       config MMU_HAS_SENSOR_BUFFER_COMPRESSION

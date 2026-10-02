@@ -48,11 +48,13 @@ Load-bearing facts about the flow:
   `install.sh`**: one entry-point
   parse (`F_MULTI_UNIT_ENTRY_POINT=y F_MULTI_UNIT=y`, `UNIT_NAME="u0,u1,..."`
   becomes the `MMU_UNITS` list) plus one per unit
-  (`F_MULTI_UNIT=y UNIT_NAME=uN MCU_NAME=uN UNIT_INDEX=N` plus the
-  printer-level `HAS_SENSOR_TOOLHEAD/EXTRUDER/TOOLHEAD_CUTTER` read back out
-  of the top-level file). See `install.sh` `run_kconfig_top` /
+  (`F_MULTI_UNIT=y UNIT_NAME=uN MCU_NAME=uN UNIT_INDEX=N KCONFIG_PARENT=<top>`;
+  the unit parse reads printer-level values from the top-level file itself). See `install.sh` `run_kconfig_top` /
   `run_kconfig_units` / `run_kconfig_one`. The per-unit config file and the
-  installed `.cfg` files both gain a `_<unit>` suffix.
+  installed `.cfg` files both gain a `_<unit>` suffix. A unit parse also
+  reads the OTHER units' saved files (`KCONFIG_PARENT`) for components one
+  unit shares with another — the pick list of owners and the owner's
+  capabilities; see [extensions item 13](references/kconfiglib-extensions.md).
 - **A unit's name is its identity** — per-unit Kconfig file, every section
   and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
   is a `sequence_editor` symbol (extension catalog item 21) so the list
@@ -209,7 +211,7 @@ which is exactly what keeps version-numbered names like
 installer/
   Kconfig                 # ROOT. Header = extension docs. Env plumbing,
                           # multi-unit branching (two different menu trees),
-                          # source order, osource /tmp/.Kconfig.generated
+                          # source order
   Kconfig.<topic>         # one file per feature: name, num_gates,
                           # selector_type, endstops, options, pins, heater,
                           # fans, leds, encoder, espooler, nfc_reader, ...
@@ -237,10 +239,11 @@ speeds, macro vars, shared pins, paths) vs `if !MULTI_UNIT_ENTRY_POINT`
 (per-unit: MMU type, board, connection, pins, endstops, ...). Per-unit files
 are excluded from the entry-point tree via `if !MULTI_UNIT` guards (e.g.
 toolheads/Kconfig appears in *both* — standalone machines keep it per-unit).
-Printer-level capabilities are handed down to unit parses as env
-(`HAS_SENSOR_TOOLHEAD`, ... → `$(env-is-y,...)` variables in the root
-`Kconfig`, feeding promptless `MMU_HAS_*` defaults in its
-`if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT` block).
+Printer-level capabilities (`MMU_HAS_SENSOR_TOOLHEAD/EXTRUDER/TOOLHEAD_CUTTER`)
+reach unit parses from the top-level config through `KCONFIG_PARENT`
+(`$(printer-flag,SYM)` in the root `Kconfig`, `shared_components.PRINTER_FLAGS`; n
+with no parent), feeding promptless `MMU_HAS_*` defaults in its
+`if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT` block.
 
 ## Checklist: adding / changing a symbol
 
@@ -261,7 +264,7 @@ to avoid wrapping beyond that limit; put longer explanations in documentation.
    parent Kconfig file) at the right position. Use `menu "..."` with `help`
    for grouping, `comment "_"` / `comment "_Heading"` for separators,
    `if !UNSELECT_X` for disable-able features, `@repeat` for per-gate
-   expansions (**sparingly** — pitfall 10), `prompt "..." if PARAM_NUM_GATES > $(i)`
+   expansions (count = nodes per parse — pitfall 10), `prompt "..." if PARAM_NUM_GATES > $(i)`
    to hide surplus
    gates.
 4. **Land it in a .cfg** (if it should): update the Jinja template(s) under
@@ -445,18 +448,14 @@ in this repo:
    don't prevent this: if a board file re-declares per-gate indexed
    symbols, re-declare only the names the feature file already declares
    (a re-declaration merges; a new index is a new list element).
-10. **`@repeat` is a per-parse multiplier — use sparingly.** It is a
-   line-level preprocessor (reference item 6): the body is duplicated
-   `max-min+1` times on *every* `Kconfig()` construction, uncached (multi-
-   unit pays it per unit), and each expanded line becomes real symbol
-   nodes in the parse — so a `min=0 max=11` block costs 12× the body's
-   node count on every pass. In this fork `min`/`max` are literal
-   integers only, so a `@repeat` is never dynamic: when a loop's count is
-   static (here, always), **unroll it in the file** instead of adding a
-   new `@repeat` block. The established per-gate blocks (`Kconfig.pins`,
-   `Kconfig.nfc_reader`, `Kconfig.environment_sensor`, ...) predate this
-   guidance — don't add to that footprint, and unroll when you end up
-   editing one of them per-board anyway.
+10. **`@repeat`'s cost is the count, not the macro.** Each expanded line
+   becomes real symbol nodes on *every* `Kconfig()` construction (multi-
+   unit pays it per unit), so a `min=0 max=11` block costs 12× the body's
+   node count per parse — but writing the 12 copies out by hand costs
+   exactly the same, so don't unroll for speed. Keep counts to what is
+   needed and prefer `@repeat` over hand copies. A count used in more than
+   one place belongs in a preprocessor variable (`max=$(var)`), which
+   Python can read from `kconf.variables` instead of keeping a copy.
 
 ## Quick reference
 

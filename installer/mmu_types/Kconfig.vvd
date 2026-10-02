@@ -42,12 +42,6 @@ if MMU_TYPE_VVD_1_0
       default 8
     config PARAM_BUFFER_MAXRANGE
       default 16
-
-    # A shared buffer's sensors still steer this unit's endstop and calibration defaults
-    config MMU_HAS_SENSOR_BUFFER_COMPRESSION
-      default y if MMU_SHARED_SYNC_FEEDBACK_BUFFER
-    config MMU_HAS_SENSOR_BUFFER_TENSION
-      default y if MMU_SHARED_SYNC_FEEDBACK_BUFFER
   endif
 endif
 

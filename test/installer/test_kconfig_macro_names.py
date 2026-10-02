@@ -71,6 +71,22 @@ class _AdHocKconfig(unittest.TestCase):
             return kconfiglib.Kconfig(path, warn=False)
 
 
+class TestRepeatLimitsTakeVariables(_AdHocKconfig):
+    """@repeat's min/max may be preprocessor variables, so a count lives in one place."""
+
+    def test_a_variable_sets_the_count(self):
+        kc = self._parse('mainmenu "t"\nfirst := 2\nlast := 4\n'
+                         '@repeat var=i min=$(first) max=$(last)@\n'
+                         'config SLOT_$(i)\n  bool\n@endrepeat@\n')
+        self.assertEqual(sorted(s for s in kc.syms if s.startswith('SLOT_')),
+                         ['SLOT_2', 'SLOT_3', 'SLOT_4'])
+
+    def test_an_undefined_variable_is_a_parse_error(self):
+        with self.assertRaises(kconfiglib.KconfigError):
+            self._parse('mainmenu "t"\n@repeat var=i min=1 max=$(nowhere)@\n'
+                        'config SLOT_$(i)\n  bool\n@endrepeat@\n')
+
+
 class TestUnquotedLexemeMacroExpansion(_AdHocKconfig):
 
     def test_a_named_choice_can_take_a_macro_expanded_name(self):
@@ -230,7 +246,8 @@ class TestShippedTreeIsUnaffected(unittest.TestCase):
                     if found and not active:
                         users.add(os.path.relpath(path, REPO_ROOT))
         self.assertEqual(
-            sorted(users), ['installer/components/Kconfig.tmc_driver_menu'])
+            sorted(users), ['installer/components/Kconfig.shared_choice',
+                            'installer/components/Kconfig.tmc_driver_menu'])
 
     def test_no_symbol_or_choice_name_survives_unexpanded(self):
         """Tripwire for a fragment sourced without re-assigning its variables.

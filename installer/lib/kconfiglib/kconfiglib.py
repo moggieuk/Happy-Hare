@@ -2445,6 +2445,7 @@ class Kconfig(object):
     #   default "heater3" if PARAM_NUM_GATES = 3
     #
     # The placeholder $(i) is replaced with each value in the range [min..max].
+    # min and max may be preprocessor variables, e.g. max=$(shared_slots).
     # Nested @repeat blocks are supported.
     #
     def _next_line(self):
@@ -2517,8 +2518,9 @@ class Kconfig(object):
                 self._line = raw_line
                 self._parse_error("@repeat var cannot be empty")
 
-            mn_i = _to_int(mn, "min", "@repeat")
-            mx_i = _to_int(mx, "max", "@repeat")
+            # A preprocessor variable (e.g. max=$(shared_slots)) keeps a count in one place
+            mn_i = _to_int(self._expand_whole(mn, ()), "min", "@repeat")
+            mx_i = _to_int(self._expand_whole(mx, ()), "max", "@repeat")
 
             if mn_i > mx_i:
                 self._line = raw_line

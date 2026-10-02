@@ -256,6 +256,18 @@ class TestKconfigMigration(Scratch):
         self.assertIn("PARAM_ENDSTOP", out.getvalue())  # ...but flagged
         self.assertEqual(self.kvalues("b")["PARAM_ENCODER_NAME"], "left")
 
+    def test_renaming_an_owner_updates_its_sharers(self):
+        # A sharer's owner name is a default (from the pick list), but recomputed FROM itself
+        self.unit("a", 0)
+        self.unit("b", 1, lines=['CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y',
+                                 'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="a" #~DEFAULT~#',
+                                 'CONFIG_MMU_SHARED_ENCODER=y',
+                                 'CONFIG_PARAM_ENCODER_NAME="a" #~DEFAULT~#'])
+        self.edit(["a", "b"], lambda m: m.rename(0, "left"))
+        um.migrate_kconfig(self.kconfig, ["a", "b"], io.StringIO())
+        self.assertEqual(self.kvalues("b")["PARAM_SYNC_FEEDBACK_BUFFER_NAME"], "left")
+        self.assertEqual(self.kvalues("b")["PARAM_ENCODER_NAME"], "left")
+
     def test_a_longer_unit_name_is_not_mangled(self):
         self.unit("box", 0, lines=['CONFIG_PIN_X="box:PA1"'])
         self.unit("box_2", 1, lines=['CONFIG_PIN_X="box_2:PA1"', 'CONFIG_PARAM_ENCODER_NAME="box_2"'])

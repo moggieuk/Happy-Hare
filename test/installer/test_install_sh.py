@@ -343,6 +343,34 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn('KCONFIG_PARENT="${KCONFIG_CONFIG}"',
                       INSTALL_SH.read_text(encoding="utf-8"))
 
+    def test_sharing_unit_config_is_stale_when_its_owner_changed(self):
+        # The sharer is the newest file, so only the owner's values can make it stale
+        now = time.time()
+        parent = self.write(self.root / ".mmu_config",
+                            'CONFIG_MULTI_UNIT=y\nCONFIG_MMU_UNITS="unit0,unit1"\n')
+        self.write(self.root / ".mmu_config_unit0",
+                   "CONFIG_MMU_HAS_SYNC_FEEDBACK_BUFFER=y\n"
+                   "CONFIG_MMU_HAS_SENSOR_BUFFER_COMPRESSION=y\n")
+        sharer = self.root / ".mmu_config_unit1"
+
+        def needs_update(sharer_text):
+            self.write(sharer, "CONFIG_MMU_HAS_SYNC_FEEDBACK_BUFFER=y\n"
+                               "CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y\n"
+                               'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="unit0" #~DEFAULT~#\n'
+                               + sharer_text)
+            os.utime(parent, (now, now))
+            os.utime(sharer, (now + 1000, now + 1000))
+            return subprocess.run(
+                ["make", "--no-print-directory", "-s", "kconfig_needs_update",
+                 "KCONFIG_CONFIG={}".format(sharer), "KCONFIG_PARENT={}".format(parent)],
+                cwd=REPO_ROOT, text=True, capture_output=True, check=True,
+            ).stdout.strip()
+
+        self.assertEqual(needs_update(""), "y")
+        self.assertEqual(needs_update("CONFIG_MMU_HAS_SENSOR_BUFFER_COMPRESSION=y #~DEFAULT~#\n"), "n")
+        self.assertIn("# A unit sharing a component owned by a unit refreshed after it",
+                      INSTALL_SH.read_text(encoding="utf-8"))
+
     def test_git_is_isolated_from_developer_configuration(self):
         """Developer git configuration must not affect temporary repos."""
         config_home = self.root / "hostile-home"
