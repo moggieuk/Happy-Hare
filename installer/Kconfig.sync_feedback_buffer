@@ -59,9 +59,11 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
   menu "Buffer config"
 
+    # Only offered when there is a unit to share from, or the setting is already saved
     config MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      bool
+      prompt "Use another unit's buffer?" if $(shared-any,buffer) || "$(saved-config-value,MMU_SHARED_SYNC_FEEDBACK_BUFFER)" = "y"
       depends on MULTI_UNIT
-      bool "Shared with existing unit?"
       default n
       help
         Select if this unit uses a buffer owned by another unit, e.g. one fitted
@@ -99,6 +101,9 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
     endif
 
     if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      comment "_"
+        depends on MULTI_UNIT && ($(shared-any,buffer) || "$(saved-config-value,MMU_SHARED_SYNC_FEEDBACK_BUFFER)" = "y")
+
       config PARAM_BUFFER_RANGE
         float "Sync feedback buffer sensor range"
         range 0 30

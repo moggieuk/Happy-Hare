@@ -69,14 +69,27 @@ class TestSharedEncoder(unittest.TestCase):
             self.assertEqual(kc.syms['MMU_SHARED_ENCODER'].str_value, 'y')
             self.assertTrue(kc.is_enabled('W30'))
 
-    def test_sharing_with_no_owner_at_all_is_kept_and_warned(self):
+    def test_a_saved_share_with_no_owner_at_all_is_kept_and_warned(self):
         with tempfile.TemporaryDirectory() as tmp:
             install = _Install(tmp, ('unit0', 'unit1'))
             install.save('unit0', NO_ENCODER)
-            install.save('unit1', _sharing(NO_ENCODER))
+            with open(install.path('unit1'), 'w') as f:
+                f.write('CONFIG_MMU_TYPE_TRADRACK_1_0=y\n'
+                        'CONFIG_MMU_HAS_ENCODER=y\n'
+                        'CONFIG_MMU_SHARED_ENCODER=y\n')
             kc = install.refresh('unit1')
             self.assertEqual(kc.syms['MMU_SHARED_ENCODER'].str_value, 'y')
             self.assertTrue(kc.is_enabled('W30'))
+
+    def test_sharing_is_only_offered_when_there_is_a_unit_to_share_from(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', NO_ENCODER)
+            kc = install.parse('unit1', ENCODER_OWNER)
+            self.assertEqual(kc.syms['MMU_SHARED_ENCODER'].visibility, 0)
+            install.save('unit0', TRADRACK_OWNER)
+            kc = install.parse('unit1', ENCODER_OWNER)
+            self.assertEqual(kc.syms['MMU_SHARED_ENCODER'].visibility, 2)
 
     def test_an_owner_is_not_warned(self):
         with tempfile.TemporaryDirectory() as tmp:

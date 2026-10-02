@@ -200,14 +200,31 @@ class TestSharedSyncFeedbackBuffer(unittest.TestCase):
             self.assertEqual(_flags(kc)['MMU_HAS_SENSOR_BUFFER_COMPRESSION'], 'y')  # last known
             self.assertTrue(kc.is_enabled('W29'))
 
-    def test_sharing_with_no_owner_at_all_is_kept_and_warned(self):
+    def test_a_saved_share_with_no_owner_at_all_is_kept_and_warned(self):
         with tempfile.TemporaryDirectory() as tmp:
             install = _Install(tmp, ('unit0', 'unit1'))
             install.save('unit0', profiles.get('tradrack').syms)
-            install.save('unit1', _sharing(BUFFER_SHARERS['tradrack']))
+            with open(install.path('unit1'), 'w') as f:
+                f.write('CONFIG_MMU_TYPE_TRADRACK_1_0=y\n'
+                        'CONFIG_MMU_HAS_SYNC_FEEDBACK_BUFFER=y\n'
+                        'CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y\n')
             kc = install.refresh('unit1')
             self.assertEqual(kc.syms['MMU_SHARED_SYNC_FEEDBACK_BUFFER'].str_value, 'y')
             self.assertTrue(kc.is_enabled('W29'))
+
+    def test_sharing_is_only_offered_when_there_is_a_unit_to_share_from(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', profiles.get('tradrack').syms)          # no buffer
+            kc = install.parse('unit1', BUFFER_OWNERS['boxturtle'])
+            self.assertEqual(kc.syms['MMU_SHARED_SYNC_FEEDBACK_BUFFER'].visibility, 0)
+            install.save('unit0', BUFFER_OWNERS['qidi'])
+            kc = install.parse('unit1', BUFFER_OWNERS['boxturtle'])
+            self.assertEqual(kc.syms['MMU_SHARED_SYNC_FEEDBACK_BUFFER'].visibility, 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))                   # unit1 not configured
+            kc = install.parse('unit0', BUFFER_OWNERS['boxturtle'])
+            self.assertEqual(kc.syms['MMU_SHARED_SYNC_FEEDBACK_BUFFER'].visibility, 2)
 
     def test_the_spring_state_is_the_owners_and_steers_extruder_homing(self):
         with tempfile.TemporaryDirectory() as tmp:
