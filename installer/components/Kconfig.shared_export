@@ -11,7 +11,7 @@
 # by install.sh (no KCONFIG_PARENT).
 
 config $(shared_export)
-  @repeat var=i min=1 max=4@
+  @repeat var=i min=1 max=$(shared_slots)@
   default $(shared-export,$(shared_kind),$(i),$(shared_export)) if $(shared-member,$(shared_kind),$(i)) && $(shared-owner,$(shared_kind),$(i))
   @endrepeat@
   default $(first-nonempty,$(saved-config-value,$(shared_export)),n)

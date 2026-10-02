@@ -12,8 +12,8 @@
 # The saved name is the identity and the choice is a view of it: the default member is the
 # one for the saved name, and a saved name that no longer matches an owner is kept (as the
 # _UNRESOLVED member, with a warning) rather than silently re-pointed at another unit.
-# The slot count is shared_components.MAX_SLOTS; unused slots collapse into a hidden _NONE
-# member.
+# The slot count is $(shared_slots) in the root Kconfig; unused slots collapse into a hidden
+# _NONE member.
 
 choice $(shared_choice)
   prompt "$(shared_title)"
@@ -23,7 +23,7 @@ choice $(shared_choice)
     one of their own are listed. A unit not configured yet is listed too;
     its details are filled in when the installer refreshes the configs.
 
-  @repeat var=i min=1 max=4@
+  @repeat var=i min=1 max=$(shared_slots)@
   config $(shared-member,$(shared_kind),$(i))
     bool "$(shared-label,$(shared_kind),$(i))"
     depends on $(shared-slot-used,$(shared_kind),$(i))
@@ -35,6 +35,6 @@ choice $(shared_choice)
 endchoice
 
 config $(shared_name_sym)
-  @repeat var=i min=1 max=4@
+  @repeat var=i min=1 max=$(shared_slots)@
   default "$(shared-name,$(shared_kind),$(i))" if $(shared-member,$(shared_kind),$(i))
   @endrepeat@

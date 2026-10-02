@@ -3,7 +3,6 @@
 # (TestSharedSyncFeedbackBuffer); these pin the reader itself.
 
 import os
-import re
 import sys
 import tempfile
 import time
@@ -15,6 +14,10 @@ from test.hh import cfg
 sys.path.insert(0, cfg.KCONFIGLIB)
 import kconfigfunctions  # noqa: E402
 import shared_components as sc  # noqa: E402
+
+# A real parse, for the shared_slots variable the functions read
+with cfg._env(cfg._SINGLE_UNIT_ENV):
+    KCONFIG = cfg._kconfig("shared_components", {})
 
 OWNER = "CONFIG_MMU_HAS_SYNC_FEEDBACK_BUFFER=y\n"
 SHARER = OWNER + 'CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y\n'
@@ -85,13 +88,8 @@ class TestSlots(Scratch):
             os.utime(path, (later, later))
             self.assertEqual(sc.slots("buffer")[0].values["MMU_HAS_SENSOR_BUFFER_TENSION"], "y")
 
-    def test_every_slot_offered_is_declared_by_the_fragments(self):
-        # An owner beyond the declared slots would be a default naming an undefined member,
-        # and kconfiglib would quietly re-point the sharer at the first owner instead
-        for name in ("Kconfig.shared_choice", "Kconfig.shared_export"):
-            with open(os.path.join(cfg.INSTALLER, "components", name)) as f:
-                maxima = {int(m) for m in re.findall(r"@repeat var=i min=1 max=(\d+)@", f.read())}
-            self.assertEqual(maxima, {sc.MAX_SLOTS}, name)
+    def test_the_pick_list_length_comes_from_the_root_kconfig(self):
+        self.assertEqual(sc._limit(KCONFIG), 4)
 
     def test_the_functions_are_registered_with_kconfig(self):
         for name in sc.FUNCTIONS:
@@ -105,7 +103,7 @@ class TestUnresolved(Scratch):
                      unit1=SHARER + 'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="gone"\n')
         with self.env("unit1"):
             self.assertTrue(sc.unresolved("buffer"))
-            self.assertEqual(sc.shared_saved_member(None, None, "buffer"),
+            self.assertEqual(sc.shared_saved_member(KCONFIG, None, "buffer"),
                              "CHOICE_SHARED_BUFFER_UNRESOLVED")
 
     def test_a_saved_name_that_is_offered_selects_its_member(self):
@@ -113,18 +111,19 @@ class TestUnresolved(Scratch):
                      unit1=SHARER + 'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="unit0" #~DEFAULT~#\n')
         with self.env("unit1"):
             self.assertFalse(sc.unresolved("buffer"))
-            self.assertEqual(sc.shared_saved_member(None, None, "buffer"),
+            self.assertEqual(sc.shared_saved_member(KCONFIG, None, "buffer"),
                              "CHOICE_SHARED_BUFFER_UNIT0")
 
     def test_an_owner_beyond_the_last_slot_is_unresolved_not_re_pointed(self):
         # First install of a big machine: units not configured yet fill the slots first
-        units = ["unit%d" % i for i in range(sc.MAX_SLOTS + 2)]
+        limit = sc._limit(KCONFIG)
+        units = ["unit%d" % i for i in range(limit + 2)]
         self.install(units, unit0=SHARER + 'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="%s"\n'
                      % units[-1], **{units[-1]: OWNER})
         with self.env("unit0"):
-            self.assertNotIn(units[-1], [s.unit for s in sc.slots("buffer")])
-            self.assertTrue(sc.unresolved("buffer"))
-            self.assertEqual(sc.shared_saved_member(None, None, "buffer"),
+            self.assertNotIn(units[-1], [s.unit for s in sc.slots("buffer", limit=limit)])
+            self.assertTrue(sc.unresolved("buffer", limit))
+            self.assertEqual(sc.shared_saved_member(KCONFIG, None, "buffer"),
                              "CHOICE_SHARED_BUFFER_UNRESOLVED")
 
     def test_an_owner_is_never_unresolved(self):

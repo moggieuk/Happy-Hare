@@ -21,7 +21,8 @@ import os
 import re
 import sys
 
-MAX_SLOTS = 4
+# The preprocessor variable (root Kconfig) holding how many units a pick list offers
+SLOTS_VARIABLE = "shared_slots"
 
 HH_DEFAULT_TOKEN = " #~DEFAULT~#"
 _STRING_VALUE_RE = re.compile(r'^"((?:[^\\"]|\\.)*)"$')
@@ -91,7 +92,7 @@ def _parent():
     return parent if parent and os.path.isfile(parent) else ""
 
 
-def slots(kind_name, parent=None, unit=None):
+def slots(kind_name, parent=None, unit=None, limit=None):
     """The pick list for this unit: other units that own the component, or have no file yet."""
     kind = KINDS[kind_name]
     parent = _parent() if parent is None else parent
@@ -114,13 +115,17 @@ def slots(kind_name, parent=None, unit=None):
             n += 1
         members.add(member)
         result.append(Slot(other, member, configured, values))
-        if len(result) == MAX_SLOTS:
+        if len(result) == limit:
             break
     return result
 
 
-def _slot(kind_name, index):
-    found = slots(kind_name)
+def _limit(kconf):
+    return int(kconf.variables[SLOTS_VARIABLE].expanded_value)
+
+
+def _slot(kconf, kind_name, index):
+    found = slots(kind_name, limit=_limit(kconf))
     try:
         return found[int(index) - 1]
     except (IndexError, ValueError):
@@ -132,7 +137,7 @@ def _saved():
     return read_values(path) if path else {}
 
 
-def unresolved(kind_name):
+def unresolved(kind_name, limit=None):
     """This unit was saved sharing a name that isn't in its pick list."""
     kind = KINDS[kind_name]
     if not _parent():
@@ -140,7 +145,7 @@ def unresolved(kind_name):
     saved = _saved()
     name = saved.get(kind.name, "")
     return (saved.get(kind.shared) == "y" and bool(name)
-            and name not in [s.unit for s in slots(kind_name)])
+            and name not in [s.unit for s in slots(kind_name, limit=limit)])
 
 
 def label(slot, kind):
@@ -151,7 +156,10 @@ def label(slot, kind):
 
 
 def context_key():
-    """Everything the functions below can return for the current environment."""
+    """
+    Everything the functions below can return for the current environment (a superset:
+    slots beyond the pick list's length are included).
+    """
     parent = _parent()
     if not parent:
         return ()
@@ -194,53 +202,53 @@ def shared_active(_kconf, _name):
     return _yn(_parent())
 
 
-def shared_any(_kconf, _name, kind):
-    return _yn(slots(kind))
+def shared_any(kconf, _name, kind):
+    return _yn(slots(kind, limit=_limit(kconf)))
 
 
-def shared_slot_used(_kconf, _name, kind, index):
-    return _yn(_slot(kind, index))
+def shared_slot_used(kconf, _name, kind, index):
+    return _yn(_slot(kconf, kind, index))
 
 
-def shared_owner(_kconf, _name, kind, index):
-    slot = _slot(kind, index)
+def shared_owner(kconf, _name, kind, index):
+    slot = _slot(kconf, kind, index)
     return _yn(slot and slot.owner)
 
 
-def shared_member(_kconf, _name, kind, index):
-    slot = _slot(kind, index)
+def shared_member(kconf, _name, kind, index):
+    slot = _slot(kconf, kind, index)
     return slot.member if slot else KINDS[kind].choice + "_NONE"
 
 
-def shared_name(_kconf, _name, kind, index):
-    slot = _slot(kind, index)
+def shared_name(kconf, _name, kind, index):
+    slot = _slot(kconf, kind, index)
     return slot.unit if slot else ""
 
 
-def shared_label(_kconf, _name, kind, index):
-    slot = _slot(kind, index)
+def shared_label(kconf, _name, kind, index):
+    slot = _slot(kconf, kind, index)
     return label(slot, KINDS[kind]) if slot else ""
 
 
-def shared_export(_kconf, _name, kind, index, symbol):
-    slot = _slot(kind, index)
+def shared_export(kconf, _name, kind, index, symbol):
+    slot = _slot(kconf, kind, index)
     return _yn(slot and slot.values.get(symbol) == "y")
 
 
-def shared_saved_member(_kconf, _name, kind):
+def shared_saved_member(kconf, _name, kind):
     """The member to select by default: the one for the saved name, else none."""
     choice = KINDS[kind].choice
-    if unresolved(kind):
+    if unresolved(kind, _limit(kconf)):
         return choice + "_UNRESOLVED"
     name = _saved().get(KINDS[kind].name, "")
-    for slot in slots(kind):
+    for slot in slots(kind, limit=_limit(kconf)):
         if slot.unit == name:
             return slot.member
     return choice + "_NONE"
 
 
-def shared_unresolved(_kconf, _name, kind):
-    return _yn(unresolved(kind))
+def shared_unresolved(kconf, _name, kind):
+    return _yn(unresolved(kind, _limit(kconf)))
 
 
 def shared_unresolved_label(_kconf, _name, kind):

@@ -237,7 +237,7 @@ choice name and the exported capability symbols) and registers the
   keep the saved values, so every cross-unit value must be decided by a
   menuconfig/olddefconfig unit pass and SAVED in the unit's own file.
 - **Consumers source two fragments** inside their `if <shared flag>` block:
-  `components/Kconfig.shared_choice` (a `CHOICE_SHARED_<KIND>` pick list of `MAX_SLOTS` `@repeat`
+  `components/Kconfig.shared_choice` (a `CHOICE_SHARED_<KIND>` pick list of `$(shared_slots)` `@repeat`
   slots whose member names come from unit names, plus the name
   symbol's per-slot defaults; source it BEFORE the name symbol's own
   definition so they win) and `components/Kconfig.shared_export` once per

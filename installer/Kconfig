@@ -161,6 +161,10 @@ mmu_has_sensor_toolhead := $(env-is-y,HAS_SENSOR_TOOLHEAD)
 mmu_has_sensor_extruder := $(env-is-y,HAS_SENSOR_EXTRUDER)
 mmu_has_toolhead_cutter := $(env-is-y,HAS_TOOLHEAD_CUTTER)
 
+# Most units a pick list offers for a component another unit owns (components/Kconfig.shared_*,
+# read by shared_components.py too)
+shared_slots := 4
+
 # Used to dynamically get the serial device paths
 all_serial_devices  := $(shell, ls /dev/serial/by-id/* 2>/dev/null || true)
 serial_device        = $(serial-device,$(all_serial_devices),$(1),$(2))
