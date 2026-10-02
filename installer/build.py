@@ -487,7 +487,8 @@ def report_parse_errors(builder, filename, preserved=True):
 
 def add_supplemental_params(builder, hhcfg, section):
     for param in supplemental_params + hidden_params:
-        if hhcfg.has_option(section, param):
+        # If the template renders it live, update_builder() restores the existing value in place
+        if hhcfg.has_option(section, param) and not builder.has_option(section, param):
             logging.debug(" > Reinserting hidden / supplemental option: %s" % param)
             builder.copy_option(hhcfg, section, param)
 

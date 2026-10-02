@@ -199,6 +199,58 @@ class TestUnitListRefresh(unittest.TestCase):
                 self.assertEqual(ConfigBuilder(built).get("mmu_machine", "units"), "unit0,unit1")
 
 
+class TestSupplementalParamRefresh(unittest.TestCase):
+    """A supplemental param is only reinserted when the template doesn't already render it."""
+
+    SECTION = "mmu_unit_parameters unit0"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def build(self, profile, mode, input_files):
+        from installer import build
+        out = tempfile.mkdtemp(dir=self.tmp.name)
+        dest = os.path.join(out, "mmu_parameters_unit0.cfg")
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig("supplemental-refresh", profiles.get(profile).syms)
+        extra = {"PARAM_TOTAL_NUM_GATES": kconfig.getint("PARAM_NUM_GATES")}
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
+                cfg._chdir(cfg.REPO_ROOT):
+            build.build_config_file("config/base/mmu_parameters.cfg", dest, kconfig,
+                                    input_files, extra)
+        with open(dest) as f:
+            return dest, f.read()
+
+    def count(self, text, option):
+        return sum(1 for line in text.splitlines() if line.split(":")[0].strip() == option)
+
+    def test_htlf_refresh_matches_fresh_render(self):
+        fresh, fresh_text = self.build("htlf", "replace", [])
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                _, text = self.build("htlf", mode, [fresh])
+                self.assertEqual(text, fresh_text)
+
+    def test_htlf_edited_geometry_appears_once(self):
+        fresh, text = self.build("htlf", "replace", [])
+        with open(fresh, "w") as f:
+            f.write(text.replace("cad_gate_width         : -60", "cad_gate_width         : -58"))
+        for mode, expected in (("refresh", "-58"), ("merge", "-60")):
+            with self.subTest(mode=mode):
+                built, text = self.build("htlf", mode, [fresh])
+                self.assertEqual(self.count(text, "cad_gate_width"), 1)
+                self.assertEqual(ConfigBuilder(built).get(self.SECTION, "cad_gate_width"), expected)
+
+    def test_commented_out_param_is_still_reinserted(self):
+        source = os.path.join(self.tmp.name, "mmu_parameters_unit0.cfg")
+        with open(source, "w") as f:
+            f.write("[%s]\ncad_gate_width: 33\n" % self.SECTION)
+        built, text = self.build("chameleon", "refresh", [source])
+        self.assertEqual(self.count(text, "cad_gate_width"), 1)
+        self.assertEqual(ConfigBuilder(built).get(self.SECTION, "cad_gate_width"), "33")
+
+
 if __name__ == "__main__":
     unittest.main()
 
