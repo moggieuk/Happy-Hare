@@ -215,6 +215,8 @@ import locale
 import re
 import textwrap
 
+import sequence_edit # Happy Hare: Added
+
 # Happy Hare: Added FLOAT
 from kconfiglib import Symbol, Choice, MENU, COMMENT, MenuNode, \
                        BOOL, BOOLINT, TRISTATE, STRING, FLOAT, INT, HEX, \
@@ -913,7 +915,7 @@ def _menuconfig(stdscr):
             _load_dialog()
 
         elif False and c in ("s", "S"): # Happy Hare: Disable
-            filename = _save_dialog(_kconf.write_config, _conf_filename,
+            filename = _save_dialog(_write_config, _conf_filename,
                                     "configuration")
             if filename:
                 _conf_filename = filename
@@ -977,7 +979,7 @@ def _quit_dialog():
 
         if c == "y":
             # Returns a message to print
-            msg = _try_save(_kconf.write_config, _conf_filename, "configuration")
+            msg = _try_save(_write_config, _conf_filename, "configuration")
             if msg:
                 return (msg, 0) # Write successful or no write needed (config unchanged)
             else:
@@ -1845,6 +1847,11 @@ def _change_node(node):
         s = sc.str_value
 
         while True:
+            # Happy Hare: The sequence editor validates each entry itself
+            if sc.orig_type == STRING and getattr(sc, "sequence_editor", None):
+                _sequence_dialog(node)
+                break
+
             # Happy Hare: Use multi-line/array editor when the symbol declares
             # an 'array_editor' separator in the Kconfig file
             if sc.orig_type == STRING and getattr(sc, "array_editor", None):
@@ -2234,6 +2241,268 @@ def _draw_multiline_input_dialog(win, title, help_lines, lines,
 
     _safe_move(win, 2 + row - scroll, 2 + min(col, edit_width - 1))
 
+    win.noutrefresh()
+
+
+# Happy Hare: Added list editor for 'sequence_editor' STRING symbols. It tracks
+# where each entry came from so renames, removals and moves can be told apart
+# from additions (see sequence_edit.py)
+
+# Symbol name -> SequenceModel for sequence_editor symbols edited this session
+_sequence_models = {}
+
+_SEQUENCE_HELP = [
+    "[a] Add  [i] Insert  [r] Rename  [d] Delete",
+    "[K/J] Move entry up/down  [u] Undo all  [?] Help",
+    "[Enter] Done  [ESC] Cancel",
+]
+
+
+def _sequence_model(sym):
+    model = _sequence_models.get(sym.name)
+    if model is None:
+        sep = sym.sequence_editor
+        current = sequence_edit.split_sequence(sym.str_value, sep)
+        baseline = sequence_edit.split_sequence(sym.sequence_baseline or "", sep)
+        if not baseline:
+            baseline = current
+        changes = sequence_edit.read_changes(
+            sequence_edit.changes_path(_conf_filename, sym.name))
+        model = sequence_edit.SequenceModel.load(
+            baseline, current, changes, validator=getattr(sym, "validator", None))
+    model.append_only = sym.append_only_unless is not None and \
+        not expr_value(sym.append_only_unless)
+    return model
+
+
+def _write_config(filename):
+    msg = _kconf.write_config(filename)
+    for name, model in _sequence_models.items():
+        sequence_edit.write_changes(sequence_edit.changes_path(filename, name), model)
+    return msg
+
+
+def _sequence_dialog(node):
+    global _conf_changed
+
+    sym = node.item
+    saved = _sequence_model(sym)
+    model = sequence_edit.SequenceModel(
+        saved.baseline, saved.names(), saved.origins(),
+        validator=saved.validator, append_only=saved.append_only)
+
+    title = "{} (list)".format(node.prompt[0])
+    win = _styled_win("body")
+    win.keypad(True)
+    sel = 0
+
+    def rows():
+        # Current entries, then removed baseline entries that can be restored
+        return [(name, origin, False) for name, origin in model.rows] + \
+               [(name, name, True) for name in model.removed]
+
+    def ask(prompt, initial=""):
+        return _input_dialog(prompt, initial)
+
+    _resize_sequence_dialog(win, title, len(rows()))
+
+    while True:
+        entries = rows()
+        sel = max(0, min(sel, len(entries) - 1))
+        _draw_main()
+        _draw_sequence_dialog(win, title, entries, sel, model)
+        curses.doupdate()
+
+        c = _getch_compat(win)
+        if c == "\x1B":
+            # Shift-arrows on a terminal whose terminfo doesn't know them arrive
+            # as a raw escape sequence; only a lone ESC cancels
+            sequence = _read_escape_sequence(win)
+            if sequence:
+                c = _SEQUENCE_ESCAPE_KEYS.get(sequence)
+        error = None
+        current = entries[sel] if entries else None
+        on_row = current is not None and not current[2]
+
+        if c == curses.KEY_RESIZE:
+            _resize_main()
+
+        elif c == "\x1B":  # \x1B = ESC
+            return
+
+        elif c in ("\n", "\x04"):  # Enter / Ctrl-D
+            if not model.rows:
+                error = "The list cannot be empty"
+            else:
+                changed = model.to_changes() != saved.to_changes()
+                _sequence_models[sym.name] = model
+                _set_val(sym, model.value(sym.sequence_editor))
+                if changed:
+                    _conf_changed = True
+                return
+
+        elif c in (curses.KEY_UP, "k"):
+            sel -= 1
+
+        elif c in (curses.KEY_DOWN, "j"):
+            sel += 1
+
+        elif c in ("a", "A", "i", "I"):
+            name = ask("Name of new entry")
+            if name is not None:
+                index = sel if c in ("i", "I") and on_row else None
+                error = model.add(name.strip(), index)
+                if not error:
+                    sel = model.names().index(name.strip())
+
+        elif c in ("r", "R") and on_row:
+            name = ask("Rename '{}' to".format(current[0]), current[0])
+            if name is not None:
+                error = model.rename(sel, name.strip())
+
+        elif c in ("d", "D", curses.KEY_DC):
+            if on_row:
+                error = model.remove(sel)
+            elif current is not None:
+                error = model.restore(current[0])
+                if not error:
+                    sel = model.names().index(current[0])
+
+        elif _sequence_move_key(c) and on_row:
+            delta = _sequence_move_key(c)
+            error = model.move(sel, delta)
+            if not error:
+                sel += delta
+
+        elif c in ("u", "U"):
+            model.reset()
+
+        elif c == "?":
+            _msg("Help", node.help or "No help available")
+
+        if error:
+            _error(error)
+
+        _resize_sequence_dialog(win, title, len(rows()))
+
+
+_ESCAPE_SEQUENCE_WAIT_MS = 100
+
+_SEQUENCE_ESCAPE_KEYS = {
+    "[1;2A": curses.KEY_SR,  # xterm style Shift-Up
+    "[1;2B": curses.KEY_SF,  # xterm style Shift-Down
+    "[a": curses.KEY_SR,     # rxvt style Shift-Up
+    "[b": curses.KEY_SF,     # rxvt style Shift-Down
+}
+
+
+def _read_escape_sequence(win):
+    # The rest of an escape sequence following an ESC, or "" for a lone ESC.
+    # ESCDELAY is 0 and the bytes can arrive apart (e.g. over SSH), so wait a
+    # little for each one. Reads up to the final byte of a CSI or SS3 sequence
+    sequence = ""
+
+    def read(ms):
+        win.timeout(ms)
+        try:
+            c = win.get_wch()
+        except curses.error:
+            return None
+        return c if isinstance(c, str) else None
+
+    try:
+        c = read(_ESCAPE_SEQUENCE_WAIT_MS)
+        if c is None:
+            return ""
+        sequence = c
+        if c == "[":
+            while len(sequence) < 16:
+                c = read(_ESCAPE_SEQUENCE_WAIT_MS)
+                if c is None:
+                    break
+                sequence += c
+                if "@" <= c <= "~":
+                    break
+        elif c == "O":
+            c = read(_ESCAPE_SEQUENCE_WAIT_MS)
+            if c is not None:
+                sequence += c
+    finally:
+        win.timeout(-1)
+    return sequence
+
+
+def _sequence_move_key(c):
+    # -1/1 for a move up/down key, else 0. Shift-Up/Down arrive as KEY_SR/KEY_SF,
+    # or as ncurses extended keys (kUP2, kDN2, ...) on terminals that report
+    # them as modified cursor keys
+    if c in ("K", "-", curses.KEY_SR):
+        return -1
+    if c in ("J", "+", curses.KEY_SF):
+        return 1
+    if isinstance(c, int):
+        try:
+            name = curses.keyname(c)
+        except (curses.error, ValueError):
+            return 0
+        if name.startswith(b"kUP"):
+            return -1
+        if name.startswith(b"kDN"):
+            return 1
+    return 0
+
+
+def _resize_sequence_dialog(win, title, n_rows):
+    screen_height, screen_width = _stdscr.getmaxyx()
+
+    win_height = min(max(n_rows, 3) + len(_SEQUENCE_HELP) + 7, screen_height)
+    win_width = min(max(_INPUT_DIALOG_MIN_WIDTH, len(title) + 4,
+                        *(len(line) + 4 for line in _SEQUENCE_HELP)),
+                    screen_width)
+
+    win.resize(win_height, win_width)
+    win.mvwin((screen_height - win_height)//2,
+              (screen_width - win_width)//2)
+
+
+def _sequence_row_str(index, name, origin, removed):
+    if removed:
+        return "{:>2}  {}  [will be removed]".format("x", name)
+    if origin is None:
+        note = "[new]"
+    elif origin != name:
+        note = "(renamed from {})".format(origin)
+    else:
+        note = ""
+    return "{:>2}. {}  {}".format(index + 1, name, note).rstrip()
+
+
+def _draw_sequence_dialog(win, title, entries, sel, model):
+    width = _width(win) - 4
+    list_height = max(_height(win) - len(_SEQUENCE_HELP) - 7, 1)
+    scroll = max(sel - list_height + 1, 0)
+
+    win.erase()
+
+    for y in range(list_height):
+        i = scroll + y
+        if i >= len(entries):
+            break
+        name, origin, removed = entries[i]
+        selected = i == sel
+        line = ((">" if selected else " ") + _sequence_row_str(i, name, origin, removed))[:width]
+        _safe_addstr(win, 2 + y, 2, line + " "*(width - len(line)),
+                     _style["list"] | curses.A_BOLD if selected else _style["list"])
+
+    status = "; ".join(model.summary()) or "No changes"
+    if model.append_only:
+        status = "(append only) " + status
+    _safe_addstr(win, 3 + list_height, 2, status[:width])
+
+    for linenr, line in enumerate(_SEQUENCE_HELP):
+        _safe_addstr(win, 5 + list_height + linenr, 2, line)
+
+    _draw_frame(win, title)
     win.noutrefresh()
 
 

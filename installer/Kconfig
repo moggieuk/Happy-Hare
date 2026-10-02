@@ -87,6 +87,10 @@
 #     classes like [0-9] and [(]. A $(macro) can hold a shared pattern (see Kconfig.leds)
 # 17. $(macro) references are expanded in help text, e.g. the shared $(pin_help).
 #     $(nl) is a newline, so one variable can hold several help lines
+# 18. 'sequence_editor <separator> [baseline]' on a string symbol holding unique names edits
+#     it as a list that tracks adds, renames, removals and moves relative to the baseline,
+#     recorded in a '<config>.<SYMBOL>.changes' sidecar on save. 'append_only_unless <expr>'
+#     limits it to appending while <expr> is n
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -95,6 +99,7 @@
 # 4. Variable input dialogs with better parsing
 # 5. Added array editor - used on "," or ";" separated strings
 # 6. Edited strings are checked against their 'validator' regexp
+# 7. Added sequence editor - list editor with explicit add/rename/remove/move
 #
 #
 # Capability params:
@@ -261,17 +266,17 @@ osource "/tmp/.Kconfig.generated"
 
 if MULTI_UNIT_ENTRY_POINT
   config MMU_UNITS
-    prompt "MMU unit names"
-    array_editor ","
+    prompt "MMU units"
+    sequence_editor "," "$(env-default,F_UNITS_BASELINE,)"
+    append_only_unless "$(env-default,F_UNITS_RESTRUCTURE,n)"
     validator "[a-z][a-z0-9_-]*"
     help
-      List of unit names. Use only lowercase letters, digits,
-      "_" and "-", starting with a letter.
-      If this is the first time configuring multi-unit from previous single-unit install
-      then the first name must be unit0 because that is how it was configured.
-        E.g. [[REV]]unit0[[/REV]]
-             [[REV]]unit1[[/REV]]
-      A separate configurator will be run for each MMU after this initial screen is closed
+      Units in gate order. Names: lowercase letters, digits, "_" and "-".
+      [a] add a unit at the end. [r] rename, [d] delete and [K/J] move keep
+      each unit's settings and saved state, but once installed are only
+      allowed in the installer's [[REV]]Replace[[/REV]] mode (option 2). Moving or
+      removing a unit renumbers the gates of the units after it.
+      Each unit is configured on its own screen after this one is closed
 
   comment "_"
   comment "_Shared System Options"

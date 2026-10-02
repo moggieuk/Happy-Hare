@@ -53,6 +53,18 @@ Load-bearing facts about the flow:
   of the top-level file). See `install.sh` `run_kconfig_top` /
   `run_kconfig_units` / `run_kconfig_one`. The per-unit config file and the
   installed `.cfg` files both gain a `_<unit>` suffix.
+- **A unit's name is its identity** — per-unit Kconfig file, every section
+  and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
+  is a `sequence_editor` symbol (extension catalog item 21) so the list
+  editor can record renames, removals and moves (a comma list alone can't) in
+  `.mmu_config.MMU_UNITS.changes`, relative to `F_UNITS_BASELINE` (the
+  *installed* `units:`). `installer/unit_migration.py` acts on it: `check`
+  (only appending is allowed outside Replace mode, except before anything is
+  installed), `kconfig` (renames/rewrites
+  `.mmu_config_<unit>` before the per-unit menuconfig), `prepare` and `apply`
+  (in `make install`, Klipper stopped: retire old unit files, rename unit
+  keys and move global gate lists in the save_variables file). Its progress
+  lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
 - **`make` itself reads the value file**: the Makefile does
   `-include $(KCONFIG_CONFIG)`, so any `CONFIG_*` symbol
   (`CONFIG_MULTI_UNIT`, `CONFIG_MMU_UNITS`, `CONFIG_KLIPPER_HOME`, ...)

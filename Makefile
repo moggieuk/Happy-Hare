@@ -433,6 +433,10 @@ install: $(install_targets)
 	done
 	@# Remove config files retired by this release. The mmu directory backup above preserves them.
 	$(Q)$(SUDO)rm -f $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/,$(hh_old_config_files))
+	@# Migrate saved state and retire files of renamed, removed or reordered units
+	$(Q)$(if $(wildcard $(KCONFIG_CONFIG).unit_migration),$(eval restart_klipper = 1))
+	-$(Q)$(PY) -m installer.unit_migration apply --kconfig "$(KCONFIG_CONFIG)"
+	-$(Q)$(PY) -m installer.unit_migration gate-lists --kconfig "$(KCONFIG_CONFIG)" --config-home "$(KLIPPER_CONFIG_HOME)"
 	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
@@ -460,7 +464,7 @@ uninstall: clean | python_deps
 	@# Restart services if needed
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)rm -f $(KCONFIG_CONFIG) $(KCONFIG_CONFIG).old $(KCONFIG_CONFIG)_*
+	$(Q)rm -f $(KCONFIG_CONFIG) $(KCONFIG_CONFIG).old $(KCONFIG_CONFIG)_* $(KCONFIG_CONFIG).*.changes $(KCONFIG_CONFIG).unit_migration
 	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
 
 fix_links:

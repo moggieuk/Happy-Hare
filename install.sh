@@ -135,6 +135,78 @@ trim() {
     echo "${name}"
 }
 
+# Run installer/unit_migration.py, which handles renamed, removed and reordered
+# multi-unit units. F_UNITS_BASELINE is the unit list before this run
+unit_migration() {
+    um_action=$1
+    shift
+    (cd "${SCRIPT_DIR}" &&
+        PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH:-}" \
+        "${INSTALLER_PY:-python3}" -m installer.unit_migration "${um_action}" \
+            --kconfig "${KCONFIG_CONFIG}" \
+            --config-home "${CONFIG_KLIPPER_CONFIG_HOME:-}" \
+            ${F_UNITS_BASELINE+"--baseline=${F_UNITS_BASELINE}"} "$@")
+}
+
+# Summarize any change to the multi-unit unit list and confirm a rename, removal
+# or reorder. Fails if the change isn't allowed in this upgrade mode or is declined
+review_unit_changes() {
+    um_status=0
+    unit_migration check --mode "${F_CFG_UPGRADE_MODE:-refresh}" || um_status=$?
+    case "${um_status}" in
+    0 | 10)
+        return 0
+        ;;
+    12)
+        # An unrecorded change outside Replace mode: carry on without migrating
+        F_UNITS_BASELINE=$(unit_migration current)
+        return 0
+        ;;
+    11)
+        F_UNITS_RESTRUCTURED=y
+        echo
+        if [ -n "${F_NO_SERVICE:-}" ] &&
+           prompt_yn "Service restarts are skipped so Klipper must be stopped first. Is it stopped"; then
+            return 1
+        fi
+        if prompt_yn "Apply these unit changes"; then
+            return 1
+        fi
+        echo
+        return 0
+        ;;
+    3)
+        # The migration itself failed: install as before, without migrating
+        F_UNITS_BASELINE=
+        return 0
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
+# Renaming, deleting or reordering units needs Replace mode, unless nothing has been
+# installed or configured yet (e.g. a first './install.sh -i -n'), when there is
+# nothing to migrate
+set_units_restructure() {
+    if [ "${F_CFG_UPGRADE_MODE:-}" = replace ] || [ -z "${F_UNITS_BASELINE:-}" ]; then
+        export F_UNITS_RESTRUCTURE=y
+    fi
+}
+
+# A failed migration step only stops the install once a confirmed unit change is
+# underway, otherwise it is skipped so it can never block an ordinary install
+unit_migration_step() {
+    unit_migration "$@" && return 0
+    if [ -n "${F_UNITS_RESTRUCTURED:-}" ]; then
+        echo "${C_ERROR}MMU unit migration step '$1' failed, stopping${C_OFF}"
+        return 1
+    fi
+    echo "${C_WARNING}MMU unit migration step '$1' failed, continuing without it${C_OFF}"
+    return 0
+}
+
 time_elapsed() {
     START_TIME=$("${INSTALLER_PY}" -c "import time; print(time.time())")
     "${@}"
@@ -173,6 +245,10 @@ copy_recovered_kconfigs() {
         recovery_destination=${TESTDIR}
         mkdir -p "${recovery_destination}"
     fi
+
+    # A pending unit migration belongs to the config being replaced
+    rm -f "${recovery_destination}/.mmu_config.unit_migration" \
+        "${recovery_destination}"/.mmu_config.*.changes
 
     recovered=n
     for config_file in "${restored_config}"/.mmu_config*; do
@@ -962,6 +1038,7 @@ run_kconfig_units() {
 
     if [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
         i=0
+        saved_ifs=$IFS
         IFS=,
         set -f
         for name in ${CONFIG_MMU_UNITS:-}; do
@@ -981,6 +1058,7 @@ run_kconfig_units() {
             i=$((i + 1))
         done
         set +f
+        IFS=$saved_ifs
     fi
 }
 
@@ -1012,6 +1090,11 @@ run_kconfig_one() {
 ##### Menuconfig / Refresh #####
 ################################
 
+# The unit list the installed config (and saved state) reflects, captured before
+# menuconfig can change it. Renames, removals and reorders are only allowed in Replace mode
+export F_UNITS_BASELINE="$(unit_migration baseline)"
+set_units_restructure
+
 if [ -n "${F_MENUCONFIG:-}" ]; then
     tmpconfig=
 
@@ -1031,24 +1114,29 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         exit 1
     fi
 
+    # The single-unit config becomes unit0, which the unit migration then renames or
+    # sets aside to follow the edited unit list
     if [ -n "${tmpconfig:-}" ]; then
-        unset CONFIG_MULTI_UNIT CONFIG_MMU_UNITS
-        . "${KCONFIG_CONFIG}"
-
-        first_unit=$(trim "${CONFIG_MMU_UNITS%%,*}")
-        if [ -n "${first_unit}" ]; then
-            mv "${tmpconfig}" "${KCONFIG_CONFIG}_${first_unit}"
-        else
-            rm -f "${tmpconfig}"
-        fi
+        mv "${tmpconfig}" "${KCONFIG_CONFIG}_unit0"
     fi
 
+    review_unit_changes || exit 1
+    unit_migration_step kconfig || exit 1
+
     run_kconfig_units menuconfig n
+else
+    review_unit_changes || exit 1
+    unit_migration_step kconfig || exit 1
 fi
 
-# Always refresh stale configs after any optional menuconfig pass.
+# Always refresh stale configs after any optional menuconfig pass. Renamed or moved
+# units must recompute their defaults (e.g. pin prefixes) even though not stale
 run_kconfig_top olddefconfig y
-run_kconfig_units olddefconfig y
+if [ -n "${F_UNITS_RESTRUCTURED:-}" ]; then
+    run_kconfig_units olddefconfig n
+else
+    run_kconfig_units olddefconfig y
+fi
 
 # Give the v3 -> v4 upgrade a clean start now that Kconfig has resolved real paths -
 # see v3_upgrade_cleanup for why this can't happen any earlier.
@@ -1069,4 +1157,5 @@ install_and_clean() {
     fi
 }
 
+unit_migration_step prepare || exit 1
 time_elapsed install_and_clean

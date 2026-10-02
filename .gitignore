@@ -4,6 +4,8 @@ out_*/
 *.mmu_config
 *.mmu_config.old
 *.mmu_config_*
+*.mmu_config.*.changes
+*.mmu_config.unit_migration
 .mmu_test_state
 __pycache__/
 *.pyc

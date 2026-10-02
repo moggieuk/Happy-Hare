@@ -220,6 +220,51 @@ class TestUnitName(unittest.TestCase):
                 self.assertIn('num_gates', str(cm.exception))
 
 
+class TestUnitsNotNamedByIndex(unittest.TestCase):
+    """
+    Nothing may assume units are called unit0, unit1, ... A rename in menuconfig
+    produces exactly this: every section, pin and sensor carrying the new names.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from test.hh import profiles, session
+        profile = profiles.clone_across_units('named_units', profiles.BOXTURTLE, ['right', 'left'])
+        cls.hh = session(profile)
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def test_boots_clean(self):
+        self.assertEqual(self.hh.errors, [])
+
+    def test_units_are_in_configured_order(self):
+        units = self.hh.mmu.mmu_machine.units
+        self.assertEqual([u.name for u in units], ['right', 'left'])
+        self.assertEqual([u.first_gate for u in units], [0, 4])
+
+
+class TestSharedEncoderOwnerAfterSharer(unittest.TestCase):
+    """Reordering units may put a unit sharing an encoder before the unit that owns it."""
+
+    def test_boots_clean(self):
+        from test.hh import profiles, session
+        p = profiles.get('encoder_shared')
+        owner, sharer = p.units
+        hh = session(p.derive('encoder_shared_reordered',
+                              units=[sharer.derive(index=0), owner.derive(index=1)]))
+        try:
+            hh.boot()
+            self.assertEqual(hh.errors, [])
+            units = hh.mmu.mmu_machine.units
+            self.assertEqual([u.name for u in units], ['unit1', 'unit0'])
+            self.assertIs(units[0].encoder, units[1].encoder)
+        finally:
+            hh.close()
+
+
 class TestPinBindings(unittest.TestCase):
     """
     A2: every pin description is recorded with the type it was bound as. This is the

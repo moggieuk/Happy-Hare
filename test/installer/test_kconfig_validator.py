@@ -151,8 +151,19 @@ class TestMmuUnitsValidator(unittest.TestCase):
         with cfg._env(entry_env):
             cls.sym = cfg._kconfig('mmu_units_validator', {}).syms['MMU_UNITS']
 
-    def test_is_an_array_with_a_validator(self):
-        self.assertEqual(self.sym.array_editor, ',')
+    def test_restructuring_follows_the_install_mode(self):
+        import kconfiglib
+        self.assertEqual(kconfiglib.expr_value(self.sym.append_only_unless), 0)
+        entry_env = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='y',
+                         UNIT_NAME='unit0,unit1', MCU_NAME='unit0,unit1', F_UNITS_RESTRUCTURE='y')
+        with cfg._env(entry_env):
+            sym = cfg._kconfig('mmu_units_restructure', {}).syms['MMU_UNITS']
+        self.assertEqual(kconfiglib.expr_value(sym.append_only_unless), 2)
+
+    def test_is_a_sequence_with_a_validator(self):
+        self.assertEqual(self.sym.sequence_editor, ',')
+        self.assertIsNone(self.sym.array_editor)
+        self.assertIsNotNone(self.sym.append_only_unless)
         self.assertIsNotNone(self.sym.validator)
 
     def test_default_units_pass(self):
