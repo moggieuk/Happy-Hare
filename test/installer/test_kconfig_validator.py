@@ -222,6 +222,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 
 class TestPinValidator(unittest.TestCase):
 
+    # Pins that take a comma-separated list, validated by pin_list_validator
+    LIST_PINS = {'PIN_HEATER_FAN'}
+
     @classmethod
     def setUpClass(cls):
         entry_env = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='y',
@@ -233,6 +236,8 @@ class TestPinValidator(unittest.TestCase):
         cls.kc = cls.trees[0]
         cls.pattern = cls.kc.variables['pin_validator'].value
         cls.validator = re.compile(cls.pattern)
+        cls.list_pattern = cls.kc.variables['pin_list_validator'].value
+        cls.list_validator = re.compile(cls.list_pattern)
 
     def _prompted_pins(self):
         return [sym for kc in self.trees for sym in kc.unique_defined_syms
@@ -241,8 +246,9 @@ class TestPinValidator(unittest.TestCase):
     def test_every_prompted_pin_has_the_shared_validator(self):
         pins = self._prompted_pins()
         self.assertGreater(len(pins), 100)
+        expected = lambda sym: self.list_pattern if sym.name in self.LIST_PINS else self.pattern
         self.assertEqual([sym.name for sym in pins
-                          if sym.validator is None or sym.validator.pattern != self.pattern], [])
+                          if sym.validator is None or sym.validator.pattern != expected(sym)], [])
 
     def test_every_pin_prompt_has_help(self):
         missing = ['%s:%d' % (node.filename, node.linenr)
@@ -294,7 +300,8 @@ class TestPinValidator(unittest.TestCase):
                         checked += 1
                         value = re.sub(r'\$\((\w+)\)', lambda m: macros.get(m.group(1), m.group(0)),
                                        match.group(1))
-                        if not self.validator.fullmatch(value.strip()):
+                        validator = self.list_validator if sym in self.LIST_PINS else self.validator
+                        if not validator.fullmatch(value.strip()):
                             failures.append('%s:%d %s = "%s"' % (
                                 os.path.relpath(path, REPO_ROOT), linenr, sym, match.group(1)))
         self.assertGreater(checked, 500)

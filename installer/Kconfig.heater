@@ -205,10 +205,12 @@ menu "Heater fan h/w config"
       heater is off.
 
   config PIN_HEATER_FAN
-    string "Heater fan pin     "
-    validator "$(pin_validator)"
+    string "Heater fan pin(s)  "
+    validator "$(pin_list_validator)"
     default ""
     help
       Pin for the fan associated with the shared enclosure heater.
+      Separate several fans that run together with commas; each gets
+      its own [heater_fan] with the settings above.
 
 endmenu

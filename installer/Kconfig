@@ -197,7 +197,9 @@ pad = $(hh-pad,$(1),$(2))
 # Validator and help syntax shared by every PIN_ prompt. An empty pin is valid.
 # $(nl) is a real newline, so help text can span lines
 nl            := $(hh-newline)
-pin_validator := ([~^]?!?([A-Za-z0-9_-]+:)?[A-Za-z0-9_./-]+)?
+pin_item           := [~^]?!?([A-Za-z0-9_-]+:)?[A-Za-z0-9_./-]+
+pin_validator      := ($(pin_item))?
+pin_list_validator := ($(pin_item)( *, *$(pin_item))*)?
 pin_syntax    := Syntax:  [[REV]][^|~] [!] [chip_name:] pin_or_alias_name[[/REV]]
 pin_example   := $(hh-pin-example,$(F_MULTI_UNIT_ENTRY_POINT))
 pin_help      := $(pin_syntax)$(nl)$(pin_example)
