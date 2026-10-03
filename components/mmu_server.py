@@ -57,8 +57,8 @@
 #
 from __future__ import annotations
 import json
-import logging, os, sys, re, time, asyncio
-import runpy, argparse, shutil, traceback, tempfile, filecmp
+import logging, os, sys, re, time, asyncio, signal
+import runpy, argparse, traceback, filecmp
 import urllib.parse
 from typing import (
     TYPE_CHECKING,
@@ -2264,9 +2264,11 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
         metadata.logger.info(f"mmu_server: Pre-processing file: {file_path}")
         fname = os.path.basename(file_path)
         if fname.endswith(".gcode") and not gcode_processed_already(file_path):
-            with tempfile.TemporaryDirectory() as tmp_dir_name:
-                tmp_file = os.path.join(tmp_dir_name, fname)
-
+            # Write next to the gcode and os.replace() it so an interrupted run (e.g. Moonraker's
+            # metadata timeout) can't leave a truncated file. /tmp is often a different filesystem
+            real_path = os.path.realpath(file_path)
+            tmp_file = os.path.join(os.path.dirname(real_path), ".%s.mmu_tmp" % os.path.basename(real_path))
+            try:
                 if insert_placeholders:
                     start = time.time()
                     has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
@@ -2286,14 +2288,15 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                     metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
-                    if os.path.islink(file_path):
-                        file_path = os.path.realpath(file_path)
-                    if not filecmp.cmp(tmp_file, file_path):
-                        shutil.move(tmp_file, file_path)
+                    if not filecmp.cmp(tmp_file, real_path):
+                        os.replace(tmp_file, real_path)
                     else:
-                        metadata.logger.info(f"Files are the same, skipping replacement of: {file_path} by {tmp_file}")
+                        metadata.logger.info(f"Files are the same, skipping replacement of: {real_path} by {tmp_file}")
                 else:
                     metadata.logger.info(f"No MMU metadata placeholders found in file: {file_path}")
+            finally:
+                if os.path.exists(tmp_file):
+                    os.remove(tmp_file)
 
     except Exception:
         metadata.logger.info(traceback.format_exc())
@@ -2351,6 +2354,9 @@ if __name__ == "__main__":
         config["gcode_dir"] = os.path.abspath(os.path.dirname(__file__))
     enabled_msg = "enabled" if config["check_objects"] else "disabled"
     metadata.logger.info(f"Object Processing is {enabled_msg}")
+
+    # Moonraker cancels with SIGTERM on timeout, exit normally so the temp file is removed
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(-1))
 
     # Parsing for mmu placeholders and next pos insertion. We do this first so we can add additional metadata
     main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos)
