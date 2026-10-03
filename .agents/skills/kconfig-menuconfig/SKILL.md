@@ -132,8 +132,9 @@ Load-bearing facts about the flow:
   one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
   and `installer/components/Kconfig.tmc_driver_*` are the worked example;
   `components/Kconfig.environment_sensor_*` is sourced from inside an
-  `@repeat` (once per gate) as well as once for the shared sensor.
-  Three rules: re-assign every variable immediately before each `source`
+  `@repeat` (once per gate) as well as once for the shared sensor
+  ([references/environment-sensors.md](references/environment-sensors.md)
+  has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
   (they are global for the whole parse); keep declarations and prompts in
   separate fragments, because `_propagate_deps` ANDs an enclosing `if` into
   defaults as well as prompts; and pad prompts with `$(pad,width,text)`
