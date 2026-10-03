@@ -351,11 +351,14 @@ in this repo:
   bullet below) are parsed inside `mmu_types/`, *before* `boards/Kconfig`, so
   for their symbols a satisfied default in the selected type's copy beats a
   board's.
-- **`choice` members cannot come from another file.** A machine/board file may steer
-  an *existing* choice with `default <CHOICE_MEMBER> if <cond>` only;
-  the members themselves must be declared inside the `choice ... endchoice`
-  block (per-gate variants in its `@repeat` block). Selection is
-  first-satisfied over the merged `choice.defaults` list, in parse order
+- **A named `choice` can gain members from another file; an unnamed one
+  can't.** Re-opening `choice CHOICE_X ... endchoice` with just the new
+  `config` lines adds them to the same choice; give each one a `depends on`
+  its board or type so it shows only there. `boards/per_gate/Kconfig.slb`
+  and `Kconfig.ebb_gen1` add their i2c buses to
+  `CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)` this way. A machine/board file
+  can also steer an existing choice with `default <CHOICE_MEMBER> if <cond>`.
+  Selection is first-satisfied over the merged `choice.defaults` list, in parse order
   (`Choice._selection_from_defaults`; the member must also be visible) —
   a default in an earlier-sourced type or board file precedes the feature
   file's own `default` lines (same exception as above); within one file, put the new board-specific
