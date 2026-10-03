@@ -176,6 +176,12 @@ class PrinterMotionQueuing:
     def note_mcu_movequeue_activity(self, mq_time, set_step_gen_time=False):
         self.movequeue_activity.append(mq_time)
 
+    MIN_KIN_TIME = 0.100
+
+    def calc_step_gen_restart(self, est_print_time):
+        # Klipper: no earlier than the steps already generated plus the flush delay
+        return est_print_time + self.MIN_KIN_TIME
+
     def drip_update_time(self, next_print_time, drip_completion):
         return next_print_time
 

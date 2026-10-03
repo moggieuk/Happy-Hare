@@ -5,6 +5,7 @@
 # harness has no such drivers, so each test registers a small stand-in.
 
 import unittest
+from unittest import mock
 
 from test.hh import session
 
@@ -83,6 +84,130 @@ class TestDryingHumidity(unittest.TestCase):
         self.assertTrue(self.manager.is_drying())
         self.assertNotIn('reports no humidity reading', output)
         self.assertEqual(self.hh.errors, [])
+
+
+class TestDryingRotationWhilePrinting(unittest.TestCase):
+    """The QIDI Box turns its spools with a gear per gate (gear_rotates_spool)."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.manager = self.unit.environment_manager
+        self.toolhead = self.hh.printer.lookup_object('toolhead')
+        self.stepper_enable = self.hh.printer.lookup_object('stepper_enable')
+        # Klipper's print time is never negative but the harness starts it at -HOST_OFFSET.
+        # Idle gears have next_cmd_time 0, so let print time pass that as on a running printer
+        mcu = self.hh.printer.lookup_object('mcu')
+        self.hh.reactor.advance(1. - mcu.estimated_print_time(self.hh.reactor.monotonic()))
+        for gate in (1, 2):
+            self.hh.run_gcode('MMU_GATE_MAP GATE=%d AVAILABLE=0 QUIET=1' % gate)
+
+    def _gear(self, gate):
+        return self.unit.drive_obj(gate).mmu_gear_stepper
+
+    def _no_background_moves(self):
+        return mock.patch.object(type(self._gear(1)), 'can_background_move', return_value=False)
+
+    def test_idle_gears_rotate_without_stalling_the_toolhead(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        for gate in (1, 2):
+            # Gears are auto-enabled by their steps on real Klipper
+            self.stepper_enable.lookup_enable(self._gear(gate).stepper.get_name()).motor_enable(0.)
+        dwells = len(self.toolhead.dwells)
+        moves = {gate: len(self._gear(gate).manual_trapq.moves) for gate in (0, 1, 2)}
+
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 ROTATE=1 ROTATE_INTERVAL=1 TEMP=45 TIMER=60')
+        # Rotation runs on the third check, the gears are disabled once both moves are done
+        self.hh.reactor.advance(3 * ENV_CHECK_INTERVAL + 20)
+
+        self.assertTrue(self.manager.is_drying())
+        self.assertEqual(len(self.toolhead.dwells), dwells)
+        self.assertEqual(len(self._gear(0).manual_trapq.moves), moves[0])
+        end_times = []
+        for gate in (1, 2):
+            new = self._gear(gate).manual_trapq.moves[moves[gate]:]
+            self.assertEqual(len(new), 1)
+            self.assertLess(new[0]['axes_r'][0], 0.)
+            end_times.append(new[0]['print_time'] + new[0]['accel_t'] + new[0]['cruise_t'] + new[0]['decel_t'])
+            el = self.stepper_enable.lookup_enable(self._gear(gate).stepper.get_name())
+            self.assertFalse(el.is_motor_enabled())
+            self.assertGreaterEqual(el.transitions[-1][0], end_times[-1])
+        # One spool after the other
+        first = self._gear(2).manual_trapq.moves[moves[2]]
+        self.assertGreaterEqual(first['print_time'], end_times[0])
+        self.assertEqual(self.hh.errors, [])
+
+    def test_rotation_is_refused_while_printing_when_not_possible(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        with self._no_background_moves():
+            self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 ROTATE=1 TEMP=45 TIMER=60')
+        self.assertFalse(self.manager.is_drying())
+        self.assertIn('not possible while printing', '\n'.join(self.hh.errors))
+
+    def test_cycle_with_rotation_stops_when_a_print_starts(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 ROTATE=1 ROTATE_INTERVAL=1 TEMP=45 TIMER=60')
+        self.assertTrue(self.manager.is_drying())
+
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        with self._no_background_moves():
+            self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertFalse(self.manager.is_drying())
+        self.assertIn('Drying cycle stopped', '\n'.join(self.hh.console[at:]))
+
+
+class TestDryingWithFilamentInAGate(unittest.TestCase):
+    """Filament in a gate can't be rotated: the QIDI Box limits drying to heater_loaded_max_temp (45C)."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.manager = self.unit.environment_manager
+        heater_name = self.unit.filament_heater.split()[-1]
+        self.heater = self.hh.printer.lookup_object('heaters').heaters[heater_name]
+        for gate in range(4):
+            self.hh.run_gcode('MMU_GATE_MAP GATE=%d AVAILABLE=0 QUIET=1' % gate)
+
+    def _dry(self):
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 TEMP=60 TIMER=60')
+        return '\n'.join(self.hh.console[at:])
+
+    def test_filament_in_a_gate_limits_the_drying_temperature(self):
+        self.assertEqual(self.unit.p.heater_loaded_max_temp, 45.)
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        output = self._dry()
+        self.assertTrue(self.manager.is_drying())
+        self.assertEqual(self.heater.target_temp, 45.)
+        self.assertIn('limited to 45.0', output)
+
+    def test_no_limit_with_all_gates_empty(self):
+        self._dry()
+        self.assertEqual(self.heater.target_temp, 60.)
+
+    def test_limit_applies_when_filament_is_loaded_during_drying(self):
+        self._dry()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self.heater.target_temp, 45.)
+
+    def test_limit_is_kept_for_the_rest_of_the_cycle(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        self._dry()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+        self.hh.reactor.advance(2 * ENV_CHECK_INTERVAL)
+        self.assertTrue(self.manager.is_drying())
+        self.assertEqual(self.heater.target_temp, 45.)
+
+    def test_no_limit_when_disabled(self):
+        self.unit.p.heater_loaded_max_temp = 0.
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        self._dry()
+        self.assertEqual(self.heater.target_temp, 60.)
 
 
 if __name__ == '__main__':

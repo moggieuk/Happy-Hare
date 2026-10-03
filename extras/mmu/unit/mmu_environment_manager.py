@@ -461,6 +461,13 @@ class MmuEnvironmentManager:
         if not self.is_drying():
             return self.reactor.NEVER
 
+        # Don't dry without the requested rotation (cycle may have started before the print)
+        if self._rotate_enabled and self.mmu.is_in_print() and not self.can_rotate_while_printing():
+            self._stop_drying_cycle("Drying cycle stopped because spool rotation is not possible while printing on this MMU", reset_state=True)
+            return self.reactor.NEVER
+
+        self._apply_loaded_temp_limit()
+
         now = self.reactor.monotonic()
 
         # Per-gate drying mode
@@ -613,6 +620,7 @@ class MmuEnvironmentManager:
                     self._state_set(gate, DRYING_STATE_ACTIVE)
                 except Exception:
                     pass
+            self._apply_loaded_temp_limit(set_heater=False)
             self._heater_on(self._drying_temp)
 
         else:
@@ -692,7 +700,51 @@ class MmuEnvironmentManager:
             gd['last_temp'] = cur_temp
             gd['last_humidity'] = cur_humidity
 
+            self._limit_gate_temp(gate, gd)
             self._heater_on(gd.get('temp'), gate=gate)
+
+
+    def _loaded_temp_limit(self, gates):
+        """
+        Filament in a gate can't be rotated, so drying above heater_loaded_max_temp would overheat its
+        spool and the filament next to the heater. Returns the limit if any of the gates hold filament
+        """
+        limit = self.mmu_unit.p.heater_loaded_max_temp
+        if limit > 0 and any(self.mmu.gate_status[gate] != GATE_EMPTY for gate in gates):
+            return limit
+        return None
+
+
+    def _limit_gate_temp(self, gate, gd):
+        """
+        Per-gate heaters: lower this gate's drying temperature if it holds filament. Returns True if lowered
+        """
+        limit = self._loaded_temp_limit([gate])
+        if limit is not None and gd.get('temp') is not None and gd['temp'] > limit:
+            gd['temp'] = limit
+            self.mmu.log_info("Gate %d drying temperature limited to %.1f°C because its filament can't be rotated" % (gate, limit))
+            return True
+        return False
+
+
+    def _apply_loaded_temp_limit(self, set_heater=True):
+        """
+        Lower the drying temperature while filament can't be rotated. It stays lowered for the
+        rest of the cycle, so it doesn't rise again e.g. when a print ends with filament loaded
+        """
+        if not self.has_per_gate_heaters():
+            limit = self._loaded_temp_limit(self.mmu_unit.gate_range())
+            if limit is not None and self._drying_temp > limit:
+                self._drying_temp = limit
+                self.mmu.log_info("Drying temperature limited to %.1f°C because filament in a gate can't be rotated" % limit)
+                if set_heater:
+                    self._heater_on(limit)
+            return
+
+        for gate in self._get_active_gates():
+            gd = self._gate_drying.get(gate)
+            if gd and self._limit_gate_temp(gate, gd) and set_heater:
+                self._heater_on(gd['temp'], gate=gate)
 
 
     def _stop_drying_cycle(self, msg="Filament drying stopped", reset_state=True):
@@ -916,6 +968,10 @@ class MmuEnvironmentManager:
             self._rotate_spool(self.spools_to_rotate[0])
             return
 
+        if self.mmu.is_in_print():
+            self._rotate_idle_gears(gates)
+            return
+
         # Special case VVD design because of unique spool rotation using shared gear stepper coupled to gate selection
         if not self.mmu.is_in_print():
             prev_gate_selected = self.mmu.gate_selected
@@ -923,6 +979,59 @@ class MmuEnvironmentManager:
                 self.mmu.select_gate(gate)
                 _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -100, motor="gear", wait=True)
             self.mmu.select_gate(prev_gate_selected)
+
+
+    def can_rotate_while_printing(self):
+        """
+        eSpoolers run independently. Otherwise each gate needs its own gear that can move
+        without stalling the toolhead
+        """
+        u = self.mmu_unit
+        if not u.gear_rotates_spool:
+            return True
+        return u.multigear and u.drives[0].mmu_gear_stepper.can_background_move()
+
+
+    def _rotate_idle_gears(self, gates):
+        """
+        Rotate spools with their idle gear steppers while printing, one after another,
+        queued so the print isn't stalled. The gate in use is never touched
+        """
+        u = self.mmu_unit
+        dist = -100
+        if abs(dist) > u.p.gear_short_move_threshold:
+            speed, accel = u.p.gear_unload_speed, u.p.gear_unload_accel
+        else:
+            speed, accel = u.p.gear_short_move_speed, u.p.gear_short_move_accel
+
+        rotated = []
+        end_time = None
+        for gate in gates:
+            drive = u.drive_obj(gate)
+            if gate == self.mmu.gate_selected or drive.is_synced_to_extruder():
+                continue
+            stepper = drive.mmu_gear_stepper
+            try:
+                end_time = stepper.do_background_move(stepper.commanded_pos + dist, speed, accel, start_time=end_time)
+            except self.printer.command_error as e:
+                self.mmu.log_warning("Unable to rotate spool in gate %d: %s" % (gate, str(e)))
+                continue
+            rotated.append((gate, stepper, end_time))
+
+        if rotated:
+            # Idle type-B gears are normally de-energized, so turn them off again once done
+            est_print_time = self.printer.lookup_object('mcu').estimated_print_time(self.reactor.monotonic())
+            waketime = self.reactor.monotonic() + max(0., end_time - est_print_time) + 0.5
+            self.reactor.register_callback(lambda et: self._disable_rotated_gears(rotated), waketime)
+
+
+    def _disable_rotated_gears(self, rotated):
+        for gate, stepper, end_time in rotated:
+            drive = self.mmu_unit.drive_obj(gate)
+            # Leave alone if it has been used since
+            if gate == self.mmu.gate_selected or drive.is_synced_to_extruder() or stepper.next_cmd_time > end_time:
+                continue
+            stepper.do_background_disable()
 
 
     def _rotate_spool(self, gate):

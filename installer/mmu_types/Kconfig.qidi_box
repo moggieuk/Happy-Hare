@@ -51,6 +51,11 @@ if MMU_TYPE_QIDI_BOX_1_0
   config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
     default -70
 
+  # The filament path passes the dryer heater, so filament in a gate (which can't
+  # rotate) overheats above this. PETG buckles in the tube at 60C while printing
+  config PARAM_HEATER_LOADED_MAX_TEMP
+    default "45"
+
   # One physical reader serves two gates, so a neighbor's spool can sit in
   # the same RF field and be attributed to the wrong gate.
   config PARAM_NFC_NEIGHBOR_CHECK

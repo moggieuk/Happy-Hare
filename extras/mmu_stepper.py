@@ -53,6 +53,8 @@ from .homing             import HomingMove
 import inspect, chelper
 from .stepper_enable     import DISABLE_STALL_TIME
 
+BACKGROUND_MOVE_START_TIME = 0.250 # Same margin as toolhead BUFFER_TIME_START
+
 
 # -----------------------------------------------------------------------------------------------------------
 # MmuGenericRail: single-stepper rail with multiple endstops, direction reversal, etc
@@ -1013,6 +1015,41 @@ class MmuStepper(ExtruderStepper):
         self.motion_queuing.note_mcu_movequeue_activity(self.next_cmd_time)
         if sync:
             self.sync_print_time()
+
+
+    def can_background_move(self):
+        return hasattr(self.motion_queuing, 'calc_step_gen_restart') # Not with Kalico emulator
+
+
+    def do_background_move(self, movepos, speed, accel, start_time=None):
+        """
+        Queue a move without waiting on, or stalling, the toolhead (e.g. an idle gear while printing).
+        The move starts at start_time or as soon as step generation allows. Returns the end time
+        """
+        self._require_standalone_manual_mode("MOVE")
+        est_print_time = self.printer.lookup_object('mcu').estimated_print_time(self.printer.get_reactor().monotonic())
+        kin_time = self.motion_queuing.calc_step_gen_restart(est_print_time)
+        earliest = max(self.next_cmd_time, est_print_time + BACKGROUND_MOVE_START_TIME, kin_time)
+        start_time = earliest if start_time is None else max(start_time, earliest)
+        self.next_cmd_time = self._submit_move(start_time, movepos, speed, accel)
+        self.motion_queuing.note_mcu_movequeue_activity(self.next_cmd_time)
+        return self.next_cmd_time
+
+
+    def do_background_disable(self):
+        """
+        Disable motors without stalling the toolhead. Only call once any background
+        moves have finished so the disable follows their auto-enable
+        """
+        est_print_time = self.printer.lookup_object('mcu').estimated_print_time(self.printer.get_reactor().monotonic())
+        print_time = max(self.next_cmd_time, self.motion_queuing.calc_step_gen_restart(est_print_time))
+        stepper_enable = self.printer.lookup_object('stepper_enable')
+        for stepper in self.steppers:
+            el = stepper_enable.lookup_enable(stepper.get_name())
+            if el.is_motor_enabled():
+                el.motor_disable(print_time)
+        # Allow time before the next auto-enable
+        self.next_cmd_time = print_time + DISABLE_STALL_TIME
 
 
     def do_homing_move(self, movepos, speed, accel, probe_pos, triggered, check_trigger, endstop_name=None):
