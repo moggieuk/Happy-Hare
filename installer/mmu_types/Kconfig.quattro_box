@@ -39,10 +39,6 @@ if MMU_FAMILY_QUATTRO_BOX
       select PARAM_SYNC_TO_EXTRUDER
       select PARAM_SYNC_FORM_TIP
       select PARAM_SYNC_PURGE
-      # The Chameleon X5 supplies the defaults for these
-      imply MMU_HAS_ENVIRONMENT_SENSOR if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_HEATER if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_FANS if BOARD_TYPE_CHAMELEON_X5_1_0
       help
         Version 2
 
@@ -143,13 +139,6 @@ if MMU_FAMILY_QUATTRO_BOX
     # v2 has custom mcu board
     choice BOARD_TYPE
       default BOARD_TYPE_CHAMELEON_X5_1_0
-    endchoice
-
-    # Chamber sensor
-    config PARAM_ENVIRONMENT_SENSOR
-      default "$(UNIT_NAME)_Chamber"
-    choice CHOICE_ENVIRONMENT_SENSOR_TYPE
-      default CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
     endchoice
 
     config PARAM_GEAR_GEAR_RATIO
