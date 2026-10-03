@@ -118,9 +118,85 @@ cs_pin                : $(MCU_NAME):PC7\n\
 spi_bus               : spi2_PB14_PB15_PB13\n\
 spi_speed             : 1000000\n\
 debug                 : 0\n\
+\n\
+
+
+  # -------------------------------------
+  # Dryer heater
+  # No CUSTOM_HEATER_SETUP: that would hide the heater name prompt and
+  # discard the name of a heater an existing user wrote by hand.
+  # Mainline's AHT driver reports every 5s at best, too slow for a heater
+  # (3s watchdog), so temperature_combined re-reports the environment
+  # sensor every 0.3s. sensor_list must match PARAM_ENVIRONMENT_SENSOR.
+  # The PID values are QIDI's, tuned on a faster sensor: run PID_CALIBRATE.
+  # The two thermistors on the heater element are monitors only.
+  # -------------------------------------
+
+misc_hardware_heater := \
+[heater_generic $(UNIT_NAME)_heater]\n\
+heater_pin: $(MCU_NAME):PA3\n\
+sensor_type: temperature_combined\n\
+sensor_list: temperature_sensor $(UNIT_NAME)_Env\n\
+combination_method: mean\n\
+maximum_deviation: 50\n\
+control: pid\n\
+pid_Kp: 63.418\n\
+pid_Ki: 1.342\n\
+pid_Kd: 749.125\n\
+min_temp: -100\n\
+max_temp: 100\n\
+\n\
+[verify_heater $(UNIT_NAME)_heater]\n\
+max_error: 400\n\
+check_gain_time: 600\n\
+\n\
+[temperature_sensor $(UNIT_NAME)_heater_temp_a]\n\
+sensor_type: NTC 100K MGB18-104F39050L32\n\
+sensor_pin: $(MCU_NAME):PC1\n\
+min_temp: -100\n\
+max_temp: 130\n\
+\n\
+[temperature_sensor $(UNIT_NAME)_heater_temp_b]\n\
+sensor_type: NTC 100K MGB18-104F39050L32\n\
+sensor_pin: $(MCU_NAME):PC2\n\
+min_temp: -100\n\
+max_temp: 130\n\
+\n\
+
+
+  # -------------------------------------
+  # Dryer heater fans
+  # No CUSTOM_HEATER_FAN_SETUP: that would hide, and discard, a heater
+  # fan pin an existing user set in menuconfig. Two fans, one heater.
+  # -------------------------------------
+
+misc_hardware_heater_fan := \
+[heater_fan $(UNIT_NAME)_heater_fan_a]\n\
+pin: $(MCU_NAME):PA4\n\
+heater: $(UNIT_NAME)_heater\n\
+heater_temp: 35\n\
+\n\
+[heater_fan $(UNIT_NAME)_heater_fan_b]\n\
+pin: $(MCU_NAME):PA5\n\
+heater: $(UNIT_NAME)_heater\n\
+heater_temp: 35\n\
+\n\
+
+
+  # -------------------------------------
+  # Board fan
+  # Runs with the gear steppers, and with the dryer heater when there is
+  # one (the board sits inside the heated box)
+  # -------------------------------------
+
+misc_hardware_controller_fan := \
+[controller_fan $(UNIT_NAME)_board_fan]\n\
+pin: $(MCU_NAME):PA6\n\
+stepper: mmu_stepper $(UNIT_NAME)_gear$(comma) mmu_stepper $(UNIT_NAME)_gear_1$(comma) mmu_stepper $(UNIT_NAME)_gear_2$(comma) mmu_stepper $(UNIT_NAME)_gear_3\n\
 
 
   config PARAM_MISC_HARDWARE
-    default "$(ml,$(misc_hardware_nfc_reader))"
+    default "$(ml,$(misc_hardware_nfc_reader)$(misc_hardware_heater)$(misc_hardware_heater_fan)$(misc_hardware_controller_fan)heater: $(UNIT_NAME)_heater\n)" if MMU_HAS_HEATER && MMU_HAS_ENVIRONMENT_SENSOR
+    default "$(ml,$(misc_hardware_nfc_reader)$(misc_hardware_controller_fan))"
 
 endif
