@@ -206,6 +206,9 @@ pin_help      := $(pin_syntax)$(nl)$(pin_example)
 # Important: Use $(comma) & $(quote) instead of real comma's or double quotes in multiline strings
 # The Python preprocessor keeps this portable without launching awk for every board.
 comma := ,
+
+# Shown under a feature whose hardware a board supplies itself (CUSTOM_* flag)
+misc_hardware_hint := Defined by the board's misc hardware (mmu_hardware.cfg)
 quote := "
 ml = $(hh-multiline,$(1))
 

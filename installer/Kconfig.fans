@@ -21,6 +21,12 @@
 #   select UNSELECT_MMU_HAS_FANS
 
 
+if CUSTOM_FAN_SETUP
+  comment "_"
+  comment "_Managed Environment Fan"
+  comment "$(misc_hardware_hint)"
+endif
+
 if !CUSTOM_FAN_SETUP
   comment "_"
   comment "_Managed Environment Fan"

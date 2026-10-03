@@ -96,6 +96,7 @@ if MMU_HAS_LEDS
 
     comment "_"
     comment "_Hardware"
+    comment "$(misc_hardware_hint)" if CUSTOM_LED_SETUP
 
     config PARAM_FRAME_RATE
       int "Frame rate      "
