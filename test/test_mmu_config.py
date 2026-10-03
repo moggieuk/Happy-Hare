@@ -578,7 +578,7 @@ class TestMenuconfigMacroStrings(unittest.TestCase):
 class TestEnvironmentSensorReportTime(unittest.TestCase):
 
     # Choice member -> (sensor_type, i2c_address, report-time option or None), per the
-    # Klipper drivers: aht10.py, bme280.py (fixed 0.8s, no option) and htu21d.py
+    # Klipper drivers: aht10.py, bme280.py (fixed 0.8s, no option), htu21d.py and sht3x.py
     SENSOR_TYPES = {
         'AHT10':  ('AHT10',  '56',  'aht10_report_time'),
         'AHT1X':  ('AHT1X',  '56',  'aht10_report_time'),
@@ -586,6 +586,10 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         'AHT3X':  ('AHT3X',  '56',  'aht10_report_time'),
         'BME280': ('BME280', '118', None),
         'HTU21D': ('HTU21D', '64',  'htu21d_report_time'),
+        'SI7013': ('SI7013', '64',  'htu21d_report_time'),
+        'SI7020': ('SI7020', '64',  'htu21d_report_time'),
+        'SI7021': ('SI7021', '64',  'htu21d_report_time'),
+        'SHT21':  ('SHT21',  '64',  'htu21d_report_time'),
         'SHT3X':  ('SHT3X',  '68',  'sht3x_report_time'),
     }
     CHOICE = 'CHOICE_ENVIRONMENT_SENSOR_TYPE_'
