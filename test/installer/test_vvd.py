@@ -62,5 +62,22 @@ class TestVvdSectionsAreUnitScoped(unittest.TestCase):
         finally:
             hh.close()
 
+
+class TestVvdBoardOwnsCustomHardware(unittest.TestCase):
+
+    FLAGS = ('CUSTOM_LED_SETUP', 'CUSTOM_ENVIRONMENT_SENSOR_SETUP', 'CUSTOM_HEATER_SETUP',
+             'CUSTOM_HEATER_FAN_SETUP', 'CUSTOM_FAN_SETUP', 'CUSTOM_NFC_READER_SETUP')
+
+    def test_each_custom_flag_is_set_beside_its_misc_hardware(self):
+        vvd = [unit for unit in profiles.get('ercf_vvd').units if unit.name == 'unit1'][0]
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('vvd_custom_flags', vvd.syms)
+        for flag in self.FLAGS:
+            with self.subTest(flag=flag):
+                self.assertTrue(kconfig.is_enabled(flag))
+                self.assertTrue(any(node.filename.endswith('boards/custom/Kconfig.vvd')
+                                    for node in kconfig.syms[flag].nodes))
+
+
 if __name__ == '__main__':
     unittest.main()
