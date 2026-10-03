@@ -210,7 +210,7 @@ menu "Heater fan h/w config"
     default ""
     help
       Pin for the fan associated with the shared enclosure heater.
-      Separate several fans that run together with commas; each gets
-      its own [heater_fan] with the settings above.
+      Separate several fans that run together with commas; they are
+      driven as one [heater_fan] through a [multi_pin] alias.
 
 endmenu

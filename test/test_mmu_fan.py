@@ -363,24 +363,26 @@ class TestMmuFanConfiguration(unittest.TestCase):
         parser = cfg.assemble(cfg.render(profile))
         fan = dict(parser.items('heater_fan _unit0_heater_fan'))
         self.assertEqual(fan['heater_temp'], '45.0')
+        self.assertEqual(fan['pin'], 'unit0:PA8')
+        self.assertFalse([s for s in parser.sections() if s.startswith('multi_pin ')])
 
     def test_shared_heater_fan_accepts_a_list_of_pins(self):
         profile = profiles.get('qidi').derive(
             'qidi_heater_fan_pins',
             syms={
                 'PARAM_FILAMENT_HEATER': 'qidi_heater',
-                'PIN_HEATER_FAN': 'unit0:PA4,  unit0:PA5',
+                'PIN_HEATER_FAN': 'unit0:PA4,  !unit0:PA5',
                 'PARAM_HEATER_FAN_HEATER_TEMP': 40.0,
             })
         parser = cfg.assemble(cfg.render(profile))
-        fans = [s for s in parser.sections() if s.startswith('heater_fan ')]
-        self.assertEqual(fans, ['heater_fan _unit0_heater_fan', 'heater_fan _unit0_heater_fan_1'])
-        first, second = (dict(parser.items(s)) for s in fans)
-        self.assertEqual((first['pin'], second['pin']), ('unit0:PA4', 'unit0:PA5'))
-        self.assertEqual({k: v for k, v in first.items() if k != 'pin'},
-                         {k: v for k, v in second.items() if k != 'pin'})
-        self.assertEqual(second['heater'], 'qidi_heater')
-        self.assertEqual(second['heater_temp'], '40.0')
+        sections = [s for s in parser.sections() if s.startswith(('heater_fan ', 'multi_pin '))]
+        # Klipper resolves multi_pin: when the fan loads, so the alias must come first
+        self.assertEqual(sections, ['multi_pin _unit0_heater_fan_pins', 'heater_fan _unit0_heater_fan'])
+        self.assertEqual(parser.get('multi_pin _unit0_heater_fan_pins', 'pins'), 'unit0:PA4, !unit0:PA5')
+        fan = dict(parser.items('heater_fan _unit0_heater_fan'))
+        self.assertEqual(fan['pin'], 'multi_pin:_unit0_heater_fan_pins')
+        self.assertEqual(fan['heater'], 'qidi_heater')
+        self.assertEqual(fan['heater_temp'], '40.0')
 
     def test_heater_fan_pin_validator_accepts_lists(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
