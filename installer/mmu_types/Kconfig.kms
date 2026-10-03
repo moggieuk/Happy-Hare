@@ -57,17 +57,6 @@ endif
 
 if MMU_TYPE_KMS_1_0
 
-  # MISC_HARDWARE configures these
-  config CUSTOM_ENVIRONMENT_SENSOR_SETUP
-    def_bool y
-  config CUSTOM_HEATER_SETUP
-    def_bool y
-  config CUSTOM_FAN_SETUP
-    def_bool y
-  config CUSTOM_HEATER_FAN_SETUP
-    def_bool y
-
-
   source "Kconfig.capabilities"
 
   config PARAM_VENDOR
@@ -112,6 +101,11 @@ if MMU_TYPE_KMS_1_0
 
   config PARAM_ENVIRONMENT_SENSOR
     default "$(UNIT_NAME)_environment"
+  choice CHOICE_ENVIRONMENT_SENSOR_TYPE
+    default CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
+  endchoice
+  config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME
+    default 10 if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
 
   config PARAM_FILAMENT_HEATER
     default "$(UNIT_NAME)_heater"
