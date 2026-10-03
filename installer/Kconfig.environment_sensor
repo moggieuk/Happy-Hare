@@ -25,6 +25,7 @@
 #   - AHT2X     (humidity/temperature, requires patched aht1x driver)
 #   - AHT3X     (humidity/temperature, requires patched aht1x driver)
 #   - BME280    (humidity/temperature/pressure)
+#   - HTU21D    (humidity/temperature, also SHT21/SI70xx family)
 #
 # SUPPORTED I2C HARDWARE BUS OPTIONS:
 #   - i2c2_PB10_PB11  (default)
@@ -113,6 +114,11 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
           bool "BME280"
           help
             BME280 humidity/temperature/pressure sensor
+
+        config CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
+          bool "HTU21D"
+          help
+            HTU21D humidity/temperature sensor
       endchoice
 
       config PARAM_ENVIRONMENT_SENSOR_TYPE
@@ -121,10 +127,12 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         default "AHT2X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X
         default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
         default "BME280" if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
+        default "HTU21D" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
 
       config PARAM_SENSOR_REPORT_TIME_PARAM
         string
         default ""                  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
+        default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
         default "aht10_report_time"
 
       config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME
@@ -133,6 +141,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         default 60
         range 0 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
         range 1 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
+        range 5 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
         help
           Frequency to poll the sensor (default 60 seconds)
 
@@ -143,9 +152,10 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
       config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS
         int "i2c address       "
         default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
+        default 64  if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
         default 56
         help
-          i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280)
+          i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280, 64 [0x40] for HTU21D)
 
       if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
         choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS

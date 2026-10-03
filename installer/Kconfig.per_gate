@@ -56,6 +56,9 @@ if MMU_HAS_PER_GATE_CONFIG
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
                 bool "BME280"
+
+              config CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
+                bool "HTU21D"
             endchoice
 
             config PARAM_ENVIRONMENT_SENSOR_TYPE_$(i)
@@ -64,10 +67,12 @@ if MMU_HAS_PER_GATE_CONFIG
               default "AHT2X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i)
               default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               default "BME280" if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              default "HTU21D" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
 
             config PARAM_SENSOR_REPORT_TIME_PARAM_$(i)
               string
               default ""                  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
               default "aht10_report_time"
 
             config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_$(i)
@@ -76,6 +81,7 @@ if MMU_HAS_PER_GATE_CONFIG
               default 60
               range 0 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
               range 0 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
+              range 5 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
               help
                 Frequency to poll the sensor (default 60 seconds)
 
@@ -123,6 +129,7 @@ if MMU_HAS_PER_GATE_CONFIG
             config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS_$(i)
               int "i2c address       "
               default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              default 64  if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
               default 56
 
             if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
