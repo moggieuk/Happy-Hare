@@ -105,6 +105,62 @@ class TestConfiguration(EndlessSpoolTestCase):
         self.assertEqual(list(self.gate_maps.endless_spool_groups), before)
 
 
+class TestConfiguredDefaultGroups(unittest.TestCase):
+    """
+    default_endless_spool_groups is the group list used whenever mmu_vars.cfg has no
+    saved list of the right length, and what MMU_ENDLESS_SPOOL RESET=1 restores.
+    """
+
+    def boot(self, saved=None, **options):
+        from unittest.mock import patch
+        from test.hh import cfg, bootstrap
+        assemble, vars_copy = cfg.assemble, bootstrap.Session._mmu_vars_copy
+
+        def with_options(*args, **kwargs):
+            fileconfig = assemble(*args, **kwargs)
+            for option, value in options.items():
+                fileconfig.set('mmu_parameters', option, value)
+            return fileconfig
+
+        def with_saved(session):
+            path = vars_copy(session)
+            if saved is not None:
+                with open(path, 'a') as f:
+                    f.write('mmu_state_endless_spool_groups = %r\n' % (saved,))
+            return path
+
+        with patch.object(cfg, 'assemble', with_options), \
+                patch.object(bootstrap.Session, '_mmu_vars_copy', with_saved):
+            self.hh = session('boxturtle_test')
+            self.addCleanup(self.hh.close)
+            self.hh.boot()
+        return list(self.hh.mmu.gate_maps.endless_spool_groups)
+
+    def test_default_groups_are_used_when_none_are_saved(self):
+        self.assertEqual(self.boot(default_endless_spool_groups='0,1,0,1'), [0, 1, 0, 1])
+
+    def test_saved_groups_win_over_the_default(self):
+        self.assertEqual(self.boot(saved=[2, 2, 3, 3], default_endless_spool_groups='0,1,0,1'), [2, 2, 3, 3])
+
+    def test_saved_groups_of_the_wrong_length_fall_back_to_the_default(self):
+        self.assertEqual(self.boot(saved=[2, 2], default_endless_spool_groups='0,1,0,1'), [0, 1, 0, 1])
+
+    def test_reset_restores_the_configured_default(self):
+        self.boot(saved=[2, 2, 3, 3], default_endless_spool_groups='0,1,0,1')
+        self.hh.run_gcode('MMU_ENDLESS_SPOOL RESET=1')
+        self.assertEqual(list(self.hh.mmu.gate_maps.endless_spool_groups), [0, 1, 0, 1])
+
+    def test_a_default_of_the_wrong_length_is_a_config_error(self):
+        with self.assertRaisesRegex(Exception, 'default_endless_spool_groups'):
+            self.boot(default_endless_spool_groups='0,1')
+
+    def test_the_config_has_no_endless_spool_groups_option(self):
+        # Retired: it duplicated default_endless_spool_groups and was never read
+        self.boot()
+        self.assertFalse(self.hh.fileconfig.has_option('mmu_parameters', 'endless_spool_groups'))
+        self.assertFalse(self.hh.fileconfig.has_option('mmu_parameters', 'default_endless_spool_groups'))
+
+
 class TestRunoutSwapsGate(EndlessSpoolTestCase):
 
     def test_runout_remaps_the_tool_to_another_gate(self):

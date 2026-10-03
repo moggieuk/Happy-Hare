@@ -10,7 +10,7 @@
 #  - Indented multi-line values: indentation signals continuation; a bare newline without leading space ends the value
 #  - Full-line comments inside a multi-line value are transparent (like Klipper's configparser): the value
 #    resumes on the next indented line. E.g. commenting out one of a [quad_gantry_level] "points:" lines
-#  - Special-case gcode* options: parses their values literally to avoid misinterpreting gcode content
+#  - Special-case gcode options: parses their values literally to avoid misinterpreting gcode content
 #  - Error recovery: an unparsable construct doesn't abort the parse. The offending text is kept verbatim in
 #    an UnparsedNode (so round trips stay byte-exact), a marker comment is added and parsing resumes at the
 #    next [section] or option. Callers can list the damage with ConfigBuilder.parse_errors()
@@ -673,7 +673,9 @@ class Parser(object):
                 tokenizer, "Expected ':' or '=' after '{}'".format(token.value), peek, include_token=False
             )
         assign_op = tokenizer.take("assign_op").value
-        if token.value.startswith("gcode"):  # parse gcode options as-is, so we don't parse gcode as structure'
+        # Parse gcode as-is so it isn't read as structure. Only 'gcode' holds G-code, while
+        # e.g. HH's gcode_load_sequence is a plain value
+        if token.value == "gcode":
             value = self.parse_value(tokenizer, as_is=True)
         else:
             value = self.parse_value(tokenizer)

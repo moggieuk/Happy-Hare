@@ -175,15 +175,22 @@ review_unit_changes() {
         echo
         return 0
         ;;
-    3)
+    2)
+        return 1
+        ;;
+    *)
         # The migration itself failed: install as before, without migrating
         F_UNITS_BASELINE=
         return 0
         ;;
-    *)
-        return 1
-        ;;
     esac
+}
+
+# The installed unit list, before menuconfig can change it. If it can't be read,
+# renaming stays locked since nothing could be migrated
+capture_units_baseline() {
+    F_UNITS_BASELINE=$(unit_migration baseline) && set_units_restructure
+    export F_UNITS_BASELINE
 }
 
 # Renaming, deleting or reordering units needs Replace mode, unless nothing has been
@@ -1110,11 +1117,8 @@ run_kconfig_one() {
 ##### Menuconfig / Refresh #####
 ################################
 
-# The unit list the installed config (and saved state) reflects, captured before
-# menuconfig can change it. Renames, removals and reorders are only allowed in Replace mode
-export F_UNITS_BASELINE="$(unit_migration baseline)"
+capture_units_baseline
 export F_UNIT_NAME_BEFORE="$(single_unit_name)"
-set_units_restructure
 
 if [ -n "${F_MENUCONFIG:-}" ]; then
     tmpconfig=

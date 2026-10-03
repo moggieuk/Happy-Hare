@@ -303,3 +303,91 @@ class TestLedEffectUpgrade(unittest.TestCase):
         for mode in ("refresh", "merge"):
             with self.subTest(mode=mode):
                 self.assertTrue(self.build(mode).has_section("temperature_sensor user_sensor"))
+
+
+class MmuCfgBuild(unittest.TestCase):
+    """Builds mmu.cfg for a single-unit BoxTurtle over an installed copy."""
+
+    SECTION = "mmu_parameters"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fresh = self.build("replace", [])[1]
+
+    def build(self, mode, input_files):
+        from installer import build
+        out = tempfile.mkdtemp(dir=self.tmp.name)
+        dest = os.path.join(out, "mmu.cfg")
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig("mmu-cfg-build", profiles.get("boxturtle").syms)
+        extra = {"PARAM_TOTAL_NUM_GATES": kconfig.getint("PARAM_NUM_GATES")}
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
+                cfg._chdir(cfg.REPO_ROOT):
+            build.build_config_file("config/base/mmu.cfg", dest, kconfig, input_files, extra)
+        with open(dest) as f:
+            return dest, f.read()
+
+    def installed(self, edit):
+        """The fresh render with each line passed through edit(line)."""
+        source = os.path.join(tempfile.mkdtemp(dir=self.tmp.name), "mmu.cfg")
+        with open(source, "w") as f:
+            f.write("\n".join(edit(line) for line in self.fresh.splitlines()) + "\n")
+        return source
+
+    def option(self, built, option):
+        return ConfigBuilder(built).get(self.SECTION, option) or None
+
+
+class TestEndlessSpoolGroupsRetired(MmuCfgBuild):
+    """endless_spool_groups duplicated default_endless_spool_groups and was never read."""
+
+    def test_the_template_only_documents_the_default(self):
+        builder = ConfigBuilder()
+        builder.read_buf(self.fresh)
+        self.assertFalse(builder.has_option(self.SECTION, "endless_spool_groups"))
+        self.assertFalse(builder.has_option(self.SECTION, "default_endless_spool_groups"))
+        self.assertIn("#default_endless_spool_groups:", self.fresh)
+
+    def test_an_installed_endless_spool_groups_line_is_dropped(self):
+        def old_layout(line):
+            if line.startswith("endless_spool_eject_gate"):
+                return line + "\nendless_spool_groups     : %s\t\t# EndlessSpool grouping" % self.value
+            return line
+        for self.value in ("", "0, 1, 0, 1"):
+            source = self.installed(old_layout)
+            for mode in ("refresh", "merge", "replace"):
+                with self.subTest(value=self.value, mode=mode):
+                    built, _ = self.build(mode, [source])
+                    self.assertFalse(ConfigBuilder(built).has_option(self.SECTION, "endless_spool_groups"))
+
+
+class TestRefreshKeepsEditsAfterGcodeSequence(MmuCfgBuild):
+    """gcode_load_sequence was parsed as G-code, so it swallowed the rest of
+    [mmu_parameters] and a refresh reset every edit below it."""
+
+    EDITS = (("gcode_unload_sequence", "1"), ("pause_macro", "MY_PAUSE"),
+             ("default_ttg_map", "3, 2, 1, 0"), ("default_endless_spool_groups", "0, 1, 0, 1"))
+
+    def edit(self, line):
+        name = line.lstrip("#").split(":")[0].strip()
+        for option, value in self.EDITS:
+            if name == option and ":" in line:
+                return "%s: %s" % (option, value)
+        return line
+
+    def test_edits_after_gcode_load_sequence_survive_refresh(self):
+        source = self.installed(self.edit)
+        built, _ = self.build("refresh", [source])
+        for option, value in self.EDITS:
+            with self.subTest(option):
+                self.assertEqual(self.option(built, option), value)
+
+    def test_a_set_default_survives_every_mode_once(self):
+        source = self.installed(self.edit)
+        for mode in ("refresh", "merge", "replace"):
+            with self.subTest(mode=mode):
+                built, text = self.build(mode, [source])
+                self.assertEqual(self.option(built, "default_endless_spool_groups"), "0, 1, 0, 1")
+                self.assertEqual(sum(1 for line in text.splitlines()
+                                     if line.split(":")[0].strip() == "default_endless_spool_groups"), 1)

@@ -122,6 +122,16 @@ class TestBaseline(Scratch):
         um.write_state(self.kconfig, {"baseline": ["x"], "applied": {"x": "x"}})
         self.assertEqual(um.baseline(self.kconfig, self.home), ["x"])
 
+    def test_a_failure_prints_nothing_on_stdout(self):
+        # install.sh captures stdout as the unit list
+        out, err = io.StringIO(), io.StringIO()
+        with patch.object(um, "baseline", side_effect=RuntimeError("boom")), \
+                patch("sys.stdout", out), patch("sys.stderr", err):
+            status = um.main(["baseline", "--kconfig", self.kconfig, "--config-home", self.home])
+        self.assertEqual(status, um.EXIT_FAILED)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("boom", err.getvalue())
+
 
 class TestCheck(Scratch):
 
@@ -154,6 +164,17 @@ class TestCheck(Scratch):
         code, out = self.check("replace")
         self.assertEqual(code, um.EXIT_STRUCTURAL)
         self.assertIn("rename b -> box", out)
+
+    def test_renumbering_is_only_mentioned_when_gates_move(self):
+        for label, fn, renumbered in (("rename", lambda m: m.rename(1, "box"), False),
+                                      ("reorder", lambda m: m.move(0, 1), True),
+                                      ("remove first", lambda m: m.remove(0), True)):
+            with self.subTest(label):
+                self.edit(["a", "b"], fn)
+                code, out = self.check("replace")
+                self.assertEqual(code, um.EXIT_STRUCTURAL)
+                self.assertIn("saved state move with each unit", out)
+                (self.assertIn if renumbered else self.assertNotIn)("renumbered", out)
 
     def test_the_saved_state_file_is_shown(self):
         self.edit(["a", "b"], lambda m: m.rename(1, "box"))
@@ -350,12 +371,12 @@ class TestNoChange(Scratch):
 
     def test_an_unexpected_error_is_reported_not_raised(self):
         self.top("a,b")
-        out = io.StringIO()
+        err = io.StringIO()
         with patch.object(um, "check", side_effect=RuntimeError("boom")), \
-                patch("sys.stdout", out), patch("sys.stderr", io.StringIO()):
+                patch("sys.stdout", io.StringIO()), patch("sys.stderr", err):
             code = um.main(["check", "--kconfig", self.kconfig, "--config-home", self.home])
         self.assertEqual(code, um.EXIT_FAILED)
-        self.assertIn("boom", out.getvalue())
+        self.assertIn("boom", err.getvalue())
 
     def test_an_unchanged_list_leaves_no_state(self):
         self.install(["a", "b"])
@@ -698,6 +719,7 @@ class TestSingleUnitRename(Scratch):
         self.assertEqual(code, um.EXIT_STRUCTURAL)
         self.assertIn("rename unit0 -> box", out)
         self.assertNotIn("will be reset", out)
+        self.assertNotIn("renumbered", out)
 
     def test_renaming_an_installed_single_unit_end_to_end(self):
         self.install(["unit0"], variables={

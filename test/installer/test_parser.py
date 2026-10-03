@@ -118,6 +118,17 @@ class TestCommentedOutValueLines(unittest.TestCase):
         self.assertEqual(builder.sections(), ["gcode_macro FOO", "stepper_x"])
         self.assertEqual(builder.write(), buf)
 
+    def test_an_option_named_like_gcode_is_a_plain_value(self):
+        # [mmu_parameters] gcode_load_sequence swallowed every option after it
+        buf = ("[mmu_parameters]\ngcode_load_sequence: 0\ngcode_unload_sequence: 1\n\n"
+               "# Macros\npause_macro: MY_PAUSE\ndefault_ttg_map: 3, 2, 1, 0\n")
+        builder = build(buf)
+        self.assertEqual(builder.get("mmu_parameters", "gcode_load_sequence"), "0")
+        self.assertEqual(builder.get("mmu_parameters", "gcode_unload_sequence"), "1")
+        self.assertEqual(builder.get("mmu_parameters", "pause_macro"), "MY_PAUSE")
+        self.assertEqual(builder.get("mmu_parameters", "default_ttg_map"), "3, 2, 1, 0")
+        self.assertEqual(builder.write(), buf)
+
 
 # Genuinely broken: '50, 10' at column 0 is neither a section nor an option, so nothing can
 # make sense of it - Klipper rejects this file too. All HH has to do is survive and say so

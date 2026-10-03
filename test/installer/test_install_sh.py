@@ -612,12 +612,42 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("BASELINE=a,box", result.stdout)
 
     def test_unit_review_failed_migration_goes_without_migrating(self):
+        # 3: caught error, 1: uncaught error, 127: no interpreter
+        for status in (3, 1, 127):
+            with self.subTest(status=status):
+                result = self.run_shell("""
+                    unit_migration() {{ return {status}; }}
+                    F_UNITS_BASELINE=a,b
+                    review_unit_changes && echo "BASELINE=[${{F_UNITS_BASELINE}}]"
+                """.format(status=status))
+                self.assertIn("BASELINE=[]", result.stdout)
+
+    def test_baseline_is_captured_from_the_migration(self):
         result = self.run_shell("""
-            unit_migration() { return 3; }
-            F_UNITS_BASELINE=a,b
-            review_unit_changes && echo "BASELINE=[${F_UNITS_BASELINE}]"
+            unit_migration() { echo "a,b"; }
+            unset F_UNITS_RESTRUCTURE F_CFG_UPGRADE_MODE
+            capture_units_baseline
+            echo "BASELINE=[${F_UNITS_BASELINE}]"
+            echo "RESTRUCTURE=${F_UNITS_RESTRUCTURE:-n}"
         """)
-        self.assertIn("BASELINE=[]", result.stdout)
+        self.assertIn("BASELINE=[a,b]", result.stdout)
+        self.assertIn("RESTRUCTURE=n", result.stdout)
+
+    def test_a_failed_baseline_keeps_renaming_locked(self):
+        # An empty baseline would otherwise look like a first install
+        for mode in ("refresh", "replace"):
+            with self.subTest(mode=mode):
+                result = self.run_shell("""
+                    set -e
+                    unit_migration() {{ return 3; }}
+                    unset F_UNITS_RESTRUCTURE
+                    F_CFG_UPGRADE_MODE={mode}
+                    capture_units_baseline
+                    echo "BASELINE=[${{F_UNITS_BASELINE}}]"
+                    echo "RESTRUCTURE=${{F_UNITS_RESTRUCTURE:-n}}"
+                """.format(mode=mode))
+                self.assertIn("BASELINE=[]", result.stdout)
+                self.assertIn("RESTRUCTURE=n", result.stdout)
 
     def test_unit_migration_step_failure_only_stops_a_confirmed_change(self):
         result = self.run_shell("""

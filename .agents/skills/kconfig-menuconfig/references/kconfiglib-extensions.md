@@ -184,11 +184,15 @@ menuconfig renders them with curses attributes (`_safe_addstr_markup`).
 Only those whitelisted names inside `[[...]]` are tags (`_TAG_RE`), so other
 brackets such as `[, duration]` or `[[mmu_leds]]` stay literal.
 The root Kconfig's `title`/`caption` macros use `[[B]]` to bold the unit
-name. (This is a menuconfig-side concern — it never reaches the value file.)
+name. Comments are saved to the value file as `#` lines with their tags left
+in, which is harmless because nothing parses them. As in menuconfig, a comment
+whose own `if` condition is false isn't saved.
 
 `[[VALUE:SYM]]` is replaced by SYM's *current* value every time the text is
 drawn (`_expand_values`, called from `_safe_addstr_markup` and on prompts in
-`_node_str`), so it follows edits made in the same session. Text fixed at
+`_node_str`), so it follows edits made in the same session. Both that and
+`write_config`, for saved comments, use `expand_value_markup` in
+`kconfiglib.py`, so the file never holds the raw markup. Text fixed at
 parse time can't do that. `[[VALUE:SYM:w]]` pads or truncates the value to `w`
 characters for fixed-width layouts. An undefined SYM shows `?`, and
 `TestValueMarkupNamesRealSymbols` in `test_kconfig_references.py` fails on one.

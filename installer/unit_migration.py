@@ -114,7 +114,6 @@ GATE_LIST_OPTIONS = [
     "default_gate_spool_rfid",
     "default_gate_speed_override",
     "default_endless_spool_groups",
-    "endless_spool_groups",
 ]
 
 GATE_SENSOR_KEY = re.compile(r"^(mmu_[a-z_]+?)_(\d+)$")
@@ -430,11 +429,13 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
         return EXIT_REFUSED
 
     if config_home and installed_units(config_home) is not None:
-        print("Gates of units after the first moved or removed unit are renumbered. Calibration, gate"
-              " maps and saved state move with each unit", file=out)
         if gates_moved(*_check_layout(plan, config_home)):
+            print("Gates of units after the first moved or removed unit are renumbered. Calibration, gate"
+                  " maps and saved state move with each unit", file=out)
             print("The selected gate and tool will be reset to unknown, so select or home again after"
                   " the install", file=out)
+        else:
+            print("Calibration, gate maps and saved state move with each unit", file=out)
         path = vars_file(config_home, kconfig)
         if path:
             print("Saved state will be migrated in %s" % path, file=out)
@@ -930,7 +931,7 @@ def main(argv=None):
         return _run(args)
     except Exception as e:
         traceback.print_exc()
-        print("WARNING: MMU unit migration '%s' failed: %s" % (args.action, e))
+        print("WARNING: MMU unit migration '%s' failed: %s" % (args.action, e), file=sys.stderr)
         return EXIT_FAILED
 
 
