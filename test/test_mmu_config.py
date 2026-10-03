@@ -586,6 +586,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         'AHT3X':  ('AHT3X',  '56',  'aht10_report_time'),
         'BME280': ('BME280', '118', None),
         'HTU21D': ('HTU21D', '64',  'htu21d_report_time'),
+        'SHT3X':  ('SHT3X',  '68',  'sht3x_report_time'),
     }
     CHOICE = 'CHOICE_ENVIRONMENT_SENSOR_TYPE_'
 
@@ -658,7 +659,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertEqual(per_gate, set(self.SENSOR_TYPES))
 
     def test_zero_report_time_leaves_klipper_default(self):
-        for member in ('AHT2X', 'HTU21D'):
+        for member in ('AHT2X', 'HTU21D', 'SHT3X'):
             with self.subTest(member=member):
                 kc, sensor = self._single_sensor(
                     'environment_sensor_zero_report_time_%s' % member.lower(),
@@ -679,10 +680,12 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
 
     def test_report_time_between_zero_and_klipper_minimum_is_rejected(self):
         # A rejected user value falls back to the default
-        cases = ((0, '0'), (1, '60'), (4, '60'), (5, '5'), (300, '300'), (301, '60'))
+        min_five = ((0, '0'), (1, '60'), (4, '60'), (5, '5'), (300, '300'), (301, '60'))
+        min_one = ((0, '0'), (1, '1'), (4, '4'), (300, '300'), (301, '60'))
+        cases = {'AHT2X': min_five, 'HTU21D': min_five, 'SHT3X': min_one}
         base = dict(profiles.get('boxturtle').syms, MMU_HAS_ENVIRONMENT_SENSOR=True)
-        for member in ('AHT2X', 'HTU21D'):
-            for value, expected in cases:
+        for member, member_cases in cases.items():
+            for value, expected in member_cases:
                 with self.subTest(member=member, value=value):
                     with cfg._env(cfg._SINGLE_UNIT_ENV):
                         kc = cfg._kconfig('environment_sensor_report_time_range', dict(base, **{
@@ -692,16 +695,18 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
                         kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME'].str_value, expected)
 
         env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
-        for value, expected in cases:
-            with self.subTest(gate=1, value=value):
-                with cfg._env(env):
-                    kc = cfg._kconfig('environment_sensor_report_time_range_per_gate', {
-                        'MMU_TYPE_EMU_1_0': True,
-                        'MMU_HAS_PER_GATE_MCU': True,
-                        self.CHOICE + 'HTU21D_1': True,
-                        'PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_1': value})
-                self.assertEqual(
-                    kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_1'].str_value, expected)
+        for gate, member in ((1, 'HTU21D'), (2, 'SHT3X')):
+            for value, expected in cases[member]:
+                with self.subTest(gate=gate, member=member, value=value):
+                    with cfg._env(env):
+                        kc = cfg._kconfig('environment_sensor_report_time_range_per_gate', {
+                            'MMU_TYPE_EMU_1_0': True,
+                            'MMU_HAS_PER_GATE_MCU': True,
+                            '%s%s_%d' % (self.CHOICE, member, gate): True,
+                            'PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_%d' % gate: value})
+                    self.assertEqual(
+                        kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_%d' % gate].str_value,
+                        expected)
 
     def test_aht_sensor_uses_selected_report_time_parameter(self):
         kc, sensor = self._single_sensor(
