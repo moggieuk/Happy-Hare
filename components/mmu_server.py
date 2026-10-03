@@ -213,7 +213,6 @@ class MmuServer:
 
         # Options
         self.update_location = self.config.getboolean("update_spoolman_location", True)
-        self.average_toolchange_time = self.config.getfloat("average_toolchange_time", 0.0)
 
 
     async def _get_spoolman_version(self) -> tuple[int, int, int] | None:
