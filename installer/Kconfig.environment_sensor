@@ -29,6 +29,7 @@
 #   - HTU21D    (humidity/temperature)
 #   - SI7013, SI7020, SI7021, SHT21 (humidity/temperature, HTU21D family)
 #   - SHT3X     (humidity/temperature, SHT30/SHT31/SHT35)
+#   - LM75      (temperature only)
 #
 # SUPPORTED I2C HARDWARE BUS OPTIONS:
 #   - i2c2_PB10_PB11  (default)
@@ -156,6 +157,12 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
           bool "SHT3X"
           help
             SHT3X (SHT30/SHT31/SHT35) humidity/temperature sensor
+
+        config CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75
+          bool "LM75 (temperature only)"
+          help
+            LM75 temperature sensor. It has no humidity reading, so drying
+            runs for its full time and any humidity goal is ignored.
       endchoice
 
       config PARAM_ENVIRONMENT_SENSOR_TYPE
@@ -171,35 +178,38 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         default "SI7021" if CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021
         default "SHT21"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21
         default "SHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X
+        default "LM75"   if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75
 
       config PARAM_SENSOR_REPORT_TIME_PARAM
         string
         default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10 || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
         default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013 || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020 || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021 || CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21
         default "sht3x_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X
+        default "lm75_report_time"   if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75
         default ""
 
       config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME
         int "Report time (secs)" if PARAM_SENSOR_REPORT_TIME_PARAM != ""
         default 0  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
         default 60
-        range 0 300     if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X
+        range 0 300     if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X || CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75
         range 0 0 5 300
         help
           Seconds between sensor readings (default 60 seconds)
 
           0 leaves the option out so Klipper uses its own default
-          (30 secs, or 1 sec for SHT3X).
-          Otherwise at least 5 secs (1 sec for SHT3X).
+          (30 secs; 1 sec for SHT3X, 0.8 secs for LM75).
+          Otherwise at least 5 secs (1 sec for SHT3X and LM75).
 
       config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS
         int "i2c address       "
         default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
         default 64  if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013 || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020 || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021 || CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21
         default 68  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X
+        default 72  if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75
         default 56
         help
-          i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280, 64 [0x40] for HTU21D family, 68 [0x44] for SHT3X)
+          i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280, 64 [0x40] for HTU21D family, 68 [0x44] for SHT3X, 72 [0x48] for LM75)
 
       if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
         choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS

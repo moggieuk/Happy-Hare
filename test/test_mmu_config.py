@@ -578,7 +578,7 @@ class TestMenuconfigMacroStrings(unittest.TestCase):
 class TestEnvironmentSensorReportTime(unittest.TestCase):
 
     # Choice member -> (sensor_type, i2c_address, report-time option or None), per the
-    # Klipper drivers: aht10.py, bme280.py (fixed 0.8s, no option), htu21d.py and sht3x.py
+    # Klipper drivers: aht10.py, bme280.py (fixed 0.8s, no option), htu21d.py, sht3x.py and lm75.py
     SENSOR_TYPES = {
         'AHT10':  ('AHT10',  '56',  'aht10_report_time'),
         'AHT1X':  ('AHT1X',  '56',  'aht10_report_time'),
@@ -591,6 +591,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         'SI7021': ('SI7021', '64',  'htu21d_report_time'),
         'SHT21':  ('SHT21',  '64',  'htu21d_report_time'),
         'SHT3X':  ('SHT3X',  '68',  'sht3x_report_time'),
+        'LM75':   ('LM75',   '72',  'lm75_report_time'),
     }
     CHOICE = 'CHOICE_ENVIRONMENT_SENSOR_TYPE_'
 
@@ -663,7 +664,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertEqual(per_gate, set(self.SENSOR_TYPES))
 
     def test_zero_report_time_leaves_klipper_default(self):
-        for member in ('AHT2X', 'HTU21D', 'SHT3X'):
+        for member in ('AHT2X', 'HTU21D', 'SHT3X', 'LM75'):
             with self.subTest(member=member):
                 kc, sensor = self._single_sensor(
                     'environment_sensor_zero_report_time_%s' % member.lower(),
@@ -686,7 +687,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         # A rejected user value falls back to the default
         min_five = ((0, '0'), (1, '60'), (4, '60'), (5, '5'), (300, '300'), (301, '60'))
         min_one = ((0, '0'), (1, '1'), (4, '4'), (300, '300'), (301, '60'))
-        cases = {'AHT2X': min_five, 'HTU21D': min_five, 'SHT3X': min_one}
+        cases = {'AHT2X': min_five, 'HTU21D': min_five, 'SHT3X': min_one, 'LM75': min_one}
         base = dict(profiles.get('boxturtle').syms, MMU_HAS_ENVIRONMENT_SENSOR=True)
         for member, member_cases in cases.items():
             for value, expected in member_cases:
@@ -699,7 +700,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
                         kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME'].str_value, expected)
 
         env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
-        for gate, member in ((1, 'HTU21D'), (2, 'SHT3X')):
+        for gate, member in ((1, 'HTU21D'), (2, 'SHT3X'), (3, 'LM75')):
             for value, expected in cases[member]:
                 with self.subTest(gate=gate, member=member, value=value):
                     with cfg._env(env):
