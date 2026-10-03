@@ -76,12 +76,23 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
 
     def test_quattro_box_wiring(self):
         self.assertEqual(self.item('temperature_sensor unit0_Outside')['i2c_address'], '119')
-        self.assertEqual(self.item('mmu_servo exhaust')['pin'], 'unit0:PB0')
+        self.assertEqual(self.item('mmu_servo unit0_exhaust')['pin'], 'unit0:PB0')
         board_fan = self.item('controller_fan unit0_fan')
         self.assertEqual(board_fan['pin'], 'unit0:PB4')
         for stepper in board_fan['stepper'].split(','):
             with self.subTest(stepper=stepper.strip()):
                 self.assertIn(stepper.strip(), self.parser.sections())
+
+    def test_gear_directions_are_left_to_the_user(self):
+        for gate, suffix in enumerate(('', '_1', '_2', '_3')):
+            stepper = self.item('mmu_stepper unit0_gear' + suffix)
+            with self.subTest(gate=gate):
+                self.assertFalse(stepper['step_pin'].startswith('!'), stepper['step_pin'])
+                self.assertFalse(stepper['dir_pin'].startswith('!'), stepper['dir_pin'])
+
+    def test_eject_buttons_follow_the_channel_order(self):
+        pins = [self.item('gcode_button unit0_eject%d' % gate)['pin'] for gate in range(4)]
+        self.assertEqual(pins, ['^unit0:PB14', '^unit0:PB12', '^unit0:PD8', '^unit0:PE14'])
 
     def test_no_section_or_pin_is_defined_twice(self):
         sections = SECTION.findall(self.text)
@@ -96,7 +107,7 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         self.assertFalse(_sections(parser, 'heater_generic') + _sections(parser, 'heater_fan')
                          + _sections(parser, 'multi_pin'))
         self.assertIn('controller_fan unit0_fan', parser.sections())
-        self.assertIn('mmu_servo exhaust', parser.sections())
+        self.assertIn('mmu_servo unit0_exhaust', parser.sections())
 
 
 class TestX5UnderAnotherMachine(unittest.TestCase):
@@ -124,6 +135,17 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
         self.assertEqual(sensor['i2c_software_scl_pin'], 'unit0:PA8')
         self.assertEqual(sensor['i2c_software_sda_pin'], 'unit0:PC9')
         self.assertNotIn('temperature_sensor unit0_Outside', parser.sections())
+
+
+    def test_channel_sensors_follow_the_channel_order(self):
+        # FYSETC schematic: channel i's IN/OUT connectors sit beside motor i
+        parser, _ = _render('x5_boxturtle_sensors', dict(
+            X5_BOXTURTLE, MMU_HAS_SENSOR_ENTRY=True, MMU_HAS_SENSOR_EXIT=True))
+        sensors = dict(parser.items('mmu_sensors unit0'))
+        self.assertEqual([sensors['mmu_entry_switch_pin_%d' % g] for g in range(4)],
+                         ['^unit0:PE11', '^unit0:PB1', '^unit0:PA0', '^unit0:PA4'])
+        self.assertEqual([sensors['mmu_exit_switch_pin_%d' % g] for g in range(4)],
+                         ['^unit0:PE10', '^unit0:PE7', '^unit0:PA1', '^unit0:PA3'])
 
 
 class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
