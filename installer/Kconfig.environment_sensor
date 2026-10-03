@@ -21,6 +21,7 @@
 #   as above with _<gate_index> extension
 #
 # SUPPORTED SENSOR TYPES
+#   - AHT10     (humidity/temperature, legacy name known to every Klipper/Kalico)
 #   - AHT1X     (humidity/temperature, Klipper after v0.13.0 or Kalico v2026.06+)
 #   - AHT2X     (humidity/temperature, Klipper after v0.13.0 or Kalico v2026.06+)
 #   - AHT3X     (humidity/temperature, Klipper after v0.13.0 or Kalico v2026.06+)
@@ -96,6 +97,13 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         help
           Select the type of environment sensor being used
           AHT1X/AHT2X/AHT3X need Klipper newer than v0.13.0 or Kalico v2026.06+
+          Use AHT10 on older firmware
+
+        config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10
+          bool "AHT10 (older Klipper)"
+          help
+            AHT10/AHT20/AHT21 on Klipper v0.13.0 or older or Kalico before v2026.06.
+            Newer firmware treats AHT10 as AHT1X, so choose AHT2X/AHT3X there.
 
         config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X
           bool "AHT1X"
@@ -125,6 +133,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
 
       config PARAM_ENVIRONMENT_SENSOR_TYPE
         string
+        default "AHT10"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10
         default "AHT1X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X
         default "AHT2X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X
         default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
@@ -133,7 +142,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
 
       config PARAM_SENSOR_REPORT_TIME_PARAM
         string
-        default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
+        default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10 || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
         default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
         default ""
 

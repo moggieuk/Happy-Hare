@@ -580,6 +580,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
     # Choice member -> (sensor_type, i2c_address, report-time option or None), per the
     # Klipper drivers: aht10.py, bme280.py (fixed 0.8s, no option) and htu21d.py
     SENSOR_TYPES = {
+        'AHT10':  ('AHT10',  '56',  'aht10_report_time'),
         'AHT1X':  ('AHT1X',  '56',  'aht10_report_time'),
         'AHT2X':  ('AHT2X',  '56',  'aht10_report_time'),
         'AHT3X':  ('AHT3X',  '56',  'aht10_report_time'),
@@ -635,9 +636,10 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
 
     def test_every_per_gate_type_renders_its_driver_options(self):
         members = list(self.SENSOR_TYPES)
-        kc, sensors = self._per_gate_sensors('environment_sensor_types_per_gate', {
-            '%s%s_%d' % (self.CHOICE, member, gate): True
-            for gate, member in enumerate(members)})
+        syms = {'%s%s_%d' % (self.CHOICE, member, gate): True
+                for gate, member in enumerate(members)}
+        syms['PARAM_NUM_GATES'] = len(members)
+        kc, sensors = self._per_gate_sensors('environment_sensor_types_per_gate', syms)
         self.assertEqual(len(sensors), len(members))
         for gate, member in enumerate(members):
             with self.subTest(gate=gate, member=member):

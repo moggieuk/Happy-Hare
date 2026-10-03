@@ -45,6 +45,10 @@ if MMU_HAS_PER_GATE_CONFIG
               help
                 Select the environment sensor type used by this gate.
                 AHT1X/AHT2X/AHT3X need Klipper newer than v0.13.0 or Kalico v2026.06+
+                Use AHT10 on older firmware
+
+              config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10_$(i)
+                bool "AHT10 (older Klipper)"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i)
                 bool "AHT1X"
@@ -64,6 +68,7 @@ if MMU_HAS_PER_GATE_CONFIG
 
             config PARAM_ENVIRONMENT_SENSOR_TYPE_$(i)
               string
+              default "AHT10"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10_$(i)
               default "AHT1X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i)
               default "AHT2X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i)
               default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
@@ -72,7 +77,7 @@ if MMU_HAS_PER_GATE_CONFIG
 
             config PARAM_SENSOR_REPORT_TIME_PARAM_$(i)
               string
-              default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
+              default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
               default ""
 
