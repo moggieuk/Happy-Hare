@@ -130,8 +130,11 @@ Load-bearing facts about the flow:
 - **A shared definition can be a component.** `installer/components/Kconfig.*`
   is sourced once per consumer with `prefix := X` preprocessor variables, so
   one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
-  and `installer/components/Kconfig.tmc_driver_*` are the worked example.
-  Three rules: re-assign every variable immediately before each `source`
+  and `installer/components/Kconfig.tmc_driver_*` are the worked example;
+  `components/Kconfig.environment_sensor_*` is sourced from inside an
+  `@repeat` (once per gate) as well as once for the shared sensor
+  ([references/environment-sensors.md](references/environment-sensors.md)
+  has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
   (they are global for the whole parse); keep declarations and prompts in
   separate fragments, because `_propagate_deps` ANDs an enclosing `if` into
   defaults as well as prompts; and pad prompts with `$(pad,width,text)`
@@ -349,11 +352,14 @@ in this repo:
   bullet below) are parsed inside `mmu_types/`, *before* `boards/Kconfig`, so
   for their symbols a satisfied default in the selected type's copy beats a
   board's.
-- **`choice` members cannot come from another file.** A machine/board file may steer
-  an *existing* choice with `default <CHOICE_MEMBER> if <cond>` only;
-  the members themselves must be declared inside the `choice ... endchoice`
-  block (per-gate variants in its `@repeat` block). Selection is
-  first-satisfied over the merged `choice.defaults` list, in parse order
+- **A named `choice` can gain members from another file; an unnamed one
+  can't.** Re-opening `choice CHOICE_X ... endchoice` with just the new
+  `config` lines adds them to the same choice; give each one a `depends on`
+  its board or type so it shows only there. `boards/per_gate/Kconfig.slb`
+  and `Kconfig.ebb_gen1` add their i2c buses to
+  `CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)` this way. A machine/board file
+  can also steer an existing choice with `default <CHOICE_MEMBER> if <cond>`.
+  Selection is first-satisfied over the merged `choice.defaults` list, in parse order
   (`Choice._selection_from_defaults`; the member must also be visible) —
   a default in an earlier-sourced type or board file precedes the feature
   file's own `default` lines (same exception as above); within one file, put the new board-specific

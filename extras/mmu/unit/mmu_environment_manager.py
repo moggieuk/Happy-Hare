@@ -166,6 +166,18 @@ class MmuEnvironmentManager:
                     % (temp, info_word)
                 )
 
+        if humidity is not None:
+            no_humidity = []
+            for gate in (gates if self.has_per_gate_heaters() else [None]):
+                sensor = self._environment_sensor(gate)
+                if sensor and sensor not in no_humidity and self._get_environment_status(gate)[1] is None:
+                    no_humidity.append(sensor)
+            for sensor in no_humidity:
+                warnings.append(
+                    "Warning: %s reports no humidity reading, so drying runs for its full time and the %.1f%% humidity goal is ignored"
+                    % (sensor, humidity)
+                )
+
         self._drying_time = timer or self.mmu_unit.p.heater_default_dry_time
         self._drying_temp = temp or self.mmu_unit.p.heater_default_dry_temp
         self._drying_humidity_target = humidity
@@ -845,19 +857,27 @@ class MmuEnvironmentManager:
         return (status.get('temperature'), status.get('target'))
 
 
+    def _environment_sensor(self, gate=None):
+        """
+        Return the environment sensor object name for the unit or for a gate ('' if none)
+        """
+        if gate is None:
+            return self.mmu_unit.environment_sensor
+        sensors = self.mmu_unit.environment_sensors
+        lgate = self._local_slot(gate)
+        if lgate < 0 or lgate >= len(sensors):
+            return ''
+        return sensors[lgate]
+
+
     def _get_environment_status(self, gate=None):
         """
         Return tuple of temperature and humidity from environment sensor.
         Note that some configured sensors may only offer temperature
         """
-        if gate is None:
-            sensor = self.mmu_unit.environment_sensor
-        else:
-            sensors = self.mmu_unit.environment_sensors
-            lgate = self._local_slot(gate)
-            if lgate < 0 or lgate >= len(sensors) or not sensors[lgate]:
-                return None, None
-            sensor = sensors[lgate]
+        sensor = self._environment_sensor(gate)
+        if not sensor:
+            return None, None
 
         obj = self.printer.lookup_object(sensor, None)
         if obj is None:
@@ -874,7 +894,11 @@ class MmuEnvironmentManager:
             for chip in ENV_SENSOR_CHIPS:
                 obj = self.printer.lookup_object("%s %s" % (chip, s_name), None)
                 if obj:
-                    humidity = obj.get_status(0).get('humidity')
+                    chip_status = obj.get_status(0)
+                    humidity = chip_status.get('humidity')
+                    # Klipper zeroes both readings on a failed read and before the first one
+                    if not humidity and not chip_status.get('temperature'):
+                        humidity = None
                     break
 
         return (temperature, humidity)

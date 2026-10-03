@@ -423,11 +423,10 @@ menu "Software Options"
     boolint "Use AHT30-compatible commands with the legacy AHT10 driver?"
     default 0
     help
-      Compatibility workaround for the BTT ViViD AHT30 sensor on older Klipper
-      versions without native support. Configure the sensor using the AHT10 driver
-      and enable this to replace that driver's command table at startup.
-      This affects all sensors using that driver, not just the MMU sensor.
-      Leave disabled when using native sensor support. Default 0 leaves the
-      Klipper command table unchanged.
+      Workaround for the BTT ViViD AHT30 sensor on Klipper v0.13.0 or older,
+      which has no AHT3X type. Configure the sensor as AHT10 and enable this to
+      replace that driver's command table at startup (affects every AHT10 sensor).
+      Newer Klipper and Kalico v2026.06+ have no such table, so this does nothing
+      there: use sensor type AHT3X instead. Default 0 leaves Klipper unchanged.
 
 endmenu

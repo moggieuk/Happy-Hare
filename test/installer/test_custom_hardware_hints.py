@@ -6,7 +6,7 @@ import unittest
 
 from test.hh import cfg, profiles
 
-HINT = "Defined by the board's misc hardware (mmu_hardware.cfg)"
+HINT = "Defined by the mcu board's misc hardware"
 
 
 def _visible_hints(syms):
@@ -44,6 +44,20 @@ class TestCustomHardwareHints(unittest.TestCase):
             with self.subTest(machine=name):
                 hints = _visible_hints(syms)
                 self.assertEqual(sorted(h.split(':')[0] for h in hints), files, hints)
+
+    def test_no_hint_is_indented_under_the_prompt_it_follows(self):
+        """A comment right after a symbol it depends on, in the same block,
+        becomes that symbol's implicit child and menuconfig indents it one
+        level deeper than the other hints."""
+        import kconfiglib
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconf = cfg._new_kconfig('custom_hint_parents')
+        nested = ['%s:%d under %s' % (node.filename.rsplit('/', 1)[-1], node.linenr,
+                                      node.parent.item.name)
+                  for node in kconf.node_iter()
+                  if node.item == kconfiglib.COMMENT and node.prompt[0] == HINT
+                  and isinstance(node.parent.item, kconfiglib.Symbol)]
+        self.assertEqual(nested, [])
 
 
 if __name__ == '__main__':

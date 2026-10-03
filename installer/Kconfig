@@ -57,6 +57,8 @@
 #        config PARAM_MMU_CANBUS_UNIT_$(i)
 #          string "CANbus UUID for MMU unit $(i)"
 #      @endrepeat@
+#    A 'source' in the body works; $(i) is substituted only in the body, so pass
+#    it to the sourced file in a variable assigned on the line before
 # 7. help added to menus
 # 8. "if XX" construct is allowed on comment lines
 # 9. Added 'array_editor <separator> [size]' option for strings that represent lists
@@ -211,7 +213,7 @@ pin_help      := $(pin_syntax)$(nl)$(pin_example)
 comma := ,
 
 # Shown under a feature whose hardware a board supplies itself (CUSTOM_* flag)
-misc_hardware_hint := Defined by the board's misc hardware (mmu_hardware.cfg)
+misc_hardware_hint := Defined by the mcu board's misc hardware
 quote := "
 ml = $(hh-multiline,$(1))
 
