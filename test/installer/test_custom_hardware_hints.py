@@ -7,6 +7,7 @@ import unittest
 from test.hh import cfg, profiles
 
 HINT = "Defined by the mcu board's misc hardware"
+X5 = {'BOARD_TYPE_CHAMELEON_X5_1_0': True}
 
 
 def _visible_hints(syms):
@@ -39,6 +40,13 @@ class TestCustomHardwareHints(unittest.TestCase):
             'kms': (profiles.get('kms').syms, ['Kconfig.heater', 'Kconfig.heater']),
             'qidi': (profiles.get('qidi').syms, ['Kconfig.nfc_reader']),
             'boxturtle': (profiles.get('boxturtle').syms, []),
+            'x5_qb2': (dict(X5, MMU_FAMILY_QUATTRO_BOX=True, MMU_TYPE_QUATTRO_BOX_2_0=True),
+                       ['Kconfig.heater']),
+            'x5_boxturtle': (dict(X5, MMU_TYPE_BOX_TURTLE_1_0=True), []),
+            'x5_boxturtle_heater': (dict(X5, MMU_TYPE_BOX_TURTLE_1_0=True, MMU_HAS_HEATER=True),
+                                    ['Kconfig.heater']),
+            'x5_per_gate_heater': (dict(X5, MMU_CUSTOM=True, MMU_HAS_HEATER=True,
+                                        MMU_HAS_PER_GATE_CONFIG=True), []),
         }
         for name, (syms, files) in cases.items():
             with self.subTest(machine=name):
