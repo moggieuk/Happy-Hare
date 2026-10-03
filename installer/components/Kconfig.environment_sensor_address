@@ -1,0 +1,25 @@
+# Environment sensor - i2c address, defaulted from the sensor type.
+#
+# Sourced once for the shared sensor (Kconfig.environment_sensor) and once
+# per gate (Kconfig.per_gate). The caller sets:
+#
+#   env_sensor_suffix   appended to every symbol name: empty for the shared
+#                       sensor, _<gate> for a per-gate one
+#
+# and must re-assign it on the line before each source: preprocessor
+# variables are global for the whole parse, and @repeat substitutes its
+# variable only in its own body, never in a sourced file.
+#
+# Defines, for each $(env_sensor_suffix):
+#   PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS*
+
+config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS$(env_sensor_suffix)
+  int "i2c address       "
+  default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280$(env_sensor_suffix)
+  default 64  if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21$(env_sensor_suffix)
+  default 68  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X$(env_sensor_suffix)
+  default 72  if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75$(env_sensor_suffix)
+  default 56
+  help
+    i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280, 64 [0x40] for HTU21D family, 68 [0x44] for SHT3X, 72 [0x48] for LM75)
+    BMP180, BMP388 and some BME280 sensors use 119 [0x77] instead of 118.

@@ -1,0 +1,168 @@
+# Environment sensor - sensor type, report time and HTU21D options.
+#
+# Sourced once for the shared sensor (Kconfig.environment_sensor) and once
+# per gate (Kconfig.per_gate). The caller sets:
+#
+#   env_sensor_suffix   appended to every symbol name: empty for the shared
+#                       sensor, _<gate> for a per-gate one
+#
+# and must re-assign it on the line before each source: preprocessor
+# variables are global for the whole parse, and @repeat substitutes its
+# variable only in its own body, never in a sourced file.
+#
+# Defines, for each $(env_sensor_suffix):
+#   CHOICE_ENVIRONMENT_SENSOR_TYPE* PARAM_ENVIRONMENT_SENSOR_TYPE*
+#   PARAM_SENSOR_REPORT_TIME_PARAM* PARAM_ENVIRONMENT_SENSOR_REPORT_TIME*
+#   CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION*
+#   PARAM_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION*
+#   PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER*
+
+choice CHOICE_ENVIRONMENT_SENSOR_TYPE$(env_sensor_suffix)
+  prompt "Sensor type       "
+  default CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X$(env_sensor_suffix)
+  help
+    Select the type of environment sensor
+    AHT1X/AHT2X/AHT3X need Klipper newer than v0.13.0 or Kalico v2026.06+
+    Use AHT10 on older firmware
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10$(env_sensor_suffix)
+    bool "AHT10 [[DIM]]/ older Klipper[[/DIM]]"
+    help
+      AHT10/AHT20/AHT21 on Klipper v0.13.0 or older or Kalico before v2026.06.
+      Newer firmware treats AHT10 as AHT1X, so choose AHT2X/AHT3X there.
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X$(env_sensor_suffix)
+    bool "AHT1X"
+    help
+      AHT1X humidity/temperature sensor
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X$(env_sensor_suffix)
+    bool "AHT2X"
+    help
+      AHT2X humidity/temperature sensor
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X$(env_sensor_suffix)
+    bool "AHT3X"
+    help
+      AHT3X humidity/temperature sensor
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280$(env_sensor_suffix)
+    bool "BME280 [[DIM]]/ BMP180 / BMP280 / BMP388 / BME680[[/DIM]]"
+    help
+      BME280 humidity/temperature/pressure sensor. Klipper detects the
+      chip, so this also covers BMP180, BMP280, BMP388 and BME680.
+      Only BME280 and BME680 report humidity; with a BMP chip, drying
+      runs for its full time and any humidity goal is ignored.
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D$(env_sensor_suffix)
+    bool "HTU21D"
+    help
+      HTU21D humidity/temperature sensor
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013$(env_sensor_suffix)
+    bool "SI7013 [[DIM]]/ HTU21D family[[/DIM]]"
+    help
+      SI7013 humidity/temperature sensor (Klipper's HTU21D driver)
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020$(env_sensor_suffix)
+    bool "SI7020 [[DIM]]/ HTU21D family[[/DIM]]"
+    help
+      SI7020 humidity/temperature sensor (Klipper's HTU21D driver)
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021$(env_sensor_suffix)
+    bool "SI7021 [[DIM]]/ HTU21D family[[/DIM]]"
+    help
+      SI7021 humidity/temperature sensor (Klipper's HTU21D driver)
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21$(env_sensor_suffix)
+    bool "SHT21 [[DIM]]/ HTU21D family[[/DIM]]"
+    help
+      SHT21 humidity/temperature sensor (Klipper's HTU21D driver)
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X$(env_sensor_suffix)
+    bool "SHT3X"
+    help
+      SHT3X (SHT30/SHT31/SHT35) humidity/temperature sensor
+
+  config CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75$(env_sensor_suffix)
+    bool "LM75 [[DIM]]/ temperature only[[/DIM]]"
+    help
+      LM75 temperature sensor. It has no humidity reading, so drying
+      runs for its full time and any humidity goal is ignored.
+endchoice
+
+config PARAM_ENVIRONMENT_SENSOR_TYPE$(env_sensor_suffix)
+  string
+  default "AHT10"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10$(env_sensor_suffix)
+  default "AHT1X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X$(env_sensor_suffix)
+  default "AHT2X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X$(env_sensor_suffix)
+  default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X$(env_sensor_suffix)
+  default "BME280" if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280$(env_sensor_suffix)
+  default "HTU21D" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D$(env_sensor_suffix)
+  default "SI7013" if CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013$(env_sensor_suffix)
+  default "SI7020" if CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020$(env_sensor_suffix)
+  default "SI7021" if CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021$(env_sensor_suffix)
+  default "SHT21"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21$(env_sensor_suffix)
+  default "SHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X$(env_sensor_suffix)
+  default "LM75"   if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75$(env_sensor_suffix)
+
+config PARAM_SENSOR_REPORT_TIME_PARAM$(env_sensor_suffix)
+  string
+  default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X$(env_sensor_suffix)
+  default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21$(env_sensor_suffix)
+  default "sht3x_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X$(env_sensor_suffix)
+  default "lm75_report_time"   if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75$(env_sensor_suffix)
+  default ""
+
+config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME$(env_sensor_suffix)
+  int "Report time (secs)" if PARAM_SENSOR_REPORT_TIME_PARAM$(env_sensor_suffix) != ""
+  default 0  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280$(env_sensor_suffix)
+  default 60
+  range 0 300     if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75$(env_sensor_suffix)
+  range 0 0 5 300
+  help
+    Seconds between sensor readings (default 60 seconds)
+
+    0 leaves the option out so Klipper uses its own default
+    (30 secs; 1 sec for SHT3X, 0.8 secs for LM75).
+    Otherwise at least 5 secs (1 sec for SHT3X and LM75).
+
+if PARAM_SENSOR_REPORT_TIME_PARAM$(env_sensor_suffix) = "htu21d_report_time"
+  choice CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION$(env_sensor_suffix)
+    prompt "Resolution        "
+    default CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_DEFAULT$(env_sensor_suffix)
+    help
+      Measurement resolution (htu21d_resolution). "Klipper default"
+      leaves the option out, so Klipper uses TEMP12_HUM08.
+
+    config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_DEFAULT$(env_sensor_suffix)
+      bool "Klipper default"
+
+    config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP14_HUM12$(env_sensor_suffix)
+      bool "TEMP14_HUM12"
+
+    config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP13_HUM10$(env_sensor_suffix)
+      bool "TEMP13_HUM10"
+
+    config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP12_HUM08$(env_sensor_suffix)
+      bool "TEMP12_HUM08"
+
+    config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP11_HUM11$(env_sensor_suffix)
+      bool "TEMP11_HUM11"
+  endchoice
+
+  config PARAM_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION$(env_sensor_suffix)
+    string
+    default "TEMP14_HUM12" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP14_HUM12$(env_sensor_suffix)
+    default "TEMP13_HUM10" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP13_HUM10$(env_sensor_suffix)
+    default "TEMP12_HUM08" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP12_HUM08$(env_sensor_suffix)
+    default "TEMP11_HUM11" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP11_HUM11$(env_sensor_suffix)
+    default ""
+
+  config PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER$(env_sensor_suffix)
+    boolint "Hold master mode  "
+    default 0
+    help
+      Read with hold master mode commands (htu21d_hold_master).
+      Leave off unless your sensor needs it.
+endif
