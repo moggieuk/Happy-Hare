@@ -936,6 +936,7 @@ class Kconfig(object):
         "_tokens_i",
         "_reuse_tokens",
         "_line_queue", # Happy Hare added
+        "_line_queue_stack", # Happy Hare added
     )
 
     #
@@ -1145,6 +1146,7 @@ class Kconfig(object):
         # files usually source other Kconfig files. See _enter_file().
         self._filestack = []
         self._include_path = ()
+        self._line_queue_stack = [] # Happy Hare: see _enter_file()
 
         # The current parsing location
         self.filename = filename
@@ -2379,6 +2381,11 @@ class Kconfig(object):
         # before entering the file
         self._filestack.append((self._include_path, self._readline))
 
+        # Happy Hare: lines queued by an @repeat/@if in the parent file belong
+        # after the sourced file, so park them until _leave_file()
+        self._line_queue_stack.append(getattr(self, "_line_queue", []))
+        self._line_queue = []
+
         # _include_path is a tuple, so this rebinds the variable instead of
         # doing in-place modification
         self._include_path += ((self.filename, self.linenr),)
@@ -2416,6 +2423,7 @@ class Kconfig(object):
         # Restore include path and 'file' object
         self._readline.__self__.close()  # __self__ fetches the 'file' object
         self._include_path, self._readline = self._filestack.pop()
+        self._line_queue = self._line_queue_stack.pop() # Happy Hare: see _enter_file()
 
     # Happy Hare: Added
     def _queue_line(self, line, linenr=None):

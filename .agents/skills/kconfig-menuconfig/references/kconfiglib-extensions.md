@@ -114,6 +114,15 @@ once expanded and can be nested.
   per-gate pin/prompt blocks where the gate count is compile-time fixed
   (max 12) and prompts are conditionally hidden via
   `prompt "..." if PARAM_NUM_GATES > $(i)`.
+- **`source` inside a body works.** Each sourced file starts with an empty
+  line queue and the caller's queue resumes when it ends (`_enter_file` /
+  `_leave_file` park it on `_line_queue_stack`), so the rest of the body
+  follows the sourced file. `$(i)` is substituted only in the body's own
+  lines, so pass it on in a variable assigned on the line before:
+  `suffix := _$(i)` then `source "components/Kconfig.<fragment>"`.
+  A stray `$(i)` inside the sourced file expands to empty and silently
+  merges every copy into one symbol. Tested by
+  `test/installer/test_kconfig_repeat_source.py`.
 - **Cost is in the count, not the macro.** Every expanded line tokenizes
   into real symbol nodes (prompts, defaults, dep-graph entries), so a
   `min=0 max=11` block adds 12× the body's node count to **every parse**
