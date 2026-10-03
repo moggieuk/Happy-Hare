@@ -158,5 +158,57 @@ class TestDryingRotationWhilePrinting(unittest.TestCase):
         self.assertIn('Drying cycle stopped', '\n'.join(self.hh.console[at:]))
 
 
+class TestDryingWithFilamentInAGate(unittest.TestCase):
+    """Filament in a gate can't be rotated: the QIDI Box limits drying to heater_loaded_max_temp (45C)."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.manager = self.unit.environment_manager
+        heater_name = self.unit.filament_heater.split()[-1]
+        self.heater = self.hh.printer.lookup_object('heaters').heaters[heater_name]
+        for gate in range(4):
+            self.hh.run_gcode('MMU_GATE_MAP GATE=%d AVAILABLE=0 QUIET=1' % gate)
+
+    def _dry(self):
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 TEMP=60 TIMER=60')
+        return '\n'.join(self.hh.console[at:])
+
+    def test_filament_in_a_gate_limits_the_drying_temperature(self):
+        self.assertEqual(self.unit.p.heater_loaded_max_temp, 45.)
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        output = self._dry()
+        self.assertTrue(self.manager.is_drying())
+        self.assertEqual(self.heater.target_temp, 45.)
+        self.assertIn('limited to 45.0', output)
+
+    def test_no_limit_with_all_gates_empty(self):
+        self._dry()
+        self.assertEqual(self.heater.target_temp, 60.)
+
+    def test_limit_applies_when_filament_is_loaded_during_drying(self):
+        self._dry()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self.heater.target_temp, 45.)
+
+    def test_limit_is_kept_for_the_rest_of_the_cycle(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        self._dry()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+        self.hh.reactor.advance(2 * ENV_CHECK_INTERVAL)
+        self.assertTrue(self.manager.is_drying())
+        self.assertEqual(self.heater.target_temp, 45.)
+
+    def test_no_limit_when_disabled(self):
+        self.unit.p.heater_loaded_max_temp = 0.
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 QUIET=1')
+        self._dry()
+        self.assertEqual(self.heater.target_temp, 60.)
+
+
 if __name__ == '__main__':
     unittest.main()

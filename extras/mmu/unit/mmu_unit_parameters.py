@@ -427,6 +427,7 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Heater
         ParamSpec('heater_max_temp',                  'float',  65.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
+        ParamSpec('heater_loaded_max_temp',           'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_default_dry_temp',          'float',  45.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_default_dry_time',          'float', 300.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_default_dry_humidity',      'float',  25.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),

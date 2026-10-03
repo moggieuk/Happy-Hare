@@ -466,6 +466,8 @@ class MmuEnvironmentManager:
             self._stop_drying_cycle("Drying cycle stopped because spool rotation is not possible while printing on this MMU", reset_state=True)
             return self.reactor.NEVER
 
+        self._apply_loaded_temp_limit()
+
         now = self.reactor.monotonic()
 
         # Per-gate drying mode
@@ -618,6 +620,7 @@ class MmuEnvironmentManager:
                     self._state_set(gate, DRYING_STATE_ACTIVE)
                 except Exception:
                     pass
+            self._apply_loaded_temp_limit(set_heater=False)
             self._heater_on(self._drying_temp)
 
         else:
@@ -697,7 +700,51 @@ class MmuEnvironmentManager:
             gd['last_temp'] = cur_temp
             gd['last_humidity'] = cur_humidity
 
+            self._limit_gate_temp(gate, gd)
             self._heater_on(gd.get('temp'), gate=gate)
+
+
+    def _loaded_temp_limit(self, gates):
+        """
+        Filament in a gate can't be rotated, so drying above heater_loaded_max_temp would overheat its
+        spool and the filament next to the heater. Returns the limit if any of the gates hold filament
+        """
+        limit = self.mmu_unit.p.heater_loaded_max_temp
+        if limit > 0 and any(self.mmu.gate_status[gate] != GATE_EMPTY for gate in gates):
+            return limit
+        return None
+
+
+    def _limit_gate_temp(self, gate, gd):
+        """
+        Per-gate heaters: lower this gate's drying temperature if it holds filament. Returns True if lowered
+        """
+        limit = self._loaded_temp_limit([gate])
+        if limit is not None and gd.get('temp') is not None and gd['temp'] > limit:
+            gd['temp'] = limit
+            self.mmu.log_info("Gate %d drying temperature limited to %.1f°C because its filament can't be rotated" % (gate, limit))
+            return True
+        return False
+
+
+    def _apply_loaded_temp_limit(self, set_heater=True):
+        """
+        Lower the drying temperature while filament can't be rotated. It stays lowered for the
+        rest of the cycle, so it doesn't rise again e.g. when a print ends with filament loaded
+        """
+        if not self.has_per_gate_heaters():
+            limit = self._loaded_temp_limit(self.mmu_unit.gate_range())
+            if limit is not None and self._drying_temp > limit:
+                self._drying_temp = limit
+                self.mmu.log_info("Drying temperature limited to %.1f°C because filament in a gate can't be rotated" % limit)
+                if set_heater:
+                    self._heater_on(limit)
+            return
+
+        for gate in self._get_active_gates():
+            gd = self._gate_drying.get(gate)
+            if gd and self._limit_gate_temp(gate, gd) and set_heater:
+                self._heater_on(gd['temp'], gate=gate)
 
 
     def _stop_drying_cycle(self, msg="Filament drying stopped", reset_state=True):

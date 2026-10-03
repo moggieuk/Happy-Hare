@@ -7,6 +7,7 @@
 # Heater parameter tokens which must be inside if MMU_HAS_HEATER clause in cfg templates:
 #   PARAM_FILAMENT_HEATER
 #   PARAM_HEATER_MAX_TEMP
+#   PARAM_HEATER_LOADED_MAX_TEMP
 #   PARAM_HEATER_DEFAULT_DRY_TEMP
 #   PARAM_HEATER_DEFAULT_DRY_TIME
 #   PARAM_HEATER_DEFAULT_DRY_HUMIDITY
@@ -104,6 +105,16 @@ if MMU_HAS_HEATER
         This set the absolute limit for heater operation and is designed
         to protect the MMU construction. Individual filament temps are
         defined in 'drying_data' in mmu.cfg
+
+    config PARAM_HEATER_LOADED_MAX_TEMP
+      string "Max temp with filament in a gate"
+      default "0"
+      help
+        Maximum drying temperature while any gate holds filament (with
+        per-gate heaters, while that gate does). Filament in a gate can't
+        be rotated, so its spool and the filament next to the heater would
+        overheat. Once lowered, the temperature stays lowered for the rest
+        of the drying cycle. 0 = no limit
 
     config PARAM_HEATER_DEFAULT_DRY_TEMP
       string "Default drying temperature"
