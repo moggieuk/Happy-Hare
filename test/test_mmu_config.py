@@ -612,6 +612,33 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertNotIn('bme_report_time', sensor)
         self.assertNotIn('bme280_report_time', sensor)
 
+    def test_htu21d_sensor_uses_its_own_report_time_and_address(self):
+        kc, sensor = self._single_sensor(
+            'environment_sensor_htu21d_report_time',
+            'CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D')
+
+        self.assertEqual(kc.get('PARAM_SENSOR_REPORT_TIME_PARAM'), 'htu21d_report_time')
+        self.assertEqual(sensor['sensor_type'], 'HTU21D')
+        self.assertEqual(sensor['htu21d_report_time'], '60')
+        self.assertEqual(sensor['i2c_address'], '64')
+        self.assertNotIn('aht10_report_time', sensor)
+
+    def test_htu21d_per_gate_sensor(self):
+        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        with cfg._env(env):
+            kc = cfg._kconfig('environment_sensor_htu21d_per_gate', {
+                'MMU_TYPE_EMU_1_0': True,
+                'MMU_HAS_PER_GATE_MCU': True,
+                'CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_0': True,
+            })
+        rendered = cfg._render_templates(
+            (HARDWARE,), kc,
+            {'PARAM_TOTAL_NUM_GATES': kc.getint('PARAM_NUM_GATES')})
+        sensor = dict(cfg.assemble(rendered, macros=False).items('temperature_sensor unit0_Env0'))
+        self.assertEqual(sensor['sensor_type'], 'HTU21D')
+        self.assertEqual(sensor['htu21d_report_time'], '60')
+        self.assertEqual(sensor['i2c_address'], '64')
+
     def test_mixed_per_gate_sensors_select_report_parameter_independently(self):
         env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
         with cfg._env(env):
