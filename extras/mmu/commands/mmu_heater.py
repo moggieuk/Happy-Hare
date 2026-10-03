@@ -182,10 +182,14 @@ class MmuHeaterCommand(BaseCommand):
                 return
 
             # Optional spool rotation (requires eSpooler and explicit gates)
-            # (BTT ViViD is allowed if not in print)
+            # (gear driven rotation while printing needs a gear per gate, e.g. not BTT ViViD)
             if rotate and not (mmu_unit.has_espooler() or mmu_unit.gear_rotates_spool):
                 self.mmu.log_warning("Rotation requested but no eSpooler and the gear motor cannot turn the spool - ignoring")
                 rotate = 0
+
+            if rotate and self.mmu.is_in_print() and not em.can_rotate_while_printing():
+                self.mmu.log_error("Spool rotation is not possible while printing on this MMU. Start drying without ROTATE or after the print")
+                return
 
             if rotate and not gates_param:
                 raise gcmd.error("ROTATE requires explicit GATES parameter")
