@@ -9,6 +9,7 @@ from test.hh import cfg, profiles
 
 SECTION = re.compile(r'^\[([^\]]+)\]', re.M)
 QB2 = {'MMU_FAMILY_QUATTRO_BOX': True, 'MMU_TYPE_QUATTRO_BOX_2_0': True}
+X5 = {'BOARD_TYPE_CHAMELEON_X5_1_0': True}
 X5_BOXTURTLE = {'MMU_TYPE_BOX_TURTLE_1_0': True, 'BOARD_TYPE_CHAMELEON_X5_1_0': True}
 
 
@@ -94,6 +95,47 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         pins = [self.item('gcode_button unit0_eject%d' % gate)['pin'] for gate in range(4)]
         self.assertEqual(pins, ['^unit0:PB14', '^unit0:PB12', '^unit0:PD8', '^unit0:PE14'])
 
+    def test_gate_sensors_and_shared_exit_homing(self):
+        sensors = self.item('mmu_sensors unit0')
+        self.assertEqual(sensors['mmu_entry_switch_pin_0'], '^unit0:PE11')
+        self.assertEqual(sensors['mmu_exit_switch_pin_0'], '^unit0:PE10')
+        self.assertEqual(sensors['mmu_shared_exit_switch_pin'], '^unit0:PA6')
+        params = self.item('mmu_unit_parameters unit0')
+        self.assertEqual(params['gate_homing_endstop'], 'mmu_shared_exit')
+        self.assertEqual(params['gate_parking_distance'], '-30')
+        self.assertEqual(params['gate_preload_endstop'], 'mmu_exit')
+        self.assertEqual(params['gate_preload_parking_distance'], '10')
+
+    def test_proportional_buffer_on_t2_with_default_calibration(self):
+        self.assertEqual(self.item('mmu_unit unit0')['buffer'], 'unit0')
+        buffer = self.item('mmu_buffer unit0')
+        self.assertEqual(buffer['analog_pin'], 'unit0:PC2')
+        self.assertNotIn('tension_pin', buffer)
+        self.assertNotIn('compression_pin', buffer)
+        # Calibration is the user's, not the machine's
+        self.assertEqual((buffer['analog_max_compression'], buffer['analog_max_tension'],
+                          buffer['analog_neutral_point']), ('1.0', '0.0', '0.5'))
+
+    def test_led_segments(self):
+        leds = self.item('mmu_leds unit0')
+        self.assertEqual(leds['exit_leds'], 'neopixel:_unit0_leds (1-4)')
+        self.assertEqual(leds['entry_leds'], 'neopixel:_unit0_leds (8-5)')
+        self.assertEqual(leds['status_leds'], 'neopixel:_unit0_leds (9-38)')
+        self.assertEqual(leds['logo_leds'], '')
+        self.assertEqual(leds['entry_effect'], 'gate_status')
+
+    def test_machine_tuning(self):
+        params = self.item('mmu_unit_parameters unit0')
+        expected = {
+            'gear_load_speed': '500', 'gear_load_accel': '500',
+            'gear_unload_speed': '500', 'gear_unload_accel': '500',
+            'gear_short_move_accel': '600', 'gear_homing_speed': '50',
+            'sync_gear_current': '40', 'gate_preload_attempts': '5',
+            'bowden_unload_homing_buffer': '50',
+        }
+        self.assertEqual({k: params[k] for k in expected}, expected)
+        self.assertEqual(self.item('tmc2209 mmu_stepper unit0_gear')['run_current'], '0.9')
+
     def test_no_section_or_pin_is_defined_twice(self):
         sections = SECTION.findall(self.text)
         self.assertEqual(sorted({s for s in sections if sections.count(s) > 1}), [])
@@ -123,6 +165,11 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.assertFalse(_sections(parser, kind))
         self.assertNotIn('temperature_sensor unit0_Outside', parser.sections())
+        # PC2 is the T2 thermistor except on QuattroBox v2
+        parser, _ = _render('x5_custom_buffer', dict(
+            X5, MMU_CUSTOM=True, MMU_HAS_SYNC_FEEDBACK_BUFFER=True,
+            MMU_HAS_SENSOR_BUFFER_PROPORTIONAL=True))
+        self.assertNotIn('PC2', dict(parser.items('mmu_buffer unit0')).get('analog_pin', ''))
 
     def test_enabled_features_take_the_board_defaults(self):
         parser, _ = _render('x5_boxturtle_dryer', dict(
@@ -153,10 +200,14 @@ class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
     def test_nothing_from_the_x5(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('qb2_mmb_flags', dict(QB2, BOARD_TYPE_MMB_2_0=True))
-        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS'):
+        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
+                     'MMU_HAS_SENSOR_ENTRY', 'MMU_HAS_SENSOR_EXIT', 'MMU_HAS_SENSOR_SHARED_EXIT',
+                     'MMU_HAS_SYNC_FEEDBACK_BUFFER'):
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         self.assertEqual(kconfig.get('PARAM_MISC_HARDWARE'), '')
+        # Forward preload parking is only valid on per-gate exit sensors
+        self.assertEqual(kconfig.get('PARAM_GATE_PRELOAD_PARKING_DISTANCE'), '-30')
 
 
 if __name__ == '__main__':
