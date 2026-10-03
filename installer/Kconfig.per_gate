@@ -64,6 +64,9 @@ if MMU_HAS_PER_GATE_CONFIG
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
                 bool "HTU21D"
+
+              config CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X_$(i)
+                bool "SHT3X"
             endchoice
 
             config PARAM_ENVIRONMENT_SENSOR_TYPE_$(i)
@@ -74,23 +77,27 @@ if MMU_HAS_PER_GATE_CONFIG
               default "AHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               default "BME280" if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
               default "HTU21D" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
+              default "SHT3X"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X_$(i)
 
             config PARAM_SENSOR_REPORT_TIME_PARAM_$(i)
               string
               default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
+              default "sht3x_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X_$(i)
               default ""
 
             config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_$(i)
               int "Report time (secs)" if PARAM_SENSOR_REPORT_TIME_PARAM_$(i) != ""
               default 0  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
               default 60
+              range 0 300     if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X_$(i)
               range 0 0 5 300
               help
                 Seconds between sensor readings (default 60 seconds)
 
-                0 leaves the option out so Klipper uses its own default (30 secs).
-                Otherwise at least 5 secs (Klipper rejects 1 to 4).
+                0 leaves the option out so Klipper uses its own default
+                (30 secs, or 1 sec for SHT3X).
+                Otherwise at least 5 secs (1 sec for SHT3X).
 
             choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
               prompt "i2c bus type      "
@@ -133,6 +140,7 @@ if MMU_HAS_PER_GATE_CONFIG
               int "i2c address       "
               default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
               default 64  if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
+              default 68  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X_$(i)
               default 56
 
             if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
