@@ -120,6 +120,46 @@ if MMU_HAS_PER_GATE_CONFIG
                 (30 secs; 1 sec for SHT3X, 0.8 secs for LM75).
                 Otherwise at least 5 secs (1 sec for SHT3X and LM75).
 
+            if PARAM_SENSOR_REPORT_TIME_PARAM_$(i) = "htu21d_report_time"
+              choice CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_$(i)
+                prompt "Resolution        "
+                default CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_DEFAULT_$(i)
+                help
+                  Measurement resolution (htu21d_resolution). "Klipper default"
+                  leaves the option out, so Klipper uses TEMP12_HUM08.
+
+                config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_DEFAULT_$(i)
+                  bool "Klipper default"
+
+                config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP14_HUM12_$(i)
+                  bool "TEMP14_HUM12"
+
+                config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP13_HUM10_$(i)
+                  bool "TEMP13_HUM10"
+
+                config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP12_HUM08_$(i)
+                  bool "TEMP12_HUM08"
+
+                config CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP11_HUM11_$(i)
+                  bool "TEMP11_HUM11"
+              endchoice
+
+              config PARAM_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_$(i)
+                string
+                default "TEMP14_HUM12" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP14_HUM12_$(i)
+                default "TEMP13_HUM10" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP13_HUM10_$(i)
+                default "TEMP12_HUM08" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP12_HUM08_$(i)
+                default "TEMP11_HUM11" if CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP11_HUM11_$(i)
+                default ""
+
+              config PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER_$(i)
+                boolint "Hold master mode  "
+                default 0
+                help
+                  Read with hold master mode commands (htu21d_hold_master).
+                  Leave off unless your sensor needs it.
+            endif
+
             choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
               prompt "i2c bus type      "
               default CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)

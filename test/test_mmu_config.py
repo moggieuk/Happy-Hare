@@ -630,6 +630,8 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertEqual(sensor['i2c_address'], address)
         report_options = {k for k in sensor if k.endswith('_report_time')}
         self.assertEqual(report_options, {option} if option else set())
+        self.assertNotIn('htu21d_resolution', sensor)
+        self.assertNotIn('htu21d_hold_master', sensor)
         if option:
             self.assertEqual(sensor[option], '60')
 
@@ -712,6 +714,39 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
                     self.assertEqual(
                         kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_%d' % gate].str_value,
                         expected)
+
+    def test_htu21d_resolution_and_hold_master_render_only_when_chosen(self):
+        resolution = 'CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_'
+        hold_master = 'PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER'
+
+        _, sensor = self._single_sensor(
+            'environment_sensor_htu21d_options', self.CHOICE + 'HTU21D',
+            {resolution + 'TEMP14_HUM12': True, hold_master: 1})
+        self.assertEqual(sensor['htu21d_resolution'], 'TEMP14_HUM12')
+        self.assertEqual(sensor['htu21d_hold_master'], '1')
+
+        # Values left over from an HTU21D-family type must not reach another driver
+        _, sensor = self._single_sensor(
+            'environment_sensor_htu21d_options_on_aht', self.CHOICE + 'AHT2X',
+            {resolution + 'TEMP14_HUM12': True, hold_master: 1})
+        self.assertNotIn('htu21d_resolution', sensor)
+        self.assertNotIn('htu21d_hold_master', sensor)
+
+        _, sensors = self._per_gate_sensors('environment_sensor_htu21d_options_per_gate', {
+            self.CHOICE + 'SI7021_0': True,
+            resolution + 'TEMP11_HUM11_0': True,
+            hold_master + '_0': 1,
+            self.CHOICE + 'HTU21D_1': True,
+            self.CHOICE + 'AHT2X_2': True,
+            resolution + 'TEMP13_HUM10_2': True,
+            hold_master + '_2': 1,
+        })
+        self.assertEqual(sensors[0]['htu21d_resolution'], 'TEMP11_HUM11')
+        self.assertEqual(sensors[0]['htu21d_hold_master'], '1')
+        for gate in (1, 2):
+            with self.subTest(gate=gate):
+                self.assertNotIn('htu21d_resolution', sensors[gate])
+                self.assertNotIn('htu21d_hold_master', sensors[gate])
 
     def test_aht_sensor_uses_selected_report_time_parameter(self):
         kc, sensor = self._single_sensor(
