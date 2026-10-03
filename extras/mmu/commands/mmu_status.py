@@ -87,7 +87,7 @@ class MmuStatusCommand(BaseCommand):
             if unit.has_encoder():
                 lines.append(f"{UI_CASCADE} Encoder reads {unit.encoder.get_distance():.1f}mm\n")
             if unit.has_buffer():
-                lines.append(f"{UI_CASCADE} Buffer: {unit.sync_feedback.get_sync_feedback_string(detail=True).capitalize()}\n")
+                lines.append(f"{UI_CASCADE} Buffer reads {unit.sync_feedback.get_sync_feedback_string(detail=True)}\n")
 
 
         # This is all now the currently active unit ---------

@@ -135,7 +135,7 @@ class TestBufferStatus(unittest.TestCase):
         hh.boot(calibrate=True, selected_gate=0, selector_last_pos=True)
         for gate in (0, 9):
             hh.run_gcode('MMU_SELECT GATE=%d' % gate)
-            for compressed, expected in ((True, 'Compressed'), (False, 'Neutral')):
+            for compressed, expected in ((True, 'compressed'), (False, 'neutral')):
                 hh.sensor('unit1:filament_tension').set(False)
                 hh.sensor('unit1:filament_compression').set(compressed)
                 for command in ('MMU_STATUS', 'MMU_STATUS SHOWCONFIG=1'):
@@ -144,8 +144,8 @@ class TestBufferStatus(unittest.TestCase):
                         hh.run_gcode(command)
                         shown = '\n'.join(hh.console[start:])
                         ercf, vvd = shown.split('● ')[1:3]
-                        self.assertNotIn('Buffer:', ercf)
-                        self.assertIn('└ Buffer: %s\n' % expected, vvd)
+                        self.assertNotIn('Buffer reads', ercf)
+                        self.assertIn('└ Buffer reads %s\n' % expected, vvd)
         self.assertEqual(hh.errors, [])
 
     def test_status_reads_each_buffers_own_sensors(self):
@@ -161,8 +161,8 @@ class TestBufferStatus(unittest.TestCase):
         start = len(hh.console)
         hh.run_gcode('MMU_STATUS SHOWCONFIG=1')
         ercf, vvd = '\n'.join(hh.console[start:]).split('● ')[1:3]
-        self.assertIn('└ Buffer: Tension\n', ercf)
-        self.assertIn('└ Buffer: Compressed\n', vvd)
+        self.assertIn('└ Buffer reads tension\n', ercf)
+        self.assertIn('└ Buffer reads compressed\n', vvd)
         self.assertEqual(hh.errors, [])
 
 
