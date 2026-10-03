@@ -24,6 +24,7 @@ choice CHOICE_ENVIRONMENT_SENSOR_TYPE$(env_sensor_suffix)
     Select the type of environment sensor
     AHT1X/AHT2X/AHT3X need Klipper newer than v0.13.0 or Kalico v2026.06+
     Use AHT10 on older firmware
+    The HTU21D family needs MCU i2c support for zero-length writes
 
   config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10$(env_sensor_suffix)
     bool "AHT10 [[DIM]]/ older Klipper[[/DIM]]"

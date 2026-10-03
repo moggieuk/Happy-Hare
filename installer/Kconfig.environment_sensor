@@ -50,7 +50,7 @@ config UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
 
 if !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
   config MMU_HAS_ENVIRONMENT_SENSOR
-    bool "Has environment sensor(s)?"
+    bool "Has environment sensors?"
     forceshow
     default n
     help
@@ -152,11 +152,11 @@ endif
 # -------------------------------------
 
 config BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
-  bool "Create MCU CPU sensor(s)?"
+  bool "Create MCU CPU sensors?"
   depends on !BOARD_TYPE_MANUAL
   default y
   help
-    Create [temperature_sensor] sections for the MCU(s) themselves for CPU temperature monitoring.
+    Create [temperature_sensor] sections for the MCUs themselves for CPU temperature monitoring.
 
 if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
   config BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
@@ -164,5 +164,5 @@ if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
     default y if MMU_HAS_ENVIRONMENT_SENSOR
     default n
     help
-      Hide MCU temperature sensor(s) in Mainsail / Fluidd interface.
+      Hide MCU temperature sensors in Mainsail / Fluidd interface.
 endif
