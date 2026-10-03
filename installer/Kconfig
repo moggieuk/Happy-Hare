@@ -102,6 +102,13 @@
 #     units owning a component and the owner's capabilities. Used through the
 #     components/Kconfig.shared_choice and Kconfig.shared_export fragments.
 #     $(printer-flag,SYM) reads a printer-level flag from the top-level config
+# 21. 'range_set <low> <high> [<low> <high> ...] [if <expr>]' on int/hex symbols
+#     accepts any of the inclusive intervals (bounds may be literals or numeric symbols):
+#       range_set 0 10 20 100   # 0-10 or 20-100
+#       range_set 0 0 5 200     # exactly 0 or 5-200
+#     The first active range_set wins; do not mix range_set and range on one symbol.
+#     Invalid user values fall back to defaults; defaults outside the set clamp to the
+#     nearest endpoint (ties go lower). Menuconfig shows the set and rejects invalid input.
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
