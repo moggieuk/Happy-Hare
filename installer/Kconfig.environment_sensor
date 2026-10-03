@@ -49,6 +49,7 @@ if !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
     help
       Select if the MMU has a humidity/temperature sensor in the filament storage enclosure
 endif
+comment "$(misc_hardware_hint)" if MMU_HAS_ENVIRONMENT_SENSOR && CUSTOM_ENVIRONMENT_SENSOR_SETUP
 
 
 # -------------------------------------

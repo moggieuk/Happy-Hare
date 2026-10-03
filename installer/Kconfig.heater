@@ -41,6 +41,7 @@ if !UNSELECT_MMU_HAS_HEATER
     help
         Select if the MMU has a heater in the filament storage enclosure
 endif
+comment "$(misc_hardware_hint)" if MMU_HAS_HEATER && CUSTOM_HEATER_SETUP
 
 # -------------------------------------
 # Heater hardware config
@@ -156,6 +157,8 @@ config MMU_HAS_HEATER_FANS
   help
     Create a fixed Klipper [heater_fan] associated directly with the shared
     enclosure heater. Per-gate heater fans are selected within each gate.
+
+comment "$(misc_hardware_hint)" if MMU_HAS_HEATER_FANS && CUSTOM_HEATER_FAN_SETUP
 
 
 # -------------------------------------

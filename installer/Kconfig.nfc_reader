@@ -80,6 +80,7 @@ if !UNSELECT_MMU_HAS_NFC_READER
     help
       Select if the MMU has a NFC reader for sensing spool RFID's
 endif
+comment "$(misc_hardware_hint)" if MMU_HAS_NFC_READER && CUSTOM_NFC_READER_SETUP
 
 
 # ------------------------------------
