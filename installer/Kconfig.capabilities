@@ -99,24 +99,26 @@ config MMU_HAS_BUFFER_MCU
 config PARAM_MISC_HARDWARE
   string
 
-# If custom hardware includes any of these, disable generic setup to prevent duplication
+# If custom hardware includes any of these, disable generic setup to prevent duplication.
+# No default here (so n) - a board or type file sets "def_bool y" next to the
+# misc hardware that provides it
 config CUSTOM_LED_SETUP
-  def_bool n
+  bool
 
 config CUSTOM_ENVIRONMENT_SENSOR_SETUP
-  def_bool n
+  bool
 
 config CUSTOM_HEATER_SETUP
-  def_bool n
+  bool
 
 config CUSTOM_FAN_SETUP
-  def_bool n
+  bool
 
 config CUSTOM_HEATER_FAN_SETUP
-  def_bool n
+  bool
 
 config CUSTOM_NFC_READER_SETUP
-  def_bool n
+  bool
 
 
 # ------------------------------------
