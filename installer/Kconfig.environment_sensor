@@ -21,9 +21,9 @@
 #   as above with _<gate_index> extension
 #
 # SUPPORTED SENSOR TYPES
-#   - AHT1X     (humidity/temperature, requires patched aht1x driver)
-#   - AHT2X     (humidity/temperature, requires patched aht1x driver)
-#   - AHT3X     (humidity/temperature, requires patched aht1x driver)
+#   - AHT1X     (humidity/temperature, Klipper after v0.13.0 or Kalico v2026.06+)
+#   - AHT2X     (humidity/temperature, Klipper after v0.13.0 or Kalico v2026.06+)
+#   - AHT3X     (humidity/temperature, Klipper after v0.13.0 or Kalico v2026.06+)
 #   - BME280    (humidity/temperature/pressure)
 #   - HTU21D    (humidity/temperature, also SHT21/SI70xx family)
 #
@@ -95,6 +95,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         default CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X
         help
           Select the type of environment sensor being used
+          AHT1X/AHT2X/AHT3X need Klipper newer than v0.13.0 or Kalico v2026.06+
 
         config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X
           bool "AHT1X"
@@ -132,23 +133,20 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
 
       config PARAM_SENSOR_REPORT_TIME_PARAM
         string
-        default ""                  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
+        default "aht10_report_time"  if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
         default "htu21d_report_time" if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
-        default "aht10_report_time"
+        default ""
 
       config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME
         int "Report time (secs)" if PARAM_SENSOR_REPORT_TIME_PARAM != ""
         default 0  if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
         default 60
-        range 0 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
-        range 1 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X
-        range 5 300 if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D
+        range 0 0 5 300
         help
-          Frequency to poll the sensor (default 60 seconds)
+          Seconds between sensor readings (default 60 seconds)
 
-          NOTE: This option may require a patched aht1x driver for Klipper
-          to support the aht10_report_time parameter.
-          Recommend setting this to >= 60sec or 0 to disable.
+          0 leaves the option out so Klipper uses its own default (30 secs).
+          Otherwise at least 5 secs (Klipper rejects 1 to 4).
 
       config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS
         int "i2c address       "

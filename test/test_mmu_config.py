@@ -577,19 +577,129 @@ class TestMenuconfigMacroStrings(unittest.TestCase):
 
 class TestEnvironmentSensorReportTime(unittest.TestCase):
 
-    def _single_sensor(self, name, choice):
+    # Choice member -> (sensor_type, i2c_address, report-time option or None), per the
+    # Klipper drivers: aht10.py, bme280.py (fixed 0.8s, no option) and htu21d.py
+    SENSOR_TYPES = {
+        'AHT1X':  ('AHT1X',  '56',  'aht10_report_time'),
+        'AHT2X':  ('AHT2X',  '56',  'aht10_report_time'),
+        'AHT3X':  ('AHT3X',  '56',  'aht10_report_time'),
+        'BME280': ('BME280', '118', None),
+        'HTU21D': ('HTU21D', '64',  'htu21d_report_time'),
+    }
+    CHOICE = 'CHOICE_ENVIRONMENT_SENSOR_TYPE_'
+
+    def _single_sensor(self, name, choice, extra=None):
         profile = profiles.get('boxturtle').derive(
             name,
-            syms={
+            syms=dict({
                 'MMU_HAS_ENVIRONMENT_SENSOR': True,
                 choice: True,
-            })
+            }, **(extra or {})))
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig(name, profile.syms)
         rendered = cfg.render(profile)
         parser = cfg.assemble(rendered, macros=False)
         sensor = dict(parser.items('temperature_sensor unit0_Env'))
         return kc, sensor
+
+    def _per_gate_sensors(self, name, syms):
+        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        with cfg._env(env):
+            kc = cfg._kconfig(name, dict({
+                'MMU_TYPE_EMU_1_0': True,
+                'MMU_HAS_PER_GATE_MCU': True,
+            }, **syms))
+        rendered = cfg._render_templates(
+            (HARDWARE,), kc,
+            {'PARAM_TOTAL_NUM_GATES': kc.getint('PARAM_NUM_GATES')})
+        parser = cfg.assemble(rendered, macros=False)
+        sensors = [dict(parser.items('temperature_sensor unit0_Env%d' % gate))
+                   for gate in range(kc.getint('PARAM_NUM_GATES'))]
+        return kc, sensors
+
+    def _assert_sensor(self, sensor, member):
+        sensor_type, address, option = self.SENSOR_TYPES[member]
+        self.assertEqual(sensor['sensor_type'], sensor_type)
+        self.assertEqual(sensor['i2c_address'], address)
+        report_options = {k for k in sensor if k.endswith('_report_time')}
+        self.assertEqual(report_options, {option} if option else set())
+        if option:
+            self.assertEqual(sensor[option], '60')
+
+    def test_every_shared_type_renders_its_driver_options(self):
+        for member in self.SENSOR_TYPES:
+            with self.subTest(member=member):
+                _, sensor = self._single_sensor(
+                    'environment_sensor_type_%s' % member.lower(), self.CHOICE + member)
+                self._assert_sensor(sensor, member)
+
+    def test_every_per_gate_type_renders_its_driver_options(self):
+        members = list(self.SENSOR_TYPES)
+        kc, sensors = self._per_gate_sensors('environment_sensor_types_per_gate', {
+            '%s%s_%d' % (self.CHOICE, member, gate): True
+            for gate, member in enumerate(members)})
+        self.assertEqual(len(sensors), len(members))
+        for gate, member in enumerate(members):
+            with self.subTest(gate=gate, member=member):
+                self._assert_sensor(sensors[gate], member)
+
+    def test_shared_and_per_gate_offer_the_same_types(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('environment_sensor_type_members', {})
+        pattern = re.compile(r'^%s([A-Z0-9]+?)(_0)?$' % self.CHOICE)
+        shared, per_gate = set(), set()
+        for name in kc.syms:
+            m = pattern.match(name)
+            if m:
+                (per_gate if m.group(2) else shared).add(m.group(1))
+        self.assertEqual(shared, set(self.SENSOR_TYPES))
+        self.assertEqual(per_gate, set(self.SENSOR_TYPES))
+
+    def test_zero_report_time_leaves_klipper_default(self):
+        for member in ('AHT2X', 'HTU21D'):
+            with self.subTest(member=member):
+                kc, sensor = self._single_sensor(
+                    'environment_sensor_zero_report_time_%s' % member.lower(),
+                    self.CHOICE + member,
+                    {'PARAM_ENVIRONMENT_SENSOR_REPORT_TIME': 0})
+                self.assertEqual(
+                    kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME'].str_value, '0')
+                self.assertNotIn(self.SENSOR_TYPES[member][2], sensor)
+
+        _, sensors = self._per_gate_sensors('environment_sensor_zero_report_time_per_gate', {
+            self.CHOICE + 'AHT2X_0': True,
+            'PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_0': 0,
+            self.CHOICE + 'HTU21D_1': True,
+            'PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_1': 0,
+        })
+        self.assertNotIn('aht10_report_time', sensors[0])
+        self.assertNotIn('htu21d_report_time', sensors[1])
+
+    def test_report_time_between_zero_and_klipper_minimum_is_rejected(self):
+        # A rejected user value falls back to the default
+        cases = ((0, '0'), (1, '60'), (4, '60'), (5, '5'), (300, '300'), (301, '60'))
+        base = dict(profiles.get('boxturtle').syms, MMU_HAS_ENVIRONMENT_SENSOR=True)
+        for member in ('AHT2X', 'HTU21D'):
+            for value, expected in cases:
+                with self.subTest(member=member, value=value):
+                    with cfg._env(cfg._SINGLE_UNIT_ENV):
+                        kc = cfg._kconfig('environment_sensor_report_time_range', dict(base, **{
+                            self.CHOICE + member: True,
+                            'PARAM_ENVIRONMENT_SENSOR_REPORT_TIME': value}))
+                    self.assertEqual(
+                        kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME'].str_value, expected)
+
+        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        for value, expected in cases:
+            with self.subTest(gate=1, value=value):
+                with cfg._env(env):
+                    kc = cfg._kconfig('environment_sensor_report_time_range_per_gate', {
+                        'MMU_TYPE_EMU_1_0': True,
+                        'MMU_HAS_PER_GATE_MCU': True,
+                        self.CHOICE + 'HTU21D_1': True,
+                        'PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_1': value})
+                self.assertEqual(
+                    kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_1'].str_value, expected)
 
     def test_aht_sensor_uses_selected_report_time_parameter(self):
         kc, sensor = self._single_sensor(
