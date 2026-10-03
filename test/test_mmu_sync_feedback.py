@@ -128,6 +128,44 @@ class TestSwitchSyncFeedbackString(unittest.TestCase):
                 self.assertEqual(sf.get_sync_feedback_string(detail=True), expected)
 
 
+class TestBufferStatus(unittest.TestCase):
+    def test_status_reports_only_configured_buffers_on_either_selected_unit(self):
+        hh = session('ercf_vvd')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True, selected_gate=0, selector_last_pos=True)
+        for gate in (0, 9):
+            hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+            for compressed, expected in ((True, 'Compressed'), (False, 'Neutral')):
+                hh.sensor('unit1:filament_tension').set(False)
+                hh.sensor('unit1:filament_compression').set(compressed)
+                for command in ('MMU_STATUS', 'MMU_STATUS SHOWCONFIG=1'):
+                    with self.subTest(gate=gate, state=expected, command=command):
+                        start = len(hh.console)
+                        hh.run_gcode(command)
+                        shown = '\n'.join(hh.console[start:])
+                        ercf, vvd = shown.split('● ')[1:3]
+                        self.assertNotIn('Buffer:', ercf)
+                        self.assertIn('└ Buffer: %s\n' % expected, vvd)
+        self.assertEqual(hh.errors, [])
+
+    def test_status_reads_each_buffers_own_sensors(self):
+        hh = session('ercf_vvd_buffers')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True, selected_gate=9, selector_last_pos=True)
+        prop = hh.sensor('unit0:filament_proportional')
+        sensor = prop.sensor
+        raw = sensor._neutral_point + (-0.95 * sensor._d_neg) * (-1 if sensor._reversed else 1)
+        prop.feed(raw)
+        hh.sensor('unit1:filament_tension').set(False)
+        hh.sensor('unit1:filament_compression').set(True)
+        start = len(hh.console)
+        hh.run_gcode('MMU_STATUS SHOWCONFIG=1')
+        ercf, vvd = '\n'.join(hh.console[start:]).split('● ')[1:3]
+        self.assertIn('└ Buffer: Tension\n', ercf)
+        self.assertIn('└ Buffer: Compressed\n', vvd)
+        self.assertEqual(hh.errors, [])
+
+
 class TestBufferSpringRelease(unittest.TestCase):
     """
     MMU_SYNC_FEEDBACK RELEASE=1 parks the buffer where its spring rests, so a sprung

@@ -156,13 +156,21 @@ class MmuSyncFeedback:
             return "unavailable"
 
         if state is None:
-            sm = self.mmu.sensor_manager
-            if sm.has_sensor(SENSOR_PROPORTIONAL):
+            buffer = self.mmu_unit.buffer
+            sensor = buffer.proportional_sensor
+            if sensor is not None and sensor.runout_helper.sensor_enabled:
                 # Report the buffer's hysteresis state, independent of controller mode
                 # and whether either derived switch is enabled. Control keeps the raw value.
-                state = sm.get_sensor_obj(SENSOR_PROPORTIONAL).get_virtual_sensor_state()
+                state = sensor.get_virtual_sensor_state()
             else:
-                state = self._get_sensor_state()
+                # Status can be requested for an inactive unit; read its own buffer.
+                def switch_state(sensor):
+                    if sensor is not None and sensor.runout_helper.sensor_enabled:
+                        return bool(sensor.runout_helper.filament_present)
+                    return None
+                tension = switch_state(buffer.tension_sensor)
+                compression = switch_state(buffer.compression_sensor)
+                state = 0 if tension == compression else 1 if compression else -1 if tension else 0
         if (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active) or detail:
             return 'compressed' if state > 0 else 'tension' if state < 0 else 'neutral'
         elif self.mmu.is_enabled and self.p.sync_feedback_enabled:
