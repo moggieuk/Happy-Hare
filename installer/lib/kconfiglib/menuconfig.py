@@ -3984,26 +3984,17 @@ def _check_valid(sym, s):
                    .format(s))
             return False
 
-        for low_sym, high_sym, cond in sym.ranges:
-            if expr_value(cond):
-                low_s = low_sym.str_value
-                high_s = high_sym.str_value
-
-                try:
-                    low = float(low_s)
-                    high = float(high_s)
-                except ValueError:
-                    # Bad range definition; let kconfiglib warnings/sanity
-                    # checks handle this elsewhere.
-                    break
-
-                val = float(s)
-                if not low <= val <= high:
-                    _error("{} is outside the range {}-{}"
-                           .format(s, low_s, high_s))
-                    return False
-
-                break
+        intervals = sym.active_ranges()
+        try:
+            allowed = not intervals or any(
+                float(low.str_value) <= float(s) <= float(high.str_value)
+                for low, high in intervals)
+        except ValueError:
+            # Bad range definition; leave diagnostics to kconfiglib.
+            return True
+        if not allowed:
+            _error("{} is not allowed. {}".format(s, _range_info(sym)))
+            return False
 
         return True
 
@@ -4063,17 +4054,11 @@ def _check_valid(sym, s):
                .format(s, TYPE_TO_STR[sym.orig_type]))
         return False
 
-    for low_sym, high_sym, cond in sym.ranges:
-        if expr_value(cond):
-            low_s = low_sym.str_value
-            high_s = high_sym.str_value
-
-            if not int(low_s, base) <= int(s, base) <= int(high_s, base):
-                _error("{} is outside the range {}-{}"
-                       .format(s, low_s, high_s))
-                return False
-
-            break
+    intervals = sym.active_ranges()
+    if intervals and not any(int(low.str_value, base) <= int(s, base) <= int(high.str_value, base)
+                             for low, high in intervals):
+        _error("{} is not allowed. {}".format(s, _range_info(sym)))
+        return False
 
     return True
 
@@ -4083,9 +4068,12 @@ def _range_info(sym):
     # 'sym', or None if 'sym' doesn't have a range
 
     if sym.orig_type in (INT, HEX, FLOAT): # Happy Hare: Added FLOAT
-        for low, high, cond in sym.ranges:
-            if expr_value(cond):
-                return "Range: {}-{}".format(low.str_value, high.str_value)
+        intervals = sym.active_ranges()
+        if intervals:
+            return "Range: " + " or ".join(
+                low.str_value if low.str_value == high.str_value else
+                "{}-{}".format(low.str_value, high.str_value)
+                for low, high in intervals)
 
     return None
 

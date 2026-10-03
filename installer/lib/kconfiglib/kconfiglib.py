@@ -3804,9 +3804,13 @@ class Kconfig(object):
             elif t0 is _T_PROMPT:
                 self._parse_prompt(node)
 
-            elif t0 is _T_RANGE:
-                node.ranges.append((self._expect_sym(), self._expect_sym(),
-                                    self._parse_cond()))
+            elif t0 is _T_RANGE: # Happy Hare: Allow multiple inclusive intervals
+                bounds = []
+                while self._tokens[self._tokens_i] not in (None, _T_IF):
+                    bounds.append(self._expect_sym())
+                if not bounds or len(bounds) % 2:
+                    self._parse_error("range requires one or more low/high pairs")
+                node.ranges.append(tuple(bounds) + (self._parse_cond(),))
 
             elif t0 is _T_IMPLY:
                 if node.item.__class__ is not Symbol:
@@ -4216,10 +4220,9 @@ class Kconfig(object):
             depend_on(sym, sym.weak_rev_dep)
 
             # The ranges along with their conditions
-            for low, high, cond in sym.ranges:
-                depend_on(sym, low)
-                depend_on(sym, high)
-                depend_on(sym, cond)
+            for entry in sym.ranges:
+                for bound_or_cond in entry:
+                    depend_on(sym, bound_or_cond)
 
             # The direct dependencies. This is usually redundant, as the direct
             # dependencies get propagated to properties, but it's needed to get
@@ -4393,8 +4396,8 @@ class Kconfig(object):
 
                 # Propagate dependencies to ranges
                 if cur.ranges:
-                    cur.ranges = [(low, high, self._make_and(cond, dep))
-                                  for low, high, cond in cur.ranges]
+                    cur.ranges = [entry[:-1] + (self._make_and(entry[-1], dep),)
+                                  for entry in cur.ranges]
 
                 # Propagate dependencies to selects
                 if cur.selects:
@@ -4544,16 +4547,17 @@ class Kconfig(object):
                         .format(TYPE_TO_STR[sym.orig_type],
                                 sym.name_and_loc))
                 else:
-                    for low, high, _ in sym.ranges:
-                        if not num_ok(low, sym.orig_type) or \
-                           not num_ok(high, sym.orig_type):
+                    for entry in sym.ranges:
+                        for low, high in zip(entry[:-1:2], entry[1:-1:2]):
+                            if not num_ok(low, sym.orig_type) or \
+                               not num_ok(high, sym.orig_type):
 
-                            self._warn("the {0} symbol {1} has a non-{0} "
-                                       "range [{2}, {3}]"
-                                       .format(TYPE_TO_STR[sym.orig_type],
-                                               sym.name_and_loc,
-                                               low.name_and_loc,
-                                               high.name_and_loc))
+                                self._warn("the {0} symbol {1} has a non-{0} "
+                                           "range [{2}, {3}]"
+                                           .format(TYPE_TO_STR[sym.orig_type],
+                                                   sym.name_and_loc,
+                                                   low.name_and_loc,
+                                                   high.name_and_loc))
 
     def _check_choice_sanity(self):
         # Checks various choice properties that are handiest to check after
@@ -4891,16 +4895,11 @@ class Symbol(object):
       Like 'selects', for imply.
 
     ranges:
-      List of (low, high, cond) tuples for the symbol's 'range' properties. For
-      example, 'range 1 2 if A' is represented as (1, 2, A). If there is no
-      condition, 'cond' is self.kconfig.y.
-
-      Note that 'depends on' and parent dependencies are propagated to 'range'
-      conditions.
-
-      Gotcha: 1 and 2 above will be represented as (undefined) Symbols rather
-      than plain integers. Undefined symbols get their name as their string
-      value, so this works out. The C tools work the same way.
+      List of (low, high, cond) tuples for range properties. Happy Hare
+      allows extra bound pairs before cond: (low, high, low, high, ..., cond).
+      The first active entry supplies the allowed intervals.
+      Bounds are Symbols; literals are represented as undefined Symbols.
+      'depends on' and parent dependencies are propagated to the condition.
 
     orig_defaults:
     orig_selects:
@@ -5165,21 +5164,15 @@ class Symbol(object):
 
             base = _TYPE_TO_BASE[self.orig_type]
 
-            # Check if a range is in effect
-            for low_expr, high_expr, cond in self.ranges:
-                if expr_value(cond):
-                    has_active_range = True
-
-                    # The zeros are from the C implementation running strtoll()
-                    # on empty strings
-                    low = int(low_expr.str_value, base) if \
-                      _is_base_n(low_expr.str_value, base) else 0
-                    high = int(high_expr.str_value, base) if \
-                      _is_base_n(high_expr.str_value, base) else 0
-
-                    break
-            else:
-                has_active_range = False
+            # Happy Hare: Share interval selection with menuconfig.
+            active_ranges = self.active_ranges()
+            intervals = [(int(low.str_value, base) if _is_base_n(low.str_value, base) else 0,
+                          int(high.str_value, base) if _is_base_n(high.str_value, base) else 0)
+                         for low, high in active_ranges]
+            has_active_range = bool(intervals)
+            num2str = str if base == 10 else hex
+            range_text = " or ".join("[{}, {}]".format(num2str(low), num2str(high))
+                                     for low, high in intervals)
 
             # Defaults are used if the symbol is invisible, lacks a user value,
             # or has an out-of-range user value
@@ -5187,15 +5180,16 @@ class Symbol(object):
 
             if vis and self.user_value:
                 user_val = int(self.user_value, base)
-                if has_active_range and not low <= user_val <= high:
+                if has_active_range and not any(low <= user_val <= high
+                                                for low, high in intervals):
                     num2str = str if base == 10 else hex
                     self.kconfig._warn(
                         "user value {} on the {} symbol {} ignored due to "
-                        "being outside the active range ([{}, {}]) -- falling "
+                        "being outside the active range ({}) -- falling "
                         "back on defaults"
                         .format(num2str(user_val), TYPE_TO_STR[self.orig_type],
                                 self.name_and_loc,
-                                num2str(low), num2str(high)))
+                                range_text))
                 else:
                     # If the user value is well-formed and satisfies range
                     # constraints, it is stored in exactly the same form as
@@ -5227,10 +5221,10 @@ class Symbol(object):
                 # This clamping procedure runs even if there's no default
                 if has_active_range:
                     clamp = None
-                    if val_num < low:
-                        clamp = low
-                    elif val_num > high:
-                        clamp = high
+                    if not any(low <= val_num <= high for low, high in intervals):
+                        # Nearest endpoint; ties go to the smaller value.
+                        clamp = min((bound for pair in intervals for bound in pair),
+                                    key=lambda bound: (abs(bound - val_num), bound))
 
                     if clamp is not None:
                         # The value is rewritten to a standard form if it is
@@ -5243,10 +5237,9 @@ class Symbol(object):
                             num2str = str if base == 10 else hex
                             self.kconfig._warn(
                                 "default value {} on {} clamped to {} due to "
-                                "being outside the active range ([{}, {}])"
+                                "being outside the active range ({})"
                                 .format(val_num, self.name_and_loc,
-                                        num2str(clamp), num2str(low),
-                                        num2str(high)))
+                                        num2str(clamp), range_text))
 
         elif self.orig_type is STRING:
             if vis and self.user_value is not None:
@@ -5281,6 +5274,13 @@ class Symbol(object):
 
         self._cached_str_val = val
         return val
+
+    def active_ranges(self):
+        """Happy Hare: Bound-symbol pairs from the first active range line."""
+        for entry in self.ranges:
+            if expr_value(entry[-1]):
+                return list(zip(entry[:-1:2], entry[1:-1:2]))
+        return []
 
     @property
     def tri_value(self):
@@ -6625,8 +6625,8 @@ class MenuNode(object):
         """
         See the class documentation.
         """
-        return [(low, high, self._strip_dep(cond))
-                for low, high, cond in self.ranges]
+        return [entry[:-1] + (self._strip_dep(entry[-1]),)
+                for entry in self.ranges]
 
     @property
     def referenced(self):
@@ -6664,10 +6664,9 @@ class MenuNode(object):
             res.add(value)
             res |= expr_items(cond)
 
-        for low, high, cond in self.ranges:
-            res.add(low)
-            res.add(high)
-            res |= expr_items(cond)
+        for entry in self.ranges:
+            res |= expr_items(entry[-1])
+            res.update(entry[:-1])
 
         return res
 
@@ -6805,11 +6804,9 @@ class MenuNode(object):
             if sc is sc.kconfig.modules:
                 indent_add("option modules")
 
-            for low, high, cond in self.orig_ranges:
-                indent_add_cond(
-                    "range {} {}".format(sc_expr_str_fn(low),
-                                         sc_expr_str_fn(high)),
-                    cond)
+            for entry in self.orig_ranges:
+                indent_add_cond("range " + " ".join(
+                    sc_expr_str_fn(bound) for bound in entry[:-1]), entry[-1])
 
         for default, cond in self.orig_defaults:
             indent_add_cond("default " + expr_str(default, sc_expr_str_fn),
