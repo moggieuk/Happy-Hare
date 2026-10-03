@@ -75,7 +75,7 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
         self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
 
-    def test_toolhead_without_forced_homing_hides_extruder_method(self):
+    def test_toolhead_without_forced_homing_keeps_extruder_method(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig(
                 "qidi_box_toolhead_without_extruder_homing",
@@ -87,8 +87,8 @@ class TestQidiBoxProfile(unittest.TestCase):
             )
 
         choice = kconfig.named_choices["CHOICE_EXTRUDER_HOMING_ENDSTOP"]
-        self.assertEqual(choice.visibility, 0)
-        self.assertEqual(kconfig.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "none")
+        self.assertGreater(choice.visibility, 0)
+        self.assertEqual(kconfig.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "extruder")
         self.assertEqual(kconfig.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
         self.assertEqual(
             kconfig.syms["PARAM_EXTRUDER_COLLISION_HOMING_CURRENT"].visibility,

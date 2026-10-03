@@ -143,7 +143,8 @@ class TestLowRiderProfile(unittest.TestCase):
         choice = "CHOICE_EXTRUDER_HOMING_ENDSTOP"
         self.assertGreater(normal.syms["PARAM_EXTRUDER_FORCE_HOMING"].visibility, 0)
         self.assertGreater(normal.syms["PARAM_TOOLHEAD_HOMING_MAX"].visibility, 0)
-        self.assertEqual(normal.named_choices[choice].visibility, 0)
+        self.assertGreater(normal.named_choices[choice].visibility, 0)
+        self.assertEqual(normal.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "extruder")
         self.assertEqual(normal.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
 
         self.assertGreater(forced.named_choices[choice].visibility, 0)
