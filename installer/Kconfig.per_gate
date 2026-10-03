@@ -248,6 +248,14 @@ if MMU_HAS_PER_GATE_CONFIG
                 help
                   Fan speed while this gate's MCU is shutting down (0.0 to 1.0).
 
+              config PARAM_HEATER_FAN_HEATER_TEMP_$(i)
+                float "Fan heater temp    "
+                default 45.0
+                range 0 120
+                help
+                  Temperature (°C) of this gate's heater above which its fan
+                  runs, even when the heater is off.
+
               config PIN_HEATER_FAN_$(i)
                 string "Heater fan pin     "
                 validator "$(pin_validator)"

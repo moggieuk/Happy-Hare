@@ -16,11 +16,11 @@
 #
 # Heater fan parameter tokens:
 #   PARAM_HEATER_FAN_MAX_POWER, PARAM_HEATER_FAN_KICK_START_TIME,
-#   PARAM_HEATER_FAN_SPEED, PARAM_HEATER_FAN_SHUTDOWN_SPEED, PIN_HEATER_FAN
-#     (shared configuration)
+#   PARAM_HEATER_FAN_SPEED, PARAM_HEATER_FAN_SHUTDOWN_SPEED,
+#   PARAM_HEATER_FAN_HEATER_TEMP, PIN_HEATER_FAN (shared configuration)
 #   PARAM_HEATER_FAN_MAX_POWER_X, PARAM_HEATER_FAN_KICK_START_TIME_X,
 #   PARAM_HEATER_FAN_SPEED_X, PARAM_HEATER_FAN_SHUTDOWN_SPEED_X,
-#   PIN_HEATER_FAN_X (per-gate configuration)
+#   PARAM_HEATER_FAN_HEATER_TEMP_X, PIN_HEATER_FAN_X (per-gate configuration)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_HEATER
@@ -195,6 +195,14 @@ menu "Heater fan h/w config"
     range 0.0 1.0
     help
       Fan speed while the MCU is shutting down (0.0 to 1.0).
+
+  config PARAM_HEATER_FAN_HEATER_TEMP
+    float "Fan heater temp    "
+    default 45.0
+    range 0 120
+    help
+      Heater temperature (°C) above which the fan runs, even when the
+      heater is off.
 
   config PIN_HEATER_FAN
     string "Heater fan pin     "
