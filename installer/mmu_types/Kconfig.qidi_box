@@ -27,8 +27,6 @@ if MMU_TYPE_QIDI_BOX_1_0
 
   # The readers are declared by the board profile, one physical chip per pair
   # of gates, so the per-gate list repeats each name twice.
-  config CUSTOM_NFC_READER_SETUP
-    def_bool y
   config PARAM_NFC_READER_0
     default "$(UNIT_NAME)_nfc01"
   config PARAM_NFC_READER_1

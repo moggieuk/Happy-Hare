@@ -22,6 +22,12 @@ class TestQidiBoxProfile(unittest.TestCase):
             )
         cls.rendered = cfg.render(cls.profile)
 
+    def test_nfc_custom_flag_is_set_beside_its_misc_hardware(self):
+        self.assertTrue(self.kconfig.is_enabled("CUSTOM_NFC_READER_SETUP"))
+        self.assertTrue(any(
+            node.filename.endswith("boards/custom/Kconfig.qidi_box")
+            for node in self.kconfig.syms["CUSTOM_NFC_READER_SETUP"].nodes))
+
     def test_machine_and_motion_defaults(self):
         expected = {
             "PARAM_VENDOR": "QIDI",

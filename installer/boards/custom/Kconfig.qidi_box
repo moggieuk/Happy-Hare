@@ -69,10 +69,11 @@ if BOARD_TYPE_QIDI_BOX_2_0
   config PIN_EXTRUDER_SENSOR
     default "!THR:PA1"
 
-  # The dryer's AHT sensor is wired to PA8/PC9, which are not an STM32
-  # hardware i2c pair, so the board needs software i2c. The generic default
-  # (hardware i2c2_PB10_PB11) does not exist on this MCU and Klipper refuses
-  # to start with "Unknown i2c_bus".
+
+  # The dryer's AHT sensor is wired to PA8/PC9. Mainline Klipper names that
+  # hardware bus "i2c3" on the STM32F4, not the generic default
+  # i2c2_PB10_PB11 (which would fail with "Unknown i2c_bus"), so the board
+  # drives it as software i2c on the same pins.
   choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
     default CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
   endchoice
@@ -81,6 +82,9 @@ if BOARD_TYPE_QIDI_BOX_2_0
   config PIN_ENVIRONMENT_SENSOR_SDA
     default "PC9"
 
+
+  # -------------------------------------
+  # Custom NFC reader setup
   # Two FM1780 readers (Fudan) sit on SPI2 and differ only by chip select:
   # PC6 covers gates 0/1, PC7 covers gates 2/3. They are register compatible
   # with the MFRC522, so the rc522 driver drives them unchanged.
@@ -88,8 +92,11 @@ if BOARD_TYPE_QIDI_BOX_2_0
   # NRSTPD is wired to PB12. The rc522 driver only ever soft-resets over SPI,
   # so unless that line is driven high the chips stay in reset and every
   # register reads back 0xFF.
-  config PARAM_MISC_HARDWARE
-    default "$(ml,\
+  # -------------------------------------
+
+  config CUSTOM_NFC_READER_SETUP
+    def_bool y
+misc_hardware_nfc_reader := \
 # NFC readers are held in reset until NRSTPD is driven high\n\
 [output_pin $(UNIT_NAME)_nfc_rst]\n\
 pin: $(MCU_NAME):PB12\n\
@@ -111,6 +118,9 @@ cs_pin                : $(MCU_NAME):PC7\n\
 spi_bus               : spi2_PB14_PB15_PB13\n\
 spi_speed             : 1000000\n\
 debug                 : 0\n\
-)"
+
+
+  config PARAM_MISC_HARDWARE
+    default "$(ml,$(misc_hardware_nfc_reader))"
 
 endif
