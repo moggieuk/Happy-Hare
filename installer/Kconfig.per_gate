@@ -48,7 +48,7 @@ if MMU_HAS_PER_GATE_CONFIG
                 Use AHT10 on older firmware
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT10_$(i)
-                bool "AHT10 (older Klipper)"
+                bool "AHT10 [[DIM]]/ older Klipper[[/DIM]]"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i)
                 bool "AHT1X"
@@ -60,28 +60,28 @@ if MMU_HAS_PER_GATE_CONFIG
                 bool "AHT3X"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
-                bool "BME280"
+                bool "BME280 [[DIM]]/ BMP180 / BMP280 / BMP388 / BME680[[/DIM]]"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_$(i)
                 bool "HTU21D"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013_$(i)
-                bool "SI7013 (HTU21D family)"
+                bool "SI7013 [[DIM]]/ HTU21D family[[/DIM]]"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020_$(i)
-                bool "SI7020 (HTU21D family)"
+                bool "SI7020 [[DIM]]/ HTU21D family[[/DIM]]"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021_$(i)
-                bool "SI7021 (HTU21D family)"
+                bool "SI7021 [[DIM]]/ HTU21D family[[/DIM]]"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21_$(i)
-                bool "SHT21 (HTU21D family)"
+                bool "SHT21 [[DIM]]/ HTU21D family[[/DIM]]"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X_$(i)
                 bool "SHT3X"
 
               config CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75_$(i)
-                bool "LM75 (temperature only)"
+                bool "LM75 [[DIM]]/ temperature only[[/DIM]]"
             endchoice
 
             config PARAM_ENVIRONMENT_SENSOR_TYPE_$(i)
