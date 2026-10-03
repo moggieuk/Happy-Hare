@@ -130,7 +130,9 @@ Load-bearing facts about the flow:
 - **A shared definition can be a component.** `installer/components/Kconfig.*`
   is sourced once per consumer with `prefix := X` preprocessor variables, so
   one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
-  and `installer/components/Kconfig.tmc_driver_*` are the worked example.
+  and `installer/components/Kconfig.tmc_driver_*` are the worked example;
+  `components/Kconfig.environment_sensor_*` is sourced from inside an
+  `@repeat` (once per gate) as well as once for the shared sensor.
   Three rules: re-assign every variable immediately before each `source`
   (they are global for the whole parse); keep declarations and prompts in
   separate fragments, because `_propagate_deps` ANDs an enclosing `if` into
