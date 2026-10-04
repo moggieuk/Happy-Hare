@@ -186,6 +186,16 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
         self.assertEqual(sensor['i2c_software_sda_pin'], 'unit0:PC9')
         self.assertNotIn('temperature_sensor unit0_Outside', parser.sections())
 
+    def test_channel_sensors_follow_the_channel_order(self):
+        # FYSETC schematic: channel i's IN/OUT connectors sit beside motor i
+        parser, _ = _render('x5_boxturtle_sensors', dict(
+            X5_BOXTURTLE, MMU_HAS_SENSOR_ENTRY=True, MMU_HAS_SENSOR_EXIT=True))
+        sensors = dict(parser.items('mmu_sensors unit0'))
+        self.assertEqual([sensors['mmu_entry_switch_pin_%d' % g] for g in range(4)],
+                         ['^unit0:PE11', '^unit0:PB1', '^unit0:PA0', '^unit0:PA4'])
+        self.assertEqual([sensors['mmu_exit_switch_pin_%d' % g] for g in range(4)],
+                         ['^unit0:PE10', '^unit0:PE7', '^unit0:PA1', '^unit0:PA3'])
+
 
 class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
 
