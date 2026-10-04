@@ -78,29 +78,39 @@ class _VentSession(unittest.TestCase):
     def _commands(self, executed, prefix):
         return [line for line in executed if line.startswith(prefix)]
 
+    def _console_since(self, line):
+        at = len(self.hh.console)
+        self._run(line)
+        # The console sometimes renders spaces as non-breaking spaces
+        messages = [msg.replace('\xa0', ' ') for msg in self.hh.console[at:]]
+        return [msg for msg in messages if 'MMU vent' in msg]
+
     def _state(self):
         return self.hh.printer.lookup_object('gcode_macro _MMU_VENT').variables['vent_state']
 
 
 class TestVentWithoutServo(_VentSession):
 
-    def test_logs_and_schedules_the_close_as_before(self):
+    def test_reports_and_schedules_the_close_as_before(self):
+        self.assertEqual(self._console_since('_MMU_VENT UNIT=unit0'), [
+            'Opening MMU vent on unit0 for 10s (no vent servo configured, nothing to move)...'])
         executed = self._run('_MMU_VENT UNIT=unit0')
-        self.assertTrue(any('Opening MMU vent...' in line for line in executed), executed)
         self.assertEqual(self._commands(executed, 'UPDATE_DELAYED_GCODE'),
                          ['UPDATE_DELAYED_GCODE ID=_MMU_VENT_CLOSE DURATION=10'])
         self.assertEqual(self._commands(executed, 'SET_SERVO') + self._commands(executed, 'MMU_FAN'), [])
 
+        self.assertEqual(self._console_since('_MMU_CLOSE_VENT'), [
+            'Closing MMU vent (no vent servo configured, nothing to move)...'])
         executed = self._run('_MMU_CLOSE_VENT')
-        self.assertTrue(any('Closing MMU vent...' in line for line in executed), executed)
         self.assertEqual(self._commands(executed, 'SET_SERVO') + self._commands(executed, 'MMU_FAN'), [])
 
     def test_startup_close_is_silent(self):
         self.assertEqual(self._run('_MMU_CLOSE_VENT STARTUP=1'), [])
 
     def test_per_gate_vent_names_the_gates(self):
-        executed = self._run('_MMU_VENT UNIT=unit0 GATES=0,1')
-        self.assertTrue(any('dry filaments in gates: 0, 1' in line for line in executed), executed)
+        self.assertEqual(self._console_since('_MMU_VENT UNIT=unit0 GATES=0,1'), [
+            'Opening MMU vent on unit0 to dry filaments in gates 0, 1 for 10s '
+            '(no vent servo configured, nothing to move)...'])
 
 
 class TestVentFanWithoutServo(_VentSession):
@@ -116,6 +126,12 @@ class TestVentFanWithoutServo(_VentSession):
 class TestVentServoWithoutFan(_VentSession):
 
     PROFILE = _vent_profile(MMU_HAS_FANS=False)
+
+    def test_reports_the_servo_move(self):
+        self.assertEqual(self._console_since('_MMU_VENT UNIT=unit0'), [
+            'Opening MMU vent on unit0 for 10s (vent servo to angle 90)...'])
+        self.assertEqual(self._console_since('_MMU_CLOSE_VENT'), [
+            'Closing MMU vent on unit0 (vent servo to angle 0)...'])
 
     def test_moves_the_servo_only(self):
         executed = self._run('_MMU_VENT UNIT=unit0')
@@ -153,6 +169,14 @@ class TestVentWithServo(_VentSession):
         self.assertEqual(self._fan_mode(), 2)
         self.assertEqual(self._state(), {})
 
+    def test_reports_the_servo_and_fan(self):
+        self.assertEqual(self._console_since('_MMU_VENT UNIT=unit0'), [
+            'Opening MMU vent on unit0 for 10s (vent servo to angle 90, managed fan on)...'])
+        self.assertEqual(self._console_since('_MMU_VENT UNIT=unit0'), [
+            'Opening MMU vent on unit0 for 10s (vent servo to angle 90, managed fan stays on)...'])
+        self.assertEqual(self._console_since('_MMU_CLOSE_VENT'), [
+            'Closing MMU vent on unit0 (vent servo to angle 0, managed fan restored)...'])
+
     def test_restores_a_mode_set_at_runtime(self):
         self.hh.run_gcode('MMU_FAN FAN_FORCED=0')
         self._run('_MMU_VENT UNIT=unit0')
@@ -169,6 +193,9 @@ class TestVentWithServo(_VentSession):
 
     def test_fan_can_be_left_off(self):
         self.hh.run_gcode('SET_GCODE_VARIABLE MACRO=_MMU_VENT_VARS VARIABLE=run_fan VALUE=0')
+        self.assertEqual(self._console_since('_MMU_VENT UNIT=unit0'), [
+            'Opening MMU vent on unit0 for 10s (vent servo to angle 90, managed fan not used as run_fan is 0)...'])
+        self._run('_MMU_CLOSE_VENT')
         executed = self._run('_MMU_VENT UNIT=unit0')
         self.assertEqual(len(self._commands(executed, 'SET_SERVO')), 1)
         self.assertEqual(self._commands(executed, 'MMU_FAN'), [])
@@ -220,6 +247,13 @@ class TestVentPerGateFans(_VentSession):
         ])
         modes = self.hh.mmu.get_status(self.hh.reactor.monotonic())['fans'][0]['modes']
         self.assertEqual(modes, [2, 2, 0, 2, 2])
+
+    def test_reports_the_gates_fans(self):
+        self.assertEqual(self._console_since('_MMU_VENT UNIT=unit0 GATES=1,2'), [
+            'Opening MMU vent on unit0 to dry filaments in gates 1, 2 for 10s '
+            '(vent servo to angle 90, managed fans on for gates 1, 2)...'])
+        self.assertEqual(self._console_since('_MMU_CLOSE_VENT'), [
+            'Closing MMU vent on unit0 (vent servo to angle 0, managed fans restored)...'])
 
 
 if __name__ == '__main__':
