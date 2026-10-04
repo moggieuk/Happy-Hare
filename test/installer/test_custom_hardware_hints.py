@@ -43,8 +43,7 @@ class TestCustomHardwareHints(unittest.TestCase):
             'x5_qb2': (dict(X5, MMU_FAMILY_QUATTRO_BOX=True, MMU_TYPE_QUATTRO_BOX_2_0=True),
                        ['Kconfig.heater']),
             'x5_boxturtle': (dict(X5, MMU_TYPE_BOX_TURTLE_1_0=True), []),
-            'x5_boxturtle_heater': (dict(X5, MMU_TYPE_BOX_TURTLE_1_0=True, MMU_HAS_HEATER=True),
-                                    ['Kconfig.heater']),
+            'x5_boxturtle_heater': (dict(X5, MMU_TYPE_BOX_TURTLE_1_0=True, MMU_HAS_HEATER=True), []),
             'x5_per_gate_heater': (dict(X5, MMU_CUSTOM=True, MMU_HAS_HEATER=True,
                                         MMU_HAS_PER_GATE_CONFIG=True), []),
         }

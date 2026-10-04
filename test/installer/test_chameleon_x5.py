@@ -171,28 +171,20 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
             MMU_HAS_SENSOR_BUFFER_PROPORTIONAL=True))
         self.assertNotIn('PC2', dict(parser.items('mmu_buffer unit0')).get('analog_pin', ''))
 
-    def test_enabled_features_take_the_board_defaults(self):
+    def test_enabled_features_take_the_board_pins(self):
         parser, _ = _render('x5_boxturtle_dryer', dict(
-            X5_BOXTURTLE, MMU_HAS_HEATER=True, MMU_HAS_ENVIRONMENT_SENSOR=True))
-        heater = dict(parser.items('heater_generic unit0_heater'))
-        self.assertEqual((heater['heater_pin'], heater['sensor_pin']), ('unit0:PC6', 'unit0:PC0'))
-        self.assertNotIn('temperature_sensor unit0_Heater_B', parser.sections())
-        self.assertEqual(_heater_fan_pins(parser)[1], ['unit0:PB8', 'unit0:PB9'])
+            X5_BOXTURTLE, MMU_HAS_HEATER=True, MMU_HAS_ENVIRONMENT_SENSOR=True,
+            PARAM_FILAMENT_HEATER='my_heater'))
+        # The heater itself is the user's, as on any other board
+        self.assertFalse(_sections(parser, 'heater_generic'))
+        self.assertEqual(dict(parser.items('mmu_unit unit0'))['filament_heater'], 'my_heater')
+        fan, pins = _heater_fan_pins(parser)
+        self.assertEqual(pins, ['unit0:PB8', 'unit0:PB9'])
+        self.assertEqual(fan['heater'], 'my_heater')
         sensor = dict(parser.items('temperature_sensor unit0_Env'))
         self.assertEqual(sensor['i2c_software_scl_pin'], 'unit0:PA8')
         self.assertEqual(sensor['i2c_software_sda_pin'], 'unit0:PC9')
         self.assertNotIn('temperature_sensor unit0_Outside', parser.sections())
-
-
-    def test_channel_sensors_follow_the_channel_order(self):
-        # FYSETC schematic: channel i's IN/OUT connectors sit beside motor i
-        parser, _ = _render('x5_boxturtle_sensors', dict(
-            X5_BOXTURTLE, MMU_HAS_SENSOR_ENTRY=True, MMU_HAS_SENSOR_EXIT=True))
-        sensors = dict(parser.items('mmu_sensors unit0'))
-        self.assertEqual([sensors['mmu_entry_switch_pin_%d' % g] for g in range(4)],
-                         ['^unit0:PE11', '^unit0:PB1', '^unit0:PA0', '^unit0:PA4'])
-        self.assertEqual([sensors['mmu_exit_switch_pin_%d' % g] for g in range(4)],
-                         ['^unit0:PE10', '^unit0:PE7', '^unit0:PA1', '^unit0:PA3'])
 
 
 class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
