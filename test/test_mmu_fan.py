@@ -667,6 +667,26 @@ class TestControllerFanBoot(unittest.TestCase):
         fan = self._boot('emu')
         self.assertEqual(fan.stepper_names[-1], 'mmu_stepper unit0_gear_4')
 
+    def test_multi_unit_fan_lists_only_its_own_unit(self):
+        base = profiles.get('ercf_vvd')
+        units = [unit.derive(syms={'MMU_HAS_CONTROLLER_FAN': True,
+                                   'PIN_CONTROLLER_FAN': 'unit0:PA3'})
+                 if unit.name == 'unit0' else unit
+                 for unit in base.units]
+        profile = base.derive('ercf_vvd_controller_fan', units=units)
+        parser = cfg.assemble(cfg.render(profile))
+        self.assertEqual(
+            sorted(s for s in parser.sections() if s.startswith('controller_fan ')),
+            ['controller_fan _unit0_controller_fan', 'controller_fan unit1_mcu_fan'])
+
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot()
+        fan = hh.printer.lookup_object('controller_fan _unit0_controller_fan')
+        self.assertTrue(fan.stepper_names)
+        self.assertTrue(all(name.startswith('mmu_stepper unit0_')
+                            for name in fan.stepper_names), fan.stepper_names)
+
     def test_unknown_stepper_is_rejected(self):
         fan = self._boot('boxturtle')
         fan.stepper_names = ['mmu_stepper unit0_gaer']
