@@ -7,6 +7,7 @@ import unittest
 
 from test.hh import cfg, profiles, session
 from test.hh.bootstrap import PRINTER_STUB
+from test.hh.profiles import Profile, UnitProfile
 
 VENT_INTERVAL = 1         # minutes; the countdown runs in 30 s environment checks
 
@@ -39,6 +40,16 @@ def _per_gate_vent_profile():
             'PARAM_MAX_CONCURRENT_HEATERS': 2}
     syms.update({'PIN_VENT_SERVO_%d' % g: 'unit0_gate%d:PB15' % g for g in range(5)})
     return profiles.get('emu').derive('emu_vent', syms=syms)
+
+
+def _two_unit_profile():
+    # Each unit has its own vent servo and its own vent settings
+    def unit(name, index, angle, duration):
+        syms = dict(profiles.get('qidi').syms, MMU_HAS_VENT_SERVO=True, PIN_VENT_SERVO='%s:PA9' % name,
+                    PARAM_HEATER_VENT_OPEN_ANGLE=angle, PARAM_HEATER_VENT_DURATION=duration)
+        return UnitProfile(name, syms=syms, index=index)
+    return Profile('qidi_vent_two_units', syms={'MMU_UNITS': 'unit0,unit1'},
+                   units=[unit('unit0', 0, 120, 20), unit('unit1', 1, 60, 40)])
 
 
 class TestVentRender(unittest.TestCase):
@@ -86,6 +97,18 @@ class TestVentRender(unittest.TestCase):
         self.assertTrue(shared.is_enabled('W31'))
         self.assertTrue(per_gate.is_enabled('W31'))
         self.assertFalse(fitted.is_enabled('W31'))
+
+    def test_each_unit_has_its_own_vent_servo_and_settings(self):
+        rendered = cfg.render(_two_unit_profile())
+        for unit, angle, duration in (('unit0', '120', '20'), ('unit1', '60', '40')):
+            with self.subTest(unit=unit):
+                hardware = cfg.assemble({'h': rendered['config/base/mmu_hardware_%s.cfg' % unit]}, macros=False)
+                self.assertEqual(dict(hardware.items('mmu_unit %s' % unit))['vent_servo'], '%s_vent_servo' % unit)
+                self.assertEqual(dict(hardware.items('mmu_servo %s_vent_servo' % unit))['pin'], '%s:PA9' % unit)
+                params = cfg.assemble({'p': rendered['config/base/mmu_parameters_%s.cfg' % unit]}, macros=False)
+                values = dict(params.items('mmu_unit_parameters %s' % unit))
+                self.assertEqual((values['heater_vent_open_angle'], values['heater_vent_duration']),
+                                 (angle, duration))
 
     def test_no_printer_wide_vent_settings(self):
         rendered = cfg.render(_vent_profile())
@@ -274,6 +297,44 @@ class TestVentPerGate(_VentSession):
         self._close()
         self.assertEqual(self._fan_modes()[:3], [2, 2, 0])
         self.assertEqual(self.macro.calls[-1], '_MMU_VENT UNIT=unit0 OPEN=0 GATES=1,2')
+
+
+class TestVentTwoUnits(_VentSession):
+
+    PROFILE = _two_unit_profile()
+
+    def test_each_unit_vents_with_its_own_settings(self):
+        servos = {u: 'mmu_servo %s_vent_servo' % u for u in ('unit0', 'unit1')}
+        for unit, name in servos.items():
+            with self.subTest(unit=unit):
+                self.assertEqual(self._servo_values(name)[:2], [self._pwm(0, name), 0.0])
+        since = {u: len(self._servo(n).mcu_servo.timeline) for u, n in servos.items()}
+
+        at = len(self.hh.console)
+        for unit in servos:
+            self.hh.run_gcode('MMU_HEATER UNIT=%s DRY=1 TEMP=45 TIMER=60 VENT_INTERVAL=1' % unit)
+        self.hh.settle()
+        for _ in range(120):
+            self.hh.reactor.advance(1)
+            if len([m for m in self._messages(at) if m.startswith('Opening')]) == 2:
+                break
+        self.assertEqual(sorted(m for m in self._messages(at) if m.startswith('Opening')), [
+            'Opening MMU vent on unit0 for 20s (vent servo to angle 120)...',
+            'Opening MMU vent on unit1 for 40s (vent servo to angle 60)...'])
+
+        # unit0 closes after its 20 s while unit1 stays open for its 40 s
+        self.hh.reactor.advance(25)
+        closing = [m for m in self._messages(at) if m.startswith('Closing')]
+        self.assertEqual(closing, ['Closing MMU vent on unit0 (vent servo to angle 0)...'])
+        self.hh.reactor.advance(20)
+        closing = [m for m in self._messages(at) if m.startswith('Closing')]
+        self.assertEqual(closing[1:], ['Closing MMU vent on unit1 (vent servo to angle 0)...'])
+        for unit, angle in (('unit0', 120), ('unit1', 60)):
+            name = servos[unit]
+            with self.subTest(unit=unit):
+                self.assertEqual(self._servo_values(name, since[unit]),
+                                 [self._pwm(angle, name), 0.0, self._pwm(0, name), 0.0])
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestShippedVentMacro(_VentSession):
