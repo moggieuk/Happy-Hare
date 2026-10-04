@@ -100,6 +100,13 @@ class TestV400Refresh(unittest.TestCase):
         self.assertEqual(parameters.get(section, "gear_load_speed"), "123")
         self.assertEqual(parameters.get(section, "gear_buzz_accel"), "987")
 
+    def test_refresh_adds_the_vent_macro_vars(self):
+        # The 4.0 fixture predates _MMU_VENT_VARS
+        with open(os.path.join(self.FIXTURE, "mmu_macro_vars.cfg")) as f:
+            self.assertNotIn("_MMU_VENT_VARS", f.read())
+        macro_vars = self.parsed(self.first, "mmu_macro_vars.cfg")
+        self.assertEqual(macro_vars.get("gcode_macro _MMU_VENT_VARS", "variable_run_fan"), "1")
+
     def test_user_defined_excluded_config_survives_refresh(self):
         mmu = self.parsed(self.first, "mmu.cfg")
         self.assertTrue(mmu.has_section("gcode_macro USER_REFRESH_SENTINEL"))

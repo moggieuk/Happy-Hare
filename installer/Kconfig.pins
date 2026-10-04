@@ -300,6 +300,18 @@ menu "Pins / TMC"
 
 
   # -------------------------------------
+  # Enclosure vent
+  # -------------------------------------
+
+  config PIN_VENT_SERVO
+    string
+    prompt "$(pad,$(pin_pad),Vent servo pin)" if MMU_HAS_VENT_SERVO
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
+
+
+  # -------------------------------------
   # Eject buttons
   # -------------------------------------
 
