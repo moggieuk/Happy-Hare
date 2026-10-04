@@ -85,5 +85,23 @@ class TestDryingHumidity(unittest.TestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+
+class TestDryingVent(unittest.TestCase):
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.vent = self.hh.printer.lookup_object('gcode_macro _MMU_VENT')
+
+    def test_vent_macro_is_told_which_unit_is_drying(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60 VENT_INTERVAL=1')
+        self.hh.settle()
+        self.assertEqual(self.vent.calls, [])
+        self.hh.reactor.advance(60 + ENV_CHECK_INTERVAL)
+        self.assertEqual(self.vent.calls, ['_MMU_VENT UNIT=%s' % self.unit.name])
+
+
 if __name__ == '__main__':
     unittest.main()

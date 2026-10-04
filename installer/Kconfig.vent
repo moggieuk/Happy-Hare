@@ -1,0 +1,65 @@
+# Responsible for setting:
+#   MMU_HAS_VENT_SERVO
+#
+# Vent servo parameter tokens which must be inside if MMU_HAS_VENT_SERVO clause in cfg templates:
+#   PIN_VENT_SERVO
+#   PARAM_VENT_SERVO_MIN_PULSE_WIDTH
+#   PARAM_VENT_SERVO_MAX_PULSE_WIDTH
+#   PARAM_VENT_SERVO_MAXIMUM_ANGLE
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_VENT_SERVO
+
+
+comment "_"
+comment "_Enclosure Vent"
+
+config UNSELECT_MMU_HAS_VENT_SERVO
+  def_bool n
+
+if !UNSELECT_MMU_HAS_VENT_SERVO
+  config MMU_HAS_VENT_SERVO
+    prompt "Has enclosure vent servo?"
+    forceshow
+    default n
+    help
+      Select if a servo opens and closes a vent in the filament enclosure.
+      The _MMU_VENT macro (heater_vent_macro) opens it while venting and can
+      run the managed fan while it is open. The open and closed angles and
+      how long the vent stays open are macro variables (_MMU_VENT_VARS).
+endif
+
+
+# -------------------------------------
+# Vent servo config
+# -------------------------------------
+
+if MMU_HAS_VENT_SERVO
+  menu "Vent servo h/w config"
+    help
+      Configure the pin and PWM range of the enclosure vent servo.
+
+    config PIN_VENT_SERVO
+      string "Vent servo pin       "
+      validator "$(pin_validator)"
+      default ""
+      help
+        $(pin_help)
+
+    config PARAM_VENT_SERVO_MIN_PULSE_WIDTH
+      float "Servo min pulse width"
+      default 0.001
+
+    config PARAM_VENT_SERVO_MAX_PULSE_WIDTH
+      float "Servo max pulse width"
+      default 0.002
+
+    config PARAM_VENT_SERVO_MAXIMUM_ANGLE
+      int "Servo h/w max angle  "
+      range 0 360
+      default 180
+      help
+        Klipper scales the PWM pulse width to never exceed this angle
+
+  endmenu
+endif

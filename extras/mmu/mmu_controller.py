@@ -735,6 +735,10 @@ class MmuController(MmuFilamentMovement):
                 nfc_status.append(st)
         status['nfc'] = nfc_status
 
+        # Managed fan modes, one dict per unit that has managed fans
+        status['fans'] = [unit.fan_manager.get_status(eventtime) for unit in self.mmu_machine.units
+                          if getattr(unit, 'fan_manager', None) is not None and unit.fan_manager.has_fans()]
+
         # Development/testing hook
         if hasattr(self, "developer_status_update"):
             status.update(self.developer_status_update)
