@@ -10,6 +10,7 @@ from test.hh import cfg, profiles
 SECTION = re.compile(r'^\[([^\]]+)\]', re.M)
 QB2 = {'MMU_FAMILY_QUATTRO_BOX': True, 'MMU_TYPE_QUATTRO_BOX_2_0': True}
 X5 = {'BOARD_TYPE_CHAMELEON_X5_1_0': True}
+CUSTOM_FLAGS = ('CUSTOM_HEATER_SETUP', 'CUSTOM_CONTROLLER_FAN_SETUP', 'CUSTOM_MISC_SETUP')
 X5_BOXTURTLE = {'MMU_TYPE_BOX_TURTLE_1_0': True, 'BOARD_TYPE_CHAMELEON_X5_1_0': True}
 
 
@@ -60,14 +61,16 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         self.assertEqual(heater['sensor_list'],
                          'temperature_sensor unit0_Heater_A, temperature_sensor unit0_Heater_B')
 
-    def test_custom_heater_flag_is_set_in_the_board_file(self):
+    def test_custom_flags_are_set_by_the_machine_type(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('x5_qb2_flags', QB2)
-        self.assertTrue(kconfig.is_enabled('CUSTOM_HEATER_SETUP'))
-        self.assertTrue(any(node.filename.endswith('boards/Kconfig.chameleon_x5_1')
-                            for node in kconfig.syms['CUSTOM_HEATER_SETUP'].nodes))
-        # Its other blocks have no matching flag: CUSTOM_FAN_SETUP and
-        # CUSTOM_ENVIRONMENT_SENSOR_SETUP would drop the managed fan and Chamber sensor
+        for flag in CUSTOM_FLAGS:
+            with self.subTest(flag=flag):
+                self.assertTrue(kconfig.is_enabled(flag))
+                self.assertTrue(any(node.filename.endswith('mmu_types/Kconfig.quattro_box')
+                                    for node in kconfig.syms[flag].nodes))
+        # No block matches these: CUSTOM_FAN_SETUP and CUSTOM_ENVIRONMENT_SENSOR_SETUP
+        # would drop the managed fan and Chamber sensor
         for flag in ('CUSTOM_LED_SETUP', 'CUSTOM_ENVIRONMENT_SENSOR_SETUP', 'CUSTOM_FAN_SETUP',
                      'CUSTOM_HEATER_FAN_SETUP', 'CUSTOM_NFC_READER_SETUP'):
             with self.subTest(flag=flag):
@@ -170,8 +173,7 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
     def test_board_turns_nothing_on(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('x5_boxturtle_flags', X5_BOXTURTLE)
-        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
-                     'CUSTOM_HEATER_SETUP'):
+        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS') + CUSTOM_FLAGS:
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         parser, _ = _render('x5_boxturtle', X5_BOXTURTLE)
@@ -218,7 +220,7 @@ class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
             kconfig = cfg._kconfig('qb2_mmb_flags', dict(QB2, BOARD_TYPE_MMB_2_0=True))
         for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
                      'MMU_HAS_SENSOR_ENTRY', 'MMU_HAS_SENSOR_EXIT', 'MMU_HAS_SENSOR_SHARED_EXIT',
-                     'MMU_HAS_SYNC_FEEDBACK_BUFFER'):
+                     'MMU_HAS_SYNC_FEEDBACK_BUFFER') + CUSTOM_FLAGS:
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         self.assertEqual(kconfig.get('PARAM_MISC_HARDWARE'), '')

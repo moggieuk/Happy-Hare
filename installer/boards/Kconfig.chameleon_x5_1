@@ -161,10 +161,11 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
 
 
   # -------------------------------------
-  # QuattroBox v2 wiring (only with that machine)
-  # Proportional buffer on the T2 thermistor port, heater on HEAT0 averaging
-  # T0 and T1, outside BME280 on I2C1, exhaust servo on CH4's LED pin (unused
-  # with four gates) and the board fan on FAN1
+  # QuattroBox v2 wiring
+  # Proportional buffer on the T2 thermistor port. The misc hardware below is
+  # chosen by CUSTOM_* flags the machine type sets: heater on HEAT0 averaging
+  # T0 and T1, board fan on FAN1, and outside BME280 on I2C1 plus exhaust
+  # servo on CH4's LED pin (unused with four gates)
   # -------------------------------------
 
   config PIN_BUFFER_ANALOG
@@ -173,10 +174,8 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
 
   # -------------------------------------
   # Custom heater setup
+  # (applied when CUSTOM_HEATER_SETUP is set)
   # -------------------------------------
-
-  config CUSTOM_HEATER_SETUP
-    def_bool y if MMU_TYPE_QUATTRO_BOX_2_0
 
 mh_heater_chameleon_x5_1 := \
 [temperature_sensor $(UNIT_NAME)_Heater_A]\n\
@@ -204,6 +203,7 @@ max_temp: 110\n\
 
   # -------------------------------------
   # Custom controller fan setup
+  # (applied when CUSTOM_CONTROLLER_FAN_SETUP is set)
   # -------------------------------------
 
 mh_controller_fan_chameleon_x5_1 := \
@@ -218,10 +218,11 @@ fan_speed: 1.0\n\
 
 
   # -------------------------------------
-  # Other custom setup
+  # Custom misc setup
+  # (applied when CUSTOM_MISC_SETUP is set)
   # -------------------------------------
 
-mh_other_chameleon_x5_1 := \
+mh_misc_chameleon_x5_1 := \
 [temperature_sensor $(UNIT_NAME)_Outside]\n\
 sensor_type: BME280\n\
 i2c_address: 119\n\
@@ -237,8 +238,14 @@ maximum_servo_angle: 180\n\
 \n\
 
 
+  # Default ordering from most complete to least so the first matching one wins.
   config PARAM_MISC_HARDWARE
-    default "$(ml,$(mh_heater_chameleon_x5_1)$(mh_controller_fan_chameleon_x5_1)$(mh_other_chameleon_x5_1))" if MMU_TYPE_QUATTRO_BOX_2_0 && MMU_HAS_HEATER && CUSTOM_HEATER_SETUP
-    default "$(ml,$(mh_controller_fan_chameleon_x5_1)$(mh_other_chameleon_x5_1))"                            if MMU_TYPE_QUATTRO_BOX_2_0
+    default "$(ml,$(mh_heater_chameleon_x5_1)$(mh_controller_fan_chameleon_x5_1)$(mh_misc_chameleon_x5_1))" if MMU_HAS_HEATER && CUSTOM_HEATER_SETUP && CUSTOM_CONTROLLER_FAN_SETUP && CUSTOM_MISC_SETUP
+    default "$(ml,$(mh_heater_chameleon_x5_1)$(mh_controller_fan_chameleon_x5_1))"                          if MMU_HAS_HEATER && CUSTOM_HEATER_SETUP && CUSTOM_CONTROLLER_FAN_SETUP
+    default "$(ml,$(mh_heater_chameleon_x5_1)$(mh_misc_chameleon_x5_1))"                                    if MMU_HAS_HEATER && CUSTOM_HEATER_SETUP && CUSTOM_MISC_SETUP
+    default "$(ml,$(mh_heater_chameleon_x5_1))"                                                             if MMU_HAS_HEATER && CUSTOM_HEATER_SETUP
+    default "$(ml,$(mh_controller_fan_chameleon_x5_1)$(mh_misc_chameleon_x5_1))"                            if CUSTOM_CONTROLLER_FAN_SETUP && CUSTOM_MISC_SETUP
+    default "$(ml,$(mh_controller_fan_chameleon_x5_1))"                                                     if CUSTOM_CONTROLLER_FAN_SETUP
+    default "$(ml,$(mh_misc_chameleon_x5_1))"                                                               if CUSTOM_MISC_SETUP
 
 endif

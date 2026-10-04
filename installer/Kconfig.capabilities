@@ -44,6 +44,8 @@
 #   CUSTOM_FAN_SETUP
 #   CUSTOM_HEATER_FAN_SETUP
 #   CUSTOM_NFC_READER_SETUP
+#   CUSTOM_CONTROLLER_FAN_SETUP
+#   CUSTOM_MISC_SETUP
 #
 
 config MMU_HAS_SELECTOR_STEPPER
@@ -118,6 +120,13 @@ config CUSTOM_HEATER_FAN_SETUP
   bool
 
 config CUSTOM_NFC_READER_SETUP
+  bool
+
+# No generic setup yet: these only choose a board's misc hardware blocks
+config CUSTOM_CONTROLLER_FAN_SETUP
+  bool
+
+config CUSTOM_MISC_SETUP
   bool
 
 
