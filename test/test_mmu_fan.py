@@ -601,6 +601,16 @@ class TestMmuFanRuntime(unittest.TestCase):
         self.assertIn('Fan (_unit0_fan): AUTO', status)
         self.assertEqual(self.hh.errors, [])
 
+    def test_status_reports_the_runtime_fan_mode(self):
+        def fans():
+            return self.hh.mmu.get_status(self.hh.reactor.monotonic())['fans']
+        self.assertEqual(fans(), [{'unit': 'unit0', 'first_gate': 0, 'per_gate': False,
+                                   'enabled': True, 'modes': [2]}])
+        self.hh.run_gcode('MMU_FAN FAN_FORCED=1')
+        self.assertEqual(fans()[0]['modes'], [1])
+        self.hh.run_gcode('MMU_FAN ENABLE=0 FAN_FORCED=0')
+        self.assertEqual((fans()[0]['enabled'], fans()[0]['modes']), (False, [0]))
+
     def test_command_adjusts_and_reports_auto_temperature_range(self):
         self.hh.run_gcode('MMU_FAN ON_TEMP=60 OFF_TEMP=58')
         snapshot = self.manager.get_snapshot()
