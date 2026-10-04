@@ -50,6 +50,7 @@ if MMU_FAMILY_QUATTRO_BOX
       imply MMU_HAS_SYNC_FEEDBACK_BUFFER       if BOARD_TYPE_CHAMELEON_X5_1_0
       imply MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if BOARD_TYPE_CHAMELEON_X5_1_0 && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
       imply MMU_HAS_VENT_SERVO                 if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_CONTROLLER_FAN             if BOARD_TYPE_CHAMELEON_X5_1_0
       # Home gates to the shared exit sensor whenever one is fitted
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
       help
@@ -156,8 +157,6 @@ if MMU_FAMILY_QUATTRO_BOX
     # Hardware the Chameleon X5 board file supplies as misc hardware
     config CUSTOM_HEATER_SETUP
       def_bool y if BOARD_TYPE_CHAMELEON_X5_1_0
-    config CUSTOM_CONTROLLER_FAN_SETUP
-      def_bool y if BOARD_TYPE_CHAMELEON_X5_1_0
     config CUSTOM_MISC_SETUP
       def_bool y if BOARD_TYPE_CHAMELEON_X5_1_0
 
@@ -169,9 +168,13 @@ if MMU_FAMILY_QUATTRO_BOX
     config PARAM_HEATER_FAN_SHUTDOWN_SPEED
       default 0.0
 
+    # Electronics cooling fan
+    config PARAM_CONTROLLER_FAN_MAX_POWER
+      default 0.8
+
     # Exhaust vent: _MMU_VENT runs every 20 minutes while drying
     config PARAM_HEATER_VENT_INTERVAL
-      default 20
+      default "20"
     # (single-unit installs; macro variables are shared by all units)
     config VAR_VENT_SERVO_OPEN_ANGLE
       default 150

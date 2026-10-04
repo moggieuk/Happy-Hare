@@ -10,7 +10,7 @@ from test.hh import cfg, profiles
 SECTION = re.compile(r'^\[([^\]]+)\]', re.M)
 QB2 = {'MMU_FAMILY_QUATTRO_BOX': True, 'MMU_TYPE_QUATTRO_BOX_2_0': True}
 X5 = {'BOARD_TYPE_CHAMELEON_X5_1_0': True}
-CUSTOM_FLAGS = ('CUSTOM_HEATER_SETUP', 'CUSTOM_CONTROLLER_FAN_SETUP', 'CUSTOM_MISC_SETUP')
+CUSTOM_FLAGS = ('CUSTOM_HEATER_SETUP', 'CUSTOM_MISC_SETUP')
 X5_BOXTURTLE = {'MMU_TYPE_BOX_TURTLE_1_0': True, 'BOARD_TYPE_CHAMELEON_X5_1_0': True}
 
 
@@ -72,7 +72,8 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         # No block matches these: CUSTOM_FAN_SETUP and CUSTOM_ENVIRONMENT_SENSOR_SETUP
         # would drop the managed fan and Chamber sensor
         for flag in ('CUSTOM_LED_SETUP', 'CUSTOM_ENVIRONMENT_SENSOR_SETUP', 'CUSTOM_FAN_SETUP',
-                     'CUSTOM_HEATER_FAN_SETUP', 'CUSTOM_NFC_READER_SETUP'):
+                     'CUSTOM_HEATER_FAN_SETUP', 'CUSTOM_CONTROLLER_FAN_SETUP',
+                     'CUSTOM_NFC_READER_SETUP'):
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
 
@@ -102,11 +103,14 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
 
     def test_quattro_box_wiring(self):
         self.assertEqual(self.item('temperature_sensor unit0_Outside')['i2c_address'], '119')
-        board_fan = self.item('controller_fan unit0_fan')
-        self.assertEqual(board_fan['pin'], 'unit0:PB4')
-        for stepper in board_fan['stepper'].split(','):
-            with self.subTest(stepper=stepper.strip()):
-                self.assertIn(stepper.strip(), self.parser.sections())
+
+    def test_controller_fan_from_the_feature(self):
+        self.assertEqual(_sections(self.parser, 'controller_fan'), ['controller_fan _unit0_controller_fan'])
+        board_fan = self.item('controller_fan _unit0_controller_fan')
+        self.assertEqual((board_fan['pin'], board_fan['max_power'], board_fan['fan_speed']),
+                         ('unit0:PB4', '0.8', '1.0'))
+        self.assertEqual(board_fan['stepper'], ', '.join(
+            'mmu_stepper unit0_gear' + suffix for suffix in ('', '_1', '_2', '_3')))
 
     def test_gear_directions_are_left_to_the_user(self):
         for gate, suffix in enumerate(('', '_1', '_2', '_3')):
@@ -172,7 +176,7 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         parser, _ = _render('x5_qb2_no_heater', dict(QB2, MMU_HAS_HEATER=False))
         self.assertFalse(_sections(parser, 'heater_generic') + _sections(parser, 'heater_fan')
                          + _sections(parser, 'multi_pin'))
-        self.assertIn('controller_fan unit0_fan', parser.sections())
+        self.assertIn('controller_fan _unit0_controller_fan', parser.sections())
         self.assertIn('mmu_servo unit0_vent_servo', parser.sections())
 
 
@@ -182,7 +186,7 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('x5_boxturtle_flags', X5_BOXTURTLE)
         for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
-                     'MMU_HAS_VENT_SERVO') + CUSTOM_FLAGS:
+                     'MMU_HAS_VENT_SERVO', 'MMU_HAS_CONTROLLER_FAN') + CUSTOM_FLAGS:
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         parser, _ = _render('x5_boxturtle', X5_BOXTURTLE)
@@ -232,7 +236,7 @@ class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
             kconfig = cfg._kconfig('qb2_mmb_flags', dict(QB2, BOARD_TYPE_MMB_2_0=True))
         for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
                      'MMU_HAS_SENSOR_ENTRY', 'MMU_HAS_SENSOR_EXIT', 'MMU_HAS_SENSOR_SHARED_EXIT',
-                     'MMU_HAS_SYNC_FEEDBACK_BUFFER', 'MMU_HAS_VENT_SERVO') + CUSTOM_FLAGS:
+                     'MMU_HAS_SYNC_FEEDBACK_BUFFER', 'MMU_HAS_VENT_SERVO', 'MMU_HAS_CONTROLLER_FAN') + CUSTOM_FLAGS:
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         self.assertEqual(kconfig.get('PARAM_MISC_HARDWARE'), '')
