@@ -26,7 +26,10 @@
 # Controller fan parameter tokens
 #   PARAM_CONTROLLER_FAN_MAX_POWER, PARAM_CONTROLLER_FAN_KICK_START_TIME,
 #   PARAM_CONTROLLER_FAN_SPEED, PARAM_CONTROLLER_FAN_IDLE_TIMEOUT,
-#   PIN_CONTROLLER_FAN
+#   PIN_CONTROLLER_FAN (shared configuration)
+#   PARAM_CONTROLLER_FAN_MAX_POWER_X, PARAM_CONTROLLER_FAN_KICK_START_TIME_X,
+#   PARAM_CONTROLLER_FAN_SPEED_X, PARAM_CONTROLLER_FAN_IDLE_TIMEOUT_X,
+#   PIN_CONTROLLER_FAN_X (per-gate configuration)
 
 
 if CUSTOM_FAN_SETUP
@@ -223,10 +226,11 @@ config MMU_HAS_CONTROLLER_FAN
     Configure a Klipper [controller_fan] that cools this unit's electronics.
     It runs while any of this unit's gear or selector steppers is enabled
     and for the idle timeout after they are all disabled. It is not tied to
-    the extruder heater.
+    the extruder heater. Per-gate fans are selected within each gate and
+    follow that gate's gear stepper.
 
 menu "Controller fan h/w config"
-  visible if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP
+  visible if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG
   help
     Configure the controller fan output and operating speed.
 

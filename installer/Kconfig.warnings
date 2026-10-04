@@ -235,7 +235,14 @@ config W31
     def_bool y if MMU_HAS_VENT_SERVO && PIN_VENT_SERVO = ""
 
 config W32
-    def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && PIN_CONTROLLER_FAN = ""
+    def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG && \
+        PIN_CONTROLLER_FAN = ""
+
+@repeat var=i min=0 max=11@
+config W32
+    def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG && \
+        PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i) && PIN_CONTROLLER_FAN_$(i) = ""
+@endrepeat@
 
 
 

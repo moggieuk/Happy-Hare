@@ -19,6 +19,18 @@ def _controller_fan_profile(base, **syms):
         }, **syms))
 
 
+def _per_gate_controller_fan_profile(base='emu', **syms):
+    return profiles.get(base).derive(
+        base + '_per_gate_controller_fan',
+        syms=dict({
+            'MMU_HAS_CONTROLLER_FAN': True,
+            'PIN_CONTROLLER_FAN_0': 'unit0_gate0:PB8',
+            'PIN_CONTROLLER_FAN_2': 'unit0_gate2:PB8',
+            'PIN_CONTROLLER_FAN_4': 'unit0_gate4:PB8',
+            'PARAM_CONTROLLER_FAN_GATE_4': False,
+        }, **syms))
+
+
 def _single_fan_profile():
     return profiles.get('qidi').derive(
         'qidi_managed_fan',
@@ -461,6 +473,14 @@ class TestMmuFanPinConfiguration(unittest.TestCase):
                 'MMU_HAS_HEATER': True,
             }, ('PIN_FAN_0', 'PIN_HEATER_FAN_0'),
                ('PIN_FAN', 'PIN_HEATER_FAN')),
+            ('controller_shared', {
+                'MMU_TYPE_HTLF_1_0': True,
+                'MMU_HAS_CONTROLLER_FAN': True,
+            }, ('PIN_CONTROLLER_FAN',), ('PIN_CONTROLLER_FAN_0',)),
+            ('controller_per_gate', {
+                'MMU_TYPE_EMU_1_0': True,
+                'MMU_HAS_CONTROLLER_FAN': True,
+            }, ('PIN_CONTROLLER_FAN_0',), ('PIN_CONTROLLER_FAN',)),
         )
 
         with cfg._env(cfg._SINGLE_UNIT_ENV):
@@ -633,12 +653,47 @@ class TestControllerFanRender(unittest.TestCase):
         self.assertIn('controller_fan _unit0_controller_fan', parser.sections())
         self.assertEqual(dict(parser.items('mmu_unit unit0'))['fan'], '_unit0_fan')
 
+    def test_per_gate_fans_follow_each_gate_gear(self):
+        profile = _per_gate_controller_fan_profile(
+            PARAM_CONTROLLER_FAN_SPEED_2=0.7,
+            PARAM_CONTROLLER_FAN_IDLE_TIMEOUT_2=90,
+            PIN_CONTROLLER_FAN='unit0_gate0:PB9')
+        sections, parser = self._section(profile)
+        # Gate 1 and 3 have no pin, gate 4 is switched off; no shared fan in per-gate config
+        self.assertEqual(sections, ['controller_fan _unit0_controller_fan0',
+                                    'controller_fan _unit0_controller_fan2'])
+        fan0 = dict(parser.items(sections[0]))
+        fan2 = dict(parser.items(sections[1]))
+        self.assertEqual(fan0['stepper'], 'mmu_stepper unit0_gear')
+        self.assertEqual(fan2['stepper'], 'mmu_stepper unit0_gear_2')
+        self.assertEqual(fan2['pin'], 'unit0_gate2:PB8')
+        self.assertEqual(fan2['fan_speed'], '0.7')
+        self.assertEqual(fan2['idle_timeout'], '90')
+        self.assertEqual(fan0['fan_speed'], '1.0')
+        self.assertEqual(fan0['heater'], '')
+
+    def test_per_gate_missing_pin_is_warned(self):
+        profile = _per_gate_controller_fan_profile()
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('per_gate_controller_fan_no_pin', profile.syms)
+        self.assertTrue(kconfig.is_enabled('W32'))
+        self.assertEqual(kconfig.syms['PIN_CONTROLLER_FAN'].visibility, 0)
+
+        all_pins = dict(profile.syms, PIN_CONTROLLER_FAN_1='unit0_gate1:PB8',
+                        PIN_CONTROLLER_FAN_3='unit0_gate3:PB8')
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('per_gate_controller_fan_pins', all_pins)
+        self.assertFalse(kconfig.is_enabled('W32'))
+
     def test_option_and_raw_pin_have_help_text(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('controller_fan_help', profiles.get('boxturtle').syms)
         for name in ('MMU_HAS_CONTROLLER_FAN', 'PARAM_CONTROLLER_FAN_MAX_POWER',
                      'PARAM_CONTROLLER_FAN_KICK_START_TIME', 'PARAM_CONTROLLER_FAN_SPEED',
-                     'PARAM_CONTROLLER_FAN_IDLE_TIMEOUT', 'PIN_CONTROLLER_FAN'):
+                     'PARAM_CONTROLLER_FAN_IDLE_TIMEOUT', 'PIN_CONTROLLER_FAN',
+                     'PARAM_CONTROLLER_FAN_GATE_0', 'PARAM_CONTROLLER_FAN_MAX_POWER_0',
+                     'PARAM_CONTROLLER_FAN_KICK_START_TIME_0', 'PARAM_CONTROLLER_FAN_SPEED_0',
+                     'PARAM_CONTROLLER_FAN_IDLE_TIMEOUT_0', 'PIN_CONTROLLER_FAN_0'):
             with self.subTest(option=name):
                 self.assertTrue(all(node.help for node in kconfig.syms[name].nodes
                                     if node.prompt))
@@ -664,8 +719,13 @@ class TestControllerFanBoot(unittest.TestCase):
         self.assertEqual(len(fan.stepper_names), 4)
 
     def test_per_gate_mcu_machine_boots(self):
-        fan = self._boot('emu')
-        self.assertEqual(fan.stepper_names[-1], 'mmu_stepper unit0_gear_4')
+        for base in ('emu', 'emu_ebb'):
+            with self.subTest(profile=base):
+                hh = session(_per_gate_controller_fan_profile(base))
+                self.addCleanup(hh.close)
+                hh.boot()
+                fan = hh.printer.lookup_object('controller_fan _unit0_controller_fan2')
+                self.assertEqual(fan.stepper_names, ('mmu_stepper unit0_gear_2',))
 
     def test_multi_unit_fan_lists_only_its_own_unit(self):
         base = profiles.get('ercf_vvd')
