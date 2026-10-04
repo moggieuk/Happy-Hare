@@ -91,9 +91,15 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
     def test_exhaust_fan_is_the_managed_fan(self):
         self.assertEqual(self.item('fan_generic _unit0_fan')['pin'], 'unit0:PB5')
 
+    def test_vent_servo_from_the_feature(self):
+        self.assertEqual(self.item('mmu_servo unit0_vent_servo')['pin'], 'unit0:PB0')
+        self.assertEqual(_sections(self.parser, 'mmu_servo'), ['mmu_servo unit0_vent_servo'])
+        vent = self.item('gcode_macro _MMU_VENT_VARS')
+        self.assertEqual((vent['variable_servo_open_angle'], vent['variable_servo_closed_angle'],
+                          vent['variable_duration']), ('150', '0', '240'))
+
     def test_quattro_box_wiring(self):
         self.assertEqual(self.item('temperature_sensor unit0_Outside')['i2c_address'], '119')
-        self.assertEqual(self.item('mmu_servo unit0_exhaust')['pin'], 'unit0:PB0')
         board_fan = self.item('controller_fan unit0_fan')
         self.assertEqual(board_fan['pin'], 'unit0:PB4')
         for stepper in board_fan['stepper'].split(','):
@@ -165,7 +171,7 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         self.assertFalse(_sections(parser, 'heater_generic') + _sections(parser, 'heater_fan')
                          + _sections(parser, 'multi_pin'))
         self.assertIn('controller_fan unit0_fan', parser.sections())
-        self.assertIn('mmu_servo unit0_exhaust', parser.sections())
+        self.assertIn('mmu_servo unit0_vent_servo', parser.sections())
 
 
 class TestX5UnderAnotherMachine(unittest.TestCase):
@@ -173,7 +179,8 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
     def test_board_turns_nothing_on(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('x5_boxturtle_flags', X5_BOXTURTLE)
-        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS') + CUSTOM_FLAGS:
+        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
+                     'MMU_HAS_VENT_SERVO') + CUSTOM_FLAGS:
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         parser, _ = _render('x5_boxturtle', X5_BOXTURTLE)
@@ -186,6 +193,9 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
             X5, MMU_CUSTOM=True, MMU_HAS_SYNC_FEEDBACK_BUFFER=True,
             MMU_HAS_SENSOR_BUFFER_PROPORTIONAL=True))
         self.assertNotIn('PC2', dict(parser.items('mmu_buffer unit0')).get('analog_pin', ''))
+        # PB0 is CH4's LED pin except on QuattroBox v2
+        parser, _ = _render('x5_boxturtle_vent', dict(X5_BOXTURTLE, MMU_HAS_VENT_SERVO=True))
+        self.assertEqual(dict(parser.items('mmu_servo unit0_vent_servo'))['pin'], '')
 
     def test_enabled_features_take_the_board_pins(self):
         parser, _ = _render('x5_boxturtle_dryer', dict(
@@ -220,7 +230,7 @@ class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
             kconfig = cfg._kconfig('qb2_mmb_flags', dict(QB2, BOARD_TYPE_MMB_2_0=True))
         for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
                      'MMU_HAS_SENSOR_ENTRY', 'MMU_HAS_SENSOR_EXIT', 'MMU_HAS_SENSOR_SHARED_EXIT',
-                     'MMU_HAS_SYNC_FEEDBACK_BUFFER') + CUSTOM_FLAGS:
+                     'MMU_HAS_SYNC_FEEDBACK_BUFFER', 'MMU_HAS_VENT_SERVO') + CUSTOM_FLAGS:
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         self.assertEqual(kconfig.get('PARAM_MISC_HARDWARE'), '')
