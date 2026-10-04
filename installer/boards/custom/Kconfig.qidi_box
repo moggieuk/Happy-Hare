@@ -96,7 +96,7 @@ if BOARD_TYPE_QIDI_BOX_2_0
 
   config CUSTOM_NFC_READER_SETUP
     def_bool y
-misc_hardware_nfc_reader := \
+mh_nfc_reader_qidi_box := \
 # NFC readers are held in reset until NRSTPD is driven high\n\
 [output_pin $(UNIT_NAME)_nfc_rst]\n\
 pin: $(MCU_NAME):PB12\n\
@@ -132,7 +132,7 @@ debug                 : 0\n\
   # The two thermistors on the heater element are monitors only.
   # -------------------------------------
 
-misc_hardware_heater := \
+mh_heater_qidi_box := \
 [heater_generic $(UNIT_NAME)_heater]\n\
 heater_pin: $(MCU_NAME):PA3\n\
 sensor_type: temperature_combined\n\
@@ -170,7 +170,7 @@ max_temp: 130\n\
   # fan pin an existing user set in menuconfig. Two fans, one heater.
   # -------------------------------------
 
-misc_hardware_heater_fan := \
+mh_heater_fan_qidi_box := \
 [heater_fan $(UNIT_NAME)_heater_fan_a]\n\
 pin: $(MCU_NAME):PA4\n\
 heater: $(UNIT_NAME)_heater\n\
@@ -189,14 +189,14 @@ heater_temp: 35\n\
   # one (the board sits inside the heated box)
   # -------------------------------------
 
-misc_hardware_controller_fan := \
+mh_controller_fan_qidi_box := \
 [controller_fan $(UNIT_NAME)_board_fan]\n\
 pin: $(MCU_NAME):PA6\n\
 stepper: mmu_stepper $(UNIT_NAME)_gear$(comma) mmu_stepper $(UNIT_NAME)_gear_1$(comma) mmu_stepper $(UNIT_NAME)_gear_2$(comma) mmu_stepper $(UNIT_NAME)_gear_3\n\
 
 
   config PARAM_MISC_HARDWARE
-    default "$(ml,$(misc_hardware_nfc_reader)$(misc_hardware_heater)$(misc_hardware_heater_fan)$(misc_hardware_controller_fan)heater: $(UNIT_NAME)_heater\n)" if MMU_HAS_HEATER && MMU_HAS_ENVIRONMENT_SENSOR
-    default "$(ml,$(misc_hardware_nfc_reader)$(misc_hardware_controller_fan))"
+    default "$(ml,$(mh_nfc_reader_qidi_box)$(mh_heater_qidi_box)$(mh_heater_fan_qidi_box)$(mh_controller_fan_qidi_box)heater: $(UNIT_NAME)_heater\n)" if MMU_HAS_HEATER && MMU_HAS_ENVIRONMENT_SENSOR
+    default "$(ml,$(mh_nfc_reader_qidi_box)$(mh_controller_fan_qidi_box))"
 
 endif
