@@ -35,10 +35,10 @@ class TestCustomHardwareHints(unittest.TestCase):
     def test_hint_shows_for_each_custom_feature(self):
         cases = {
             'vvd': ({'MMU_TYPE_VVD_1_0': True, 'BOARD_TYPE_VVD_1_0': True},
-                    ['Kconfig.environment_sensor', 'Kconfig.fans', 'Kconfig.heater',
+                    ['Kconfig.environment_sensor', 'Kconfig.fans', 'Kconfig.fans', 'Kconfig.heater',
                      'Kconfig.heater', 'Kconfig.leds', 'Kconfig.nfc_reader']),
             'kms': (profiles.get('kms').syms, ['Kconfig.heater', 'Kconfig.heater']),
-            'qidi': (profiles.get('qidi').syms, ['Kconfig.nfc_reader']),
+            'qidi': (profiles.get('qidi').syms, ['Kconfig.fans', 'Kconfig.nfc_reader']),
             'boxturtle': (profiles.get('boxturtle').syms, []),
             'x5_qb2': (dict(X5, MMU_FAMILY_QUATTRO_BOX=True, MMU_TYPE_QUATTRO_BOX_2_0=True),
                        ['Kconfig.heater']),

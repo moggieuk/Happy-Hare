@@ -1908,6 +1908,14 @@ class MmuServer:
     def setup_placeholder_processor(self, config):
         args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
         args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
+
+        # Check if 'analysis' component is loaded and retrieve average_toolchange_time
+        has_analysis = self.server.lookup_component("analysis", default=None) is not None
+        average_toolchange_time = config.getfloat("average_toolchange_time", 0.0)
+
+        if has_analysis and average_toolchange_time > 0:
+            args += f" -a {average_toolchange_time}"
+
         from .file_manager import file_manager
         file_manager.METADATA_SCRIPT = os.path.abspath(__file__) + args
 
@@ -2202,6 +2210,9 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
                         outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}{slicer_params} NEXT_POS="{x},{y}" ; T{tool}\n')
                     else:
                         outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}{slicer_params} ; T{tool}\n')
+
+                    maybe_inject_average_toolchange_time(args, outfile)
+
                     for buffered_line in buffer:
                         outfile.write(buffered_line)
                     buffer.clear()
@@ -2220,12 +2231,21 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
         if buffer:
             outfile.write(f"T{tool}\n")
             outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}{slicer_params} ; T{tool}\n')
+
+            maybe_inject_average_toolchange_time(args, outfile)
+
             for line in buffer:
                 outfile.write(line)
 
         # Finally append "; referenced_tools =" as new metadata (why won't Prusa pick up my PR?)
         outfile.write("; referenced_tools = %s\n" % ",".join(map(str, tools_used)))
 
+def maybe_inject_average_toolchange_time(args, outfile):
+    """Injects average_toolchange_time into the G-Code if configured so klipper_estimator can account for the time it takes to change tools."""
+    average_toolchange_time = getattr(args, 'average_toolchange_time', 0.0)
+
+    if average_toolchange_time > 0:
+        outfile.write(f"; ESTIMATOR_ADD_TIME {average_toolchange_time} Tool Change\n")
 
 def add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
     # Ignore comment lines to preserve slicer metadata comments
@@ -2326,6 +2346,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude object functionality")
     parser.add_argument("-m", "--placeholders", dest='placeholders', action='store_true', help="process happy hare mmu placeholders")
     parser.add_argument("-n", "--nextpos", dest='nextpos', action='store_true', help="add next position to tool change")
+    parser.add_argument('-a', '--average_toolchange_time', type=float, default=0.0, help='Average tool change time for estimator')
     args = parser.parse_args()
     config: Dict[str, Any] = {}
     if args.config is None:
