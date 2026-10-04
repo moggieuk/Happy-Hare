@@ -153,8 +153,8 @@ class MmuFanManager:
         self.reactor.update_timer(self._timer, self.reactor.monotonic())
 
     def get_status(self, eventtime=None):
-        # Live per-fan modes (None for a gate without a fan) so a macro can force a fan
-        # on and later restore what it was
+        # Live per-fan modes (None for a gate without a fan) so a fan can be forced on
+        # (e.g. while venting) and later restored to what it was
         return {
             'unit': self.mmu_unit.name,
             'first_gate': self.mmu_unit.first_gate,

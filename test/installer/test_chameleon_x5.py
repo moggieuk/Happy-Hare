@@ -95,11 +95,12 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
     def test_vent_servo_from_the_feature(self):
         self.assertEqual(self.item('mmu_servo unit0_vent_servo')['pin'], 'unit0:PB0')
         self.assertEqual(_sections(self.parser, 'mmu_servo'), ['mmu_servo unit0_vent_servo'])
-        # Vent macro settings are shared by every unit, so the machine type leaves them alone
-        vent = self.item('gcode_macro _MMU_VENT_VARS')
-        self.assertEqual((vent['variable_servo_open_angle'], vent['variable_duration']), ('90', '10'))
+        self.assertEqual(self.item('mmu_unit unit0')['vent_servo'], 'unit0_vent_servo')
         params = self.item('mmu_unit_parameters unit0')
-        self.assertEqual((params['heater_vent_macro'], params['heater_vent_interval']), ('_MMU_VENT', '20'))
+        self.assertEqual({k: params[k] for k in (
+            'heater_vent_interval', 'heater_vent_duration', 'heater_vent_open_angle', 'heater_vent_macro')},
+            {'heater_vent_interval': '20', 'heater_vent_duration': '240',
+             'heater_vent_open_angle': '150', 'heater_vent_macro': ''})
 
     def test_quattro_box_wiring(self):
         self.assertEqual(self.item('temperature_sensor unit0_Outside')['i2c_address'], '119')
@@ -200,7 +201,7 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
         self.assertNotIn('PC2', dict(parser.items('mmu_buffer unit0')).get('analog_pin', ''))
         # PB0 is CH4's LED pin except on QuattroBox v2
         parser, _ = _render('x5_boxturtle_vent', dict(X5_BOXTURTLE, MMU_HAS_VENT_SERVO=True))
-        self.assertEqual(dict(parser.items('mmu_servo unit0_vent_servo'))['pin'], '')
+        self.assertNotIn('mmu_servo unit0_vent_servo', parser.sections())
 
     def test_enabled_features_take_the_board_pins(self):
         parser, _ = _render('x5_boxturtle_dryer', dict(

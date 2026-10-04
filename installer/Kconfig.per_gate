@@ -217,6 +217,27 @@ if MMU_HAS_PER_GATE_CONFIG
         endif
 
         # -------------------------------------
+        # Vent servo
+        # -------------------------------------
+
+        if MMU_HAS_VENT_SERVO
+          config PARAM_VENT_SERVO_GATE_$(i)
+            bool "Vent servo"
+            default y
+            help
+              This gate has its own enclosure vent servo, opened while the
+              gate is drying.
+
+          if PARAM_VENT_SERVO_GATE_$(i)
+            config PIN_VENT_SERVO_$(i)
+              string "Vent servo pin     "
+              validator "$(pin_validator)"
+              help
+                Leave blank if this gate does not have a vent servo installed.
+          endif
+        endif
+
+        # -------------------------------------
         # Fixed heater fan
         # -------------------------------------
 

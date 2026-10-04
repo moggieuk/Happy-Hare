@@ -172,9 +172,13 @@ if MMU_FAMILY_QUATTRO_BOX
     config PARAM_CONTROLLER_FAN_MAX_POWER
       default 0.8
 
-    # Exhaust vent: _MMU_VENT runs every 20 minutes while drying
+    # Exhaust vent: opens for 240s every 20 minutes while drying
     config PARAM_HEATER_VENT_INTERVAL
       default "20"
+    config PARAM_HEATER_VENT_OPEN_ANGLE
+      default 150
+    config PARAM_HEATER_VENT_DURATION
+      default 240
 
     # Chamber sensor
     config PARAM_ENVIRONMENT_SENSOR

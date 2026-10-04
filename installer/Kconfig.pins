@@ -305,10 +305,23 @@ menu "Pins / TMC"
 
   config PIN_VENT_SERVO
     string
-    prompt "$(pad,$(pin_pad),Vent servo pin)" if MMU_HAS_VENT_SERVO
+    prompt "$(pad,$(pin_pad),Vent servo pin)" if MMU_HAS_VENT_SERVO && !MMU_HAS_PER_GATE_CONFIG
     validator "$(pin_validator)"
     help
       $(pin_help)
+
+  menu "Vent servo per-gate pins"
+    depends on MMU_HAS_VENT_SERVO && MMU_HAS_PER_GATE_CONFIG
+
+    @repeat var=i min=0 max=11@
+      config PIN_VENT_SERVO_$(i)
+        string
+        prompt "$(pad,$(pin_pad),Vent servo gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_VENT_SERVO_GATE_$(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
+    @endrepeat@
+  endmenu
 
 
   # -------------------------------------

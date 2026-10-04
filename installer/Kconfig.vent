@@ -2,7 +2,8 @@
 #   MMU_HAS_VENT_SERVO
 #
 # Vent servo parameter tokens which must be inside if MMU_HAS_VENT_SERVO clause in cfg templates:
-#   PIN_VENT_SERVO
+#   PIN_VENT_SERVO (shared configuration)
+#   PARAM_VENT_SERVO_GATE_X, PIN_VENT_SERVO_X (per-gate configuration, Kconfig.per_gate)
 #   PARAM_VENT_SERVO_MIN_PULSE_WIDTH
 #   PARAM_VENT_SERVO_MAX_PULSE_WIDTH
 #   PARAM_VENT_SERVO_MAXIMUM_ANGLE
@@ -24,9 +25,10 @@ if !UNSELECT_MMU_HAS_VENT_SERVO
     default n
     help
       Select if a servo opens and closes a vent in the filament enclosure.
-      The _MMU_VENT macro (heater_vent_macro) opens it while venting and can
-      run the managed fan while it is open. The open and closed angles and
-      how long the vent stays open are macro variables (_MMU_VENT_VARS).
+      Happy Hare opens it every heater_vent_interval minutes while drying and
+      closes it again after the vent open time. The angles and timings are
+      set with the other venting options under the heater settings. With
+      per-gate configuration each gate can have its own vent servo.
 endif
 
 
@@ -37,10 +39,12 @@ endif
 if MMU_HAS_VENT_SERVO
   menu "Vent servo h/w config"
     help
-      Configure the pin and PWM range of the enclosure vent servo.
+      Configure the pin and PWM range of the enclosure vent servo. The PWM
+      range applies to every vent servo of this unit.
 
     config PIN_VENT_SERVO
-      string "Vent servo pin       "
+      string
+      prompt "Vent servo pin       " if !MMU_HAS_PER_GATE_CONFIG
       validator "$(pin_validator)"
       default ""
       help

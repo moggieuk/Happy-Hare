@@ -9,16 +9,21 @@
 # Two setups are supported:
 #  1. The more normal shared enclosure with single heater and environment sensor. In this case
 #     'filament_heater' and 'environment_sensor' properties should be set. Direct heater or
-#     drying lifecycle control is possible. An optional venting macro will periodically be called
-#     with a UNIT parameter naming the unit.
+#     drying lifecycle control is possible.
 #  2. Where each MMU gate has a separate heater/environment sensor (e.g. EMU design). Here it
 #     is possible to specify which gates to dry. The list of heaters and environment sensors
 #     should be set with the 'filament_heaters' and 'environment_sensors' properties.
 #     Further, in this mode a basic "power management" is implemented which limits the number
 #     of simultaneous heaters to that defined by the 'max_concurrent_heaters' property.
 #     Individual control of per-gate heaters and lifecycle is possible by specifying gates of
-#     interest. The periodic venting macro will also be given a GATES parameter listing the
-#     currently heated gates.
+#     interest.
+#
+# Venting: every 'heater_vent_interval' minutes while drying the vent is opened for
+# 'heater_vent_duration' seconds. Opening moves the unit's vent servo(s) ('vent_servo' or per-gate
+# 'vent_servos', only the heated gates' servos with per-gate heaters), optionally forces the managed
+# fan(s) on ('heater_vent_run_fan', restoring their mode on close) and calls 'heater_vent_macro' (if
+# set) with UNIT=<unit> OPEN=1, plus GATES=<heated gates> with per-gate heaters. Closing does the
+# reverse with OPEN=0. Vent servos are also closed at startup and when drying stops.
 #
 # The manager will support automatic spool rotation if equipped with eSpooler and the dry cycle
 # is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
@@ -42,8 +47,11 @@
 import logging
 
 # Happy Hare imports
-from ..mmu_constants import *
-from ..mmu_utils     import MmuError
+from ..mmu_constants    import *
+from ..mmu_utils        import MmuError
+from .mmu_fan_manager   import FAN_ON
+
+VENT_SERVO_LEAD_TIME = 0.100 # Seconds ahead of the mcu clock to schedule a vent servo move
 
 ENV_CHECK_INTERVAL = 30 # How often to check heater and environment sensors (seconds)
 
@@ -67,10 +75,18 @@ class MmuEnvironmentManager:
         self.printer.register_event_handler("mmu:espooler_burst_done", self._handle_espooler_burst_done)
 
         self._periodic_timer = self.reactor.register_timer(self._check_mmu_environment)
+
+        # Vent state lives outside reinit() so a parameter change can't forget an open vent
+        self._vent_close_timer = self.reactor.register_timer(self._vent_close_event)
+        self._vent_is_open = False
+        self._vent_gates = []        # Gates whose servos were opened (all gates if not per-gate)
+        self._vent_fan_restore = []  # (gate or None, mode) pairs to restore when the vent closes
+
         self.reinit()
 
         # Register event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
+        self.printer.register_event_handler('klippy:ready', self._handle_ready)
 
 
     def reinit(self):
@@ -98,6 +114,13 @@ class MmuEnvironmentManager:
 
     def _handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller
+
+
+    def _handle_ready(self):
+        # Close vent servos in case Klipper restarted while a vent was open
+        if self.mmu_unit.has_vent_servo():
+            self.reactor.register_callback(
+                lambda eventtime: self._move_vent_servos(self._vent_servo_names(), self.p.heater_vent_close_angle))
 
 
     #
@@ -548,18 +571,14 @@ class MmuEnvironmentManager:
                 self._stop_drying_cycle("Drying cycle terminated because humidity goal %.1f%% reached" % self._drying_humidity_target, reset_state=False)
                 return self.reactor.NEVER
 
-        # Run periodic venting (macro)
+        # Run periodic venting
         if self._vent_timer is not None:
             self._vent_timer -= ENV_CHECK_INTERVAL
 
-            if self._vent_timer < 0 and self.mmu_unit.p.heater_vent_macro:
-                cmd = "%s UNIT=%s" % (self.mmu_unit.p.heater_vent_macro, self.mmu_unit.name)
-                if self.has_per_gate_heaters():
-                    cmd += " GATES=%s" % ",".join(map(str, self._get_active_gates()))
-                self.mmu.log_debug("MmuEnvironmentManager: Running heater vent macro '%s'" % cmd)
-                self.mmu.wrap_gcode_command(cmd, exception=False) # Will report errors without exception
+            if self._vent_timer < 0:
+                self._vent_open()
 
-                # Reset countdown regardless (prevents hammering if undefined or failing)
+                # Reset countdown regardless (prevents hammering if the macro is undefined or failing)
                 self._vent_timer = self._drying_vent_interval * 60.0 if self._drying_vent_interval else None
 
         # Run periodic spool rotation (eSpooler)
@@ -696,6 +715,7 @@ class MmuEnvironmentManager:
 
 
     def _stop_drying_cycle(self, msg="Filament drying stopped", reset_state=True):
+        self._vent_close()
         if self.is_drying() or self._drying_end_time is not None:
             self.mmu.log_info(msg)
             self.reactor.update_timer(self._periodic_timer, self.reactor.NEVER)
@@ -720,6 +740,137 @@ class MmuEnvironmentManager:
             # Stop rotation
             self._rotate_timer = None
             self._rotate_enabled = False
+
+
+    #
+    # Venting
+    #
+
+    def _vent_target_gates(self):
+        # The heated gates with per-gate heaters, otherwise the whole unit
+        if self.has_per_gate_heaters():
+            return list(self._get_active_gates())
+        return self.mmu_unit.gate_range()
+
+
+    def _vent_servo_names(self, gates=None):
+        if self.mmu_unit.vent_servo:
+            return [self.mmu_unit.vent_servo]
+        names = []
+        for gate in (self.mmu_unit.gate_range() if gates is None else gates):
+            if self.mmu_unit.owns_gate(gate) and self.mmu_unit.vent_servos:
+                name = self.mmu_unit.vent_servos[self.mmu_unit.local_gate(gate)]
+                if name:
+                    names.append(name)
+        return names
+
+
+    def _move_vent_servos(self, names, angle):
+        # Scheduled from the mcu clock so the move doesn't wait behind queued toolhead moves
+        duration = self.p.heater_vent_servo_duration or None # 0 keeps the servo driven
+        for name in names:
+            servo = self.printer.lookup_object(name, None)
+            if servo is None:
+                continue
+            print_time = servo.get_mcu().estimated_print_time(self.reactor.monotonic()) + VENT_SERVO_LEAD_TIME
+            servo.set_position(angle=angle, duration=duration, print_time=print_time)
+
+
+    def _vent_fans_on(self, gates):
+        fan_manager = self.mmu_unit.fan_manager
+        if not fan_manager.has_fans():
+            return []
+        modes = fan_manager.get_status()['modes']
+        restore = []
+        if not fan_manager.has_per_gate_fans():
+            if modes and modes[0] is not None:
+                restore.append((None, modes[0]))
+                fan_manager.set_mode(FAN_ON)
+        else:
+            for gate in gates:
+                mode = modes[self.mmu_unit.local_gate(gate)] if self.mmu_unit.owns_gate(gate) else None
+                if mode is not None:
+                    restore.append((gate, mode))
+                    fan_manager.set_mode(FAN_ON, [gate])
+        return restore
+
+
+    def _vent_macro(self, open_vent, gates):
+        macro = self.p.heater_vent_macro
+        if not macro:
+            return
+        cmd = "%s UNIT=%s OPEN=%d" % (macro, self.mmu_unit.name, 1 if open_vent else 0)
+        if self.has_per_gate_heaters():
+            cmd += " GATES=%s" % ",".join(map(str, gates))
+        self.mmu.log_debug("MmuEnvironmentManager: Running heater vent macro '%s'" % cmd)
+        self.mmu.wrap_gcode_command(cmd, exception=False) # Will report errors without exception
+
+
+    def _vent_servo_detail(self, servos, angle):
+        if not servos:
+            return "no vent servo"
+        return "vent servo%s to angle %g" % ("s" if len(servos) > 1 else "", angle)
+
+
+    def _vent_open(self):
+        reopen = self._vent_is_open
+        if not reopen:
+            self._vent_gates = self._vent_target_gates()
+        gates = self._vent_gates
+        servos = self._vent_servo_names(gates)
+        fan_manager = self.mmu_unit.fan_manager
+
+        if not reopen:
+            self._vent_fan_restore = self._vent_fans_on(gates) if self.p.heater_vent_run_fan else []
+
+        details = [self._vent_servo_detail(servos, self.p.heater_vent_open_angle)]
+        if reopen and self._vent_fan_restore:
+            details.append("managed fan stays on")
+        elif self._vent_fan_restore and fan_manager.has_per_gate_fans():
+            details.append("managed fans on for gates %s" % ", ".join(str(g) for g, _ in self._vent_fan_restore))
+        elif self._vent_fan_restore:
+            details.append("managed fan on")
+        elif fan_manager.has_fans() and not self.p.heater_vent_run_fan:
+            details.append("managed fan not used as heater_vent_run_fan is 0")
+        if self.p.heater_vent_macro:
+            details.append("calling %s" % self.p.heater_vent_macro)
+        what = (" to dry filaments in gates %s" % ", ".join(map(str, gates))) if self.has_per_gate_heaters() else ""
+        self.mmu.log_info("Opening MMU vent on %s%s for %gs (%s)..." % (
+            self.mmu_unit.name, what, self.p.heater_vent_duration, ", ".join(details)))
+
+        self._move_vent_servos(servos, self.p.heater_vent_open_angle)
+        self._vent_is_open = True
+        self._vent_macro(True, gates)
+        self.reactor.update_timer(self._vent_close_timer, self.reactor.monotonic() + self.p.heater_vent_duration)
+
+
+    def _vent_close(self):
+        if not self._vent_is_open:
+            return
+        self.reactor.update_timer(self._vent_close_timer, self.reactor.NEVER)
+        gates = self._vent_gates
+        servos = self._vent_servo_names(gates)
+
+        details = [self._vent_servo_detail(servos, self.p.heater_vent_close_angle)]
+        if self._vent_fan_restore:
+            details.append("managed fan%s restored" % ("s" if len(self._vent_fan_restore) > 1 else ""))
+        if self.p.heater_vent_macro:
+            details.append("calling %s" % self.p.heater_vent_macro)
+        self.mmu.log_info("Closing MMU vent on %s (%s)..." % (self.mmu_unit.name, ", ".join(details)))
+
+        self._move_vent_servos(servos, self.p.heater_vent_close_angle)
+        fan_manager = self.mmu_unit.fan_manager
+        for gate, mode in self._vent_fan_restore:
+            fan_manager.set_mode(mode, None if gate is None else [gate])
+        self._vent_is_open = False
+        self._vent_gates = []
+        self._vent_fan_restore = []
+        self._vent_macro(False, gates)
+
+
+    def _vent_close_event(self, eventtime):
+        self._vent_close()
+        return self.reactor.NEVER
 
 
     def _cancel_gates(self, gates, reason="cancelled"):

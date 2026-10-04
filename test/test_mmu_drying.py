@@ -100,7 +100,7 @@ class TestDryingVent(unittest.TestCase):
         self.hh.settle()
         self.assertEqual(self.vent.calls, [])
         self.hh.reactor.advance(60 + ENV_CHECK_INTERVAL)
-        self.assertEqual(self.vent.calls, ['_MMU_VENT UNIT=%s' % self.unit.name])
+        self.assertEqual(self.vent.calls[0], '_MMU_VENT UNIT=%s OPEN=1' % self.unit.name)
 
 
 if __name__ == '__main__':
