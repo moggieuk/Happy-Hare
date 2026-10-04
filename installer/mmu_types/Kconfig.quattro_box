@@ -13,6 +13,7 @@ config MMU_FAMILY_QUATTRO_BOX
   imply BOOL_ENABLE_LEDS
   imply MMU_HAS_EJECT_BUTTONS
 
+
 if MMU_FAMILY_QUATTRO_BOX
   choice
     prompt "Version"
@@ -40,26 +41,26 @@ if MMU_FAMILY_QUATTRO_BOX
       select PARAM_SYNC_FORM_TIP
       select PARAM_SYNC_PURGE
       # The Chameleon X5 supplies the defaults for these
-      imply MMU_HAS_ENVIRONMENT_SENSOR if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_HEATER if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_FANS if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_SENSOR_ENTRY if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_SENSOR_EXIT if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_SENSOR_SHARED_EXIT if BOARD_TYPE_CHAMELEON_X5_1_0
-      imply MMU_HAS_SYNC_FEEDBACK_BUFFER if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_ENVIRONMENT_SENSOR         if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_HEATER                     if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_FANS                       if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_SENSOR_ENTRY               if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_SENSOR_EXIT                if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_SENSOR_SHARED_EXIT         if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_SYNC_FEEDBACK_BUFFER       if BOARD_TYPE_CHAMELEON_X5_1_0
       imply MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if BOARD_TYPE_CHAMELEON_X5_1_0 && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      # Home gates to the shared exit sensor whenever one is fitted
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
       help
-        Version 2
+        All new version 2 design with heated environment.
 
     endchoice
 
-
   source "Kconfig.capabilities"
 
-  ####################
-  ##### Defaults #####
-  ####################
+  # -------------------------------------
+  # Defaults
+  # -------------------------------------
 
   config PARAM_VENDOR
     default "QuattroBox"
@@ -77,7 +78,6 @@ if MMU_FAMILY_QUATTRO_BOX
 
 
   if MMU_TYPE_QUATTRO_BOX_1_0
-
     config PARAM_VERSION
       default "1.0"
 
@@ -105,12 +105,10 @@ if MMU_FAMILY_QUATTRO_BOX
       default "neopixel:_$(UNIT_NAME)_leds (15-32)"
 
     comment "_"
-
   endif
 
 
   if MMU_TYPE_QUATTRO_BOX_1_1
-
     config PARAM_VERSION
       default "1.1"
 
@@ -138,9 +136,12 @@ if MMU_FAMILY_QUATTRO_BOX
       default "neopixel:_$(UNIT_NAME)_leds (9-36)"
 
     comment "_"
-
   endif
 
+
+  # -------------------------------------
+  # Latest v2 QuattroBox
+  # -------------------------------------
 
   if MMU_TYPE_QUATTRO_BOX_2_0
     config PARAM_VERSION
@@ -216,8 +217,6 @@ if MMU_FAMILY_QUATTRO_BOX
     endchoice
 
     comment "_"
-
   endif
 
-
-endif
+endif # MMU_FAMILY_QUATTRO_BOX
