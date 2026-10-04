@@ -10,14 +10,14 @@
 #  1. The more normal shared enclosure with single heater and environment sensor. In this case
 #     'filament_heater' and 'environment_sensor' properties should be set. Direct heater or
 #     drying lifecycle control is possible. An optional venting macro will periodically be called
-#     with no arguments.
+#     with a UNIT parameter naming the unit.
 #  2. Where each MMU gate has a separate heater/environment sensor (e.g. EMU design). Here it
 #     is possible to specify which gates to dry. The list of heaters and environment sensors
 #     should be set with the 'filament_heaters' and 'environment_sensors' properties.
 #     Further, in this mode a basic "power management" is implemented which limits the number
 #     of simultaneous heaters to that defined by the 'max_concurrent_heaters' property.
 #     Individual control of per-gate heaters and lifecycle is possible by specifying gates of
-#     interest. The periodic venting macro will be called with a GATE parameter listing the
+#     interest. The periodic venting macro will also be given a GATES parameter listing the
 #     currently heated gates.
 #
 # The manager will support automatic spool rotation if equipped with eSpooler and the dry cycle
@@ -553,7 +553,7 @@ class MmuEnvironmentManager:
             self._vent_timer -= ENV_CHECK_INTERVAL
 
             if self._vent_timer < 0 and self.mmu_unit.p.heater_vent_macro:
-                cmd = self.mmu_unit.p.heater_vent_macro
+                cmd = "%s UNIT=%s" % (self.mmu_unit.p.heater_vent_macro, self.mmu_unit.name)
                 if self.has_per_gate_heaters():
                     cmd += " GATES=%s" % ",".join(map(str, self._get_active_gates()))
                 self.mmu.log_debug("MmuEnvironmentManager: Running heater vent macro '%s'" % cmd)
