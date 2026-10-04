@@ -115,7 +115,7 @@ if BOARD_TYPE_KMS_1_0
 
   config CUSTOM_HEATER_SETUP
     def_bool y
-misc_hardware_heater := \
+mh_heater_kms := \
 [heater_generic $(UNIT_NAME)_heater]\n\
 gcode_id: $(UNIT_NAME)\n\
 heater_pin: $(MCU_NAME):PB1\n\
@@ -142,7 +142,7 @@ heating_gain: 1\n\
 
   config CUSTOM_HEATER_FAN_SETUP
     def_bool y
-misc_hardware_heater_fan := \
+mh_heater_fan_kms := \
 [heater_fan $(UNIT_NAME)_fan_left]\n\
 pin: $(MCU_NAME):PC3\n\
 shutdown_speed: 0\n\
@@ -155,7 +155,7 @@ heater: $(UNIT_NAME)_heater\n\
 
 
   config PARAM_MISC_HARDWARE
-    default "$(ml,$(misc_hardware_heater)$(misc_hardware_heater_fan))"
+    default "$(ml,$(mh_heater_kms)$(mh_heater_fan_kms))"
 
 
   # -------------------------------------
