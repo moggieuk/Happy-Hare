@@ -229,6 +229,26 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
                          ['^unit0:PE10', '^unit0:PE7', '^unit0:PA1', '^unit0:PA3'])
 
 
+    def test_per_gate_fans_use_the_channel_fans(self):
+        parser, _ = _render('x5_per_gate_fans', dict(
+            X5, MMU_CUSTOM=True, MMU_HAS_ENVIRONMENT_SENSOR=True, MMU_HAS_FANS=True,
+            MMU_HAS_PER_GATE_CONFIG=True))
+        self.assertEqual([dict(parser.items('fan_generic _unit0_fan%d' % g))['pin'] for g in range(4)],
+                         ['unit0:PB3', 'unit0:PB4', 'unit0:PB8', 'unit0:PB9'])
+
+    def test_nfc_readers_default_to_the_i2c_0_header(self):
+        _, text = _render('x5_nfc_common', dict(
+            X5, MMU_CUSTOM=True, MMU_HAS_NFC_READER=True, MMU_HAS_COMMON_NFC_READER=True,
+            CHOICE_NFC_READER_TYPE_PN532=True))
+        self.assertRegex(text, r'(?m)^i2c_bus\s*:\s*i2c1\s*$')
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('x5_nfc_per_gate', dict(
+                X5, MMU_CUSTOM=True, MMU_HAS_NFC_READER=True, MMU_HAS_PER_GATE_NFC_READERS=True,
+                CHOICE_NFC_READER_TYPE_PN7160_0=True, CHOICE_NFC_READER_TYPE_PN7160_1=True))
+        self.assertEqual([kconfig.get('PARAM_NFC_READER_I2C_BUS_%d' % g) for g in range(2)],
+                         ['i2c1', 'i2c1'])
+
+
 class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
 
     def test_machine_features_without_the_x5_hardware(self):
