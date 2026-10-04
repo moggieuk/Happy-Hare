@@ -22,8 +22,10 @@
 #   kms        4 gates,  VirtualSelector       - default KMS buffer with per-gate exit sensors
 #   qidi       4 gates,  VirtualSelector       - fixed QIDI v2 board, shared hub sensor,
 #                                                THR-hosted extruder sensor and stock dryer
-#   emu        5 gates,  VirtualSelector       - the only shipped profile with a
-#                                                PROPORTIONAL (analog) buffer sensor
+#   quattrobox_v2 4 gates, VirtualSelector     - Chameleon X5 board defaults: heater, BME280s,
+#                                                proportional buffer, shared NFC and TD-1
+#   emu        5 gates,  VirtualSelector       - with quattrobox_v2, the shipped profiles
+#                                                with a PROPORTIONAL (analog) buffer sensor
 #   emu_ebb    5 gates,  VirtualSelector       - EMU on per-gate EBB36/42 gen1 boards,
 #                                                with one shared exit LED chain
 #   ercf 1.1   9 gates,  LinearServoSelector   - unit0 of ercf_vvd; encoder gate homing
@@ -68,6 +70,7 @@ BOOTABLE = {
     'mmx': (4, 'ServoSelector'),
     'kms': (4, 'VirtualSelector'),
     'qidi': (4, 'VirtualSelector'),
+    'quattrobox_v2': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
     'emu_ebb': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
@@ -480,6 +483,60 @@ class TestEveryBootableProfile(unittest.TestCase):
         hh.run_gcode('MMU_STATUS')
         status = re.sub(r'<[^>]+>', '', '\n'.join(hh.console[at:]))
         self.assertIn('■◉■■■■■◯', status)
+
+    def test_quattrobox_v2(self):
+        """QuattroBox v2 boots with every Chameleon X5 component and preloads clear of the hub."""
+        hh = session('quattrobox_v2', virtual_nfc=True)
+        self.addCleanup(hh.close)
+        with self.assertNoLogs(level='WARNING'):
+            hh.boot()
+        self.assertTrue(hh.fired('mmu:bootup'))
+        self.assertEqual(hh.errors, [])
+        self.assertEqual(hh.mmu.num_gates, 4)
+        unit = hh.mmu.mmu_unit(0)
+        self.assertEqual(type(unit.selector).__name__, 'VirtualSelector')
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_preload_endstop, 'mmu_exit')
+
+        self.assertEqual(unit.encoder.resolution, 0.979)
+        self.assertEqual(unit.buffer.buffer_spring_state, 'tension')
+        self.assertEqual(unit.buffer.buffer_range, 16)
+        self.assertEqual(unit.buffer.buffer_maxrange, 16)
+        self.assertEqual(unit.filament_heater, 'heater_generic unit0_heater')
+        self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Chamber')
+        self.assertEqual(unit.td1_devices, ['TD1-QB2'] * 4)
+        self.assertEqual(sorted(hh.nfc_chips), ['unit0_nfc'])
+
+        fileconfig = hh.fileconfig
+        self.assertEqual(fileconfig.get('mmu_buffer unit0', 'analog_pin'), 'unit0:PC2')
+        for name in ('Chamber', 'Outside'):
+            self.assertEqual(fileconfig.get('temperature_sensor unit0_%s' % name,
+                                            'sensor_type'), 'BME280')
+        for name in ('Heater_A', 'Heater_B'):
+            self.assertEqual(fileconfig.get('temperature_sensor unit0_%s' % name,
+                                            'sensor_type'), 'Generic 3950')
+        self.assertEqual(fileconfig.get('heater_generic unit0_heater', 'sensor_type'),
+                         'temperature_combined')
+        self.assertEqual(fileconfig.get('mmu_nfc_reader unit0_nfc', 'reader_type'), 'pn532')
+        for gate in range(4):
+            self.assertTrue(fileconfig.has_section('gcode_button unit0_eject%d' % gate))
+
+        model = hh.filament()
+        self.assertEqual(model.layout['mmu_shared_exit'], 150)
+        from extras.mmu.mmu_constants import GATE_AVAILABLE
+        for gate in range(4):
+            hh.place_filament(gate, position=-40)
+            hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+            self.assertEqual(hh.mmu.gate_status[gate], GATE_AVAILABLE)
+            self.assertAlmostEqual(model.tip[gate], 10)
+            self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+
+        hh.run_gcode('MMU_SELECT GATE=0')
+        hh.run_gcode('MMU_EJECT')
+        hh.run_gcode('MMU_PRELOAD')
+        self.assertEqual(hh.mmu.gate_status[0], GATE_AVAILABLE)
+        self.assertFalse(model.triggered('unit0:mmu_shared_exit'))
+        self.assertEqual(hh.errors, [])
 
     def test_non_qidi_hardware_controlled_driver_warns_and_boots(self):
         from test.hh import profiles
