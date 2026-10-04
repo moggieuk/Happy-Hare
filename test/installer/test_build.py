@@ -100,6 +100,13 @@ class TestV400Refresh(unittest.TestCase):
         self.assertEqual(parameters.get(section, "gear_load_speed"), "123")
         self.assertEqual(parameters.get(section, "gear_buzz_accel"), "987")
 
+    def test_refresh_adds_the_vent_macro_vars(self):
+        # The 4.0 fixture predates _MMU_VENT_VARS
+        with open(os.path.join(self.FIXTURE, "mmu_macro_vars.cfg")) as f:
+            self.assertNotIn("_MMU_VENT_VARS", f.read())
+        macro_vars = self.parsed(self.first, "mmu_macro_vars.cfg")
+        self.assertEqual(macro_vars.get("gcode_macro _MMU_VENT_VARS", "variable_run_fan"), "1")
+
     def test_user_defined_excluded_config_survives_refresh(self):
         mmu = self.parsed(self.first, "mmu.cfg")
         self.assertTrue(mmu.has_section("gcode_macro USER_REFRESH_SENTINEL"))
@@ -249,6 +256,43 @@ class TestSupplementalParamRefresh(unittest.TestCase):
         built, text = self.build("chameleon", "refresh", [source])
         self.assertEqual(self.count(text, "cad_gate_width"), 1)
         self.assertEqual(ConfigBuilder(built).get(self.SECTION, "cad_gate_width"), "33")
+
+
+class TestMacroVarsMerge(unittest.TestCase):
+    """Merge mode lets the Kconfig value of a macro variable win over the installed one."""
+
+    SECTION = "gcode_macro _MMU_FORM_TIP_VARS"
+    OPTION = "variable_ramming_volume"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            self.kconfig = cfg._kconfig("macro-vars-merge", profiles.get("boxturtle").syms)
+
+    def build(self, mode, input_files):
+        from installer import build
+        out = tempfile.mkdtemp(dir=self.tmp.name)
+        dest = os.path.join(out, "mmu_macro_vars.cfg")
+        extra = {"PARAM_TOTAL_NUM_GATES": self.kconfig.getint("PARAM_NUM_GATES")}
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
+                cfg._chdir(cfg.REPO_ROOT):
+            build.build_config_file("config/base/mmu_macro_vars.cfg", dest, self.kconfig,
+                                    input_files, extra)
+        return dest
+
+    def test_merge_takes_the_kconfig_form_tip_value(self):
+        fresh = self.build("replace", [])
+        kconfig_value = ConfigBuilder(fresh).get(self.SECTION, self.OPTION)
+        self.assertNotEqual(kconfig_value, "123")
+        installed = ConfigBuilder(fresh)
+        installed.set(self.SECTION, self.OPTION, "123")
+        with open(fresh, "w") as f:
+            f.write(installed.write())
+        for mode, expected in (("refresh", "123"), ("merge", kconfig_value)):
+            with self.subTest(mode=mode):
+                built = self.build(mode, [fresh])
+                self.assertEqual(ConfigBuilder(built).get(self.SECTION, self.OPTION), expected)
 
 
 if __name__ == "__main__":

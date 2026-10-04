@@ -69,10 +69,11 @@ if BOARD_TYPE_QIDI_BOX_2_0
   config PIN_EXTRUDER_SENSOR
     default "!THR:PA1"
 
-  # The dryer's AHT sensor is wired to PA8/PC9, which are not an STM32
-  # hardware i2c pair, so the board needs software i2c. The generic default
-  # (hardware i2c2_PB10_PB11) does not exist on this MCU and Klipper refuses
-  # to start with "Unknown i2c_bus".
+
+  # The dryer's AHT sensor is wired to PA8/PC9. Mainline Klipper names that
+  # hardware bus "i2c3" on the STM32F4, not the generic default
+  # i2c2_PB10_PB11 (which would fail with "Unknown i2c_bus"), so the board
+  # drives it as software i2c on the same pins.
   choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
     default CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
   endchoice
@@ -81,6 +82,9 @@ if BOARD_TYPE_QIDI_BOX_2_0
   config PIN_ENVIRONMENT_SENSOR_SDA
     default "PC9"
 
+
+  # -------------------------------------
+  # Custom NFC reader setup
   # Two FM1780 readers (Fudan) sit on SPI2 and differ only by chip select:
   # PC6 covers gates 0/1, PC7 covers gates 2/3. They are register compatible
   # with the MFRC522, so the rc522 driver drives them unchanged.
@@ -88,8 +92,11 @@ if BOARD_TYPE_QIDI_BOX_2_0
   # NRSTPD is wired to PB12. The rc522 driver only ever soft-resets over SPI,
   # so unless that line is driven high the chips stay in reset and every
   # register reads back 0xFF.
-  config PARAM_MISC_HARDWARE
-    default "$(ml,\
+  # -------------------------------------
+
+  config CUSTOM_NFC_READER_SETUP
+    def_bool y
+mh_nfc_reader_qidi_box := \
 # NFC readers are held in reset until NRSTPD is driven high\n\
 [output_pin $(UNIT_NAME)_nfc_rst]\n\
 pin: $(MCU_NAME):PB12\n\
@@ -111,6 +118,85 @@ cs_pin                : $(MCU_NAME):PC7\n\
 spi_bus               : spi2_PB14_PB15_PB13\n\
 spi_speed             : 1000000\n\
 debug                 : 0\n\
-)"
+\n\
+
+
+  # -------------------------------------
+  # Dryer heater
+  # No CUSTOM_HEATER_SETUP: that would hide the heater name prompt and
+  # discard the name of a heater an existing user wrote by hand.
+  # Mainline's AHT driver reports every 5s at best, too slow for a heater
+  # (3s watchdog), so temperature_combined re-reports the environment
+  # sensor every 0.3s. sensor_list must match PARAM_ENVIRONMENT_SENSOR.
+  # The PID values are QIDI's, tuned on a faster sensor: run PID_CALIBRATE.
+  # The two thermistors on the heater element are monitors only.
+  # -------------------------------------
+
+mh_heater_qidi_box := \
+[heater_generic $(UNIT_NAME)_heater]\n\
+heater_pin: $(MCU_NAME):PA3\n\
+sensor_type: temperature_combined\n\
+sensor_list: temperature_sensor $(UNIT_NAME)_Env\n\
+combination_method: mean\n\
+maximum_deviation: 50\n\
+control: pid\n\
+pid_Kp: 63.418\n\
+pid_Ki: 1.342\n\
+pid_Kd: 749.125\n\
+min_temp: -100\n\
+max_temp: 100\n\
+\n\
+[verify_heater $(UNIT_NAME)_heater]\n\
+max_error: 400\n\
+check_gain_time: 600\n\
+\n\
+[temperature_sensor $(UNIT_NAME)_heater_temp_a]\n\
+sensor_type: NTC 100K MGB18-104F39050L32\n\
+sensor_pin: $(MCU_NAME):PC1\n\
+min_temp: -100\n\
+max_temp: 130\n\
+\n\
+[temperature_sensor $(UNIT_NAME)_heater_temp_b]\n\
+sensor_type: NTC 100K MGB18-104F39050L32\n\
+sensor_pin: $(MCU_NAME):PC2\n\
+min_temp: -100\n\
+max_temp: 130\n\
+\n\
+
+
+  # -------------------------------------
+  # Dryer heater fans
+  # No CUSTOM_HEATER_FAN_SETUP: that would hide, and discard, a heater
+  # fan pin an existing user set in menuconfig. Two fans, one heater.
+  # -------------------------------------
+
+mh_heater_fan_qidi_box := \
+[heater_fan $(UNIT_NAME)_heater_fan_a]\n\
+pin: $(MCU_NAME):PA4\n\
+heater: $(UNIT_NAME)_heater\n\
+heater_temp: 35\n\
+\n\
+[heater_fan $(UNIT_NAME)_heater_fan_b]\n\
+pin: $(MCU_NAME):PA5\n\
+heater: $(UNIT_NAME)_heater\n\
+heater_temp: 35\n\
+\n\
+
+
+  # -------------------------------------
+  # Board fan
+  # Runs with the gear steppers, and with the dryer heater when there is
+  # one (the board sits inside the heated box)
+  # -------------------------------------
+
+mh_controller_fan_qidi_box := \
+[controller_fan $(UNIT_NAME)_board_fan]\n\
+pin: $(MCU_NAME):PA6\n\
+stepper: mmu_stepper $(UNIT_NAME)_gear$(comma) mmu_stepper $(UNIT_NAME)_gear_1$(comma) mmu_stepper $(UNIT_NAME)_gear_2$(comma) mmu_stepper $(UNIT_NAME)_gear_3\n\
+
+
+  config PARAM_MISC_HARDWARE
+    default "$(ml,$(mh_nfc_reader_qidi_box)$(mh_heater_qidi_box)$(mh_heater_fan_qidi_box)$(mh_controller_fan_qidi_box)heater: $(UNIT_NAME)_heater\n)" if MMU_HAS_HEATER && MMU_HAS_ENVIRONMENT_SENSOR
+    default "$(ml,$(mh_nfc_reader_qidi_box)$(mh_controller_fan_qidi_box))"
 
 endif

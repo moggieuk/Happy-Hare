@@ -1,0 +1,49 @@
+menu "Enclosure venting  (_MMU_VENT)"
+  help
+    Happy Hare enclosure venting macro configuration variables.
+
+    The drying cycle calls heater_vent_macro (_MMU_VENT by default) every
+    heater_vent_interval minutes. If the unit has a vent servo (MMU
+    Features / Additions) the macro opens it, optionally runs the unit's
+    managed fan, and closes the vent again after the vent time. Without a
+    vent servo the macro only logs.
+
+  comment "_"
+  comment "_Vent servo"
+
+  config VAR_VENT_SERVO_OPEN_ANGLE
+    float "Servo open angle          "
+    default 90
+    help
+      Vent servo angle with the vent open.
+
+  config VAR_VENT_SERVO_CLOSED_ANGLE
+    float "Servo closed angle        "
+    default 0
+    help
+      Vent servo angle with the vent closed.
+
+  config VAR_VENT_SERVO_DURATION
+    float "Servo pulse duration (s)  "
+    default 1.0
+    help
+      Duration in seconds of the PWM pulse train used to move the servo.
+      The signal then stops so the servo doesn't jitter while held.
+
+  comment "_"
+  comment "_Venting"
+
+  config VAR_VENT_DURATION
+    float "Vent open time (s)        "
+    default 10
+    help
+      How long the vent stays open each time it is opened.
+
+  config VAR_VENT_RUN_FAN
+    boolint "Run managed fan while open"
+    default 1
+    help
+      Force the unit's managed fan on while the vent is open, then restore
+      the mode it was in. Has no effect without a managed fan.
+
+endmenu

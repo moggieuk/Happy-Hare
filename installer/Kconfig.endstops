@@ -229,11 +229,11 @@ menu "Endstops and Bowden movement"
     def_bool y if MMU_HAS_SENSOR_TOOLHEAD && PARAM_EXTRUDER_FORCE_HOMING
 
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    prompt "Extruder endstop method     " if SHOW_ACTIVE_EXTRUDER_HOMING
+    prompt "Extruder endstop method     "
     help
       Select how Happy Hare establishes the extruder gear reference before
-      loading toward the nozzle. This can be "none" when a toolhead sensor
-      provides the next precise reference point.
+      loading toward the nozzle. With a toolhead sensor it is only used if
+      homing is forced, but bowden calibration still needs it, so avoid "none".
 
     # mmu_type preferences (first true wins)
     default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
@@ -315,7 +315,8 @@ menu "Endstops and Bowden movement"
 
   config PARAM_EXTRUDER_HOMING_MAX
     float
-    prompt "Extruder homing max         " if SHOW_ACTIVE_EXTRUDER_HOMING && !(CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE || CHOICE_EXTRUDER_HOMING_ENDSTOP_ADVANCE_ONLY)
+    prompt "Extruder homing max         " if (SHOW_ACTIVE_EXTRUDER_HOMING && !(CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE || CHOICE_EXTRUDER_HOMING_ENDSTOP_ADVANCE_ONLY)) || \
+        CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
     default 100
     help
       The maximum distance filament will travel attempting to home
@@ -323,7 +324,7 @@ menu "Endstops and Bowden movement"
 
   config PARAM_EXTRUDER_COLLISION_HOMING_CURRENT
     int
-    prompt "Collision % homing current  " if SHOW_ACTIVE_EXTRUDER_HOMING && (CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH)
+    prompt "Collision % homing current  " if CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER || CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
     range 10 100
     default 30
     help

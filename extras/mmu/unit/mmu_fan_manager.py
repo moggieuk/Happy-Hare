@@ -152,6 +152,17 @@ class MmuFanManager:
             return
         self.reactor.update_timer(self._timer, self.reactor.monotonic())
 
+    def get_status(self, eventtime=None):
+        # Live per-fan modes (None for a gate without a fan) so a macro can force a fan
+        # on and later restore what it was
+        return {
+            'unit': self.mmu_unit.name,
+            'first_gate': self.mmu_unit.first_gate,
+            'per_gate': self.has_per_gate_fans(),
+            'enabled': self._enabled,
+            'modes': [mode if fan else None for fan, mode in zip(self.fans, self._modes)],
+        }
+
     def get_snapshot(self, gates=None, eventtime=None):
         eventtime = self.reactor.monotonic() if eventtime is None else eventtime
         snapshot = []

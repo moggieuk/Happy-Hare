@@ -3,7 +3,7 @@
 import re
 import unittest
 
-from test.hh import cfg, profiles
+from test.hh import cfg, profiles, session
 
 
 class TestQidiBoxProfile(unittest.TestCase):
@@ -21,6 +21,12 @@ class TestQidiBoxProfile(unittest.TestCase):
                 {"MMU_TYPE_BOX_TURTLE_1_0": True},
             )
         cls.rendered = cfg.render(cls.profile)
+
+    def test_nfc_custom_flag_is_set_beside_its_misc_hardware(self):
+        self.assertTrue(self.kconfig.is_enabled("CUSTOM_NFC_READER_SETUP"))
+        self.assertTrue(any(
+            node.filename.endswith("boards/custom/Kconfig.qidi_box")
+            for node in self.kconfig.syms["CUSTOM_NFC_READER_SETUP"].nodes))
 
     def test_machine_and_motion_defaults(self):
         expected = {
@@ -75,7 +81,7 @@ class TestQidiBoxProfile(unittest.TestCase):
         self.assertEqual(customized.get("PARAM_VARIABLE_ROTATION_DISTANCES"), "1")
         self.assertEqual(customized.get("PARAM_HAS_BYPASS"), "1")
 
-    def test_toolhead_without_forced_homing_hides_extruder_method(self):
+    def test_toolhead_without_forced_homing_keeps_extruder_method(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig(
                 "qidi_box_toolhead_without_extruder_homing",
@@ -87,8 +93,8 @@ class TestQidiBoxProfile(unittest.TestCase):
             )
 
         choice = kconfig.named_choices["CHOICE_EXTRUDER_HOMING_ENDSTOP"]
-        self.assertEqual(choice.visibility, 0)
-        self.assertEqual(kconfig.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "none")
+        self.assertGreater(choice.visibility, 0)
+        self.assertEqual(kconfig.get("PARAM_EXTRUDER_HOMING_ENDSTOP"), "extruder")
         self.assertEqual(kconfig.syms["PARAM_EXTRUDER_HOMING_MAX"].visibility, 0)
         self.assertEqual(
             kconfig.syms["PARAM_EXTRUDER_COLLISION_HOMING_CURRENT"].visibility,
@@ -281,6 +287,65 @@ class TestQidiBoxProfile(unittest.TestCase):
         for symbol, value in expected.items():
             with self.subTest(symbol=symbol):
                 self.assertEqual(customized.get(symbol), value)
+
+
+class TestQidiBoxDryerHardware(unittest.TestCase):
+
+    SECTION = re.compile(r"^\[([^\]]+)\]", re.M)
+
+    def _render(self, **syms):
+        profile = profiles.Profile(
+            "qidi_box_dryer_" + "_".join("%s_%s" % kv for kv in sorted(syms.items())),
+            syms=dict({"MMU_TYPE_QIDI_BOX_1_0": True}, **syms))
+        rendered = cfg.render(profile)
+        return cfg.assemble(rendered, macros=False), rendered["config/base/mmu_hardware.cfg"]
+
+    def test_board_supplies_the_heater_its_fans_and_the_board_fan(self):
+        parser, text = self._render()
+        unit = dict(parser.items("mmu_unit unit0"))
+        heater = dict(parser.items("heater_generic " + unit["filament_heater"]))
+        self.assertEqual(heater["heater_pin"], "unit0:PA3")
+        self.assertEqual(heater["sensor_type"], "temperature_combined")
+        self.assertEqual(heater["sensor_list"],
+                         "temperature_sensor " + unit["environment_sensor"])
+        self.assertIn("verify_heater unit0_heater", parser.sections())
+
+        fans = {s: dict(parser.items(s)) for s in parser.sections() if s.startswith("heater_fan ")}
+        self.assertEqual(sorted(f["pin"] for f in fans.values()), ["unit0:PA4", "unit0:PA5"])
+        self.assertTrue(all(f["heater"] == "unit0_heater" for f in fans.values()))
+
+        board_fan = dict(parser.items("controller_fan unit0_board_fan"))
+        self.assertEqual(board_fan["heater"], "unit0_heater")
+        steppers = [name.strip() for name in board_fan["stepper"].split(",")]
+        self.assertEqual(len(steppers), 4)
+        for name in steppers:
+            self.assertIn(name, parser.sections())
+
+        sections = self.SECTION.findall(text)
+        self.assertEqual(sorted({s for s in sections if sections.count(s) > 1}), [])
+
+    def test_environment_sensor_reports_fast_enough_for_the_heater(self):
+        parser, _ = self._render()
+        sensor = dict(parser.items("temperature_sensor unit0_Env"))
+        self.assertEqual(sensor["aht10_report_time"], "5")
+
+    def test_no_dryer_hardware_without_its_heater_or_sensor(self):
+        for syms in ({"MMU_HAS_HEATER": False}, {"MMU_HAS_ENVIRONMENT_SENSOR": False}):
+            with self.subTest(**syms):
+                parser, _ = self._render(**syms)
+                self.assertFalse([s for s in parser.sections()
+                                  if s.split(" ", 1)[0] in ("heater_generic", "heater_fan", "verify_heater")])
+                board_fan = dict(parser.items("controller_fan unit0_board_fan"))
+                self.assertNotIn("heater", board_fan)
+
+    def test_qidi_boots_with_its_dryer(self):
+        hh = session(profiles.get("qidi"))
+        try:
+            hh.boot()
+            self.assertEqual(hh.errors, [])
+            self.assertIsNotNone(hh.printer.lookup_object("heater_generic unit0_heater", None))
+        finally:
+            hh.close()
 
 
 if __name__ == "__main__":

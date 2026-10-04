@@ -12,6 +12,9 @@
 #    user_post_load_extension (extras/mmu/mmu_controller.py:205-207, 219-221) and
 #    _BLOBIFIER_VARS (:461).
 #
+# 3. SET_GCODE_VARIABLE updates those variables as Klipper does, and run_body() renders with
+#    them in the template context, so a macro can keep state between calls.
+#
 # Macro bodies are registered as recorded no-ops at this tier - running ~2000 lines
 # of shipped Jinja macro is a later milestone, and HH reaches bootup without it. Callers may
 # explicitly opt one macro into run_body(); make console does that for MMU_COLD_PULL only.
@@ -21,7 +24,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import json
+import ast, json
 import jinja2
 
 # One Environment and one compiled-template cache for the whole PROCESS, not per boot.
@@ -148,6 +151,24 @@ class GCodeMacro:
                         option, config.get_name(), e))
         self.calls = []         # test assertion surface
         self.gcode.register_command(self.alias, self.cmd, desc=self.description)
+        self.gcode.register_mux_command("SET_GCODE_VARIABLE", "MACRO", name,
+                                        self.cmd_SET_GCODE_VARIABLE)
+
+    def cmd_SET_GCODE_VARIABLE(self, gcmd):
+        # Mirrors Klipper's gcode_macro.cmd_SET_GCODE_VARIABLE
+        variable = gcmd.get('VARIABLE')
+        value = gcmd.get('VALUE')
+        if variable not in self.variables:
+            raise gcmd.error("Unknown gcode_macro variable '%s'" % (variable,))
+        try:
+            literal = ast.literal_eval(value)
+            json.dumps(literal, separators=(',', ':'))
+        except (SyntaxError, TypeError, ValueError) as e:
+            raise gcmd.error("Unable to parse '%s' as a literal: %s in '%s'" % (
+                value, e, gcmd.get_commandline()))
+        variables = dict(self.variables)
+        variables[variable] = literal
+        self.variables = variables
 
     def cmd(self, gcmd):
         # Recorded, then OPTIONALLY given an effect. Bodies still do not run (see the module
@@ -168,7 +189,8 @@ class GCodeMacro:
     def run_body(self, gcmd):
         """Render and dispatch this macro body when the harness explicitly opts it in."""
         gcode_macro = self.printer.lookup_object('gcode_macro')
-        context = gcode_macro.create_template_context()
+        context = dict(self.variables)
+        context.update(gcode_macro.create_template_context())
         context['params'] = gcmd.get_command_parameters()
         context['rawparams'] = gcmd.get_raw_command_parameters()
         self.template.run_gcode_from_command(context)

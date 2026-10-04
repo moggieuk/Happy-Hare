@@ -1,5 +1,5 @@
 # KMS board misc hardware: the heater and heater fans stay custom, each CUSTOM_* flag
-# set in the board file beside its misc_hardware_<group>; the environment sensor
+# set in the board file beside its mh_<group>_kms; the environment sensor
 # comes from the generic feature with board and type defaults.
 
 import re

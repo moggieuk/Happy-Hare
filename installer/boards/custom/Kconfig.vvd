@@ -61,7 +61,7 @@ if BOARD_TYPE_VVD_1_0
 
   config CUSTOM_LED_SETUP
     def_bool y
-misc_hardware_led := \
+mh_led_vvd := \
 [neopixel $(UNIT_NAME)_leds_1]\n\
 pin: $(MCU_NAME):PC6\n\
 chain_count: 14\n\
@@ -80,7 +80,7 @@ color_order: GRB\n\
 
   config CUSTOM_ENVIRONMENT_SENSOR_SETUP
     def_bool y
-misc_hardware_environment_sensor := \
+mh_environment_sensor_vvd := \
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
 sensor_type: AHT3X # Use an AHT10 and set klipper option 'update_aht10_commands: 1' if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
 i2c_mcu: $(MCU_NAME)\n\
@@ -103,7 +103,7 @@ aht10_report_time: 10\n\
 
   config CUSTOM_HEATER_SETUP
     def_bool y
-misc_hardware_heater := \
+mh_heater_vvd := \
 [heater_generic $(UNIT_NAME)_heater]\n\
 gcode_id:  $(UNIT_NAME)_heater\n\
 heater_pin: $(MCU_NAME):PC14\n\
@@ -138,7 +138,7 @@ pullup_resistor: 2200\n\
 
   config CUSTOM_HEATER_FAN_SETUP
     def_bool y
-misc_hardware_heater_fan := \
+mh_heater_fan_vvd := \
 [heater_fan $(UNIT_NAME)_fan]\n\
 pin: $(MCU_NAME):PC15\n\
 shutdown_speed: 0\n\
@@ -152,7 +152,7 @@ heater: $(UNIT_NAME)_heater\n\
 
   config CUSTOM_FAN_SETUP
     def_bool y
-misc_hardware_fan := \
+mh_fan_vvd := \
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
 pin: $(MCU_NAME):PA14\n\
@@ -166,7 +166,7 @@ stepper: mmu_stepper $(UNIT_NAME)_selector$(comma) mmu_stepper $(UNIT_NAME)_gear
 
   config CUSTOM_NFC_READER_SETUP
     def_bool y
-misc_hardware_nfc_reader := \
+mh_nfc_reader_vvd := \
 # NFC reader gates 0/1\n\
 [mmu_nfc_reader $(UNIT_NAME)_nfc01]\n\
 reader_type           : rc522\n\
@@ -184,7 +184,7 @@ spi_speed             : 1000000\n\
 debug                 : 0\n\
 
   config PARAM_MISC_HARDWARE
-    default "$(ml,$(misc_hardware_led)$(misc_hardware_environment_sensor)$(misc_hardware_heater)$(misc_hardware_heater_fan)$(misc_hardware_fan)$(misc_hardware_nfc_reader))"
+    default "$(ml,$(mh_led_vvd)$(mh_environment_sensor_vvd)$(mh_heater_vvd)$(mh_heater_fan_vvd)$(mh_fan_vvd)$(mh_nfc_reader_vvd))"
 
 
   # -------------------------------------

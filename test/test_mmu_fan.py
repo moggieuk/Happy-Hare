@@ -375,7 +375,8 @@ class TestMmuFanConfiguration(unittest.TestCase):
                 'PARAM_HEATER_FAN_HEATER_TEMP': 40.0,
             })
         parser = cfg.assemble(cfg.render(profile))
-        sections = [s for s in parser.sections() if s.startswith(('heater_fan ', 'multi_pin '))]
+        # Generated sections only: the QIDI board's misc hardware adds its own heater fans
+        sections = [s for s in parser.sections() if s.startswith(('heater_fan _', 'multi_pin _'))]
         # Klipper resolves multi_pin: when the fan loads, so the alias must come first
         self.assertEqual(sections, ['multi_pin _unit0_heater_fan_pins', 'heater_fan _unit0_heater_fan'])
         self.assertEqual(parser.get('multi_pin _unit0_heater_fan_pins', 'pins'), 'unit0:PA4, !unit0:PA5')
@@ -600,6 +601,16 @@ class TestMmuFanRuntime(unittest.TestCase):
         self.assertIn('MMU fan control for unit0: ENABLED', status)
         self.assertIn('Fan (_unit0_fan): AUTO', status)
         self.assertEqual(self.hh.errors, [])
+
+    def test_status_reports_the_runtime_fan_mode(self):
+        def fans():
+            return self.hh.mmu.get_status(self.hh.reactor.monotonic())['fans']
+        self.assertEqual(fans(), [{'unit': 'unit0', 'first_gate': 0, 'per_gate': False,
+                                   'enabled': True, 'modes': [2]}])
+        self.hh.run_gcode('MMU_FAN FAN_FORCED=1')
+        self.assertEqual(fans()[0]['modes'], [1])
+        self.hh.run_gcode('MMU_FAN ENABLE=0 FAN_FORCED=0')
+        self.assertEqual((fans()[0]['enabled'], fans()[0]['modes']), (False, [0]))
 
     def test_command_adjusts_and_reports_auto_temperature_range(self):
         self.hh.run_gcode('MMU_FAN ON_TEMP=60 OFF_TEMP=58')
