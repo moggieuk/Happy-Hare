@@ -1856,11 +1856,9 @@ class MmuServer:
         args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
         args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
 
-        # Check if 'analysis' component is loaded and retrieve average_toolchange_time
-        has_analysis = self.server.lookup_component("analysis", default=None) is not None
         average_toolchange_time = config.getfloat("average_toolchange_time", 0.0)
 
-        if has_analysis and average_toolchange_time > 0:
+        if average_toolchange_time > 0:
             args += f" -a {average_toolchange_time}"
 
         from .file_manager import file_manager
