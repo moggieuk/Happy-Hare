@@ -313,7 +313,8 @@ class TestPinValidator(unittest.TestCase):
             with cfg._env(cfg._SINGLE_UNIT_ENV):
                 kc = cfg._kconfig('pin_validator_' + name, profile.syms)
             for sym in kc.unique_defined_syms:
-                if sym.name.startswith('PIN_') and not self.validator.fullmatch(sym.str_value.strip()):
+                validator = self.list_validator if sym.name in self.LIST_PINS else self.validator
+                if sym.name.startswith('PIN_') and not validator.fullmatch(sym.str_value.strip()):
                     failures.add((name, sym.name, sym.str_value))
         self.assertEqual(sorted(failures), [])
 

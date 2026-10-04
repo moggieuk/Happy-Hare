@@ -893,7 +893,8 @@ templates** from them, so a broken template shows up as a test failure.
 | `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
 | `pico_mmu` | PicoMMU's `ServoSelector`; deliberately boots uncalibrated because its gate angles depend on the physical cam build |
 | `mmx` | MMX's `ServoSelector` with its vendor gate-angle order; also used for a full load/unload selector test |
-| `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
+| `quattrobox_v2` | QuattroBox v2 on its Chameleon X5 board: eject buttons, Binky encoder, PSF-style proportional buffer, heater on two 3950 thermistors, two BME280s, and a shared PN532 reader and bowden TD-1 |
+| `emu` | 5 gates; with `quattrobox_v2`, the shipped profiles with an analog buffer sensor |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
 | `nfc_per_gate` | one reader per gate |

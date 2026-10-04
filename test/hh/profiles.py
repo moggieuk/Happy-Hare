@@ -546,10 +546,43 @@ QIDI = Profile(
         'filament_compression': 900.0,
     })
 
-# EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
-# sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
-# for real, and the virtual compression/tension sensors derived from an analog reading
-# rather than from switches.
+# QuattroBox v2 on its Chameleon X5 board, which supplies nearly everything as defaults: eject
+# buttons, a Binky encoder at the hub, a proportional buffer on the T2 port, the heater on HEAT0
+# averaging two Generic 3950 (100K NTC, beta 3950) thermistors, a Chamber BME280 as the
+# environment sensor and an Outside BME280 as misc hardware, plus vent servo and fans.
+#
+# Set beyond the machine type:
+#   CHOICE_ENCODER_TYPE_BINKY_12  the current default, pinned so the profile keeps its meaning
+#   PSF buffer                    OPTION_PSF_BUFFER exists only for EMU, so its effect (tension
+#                                 resting state, 16 mm range) is spelled out here
+#   PN532 on i2c1                 one common reader for every gate on the X5's I2C_0 header; the
+#                                 board has no free pins for an SPI reader
+#   TD-1 in the shared bowden     one scanner serving every gate
+QUATTROBOX_V2 = Profile(
+    'quattrobox_v2',
+    syms={
+        'MMU_FAMILY_QUATTRO_BOX': True,
+        'MMU_TYPE_QUATTRO_BOX_2_0': True,
+        'CHOICE_ENCODER_TYPE_BINKY_12': True,
+        'CHOICE_BUFFER_SPRING_STATE_TENSION': True,
+        'PARAM_BUFFER_RANGE': 16,
+        'PARAM_BUFFER_MAXRANGE': 16,
+        'MMU_HAS_NFC_READER': True,
+        'MMU_HAS_COMMON_NFC_READER': True,
+        'CHOICE_NFC_READER_TYPE_PN532': True,
+        'MMU_HAS_TD1': True,
+        'PARAM_TD1_BOWDEN_DEVICE': 'TD1-QB2',
+    },
+    description='QuattroBox v2 on Chameleon X5 - heater, BME280s, PSF buffer, shared NFC + TD-1',
+    # Preload parks 10 mm past the per-gate exit and gate parking is 30 mm before the hub, so
+    # the hub needs the same clearance as BoxTurtle's. gate_endstop_to_encoder is 0: the
+    # encoder sits at the hub.
+    filament_layout={'mmu_shared_exit': 150.0, 'mmu_encoder': 150.0})
+
+# EMU: 5 gates, and one of the two shipped profiles (with QuattroBox v2) that bring a
+# PROPORTIONAL (analog) buffer sensor with them. It is the profile that exercises
+# MmuAdcHelper's ADC compat shim for real, and the virtual compression/tension sensors
+# derived from an analog reading rather than from switches.
 #
 # NOTE this is 5 gates on ONE unit. Genuine multi-unit needs F_MULTI_UNIT plus per-unit
 # Kconfig loading (installer/build.py:481-491), which cfg.py deliberately bypasses - so
@@ -863,7 +896,7 @@ run_current: 0.6
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
 CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
-                    EMU, EMU_EBB, ENCODER,
+                    QUATTROBOX_V2, EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,

@@ -1894,11 +1894,11 @@ esac
 # LED chain-name resolution - a render-level guard, because it must also cover
 # machine types the harness does not boot.
 #
-# QuattroBox is a real shipped machine but is not wired up here (no board/gate-homing/
-# NFC pin definitions), so it dies on empty pins at boot long before the LED load -
-# the render path is the only place its generated config can be checked. These are
-# inline fixtures rather than PROFILES-registry entries for that reason (see the note
-# above TWO_UNIT).
+# QuattroBox v1.0/v1.1 have no default board, so they die on empty pins at boot long
+# before the LED load - the render path is the only place their generated config can be
+# checked. v2 defaults to the Chameleon X5 and boots as the quattrobox_v2 profile; it is
+# kept here so all three versions get the same render check. These are inline fixtures
+# rather than PROFILES-registry entries for that reason (see the note above TWO_UNIT).
 # ---------------------------------------------------------------------------
 
 
