@@ -113,6 +113,24 @@ class TestVentFanWithoutServo(_VentSession):
         self.assertEqual(self._state(), {})
 
 
+class TestVentServoWithoutFan(_VentSession):
+
+    PROFILE = _vent_profile(MMU_HAS_FANS=False)
+
+    def test_moves_the_servo_only(self):
+        executed = self._run('_MMU_VENT UNIT=unit0')
+        self.assertEqual(self._commands(executed, 'SET_SERVO'),
+                         ['SET_SERVO SERVO=unit0_vent_servo ANGLE=90 DURATION=1.0'])
+        self.assertEqual(self._commands(executed, 'MMU_FAN'), [])
+        self.assertEqual(self._state(), {'unit0': []})
+
+        executed = self._run('_MMU_CLOSE_VENT')
+        self.assertEqual(self._commands(executed, 'SET_SERVO'),
+                         ['SET_SERVO SERVO=unit0_vent_servo ANGLE=0 DURATION=1.0'])
+        self.assertEqual(self._commands(executed, 'MMU_FAN'), [])
+        self.assertEqual(self._state(), {})
+
+
 class TestVentWithServo(_VentSession):
 
     PROFILE = _vent_profile()
