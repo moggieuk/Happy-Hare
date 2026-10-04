@@ -231,18 +231,29 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
 
 class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
 
-    def test_nothing_from_the_x5(self):
+    def test_machine_features_without_the_x5_hardware(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('qb2_mmb_flags', dict(QB2, BOARD_TYPE_MMB_2_0=True))
-        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
-                     'MMU_HAS_SENSOR_ENTRY', 'MMU_HAS_SENSOR_EXIT', 'MMU_HAS_SENSOR_SHARED_EXIT',
-                     'MMU_HAS_SYNC_FEEDBACK_BUFFER', 'MMU_HAS_VENT_SERVO', 'MMU_HAS_CONTROLLER_FAN') + CUSTOM_FLAGS:
+        # The machine has these whatever the board
+        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_SENSOR_ENTRY', 'MMU_HAS_SENSOR_EXIT',
+                     'MMU_HAS_SENSOR_SHARED_EXIT'):
+            with self.subTest(flag=flag):
+                self.assertTrue(kconfig.is_enabled(flag))
+        self.assertEqual(kconfig.get('PARAM_GATE_HOMING_ENDSTOP'), 'mmu_shared_exit')
+        self.assertEqual(kconfig.get('PARAM_GATE_PRELOAD_PARKING_DISTANCE'), '10')
+        # The X5 supplies the pins and hardware for these
+        for flag in ('MMU_HAS_HEATER', 'MMU_HAS_FANS', 'MMU_HAS_SYNC_FEEDBACK_BUFFER',
+                     'MMU_HAS_VENT_SERVO', 'MMU_HAS_CONTROLLER_FAN') + CUSTOM_FLAGS:
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         self.assertEqual(kconfig.get('PARAM_MISC_HARDWARE'), '')
-        # Forward preload parking is only valid on per-gate exit sensors
-        self.assertEqual(kconfig.get('PARAM_GATE_PRELOAD_PARKING_DISTANCE'), '-30')
 
+    def test_preload_parks_behind_the_sensor_without_exit_sensors(self):
+        # Forward preload parking is only valid on per-gate exit sensors
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('qb2_mmb_no_exit', dict(QB2, BOARD_TYPE_MMB_2_0=True,
+                                                           MMU_HAS_SENSOR_EXIT=False))
+        self.assertEqual(kconfig.get('PARAM_GATE_PRELOAD_PARKING_DISTANCE'), '-30')
 
 if __name__ == '__main__':
     unittest.main()
