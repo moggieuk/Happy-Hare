@@ -251,6 +251,16 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
 
 class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
 
+    def test_every_version_forces_the_filament_buffer_off(self):
+        for version in ('MMU_TYPE_QUATTRO_BOX_1_0', 'MMU_TYPE_QUATTRO_BOX_1_1', 'MMU_TYPE_QUATTRO_BOX_2_0'):
+            with self.subTest(version=version):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconfig = cfg._kconfig('qb_no_filament_buffer_' + version, {
+                        'MMU_FAMILY_QUATTRO_BOX': True, version: True, 'MMU_HAS_FILAMENT_BUFFER': True})
+                # Evaluated value: the forced assignment above is overridden by the select
+                self.assertEqual(kconfig.syms['MMU_HAS_FILAMENT_BUFFER'].str_value, 'n')
+                self.assertEqual(kconfig.syms['MMU_HAS_FILAMENT_BUFFER'].visibility, 0)
+
     def test_machine_features_without_the_x5_hardware(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('qb2_mmb_flags', dict(QB2, BOARD_TYPE_MMB_2_0=True))
