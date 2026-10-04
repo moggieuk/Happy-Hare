@@ -95,6 +95,9 @@ class TestVentWithoutServo(_VentSession):
         self.assertTrue(any('Closing MMU vent...' in line for line in executed), executed)
         self.assertEqual(self._commands(executed, 'SET_SERVO') + self._commands(executed, 'MMU_FAN'), [])
 
+    def test_startup_close_is_silent(self):
+        self.assertEqual(self._run('_MMU_CLOSE_VENT STARTUP=1'), [])
+
     def test_per_gate_vent_names_the_gates(self):
         executed = self._run('_MMU_VENT UNIT=unit0 GATES=0,1')
         self.assertTrue(any('dry filaments in gates: 0, 1' in line for line in executed), executed)
@@ -159,6 +162,12 @@ class TestVentWithServo(_VentSession):
         executed = self._run('_MMU_VENT')
         self.assertEqual(len(self._commands(executed, 'SET_SERVO')), 1)
         self.assertIn('unit0', self._state())
+
+    def test_startup_closes_the_servo_only(self):
+        executed = self._run('_MMU_CLOSE_VENT STARTUP=1')
+        self.assertEqual(self._commands(executed, 'SET_SERVO'),
+                         ['SET_SERVO SERVO=unit0_vent_servo ANGLE=0 DURATION=1.0'])
+        self.assertEqual(self._commands(executed, 'MMU_FAN'), [])
 
     def test_drying_cycle_opens_the_vent(self):
         self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60 VENT_INTERVAL=1')
