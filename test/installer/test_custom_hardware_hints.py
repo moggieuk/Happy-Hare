@@ -37,7 +37,7 @@ class TestCustomHardwareHints(unittest.TestCase):
                     ['Kconfig.environment_sensor', 'Kconfig.fans', 'Kconfig.fans', 'Kconfig.heater',
                      'Kconfig.heater', 'Kconfig.leds', 'Kconfig.nfc_reader']),
             'kms': (profiles.get('kms').syms, ['Kconfig.heater', 'Kconfig.heater']),
-            'qidi': (profiles.get('qidi').syms, ['Kconfig.nfc_reader']),
+            'qidi': (profiles.get('qidi').syms, ['Kconfig.fans', 'Kconfig.nfc_reader']),
             'boxturtle': (profiles.get('boxturtle').syms, []),
         }
         for name, (syms, files) in cases.items():

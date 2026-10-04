@@ -645,13 +645,25 @@ class TestControllerFanRender(unittest.TestCase):
         self.assertTrue(kconfig.is_enabled('SHOW_PER_UNIT_WARNINGS'))
 
     def test_is_independent_of_the_managed_fan(self):
-        profile = _single_fan_profile().derive(
-            'qidi_managed_and_controller_fan',
-            syms={'MMU_HAS_CONTROLLER_FAN': True, 'PIN_CONTROLLER_FAN': 'unit0:PA3'})
+        profile = _controller_fan_profile(
+            'boxturtle',
+            BOOL_CREATE_MCU_ENVIRONMENT_SENSORS=True,
+            MMU_HAS_FANS=True,
+            PIN_FAN='unit0:PA8')
         parser = cfg.assemble(cfg.render(profile))
         self.assertIn('fan_generic _unit0_fan', parser.sections())
         self.assertIn('controller_fan _unit0_controller_fan', parser.sections())
         self.assertEqual(dict(parser.items('mmu_unit unit0'))['fan'], '_unit0_fan')
+
+    def test_qidi_board_fan_replaces_the_generic_option(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('qidi_controller_fan', profiles.get('qidi').syms)
+        self.assertTrue(kconfig.is_enabled('CUSTOM_CONTROLLER_FAN_SETUP'))
+        self.assertEqual(kconfig.syms['MMU_HAS_CONTROLLER_FAN'].visibility, 0)
+
+        # Even a stale user value does not add a second fan beside the board's
+        sections, _ = self._section(_controller_fan_profile('qidi'))
+        self.assertEqual(sections, ['controller_fan unit0_board_fan'])
 
     def test_per_gate_fans_follow_each_gate_gear(self):
         profile = _per_gate_controller_fan_profile(

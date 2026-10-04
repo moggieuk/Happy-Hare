@@ -189,6 +189,8 @@ heater_temp: 35\n\
   # one (the board sits inside the heated box)
   # -------------------------------------
 
+  config CUSTOM_CONTROLLER_FAN_SETUP
+    def_bool y
 mh_controller_fan_qidi_box := \
 [controller_fan $(UNIT_NAME)_board_fan]\n\
 pin: $(MCU_NAME):PA6\n\
