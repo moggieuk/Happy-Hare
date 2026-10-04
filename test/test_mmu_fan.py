@@ -10,6 +10,15 @@ PARAMS = 'config/base/mmu_parameters.cfg'
 MACRO_VARS = 'config/base/mmu_macro_vars.cfg'
 
 
+def _controller_fan_profile(base, **syms):
+    return profiles.get(base).derive(
+        base + '_controller_fan',
+        syms=dict({
+            'MMU_HAS_CONTROLLER_FAN': True,
+            'PIN_CONTROLLER_FAN': 'unit0:PA3',
+        }, **syms))
+
+
 def _single_fan_profile():
     return profiles.get('qidi').derive(
         'qidi_managed_fan',
@@ -194,6 +203,7 @@ class TestMmuFanConfiguration(unittest.TestCase):
             'Heater h/w config',
             'Heater and humidity control',
             'Heater fan h/w config',
+            'Controller fan h/w config',
             'Gate 0 config',
         )
         for prompt in menu_prompts:
@@ -489,6 +499,11 @@ class TestVividCustomFans(unittest.TestCase):
             [])
         self.assertIn('heater_fan unit1_fan', self.parser.sections())
         self.assertIn('controller_fan unit1_mcu_fan', self.parser.sections())
+        self.assertNotIn('controller_fan _unit1_controller_fan', self.parser.sections())
+        # The fake controller_fan checked the custom fan's stepper names at connect
+        fan = self.hh.printer.lookup_object('controller_fan unit1_mcu_fan')
+        self.assertEqual(fan.stepper_names,
+                         ('mmu_stepper unit1_selector', 'mmu_stepper unit1_gear'))
 
     def test_vivid_custom_fans_do_not_enable_managed_controls(self):
         syms = next(unit.syms for unit in self.profile.units if unit.name == 'unit1')
@@ -521,8 +536,11 @@ class TestVividCustomFans(unittest.TestCase):
         self.assertTrue(kconfig.is_enabled('CUSTOM_HEATER_SETUP'))
         self.assertTrue(kconfig.is_enabled('CUSTOM_FAN_SETUP'))
         self.assertTrue(kconfig.is_enabled('CUSTOM_HEATER_FAN_SETUP'))
+        self.assertTrue(kconfig.is_enabled('CUSTOM_CONTROLLER_FAN_SETUP'))
         self.assertFalse(kconfig.is_enabled('MMU_HAS_FANS'))
         self.assertEqual(kconfig.syms['MMU_HAS_FANS'].visibility, 0)
+        self.assertFalse(kconfig.is_enabled('MMU_HAS_CONTROLLER_FAN'))
+        self.assertEqual(kconfig.syms['MMU_HAS_CONTROLLER_FAN'].visibility, 0)
         self.assertTrue(kconfig.is_enabled('MMU_HAS_HEATER_FANS'))
         self.assertEqual(kconfig.syms['MMU_HAS_HEATER_FANS'].assignable, (2,))
 
@@ -548,6 +566,112 @@ class TestVividCustomFans(unittest.TestCase):
         self.assertNotIn('[fan_generic ', rendered)
         self.assertIn('[heater_fan unit0_fan_left]', rendered)
         self.assertIn('[heater_fan unit0_fan_right]', rendered)
+
+
+class TestControllerFanRender(unittest.TestCase):
+
+    @staticmethod
+    def _section(profile):
+        parser = cfg.assemble(cfg.render(profile))
+        sections = [s for s in parser.sections() if s.startswith('controller_fan ')]
+        return sections, parser
+
+    def test_selector_machine_lists_gear_and_selector(self):
+        sections, parser = self._section(_controller_fan_profile('tradrack'))
+        self.assertEqual(sections, ['controller_fan _unit0_controller_fan'])
+        fan = dict(parser.items(sections[0]))
+        self.assertEqual(fan['pin'], 'unit0:PA3')
+        self.assertEqual(fan['stepper'],
+                         'mmu_stepper unit0_gear, mmu_stepper unit0_selector')
+        self.assertEqual(fan['max_power'], '1.0')
+        self.assertEqual(fan['kick_start_time'], '0.5')
+        self.assertEqual(fan['fan_speed'], '1.0')
+        self.assertEqual(fan['idle_timeout'], '30')
+        # Present but empty, so Klipper's extruder heater default does not apply
+        self.assertEqual(fan['heater'], '')
+
+    def test_multigear_machine_lists_every_gear(self):
+        sections, parser = self._section(_controller_fan_profile('boxturtle'))
+        fan = dict(parser.items(sections[0]))
+        self.assertEqual(
+            fan['stepper'],
+            'mmu_stepper unit0_gear, mmu_stepper unit0_gear_1, '
+            'mmu_stepper unit0_gear_2, mmu_stepper unit0_gear_3')
+
+    def test_hardware_parameters_are_rendered(self):
+        sections, parser = self._section(_controller_fan_profile(
+            'boxturtle',
+            PARAM_CONTROLLER_FAN_MAX_POWER=0.8,
+            PARAM_CONTROLLER_FAN_KICK_START_TIME=1.0,
+            PARAM_CONTROLLER_FAN_SPEED=0.6,
+            PARAM_CONTROLLER_FAN_IDLE_TIMEOUT=120))
+        fan = dict(parser.items(sections[0]))
+        self.assertEqual(fan['max_power'], '0.8')
+        self.assertEqual(fan['kick_start_time'], '1.0')
+        self.assertEqual(fan['fan_speed'], '0.6')
+        self.assertEqual(fan['idle_timeout'], '120')
+
+    def test_off_by_default(self):
+        sections, _ = self._section(profiles.get('boxturtle'))
+        self.assertEqual(sections, [])
+
+    def test_empty_pin_renders_nothing_and_warns(self):
+        profile = _controller_fan_profile('boxturtle', PIN_CONTROLLER_FAN='')
+        sections, _ = self._section(profile)
+        self.assertEqual(sections, [])
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('controller_fan_no_pin', profile.syms)
+        self.assertTrue(kconfig.is_enabled('W32'))
+        self.assertTrue(kconfig.is_enabled('SHOW_PER_UNIT_WARNINGS'))
+
+    def test_is_independent_of_the_managed_fan(self):
+        profile = _single_fan_profile().derive(
+            'qidi_managed_and_controller_fan',
+            syms={'MMU_HAS_CONTROLLER_FAN': True, 'PIN_CONTROLLER_FAN': 'unit0:PA3'})
+        parser = cfg.assemble(cfg.render(profile))
+        self.assertIn('fan_generic _unit0_fan', parser.sections())
+        self.assertIn('controller_fan _unit0_controller_fan', parser.sections())
+        self.assertEqual(dict(parser.items('mmu_unit unit0'))['fan'], '_unit0_fan')
+
+    def test_option_and_raw_pin_have_help_text(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('controller_fan_help', profiles.get('boxturtle').syms)
+        for name in ('MMU_HAS_CONTROLLER_FAN', 'PARAM_CONTROLLER_FAN_MAX_POWER',
+                     'PARAM_CONTROLLER_FAN_KICK_START_TIME', 'PARAM_CONTROLLER_FAN_SPEED',
+                     'PARAM_CONTROLLER_FAN_IDLE_TIMEOUT', 'PIN_CONTROLLER_FAN'):
+            with self.subTest(option=name):
+                self.assertTrue(all(node.help for node in kconfig.syms[name].nodes
+                                    if node.prompt))
+
+
+class TestControllerFanBoot(unittest.TestCase):
+    """The fake controller_fan checks stepper names at klippy:connect, as Klipper does"""
+
+    def _boot(self, base):
+        hh = session(_controller_fan_profile(base))
+        self.addCleanup(hh.close)
+        hh.boot()
+        return hh.printer.lookup_object('controller_fan _unit0_controller_fan')
+
+    def test_selector_machine_boots(self):
+        fan = self._boot('tradrack')
+        self.assertEqual(fan.stepper_names,
+                         ('mmu_stepper unit0_gear', 'mmu_stepper unit0_selector'))
+        self.assertEqual(fan.heater_names, ())
+
+    def test_multigear_machine_boots(self):
+        fan = self._boot('boxturtle')
+        self.assertEqual(len(fan.stepper_names), 4)
+
+    def test_per_gate_mcu_machine_boots(self):
+        fan = self._boot('emu')
+        self.assertEqual(fan.stepper_names[-1], 'mmu_stepper unit0_gear_4')
+
+    def test_unknown_stepper_is_rejected(self):
+        fan = self._boot('boxturtle')
+        fan.stepper_names = ['mmu_stepper unit0_gaer']
+        with self.assertRaisesRegex(Exception, 'steppers are unknown'):
+            fan.handle_connect()
 
 
 class TestMmuFanRuntime(unittest.TestCase):

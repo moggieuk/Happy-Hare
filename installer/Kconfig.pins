@@ -495,6 +495,17 @@ menu "Pins / TMC"
       $(pin_help)
       Comma-separate several fans that run together.
 
+  # -------------------------------------
+  # Controller fan
+  # -------------------------------------
+
+  config PIN_CONTROLLER_FAN
+    string
+    prompt "$(pad,$(pin_pad),Controller fan pin)" if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
+
   menu "Heater fan per-gate pins"
     depends on MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
 

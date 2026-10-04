@@ -152,6 +152,8 @@ heater: $(UNIT_NAME)_heater\n\
 
   config CUSTOM_FAN_SETUP
     def_bool y
+  config CUSTOM_CONTROLLER_FAN_SETUP
+    def_bool y
 mh_fan_vvd := \
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
