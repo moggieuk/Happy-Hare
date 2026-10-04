@@ -97,6 +97,8 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         vent = self.item('gcode_macro _MMU_VENT_VARS')
         self.assertEqual((vent['variable_servo_open_angle'], vent['variable_servo_closed_angle'],
                           vent['variable_duration']), ('150', '0', '240'))
+        params = self.item('mmu_unit_parameters unit0')
+        self.assertEqual((params['heater_vent_macro'], params['heater_vent_interval']), ('_MMU_VENT', '20'))
 
     def test_quattro_box_wiring(self):
         self.assertEqual(self.item('temperature_sensor unit0_Outside')['i2c_address'], '119')

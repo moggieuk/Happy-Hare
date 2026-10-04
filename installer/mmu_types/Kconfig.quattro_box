@@ -169,7 +169,10 @@ if MMU_FAMILY_QUATTRO_BOX
     config PARAM_HEATER_FAN_SHUTDOWN_SPEED
       default 0.0
 
-    # Exhaust vent (single-unit installs; macro variables are shared by all units)
+    # Exhaust vent: _MMU_VENT runs every 20 minutes while drying
+    config PARAM_HEATER_VENT_INTERVAL
+      default 20
+    # (single-unit installs; macro variables are shared by all units)
     config VAR_VENT_SERVO_OPEN_ANGLE
       default 150
     config VAR_VENT_DURATION
