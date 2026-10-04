@@ -150,9 +150,12 @@ heater: $(UNIT_NAME)_heater\n\
   # Custom controller fan setup
   # -------------------------------------
 
+  # No managed environment fan on this board
   config CUSTOM_FAN_SETUP
     def_bool y
-mh_fan_vvd := \
+  config CUSTOM_CONTROLLER_FAN_SETUP
+    def_bool y
+mh_controller_fan_vvd := \
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
 pin: $(MCU_NAME):PA14\n\
@@ -184,7 +187,7 @@ spi_speed             : 1000000\n\
 debug                 : 0\n\
 
   config PARAM_MISC_HARDWARE
-    default "$(ml,$(mh_led_vvd)$(mh_environment_sensor_vvd)$(mh_heater_vvd)$(mh_heater_fan_vvd)$(mh_fan_vvd)$(mh_nfc_reader_vvd))"
+    default "$(ml,$(mh_led_vvd)$(mh_environment_sensor_vvd)$(mh_heater_vvd)$(mh_heater_fan_vvd)$(mh_controller_fan_vvd)$(mh_nfc_reader_vvd))"
 
 
   # -------------------------------------

@@ -57,7 +57,7 @@ config SW7
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=31@
+  @repeat var=i min=1 max=32@
     default y if W$(i)
   @endrepeat@
 
@@ -234,6 +234,16 @@ config W30
 config W31
     def_bool y if MMU_HAS_VENT_SERVO && PIN_VENT_SERVO = ""
 
+config W32
+    def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG && \
+        PIN_CONTROLLER_FAN = ""
+
+@repeat var=i min=0 max=11@
+config W32
+    def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG && \
+        PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i) && PIN_CONTROLLER_FAN_$(i) = ""
+@endrepeat@
+
 
 
 # -------------------------------------
@@ -286,5 +296,6 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Shared buffer isn't owned by another unit [Buffer config]"                        if W29
     comment "Shared encoder isn't owned by another unit [Encoder config]"                      if W30
     comment "Vent servo is enabled but no MCU pin defined"                                     if W31
+    comment "Controller fan is enabled but no MCU pin defined"                                 if W32
   endif
 endif
