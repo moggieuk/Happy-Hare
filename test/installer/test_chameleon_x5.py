@@ -95,9 +95,9 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
     def test_vent_servo_from_the_feature(self):
         self.assertEqual(self.item('mmu_servo unit0_vent_servo')['pin'], 'unit0:PB0')
         self.assertEqual(_sections(self.parser, 'mmu_servo'), ['mmu_servo unit0_vent_servo'])
+        # Vent macro settings are shared by every unit, so the machine type leaves them alone
         vent = self.item('gcode_macro _MMU_VENT_VARS')
-        self.assertEqual((vent['variable_servo_open_angle'], vent['variable_servo_closed_angle'],
-                          vent['variable_duration']), ('150', '0', '240'))
+        self.assertEqual((vent['variable_servo_open_angle'], vent['variable_duration']), ('90', '10'))
         params = self.item('mmu_unit_parameters unit0')
         self.assertEqual((params['heater_vent_macro'], params['heater_vent_interval']), ('_MMU_VENT', '20'))
 
