@@ -10,8 +10,10 @@ config MMU_FAMILY_QUATTRO_BOX
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select PARAM_VARIABLE_BOWDEN_LENGTHS
   select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
   imply BOOL_ENABLE_LEDS
   imply MMU_HAS_EJECT_BUTTONS
+
 
 if MMU_FAMILY_QUATTRO_BOX
   choice
@@ -39,17 +41,28 @@ if MMU_FAMILY_QUATTRO_BOX
       select PARAM_SYNC_TO_EXTRUDER
       select PARAM_SYNC_FORM_TIP
       select PARAM_SYNC_PURGE
+      imply MMU_HAS_ENVIRONMENT_SENSOR
+      imply MMU_HAS_SENSOR_ENTRY
+      imply MMU_HAS_SENSOR_EXIT
+      imply MMU_HAS_SENSOR_SHARED_EXIT
+      # The Chameleon X5 supplies the defaults for these
+      imply MMU_HAS_HEATER                     if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_FANS                       if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_SYNC_FEEDBACK_BUFFER       if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if BOARD_TYPE_CHAMELEON_X5_1_0 && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      imply MMU_HAS_VENT_SERVO                 if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply MMU_HAS_CONTROLLER_FAN             if BOARD_TYPE_CHAMELEON_X5_1_0
+      imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
       help
-        Version 2
+        All new version 2 design with heated environment.
 
     endchoice
 
-
   source "Kconfig.capabilities"
 
-  ####################
-  ##### Defaults #####
-  ####################
+  # -------------------------------------
+  # Defaults
+  # -------------------------------------
 
   config PARAM_VENDOR
     default "QuattroBox"
@@ -67,7 +80,6 @@ if MMU_FAMILY_QUATTRO_BOX
 
 
   if MMU_TYPE_QUATTRO_BOX_1_0
-
     config PARAM_VERSION
       default "1.0"
 
@@ -95,12 +107,10 @@ if MMU_FAMILY_QUATTRO_BOX
       default "neopixel:_$(UNIT_NAME)_leds (15-32)"
 
     comment "_"
-
   endif
 
 
   if MMU_TYPE_QUATTRO_BOX_1_1
-
     config PARAM_VERSION
       default "1.1"
 
@@ -128,9 +138,12 @@ if MMU_FAMILY_QUATTRO_BOX
       default "neopixel:_$(UNIT_NAME)_leds (9-36)"
 
     comment "_"
-
   endif
 
+
+  # -------------------------------------
+  # Latest v2 QuattroBox
+  # -------------------------------------
 
   if MMU_TYPE_QUATTRO_BOX_2_0
     config PARAM_VERSION
@@ -141,17 +154,62 @@ if MMU_FAMILY_QUATTRO_BOX
       default BOARD_TYPE_CHAMELEON_X5_1_0
     endchoice
 
+    # Hardware the Chameleon X5 board file supplies as misc hardware
+    config CUSTOM_HEATER_SETUP
+      def_bool y if BOARD_TYPE_CHAMELEON_X5_1_0
+    config CUSTOM_MISC_SETUP
+      def_bool y if BOARD_TYPE_CHAMELEON_X5_1_0
+
+    # Heater
+    config PARAM_FILAMENT_HEATER
+      default "$(UNIT_NAME)_heater" if CUSTOM_HEATER_SETUP
+    config PARAM_HEATER_FAN_HEATER_TEMP
+      default 40.0
+    config PARAM_HEATER_FAN_SHUTDOWN_SPEED
+      default 0.0
+
+    # Electronics cooling fan
+    config PARAM_CONTROLLER_FAN_MAX_POWER
+      default 0.8
+
+    # Exhaust vent: _MMU_VENT runs every 20 minutes while drying
+    config PARAM_HEATER_VENT_INTERVAL
+      default "20"
+
+    # Chamber sensor
+    config PARAM_ENVIRONMENT_SENSOR
+      default "$(UNIT_NAME)_Chamber"
+    choice CHOICE_ENVIRONMENT_SENSOR_TYPE
+      default CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
+    endchoice
+
     config PARAM_GEAR_GEAR_RATIO
       default "1:1"
     config PARAM_GEAR_RUN_CURRENT
-      default 0.6
+      default 0.9
     config PARAM_GEAR_HOLD_CURRENT
       default 0.2
+    config PARAM_SYNC_GEAR_CURRENT
+      default 40
+
+    config PARAM_GEAR_LOAD_SPEED
+      default 350
+    config PARAM_GEAR_LOAD_ACCEL
+      default 500
+    config PARAM_GEAR_UNLOAD_SPEED
+      default 350
+    config PARAM_GEAR_UNLOAD_ACCEL
+      default 500
     config PARAM_GEAR_HOMING_SPEED
-      default 80
+      default 50
 
     config PARAM_GATE_ENDSTOP_TO_ENCODER
       default 0
+    config PARAM_BOWDEN_UNLOAD_HOMING_BUFFER
+      default 50
+    config PARAM_GATE_PRELOAD_PARKING_DISTANCE
+      default 10 if CHOICE_GATE_PRELOAD_ENDSTOP_EXIT
+      default -20
 
     config PARAM_CHAIN_COUNT
       default 38
@@ -159,14 +217,17 @@ if MMU_FAMILY_QUATTRO_BOX
       default "GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
     config PARAM_EXIT_LEDS
       default "neopixel:_$(UNIT_NAME)_leds (1-4)"
-    config PARAM_STATUS_LEDS
+    config PARAM_ENTRY_LEDS
       default "neopixel:_$(UNIT_NAME)_leds (8-5)"
-    config PARAM_LOGO_LEDS
+    config PARAM_STATUS_LEDS
       default "neopixel:_$(UNIT_NAME)_leds (9-38)"
+    config PARAM_LOGO_LEDS
+      default ""
+    choice CHOICE_ENTRY_EFFECT
+      default CHOICE_ENTRY_EFFECT_GATE_STATUS
+    endchoice
 
     comment "_"
-
   endif
 
-
-endif
+endif # MMU_FAMILY_QUATTRO_BOX
