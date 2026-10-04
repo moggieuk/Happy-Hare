@@ -375,7 +375,8 @@ class TestMmuFanConfiguration(unittest.TestCase):
                 'PARAM_HEATER_FAN_HEATER_TEMP': 40.0,
             })
         parser = cfg.assemble(cfg.render(profile))
-        sections = [s for s in parser.sections() if s.startswith(('heater_fan ', 'multi_pin '))]
+        # Generated sections only: the QIDI board's misc hardware adds its own heater fans
+        sections = [s for s in parser.sections() if s.startswith(('heater_fan _', 'multi_pin _'))]
         # Klipper resolves multi_pin: when the fan loads, so the alias must come first
         self.assertEqual(sections, ['multi_pin _unit0_heater_fan_pins', 'heater_fan _unit0_heater_fan'])
         self.assertEqual(parser.get('multi_pin _unit0_heater_fan_pins', 'pins'), 'unit0:PA4, !unit0:PA5')
