@@ -27,8 +27,6 @@ if MMU_TYPE_QIDI_BOX_1_0
 
   # The readers are declared by the board profile, one physical chip per pair
   # of gates, so the per-gate list repeats each name twice.
-  config CUSTOM_NFC_READER_SETUP
-    def_bool y
   config PARAM_NFC_READER_0
     default "$(UNIT_NAME)_nfc01"
   config PARAM_NFC_READER_1
@@ -144,11 +142,14 @@ if MMU_TYPE_QIDI_BOX_1_0
     default 12
 
   # Dryer ----------------------------------
-  # The profile implies MMU_HAS_HEATER, so name the heater object the same way
-  # the other vendors with a dryer do (see Kconfig.vvd / Kconfig.kms). Without
-  # a name the dryer is enabled but bound to nothing and silently does nothing.
+  # The board's misc hardware defines this heater (see Kconfig.qidi_box under
+  # boards/custom)
   config PARAM_FILAMENT_HEATER
     default "$(UNIT_NAME)_heater"
+  # The heater is controlled through the environment sensor, so it must
+  # report as often as the AHT driver allows
+  config PARAM_ENVIRONMENT_SENSOR_REPORT_TIME
+    default 5 if !CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
 
   comment "_"
 
