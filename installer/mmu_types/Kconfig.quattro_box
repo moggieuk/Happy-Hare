@@ -193,15 +193,13 @@ if MMU_FAMILY_QUATTRO_BOX
       default 40
 
     config PARAM_GEAR_LOAD_SPEED
-      default 500
+      default 350
     config PARAM_GEAR_LOAD_ACCEL
       default 500
     config PARAM_GEAR_UNLOAD_SPEED
-      default 500
+      default 350
     config PARAM_GEAR_UNLOAD_ACCEL
       default 500
-    config PARAM_GEAR_SHORT_MOVE_ACCEL
-      default 600
     config PARAM_GEAR_HOMING_SPEED
       default 50
 
@@ -211,8 +209,7 @@ if MMU_FAMILY_QUATTRO_BOX
       default 50
     config PARAM_GATE_PRELOAD_PARKING_DISTANCE
       default 10 if CHOICE_GATE_PRELOAD_ENDSTOP_EXIT
-    config PARAM_GATE_PRELOAD_ATTEMPTS
-      default 5 if !CHOICE_GATE_PRELOAD_ENDSTOP_NONE
+      default -20
 
     config PARAM_CHAIN_COUNT
       default 38

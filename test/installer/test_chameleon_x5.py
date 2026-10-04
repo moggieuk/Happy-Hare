@@ -155,10 +155,9 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
     def test_machine_tuning(self):
         params = self.item('mmu_unit_parameters unit0')
         expected = {
-            'gear_load_speed': '500', 'gear_load_accel': '500',
-            'gear_unload_speed': '500', 'gear_unload_accel': '500',
-            'gear_short_move_accel': '600', 'gear_homing_speed': '50',
-            'sync_gear_current': '40', 'gate_preload_attempts': '5',
+            'gear_load_speed': '350', 'gear_load_accel': '500',
+            'gear_unload_speed': '350', 'gear_unload_accel': '500',
+            'gear_homing_speed': '50', 'sync_gear_current': '40',
             'bowden_unload_homing_buffer': '50',
         }
         self.assertEqual({k: params[k] for k in expected}, expected)
@@ -283,7 +282,7 @@ class TestQuattroBoxV2OnAnotherBoard(unittest.TestCase):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('qb2_mmb_no_exit', dict(QB2, BOARD_TYPE_MMB_2_0=True,
                                                            MMU_HAS_SENSOR_EXIT=False))
-        self.assertEqual(kconfig.get('PARAM_GATE_PRELOAD_PARKING_DISTANCE'), '-30')
+        self.assertEqual(kconfig.get('PARAM_GATE_PRELOAD_PARKING_DISTANCE'), '-20')
 
 if __name__ == '__main__':
     unittest.main()
