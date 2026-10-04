@@ -106,12 +106,27 @@ VAR_SECTION_MAP = {
     "var_sequence_":     "gcode_macro _MMU_SEQUENCE_VARS",
     "var_client_":       "gcode_macro _MMU_CLIENT_VARS",
     "var_cut_tip_":      "gcode_macro _MMU_CUT_TIP_VARS",
-    "var_form_tip_":     "gcode_macro _MMU_CUT_TIP_VARS",
+    "var_form_tip_":     "gcode_macro _MMU_FORM_TIP_VARS",
     "var_servo_cutter_": "gcode_macro _MMU_SERVO_CUTTER_VARS",
     "var_blobifier_":    "gcode_macro _BLOBIFIER_VARS",
     "var_purge_":        "gcode_macro _MMU_PURGE_VARS",
     "var_vent_":         "gcode_macro _MMU_VENT_VARS",
 }
+
+# Macro variables not named "variable_" + the symbol minus its VAR_SECTION_MAP prefix
+VAR_OPTION_MAP = {
+    "var_blobifier_type":     "variable_blobifier_type",
+    "var_cut_tip_iterations": "variable_cut_iterations",
+}
+
+
+def macro_var_option(key):
+    """(section, option) that the lowercased VAR_ symbol key renders as, or None"""
+    for prefix, section in VAR_SECTION_MAP.items():
+        if key.startswith(prefix):
+            return section, VAR_OPTION_MAP.get(key, "variable_" + key[len(prefix):])
+    return None
+
 
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
 unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
@@ -685,13 +700,9 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
         excluded_vars = []
         for k in kcfg.as_dict():
-            key = k.lower()
-
-            for prefix, section in VAR_SECTION_MAP.items():
-                if key.startswith(prefix):
-                    name = key[len(prefix):]
-                    excluded_vars.append((section, f"variable_{name}"))
-                    break
+            target = macro_var_option(k.lower())
+            if target:
+                excluded_vars.append(target)
         #logging.debug("The following macro variables are being filtered: %s", excluded_vars)
 
     else:
