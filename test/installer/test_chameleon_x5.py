@@ -60,6 +60,19 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         self.assertEqual(heater['sensor_list'],
                          'temperature_sensor unit0_Heater_A, temperature_sensor unit0_Heater_B')
 
+    def test_custom_heater_flag_is_set_in_the_board_file(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('x5_qb2_flags', QB2)
+        self.assertTrue(kconfig.is_enabled('CUSTOM_HEATER_SETUP'))
+        self.assertTrue(any(node.filename.endswith('boards/Kconfig.chameleon_x5_1')
+                            for node in kconfig.syms['CUSTOM_HEATER_SETUP'].nodes))
+        # Its other blocks have no matching flag: CUSTOM_FAN_SETUP and
+        # CUSTOM_ENVIRONMENT_SENSOR_SETUP would drop the managed fan and Chamber sensor
+        for flag in ('CUSTOM_LED_SETUP', 'CUSTOM_ENVIRONMENT_SENSOR_SETUP', 'CUSTOM_FAN_SETUP',
+                     'CUSTOM_HEATER_FAN_SETUP', 'CUSTOM_NFC_READER_SETUP'):
+            with self.subTest(flag=flag):
+                self.assertFalse(kconfig.is_enabled(flag))
+
     def test_heater_fans_from_the_feature(self):
         self.assertEqual(_sections(self.parser, 'heater_fan'), ['heater_fan _unit0_heater_fan'])
         fan, pins = _heater_fan_pins(self.parser)
@@ -157,7 +170,8 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
     def test_board_turns_nothing_on(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig('x5_boxturtle_flags', X5_BOXTURTLE)
-        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS'):
+        for flag in ('MMU_HAS_ENVIRONMENT_SENSOR', 'MMU_HAS_HEATER', 'MMU_HAS_FANS',
+                     'CUSTOM_HEATER_SETUP'):
             with self.subTest(flag=flag):
                 self.assertFalse(kconfig.is_enabled(flag))
         parser, _ = _render('x5_boxturtle', X5_BOXTURTLE)
