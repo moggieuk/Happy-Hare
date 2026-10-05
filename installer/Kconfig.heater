@@ -42,6 +42,7 @@ if !UNSELECT_MMU_HAS_HEATER
         Select if the MMU has a heater in the filament storage enclosure
 endif
 comment "$(misc_hardware_hint)" if MMU_HAS_HEATER && CUSTOM_HEATER_SETUP
+  dim
 
 # -------------------------------------
 # Heater hardware config
@@ -162,6 +163,7 @@ if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG
 endif
 
 comment "$(misc_hardware_hint)" if MMU_HAS_HEATER_FANS && CUSTOM_HEATER_FAN_SETUP
+  dim
 
 
 # -------------------------------------

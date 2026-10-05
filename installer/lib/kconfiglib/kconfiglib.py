@@ -3659,6 +3659,12 @@ class Kconfig(object):
 
                 node.forceshow = True
 
+            elif t0 is _T_DIM: # Happy Hare: Added to draw a whole comment row dimmed
+                if node.item is not COMMENT:
+                    self._parse_error("dim is only valid for comments")
+
+                node.dim = True
+
             elif t0 is _T_DEFAULT_WHEN_HIDDEN: # Happy Hare: Added to save hidden symbols as defaults
                 if node.item.__class__ is not Symbol and node.item is not MENU:
                     self._parse_error("default_when_hidden is only valid for symbols and menus")
@@ -6582,6 +6588,7 @@ class MenuNode(object):
         "implies",
         "ranges",
         "forceshow",   # Happy Hare: Added to force UI visibility
+        "dim",         # Happy Hare: Added to draw a comment dimmed
         "default_when_hidden", # Happy Hare: Added, see _saved_as_default()
     )
 
@@ -8046,7 +8053,8 @@ except AttributeError:
     _T_SEQUENCE_EDITOR,    # Happy Hare: Added; appended to preserve existing token values
     _T_APPEND_ONLY_UNLESS, # Happy Hare: Added; appended to preserve existing token values
     _T_REPARSE_ENV,        # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 64) # Happy Hare: Added custom tokens through REPARSE_ENV
+    _T_DIM,                # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 65) # Happy Hare: Added custom tokens through DIM
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -8072,6 +8080,7 @@ _get_keyword = {
     "def_int":        _T_DEF_INT,
     "def_string":     _T_DEF_STRING,
     "def_tristate":   _T_DEF_TRISTATE,
+    "dim":            _T_DIM, # Happy Hare: Added
     "default":        _T_DEFAULT,
     "generated_default": _T_GENERATED_DEFAULT, # Happy Hare: Added
     "defconfig_list": _T_DEFCONFIG_LIST,
