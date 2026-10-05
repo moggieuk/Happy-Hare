@@ -6,7 +6,7 @@ import unittest
 
 from test.hh import cfg, profiles
 
-HINT = "Defined by the mcu board's misc hardware"
+HINT = "Defined and fixed by design/mcu"
 X5 = {'BOARD_TYPE_CHAMELEON_X5_1_0': True}
 
 
@@ -51,6 +51,23 @@ class TestCustomHardwareHints(unittest.TestCase):
             with self.subTest(machine=name):
                 hints = _visible_hints(syms)
                 self.assertEqual(sorted(h.split(':')[0] for h in hints), files, hints)
+
+    def test_custom_controller_fan_prompt_shows_fixed_off(self):
+        import kconfiglib
+        import menuconfig
+        for name, syms in (('vvd', {'MMU_TYPE_VVD_1_0': True, 'BOARD_TYPE_VVD_1_0': True}),
+                           ('qidi', profiles.get('qidi').syms)):
+            with self.subTest(machine=name):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconf = cfg._kconfig('custom_controller_fan_' + name, syms)
+                menuconfig._kconf = kconf
+                menuconfig._show_all = False
+                sym = kconf.syms['MMU_HAS_CONTROLLER_FAN']
+                node = sym.nodes[0]
+                self.assertIn(node, menuconfig._shown_nodes(menuconfig._parent_menu(node)))
+                self.assertEqual(sym.assignable, ())
+                self.assertEqual(sym.tri_value, 0)
+                self.assertNotIsInstance(node.parent.item, kconfiglib.Symbol)
 
     def test_no_hint_is_indented_under_the_prompt_it_follows(self):
         """A comment right after a symbol it depends on, in the same block,
