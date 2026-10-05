@@ -813,6 +813,32 @@ class TestControllerFanRender(unittest.TestCase):
         self.assertEqual(fan0['fan_speed'], '1.0')
         self.assertEqual(fan0['heater'], '')
 
+    def test_can_also_run_with_the_enclosure_heater(self):
+        heated = dict(MMU_HAS_HEATER=True, PARAM_FILAMENT_HEATER='bt_heater')
+        for enabled, expected in ((False, ''), (True, 'bt_heater')):
+            with self.subTest(enabled=enabled):
+                sections, parser = self._section(_controller_fan_profile(
+                    'boxturtle', BOOL_CONTROLLER_FAN_WITH_HEATER=enabled, **heated))
+                self.assertEqual(dict(parser.items(sections[0]))['heater'], expected)
+
+    def test_heater_option_needs_a_heater(self):
+        profile = _controller_fan_profile('boxturtle', BOOL_CONTROLLER_FAN_WITH_HEATER=True)
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('controller_fan_heater_without_heater', profile.syms)
+        sym = kconfig.syms['BOOL_CONTROLLER_FAN_WITH_HEATER']
+        self.assertEqual((sym.str_value, sym.visibility), ('n', 0))
+        sections, parser = self._section(profile)
+        self.assertEqual(dict(parser.items(sections[0]))['heater'], '')
+
+    def test_per_gate_fans_can_run_with_their_gate_heater(self):
+        profile = _per_gate_controller_fan_profile(
+            MMU_HAS_HEATER=True, BOOL_CONTROLLER_FAN_WITH_HEATER=True,
+            PARAM_FILAMENT_HEATER_GATE_2=False)
+        sections, parser = self._section(profile)
+        heaters = [dict(parser.items(s))['heater'] for s in sections]
+        # Gate 2 has no heater, so its fan only follows the gate's stepper
+        self.assertEqual(heaters, ['unit0_heater0', ''])
+
     def test_per_gate_missing_pin_is_warned(self):
         profile = _per_gate_controller_fan_profile()
         with cfg._env(cfg._SINGLE_UNIT_ENV):
