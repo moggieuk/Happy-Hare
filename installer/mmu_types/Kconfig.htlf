@@ -59,9 +59,9 @@ if MMU_TYPE_HTLF_1_0
 
   # Gear stepper ---------------------------
   config PARAM_GEAR_GEAR_RATIO
-    default "1:1"
+    default "80:20"
   config PARAM_GEAR_ROTATION_DISTANCE
-    default 4.65
+    default 23.46
   config PARAM_GEAR_RUN_CURRENT
     default 0.8
   config PARAM_GEAR_HOLD_CURRENT
