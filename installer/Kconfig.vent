@@ -1,0 +1,108 @@
+# Vent servo(s) of the heated chamber. Sourced from Kconfig.heater: venting is part of
+# the drying cycle, so it is only offered with a heater (but not tied to a heater fan)
+#
+# Responsible for setting:
+#   MMU_HAS_VENT_SERVO
+#
+# Vent servo parameter tokens which must be inside if MMU_HAS_VENT_SERVO clause in cfg templates:
+#   PIN_VENT_SERVO, PARAM_VENT_SERVO_MIN_PULSE_WIDTH, PARAM_VENT_SERVO_MAX_PULSE_WIDTH,
+#   PARAM_VENT_SERVO_MAXIMUM_ANGLE (shared configuration)
+#   PARAM_VENT_SERVO_GATE_X, PIN_VENT_SERVO_X, PARAM_VENT_SERVO_MIN_PULSE_WIDTH_X,
+#   PARAM_VENT_SERVO_MAX_PULSE_WIDTH_X, PARAM_VENT_SERVO_MAXIMUM_ANGLE_X
+#   (per-gate configuration)
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_VENT_SERVO
+
+
+config UNSELECT_MMU_HAS_VENT_SERVO
+  def_bool n
+
+# Venting is part of the drying cycle, so it needs the heater (but not a heater fan)
+if MMU_HAS_HEATER && !UNSELECT_MMU_HAS_VENT_SERVO
+  config MMU_HAS_VENT_SERVO
+    prompt "Has enclosure vent servo?"
+    default n
+    help
+      Select if a servo opens and closes a vent in the filament enclosure.
+      Venting is part of the drying cycle: Happy Hare opens it every
+      heater_vent_interval minutes while drying and closes it again after
+      the vent open time. The angles and timings are set with the other
+      venting options in "Heater and humidity control". With per-gate
+      configuration each gate can have its own vent servo.
+endif
+
+
+# -------------------------------------
+# Vent servo config
+# -------------------------------------
+
+if MMU_HAS_VENT_SERVO
+  menu "Vent servo h/w config"
+    help
+      Configure the pin and PWM range of the enclosure vent servo, or with
+      per-gate configuration of each gate's vent servo.
+
+    config PIN_VENT_SERVO
+      string
+      prompt "Vent servo pin       " if !MMU_HAS_PER_GATE_CONFIG
+      validator "$(pin_validator)"
+      default ""
+      help
+        $(pin_help)
+
+    if MMU_HAS_PER_GATE_CONFIG
+      @repeat var=i min=0 max=11@
+        if PARAM_NUM_GATES > $(i)
+          menuconfig PARAM_VENT_SERVO_GATE_$(i)
+            bool "Gate $(i) vent servo"
+            default y
+            help
+              This gate has its own enclosure vent servo, opened while the
+              gate is drying.
+
+          if PARAM_VENT_SERVO_GATE_$(i)
+            config PIN_VENT_SERVO_$(i)
+              string "Vent servo pin       "
+              validator "$(pin_validator)"
+              help
+                Leave blank if this gate does not have a vent servo installed.
+
+            config PARAM_VENT_SERVO_MIN_PULSE_WIDTH_$(i)
+              float "Servo min pulse width"
+              default 0.001
+
+            config PARAM_VENT_SERVO_MAX_PULSE_WIDTH_$(i)
+              float "Servo max pulse width"
+              default 0.002
+
+            config PARAM_VENT_SERVO_MAXIMUM_ANGLE_$(i)
+              int "Servo h/w max angle  "
+              range 0 360
+              default 180
+              help
+                Klipper scales the PWM pulse width to never exceed this angle
+          endif
+        endif
+      @endrepeat@
+    endif
+
+    if !MMU_HAS_PER_GATE_CONFIG
+      config PARAM_VENT_SERVO_MIN_PULSE_WIDTH
+        float "Servo min pulse width"
+        default 0.001
+
+      config PARAM_VENT_SERVO_MAX_PULSE_WIDTH
+        float "Servo max pulse width"
+        default 0.002
+
+      config PARAM_VENT_SERVO_MAXIMUM_ANGLE
+        int "Servo h/w max angle  "
+        range 0 360
+        default 180
+        help
+          Klipper scales the PWM pulse width to never exceed this angle
+    endif
+
+  endmenu
+endif
