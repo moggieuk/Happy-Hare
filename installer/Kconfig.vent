@@ -3,7 +3,7 @@
 #
 # Vent servo parameter tokens which must be inside if MMU_HAS_VENT_SERVO clause in cfg templates:
 #   PIN_VENT_SERVO (shared configuration)
-#   PARAM_VENT_SERVO_GATE_X, PIN_VENT_SERVO_X (per-gate configuration, Kconfig.per_gate)
+#   PARAM_VENT_SERVO_GATE_X, PIN_VENT_SERVO_X (per-gate configuration)
 #   PARAM_VENT_SERVO_MIN_PULSE_WIDTH
 #   PARAM_VENT_SERVO_MAX_PULSE_WIDTH
 #   PARAM_VENT_SERVO_MAXIMUM_ANGLE
@@ -39,8 +39,9 @@ endif
 if MMU_HAS_VENT_SERVO
   menu "Vent servo h/w config"
     help
-      Configure the pin and PWM range of the enclosure vent servo. The PWM
-      range applies to every vent servo of this unit.
+      Configure the pin and PWM range of the enclosure vent servo, or with
+      per-gate configuration each gate's vent servo. The PWM range applies to
+      every vent servo of this unit.
 
     config PIN_VENT_SERVO
       string
@@ -49,6 +50,27 @@ if MMU_HAS_VENT_SERVO
       default ""
       help
         $(pin_help)
+
+    if MMU_HAS_PER_GATE_CONFIG
+      @repeat var=i min=0 max=11@
+        if PARAM_NUM_GATES > $(i)
+          menuconfig PARAM_VENT_SERVO_GATE_$(i)
+            bool "Gate $(i) vent servo"
+            default y
+            help
+              This gate has its own enclosure vent servo, opened while the
+              gate is drying.
+
+          if PARAM_VENT_SERVO_GATE_$(i)
+            config PIN_VENT_SERVO_$(i)
+              string "Vent servo pin     "
+              validator "$(pin_validator)"
+              help
+                Leave blank if this gate does not have a vent servo installed.
+          endif
+        endif
+      @endrepeat@
+    endif
 
     config PARAM_VENT_SERVO_MIN_PULSE_WIDTH
       float "Servo min pulse width"
