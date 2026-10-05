@@ -206,6 +206,68 @@ class TestUnitListRefresh(unittest.TestCase):
                 self.assertEqual(ConfigBuilder(built).get("mmu_machine", "units"), "unit0,unit1")
 
 
+class TestFanVisibilityRefresh(unittest.TestCase):
+    """Toggling a fan's UI visibility renames it; [mmu_unit] must follow in every mode."""
+
+    UNIT = "mmu_unit unit0"
+    SHARED = {"MMU_HAS_FANS": True, "PIN_FAN": "unit0:PA8"}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def build(self, profile, syms, mode, input_files):
+        out = tempfile.mkdtemp(dir=self.tmp.name)
+        dest = os.path.join(out, "mmu_hardware_unit0.cfg")
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig("fan-visibility-refresh",
+                                   dict(profiles.get(profile).syms, **syms))
+        from installer import build
+        extra = {"PARAM_TOTAL_NUM_GATES": kconfig.getint("PARAM_NUM_GATES")}
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
+                cfg._chdir(cfg.REPO_ROOT):
+            build.build_config_file("config/base/mmu_hardware.cfg", dest, kconfig,
+                                    input_files, extra)
+        return dest
+
+    def edit(self, path, old, new):
+        with open(path) as f:
+            text = f.read()
+        self.assertIn(old, text)
+        with open(path, "w") as f:
+            f.write(text.replace(old, new))
+
+    def test_shared_fan_reference_follows_visibility(self):
+        installed = self.build("qidi", self.SHARED, "replace", [])
+        shown = dict(self.SHARED, BOOL_HIDE_FAN=False)
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                built = ConfigBuilder(self.build("qidi", shown, mode, [installed]))
+                self.assertIn("fan_generic unit0_fan", built.sections())
+                self.assertEqual(built.get(self.UNIT, "fan"), "unit0_fan")
+
+    def test_per_gate_fan_references_follow_visibility(self):
+        installed = self.build("emu", {}, "replace", [])
+        shown = {"BOOL_HIDE_FAN_0": False}
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                built = ConfigBuilder(self.build("emu", shown, mode, [installed]))
+                self.assertEqual(built.get(self.UNIT, "fans").split(", "),
+                                 ["unit0_fan0", "_unit0_fan1", "_unit0_fan2",
+                                  "_unit0_fan3", "_unit0_fan4"])
+
+    def test_hand_edited_fan_reference_is_kept(self):
+        installed = self.build("emu", {}, "replace", [])
+        self.edit(installed, "_unit0_fan2,", "my_fan,")
+        shown = {"BOOL_HIDE_FAN_0": False}
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                built = ConfigBuilder(self.build("emu", shown, mode, [installed]))
+                self.assertEqual(built.get(self.UNIT, "fans").split(", "),
+                                 ["unit0_fan0", "_unit0_fan1", "my_fan",
+                                  "_unit0_fan3", "_unit0_fan4"])
+
+
 class TestSupplementalParamRefresh(unittest.TestCase):
     """A supplemental param is only reinserted when the template doesn't already render it."""
 

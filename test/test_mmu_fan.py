@@ -135,6 +135,73 @@ class TestMmuFanRender(unittest.TestCase):
                          cfg.sections(rendered[MACRO_VARS]))
 
 
+class TestFanVisibility(unittest.TestCase):
+
+    def test_shared_fans_can_be_shown_without_changing_their_settings(self):
+        cases = [
+            (_single_fan_profile(), 'FAN', 'fan_generic', 'fan'),
+            (profiles.get('qidi').derive('heater_visibility', syms={
+                'PIN_HEATER_FAN': 'unit0:PA4, unit0:PA5',
+            }), 'HEATER_FAN', 'heater_fan', 'heater_fan'),
+            (_controller_fan_profile('boxturtle'), 'CONTROLLER_FAN',
+             'controller_fan', 'controller_fan'),
+        ]
+        for profile, symbol, section, suffix in cases:
+            with self.subTest(fan=symbol):
+                hidden = cfg.assemble(cfg.render(profile))
+                shown_profile = profile.derive(profile.name + '_shown', syms={
+                    'BOOL_HIDE_' + symbol: False,
+                })
+                shown = cfg.assemble(cfg.render(shown_profile))
+                hidden_name = section + ' _unit0_' + suffix
+                shown_name = section + ' unit0_' + suffix
+                self.assertEqual(dict(hidden.items(hidden_name)),
+                                 dict(shown.items(shown_name)))
+                self.assertNotIn(hidden_name, shown.sections())
+                if symbol == 'FAN':
+                    self.assertEqual(shown.get('mmu_unit unit0', 'fan'), 'unit0_fan')
+                if symbol == 'HEATER_FAN':
+                    self.assertEqual(shown.get(shown_name, 'pin'),
+                                     'multi_pin:_unit0_heater_fan_pins')
+
+    def test_per_gate_visibility_is_independent_and_preserves_empty_slots(self):
+        profile = _per_gate_controller_fan_profile().derive(
+            'per_gate_fan_visibility', syms={
+                'MMU_HAS_HEATER': True,
+                'PIN_HEATER_FAN_0': 'unit0_gate0:PA14',
+                'PIN_HEATER_FAN_2': 'unit0_gate2:PA14',
+                'BOOL_HIDE_FAN_0': False,
+                'BOOL_HIDE_HEATER_FAN_2': False,
+                'BOOL_HIDE_CONTROLLER_FAN_0': False,
+                'PARAM_FAN_GATE_1': False,
+                'PIN_FAN_3': '',
+            })
+        parser = cfg.assemble(cfg.render(profile))
+        self.assertEqual(parser.get('mmu_unit unit0', 'fans').split(', '),
+                         ['unit0_fan0', '', '_unit0_fan2', '', '_unit0_fan4'])
+        for kind, expected in [
+            ('fan_generic', ['unit0_fan0', '_unit0_fan2', '_unit0_fan4']),
+            ('heater_fan', ['_unit0_heater_fan0', 'unit0_heater_fan2']),
+            ('controller_fan', ['unit0_controller_fan0', '_unit0_controller_fan2']),
+        ]:
+            self.assertEqual([s for s in parser.sections() if s.startswith(kind + ' ')],
+                             [kind + ' ' + name for name in expected])
+
+    def test_exposed_managed_fans_still_run_under_happy_hare_control(self):
+        for base, syms, name in [
+            (_single_fan_profile(), {'BOOL_HIDE_FAN': False}, 'unit0_fan'),
+            (profiles.get('emu'), {'BOOL_HIDE_FAN_0': False}, 'unit0_fan0'),
+        ]:
+            with self.subTest(profile=base.name):
+                hh = session(base.derive(base.name + '_visible', syms=syms))
+                self.addCleanup(hh.close)
+                hh.boot()
+                hh.run_gcode('MMU_FAN FAN_FORCED=1')
+                fan = hh.printer.lookup_object('fan_generic ' + name)
+                self.assertEqual(fan.get_status(hh.reactor.monotonic())['speed'], 1.)
+                self.assertEqual(hh.errors, [])
+
+
 class TestMmuFanConfiguration(unittest.TestCase):
 
     @staticmethod
