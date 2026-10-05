@@ -217,7 +217,7 @@ pin_help      := $(pin_syntax)$(nl)$(pin_example)
 comma := ,
 
 # Shown under a feature whose hardware a board supplies itself (CUSTOM_* flag)
-misc_hardware_hint := Defined by the mcu board's misc hardware
+misc_hardware_hint := Defined and fixed by design/mcu
 quote := "
 ml = $(hh-multiline,$(1))
 
