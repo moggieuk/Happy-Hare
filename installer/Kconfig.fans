@@ -3,9 +3,9 @@
 #   MMU_HAS_PER_GATE_CONFIG
 #
 # Managed fan parameter tokens
-#   PARAM_FAN_MAX_POWER, PARAM_FAN_KICK_START_TIME, PIN_FAN
+#   PARAM_FAN_MAX_POWER, PARAM_FAN_KICK_START_TIME, PIN_FAN, PARAM_FAN_NAME
 #     (shared configuration)
-#   PARAM_FAN_MAX_POWER_X, PARAM_FAN_KICK_START_TIME_X, PIN_FAN_X
+#   PARAM_FAN_MAX_POWER_X, PARAM_FAN_KICK_START_TIME_X, PIN_FAN_X, PARAM_FAN_NAME_X
 #     (per-gate configuration)
 #
 # Fan control parameter tokens
@@ -26,10 +26,10 @@
 # Controller fan parameter tokens
 #   PARAM_CONTROLLER_FAN_MAX_POWER, PARAM_CONTROLLER_FAN_KICK_START_TIME,
 #   PARAM_CONTROLLER_FAN_SPEED, PARAM_CONTROLLER_FAN_IDLE_TIMEOUT,
-#   PIN_CONTROLLER_FAN (shared configuration)
+#   PIN_CONTROLLER_FAN, PARAM_CONTROLLER_FAN_NAME (shared configuration)
 #   PARAM_CONTROLLER_FAN_MAX_POWER_X, PARAM_CONTROLLER_FAN_KICK_START_TIME_X,
 #   PARAM_CONTROLLER_FAN_SPEED_X, PARAM_CONTROLLER_FAN_IDLE_TIMEOUT_X,
-#   PIN_CONTROLLER_FAN_X (per-gate configuration)
+#   PIN_CONTROLLER_FAN_X, PARAM_CONTROLLER_FAN_NAME_X (per-gate configuration)
 
 
 if CUSTOM_FAN_SETUP
@@ -95,6 +95,18 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           Leave blank if you don't have a fan installed.
           Empty pins will be ignored in the generated configuration.
 
+      config BOOL_HIDE_FAN
+        bool "Hide in Mainsail / Fluidd"
+        default y
+        help
+          Prefix the fan name with an underscore to hide it in the UI.
+          Disable to show the fan. Automatic fan control is unchanged.
+
+      config PARAM_FAN_NAME
+        string
+        default "_$(UNIT_NAME)_fan" if BOOL_HIDE_FAN
+        default "$(UNIT_NAME)_fan"
+
     endmenu
   endif
 
@@ -132,6 +144,18 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
               validator "$(pin_validator)"
               help
                 Leave blank if this gate does not have a managed fan installed.
+
+            config BOOL_HIDE_FAN_$(i)
+              bool "Hide in Mainsail / Fluidd"
+              default y
+              help
+                Prefix the fan name with an underscore to hide it in the UI.
+                Disable to show the fan. Automatic fan control is unchanged.
+
+            config PARAM_FAN_NAME_$(i)
+              string
+              default "_$(UNIT_NAME)_fan$(i)" if BOOL_HIDE_FAN_$(i)
+              default "$(UNIT_NAME)_fan$(i)"
           endif
         endif
       @endrepeat@
@@ -315,6 +339,18 @@ menu "Controller fan h/w config"
       Pin for the fan cooling this MMU unit's electronics.
       Empty pins will be ignored in the generated configuration.
 
+  config BOOL_HIDE_CONTROLLER_FAN
+    bool "Hide in Mainsail / Fluidd"
+    default y
+    help
+      Prefix the fan name with an underscore to hide it in the UI.
+      Disable to show the fan. Automatic fan control is unchanged.
+
+  config PARAM_CONTROLLER_FAN_NAME
+    string
+    default "_$(UNIT_NAME)_controller_fan" if BOOL_HIDE_CONTROLLER_FAN
+    default "$(UNIT_NAME)_controller_fan"
+
 endmenu
 
 if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
@@ -367,6 +403,18 @@ if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CO
             validator "$(pin_validator)"
             help
               Leave blank if this gate does not have a controller fan installed.
+
+          config BOOL_HIDE_CONTROLLER_FAN_$(i)
+            bool "Hide in Mainsail / Fluidd"
+            default y
+            help
+              Prefix the fan name with an underscore to hide it in the UI.
+              Disable to show the fan. Automatic fan control is unchanged.
+
+          config PARAM_CONTROLLER_FAN_NAME_$(i)
+            string
+            default "_$(UNIT_NAME)_controller_fan$(i)" if BOOL_HIDE_CONTROLLER_FAN_$(i)
+            default "$(UNIT_NAME)_controller_fan$(i)"
         endif
       endif
     @endrepeat@

@@ -98,6 +98,26 @@ KCONFIG_OWNED_OPTIONS = {
     ("mmu_machine", "units"),
 }
 
+# Object references (by section type) whose leading "_" UI-hiding prefix always comes from
+# Kconfig, so toggling a fan's visibility doesn't leave a reference to the old name
+KCONFIG_OWNED_VISIBILITY = {
+    ("mmu_unit", "fan"),
+    ("mmu_unit", "fans"),
+}
+
+
+def follow_visibility(existing, rendered):
+    """
+    Per comma-separated entry, take the rendered name where it differs from the existing
+    one only by the leading "_". Any other existing entry (e.g. hand edited) is kept
+    """
+    old = [v.strip() for v in existing.split(",")]
+    new = [v.strip() for v in rendered.split(",")]
+    if len(old) != len(new):
+        return existing
+    merged = [n if o.lstrip("_") == n.lstrip("_") else o for o, n in zip(old, new)]
+    return existing if merged == old else ", ".join(merged)
+
 # This mapping is used to identify Kconfig parameter names and map then to the
 # correct cfg config section. This is used for the "merge" (option 3) approach
 VAR_SECTION_MAP = {
@@ -427,8 +447,11 @@ class HHConfig(ConfigBuilder):
                         and not is_excluded_var
                         and (is_var_section or not is_excluded_param)
                     ):
-                        builder.set(section, option, self.get(section, option))
-                        logging.debug("Restoring previous: [%s] %s: %s", section, option, self.get(section, option))
+                        value = self.get(section, option)
+                        if (section.split(" ", 1)[0], option) in KCONFIG_OWNED_VISIBILITY:
+                            value = follow_visibility(value, builder.get(section, option))
+                        builder.set(section, option, value)
+                        logging.debug("Restoring previous: [%s] %s: %s", section, option, value)
 
                     elif not is_gcode:
                         logging.debug("Kconfig override:   [%s] %s: %s --> Using: %s", section, option, self.get(section, option), builder.get(section, option))

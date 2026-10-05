@@ -260,19 +260,14 @@ class MmuFanManager:
         return list(per_gate_names)
 
     def _mcu_temperature_sensor_names(self, fan_index):
+        # MCU sensors may be hidden in the UI with a leading "_", so try both forms
         unit_name = self.mmu_unit.name
         if self.has_per_gate_fans():
-            suffix = "%s_mcu%d" % (unit_name, fan_index)
-            return ["temperature_sensor _" + suffix,
-                    "temperature_sensor " + suffix,
-                    "temperature_sensor %s_mcu" % unit_name]
-
-        names = ["temperature_sensor %s_mcu" % unit_name]
-        for index in range(self.mmu_unit.num_gates):
-            suffix = "%s_mcu%d" % (unit_name, index)
-            names.extend(["temperature_sensor _" + suffix,
-                          "temperature_sensor " + suffix])
-        return names
+            names = ["%s_mcu%d" % (unit_name, fan_index), "%s_mcu" % unit_name]
+        else:
+            names = ["%s_mcu" % unit_name]
+            names.extend("%s_mcu%d" % (unit_name, index) for index in range(self.mmu_unit.num_gates))
+        return ["temperature_sensor %s%s" % (prefix, name) for name in names for prefix in ("_", "")]
 
     def _indexes_for_gates(self, gates):
         if not self.has_per_gate_fans():

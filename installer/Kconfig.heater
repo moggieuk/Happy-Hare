@@ -19,10 +19,12 @@
 # Heater fan parameter tokens:
 #   PARAM_HEATER_FAN_MAX_POWER, PARAM_HEATER_FAN_KICK_START_TIME,
 #   PARAM_HEATER_FAN_SPEED, PARAM_HEATER_FAN_SHUTDOWN_SPEED,
-#   PARAM_HEATER_FAN_HEATER_TEMP, PIN_HEATER_FAN (shared configuration)
+#   PARAM_HEATER_FAN_HEATER_TEMP, PIN_HEATER_FAN, PARAM_HEATER_FAN_NAME
+#     (shared configuration)
 #   PARAM_HEATER_FAN_MAX_POWER_X, PARAM_HEATER_FAN_KICK_START_TIME_X,
 #   PARAM_HEATER_FAN_SPEED_X, PARAM_HEATER_FAN_SHUTDOWN_SPEED_X,
-#   PARAM_HEATER_FAN_HEATER_TEMP_X, PIN_HEATER_FAN_X (per-gate configuration)
+#   PARAM_HEATER_FAN_HEATER_TEMP_X, PIN_HEATER_FAN_X, PARAM_HEATER_FAN_NAME_X
+#     (per-gate configuration)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_HEATER
@@ -296,6 +298,18 @@ menu "Heater fan h/w config"
       Separate several fans that run together with commas; they are
       driven as one [heater_fan] through a [multi_pin] alias.
 
+  config BOOL_HIDE_HEATER_FAN
+    bool "Hide in Mainsail / Fluidd"
+    default y
+    help
+      Prefix the fan name with an underscore to hide it in the UI.
+      Disable to show the fan. Automatic fan control is unchanged.
+
+  config PARAM_HEATER_FAN_NAME
+    string
+    default "_$(UNIT_NAME)_heater_fan" if BOOL_HIDE_HEATER_FAN
+    default "$(UNIT_NAME)_heater_fan"
+
 endmenu
 
 if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
@@ -355,6 +369,18 @@ if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
             validator "$(pin_validator)"
             help
               Leave blank if this gate does not have a heater fan installed.
+
+          config BOOL_HIDE_HEATER_FAN_$(i)
+            bool "Hide in Mainsail / Fluidd"
+            default y
+            help
+              Prefix the fan name with an underscore to hide it in the UI.
+              Disable to show the fan. Automatic fan control is unchanged.
+
+          config PARAM_HEATER_FAN_NAME_$(i)
+            string
+            default "_$(UNIT_NAME)_heater_fan$(i)" if BOOL_HIDE_HEATER_FAN_$(i)
+            default "$(UNIT_NAME)_heater_fan$(i)"
         endif
       endif
     @endrepeat@
