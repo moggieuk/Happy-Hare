@@ -114,6 +114,8 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
                          ('unit0:PB4', '0.8', '1.0'))
         self.assertEqual(board_fan['stepper'], ', '.join(
             'mmu_stepper unit0_gear' + suffix for suffix in ('', '_1', '_2', '_3')))
+        # Running with the enclosure heater is the user's choice
+        self.assertEqual(board_fan['heater'], '')
 
     def test_gear_directions_are_left_to_the_user(self):
         for gate, suffix in enumerate(('', '_1', '_2', '_3')):

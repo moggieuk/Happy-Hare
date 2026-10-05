@@ -30,6 +30,7 @@
 #   PARAM_CONTROLLER_FAN_MAX_POWER_X, PARAM_CONTROLLER_FAN_KICK_START_TIME_X,
 #   PARAM_CONTROLLER_FAN_SPEED_X, PARAM_CONTROLLER_FAN_IDLE_TIMEOUT_X,
 #   PIN_CONTROLLER_FAN_X, PARAM_CONTROLLER_FAN_NAME_X (per-gate configuration)
+#   BOOL_CONTROLLER_FAN_WITH_HEATER (also run while the enclosure heater is on)
 
 
 if CUSTOM_FAN_SETUP
@@ -292,8 +293,9 @@ config MMU_HAS_CONTROLLER_FAN
     Configure a Klipper [controller_fan] that cools this unit's electronics.
     It runs while any of this unit's gear or selector steppers is enabled
     and for the idle timeout after they are all disabled. It is not tied to
-    the extruder heater. With per-gate configuration each gate can have its
-    own fan, which follows that gate's gear stepper.
+    the extruder heater, but can also run while the enclosure heater is on.
+    With per-gate configuration each gate can have its own fan, which
+    follows that gate's gear stepper (and heater).
 
 menu "Controller fan h/w config"
   visible if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG
@@ -330,6 +332,15 @@ menu "Controller fan h/w config"
     help
       Time in seconds the fan keeps running after this unit's steppers
       are all disabled.
+
+  config BOOL_CONTROLLER_FAN_WITH_HEATER
+    bool "Also run while the enclosure heater is on"
+    depends on MMU_HAS_HEATER
+    default n
+    help
+      Also run the fan while the enclosure heater is on, e.g. during a
+      drying cycle when the steppers are idle. Select if the MCU board sits
+      inside the heated enclosure.
 
   config PIN_CONTROLLER_FAN
     string "Controller fan pin "
@@ -411,6 +422,15 @@ if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CO
         endif
       endif
     @endrepeat@
+
+    config BOOL_CONTROLLER_FAN_WITH_HEATER
+      bool "Also run while the gate's heater is on"
+      depends on MMU_HAS_HEATER
+      default n
+      help
+        Also run each gate's fan while that gate's heater is on, e.g. during
+        a drying cycle when the steppers are idle. Select if the gates' MCU
+        boards sit inside the heated enclosures.
 
     config BOOL_HIDE_CONTROLLER_FAN
       bool "Hide in Mainsail / Fluidd"
