@@ -123,8 +123,10 @@ if BOARD_TYPE_MMB_2_0
     default "^$(MCU_NAME):PC2" if MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "$(MCU_NAME):PC3" 
+  # PA15 is also the selector endstop, which keeps it
   config PIN_SHARED_EXIT_SENSOR
-    default "^$(MCU_NAME):PA15" if !MMU_HAS_ENCODER 
+    default "^$(MCU_NAME):PA15" if !MMU_HAS_ENCODER && \
+        !(!MULTIGEAR && MMU_HAS_SELECTOR_STEPPER && PIN_SELECTOR_ENDSTOP = "^$(MCU_NAME):PA15")
 
 # No fan headers (MOT1/MOT2 are 5V servo outputs)
 endif

@@ -20,8 +20,10 @@ if BOARD_TYPE_MMB_1_0
     default "$(MCU_NAME):PB14" 
   config PIN_GEAR_ENABLE
     default "!$(MCU_NAME):PA8" 
+  # Diag pins share headers with sensors; a fitted sensor keeps the header
   config PIN_GEAR_DIAG
-    default "$(MCU_NAME):PA3" 
+    default "$(MCU_NAME):PA3" if !(MULTIGEAR && MMU_HAS_SENSOR_ENTRY && PIN_ENTRY_SENSOR_1 = "$(MCU_NAME):PA3") && \
+        !(MMU_HAS_SENSOR_SHARED_EXIT && PIN_SHARED_EXIT_SENSOR = "^$(MCU_NAME):PA3")
 
   if MULTIGEAR
     config PIN_GEAR_UART_1 
@@ -44,7 +46,7 @@ if BOARD_TYPE_MMB_1_0
     config PIN_GEAR_ENABLE_2
       default "!$(MCU_NAME):PA15" 
     config PIN_GEAR_DIAG_2
-      default "$(MCU_NAME):PB9"
+      default "$(MCU_NAME):PB9" if !(MMU_HAS_SENSOR_ENTRY && PIN_ENTRY_SENSOR_2 = "$(MCU_NAME):PB9")
 
     config PIN_GEAR_UART_3 
       default "$(MCU_NAME):PA9" 
@@ -55,7 +57,7 @@ if BOARD_TYPE_MMB_1_0
     config PIN_GEAR_ENABLE_3
       default "!$(MCU_NAME):PB5" 
     config PIN_GEAR_DIAG_3
-      default "$(MCU_NAME):PB8" 
+      default "$(MCU_NAME):PB8" if !(MMU_HAS_SENSOR_ENTRY && PIN_ENTRY_SENSOR_3 = "$(MCU_NAME):PB8")
 
     config PIN_ENTRY_SENSOR_0
       default "$(MCU_NAME):PB11" 
@@ -78,7 +80,7 @@ if BOARD_TYPE_MMB_1_0
     config PIN_ESPOOLER_RWD_0
       default "$(MCU_NAME):PA0"
     config PIN_ESPOOLER_RWD_1
-      default "$(MCU_NAME):PA1"
+      default "$(MCU_NAME):PA1" if !(MMU_HAS_ENCODER && PIN_ENCODER = "^$(MCU_NAME):PA1")
     config PIN_ESPOOLER_RWD_2
       default "$(MCU_NAME):PB10"
     config PIN_ESPOOLER_RWD_3
@@ -124,7 +126,7 @@ if BOARD_TYPE_MMB_1_0
   config PIN_NEOPIXEL
     default "$(MCU_NAME):PA2" 
   config PIN_SHARED_EXIT_SENSOR
-    default "^$(MCU_NAME):PA3" if !MMU_HAS_ENCODER
+    default "^$(MCU_NAME):PA3" if !MMU_HAS_ENCODER && !(MULTIGEAR && MMU_HAS_SENSOR_ENTRY && PIN_ENTRY_SENSOR_1 = "$(MCU_NAME):PA3")
 
 # No fan headers (the MOT header is a 5V servo output)
 endif

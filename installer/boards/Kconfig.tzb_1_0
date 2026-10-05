@@ -80,8 +80,9 @@ if BOARD_TYPE_TZB_1_0
   config PIN_BUFFER_ANALOG
     default "$(MCU_NAME):PA3"
 
+  # PA3 is also the analog buffer input (ADC), which keeps it
   config PIN_SERVO_CUTTER_SERVO
-    default "$(MCU_NAME):PA3"
+    default "$(MCU_NAME):PA3" if !(MMU_HAS_SENSOR_BUFFER_PROPORTIONAL && PIN_BUFFER_ANALOG = "$(MCU_NAME):PA3")
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
