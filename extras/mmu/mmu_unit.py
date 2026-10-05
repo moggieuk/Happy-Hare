@@ -766,13 +766,13 @@ class MmuUnit:
         return self.leds is not None
 
     def has_heater(self):
-        return self.filament_heater or self.filament_heaters
+        return bool(self.filament_heater or any(self.filament_heaters))
 
     def has_vent_servo(self):
         return bool(self.vent_servo or any(self.vent_servos))
 
     def has_fan(self):
-        return self.fan or any(self.fans)
+        return bool(self.fan or any(self.fans))
 
     def has_per_gate_fans(self):
         return bool(self.fans)
@@ -1118,8 +1118,10 @@ class MmuUnit:
         elif self.fans:
             unit_info['fans'] = self.fans
 
-        if self.has_vent_servo():
-            unit_info['vent_servos'] = [self.vent_servo] if self.vent_servo else self.vent_servos
+        if self.vent_servo:
+            unit_info['vent_servo'] = self.vent_servo
+        elif self.vent_servos:
+            unit_info['vent_servos'] = self.vent_servos
 
         if self.nfc_reader:
             # Single (shared) NFC reader

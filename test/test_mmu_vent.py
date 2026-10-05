@@ -294,8 +294,9 @@ class TestVentServoAndFan(_VentSession):
         self.assertEqual(self._servo_values()[:2], [self._pwm(0), 0.0])
 
     def test_unit_status_lists_the_vent_servo(self):
-        status = self.hh.printer.lookup_object('mmu_machine').get_status(0)
-        self.assertEqual(status['unit_0']['vent_servos'], ['mmu_servo unit0_vent_servo'])
+        unit = self.hh.printer.lookup_object('mmu_machine').get_status(0)['unit_0']
+        self.assertEqual(unit['vent_servo'], 'mmu_servo unit0_vent_servo')
+        self.assertNotIn('vent_servos', unit)
 
 
 class TestVentServoMustBeMmuServo(unittest.TestCase):
@@ -360,6 +361,20 @@ class TestVentNeedsHeater(unittest.TestCase):
         self.assertTrue(any('mmu_unit unit0 has a vent servo but no filament heater' in line
                             for line in logs.output))
 
+    def test_all_blank_per_gate_heaters_count_as_no_heater(self):
+        stub = PRINTER_STUB + (
+            '\n[mmu_servo unit0_vent_servo]\npin: unit0:PA9\n'
+            '\n[mmu_unit unit0]\nvent_servo: unit0_vent_servo\nfilament_heaters: , , , \n')
+        hh = session(profiles.get('boxturtle'), printer_stub=stub)
+        self.addCleanup(hh.close)
+        with self.assertLogs(level='WARNING') as logs:
+            hh.boot()
+        unit = hh.printer.lookup_object('mmu_machine').units[0]
+        self.assertEqual(unit.filament_heaters, ['', '', '', ''])
+        self.assertFalse(unit.has_heater())
+        self.assertTrue(any('mmu_unit unit0 has a vent servo but no filament heater' in line
+                            for line in logs.output))
+
 
 class TestVentFanWithoutServo(_VentSession):
 
@@ -380,6 +395,11 @@ class TestVentPerGate(_VentSession):
 
     PROFILE = _per_gate_vent_profile()
     SESSION = {'printer_stub': EMU_HEATERS_STUB}
+
+    def test_unit_status_lists_the_vent_servos(self):
+        unit = self.hh.printer.lookup_object('mmu_machine').get_status(0)['unit_0']
+        self.assertEqual(unit['vent_servos'], ['mmu_servo unit0_vent_servo%d' % g for g in range(4)] + [''])
+        self.assertNotIn('vent_servo', unit)
 
     def test_only_the_heated_gates_vents_and_fans_open(self):
         names = ['mmu_servo unit0_vent_servo%d' % g for g in range(4)]
