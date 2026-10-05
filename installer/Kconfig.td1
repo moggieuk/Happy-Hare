@@ -17,7 +17,7 @@
 #   PARAM_TD1_DEVICE_$(i)       (one USB serial per gate, blank for none)
 #   PARAM_TD1_DEVICE_GATE_$(i)  (presentation only: collapses a gate's serial prompt)
 #
-# Off-path (presented to by hand; readings are staged as pending):
+# Separate off-path (presented to by hand; readings are staged as pending):
 #   PARAM_TD1_DEVICE
 #
 # Capture policy (rendered into [mmu_unit_parameters] in mmu_parameters.cfg):
@@ -62,11 +62,11 @@ if MMU_HAS_TD1
   menu "TD-1 scanner config"
 
     # ------------------------------------------
-    # Off-path: filament is presented by hand
+    # Separate off-path: filament is presented by hand
     # ------------------------------------------
 
     config MMU_HAS_OFFPATH_TD1
-      bool "Separate scanner to present filament to?"
+      bool "Separate off-path sensor?"
       default n
       help
         A scanner sitting off the filament path - on the bench, or beside the spools.
@@ -77,7 +77,7 @@ if MMU_HAS_TD1
 
     if MMU_HAS_OFFPATH_TD1
       config PARAM_TD1_DEVICE
-        string "Off-path TD-1 USB serial       "
+        string "Separate off-path USB serial   "
         default ""
         help
           USB serial number of the scanner you present filament to, exactly as
@@ -93,7 +93,7 @@ if MMU_HAS_TD1
       default n
       help
         Most designs have a single scanner in a shared part of the bowden, serving
-        every gate. Select this only if each gate has its own separate scanner.
+        every gate. Select this only if each gate has its own scanner.
 
     if !MMU_HAS_PER_GATE_TD1
       config PARAM_TD1_BOWDEN_DEVICE
