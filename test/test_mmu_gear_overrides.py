@@ -88,15 +88,44 @@ class TestGearOverrideRender(unittest.TestCase):
         for key in ('hold_current', 'sense_resistor', 'rref'):
             self.assertNotIn(key, tmc)
 
-    def test_stallguard_override_replaces_the_inherited_threshold(self):
-        gear = _sections('gear_override_stallguard', dict(DIAG_PINS, **{
-            'BOOL_GEAR_OVERRIDE_2': True,
-            'PARAM_GEAR_STALLGUARD_THRESHOLD_2': '77',
-        }))
+class TestGearStallguard(unittest.TestCase):
+    """
+    mmu_unit does not inherit stallguard, so every gear's threshold is written. It is part
+    of the gear's override block and otherwise always equals gear 0's.
+    """
+
+    def test_an_override_sets_that_gear_only(self):
+        gear = _sections('gear_stallguard_own', dict(DIAG_PINS, BOOL_GEAR_OVERRIDE_2=True,
+                                                     PARAM_GEAR_STALLGUARD_THRESHOLD_2=77))
         base = gear(1)[1]['driver_SGTHRS']
         self.assertNotEqual(base, '77')
         self.assertEqual(gear(2)[1]['driver_SGTHRS'], '77')
         self.assertEqual(gear(3)[1]['driver_SGTHRS'], base)
+
+    def test_value_is_ignored_while_the_toggle_is_off(self):
+        gear = _sections('gear_stallguard_off', dict(DIAG_PINS, PARAM_GEAR_STALLGUARD_THRESHOLD_2=77))
+        self.assertEqual(gear(2)[1]['driver_SGTHRS'], gear(1)[1]['driver_SGTHRS'])
+
+    def test_every_gear_follows_gear_0_by_default(self):
+        # What every extra gear rendered before overrides existed, so a tuned gear 0 must
+        # still carry across on upgrade, including to a gear whose toggle is on
+        gear = _sections('gear_stallguard_follow', dict(DIAG_PINS, BOOL_GEAR_OVERRIDE_2=True,
+                                                        PARAM_GEAR_STALLGUARD_THRESHOLD=90))
+        for i in (1, 2, 3):
+            self.assertEqual(gear(i)[1]['driver_SGTHRS'], '90', 'gear_%d' % i)
+
+    def test_prompts(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('gear_stallguard_prompt', dict(
+                profiles.get('boxturtle').syms, **dict(
+                    DIAG_PINS, PIN_GEAR_DIAG_3='',
+                    BOOL_GEAR_OVERRIDE_2=True, BOOL_GEAR_OVERRIDE_3=True)))
+        base = kc.syms['PARAM_GEAR_STALLGUARD_THRESHOLD']
+        self.assertTrue(base.visibility)
+        self.assertIn('Gear stepper', [n.parent.prompt[0] for n in base.nodes if n.prompt])
+        self.assertTrue(kc.syms['PARAM_GEAR_STALLGUARD_THRESHOLD_2'].visibility)
+        self.assertFalse(kc.syms['PARAM_GEAR_STALLGUARD_THRESHOLD_3'].visibility)
+        self.assertFalse(kc.syms['PARAM_GEAR_STALLGUARD_THRESHOLD_1'].visibility)
 
 
 class TestGearOverridePrompts(unittest.TestCase):

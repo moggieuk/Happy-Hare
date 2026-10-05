@@ -7,37 +7,55 @@
 #   PARAM_GEAR_HOLD_CURRENT
 #   PARAM_GEAR_FULL_STEPS_PER_ROTATION
 #   PARAM_GEAR_SENSE_RESISTOR
+#   PARAM_GEAR_STALLGUARD_THRESHOLD (prompt only; declared with the TMC driver)
 #   BOOL_GEAR_OVERRIDE_<n> and PARAM_GEAR_<param>_<n> per-gear overrides (multigear)
 
+gear_pad       := 25
 float_or_empty := ([0-9]+([.][0-9]*)?|[.][0-9]+)?
 int_or_empty   := ([0-9]+)?
-sint_or_empty  := (-?[0-9]+)?
 ratio_or_empty := ([0-9.]+ *: *[0-9.]+( *, *[0-9.]+ *: *[0-9.]+)*)?
 
 menu "Gear stepper"
 
   config PARAM_GEAR_GEAR_RATIO
-    string "Gear ratio             "
+    string "$(pad,$(gear_pad),Gear ratio)"
     default "1:1"
 
   config PARAM_GEAR_ROTATION_DISTANCE
-    float "Gear rotation distance "
+    float "$(pad,$(gear_pad),Gear rotation distance)"
     default 22.7316868
 
   prefix    := GEAR
   label     := Gear
-  pad_width := 23
+  pad_width := $(gear_pad)
   source "components/Kconfig.tmc_driver_menu_current"
 
+  config PARAM_GEAR_STALLGUARD_THRESHOLD
+    prompt "$(pad,$(gear_pad),Gear stallguard threshold)" if BOOL_GEAR_TMC_HAS_STALLGUARD && PIN_GEAR_DIAG != ""
+    help
+      Sensitivity for "touch" homing, written only when a diag pin is set.
+      Expect to tune it. The scale depends on the chip: SGTHRS is 0-255
+      and higher is more sensitive, SGT is -64..63 and lower is more
+      sensitive.
+
   config PARAM_GEAR_MICROSTEPS
-    int "Microsteps             "
+    int "$(pad,$(gear_pad),Microsteps)"
     default 16
 
   config PARAM_GEAR_FULL_STEPS_PER_ROTATION
-    int "Full steps per rotation"
+    int "$(pad,$(gear_pad),Full steps per rotation)"
     default 200
     help
       200 for 1.8 degree, 400 for 0.9 degree
+
+  # Stallguard is not inherited by mmu_unit, so every gear's value is written and an
+  # untouched one must equal gear 0's. Declared outside the 'if' blocks below, which
+  # would otherwise also gate the default
+  @repeat var=i min=1 max=11@
+    config PARAM_GEAR_STALLGUARD_THRESHOLD_$(i)
+      int
+      default PARAM_GEAR_STALLGUARD_THRESHOLD
+  @endrepeat@
 
   if MULTIGEAR
     menu "Per-gear overrides"
@@ -58,50 +76,48 @@ menu "Gear stepper"
 
           config PARAM_GEAR_GEAR_RATIO_$(i)
             string
-            prompt "$(pad,23,Gear ratio)" if BOOL_GEAR_OVERRIDE_$(i)
+            prompt "$(pad,$(gear_pad),Gear ratio)" if BOOL_GEAR_OVERRIDE_$(i)
             validator "$(ratio_or_empty)"
             help
               E.g. 80:20. Leave empty to inherit from gear 0.
           config PARAM_GEAR_ROTATION_DISTANCE_$(i)
             string
-            prompt "$(pad,23,Rotation distance)" if BOOL_GEAR_OVERRIDE_$(i)
+            prompt "$(pad,$(gear_pad),Rotation distance)" if BOOL_GEAR_OVERRIDE_$(i)
             validator "$(float_or_empty)"
             help
               Calibrated rotation distances replace this. With
               variable_rotation_distances off, calibrating any gate
               sets every gate.
-          config PARAM_GEAR_MICROSTEPS_$(i)
-            string
-            prompt "$(pad,23,Microsteps)" if BOOL_GEAR_OVERRIDE_$(i)
-            validator "$(int_or_empty)"
-          config PARAM_GEAR_FULL_STEPS_PER_ROTATION_$(i)
-            string
-            prompt "$(pad,23,Full steps per rotation)" if BOOL_GEAR_OVERRIDE_$(i)
-            validator "$(int_or_empty)"
           config PARAM_GEAR_RUN_CURRENT_$(i)
             string
-            prompt "$(pad,23,Run current)" if BOOL_GEAR_OVERRIDE_$(i) && PARAM_GEAR_TMC != ""
+            prompt "$(pad,$(gear_pad),Run current)" if BOOL_GEAR_OVERRIDE_$(i) && PARAM_GEAR_TMC != ""
             validator "$(float_or_empty)"
           config PARAM_GEAR_HOLD_CURRENT_$(i)
             string
-            prompt "$(pad,23,Hold current)" if BOOL_GEAR_OVERRIDE_$(i) && BOOL_GEAR_TMC_HAS_HOLD_CURRENT
+            prompt "$(pad,$(gear_pad),Hold current)" if BOOL_GEAR_OVERRIDE_$(i) && BOOL_GEAR_TMC_HAS_HOLD_CURRENT
             validator "$(float_or_empty)"
           config PARAM_GEAR_SENSE_RESISTOR_$(i)
             string
-            prompt "$(pad,23,Sense resistor)" if BOOL_GEAR_OVERRIDE_$(i) && PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_HAS_RREF
+            prompt "$(pad,$(gear_pad),Sense resistor)" if BOOL_GEAR_OVERRIDE_$(i) && PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_HAS_RREF
             validator "$(float_or_empty)"
           config PARAM_GEAR_RREF_$(i)
             string
-            prompt "$(pad,23,Rref (ohms))" if BOOL_GEAR_OVERRIDE_$(i) && BOOL_GEAR_TMC_HAS_RREF
+            prompt "$(pad,$(gear_pad),Rref (ohms))" if BOOL_GEAR_OVERRIDE_$(i) && BOOL_GEAR_TMC_HAS_RREF
             validator "$(int_or_empty)"
           config PARAM_GEAR_STALLGUARD_THRESHOLD_$(i)
-            string
-            prompt "$(pad,23,Stallguard threshold)" if BOOL_GEAR_OVERRIDE_$(i) && \
+            prompt "$(pad,$(gear_pad),Stallguard threshold)" if BOOL_GEAR_OVERRIDE_$(i) && \
                 BOOL_GEAR_TMC_HAS_STALLGUARD && PIN_GEAR_DIAG != "" && PIN_GEAR_DIAG_$(i) != ""
-            validator "$(sint_or_empty)"
             help
-              Used only when this gear has a diag pin. Same scale as the
-              gear 0 value: SGTHRS 0-255, SGT -64..63.
+              Used only when this gear has a diag pin. Defaults to the
+              gear 0 value; same scale as that.
+          config PARAM_GEAR_MICROSTEPS_$(i)
+            string
+            prompt "$(pad,$(gear_pad),Microsteps)" if BOOL_GEAR_OVERRIDE_$(i)
+            validator "$(int_or_empty)"
+          config PARAM_GEAR_FULL_STEPS_PER_ROTATION_$(i)
+            string
+            prompt "$(pad,$(gear_pad),Full steps per rotation)" if BOOL_GEAR_OVERRIDE_$(i)
+            validator "$(int_or_empty)"
         endif
       @endrepeat@
     endmenu

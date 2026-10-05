@@ -78,13 +78,6 @@ menu "Pins / TMC"
       validator "$(pin_validator)"
       help
         $(pin_help)
-    config PARAM_GEAR_STALLGUARD_THRESHOLD
-      prompt "$(pad,$(pin_pad),Gear stallguard)" if BOOL_GEAR_TMC_HAS_STALLGUARD && PIN_GEAR_DIAG != ""
-      help
-        Sensitivity for "touch" homing, written only when a diag pin is set.
-        Expect to tune it. The scale depends on the chip: SGTHRS is 0-255
-        and higher is more sensitive, SGT is -64..63 and lower is more
-        sensitive.
 
     @repeat var=i min=1 max=11@
       config PARAM_GEAR_UART_ADDRESS_$(i)
