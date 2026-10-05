@@ -24,10 +24,6 @@ menu "Macro Variables"
   rsource "Kconfig.blobifier"
   rsource "Kconfig.purge"
 
-  comment "_"
-  comment "_Enclosure"
-  rsource "Kconfig.vent"
-
 
 # -------------------------------------
 # Toolhead Control

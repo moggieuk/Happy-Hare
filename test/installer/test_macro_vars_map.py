@@ -42,7 +42,7 @@ class TestMacroVarsSectionMap(unittest.TestCase):
 
     def test_every_macro_var_maps_to_where_it_renders(self):
         mappings = _mappings()
-        self.assertTrue(any(symbol.startswith('VAR_VENT_') for symbol, _, _ in mappings))
+        self.assertTrue(any(symbol.startswith('VAR_PURGE_') for symbol, _, _ in mappings))
         for symbol, mapped, rendered in mappings:
             with self.subTest(symbol=symbol):
                 self.assertEqual(mapped, rendered)

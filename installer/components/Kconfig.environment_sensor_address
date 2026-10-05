@@ -1,7 +1,7 @@
 # Environment sensor - i2c address, defaulted from the sensor type.
 #
 # Sourced once for the shared sensor (Kconfig.environment_sensor) and once
-# per gate (Kconfig.per_gate). The caller sets:
+# per gate (Kconfig.environment_sensor). The caller sets:
 #
 #   env_sensor_suffix   appended to every symbol name: empty for the shared
 #                       sensor, _<gate> for a per-gate one

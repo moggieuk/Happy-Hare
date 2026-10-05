@@ -205,8 +205,9 @@ menu "Design attributes"
     def_bool n
     prompt "Per-gate configuration?" if SHOW_HIDDEN
     help
-      Present environment sensor, heater and fan hardware configuration in a
-      separate menu for each gate. This is independent of the MCU topology.
+      Configure environment sensor, heater, fan and vent servo hardware for
+      each gate, in each feature's h/w config menu. This is independent of
+      the MCU topology.
 
   config MMU_HAS_PER_GATE_NFC_READERS
     def_bool n

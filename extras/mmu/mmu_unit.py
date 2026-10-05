@@ -217,6 +217,26 @@ class MmuUnit:
             for name in self.environment_sensors
         ]
 
+        # Enclosure vent servo(s), opened by the environment manager while drying
+        self.vent_servo = config.get('vent_servo', '')
+        self.vent_servos = list(config.getlist('vent_servos', []))
+
+        if len(self.vent_servos) not in [0, self.num_gates]:
+            raise config.error("'vent_servos' must be empty or a comma separated list of 'num_gates' elements")
+
+        if self.vent_servo and self.vent_servos:
+            raise config.error("Can't configure both single and per-gate MMU vent servos")
+
+        def resolve_vent_servo(name):
+            # Venting needs mmu_servo's scheduled moves; a plain [servo] would fail at runtime
+            name = resolve_object_name(config, name, "mmu_servo ", "vent servo")
+            if name and not name.startswith("mmu_servo "):
+                raise config.error("Vent servo '%s' in [mmu_unit %s] must be an [mmu_servo] section" % (name, self.name))
+            return name
+
+        self.vent_servo = resolve_vent_servo(self.vent_servo)
+        self.vent_servos = [resolve_vent_servo(name) for name in self.vent_servos]
+
 
         # ---------------------------------------------------------------------------------------------------
         # Optional NFC readers for spool rfid tags
@@ -742,6 +762,9 @@ class MmuUnit:
     def has_heater(self):
         return self.filament_heater or self.filament_heaters
 
+    def has_vent_servo(self):
+        return bool(self.vent_servo or any(self.vent_servos))
+
     def has_fan(self):
         return self.fan or any(self.fans)
 
@@ -1088,6 +1111,9 @@ class MmuUnit:
             unit_info['fan'] = self.fan
         elif self.fans:
             unit_info['fans'] = self.fans
+
+        if self.has_vent_servo():
+            unit_info['vent_servos'] = [self.vent_servo] if self.vent_servo else self.vent_servos
 
         if self.nfc_reader:
             # Single (shared) NFC reader
