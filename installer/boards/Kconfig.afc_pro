@@ -1,5 +1,5 @@
 config BOARD_TYPE_AFC_PRO_1_0
-  bool "AFC Pro v1.0 / designed for Box Turtle"
+  bool "AFC Pro v1.0 [[DIM]]/ designed for Box Turtle[[/DIM]]"
   help
     This board was custom designed for the Box Turtle v1
 

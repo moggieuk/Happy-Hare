@@ -1,5 +1,5 @@
 config BOARD_TYPE_WGB_3_0
-  bool "WGB v3.0 / designed for Box Turtle"
+  bool "WGB v3.0 [[DIM]]/ designed for Box Turtle[[/DIM]]"
   help
     Custom designed originally for the Box Turtle
 

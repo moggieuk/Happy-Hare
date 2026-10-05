@@ -1,5 +1,5 @@
 config BOARD_TYPE_TZB_1_0
-  bool "TZB v1.0 / designed for ERCF"
+  bool "TZB v1.0 [[DIM]]/ designed for ERCF[[/DIM]]"
   help
     Custom designed originally for the ERCF
 

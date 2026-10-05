@@ -157,6 +157,15 @@ if MMU_HAS_HEATER
       help
         Default humidity % goal. Drying will terminate if this value is reached
 
+    config PARAM_HEATER_ROTATE_INTERVAL
+      string "Rotate interval           "
+      default "5"
+      depends on MMU_HAS_ESPOOLER || MMU_GEAR_ROTATES_SPOOL
+      help
+        Interval in minutes to rotate filament (requires the filament end attached to spool)
+
+    comment "_"
+
     config PARAM_HEATER_VENT_INTERVAL
       string "Vent interval             "
       default "0"
@@ -169,14 +178,6 @@ if MMU_HAS_HEATER
       range 1 3600
       help
         How long the vent stays open each time it is opened, in seconds.
-
-    config PARAM_HEATER_VENT_RUN_FAN
-      boolint "Run fan while venting?"
-      default 1
-      help
-        Force the unit's managed fan(s) on while the vent is open, then restore
-        the mode they were in. Works with or without a vent servo. Has no
-        effect without a managed fan.
 
     config PARAM_HEATER_VENT_OPEN_ANGLE
       float "Vent servo open angle     "
@@ -215,12 +216,13 @@ if MMU_HAS_HEATER
         only needed for extra venting hardware. _MMU_VENT is a logging-only
         example to copy. Leave empty for none.
 
-    config PARAM_HEATER_ROTATE_INTERVAL
-      string "Rotate interval           "
-      default "5"
-      depends on MMU_HAS_ESPOOLER || MMU_GEAR_ROTATES_SPOOL
+    config PARAM_HEATER_VENT_RUN_FAN
+      boolint "Run fan while venting?"
+      default 1
       help
-        Interval in minutes to rotate filament (requires the filament end attached to spool)
+        Force the unit's managed fan(s) on while the vent is open, then restore
+        the mode they were in. Works with or without a vent servo. Has no
+        effect without a managed fan.
   endmenu
 
 

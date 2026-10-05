@@ -18,6 +18,7 @@ config MMU_FAMILY_QUATTRO_BOX
 if MMU_FAMILY_QUATTRO_BOX
   choice
     prompt "Version"
+    default MMU_TYPE_QUATTRO_BOX_2_0
 
     config MMU_TYPE_QUATTRO_BOX_1_0
       bool "QuattroBox v1.0"
