@@ -1,3 +1,6 @@
+# Vent servo(s) of the heated chamber. Sourced from Kconfig.heater: venting is part of
+# the drying cycle, so it is only offered with a heater (but not tied to a heater fan)
+#
 # Responsible for setting:
 #   MMU_HAS_VENT_SERVO
 #
@@ -12,23 +15,21 @@
 #   select UNSELECT_MMU_HAS_VENT_SERVO
 
 
-comment "_"
-comment "_Enclosure Vent"
-
 config UNSELECT_MMU_HAS_VENT_SERVO
   def_bool n
 
-if !UNSELECT_MMU_HAS_VENT_SERVO
+# Venting is part of the drying cycle, so it needs the heater (but not a heater fan)
+if MMU_HAS_HEATER && !UNSELECT_MMU_HAS_VENT_SERVO
   config MMU_HAS_VENT_SERVO
     prompt "Has enclosure vent servo?"
-    forceshow
     default n
     help
       Select if a servo opens and closes a vent in the filament enclosure.
-      Happy Hare opens it every heater_vent_interval minutes while drying and
-      closes it again after the vent open time. The angles and timings are
-      set with the other venting options under the heater settings. With
-      per-gate configuration each gate can have its own vent servo.
+      Venting is part of the drying cycle: Happy Hare opens it every
+      heater_vent_interval minutes while drying and closes it again after
+      the vent open time. The angles and timings are set with the other
+      venting options in "Heater and humidity control". With per-gate
+      configuration each gate can have its own vent servo.
 endif
 
 

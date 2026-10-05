@@ -1,8 +1,9 @@
-# Configuration of MMU Heater(s)
+# Configuration of the MMU heated chamber: heater(s), heater fan(s) and vent servo(s)
 #
 # Responsible for setting:
 #   MMU_HAS_HEATER
 #   MMU_HAS_HEATER_FANS (shared configuration only)
+#   MMU_HAS_VENT_SERVO (via Kconfig.vent; only with a heater as venting is part of the drying cycle)
 #
 # Heater parameter tokens which must be inside if MMU_HAS_HEATER clause in cfg templates:
 #   PARAM_FILAMENT_HEATER
@@ -26,12 +27,14 @@
 #   PARAM_HEATER_FAN_HEATER_TEMP_X, PIN_HEATER_FAN_X, PARAM_HEATER_FAN_NAME_X
 #     (per-gate configuration)
 #
+# The vent servo is configured in Kconfig.vent, sourced at the end of this file
+#
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_HEATER
 
 
 comment "_"
-comment "_Heater"
+comment "_Heated Chamber"
 
 config UNSELECT_MMU_HAS_HEATER
   def_bool n
@@ -235,8 +238,11 @@ if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG
     bool "Configure heater fan(s)?"
     help
       Create a fixed Klipper [heater_fan] associated directly with the shared
-      enclosure heater. With per-gate configuration each gate's heater fan is
-      selected in the heater fan h/w config instead.
+      enclosure heater. Use it for a fan that blows across the heater or
+      spreads its warmth: Klipper runs it whenever the heater is on and until
+      the element has cooled. A passive heater without a fan needs none.
+      With per-gate configuration each gate's heater fan is selected in the
+      heater fan h/w config instead.
 endif
 
 comment "$(misc_hardware_hint)" if MMU_HAS_HEATER_FANS && CUSTOM_HEATER_FAN_SETUP
@@ -386,3 +392,10 @@ if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
         Disable to show the fans. Automatic fan control is unchanged.
   endmenu
 endif
+
+
+# -------------------------------------
+# Vent servo (venting is part of the drying cycle)
+# -------------------------------------
+
+source "Kconfig.vent"

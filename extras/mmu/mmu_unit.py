@@ -237,6 +237,12 @@ class MmuUnit:
         self.vent_servo = resolve_vent_servo(self.vent_servo)
         self.vent_servos = [resolve_vent_servo(name) for name in self.vent_servos]
 
+        # Venting is part of the drying cycle, so without a heater the vent is never opened
+        if self.has_vent_servo() and not self.has_heater():
+            logging.warning(
+                "MMU: mmu_unit %s has a vent servo but no filament heater; "
+                "the vent only opens during a drying cycle so it will stay closed" % self.name)
+
 
         # ---------------------------------------------------------------------------------------------------
         # Optional NFC readers for spool rfid tags

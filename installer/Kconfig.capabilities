@@ -91,6 +91,7 @@ config MMU_HAS_EJECT_BUTTONS
 
 config MMU_HAS_VENT_SERVO
   def_bool n
+  depends on MMU_HAS_HEATER
 
 # Some new designs have mcu integrated in sync-feedback buffer mcu
 config MMU_HAS_BUFFER_MCU
