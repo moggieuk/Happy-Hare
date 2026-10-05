@@ -7,6 +7,12 @@
 #   PARAM_GEAR_HOLD_CURRENT
 #   PARAM_GEAR_FULL_STEPS_PER_ROTATION
 #   PARAM_GEAR_SENSE_RESISTOR
+#   BOOL_GEAR_OVERRIDE_<n> and PARAM_GEAR_<param>_<n> per-gear overrides (multigear)
+
+float_or_empty := ([0-9]+([.][0-9]*)?|[.][0-9]+)?
+int_or_empty   := ([0-9]+)?
+sint_or_empty  := (-?[0-9]+)?
+ratio_or_empty := ([0-9.]+ *: *[0-9.]+( *, *[0-9.]+ *: *[0-9.]+)*)?
 
 menu "Gear stepper"
 
@@ -32,5 +38,73 @@ menu "Gear stepper"
     default 200
     help
       200 for 1.8 degree, 400 for 0.9 degree
+
+  if MULTIGEAR
+    menu "Per-gear overrides"
+      help
+        Every gear stepper inherits the settings above from gear 0.
+        Enable a gear here to give it different values. Leave a field
+        empty to keep inheriting it.
+
+      @repeat var=i min=1 max=11@
+        if PARAM_NUM_GATES > $(i)
+          menuconfig BOOL_GEAR_OVERRIDE_$(i)
+            bool "Gear $(i) overrides"
+            default n
+            default_when_hidden
+            help
+              Override inherited settings for gear $(i). Turning this off
+              clears its values.
+
+          config PARAM_GEAR_GEAR_RATIO_$(i)
+            string
+            prompt "$(pad,23,Gear ratio)" if BOOL_GEAR_OVERRIDE_$(i)
+            validator "$(ratio_or_empty)"
+            help
+              E.g. 80:20. Leave empty to inherit from gear 0.
+          config PARAM_GEAR_ROTATION_DISTANCE_$(i)
+            string
+            prompt "$(pad,23,Rotation distance)" if BOOL_GEAR_OVERRIDE_$(i)
+            validator "$(float_or_empty)"
+            help
+              Calibrated rotation distances replace this. With
+              variable_rotation_distances off, calibrating any gate
+              sets every gate.
+          config PARAM_GEAR_MICROSTEPS_$(i)
+            string
+            prompt "$(pad,23,Microsteps)" if BOOL_GEAR_OVERRIDE_$(i)
+            validator "$(int_or_empty)"
+          config PARAM_GEAR_FULL_STEPS_PER_ROTATION_$(i)
+            string
+            prompt "$(pad,23,Full steps per rotation)" if BOOL_GEAR_OVERRIDE_$(i)
+            validator "$(int_or_empty)"
+          config PARAM_GEAR_RUN_CURRENT_$(i)
+            string
+            prompt "$(pad,23,Run current)" if BOOL_GEAR_OVERRIDE_$(i) && PARAM_GEAR_TMC != ""
+            validator "$(float_or_empty)"
+          config PARAM_GEAR_HOLD_CURRENT_$(i)
+            string
+            prompt "$(pad,23,Hold current)" if BOOL_GEAR_OVERRIDE_$(i) && BOOL_GEAR_TMC_HAS_HOLD_CURRENT
+            validator "$(float_or_empty)"
+          config PARAM_GEAR_SENSE_RESISTOR_$(i)
+            string
+            prompt "$(pad,23,Sense resistor)" if BOOL_GEAR_OVERRIDE_$(i) && PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_HAS_RREF
+            validator "$(float_or_empty)"
+          config PARAM_GEAR_RREF_$(i)
+            string
+            prompt "$(pad,23,Rref (ohms))" if BOOL_GEAR_OVERRIDE_$(i) && BOOL_GEAR_TMC_HAS_RREF
+            validator "$(int_or_empty)"
+          config PARAM_GEAR_STALLGUARD_THRESHOLD_$(i)
+            string
+            prompt "$(pad,23,Stallguard threshold)" if BOOL_GEAR_OVERRIDE_$(i) && \
+                BOOL_GEAR_TMC_HAS_STALLGUARD && PIN_GEAR_DIAG != "" && PIN_GEAR_DIAG_$(i) != ""
+            validator "$(sint_or_empty)"
+            help
+              Used only when this gear has a diag pin. Same scale as the
+              gear 0 value: SGTHRS 0-255, SGT -64..63.
+        endif
+      @endrepeat@
+    endmenu
+  endif
 
 endmenu
