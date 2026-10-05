@@ -145,20 +145,20 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
               help
                 Leave blank if this gate does not have a managed fan installed.
 
-            config BOOL_HIDE_FAN_$(i)
-              bool "Hide in Mainsail / Fluidd"
-              default y
-              help
-                Prefix the fan name with an underscore to hide it in the UI.
-                Disable to show the fan. Automatic fan control is unchanged.
-
             config PARAM_FAN_NAME_$(i)
               string
-              default "_$(UNIT_NAME)_fan$(i)" if BOOL_HIDE_FAN_$(i)
+              default "_$(UNIT_NAME)_fan$(i)" if BOOL_HIDE_FAN
               default "$(UNIT_NAME)_fan$(i)"
           endif
         endif
       @endrepeat@
+
+      config BOOL_HIDE_FAN
+        bool "Hide in Mainsail / Fluidd"
+        default y
+        help
+          Prefix every gate's fan name with an underscore to hide them in the UI.
+          Disable to show the fans. Automatic fan control is unchanged.
     endmenu
   endif
 
@@ -404,19 +404,19 @@ if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CO
             help
               Leave blank if this gate does not have a controller fan installed.
 
-          config BOOL_HIDE_CONTROLLER_FAN_$(i)
-            bool "Hide in Mainsail / Fluidd"
-            default y
-            help
-              Prefix the fan name with an underscore to hide it in the UI.
-              Disable to show the fan. Automatic fan control is unchanged.
-
           config PARAM_CONTROLLER_FAN_NAME_$(i)
             string
-            default "_$(UNIT_NAME)_controller_fan$(i)" if BOOL_HIDE_CONTROLLER_FAN_$(i)
+            default "_$(UNIT_NAME)_controller_fan$(i)" if BOOL_HIDE_CONTROLLER_FAN
             default "$(UNIT_NAME)_controller_fan$(i)"
         endif
       endif
     @endrepeat@
+
+    config BOOL_HIDE_CONTROLLER_FAN
+      bool "Hide in Mainsail / Fluidd"
+      default y
+      help
+        Prefix every gate's fan name with an underscore to hide them in the UI.
+        Disable to show the fans. Automatic fan control is unchanged.
   endmenu
 endif

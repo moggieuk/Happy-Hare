@@ -246,24 +246,23 @@ class TestFanVisibilityRefresh(unittest.TestCase):
 
     def test_per_gate_fan_references_follow_visibility(self):
         installed = self.build("emu", {}, "replace", [])
-        shown = {"BOOL_HIDE_FAN_0": False}
+        shown = {"BOOL_HIDE_FAN": False}
         for mode in ("refresh", "merge"):
             with self.subTest(mode=mode):
                 built = ConfigBuilder(self.build("emu", shown, mode, [installed]))
                 self.assertEqual(built.get(self.UNIT, "fans").split(", "),
-                                 ["unit0_fan0", "_unit0_fan1", "_unit0_fan2",
-                                  "_unit0_fan3", "_unit0_fan4"])
+                                 ["unit0_fan%d" % i for i in range(5)])
 
     def test_hand_edited_fan_reference_is_kept(self):
         installed = self.build("emu", {}, "replace", [])
         self.edit(installed, "_unit0_fan2,", "my_fan,")
-        shown = {"BOOL_HIDE_FAN_0": False}
+        shown = {"BOOL_HIDE_FAN": False}
         for mode in ("refresh", "merge"):
             with self.subTest(mode=mode):
                 built = ConfigBuilder(self.build("emu", shown, mode, [installed]))
                 self.assertEqual(built.get(self.UNIT, "fans").split(", "),
-                                 ["unit0_fan0", "_unit0_fan1", "my_fan",
-                                  "_unit0_fan3", "_unit0_fan4"])
+                                 ["unit0_fan0", "unit0_fan1", "my_fan",
+                                  "unit0_fan3", "unit0_fan4"])
 
 
 class TestSupplementalParamRefresh(unittest.TestCase):
