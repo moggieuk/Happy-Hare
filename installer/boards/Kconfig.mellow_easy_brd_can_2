@@ -67,4 +67,6 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
     default "^$(MCU_NAME):gpio15" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "$(MCU_NAME):gpio14"
+
+# No fan headers
 endif

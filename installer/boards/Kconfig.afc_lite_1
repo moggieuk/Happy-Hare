@@ -159,4 +159,5 @@ if BOARD_TYPE_AFC_LITE_1_0
 
   endif
 
+# Fan header: +5V always on, no MCU control (no fan pin to configure)
 endif

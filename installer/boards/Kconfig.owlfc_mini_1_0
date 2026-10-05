@@ -67,4 +67,5 @@ if BOARD_TYPE_OWLFC_MINI_1_0
   #   SW6: PB10
   #   SW7: PB2
 
+# Fan header: VIN always on, no MCU control (no fan pin to configure)
 endif

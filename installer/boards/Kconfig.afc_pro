@@ -202,6 +202,13 @@ if BOARD_TYPE_AFC_PRO_1_0
   endif
 
 
+  # Fan header (FV jumper: VIN/12V/5V): FAN managed fan
+  config PIN_FAN
+    default "$(MCU_NAME):PA10"
+
+
+# Heater output for a [heater_generic]: HT PA9. Thermistors: TH1 PA6, TH2 PA7
+
 # Spare neopixel ports:
 #   PC14, PC15, PA4
 
