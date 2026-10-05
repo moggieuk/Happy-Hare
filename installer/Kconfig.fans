@@ -115,13 +115,6 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
       help
         Configure the managed fan of each gate.
 
-      config BOOL_HIDE_FAN
-        bool "Hide in Mainsail / Fluidd"
-        default y
-        help
-          Prefix every gate's fan name with an underscore to hide them in the UI.
-          Disable to show the fans. Automatic fan control is unchanged.
-
       @repeat var=i min=0 max=11@
         if PARAM_NUM_GATES > $(i)
           menuconfig PARAM_FAN_GATE_$(i)
@@ -159,6 +152,13 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           endif
         endif
       @endrepeat@
+
+      config BOOL_HIDE_FAN
+        bool "Hide in Mainsail / Fluidd"
+        default y
+        help
+          Prefix every gate's fan name with an underscore to hide them in the UI.
+          Disable to show the fans. Automatic fan control is unchanged.
     endmenu
   endif
 
@@ -358,13 +358,6 @@ if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CO
     help
       Configure the controller fan of each gate.
 
-    config BOOL_HIDE_CONTROLLER_FAN
-      bool "Hide in Mainsail / Fluidd"
-      default y
-      help
-        Prefix every gate's fan name with an underscore to hide them in the UI.
-        Disable to show the fans. Automatic fan control is unchanged.
-
     @repeat var=i min=0 max=11@
       if PARAM_NUM_GATES > $(i)
         menuconfig PARAM_CONTROLLER_FAN_GATE_$(i)
@@ -418,5 +411,12 @@ if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CO
         endif
       endif
     @endrepeat@
+
+    config BOOL_HIDE_CONTROLLER_FAN
+      bool "Hide in Mainsail / Fluidd"
+      default y
+      help
+        Prefix every gate's fan name with an underscore to hide them in the UI.
+        Disable to show the fans. Automatic fan control is unchanged.
   endmenu
 endif
