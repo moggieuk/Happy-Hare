@@ -202,6 +202,50 @@ class TestFanVisibility(unittest.TestCase):
                 self.assertEqual(hh.errors, [])
 
 
+class TestMcuSensorVisibility(unittest.TestCase):
+
+    @staticmethod
+    def _mcu_sensors(profile):
+        parser = cfg.assemble(cfg.render(profile))
+        return [s for s in parser.sections()
+                if s.startswith('temperature_sensor ')
+                and parser.get(s, 'sensor_type') == 'temperature_mcu']
+
+    def test_hidden_by_default_unless_per_gate_mcu(self):
+        self.assertEqual(self._mcu_sensors(profiles.get('kms')),
+                         ['temperature_sensor _unit0_mcu',
+                          'temperature_sensor _unit0_mcu_buffer'])
+        self.assertEqual(self._mcu_sensors(profiles.get('emu')),
+                         ['temperature_sensor unit0_mcu%d' % i for i in range(5)])
+
+    def test_option_applies_to_every_mcu_sensor(self):
+        kms = profiles.get('kms').derive('kms_mcu_shown', syms={
+            'BOOL_HIDE_MCU_ENVIRONMENT_SENSORS': False})
+        self.assertEqual(self._mcu_sensors(kms),
+                         ['temperature_sensor unit0_mcu',
+                          'temperature_sensor unit0_mcu_buffer'])
+        emu = profiles.get('emu').derive('emu_mcu_hidden', syms={
+            'BOOL_HIDE_MCU_ENVIRONMENT_SENSORS': True})
+        self.assertEqual(self._mcu_sensors(emu),
+                         ['temperature_sensor _unit0_mcu%d' % i for i in range(5)])
+
+    def test_fan_follows_a_hidden_or_shown_mcu_sensor(self):
+        for hide, name in [(True, '_unit0_mcu'), (False, 'unit0_mcu')]:
+            with self.subTest(hide=hide):
+                hh = session(_single_fan_profile().derive('qidi_mcu_source_%s' % hide, syms={
+                    'CHOICE_DEFAULT_FAN_TEMPERATURE_SOURCE_MCU': True,
+                    'BOOL_HIDE_MCU_ENVIRONMENT_SENSORS': hide,
+                }))
+                self.addCleanup(hh.close)
+                hh.boot()
+                unit = hh.mmu.mmu_unit(0)
+                fan = hh.printer.lookup_object(unit.fan)
+                hh.printer.lookup_object('temperature_sensor ' + name).feed(50.)
+                hh.reactor.advance(unit.p.fan_polling_time)
+                self.assertEqual(fan.get_status(hh.reactor.monotonic())['speed'], 1.)
+                self.assertEqual(hh.errors, [])
+
+
 class TestMmuFanConfiguration(unittest.TestCase):
 
     @staticmethod
@@ -974,7 +1018,7 @@ class TestMmuFanRuntime(unittest.TestCase):
         fans = [self.hh.printer.lookup_object(name) for name in unit.fans]
         sensors = [self.hh.printer.lookup_object(name)
                    for name in unit.environment_sensors]
-        mcu_sensor = self.hh.printer.lookup_object('temperature_sensor _unit0_mcu1')
+        mcu_sensor = self.hh.printer.lookup_object('temperature_sensor unit0_mcu1')
 
         # The EMU defaults every fan to its MCU sensor; gate 0 is explicitly
         # switched to its environment sensor to exercise both sources.
@@ -1018,7 +1062,7 @@ class TestMmuFanRuntime(unittest.TestCase):
         self.hh.boot()
         unit = self.hh.mmu.mmu_unit(0)
         fans = [self.hh.printer.lookup_object(name) for name in unit.fans]
-        mcu_sensor = self.hh.printer.lookup_object('temperature_sensor _unit0_mcu1')
+        mcu_sensor = self.hh.printer.lookup_object('temperature_sensor unit0_mcu1')
 
         mcu_sensor.feed(50.)
         self.hh.reactor.advance(unit.p.fan_polling_time)

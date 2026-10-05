@@ -20,6 +20,11 @@
 # Per-gate:
 #   as above with _<gate_index> extension
 #
+# MCU CPU temperature sensors:
+#   BOOL_CREATE_MCU_ENVIRONMENT_SENSORS, BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+#   PARAM_MCU_ENVIRONMENT_SENSOR_NAME, PARAM_BUFFER_MCU_ENVIRONMENT_SENSOR_NAME
+#   PARAM_MCU_ENVIRONMENT_SENSOR_NAME_X (per-gate MCU)
+#
 # The sensor type, report time, HTU21D options and i2c address come from
 # components/Kconfig.environment_sensor_{type,address}, shared by both layouts
 #
@@ -250,8 +255,26 @@ config BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
 if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
   config BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
     bool "Hide in Mainsail / Fluidd"
-    default y if MMU_HAS_ENVIRONMENT_SENSOR
-    default n
+    default n if MMU_HAS_PER_GATE_MCU
+    default y
     help
-      Hide MCU temperature sensors in Mainsail / Fluidd interface.
+      Prefix the MCU sensor names with an underscore to hide them in the UI.
+      Disable to show the sensors. Fan temperature control is unchanged.
+
+  config PARAM_MCU_ENVIRONMENT_SENSOR_NAME
+    string
+    default "_$(UNIT_NAME)_mcu" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+    default "$(UNIT_NAME)_mcu"
+
+  config PARAM_BUFFER_MCU_ENVIRONMENT_SENSOR_NAME
+    string
+    default "_$(UNIT_NAME)_mcu_buffer" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+    default "$(UNIT_NAME)_mcu_buffer"
+
+  @repeat var=i min=0 max=11@
+    config PARAM_MCU_ENVIRONMENT_SENSOR_NAME_$(i)
+      string
+      default "_$(UNIT_NAME)_mcu$(i)" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+      default "$(UNIT_NAME)_mcu$(i)"
+  @endrepeat@
 endif
