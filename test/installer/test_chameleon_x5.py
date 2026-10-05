@@ -91,6 +91,8 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
 
     def test_exhaust_fan_is_the_managed_fan(self):
         self.assertEqual(self.item('fan_generic _unit0_fan')['pin'], 'unit0:PB5')
+        # Off except while venting, as in the author's config
+        self.assertEqual(self.item('mmu_unit_parameters unit0')['fan_forced'], '0')
 
     def test_vent_servo_from_the_feature(self):
         self.assertEqual(self.item('mmu_servo unit0_vent_servo')['pin'], 'unit0:PB0')

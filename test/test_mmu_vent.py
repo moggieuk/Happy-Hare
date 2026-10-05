@@ -245,6 +245,28 @@ class TestVentServoAndFan(_VentSession):
         self.assertEqual(self._fan_modes(), [2])
         self.assertEqual(self._close(), [])
 
+    def test_vent_closes_after_the_drying_stopped_message(self):
+        self._dry()
+        self._open()
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER STOP=1')
+        console = [msg.replace('\xa0', ' ') for msg in self.hh.console[at:]]
+        stopped = next(i for i, msg in enumerate(console) if 'Filament drying stopped' in msg)
+        closing = next(i for i, msg in enumerate(console) if 'Closing MMU vent' in msg)
+        self.assertLess(stopped, closing)
+
+    def test_disabling_the_mmu_closes_the_vent(self):
+        since = len(self._servo().mcu_servo.timeline)
+        self._dry()
+        self._open()
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU ENABLE=0')
+        self.hh.settle()
+        self.assertEqual(self._messages(at), [
+            'Closing MMU vent on unit0 (vent servo to angle 0, managed fan restored)...'])
+        self.assertEqual(self._servo_values(since=since)[-2:], [self._pwm(0), 0.0])
+        self.assertEqual(self._fan_modes(), [2])
+
     def test_heater_status_reports_venting(self):
         self._dry()
         at = len(self.hh.console)
@@ -258,6 +280,21 @@ class TestVentServoAndFan(_VentSession):
     def test_unit_status_lists_the_vent_servo(self):
         status = self.hh.printer.lookup_object('mmu_machine').get_status(0)
         self.assertEqual(status['unit_0']['vent_servos'], ['mmu_servo unit0_vent_servo'])
+
+
+class TestVentServoMustBeMmuServo(unittest.TestCase):
+
+    def test_a_non_mmu_servo_object_is_rejected(self):
+        # A plain [servo] can't schedule moves from a timer, so only [mmu_servo] is accepted
+        stub = PRINTER_STUB + (
+            '\n[temperature_sensor unit0_vent]\nsensor_type: Generic 3950\n'
+            '\n[mmu_unit unit0]\nvent_servo: temperature_sensor unit0_vent\n')
+        hh = session(profiles.get('qidi'), printer_stub=stub)
+        self.addCleanup(hh.close)
+        with self.assertRaises(Exception) as cm:
+            hh.boot()
+        self.assertIn("Vent servo 'temperature_sensor unit0_vent' in [mmu_unit unit0] must be an [mmu_servo] section",
+                      str(cm.exception))
 
 
 class TestVentFanWithoutServo(_VentSession):

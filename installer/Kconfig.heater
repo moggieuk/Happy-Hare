@@ -134,6 +134,7 @@ if MMU_HAS_HEATER
     config PARAM_HEATER_VENT_DURATION
       float "Vent open time (s)        "
       default 10
+      range 1 3600
       help
         How long the vent stays open each time it is opened, in seconds.
 

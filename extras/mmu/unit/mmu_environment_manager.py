@@ -715,9 +715,9 @@ class MmuEnvironmentManager:
 
 
     def _stop_drying_cycle(self, msg="Filament drying stopped", reset_state=True):
-        self._vent_close()
         if self.is_drying() or self._drying_end_time is not None:
             self.mmu.log_info(msg)
+            self._vent_close()
             self.reactor.update_timer(self._periodic_timer, self.reactor.NEVER)
 
             # Turn off all heaters in either mode

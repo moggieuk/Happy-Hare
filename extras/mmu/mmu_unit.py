@@ -227,11 +227,15 @@ class MmuUnit:
         if self.vent_servo and self.vent_servos:
             raise config.error("Can't configure both single and per-gate MMU vent servos")
 
-        self.vent_servo = resolve_object_name(config, self.vent_servo, "mmu_servo ", "vent servo")
-        self.vent_servos = [
-            resolve_object_name(config, name, "mmu_servo ", "vent servo")
-            for name in self.vent_servos
-        ]
+        def resolve_vent_servo(name):
+            # Venting needs mmu_servo's scheduled moves; a plain [servo] would fail at runtime
+            name = resolve_object_name(config, name, "mmu_servo ", "vent servo")
+            if name and not name.startswith("mmu_servo "):
+                raise config.error("Vent servo '%s' in [mmu_unit %s] must be an [mmu_servo] section" % (name, self.name))
+            return name
+
+        self.vent_servo = resolve_vent_servo(self.vent_servo)
+        self.vent_servos = [resolve_vent_servo(name) for name in self.vent_servos]
 
 
         # ---------------------------------------------------------------------------------------------------
