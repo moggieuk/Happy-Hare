@@ -87,6 +87,22 @@ class TestVentRender(unittest.TestCase):
         self.assertEqual(dict(parser.items('mmu_servo unit0_vent_servo2'))['pin'], 'unit0_gate2:PB15')
         self.assertNotIn('mmu_servo unit0_vent_servo4', parser.sections())
 
+    def test_each_gate_has_its_own_servo_pwm_range(self):
+        profile = _per_gate_vent_profile().derive('emu_vent_pwm', syms={
+            'PARAM_VENT_SERVO_MIN_PULSE_WIDTH_1': 0.0005,
+            'PARAM_VENT_SERVO_MAX_PULSE_WIDTH_1': 0.0025,
+            'PARAM_VENT_SERVO_MAXIMUM_ANGLE_1': 270,
+        })
+        parser = cfg.assemble(cfg.render(profile), macros=False)
+        servo = lambda g: dict(parser.items('mmu_servo unit0_vent_servo%d' % g))
+        self.assertEqual(servo(1), {
+            'pin': 'unit0_gate1:PB15', 'maximum_servo_angle': '270',
+            'minimum_pulse_width': '0.0005', 'maximum_pulse_width': '0.0025'})
+        for gate in (0, 2, 3):
+            self.assertEqual(servo(gate), {
+                'pin': 'unit0_gate%d:PB15' % gate, 'maximum_servo_angle': '180',
+                'minimum_pulse_width': '0.001', 'maximum_pulse_width': '0.002'})
+
     def test_vent_servo_without_a_pin_is_warned(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             shared = cfg._kconfig('vent_no_pin', dict(profiles.get('qidi').syms, MMU_HAS_VENT_SERVO=True))

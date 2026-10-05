@@ -164,25 +164,28 @@ class TestFanVisibility(unittest.TestCase):
                     self.assertEqual(shown.get(shown_name, 'pin'),
                                      'multi_pin:_unit0_heater_fan_pins')
 
-    def test_per_gate_visibility_is_independent_and_preserves_empty_slots(self):
+    def test_per_gate_visibility_is_one_option_per_fan_type(self):
         profile = _per_gate_controller_fan_profile().derive(
             'per_gate_fan_visibility', syms={
                 'MMU_HAS_HEATER': True,
                 'PIN_HEATER_FAN_0': 'unit0_gate0:PA14',
                 'PIN_HEATER_FAN_2': 'unit0_gate2:PA14',
-                'BOOL_HIDE_FAN_0': False,
-                'BOOL_HIDE_HEATER_FAN_2': False,
-                'BOOL_HIDE_CONTROLLER_FAN_0': False,
+                'BOOL_HIDE_FAN': False,
+                'BOOL_HIDE_CONTROLLER_FAN': False,
                 'PARAM_FAN_GATE_1': False,
                 'PIN_FAN_3': '',
             })
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('per_gate_fan_visibility', profile.syms)
+        for symbol in ('BOOL_HIDE_FAN', 'BOOL_HIDE_HEATER_FAN', 'BOOL_HIDE_CONTROLLER_FAN'):
+            self.assertEqual(kconfig.syms[symbol].visibility, 2, symbol)
         parser = cfg.assemble(cfg.render(profile))
         self.assertEqual(parser.get('mmu_unit unit0', 'fans').split(', '),
-                         ['unit0_fan0', '', '_unit0_fan2', '', '_unit0_fan4'])
+                         ['unit0_fan0', '', 'unit0_fan2', '', 'unit0_fan4'])
         for kind, expected in [
-            ('fan_generic', ['unit0_fan0', '_unit0_fan2', '_unit0_fan4']),
-            ('heater_fan', ['_unit0_heater_fan0', 'unit0_heater_fan2']),
-            ('controller_fan', ['unit0_controller_fan0', '_unit0_controller_fan2']),
+            ('fan_generic', ['unit0_fan0', 'unit0_fan2', 'unit0_fan4']),
+            ('heater_fan', ['_unit0_heater_fan0', '_unit0_heater_fan2']),
+            ('controller_fan', ['unit0_controller_fan0', 'unit0_controller_fan2']),
         ]:
             self.assertEqual([s for s in parser.sections() if s.startswith(kind + ' ')],
                              [kind + ' ' + name for name in expected])
@@ -190,7 +193,7 @@ class TestFanVisibility(unittest.TestCase):
     def test_exposed_managed_fans_still_run_under_happy_hare_control(self):
         for base, syms, name in [
             (_single_fan_profile(), {'BOOL_HIDE_FAN': False}, 'unit0_fan'),
-            (profiles.get('emu'), {'BOOL_HIDE_FAN_0': False}, 'unit0_fan0'),
+            (profiles.get('emu'), {'BOOL_HIDE_FAN': False}, 'unit0_fan0'),
         ]:
             with self.subTest(profile=base.name):
                 hh = session(base.derive(base.name + '_visible', syms=syms))

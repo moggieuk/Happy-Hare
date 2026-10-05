@@ -317,6 +317,13 @@ if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
     help
       Configure the Klipper heater fan of each gate.
 
+    config BOOL_HIDE_HEATER_FAN
+      bool "Hide in Mainsail / Fluidd"
+      default y
+      help
+        Prefix every gate's fan name with an underscore to hide them in the UI.
+        Disable to show the fans. Automatic fan control is unchanged.
+
     @repeat var=i min=0 max=11@
       if PARAM_NUM_GATES > $(i)
         menuconfig PARAM_HEATER_FAN_GATE_$(i)
@@ -370,16 +377,9 @@ if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
             help
               Leave blank if this gate does not have a heater fan installed.
 
-          config BOOL_HIDE_HEATER_FAN_$(i)
-            bool "Hide in Mainsail / Fluidd"
-            default y
-            help
-              Prefix the fan name with an underscore to hide it in the UI.
-              Disable to show the fan. Automatic fan control is unchanged.
-
           config PARAM_HEATER_FAN_NAME_$(i)
             string
-            default "_$(UNIT_NAME)_heater_fan$(i)" if BOOL_HIDE_HEATER_FAN_$(i)
+            default "_$(UNIT_NAME)_heater_fan$(i)" if BOOL_HIDE_HEATER_FAN
             default "$(UNIT_NAME)_heater_fan$(i)"
         endif
       endif

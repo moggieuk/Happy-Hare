@@ -2,11 +2,11 @@
 #   MMU_HAS_VENT_SERVO
 #
 # Vent servo parameter tokens which must be inside if MMU_HAS_VENT_SERVO clause in cfg templates:
-#   PIN_VENT_SERVO (shared configuration)
-#   PARAM_VENT_SERVO_GATE_X, PIN_VENT_SERVO_X (per-gate configuration)
-#   PARAM_VENT_SERVO_MIN_PULSE_WIDTH
-#   PARAM_VENT_SERVO_MAX_PULSE_WIDTH
-#   PARAM_VENT_SERVO_MAXIMUM_ANGLE
+#   PIN_VENT_SERVO, PARAM_VENT_SERVO_MIN_PULSE_WIDTH, PARAM_VENT_SERVO_MAX_PULSE_WIDTH,
+#   PARAM_VENT_SERVO_MAXIMUM_ANGLE (shared configuration)
+#   PARAM_VENT_SERVO_GATE_X, PIN_VENT_SERVO_X, PARAM_VENT_SERVO_MIN_PULSE_WIDTH_X,
+#   PARAM_VENT_SERVO_MAX_PULSE_WIDTH_X, PARAM_VENT_SERVO_MAXIMUM_ANGLE_X
+#   (per-gate configuration)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_VENT_SERVO
@@ -40,8 +40,7 @@ if MMU_HAS_VENT_SERVO
   menu "Vent servo h/w config"
     help
       Configure the pin and PWM range of the enclosure vent servo, or with
-      per-gate configuration each gate's vent servo. The PWM range applies to
-      every vent servo of this unit.
+      per-gate configuration of each gate's vent servo.
 
     config PIN_VENT_SERVO
       string
@@ -63,29 +62,46 @@ if MMU_HAS_VENT_SERVO
 
           if PARAM_VENT_SERVO_GATE_$(i)
             config PIN_VENT_SERVO_$(i)
-              string "Vent servo pin     "
+              string "Vent servo pin       "
               validator "$(pin_validator)"
               help
                 Leave blank if this gate does not have a vent servo installed.
+
+            config PARAM_VENT_SERVO_MIN_PULSE_WIDTH_$(i)
+              float "Servo min pulse width"
+              default 0.001
+
+            config PARAM_VENT_SERVO_MAX_PULSE_WIDTH_$(i)
+              float "Servo max pulse width"
+              default 0.002
+
+            config PARAM_VENT_SERVO_MAXIMUM_ANGLE_$(i)
+              int "Servo h/w max angle  "
+              range 0 360
+              default 180
+              help
+                Klipper scales the PWM pulse width to never exceed this angle
           endif
         endif
       @endrepeat@
     endif
 
-    config PARAM_VENT_SERVO_MIN_PULSE_WIDTH
-      float "Servo min pulse width"
-      default 0.001
+    if !MMU_HAS_PER_GATE_CONFIG
+      config PARAM_VENT_SERVO_MIN_PULSE_WIDTH
+        float "Servo min pulse width"
+        default 0.001
 
-    config PARAM_VENT_SERVO_MAX_PULSE_WIDTH
-      float "Servo max pulse width"
-      default 0.002
+      config PARAM_VENT_SERVO_MAX_PULSE_WIDTH
+        float "Servo max pulse width"
+        default 0.002
 
-    config PARAM_VENT_SERVO_MAXIMUM_ANGLE
-      int "Servo h/w max angle  "
-      range 0 360
-      default 180
-      help
-        Klipper scales the PWM pulse width to never exceed this angle
+      config PARAM_VENT_SERVO_MAXIMUM_ANGLE
+        int "Servo h/w max angle  "
+        range 0 360
+        default 180
+        help
+          Klipper scales the PWM pulse width to never exceed this angle
+    endif
 
   endmenu
 endif
