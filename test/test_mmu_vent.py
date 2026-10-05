@@ -313,6 +313,54 @@ class TestVentServoMustBeMmuServo(unittest.TestCase):
                       str(cm.exception))
 
 
+class TestVentNeedsHeater(unittest.TestCase):
+    # Venting is part of the drying cycle, so the vent servo is a heated chamber option
+
+    def _kconfig(self, label, syms):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            return cfg._kconfig(label, syms)
+
+    def test_not_offered_without_a_heater(self):
+        for name in ('qidi', 'emu'):
+            with self.subTest(profile=name):
+                kconfig = self._kconfig('vent_no_heater_' + name, dict(
+                    profiles.get(name).syms, MMU_HAS_HEATER=False, MMU_HAS_VENT_SERVO=True))
+                sym = kconfig.syms['MMU_HAS_VENT_SERVO']
+                self.assertEqual((sym.str_value, sym.visibility), ('n', 0))
+
+    def test_offered_with_a_passive_heater(self):
+        kconfig = self._kconfig('vent_passive_heater', dict(
+            profiles.get('qidi').syms, MMU_HAS_HEATER_FANS=False, MMU_HAS_VENT_SERVO=True))
+        self.assertEqual(kconfig.syms['MMU_HAS_HEATER_FANS'].str_value, 'n')
+        sym = kconfig.syms['MMU_HAS_VENT_SERVO']
+        self.assertEqual(sym.str_value, 'y')
+        self.assertGreater(sym.visibility, 0)
+
+    def test_vent_sits_in_the_heated_chamber_block(self):
+        kconfig = self._kconfig('vent_menu_order', dict(profiles.get('qidi').syms, MMU_HAS_VENT_SERVO=True))
+        prompts = [n.prompt[0].strip() for n in kconfig.node_iter() if n.prompt]
+        self.assertNotIn('_Enclosure Vent', prompts)
+        self.assertNotIn('_Heater', prompts)
+        chamber = prompts.index('_Heated Chamber')
+        order = [prompts.index(p, chamber) for p in (
+            'Has enclosure heater(s)?', 'Heater and humidity control', 'Configure heater fan(s)?',
+            'Has enclosure vent servo?', 'Vent servo h/w config')]
+        self.assertEqual(order, sorted(order))
+        # Nothing else between the chamber heading and the vent servo menu starts a new section
+        self.assertFalse([p for p in prompts[chamber + 1:order[-1]] if p.startswith('_') and p != '_'])
+
+    def test_hand_written_vent_servo_without_a_heater_is_warned(self):
+        stub = PRINTER_STUB + (
+            '\n[mmu_servo unit0_vent_servo]\npin: unit0:PA9\n'
+            '\n[mmu_unit unit0]\nvent_servo: unit0_vent_servo\n')
+        hh = session(profiles.get('boxturtle'), printer_stub=stub)
+        self.addCleanup(hh.close)
+        with self.assertLogs(level='WARNING') as logs:
+            hh.boot()
+        self.assertTrue(any('mmu_unit unit0 has a vent servo but no filament heater' in line
+                            for line in logs.output))
+
+
 class TestVentFanWithoutServo(_VentSession):
 
     PROFILE = _vent_profile(MMU_HAS_VENT_SERVO=False)

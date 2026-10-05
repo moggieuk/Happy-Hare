@@ -179,7 +179,8 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         self.assertFalse(_sections(parser, 'heater_generic') + _sections(parser, 'heater_fan')
                          + _sections(parser, 'multi_pin'))
         self.assertIn('controller_fan _unit0_controller_fan', parser.sections())
-        self.assertIn('mmu_servo unit0_vent_servo', parser.sections())
+        # Venting is part of the drying cycle, so the vent servo goes with the heater
+        self.assertNotIn('mmu_servo unit0_vent_servo', parser.sections())
 
 
 class TestX5UnderAnotherMachine(unittest.TestCase):
