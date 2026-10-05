@@ -169,7 +169,10 @@ class TestFanVisibility(unittest.TestCase):
             'per_gate_fan_visibility', syms={
                 'MMU_HAS_HEATER': True,
                 'PIN_HEATER_FAN_0': 'unit0_gate0:PA14',
+                'PIN_HEATER_FAN_1': '',
                 'PIN_HEATER_FAN_2': 'unit0_gate2:PA14',
+                'PIN_HEATER_FAN_3': '',
+                'PIN_HEATER_FAN_4': '',
                 'BOOL_HIDE_FAN': False,
                 'BOOL_HIDE_CONTROLLER_FAN': False,
                 'PARAM_FAN_GATE_1': False,

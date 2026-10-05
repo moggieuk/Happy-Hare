@@ -86,4 +86,16 @@ if BOARD_TYPE_SKR_PICO_1
 
   config PIN_NEOPIXEL
     default "$(MCU_NAME):gpio24" 
+
+  # Fan headers (VIN): FAN1 managed fan, FAN2 heater fan, FAN3 controller fan.
+  # FAN3 (gpio20) is shared with the Laser header
+  config PIN_FAN
+    default "$(MCU_NAME):gpio17"
+  config PIN_HEATER_FAN
+    default "$(MCU_NAME):gpio18"
+  config PIN_CONTROLLER_FAN
+    default "$(MCU_NAME):gpio20"
+
+# Heater outputs for a [heater_generic]: HE gpio23, HB gpio21
+# Thermistors: TH0 gpio27, THB gpio26
 endif

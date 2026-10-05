@@ -125,4 +125,6 @@ if BOARD_TYPE_MMB_2_0
     default "$(MCU_NAME):PC3" 
   config PIN_SHARED_EXIT_SENSOR
     default "^$(MCU_NAME):PA15" if !MMU_HAS_ENCODER 
+
+# No fan headers (MOT1/MOT2 are 5V servo outputs)
 endif

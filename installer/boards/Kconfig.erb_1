@@ -69,4 +69,6 @@ if BOARD_TYPE_ERB_1
     default "^$(MCU_NAME):gpio22" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "$(MCU_NAME):gpio21"
+
+# No fan headers
 endif

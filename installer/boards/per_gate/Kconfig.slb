@@ -5,6 +5,8 @@ if BOARD_TYPE_SLB_1_0
   config PARAM_BOARD_TYPE
     default "SLB v1"
 
+  # PTC heater output for a [heater_generic]: PB3 (24V, 5A max). Thermistor: TEMP PB12
+
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_CANBUS
   endchoice
@@ -46,8 +48,11 @@ if BOARD_TYPE_SLB_1_0
       string
       default "$(MCU_NAME):PA2"
 
+    # Fan headers (24V): Fan1 managed (circulation) fan, Fan2 heater fan
     config PIN_FAN
       default "$(MCU_NAME):PA15"
+    config PIN_HEATER_FAN
+      default "$(MCU_NAME):PA9"
 
     config PIN_BUFFER_TENSION
       default "^$(MCU_NAME):PB1"
@@ -114,9 +119,12 @@ if BOARD_TYPE_SLB_1_0
         string
         default "$(MCU_NAME)_gate$(gate):PA2"
 
+      # Fan headers (24V): Fan1 managed (circulation) fan, Fan2 heater fan
       config PIN_FAN_$(gate)
         string
         default "$(MCU_NAME)_gate$(gate):PA15"
+      config PIN_HEATER_FAN_$(gate)
+        default "$(MCU_NAME)_gate$(gate):PA9"
 
     endif
     @endrepeat@

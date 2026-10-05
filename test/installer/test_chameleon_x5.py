@@ -115,6 +115,14 @@ class TestQuattroBoxV2OnX5(unittest.TestCase):
         self.assertEqual(board_fan['stepper'], ', '.join(
             'mmu_stepper unit0_gear' + suffix for suffix in ('', '_1', '_2', '_3')))
 
+    def test_every_fan_header_has_a_role_or_is_spare(self):
+        # FAN0 PB3 spare, FAN1 PB4 controller, FAN2/FAN3 PB8/PB9 heater, FAN4 PB5 managed
+        self.assertIn('# SPARE FAN HEADERS (not used by any fan): unit0:PB3', self.text)
+        fan_pins = re.findall(r'^(?:pin|pins)\s*:\s*(.+)$', self.text, re.M)
+        used = {p.strip() for line in fan_pins for p in line.split(',')}
+        self.assertTrue({'unit0:PB4', 'unit0:PB5', 'unit0:PB8', 'unit0:PB9'} <= used)
+        self.assertNotIn('unit0:PB3', used)
+
     def test_gear_directions_are_left_to_the_user(self):
         for gate, suffix in enumerate(('', '_1', '_2', '_3')):
             stepper = self.item('mmu_stepper unit0_gear' + suffix)
@@ -232,11 +240,13 @@ class TestX5UnderAnotherMachine(unittest.TestCase):
 
 
     def test_per_gate_fans_use_the_channel_fans(self):
-        parser, _ = _render('x5_per_gate_fans', dict(
+        parser, text = _render('x5_per_gate_fans', dict(
             X5, MMU_CUSTOM=True, MMU_HAS_ENVIRONMENT_SENSOR=True, MMU_HAS_FANS=True,
             MMU_HAS_PER_GATE_CONFIG=True))
         self.assertEqual([dict(parser.items('fan_generic _unit0_fan%d' % g))['pin'] for g in range(4)],
                          ['unit0:PB3', 'unit0:PB4', 'unit0:PB8', 'unit0:PB9'])
+        # FAN0 is gate 0's fan here, so it isn't listed as spare
+        self.assertNotIn('SPARE FAN HEADERS', text)
 
     def test_nfc_readers_default_to_the_i2c_0_header(self):
         _, text = _render('x5_nfc_common', dict(

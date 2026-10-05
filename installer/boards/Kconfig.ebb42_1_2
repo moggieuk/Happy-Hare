@@ -37,4 +37,12 @@ if BOARD_TYPE_EBB_GEN1
     default "$(MCU_NAME):PD3" 
   config PIN_SHARED_EXIT_SENSOR
     default "^$(MCU_NAME):PB4" if !MMU_HAS_ENCODER
+
+  # Fan headers (VIN): FAN1 managed fan, FAN2 controller fan
+  config PIN_FAN
+    default "$(MCU_NAME):PA0"
+  config PIN_CONTROLLER_FAN
+    default "$(MCU_NAME):PA1"
+
+# Heater output for a [heater_generic]: HE0 PB13. Thermistor: TH0 PA3
 endif

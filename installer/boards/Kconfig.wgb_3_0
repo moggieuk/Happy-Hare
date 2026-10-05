@@ -112,4 +112,12 @@ if BOARD_TYPE_WGB_3_0
     default "$(MCU_NAME):PB15"
   config PIN_SHARED_EXIT_SENSOR
     default "^$(MCU_NAME):PE7"
+
+  # Fan headers (5V/24V jumper): FAN1 managed fan, FAN2 controller fan
+  config PIN_FAN
+    default "$(MCU_NAME):PE9"
+  config PIN_CONTROLLER_FAN
+    default "$(MCU_NAME):PB3"
+
+# Thermistor: TEMP PC0
 endif

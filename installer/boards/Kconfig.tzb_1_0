@@ -92,4 +92,5 @@ i2c_bus: i2c2_PB10_PB11\n\
 i2c_address: 118\n\
 )" if MMU_HAS_ENVIRONMENT_SENSOR
 
+# No fan headers (MOTO1/MOTO2 are 5V servo outputs; "24V GND" is unswitched power)
 endif
