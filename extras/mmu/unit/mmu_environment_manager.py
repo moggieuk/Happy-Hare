@@ -400,15 +400,13 @@ class MmuEnvironmentManager:
 
     def has_heater(self):
         if self.has_per_gate_heaters():
-            heaters = self.mmu_unit.filament_heaters
-            return bool(heaters) # At least one heater configured
+            return any(self.mmu_unit.filament_heaters) # At least one heater configured
         return self.mmu_unit.filament_heater != ''
 
 
     def has_env_sensor(self):
         if self.has_per_gate_heaters():
-            sensors = self.mmu_unit.environment_sensors
-            return bool(sensors)
+            return any(self.mmu_unit.environment_sensors)
         return self.mmu_unit.environment_sensor != ''
 
 

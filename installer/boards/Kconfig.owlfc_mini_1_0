@@ -3,7 +3,7 @@
 #
 
 config BOARD_TYPE_OWLFC_MINI_1_0
-  bool "OwlFC-Mini v1.0 / designed for NightOwl"
+  bool "OwlFC-Mini v1.0 [[DIM]]/ designed for NightOwl[[/DIM]]"
   depends on PARAM_NUM_GATES <= 2
   help
     Custom controller designed for NightOwl. The board supports a
