@@ -232,7 +232,13 @@ config W30
         (CHOICE_SHARED_ENCODER_UNRESOLVED || ($(shared-active) && !$(shared-any,encoder)))
 
 config W31
-    def_bool y if MMU_HAS_VENT_SERVO && PIN_VENT_SERVO = ""
+    def_bool y if MMU_HAS_VENT_SERVO && PIN_VENT_SERVO = "" && !MMU_HAS_PER_GATE_CONFIG
+
+@repeat var=i min=0 max=11@
+config W31
+    def_bool y if MMU_HAS_VENT_SERVO && MMU_HAS_PER_GATE_CONFIG && \
+        PARAM_NUM_GATES > $(i) && PARAM_VENT_SERVO_GATE_$(i) && PIN_VENT_SERVO_$(i) = ""
+@endrepeat@
 
 config W32
     def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG && \

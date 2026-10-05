@@ -110,7 +110,6 @@ VAR_SECTION_MAP = {
     "var_servo_cutter_": "gcode_macro _MMU_SERVO_CUTTER_VARS",
     "var_blobifier_":    "gcode_macro _BLOBIFIER_VARS",
     "var_purge_":        "gcode_macro _MMU_PURGE_VARS",
-    "var_vent_":         "gcode_macro _MMU_VENT_VARS",
 }
 
 # Macro variables not named "variable_" + the symbol minus its VAR_SECTION_MAP prefix

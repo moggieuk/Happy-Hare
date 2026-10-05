@@ -216,7 +216,6 @@ class TestMmuFanConfiguration(unittest.TestCase):
             'Heater and humidity control',
             'Heater fan h/w config',
             'Controller fan h/w config',
-            'Gate 0 config',
         )
         for prompt in menu_prompts:
             nodes = [
@@ -239,6 +238,27 @@ class TestMmuFanConfiguration(unittest.TestCase):
             with self.subTest(choice=choice):
                 self.assertTrue(any(
                     node.help for node in kconfig.named_choices[choice].nodes))
+
+    def test_per_gate_options_sit_in_each_feature_menu(self):
+        kconfig = self._kconfig('per_gate_feature_menus', dict(
+            profiles.get('emu').syms, MMU_HAS_HEATER=True, MMU_HAS_CONTROLLER_FAN=True,
+            MMU_HAS_VENT_SERVO=True))
+        for toggle, menu in (
+                ('PARAM_ENVIRONMENT_SENSOR_GATE_%d', 'Environment sensor h/w config'),
+                ('PARAM_FAN_GATE_%d', 'Fan h/w config'),
+                ('PARAM_CONTROLLER_FAN_GATE_%d', 'Controller fan h/w config'),
+                ('PARAM_FILAMENT_HEATER_GATE_%d', 'Heater h/w config'),
+                ('PARAM_HEATER_FAN_GATE_%d', 'Heater fan h/w config'),
+                ('PARAM_VENT_SERVO_GATE_%d', 'Vent servo h/w config')):
+            for gate in range(5):
+                with self.subTest(symbol=toggle % gate):
+                    sym = kconfig.syms[toggle % gate]
+                    self.assertGreater(sym.visibility, 0)
+                    node = next(n for n in sym.nodes if n.prompt)
+                    self.assertEqual(node.prompt[0].split(' ')[:2], ['Gate', str(gate)])
+                    self.assertEqual(node.parent.prompt[0], menu)
+        self.assertFalse([n for n in kconfig.node_iter()
+                          if n.prompt and n.prompt[0].endswith(' config') and n.prompt[0].startswith('Gate ')])
 
     def test_per_gate_config_is_independent_of_per_gate_mcu(self):
         config_only = {
@@ -296,12 +316,15 @@ class TestMmuFanConfiguration(unittest.TestCase):
             with self.subTest(layout='per_gate', symbol=indexed):
                 self.assertGreater(per_gate.syms[indexed].visibility, 0)
 
-        fan_parent = per_gate.syms['PARAM_FAN_MAX_POWER_0'].nodes[0].parent
-        heater_fan_parent = \
-            per_gate.syms['PARAM_HEATER_FAN_SPEED_0'].nodes[0].parent
-        self.assertEqual(fan_parent.prompt[0], 'Fan h/w config')
-        self.assertEqual(heater_fan_parent.prompt[0],
-                         'Heater fan h/w config')
+        # Per-gate settings sit under the gate's toggle in the feature's own h/w menu
+        for indexed, toggle, menu in (
+                ('PARAM_FAN_MAX_POWER_0', 'PARAM_FAN_GATE_0', 'Fan h/w config'),
+                ('PARAM_HEATER_FAN_SPEED_0', 'PARAM_HEATER_FAN_GATE_0', 'Heater fan h/w config')):
+            with self.subTest(symbol=indexed):
+                parent = per_gate.syms[indexed].nodes[0].parent
+                self.assertIs(parent.item, per_gate.syms[toggle])
+                self.assertTrue(parent.is_menuconfig)
+                self.assertEqual(parent.parent.prompt[0], menu)
 
         heater_fan_toggle = next(
             node for node in shared.syms['MMU_HAS_HEATER_FANS'].nodes
@@ -312,14 +335,6 @@ class TestMmuFanConfiguration(unittest.TestCase):
             node.prompt and node.prompt[0] == 'Heater fan h/w config')
         self.assertIs(heater_fan_menu.parent, heater_fan_toggle.parent)
 
-        for toggle in ('PARAM_FAN_GATE_0', 'PARAM_HEATER_FAN_GATE_0'):
-            nodes = [
-                node for node in per_gate.syms[toggle].nodes
-                if node.filename.endswith('Kconfig.per_gate')
-            ]
-            with self.subTest(toggle=toggle):
-                self.assertTrue(nodes)
-                self.assertTrue(all(not node.is_menuconfig for node in nodes))
 
     def test_shared_heater_fan_is_rendered_with_safety_settings(self):
         profile = profiles.get('qidi').derive(

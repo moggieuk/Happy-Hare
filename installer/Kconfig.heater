@@ -12,6 +12,8 @@
 #   PARAM_HEATER_DEFAULT_DRY_HUMIDITY
 #   PARAM_HEATER_VENT_MACRO
 #   PARAM_HEATER_VENT_INTERVAL
+#   PARAM_HEATER_VENT_OPEN_ANGLE, PARAM_HEATER_VENT_CLOSE_ANGLE, PARAM_HEATER_VENT_RUN_FAN,
+#   PARAM_HEATER_VENT_DURATION, PARAM_HEATER_VENT_SERVO_DURATION
 #   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER)
 #
 # Heater fan parameter tokens:
@@ -72,6 +74,32 @@ if MMU_HAS_HEATER && !CUSTOM_HEATER_SETUP && !MMU_HAS_PER_GATE_CONFIG
   endmenu
 endif
 
+if MMU_HAS_HEATER && !CUSTOM_HEATER_SETUP && MMU_HAS_PER_GATE_CONFIG
+  menu "Heater h/w config"
+    help
+      Associate an existing Klipper heater with each gate.
+
+    comment "Happy Hare does not currently create klipper heater objects for you"
+    comment "so you need to manually create these and enter object names here   "
+
+    @repeat var=i min=0 max=11@
+      if PARAM_NUM_GATES > $(i)
+        menuconfig PARAM_FILAMENT_HEATER_GATE_$(i)
+          bool "Gate $(i) heater"
+          default y
+          help
+            Associate an existing Klipper heater with this gate.
+
+        config PARAM_FILAMENT_HEATER_$(i)
+          string "Heater name       " if PARAM_FILAMENT_HEATER_GATE_$(i)
+          default "$(UNIT_NAME)_heater$(i)"
+          help
+            Full or short name of the heater for this gate.
+      endif
+    @endrepeat@
+  endmenu
+endif
+
 
 # -------------------------------------
 # Heater and humidity control config
@@ -123,17 +151,63 @@ if MMU_HAS_HEATER
       help
         Default humidity % goal. Drying will terminate if this value is reached
 
-    config PARAM_HEATER_VENT_MACRO
-      string "Vent macro                "
-      default "_MMU_VENT"
-      help
-        Name of macro to periodically call during drying cycle
-
     config PARAM_HEATER_VENT_INTERVAL
       string "Vent interval             "
       default "0"
       help
-        Interval in minutes to call heater_vent_macro during drying cycle, 0=disable venting
+        Interval in minutes between vent openings during a drying cycle, 0=disable venting
+
+    config PARAM_HEATER_VENT_DURATION
+      float "Vent open time (s)        "
+      default 10
+      range 1 3600
+      help
+        How long the vent stays open each time it is opened, in seconds.
+
+    config PARAM_HEATER_VENT_RUN_FAN
+      boolint "Run fan while venting?"
+      default 1
+      help
+        Force the unit's managed fan(s) on while the vent is open, then restore
+        the mode they were in. Works with or without a vent servo. Has no
+        effect without a managed fan.
+
+    config PARAM_HEATER_VENT_OPEN_ANGLE
+      float "Vent servo open angle     "
+      default 90
+      depends on MMU_HAS_VENT_SERVO
+      help
+        Vent servo angle with the vent open.
+
+    config PARAM_HEATER_VENT_CLOSE_ANGLE
+      float "Vent servo closed angle   "
+      default 0
+      depends on MMU_HAS_VENT_SERVO
+      help
+        Vent servo angle with the vent closed.
+
+    config PARAM_HEATER_VENT_SERVO_DURATION
+      float "Vent servo pulse time (s) "
+      default 1.0
+      depends on MMU_HAS_VENT_SERVO
+      help
+        How long, in seconds, the servo is driven to move the vent. The signal
+        then stops so the servo doesn't jitter while the vent is held.
+
+        0 keeps the signal on all the time, so the servo stays powered and
+        actively holds its position. Only use 0 if the vent won't stay put
+        unpowered: a constantly driven servo can buzz, jitter or run warm.
+
+    config PARAM_HEATER_VENT_MACRO
+      string "Vent macro                "
+      default "" if MMU_HAS_VENT_SERVO
+      default "_MMU_VENT"
+      help
+        Optional macro called each time the vent opens and closes, with
+        UNIT=<unit> OPEN=1 or OPEN=0 (and GATES=<gates> with per-gate heaters).
+        Happy Hare moves any vent servo and runs the fan itself, so this is
+        only needed for extra venting hardware. _MMU_VENT is a logging-only
+        example to copy. Leave empty for none.
 
     config PARAM_HEATER_ROTATE_INTERVAL
       string "Rotate interval           "
@@ -158,7 +232,8 @@ if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG
     bool "Configure heater fan(s)?"
     help
       Create a fixed Klipper [heater_fan] associated directly with the shared
-      enclosure heater. Per-gate heater fans are selected within each gate.
+      enclosure heater. With per-gate configuration each gate's heater fan is
+      selected in the heater fan h/w config instead.
 endif
 
 comment "$(misc_hardware_hint)" if MMU_HAS_HEATER_FANS && CUSTOM_HEATER_FAN_SETUP
@@ -220,3 +295,66 @@ menu "Heater fan h/w config"
       driven as one [heater_fan] through a [multi_pin] alias.
 
 endmenu
+
+if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
+  menu "Heater fan h/w config"
+    help
+      Configure the Klipper heater fan of each gate.
+
+    @repeat var=i min=0 max=11@
+      if PARAM_NUM_GATES > $(i)
+        menuconfig PARAM_HEATER_FAN_GATE_$(i)
+          bool "Gate $(i) heater fan"
+          depends on (!CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_GATE_$(i)) || (CUSTOM_HEATER_SETUP && PARAM_FILAMENT_HEATER_$(i) != "")
+          default y
+          help
+            Create a fixed [heater_fan] tied directly to this gate's heater.
+
+        if PARAM_HEATER_FAN_GATE_$(i)
+          config PARAM_HEATER_FAN_MAX_POWER_$(i)
+            float "Fan maximum power  "
+            default 1.0
+            range 0.1 1.0
+            help
+              Maximum power setting for this gate's heater fan (0.1 to 1.0).
+
+          config PARAM_HEATER_FAN_KICK_START_TIME_$(i)
+            float "Fan kick start time"
+            default 0.5
+            range 0 3.0
+            help
+              Time in seconds to run this gate's heater fan at full power
+              before resetting to its target speed.
+
+          config PARAM_HEATER_FAN_SPEED_$(i)
+            float "Fan speed          "
+            default 1.0
+            range 0.0 1.0
+            help
+              Fan speed while this gate's heater is active (0.0 to 1.0).
+
+          config PARAM_HEATER_FAN_SHUTDOWN_SPEED_$(i)
+            float "Fan shutdown speed "
+            default 1.0
+            range 0.0 1.0
+            help
+              Fan speed while this gate's MCU is shutting down (0.0 to 1.0).
+
+          config PARAM_HEATER_FAN_HEATER_TEMP_$(i)
+            float "Fan heater temp    "
+            default 45.0
+            range 0 120
+            help
+              Temperature (°C) of this gate's heater above which its fan
+              runs, even when the heater is off.
+
+          config PIN_HEATER_FAN_$(i)
+            string "Heater fan pin     "
+            validator "$(pin_validator)"
+            help
+              Leave blank if this gate does not have a heater fan installed.
+        endif
+      endif
+    @endrepeat@
+  endmenu
+endif

@@ -21,7 +21,7 @@
 #   as above with _<gate_index> extension
 #
 # The sensor type, report time, HTU21D options and i2c address come from
-# components/Kconfig.environment_sensor_{type,address}, shared with Kconfig.per_gate
+# components/Kconfig.environment_sensor_{type,address}, shared by both layouts
 #
 # SUPPORTED SENSOR TYPES
 #   - AHT10     (humidity/temperature, legacy name known to every Klipper/Kalico)
@@ -143,6 +143,95 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
           help
             Software i2c SDA pin (e.g., "PB11")
       endif
+  endmenu
+endif
+
+if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER_GATE_CONFIG
+  menu "Environment sensor h/w config"
+    help
+      Configure the temperature and humidity sensor of each gate.
+
+    @repeat var=i min=0 max=11@
+      if PARAM_NUM_GATES > $(i)
+
+        config PARAM_ENVIRONMENT_SENSOR_$(i)
+          string
+
+        menuconfig PARAM_ENVIRONMENT_SENSOR_GATE_$(i)
+          bool "Gate $(i) sensor"
+          default y
+          help
+            Create an environment sensor for this gate.
+
+        if PARAM_ENVIRONMENT_SENSOR_GATE_$(i)
+
+          config PARAM_ENVIRONMENT_SENSOR_$(i)
+            string "Sensor name       "
+            default "$(UNIT_NAME)_Env$(i)"
+            help
+              Name of the environment sensor section in the printer config.
+
+          env_sensor_suffix := _$(i)
+          source "components/Kconfig.environment_sensor_type"
+
+          choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
+            prompt "i2c bus type      "
+            default CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
+            help
+              Select whether to use a hardware or software i2c bus.
+
+            config CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
+              bool "Hardware i2c"
+
+            config CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
+              bool "Software i2c"
+          endchoice
+
+          config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
+            string
+            default "software" if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
+            default "hardware"
+
+          if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
+            choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
+              prompt "i2c bus name      "
+              help
+                Select the hardware i2c bus used by this gate's sensor.
+                Board files offer the buses this board actually routes;
+                "Custom bus name" accepts any Klipper i2c bus name.
+
+              config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
+                bool "Custom bus name"
+            endchoice
+
+            config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
+              string "Custom i2c bus name    " if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
+              default "" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
+              help
+                Leave blank to use the MCU's default hardware i2c bus.
+          endif
+
+          env_sensor_suffix := _$(i)
+          source "components/Kconfig.environment_sensor_address"
+
+          if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
+            config PIN_ENVIRONMENT_SENSOR_SCL_$(i)
+              string "SCL pin           "
+              validator "$(pin_validator)"
+              default ""
+              help
+                $(pin_help)
+
+            config PIN_ENVIRONMENT_SENSOR_SDA_$(i)
+              string "SDA pin           "
+              validator "$(pin_validator)"
+              default ""
+              help
+                $(pin_help)
+          endif
+        endif
+      endif
+    @endrepeat@
   endmenu
 endif
 
