@@ -459,14 +459,14 @@ THREE_MS = Profile(
 # the AttributeError at mmu_rotary_selector.py:229 sat in the release path until this profile
 # reached it. See TestRotarySelector in test_mmu_selector.py.
 #
-# TWO SYMBOLS SET BEYOND THE MACHINE TYPE, both because the vendor Kconfig leaves them open and
+# THREE SYMBOLS SET BEYOND THE MACHINE TYPE, all because the vendor Kconfig leaves them open and
 # a real user would have to answer them at menuconfig:
 #
 #   BOARD_TYPE_MMB_2_0        Kconfig.3d_chameleon sets no board default (unlike box_turtle,
 #       tradrack and emu, which each default one), so the choice falls to BOARD_TYPE_OTHER and
 #       every pin renders empty - config load dies on "Invalid pin description ''". MMB 2.0 is
-#       tradrack's own default and supplies the gear stepper, a selector stepper WITH an
-#       endstop, and PIN_SHARED_EXIT_SENSOR. Note that boards/Kconfig.chameleon_x5_1, despite
+#       tradrack's own default and supplies the gear stepper and a selector stepper WITH an
+#       endstop. Note that boards/Kconfig.chameleon_x5_1, despite
 #       the name, is a QuattroBox per-gate board with four gear steppers and no selector pins.
 #   MMU_HAS_SENSOR_SHARED_EXIT  The type ships no sensor and no encoder, which leaves the gate
 #       homing choice on CHOICE_GATE_HOMING_ENDSTOP_NONE and renders gate_homing_endstop as ''
@@ -474,6 +474,9 @@ THREE_MS = Profile(
 #       as "Choice '' for option 'gate_homing_endstop' is not a valid choice". A single sensor
 #       at the combiner exit is the shape of the machine (four gates, one output path) and the
 #       cheapest honest answer; it is also what tradrack selects.
+#   PIN_SHARED_EXIT_SENSOR  MMB 2.0's shared exit header (PA15) is the selector endstop on a
+#       machine with a selector stepper, so the board leaves the sensor unassigned. PC7 is the
+#       entry-0 header, which only a multigear MMU uses.
 #
 # filament_always_gripped renders 0 (no vendor override, and DEF_PROFILE's default is False in
 # mmu_unit.py:97), which is what puts the lazy-grip release path in play at all. That is not
@@ -482,7 +485,8 @@ CHAMELEON = Profile(
     'chameleon',
     syms={'MMU_TYPE_3D_CHAMELEON_1_0': True,
           'BOARD_TYPE_MMB_2_0': True,
-          'MMU_HAS_SENSOR_SHARED_EXIT': True},
+          'MMU_HAS_SENSOR_SHARED_EXIT': True,
+          'PIN_SHARED_EXIT_SENSOR': '^unit0:PC7'},
     description='3D Chameleon 1.0 - 4 gates, the only RotarySelector')
 
 # HTLF: the second RotarySelector, and the one whose gates run the other way. Gate 0's cam lobe
