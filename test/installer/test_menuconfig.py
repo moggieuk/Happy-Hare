@@ -291,6 +291,57 @@ comment "Unit: [[VALUE:NAME:8]]|"
         self.assertEqual(menuconfig._display_len("[[B]][[VALUE:NAME]][[/B]]x"), 6)
 
 
+class TestDimComment(unittest.TestCase):
+    """'dim' on a comment dims the whole row, including the '***' decoration."""
+
+    KCONFIG = """
+comment "Plain"
+
+comment "Quiet"
+    dim
+
+comment "_Heading"
+    dim
+"""
+
+    def parse(self, text):
+        import os
+        import tempfile
+        import kconfiglib
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "Kconfig")
+        with open(path, "w") as f:
+            f.write(text)
+        return kconfiglib.Kconfig(path, warn=False)
+
+    def setUp(self):
+        self.kconf = self.parse(self.KCONFIG)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf,
+                                 _show_name=False, _show_all=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.rows = {n.prompt[0]: menuconfig._node_str(n)
+                     for n in self.kconf.node_iter() if n.item is COMMENT}
+
+    def test_plain_comment_is_not_dimmed(self):
+        self.assertNotIn("[[DIM]]", self.rows["Plain"])
+        self.assertTrue(self.rows["Plain"].endswith("*** Plain ***"))
+
+    def test_dim_comment_dims_the_decoration(self):
+        self.assertTrue(self.rows["Quiet"].startswith("[[DIM]]"))
+        self.assertTrue(self.rows["Quiet"].endswith("*** Quiet ***[[/DIM]]"))
+
+    def test_dim_heading(self):
+        self.assertTrue(self.rows["_Heading"].startswith("[[DIM]]───"))
+        self.assertTrue(self.rows["_Heading"].endswith("[[/DIM]]"))
+
+    def test_dim_is_only_valid_on_comments(self):
+        import kconfiglib
+        with self.assertRaisesRegex(kconfiglib.KconfigError, "dim is only valid for comments"):
+            self.parse('config FOO\n    bool "Foo"\n    dim\n')
+
+
 class TestReparseEnv(unittest.TestCase):
     """Changing a 'reparse_env' symbol re-parses with the new value, in place.
 

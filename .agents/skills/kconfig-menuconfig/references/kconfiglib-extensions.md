@@ -180,7 +180,11 @@ BOOLINT branch and `getint`'s special case).
   `comment "_" if SHOW_HIDDEN`.
 - Comment lines are first-class UI: `comment "_"` draws a full-width
   separator, `comment "_Heading"` a section heading, plain `comment "..."`
-  an inline note; flexible/multi-line comments are preserved. The menuconfig
+  an inline note; flexible/multi-line comments are preserved. A `dim`
+  property line under a comment (`_T_DIM`, `node.dim`, only valid on
+  comments) makes `_node_str` wrap the whole row, `***` included, in
+  `[[DIM]]` — used for the `$(misc_hardware_hint)` notes. Markup inside the
+  text alone can't reach the `***` that menuconfig adds. The menuconfig
   cursor skips comment runs when navigating (regression-tested in
   `test/installer/test_menuconfig.py` — a comment-only menu is not entered).
 

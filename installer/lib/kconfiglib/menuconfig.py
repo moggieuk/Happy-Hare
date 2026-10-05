@@ -3829,6 +3829,8 @@ def _node_str(node):
                 s = "{}".format(heading)
             else:
                 s += " *** {} ***".format(prompt)
+            if getattr(node, "dim", False): # Happy Hare: Comment 'dim' option
+                s = "[[DIM]]{}[[/DIM]]".format(s)
         else:
             s += " " + prompt
             if (

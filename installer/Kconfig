@@ -105,6 +105,9 @@
 #     components/Kconfig.shared_choice and Kconfig.shared_export fragments.
 #     $(printer-flag,SYM) reads a printer-level flag from the top-level config
 # 21. 'range' accepts multiple low/high pairs: 'range 0 0 5 200' allows 0 or 5-200.
+# 22. 'dim' on a comment draws its whole row dimmed, including the "***" decoration:
+#       comment "Note" if COND
+#         dim
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

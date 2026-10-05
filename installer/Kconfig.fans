@@ -36,6 +36,7 @@ if CUSTOM_FAN_SETUP
   comment "_"
   comment "_Managed Environment Fan"
   comment "$(misc_hardware_hint)"
+    dim
 endif
 
 if !CUSTOM_FAN_SETUP
@@ -257,6 +258,7 @@ endif
 comment "_"
 comment "_Controller Fan"
 comment "$(misc_hardware_hint)" if CUSTOM_CONTROLLER_FAN_SETUP
+  dim
 
 config MMU_HAS_CONTROLLER_FAN
   bool "Enable controller fan?"
