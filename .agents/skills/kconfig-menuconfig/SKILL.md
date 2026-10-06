@@ -56,7 +56,8 @@ Load-bearing facts about the flow:
   unit shares with another — the owners' encoder/buffer names and an owner's
   capabilities; see [extensions item 13](references/kconfiglib-extensions.md).
 - **A unit's name is its identity** — per-unit Kconfig file, every section
-  and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
+  (except its encoder and buffer, named by their own PARAM, which defaults to the
+  unit's name: item 13) and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
   is a `sequence_editor` symbol (extension catalog item 21) so the list
   editor can record renames, removals and moves (a comma list alone can't) in
   `.mmu_config.MMU_UNITS.changes`, relative to `F_UNITS_BASELINE` (the
