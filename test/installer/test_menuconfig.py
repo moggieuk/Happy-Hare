@@ -177,6 +177,27 @@ class TestArrayEditorValidation(unittest.TestCase):
         error.assert_not_called()
 
 
+class TestArrayEditorJoin(unittest.TestCase):
+
+    def test_lines_are_joined_with_the_separator_and_a_space(self):
+        self.assertEqual(menuconfig._join_array_lines([" unload", "purge ", "total"], ","),
+                         "unload, purge, total")
+        self.assertEqual(menuconfig._join_array_lines(["neopixel:a (1)", "neopixel:b (2)"], ";"),
+                         "neopixel:a (1); neopixel:b (2)")
+
+    def test_round_trips_a_shipped_default(self):
+        default = "total, total_average, job, job_average, last"
+        self.assertEqual(menuconfig._join_array_lines(default.split(","), ","), default)
+
+    def test_separator_ending_in_a_space_is_not_doubled(self):
+        self.assertEqual(menuconfig._join_array_lines(["a", "b"], ", "), "a, b")
+
+    def test_single_and_blank_lines(self):
+        self.assertEqual(menuconfig._join_array_lines([""], ","), "")
+        self.assertEqual(menuconfig._join_array_lines(["a"], ","), "a")
+        self.assertEqual(menuconfig._join_array_lines(["a", "", "b"], ","), "a, , b")
+
+
 class TestValidatorValidation(unittest.TestCase):
 
     @staticmethod

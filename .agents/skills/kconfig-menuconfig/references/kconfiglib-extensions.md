@@ -155,8 +155,10 @@ raw text entry: `array_editor ","` (separator; optional second arg is an
 literal value is a parse error; see the `_T_ARRAY_EDITOR` branch of
 `_parse_props` and the `array_size_sym` docstring on `Symbol`). It suits
 value lists that may be empty or repeat values, e.g. per-gate angles. The
-editor splits/joins on the separator, and `_check_valid` in `menuconfig.py`
-rejects an edit whose element count differs from the size symbol's value.
+editor splits on the separator and saves the lines joined by the separator
+plus a space (`a, b`, `x; y` — `_join_array_lines`), the spacing the shipped
+defaults use. `_check_valid` in `menuconfig.py` rejects an edit whose element
+count differs from the size symbol's value.
 A list of *names* whose identity matters (`MMU_UNITS`) uses item 21 instead.
 
 `array_size_mismatch ARRAY` on a promptless BOOL makes it evaluate to `y`
