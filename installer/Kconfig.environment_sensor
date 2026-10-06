@@ -25,8 +25,8 @@
 #   PARAM_MCU_ENVIRONMENT_SENSOR_NAME, PARAM_BUFFER_MCU_ENVIRONMENT_SENSOR_NAME
 #   PARAM_MCU_ENVIRONMENT_SENSOR_NAME_X (per-gate MCU)
 #
-# The sensor type, report time, HTU21D options and i2c address come from
-# components/Kconfig.environment_sensor_{type,address}, shared by both layouts
+# Everything but the sensor name comes from components/Kconfig.environment_sensor,
+# shared by both layouts. The shared sensor's fixed i2c bus list is added here
 #
 # SUPPORTED SENSOR TYPES
 #   - AHT10     (humidity/temperature, legacy name known to every Klipper/Kalico)
@@ -82,73 +82,31 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         E.g., "temperature_sensor MMU_enclosure" or just "MMU_enclosure"
 
 
-    # -------------------------------------
-    # Single MCU: all settings on one page
-    # -------------------------------------
+    env_sensor_suffix     :=
+    env_sensor_custom_bus := n
+    env_sensor_bus_hint   :=
+    source "components/Kconfig.environment_sensor"
 
-      choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
-        prompt "i2c bus type      "
-        default CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
-        help
-          Select whether to use hardware or software i2c bus for the sensor
-
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
-          bool "Hardware i2c"
-          help
-            Use hardware i2c bus (faster, recommended)
-
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
-          bool "Software i2c"
-          help
-            Use software i2c bus
-      endchoice
-
-      env_sensor_suffix :=
-      source "components/Kconfig.environment_sensor_type"
-
-      env_sensor_suffix :=
-      source "components/Kconfig.environment_sensor_address"
-
-      if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
-        choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
-          prompt "i2c bus name      "
-          default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3 if BOARD_TYPE_EBB_GEN1
-          default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-          help
-            Select the hardware i2c bus to use for the environment sensor
+    if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
+      choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
+        default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3 if BOARD_TYPE_EBB_GEN1
+        default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
 
         config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-            bool "i2c2_PB10_PB11"
-            help
-              Hardware i2c bus i2c2 with SCL on PB10 and SDA on PB11
+          bool "i2c2_PB10_PB11"
+          help
+            Hardware i2c bus i2c2 with SCL on PB10 and SDA on PB11
 
         config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
-            bool "i2c3_PB3_PB4"
-            help
-              Hardware i2c bus i2c3 with SCL on PB3 and SDA on PB4
-        endchoice
-
-        config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
-            string
-            default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-            default "i2c3_PB3_PB4"   if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
-      endif
-
-      if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
-        config PIN_ENVIRONMENT_SENSOR_SCL
-          string "SCL pin           "
-          validator "$(pin_validator)"
-          default ""
+          bool "i2c3_PB3_PB4"
           help
-            Software i2c SCL pin (e.g., "PB10")
+            Hardware i2c bus i2c3 with SCL on PB3 and SDA on PB4
+      endchoice
 
-        config PIN_ENVIRONMENT_SENSOR_SDA
-          string "SDA pin           "
-          validator "$(pin_validator)"
-          default ""
-          help
-            Software i2c SDA pin (e.g., "PB11")
-      endif
+      config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
+        default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
+        default "i2c3_PB3_PB4"   if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
+    endif
   endmenu
 endif
 
@@ -177,64 +135,10 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER
             help
               Name of the environment sensor section in the printer config.
 
-          env_sensor_suffix := _$(i)
-          source "components/Kconfig.environment_sensor_type"
-
-          choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
-            prompt "i2c bus type      "
-            default CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
-            help
-              Select whether to use a hardware or software i2c bus.
-
-            config CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
-              bool "Hardware i2c"
-
-            config CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
-              bool "Software i2c"
-          endchoice
-
-          config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
-            string
-            default "software" if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
-            default "hardware"
-
-          if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_$(i)
-            choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
-              prompt "i2c bus name      "
-              help
-                Select the hardware i2c bus used by this gate's sensor.
-                Board files offer the buses this board actually routes;
-                "Custom bus name" accepts any Klipper i2c bus name.
-
-              config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
-                bool "Custom bus name"
-            endchoice
-
-            config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
-              string "Custom i2c bus name    " if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
-              default "" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_$(i)
-              help
-                Leave blank to use the MCU's default hardware i2c bus.
-          endif
-
-          env_sensor_suffix := _$(i)
-          source "components/Kconfig.environment_sensor_address"
-
-          if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
-            config PIN_ENVIRONMENT_SENSOR_SCL_$(i)
-              string "SCL pin           "
-              validator "$(pin_validator)"
-              default ""
-              help
-                $(pin_help)
-
-            config PIN_ENVIRONMENT_SENSOR_SDA_$(i)
-              string "SDA pin           "
-              validator "$(pin_validator)"
-              default ""
-              help
-                $(pin_help)
-          endif
+          env_sensor_suffix     := _$(i)
+          env_sensor_custom_bus := y
+          env_sensor_bus_hint   := $(nl)Board files offer the buses this board actually routes;$(nl)"Custom bus name" accepts any Klipper i2c bus name.
+          source "components/Kconfig.environment_sensor"
         endif
       endif
     @endrepeat@

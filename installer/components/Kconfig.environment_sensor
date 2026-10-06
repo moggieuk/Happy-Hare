@@ -1,14 +1,22 @@
-# Environment sensor - sensor type, report time and HTU21D options.
+# Environment sensor - type, i2c bus and address of one [temperature_sensor].
 #
-# Sourced once for the shared sensor (Kconfig.environment_sensor) and once
-# per gate (Kconfig.environment_sensor). The caller sets:
+# Sourced once for the shared sensor and once per gate (Kconfig.environment_sensor),
+# inside the caller's feature `if`. The caller sets:
 #
-#   env_sensor_suffix   appended to every symbol name: empty for the shared
-#                       sensor, _<gate> for a per-gate one
+#   env_sensor_suffix      appended to every symbol name: empty for the shared
+#                          sensor, _<gate> for a per-gate one
+#   env_sensor_custom_bus  y/n, whether the bus choice offers "Custom bus name"
+#   env_sensor_bus_hint    help: extra lines for the bus choice, each starting
+#                          with $(nl), or empty
 #
-# and must re-assign it on the line before each source: preprocessor
+# and must re-assign all of them on the lines before each source: preprocessor
 # variables are global for the whole parse, and @repeat substitutes its
 # variable only in its own body, never in a sourced file.
+#
+# The bus choice declares no buses of its own. They are added by redefining
+# CHOICE_ENVIRONMENT_SENSOR_I2C_BUS* elsewhere, with the matching defaults for
+# PARAM_ENVIRONMENT_SENSOR_I2C_BUS*: the caller for the shared sensor, the
+# board files for per-gate sensors. menuconfig lists every definition's members.
 #
 # Defines, for each $(env_sensor_suffix):
 #   CHOICE_ENVIRONMENT_SENSOR_TYPE* PARAM_ENVIRONMENT_SENSOR_TYPE*
@@ -16,6 +24,10 @@
 #   CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION*
 #   PARAM_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION*
 #   PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER*
+#   CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE* PARAM_ENVIRONMENT_SENSOR_I2C_BUS_TYPE*
+#   CHOICE_ENVIRONMENT_SENSOR_I2C_BUS* PARAM_ENVIRONMENT_SENSOR_I2C_BUS*
+#   PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS*
+#   PIN_ENVIRONMENT_SENSOR_SCL* PIN_ENVIRONMENT_SENSOR_SDA*
 
 choice CHOICE_ENVIRONMENT_SENSOR_TYPE$(env_sensor_suffix)
   prompt "Sensor type       "
@@ -166,4 +178,71 @@ if PARAM_SENSOR_REPORT_TIME_PARAM$(env_sensor_suffix) = "htu21d_report_time"
     help
       Read with hold master mode commands (htu21d_hold_master).
       Leave off unless your sensor needs it.
+endif
+
+choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE$(env_sensor_suffix)
+  prompt "i2c bus type      "
+  default CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE$(env_sensor_suffix)
+  help
+    Select whether to use hardware or software i2c bus for the sensor
+
+  config CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE$(env_sensor_suffix)
+    bool "Hardware i2c"
+    help
+      Use hardware i2c bus (faster, recommended)
+
+  config CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE$(env_sensor_suffix)
+    bool "Software i2c"
+    help
+      Use software i2c bus
+endchoice
+
+config PARAM_ENVIRONMENT_SENSOR_I2C_BUS_TYPE$(env_sensor_suffix)
+  string
+  default "software" if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE$(env_sensor_suffix)
+  default "hardware"
+
+if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE$(env_sensor_suffix)
+  choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS$(env_sensor_suffix)
+    prompt "i2c bus name      "
+    help
+      Select the hardware i2c bus the sensor is wired to.$(env_sensor_bus_hint)
+
+    config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
+      bool "Custom bus name" if $(env_sensor_custom_bus)
+  endchoice
+
+  config PARAM_ENVIRONMENT_SENSOR_I2C_BUS$(env_sensor_suffix)
+    string
+    prompt "Custom i2c bus name    " if $(env_sensor_custom_bus) && CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
+    default "" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
+    help
+      Leave blank to use the MCU's default hardware i2c bus.
+endif
+
+config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS$(env_sensor_suffix)
+  int "i2c address       "
+  default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280$(env_sensor_suffix)
+  default 64  if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21$(env_sensor_suffix)
+  default 68  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X$(env_sensor_suffix)
+  default 72  if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75$(env_sensor_suffix)
+  default 56
+  help
+    i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280, 64 [0x40] for HTU21D family, 68 [0x44] for SHT3X, 72 [0x48] for LM75)
+    BMP180, BMP388 and some BME280 sensors use 119 [0x77] instead of 118.
+
+if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE$(env_sensor_suffix)
+  config PIN_ENVIRONMENT_SENSOR_SCL$(env_sensor_suffix)
+    string "SCL pin           "
+    validator "$(pin_validator)"
+    default ""
+    help
+      Software i2c SCL pin (e.g., "PB10")
+
+  config PIN_ENVIRONMENT_SENSOR_SDA$(env_sensor_suffix)
+    string "SDA pin           "
+    validator "$(pin_validator)"
+    default ""
+    help
+      Software i2c SDA pin (e.g., "PB11")
 endif

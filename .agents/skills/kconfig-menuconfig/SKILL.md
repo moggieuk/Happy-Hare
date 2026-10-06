@@ -132,8 +132,9 @@ Load-bearing facts about the flow:
   is sourced once per consumer with `prefix := X` preprocessor variables, so
   one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
   and `installer/components/Kconfig.tmc_driver_*` are the worked example;
-  `components/Kconfig.environment_sensor_*` is sourced from inside an
-  `@repeat` (once per gate) as well as once for the shared sensor
+  `components/Kconfig.environment_sensor` (type, i2c bus, address, pins) is
+  sourced from inside an `@repeat` (once per gate) as well as once for the
+  shared sensor
   ([references/environment-sensors.md](references/environment-sensors.md)
   has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
   (they are global for the whole parse); keep an enclosing `if` away from
