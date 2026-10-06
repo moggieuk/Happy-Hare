@@ -129,8 +129,7 @@ menu "Sequence macros      (_MMU_SEQUENCE)"
     prompt "Restore XY position after toolchange"
     default CHOICE_SEQUENCE_RESTORE_XY_POS_LAST
     help
-      Controls where the toolhead (x,y) is returned to after an operation that
-      invokes a parking move:
+      Controls where the toolhead (x,y) is returned to after a parking move:
         last - return to original position before park (frequently the default)
         next - return to next print position if possible else last logic will be applied.
                In print this reduces dwell time at the last position reducing blobbing
