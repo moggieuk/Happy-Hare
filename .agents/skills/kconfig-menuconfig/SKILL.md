@@ -155,7 +155,7 @@ Load-bearing facts about the flow:
   stays split. Where losing defaults while hidden is fine, as for the
   environment sensor, source the whole thing inside the `if` instead.
   Callers' differences go in variables, servo style: an optional prompt is
-  `prompt "…" if $(flag) && …` (`env_sensor_custom_bus`), extra help lines a
+  `prompt "…" if $(flag) && …` (the servo's initial angle), extra help lines a
   `$(nl)`-prefixed hint, and extra choice members a re-opened named choice
   in the caller (the shared sensor's fixed i2c2/i2c3 list).
 

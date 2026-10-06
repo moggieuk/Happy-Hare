@@ -3,20 +3,20 @@
 # Sourced once for the shared sensor and once per gate (Kconfig.environment_sensor),
 # inside the caller's feature `if`. The caller sets:
 #
-#   env_sensor_suffix      appended to every symbol name: empty for the shared
-#                          sensor, _<gate> for a per-gate one
-#   env_sensor_custom_bus  y/n, whether the bus choice offers "Custom bus name"
-#   env_sensor_bus_hint    help: extra lines for the bus choice, each starting
-#                          with $(nl), or empty
+#   env_sensor_suffix    appended to every symbol name: empty for the shared
+#                        sensor, _<gate> for a per-gate one
+#   env_sensor_bus_hint  help: extra lines for the bus choice, each starting
+#                        with $(nl), or empty
 #
 # and must re-assign all of them on the lines before each source: preprocessor
 # variables are global for the whole parse, and @repeat substitutes its
 # variable only in its own body, never in a sourced file.
 #
-# The bus choice declares no buses of its own. They are added by redefining
-# CHOICE_ENVIRONMENT_SENSOR_I2C_BUS* elsewhere, with the matching defaults for
-# PARAM_ENVIRONMENT_SENSOR_I2C_BUS*: the caller for the shared sensor, the
-# board files for per-gate sensors. menuconfig lists every definition's members.
+# The bus choice declares only "Custom bus name". The buses themselves are added
+# by redefining CHOICE_ENVIRONMENT_SENSOR_I2C_BUS* ahead of the source, with the
+# matching defaults for PARAM_ENVIRONMENT_SENSOR_I2C_BUS*: the caller for the
+# shared sensor, the board files for per-gate sensors. menuconfig lists every
+# definition's members in parse order, so the custom name comes last.
 #
 # Defines, for each $(env_sensor_suffix):
 #   CHOICE_ENVIRONMENT_SENSOR_TYPE* PARAM_ENVIRONMENT_SENSOR_TYPE*
@@ -207,14 +207,15 @@ if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE$(env_sensor_suffix)
     prompt "i2c bus name      "
     help
       Select the hardware i2c bus the sensor is wired to.$(env_sensor_bus_hint)
+      "Custom bus name" accepts any Klipper i2c bus name.
 
     config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
-      bool "Custom bus name" if $(env_sensor_custom_bus)
+      bool "Custom bus name"
   endchoice
 
   config PARAM_ENVIRONMENT_SENSOR_I2C_BUS$(env_sensor_suffix)
     string
-    prompt "Custom bus name   " if $(env_sensor_custom_bus) && CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
+    prompt "Custom bus name   " if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
     default "" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
     help
       Leave blank to use the MCU's default hardware i2c bus.

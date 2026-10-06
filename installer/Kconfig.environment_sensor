@@ -26,7 +26,8 @@
 #   PARAM_MCU_ENVIRONMENT_SENSOR_NAME_X (per-gate MCU)
 #
 # Everything but the sensor name comes from components/Kconfig.environment_sensor,
-# shared by both layouts. The shared sensor's fixed i2c bus list is added here
+# shared by both layouts. The shared sensor's fixed i2c bus list is added here,
+# ahead of it
 #
 # SUPPORTED SENSOR TYPES
 #   - AHT10     (humidity/temperature, legacy name known to every Klipper/Kalico)
@@ -82,11 +83,6 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         E.g., "temperature_sensor MMU_enclosure" or just "MMU_enclosure"
 
 
-    env_sensor_suffix     :=
-    env_sensor_custom_bus := n
-    env_sensor_bus_hint   :=
-    source "components/Kconfig.environment_sensor"
-
     if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
       choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
         default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3 if BOARD_TYPE_EBB_GEN1
@@ -107,6 +103,10 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
         default "i2c3_PB3_PB4"   if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
     endif
+
+    env_sensor_suffix   :=
+    env_sensor_bus_hint :=
+    source "components/Kconfig.environment_sensor"
   endmenu
 endif
 
@@ -135,9 +135,8 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER
             help
               Name of the environment sensor section in the printer config.
 
-          env_sensor_suffix     := _$(i)
-          env_sensor_custom_bus := y
-          env_sensor_bus_hint   := $(nl)Board files offer the buses this board actually routes;$(nl)"Custom bus name" accepts any Klipper i2c bus name.
+          env_sensor_suffix   := _$(i)
+          env_sensor_bus_hint := $(nl)Board files offer the buses this board actually routes.
           source "components/Kconfig.environment_sensor"
         endif
       endif

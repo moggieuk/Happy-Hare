@@ -1,12 +1,13 @@
 # The shared environment sensor definition, components/Kconfig.environment_sensor.
 #
 # One fragment serves the shared sensor and every per-gate sensor. The layouts
-# differ only in the i2c bus list: the shared sensor's fixed list is added by its
-# caller re-opening the bus choice, and only per-gate sensors offer "Custom bus
-# name". Pinned here:
+# differ only in the buses offered ahead of "Custom bus name": the shared sensor's
+# fixed list is added by its caller re-opening the bus choice, per-gate buses by
+# the board files. Pinned here:
 #
 # - both layouts ask the same questions in the same order
-# - each layout's bus choice offers its own buses and no others
+# - each layout's bus choice offers its own buses, then the custom name
+# - a custom name renders as i2c_bus, and a blank one leaves it out
 # - a user's bus choice survives a save and reload
 
 import os
@@ -81,10 +82,11 @@ class TestEnvironmentSensorPrompts(unittest.TestCase):
                 self.assertEqual(_prompts(_shared_menu(shared)), expected)
                 self.assertEqual(_prompts(_gate_toggle(per_gate, 1), gate=1), expected)
 
-    def test_shared_bus_choice_offers_only_its_fixed_buses(self):
+    def test_shared_bus_choice_offers_its_fixed_buses_and_a_custom_name(self):
         kc = _kconfig('env_buses_shared', 'boxturtle', SHARED)
         self.assertEqual(_buses(kc), ['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2',
-                                      'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3'])
+                                      'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3',
+                                      'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER'])
         self.assertEqual(kc.named_choices['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS'].selection.name,
                          'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2')
         self.assertFalse(kc.syms['PARAM_ENVIRONMENT_SENSOR_I2C_BUS'].visibility)
@@ -95,19 +97,33 @@ class TestEnvironmentSensorPrompts(unittest.TestCase):
                                             'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER_2'])
         self.assertTrue(kc.syms['PARAM_ENVIRONMENT_SENSOR_I2C_BUS_2'].visibility)
 
-    def test_only_per_gate_bus_help_mentions_a_custom_name(self):
+    def test_only_per_gate_bus_help_mentions_board_files(self):
         shared = _kconfig('env_help_shared', 'boxturtle', SHARED)
         per_gate = _kconfig('env_help_gate', 'emu', {})
-        for kc, suffix, custom in ((shared, '', False), (per_gate, '_1', True)):
+        for kc, suffix, boards in ((shared, '', False), (per_gate, '_1', True)):
             with self.subTest(suffix=suffix):
                 choice = kc.named_choices['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS' + suffix]
                 help_text = next(node.help for node in choice.nodes if node.prompt)
-                self.assertEqual('Custom bus name' in help_text, custom)
+                self.assertEqual('Board files' in help_text, boards)
+                self.assertIn('Custom bus name', help_text)
                 self.assertEqual(help_text, help_text.strip())
                 self.assertLessEqual(len(help_text.split('\n')), 7)
 
 
 class TestEnvironmentSensorValues(unittest.TestCase):
+
+    def test_a_custom_bus_name_renders_and_a_blank_one_is_left_out(self):
+        for base, syms, suffix, gate in (
+                ('boxturtle', SHARED, '', None), ('emu', {}, '_1', 1)):
+            for name in ('i2c1', ''):
+                with self.subTest(profile=base, name=name):
+                    custom = dict(syms, **{'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER' + suffix: True,
+                                           'PARAM_ENVIRONMENT_SENSOR_I2C_BUS' + suffix: name})
+                    profile = profiles.get(base).derive('env_custom_%s_%s' % (base, name or 'blank'),
+                                                        syms=custom)
+                    section = 'unit0_Env' if gate is None else 'unit0_Env%d' % gate
+                    sensor = cfg.assemble(cfg.render(profile))['temperature_sensor ' + section]
+                    self.assertEqual(sensor.get('i2c_bus'), name or None)
 
     def test_a_bus_choice_survives_a_save_and_reload(self):
         for base, syms in (('boxturtle', dict(SHARED, CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3=True)),
