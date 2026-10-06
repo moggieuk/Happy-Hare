@@ -205,11 +205,10 @@ class TestUnitListRefresh(unittest.TestCase):
                 self.assertEqual(ConfigBuilder(built).get("mmu_machine", "units"), "unit0,unit1")
 
 
-class TestFanVisibilityRefresh(unittest.TestCase):
-    """Toggling a fan's UI visibility renames it; [mmu_unit] must follow in every mode."""
+class _HardwareRefresh(unittest.TestCase):
+    """Builds unit0's mmu_hardware.cfg over an installed one, in an upgrade mode."""
 
     UNIT = "mmu_unit unit0"
-    SHARED = {"MMU_HAS_FANS": True, "PIN_FAN": "unit0:PA8"}
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -235,6 +234,12 @@ class TestFanVisibilityRefresh(unittest.TestCase):
         self.assertIn(old, text)
         with open(path, "w") as f:
             f.write(text.replace(old, new))
+
+
+class TestFanVisibilityRefresh(_HardwareRefresh):
+    """Toggling a fan's UI visibility renames it; [mmu_unit] must follow in every mode."""
+
+    SHARED = {"MMU_HAS_FANS": True, "PIN_FAN": "unit0:PA8"}
 
     def test_shared_fan_reference_follows_visibility(self):
         installed = self.build("qidi", self.SHARED, "replace", [])
@@ -352,6 +357,34 @@ class TestKconfigOwnedVisibility(unittest.TestCase):
         for pair in sorted(self.references):
             with self.subTest(pair=pair):
                 self.assertIn(pair, KCONFIG_OWNED_VISIBILITY)
+
+
+class TestComponentNameRefresh(_HardwareRefresh):
+    """A renamed encoder or buffer renames its section, and [mmu_unit] must follow in every mode."""
+
+    OWNER = {"MMU_HAS_ENCODER": True, "PIN_ENCODER": "unit0:PA6"}
+
+    def test_the_unit_follows_a_renamed_encoder_and_buffer(self):
+        installed = self.build("boxturtle", self.OWNER, "replace", [])
+        renamed = dict(self.OWNER, PARAM_ENCODER_NAME="box_enc",
+                       PARAM_SYNC_FEEDBACK_BUFFER_NAME="box_buf")
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                built = ConfigBuilder(self.build("boxturtle", renamed, mode, [installed]))
+                self.assertIn("mmu_encoder box_enc", built.sections())
+                self.assertIn("mmu_buffer box_buf", built.sections())
+                self.assertNotIn("mmu_encoder unit0", built.sections())
+                self.assertEqual(built.get(self.UNIT, "encoder"), "box_enc")
+                self.assertEqual(built.get(self.UNIT, "buffer"), "box_buf")
+
+    def test_the_unit_follows_a_new_share(self):
+        installed = self.build("boxturtle", self.OWNER, "replace", [])
+        shared = dict(self.OWNER, MMU_SHARED_ENCODER=True, PARAM_ENCODER_NAME="xyz")
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                built = ConfigBuilder(self.build("boxturtle", shared, mode, [installed]))
+                self.assertNotIn("mmu_encoder unit0", built.sections())
+                self.assertEqual(built.get(self.UNIT, "encoder"), "xyz")
 
 
 class TestSupplementalParamRefresh(unittest.TestCase):

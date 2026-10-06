@@ -36,7 +36,7 @@
 # one larger syms dict, and why the env is per-parse rather than module state.
 #
 # A unit parse also reads the OTHER units' saved configs (KCONFIG_PARENT, see
-# installer/lib/kconfiglib/shared_components.py) to offer a shared component's owners and
+# installer/lib/kconfiglib/shared_components.py) for the encoders and buffers they own and
 # their capabilities, so a multi-unit render writes each config, in order, into a private
 # scratch directory - the only files the harness writes.
 #

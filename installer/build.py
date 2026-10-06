@@ -93,9 +93,12 @@ hidden_params = [
     "hall_max_diameter",
 ]
 
-# Structural options that always come from Kconfig, whatever the upgrade mode
+# Structural options (by section type) that always come from Kconfig, whatever the upgrade
+# mode. An encoder's or buffer's section is named by Kconfig, so the reference to it must be too
 KCONFIG_OWNED_OPTIONS = {
     ("mmu_machine", "units"),
+    ("mmu_unit", "encoder"),
+    ("mmu_unit", "buffer"),
 }
 
 # Object references (by section type) whose leading "_" UI-hiding prefix always comes from
@@ -436,7 +439,8 @@ class HHConfig(ConfigBuilder):
                     is_gcode = option == "gcode"
                     is_macro_section = section.startswith("gcode_macro")
                     is_var_section = section in excluded_var_sections
-                    is_excluded_var = (section, option) in excluded_vars or (section, option) in KCONFIG_OWNED_OPTIONS
+                    is_excluded_var = (section, option) in excluded_vars or \
+                        (section.split(" ", 1)[0], option) in KCONFIG_OWNED_OPTIONS
                     is_excluded_param = (
                         not is_macro_section
                         and option in excluded_params

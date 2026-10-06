@@ -18,6 +18,12 @@ EXCLUDE = ("# EXCLUDE FROM CONFIG BUILDER -- IMPORTANT do not alter or remove th
            "Config below is never upgraded")
 
 
+ENCODER_OWNER = ["CONFIG_MMU_HAS_ENCODER=y"]
+BUFFER_OWNER = ["CONFIG_MMU_HAS_SYNC_FEEDBACK_BUFFER=y"]
+ENCODER_SHARER = ENCODER_OWNER + ["CONFIG_MMU_SHARED_ENCODER=y"]
+BUFFER_SHARER = BUFFER_OWNER + ["CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y"]
+
+
 class Scratch(unittest.TestCase):
 
     def setUp(self):
@@ -195,12 +201,32 @@ class TestCheck(Scratch):
         self.assertIn("remove b", out)
         self.assertIn("No renames were recorded", out)
 
-    def test_removing_a_unit_another_one_shares_is_refused(self):
-        self.unit("b", 1, lines=['CONFIG_PARAM_ENCODER_NAME="a"'])
+    def test_removing_a_unit_whose_encoder_another_one_shares_warns(self):
+        self.unit("a", 0, lines=ENCODER_OWNER)
+        self.unit("b", 1, lines=ENCODER_SHARER + ['CONFIG_PARAM_ENCODER_NAME="a"'])
         self.edit(["a", "b"], lambda m: m.remove(0))
         code, out = self.check("replace")
-        self.assertEqual(code, um.EXIT_REFUSED)
-        self.assertIn("PARAM_ENCODER_NAME", out)
+        self.assertEqual(code, um.EXIT_STRUCTURAL)
+        self.assertIn("WARNING: Unit 'b' shares encoder 'a', which no unit owns after this change", out)
+
+    def test_renaming_a_unit_whose_buffer_another_one_shares_warns(self):
+        self.unit("a", 0, lines=BUFFER_OWNER)
+        self.unit("b", 1, lines=BUFFER_SHARER + ['CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="a" #~DEFAULT~#'])
+        self.edit(["a", "b"], lambda m: m.rename(0, "left"))
+        for run in ("before", "after"):
+            with self.subTest(run=run):
+                code, out = self.check("replace")
+                self.assertEqual(code, um.EXIT_STRUCTURAL)
+                self.assertIn("WARNING: Unit 'b' shares buffer 'a', which is renamed to 'left'", out)
+                um.migrate_kconfig(self.kconfig, ["a", "b"], io.StringIO())
+
+    def test_renaming_a_unit_with_a_custom_component_name_does_not_warn(self):
+        self.unit("a", 0, lines=BUFFER_OWNER + ['CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="box_buf"'])
+        self.unit("b", 1, lines=BUFFER_SHARER + ['CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="box_buf"'])
+        self.edit(["a", "b"], lambda m: m.rename(0, "left"))
+        code, out = self.check("replace")
+        self.assertEqual(code, um.EXIT_STRUCTURAL)
+        self.assertNotIn("WARNING", out)
 
     def test_removing_a_unit_whose_nfc_reader_is_shared_is_refused(self):
         self.unit("b", 1, lines=['CONFIG_PARAM_NFC_READER="a_nfc"'])
@@ -261,7 +287,7 @@ class TestKconfigMigration(Scratch):
             'CONFIG_PARAM_EXIT_LEDS="neopixel:_a_leds (1-4)"',
             'CONFIG_PARAM_ENDSTOP="tmc2209_a_gear:virtual_endstop"',
         ])
-        self.unit("b", 1, lines=['CONFIG_PARAM_ENCODER_NAME="a"'])
+        self.unit("b", 1, lines=ENCODER_OWNER + ['CONFIG_PARAM_ENCODER_NAME="a"'])
         self.edit(["a", "b"], lambda m: m.rename(0, "left"))
         out = io.StringIO()
         um.migrate_kconfig(self.kconfig, ["a", "b"], out)
@@ -275,19 +301,38 @@ class TestKconfigMigration(Scratch):
         self.assertEqual(left["PARAM_EXIT_LEDS"], "neopixel:_left_leds (1-4)")
         self.assertEqual(left["PARAM_ENDSTOP"], "tmc2209_a_gear:virtual_endstop")
         self.assertIn("PARAM_ENDSTOP", out.getvalue())  # ...but flagged
-        self.assertEqual(self.kvalues("b")["PARAM_ENCODER_NAME"], "left")
+        # b's own encoder is called 'a', which isn't a reference to unit a
+        self.assertEqual(self.kvalues("b")["PARAM_ENCODER_NAME"], "a")
+        self.assertNotIn("PARAM_ENCODER_NAME", out.getvalue())
 
-    def test_renaming_an_owner_updates_its_sharers(self):
-        # A sharer's owner name is a default (from the pick list), but recomputed FROM itself
-        self.unit("a", 0)
-        self.unit("b", 1, lines=['CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y',
-                                 'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="a" #~DEFAULT~#',
-                                 'CONFIG_MMU_SHARED_ENCODER=y',
-                                 'CONFIG_PARAM_ENCODER_NAME="a" #~DEFAULT~#'])
+    def test_an_owners_name_follows_a_rename_only_when_it_is_the_unit_name(self):
+        for line, after in (('CONFIG_PARAM_ENCODER_NAME="a"', "left"),
+                            ('CONFIG_PARAM_ENCODER_NAME="a" #~DEFAULT~#', "left"),
+                            ('CONFIG_PARAM_ENCODER_NAME="a_enc"', "a_enc")):
+            with self.subTest(line=line):
+                self.unit("a", 0, lines=ENCODER_OWNER + [line])
+                self.unit("b", 1)
+                if os.path.exists(um.state_path(self.kconfig)):
+                    os.remove(um.state_path(self.kconfig))
+                self.edit(["a", "b"], lambda m: m.rename(0, "left"))
+                out = io.StringIO()
+                um.migrate_kconfig(self.kconfig, ["a", "b"], out)
+                self.assertEqual(self.kvalues("left")["PARAM_ENCODER_NAME"], after)
+                self.assertNotIn("WARNING", out.getvalue())
+                self.assertEqual(self.read(um.unit_file(self.kconfig, "left")).count("#~DEFAULT~#"),
+                                 line.count("#~DEFAULT~#") + 1)
+
+    def test_a_shared_name_is_never_rewritten(self):
+        self.unit("a", 0, lines=ENCODER_OWNER + BUFFER_OWNER)
+        self.unit("b", 1, lines=BUFFER_SHARER + ENCODER_SHARER[1:] + [
+            'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="a" #~DEFAULT~#',
+            'CONFIG_PARAM_ENCODER_NAME="a"'])
         self.edit(["a", "b"], lambda m: m.rename(0, "left"))
-        um.migrate_kconfig(self.kconfig, ["a", "b"], io.StringIO())
-        self.assertEqual(self.kvalues("b")["PARAM_SYNC_FEEDBACK_BUFFER_NAME"], "left")
-        self.assertEqual(self.kvalues("b")["PARAM_ENCODER_NAME"], "left")
+        out = io.StringIO()
+        um.migrate_kconfig(self.kconfig, ["a", "b"], out)
+        self.assertEqual(self.kvalues("b")["PARAM_SYNC_FEEDBACK_BUFFER_NAME"], "a")
+        self.assertEqual(self.kvalues("b")["PARAM_ENCODER_NAME"], "a")
+        self.assertNotIn("Check for an old unit name", out.getvalue())
 
     def test_a_longer_unit_name_is_not_mangled(self):
         self.unit("box", 0, lines=['CONFIG_PIN_X="box:PA1"'])
@@ -391,9 +436,9 @@ class TestNoChange(Scratch):
 class TestVarsMigration(unittest.TestCase):
 
     @staticmethod
-    def install(frm, to, origin, old_gates, new_gates):
+    def install(frm, to, origin, old_gates, new_gates, encoders=None):
         return {"from": frm, "to": to, "origin": origin, "old_gates": old_gates,
-                "new_gates": new_gates, "default_extruder_temp": 215}
+                "new_gates": new_gates, "default_extruder_temp": 215, "encoders": encoders or {}}
 
     def test_unit_keys_are_renamed_exactly(self):
         variables = {
@@ -405,13 +450,31 @@ class TestVarsMigration(unittest.TestCase):
         }
         install = self.install(["box", "box_2"], ["left", "box_2"],
                                {"left": "box", "box_2": "box_2"},
-                               {"box": 2, "box_2": 2}, {"left": 2, "box_2": 2})
+                               {"box": 2, "box_2": 2}, {"left": 2, "box_2": 2},
+                               encoders={"box": "left"})
         result, _ = um.migrate_vars(variables, install)
         self.assertEqual(result, {
             "mmu_left_bowden_lengths": [1, 2],
             "mmu_left_statistics_gate_1": {"x": 1},
             "mmu_left_encoder_resolution": 0.7,
             "mmu_box_2_bowden_lengths": [3, 4],
+            "mmu_state_gate_status": [1, 1, 1, 1],
+        })
+
+    def test_encoder_keys_move_with_the_encoder_name(self):
+        variables = {
+            "mmu_box_encoder_resolution": 0.7,         # another unit's encoder called 'box'
+            "mmu_box_enc_encoder_resolution": 0.8,
+            "mmu_gone_encoder_clog_length": 9,
+            "mmu_state_gate_status": [1, 1, 1, 1],
+        }
+        install = self.install(["box", "gone"], ["left"], {"left": "box"},
+                               {"box": 4, "gone": 0}, {"left": 4},
+                               encoders={"box_enc": "box_enc", "gone": None})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertEqual(result, {
+            "mmu_box_encoder_resolution": 0.7,
+            "mmu_box_enc_encoder_resolution": 0.8,
             "mmu_state_gate_status": [1, 1, 1, 1],
         })
 
@@ -553,6 +616,34 @@ class TestInstall(Scratch):
         backups = [f for f in os.listdir(os.path.dirname(self.vars_file)) if ".old-" in f]
         self.assertEqual(backups, [])
 
+    def test_encoder_vars_follow_the_encoder_name_end_to_end(self):
+        self.install(["a", "b"], variables={
+            "mmu_a_encoder_resolution": 0.5,
+            "mmu_b_encoder_resolution": 0.6,
+            "mmu_b_enc_encoder_resolution": 0.7,
+        })
+        self.unit("a", 0, lines=ENCODER_OWNER)
+        self.unit("b", 1, lines=ENCODER_OWNER + ['CONFIG_PARAM_ENCODER_NAME="b_enc"'])
+        self.edit(["a", "b"], lambda m: (m.rename(0, "left"), m.rename(1, "right")))
+        self.run_all(um.baseline(self.kconfig, self.home))
+        variables = um.read_vars(self.vars_file)
+        self.assertEqual(variables["mmu_left_encoder_resolution"], 0.5)
+        self.assertNotIn("mmu_a_encoder_resolution", variables)
+        self.assertEqual(variables["mmu_b_enc_encoder_resolution"], 0.7)
+        self.assertEqual(variables["mmu_b_encoder_resolution"], 0.6)   # not b's encoder's
+        self.assertNotIn("mmu_right_encoder_resolution", variables)
+
+    def test_a_unit_without_an_encoder_takes_no_encoder_vars(self):
+        # b's own encoder is called 'a', which isn't unit a's
+        self.install(["a", "b"], variables={"mmu_a_encoder_resolution": 0.5})
+        self.unit("a", 0)
+        self.unit("b", 1, lines=ENCODER_OWNER + ['CONFIG_PARAM_ENCODER_NAME="a"'])
+        self.edit(["a", "b"], lambda m: m.rename(0, "left"))
+        self.run_all(um.baseline(self.kconfig, self.home))
+        variables = um.read_vars(self.vars_file)
+        self.assertEqual(variables["mmu_a_encoder_resolution"], 0.5)
+        self.assertNotIn("mmu_left_encoder_resolution", variables)
+
     def test_vars_outside_the_mmu_directory_get_their_own_backup(self):
         self.vars_file = os.path.join(self.home, "elsewhere_vars.cfg")
         self.install(["a"], variables={"mmu_a_bowden_lengths": [1]})
@@ -602,8 +693,8 @@ class TestRenameIntoADeletedName(Scratch):
             "mmu_state_tool_to_gate_map": [5, 4, 3, 2, 1, 0],
             "mmu_state_sensor_enabled": {"unit0:mmu_shared_exit": False, "unit1:encoder": False},
         })
-        self.unit("unit0", 0, gates=2, lines=['CONFIG_PIN_X="unit0:PA1"'])
-        self.unit("unit1", 1, gates=3, lines=['CONFIG_PIN_X="unit1:PA1"'])
+        self.unit("unit0", 0, gates=2, lines=ENCODER_OWNER + ['CONFIG_PIN_X="unit0:PA1"'])
+        self.unit("unit1", 1, gates=3, lines=ENCODER_OWNER + ['CONFIG_PIN_X="unit1:PA1"'])
         self.unit("unit2", 2, gates=1, lines=['CONFIG_PIN_X="unit2:PA1"'])
 
         def edit(m):
@@ -625,11 +716,12 @@ class TestRenameIntoADeletedName(Scratch):
         code, out = self.check("replace", self.base)
         self.assertEqual(code, um.EXIT_STRUCTURAL, out)
 
-    def test_sharing_the_deleted_units_encoder_is_still_refused(self):
-        self.unit("unit0", 0, gates=2, lines=['CONFIG_PARAM_ENCODER_NAME="unit1"'])
+    def test_sharing_the_deleted_units_encoder_warns(self):
+        self.unit("unit0", 0, gates=2, lines=ENCODER_SHARER + ['CONFIG_PARAM_ENCODER_NAME="unit1"'])
+        self.unit("unit1", 1, gates=3, lines=ENCODER_OWNER)
         code, out = self.check("replace", self.base)
-        self.assertEqual(code, um.EXIT_REFUSED)
-        self.assertIn("PARAM_ENCODER_NAME", out)
+        self.assertEqual(code, um.EXIT_STRUCTURAL)
+        self.assertIn("Unit 'unit1' shares encoder 'unit1', which no unit owns", out)
 
     def test_end_to_end(self):
         self.run_all(self.base)
@@ -688,6 +780,13 @@ class TestSingleUnitRename(Scratch):
             um.migrate_kconfig(self.kconfig, [], io.StringIO())
         self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
 
+    def test_an_owners_explicit_name_follows_a_single_unit_rename(self):
+        self.single("box", "unit0", *ENCODER_OWNER + BUFFER_SHARER[1:] + [
+            'CONFIG_PARAM_ENCODER_NAME="unit0"', 'CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="unit0"'])
+        um.migrate_kconfig(self.kconfig, [], io.StringIO())
+        self.assertEqual(self.kvalues()["PARAM_ENCODER_NAME"], "box")
+        self.assertEqual(self.kvalues()["PARAM_SYNC_FEEDBACK_BUFFER_NAME"], "unit0")
+
     def test_an_installed_name_is_an_old_name_too(self):
         self.install(["unit0"])
         self.single("box", "box", 'CONFIG_PIN_X="unit0:PA1"')
@@ -724,16 +823,19 @@ class TestSingleUnitRename(Scratch):
     def test_renaming_an_installed_single_unit_end_to_end(self):
         self.install(["unit0"], variables={
             "mmu_unit0_bowden_lengths": [1, 2, 3, 4],
+            "mmu_unit0_encoder_resolution": 0.6,
             "mmu_state_gate_color": ["r", "g", "b", "w"],
             "mmu_state_gate_selected": 2, "mmu_state_tool_selected": 1,
         })
-        self.single("box", "unit0", 'CONFIG_PIN_X="unit0:PA1"')
+        self.single("box", "unit0", 'CONFIG_PIN_X="unit0:PA1"', *ENCODER_OWNER)
         self.run_all(um.baseline(self.kconfig, self.home))
 
         self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
         variables = um.read_vars(self.vars_file)
         self.assertEqual(variables["mmu_box_bowden_lengths"], [1, 2, 3, 4])
         self.assertNotIn("mmu_unit0_bowden_lengths", variables)
+        self.assertEqual(variables["mmu_box_encoder_resolution"], 0.6)
+        self.assertNotIn("mmu_unit0_encoder_resolution", variables)
         self.assertEqual(variables["mmu_state_gate_color"], ["r", "g", "b", "w"])
         # A rename doesn't renumber any gate, so the selection stands
         self.assertEqual(variables["mmu_state_gate_selected"], 2)

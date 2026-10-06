@@ -631,9 +631,9 @@ ENCODER = BOXTURTLE_TEST.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
-# Two BoxTurtles where unit1 shares unit0's encoder AND buffer through the "Shared with
-# existing unit?" flags. A component's section is always named after the unit that owns it,
-# so the sharer names the owning unit and renders neither section of its own.
+# Two BoxTurtles where unit1 shares unit0's encoder AND buffer through the "Use shared ...?"
+# flags. An owner's section is named after its unit by default, so the sharer names unit0
+# and renders neither section of its own.
 #
 # gate_endstop_to_encoder is a per-unit distance, so unit1 sets its own (25) rather than the
 # 10 unit0 gets by default.
@@ -650,8 +650,10 @@ SHARED_ENCODER = Profile(
             ENCODER.syms, PIN_ENCODER='unit0:PB7')),
         UnitProfile('unit1', index=1, syms=dict(
             {k: v for k, v in ENCODER.syms.items() if k != 'PIN_ENCODER'},
-            MMU_SHARED_ENCODER=True,                    # the pick lists' only owner: unit0
+            MMU_SHARED_ENCODER=True,
+            PARAM_ENCODER_NAME='unit0',
             MMU_SHARED_SYNC_FEEDBACK_BUFFER=True,
+            PARAM_SYNC_FEEDBACK_BUFFER_NAME='unit0',
             PARAM_GATE_ENDSTOP_TO_ENCODER=25)),
     ],
     description="two BoxTurtles, unit1 sharing unit0's encoder and buffer")
@@ -680,7 +682,8 @@ ENCODER_SHARED = Profile(
         UnitProfile('unit1', index=1, syms={
             'MMU_TYPE_TRADRACK_1_0': True,
             'MMU_HAS_ENCODER': True,
-            'MMU_SHARED_ENCODER': True,                  # the share; unit0 is the only owner
+            'MMU_SHARED_ENCODER': True,
+            'PARAM_ENCODER_NAME': 'unit0',
             'BOOL_FLOWGUARD_ENCODER_MODE': True,
             'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True,
         }),

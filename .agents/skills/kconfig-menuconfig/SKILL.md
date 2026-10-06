@@ -53,7 +53,7 @@ Load-bearing facts about the flow:
   `run_kconfig_units` / `run_kconfig_one`. The per-unit config file and the
   installed `.cfg` files both gain a `_<unit>` suffix. A unit parse also
   reads the OTHER units' saved files (`KCONFIG_PARENT`) for components one
-  unit shares with another — the pick list of owners and the owner's
+  unit shares with another — the owners' encoder/buffer names and an owner's
   capabilities; see [extensions item 13](references/kconfiglib-extensions.md).
 - **A unit's name is its identity** — per-unit Kconfig file, every section
   and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
