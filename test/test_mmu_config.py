@@ -1406,6 +1406,39 @@ class TestMmuCfgTunables(unittest.TestCase):
         self._assert_options(parser, 'mmu_servo blobifier', {
             'maximum_servo_angle': '270', 'initial_angle': '160'})
 
+    STEPPER = {
+        'MMU_HAS_BLOBIFIER': True,
+        'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+        'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
+        'PIN_BLOBIFIER_STEP': 'unit0:PD4',
+        'PIN_BLOBIFIER_DIR': '!unit0:PD3',
+        'PIN_BLOBIFIER_ENABLE': '!unit0:PD6',
+        'PIN_BLOBIFIER_ENDSTOP': '^!unit0:PC15',
+    }
+
+    def test_blobifier_stepper_defaults_match_previous_literals(self):
+        parser = self._render('mmu_cfg_tunable_stepper_defaults', self.STEPPER)
+        self._assert_options(parser, 'manual_stepper stepper_blobifier', {
+            'microsteps': '4', 'gear_ratio': '1:1', 'rotation_distance': '62.83',
+            'position_min': '0', 'position_max': '21', 'homing_speed': '20',
+            'velocity': '150', 'accel': '1000'})
+
+    def test_blobifier_stepper_values_are_rendered(self):
+        parser = self._render('mmu_cfg_tunable_stepper_values', dict(self.STEPPER, **{
+            'PARAM_BLOBIFIER_STEPPER_MICROSTEPS': 16,
+            'PARAM_BLOBIFIER_STEPPER_GEAR_RATIO': '57:11, 2:1',
+            'PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE': '40.5',
+            'PARAM_BLOBIFIER_STEPPER_POSITION_MIN': '-1',
+            'PARAM_BLOBIFIER_STEPPER_POSITION_MAX': '25',
+            'PARAM_BLOBIFIER_STEPPER_HOMING_SPEED': '10',
+            'PARAM_BLOBIFIER_STEPPER_VELOCITY': '120',
+            'PARAM_BLOBIFIER_STEPPER_ACCEL': '800',
+        }))
+        self._assert_options(parser, 'manual_stepper stepper_blobifier', {
+            'microsteps': '16', 'gear_ratio': '57:11, 2:1', 'rotation_distance': '40.5',
+            'position_min': '-1', 'position_max': '25', 'homing_speed': '10',
+            'velocity': '120', 'accel': '800'})
+
     def test_multi_unit_renders_macro_defaults(self):
         rendered = cfg.render(TWO_UNIT)
         parser = cfg.assemble({MMU: rendered[MMU]}, macros=False)
