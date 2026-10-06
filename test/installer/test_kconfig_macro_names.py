@@ -133,6 +133,63 @@ class TestUnquotedLexemeMacroExpansion(_AdHocKconfig):
         self.assertEqual(blob.selection.name, 'CHOICE_BLOBIFIER_B')
 
 
+class TestMacroExpandingToAnExpression(_AdHocKconfig):
+    """A macro that expands to an expression is lexed as that expression.
+
+    Upstream makes the whole expansion one symbol name, so 'if $(cond)' with
+    'cond := A && !B' tested a junk symbol called "A && !B" - always n, with no
+    error. That is what lets components/Kconfig.servo take its prompt condition
+    from the caller.
+
+    Only whitespace or a leading '!' or '(' marks an expression. A name built
+    from a device path (mmu_serial_config) can hold ':' or '=', is used both to
+    declare a choice member and to default to it, and has to stay one symbol.
+    """
+
+    TREE = ('mainmenu "t"\n'
+            'config A\n  bool "A"\n'
+            'config B\n  bool "B"\n'
+            'cond := A && !B\n'
+            'config C\n  bool\n  prompt "C" if $(cond)\n  default y if $(cond)\n')
+
+    def test_a_condition_macro_becomes_an_expression(self):
+        kc = self._parse(self.TREE)
+        self.assertEqual(kconfiglib.expr_str(kc.syms['C'].nodes[0].prompt[1]), 'A && !B')
+        self.assertEqual([n for n in kc.syms if ' ' in n], [])
+
+        kc.syms['A'].set_value(2)
+        self.assertEqual((kc.syms['C'].visibility, kc.syms['C'].str_value), (2, 'y'))
+        kc.syms['B'].set_value(2)
+        self.assertEqual((kc.syms['C'].visibility, kc.syms['C'].str_value), (0, 'n'))
+
+    def test_a_macro_that_names_a_symbol_still_names_it(self):
+        kc = self._parse('mainmenu "t"\nprefix := GEAR\nconfig X_GEAR\n  bool "x"\n'
+                         'enabled := y\n'
+                         'config Y\n  bool\n  prompt "y" if X_$(prefix) && $(enabled)\n')
+        cond = kc.syms['Y'].nodes[0].prompt[1]
+        self.assertEqual(kconfiglib.expr_str(cond), 'X_GEAR && y')
+        self.assertIs(cond[1], kc.syms['X_GEAR'])
+        self.assertIs(cond[2], kc.y)
+
+    def test_a_negated_symbol_is_an_expression(self):
+        kc = self._parse('mainmenu "t"\nconfig A\n  bool "A"\nnot_a := !A\n'
+                         'config C\n  bool\n  prompt "C" if $(not_a)\n')
+        self.assertEqual(kc.syms['C'].visibility, 2)
+        kc.syms['A'].set_value(2)
+        self.assertEqual(kc.syms['C'].visibility, 0)
+
+    def test_a_device_derived_name_stays_one_symbol(self):
+        """by-path serial devices put ':' in a choice member's name."""
+        kc = self._parse(
+            'mainmenu "t"\n'
+            'dev := CHOICE_DEV_PCI_0000:01:00.0_USB=1\n'
+            'choice\n  prompt "device"\n  default $(dev)\n'
+            '  config $(dev)\n    bool "found"\n'
+            '  config CHOICE_DEV_OTHER\n    bool "other"\n'
+            'endchoice\n')
+        self.assertTrue(kc.syms['CHOICE_DEV_PCI_0000:01:00.0_USB=1'].tri_value)
+
+
 class TestPatchIsConservative(_AdHocKconfig):
     """The safety argument, made executable."""
 

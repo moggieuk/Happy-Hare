@@ -3,14 +3,10 @@
 # Responsible for defining/setting:
 #   MMU_HAS_GANTRY_BUMPER_SERVO (and PIN_GANTRY_BUMPER_SERVO)
 #   MMU_HAS_SERVO_CUTTER        (and PIN_SERVO_CUTTER_SERVO)
-#   PARAM_GANTRY_SERVO_MAXIMUM_ANGLE
-#   PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
-#   PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
-#   BOOL_GANTRY_SERVO_INITIAL_ANGLE (and PARAM_GANTRY_SERVO_INITIAL_ANGLE)
-#   PARAM_SERVO_CUTTER_MAXIMUM_ANGLE
-#   PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
-#   PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
-#   BOOL_SERVO_CUTTER_INITIAL_ANGLE (and PARAM_SERVO_CUTTER_INITIAL_ANGLE)
+#
+# Via components/Kconfig.servo, for GANTRY_SERVO and SERVO_CUTTER:
+#   PARAM_*_MIN_PULSE_WIDTH, PARAM_*_MAX_PULSE_WIDTH, PARAM_*_MAXIMUM_ANGLE
+#   BOOL_*_INITIAL_ANGLE (and PARAM_*_INITIAL_ANGLE)
 #
 # Responsible for setting:
 #   PARAM_FORCE_FORM_TIP_STANDALONE
@@ -25,57 +21,12 @@ config PIN_GANTRY_BUMPER_SERVO
   string
   default ""
 
-# Defaults here, outside any if, so they hold while the prompts are hidden
-config PARAM_GANTRY_SERVO_MAXIMUM_ANGLE
-  int
-  range 1 360
-  default 180
-
-config PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
-  float
-  default 0.00075
-
-config PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
-  float
-  default 0.00225
-
-config BOOL_GANTRY_SERVO_INITIAL_ANGLE
-  bool
-  default y
-
-config PARAM_GANTRY_SERVO_INITIAL_ANGLE
-  int
-  range 0 360
-  default 180
-
 config MMU_HAS_SERVO_CUTTER
   def_bool n
 
 config PIN_SERVO_CUTTER_SERVO
   string
   default ""
-
-config PARAM_SERVO_CUTTER_MAXIMUM_ANGLE
-  int
-  range 1 360
-  default 180
-
-config PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
-  float
-  default 0.0005
-
-config PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
-  float
-  default 0.0025
-
-config BOOL_SERVO_CUTTER_INITIAL_ANGLE
-  bool
-  default n
-
-config PARAM_SERVO_CUTTER_INITIAL_ANGLE
-  int
-  range 0 360
-  default 70
 
 
 menu "Tip Forming / Cutting"
@@ -100,38 +51,22 @@ menu "Tip Forming / Cutting"
       validator "$(pin_validator)"
       help
         $(pin_help)
-
-    config PARAM_SERVO_CUTTER_MAXIMUM_ANGLE
-      prompt "Cutting servo h/w max angle        "
-      help
-        Klipper scales the PWM pulse width to never exceed this angle.
-        Set this to 60 for a 60 degree servo
-
-    config PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
-      prompt "Cutting servo min pulse width      "
-      help
-        Adapt for your servo
-
-    config PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
-      prompt "Cutting servo max pulse width      "
-      help
-        Adapt for your servo
-
-    menuconfig BOOL_SERVO_CUTTER_INITIAL_ANGLE
-      prompt "Set cutting servo initial angle?"
-      help
-        Move the servo to a set angle at Klipper startup.
-        Otherwise it is left unpowered until first used
-
-    if BOOL_SERVO_CUTTER_INITIAL_ANGLE
-      config PARAM_SERVO_CUTTER_INITIAL_ANGLE
-        prompt "Cutting servo initial angle        "
-        help
-          Normally the resting position: match "Servo closed angle"
-          under Macro Variables -> Servo cutter at MMU
-    endif
-
   endif
+
+  prefix              := SERVO_CUTTER
+  servo_suffix        :=
+  servo_visible       := MMU_HAS_SERVO_CUTTER
+  label               := Cutting servo
+  pad_width           := 35
+  servo_min_pulse     := 0.0005
+  servo_max_pulse     := 0.0025
+  servo_initial_angle := 70
+  servo_initial_on    := n
+  servo_rest_angle    := "Servo closed angle"$(nl)under Macro Variables -> Servo cutter at MMU
+  servo_min_hint      :=
+  servo_max_hint      :=
+  servo_angle_hint    :=
+  source "components/Kconfig.servo"
 
 
 # -------------------------------------
@@ -192,46 +127,30 @@ menu "Tip Forming / Cutting"
 # Toolhead cutter configuration
 # -------------------------------------
 
-  if CHOICE_FORM_TIP_MACRO_CUT_TIP
+  config MMU_HAS_GANTRY_BUMPER_SERVO
+    prompt "Have servo operated gantry bumper?" if CHOICE_FORM_TIP_MACRO_CUT_TIP
 
-    config MMU_HAS_GANTRY_BUMPER_SERVO
-      prompt "Have servo operated gantry bumper?"
-      default n
+  config PIN_GANTRY_BUMPER_SERVO
+    prompt "Gantry servo pin" if CHOICE_FORM_TIP_MACRO_CUT_TIP && MMU_HAS_GANTRY_BUMPER_SERVO
+    validator "$(pin_validator)"
+    help
+      Optional. Used to deploy fold-down "bumper" for tip cutting
+      when using a toolhead mounted filament cutting blade
 
-    config PIN_GANTRY_BUMPER_SERVO
-      prompt "Gantry servo pin" if MMU_HAS_GANTRY_BUMPER_SERVO
-      validator "$(pin_validator)"
-      help
-        Optional. Used to deploy fold-down "bumper" for tip cutting
-        when using a toolhead mounted filament cutting blade
-
-    if MMU_HAS_GANTRY_BUMPER_SERVO
-      config PARAM_GANTRY_SERVO_MAXIMUM_ANGLE
-        prompt "Gantry servo h/w max angle         "
-        help
-          Klipper scales the PWM pulse width to never exceed this angle
-
-      config PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
-        prompt "Gantry servo min pulse width       "
-
-      config PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
-        prompt "Gantry servo max pulse width       "
-
-      menuconfig BOOL_GANTRY_SERVO_INITIAL_ANGLE
-        prompt "Set gantry servo initial angle?"
-        help
-          Move the servo to a set angle at Klipper startup.
-          Otherwise it is left unpowered until first used
-
-      if BOOL_GANTRY_SERVO_INITIAL_ANGLE
-        config PARAM_GANTRY_SERVO_INITIAL_ANGLE
-          prompt "Gantry servo initial angle         "
-          help
-            Normally the retracted position: match "Gantry servo up angle"
-            under Macro Variables -> Toolhead tip cutting
-      endif
-    endif
-  endif
+  prefix              := GANTRY_SERVO
+  servo_suffix        :=
+  servo_visible       := CHOICE_FORM_TIP_MACRO_CUT_TIP && MMU_HAS_GANTRY_BUMPER_SERVO
+  label               := Gantry servo
+  pad_width           := 35
+  servo_min_pulse     := 0.00075
+  servo_max_pulse     := 0.00225
+  servo_initial_angle := 180
+  servo_initial_on    := y
+  servo_rest_angle    := "Gantry servo up angle"$(nl)under Macro Variables -> Toolhead tip cutting
+  servo_min_hint      :=
+  servo_max_hint      :=
+  servo_angle_hint    :=
+  source "components/Kconfig.servo"
 
 
 # -------------------------------------

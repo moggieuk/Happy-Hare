@@ -14,10 +14,10 @@
 #
 # Blobifier servo tray:
 #   PIN_BLOBIFIER_SERVO
-#   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
-#   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
-#   PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
+#   PARAM_BLOBIFIER_SERVO_MIN_PULSE_WIDTH, PARAM_BLOBIFIER_SERVO_MAX_PULSE_WIDTH,
+#   PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE,
 #   BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE (and PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE)
+#   (via components/Kconfig.servo)
 #
 # Blobifier stepper tray: (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
 #   PIN_BLOBIFIER_STEP
@@ -55,20 +55,6 @@ config MMU_HAS_BLOBIFIER
 config PIN_BLOBIFIER_SERVO
   string
   default ""
-
-config PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
-  int
-  range 1 360
-  default 180
-
-config BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
-  bool
-  default n
-
-config PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE
-  int
-  range 0 360
-  default 180
 
 config PIN_BLOBIFIER_BUCKET_SWITCH
   string
@@ -189,44 +175,25 @@ menu "Purging"
         validator "$(pin_validator)"
         help
           $(pin_help)
-
-      config PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
-        float "Servo min pulse width          "
-        default 0.00053
-        help
-          Adjust until a 'BLOBIFIER_SERVO POS=out' extends the tray fully without a buzzing sound
-
-          The default value is likely to be close so don't worry about this for now
-
-      config PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
-        float "Servo max pulse width          "
-        default 0.0023
-        help
-          Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
-
-          The default value is likely to be close so don't worry about this for now
-
-      config PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
-        prompt "Servo h/w max angle            "
-        help
-          Recommend leaving this at 180. The tray in/out angles under
-          Macro Variables -> Blobifier are relative to it
-
-      menuconfig BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
-        prompt "Set servo initial angle?"
-        help
-          Move the servo to a set angle at Klipper startup.
-          Otherwise it is left unpowered until first used
-
-      if BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
-        config PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE
-          prompt "Servo initial angle            "
-          help
-            Normally the retracted tray: match "Tray angle in"
-            under Macro Variables -> Blobifier
-      endif
     endif
+  endif
 
+  prefix              := BLOBIFIER_SERVO
+  servo_suffix        :=
+  servo_visible       := MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
+  label               := Servo
+  pad_width           := 31
+  servo_min_pulse     := 0.00053
+  servo_max_pulse     := 0.0023
+  servo_initial_angle := 180
+  servo_initial_on    := n
+  servo_rest_angle    := "Tray angle in"$(nl)under Macro Variables -> Blobifier
+  servo_min_hint      := $(nl)$(nl)Test with 'BLOBIFIER_SERVO POS=out': the tray extends fully
+  servo_max_hint      := $(nl)$(nl)Test with 'BLOBIFIER_SERVO POS=in': the tray retracts fully
+  servo_angle_hint    := $(nl)Recommend 180: the tray angles under Macro Variables -> Blobifier$(nl)are relative to it
+  source "components/Kconfig.servo"
+
+  if MMU_HAS_BLOBIFIER
     if CHOICE_BLOBIFIER_TYPE_STEPPER
       prefix     := BLOBIFIER
       label      := Stepper

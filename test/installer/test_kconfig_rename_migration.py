@@ -237,6 +237,44 @@ class TestBlobifierRenameEndToEnd(unittest.TestCase):
         self.assertEqual(unmigrated.get('run_current'), '0.6')
 
 
+class TestBlobifierServoRename(unittest.TestCase):
+    """The Blobifier servo took the shared servo component's names."""
+
+    MMU = 'config/base/mmu.cfg'
+
+    PRE_RENAME = ('CONFIG_MMU_HAS_BLOBIFIER=y\n'
+                  'CONFIG_PIN_BLOBIFIER_SERVO="unit0:PA1"\n'
+                  'CONFIG_PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH=0.0006\n'
+                  'CONFIG_PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH=0.0024\n'
+                  'CONFIG_PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE=270\n')
+
+    def _servo(self, table=None):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._new_kconfig('blobifier_servo_rename')
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, '.mmu_config')
+                with open(path, 'w') as handle:
+                    handle.write(self.PRE_RENAME)
+                with mock.patch.dict(kconfiglib.HH_RENAMED_SYMBOLS, table or {},
+                                     clear=table is not None):
+                    kc.load_config(path, filter_defaults=True)
+            mmu = cfg._render_templates(
+                (self.MMU,), kc, {'PARAM_TOTAL_NUM_GATES': 4})[self.MMU]
+        return dict(cfg.assemble({self.MMU: mmu}).items('mmu_servo blobifier'))
+
+    def test_a_pre_rename_config_renders_what_it_always_did(self):
+        servo = self._servo()
+        self.assertEqual({k: servo[k] for k in (
+            'minimum_pulse_width', 'maximum_pulse_width', 'maximum_servo_angle')}, {
+            'minimum_pulse_width': '0.0006', 'maximum_pulse_width': '0.0024',
+            'maximum_servo_angle': '270'})
+
+    def test_without_the_table_the_tuning_is_silently_lost(self):
+        servo = self._servo(table={})
+        self.assertEqual(servo['maximum_servo_angle'], '180')
+        self.assertEqual(servo['minimum_pulse_width'], '0.00053')
+
+
 class TestGearAndSelectorChipRename(unittest.TestCase):
     """The TMC2240 is the one chip that can be wired either way.
 

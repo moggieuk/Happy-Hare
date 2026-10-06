@@ -2,9 +2,8 @@
 # if MMU_HAS_SELECTOR_SERVO clause in cfg templates
 #
 # Responsible for setting:
-#   PARAM_SERVO_MIN_PULSE_WIDTH
-#   PARAM_SERVO_MAX_PULSE_WIDTH
-#   PARAM_SERVO_MAXIMUM_ANGLE
+#   PARAM_SERVO_MIN_PULSE_WIDTH, PARAM_SERVO_MAX_PULSE_WIDTH,
+#   PARAM_SERVO_MAXIMUM_ANGLE (via components/Kconfig.servo)
 #   PARAM_SERVO_ALWAYS_ACTIVE
 #   PARAM_SERVO_DURATION
 #   PARAM_SERVO_DWELL
@@ -21,28 +20,29 @@
 #   PARAM_SERVO_MIN_ANGLE
 #   PARAM_SERVO_MAX_ANGLE
 
-if MMU_HAS_SELECTOR_SERVO
+menu "Selector servo"
+  visible if MMU_HAS_SELECTOR_SERVO
 
-  menu "Selector servo"
+  # -------------------------------------
+  # Generic Options
+  # -------------------------------------
 
-    # -------------------------------------
-    # Generic Options
-    # -------------------------------------
+  prefix              := SERVO
+  servo_suffix        :=
+  servo_visible       := y
+  label               := Servo
+  pad_width           := 21
+  servo_min_pulse     := 0.001
+  servo_max_pulse     := 0.002
+  servo_initial_angle :=
+  servo_initial_on    :=
+  servo_rest_angle    :=
+  servo_min_hint      :=
+  servo_max_hint      :=
+  servo_angle_hint    :=
+  source "components/Kconfig.servo"
 
-    config PARAM_SERVO_MIN_PULSE_WIDTH
-      float "Servo min pulse width"
-      default 0.001
-
-    config PARAM_SERVO_MAX_PULSE_WIDTH
-      float "Servo max pulse width"
-      default 0.002
-
-    config PARAM_SERVO_MAXIMUM_ANGLE
-      int "Servo h/w max angle  "
-      range 0 360
-      default 180
-      help
-        Klipper scales the PWM pulse width to never exceed this angle
+  if MMU_HAS_SELECTOR_SERVO
 
     config PARAM_SERVO_DWELL
       float "Servo dwell          "
@@ -186,5 +186,5 @@ if MMU_HAS_SELECTOR_SERVO
 
     endif
 
-  endmenu
-endif
+  endif
+endmenu

@@ -10,6 +10,7 @@
 #   PARAM_VENT_SERVO_GATE_X, PIN_VENT_SERVO_X, PARAM_VENT_SERVO_MIN_PULSE_WIDTH_X,
 #   PARAM_VENT_SERVO_MAX_PULSE_WIDTH_X, PARAM_VENT_SERVO_MAXIMUM_ANGLE_X
 #   (per-gate configuration)
+# The pulse widths and max angle come from components/Kconfig.servo
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_VENT_SERVO
@@ -37,12 +38,13 @@ endif
 # Vent servo config
 # -------------------------------------
 
-if MMU_HAS_VENT_SERVO
-  menu "Vent servo h/w config"
-    help
-      Configure the pin and PWM range of the enclosure vent servo, or with
-      per-gate configuration of each gate's vent servo.
+menu "Vent servo h/w config"
+  visible if MMU_HAS_VENT_SERVO
+  help
+    Configure the pin and PWM range of the enclosure vent servo, or with
+    per-gate configuration of each gate's vent servo.
 
+  if MMU_HAS_VENT_SERVO
     config PIN_VENT_SERVO
       string
       prompt "Vent servo pin       " if !MMU_HAS_PER_GATE_CONFIG
@@ -50,59 +52,54 @@ if MMU_HAS_VENT_SERVO
       default ""
       help
         $(pin_help)
+  endif
 
-    if MMU_HAS_PER_GATE_CONFIG
-      @repeat var=i min=0 max=11@
-        if PARAM_NUM_GATES > $(i)
-          menuconfig PARAM_VENT_SERVO_GATE_$(i)
-            bool "Gate $(i) vent servo"
-            default y
-            help
-              This gate has its own enclosure vent servo, opened while the
-              gate is drying.
+  prefix              := VENT_SERVO
+  servo_suffix        :=
+  servo_visible       := !MMU_HAS_PER_GATE_CONFIG
+  label               := Servo
+  pad_width           := 21
+  servo_min_pulse     := 0.001
+  servo_max_pulse     := 0.002
+  servo_initial_angle :=
+  servo_initial_on    :=
+  servo_rest_angle    :=
+  servo_min_hint      :=
+  servo_max_hint      :=
+  servo_angle_hint    :=
+  source "components/Kconfig.servo"
 
-          if PARAM_VENT_SERVO_GATE_$(i)
-            config PIN_VENT_SERVO_$(i)
-              string "Vent servo pin       "
-              validator "$(pin_validator)"
-              help
-                Leave blank if this gate does not have a vent servo installed.
+  @repeat var=i min=0 max=11@
+    menuconfig PARAM_VENT_SERVO_GATE_$(i)
+      bool
+      prompt "Gate $(i) vent servo" if MMU_HAS_PER_GATE_CONFIG && PARAM_NUM_GATES > $(i)
+      default y if MMU_HAS_VENT_SERVO && MMU_HAS_PER_GATE_CONFIG && PARAM_NUM_GATES > $(i)
+      help
+        This gate has its own enclosure vent servo, opened while the
+        gate is drying.
 
-            config PARAM_VENT_SERVO_MIN_PULSE_WIDTH_$(i)
-              float "Servo min pulse width"
-              default 0.001
-
-            config PARAM_VENT_SERVO_MAX_PULSE_WIDTH_$(i)
-              float "Servo max pulse width"
-              default 0.002
-
-            config PARAM_VENT_SERVO_MAXIMUM_ANGLE_$(i)
-              int "Servo h/w max angle  "
-              range 0 360
-              default 180
-              help
-                Klipper scales the PWM pulse width to never exceed this angle
-          endif
-        endif
-      @endrepeat@
-    endif
-
-    if !MMU_HAS_PER_GATE_CONFIG
-      config PARAM_VENT_SERVO_MIN_PULSE_WIDTH
-        float "Servo min pulse width"
-        default 0.001
-
-      config PARAM_VENT_SERVO_MAX_PULSE_WIDTH
-        float "Servo max pulse width"
-        default 0.002
-
-      config PARAM_VENT_SERVO_MAXIMUM_ANGLE
-        int "Servo h/w max angle  "
-        range 0 360
-        default 180
+    if PARAM_VENT_SERVO_GATE_$(i)
+      config PIN_VENT_SERVO_$(i)
+        string "Vent servo pin       "
+        validator "$(pin_validator)"
         help
-          Klipper scales the PWM pulse width to never exceed this angle
+          Leave blank if this gate does not have a vent servo installed.
     endif
 
-  endmenu
-endif
+    prefix              := VENT_SERVO
+    servo_suffix        := _$(i)
+    servo_visible       := MMU_HAS_PER_GATE_CONFIG && PARAM_NUM_GATES > $(i) && PARAM_VENT_SERVO_GATE_$(i)
+    label               := Servo
+    pad_width           := 21
+    servo_min_pulse     := 0.001
+    servo_max_pulse     := 0.002
+    servo_initial_angle :=
+    servo_initial_on    :=
+    servo_rest_angle    :=
+    servo_min_hint      :=
+    servo_max_hint      :=
+    servo_angle_hint    :=
+    source "components/Kconfig.servo"
+  @endrepeat@
+
+endmenu

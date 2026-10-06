@@ -136,10 +136,15 @@ Load-bearing facts about the flow:
   `@repeat` (once per gate) as well as once for the shared sensor
   ([references/environment-sensors.md](references/environment-sensors.md)
   has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
-  (they are global for the whole parse); keep declarations and prompts in
-  separate fragments, because `_propagate_deps` ANDs an enclosing `if` into
-  defaults as well as prompts; and pad prompts with `$(pad,width,text)`
-  rather than literal spaces.
+  (they are global for the whole parse); keep an enclosing `if` away from
+  the defaults, because `_propagate_deps` ANDs it into defaults as well as
+  prompts; and pad prompts with `$(pad,width,text)` rather than literal
+  spaces. TMC does the second by splitting declarations from prompts.
+  `components/Kconfig.servo` (every `[mmu_servo]`: selector, vent incl.
+  per gate, Blobifier, gantry, cutter) does it in one file: the caller
+  sources it outside its feature `if` and passes the prompt condition as
+  `servo_visible` (extension 23), straight after the toggle the prompts
+  should nest under.
 
 ## The symbol-naming contract
 

@@ -109,6 +109,11 @@
 # 22. 'dim' on a comment draws its whole row dimmed, including the "***" decoration:
 #       comment "Note" if COND
 #         dim
+# 23. A $(macro) in a symbol position whose expansion holds whitespace or starts with '!'
+#     or '(' is lexed as that expression, so a component can take a condition from its
+#     caller (anything else stays one symbol name, as upstream):
+#       servo_visible := MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
+#       prompt "..." if $(servo_visible)
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

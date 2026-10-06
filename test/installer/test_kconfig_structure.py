@@ -9,6 +9,7 @@
 # definition site, or a generated name falling outside the prefix contract -
 # and the resulting config still renders and still boots.
 
+import re
 import unittest
 
 from test.hh import cfg
@@ -61,6 +62,11 @@ class TestComponentContract(unittest.TestCase):
                  [choice.name for choice in self.kconfig.unique_choices
                   if choice.name])
         self.assertEqual([n for n in names if '$' in n or '__' in n], [])
+
+    def test_no_name_is_an_unparsed_expression(self):
+        """A condition macro that the tokenizer took as one name is a junk
+        symbol that is always n - every prompt behind it silently hidden."""
+        self.assertEqual([n for n in self.kconfig.syms if re.search(r'[\s!&|=<>()]', n)], [])
 
     def test_the_tmc_component_is_sourced_once_per_consumer(self):
         """Node counts here are a product, and both factors matter.
