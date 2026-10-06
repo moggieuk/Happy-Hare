@@ -342,6 +342,27 @@ comment "_Heading"
             self.parse('config FOO\n    bool "Foo"\n    dim\n')
 
 
+class TestMenuPathMarkup(unittest.TestCase):
+    """The menu path bar is drawn as plain text, so a menu title's markup must not leak into it."""
+
+    def test_markup_is_stripped_from_menu_path(self):
+        import os
+        import tempfile
+        import kconfiglib
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "Kconfig")
+        with open(path, "w") as f:
+            f.write('menu "Outer"\nmenu "Inner [[DIM]](ADVANCED)[[/DIM]]"\n'
+                    'config FOO\n    bool "Foo"\nendmenu\nendmenu\n')
+        kconf = kconfiglib.Kconfig(path, warn=False)
+        inner = kconf.syms["FOO"].nodes[0].parent
+
+        with patch.object(menuconfig, "_kconf", kconf, create=True):
+            self.assertEqual(menuconfig._menu_path_prompts(inner),
+                             ["(Top)", "Outer", "Inner (ADVANCED)"])
+
+
 class TestReparseEnv(unittest.TestCase):
     """Changing a 'reparse_env' symbol re-parses with the new value, in place.
 
