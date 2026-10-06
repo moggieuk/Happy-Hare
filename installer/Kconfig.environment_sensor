@@ -14,8 +14,8 @@
 #     PARAM_ENVIRONMENT_SENSOR_I2C_BUS
 #
 #   CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE (i2c bus type)
-#     PIN_ENVIRONMENT_SENSOR_SCL
-#     PIN_ENVIRONMENT_SENSOR_SDA
+#     PIN_ENVIRONMENT_SENSOR_I2C_SCL
+#     PIN_ENVIRONMENT_SENSOR_I2C_SDA
 #
 # Per-gate:
 #   as above with _<gate_index> extension
@@ -26,8 +26,7 @@
 #   PARAM_MCU_ENVIRONMENT_SENSOR_NAME_X (per-gate MCU)
 #
 # Everything but the sensor name comes from components/Kconfig.environment_sensor,
-# shared by both layouts. The shared sensor's fixed i2c bus list is added here,
-# ahead of it
+# shared by both layouts. The board files offer the i2c buses
 #
 # SUPPORTED SENSOR TYPES
 #   - AHT10     (humidity/temperature, legacy name known to every Klipper/Kalico)
@@ -40,9 +39,7 @@
 #   - SHT3X     (humidity/temperature, SHT30/SHT31/SHT35)
 #   - LM75      (temperature only)
 #
-# SUPPORTED I2C HARDWARE BUS OPTIONS:
-#   - i2c2_PB10_PB11  (default)
-#   - i2c3_PB3_PB4    (alternative)
+# I2C HARDWARE BUSES: offered by the board file, plus a custom name (blank = MCU default)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
@@ -83,29 +80,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         E.g., "temperature_sensor MMU_enclosure" or just "MMU_enclosure"
 
 
-    if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
-      choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
-        default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3 if BOARD_TYPE_EBB_GEN1
-        default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-          bool "i2c2_PB10_PB11"
-          help
-            Hardware i2c bus i2c2 with SCL on PB10 and SDA on PB11
-
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
-          bool "i2c3_PB3_PB4"
-          help
-            Hardware i2c bus i2c3 with SCL on PB3 and SDA on PB4
-      endchoice
-
-      config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
-        default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-        default "i2c3_PB3_PB4"   if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
-    endif
-
-    env_sensor_suffix   :=
-    env_sensor_bus_hint :=
+    env_sensor_suffix :=
     source "components/Kconfig.environment_sensor"
   endmenu
 endif
@@ -135,8 +110,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER
             help
               Name of the environment sensor section in the printer config.
 
-          env_sensor_suffix   := _$(i)
-          env_sensor_bus_hint := $(nl)Board files offer the buses this board actually routes.
+          env_sensor_suffix := _$(i)
           source "components/Kconfig.environment_sensor"
         endif
       endif

@@ -335,12 +335,12 @@ NFC_PN532_SW_I2C = BOXTURTLE.derive(
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
           'CHOICE_NFC_READER_TYPE_PN532_0': True,
           'CHOICE_NFC_READER_I2C_SOFTWARE_0': True,
-          'PARAM_NFC_READER_SCL_PIN_0': 'unit0:PB8',
-          'PARAM_NFC_READER_SDA_PIN_0': 'unit0:PB9',
+          'PIN_NFC_READER_I2C_SCL_0': 'unit0:PB8',
+          'PIN_NFC_READER_I2C_SDA_0': 'unit0:PB9',
           'CHOICE_NFC_READER_TYPE_PN532_1': True,
           'CHOICE_NFC_READER_I2C_SOFTWARE_1': True,
-          'PARAM_NFC_READER_SCL_PIN_1': 'unit0:PC4',
-          'PARAM_NFC_READER_SDA_PIN_1': 'unit0:PC5'},
+          'PIN_NFC_READER_I2C_SCL_1': 'unit0:PC4',
+          'PIN_NFC_READER_I2C_SDA_1': 'unit0:PC5'},
     description='Two per-gate PN532 readers, each on its own software i2c bus')
 
 # PN532 over HSU/UART - the only reader that is NOT MCU-mediated. klippy opens a host

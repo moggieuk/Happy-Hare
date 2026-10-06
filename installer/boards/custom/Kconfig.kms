@@ -103,10 +103,10 @@ if BOARD_TYPE_KMS_1_0
   choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
     default CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
   endchoice
-  config PIN_ENVIRONMENT_SENSOR_SCL
-    default "PB10"
-  config PIN_ENVIRONMENT_SENSOR_SDA
-    default "PB11"
+  config PIN_ENVIRONMENT_SENSOR_I2C_SCL
+    default "$(MCU_NAME):PB10"
+  config PIN_ENVIRONMENT_SENSOR_I2C_SDA
+    default "$(MCU_NAME):PB11"
 
 
   # -------------------------------------

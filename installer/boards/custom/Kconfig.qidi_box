@@ -77,10 +77,10 @@ if BOARD_TYPE_QIDI_BOX_2_0
   choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
     default CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
   endchoice
-  config PIN_ENVIRONMENT_SENSOR_SCL
-    default "PA8"
-  config PIN_ENVIRONMENT_SENSOR_SDA
-    default "PC9"
+  config PIN_ENVIRONMENT_SENSOR_I2C_SCL
+    default "$(MCU_NAME):PA8"
+  config PIN_ENVIRONMENT_SENSOR_I2C_SDA
+    default "$(MCU_NAME):PC9"
 
 
   # -------------------------------------

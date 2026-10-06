@@ -44,5 +44,25 @@ if BOARD_TYPE_EBB_GEN1
   config PIN_CONTROLLER_FAN
     default "$(MCU_NAME):PA1"
 
+  # Hardware i2c3 on PB3/PB4, the bus the per-gate EBB offers too
+  choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
+    default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4
+
+    config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4
+      bool "i2c3_PB3_PB4"
+      depends on BOARD_TYPE_EBB_GEN1
+  endchoice
+  config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
+    default "i2c3_PB3_PB4" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4
+
+  # Offered but not preselected: an NFC reader has always defaulted to the MCU's default bus
+  choice CHOICE_NFC_READER_I2C_BUS
+    config CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4
+      bool "i2c3_PB3_PB4"
+      depends on BOARD_TYPE_EBB_GEN1
+  endchoice
+  config PARAM_NFC_READER_I2C_BUS
+    default "i2c3_PB3_PB4" if CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4
+
 # Heater output for a [heater_generic]: HE0 PB13. Thermistor: TH0 PA3
 endif
