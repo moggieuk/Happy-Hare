@@ -214,7 +214,7 @@ if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE$(env_sensor_suffix)
 
   config PARAM_ENVIRONMENT_SENSOR_I2C_BUS$(env_sensor_suffix)
     string
-    prompt "Custom i2c bus name    " if $(env_sensor_custom_bus) && CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
+    prompt "Custom bus name   " if $(env_sensor_custom_bus) && CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
     default "" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER$(env_sensor_suffix)
     help
       Leave blank to use the MCU's default hardware i2c bus.
