@@ -17,6 +17,7 @@
 #   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
 #   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
 #   PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
+#   BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE (and PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE)
 #
 # Blobifier stepper tray: (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
 #   PIN_BLOBIFIER_STEP
@@ -50,6 +51,15 @@ config PIN_BLOBIFIER_SERVO
 config PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
   int
   range 1 360
+  default 180
+
+config BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
+  bool
+  default n
+
+config PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE
+  int
+  range 0 360
   default 180
 
 config PIN_BLOBIFIER_BUCKET_SWITCH
@@ -161,6 +171,20 @@ menu "Purging"
         help
           Recommend leaving this at 180. The tray in/out angles under
           Macro Variables -> Blobifier are relative to it
+
+      menuconfig BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
+        prompt "Set servo initial angle?"
+        help
+          Move the servo to a set angle at Klipper startup.
+          Otherwise it is left unpowered until first used
+
+      if BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
+        config PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE
+          prompt "Servo initial angle            "
+          help
+            Normally the retracted tray: match "Tray angle in"
+            under Macro Variables -> Blobifier
+      endif
     endif
 
     if CHOICE_BLOBIFIER_TYPE_STEPPER

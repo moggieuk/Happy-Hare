@@ -6,10 +6,11 @@
 #   PARAM_GANTRY_SERVO_MAXIMUM_ANGLE
 #   PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
 #   PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
-#   PARAM_GANTRY_SERVO_INITIAL_ANGLE
+#   BOOL_GANTRY_SERVO_INITIAL_ANGLE (and PARAM_GANTRY_SERVO_INITIAL_ANGLE)
 #   PARAM_SERVO_CUTTER_MAXIMUM_ANGLE
 #   PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
 #   PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
+#   BOOL_SERVO_CUTTER_INITIAL_ANGLE (and PARAM_SERVO_CUTTER_INITIAL_ANGLE)
 #
 # Responsible for setting:
 #   PARAM_FORCE_FORM_TIP_STANDALONE
@@ -38,6 +39,10 @@ config PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
   float
   default 0.00225
 
+config BOOL_GANTRY_SERVO_INITIAL_ANGLE
+  bool
+  default y
+
 config PARAM_GANTRY_SERVO_INITIAL_ANGLE
   int
   range 0 360
@@ -62,6 +67,15 @@ config PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
 config PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
   float
   default 0.0025
+
+config BOOL_SERVO_CUTTER_INITIAL_ANGLE
+  bool
+  default n
+
+config PARAM_SERVO_CUTTER_INITIAL_ANGLE
+  int
+  range 0 360
+  default 70
 
 
 menu "Tip Forming / Cutting"
@@ -102,6 +116,20 @@ menu "Tip Forming / Cutting"
       prompt "Cutting servo max pulse width      "
       help
         Adapt for your servo
+
+    menuconfig BOOL_SERVO_CUTTER_INITIAL_ANGLE
+      prompt "Set cutting servo initial angle?"
+      help
+        Move the servo to a set angle at Klipper startup.
+        Otherwise it is left unpowered until first used
+
+    if BOOL_SERVO_CUTTER_INITIAL_ANGLE
+      config PARAM_SERVO_CUTTER_INITIAL_ANGLE
+        prompt "Cutting servo initial angle        "
+        help
+          Normally the resting position: match "Servo closed angle"
+          under Macro Variables -> Servo cutter at MMU
+    endif
 
   endif
 
@@ -189,12 +217,19 @@ menu "Tip Forming / Cutting"
       config PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
         prompt "Gantry servo max pulse width       "
 
-      config PARAM_GANTRY_SERVO_INITIAL_ANGLE
-        prompt "Gantry servo initial angle         "
+      menuconfig BOOL_GANTRY_SERVO_INITIAL_ANGLE
+        prompt "Set gantry servo initial angle?"
         help
-          Angle set at Klipper startup. Normally the retracted position:
-          match "Gantry servo up angle" under
-          Macro Variables -> Toolhead tip cutting
+          Move the servo to a set angle at Klipper startup.
+          Otherwise it is left unpowered until first used
+
+      if BOOL_GANTRY_SERVO_INITIAL_ANGLE
+        config PARAM_GANTRY_SERVO_INITIAL_ANGLE
+          prompt "Gantry servo initial angle         "
+          help
+            Normally the retracted position: match "Gantry servo up angle"
+            under Macro Variables -> Toolhead tip cutting
+      endif
     endif
   endif
 

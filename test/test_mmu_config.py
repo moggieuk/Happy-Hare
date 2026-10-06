@@ -1358,6 +1358,19 @@ class TestMmuCfgTunables(unittest.TestCase):
         self._assert_options(parser, 'mmu_servo mmu_gantry_servo', self.GANTRY)
         self._assert_options(parser, 'mmu_servo cut_servo', self.CUTTER)
         self._assert_options(parser, 'mmu_servo blobifier', {'maximum_servo_angle': '180'})
+        # Only the gantry servo set an initial angle before it was optional
+        self.assertNotIn('initial_angle', parser['mmu_servo cut_servo'])
+        self.assertNotIn('initial_angle', parser['mmu_servo blobifier'])
+
+    def test_initial_angle_toggles(self):
+        parser = self._render('mmu_cfg_tunable_initial_angles', dict(self.SERVOS, **{
+            'BOOL_GANTRY_SERVO_INITIAL_ANGLE': False,
+            'BOOL_SERVO_CUTTER_INITIAL_ANGLE': True,
+            'BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE': True,
+        }))
+        self.assertNotIn('initial_angle', parser['mmu_servo mmu_gantry_servo'])
+        self._assert_options(parser, 'mmu_servo cut_servo', {'initial_angle': '70'})
+        self._assert_options(parser, 'mmu_servo blobifier', {'initial_angle': '180'})
 
     def test_gantry_defaults_survive_hidden_prompts(self):
         # Gantry servo enabled (e.g. implied) while tip cutting, and so its prompts, is off
@@ -1376,7 +1389,11 @@ class TestMmuCfgTunables(unittest.TestCase):
             'PARAM_SERVO_CUTTER_MAXIMUM_ANGLE': 60,
             'PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH': '0.0007',
             'PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH': '0.0023',
+            'BOOL_SERVO_CUTTER_INITIAL_ANGLE': True,
+            'PARAM_SERVO_CUTTER_INITIAL_ANGLE': 15,
             'PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE': 270,
+            'BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE': True,
+            'PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE': 160,
         }))
         self._assert_options(parser, 'mmu_parameters', dict(
             self.MACROS, pause_macro='MY_PAUSE', load_sequence_macro='MY_LOAD_SEQUENCE'))
@@ -1385,8 +1402,9 @@ class TestMmuCfgTunables(unittest.TestCase):
             'maximum_pulse_width': '0.0024', 'initial_angle': '170'})
         self._assert_options(parser, 'mmu_servo cut_servo', {
             'maximum_servo_angle': '60', 'minimum_pulse_width': '0.0007',
-            'maximum_pulse_width': '0.0023'})
-        self._assert_options(parser, 'mmu_servo blobifier', {'maximum_servo_angle': '270'})
+            'maximum_pulse_width': '0.0023', 'initial_angle': '15'})
+        self._assert_options(parser, 'mmu_servo blobifier', {
+            'maximum_servo_angle': '270', 'initial_angle': '160'})
 
     def test_multi_unit_renders_macro_defaults(self):
         rendered = cfg.render(TWO_UNIT)
