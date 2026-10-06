@@ -16,7 +16,10 @@
 # Keeping them apart is not cosmetic: _propagate_deps ANDs an enclosing `if`
 # into a node's defaults as well as its prompt, so declaring these inside a
 # feature's `if` block would make them compute empty whenever the feature is
-# off, instead of merely hiding them.
+# off, instead of merely hiding them. Nor can this half be sourced outside the
+# `if` with the prompts, as Kconfig.servo is: these symbols have no prompts, so
+# kconfiglib would end the automatic submenu under the caller's toggle at the
+# first one (the Blobifier stepper prompts would leave "Have Blobifier?").
 #
 # What it does NOT cover: step/dir/enable/endstop pins (stepper wiring, not
 # driver, and the gear stepper has per-gate indexed variants of them), the
