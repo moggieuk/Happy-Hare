@@ -244,70 +244,115 @@ if a Kconfig sources an absolute path or a parse reads a file outside
 
 ## 13. Shared components (`shared_components.py`, `owner-*` functions)
 
-A unit can share an encoder or sync-feedback buffer it doesn't define: another unit's,
-or a section in the user's own config. The component's name is a plain string PARAM
-(`PARAM_ENCODER_NAME`, `PARAM_SYNC_FEEDBACK_BUFFER_NAME`, `object_name_validator`),
-and `MMU_SHARED_ENCODER` / `MMU_SHARED_SYNC_FEEDBACK_BUFFER` ("Use shared ...?", also
-on a single unit) mean "this unit renders no section". The templates name the owner's
-section from the PARAM (`[mmu_encoder [[PARAM_ENCODER_NAME]]]`), so the default
-(`UNIT_NAME`) keeps the historical `[mmu_encoder <unit>]`.
+A unit can use an encoder or sync-feedback buffer it doesn't define: another unit's, or a
+section in the user's own config. This works on single units too.
 
-- **One symbol, two prompt nodes**: "Encoder name" `if !MMU_SHARED_ENCODER` and
-  "Shared encoder object name" `if MMU_SHARED_ENCODER`. A sharer's name defaults to "" (W29/
-  W30 warn while blank), except that a sharer's saved name is kept when it was saved
-  as `#~DEFAULT~#` (`saved-config-value`, as the old pick list saved it).
-- **Owners are found by name.** Each unit is a separate parse, so a unit reads what
-  the other units SAVED: `KCONFIG_PARENT` (the top-level `.mmu_config`, for
-  `MMU_UNITS`) and each sibling `<parent>_<unit>`. `owners(kind)` lists the other
-  units that have the component and don't share it, with their saved name (their
-  unit name if none is saved). Kconfig reads them with `@repeat var=i min=0
-  max=$(owner-max,KIND)@` and compares the name symbol to `"$(owner-name,KIND,$(i))"`
-  literals, so a name edited in menuconfig is matched live. (A macro can't expand to
-  an expression, only to one symbol name, hence the repeat.)
-- **Only unit parses run by install.sh read anything** (`KCONFIG_PARENT` set). The
-  build's pickle parse and `verify_pickle` see no owners and keep the saved values,
-  so every cross-unit value must be decided by a menuconfig/olddefconfig unit pass
-  and SAVED in the unit's own file.
-- **Buffer exports.** `SHARED_BUFFER_FOUND` (promptless) says the shared name is a
-  sibling owner's. `components/Kconfig.shared_export`, sourced once per exported
-  symbol (`KINDS[...].exports`), gives that symbol the matching owner's value. Nothing
-  is carried over when the owner goes: the bools and choice fall back to their normal
-  defaults, to be entered by the user. The sensor bools and the spring-state choice
-  live in `if !MMU_SHARED... || !SHARED_BUFFER_FOUND`; the section's
-  contents (pins, analog tuning, range, register) are `!MMU_SHARED...` only. So a
-  name no sibling owns (the user's own config) declares sensors but no pins. These
-  are the only buffer values another unit's menu reads; the encoder exports nothing.
-  A found share shows the owner's spring state and sensors as one padded block of dim
-  comment lines, without the Fitted Sensors heading, instead of the rows (the bools are `forceshow if` the share isn't found, item 3); an unknown
-  name gets a dim hint to enter the buffer's capabilities (an encoder's, via
-  `SHARED_ENCODER_FOUND`, that it is defined in the user's own config). Under the shared name a dim
-  "Known shared buffers: ..." lists the other units' names (`$(owner-names,KIND)`, or
-  "none").
-- **Exports come only from owners**, never another sharer, so one refresh converges.
-  `kconfig_needs_update` also marks a sharer stale when its saved exports differ from
-  those of the owner its saved name names (`python -m shared_components stale`), and
-  install.sh runs a second stale-only unit pass for an owner configured after its
-  sharer.
-- **Warnings:** W29/W30 a blank shared name; W33/W34 an owner name that is blank or
-  another sibling owner's (two sections of one name merge in Klipper). W15/W16 also
-  check a share that declares its sensors.
-- **Unit rename** (`unit_migration.rewrite_kconfig`): an owner's name follows only
-  when it is exactly the unit's old name (default or not); a shared name is never
-  rewritten, and the check prints a WARNING for a sharer whose name a rename/removal
-  changes or drops. `mmu_<encoder>_encoder_*` vars move by encoder name.
-- **Refresh/Merge:** `[mmu_unit] encoder:`/`buffer:` are `KCONFIG_OWNED_OPTIONS`
-  (build.py), because the section headers they name always come from the template.
-- **Adding a shareable kind:** a `KINDS` entry, the shared flag and two-node name
-  symbol, the exports sourced in the component's Kconfig, W-checks, and guard every
-  machine-type `select`/`imply` of an exported symbol with `!<shared flag>`
-  (otherwise it overrides the owner's value).
-- **Printer-level capabilities** use the same reader with the top-level config as
-  the only owner: `$(printer-flag,SYM)` returns the parent's saved value, n without
-  one (`PRINTER_FLAGS`). A unit goes stale when the parent is newer, so no extra
-  staleness check is needed.
-- The test harness writes each unit's config to a scratch dir in order
-  (`cfg._render_multi_unit`) and keys its parse cache on
-  `shared_components.context_key()`; anything a parse reads must be in that key.
+**Identity is a plain name.**
+- The name is a string PARAM: `PARAM_ENCODER_NAME` or `PARAM_SYNC_FEEDBACK_BUFFER_NAME`, checked
+  with `object_name_validator`, the lowercase Klipper object-name regex or blank.
+- `MMU_SHARED_ENCODER` / `MMU_SHARED_SYNC_FEEDBACK_BUFFER` ("Use shared ...?", first in the
+  component's menu) mean "this unit renders no section".
+- The templates name the owner's section from the PARAM, e.g. `[mmu_encoder [[PARAM_ENCODER_NAME]]]`,
+  and `[mmu_unit] encoder:`/`buffer:` render the same PARAM. The owner's default is `UNIT_NAME`,
+  so the historical `[mmu_encoder <unit>]` output is unchanged.
+
+**One symbol, two prompt nodes.**
+- "Encoder name" `if !MMU_SHARED_ENCODER`; "Shared encoder object name" `if MMU_SHARED_ENCODER`.
+  Only one shows at a time. Find a symbol's *visible* prompt node, not its first.
+- A sharer's name defaults to "". A name saved by a sharer as `#~DEFAULT~#` (the old pick list
+  did this) is kept via `saved-config-value`, except v4.0's `-specify name-` placeholder.
+- A user value survives toggling the shared flag, so a typed owner name becomes the shared
+  name and vice versa. W33/W34 catch the duplicate this can create.
+
+**Owners are found by name, live.**
+- Each unit is a separate parse, so a unit reads what the other units SAVED: `KCONFIG_PARENT`
+  (the top-level `.mmu_config`, for `MMU_UNITS`) and each sibling `<parent>_<unit>`.
+- `owners(kind)` lists the other units that have the component and don't share it, with their
+  saved name (their unit name if none is saved).
+- Kconfig reads them with `@repeat var=i min=0 max=$(owner-max,KIND)@` and compares the name
+  symbol to `"$(owner-name,KIND,$(i))"` literals, guarded by `!= ""` for past-the-end slots.
+  A macro can't expand to a Kconfig expression, only to one symbol name, hence the repeat.
+  Because the comparison is a real expression, a name edited in menuconfig is matched at once.
+- Promptless `SHARED_BUFFER_FOUND` / `SHARED_ENCODER_FOUND` say the shared name is a sibling
+  owner's.
+- **Only unit parses run by install.sh read anything** (`KCONFIG_PARENT` set). The build's
+  pickle parse and `verify_pickle` see no owners: FOUND is n there, and the saved values are
+  applied. So every cross-unit value must be decided by a menuconfig/olddefconfig unit pass and
+  SAVED in the unit's own file. `test_render_via_files.py` checks that the two agree.
+
+**Buffer capabilities (`KINDS["buffer"].exports`).**
+- The three `MMU_HAS_SENSOR_BUFFER_*` bools and `PARAM_BUFFER_SPRING_STATE` are the only buffer
+  values another unit's menu reads, for endstop, autocal and homing defaults. The encoder
+  exports nothing.
+- `components/Kconfig.shared_export`, sourced once per export inside `if <shared flag>`, gives
+  each symbol the matching owner's value (`$(owner-export,...)`). These defaults are parsed
+  before the symbols' own definitions, so they win.
+- Layout splits *capabilities* from *contents*:
+  - The sensor bools and spring-state choice live in `if !MMU_SHARED... || !SHARED_BUFFER_FOUND`.
+    The bools are `forceshow if` the same condition (item 3), so owners still see type-fixed
+    ones.
+  - Pins, analog tuning, range/maxrange and register are `!MMU_SHARED...` only. A name no sibling
+    owns, i.e. the user's own config, therefore declares its sensors and spring state but no
+    pins.
+- Nothing is carried over when the owner goes (renamed, removed or switched off). The
+  capability symbols fall back to their normal defaults for the user to enter, and
+  olddefconfig's change report lists the derived defaults that move.
+- Guard every machine-type `select`/`imply` of an exported symbol with `!<shared flag>`,
+  otherwise it overrides the owner's value. kconfiglib warns about a select of an unmet bool.
+
+**What a sharer sees.** All are dim comments, so they render as `*** ... ***`.
+- Under the shared name: `Known shared buffers: $(first-nonempty,$(owner-names,buffer),none)`.
+  The encoder has the same. This is evaluated at parse time, from what the siblings had saved.
+- A known buffer: one block, padded with `$(pad,51,...)` so the `***` line up, with the owner's
+  spring state as the choice label and each sensor as yes/no. The Fitted Sensors heading and
+  its blank line are hidden.
+- An unknown buffer name: "No other unit owns this buffer: enter its capabilities below".
+- An unknown encoder name: "No other unit owns this encoder: define it in your own config".
+
+**Staleness.**
+- Exports come only from owners, never another sharer, so one refresh converges.
+- `kconfig_needs_update` also marks a sharer stale when its saved exports differ from those of
+  the owner its saved name names (`python -m shared_components stale`). install.sh runs a second
+  stale-only unit pass, for an owner configured after its sharer.
+
+**Warnings.**
+- W29/W30: a blank shared name.
+- W33/W34: an owner name that is blank or another sibling owner's, via `@repeat` over
+  `owner-name`. Two sections of one name merge in Klipper.
+- W15/W16 also check a share that declares its sensors.
+- There is deliberately no warning for an unknown shared name: it is legitimate for a private
+  cfg.
+
+**Unit rename/remove (`installer/unit_migration.py`).**
+- `rewrite_kconfig` rewrites an owner's name only when it is exactly the file's old unit name.
+  A default keeps its token, so siblings read the new name before olddefconfig runs. A shared
+  name is never rewritten, and never goes in the manual-edit list.
+- `check` doesn't refuse over shared names. `shared_name_warnings` prints a WARNING, before
+  "Apply these unit changes?", for a sharer whose name a rename or removal changes or drops.
+- `mmu_<encoder>_encoder_*` vars move by *encoder* name, and only for units that own an
+  encoder: `component_names` → `install["encoders"]`, from `prepare`. A removed owner's are
+  dropped.
+
+**Refresh/Merge.** `[mmu_unit] encoder`/`buffer` are `KCONFIG_OWNED_OPTIONS` (`build.py`,
+matched by section type), because the section headers they name always come from the template.
+
+**Adding a shareable kind.** You need:
+- a `KINDS` entry;
+- the shared flag and the two-node name symbol;
+- a FOUND helper and the known-names comment;
+- the exports sourced in the component's Kconfig;
+- the W-checks;
+- the `!<shared flag>` guards on machine-type selects.
+
+**Printer-level capabilities** use the same reader with the top-level config as the only
+owner. `$(printer-flag,SYM)` returns the parent's saved value, or n without one
+(`PRINTER_FLAGS`). A unit goes stale when the parent is newer, so no extra staleness check is
+needed.
+
+**Test harness.** It writes each unit's config to a scratch dir in order
+(`cfg._render_multi_unit`) and keys its parse cache on `shared_components.context_key()`.
+Everything a parse reads must be in that key: owners' names and exports, and the unit's own
+saved flag and name. Otherwise a cached tree leaks between profiles.
 
 ## 14. The pickle (value transport)
 
