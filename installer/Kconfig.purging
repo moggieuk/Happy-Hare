@@ -16,12 +16,22 @@
 #   PIN_BLOBIFIER_SERVO
 #   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
 #   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
+#   PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
+#   BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE (and PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE)
 #
 # Blobifier stepper tray: (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
 #   PIN_BLOBIFIER_STEP
 #   PIN_BLOBIFIER_DIR
 #   PIN_BLOBIFIER_ENABLE
 #   PIN_BLOBIFIER_ENDSTOP
+#   PARAM_BLOBIFIER_STEPPER_MICROSTEPS
+#   PARAM_BLOBIFIER_STEPPER_GEAR_RATIO
+#   PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE
+#   PARAM_BLOBIFIER_STEPPER_POSITION_MIN
+#   PARAM_BLOBIFIER_STEPPER_POSITION_MAX
+#   PARAM_BLOBIFIER_STEPPER_HOMING_SPEED
+#   PARAM_BLOBIFIER_STEPPER_VELOCITY
+#   PARAM_BLOBIFIER_STEPPER_ACCEL
 #   PARAM_BLOBIFIER_TMC
 #   PIN_BLOBIFIER_UART
 #   PIN_BLOBIFIER_CS
@@ -46,6 +56,20 @@ config PIN_BLOBIFIER_SERVO
   string
   default ""
 
+config PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
+  int
+  range 1 360
+  default 180
+
+config BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
+  bool
+  default n
+
+config PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE
+  int
+  range 0 360
+  default 180
+
 config PIN_BLOBIFIER_BUCKET_SWITCH
   string
   default ""
@@ -69,6 +93,38 @@ config PIN_BLOBIFIER_ENABLE
 config PIN_BLOBIFIER_ENDSTOP
   string
   default ""
+
+config PARAM_BLOBIFIER_STEPPER_MICROSTEPS
+  int
+  default 4
+
+config PARAM_BLOBIFIER_STEPPER_GEAR_RATIO
+  string
+  default "1:1"
+
+config PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE
+  float
+  default 62.83
+
+config PARAM_BLOBIFIER_STEPPER_POSITION_MIN
+  float
+  default 0
+
+config PARAM_BLOBIFIER_STEPPER_POSITION_MAX
+  float
+  default 21
+
+config PARAM_BLOBIFIER_STEPPER_HOMING_SPEED
+  float
+  default 20
+
+config PARAM_BLOBIFIER_STEPPER_VELOCITY
+  float
+  default 150
+
+config PARAM_BLOBIFIER_STEPPER_ACCEL
+  float
+  default 1000
 
 # The TMC driver definitions are shared with the other steppers. Every
 # variable is re-assigned immediately before each source, because they are
@@ -149,6 +205,26 @@ menu "Purging"
           Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
 
           The default value is likely to be close so don't worry about this for now
+
+      config PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
+        prompt "Servo h/w max angle            "
+        help
+          Recommend leaving this at 180. The tray in/out angles under
+          Macro Variables -> Blobifier are relative to it
+
+      menuconfig BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
+        prompt "Set servo initial angle?"
+        help
+          Move the servo to a set angle at Klipper startup.
+          Otherwise it is left unpowered until first used
+
+      if BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE
+        config PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE
+          prompt "Servo initial angle            "
+          help
+            Normally the retracted tray: match "Tray angle in"
+            under Macro Variables -> Blobifier
+      endif
     endif
 
     if CHOICE_BLOBIFIER_TYPE_STEPPER
@@ -182,6 +258,35 @@ menu "Purging"
         validator "$(pin_validator)"
         help
           The pull-up/invert ( ^! ) is typically required here
+
+      config PARAM_BLOBIFIER_STEPPER_MICROSTEPS
+        prompt "Stepper microsteps             "
+
+      config PARAM_BLOBIFIER_STEPPER_GEAR_RATIO
+        prompt "Stepper gear ratio             "
+        validator "[0-9.]+ *: *[0-9.]+( *, *[0-9.]+ *: *[0-9.]+)*"
+        help
+          E.g. 1:1 or 57:11, 2:1
+
+      config PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE
+        prompt "Stepper rotation distance      "
+
+      config PARAM_BLOBIFIER_STEPPER_POSITION_MIN
+        prompt "Stepper position min           "
+
+      config PARAM_BLOBIFIER_STEPPER_POSITION_MAX
+        prompt "Stepper position max           "
+
+      config PARAM_BLOBIFIER_STEPPER_HOMING_SPEED
+        prompt "Stepper homing speed           "
+        help
+          Unused in the macros, here for completeness
+
+      config PARAM_BLOBIFIER_STEPPER_VELOCITY
+        prompt "Stepper velocity               "
+
+      config PARAM_BLOBIFIER_STEPPER_ACCEL
+        prompt "Stepper accel                  "
     endif
   endif
 

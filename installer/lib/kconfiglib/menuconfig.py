@@ -1533,18 +1533,7 @@ def _draw_main():
 
     # Draw the menu path ("(Top) -> Menu -> Submenu -> ...")
 
-    menu_prompts = []
-
-    menu = _cur_menu
-    while menu is not _kconf.top_node:
-        # Promptless choices can be entered in show-all mode. Use
-        # standard_sc_expr_str() for them, so they show up as
-        # '<choice (name if any)>'.
-        menu_prompts.append(menu.prompt[0] if menu.prompt else
-                            standard_sc_expr_str(menu.item))
-        menu = menu.parent
-    menu_prompts.append("(Top)")
-    menu_prompts.reverse()
+    menu_prompts = _menu_path_prompts(_cur_menu)
 
     # Hack: We can't put ACS_RARROW directly in the string. Temporarily
     # represent it with NULL.
@@ -3608,6 +3597,24 @@ def _include_path_info(node):
     return "Included via {}\n".format(
         " -> ".join("{}:{}".format(filename, linenr)
                     for filename, linenr in node.include_path))
+
+
+def _menu_path_prompts(menu):
+    # Prompts from (Top) down to 'menu' for the menu path bar
+
+    menu_prompts = []
+
+    while menu is not _kconf.top_node:
+        # Promptless choices can be entered in show-all mode. Use
+        # standard_sc_expr_str() for them, so they show up as
+        # '<choice (name if any)>'.
+        # Happy Hare: the path bar is drawn without markup, so strip any tags
+        menu_prompts.append(_TAG_RE.sub("", menu.prompt[0]) if menu.prompt else
+                            standard_sc_expr_str(menu.item))
+        menu = menu.parent
+    menu_prompts.append("(Top)")
+    menu_prompts.reverse()
+    return menu_prompts
 
 
 def _menu_path_info(node):
