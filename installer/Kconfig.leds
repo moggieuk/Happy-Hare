@@ -506,10 +506,8 @@ if MMU_HAS_LEDS
       default n
       default_when_hidden
       help
-        ADVANCED: Edit the base colors and the effect used for each action,
-        otherwise the defaults for this MMU type are used.
-        Format:
-          [[B]]effect_name [, (r,g,b) [, duration]][[/B]]
+        ADVANCED: Edit the base colors and the effect for each action (else this MMU type's defaults).
+        Format:  [[B]]effect_name [, (r,g,b) [, duration]][[/B]]
 
         The effect must be an [mmu_led_effect] (see mmu.cfg). The optional (r,g,b) is the static
         color used when animation is off; without it the empty light color is used.
