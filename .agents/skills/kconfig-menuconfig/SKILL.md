@@ -137,9 +137,12 @@ Load-bearing facts about the flow:
   shared sensor, and itself sources `components/Kconfig.i2c_bus`, the bus type,
   bus name and `PIN_*_I2C_SCL/SDA` pins every i2c device shares with the NFC
   reader. Its bus choice declares only "Custom bus name" (blank = the MCU's
-  default bus); board files add the buses they route, each member with a
-  `depends on` its board, and a choice `default` only where it should be
-  preselected
+  default bus); board files add the buses they route through
+  `components/Kconfig.i2c_board_bus` (one source per bus: board condition, a
+  tag unique across boards, Klipper bus name, label, and per device whether
+  to offer and preselect it). Klipper's bus names depend on the chip family
+  (`i2c3` on F4, `i2c3_PB3_PB4` on G0, `i2c0a` on RP2040): take them from
+  the target's `src/stm32/i2c.c`, `stm32f0_i2c.c` or `src/rp2040/i2c.c`
   ([references/environment-sensors.md](references/environment-sensors.md)
   has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
   (they are global for the whole parse); keep an enclosing `if` away from
@@ -383,10 +386,9 @@ in this repo:
   can't.** Re-opening `choice CHOICE_X ... endchoice` with just the new
   `config` lines adds them to the same choice; give each one a `depends on`
   its board or type so it shows only there: a member inside the board's `if`
-  block is still offered on every board. `boards/per_gate/Kconfig.slb`,
-  `Kconfig.ebb_gen1`, `boards/Kconfig.ebb42_1_2` and `Kconfig.chameleon_x5_1`
-  add their i2c buses to `CHOICE_ENVIRONMENT_SENSOR_I2C_BUS*` and
-  `CHOICE_NFC_READER_I2C_BUS*` this way. A machine/board file
+  block is still offered on every board. `boards/per_gate/Kconfig.slb` and
+  `Kconfig.ebb_gen1` add their i2c buses to `CHOICE_*_I2C_BUS_$(gate)` this
+  way; regular boards use `components/Kconfig.i2c_board_bus`, which does it. A machine/board file
   can also steer an existing choice with `default <CHOICE_MEMBER> if <cond>`.
   Selection is first-satisfied over the merged `choice.defaults` list, in parse order
   (`Choice._selection_from_defaults`; the member must also be visible) —

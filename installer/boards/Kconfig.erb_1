@@ -71,4 +71,17 @@ if BOARD_TYPE_ERB_1
     default "$(MCU_NAME):gpio21"
 
 # No fan headers
+
+  # The I2C1 pins on the EXTRA PINS header: hardware i2c1b, SCL gpio7 / SDA gpio6.
+  # They are also entry sensors 6 and 7, so the bus is only free up to six gates
+  # The header has no 3.3V: pull-ups to 5V would back-drive the RP2040
+  i2c_board       := BOARD_TYPE_ERB_1 && PARAM_NUM_GATES <= 6
+  i2c_tag         := ERB_1_I2C1
+  i2c_bus         := i2c1b
+  i2c_label       := i2c1b [[DIM]]/ I2C1 pins[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := n
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif

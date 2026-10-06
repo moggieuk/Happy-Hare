@@ -36,7 +36,7 @@ if BOARD_TYPE_EBB_GEN1
   config PIN_NEOPIXEL
     default "$(MCU_NAME):PD3" 
   config PIN_SHARED_EXIT_SENSOR
-    default "^$(MCU_NAME):PB4" if !MMU_HAS_ENCODER
+    default "^$(MCU_NAME):PB4" if !MMU_HAS_ENCODER && !EBB_GEN1_I2C3_IN_USE
 
   # Fan headers (VIN): FAN1 managed fan, FAN2 controller fan
   config PIN_FAN
@@ -44,25 +44,25 @@ if BOARD_TYPE_EBB_GEN1
   config PIN_CONTROLLER_FAN
     default "$(MCU_NAME):PA1"
 
-  # Hardware i2c3 on PB3/PB4, the bus the per-gate EBB offers too
-  choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
-    default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4
+  # I2C header (P8): hardware i2c3, SCL PB3 / SDA PB4, the bus the per-gate EBB offers too
+  i2c_board       := BOARD_TYPE_EBB_GEN1
+  i2c_tag         := EBB_I2C3_PB3_PB4
+  i2c_bus         := i2c3_PB3_PB4
+  i2c_label       := i2c3_PB3_PB4 [[DIM]]/ I2C header[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := y
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 
-    config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4
-      bool "i2c3_PB3_PB4"
-      depends on BOARD_TYPE_EBB_GEN1
-  endchoice
-  config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
-    default "i2c3_PB3_PB4" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4
-
-  # Offered but not preselected: an NFC reader has always defaulted to the MCU's default bus
-  choice CHOICE_NFC_READER_I2C_BUS
-    config CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4
-      bool "i2c3_PB3_PB4"
-      depends on BOARD_TYPE_EBB_GEN1
-  endchoice
-  config PARAM_NFC_READER_I2C_BUS
-    default "i2c3_PB3_PB4" if CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4
+  # The I2C header's PB4 is also the exit sensor's default; drop that while a
+  # device is on the bus, so the two don't claim the same pin
+  config EBB_GEN1_I2C3_IN_USE
+    bool
+    default y if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4 || CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4
+    @repeat var=gate min=0 max=11@
+    default y if CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate)
+    @endrepeat@
 
 # Heater output for a [heater_generic]: HE0 PB13. Thermistor: TH0 PA3
 endif

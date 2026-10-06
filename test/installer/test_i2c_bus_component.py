@@ -96,31 +96,73 @@ def _upgraded(path, label):
 class TestI2cBusChoice(unittest.TestCase):
 
     def test_board_buses_come_first_then_the_custom_name(self):
-        env_ebb = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4'
-        slb = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_SLB_I2C2_PB10_PB11_1'
-        x5 = 'CHOICE_NFC_READER_I2C_BUS_X5_I2C1'
-        x5_i2c3 = 'CHOICE_NFC_READER_I2C_BUS_X5_I2C3'
-        env_x5 = ['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C3', 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C1']
-        nfc_ebb = 'CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4'
-        env_custom = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER'
-        nfc_custom = 'CHOICE_NFC_READER_I2C_BUS_OTHER'
+        env = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_'
+        nfc = 'CHOICE_NFC_READER_I2C_BUS_'
+        hardware = dict(ENV, CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE=True)
+        # (label, base, syms, prefix, suffix, offered tags, selected tag); OTHER is "Custom bus name"
         cases = (
-            ('env shared', 'boxturtle', ENV, 'ENVIRONMENT_SENSOR', '', [env_custom], env_custom),
-            ('env EBB', 'boxturtle', dict(ENV, **EBB), 'ENVIRONMENT_SENSOR', '',
-             [env_ebb, env_custom], env_ebb),
-            ('env per gate', 'emu', {}, 'ENVIRONMENT_SENSOR', '_1', [slb, env_custom + '_1'], slb),
+            ('env shared', 'boxturtle', ENV, env, '', [], 'OTHER'),
+            ('env per gate', 'emu', {}, env, '_1', ['SLB_I2C2_PB10_PB11'], 'SLB_I2C2_PB10_PB11'),
+            ('env EBB', 'boxturtle', dict(ENV, **EBB), env, '', ['EBB_I2C3_PB3_PB4'], 'EBB_I2C3_PB3_PB4'),
             # The I2C1 header is the sensor's own, preselected when hardware i2c is chosen
-            ('env X5', 'boxturtle', dict(ENV, CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE=True, **X5),
-             'ENVIRONMENT_SENSOR', '', env_x5 + [env_custom], env_x5[0]),
-            ('nfc shared', 'boxturtle', NFC, 'NFC_READER', '', [nfc_custom], nfc_custom),
-            ('nfc X5', 'boxturtle', dict(NFC, **X5), 'NFC_READER', '', [x5, x5_i2c3, nfc_custom], x5),
+            ('env X5', 'boxturtle', dict(hardware, **X5), env, '', ['X5_I2C1', 'X5_I2C3'], 'X5_I2C3'),
+            ('env AFC Pro', 'boxturtle', dict(ENV, BOARD_TYPE_AFC_PRO_1_0=True), env, '',
+             ['AFC_PRO_I2C3'], 'AFC_PRO_I2C3'),
+            ('env WGB', 'boxturtle', dict(ENV, BOARD_TYPE_WGB_3_0=True), env, '', ['WGB_I2C1'], 'WGB_I2C1'),
+            ('env TZB', 'boxturtle', dict(ENV, BOARD_TYPE_TZB_1_0=True), env, '', ['TZB_I2C2'], 'TZB_I2C2'),
+            ('env MMB 1.1', 'boxturtle', dict(ENV, BOARD_TYPE_MMB_1_1=True), env, '', ['MMB_1_1_I2C3'], 'MMB_1_1_I2C3'),
+            ('env MMB 2.0', 'boxturtle', dict(ENV, BOARD_TYPE_MMB_2_0=True), env, '', ['MMB_2_0_I2C3'], 'MMB_2_0_I2C3'),
+            # A sensor soldered to the board: offered to it, still software i2c by default
+            ('env KMS', 'kms', {'CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE': True}, env, '', ['KMS_I2C2'], 'KMS_I2C2'),
+            ('env QIDI', 'qidi', {'CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE': True}, env, '',
+             ['QIDI_I2C3'], 'QIDI_I2C3'),
+            # gpio6/gpio7 are entry sensors 6 and 7 too, so only up to six gates
+            ('env ERB 6 gates', 'boxturtle', dict(ENV, BOARD_TYPE_ERB_2=True, PARAM_NUM_GATES='6'), env, '',
+             ['ERB_2_I2C1'], 'OTHER'),
+            ('env ERB 8 gates', 'boxturtle', dict(ENV, BOARD_TYPE_ERB_2=True, PARAM_NUM_GATES='8'), env, '',
+             [], 'OTHER'),
+            ('nfc shared', 'boxturtle', NFC, nfc, '', [], 'OTHER'),
+            ('nfc X5', 'boxturtle', dict(NFC, **X5), nfc, '', ['X5_I2C1', 'X5_I2C3'], 'X5_I2C1'),
+            ('nfc X5 per gate', 'boxturtle', dict(NFC_GATES, **X5), nfc, '_1', ['X5_I2C1', 'X5_I2C3'], 'X5_I2C1'),
             # Offered, but an NFC reader has always defaulted to the MCU's default bus
-            ('nfc EBB', 'boxturtle', dict(NFC, **EBB), 'NFC_READER', '', [nfc_ebb, nfc_custom], nfc_custom),
+            ('nfc EBB', 'boxturtle', dict(NFC, **EBB), nfc, '', ['EBB_I2C3_PB3_PB4'], 'OTHER'),
+            ('nfc MMB 2.0 per gate', 'boxturtle', dict(NFC_GATES, BOARD_TYPE_MMB_2_0=True), nfc, '_1',
+             ['MMB_2_0_I2C3'], 'OTHER'),
+            # The KMS and QIDI sensors' buses have no connector for a reader
+            ('nfc KMS', 'kms', NFC, nfc, '', [], 'OTHER'),
         )
-        for label, base, syms, prefix, suffix, offered, selected in cases:
+        for label, base, syms, member, suffix, tags, selected in cases:
             with self.subTest(label):
                 kc = _kconfig('i2c_offer_' + label, base, syms)
-                self.assertEqual(_offered(kc, prefix, suffix), (offered, selected))
+                prefix = member[len('CHOICE_'):-len('_I2C_BUS_')]
+                offered = [member + tag + suffix for tag in tags + ['OTHER']]
+                self.assertEqual(_offered(kc, prefix, suffix), (offered, member + selected + suffix))
+
+    def test_every_board_bus_has_its_own_tag_and_bus_name(self):
+        """A tag two boards share merges their members, and the first-parsed bus name wins."""
+        kc = _kconfig('i2c_tags', 'boxturtle', {})
+        prefix = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_'
+        choice = kc.named_choices['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS']
+        names = [sym.name for sym in choice.syms]
+        self.assertEqual(len(names), len(set(names)), names)
+        bus = kc.syms['PARAM_ENVIRONMENT_SENSOR_I2C_BUS']
+        for member in names:
+            conditions = [cond for _, cond in bus.defaults if member in kconfiglib.expr_str(cond).split()]
+            self.assertLessEqual(len(conditions), 1, member)
+        self.assertIn(prefix + 'MMB_2_0_I2C3', names)
+
+    def test_the_ebb42_exit_sensor_leaves_pb4_to_a_device_on_the_i2c_header(self):
+        """PB4 is the I2C header's SDA and the exit sensor's default pin."""
+        exit_sensor = 'PIN_SHARED_EXIT_SENSOR'
+        base = dict(EBB, MMU_HAS_ENCODER=False)
+        for label, syms, expected in (
+                ('no i2c device', {}, '^unit0:PB4'),
+                ('sensor on software i2c', dict(ENV, CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE=True), '^unit0:PB4'),
+                ('sensor on the I2C header', dict(ENV, CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE=True), ''),
+                ('reader on the I2C header', dict(NFC, CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4=True), '')):
+            with self.subTest(label):
+                kc = _kconfig('i2c_ebb_exit_' + label, 'boxturtle', dict(base, **syms))
+                self.assertEqual(kc.syms[exit_sensor].str_value, expected)
 
     def test_a_custom_name_renders_and_a_blank_one_is_left_out(self):
         for prefix, suffix, base, syms, section in DEVICES:

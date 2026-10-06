@@ -120,4 +120,15 @@ if BOARD_TYPE_WGB_3_0
     default "$(MCU_NAME):PB3"
 
 # Thermistor: TEMP PC0
+
+  # i2c header: hardware i2c1, SCL PB6 / SDA PB7
+  i2c_board       := BOARD_TYPE_WGB_3_0
+  i2c_tag         := WGB_I2C1
+  i2c_bus         := i2c1
+  i2c_label       := i2c1 [[DIM]]/ i2c header[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := y
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif

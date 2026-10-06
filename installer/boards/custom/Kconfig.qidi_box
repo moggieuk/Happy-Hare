@@ -201,4 +201,14 @@ stepper: mmu_stepper $(UNIT_NAME)_gear$(comma) mmu_stepper $(UNIT_NAME)_gear_1$(
     default "$(ml,$(mh_nfc_reader_qidi_box)$(mh_heater_qidi_box)$(mh_heater_fan_qidi_box)$(mh_controller_fan_qidi_box)heater: $(UNIT_NAME)_heater\n)" if MMU_HAS_HEATER && MMU_HAS_ENVIRONMENT_SENSOR
     default "$(ml,$(mh_nfc_reader_qidi_box)$(mh_controller_fan_qidi_box))"
 
+  # The dryer's AHT sensor: hardware i2c3, SCL PA8 / SDA PC9 (QIDI's own config uses it)
+  i2c_board       := BOARD_TYPE_QIDI_BOX_2_0
+  i2c_tag         := QIDI_I2C3
+  i2c_bus         := i2c3
+  i2c_label       := i2c3 [[DIM]]/ dryer sensor[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := y
+  i2c_nfc         := n
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif
