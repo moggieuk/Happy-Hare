@@ -503,7 +503,10 @@ config MMU_UNITS
 - **Not a type.** The symbol stays `string` and its value a plain
   separator-joined list, so `make` and `install.sh` read it unchanged. The
   attributes only pick a different dialog (`_change_node` → `_sequence_dialog`),
-  the way `array_editor` does.
+  the way `array_editor` does. An edit is saved as `a, b`
+  (`sequence_edit.join_sequence`, shared with the array editor); every reader
+  strips the names. Closing the dialog with the names unchanged leaves the saved
+  value as it was, so a differently spaced old value isn't a pending change.
 - **Parsing** (the `_T_SEQUENCE_EDITOR` / `_T_APPEND_ONLY_UNLESS` branches of
   `_parse_props`): only the first argument is lexed as a string
   (`_STRING_LEX`). A quoted second argument arrives as a *constant symbol*

@@ -2190,11 +2190,9 @@ def _draw_input_dialog(win, title, info_lines, s, i, hscroll):
     win.noutrefresh()
 
 
-# Happy Hare: Joins array editor lines with the separator plus a space ("a, b"),
-# the spacing the shipped defaults use, unless the separator already ends in one
+# Happy Hare: Joins array editor lines the way sequence_edit.join_sequence() does ("a, b")
 def _join_array_lines(lines, separator):
-    joiner = separator if separator[-1:].isspace() else separator + " "
-    return joiner.join(line.strip() for line in lines)
+    return sequence_edit.join_sequence([line.strip() for line in lines], separator)
 
 
 # Happy Hare: Added multi-line/array editor for STRING values with a
@@ -2447,7 +2445,9 @@ def _sequence_dialog(node):
             else:
                 changed = model.to_changes() != saved.to_changes()
                 _sequence_models[sym.name] = model
-                _set_val(sym, model.value(sym.sequence_editor))
+                # An unedited list keeps its saved spelling rather than counting as a change
+                if model.names() != sequence_edit.split_sequence(sym.str_value, sym.sequence_editor):
+                    _set_val(sym, model.value(sym.sequence_editor))
                 if changed:
                     _conf_changed = True
                 return
