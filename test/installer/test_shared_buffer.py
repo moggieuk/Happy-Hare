@@ -440,7 +440,7 @@ class TestBufferOfTheUsersOwnConfig(unittest.TestCase):
         self.assertEqual(hint(self.parse(dict(name='unit0'))), [])       # unit0's own buffer
         self.assertEqual(hint(self.parse(dict(name=''))), [])            # W29 says it instead
 
-    def test_the_sensors_last_saved_are_kept_when_the_owner_goes(self):
+    def test_when_the_owner_goes_its_values_are_not_kept(self):
         with tempfile.TemporaryDirectory() as tmp:
             install = _Install(tmp, ('unit0', 'unit1'))
             install.save('unit0', BUFFER_OWNERS['boxturtle'])
@@ -449,9 +449,8 @@ class TestBufferOfTheUsersOwnConfig(unittest.TestCase):
             kc = install.refresh('unit1')
             self.assertEqual(kc.syms['SHARED_BUFFER_FOUND'].str_value, 'n')
             self.assertEqual(kc.syms['PARAM_SYNC_FEEDBACK_BUFFER_NAME'].str_value, 'unit0')
-            self.assertEqual(_flags(kc)['MMU_HAS_SENSOR_BUFFER_COMPRESSION'], 'y')
-            self.assertEqual(_flags(kc)['MMU_HAS_SENSOR_BUFFER_TENSION'], 'y')
-            self.assertEqual(kc.syms['PARAM_BUFFER_SPRING_STATE'].str_value, 'tension')
+            self.assertEqual(set(_flags(kc).values()), {'n'})          # to be entered here
+            self.assertEqual(kc.syms['PARAM_BUFFER_SPRING_STATE'].str_value, 'none')
 
     def test_a_single_unit_can_share_a_buffer(self):
         with cfg._env(cfg._SINGLE_UNIT_ENV):

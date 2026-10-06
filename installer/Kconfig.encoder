@@ -72,6 +72,17 @@ if MMU_HAS_ENCODER
     comment "Known shared encoders: $(first-nonempty,$(owner-names,encoder),none)" if MMU_SHARED_ENCODER
       dim
 
+    # The shared name is another unit's own encoder
+    config SHARED_ENCODER_FOUND
+      bool
+      @repeat var=i min=0 max=$(owner-max,encoder)@
+      default y if MMU_SHARED_ENCODER && "$(owner-name,encoder,$(i))" != "" && PARAM_ENCODER_NAME = "$(owner-name,encoder,$(i))"
+      @endrepeat@
+
+    comment "No other unit owns this encoder: define it in your own config" if \
+        MMU_SHARED_ENCODER && !SHARED_ENCODER_FOUND && PARAM_ENCODER_NAME != ""
+      dim
+
     comment "_"
 
     if !MMU_SHARED_ENCODER

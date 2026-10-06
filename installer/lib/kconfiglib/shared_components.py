@@ -131,7 +131,10 @@ def _saved():
 
 
 def context_key():
-    """Everything the functions below can return for the current environment."""
+    """
+    Everything a parse reads from the saved configs: what the functions below return, and the
+    unit's own saved shared flag and name (read with saved-config-value).
+    """
     saved = _saved()
     parent = _parent()
     if not saved and not parent:
@@ -141,7 +144,6 @@ def context_key():
            tuple(top.get(symbol) for symbol in PRINTER_FLAGS)]
     for kind_name, kind in sorted(KINDS.items()):
         key.append((kind_name, saved.get(kind.shared), saved.get(kind.name),
-                    tuple(export_value(saved, e) for e in kind.exports),
                     tuple((o.unit, o.name, tuple(export_value(o.values, e) for e in kind.exports))
                           for o in owners(kind_name))))
     return tuple(key)
@@ -212,11 +214,6 @@ def owner_export(_kconf, _name, kind, index, symbol):
     return export_value(owner.values if owner else {}, _export(kind, symbol))
 
 
-def shared_saved_export(_kconf, _name, kind, symbol):
-    """The value this unit saved, for when there is no owner to read."""
-    return export_value(_saved(), _export(kind, symbol))
-
-
 def printer_flag(_kconf, _name, symbol):
     """A printer-level flag for a unit parse, from the top-level config (n without one)."""
     parent = _parent()
@@ -229,7 +226,6 @@ FUNCTIONS = {
     "owner-name": (owner_name, 2, 2),
     "owner-names": (owner_names, 1, 1),
     "printer-flag": (printer_flag, 1, 1),
-    "shared-saved-export": (shared_saved_export, 2, 2),
 }
 
 

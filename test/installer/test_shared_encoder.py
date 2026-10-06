@@ -143,6 +143,34 @@ class TestSharedEncoderSaved(unittest.TestCase):
             self.assertFalse(install.stale('unit0'))
 
 
+class TestUnknownEncoderHint(unittest.TestCase):
+    """A shared name no other unit owns gets a dim hint that it is the user's own section."""
+
+    def hint(self, kc):
+        from test.installer.test_shared_buffer import _menu_comments
+        return [c for c in _menu_comments(kc, 'Encoder config') if c.startswith('No other unit')]
+
+    def test_only_an_unknown_name_is_hinted(self):
+        import kconfiglib
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', dict(ENCODER_OWNER, PARAM_ENCODER_NAME='box_enc'))
+            kc = install.parse('unit1', _sharing(TRADRACK_OWNER, 'xyz'))
+            found = self.hint(kc)
+            self.assertEqual(len(found), 1)
+            node = next(n for n in kc.node_iter()
+                        if n.item == kconfiglib.COMMENT and n.prompt[0] == found[0])
+            self.assertTrue(getattr(node, 'dim', False))
+            self.assertEqual(kc.syms['SHARED_ENCODER_FOUND'].str_value, 'n')
+            kc = install.parse('unit1', _sharing(TRADRACK_OWNER, 'box_enc'))
+            self.assertEqual(kc.syms['SHARED_ENCODER_FOUND'].str_value, 'y')
+            for syms in (_sharing(TRADRACK_OWNER, 'box_enc'),       # another unit's
+                         _sharing(TRADRACK_OWNER, ''),              # W30 says it instead
+                         TRADRACK_OWNER):                           # its own
+                with self.subTest(syms=syms.get('PARAM_ENCODER_NAME')):
+                    self.assertEqual(self.hint(install.parse('unit1', syms)), [])
+
+
 class TestOwnerNameWarning(unittest.TestCase):
 
     def test_two_owners_of_one_name_are_warned(self):

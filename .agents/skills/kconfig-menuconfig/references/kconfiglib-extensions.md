@@ -270,17 +270,17 @@ section from the PARAM (`[mmu_encoder [[PARAM_ENCODER_NAME]]]`), so the default
   and SAVED in the unit's own file.
 - **Buffer exports.** `SHARED_BUFFER_FOUND` (promptless) says the shared name is a
   sibling owner's. `components/Kconfig.shared_export`, sourced once per exported
-  symbol (`KINDS[...].exports`), gives that symbol the matching owner's value; the
-  sensor bools then fall back to the unit's own saved value
-  (`shared-saved-export`), and the spring-state choice does the same. The sensor
-  bools and the spring-state choice live in `if !MMU_SHARED... || !SHARED_BUFFER_FOUND`
-  (forceshow keeps the bools on screen, fixed, for a found share); the section's
+  symbol (`KINDS[...].exports`), gives that symbol the matching owner's value. Nothing
+  is carried over when the owner goes: the bools and choice fall back to their normal
+  defaults, to be entered by the user. The sensor bools and the spring-state choice
+  live in `if !MMU_SHARED... || !SHARED_BUFFER_FOUND`; the section's
   contents (pins, analog tuning, range, register) are `!MMU_SHARED...` only. So a
   name no sibling owns (the user's own config) declares sensors but no pins. These
   are the only buffer values another unit's menu reads; the encoder exports nothing.
   A found share shows the owner's spring state and sensors as one padded block of dim
   comment lines, without the Fitted Sensors heading, instead of the rows (the bools are `forceshow if` the share isn't found, item 3); an unknown
-  name gets a dim hint to enter the buffer's capabilities. Under the shared name a dim
+  name gets a dim hint to enter the buffer's capabilities (an encoder's, via
+  `SHARED_ENCODER_FOUND`, that it is defined in the user's own config). Under the shared name a dim
   "Known shared buffers: ..." lists the other units' names (`$(owner-names,KIND)`, or
   "none").
 - **Exports come only from owners**, never another sharer, so one refresh converges.

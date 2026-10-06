@@ -92,16 +92,17 @@ class TestOlddefconfigReport(unittest.TestCase):
                 '    PARAM_AUTOCAL_BOWDEN_LENGTH: 0 -> 1',
                 '  1 new option(s) set to their defaults'])
 
-    def test_a_sharer_whose_owner_lost_its_buffer_keeps_its_name_and_sensors(self):
+    def test_a_sharer_whose_owner_lost_its_buffer_reports_its_reset_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             install = _Install(tmp, ('unit0', 'unit1'))
             install.save('unit0', BUFFER_OWNERS['boxturtle'])
             install.save('unit1', _sharing(BUFFER_SHARERS['tradrack']))
             install.save('unit0', profiles.get('tradrack').syms)
             report = '\n'.join(self._refresh_install(install, 'unit1'))
-            for sym in ('PARAM_SYNC_FEEDBACK_BUFFER_NAME', 'MMU_HAS_SENSOR_BUFFER',
-                        'PARAM_BUFFER_SPRING_STATE', 'EXTRUDER_HOMING_ENDSTOP'):
-                self.assertNotIn(sym, report)
+            self.assertNotIn('PARAM_SYNC_FEEDBACK_BUFFER_NAME', report)
+            for line in ('MMU_HAS_SENSOR_BUFFER_COMPRESSION: y -> n',
+                         'PARAM_BUFFER_SPRING_STATE: "tension" -> "none"'):
+                self.assertIn(line, report)
 
     def _refresh_renamed(self, syms, renames):
         """Write syms, then spell each line the way a config from before the rename did."""

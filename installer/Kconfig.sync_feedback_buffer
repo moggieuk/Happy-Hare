@@ -120,14 +120,6 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       shared_name_sym := PARAM_SYNC_FEEDBACK_BUFFER_NAME
       shared_export   := PARAM_BUFFER_SPRING_STATE
       source "components/Kconfig.shared_export"
-
-      # Otherwise the sensors this unit last saved (the spring state choice keeps its own)
-      config MMU_HAS_SENSOR_BUFFER_COMPRESSION
-        default "$(shared-saved-export,buffer,MMU_HAS_SENSOR_BUFFER_COMPRESSION)"
-      config MMU_HAS_SENSOR_BUFFER_TENSION
-        default "$(shared-saved-export,buffer,MMU_HAS_SENSOR_BUFFER_TENSION)"
-      config MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
-        default "$(shared-saved-export,buffer,MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)"
     endif
 
     comment "_"
@@ -188,10 +180,6 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
     if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
       choice CHOICE_BUFFER_SPRING_STATE
         prompt "Buffer resting spring state      "
-        # A shared buffer's state as this unit last saved it
-        default CHOICE_BUFFER_SPRING_STATE_TENSION     if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(shared-saved-export,buffer,PARAM_BUFFER_SPRING_STATE)" = "tension"
-        default CHOICE_BUFFER_SPRING_STATE_NEUTRAL     if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(shared-saved-export,buffer,PARAM_BUFFER_SPRING_STATE)" = "neutral"
-        default CHOICE_BUFFER_SPRING_STATE_COMPRESSION if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(shared-saved-export,buffer,PARAM_BUFFER_SPRING_STATE)" = "compression"
         default CHOICE_BUFFER_SPRING_STATE_NONE
         help
           If the buffer is sprung and reliably rests in one position it can be set here. This aids
