@@ -24,12 +24,12 @@
 #   PARAM_NFC_READER_TYPE
 #   PARAM_NFC_READER_INTERFACE   (i2c | spi | uart - what the template dispatches on)
 #
-#   PARAM_NFC_READER_CS_PIN      (if spi interface)
+#   PIN_NFC_READER_CS            (if spi interface)
 #   PARAM_NFC_READER_SPI_BUS     (if spi interface)
 #   PARAM_NFC_READER_SPI_SPEED   (if spi interface)
 #
-#   PARAM_NFC_READER_BUSY_PIN    (if pn5180 type)
-#   PARAM_NFC_READER_RESET_PIN   (if pn5180 type)
+#   PIN_NFC_READER_BUSY          (if pn5180 type)
+#   PIN_NFC_READER_RESET         (if pn5180 type)
 #
 #   PARAM_NFC_READER_I2C_MCU     (if i2c interface)
 #   PARAM_NFC_READER_I2C_ADDRESS (if i2c interface)
@@ -44,8 +44,8 @@
 #   PARAM_NFC_READER_SERIAL      (if uart interface - a plain path string)
 #   PARAM_NFC_READER_BAUD        (if uart interface)
 #
-#   PARAM_NFC_READER_VEN_PIN     (if pn7160 type)
-#   PARAM_NFC_READER_IRQ_PIN     (if pn7160 type)
+#   PIN_NFC_READER_VEN           (if pn7160 type)
+#   PIN_NFC_READER_IRQ           (if pn7160 type)
 #   PARAM_NFC_READER_RX_GAIN     (0 = chip/profile default)
 #
 # Per-gate:
@@ -193,8 +193,9 @@ if MMU_HAS_NFC_READER
       endif
 
       if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180 || CHOICE_NFC_READER_TYPE_PN532_SPI
-        config PARAM_NFC_READER_CS_PIN
+        config PIN_NFC_READER_CS
           string "CS pin            "
+          validator "$(pin_validator)"
           default "$(MCU_NAME):pin"
           help
             Chip-select pin for the SPI reader, e.g. "mcu:PA4"
@@ -219,16 +220,18 @@ if MMU_HAS_NFC_READER
       endif
 
       if CHOICE_NFC_READER_TYPE_PN5180
-        config PARAM_NFC_READER_BUSY_PIN
+        config PIN_NFC_READER_BUSY
           string "BUSY pin          "
+          validator "$(pin_validator)"
           default "$(MCU_NAME):pin"
           help
             BUSY pin for the PN5180 reader (active high).
             Required: it is how the driver knows each command has completed.
             Don't forget to prefix with mcu name. E.g. mmu:PG13
 
-        config PARAM_NFC_READER_RESET_PIN
+        config PIN_NFC_READER_RESET
           string "RST pin           "
+          validator "$(pin_validator)"
           default "$(MCU_NAME):pin"
           help
             RST pin for the PN5180 reader (active low).
@@ -272,15 +275,17 @@ if MMU_HAS_NFC_READER
       endif
 
       if CHOICE_NFC_READER_TYPE_PN7160
-        config PARAM_NFC_READER_VEN_PIN
+        config PIN_NFC_READER_VEN
           string "VEN pin           "
+          validator "$(pin_validator)"
           default ""
           help
             Optional VEN pin for the PN7160 reader.
             Don't forget to prefix with mcu name. E.g. mmu:PG13
 
-        config PARAM_NFC_READER_IRQ_PIN
+        config PIN_NFC_READER_IRQ
           string "IRQ pin           "
+          validator "$(pin_validator)"
           default ""
           help
             Optional IRQ pin for the PN7160 reader.
@@ -417,8 +422,9 @@ if MMU_HAS_NFC_READER
              endif
 
             if CHOICE_NFC_READER_TYPE_RC522_$(i) || CHOICE_NFC_READER_TYPE_PN5180_$(i) || CHOICE_NFC_READER_TYPE_PN532_SPI_$(i)
-              config PARAM_NFC_READER_CS_PIN_$(i)
+              config PIN_NFC_READER_CS_$(i)
                 string "$(pad,$(nfc_gate_pad),Gate $(i) CS pin)"
+                validator "$(pin_validator)"
                 default "$(MCU_NAME):pin"
                 help
                   Chip-select pin for this gate's SPI reader.
@@ -445,16 +451,18 @@ if MMU_HAS_NFC_READER
             endif
 
             if CHOICE_NFC_READER_TYPE_PN5180_$(i)
-              config PARAM_NFC_READER_BUSY_PIN_$(i)
+              config PIN_NFC_READER_BUSY_$(i)
                 string "$(pad,$(nfc_gate_pad),Gate $(i) BUSY pin)"
+                validator "$(pin_validator)"
                 default "$(MCU_NAME):pin"
                 help
                   BUSY pin for this gate's PN5180 reader (active high). Required: it is
                   how the driver knows each command has completed.
                   Don't forget to prefix with mcu name. E.g. mmu:PG13
 
-              config PARAM_NFC_READER_RESET_PIN_$(i)
+              config PIN_NFC_READER_RESET_$(i)
                 string "$(pad,$(nfc_gate_pad),Gate $(i) RST pin)"
+                validator "$(pin_validator)"
                 default "$(MCU_NAME):pin"
                 help
                   RST pin for this gate's PN5180 reader (active low). Required: it is the
@@ -499,15 +507,17 @@ if MMU_HAS_NFC_READER
             endif
 
             if CHOICE_NFC_READER_TYPE_PN7160_$(i)
-              config PARAM_NFC_READER_VEN_PIN_$(i)
+              config PIN_NFC_READER_VEN_$(i)
                 string "$(pad,$(nfc_gate_pad),Gate $(i) VEN pin)"
+                validator "$(pin_validator)"
                 default ""
                 help
                   Optional VEN pin for this gate's PN7160 reader.
                   Don't forget to prefix with mcu name. E.g. mmu:PG13
 
-              config PARAM_NFC_READER_IRQ_PIN_$(i)
+              config PIN_NFC_READER_IRQ_$(i)
                 string "$(pad,$(nfc_gate_pad),Gate $(i) IRQ pin)"
+                validator "$(pin_validator)"
                 default ""
                 help
                   Optional IRQ pin for this gate's PN7160 reader.

@@ -638,8 +638,9 @@ HH_RENAMED_SYMBOLS = { # Happy Hare: Added
     "PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE":   "PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE",
 }
 
-# Happy Hare: v4.1 - i2c pins follow the PIN_ convention, named by the shared
-# i2c bus component (components/Kconfig.i2c_bus). The environment sensor's
+# Happy Hare: v4.1 - pins follow the PIN_ convention: i2c pins are named by the
+# shared i2c bus component (components/Kconfig.i2c_bus), and the NFC reader's
+# other pins lose their PARAM_/_PIN wrapping. The environment sensor's
 # template used to add the MCU; its pins now carry one like every other pin,
 # so a value carried to one of these gains it.
 HH_MCU_PREFIXED_RENAMES = set()
@@ -650,6 +651,9 @@ for _gate in [""] + ["_%d" % _n for _n in range(12)]:
         HH_RENAMED_SYMBOLS["PIN_ENVIRONMENT_SENSOR_%s%s" % (_line, _gate)] = \
             "PIN_ENVIRONMENT_SENSOR_I2C_%s%s" % (_line, _gate)
         HH_MCU_PREFIXED_RENAMES.add("PIN_ENVIRONMENT_SENSOR_I2C_%s%s" % (_line, _gate))
+    for _line in ("CS", "BUSY", "RESET", "VEN", "IRQ"):
+        HH_RENAMED_SYMBOLS["PARAM_NFC_READER_%s_PIN%s" % (_line, _gate)] = \
+            "PIN_NFC_READER_%s%s" % (_line, _gate)
 del _gate, _line
 
 # Happy Hare: v4.1 - hardware i2c buses are offered by the board files. A bus

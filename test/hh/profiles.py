@@ -296,9 +296,9 @@ NFC_PN5180 = BOXTURTLE.derive(
     'nfc_pn5180',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
           'CHOICE_NFC_READER_TYPE_PN5180': True,
-          'PARAM_NFC_READER_CS_PIN': 'unit0:PA4',
-          'PARAM_NFC_READER_BUSY_PIN': 'unit0:PB0',
-          'PARAM_NFC_READER_RESET_PIN': 'unit0:PB1'},
+          'PIN_NFC_READER_CS': 'unit0:PA4',
+          'PIN_NFC_READER_BUSY': 'unit0:PB0',
+          'PIN_NFC_READER_RESET': 'unit0:PB1'},
     description='BoxTurtle + one common NFC reader (PN5180/SPI)')
 
 # Deliberately MIXED: gate 0 is PN5180, gates 1-3 stay RC522. The per-gate params are
@@ -309,9 +309,9 @@ NFC_PN5180_PER_GATE = BOXTURTLE.derive(
     'nfc_pn5180_per_gate',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
           'CHOICE_NFC_READER_TYPE_PN5180_0': True,
-          'PARAM_NFC_READER_CS_PIN_0': 'unit0:PA4',
-          'PARAM_NFC_READER_BUSY_PIN_0': 'unit0:PB0',
-          'PARAM_NFC_READER_RESET_PIN_0': 'unit0:PB1'},
+          'PIN_NFC_READER_CS_0': 'unit0:PA4',
+          'PIN_NFC_READER_BUSY_0': 'unit0:PB0',
+          'PIN_NFC_READER_RESET_0': 'unit0:PB1'},
     description='BoxTurtle + per-gate readers, gate 0 PN5180 and the rest RC522')
 
 # PN532 is the first I2C reader type to get a profile at all - before this the whole
@@ -380,7 +380,7 @@ NFC_PN532_SPI = BOXTURTLE.derive(
     'nfc_pn532_spi',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
           'CHOICE_NFC_READER_TYPE_PN532_SPI': True,
-          'PARAM_NFC_READER_CS_PIN': 'unit0:PA4'},
+          'PIN_NFC_READER_CS': 'unit0:PA4'},
     description='BoxTurtle + one common NFC reader (PN532/SPI)')
 
 # Mixed per-gate, for the same reason as NFC_PN532_UART_PER_GATE: gate 0 PN532/SPI
@@ -389,7 +389,7 @@ NFC_PN532_SPI_PER_GATE = BOXTURTLE.derive(
     'nfc_pn532_spi_per_gate',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
           'CHOICE_NFC_READER_TYPE_PN532_SPI_0': True,
-          'PARAM_NFC_READER_CS_PIN_0': 'unit0:PA4'},
+          'PIN_NFC_READER_CS_0': 'unit0:PA4'},
     description='BoxTurtle + per-gate readers, gate 0 PN532/SPI and the rest RC522')
 
 # The round-trip profile: per-gate NFC + Spoolman in a WRITABLE mode + auto-create
