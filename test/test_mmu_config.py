@@ -1565,25 +1565,23 @@ class TestComponentNames(unittest.TestCase):
                 self.assertIn('mmu_%s unit0' % kind, sections)
                 self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', kind), 'unit0')
 
-    def test_a_name_saved_by_an_older_install_is_reset_on_upgrade(self):
+    def test_a_name_saved_by_an_older_install_names_the_section_too(self):
         """
-        Older installs prompted for these names on an owning unit, so .mmu_config may hold
-        one. The symbol is now promptless there, and the olddefconfig pass a stale config
-        gets on upgrade writes it back out as its UNIT_NAME default.
+        v4.0 prompted for these names on an owning unit but named the section after the
+        unit, so a typed name left [mmu_unit] pointing at nothing. It now names the section.
         """
-        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
-            kc = cfg._kconfig('stale_names', dict(
-                profiles.get('boxturtle').syms,
-                MMU_HAS_ENCODER=True,
-                PIN_ENCODER='unit0:PB7',
-                PARAM_ENCODER_NAME='headcoder',
-                PARAM_SYNC_FEEDBACK_BUFFER_NAME='shared_bowden_buffer'))
-            path = os.path.join(tmp, '.mmu_config')
-            kc.write_config(path)
-            with open(path) as handle:
-                saved = [line.strip() for line in handle if '_NAME=' in line]
-        self.assertIn('CONFIG_PARAM_ENCODER_NAME="unit0"', saved)
-        self.assertIn('CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="unit0"', saved)
+        rendered = cfg.render(profiles.get('boxturtle').derive('stale_names', syms={
+            'MMU_HAS_ENCODER': True,
+            'PIN_ENCODER': 'unit0:PB7',
+            'PARAM_ENCODER_NAME': 'headcoder',
+            'PARAM_SYNC_FEEDBACK_BUFFER_NAME': 'shared_bowden_buffer'}))
+        cfg.assert_sane(rendered)
+        sections = cfg.sections(rendered[HARDWARE])
+        for kind, name in (('encoder', 'headcoder'), ('buffer', 'shared_bowden_buffer')):
+            with self.subTest(kind=kind):
+                self.assertIn('mmu_%s %s' % (kind, name), sections)
+                self.assertNotIn('mmu_%s unit0' % kind, sections)
+                self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', kind), name)
 
     def test_only_the_owning_unit_defines_a_shared_component(self):
         """The sharer points at the owner's sections and renders none of its own."""

@@ -59,51 +59,80 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
   menu "Buffer config"
 
-    # Only offered when there is a unit to share from, or the setting is already saved
     config MMU_SHARED_SYNC_FEEDBACK_BUFFER
-      bool
-      prompt "Use another unit's buffer?" if $(shared-any,buffer) || "$(saved-config-value,MMU_SHARED_SYNC_FEEDBACK_BUFFER)" = "y"
-      depends on MULTI_UNIT
+      bool "Use shared buffer?"
       default n
       help
-        Select if this unit uses a buffer owned by another unit, e.g. one fitted
-        after the bowden combiner near the toolhead.
+        Select if this unit uses a buffer it doesn't define: one owned by another
+        unit, e.g. fitted after the bowden combiner near the toolhead, or a
+        [mmu_buffer ...] section in your own config.
 
+    config PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      string "$(pad,33,Buffer name)" if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      validator "$(object_name_validator)"
+      help
+        The Klipper object name of this unit's buffer: [mmu_buffer [[B]][[VALUE:PARAM_SYNC_FEEDBACK_BUFFER_NAME]][[/B]]].
+        Another unit can share it by this name.
+        Use lowercase letters, digits, "_" and "-", starting with a letter.
+
+    config PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      string "$(pad,33,Shared buffer object name)" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      # A sharer's saved name, unless it is older installs' placeholder
+      default "$(saved-config-value,PARAM_SYNC_FEEDBACK_BUFFER_NAME)" if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(saved-config-value,MMU_SHARED_SYNC_FEEDBACK_BUFFER)" = "y" && \
+        "$(saved-config-value,PARAM_SYNC_FEEDBACK_BUFFER_NAME)" != "-specify name-"
+      default "" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      default UNIT_NAME
+      help
+        The name of the buffer this unit uses: [mmu_buffer [[B]][[VALUE:PARAM_SYNC_FEEDBACK_BUFFER_NAME]][[/B]]].
+        Another unit's "Buffer name" (its sensors are used here), or a section
+        in your own config (declare its sensors below). This unit renders no
+        [mmu_buffer] section of its own.
+
+    comment "Known shared buffers: $(first-nonempty,$(owner-names,buffer),none)" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
+      dim
+
+    # The shared name is another unit's own buffer
+    config SHARED_BUFFER_FOUND
+      bool
+      @repeat var=i min=0 max=$(owner-max,buffer)@
+      default y if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(owner-name,buffer,$(i))" != "" && PARAM_SYNC_FEEDBACK_BUFFER_NAME = "$(owner-name,buffer,$(i))"
+      @endrepeat@
+
+    comment "No other unit owns this buffer: enter its capabilities below" if \
+        MMU_SHARED_SYNC_FEEDBACK_BUFFER && !SHARED_BUFFER_FOUND && PARAM_SYNC_FEEDBACK_BUFFER_NAME != ""
+      dim
+
+    # That buffer's sensors and spring state, for this unit's endstop and calibration defaults
     if MMU_SHARED_SYNC_FEEDBACK_BUFFER
       shared_kind     := buffer
-      shared_choice   := CHOICE_SHARED_BUFFER
       shared_name_sym := PARAM_SYNC_FEEDBACK_BUFFER_NAME
-      shared_title    := Shared buffer
-      source "components/Kconfig.shared_choice"
+      shared_export   := MMU_HAS_SENSOR_BUFFER_COMPRESSION
+      source "components/Kconfig.shared_export"
+      shared_kind     := buffer
+      shared_name_sym := PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      shared_export   := MMU_HAS_SENSOR_BUFFER_TENSION
+      source "components/Kconfig.shared_export"
+      shared_kind     := buffer
+      shared_name_sym := PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      shared_export   := MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      source "components/Kconfig.shared_export"
+      shared_kind     := buffer
+      shared_name_sym := PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      shared_export   := PARAM_BUFFER_SPRING_STATE
+      source "components/Kconfig.shared_export"
+
+      # Otherwise the sensors this unit last saved (the spring state choice keeps its own)
+      config MMU_HAS_SENSOR_BUFFER_COMPRESSION
+        default "$(shared-saved-export,buffer,MMU_HAS_SENSOR_BUFFER_COMPRESSION)"
+      config MMU_HAS_SENSOR_BUFFER_TENSION
+        default "$(shared-saved-export,buffer,MMU_HAS_SENSOR_BUFFER_TENSION)"
+      config MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+        default "$(shared-saved-export,buffer,MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)"
     endif
 
-    # A buffer is always named after the unit that owns it
-    config PARAM_SYNC_FEEDBACK_BUFFER_NAME
-      string
-      default "$(first-nonempty,$(saved-config-value,PARAM_SYNC_FEEDBACK_BUFFER_NAME),-specify name-)" if MMU_SHARED_SYNC_FEEDBACK_BUFFER
-      default UNIT_NAME
-
-    # The buffer this unit shares, for its endstop and calibration defaults
-    if MMU_SHARED_SYNC_FEEDBACK_BUFFER
-      shared_kind   := buffer
-      shared_export := MMU_HAS_SENSOR_BUFFER_COMPRESSION
-      source "components/Kconfig.shared_export"
-      shared_kind   := buffer
-      shared_export := MMU_HAS_SENSOR_BUFFER_TENSION
-      source "components/Kconfig.shared_export"
-      shared_kind   := buffer
-      shared_export := MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
-      source "components/Kconfig.shared_export"
-      # A physical property of the buffer, so it is fixed by the owner
-      shared_kind   := buffer
-      shared_export := PARAM_BUFFER_SPRING_STATE
-      source "components/Kconfig.shared_export"
-    endif
+    comment "_"
 
     if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
-      comment "_"
-        depends on MULTI_UNIT && ($(shared-any,buffer) || "$(saved-config-value,MMU_SHARED_SYNC_FEEDBACK_BUFFER)" = "y")
-
       config PARAM_BUFFER_RANGE
         float "Sync feedback buffer sensor range"
         range 0 30
@@ -129,9 +158,40 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
           |====================|       |====================|       |====================|       |====================|
                ^          ^                  ^                                     ^                       ^^
           compression   tension        compression-only                      tension-only
+    endif
 
+    # Another unit's buffer, as that unit configured it (padded so the rows line up)
+    if MMU_SHARED_SYNC_FEEDBACK_BUFFER && SHARED_BUFFER_FOUND
+      comment "$(pad,51,Resting spring state: Tension / squeezed buffer)" if PARAM_BUFFER_SPRING_STATE = "tension"
+        dim
+      comment "$(pad,51,Resting spring state: Neutral)" if PARAM_BUFFER_SPRING_STATE = "neutral"
+        dim
+      comment "$(pad,51,Resting spring state: Compression / expanded buffer)" if PARAM_BUFFER_SPRING_STATE = "compression"
+        dim
+      comment "$(pad,51,Resting spring state: n/a)" if PARAM_BUFFER_SPRING_STATE = "none"
+        dim
+      comment "$(pad,51,Compression sensor: yes)" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
+        dim
+      comment "$(pad,51,Compression sensor: no)" if !MMU_HAS_SENSOR_BUFFER_COMPRESSION
+        dim
+      comment "$(pad,51,Tension sensor: yes)" if MMU_HAS_SENSOR_BUFFER_TENSION
+        dim
+      comment "$(pad,51,Tension sensor: no)" if !MMU_HAS_SENSOR_BUFFER_TENSION
+        dim
+      comment "$(pad,51,Proportional sensor: yes)" if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+        dim
+      comment "$(pad,51,Proportional sensor: no)" if !MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+        dim
+    endif
+
+    # What the buffer is, unless it is another unit's own
+    if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
       choice CHOICE_BUFFER_SPRING_STATE
         prompt "Buffer resting spring state      "
+        # A shared buffer's state as this unit last saved it
+        default CHOICE_BUFFER_SPRING_STATE_TENSION     if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(shared-saved-export,buffer,PARAM_BUFFER_SPRING_STATE)" = "tension"
+        default CHOICE_BUFFER_SPRING_STATE_NEUTRAL     if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(shared-saved-export,buffer,PARAM_BUFFER_SPRING_STATE)" = "neutral"
+        default CHOICE_BUFFER_SPRING_STATE_COMPRESSION if MMU_SHARED_SYNC_FEEDBACK_BUFFER && "$(shared-saved-export,buffer,PARAM_BUFFER_SPRING_STATE)" = "compression"
         default CHOICE_BUFFER_SPRING_STATE_NONE
         help
           If the buffer is sprung and reliably rests in one position it can be set here. This aids
@@ -170,17 +230,17 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         default "none"
     endif
 
-    # Also shown to a sharer, whose fitted sensors are fixed to its owner's
-    comment "_"
-    comment "_Fitted Sensors"
+    comment "_" if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
+    comment "_Fitted Sensors" if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
 
-    if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    # A buffer this unit doesn't define has its sensors declared but no pins
+    if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
       config UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
           bool
       config MMU_HAS_SENSOR_BUFFER_COMPRESSION
         bool "Sync-Feedback Compression sensor (aka buffer out)?"
         depends on !UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
-        forceshow
+        forceshow if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
         default n
         help
           A sync-feedback sensor (often referred to as a "buffer") is a sensor that can
@@ -191,7 +251,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
           can be used to detect collision of the filament with the extruder.
 
       config PIN_BUFFER_COMPRESSION
-        prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
+        prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
         validator "$(pin_validator)"
         help
           $(pin_help)
@@ -201,7 +261,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       config MMU_HAS_SENSOR_BUFFER_TENSION
         bool "Sync-Feedback Tension sensor (aka buffer in)?"
         depends on !UNSELECT_MMU_HAS_SENSOR_BUFFER_TENSION
-        forceshow
+        forceshow if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
         default n
         help
           A sync-feedback sensor (often referred to as a "buffer") is a sensor that
@@ -211,7 +271,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
           This sensor allows the MMU gear stepper to be synchronized with the extruder.
 
       config PIN_BUFFER_TENSION
-        prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION
+        prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
         validator "$(pin_validator)"
         help
           $(pin_help)
@@ -221,7 +281,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       config MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
         bool "Sync-Feedback Analog proportional position sensor?"
         depends on !UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
-        forceshow
+        forceshow if !MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND
         default n
         help
           A sync-feedback sensor (often referred to as a "buffer") is a sensor that can detect filament
@@ -231,7 +291,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
           This sensor also allows the MMU gear stepper to be accurately synchronized with the extruder.
 
-      if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+      if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
         config PIN_BUFFER_ANALOG
           prompt "Proportional (analog) pin    "
@@ -288,7 +348,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       endif
 
       config PARAM_REGISTER_BUFFER_SENSORS
-        boolint "Register buffer sensors in Mainsail / Fluidd"
+        boolint "Register buffer sensors in Mainsail / Fluidd" if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
         default 1
         help
           Whether to register the sensors for visibility in klipper UI's

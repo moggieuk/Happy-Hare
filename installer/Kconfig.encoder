@@ -41,32 +41,38 @@ endif
 if MMU_HAS_ENCODER
   menu "Encoder config"
 
-    # Only offered when there is a unit to share from, or the setting is already saved
     config MMU_SHARED_ENCODER
-      bool
-      prompt "Use another unit's encoder?" if $(shared-any,encoder) || "$(saved-config-value,MMU_SHARED_ENCODER)" = "y"
-      depends on MULTI_UNIT
+      bool "Use shared encoder?"
       default n
       help
-        Select if this unit uses an encoder owned by another unit. A shared encoder
-        must see the filament from each MMU, so this is not a common setup.
+        Select if this unit uses an encoder it doesn't define: one owned by
+        another unit, or a [mmu_encoder ...] section in your own config. A shared
+        encoder must see the filament from each MMU, so this is not common.
 
-    if MMU_SHARED_ENCODER
-      shared_kind     := encoder
-      shared_choice   := CHOICE_SHARED_ENCODER
-      shared_name_sym := PARAM_ENCODER_NAME
-      shared_title    := Shared encoder
-      source "components/Kconfig.shared_choice"
-    endif
-
-    # An encoder is always named after the unit that owns it
     config PARAM_ENCODER_NAME
-      string
-      default "$(first-nonempty,$(saved-config-value,PARAM_ENCODER_NAME),-specify name-)" if MMU_SHARED_ENCODER
+      string "$(pad,32,Encoder name)" if !MMU_SHARED_ENCODER
+      validator "$(object_name_validator)"
+      help
+        The Klipper object name of this unit's encoder: [mmu_encoder [[B]][[VALUE:PARAM_ENCODER_NAME]][[/B]]].
+        Another unit can share it by this name.
+        Use lowercase letters, digits, "_" and "-", starting with a letter.
+
+    config PARAM_ENCODER_NAME
+      string "$(pad,32,Shared encoder object name)" if MMU_SHARED_ENCODER
+      # A sharer's saved name, unless it is older installs' placeholder
+      default "$(saved-config-value,PARAM_ENCODER_NAME)" if MMU_SHARED_ENCODER && "$(saved-config-value,MMU_SHARED_ENCODER)" = "y" && \
+        "$(saved-config-value,PARAM_ENCODER_NAME)" != "-specify name-"
+      default "" if MMU_SHARED_ENCODER
       default UNIT_NAME
+      help
+        The name of the encoder this unit uses: [mmu_encoder [[B]][[VALUE:PARAM_ENCODER_NAME]][[/B]]].
+        Either another unit's "Encoder name" or a section in your own config.
+        This unit renders no [mmu_encoder] section of its own.
+
+    comment "Known shared encoders: $(first-nonempty,$(owner-names,encoder),none)" if MMU_SHARED_ENCODER
+      dim
 
     comment "_"
-      depends on MULTI_UNIT && ($(shared-any,encoder) || "$(saved-config-value,MMU_SHARED_ENCODER)" = "y")
 
     if !MMU_SHARED_ENCODER
       choice CHOICE_ENCODER_TYPE

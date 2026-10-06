@@ -1652,12 +1652,17 @@ def _normally_visible(node):
     )
 
 
+def _forced(node):
+    # Happy Hare: 'forceshow' (or 'forceshow if <expr>' while <expr> holds)
+    return hasattr(node, "forceshow") and bool(expr_value(node.forceshow))
+
+
 def _forced_disabled_menu(node):
     # A force-shown menu remains listed when inactive, but acts as a disabled
     # placeholder rather than an enterable submenu.
     return (
         node.item == MENU and
-        hasattr(node, "forceshow") and
+        _forced(node) and
         not _normally_visible(node)
     )
 
@@ -1667,7 +1672,7 @@ def _visible(node):
     # mode). Happy Hare: forceshow can make inactive symbols and menus visible.
     return bool(
         node.prompt and
-        (_normally_visible(node) or hasattr(node, "forceshow"))
+        (_normally_visible(node) or _forced(node))
     )
 
 

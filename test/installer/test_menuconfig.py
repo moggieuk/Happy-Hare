@@ -363,6 +363,43 @@ class TestMenuPathMarkup(unittest.TestCase):
                              ["(Top)", "Outer", "Inner (ADVANCED)"])
 
 
+class TestConditionalForceshow(unittest.TestCase):
+    """'forceshow if <expr>' shows a hidden entry only while <expr> holds."""
+
+    KCONFIG = """
+config FLAG
+    bool "Flag"
+
+config ALWAYS
+    bool "Always" if n
+    forceshow
+
+config SOMETIMES
+    bool "Sometimes" if n
+    forceshow if FLAG
+"""
+
+    parse = TestDimComment.parse
+
+    def setUp(self):
+        self.kconf = self.parse(self.KCONFIG)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf,
+                                 _show_name=False, _show_all=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def node(self, name):
+        return self.kconf.syms[name].nodes[0]
+
+    def test_plain_forceshow_is_unconditional(self):
+        self.assertTrue(menuconfig._visible(self.node("ALWAYS")))
+
+    def test_the_condition_decides(self):
+        self.assertFalse(menuconfig._visible(self.node("SOMETIMES")))
+        self.kconf.syms["FLAG"].set_value(2)
+        self.assertTrue(menuconfig._visible(self.node("SOMETIMES")))
+
+
 class TestReparseEnv(unittest.TestCase):
     """Changing a 'reparse_env' symbol re-parses with the new value, in place.
 

@@ -61,6 +61,10 @@ Option on symbols *and menus*: shown in menuconfig even when the visibility
 condition isn't met (used e.g. on `MMU_HAS_EJECT_BUTTONS` so users can
 enable a capability the type didn't imply).
 
+`forceshow if <expr>` forces it only while `<expr>` holds (`menuconfig._forced`), e.g.
+the buffer sensor bools, which a unit sharing another unit's buffer sees as a summary
+instead.
+
 ## 4. ` #~DEFAULT~#` default token
 
 The modifiable-defaults mechanism (see SKILL.md "naming contract").
@@ -110,7 +114,7 @@ once expanded and can be nested.
 - `@repeat var=i min=0 max=11@ ... @endrepeat@` — the body lines are
   emitted once per `i` in `[min..max]` with `$(i)` substituted (`var=`
   names the placeholder; `min`/`max` are required integers, or preprocessor
-  variables expanding to one, e.g. `max=$(shared_slots)`). Used for
+  variables or functions expanding to one, e.g. `max=$(owner-max,buffer)`). Used for
   per-gate pin/prompt blocks where the gate count is compile-time fixed
   (max 12) and prompts are conditionally hidden via
   `prompt "..." if PARAM_NUM_GATES > $(i)`.
@@ -134,7 +138,7 @@ once expanded and can be nested.
   When a count is shared — several blocks, or Python code — define it once
   as a preprocessor variable (`max=$(var)`; an undefined one is a parse
   error) and have Python read it from `kconf.variables` rather than keep a
-  copy (`shared_components._limit`).
+  copy.
 - `@if <ENV_VAR>@ ... @endif@` / `@ifnot <ENV_VAR>@ ... @endif@` — the
   block's lines are only fed to the tokenizer when the *environment* variable
   named by the arg is set to a truthy value (`y/yes/1/true`, case-insensitive;
@@ -238,51 +242,72 @@ anything from outside the tree: `test_kconfig_env_hygiene.py` fails the suite
 if a Kconfig sources an absolute path or a parse reads a file outside
 `installer/` (a generated `/tmp/.Kconfig.generated` used to leak into parses).
 
-## 13. Shared components (`shared_components.py`, `shared-*` functions)
+## 13. Shared components (`shared_components.py`, `owner-*` functions)
 
-A unit of a multi-unit machine can share a component another unit owns (the
-sync-feedback buffer and the encoder). Each unit is a separate parse, so the sharer
-reads what the other units SAVED: `KCONFIG_PARENT` (the top-level
-`.mmu_config`, for `MMU_UNITS`) and each sibling `<parent>_<unit>`.
-`installer/lib/kconfiglib/shared_components.py` holds the registry (`KINDS`:
-the component's has/shared flags, the name symbol the templates read, the
-choice name and the exported capability symbols) and registers the
-`shared-*` preprocessor functions in `kconfigfunctions.functions`.
+A unit can share an encoder or sync-feedback buffer it doesn't define: another unit's,
+or a section in the user's own config. The component's name is a plain string PARAM
+(`PARAM_ENCODER_NAME`, `PARAM_SYNC_FEEDBACK_BUFFER_NAME`, `object_name_validator`),
+and `MMU_SHARED_ENCODER` / `MMU_SHARED_SYNC_FEEDBACK_BUFFER` ("Use shared ...?", also
+on a single unit) mean "this unit renders no section". The templates name the owner's
+section from the PARAM (`[mmu_encoder [[PARAM_ENCODER_NAME]]]`), so the default
+(`UNIT_NAME`) keeps the historical `[mmu_encoder <unit>]`.
 
-- **Only unit parses run by install.sh read anything** (`KCONFIG_PARENT`
-  set). The build's pickle parse and `verify_pickle` see no other units and
-  keep the saved values, so every cross-unit value must be decided by a
-  menuconfig/olddefconfig unit pass and SAVED in the unit's own file.
-- **Consumers source two fragments** inside their `if <shared flag>` block:
-  `components/Kconfig.shared_choice` (a `CHOICE_SHARED_<KIND>` pick list of `$(shared_slots)` `@repeat`
-  slots whose member names come from unit names, plus the name
-  symbol's per-slot defaults; source it BEFORE the name symbol's own
-  definition so they win) and `components/Kconfig.shared_export` once per
-  exported symbol (per-slot defaults from the owner, then the unit's own
-  saved value as a sticky fallback). A kind with nothing to export (the
-  encoder) sources only the first.
-- **The saved name is the identity**; the choice is a view of it. A name that
-  no longer matches an owner is kept as `CHOICE_SHARED_<KIND>_UNRESOLVED` and
-  warned (W29 buffer, W30 encoder) — never re-pointed. Don't name that member
-  `_PREVIOUS` (olddefconfig hides those from its change report).
-  `unit_migration.rewrite_kconfig` rewrites the registry's name symbols on a
-  unit rename even though they're saved as `#~DEFAULT~#`.
-- **Exports come only from owners**, never another sharer, so one refresh
-  converges. `kconfig_needs_update` also marks a sharer stale when its saved
-  exports differ from its owner's (`python -m shared_components stale`), and
-  install.sh runs a second stale-only unit pass for an owner configured
-  after its sharer.
-- **Adding a shareable kind:** a `KINDS` entry, the two fragments sourced in
-  the component's Kconfig, a W-check for the unresolved member, and guard
-  every machine-type `select`/`imply`/`default` of an exported symbol with
-  `!<shared flag>` (otherwise it overrides the owner's value).
-- **Printer-level capabilities** use the same reader with the top-level
-  config as the only owner: `$(printer-flag,SYM)` returns the parent's saved
-  value, n without one (`PRINTER_FLAGS`). A unit goes stale when the parent is
-  newer, so no extra staleness check is needed.
+- **One symbol, two prompt nodes**: "Encoder name" `if !MMU_SHARED_ENCODER` and
+  "Shared encoder object name" `if MMU_SHARED_ENCODER`. A sharer's name defaults to "" (W29/
+  W30 warn while blank), except that a sharer's saved name is kept when it was saved
+  as `#~DEFAULT~#` (`saved-config-value`, as the old pick list saved it).
+- **Owners are found by name.** Each unit is a separate parse, so a unit reads what
+  the other units SAVED: `KCONFIG_PARENT` (the top-level `.mmu_config`, for
+  `MMU_UNITS`) and each sibling `<parent>_<unit>`. `owners(kind)` lists the other
+  units that have the component and don't share it, with their saved name (their
+  unit name if none is saved). Kconfig reads them with `@repeat var=i min=0
+  max=$(owner-max,KIND)@` and compares the name symbol to `"$(owner-name,KIND,$(i))"`
+  literals, so a name edited in menuconfig is matched live. (A macro can't expand to
+  an expression, only to one symbol name, hence the repeat.)
+- **Only unit parses run by install.sh read anything** (`KCONFIG_PARENT` set). The
+  build's pickle parse and `verify_pickle` see no owners and keep the saved values,
+  so every cross-unit value must be decided by a menuconfig/olddefconfig unit pass
+  and SAVED in the unit's own file.
+- **Buffer exports.** `SHARED_BUFFER_FOUND` (promptless) says the shared name is a
+  sibling owner's. `components/Kconfig.shared_export`, sourced once per exported
+  symbol (`KINDS[...].exports`), gives that symbol the matching owner's value; the
+  sensor bools then fall back to the unit's own saved value
+  (`shared-saved-export`), and the spring-state choice does the same. The sensor
+  bools and the spring-state choice live in `if !MMU_SHARED... || !SHARED_BUFFER_FOUND`
+  (forceshow keeps the bools on screen, fixed, for a found share); the section's
+  contents (pins, analog tuning, range, register) are `!MMU_SHARED...` only. So a
+  name no sibling owns (the user's own config) declares sensors but no pins. These
+  are the only buffer values another unit's menu reads; the encoder exports nothing.
+  A found share shows the owner's spring state and sensors as one padded block of dim
+  comment lines, without the Fitted Sensors heading, instead of the rows (the bools are `forceshow if` the share isn't found, item 3); an unknown
+  name gets a dim hint to enter the buffer's capabilities. Under the shared name a dim
+  "Known shared buffers: ..." lists the other units' names (`$(owner-names,KIND)`, or
+  "none").
+- **Exports come only from owners**, never another sharer, so one refresh converges.
+  `kconfig_needs_update` also marks a sharer stale when its saved exports differ from
+  those of the owner its saved name names (`python -m shared_components stale`), and
+  install.sh runs a second stale-only unit pass for an owner configured after its
+  sharer.
+- **Warnings:** W29/W30 a blank shared name; W33/W34 an owner name that is blank or
+  another sibling owner's (two sections of one name merge in Klipper). W15/W16 also
+  check a share that declares its sensors.
+- **Unit rename** (`unit_migration.rewrite_kconfig`): an owner's name follows only
+  when it is exactly the unit's old name (default or not); a shared name is never
+  rewritten, and the check prints a WARNING for a sharer whose name a rename/removal
+  changes or drops. `mmu_<encoder>_encoder_*` vars move by encoder name.
+- **Refresh/Merge:** `[mmu_unit] encoder:`/`buffer:` are `KCONFIG_OWNED_OPTIONS`
+  (build.py), because the section headers they name always come from the template.
+- **Adding a shareable kind:** a `KINDS` entry, the shared flag and two-node name
+  symbol, the exports sourced in the component's Kconfig, W-checks, and guard every
+  machine-type `select`/`imply` of an exported symbol with `!<shared flag>`
+  (otherwise it overrides the owner's value).
+- **Printer-level capabilities** use the same reader with the top-level config as
+  the only owner: `$(printer-flag,SYM)` returns the parent's saved value, n without
+  one (`PRINTER_FLAGS`). A unit goes stale when the parent is newer, so no extra
+  staleness check is needed.
 - The test harness writes each unit's config to a scratch dir in order
   (`cfg._render_multi_unit`) and keys its parse cache on
-  `shared_components.context_key()`.
+  `shared_components.context_key()`; anything a parse reads must be in that key.
 
 ## 14. The pickle (value transport)
 

@@ -57,7 +57,7 @@ config SW7
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=32@
+  @repeat var=i min=1 max=34@
     default y if W$(i)
   @endrepeat@
 
@@ -130,14 +130,17 @@ config W14
         PARAM_ENVIRONMENT_SENSOR_8 = "" && PARAM_ENVIRONMENT_SENSOR_9 = "" && \
         PARAM_ENVIRONMENT_SENSOR_10 = "" && PARAM_ENVIRONMENT_SENSOR_11 = ""
 
+# Also for a buffer this unit declares the sensors of without defining it
 config W15
-    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && \
+    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && \
+        (!MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND) && \
         !(MMU_HAS_SENSOR_BUFFER_TENSION || \
           MMU_HAS_SENSOR_BUFFER_COMPRESSION || \
           MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)
 
 config W16
-    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && \
+    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && \
+        (!MMU_SHARED_SYNC_FEEDBACK_BUFFER || !SHARED_BUFFER_FOUND) && \
         (MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION) && \
         MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
 
@@ -222,14 +225,12 @@ config W28
          PIN_SELECTOR_SPI_MOSI = "" || \
          PIN_SELECTOR_SPI_MISO = "")
 
-# Only checked when the other units' configs can be read (a unit parse run by install.sh)
 config W29
     def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && MMU_SHARED_SYNC_FEEDBACK_BUFFER && \
-        (CHOICE_SHARED_BUFFER_UNRESOLVED || ($(shared-active) && !$(shared-any,buffer)))
+        PARAM_SYNC_FEEDBACK_BUFFER_NAME = ""
 
 config W30
-    def_bool y if MMU_HAS_ENCODER && MMU_SHARED_ENCODER && \
-        (CHOICE_SHARED_ENCODER_UNRESOLVED || ($(shared-active) && !$(shared-any,encoder)))
+    def_bool y if MMU_HAS_ENCODER && MMU_SHARED_ENCODER && PARAM_ENCODER_NAME = ""
 
 config W31
     def_bool y if MMU_HAS_VENT_SERVO && PIN_VENT_SERVO = "" && !MMU_HAS_PER_GATE_CONFIG
@@ -248,6 +249,28 @@ config W32
 config W32
     def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG && \
         PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i) && PIN_CONTROLLER_FAN_$(i) = ""
+@endrepeat@
+
+# Two sections of one name merge in Klipper. Other units are only read in a unit parse run
+# by install.sh
+config W33
+    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && \
+        PARAM_SYNC_FEEDBACK_BUFFER_NAME = ""
+
+@repeat var=i min=0 max=$(owner-max,buffer)@
+config W33
+    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && \
+        "$(owner-name,buffer,$(i))" != "" && \
+        PARAM_SYNC_FEEDBACK_BUFFER_NAME = "$(owner-name,buffer,$(i))"
+@endrepeat@
+
+config W34
+    def_bool y if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER && PARAM_ENCODER_NAME = ""
+
+@repeat var=i min=0 max=$(owner-max,encoder)@
+config W34
+    def_bool y if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER && \
+        "$(owner-name,encoder,$(i))" != "" && PARAM_ENCODER_NAME = "$(owner-name,encoder,$(i))"
 @endrepeat@
 
 
@@ -299,9 +322,11 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Gate count differs from the number expected for this MMU design"                  if W26
     comment "Gear software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"            if W27
     comment "Selector software SPI requires all three SCLK/MOSI/MISO pins [Pins / TMC]"        if W28
-    comment "Shared buffer isn't owned by another unit [Buffer config]"                        if W29
-    comment "Shared encoder isn't owned by another unit [Encoder config]"                      if W30
+    comment "Shared buffer needs a name [Buffer config]"                                       if W29
+    comment "Shared encoder needs a name [Encoder config]"                                     if W30
     comment "Vent servo is enabled but no MCU pin defined"                                     if W31
     comment "Controller fan is enabled but no MCU pin defined"                                 if W32
+    comment "Buffer name is blank or another unit's buffer name [Buffer config]"               if W33
+    comment "Encoder name is blank or another unit's encoder name [Encoder config]"            if W34
   endif
 endif

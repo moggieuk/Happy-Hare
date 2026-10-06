@@ -47,12 +47,13 @@
 #   generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
 #
 # 2. Added float type
-# 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met
+# 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met.
+#    'forceshow if <expr>' does so only while <expr> holds
 # 4. Recording of default value with #~DEFAULT~# magic token
 # 5. Preprocessor function 'saved-config-value' to read a symbol's previous assignment from
 #    KCONFIG_CONFIG before normal config loading, including lines marked with #~DEFAULT~#
 # 6. repeat expansion macro to avoid multiple lines (can be nested); min/max may also be
-#    preprocessor variables, e.g. max=$(shared_slots):
+#    preprocessor variables or functions, e.g. max=$(owner-max,buffer):
 #      @repeat var=i min=0 max=3@
 #        config PARAM_MMU_CANBUS_UNIT_$(i)
 #          string "CANbus UUID for MMU unit $(i)"
@@ -99,10 +100,10 @@
 # 19. 'reparse_env "<VAR> [<VAR>...]"' on a symbol whose value the tree is built from via
 #     those env vars (UNIT_NAME): changing it in menuconfig re-parses with the new value
 #     so every default derived from them is recomputed in the same session
-# 20. Shared components: 'shared-*' preprocessor functions (shared_components.py) let a unit
-#     parse read the OTHER units' saved configs via KCONFIG_PARENT, giving a pick list of the
-#     units owning a component and the owner's capabilities. Used through the
-#     components/Kconfig.shared_choice and Kconfig.shared_export fragments.
+# 20. Shared components: 'owner-*' preprocessor functions (shared_components.py) let a unit
+#     parse read the OTHER units' saved configs via KCONFIG_PARENT: the names of the units'
+#     own encoders/buffers and an owner's capabilities, for a sharer naming it. Used through
+#     the components/Kconfig.shared_export fragment.
 #     $(printer-flag,SYM) reads a printer-level flag from the top-level config
 # 21. 'range' accepts multiple low/high pairs: 'range 0 0 5 200' allows 0 or 5-200.
 # 22. 'dim' on a comment draws its whole row dimmed, including the "***" decoration:
@@ -169,10 +170,6 @@ mmu_has_sensor_toolhead := $(printer-flag,MMU_HAS_SENSOR_TOOLHEAD)
 mmu_has_sensor_extruder := $(printer-flag,MMU_HAS_SENSOR_EXTRUDER)
 mmu_has_toolhead_cutter := $(printer-flag,MMU_HAS_TOOLHEAD_CUTTER)
 
-# The most units a pick list offers for a shared component that another unit owns
-# (components/Kconfig.shared_*, read by shared_components.py too)
-shared_slots := 4
-
 # Used to dynamically get the serial device paths
 all_serial_devices  := $(shell, ls /dev/serial/by-id/* 2>/dev/null || true)
 serial_device        = $(serial-device,$(all_serial_devices),$(1),$(2))
@@ -207,6 +204,9 @@ nl            := $(hh-newline)
 pin_item           := [~^]?!?([A-Za-z0-9_-]+:)?[A-Za-z0-9_./-]+
 pin_validator      := ($(pin_item))?
 pin_list_validator := ($(pin_item)( *, *$(pin_item))*)?
+
+# A Klipper object name (as for a unit), or empty
+object_name_validator := ([a-z][a-z0-9_-]*)?
 pin_syntax    := Syntax:  [[REV]][^|~] [!] [chip_name:] pin_or_alias_name[[/REV]]
 pin_example   := $(hh-pin-example,$(F_MULTI_UNIT_ENTRY_POINT))
 pin_help      := $(pin_syntax)$(nl)$(pin_example)

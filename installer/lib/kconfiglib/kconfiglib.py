@@ -2472,7 +2472,7 @@ class Kconfig(object):
     #   default "heater3" if PARAM_NUM_GATES = 3
     #
     # The placeholder $(i) is replaced with each value in the range [min..max].
-    # min and max may be preprocessor variables, e.g. max=$(shared_slots).
+    # min and max may be preprocessor variables or functions, e.g. max=$(owner-max,buffer).
     # Nested @repeat blocks are supported.
     #
     def _next_line(self):
@@ -2545,7 +2545,7 @@ class Kconfig(object):
                 self._line = raw_line
                 self._parse_error("@repeat var cannot be empty")
 
-            # A preprocessor variable (e.g. max=$(shared_slots)) keeps a count in one place
+            # A preprocessor variable or function (e.g. max=$(owner-max,buffer)) gives the count
             mn_i = _to_int(self._expand_whole(mn, ()), "min", "@repeat")
             mx_i = _to_int(self._expand_whole(mx, ()), "max", "@repeat")
 
@@ -3657,7 +3657,8 @@ class Kconfig(object):
                 if node.item.__class__ is not Symbol and node.item is not MENU:
                     self._parse_error("forceshow is only valid for symbols and menus")
 
-                node.forceshow = True
+                # An optional 'if <expr>' limits it to while <expr> holds
+                node.forceshow = self._parse_cond()
 
             elif t0 is _T_DIM: # Happy Hare: Added to draw a whole comment row dimmed
                 if node.item is not COMMENT:
