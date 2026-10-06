@@ -14,6 +14,7 @@
 
 import glob
 import os
+import re
 import tempfile
 import unittest
 
@@ -263,6 +264,94 @@ class TestFanVisibilityRefresh(unittest.TestCase):
                 self.assertEqual(built.get(self.UNIT, "fans").split(", "),
                                  ["unit0_fan0", "unit0_fan1", "my_fan",
                                   "unit0_fan3", "unit0_fan4"])
+
+
+def _hidden_name_symbols():
+    """Kconfig name symbols with a "_" hiding default, "$(i)" repeats as their "X_" template form."""
+    symbols, symbol = set(), None
+    for root, dirs, files in os.walk(os.path.join(cfg.REPO_ROOT, "installer")):
+        dirs[:] = [d for d in dirs if d != "lib"]
+        for name in files:
+            if not name.startswith("Kconfig"):
+                continue
+            with open(os.path.join(root, name)) as f:
+                for line in f:
+                    match = re.match(r"\s*(?:menu)?config\s+(\S+)", line)
+                    if match:
+                        symbol = re.sub(r"\$\([^)]*\)$", "", match.group(1))
+                    elif re.match(r'\s*default\s+"_\$\(UNIT_NAME\)', line):
+                        symbols.add(symbol)
+    return symbols
+
+
+def _visibility_references(lines, symbols):
+    """(section type, option) pairs whose rendered value uses one of symbols."""
+    found, section, local = set(), None, {}
+
+    def resolve(expr):
+        refs = set()
+        for token in re.findall(r"[A-Za-z_]\w*", expr):
+            indexed = re.sub(r"_\d+$", "_", token)
+            if token in symbols or indexed in symbols:
+                refs.add(token if token in symbols else indexed)
+            else:
+                refs |= local.get(token, set())
+        return refs
+
+    for line in lines:
+        header = re.match(r"\[(\w+)[ \]]", line)
+        if header:
+            section = header.group(1)
+            continue
+        for stmt in re.findall(r"\[%-?\s*(.*?)\s*-?%\]", line):
+            assign = re.match(r"set\s+(\w+)\s*=(.*)", stmt)
+            refs = resolve(assign.group(2) if assign else stmt)
+            if assign:
+                local[assign.group(1)] = refs
+            for target in re.findall(r"(\w+)\.(?:append|extend)\(", stmt):
+                local[target] = local.get(target, set()) | refs
+        option = re.match(r"(\w+)\s*[:=]", line)
+        if option and any(resolve(expr) for expr in re.findall(r"\[\[(.*?)\]\]", line)):
+            found.add((section, option.group(1)))
+    return found
+
+
+class TestKconfigOwnedVisibility(unittest.TestCase):
+    """Every option rendered from a hide-prefixed name must follow visibility on refresh."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.symbols = _hidden_name_symbols()
+        cls.references = set()
+        for path in glob.glob(os.path.join(cfg.REPO_ROOT, "config", "**", "*.cfg"),
+                              recursive=True):
+            with open(path) as f:
+                cls.references |= _visibility_references(f, cls.symbols)
+
+    def test_scan_finds_known_symbols_and_references(self):
+        self.assertTrue({"PARAM_FAN_NAME", "PARAM_FAN_NAME_", "PARAM_HEATER_FAN_NAME"}
+                        <= self.symbols)
+        self.assertTrue({("mmu_unit", "fan"), ("mmu_unit", "fans")} <= self.references)
+
+    def test_scan_flags_direct_use_and_ignores_reset_lists(self):
+        lines = [
+            "[mmu_unit x]",
+            "heater_fan : [[ PARAM_HEATER_FAN_NAME ]]",
+            "[% set names = [] %]",
+            "[% set _ = names.append((PARAM_FAN_NAME_|d)[i]) %]",
+            "[% set names = [] %]",
+            "[% set _ = names.append((PARAM_ENVIRONMENT_SENSOR_|d)[i]) %]",
+            "environment_sensors : [[ names|join(', ') ]]",
+        ]
+        self.assertEqual(_visibility_references(lines, self.symbols),
+                         {("mmu_unit", "heater_fan")})
+
+    def test_every_reference_is_kconfig_owned(self):
+        cfg._prepare_imports()
+        from installer.build import KCONFIG_OWNED_VISIBILITY
+        for pair in sorted(self.references):
+            with self.subTest(pair=pair):
+                self.assertIn(pair, KCONFIG_OWNED_VISIBILITY)
 
 
 class TestSupplementalParamRefresh(unittest.TestCase):
