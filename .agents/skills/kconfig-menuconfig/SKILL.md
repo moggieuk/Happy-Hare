@@ -283,6 +283,11 @@ with no parent), feeding promptless `MMU_HAS_*` defaults in its
 **Help display limit: at most seven lines per Kconfig `help` block, including
 blank lines.** Menuconfig can display only seven lines. Keep lines short enough
 to avoid wrapping beyond that limit; put longer explanations in documentation.
+Count lines *after* preprocessor expansion: a `$(nl)` adds one, and the
+`$(pin_help)` every prompted `PIN_` symbol ends with (beside its
+`validator "$(pin_validator)"`) adds two (syntax + example), so a pin's own
+text gets five. `test_kconfig_validator.py` enforces the validator and the
+limit for every prompted pin.
 
 1. **Name it per the contract** above. A symbol that should be a *modifiable
    default* (user-tweakable, `r`-resettable) needs a special prefix **and a
