@@ -109,28 +109,39 @@ menu "Software Options"
     default "pull" if CHOICE_SPOOLMAN_SUPPORT_PULL
 
   config PARAM_SPOOLMAN_PENDING_ID_TIMEOUT
-    int "Seconds before a pending spool_id assignment is voided"
+    int "Seconds before a pending gate assignment is voided"
     range 5 120
     default 20
+    help
+      How long a pending assignment waits for the next gate to be preloaded (or
+      loaded) before it is discarded: a spool_id from MMU_GATE_MAP NEXT_SPOOLID
+      or a shared NFC/RFID reader, the scanned tag itself, or a filament
+      measurement from a separate off-path TD-1 sensor.
+      Each new scan or assignment restarts the timer.
+      Tags and TD-1 readings are staged even with Spoolman off.
 
   choice CHOICE_SPOOLMAN_LED_SEGMENT
-    prompt "LED segment for pending spool effect"
+    prompt "LED segment for pending assignment effect"
     default CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
+    help
+      Where the pending overlay is shown while a spool_id, NFC/RFID tag or
+      TD-1 measurement waits for a gate (see the pending timeout above).
+      It switches to an "expiring" effect shortly before the timeout.
 
     config CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
       bool "gate_status"
       help
-        Show the pending spool_id overlay on LED segments displaying "gate_status"
+        Show the pending overlay on LED segments displaying "gate_status"
 
     config CHOICE_SPOOLMAN_LED_SEGMENT_STATUS
       bool "status"
       help
-        Show the pending spool_id overlay on the unit status LED only
+        Show the pending overlay on the unit status LED only
 
     config CHOICE_SPOOLMAN_LED_SEGMENT_BOTH
       bool "both"
       help
-        Show the pending spool_id overlay on segments displaying "gate_status" and the status segment
+        Show the pending overlay on segments displaying "gate_status" and the status segment
   endchoice
 
   config PARAM_SPOOLMAN_LED_SEGMENT
@@ -164,14 +175,24 @@ menu "Software Options"
 
     config CHOICE_LOG_LEVEL_ESSENTIAL
       bool "Essential"
+      help
+        Only essential messages, warnings and errors
     config CHOICE_LOG_LEVEL_INFO
       bool "Info"
+      help
+        Normal operational messages
     config CHOICE_LOG_LEVEL_DEBUG
       bool "Debug"
+      help
+        Adds detail useful when diagnosing problems
     config CHOICE_LOG_LEVEL_TRACE
       bool "Trace"
+      help
+        Very detailed step-by-step tracing
     config CHOICE_LOG_LEVEL_STEPPER
       bool "Developer"
+      help
+        Everything, including individual stepper movements
   endchoice
 
   config PARAM_LOG_LEVEL
@@ -193,14 +214,24 @@ menu "Software Options"
 
     config CHOICE_LOG_FILE_LEVEL_ESSENTIAL
       bool "Essential"
+      help
+        Only essential messages, warnings and errors
     config CHOICE_LOG_FILE_LEVEL_INFO
       bool "Info"
+      help
+        Normal operational messages
     config CHOICE_LOG_FILE_LEVEL_DEBUG
       bool "Debug"
+      help
+        Adds detail useful when diagnosing problems
     config CHOICE_LOG_FILE_LEVEL_TRACE
       bool "Trace"
+      help
+        Very detailed step-by-step tracing
     config CHOICE_LOG_FILE_LEVEL_STEPPER
       bool "Developer / Stepper"
+      help
+        Everything, including individual stepper movements
   endchoice
 
   config PARAM_LOG_FILE_LEVEL
@@ -242,12 +273,10 @@ menu "Software Options"
     help
       Demote Happy Hare's startup notices about Kalico compatibility, existing
       filament_switch_sensor sections, and NFC readers on MCU firmware that
-      cannot report an I2C NACK to debug messages. With the default logging
-      levels these go to mmu.log instead of the console. They can still appear on
-      the console when its log level is Debug or higher; recording them in mmu.log
-      also requires a file log level of Debug or higher.
-      This does not suppress all Klipper warnings or errors.
-      Default 0 keeps these startup notices visible.
+      cannot report an I2C NACK to debug messages. With default log levels they
+      go to mmu.log instead of the console (console shows them at Debug or
+      higher; mmu.log needs file level Debug or higher). Not all Klipper
+      warnings are suppressed. Default 0 keeps these notices visible.
 
 
 # -------------------------------------
@@ -257,6 +286,9 @@ menu "Software Options"
   choice CHOICE_T_MACRO_COLOR
     prompt "Filament color shown on Tx tool macros (Mainsail/Fluidd)"
     default CHOICE_T_MACRO_COLOR_SLICER
+    help
+      Which filament color (and spool_id) is attached to each Tx tool macro
+      so Mainsail/Fluidd can show it on the tool buttons.
 
     config CHOICE_T_MACRO_COLOR_SLICER
       bool "slicer"
