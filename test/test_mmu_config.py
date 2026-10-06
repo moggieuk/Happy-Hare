@@ -1309,6 +1309,91 @@ TWO_UNIT = profiles.clone_across_units(
     description='two BoxTurtles, for the multi-unit render path')
 
 
+class TestMmuCfgTunables(unittest.TestCase):
+    """mmu.cfg callback macros and servo geometry come from Kconfig, defaulting to the old literals"""
+
+    MACROS = {
+        'pause_macro': 'PAUSE',
+        'action_changed_macro': '_MMU_ACTION_CHANGED',
+        'print_state_changed_macro': '_MMU_PRINT_STATE_CHANGED',
+        'mmu_event_macro': '_MMU_EVENT',
+        'post_preload_macro': '_MMU_POST_PRELOAD',
+        'pre_unload_macro': '_MMU_PRE_UNLOAD',
+        'post_form_tip_macro': '_MMU_POST_FORM_TIP',
+        'post_unload_macro': '_MMU_POST_UNLOAD',
+        'pre_load_macro': '_MMU_PRE_LOAD',
+        'post_load_macro': '_MMU_POST_LOAD',
+        'unload_sequence_macro': '_MMU_UNLOAD_SEQUENCE',
+        'load_sequence_macro': '_MMU_LOAD_SEQUENCE',
+    }
+    GANTRY = {'maximum_servo_angle': '180', 'minimum_pulse_width': '0.00075',
+              'maximum_pulse_width': '0.00225', 'initial_angle': '180'}
+    CUTTER = {'maximum_servo_angle': '180', 'minimum_pulse_width': '0.0005',
+              'maximum_pulse_width': '0.0025'}
+    SERVOS = {
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+        'MMU_HAS_GANTRY_BUMPER_SERVO': True,
+        'PIN_GANTRY_BUMPER_SERVO': 'unit0:PA3',
+        'MMU_HAS_SERVO_CUTTER': True,
+        'PIN_SERVO_CUTTER_SERVO': 'unit0:PA4',
+        'MMU_HAS_BLOBIFIER': True,
+        'PIN_BLOBIFIER_SERVO': 'unit0:PA1',
+        'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
+    }
+
+    def _render(self, name, syms):
+        rendered = cfg.render(profiles.get('boxturtle').derive(name, syms=syms))
+        cfg.assert_sane(rendered)
+        return cfg.assemble({MMU: rendered[MMU]}, macros=False)
+
+    def _assert_options(self, parser, section, expected):
+        options = dict(parser.items(section))
+        for key, value in expected.items():
+            with self.subTest(section=section, option=key):
+                self.assertEqual(options[key], value)
+
+    def test_defaults_match_previous_literals(self):
+        parser = self._render('mmu_cfg_tunable_defaults', self.SERVOS)
+        self._assert_options(parser, 'mmu_parameters', self.MACROS)
+        self._assert_options(parser, 'mmu_servo mmu_gantry_servo', self.GANTRY)
+        self._assert_options(parser, 'mmu_servo cut_servo', self.CUTTER)
+        self._assert_options(parser, 'mmu_servo blobifier', {'maximum_servo_angle': '180'})
+
+    def test_gantry_defaults_survive_hidden_prompts(self):
+        # Gantry servo enabled (e.g. implied) while tip cutting, and so its prompts, is off
+        syms = dict(self.SERVOS, MMU_HAS_TOOLHEAD_CUTTER=False)
+        parser = self._render('mmu_cfg_tunable_hidden_gantry', syms)
+        self._assert_options(parser, 'mmu_servo mmu_gantry_servo', self.GANTRY)
+
+    def test_values_are_rendered(self):
+        parser = self._render('mmu_cfg_tunable_values', dict(self.SERVOS, **{
+            'PARAM_PAUSE_MACRO': 'MY_PAUSE',
+            'PARAM_LOAD_SEQUENCE_MACRO': 'MY_LOAD_SEQUENCE',
+            'PARAM_GANTRY_SERVO_MAXIMUM_ANGLE': 270,
+            'PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH': '0.0006',
+            'PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH': '0.0024',
+            'PARAM_GANTRY_SERVO_INITIAL_ANGLE': 170,
+            'PARAM_SERVO_CUTTER_MAXIMUM_ANGLE': 60,
+            'PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH': '0.0007',
+            'PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH': '0.0023',
+            'PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE': 270,
+        }))
+        self._assert_options(parser, 'mmu_parameters', dict(
+            self.MACROS, pause_macro='MY_PAUSE', load_sequence_macro='MY_LOAD_SEQUENCE'))
+        self._assert_options(parser, 'mmu_servo mmu_gantry_servo', {
+            'maximum_servo_angle': '270', 'minimum_pulse_width': '0.0006',
+            'maximum_pulse_width': '0.0024', 'initial_angle': '170'})
+        self._assert_options(parser, 'mmu_servo cut_servo', {
+            'maximum_servo_angle': '60', 'minimum_pulse_width': '0.0007',
+            'maximum_pulse_width': '0.0023'})
+        self._assert_options(parser, 'mmu_servo blobifier', {'maximum_servo_angle': '270'})
+
+    def test_multi_unit_renders_macro_defaults(self):
+        rendered = cfg.render(TWO_UNIT)
+        parser = cfg.assemble({MMU: rendered[MMU]}, macros=False)
+        self._assert_options(parser, 'mmu_parameters', self.MACROS)
+
+
 class TestMultiUnitRender(unittest.TestCase):
     """
     A multi-unit render is THREE Kconfig parses with different env, not one

@@ -1,0 +1,104 @@
+# Callback macro overrides ([mmu_parameters] *_macro options)
+#
+# Responsible for setting:
+#   PARAM_PAUSE_MACRO
+#   PARAM_ACTION_CHANGED_MACRO
+#   PARAM_PRINT_STATE_CHANGED_MACRO
+#   PARAM_MMU_EVENT_MACRO
+#   PARAM_POST_PRELOAD_MACRO
+#   PARAM_PRE_UNLOAD_MACRO
+#   PARAM_POST_FORM_TIP_MACRO
+#   PARAM_POST_UNLOAD_MACRO
+#   PARAM_PRE_LOAD_MACRO
+#   PARAM_POST_LOAD_MACRO
+#   PARAM_UNLOAD_SEQUENCE_MACRO
+#   PARAM_LOAD_SEQUENCE_MACRO
+
+menu "Macro hook overrides [[DIM]](ADVANCED)[[/DIM]]"
+  help
+    Names of the macros Happy Hare calls. Overriding one replaces the whole
+    shipped macro, so prefer the "User macro hooks" extensions under
+    Macro Variables -> Sequence macros to add behavior.
+
+  config PARAM_PAUSE_MACRO
+    string "Pause macro               "
+    default "PAUSE"
+    help
+      What macro to call on MMU error (must put printer in paused state)
+
+  comment "_"
+  comment "_Status callbacks"
+
+  config PARAM_ACTION_CHANGED_MACRO
+    string "Action changed macro      "
+    default "_MMU_ACTION_CHANGED"
+    help
+      Called when action (printer.mmu.action) changes
+
+  config PARAM_PRINT_STATE_CHANGED_MACRO
+    string "Print state changed macro "
+    default "_MMU_PRINT_STATE_CHANGED"
+    help
+      Called when print state (printer.mmu.print_state) changes
+
+  config PARAM_MMU_EVENT_MACRO
+    string "MMU event macro           "
+    default "_MMU_EVENT"
+    help
+      Called on useful MMU events
+
+  comment "_"
+  comment "_Sequence macros"
+
+  config PARAM_POST_PRELOAD_MACRO
+    string "Post preload macro        "
+    default "_MMU_POST_PRELOAD"
+    help
+      Called after successful preload of filament
+
+  config PARAM_PRE_UNLOAD_MACRO
+    string "Pre unload macro          "
+    default "_MMU_PRE_UNLOAD"
+    help
+      Called before starting the unload
+
+  config PARAM_POST_FORM_TIP_MACRO
+    string "Post form tip macro       "
+    default "_MMU_POST_FORM_TIP"
+    help
+      Called immediately after tip forming
+
+  config PARAM_POST_UNLOAD_MACRO
+    string "Post unload macro         "
+    default "_MMU_POST_UNLOAD"
+    help
+      Called after unload completes
+
+  config PARAM_PRE_LOAD_MACRO
+    string "Pre load macro            "
+    default "_MMU_PRE_LOAD"
+    help
+      Called before starting the load
+
+  config PARAM_POST_LOAD_MACRO
+    string "Post load macro           "
+    default "_MMU_POST_LOAD"
+    help
+      Called after the load is complete
+
+  comment "_"
+  comment "_VERY ADVANCED"
+
+  config PARAM_UNLOAD_SEQUENCE_MACRO
+    string "Unload sequence macro     "
+    default "_MMU_UNLOAD_SEQUENCE"
+    help
+      Optionally called based on 'gcode_unload_sequence'
+
+  config PARAM_LOAD_SEQUENCE_MACRO
+    string "Load sequence macro       "
+    default "_MMU_LOAD_SEQUENCE"
+    help
+      Optionally called based on 'gcode_load_sequence'
+
+endmenu

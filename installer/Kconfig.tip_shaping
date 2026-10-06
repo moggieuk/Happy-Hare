@@ -3,6 +3,13 @@
 # Responsible for defining/setting:
 #   MMU_HAS_GANTRY_BUMPER_SERVO (and PIN_GANTRY_BUMPER_SERVO)
 #   MMU_HAS_SERVO_CUTTER        (and PIN_SERVO_CUTTER_SERVO)
+#   PARAM_GANTRY_SERVO_MAXIMUM_ANGLE
+#   PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
+#   PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
+#   PARAM_GANTRY_SERVO_INITIAL_ANGLE
+#   PARAM_SERVO_CUTTER_MAXIMUM_ANGLE
+#   PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
+#   PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
 #
 # Responsible for setting:
 #   PARAM_FORCE_FORM_TIP_STANDALONE
@@ -17,12 +24,44 @@ config PIN_GANTRY_BUMPER_SERVO
   string
   default ""
 
+# Defaults here, outside any if, so they hold while the prompts are hidden
+config PARAM_GANTRY_SERVO_MAXIMUM_ANGLE
+  int
+  range 1 360
+  default 180
+
+config PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
+  float
+  default 0.00075
+
+config PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
+  float
+  default 0.00225
+
+config PARAM_GANTRY_SERVO_INITIAL_ANGLE
+  int
+  range 0 360
+  default 180
+
 config MMU_HAS_SERVO_CUTTER
   def_bool n
 
 config PIN_SERVO_CUTTER_SERVO
   string
   default ""
+
+config PARAM_SERVO_CUTTER_MAXIMUM_ANGLE
+  int
+  range 1 360
+  default 180
+
+config PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
+  float
+  default 0.0005
+
+config PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
+  float
+  default 0.0025
 
 
 menu "Tip Forming / Cutting"
@@ -47,6 +86,22 @@ menu "Tip Forming / Cutting"
       validator "$(pin_validator)"
       help
         $(pin_help)
+
+    config PARAM_SERVO_CUTTER_MAXIMUM_ANGLE
+      prompt "Cutting servo h/w max angle        "
+      help
+        Klipper scales the PWM pulse width to never exceed this angle.
+        Set this to 60 for a 60 degree servo
+
+    config PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH
+      prompt "Cutting servo min pulse width      "
+      help
+        Adapt for your servo
+
+    config PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH
+      prompt "Cutting servo max pulse width      "
+      help
+        Adapt for your servo
 
   endif
 
@@ -121,6 +176,26 @@ menu "Tip Forming / Cutting"
       help
         Optional. Used to deploy fold-down "bumper" for tip cutting
         when using a toolhead mounted filament cutting blade
+
+    if MMU_HAS_GANTRY_BUMPER_SERVO
+      config PARAM_GANTRY_SERVO_MAXIMUM_ANGLE
+        prompt "Gantry servo h/w max angle         "
+        help
+          Klipper scales the PWM pulse width to never exceed this angle
+
+      config PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
+        prompt "Gantry servo min pulse width       "
+
+      config PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH
+        prompt "Gantry servo max pulse width       "
+
+      config PARAM_GANTRY_SERVO_INITIAL_ANGLE
+        prompt "Gantry servo initial angle         "
+        help
+          Angle set at Klipper startup. Normally the retracted position:
+          match "Gantry servo up angle" under
+          Macro Variables -> Toolhead tip cutting
+    endif
   endif
 
 

@@ -16,6 +16,7 @@
 #   PIN_BLOBIFIER_SERVO
 #   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
 #   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
+#   PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
 #
 # Blobifier stepper tray: (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
 #   PIN_BLOBIFIER_STEP
@@ -45,6 +46,11 @@ config MMU_HAS_BLOBIFIER
 config PIN_BLOBIFIER_SERVO
   string
   default ""
+
+config PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
+  int
+  range 1 360
+  default 180
 
 config PIN_BLOBIFIER_BUCKET_SWITCH
   string
@@ -149,6 +155,12 @@ menu "Purging"
           Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
 
           The default value is likely to be close so don't worry about this for now
+
+      config PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE
+        prompt "Servo h/w max angle            "
+        help
+          Recommend leaving this at 180. The tray in/out angles under
+          Macro Variables -> Blobifier are relative to it
     endif
 
     if CHOICE_BLOBIFIER_TYPE_STEPPER

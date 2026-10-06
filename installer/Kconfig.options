@@ -14,6 +14,7 @@
 #
 #   INSTALL_12864_MENU
 #   INSTALL_CLIENT_MACROS
+#   (callback macro names: see Kconfig.macro_overrides)
 #
 #   PARAM_LOG_STATISTICS
 #   PARAM_LOG_VISUAL
@@ -386,6 +387,8 @@ menu "Software Options"
       Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
       This is highly recommended and incorporates all functionality from popular alternatives
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
+
+  source "Kconfig.macro_overrides"
 
 
 # -------------------------------------
