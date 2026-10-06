@@ -201,5 +201,24 @@ class TestMenuText(unittest.TestCase):
                 self.assertTrue(prompts[top + 2].startswith('(")_(") '), prompts[top + 2])
 
 
+class TestHelpHeight(unittest.TestCase):
+    """menuconfig's help window shows only the first _SHOW_HELP_HEIGHT lines of a help
+    text, so anything past them is silently cut off."""
+
+    def test_no_help_text_is_taller_than_the_help_window(self):
+        for label, env in (('single', cfg._SINGLE_UNIT_ENV), ('entry', _ENTRY_ENV),
+                           ('unit', _PER_UNIT_ENV)):
+            with cfg._env(env):
+                kc = cfg._new_kconfig('help_height_' + label)
+            import menuconfig  # importable once cfg has set up the kconfiglib path
+            with self.subTest(tree=label):
+                heights = [(node, len(node.help.split('\n'))) for node in kc.node_iter()
+                           if getattr(node, 'help', None)]
+                self.assertGreater(len(heights), 500)
+                self.assertEqual(['%s:%d (%d lines)' % (node.filename, node.linenr, height)
+                                  for node, height in heights
+                                  if height > menuconfig._SHOW_HELP_HEIGHT], [])
+
+
 if __name__ == '__main__':
     unittest.main()

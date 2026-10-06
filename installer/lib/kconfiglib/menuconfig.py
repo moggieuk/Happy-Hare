@@ -2190,6 +2190,13 @@ def _draw_input_dialog(win, title, info_lines, s, i, hscroll):
     win.noutrefresh()
 
 
+# Happy Hare: Joins array editor lines with the separator plus a space ("a, b"),
+# the spacing the shipped defaults use, unless the separator already ends in one
+def _join_array_lines(lines, separator):
+    joiner = separator if separator[-1:].isspace() else separator + " "
+    return joiner.join(line.strip() for line in lines)
+
+
 # Happy Hare: Added multi-line/array editor for STRING values with a
 # configurable separator (set via the 'array_editor' Kconfig property)
 def _multiline_input_dialog(title, initial_text, separator):
@@ -2234,7 +2241,7 @@ def _multiline_input_dialog(title, initial_text, separator):
         elif c == "\x04":  # Ctrl-D
             _safe_curs_set(0)
             # Happy Hare: Rejoin edited lines using the configured separator (allow blank lines)
-            return separator.join(line.strip() for line in lines)
+            return _join_array_lines(lines, separator)
 
         elif c == "\x1B":  # \x1B = ESC
             _safe_curs_set(0)

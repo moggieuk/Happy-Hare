@@ -1445,6 +1445,49 @@ class TestMmuCfgTunables(unittest.TestCase):
         self._assert_options(parser, 'mmu_parameters', self.MACROS)
 
 
+class TestConsoleStatistics(unittest.TestCase):
+    """mmu.cfg console statistics options come from Kconfig, defaulting to the old literals"""
+
+    DEFAULTS = {
+        'console_stat_columns': 'unload, load, post_load, total',
+        'console_stat_rows': 'total, total_average, job, job_average, last',
+        'console_gate_stat': 'emoticon',
+        'console_always_output_full': '1',
+        'console_show_colored_text': '1',
+        'console_show_filament_color': '1',
+    }
+
+    def _options(self, rendered):
+        cfg.assert_sane(rendered)
+        parser = cfg.assemble({MMU: rendered[MMU]}, macros=False)
+        return {k: parser['mmu_parameters'][k] for k in self.DEFAULTS}
+
+    def test_defaults_match_previous_literals(self):
+        rendered = cfg.render(profiles.get('boxturtle').derive('console_stat_defaults', syms={}))
+        self.assertEqual(self._options(rendered), self.DEFAULTS)
+
+    def test_values_are_rendered(self):
+        rendered = cfg.render(profiles.get('boxturtle').derive('console_stat_values', syms={
+            'PARAM_CONSOLE_STAT_COLUMNS': 'pre_load, purge, total',
+            'PARAM_CONSOLE_STAT_ROWS': 'last, job',
+            'CHOICE_CONSOLE_GATE_STAT_PERCENTAGE': True,
+            'PARAM_CONSOLE_ALWAYS_OUTPUT_FULL': 0,
+            'PARAM_CONSOLE_SHOW_COLORED_TEXT': 0,
+            'PARAM_CONSOLE_SHOW_FILAMENT_COLOR': 0,
+        }))
+        self.assertEqual(self._options(rendered), {
+            'console_stat_columns': 'pre_load, purge, total',
+            'console_stat_rows': 'last, job',
+            'console_gate_stat': 'percentage',
+            'console_always_output_full': '0',
+            'console_show_colored_text': '0',
+            'console_show_filament_color': '0',
+        })
+
+    def test_multi_unit_renders_defaults(self):
+        self.assertEqual(self._options(cfg.render(TWO_UNIT)), self.DEFAULTS)
+
+
 class TestMultiUnitRender(unittest.TestCase):
     """
     A multi-unit render is THREE Kconfig parses with different env, not one

@@ -21,6 +21,13 @@
 #   PARAM_LOG_STARTUP_STATUS
 #   PARAM_LOG_M117_MESSAGES
 #
+#   PARAM_CONSOLE_STAT_COLUMNS
+#   PARAM_CONSOLE_STAT_ROWS
+#   PARAM_CONSOLE_GATE_STAT
+#   PARAM_CONSOLE_ALWAYS_OUTPUT_FULL
+#   PARAM_CONSOLE_SHOW_COLORED_TEXT
+#   PARAM_CONSOLE_SHOW_FILAMENT_COLOR
+#
 #   PARAM_TIMEOUT_PAUSE
 #   PARAM_DISABLE_HEATER
 #   PARAM_DEFAULT_EXTRUDER_TEMP
@@ -32,6 +39,10 @@
 #   PARAM_FILAMENT_RECOVERY_ON_PAUSE
 #   PARAM_RETRY_TOOL_CHANGE_ON_ERROR
 #   PARAM_BYPASS_AUTOLOAD
+
+# Statistics table tokens known to the MMU_STATS console table
+console_stat_column := (pre_unload|form_tip|unload|post_unload|pre_load|load|purge|post_load|total)
+console_stat_row    := (total|total_average|job|job_average|last)
 
 menu "Software Options"
   help
@@ -317,6 +328,79 @@ menu "Software Options"
     default "allgates" if CHOICE_T_MACRO_COLOR_ALLGATES
     default "gatemap" if CHOICE_T_MACRO_COLOR_GATEMAP
     default "off" if CHOICE_T_MACRO_COLOR_OFF
+
+
+# -------------------------------------
+# Console Statistics
+# -------------------------------------
+
+  comment "_"
+  comment "_Console Statistics"
+
+  config PARAM_CONSOLE_STAT_COLUMNS
+    string "Statistics table columns"
+    default "unload, load, post_load, total"
+    array_editor ","
+    validator "$(console_stat_column)"
+    help
+      Columns shown in the console statistics table. They are always displayed in this
+      order, whatever order they are listed in. Options:
+        pre_unload, form_tip, unload, post_unload, pre_load, load, purge, post_load, total
+
+  config PARAM_CONSOLE_STAT_ROWS
+    string "Statistics table rows   "
+    default "total, total_average, job, job_average, last"
+    array_editor ","
+    validator "$(console_stat_row)"
+    help
+      Rows shown in the console statistics table, in the order listed. Options:
+        total, total_average, job, job_average, last
+
+  choice CHOICE_CONSOLE_GATE_STAT
+    prompt "Gate performance display"
+    default CHOICE_CONSOLE_GATE_STAT_EMOTICON
+    help
+      How the state of each gate and how well it is performing is shown in the console.
+
+    config CHOICE_CONSOLE_GATE_STAT_STRING
+      bool "string"
+      help
+        Words such as poor, good, perfect
+
+    config CHOICE_CONSOLE_GATE_STAT_PERCENTAGE
+      bool "percentage"
+      help
+        Rate of success
+
+    config CHOICE_CONSOLE_GATE_STAT_EMOTICON
+      bool "emoticon"
+      help
+        Fun sad to happy faces
+  endchoice
+
+  config PARAM_CONSOLE_GATE_STAT
+    string
+    default "string" if CHOICE_CONSOLE_GATE_STAT_STRING
+    default "percentage" if CHOICE_CONSOLE_GATE_STAT_PERCENTAGE
+    default "emoticon" if CHOICE_CONSOLE_GATE_STAT_EMOTICON
+
+  config PARAM_CONSOLE_ALWAYS_OUTPUT_FULL
+    boolint "Always display the full statistics table?"
+    default 1
+    help
+      1 to always show the full table (default), 0 to only show totals when not printing
+
+  config PARAM_CONSOLE_SHOW_COLORED_TEXT
+    boolint "Use color in console output?"
+    default 1
+    help
+      1 to use color in console output (default), 0 for monochrome
+
+  config PARAM_CONSOLE_SHOW_FILAMENT_COLOR
+    boolint "Show filament color swatch in console?"
+    default 1
+    help
+      1 to use a colored "swatch" for filament (default), 0 for a safe, non-colored asterisk (*)
 
 
 # -------------------------------------
