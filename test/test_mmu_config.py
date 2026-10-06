@@ -1357,7 +1357,9 @@ class TestMmuCfgTunables(unittest.TestCase):
         self._assert_options(parser, 'mmu_parameters', self.MACROS)
         self._assert_options(parser, 'mmu_servo mmu_gantry_servo', self.GANTRY)
         self._assert_options(parser, 'mmu_servo cut_servo', self.CUTTER)
-        self._assert_options(parser, 'mmu_servo blobifier', {'maximum_servo_angle': '180'})
+        self._assert_options(parser, 'mmu_servo blobifier', {
+            'maximum_servo_angle': '180', 'minimum_pulse_width': '0.00053',
+            'maximum_pulse_width': '0.0023'})
         # Only the gantry servo set an initial angle before it was optional
         self.assertNotIn('initial_angle', parser['mmu_servo cut_servo'])
         self.assertNotIn('initial_angle', parser['mmu_servo blobifier'])
@@ -1391,7 +1393,7 @@ class TestMmuCfgTunables(unittest.TestCase):
             'PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH': '0.0023',
             'BOOL_SERVO_CUTTER_INITIAL_ANGLE': True,
             'PARAM_SERVO_CUTTER_INITIAL_ANGLE': 15,
-            'PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE': 270,
+            'PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE': 270,
             'BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE': True,
             'PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE': 160,
         }))

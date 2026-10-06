@@ -13,7 +13,7 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
 13 and 14, items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
-item 7), and item 13 is its item 20. When you add an extension, update **both** this file and that
+item 7), item 13 is its item 20, and item 23 is its item 23. When you add an extension, update **both** this file and that
 header block.
 
 ## 1. `generated_default`
@@ -273,7 +273,7 @@ section in the user's own config. This works on single units too.
   saved name (their unit name if none is saved).
 - Kconfig reads them with `@repeat var=i min=0 max=$(owner-max,KIND)@` and compares the name
   symbol to `"$(owner-name,KIND,$(i))"` literals, guarded by `!= ""` for past-the-end slots.
-  A macro can't expand to a Kconfig expression, only to one symbol name, hence the repeat.
+  The repeat predates item 23, when a macro could only expand to one symbol name.
   Because the comparison is a real expression, a name edited in menuconfig is matched at once.
 - Promptless `SHARED_BUFFER_FOUND` / `SHARED_ENCODER_FOUND` say the shared name is a sibling
   owner's.
@@ -612,3 +612,31 @@ an "Updating configuration…" box.
   - **Checking the result:** after saving, `CONFIG_MCU_NAME` equal to the new
     name proves the re-parse ran, and the `#~DEFAULT~#` pin lines should carry
     the new prefix.
+
+## 23. Macros that expand to an expression
+
+Upstream lexes a `$(macro)` in a symbol position as part of ONE name, however
+it expands, so `if $(cond)` with `cond := A && !B` tested a junk symbol named
+`A && !B`: always n, with no error. The Happy Hare branch after `_expand_name`
+in `_tokenize` re-lexes the expansion in place, as the expression it spells,
+when it holds whitespace or starts with `!` or `(` (`_expanded_expr_match`).
+Write a condition with spaces around its operators.
+
+Anything else stays one symbol name, exactly as upstream. That matters: an
+undefined symbol's value is its own name, and a choice member named from a
+device path (`$(mmu_serial_config,...)`, only `-` replaced) can hold `:`, `=`
+or `+` and is both declared and defaulted to through the macro. No existing
+macro expands to whitespace or a leading `!`/`(`, so nothing that parsed before
+changes meaning.
+
+This is what lets `components/Kconfig.servo` take its prompt condition from the
+caller (`servo_visible`) instead of being sourced inside the caller's `if`.
+
+- `test_kconfig_macro_names.py` (`TestMacroExpandingToAnExpression`) covers the
+  tokenizer, including a device-style name; `test_kconfig_structure.py` fails
+  on any symbol name with spaces or operators in the shipped (harness) tree,
+  which is what catches `A&&B` written without spaces.
+- An `if` block *between* a menu toggle and the prompts it should nest still
+  ends kconfiglib's automatic submenu (`_finalize_node` only nests consecutive
+  siblings that depend on the toggle). A prompt condition doesn't, which is the
+  other reason to pass a condition rather than wrap the `source`.

@@ -630,6 +630,12 @@ HH_RENAMED_SYMBOLS = { # Happy Hare: Added
     "CHOICE_GEAR_TMC2240":                   "CHOICE_GEAR_TMC2240_UART",
     "CHOICE_SELECTOR_TMC2240":               "CHOICE_SELECTOR_TMC2240_UART",
     "CHOICE_BLOBIFIER_TMC2240":              "CHOICE_BLOBIFIER_TMC2240_SPI",
+
+    # v4.x: the Blobifier servo took the PARAM_<servo>_* names of the shared
+    # servo definition (components/Kconfig.servo) used by every other servo.
+    "PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH":   "PARAM_BLOBIFIER_SERVO_MIN_PULSE_WIDTH",
+    "PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH":   "PARAM_BLOBIFIER_SERVO_MAX_PULSE_WIDTH",
+    "PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE":   "PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE",
 }
 
 
@@ -2859,7 +2865,21 @@ class Kconfig(object):
 
                     if "$" in name:
                         # Macro expansion within symbol name
+                        name_i = i
                         name, s, i = self._expand_name(s, i)
+
+                        # Happy Hare: a macro that expands to an expression,
+                        # e.g. 'if $(cond)' with 'cond := A && !B', is re-lexed
+                        # in place as that expression, so a component can take
+                        # a condition from its caller. Upstream makes the whole
+                        # expansion one symbol name - a junk symbol that is
+                        # always n. Only whitespace or a leading '!' or '('
+                        # marks an expression: a name built from a device path
+                        # (mmu_serial_config) may hold ':' or '=' and must stay
+                        # one symbol, as upstream lexes it.
+                        if _expanded_expr_match(name) and "$" not in name:
+                            i = name_i
+                            continue
                     else:
                         i = match.end()
 
@@ -8358,6 +8378,10 @@ _string_special_search = _re_search(r'"|\'|\\|\$\(')
 # Special characters/strings while expanding a symbol name. Also includes
 # end-of-line, in case the macro is the last thing on the line.
 _name_special_search = _re_search(r'[^A-Za-z0-9_$/.-]|\$\(|$')
+
+# Happy Hare: a macro expansion in a symbol position that spells an expression
+# rather than a name, so it is re-lexed - see _tokenize()
+_expanded_expr_match = _re_search(r'^[!(]|\s')
 
 # A valid right-hand side for an assignment to a string symbol in a .config
 # file, including escaped characters. Extracts the contents.
