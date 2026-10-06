@@ -18,6 +18,13 @@ def split_sequence(value, separator):
     return [part.strip() for part in value.split(separator) if part.strip()]
 
 
+def join_sequence(names, separator):
+    # Separator plus a space ("a, b"), the spacing the shipped defaults use,
+    # unless the separator already ends in one
+    joiner = separator if separator[-1:].isspace() else separator + " "
+    return joiner.join(names)
+
+
 def changes_path(config_filename, sym_name):
     return "{}.{}.changes".format(config_filename, sym_name)
 
@@ -88,7 +95,7 @@ class SequenceModel:
         return [name for name in self.baseline if name not in used]
 
     def value(self, separator):
-        return separator.join(self.names())
+        return join_sequence(self.names(), separator)
 
     def is_changed(self):
         return self.rows != [[name, name] for name in self.baseline]

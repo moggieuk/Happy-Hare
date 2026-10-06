@@ -675,17 +675,23 @@ config UNITS
         # Rows: a, b, then removed c. Rename a, move it below b
         error = self.drive(["r", "J", "\n"], ["box"])
         error.assert_not_called()
-        self.assertEqual(self.sym.str_value, "b,box")
+        self.assertEqual(self.sym.str_value, "b, box")
         self.assertEqual(menuconfig._sequence_models["UNITS"].origins(), {"b": "b", "box": "a"})
 
     def test_dialog_restore_removed_entry(self):
         self.drive(["j", "j", "d", "\n"])
-        self.assertEqual(self.sym.str_value, "a,b,c")
+        self.assertEqual(self.sym.str_value, "a, b, c")
         self.assertFalse(menuconfig._sequence_models["UNITS"].is_changed())
 
     def test_dialog_add_and_insert(self):
         self.drive(["a", "k", "k", "i", "\n"], ["z", "y"])
-        self.assertEqual(self.sym.str_value, "y,a,b,z")
+        self.assertEqual(self.sym.str_value, "y, a, b, z")
+
+    def test_dialog_unedited_list_keeps_its_spelling(self):
+        with patch.object(menuconfig, "_conf_changed", False):
+            self.drive(["\n"])
+            self.assertFalse(menuconfig._conf_changed)
+        self.assertEqual(self.sym.str_value, "a,b")
 
     def test_dialog_escape_discards(self):
         self.drive(["r", "\x1b"], ["box"])
@@ -696,7 +702,7 @@ config UNITS
         error = self.drive(["r", "a", "\n"], ["box", "d"], restructure=False)
         error.assert_called_once()
         self.assertIn("appending", error.call_args.args[0])
-        self.assertEqual(self.sym.str_value, "a,b,d")
+        self.assertEqual(self.sym.str_value, "a, b, d")
 
     def test_dialog_keeps_at_least_one_entry(self):
         error = self.drive(["d", "d", "\n"])
@@ -707,16 +713,16 @@ config UNITS
     def test_raw_shift_arrow_sequence_moves_instead_of_cancelling(self):
         # ESC is followed by an xterm Shift-Down the terminfo didn't translate
         self.drive(["\x1b", "\n"], pending=list("[1;2B"))
-        self.assertEqual(self.sym.str_value, "b,a")
+        self.assertEqual(self.sym.str_value, "b, a")
 
     def test_escape_sequence_stops_at_its_final_byte(self):
         # The key after the sequence is still handled as a key
         self.drive(["\x1b", "\n"], pending=list("[1;2B") + ["J"])
-        self.assertEqual(self.sym.str_value, "b,a")
+        self.assertEqual(self.sym.str_value, "b, a")
 
     def test_unknown_escape_sequence_is_ignored(self):
         self.drive(["r", "\x1b", "\n"], ["box"], pending=list("[1;5C"))
-        self.assertEqual(self.sym.str_value, "box,b")
+        self.assertEqual(self.sym.str_value, "box, b")
 
     def test_dialog_draws_rows_status_and_keys(self):
         import sequence_edit
@@ -745,7 +751,7 @@ config UNITS
 
     def test_shift_arrows_move_entries(self):
         self.drive([menuconfig.curses.KEY_SF, "\n"])
-        self.assertEqual(self.sym.str_value, "b,a")
+        self.assertEqual(self.sym.str_value, "b, a")
         self.drive(["j", menuconfig.curses.KEY_SR, "\n"])
         self.assertEqual(self.sym.str_value, "a,b")
 
