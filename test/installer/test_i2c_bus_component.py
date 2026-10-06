@@ -99,6 +99,8 @@ class TestI2cBusChoice(unittest.TestCase):
         env_ebb = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4'
         slb = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_SLB_I2C2_PB10_PB11_1'
         x5 = 'CHOICE_NFC_READER_I2C_BUS_X5_I2C1'
+        x5_i2c3 = 'CHOICE_NFC_READER_I2C_BUS_X5_I2C3'
+        env_x5 = ['CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C3', 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C1']
         nfc_ebb = 'CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4'
         env_custom = 'CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_OTHER'
         nfc_custom = 'CHOICE_NFC_READER_I2C_BUS_OTHER'
@@ -107,8 +109,11 @@ class TestI2cBusChoice(unittest.TestCase):
             ('env EBB', 'boxturtle', dict(ENV, **EBB), 'ENVIRONMENT_SENSOR', '',
              [env_ebb, env_custom], env_ebb),
             ('env per gate', 'emu', {}, 'ENVIRONMENT_SENSOR', '_1', [slb, env_custom + '_1'], slb),
+            # The I2C1 header is the sensor's own, preselected when hardware i2c is chosen
+            ('env X5', 'boxturtle', dict(ENV, CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE=True, **X5),
+             'ENVIRONMENT_SENSOR', '', env_x5 + [env_custom], env_x5[0]),
             ('nfc shared', 'boxturtle', NFC, 'NFC_READER', '', [nfc_custom], nfc_custom),
-            ('nfc X5', 'boxturtle', dict(NFC, **X5), 'NFC_READER', '', [x5, nfc_custom], x5),
+            ('nfc X5', 'boxturtle', dict(NFC, **X5), 'NFC_READER', '', [x5, x5_i2c3, nfc_custom], x5),
             # Offered, but an NFC reader has always defaulted to the MCU's default bus
             ('nfc EBB', 'boxturtle', dict(NFC, **EBB), 'NFC_READER', '', [nfc_ebb, nfc_custom], nfc_custom),
         )

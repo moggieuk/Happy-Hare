@@ -133,7 +133,8 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
 
   # -------------------------------------
   # Environment sensor (I2C1 header)
-  # PA8/PC9 is also the F407's hardware bus "i2c3"
+  # PA8/PC9 is also the F407's hardware bus "i2c3", preselected if hardware
+  # i2c is chosen. The I2C_0 header (hardware "i2c1") is offered too
   # -------------------------------------
 
   choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
@@ -143,6 +144,20 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
     default "$(MCU_NAME):PA8"
   config PIN_ENVIRONMENT_SENSOR_I2C_SDA
     default "$(MCU_NAME):PC9"
+
+  choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
+    default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C3
+
+    config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C3
+      bool "i2c3 (I2C1 header)"
+      depends on BOARD_TYPE_CHAMELEON_X5_1_0
+    config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C1
+      bool "i2c1 (I2C_0 header)"
+      depends on BOARD_TYPE_CHAMELEON_X5_1_0
+  endchoice
+  config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
+    default "i2c3" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C3
+    default "i2c1" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_X5_I2C1
 
 
   # -------------------------------------
@@ -196,7 +211,8 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
   # -------------------------------------
   # NFC readers (I2C_0 header: hardware i2c1, PB6/PB7)
   # The X5 has no reader connectors; an I2C reader (PN532 or PN7160) can use
-  # I2C_0. SPI readers need pins this board doesn't have free
+  # I2C_0, or the I2C1 header (hardware i2c3) if the environment sensor isn't
+  # on it. SPI readers need pins this board doesn't have free
   # -------------------------------------
 
   choice CHOICE_NFC_READER_I2C_BUS
@@ -205,9 +221,13 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
     config CHOICE_NFC_READER_I2C_BUS_X5_I2C1
       bool "i2c1 (I2C_0 header)"
       depends on BOARD_TYPE_CHAMELEON_X5_1_0
+    config CHOICE_NFC_READER_I2C_BUS_X5_I2C3
+      bool "i2c3 (I2C1 header)"
+      depends on BOARD_TYPE_CHAMELEON_X5_1_0
   endchoice
   config PARAM_NFC_READER_I2C_BUS
     default "i2c1" if CHOICE_NFC_READER_I2C_BUS_X5_I2C1
+    default "i2c3" if CHOICE_NFC_READER_I2C_BUS_X5_I2C3
 
   @repeat var=gate min=0 max=11@
   if PARAM_NUM_GATES > $(gate)
@@ -217,9 +237,13 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
       config CHOICE_NFC_READER_I2C_BUS_X5_I2C1_$(gate)
         bool "i2c1 (I2C_0 header)"
         depends on BOARD_TYPE_CHAMELEON_X5_1_0
+      config CHOICE_NFC_READER_I2C_BUS_X5_I2C3_$(gate)
+        bool "i2c3 (I2C1 header)"
+        depends on BOARD_TYPE_CHAMELEON_X5_1_0
     endchoice
     config PARAM_NFC_READER_I2C_BUS_$(gate)
       default "i2c1" if CHOICE_NFC_READER_I2C_BUS_X5_I2C1_$(gate)
+      default "i2c3" if CHOICE_NFC_READER_I2C_BUS_X5_I2C3_$(gate)
   endif
   @endrepeat@
 
