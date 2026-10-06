@@ -319,5 +319,114 @@ class TestPinValidator(unittest.TestCase):
         self.assertEqual(sorted(failures), [])
 
 
+class TestConsoleStatValidators(unittest.TestCase):
+
+    COLUMNS = ('pre_unload', 'form_tip', 'unload', 'post_unload', 'pre_load', 'load', 'purge',
+               'post_load', 'total')
+    ROWS = ('total', 'total_average', 'job', 'job_average', 'last')
+
+    @classmethod
+    def setUpClass(cls):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            cls.kc = cfg._kconfig('console_stat_validators', profiles.get('boxturtle').syms)
+
+    def _check(self, name, good, bad):
+        sym = self.kc.syms[name]
+        self.assertEqual(sym.array_editor, ',')
+        for value in good:
+            with self.subTest(symbol=name, value=value):
+                self.assertIsNotNone(sym.validator.fullmatch(value))
+        for value in bad:
+            with self.subTest(symbol=name, value=value):
+                self.assertIsNone(sym.validator.fullmatch(value))
+
+    def test_columns(self):
+        self._check('PARAM_CONSOLE_STAT_COLUMNS', self.COLUMNS,
+                    ('', 'swap', 'Total', 'total_average', 'unload load', 'loads'))
+
+    def test_rows(self):
+        self._check('PARAM_CONSOLE_STAT_ROWS', self.ROWS,
+                    ('', 'unload', 'Last', 'job average', 'jobs'))
+
+    def test_menuconfig_rejects_an_unknown_token_in_the_list(self):
+        import menuconfig
+        from unittest.mock import patch
+        sym = self.kc.syms['PARAM_CONSOLE_STAT_COLUMNS']
+        with patch.object(menuconfig, '_error') as error:
+            self.assertTrue(menuconfig._check_valid(sym, 'unload, load'))
+            error.assert_not_called()
+            self.assertFalse(menuconfig._check_valid(sym, 'unload, swap'))
+        self.assertIn("Element 2 'swap'", error.call_args.args[0])
+
+    def test_shipped_defaults_pass_per_element(self):
+        for name in ('PARAM_CONSOLE_STAT_COLUMNS', 'PARAM_CONSOLE_STAT_ROWS'):
+            sym = self.kc.syms[name]
+            for element in sym.str_value.split(sym.array_editor):
+                with self.subTest(symbol=name, element=element):
+                    self.assertIsNotNone(sym.validator.fullmatch(element.strip()))
+
+
+class TestSequencePositionValidators(unittest.TestCase):
+
+    PARKS = tuple('VAR_SEQUENCE_PARK_' + n for n in
+                  ('TOOLCHANGE', 'RUNOUT', 'PAUSE', 'CANCEL', 'COMPLETE'))
+    POSITIONS = tuple('VAR_SEQUENCE_%s_POSITION' % n for n in
+                      ('PRE_UNLOAD', 'POST_FORM_TIP', 'PRE_LOAD'))
+
+    @classmethod
+    def setUpClass(cls):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            cls.kc = cfg._kconfig('sequence_validators', profiles.get('boxturtle').syms)
+
+    def _validator(self, name):
+        return self.kc.syms[name].validator
+
+    def test_every_symbol_has_a_plain_string_validator(self):
+        for name in self.PARKS + self.POSITIONS:
+            with self.subTest(symbol=name):
+                self.assertIsNotNone(self._validator(name))
+                self.assertIsNone(self.kc.syms[name].array_editor)
+
+    def test_park_format(self):
+        validator = self._validator('VAR_SEQUENCE_PARK_PAUSE')
+        for good in ('-999,-999,1,5,2', '-999, -999, 1,  5, 2', '1.5, .5, 0, 0, 0',
+                     '+10, 20., -1, 0, 2', '(50, 50, 5, 0, 2)', '( 50,50,5,0,2 )'):
+            with self.subTest(value=good):
+                self.assertIsNotNone(validator.fullmatch(good))
+        for bad in ('', '1, 2, 3, 4', '1, 2, 3, 4, 5, 6', 'x, 2, 3, 4, 5', '1,,2,3,4',
+                    '1, 2, 3, 4, 5,', '1 2 3 4 5', '(1, 2, 3, 4, 5', '[1, 2, 3, 4, 5]',
+                    "'1, 2, 3, 4, 5'", '1, 2, 3, 4, -'):
+            with self.subTest(value=bad):
+                self.assertIsNone(validator.fullmatch(bad))
+
+    def test_position_format(self):
+        validator = self._validator('VAR_SEQUENCE_PRE_LOAD_POSITION')
+        for good in ('-999, -999, 0', '100,200,1.5', '(.5, -.5, 0)'):
+            with self.subTest(value=good):
+                self.assertIsNotNone(validator.fullmatch(good))
+        for bad in ('', '1, 2', '1, 2, 3, 4', '-999, -999, 0, 0, 0', '1, 2, z', '1, 2, 3,'):
+            with self.subTest(value=bad):
+                self.assertIsNone(validator.fullmatch(bad))
+
+    def test_every_declared_default_passes(self):
+        names = set(self.PARKS + self.POSITIONS)
+        found = []
+        for path in glob.glob(os.path.join(REPO_ROOT, 'installer', '**', 'Kconfig*'), recursive=True):
+            sym = None
+            with open(path) as handle:
+                for line in handle:
+                    match = re.match(r'\s*config\s+(\w+)', line)
+                    if match:
+                        sym = match.group(1) if match.group(1) in names else None
+                        continue
+                    match = sym and re.match(r'\s*default\s+"([^"]*)"', line)
+                    if match:
+                        found.append((sym, match.group(1)))
+        self.assertGreaterEqual(len(found), len(names))
+        for sym, value in found:
+            with self.subTest(symbol=sym, value=value):
+                self.assertIsNotNone(self._validator(sym).fullmatch(value.strip()))
+
+
 if __name__ == '__main__':
     unittest.main()
