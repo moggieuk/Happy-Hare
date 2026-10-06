@@ -3184,7 +3184,8 @@ class MmuFilamentMovement:
                 macro = self.p.purge_macro
                 if extruder_only:
                     macro += " EXTRUDER_ONLY=1"
-                self.wrap_gcode_command(macro, exception=True, wait=True)
+                with self._wrap_pressure_advance(0.0, "for purging"):
+                    self.wrap_gcode_command(macro, exception=True, wait=True)
 
         self.log_trace_exit("purge_standalone() => None")
 
@@ -4207,6 +4208,13 @@ class MmuFilamentMovement:
         if initial_pa is None:
             yield self
             return
+
+        if not initial_pa:
+            self.log_debug(
+                "Pressure advance was already 0 when setting it %s. If this is unexpected, look for a "
+                "SET_PRESSURE_ADVANCE in slicer gcode or macros (e.g. wipe tower) that isn't restored"
+                % (reason or "temporarily")
+            )
 
         try:
             if reason:
