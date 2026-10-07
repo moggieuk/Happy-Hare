@@ -625,6 +625,55 @@ class TestMmuFanConfiguration(unittest.TestCase):
             self._kconfig('qidi_fixed_fan', fixed).is_enabled('W21'))
 
 
+class TestPerGateFanPinLists(unittest.TestCase):
+
+    def _render(self, **syms):
+        profile = _per_gate_controller_fan_profile(**dict({'MMU_HAS_HEATER': True}, **syms))
+        return cfg.assemble(cfg.render(profile), macros=False)
+
+    def assertAliasedFan(self, parser, fan, alias, pins):
+        sections = parser.sections()
+        # Klipper resolves multi_pin: when the fan loads, so the alias must come first
+        self.assertEqual(sections.index('multi_pin ' + alias) + 1, sections.index(fan))
+        self.assertEqual(parser.get('multi_pin ' + alias, 'pins'), pins)
+        self.assertEqual(parser.get(fan, 'pin'), 'multi_pin:' + alias)
+
+    def test_each_gate_fan_accepts_a_list_of_pins(self):
+        parser = self._render(
+            PIN_FAN_1='unit0_gate1:PA15,  !unit0_gate1:PA0',
+            PIN_CONTROLLER_FAN_2='unit0_gate2:PB8, unit0_gate2:PB9',
+            PIN_HEATER_FAN_1='unit0_gate1:PA9, unit0_gate1:PA10')
+        self.assertAliasedFan(parser, 'fan_generic _unit0_fan1', '_unit0_fan1_pins',
+                              'unit0_gate1:PA15, !unit0_gate1:PA0')
+        self.assertAliasedFan(parser, 'controller_fan _unit0_controller_fan2',
+                              '_unit0_controller_fan2_pins', 'unit0_gate2:PB8, unit0_gate2:PB9')
+        self.assertAliasedFan(parser, 'heater_fan _unit0_heater_fan1', '_unit0_heater_fan1_pins',
+                              'unit0_gate1:PA9, unit0_gate1:PA10')
+        self.assertEqual(sorted(s for s in parser.sections() if s.startswith('multi_pin ')), [
+            'multi_pin _unit0_controller_fan2_pins', 'multi_pin _unit0_fan1_pins',
+            'multi_pin _unit0_heater_fan1_pins'])
+        # Single-pin gates keep a direct pin
+        self.assertEqual(parser.get('fan_generic _unit0_fan0', 'pin'), 'unit0_gate0:PA15')
+        self.assertEqual(parser.get('controller_fan _unit0_controller_fan0', 'pin'), 'unit0_gate0:PB8')
+        self.assertEqual(parser.get('heater_fan _unit0_heater_fan0', 'pin'), 'unit0_gate0:PA9')
+
+    def test_single_pins_have_no_alias(self):
+        parser = self._render()
+        self.assertFalse([s for s in parser.sections() if s.startswith('multi_pin ')])
+
+    def test_per_gate_fan_pin_validators_accept_lists(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig('per_gate_fan_pin_validators', profiles.get('emu').syms)
+        for symbol in ('PIN_FAN_1', 'PIN_CONTROLLER_FAN_1', 'PIN_HEATER_FAN_1'):
+            validator = kconfig.syms[symbol].validator
+            for good in ('', 'unit0_gate1:PA4', 'unit0_gate1:PA4, !unit0_gate1:PA5'):
+                with self.subTest(symbol=symbol, good=good):
+                    self.assertTrue(validator.fullmatch(good))
+            for bad in ('unit0_gate1:PA4,', 'PA4 PB8'):
+                with self.subTest(symbol=symbol, bad=bad):
+                    self.assertFalse(validator.fullmatch(bad))
+
+
 class TestMmuFanPinConfiguration(unittest.TestCase):
 
     @staticmethod

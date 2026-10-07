@@ -122,8 +122,6 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       source "components/Kconfig.shared_export"
     endif
 
-    comment "_"
-
     if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
       config PARAM_BUFFER_RANGE
         float "Sync feedback buffer sensor range"
