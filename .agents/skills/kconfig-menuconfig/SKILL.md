@@ -132,8 +132,9 @@ Load-bearing facts about the flow:
   is sourced once per consumer with `prefix := X` preprocessor variables, so
   one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
   and `installer/components/Kconfig.tmc_driver_*` are the worked example;
-  `components/Kconfig.environment_sensor_*` is sourced from inside an
-  `@repeat` (once per gate) as well as once for the shared sensor
+  `components/Kconfig.environment_sensor` (type, i2c bus, address, pins) is
+  sourced from inside an `@repeat` (once per gate) as well as once for the
+  shared sensor
   ([references/environment-sensors.md](references/environment-sensors.md)
   has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
   (they are global for the whole parse); keep an enclosing `if` away from
@@ -145,6 +146,18 @@ Load-bearing facts about the flow:
   sources it outside its feature `if` and passes the prompt condition as
   `servo_visible` (extension 23), straight after the toggle the prompts
   should nest under.
+- **The one-file servo shape needs a prompt on every node.** A promptless
+  node's automatic-submenu test looks at its `dep` (`_auto_menu_dep`), and
+  outside the `if` that dep can't mention the toggle, so the first one ends
+  the submenu. TMC's derived symbols (`PARAM_*_TMC`, `BOOL_*_TMC_*`) can't
+  have prompts, so merging its types into the menu fragment drops the
+  Blobifier stepper prompts out from under "Have Blobifier?"; that is why it
+  stays split. Where losing defaults while hidden is fine, as for the
+  environment sensor, source the whole thing inside the `if` instead.
+  Callers' differences go in variables, servo style: an optional prompt is
+  `prompt "…" if $(flag) && …` (the servo's initial angle), extra help lines a
+  `$(nl)`-prefixed hint, and extra choice members a re-opened named choice
+  in the caller (the shared sensor's fixed i2c2/i2c3 list).
 
 ## The symbol-naming contract
 

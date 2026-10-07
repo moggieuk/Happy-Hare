@@ -514,7 +514,7 @@ if MMU_HAS_NFC_READER
                   on per-gate-MCU designs, otherwise to the MMU MCU.
 
               config PARAM_NFC_READER_I2C_ADDRESS_$(i)
-                int "I2C address              "
+                int "Gate $(i) I2C address       "
                 default 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
                 default 40 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
                 range 36 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
@@ -561,7 +561,7 @@ if MMU_HAS_NFC_READER
                 endchoice
 
                 config PARAM_NFC_READER_I2C_BUS_$(i)
-                  string "Custom i2c bus name    " if CHOICE_NFC_READER_I2C_BUS_OTHER_$(i)
+                  string "Gate $(i) custom bus name   " if CHOICE_NFC_READER_I2C_BUS_OTHER_$(i)
                   default "" if CHOICE_NFC_READER_I2C_BUS_OTHER_$(i)
                   help
                     Klipper i2c bus name (the chipdef name, e.g. i2c3_PB3_PB4),

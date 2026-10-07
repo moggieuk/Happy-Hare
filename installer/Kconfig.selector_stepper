@@ -25,9 +25,9 @@
 if MMU_HAS_SELECTOR_STEPPER
   menu "Selector stepper"
 
-# -------------------------------------
-# Basic stepper settings
-# -------------------------------------
+    # -------------------------------------
+    # Basic stepper settings
+    # -------------------------------------
 
     config PARAM_SELECTOR_GEAR_RATIO
       string "Selector gear ratio             "
@@ -73,29 +73,29 @@ if MMU_HAS_SELECTOR_STEPPER
             MMU_MOTORS_OFF discards that saved position and does require a re-home)
 
 
-# -------------------------------------
-# Selector touch Operation
-# -------------------------------------
+    # -------------------------------------
+    # Selector touch Operation
+    # -------------------------------------
 
-  config PARAM_SELECTOR_TOUCH_ENABLED
-    boolint "Enable touch selector movement using TMC Stallguard?"
-    default 0
-    help
-      This allows for additional selector recovery steps but is difficult to tune.
-      Not recommended if you are new to MMU/Happy-Hare.
-      The MCU must have DIAG output for steppers. Possible to configure later
-    depends on MMU_HAS_SELECTOR_STEPPER && (LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR)
-  if BOARD_TYPE_EASY_BRD
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on PARAM_SELECTOR_TOUCH_ENABLED
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on !PARAM_SELECTOR_TOUCH_ENABLED
-  endif
+    config PARAM_SELECTOR_TOUCH_ENABLED
+      boolint "Enable touch selector movement using TMC Stallguard?"
+      default 0
+      help
+        This allows for additional selector recovery steps but is difficult to tune.
+        Not recommended if you are new to MMU/Happy-Hare.
+        The MCU must have DIAG output for steppers. Possible to configure later
+      depends on MMU_HAS_SELECTOR_STEPPER && (LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR)
+    if BOARD_TYPE_EASY_BRD
+      comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+        depends on PARAM_SELECTOR_TOUCH_ENABLED
+      comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+        depends on !PARAM_SELECTOR_TOUCH_ENABLED
+    endif
 
 
-# -------------------------------------
-# RotarySelector additions
-# -------------------------------------
+    # -------------------------------------
+    # RotarySelector additions
+    # -------------------------------------
 
     if ROTARY_SELECTOR || TESTING_SELECTOR
 
@@ -137,9 +137,9 @@ if MMU_HAS_SELECTOR_STEPPER
     endif
 
 
-# -------------------------------------
-# Index Selector additions
-# -------------------------------------
+    # -------------------------------------
+    # Index Selector additions
+    # -------------------------------------
 
     if INDEXED_SELECTOR || TESTING_SELECTOR
 
