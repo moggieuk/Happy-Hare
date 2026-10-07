@@ -91,13 +91,15 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           Time in seconds to run fan at full power before resetting to target speed.
 
       config PIN_FAN
-        string "Fan pin            "
-        validator "$(pin_validator)"
+        string "Fan pin(s)         "
+        validator "$(pin_list_validator)"
         default ""
         help
           Pin for the fan shared by this MMU unit.
           Leave blank if you don't have a fan installed.
           Empty pins will be ignored in the generated configuration.
+          Separate several fans that run together with commas; they are
+          driven as one [fan_generic] through a [multi_pin] alias.
 
       config BOOL_HIDE_FAN
         bool "Hide in Mainsail / Fluidd"
@@ -352,12 +354,14 @@ menu "Controller fan h/w config"
       inside the heated enclosure.
 
   config PIN_CONTROLLER_FAN
-    string "Controller fan pin "
-    validator "$(pin_validator)"
+    string "Fan pin(s)         "
+    validator "$(pin_list_validator)"
     default ""
     help
       Pin for the fan cooling this MMU unit's electronics.
       Empty pins will be ignored in the generated configuration.
+      Separate several fans that run together with commas; they are
+      driven as one [controller_fan] through a [multi_pin] alias.
 
   config BOOL_HIDE_CONTROLLER_FAN
     bool "Hide in Mainsail / Fluidd"

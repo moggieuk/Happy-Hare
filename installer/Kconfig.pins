@@ -470,10 +470,11 @@ menu "Pins / TMC"
 
   config PIN_FAN
     string
-    prompt "$(pad,$(pin_pad),Managed fan pin)" if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
-    validator "$(pin_validator)"
+    prompt "$(pad,$(pin_pad),Managed fan pin(s))" if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
+    validator "$(pin_list_validator)"
     help
       $(pin_help)
+      Comma-separate several fans that run together.
 
   menu "Managed fan per-gate pins"
     depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
@@ -507,10 +508,11 @@ menu "Pins / TMC"
 
   config PIN_CONTROLLER_FAN
     string
-    prompt "$(pad,$(pin_pad),Controller fan pin)" if MMU_HAS_CONTROLLER_FAN && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_CONTROLLER_FAN_SETUP
-    validator "$(pin_validator)"
+    prompt "$(pad,$(pin_pad),Controller fan pin(s))" if MMU_HAS_CONTROLLER_FAN && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_CONTROLLER_FAN_SETUP
+    validator "$(pin_list_validator)"
     help
       $(pin_help)
+      Comma-separate several fans that run together.
 
   menu "Controller fan per-gate pins"
     depends on MMU_HAS_CONTROLLER_FAN && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_CONTROLLER_FAN_SETUP
