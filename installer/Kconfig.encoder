@@ -83,8 +83,6 @@ if MMU_HAS_ENCODER
         MMU_SHARED_ENCODER && !SHARED_ENCODER_FOUND && PARAM_ENCODER_NAME != ""
       dim
 
-    comment "_"
-
     if !MMU_SHARED_ENCODER
       choice CHOICE_ENCODER_TYPE
         prompt "Type"
@@ -140,15 +138,6 @@ if MMU_HAS_ENCODER
         help
           $(pin_help)
 
-      config PARAM_REGISTER_AS_SENSOR
-        boolint "Register as virtual switch sensor"
-        default 1
-        help
-          This controls whether the encoder appears as a (virtual) filament switch
-          sensor in UI's like Mainsail and Fluidd.
-          Note that it is always available as an sensor/endstop. This controls
-          just the visibility in UI's
-
     endif
 
     config PARAM_GATE_ENDSTOP_TO_ENCODER
@@ -162,6 +151,18 @@ if MMU_HAS_ENCODER
         seen by the encoder. If this is not set the encoder will always measure
         less that the actual movement. Set on every unit, including one that
         shares another unit's encoder, because each unit has its own gate endstop.
+
+    if !MMU_SHARED_ENCODER
+      config PARAM_REGISTER_AS_SENSOR
+        boolint "Register as virtual switch sensor"
+        default 1
+        help
+          This controls whether the encoder appears as a (virtual) filament switch
+          sensor in UI's like Mainsail and Fluidd.
+          Note that it is always available as an sensor/endstop. This controls
+          just the visibility in UI's
+
+    endif
 
     comment "_"
     comment "_Bowden movement"
