@@ -223,7 +223,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 class TestPinValidator(unittest.TestCase):
 
     # Pins that take a comma-separated list, validated by pin_list_validator
-    LIST_PINS = {'PIN_HEATER_FAN', 'PIN_FAN', 'PIN_CONTROLLER_FAN', 'PIN_FAN_SPARE'}
+    FAN_PINS = ('PIN_HEATER_FAN', 'PIN_FAN', 'PIN_CONTROLLER_FAN')
+    LIST_PINS = ({'PIN_FAN_SPARE'} | set(FAN_PINS)
+                 | {'%s_%d' % (pin, gate) for pin in FAN_PINS for gate in range(12)})
 
     @classmethod
     def setUpClass(cls):

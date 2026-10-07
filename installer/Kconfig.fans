@@ -146,10 +146,12 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
                 resetting to its target speed.
 
             config PIN_FAN_$(i)
-              string "Fan pin            "
-              validator "$(pin_validator)"
+              string "Fan pin(s)         "
+              validator "$(pin_list_validator)"
               help
                 Leave blank if this gate does not have a managed fan installed.
+                Separate several fans that run together with commas; they are
+                driven as one [fan_generic] through a [multi_pin] alias.
 
             config PARAM_FAN_NAME_$(i)
               string
@@ -423,10 +425,12 @@ if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CO
               gear stepper is disabled.
 
           config PIN_CONTROLLER_FAN_$(i)
-            string "Controller fan pin "
-            validator "$(pin_validator)"
+            string "Fan pin(s)         "
+            validator "$(pin_list_validator)"
             help
               Leave blank if this gate does not have a controller fan installed.
+              Separate several fans that run together with commas; they are
+              driven as one [controller_fan] through a [multi_pin] alias.
 
           config PARAM_CONTROLLER_FAN_NAME_$(i)
             string

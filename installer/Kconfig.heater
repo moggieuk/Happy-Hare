@@ -373,10 +373,12 @@ if MMU_HAS_HEATER && !CUSTOM_HEATER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
               runs, even when the heater is off.
 
           config PIN_HEATER_FAN_$(i)
-            string "Heater fan pin     "
-            validator "$(pin_validator)"
+            string "Heater fan pin(s)  "
+            validator "$(pin_list_validator)"
             help
               Leave blank if this gate does not have a heater fan installed.
+              Separate several fans that run together with commas; they are
+              driven as one [heater_fan] through a [multi_pin] alias.
 
           config PARAM_HEATER_FAN_NAME_$(i)
             string

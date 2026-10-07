@@ -482,10 +482,11 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_FAN_$(i)
         string
-        prompt "$(pad,$(pin_pad),Managed fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
-        validator "$(pin_validator)"
+        prompt "$(pad,$(pin_pad),Managed fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
+        validator "$(pin_list_validator)"
         help
           $(pin_help)
+          Comma-separate several fans that run together.
     @endrepeat@
   endmenu
 
@@ -520,10 +521,11 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_CONTROLLER_FAN_$(i)
         string
-        prompt "$(pad,$(pin_pad),Controller fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i)
-        validator "$(pin_validator)"
+        prompt "$(pad,$(pin_pad),Controller fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i)
+        validator "$(pin_list_validator)"
         help
           $(pin_help)
+          Comma-separate several fans that run together.
     @endrepeat@
   endmenu
 
@@ -547,10 +549,11 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_HEATER_FAN_$(i)
         string
-        prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
-        validator "$(pin_validator)"
+        prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
+        validator "$(pin_list_validator)"
         help
           $(pin_help)
+          Comma-separate several fans that run together.
     @endrepeat@
   endmenu
 
