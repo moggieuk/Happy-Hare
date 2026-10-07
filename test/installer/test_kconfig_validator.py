@@ -256,6 +256,12 @@ class TestPinValidator(unittest.TestCase):
                    if node.prompt and not node.help]
         self.assertEqual(missing, [])
 
+    def test_every_pin_help_fits_the_help_window(self):
+        too_long = {'%s:%d' % (node.filename, node.linenr)
+                    for sym in self._prompted_pins() for node in sym.nodes
+                    if node.prompt and node.help and len(node.help.split('\n')) > 7}
+        self.assertEqual(sorted(too_long), [])
+
     def test_shared_help_is_expanded(self):
         help_text = self.kc.syms['PIN_GEAR_STEP'].nodes[-1].help
         self.assertEqual(help_text.split('\n'), [self.kc.variables['pin_syntax'].value,

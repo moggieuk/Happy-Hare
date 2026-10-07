@@ -10,7 +10,8 @@
 # - every value prompt on a page lines up, including gates 10 and 11
 # - a v4.0 config migrates on load (kconfiglib HH_RENAMED_SYMBOLS and friends)
 #   and renders the same: renamed pins, the environment sensor's MCU prefix,
-#   its old fixed i2c2/i2c3 buses and the NFC reader's free-text bus name
+#   and its old fixed i2c2/i2c3 buses; the NFC reader's free-text bus name
+#   needs no migration
 
 import os
 import re
@@ -268,8 +269,8 @@ class TestI2cBusUpgrade(unittest.TestCase):
     def test_a_shared_mcu_prefix_uses_the_unit_mcu(self):
         """Per-gate pins without per-gate MCUs fall back to the MMU MCU, as the template did."""
         kc = _kconfig('i2c_shared_mcu', 'boxturtle', {})
-        self.assertEqual(kc._mcu_prefixed_pin('PIN_ENVIRONMENT_SENSOR_I2C_SCL_3', 'PB6'), 'unit0:PB6')
-        self.assertEqual(kc._mcu_prefixed_pin('PIN_ENVIRONMENT_SENSOR_I2C_SCL_3', ''), '')
+        self.assertEqual(kc._mcu_prefixed_pin('PIN_ENVIRONMENT_SENSOR_I2C_SCL_3', 'PB6', True), 'unit0:PB6')
+        self.assertEqual(kc._mcu_prefixed_pin('PIN_ENVIRONMENT_SENSOR_I2C_SCL_3', '', True), '')
 
     def test_nfc_pins_are_renamed_unchanged(self):
         kc = _kconfig('i2c_nfc_pins', 'nfc_pn532_sw_i2c', {})
@@ -306,26 +307,49 @@ class TestI2cBusUpgrade(unittest.TestCase):
                                  (selected, bus))
                 self.assertEqual(resaved, saved)
 
-    def test_a_typed_nfc_bus_name_becomes_the_custom_name(self):
+    def test_a_typed_nfc_bus_name_survives_where_no_board_bus_is_preselected(self):
+        """The bus name used to be free text: it needs no migration where "Custom bus name" is the default."""
         drop = (r'.*CONFIG_CHOICE_NFC_READER_I2C_BUS_', None)
-        cases = (
-            ('X5 typed', 'CONFIG_PARAM_NFC_READER_I2C_BUS="i2c3"', 'CHOICE_NFC_READER_I2C_BUS_OTHER', 'i2c3'),
-            ('X5 blank typed', 'CONFIG_PARAM_NFC_READER_I2C_BUS=""', 'CHOICE_NFC_READER_I2C_BUS_OTHER', ''),
-            ('X5 default', 'CONFIG_PARAM_NFC_READER_I2C_BUS="i2c1" #~DEFAULT~#',
-             'CHOICE_NFC_READER_I2C_BUS_X5_I2C1', 'i2c1'),
-        )
-        for label, line, selected, bus in cases:
+        for label, line, bus in (('typed', 'CONFIG_PARAM_NFC_READER_I2C_BUS="i2c3"', 'i2c3'),
+                                 ('blank typed', 'CONFIG_PARAM_NFC_READER_I2C_BUS=""', '')):
             with self.subTest(label):
-                kc = _kconfig('i2c_nfc_bus', 'boxturtle', dict(NFC, **X5))
+                kc = _kconfig('i2c_nfc_bus', 'boxturtle', NFC)
                 with tempfile.TemporaryDirectory() as tmp:
                     path = _v40(kc, tmp, [(r'CONFIG_PARAM_NFC_READER_I2C_BUS=.*', line), drop])
                     built, saved = _upgraded(path, 'i2c_nfc_bus_up')
                     again, resaved = _upgraded(path + '.upgraded', 'i2c_nfc_bus_again')
                 choice = built.named_choices['CHOICE_NFC_READER_I2C_BUS']
                 self.assertEqual((choice.selection.name, built.syms['PARAM_NFC_READER_I2C_BUS'].str_value),
-                                 (selected, bus))
+                                 ('CHOICE_NFC_READER_I2C_BUS_OTHER', bus))
                 self.assertEqual(resaved, saved)
 
+    def test_a_saved_custom_nfc_bus_is_unchanged_by_olddefconfig(self):
+        """"Custom bus name" left at its default must stay a recorded default, not become a user choice."""
+        kc = _kconfig('i2c_nfc_custom', 'boxturtle', dict(NFC, PARAM_NFC_READER_I2C_BUS='i2c3'))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, '.mmu_config')
+            kc.write_config(path, header='')
+            with open(path) as handle:
+                before = handle.read()
+            _built, after = _upgraded(path, 'i2c_nfc_custom_up')
+        self.assertIn('CONFIG_CHOICE_NFC_READER_I2C_BUS_OTHER=y #~DEFAULT~#', before)
+        self.assertEqual(after, before)
+
+    def test_migrated_pins_take_the_mcu_each_caller_renders(self):
+        """A stale saved MCU_NAME (a unit renamed without a re-parse): the builder renders i2c_mcu
+        from the saved name, olddefconfig saves the environment's, and the pins must match each."""
+        kc = _kconfig('i2c_env_stale_mcu', 'boxturtle', dict(ENV, CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE=True))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _v40(kc, tmp, [
+                (r'CONFIG_MCU_NAME=.*', 'CONFIG_MCU_NAME="oldname"'),
+                (r'CONFIG_PIN_ENVIRONMENT_SENSOR_I2C_SCL=.*', 'CONFIG_PIN_ENVIRONMENT_SENSOR_SCL="^PB6"')])
+            direct = _fresh('i2c_env_stale_mcu_direct')
+            direct.load_config(path, filter_defaults=False)
+            upgraded, _saved = _upgraded(path, 'i2c_env_stale_mcu_up')
+        for label, built, mcu in (('builder', direct, 'oldname'), ('olddefconfig', upgraded, 'unit0')):
+            with self.subTest(label):
+                self.assertEqual(built.as_dict()['MCU_NAME'], mcu)
+                self.assertEqual(built.as_dict()['PIN_ENVIRONMENT_SENSOR_I2C_SCL'], '^%s:PB6' % mcu)
 
 if __name__ == '__main__':
     unittest.main()

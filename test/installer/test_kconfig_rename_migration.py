@@ -11,6 +11,7 @@
 # than whichever renames happen to be in flight.
 
 import os
+import re
 import tempfile
 import unittest
 from unittest import mock
@@ -332,6 +333,80 @@ class TestGearAndSelectorChipRename(unittest.TestCase):
             with self.subTest(stepper=stepper):
                 module, _ = self._driver(stepper, table={})
                 self.assertNotEqual(module, 'tmc2240')
+
+
+class TestNfcReaderPinRename(unittest.TestCase):
+    """PARAM_NFC_READER_<pin>_PIN(_N) became PIN_NFC_READER_<pin>(_N)."""
+
+    HARDWARE = 'config/base/mmu_hardware.cfg'
+
+    # Every renamed pin, shared and per gate up to gate 11. Gate 10's CS pin is
+    # left at its default, so the old file holds a #~DEFAULT~# line for it.
+    SYMS = {
+        'PARAM_NUM_GATES': 12,
+        'MMU_HAS_NFC_READER': True,
+        'MMU_HAS_COMMON_NFC_READER': True,
+        'CHOICE_NFC_READER_TYPE_PN7160': True,
+        'PIN_NFC_READER_VEN': 'unit0:PB2',
+        'PIN_NFC_READER_IRQ': '^unit0:PB3',
+        'MMU_HAS_PER_GATE_NFC_READERS': True,
+        'CHOICE_NFC_READER_TYPE_PN5180_0': True,
+        'PIN_NFC_READER_CS_0': 'unit0:PA4',
+        'PIN_NFC_READER_BUSY_0': 'unit0:PB0',
+        'PIN_NFC_READER_RESET_0': '!unit0:PB1',
+        'CHOICE_NFC_READER_TYPE_RC522_10': True,
+        'CHOICE_NFC_READER_TYPE_PN7160_11': True,
+        'PIN_NFC_READER_VEN_11': 'unit0:PC2',
+        'PIN_NFC_READER_IRQ_11': 'unit0:PC3',
+    }
+    OLD_NAME = (r'CONFIG_PIN_NFC_READER_(CS|BUSY|RESET|VEN|IRQ)(_\d+)?=',
+                r'CONFIG_PARAM_NFC_READER_\1_PIN\2=')
+
+    def _render(self, kc):
+        return cfg._render_templates((self.HARDWARE,), kc,
+                                     {'PARAM_TOTAL_NUM_GATES': 12})[self.HARDWARE]
+
+    def test_a_pre_rename_config_renders_what_it_always_did(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
+            kc = cfg._kconfig('nfc_pin_rename', self.SYMS)
+            expected = self._render(kc)
+            path = os.path.join(tmp, '.mmu_config')
+            kc.write_config(path, header='')
+            with open(path) as handle:
+                new = handle.read()
+            old = re.sub(self.OLD_NAME[0], self.OLD_NAME[1], new)
+            self.assertIn('CONFIG_PARAM_NFC_READER_CS_PIN_10="unit0:pin" #~DEFAULT~#', old)
+            self.assertIn('CONFIG_PARAM_NFC_READER_IRQ_PIN_11="unit0:PC3"\n', old)
+            with open(path, 'w') as handle:
+                handle.write(old)
+
+            # The build loads the saved file directly
+            built = cfg._new_kconfig('nfc_pin_rename_built')
+            built.load_config(path, filter_defaults=False)
+            self.assertEqual(self._render(built), expected)
+
+            # menuconfig/olddefconfig load and re-save it first
+            upgraded = cfg._new_kconfig('nfc_pin_rename_up')
+            upgraded.load_config(path, filter_defaults=True)
+            self.assertEqual(self._render(upgraded), expected)
+            upgraded.write_config(path, header='')
+            with open(path) as handle:
+                self.assertEqual(handle.read(), new)
+
+    def test_without_the_table_the_saved_pins_are_silently_lost(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
+            kc = cfg._kconfig('nfc_pin_rename_lost', self.SYMS)
+            path = os.path.join(tmp, '.mmu_config')
+            kc.write_config(path, header='')
+            with open(path) as handle:
+                old = re.sub(self.OLD_NAME[0], self.OLD_NAME[1], handle.read())
+            with open(path, 'w') as handle:
+                handle.write(old)
+            lost = cfg._new_kconfig('nfc_pin_rename_lost_up')
+            with mock.patch.dict(kconfiglib.HH_RENAMED_SYMBOLS, {}, clear=True):
+                lost.load_config(path, filter_defaults=True)
+        self.assertEqual(lost.syms['PIN_NFC_READER_BUSY_0'].str_value, 'unit0:pin')
+        self.assertEqual(lost.syms['PIN_NFC_READER_IRQ_11'].str_value, '')
 
 
 class TestShippedRenameTable(unittest.TestCase):
