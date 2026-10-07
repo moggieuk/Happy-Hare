@@ -129,4 +129,15 @@ if BOARD_TYPE_MMB_2_0
         !(!MULTIGEAR && MMU_HAS_SELECTOR_STEPPER && PIN_SELECTOR_ENDSTOP = "^$(MCU_NAME):PA15")
 
 # No fan headers (MOT1/MOT2 are 5V servo outputs)
+
+  # I2C headers (two, one bus): hardware i2c3, SCL PC0 / SDA PC1
+  i2c_board       := BOARD_TYPE_MMB_2_0
+  i2c_tag         := MMB_2_0_I2C3
+  i2c_bus         := i2c3_PC0_PC1
+  i2c_label       := i2c3_PC0_PC1 [[DIM]]/ I2C header[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := y
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif

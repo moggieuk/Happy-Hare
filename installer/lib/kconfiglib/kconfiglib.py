@@ -638,6 +638,33 @@ HH_RENAMED_SYMBOLS = { # Happy Hare: Added
     "PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE":   "PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE",
 }
 
+# Happy Hare: v4.1 - i2c pins follow the PIN_ convention, named by the shared
+# i2c bus component (components/Kconfig.i2c_bus). The environment sensor's
+# template used to add the MCU; its pins now carry one like every other pin,
+# so a value carried to one of these gains it.
+HH_MCU_PREFIXED_RENAMES = set()
+for _gate in [""] + ["_%d" % _n for _n in range(12)]:
+    for _line in ("SCL", "SDA"):
+        HH_RENAMED_SYMBOLS["PARAM_NFC_READER_%s_PIN%s" % (_line, _gate)] = \
+            "PIN_NFC_READER_I2C_%s%s" % (_line, _gate)
+        HH_RENAMED_SYMBOLS["PIN_ENVIRONMENT_SENSOR_%s%s" % (_line, _gate)] = \
+            "PIN_ENVIRONMENT_SENSOR_I2C_%s%s" % (_line, _gate)
+        HH_MCU_PREFIXED_RENAMES.add("PIN_ENVIRONMENT_SENSOR_I2C_%s%s" % (_line, _gate))
+del _gate, _line
+
+# Happy Hare: v4.1 - hardware i2c buses are offered by the board files. A bus
+# the environment sensor used to list itself becomes its custom bus name, so a
+# saved selection renders the same (old member -> (prefix, bus name)).
+HH_REMOVED_I2C_BUSES = {
+    "CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2": ("ENVIRONMENT_SENSOR", "i2c2_PB10_PB11"),
+    "CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3": ("ENVIRONMENT_SENSOR", "i2c3_PB3_PB4"),
+}
+
+# Happy Hare: v4.1 - these bus names were free text before the bus choice. A
+# name the user set selects "Custom bus name", so it isn't hidden behind a
+# board-offered bus.
+HH_FREE_TEXT_I2C_BUSES = ("NFC_READER",)
+
 
 # File layout:
 #
@@ -1476,6 +1503,7 @@ class Kconfig(object):
         # Happy Hare: Added
         if replace:
             self._migrate_renamed_symbols(filter_defaults)
+            self._migrate_i2c_buses()
 
     def _migrate_renamed_symbols(self, filter_defaults):
         """Happy Hare: Carry a saved value from a renamed symbol to its successor.
@@ -1525,12 +1553,63 @@ class Kconfig(object):
             if new_sym.orig_type in _BOOL_TRISTATE:
                 value = "y" if value in ("y", "1") else "n"
 
+            if new_name in HH_MCU_PREFIXED_RENAMES:
+                value = self._mcu_prefixed_pin(new_name, value)
+
             # set_value validates and, on a type mismatch, warns and leaves
             # the symbol at its default rather than raising.
             if not new_sym.set_value(value):
                 continue
             new_sym._was_set = True
             new_sym._was_default = False
+
+    def _mcu_prefixed_pin(self, name, pin):
+        """Happy Hare: prefix a pin with the MCU the template used to add for it:
+        the gate's own MCU for a per-gate pin on a per-gate-MCU design."""
+        modifiers, rest = _pin_modifiers_match(pin).groups()
+        mcu = self.syms.get("MCU_NAME")
+        if not rest or ":" in rest or mcu is None:
+            return pin
+        mcu = mcu.str_value
+        gate = _gate_suffix_search(name)
+        per_gate_mcu = self.syms.get("MMU_HAS_PER_GATE_MCU")
+        if gate and per_gate_mcu is not None and per_gate_mcu.tri_value == 2:
+            mcu += "_gate" + gate.group(1)
+        return "{}{}:{}".format(modifiers, mcu, rest)
+
+    def _migrate_i2c_buses(self):
+        """Happy Hare: keep a v4.0 i2c bus rendering the same under the bus
+        choice of components/Kconfig.i2c_bus. Idempotent: a removed member is
+        gone from the file after the next write, and a free-text name is only
+        taken while the choice itself was never saved."""
+        for old_name, raw in self.missing_syms:
+            removed = HH_REMOVED_I2C_BUSES.get(old_name)
+            if removed and raw == "y":
+                prefix, bus = removed
+                param = self.syms.get("PARAM_%s_I2C_BUS" % prefix)
+                # The board may offer that same bus now, e.g. the EBB's i2c3
+                if param is not None and param.str_value != bus:
+                    self._select_custom_i2c_bus(prefix, bus)
+
+        for prefix in HH_FREE_TEXT_I2C_BUSES:
+            param = self.syms.get("PARAM_%s_I2C_BUS" % prefix)
+            choice = self.named_choices.get("CHOICE_%s_I2C_BUS" % prefix)
+            if param is not None and choice is not None and \
+                    param._was_set and not choice._was_set:
+                self._select_custom_i2c_bus(prefix, param.user_value)
+
+    def _select_custom_i2c_bus(self, prefix, bus):
+        other = self.syms.get("CHOICE_%s_I2C_BUS_OTHER" % prefix)
+        param = self.syms.get("PARAM_%s_I2C_BUS" % prefix)
+        if other is None or param is None or not other.set_value(2):
+            return
+        other._was_set = True
+        other._was_default = False
+        other.choice._was_set = True
+        other.choice._was_default = False
+        if param.set_value(bus):
+            param._was_set = True
+            param._was_default = False
 
 
     def _undef_assign(self, name, val, filename, linenr, was_default=False):
@@ -8382,6 +8461,11 @@ _name_special_search = _re_search(r'[^A-Za-z0-9_$/.-]|\$\(|$')
 # Happy Hare: a macro expansion in a symbol position that spells an expression
 # rather than a name, so it is re-lexed - see _tokenize()
 _expanded_expr_match = _re_search(r'^[!(]|\s')
+
+# Happy Hare: a Klipper pin's pull-up/invert modifiers and the rest, and the
+# gate number of a per-gate symbol - see _mcu_prefixed_pin()
+_pin_modifiers_match = _re_match(r'([~^]?!?)(.*)$')
+_gate_suffix_search = _re_search(r'_(\d+)$')
 
 # A valid right-hand side for an assignment to a string symbol in a .config
 # file, including escaped characters. Extracts the contents.

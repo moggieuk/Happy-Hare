@@ -71,4 +71,16 @@ if BOARD_TYPE_ERB_2
     default "$(MCU_NAME):gpio21"
 
 # No fan headers
+
+  # The I2C1 pins on the P5 header: hardware i2c1b, SCL gpio7 / SDA gpio6.
+  # They are also entry sensors 6 and 7, so the bus is only free up to six gates
+  i2c_board       := BOARD_TYPE_ERB_2 && PARAM_NUM_GATES <= 6
+  i2c_tag         := ERB_2_I2C1
+  i2c_bus         := i2c1b
+  i2c_label       := i2c1b [[DIM]]/ I2C1 pins[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := n
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif

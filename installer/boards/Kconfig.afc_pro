@@ -241,4 +241,14 @@ if BOARD_TYPE_AFC_PRO_1_0
 
   endif
 
+  # I2C header (JST-XH): hardware i2c3, SCL PA8 / SDA PC9
+  i2c_board       := BOARD_TYPE_AFC_PRO_1_0
+  i2c_tag         := AFC_PRO_I2C3
+  i2c_bus         := i2c3_PA8_PC9
+  i2c_label       := i2c3_PA8_PC9 [[DIM]]/ I2C header[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := y
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif

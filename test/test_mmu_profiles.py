@@ -760,8 +760,8 @@ class TestMachinePerGateI2cBus(unittest.TestCase):
         base = profiles.get('emu')
         syms = dict(base.syms)
         syms['CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_0'] = True
-        syms['PIN_ENVIRONMENT_SENSOR_SCL_0'] = 'PB6'
-        syms['PIN_ENVIRONMENT_SENSOR_SDA_0'] = 'PB7'
+        syms['PIN_ENVIRONMENT_SENSOR_I2C_SCL_0'] = 'unit0_gate0:PB6'
+        syms['PIN_ENVIRONMENT_SENSOR_I2C_SDA_0'] = 'unit0_gate0:PB7'
         parser = cfg.assemble(cfg.render(
             base.derive('emu_env_software_bus', syms=syms)))
         sensor = dict(parser.items('temperature_sensor unit0_Env0'))

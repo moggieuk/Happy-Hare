@@ -94,4 +94,15 @@ i2c_address: 118\n\
 )" if MMU_HAS_ENVIRONMENT_SENSOR
 
 # No fan headers (MOTO1/MOTO2 are 5V servo outputs; "24V GND" is unswitched power)
+
+  # I2C headers (two, one bus): hardware i2c2, SCL PB10 / SDA PB11
+  i2c_board       := BOARD_TYPE_TZB_1_0
+  i2c_tag         := TZB_I2C2
+  i2c_bus         := i2c2_PB10_PB11
+  i2c_label       := i2c2_PB10_PB11 [[DIM]]/ I2C header[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := y
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif

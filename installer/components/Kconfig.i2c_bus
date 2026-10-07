@@ -1,0 +1,102 @@
+# i2c bus - how one device reaches its i2c bus: a hardware bus, or software
+# (bit-banged) i2c on two pins.
+#
+# Sourced by every feature with an i2c device (environment sensor, NFC reader),
+# once for the shared device and once per gate, inside the caller's feature `if`.
+# The caller sets:
+#
+#   i2c_prefix     name infix, e.g. NFC_READER -> PARAM_NFC_READER_I2C_BUS
+#   i2c_suffix     appended to every symbol name: empty, or _<gate> per gate
+#   i2c_stem       prompt text stem, e.g. i2c or Gate $(i) I2C
+#   i2c_pad        column the prompts are padded to
+#   i2c_type_hint  help: extra lines for the bus type, each starting with $(nl),
+#                  or empty
+#
+# and must re-assign all of them immediately before each source: preprocessor
+# variables are global for the whole parse, and @repeat substitutes its
+# variable only in its own body, never in a sourced file.
+#
+# The bus choice declares only "Custom bus name". Board files add the buses the
+# board routes by re-opening CHOICE_<prefix>_I2C_BUS<suffix> with a member and
+# the matching PARAM_<prefix>_I2C_BUS<suffix> default, plus a choice default to
+# preselect it. They are parsed first, so their members and defaults come ahead
+# of the custom name, which is the default otherwise; a blank one leaves i2c_bus
+# out and Klipper uses the MCU's default bus.
+#
+# The address, MCU and speed differ by device and stay with the caller.
+#
+# Defines, for each $(i2c_prefix)$(i2c_suffix):
+#   CHOICE_*_I2C_BUS_TYPE PARAM_*_I2C_BUS_TYPE
+#   CHOICE_*_I2C_BUS PARAM_*_I2C_BUS
+#   PIN_*_I2C_SCL PIN_*_I2C_SDA
+
+choice CHOICE_$(i2c_prefix)_I2C_BUS_TYPE$(i2c_suffix)
+  prompt "$(pad,$(i2c_pad),$(i2c_stem) bus type)"
+  default CHOICE_$(i2c_prefix)_I2C_HARDWARE$(i2c_suffix)
+  help
+    Hardware i2c uses one of the MCU's i2c peripherals and is faster.
+    Software i2c ("bit banging") drives any two GPIO pins as a bus.$(i2c_type_hint)
+
+  config CHOICE_$(i2c_prefix)_I2C_HARDWARE$(i2c_suffix)
+    bool "Hardware i2c"
+    help
+      Use one of the MCU's hardware i2c buses (recommended).
+
+  config CHOICE_$(i2c_prefix)_I2C_SOFTWARE$(i2c_suffix)
+    bool "Software i2c"
+    help
+      Bit-bang i2c on two ordinary GPIO pins. Slower than hardware, and it
+      supports neither clock stretching nor bus timeouts - a wedged bus
+      returns bad data rather than an error. Each software bus needs its
+      own pull-up resistors on both lines.
+endchoice
+
+config PARAM_$(i2c_prefix)_I2C_BUS_TYPE$(i2c_suffix)
+  string
+  default "software" if CHOICE_$(i2c_prefix)_I2C_SOFTWARE$(i2c_suffix)
+  default "hardware"
+
+if CHOICE_$(i2c_prefix)_I2C_HARDWARE$(i2c_suffix)
+  choice CHOICE_$(i2c_prefix)_I2C_BUS$(i2c_suffix)
+    prompt "$(pad,$(i2c_pad),$(i2c_stem) bus name)"
+    default CHOICE_$(i2c_prefix)_I2C_BUS_OTHER$(i2c_suffix)
+    help
+      Select the hardware i2c bus the device is wired to. The list holds
+      the buses this board routes; "Custom bus name" takes any Klipper i2c
+      bus name, or blank for the MCU's default bus.
+
+    config CHOICE_$(i2c_prefix)_I2C_BUS_OTHER$(i2c_suffix)
+      bool "Custom bus name"
+  endchoice
+
+  config PARAM_$(i2c_prefix)_I2C_BUS$(i2c_suffix)
+    string
+    prompt "$(pad,$(i2c_pad),$(i2c_stem) custom bus)" if CHOICE_$(i2c_prefix)_I2C_BUS_OTHER$(i2c_suffix)
+    default "" if CHOICE_$(i2c_prefix)_I2C_BUS_OTHER$(i2c_suffix)
+    help
+      Klipper i2c bus name: the chipdef name, e.g. i2c3_PB3_PB4, or a
+      bus defined elsewhere in your config.
+      Leave blank to use the MCU's default hardware i2c bus.
+endif
+
+if CHOICE_$(i2c_prefix)_I2C_SOFTWARE$(i2c_suffix)
+  config PIN_$(i2c_prefix)_I2C_SCL$(i2c_suffix)
+    string
+    prompt "$(pad,$(i2c_pad),$(i2c_stem) SCL pin)"
+    validator "$(pin_validator)"
+    default ""
+    help
+      Software i2c clock pin. Its MCU prefix must be the MCU that owns the
+      device: Klipper doesn't check, and a mismatch fails obscurely at startup.
+      A pin pair is one bus: devices on it need different addresses.
+      $(pin_help)
+
+  config PIN_$(i2c_prefix)_I2C_SDA$(i2c_suffix)
+    string
+    prompt "$(pad,$(i2c_pad),$(i2c_stem) SDA pin)"
+    validator "$(pin_validator)"
+    default ""
+    help
+      Software i2c data pin, on the same MCU as the clock pin.
+      $(pin_help)
+endif

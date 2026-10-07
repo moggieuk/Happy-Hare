@@ -132,9 +132,17 @@ Load-bearing facts about the flow:
   is sourced once per consumer with `prefix := X` preprocessor variables, so
   one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
   and `installer/components/Kconfig.tmc_driver_*` are the worked example;
-  `components/Kconfig.environment_sensor` (type, i2c bus, address, pins) is
+  `components/Kconfig.environment_sensor` (type, i2c bus, address) is
   sourced from inside an `@repeat` (once per gate) as well as once for the
-  shared sensor
+  shared sensor, and itself sources `components/Kconfig.i2c_bus`, the bus type,
+  bus name and `PIN_*_I2C_SCL/SDA` pins every i2c device shares with the NFC
+  reader. Its bus choice declares only "Custom bus name" (blank = the MCU's
+  default bus); board files add the buses they route through
+  `components/Kconfig.i2c_board_bus` (one source per bus: board condition, a
+  tag unique across boards, Klipper bus name, label, and per device whether
+  to offer and preselect it). Klipper's bus names depend on the chip family
+  (`i2c3` on F4, `i2c3_PB3_PB4` on G0, `i2c0a` on RP2040): take them from
+  the target's `src/stm32/i2c.c`, `stm32f0_i2c.c` or `src/rp2040/i2c.c`
   ([references/environment-sensors.md](references/environment-sensors.md)
   has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
   (they are global for the whole parse); keep an enclosing `if` away from
@@ -157,7 +165,10 @@ Load-bearing facts about the flow:
   Callers' differences go in variables, servo style: an optional prompt is
   `prompt "…" if $(flag) && …` (the servo's initial angle), extra help lines a
   `$(nl)`-prefixed hint, and extra choice members a re-opened named choice
-  in the caller (the shared sensor's fixed i2c2/i2c3 list).
+  in a board file (the buses `components/Kconfig.i2c_bus` offers).
+- **Pins always carry their MCU prefix, typed by the user.** A template never
+  prepends one: the environment sensor's did, until v4.1 moved that into the
+  value (`HH_MCU_PREFIXED_RENAMES`, extension catalog item 20).
 
 ## The symbol-naming contract
 
@@ -374,9 +385,10 @@ in this repo:
 - **A named `choice` can gain members from another file; an unnamed one
   can't.** Re-opening `choice CHOICE_X ... endchoice` with just the new
   `config` lines adds them to the same choice; give each one a `depends on`
-  its board or type so it shows only there. `boards/per_gate/Kconfig.slb`
-  and `Kconfig.ebb_gen1` add their i2c buses to
-  `CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)` this way. A machine/board file
+  its board or type so it shows only there: a member inside the board's `if`
+  block is still offered on every board. `boards/per_gate/Kconfig.slb` and
+  `Kconfig.ebb_gen1` add their i2c buses to `CHOICE_*_I2C_BUS_$(gate)` this
+  way; regular boards use `components/Kconfig.i2c_board_bus`, which does it. A machine/board file
   can also steer an existing choice with `default <CHOICE_MEMBER> if <cond>`.
   Selection is first-satisfied over the merged `choice.defaults` list, in parse order
   (`Choice._selection_from_defaults`; the member must also be visible) —
