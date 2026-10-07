@@ -487,17 +487,21 @@ so every caller carries a saved value across a rename. See SKILL.md
 ("Renaming a symbol discards the user's value…") for the rules and its one
 limit: a symbol `make` or `install.sh` reads by name cannot be renamed this way.
 
-Three v4.1 companions run in the same load, all idempotent because they only
+Two v4.1 companions run in the same load, both idempotent because they only
 act on old-format lines:
 - `HH_MCU_PREFIXED_RENAMES`: the environment sensor's i2c pins
   (`PIN_ENVIRONMENT_SENSOR_SCL*` → `PIN_ENVIRONMENT_SENSOR_I2C_SCL*`) gain the MCU
   the template used to add (`_mcu_prefixed_pin`: the gate's MCU on a per-gate-MCU
-  design), after any `^`/`~`/`!` modifier.
+  design), after any `^`/`~`/`!` modifier. The builder takes the saved `MCU_NAME`,
+  as its template render does; olddefconfig takes the environment's, which it saves.
 - `HH_REMOVED_I2C_BUSES`: the environment sensor's old fixed i2c2/i2c3 members
   become "Custom bus name" with the same bus name, recorded default or not, so
   the render doesn't change. Skipped when the board now offers that bus.
-- `HH_FREE_TEXT_I2C_BUSES`: the NFC reader's bus name used to be free text; a
-  name the user set selects "Custom bus name" while the choice was never saved.
+
+The NFC reader's bus name, free text in v4.0, needs no migration: "Custom bus name"
+is its default wherever a board doesn't preselect a bus, so a typed name stays
+visible. Only on the Chameleon X5, which preselects i2c1, does a typed name give
+way to that bus.
 
 ## 21. `sequence_editor <separator> [baseline]` / `append_only_unless <expr>`
 

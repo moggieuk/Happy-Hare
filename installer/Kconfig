@@ -83,7 +83,7 @@
 #     the same commit as the rename. Cannot be used for a symbol that make or
 #     install.sh reads by name, since both read the file before this runs.
 #     HH_MCU_PREFIXED_RENAMES adds the MCU to a carried pin, and
-#     HH_REMOVED_I2C_BUSES / HH_FREE_TEXT_I2C_BUSES keep a v4.0 i2c bus
+#     HH_REMOVED_I2C_BUSES keeps a v4.0 environment sensor i2c bus
 # 15. 'default_when_hidden' on a menuconfig/menu (or symbol) saves a symbol
 #     under it whose prompt is hidden as a #~DEFAULT~# value, so turning the
 #     entry off reverts any customization to the (still tracked) default.

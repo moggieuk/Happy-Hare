@@ -664,11 +664,6 @@ HH_REMOVED_I2C_BUSES = {
     "CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3": ("ENVIRONMENT_SENSOR", "i2c3_PB3_PB4"),
 }
 
-# Happy Hare: v4.1 - these bus names were free text before the bus choice. A
-# name the user set selects "Custom bus name", so it isn't hidden behind a
-# board-offered bus.
-HH_FREE_TEXT_I2C_BUSES = ("NFC_READER",)
-
 
 # File layout:
 #
@@ -1558,7 +1553,7 @@ class Kconfig(object):
                 value = "y" if value in ("y", "1") else "n"
 
             if new_name in HH_MCU_PREFIXED_RENAMES:
-                value = self._mcu_prefixed_pin(new_name, value)
+                value = self._mcu_prefixed_pin(new_name, value, filter_defaults)
 
             # set_value validates and, on a type mismatch, warns and leaves
             # the symbol at its default rather than raising.
@@ -1567,14 +1562,19 @@ class Kconfig(object):
             new_sym._was_set = True
             new_sym._was_default = False
 
-    def _mcu_prefixed_pin(self, name, pin):
+    def _mcu_prefixed_pin(self, name, pin, filter_defaults):
         """Happy Hare: prefix a pin with the MCU the template used to add for it:
-        the gate's own MCU for a per-gate pin on a per-gate-MCU design."""
+        the gate's own MCU for a per-gate pin on a per-gate-MCU design. The
+        builder renders MCU_NAME from the saved value, while olddefconfig saves
+        the environment's, so each caller prefixes with the one it renders."""
         modifiers, rest = _pin_modifiers_match(pin).groups()
         mcu = self.syms.get("MCU_NAME")
         if not rest or ":" in rest or mcu is None:
             return pin
-        mcu = mcu.str_value
+        if filter_defaults or mcu.user_value is None:
+            mcu = mcu.str_value
+        else:
+            mcu = mcu.user_value
         gate = _gate_suffix_search(name)
         per_gate_mcu = self.syms.get("MMU_HAS_PER_GATE_MCU")
         if gate and per_gate_mcu is not None and per_gate_mcu.tri_value == 2:
@@ -1584,8 +1584,7 @@ class Kconfig(object):
     def _migrate_i2c_buses(self):
         """Happy Hare: keep a v4.0 i2c bus rendering the same under the bus
         choice of components/Kconfig.i2c_bus. Idempotent: a removed member is
-        gone from the file after the next write, and a free-text name is only
-        taken while the choice itself was never saved."""
+        gone from the file after the next write."""
         for old_name, raw in self.missing_syms:
             removed = HH_REMOVED_I2C_BUSES.get(old_name)
             if removed and raw == "y":
@@ -1594,13 +1593,6 @@ class Kconfig(object):
                 # The board may offer that same bus now, e.g. the EBB's i2c3
                 if param is not None and param.str_value != bus:
                     self._select_custom_i2c_bus(prefix, bus)
-
-        for prefix in HH_FREE_TEXT_I2C_BUSES:
-            param = self.syms.get("PARAM_%s_I2C_BUS" % prefix)
-            choice = self.named_choices.get("CHOICE_%s_I2C_BUS" % prefix)
-            if param is not None and choice is not None and \
-                    param._was_set and not choice._was_set:
-                self._select_custom_i2c_bus(prefix, param.user_value)
 
     def _select_custom_i2c_bus(self, prefix, bus):
         other = self.syms.get("CHOICE_%s_I2C_BUS_OTHER" % prefix)
