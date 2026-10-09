@@ -444,5 +444,47 @@ class TestPrintEndReleaseGuards(unittest.TestCase):
         self.assertEqual(hh.errors, [])
 
 
+class TestTwolevelSpeedMultipliers(unittest.TestCase):
+    """sync_feedback_speed/boost_multiplier must reach the controller (were stuck at 5%)."""
+
+    def setUp(self):
+        self.hh = session('emu')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [])
+        self.sf = self.hh.mmu.mmu_unit(0).sync_feedback
+
+    def force_twolevel(self):
+        ctrl = self.sf.ctrl
+        ctrl.cfg.use_twolevel_for_type_p = True
+        ctrl._set_twolevel_active()
+        return ctrl
+
+    def test_configured_multipliers_build_the_controller_config(self):
+        self.sf.p.sync_feedback_speed_multiplier = 8.0
+        self.sf.p.sync_feedback_boost_multiplier = 3.0
+        self.sf._init_controller()
+        self.assertAlmostEqual(self.sf.ctrl.cfg.rd_twolevel_speed_multiplier, 0.08)
+        self.assertAlmostEqual(self.sf.ctrl.cfg.rd_twolevel_boost_multiplier, 0.03)
+
+    def test_live_speed_change_retunes_the_low_high_rd(self):
+        ctrl = self.force_twolevel()
+        ctrl._twolevel_boost_active = False
+        self.hh.run_gcode('MMU_TEST_CONFIG sync_feedback_speed_multiplier=8')
+        self.assertEqual(self.hh.errors, [])
+        self.assertAlmostEqual(ctrl.cfg.rd_twolevel_speed_multiplier, 0.08)
+        self.assertAlmostEqual(ctrl.rd_low, ctrl.rd_ref / 1.08)
+        self.assertAlmostEqual(ctrl.rd_high, ctrl.rd_ref / 0.92)
+
+    def test_live_boost_change_applies_while_boost_is_active(self):
+        ctrl = self.force_twolevel()
+        ctrl._twolevel_boost_active = True
+        self.hh.run_gcode('MMU_TEST_CONFIG sync_feedback_speed_multiplier=5 sync_feedback_boost_multiplier=2')
+        self.assertEqual(self.hh.errors, [])
+        self.assertAlmostEqual(ctrl.cfg.rd_twolevel_boost_multiplier, 0.02)
+        self.assertAlmostEqual(ctrl.rd_low, ctrl.rd_ref / 1.07)
+        self.assertAlmostEqual(ctrl.rd_high, ctrl.rd_ref / 0.93)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1304,6 +1304,15 @@ class SyncController:
         self.rd_high = rd / (1.0 - f)
 
 
+    def apply_twolevel_tuning(self):
+        """
+        Recompute the twolevel low/high rd around the current reference after a
+        live change of rd_twolevel_speed_multiplier/rd_twolevel_boost_multiplier
+        """
+        if self.twolevel_active:
+            self._set_low_high_rd(self.rd_ref)
+
+
     def _clamp_to_envelope(self, rd):
         """
         Never allow rd outside of limits
