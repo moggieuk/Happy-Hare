@@ -441,6 +441,17 @@ class MmuSyncFeedback:
     # Internal implementation --------------------------------------------------
     #
 
+    def _log_sync_diagnostic(self, stage, message, *args):
+        """Stage-1 diagnostics in the MMU log, gated by sync debug logging."""
+        if not self.p.sync_feedback_debug_log:
+            return
+        if args:
+            message = message % args
+        self.mmu.log_to_file(
+            "MmuSyncFeedback[S1] unit=%s gate=%s stage=%s %s" %
+            (self.mmu_unit.name, self.mmu.gate_selected, stage, message)
+        )
+
     def _invalidate_rd_scheduler(self):
         """
         Drop scheduler memory after the stepper rd was snapped outside _schedule_rd_update
@@ -448,6 +459,8 @@ class MmuSyncFeedback:
         dead-band fire on the next tick to re-cohere model and stepper; clearing _pending_rd
         makes any in-flight lookahead callback early-exit. _rd_cb_scheduled is left to drain.
         """
+        self._log_sync_diagnostic("invalidate", "last=%r pending=%r callback_scheduled=%s",
+                                  self._last_scheduled_rd, self._pending_rd, self._rd_cb_scheduled)
         self._last_scheduled_rd = None
         self._pending_rd = None
 
@@ -555,7 +568,11 @@ class MmuSyncFeedback:
         Keeps the ExtruderMonitor timer body short by capturing the coherent
         (move, state) pair and deferring the heavy EKF/FlowGuard/rd work to _do_update().
         """
-        if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
+        self._log_sync_diagnostic("movement_event", "time=%r move=%.6f mmu_enabled=%s feedback_enabled=%s active=%s",
+                                  eventtime, move, self.mmu.is_enabled, self.p.sync_feedback_enabled, self.active)
+        if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active):
+            self._log_sync_diagnostic("movement_skip", "reason=disabled_or_inactive")
+            return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         self.mmu.log_trace("MmuSyncFeedback: Extruder movement event, move=%.1f" % move)
@@ -571,8 +588,15 @@ class MmuSyncFeedback:
         Deferred worker for _handle_extruder_movement. Re-checks gating since state
         may have changed between scheduling and execution (e.g. unsync or reset)
         """
-        if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
-        if self.ctrl is None: return
+        if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active):
+            self._log_sync_diagnostic("movement_worker_skip", "reason=disabled_or_inactive time=%r move=%.6f state=%r",
+                                      eventtime, move, state)
+            return
+        if self.ctrl is None:
+            self._log_sync_diagnostic("movement_worker_skip", "reason=no_controller")
+            return
+        self._log_sync_diagnostic("update_input", "source=movement time=%r move=%.6f state=%r",
+                                  eventtime, move, state)
         status = self.ctrl.update(eventtime, move, state)
         self._process_status(eventtime, status)
 
@@ -585,18 +609,21 @@ class MmuSyncFeedback:
         synchronously when the lookahead queue is empty (responsive when not printing)
         """
         self._pending_rd = rd
+        self._log_sync_diagnostic("schedule", "target=%.6f coalesced=%s", rd, self._rd_cb_scheduled)
         if self._rd_cb_scheduled:
             return
         self._rd_cb_scheduled = True
         try:
             self.mmu.toolhead.register_lookahead_callback(self._apply_pending_rd)
-        except Exception:
+        except Exception as e:
             # Toolhead refused the callback; apply directly to keep model and stepper synced
             self._rd_cb_scheduled = False
             target = self._pending_rd
             self._pending_rd = None
             if target is not None:
+                self._log_sync_diagnostic("apply_call", "source=fallback target=%.6f error=%r", target, str(e))
                 self.mmu_unit.calibrator.apply_gear_rd(target)
+                self._log_sync_diagnostic("apply_return", "source=fallback target=%.6f", target)
 
 
     def _apply_pending_rd(self, print_time):
@@ -607,12 +634,18 @@ class MmuSyncFeedback:
         target = self._pending_rd
         self._pending_rd = None
         self._rd_cb_scheduled = False
+        self._log_sync_diagnostic("lookahead", "print_time=%r target=%r mmu_enabled=%s feedback_enabled=%s active=%s",
+                                  print_time, target, self.mmu.is_enabled, self.p.sync_feedback_enabled, self.active)
         if target is None:
+            self._log_sync_diagnostic("apply_skip", "reason=no_pending_target")
             return
         # Skip if sync-feedback was turned off since scheduling (unsync restores rd itself)
         if not (self.mmu.is_enabled and self.active):
+            self._log_sync_diagnostic("apply_skip", "reason=mmu_disabled_or_inactive target=%.6f", target)
             return
+        self._log_sync_diagnostic("apply_call", "source=lookahead target=%.6f", target)
         self.mmu_unit.calibrator.apply_gear_rd(target)
+        self._log_sync_diagnostic("apply_return", "source=lookahead target=%.6f", target)
 
 
     def _handle_sync_feedback(self, eventtime, state):
@@ -621,10 +654,18 @@ class MmuSyncFeedback:
         'state' should be -1 (tension), 0 (neutral), 1 (compressed)
         or can be a proportional float value between -1.0 and 1.0
         """
-        # Ignore event if not for this unit
-        if not self.mmu_unit.manages_gate(self.mmu.gate_selected): return
+        # Log receipt before guards: a rejected sensor event must remain visible.
+        self._log_sync_diagnostic("sensor_event", "time=%r state=%r mmu_enabled=%s feedback_enabled=%s active=%s",
+                                  eventtime, state, self.mmu.is_enabled, self.p.sync_feedback_enabled, self.active)
 
-        if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
+        # Ignore event if not for this unit
+        if not self.mmu_unit.manages_gate(self.mmu.gate_selected):
+            self._log_sync_diagnostic("sensor_skip", "reason=gate_not_managed")
+            return
+
+        if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active):
+            self._log_sync_diagnostic("sensor_skip", "reason=disabled_or_inactive")
+            return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         msg = "MmuSyncFeedback: Sync state changed to %s" % (self.get_sync_feedback_string(state))
@@ -633,7 +674,13 @@ class MmuSyncFeedback:
         else:
             self.mmu.log_info(msg)
 
-        move = self.mmu_unit.extruder_monitor().get_and_reset_accumulated(self._handle_extruder_movement)
+        try:
+            move = self.mmu_unit.extruder_monitor().get_and_reset_accumulated(self._handle_extruder_movement)
+        except KeyError:
+            self._log_sync_diagnostic("sensor_error", "reason=movement_callback_not_registered")
+            raise
+        self._log_sync_diagnostic("update_input", "source=sensor time=%r move=%.6f state=%r controller_present=%s",
+                                  eventtime, move, state, self.ctrl is not None)
         status = self.ctrl.update(eventtime, move, state)
         self._process_status(eventtime, status)
 
@@ -692,25 +739,27 @@ class MmuSyncFeedback:
             self.new_autotuned_rd = rd
             self.mmu.log_debug(msg)
 
-        # Update gear stepper rd, subject to a fractional dead-band against the last
-        # committed rd. Drops sub-0.3% EKF chatter; sustained drift still accumulates
-        # and crosses the band, and the controller's envelope clamp bounds both sides.
+        # Gate against the last scheduled target, not the previous model tick.
+        # This also resends a stable RD after scheduler invalidation.
         rd_current, rd_prev, rd_tuned = output['rd_current'], output['rd_prev'], output['rd_tuned']
+        self._log_sync_diagnostic("update_output", "time=%r rd_prev=%.6f rd_current=%.6f changed=%s last_scheduled=%r",
+                                  eventtime, rd_prev, rd_current, rd_current != rd_prev, self._last_scheduled_rd)
         if rd_current != rd_prev:
-            # Controller model moved; whether it reaches the stepper is gated below
             self.mmu.log_debug("MmuSyncFeedback: Recalculated rotation distance for gate %d from %.4f to %.4f" % (self.mmu.gate_selected, rd_prev, rd_current))
-            last = self._last_scheduled_rd
-            # First tick after activation/reset (last is None): always schedule
-            if last is None or last == 0.0 or abs(rd_current - last) / abs(last) > self._rd_deadband_frac:
-                # Dead-band fired: log accumulated delta since last commit (what crossed the band)
-                if last is None or last == 0.0:
-                    self.mmu.log_debug("MmuSyncFeedback: Altered rotation distance for gate %d to %.4f (initial)" % (self.mmu.gate_selected, rd_current))
-                else:
-                    delta = rd_current - last
-                    frac_pct = abs(delta) / abs(last) * 100.0
-                    self.mmu.log_debug("MmuSyncFeedback: Altered rotation distance for gate %d from %.4f to %.4f (delta %+.4f, %.2f%%)" % (self.mmu.gate_selected, last, rd_current, delta, frac_pct))
-                self._last_scheduled_rd = rd_current
-                self._schedule_rd_update(rd_current) # Defer to lookahead callback (lands between moves)
+
+        last = self._last_scheduled_rd
+        if last is None or last == 0.0 or abs(rd_current - last) / abs(last) > self._rd_deadband_frac:
+            if last is None or last == 0.0:
+                self.mmu.log_debug("MmuSyncFeedback: Scheduled rotation distance for gate %d to %.4f (initial)" % (self.mmu.gate_selected, rd_current))
+            else:
+                delta = rd_current - last
+                frac_pct = abs(delta) / abs(last) * 100.0
+                self.mmu.log_debug("MmuSyncFeedback: Scheduled rotation distance for gate %d from %.4f to %.4f (delta %+.4f, %.2f%%)" % (self.mmu.gate_selected, last, rd_current, delta, frac_pct))
+            self._last_scheduled_rd = rd_current
+            self._schedule_rd_update(rd_current)
+        else:
+            self._log_sync_diagnostic("schedule_skip", "reason=within_deadband target=%.6f last=%.6f deadband=%.6f",
+                                      rd_current, last, self._rd_deadband_frac)
 
         # Proportional sensor (with autotune) allows for estimation of flow rate!
         if self.mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
@@ -742,6 +791,8 @@ class MmuSyncFeedback:
         # Fresh controller state: invalidate so a stale queued lookahead callback
         # can't apply an out-of-date target after activation
         self._invalidate_rd_scheduler()
+        self._log_sync_diagnostic("reset", "time=%r hard_reset=%s rd_init=%.6f state=%r",
+                                  eventtime, hard_reset, rd_start, starting_state)
         status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path(), hard_reset=hard_reset)
         self._process_status(eventtime, status) # May adjust rotation_distance
 
