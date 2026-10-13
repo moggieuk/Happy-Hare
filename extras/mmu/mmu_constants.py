@@ -17,7 +17,7 @@
 # This defines the current version.
 # IMPORTANT keep version string up-to-date and consistent with git tag
 # Config upgrades are performed when <major>,<minor> is changed
-VERSION = "4.0.0" # When <major.minor> is revved, Happy Hare will instruct users to re-run ./install.sh
+VERSION = "4.1.0" # When <major.minor> is revved, Happy Hare will instruct users to re-run ./install.sh
 
 # Vendor MMU's supported
 VENDOR_ERCF           = "ERCF"

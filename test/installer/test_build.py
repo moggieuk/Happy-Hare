@@ -84,7 +84,7 @@ class TestV400Refresh(unittest.TestCase):
 
     def test_existing_user_values_survive_refresh(self):
         mmu = self.parsed(self.first, "mmu.cfg")
-        self.assertEqual(mmu.get("mmu_machine", "happy_hare_version"), "4.0.0")
+        self.assertEqual(mmu.get("mmu_machine", "happy_hare_version"), cfg.hh_version())
         self.assertEqual(mmu.get("mmu_parameters", "log_level"), "4")
 
         macro_vars = self.parsed(self.first, "mmu_macro_vars.cfg")
