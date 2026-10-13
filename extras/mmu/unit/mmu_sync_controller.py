@@ -170,6 +170,11 @@ class SyncControllerConfig:
     rd_twolevel_speed_multiplier: float = 0.05 # ±5% speed
     rd_twolevel_boost_multiplier: float = 0.05 # ±5% extra boost speed
 
+    # Incremental feedback for dual-switch (D) buffers.
+    rd_incremental_speed_step: float = 0.05
+    rd_incremental_min: float = 0.001
+    rd_incremental_max: Optional[float] = None
+
     # Distance-based smoothing & slew
     rd_filter_len_mm: float = 25.0          # exp smoothing length (mm of extruder motion for ~63% step @ r=1)
     rd_rate_per_mm: Optional[float] = 0.10  # per-mm hard rate limit on ΔRD (scaled by readiness)
@@ -432,6 +437,10 @@ class _AutotuneEngine:
         If rd is recommended, run through shared statistical tests
         """
         status = {"rd": None, "note": "", "save": False}
+
+        if self.ctrl.cfg.sensor_type == "D":
+            status["note"] = "Autotune: disabled for incremental D control"
+            return status
 
         if self._paused:
             status["note"] = "Autotune: Paused"
@@ -1308,6 +1317,18 @@ class SyncController:
         """
         Never allow rd outside of limits
         """
+        if self.cfg.sensor_type == "D":
+            lower = float(self.cfg.rd_incremental_min)
+            upper = self.cfg.rd_incremental_max
+            if not math.isfinite(lower) or lower <= 0.0:
+                raise ValueError("rd_incremental_min must be finite and > 0")
+            if upper is not None:
+                upper = float(upper)
+                if not math.isfinite(upper) or upper < lower:
+                    raise ValueError("rd_incremental_max must be finite and >= min")
+                return max(lower, min(upper, rd))
+            return max(lower, rd)
+
         return max(self.rd_min, min(self.rd_max, rd))
 
     # -------------- Mapping helpers -----------------
@@ -1483,6 +1504,21 @@ class SyncController:
         - Compression extreme -> rd_high; Tension extreme -> rd_low.
         """
         cfg = self.cfg
+
+        if cfg.sensor_type == "D":
+            pol = self._extreme_polarity(sensor_reading)
+            if pol == 0 or d_ext < 0.0:
+                return rd_prev
+
+            step = float(cfg.rd_incremental_speed_step)
+            if not math.isfinite(step) or not 0.0 < step < 1.0:
+                raise ValueError("rd_incremental_speed_step must be between 0 and 1")
+
+            self._os_target_level = "high" if pol > 0 else "low"
+            if pol > 0:
+                return rd_prev / (1.0 - step)
+            return rd_prev / (1.0 + step)
+
         self._os_since_flip_mm += d_ext
 
         if cfg.sensor_type in ("CO", "TO"):
