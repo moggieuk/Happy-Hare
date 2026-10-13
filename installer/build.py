@@ -668,7 +668,8 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
 
         # Important to update version in case .mmu_config is not changed
-        hhcfg.set("mmu_machine", "happy_hare_version", to_version)
+        if hhcfg.has_section("mmu_machine"):
+            hhcfg.set("mmu_machine", "happy_hare_version", to_version)
 
     # 3.Render cfg template expanding KConfig parameters from read .mmu_config
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
