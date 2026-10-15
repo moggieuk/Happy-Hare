@@ -591,6 +591,29 @@ class TestInstallSh(unittest.TestCase):
         """.format(status=status), stdin=stdin, env=env)
         return result.stdout
 
+    # offer_cfg_import() runs the import for the top level and every unit, in Merge only
+    def offer_import(self, **env):
+        result = self.run_shell("""
+            run_kconfig_top() { echo "TOP $1 home=${HH_CONFIG_HOME:-}"; }
+            run_kconfig_units() { echo "UNITS $1 home=${HH_CONFIG_HOME:-}"; }
+            CONFIG_KLIPPER_CONFIG_HOME=/printer/config
+            offer_cfg_import
+            echo "AFTER home=${HH_CONFIG_HOME:-}"
+        """, env=env)
+        return result.stdout
+
+    def test_cfg_import_offered_in_merge(self):
+        out = self.offer_import(F_CFG_UPGRADE_MODE="merge")
+        self.assertIn("TOP kconfig_import home=/printer/config", out)
+        self.assertIn("UNITS kconfig_import home=/printer/config", out)
+        self.assertIn("AFTER home=\n", out)
+
+    def test_cfg_import_not_offered_outside_merge_or_under_yes(self):
+        for env in ({"F_CFG_UPGRADE_MODE": "refresh"}, {"F_CFG_UPGRADE_MODE": "replace"},
+                    {"F_CFG_UPGRADE_MODE": "merge", "F_YES": "y"}):
+            with self.subTest(**env):
+                self.assertNotIn("kconfig_import", self.offer_import(**env))
+
     def test_unit_review_no_change_and_append_go_without_asking(self):
         for status in (0, 10):
             with self.subTest(status=status):

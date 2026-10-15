@@ -39,8 +39,8 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   # Never probe for menuconfig or uninstall and only if KCONFIG exists
   # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
   # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
-  # the file picker in test/select.py
-  ifeq ($(strip $(filter menuconfig uninstall variables fix_links console test plot_sync,$(MAKECMDGOALS))),)
+  # the file picker in test/select.py, and 'kconfig_import' asks which values to import
+  ifeq ($(strip $(filter menuconfig uninstall variables fix_links console test plot_sync kconfig_import,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -187,7 +187,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links kconfig_needs_update olddefconfig kconfig_import verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -755,3 +755,8 @@ kconfig_needs_update:
 olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"
+
+# Merge mode: offer values hand edited in the installed .cfg files back to menuconfig.
+# A unit's config has no paths, so install.sh passes the top level's in HH_CONFIG_HOME
+kconfig_import: | python_deps
+	-$(Q)$(PY) -m installer.cfg_import --kconfig "$(KCONFIG_CONFIG)" --config-home "$(or $(HH_CONFIG_HOME),$(KLIPPER_CONFIG_HOME))"

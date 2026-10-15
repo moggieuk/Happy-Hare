@@ -428,7 +428,6 @@ class HHConfig(ConfigBuilder):
         case where all previous params are retained
         """
 
-        excluded_var_sections = {section for section, _ in excluded_vars}
         excluded_vars = set(excluded_vars)
 
         # Copy over included options
@@ -437,20 +436,8 @@ class HHConfig(ConfigBuilder):
                 if self.has_option(section, option):
 
                     is_gcode = option == "gcode"
-                    is_macro_section = section.startswith("gcode_macro")
-                    is_var_section = section in excluded_var_sections
-                    is_excluded_var = (section, option) in excluded_vars or \
-                        (section.split(" ", 1)[0], option) in KCONFIG_OWNED_OPTIONS
-                    is_excluded_param = (
-                        not is_macro_section
-                        and option in excluded_params
-                    )
 
-                    if (
-                        not is_gcode
-                        and not is_excluded_var
-                        and (is_var_section or not is_excluded_param)
-                    ):
+                    if not is_gcode and not kconfig_wins(section, option, excluded_params, excluded_vars):
                         value = self.get(section, option)
                         if (section.split(" ", 1)[0], option) in KCONFIG_OWNED_VISIBILITY:
                             value = follow_visibility(value, builder.get(section, option))
@@ -616,6 +603,46 @@ def split_csv(raw):
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+def upgrade_hhconfig(hhcfg, label):
+    """Apply version upgrade transforms to the aggregated existing config"""
+    to_version = get_target_version()
+    from_version = get_current_version(hhcfg)
+
+    if major_minor(from_version) != major_minor(to_version):
+        logging.debug("Upgrading {} from v{} to v{}".format(label, from_version, to_version))
+        upgrades = Upgrades()
+        upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
+
+        # Important to update version in case .mmu_config is not changed
+        if hhcfg.has_section("mmu_machine"):
+            hhcfg.set("mmu_machine", "happy_hare_version", to_version)
+
+
+def merge_exclusions(values):
+    """(excluded_params, excluded_vars): the existing options merge mode lets Kconfig override"""
+    excluded_params = [
+        k.lower()[6:]
+        for k in values
+        if k.lower().startswith("param_")
+    ]
+    excluded_vars = []
+    for k in values:
+        target = macro_var_option(k.lower())
+        if target:
+            excluded_vars.append(target)
+    return excluded_params, excluded_vars
+
+
+def kconfig_wins(section, option, excluded_params, excluded_vars):
+    """True if an existing value for this option is ignored in favour of the rendered one"""
+    excluded_var_sections = {s for s, _ in excluded_vars}
+    is_var_section = section in excluded_var_sections
+    is_excluded_var = (section, option) in excluded_vars or \
+        (section.split(" ", 1)[0], option) in KCONFIG_OWNED_OPTIONS
+    is_excluded_param = not section.startswith("gcode_macro") and option in excluded_params
+    return is_excluded_var or (not is_var_section and is_excluded_param)
+
+
 # TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
 def build(cfg_file, dest_file, kconfig, input_files):
     logging.debug("Building {} -> {} with kconfig {}".format(cfg_file, dest_file, kconfig))
@@ -659,17 +686,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     hhcfg = HHConfig(input_files)
 
     # 2.Run upgrade transform on aggregated master HH Config
-    to_version = get_target_version()
-    from_version = get_current_version(hhcfg)
-
-    if major_minor(from_version) != major_minor(to_version):
-        logging.debug("Upgrading {} from v{} to v{}".format(cfg_file_basename, from_version, to_version))
-        upgrades = Upgrades()
-        upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
-
-        # Important to update version in case .mmu_config is not changed
-        if hhcfg.has_section("mmu_machine"):
-            hhcfg.set("mmu_machine", "happy_hare_version", to_version)
+    upgrade_hhconfig(hhcfg, cfg_file_basename)
 
     # 3.Render cfg template expanding KConfig parameters from read .mmu_config
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
@@ -717,20 +734,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     elif refresh_mode == 'merge':
         # Experimental. Here we selectively ignore simple PARAM_ and VAR_ parameter
         # settings so that the Kconfig value "wins" in these cases
-
-        excluded_params = [
-            k.lower()[6:]
-            for k in kcfg.as_dict()
-            if k.lower().startswith("param_")
-        ]
-        #logging.debug("The following parameters are being filtered: %s" % ", ".join(excluded_params))
-
-        excluded_vars = []
-        for k in kcfg.as_dict():
-            target = macro_var_option(k.lower())
-            if target:
-                excluded_vars.append(target)
-        #logging.debug("The following macro variables are being filtered: %s", excluded_vars)
+        excluded_params, excluded_vars = merge_exclusions(kcfg.as_dict())
 
     else:
         logging.error("Invalid F_CFG_UPGRADE_MODE '%s'" % refresh_mode)

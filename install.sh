@@ -202,6 +202,17 @@ set_units_restructure() {
     fi
 }
 
+# Merge applies every value menuconfig holds, so first offer to import values that were
+# hand edited in the .cfg files. Not under -y, since each value needs a person's answer
+offer_cfg_import() {
+    [ "${F_CFG_UPGRADE_MODE:-}" = merge ] && [ -z "${F_YES:-}" ] || return 0
+
+    export HH_CONFIG_HOME="${CONFIG_KLIPPER_CONFIG_HOME:-}"
+    run_kconfig_top kconfig_import n
+    run_kconfig_units kconfig_import n
+    unset HH_CONFIG_HOME
+}
+
 # The name a single unit has before menuconfig (unit0 when there is no config
 # yet), or nothing for multi-unit
 single_unit_name() {
@@ -990,7 +1001,8 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}3) Merge (select 3)${C_OFF}"
     echo "   This will MERGE simple parameter values set in menuconfig but will retain other changes made"
     echo "   directly to your .cfg files. This is useful if you manage most parameters via menuconfig but"
-    echo "   don't want, for example, to accidentally overwrite your carefully tweaked hardware configuration"
+    echo "   don't want, for example, to accidentally overwrite your carefully tweaked hardware configuration."
+    echo "   It first offers to import values you edited in the .cfg files into menuconfig"
     echo
     echo "(Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
     echo
@@ -1131,6 +1143,9 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
         cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
     fi
+
+    # Not while converting to multi-unit, when the saved config is still the single-unit one
+    [ -n "${tmpconfig:-}" ] || offer_cfg_import
 
     run_kconfig_top menuconfig n
 
