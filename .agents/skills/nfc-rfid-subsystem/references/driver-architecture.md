@@ -65,6 +65,15 @@ two are deliberately different:
 
 Don't unify the two fallbacks.
 
+**PN532: never leave an `InListPassiveTarget` running.** `MxRtyPassiveActivation`
+defaults to 0xFF, so with no tag in the field the scan retries forever on the chip.
+The non-blocking probe cancels it with `_probe_abort()` (ACK frame, then drain), and
+the blocking `read_target()` must do the same when it times out without a tag.
+Otherwise the next command, typically the `InRelease` at the start of the following
+scan, is written to a busy chip. On per-gate EMU readers that wedged the I2C bus
+(`BUS_TIMEOUT` on the write) until a power cycle, which also took out any other
+device on that bus, such as the dry-box AHT sensor.
+
 Driver warnings reach the console through `startup_warnings`: a driver's
 `init()` resets the list and appends to it, `MmuNfcReader.init()` copies it,
 and `MmuNfcManager._init_reader()` and `MMU_RFID_INIT` log each entry with
