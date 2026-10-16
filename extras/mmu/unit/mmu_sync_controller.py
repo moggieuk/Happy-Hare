@@ -329,6 +329,15 @@ class _AutotuneEngine:
         self._stable_time = 0.0
         self._stable_motion_mm = 0.0
 
+        self.invalidate_twolevel_evidence(reset_confidence=False)
+
+
+    def invalidate_twolevel_evidence(self, reset_confidence=True):
+        """Discard measurements tied to the old speed band, preserving run state."""
+        if reset_confidence:
+            self._rd_cert_fifo.clear()
+            self._rd_cert_last_score = -1.0
+
         # Two-level estimator buckets & evidence
         self._tl_flips = 0
         self._tl_updates_since_flip = 0
@@ -1310,7 +1319,10 @@ class SyncController:
         live change of rd_twolevel_speed_multiplier/rd_twolevel_boost_multiplier
         """
         if self.twolevel_active:
+            old_band = (self.rd_low, self.rd_high)
             self._set_low_high_rd(self.rd_ref)
+            if (self.rd_low, self.rd_high) != old_band:
+                self.autotune.invalidate_twolevel_evidence()
 
 
     def _clamp_to_envelope(self, rd):
