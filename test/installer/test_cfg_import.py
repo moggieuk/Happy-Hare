@@ -1,8 +1,9 @@
-# Happy Hare installer: importing hand-edited .cfg values into menuconfig before a Merge.
+# Happy Hare installer: importing the values the installed .cfg files hold into menuconfig
+# at the start of an interactive Refresh, and the baseline the build compares against.
 #
 # Each test builds a real install the way Replace does - a saved .mmu_config plus the base
 # files rendered from it - then edits the installed files as a user would and checks what
-# cfg_import offers, what it writes back, and what a Merge build makes of the result.
+# cfg_import offers, what it writes back, and what a build makes of the result.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -81,13 +82,14 @@ class _Install(unittest.TestCase):
         with cfg._env(env or self.env), cfg._chdir(cfg.INSTALLER):
             return cfg_import.Analysis(kconfig or self.kconfig, cfg_import.installed_files(self.home))
 
-    def merge_build(self, template, name):
-        """A Merge build of one file over the current install, returned parsed"""
-        out = os.path.join(self.tmp.name, "merged")
+    def build_file(self, template, name, mode="replace"):
+        """One file built from the saved config over the current install, returned parsed.
+        A Replace build shows exactly what .mmu_config now holds"""
+        out = os.path.join(self.tmp.name, "built")
         os.makedirs(os.path.join(out, "mmu", "base"), exist_ok=True)
         with cfg._env(self.env), cfg._chdir(cfg.INSTALLER):
             kcfg = build.KConfig(self.kconfig)
-        with cfg._env(dict(self.env, OUT=out, F_CFG_UPGRADE_MODE="merge")), cfg._chdir(cfg.REPO_ROOT):
+        with cfg._env(dict(self.env, OUT=out, F_CFG_UPGRADE_MODE=mode)), cfg._chdir(cfg.REPO_ROOT):
             build.build_config_file(template, os.path.join(out, "mmu", "base", name), kcfg,
                                     cfg_import.installed_files(self.home), self.extra)
         return ConfigBuilder(os.path.join(out, "mmu", "base", name))
@@ -100,7 +102,7 @@ class _Install(unittest.TestCase):
         return {c.sym_name: c for c in analysis.candidates}
 
     def reasons(self, analysis):
-        return {key: reason for key, _value, reason in analysis.blocked}
+        return {key: reason for key, _value, reason in analysis.kept}
 
 
 class TestCandidates(_Install):
@@ -108,7 +110,7 @@ class TestCandidates(_Install):
     def test_an_untouched_install_has_nothing_to_import(self):
         analysis = self.analyse()
         self.assertEqual(analysis.candidates, [])
-        self.assertEqual(analysis.blocked, [])
+        self.assertEqual(analysis.kept, [])
 
     def test_plain_param_is_offered(self):
         self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
@@ -140,7 +142,7 @@ class TestCandidates(_Install):
         candidate = self.by_symbol(analysis)["PARAM_LOG_FILE_LEVEL"]
         self.assertEqual(candidate.set_name, "CHOICE_LOG_FILE_LEVEL_OFF")
         analysis.apply([candidate])
-        mmu = self.merge_build("config/base/mmu.cfg", "mmu.cfg")
+        mmu = self.build_file("config/base/mmu.cfg", "mmu.cfg")
         self.assertEqual(mmu.get("mmu_parameters", "log_file_level").strip(), "-1")
 
     def test_value_no_choice_option_gives_is_reported(self):
@@ -193,16 +195,16 @@ class TestCandidates(_Install):
         reason = self.reasons(self.analyse())[("mmu_unit_parameters unit0", "gear_load_speed")]
         self.assertTrue(reason.startswith("not a valid"), reason)
 
-    def test_option_merge_overwrites_by_name_alone_is_reported(self):
-        # [mmu_unit] toolhead is a literal in the template, but shares PARAM_TOOLHEAD's name
+    def test_option_menuconfig_doesnt_render_is_left_in_the_cfg(self):
+        # [mmu_unit] toolhead is a literal in the template, so there is nothing to import
         self.edit("mmu_hardware_unit0.cfg", "toolhead", "other", section="mmu_unit unit0")
-        self.assertEqual(self.reasons(self.analyse())[("mmu_unit unit0", "toolhead")],
-                         "not a plain menuconfig value")
+        analysis = self.analyse()
+        self.assertEqual((analysis.candidates, analysis.kept), ([], []))
 
     def test_symbol_set_differently_in_two_places_is_reported(self):
         shared = [(sym, keys) for (sym, _literal), keys in self.symbol_uses().items() if len(keys) > 1]
         if not shared:
-            self.skipTest("no symbol renders into two options Merge overwrites")
+            self.skipTest("no symbol renders into two options")
         sym, keys = shared[0]
         name = {"mmu_parameters": "mmu.cfg"}.get(keys[0][0])
         if name is None:
@@ -217,26 +219,28 @@ class TestCandidates(_Install):
             values = build.KConfig(self.kconfig).as_dict()
         values.update(self.extra)
         env = build._jinja_env(cfg.REPO_ROOT)
-        excluded_params, excluded_vars = build.merge_exclusions(values)
         uses = {}
         for template in SINGLE_UNIT_FILES:
             with open(os.path.join(cfg.REPO_ROOT, template)) as f:
                 marked = env.from_string(cfg_import.mark_template(f.read())).render(values)
             for key, ref in cfg_import.symbol_lines(marked).items():
-                if ref and build.kconfig_wins(key[0], key[1], excluded_params, set(excluded_vars)):
+                if ref and not ref[0].startswith("PIN_"):
                     uses.setdefault(ref, []).append(key)
         return uses
 
-    def test_changed_default_is_not_taken_for_a_hand_edit(self):
-        # The saved default was 77 when this install was built; the current default differs
+    def test_old_default_still_in_the_cfg_is_imported(self):
+        # The default was 77 when this install was built; a release has since changed it
         text = re.sub(r"(?m)^CONFIG_PARAM_GEAR_LOAD_SPEED=.*$",
                       "CONFIG_PARAM_GEAR_LOAD_SPEED=77" + DEFAULT_TOKEN, self.saved())
         with open(self.kconfig, "w") as f:
             f.write(text)
         self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "77")
-        analysis = self.analyse()
-        self.assertNotIn("PARAM_GEAR_LOAD_SPEED", self.by_symbol(analysis))
-        self.assertNotIn(("mmu_unit_parameters unit0", "gear_load_speed"), self.reasons(analysis))
+        candidate = self.by_symbol(self.analyse())["PARAM_GEAR_LOAD_SPEED"]
+        self.assertEqual((candidate.menuconfig_value, candidate.kconfig_value), ("100", "77"))
+
+    def test_value_equal_to_the_default_isnt_imported(self):
+        self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "100.0")
+        self.assertNotIn("PARAM_GEAR_LOAD_SPEED", self.by_symbol(self.analyse()))
 
 
 class TestApply(_Install):
@@ -261,38 +265,38 @@ class TestApply(_Install):
         self.assertEqual(defaults(before) - defaults(after),
                          {"PARAM_GEAR_LOAD_SPEED", "BOOL_SOFTWARE_HOME_MMU"} & defaults(before))
 
-    def test_merge_keeps_imported_values(self):
+    def test_menuconfig_holds_the_imported_values(self):
         self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
         self.edit("mmu.cfg", "log_file_level", "4")
         self.edit("mmu_macro_vars.cfg", "variable_user_pre_initialize_extension", '"MY_INIT"')
 
-        reverted = self.merge_build("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
-        self.assertNotEqual(reverted.get("mmu_unit_parameters unit0", "gear_load_speed").strip(), "123")
+        before = self.build_file("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
+        self.assertNotEqual(before.get("mmu_unit_parameters unit0", "gear_load_speed").strip(), "123")
 
         analysis = self.analyse()
         analysis.apply(analysis.candidates)
 
-        params = self.merge_build("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
+        params = self.build_file("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
         self.assertEqual(params.get("mmu_unit_parameters unit0", "gear_load_speed").strip(), "123")
         self.assertIn("\nCONFIG_CHOICE_LOG_FILE_LEVEL_STEPPER=y\n", self.saved())
-        mmu = self.merge_build("config/base/mmu.cfg", "mmu.cfg")
+        mmu = self.build_file("config/base/mmu.cfg", "mmu.cfg")
         self.assertEqual(mmu.get("mmu_parameters", "log_file_level").strip(), "4")
-        macro_vars = self.merge_build("config/base/mmu_macro_vars.cfg", "mmu_macro_vars.cfg")
+        macro_vars = self.build_file("config/base/mmu_macro_vars.cfg", "mmu_macro_vars.cfg")
         self.assertEqual(macro_vars.get("gcode_macro _MMU_SOFTWARE_VARS",
                                         "variable_user_pre_initialize_extension").strip(), '"MY_INIT"')
 
 
 class TestPins(_Install):
-    """Merge keeps a hand-edited pin, so importing it only brings menuconfig into line"""
+    """Pins are imported like any other value Refresh keeps in the .cfg files"""
 
     def test_plain_pin_is_imported(self):
         self.edit("mmu_hardware_unit0.cfg", "step_pin", "unit0:PA9", section="mmu_stepper unit0_gear")
         analysis = self.analyse()
         candidate = self.by_symbol(analysis)["PIN_GEAR_STEP"]
-        self.assertEqual((candidate.kconfig_value, candidate.overwritten), ("unit0:PA9", False))
+        self.assertEqual(candidate.kconfig_value, "unit0:PA9")
         analysis.apply([candidate])
         self.assertIn('\nCONFIG_PIN_GEAR_STEP="unit0:PA9"\n', self.saved())
-        hardware = self.merge_build("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
         self.assertEqual(hardware.get("mmu_stepper unit0_gear", "step_pin").strip(), "unit0:PA9")
 
     def test_per_gate_pin_maps_to_its_gate(self):
@@ -303,7 +307,7 @@ class TestPins(_Install):
     def test_invalid_pin_is_kept_not_listed(self):
         self.edit("mmu_hardware_unit0.cfg", "dir_pin", "foo bar", section="mmu_stepper unit0_gear")
         analysis = self.analyse()
-        self.assertEqual((analysis.candidates, analysis.blocked), ([], []))
+        self.assertEqual(analysis.candidates, [])
         self.assertEqual([(key, reason) for key, _, reason in analysis.kept],
                          [(("mmu_stepper unit0_gear", "dir_pin"), "rejected by menuconfig's validation")])
 
@@ -353,7 +357,7 @@ class TestCli(_Install):
         status, out = self.show()
         self.assertEqual(status, cfg_import.EXIT_SHOWN)
         self.assertIn(
-            "These manual .cfg edits will be imported into menuconfig:\n"
+            "These .cfg values will be imported into menuconfig:\n"
             "From mmu_macro_vars.cfg:\n"
             "[gcode_macro _MMU_SOFTWARE_VARS]\n"
             "variable_home_mmu: True\n"
@@ -362,11 +366,7 @@ class TestCli(_Install):
             "[mmu_unit_parameters unit0]\n"
             "gear_load_speed: 123\n"
             "gear_unload_speed: 88\n", out)
-        self.assertIn(
-            "These manual .cfg edits can't be imported, so menuconfig will overwrite them:\n"
-            "From mmu_hardware_unit0.cfg:\n"
-            "[mmu_unit unit0]\n"
-            "toolhead: other\n", out)
+        self.assertNotIn("toolhead", out)
         self.assertNotIn("dir_pin", out)
 
     def test_verbose_show_says_what_each_value_replaces(self):
@@ -375,8 +375,7 @@ class TestCli(_Install):
         self.assertIn("gear_load_speed: 123 (was 100; PARAM_GEAR_LOAD_SPEED)\n", out)
         self.assertIn("variable_home_mmu: True (was False; VAR_SOFTWARE_HOME_MMU, set by BOOL_SOFTWARE_HOME_MMU)\n",
                       out)
-        self.assertIn("toolhead: other (not a plain menuconfig value)\n", out)
-        self.assertIn("These manual .cfg edits stay in the .cfg files but can't be imported into menuconfig:\n"
+        self.assertIn("These .cfg values stay in the .cfg files but can't be imported into menuconfig:\n"
                       "From mmu_hardware_unit0.cfg:\n"
                       "[mmu_stepper unit0_gear]\n"
                       "dir_pin: foo bar (rejected by menuconfig's validation)\n", out)
@@ -390,6 +389,25 @@ class TestCli(_Install):
         self.assertIn("\nCONFIG_PARAM_GEAR_UNLOAD_SPEED=88\n", self.saved())
         self.assertIn("\nCONFIG_BOOL_SOFTWARE_HOME_MMU=y\n", self.saved())
 
+    def test_report_saves_the_baseline_with_defaults_recomputed(self):
+        baseline = os.path.join(self.tmp.name, "baseline")
+        before = self.saved()
+        self.run_cli("--kconfig", self.kconfig, "--config-home", self.home, "--report", self.report,
+                     "--baseline", baseline)
+        self.assertEqual(self.saved(), before)
+        with open(os.path.join(baseline, ".mmu_config")) as f:
+            saved = f.read()
+        self.assertIn("CONFIG_PARAM_GEAR_LOAD_SPEED=100" + DEFAULT_TOKEN, saved)
+
+    def test_apply_rewrites_the_baseline_with_the_imported_values(self):
+        baseline = os.path.join(self.tmp.name, "baseline")
+        self.run_cli("--kconfig", self.kconfig, "--config-home", self.home, "--report", self.report,
+                     "--baseline", baseline)
+        self.run_cli("--kconfig", self.kconfig, "--apply", self.report, "--baseline", baseline)
+        with open(os.path.join(baseline, ".mmu_config")) as f:
+            self.assertEqual(f.read(), self.saved())
+        self.assertIn("\nCONFIG_PARAM_GEAR_LOAD_SPEED=123\n", self.saved())
+
     def test_apply_ignores_other_files_entries(self):
         self.report_pass()
         other = os.path.join(self.tmp.name, ".mmu_config_other")
@@ -401,7 +419,7 @@ class TestCli(_Install):
 
     def test_nothing_to_show_asks_nothing(self):
         with open(self.report, "w") as f:
-            f.write('{"kconfig": "/x", "imported": [], "blocked": [], "kept": [], "settings": []}\n')
+            f.write('{"kconfig": "/x", "imported": [], "kept": [], "settings": []}\n')
         self.assertEqual(self.show(), (cfg_import.EXIT_NOTHING, ""))
 
     def test_failed_report_fails_open(self):
@@ -410,7 +428,7 @@ class TestCli(_Install):
             self.assertEqual(self.report_pass()[0], cfg_import.EXIT_FAILED)
         status, out = self.show()
         self.assertEqual(status, cfg_import.EXIT_NOTHING)
-        self.assertIn("continuing with Merge", out)
+        self.assertIn("continuing without", out)
         self.assertEqual(self.saved(), before)
 
     def test_report_without_an_install_does_nothing(self):
@@ -420,8 +438,120 @@ class TestCli(_Install):
         self.assertFalse(os.path.exists(self.report))
 
 
-class TestMultiUnit(_Install):
-    """Two BoxTurtles: an edit to one unit's file belongs to that unit's config only"""
+class _Pipeline(object):
+    """
+    install.sh's interactive Refresh, step by step: report (saving baselines), optionally
+    apply, menuconfig, the post-menuconfig olddefconfig, then the build's pre-parse and
+    build. Compared with a plain Refresh build of the same saved config
+    """
+
+    def out(self):
+        return os.path.join(self.tmp.name, "out")
+
+    def baselines(self):
+        return os.path.join(self.out(), "menuconfig_base")
+
+    def import_pass(self, files, apply):
+        report = os.path.join(self.tmp.name, "report")
+        for kconfig, env in files:
+            with cfg._env(env), cfg._chdir(cfg.INSTALLER), contextlib.redirect_stdout(io.StringIO()):
+                cfg_import.main(["--kconfig", kconfig, "--config-home", self.home, "--report", report,
+                                 "--baseline", self.baselines()])
+        if apply:
+            for kconfig, env in files:
+                with cfg._env(env), cfg._chdir(cfg.INSTALLER), contextlib.redirect_stdout(io.StringIO()):
+                    cfg_import.main(["--kconfig", kconfig, "--apply", report, "--baseline", self.baselines()])
+
+    def menuconfig(self, kconfig, env, **syms):
+        """What saving menuconfig does: recompute defaults, set what was changed, write"""
+        with cfg._env(env), cfg._chdir(cfg.INSTALLER):
+            kconf = build.KConfig(kconfig)
+            kconf.load_config(kconfig, filter_defaults=True)
+            for name, value in syms.items():
+                kconf.syms[name].set_value(value)
+            kconf.write_config(kconfig)
+
+    olddefconfig = menuconfig
+
+    def build_all(self, targets, build_env, baseline):
+        """{installed name: text} built from the pre-parsed configs, as make install does"""
+        out = self.out()
+        with cfg._env(dict(build_env, OUT=out)), cfg._chdir(cfg.INSTALLER):
+            for kconfig in {k for k, _, _ in targets}:
+                build.pre_parse_kconfig(kconfig)
+                if baseline:
+                    base = os.path.join(self.baselines(), os.path.basename(kconfig))
+                    build.pre_parse_kconfig(base, base + ".pickle")
+        dest_dir = os.path.join(out, "mmu", "base")
+        os.makedirs(dest_dir, exist_ok=True)
+        built = {}
+        env = dict(build_env, OUT=out, F_CFG_UPGRADE_MODE="refresh", F_MENUCONFIG_BASELINE="y" if baseline else "")
+        with cfg._env(env), cfg._chdir(cfg.REPO_ROOT), self.assertNoLogs(level="ERROR"):
+            for kconfig, template, name in targets:
+                kcfg = build.load_parsed_kconfig(kconfig)
+                build.build_config_file(template, os.path.join(dest_dir, name), kcfg,
+                                        cfg_import.installed_files(self.home), self.extra)
+                with open(os.path.join(dest_dir, name)) as f:
+                    built[name] = f.read()
+        return built
+
+
+class TestRefreshPipeline(_Pipeline, _Install):
+
+    def targets(self):
+        return [(self.kconfig, template, name.format(unit="unit0")) for template, name in SINGLE_UNIT_FILES.items()]
+
+    def files(self):
+        return [(self.kconfig, self.env)]
+
+    def test_accepted_import_without_menuconfig_changes_builds_as_plain_refresh(self):
+        self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
+        self.edit("mmu_hardware_unit0.cfg", "step_pin", "unit0:PA9", section="mmu_stepper unit0_gear")
+        self.import_pass(self.files(), apply=True)
+        self.menuconfig(self.kconfig, self.env)
+        self.olddefconfig(self.kconfig, self.env)
+        self.assertEqual(self.build_all(self.targets(), self.env, baseline=True),
+                         self.build_all(self.targets(), self.env, baseline=False))
+
+    def test_declined_import_and_unsaved_menuconfig_build_as_plain_refresh(self):
+        # A default saved by an older release (55) and a hand edit (66) the user declines to import
+        text = re.sub(r"(?m)^CONFIG_PARAM_GEAR_UNLOAD_SPEED=.*$",
+                      "CONFIG_PARAM_GEAR_UNLOAD_SPEED=55" + DEFAULT_TOKEN, self.saved())
+        with open(self.kconfig, "w") as f:
+            f.write(text)
+        self.edit("mmu_parameters_unit0.cfg", "gear_unload_speed", "66")
+        self.import_pass(self.files(), apply=False)
+
+        # Menuconfig quit without saving leaves the raw file, which olddefconfig must
+        # bring in line with the baseline or the stale default reads as a change
+        raw = self.build_all(self.targets(), self.env, baseline=True)
+        self.assertIn("gear_unload_speed           : 55", raw["mmu_parameters_unit0.cfg"])
+        self.olddefconfig(self.kconfig, self.env)
+        built = self.build_all(self.targets(), self.env, baseline=True)
+        self.assertEqual(built, self.build_all(self.targets(), self.env, baseline=False))
+        self.assertIn("gear_unload_speed           : 66", built["mmu_parameters_unit0.cfg"])
+
+    def test_only_what_menuconfig_changed_is_applied(self):
+        self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
+        self.edit("mmu_hardware_unit0.cfg", "toolhead", "other", section="mmu_unit unit0")
+        self.import_pass(self.files(), apply=True)
+        self.menuconfig(self.kconfig, self.env, PARAM_GEAR_UNLOAD_SPEED="77")
+        self.olddefconfig(self.kconfig, self.env)
+        built = self.build_all(self.targets(), self.env, baseline=True)
+        plain = self.build_all(self.targets(), self.env, baseline=False)
+
+        params = ConfigBuilder()
+        params.read_buf(built["mmu_parameters_unit0.cfg"])
+        self.assertEqual(params.get("mmu_unit_parameters unit0", "gear_unload_speed").strip(), "77")
+        self.assertEqual(params.get("mmu_unit_parameters unit0", "gear_load_speed").strip(), "123")
+        self.assertIn("toolhead                 : other", built["mmu_hardware_unit0.cfg"])
+        # Nothing else differs from a plain Refresh, which ignores the menuconfig change
+        changed = [name for name in built if built[name] != plain[name]]
+        self.assertEqual(changed, ["mmu_parameters_unit0.cfg"])
+
+
+class _MultiUnitInstall(_Install):
+    """Two BoxTurtles, installed in Replace mode"""
 
     UNITS = ("unit0", "unit1")
 
@@ -457,6 +587,10 @@ class TestMultiUnit(_Install):
     def unit_kconfig(self, unit):
         return "%s_%s" % (self.kconfig, unit)
 
+
+class TestMultiUnit(_MultiUnitInstall):
+    """An edit to one unit's file belongs to that unit's config only"""
+
     def test_edit_lands_in_its_unit_only(self):
         self.edit("mmu_parameters_unit1.cfg", "gear_load_speed", "123")
         self.assertEqual(self.analyse().candidates, [])
@@ -483,6 +617,27 @@ class TestMultiUnit(_Install):
         self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")
         self.assertEqual([c.sym_name for c in self.analyse().candidates], ["VAR_SOFTWARE_HOME_MMU"])
         self.assertEqual(self.analyse(self.unit_kconfig("unit0"), self.unit_envs["unit0"]).candidates, [])
+
+
+class TestMultiUnitRefreshPipeline(_Pipeline, _MultiUnitInstall):
+
+    def test_no_menuconfig_changes_build_as_plain_refresh(self):
+        self.edit("mmu_parameters_unit1.cfg", "gear_load_speed", "123")
+        self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")
+        files = [(self.kconfig, self.env)] + [(self.unit_kconfig(u), self.unit_envs[u]) for u in self.UNITS]
+        self.import_pass(files, apply=True)
+        for kconfig, env in files:
+            self.menuconfig(kconfig, env)
+            self.olddefconfig(kconfig, env)
+
+        # make install pre-parses and builds every file in the top-level environment
+        build_env = dict(cfg._SINGLE_UNIT_ENV, HH_VERSION=cfg.hh_version(), KCONFIG_CONFIG=self.kconfig)
+        targets = [(self.kconfig, t, os.path.basename(t)) for t in cfg_import.SHARED_TEMPLATES]
+        for unit in self.UNITS:
+            targets += [(self.unit_kconfig(unit), t, SINGLE_UNIT_FILES[t].format(unit=unit))
+                        for t in cfg_import.UNIT_TEMPLATES]
+        self.assertEqual(self.build_all(targets, build_env, baseline=True),
+                         self.build_all(targets, build_env, baseline=False))
 
 
 if __name__ == "__main__":

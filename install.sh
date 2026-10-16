@@ -202,13 +202,17 @@ set_units_restructure() {
     fi
 }
 
-# Merge applies every value menuconfig holds, so first import values that were hand edited
-# in the .cfg files. Every Kconfig file reports its edits, they're shown together and the
-# user confirms once (-y answers), then each file imports what it reported. Declining
-# stops the install before anything is written
-offer_cfg_import() {
-    [ "${F_CFG_UPGRADE_MODE:-}" = merge ] || return 0
+# Interactive Refresh: before menuconfig opens, import the values the .cfg files hold that
+# menuconfig doesn't show, so it opens showing what is running, and save a baseline of each
+# Kconfig file so the build applies only what menuconfig then changes. Every Kconfig file
+# reports, the reports are shown together and the user confirms once (-y answers)
+prepare_refresh() {
+    case "${F_CFG_UPGRADE_MODE:-}" in
+    refresh | merge) ;;
+    *) return 0 ;;
+    esac
 
+    run_make kconfig_baseline_clean
     HH_IMPORT_REPORT=$(mktemp -t hh_import.XXXXXX)
     export HH_IMPORT_REPORT HH_CONFIG_HOME="${CONFIG_KLIPPER_CONFIG_HOME:-}"
     run_kconfig_top kconfig_import n
@@ -220,20 +224,30 @@ offer_cfg_import() {
 
     if [ "${import_status}" -eq 10 ]; then
         # prompt_yn returns 0 for no
-        if prompt_yn "Proceed"; then
-            rm -f "${HH_IMPORT_REPORT}"
-            echo "${C_WARNING}Merge cancelled, nothing was changed. Re-run './install.sh -i' and choose Refresh (1)" \
-                "to keep your .cfg edits as they are, or Replace (2) to rebuild them from menuconfig${C_OFF}"
-            exit 1
+        if prompt_yn "Import these .cfg values into menuconfig"; then
+            echo "${C_INFO}Not imported: menuconfig will show its previous values, and your .cfg files are kept as they are${C_OFF}"
+        else
+            export HH_IMPORT_APPLY=y
+            run_kconfig_top kconfig_import n
+            run_kconfig_units kconfig_import n
+            unset HH_IMPORT_APPLY
         fi
-        export HH_IMPORT_APPLY=y
-        run_kconfig_top kconfig_import n
-        run_kconfig_units kconfig_import n
-        unset HH_IMPORT_APPLY
+        echo
     fi
 
     rm -f "${HH_IMPORT_REPORT}"
     unset HH_IMPORT_REPORT HH_CONFIG_HOME
+    export F_MENUCONFIG_BASELINE=y
+}
+
+# What the install changed in the Happy Hare .cfg files, against the backup it made
+# (none on a first install, or after recovering a backup)
+show_cfg_changes() {
+    since=$1
+    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH:-}" \
+        "${INSTALLER_PY:-python3}" -m installer.cfg_diff ${V:-} --since "${since}" \
+        --replaced "${HH_REPLACED_REPORT:-}" "$(guess_klipper_config_home)" || true
+    [ -z "${HH_REPLACED_REPORT:-}" ] || rm -f "${HH_REPLACED_REPORT}"
 }
 
 # The name a single unit has before menuconfig (unit0 when there is no config
@@ -1008,12 +1022,13 @@ fi
 if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}').${C_OFF}"
     echo
-    echo "${C_WARNING}Read carefully, you have three options:${C_OFF}"
+    echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
     echo
     echo "${C_WARNING}1) Refresh (select 1)${C_OFF} (Default upgrade path)"
-    echo "   This will NEVER CHANGE any manually edited .cfg parameter value and thus is limited"
-    echo "   to only ADDING NEW or missing config sections/options. Note that parameter values shown"
-    echo "   in menuconfig may be stale and not reflect your actual .cfg config"
+    echo "   This KEEPS every change you made directly to your .cfg files. Before menuconfig opens,"
+    echo "   the simple settings your .cfg files hold are copied into menuconfig (you'll see the list"
+    echo "   and confirm), so menuconfig shows what you are actually running. Only the settings you"
+    echo "   then change in menuconfig are applied to your .cfg files, and new options are added."
     echo
     echo "${C_WARNING}2) Replace (select 2)${C_OFF} (Recommended)"
     echo "   This will OVERWRITE changes made directly to your .cfg files and create new default"
@@ -1021,21 +1036,12 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "   This is RECOMMENDED if you make ALL your configuration changes via menuconfig. It is also"
     echo "   useful if you get into trouble and want to reset your starting position or change MMU."
     echo
-    echo "${C_WARNING}3) Merge (select 3)${C_OFF}"
-    echo "   This will apply the settings from menuconfig to your .cfg files but keep other changes you"
-    echo "   made directly to them, such as carefully tweaked hardware configuration. Before menuconfig"
-    echo "   opens, any simple setting you changed directly in a .cfg file is copied into menuconfig, so"
-    echo "   your change isn't lost. You'll see what will be copied and be asked to confirm; if you"
-    echo "   don't, the install stops without changing anything. This is useful if you manage most"
-    echo "   settings via menuconfig but have also edited some .cfg files"
-    echo
     echo "(Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
     echo
 
-    sel=$(prompt_n 3 "Choose upgrade mode")
+    sel=$(prompt_n 2 "Choose upgrade mode")
     case "$sel" in
         2) export F_CFG_UPGRADE_MODE=replace ;;
-        3) export F_CFG_UPGRADE_MODE=merge ;;
         *) export F_CFG_UPGRADE_MODE=refresh ;;
     esac
 
@@ -1170,7 +1176,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
     fi
 
     # Not while converting to multi-unit, when the saved config is still the single-unit one
-    [ -n "${tmpconfig:-}" ] || offer_cfg_import
+    [ -n "${tmpconfig:-}" ] || prepare_refresh
 
     run_kconfig_top menuconfig n
 
@@ -1198,13 +1204,14 @@ else
 fi
 
 # Always refresh stale configs after any optional menuconfig pass. Renamed or moved
-# units must recompute their defaults (e.g. pin prefixes) even though not stale
-if [ -n "${F_UNIT_RENAMED:-}" ]; then
+# units must recompute their defaults (e.g. pin prefixes) even though not stale, and so
+# must every config compared with a menuconfig baseline, which has them recomputed
+if [ -n "${F_UNIT_RENAMED:-}" ] || [ -n "${F_MENUCONFIG_BASELINE:-}" ]; then
     run_kconfig_top olddefconfig n
 else
     run_kconfig_top olddefconfig y
 fi
-if [ -n "${F_UNITS_RESTRUCTURED:-}" ]; then
+if [ -n "${F_UNITS_RESTRUCTURED:-}" ] || [ -n "${F_MENUCONFIG_BASELINE:-}" ]; then
     run_kconfig_units olddefconfig n
 else
     run_kconfig_units olddefconfig y
@@ -1232,4 +1239,8 @@ install_and_clean() {
 }
 
 unit_migration_step prepare || exit 1
+install_started=$(date '+%Y%m%d-%H%M%S')
+HH_REPLACED_REPORT=$(mktemp -t hh_replaced.XXXXXX)
+export HH_REPLACED_REPORT
 time_elapsed install_and_clean
+show_cfg_changes "${install_started}"

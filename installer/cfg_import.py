@@ -1,17 +1,16 @@
 # Happy Hare MMU Software
 #
-# Import values hand edited in the installed .cfg files into menuconfig before a Merge
-# install. Merge applies every PARAM_/VAR_ value saved in .mmu_config, so without this a
-# value tuned only in a .cfg file reverts to the older value menuconfig holds. Values Merge
-# keeps, such as pins, are imported too so menuconfig matches the .cfg files.
+# Import values the installed .cfg files hold into menuconfig at the start of an interactive
+# Refresh, so menuconfig opens showing what is actually running: hand edits, and defaults a
+# release has since changed. The build then applies only what menuconfig changed this run
+# (build.menuconfig_changes), against the baseline saved here once any import is done.
 #
-# Only a template line whose whole value is one symbol can be traced back to it, and
-# only a symbol menuconfig shows can hold a user value. Everything else Merge would
-# overwrite is listed so the user knows.
+# Only a template line whose whole value is one symbol can be traced back to it, and only a
+# symbol menuconfig shows can hold a user value. Anything else stays in the .cfg files.
 #
 # Each Kconfig file needs its own parse environment, so install.sh runs this once per file
-# to --report, shows the combined report with --show and asks once, then runs it once per
-# file again to --apply what was shown
+# to --report (also saving the --baseline), shows the combined report with --show and asks
+# once, then on yes runs it once per file again to --apply what was shown
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
@@ -63,7 +62,6 @@ class Candidate(object):
         self.set_name = None                    # The symbol menuconfig sets: this one, its toggle or choice member
         self.set_key = None                     # What can only take one value: set_name, or the choice
         self.kconfig_value = None
-        self.overwritten = True                 # False when Merge keeps the .cfg value anyway
 
     def note(self):
         """Verbose detail: the value it replaces and the symbol that holds it"""
@@ -182,16 +180,20 @@ def why_not_settable(sym, value):
 
 
 class Analysis(object):
-    """Hand edits menuconfig doesn't hold, split into importable candidates and the rest"""
+    """.cfg values menuconfig doesn't show, split into importable candidates and the rest"""
 
     def __init__(self, kconfig_path, installed_files):
         self.kconfig_path = kconfig_path
         self.candidates = []
-        self.blocked = []                      # Merge overwrites these: [((section, option), value, reason)]
-        self.kept = []                         # Merge keeps these in the .cfg files, same shape
+        self.kept = []                         # Can't be imported: [((section, option), value, reason)]
 
+        # Recomputed defaults are what menuconfig shows, so a .cfg still holding a default
+        # a release has since changed is imported too. Trial values are judged here, so
+        # kconfiglib's warnings about rejecting them are only noise
         self.kconf = build.KConfig(kconfig_path)
-        saved = self.kconf.as_dict()
+        self.kconf.load_config(kconfig_path, filter_defaults=True)
+        self.kconf.warn = False
+        values = self.kconf.as_dict()
 
         # The installed file each option is in, for the summary
         self.origin = {}
@@ -204,19 +206,17 @@ class Analysis(object):
         hhcfg = build.HHConfig(installed_files)
         build.upgrade_hhconfig(hhcfg, "existing config")
 
-        self.templates = templates_for(saved)
-        self.total_gates = total_gates(kconfig_path, saved)
+        self.templates = templates_for(values)
+        self.total_gates = total_gates(kconfig_path, values)
         self.env = build._jinja_env(REPO_ROOT)
 
-        rendered = self._render(saved)
+        rendered = self._render(values)
+        self.live = self._options(rendered)
         symbols = {}
         for template in self.templates:
             with open(os.path.join(REPO_ROOT, template), encoding="utf-8") as f:
                 marked = mark_template(f.read())
-            symbols.update(symbol_lines(self.env.from_string(marked).render(self._params(saved))))
-
-        excluded_params, excluded_vars = build.merge_exclusions(saved)
-        excluded_vars = set(excluded_vars)
+            symbols.update(symbol_lines(self.env.from_string(marked).render(self._params(values))))
 
         # Every (section, option) each symbol renders into, so an edit to one copy isn't
         # imported when the other copies say something else
@@ -231,39 +231,23 @@ class Analysis(object):
             for option in rendered.options(section):
                 key = (section, option)
                 self.order[key] = len(self.order)
-                if option == "gcode" or not hhcfg.has_option(*key) or \
+                ref = symbols.get(key)
+                if ref is None or option == "gcode" or not hhcfg.has_option(*key) or \
                         (section.split(" ", 1)[0], option) in build.KCONFIG_OWNED_OPTIONS:
                     continue
-                ref = symbols.get(key)
-                overwritten = build.kconfig_wins(section, option, excluded_params, excluded_vars)
-                if ref is None and not overwritten:
-                    continue
                 ours, theirs = rendered.get(*key) or "", hhcfg.get(*key) or ""
-                if same_value(ours, theirs, ref[1] if ref else False):
-                    continue
-                if ref is None:
-                    self.blocked.append((key, theirs, "not a plain menuconfig value"))
-                else:
-                    edited.setdefault(ref, []).append((key, ours, theirs, overwritten))
-
-        # Recomputed defaults are what menuconfig shows and saves. Trial values are judged
-        # here, so kconfiglib's warnings about rejecting them are only noise
-        self.kconf.load_config(kconfig_path, filter_defaults=True)
-        self.kconf.warn = False
-        self.live = self._options(self._render(self.kconf.as_dict()))
+                if not same_value(ours, theirs, ref[1]):
+                    edited.setdefault(ref, []).append((key, ours, theirs))
 
         for (sym_name, literal), edits in sorted(edited.items()):
             locations = uses[(sym_name, literal)]
-            overwritten = any(e[3] for e in edits)
             cfg_values = {(hhcfg.get(*key) or "").strip() for key in locations}
-            _, ours, theirs, _ = edits[0]
+            _, ours, theirs = edits[0]
             if len(cfg_values) > 1:
-                for key, _, value, _ in edits:
-                    self._block(key, value, "%s is set differently elsewhere" % sym_name, overwritten)
+                for key, _, value in edits:
+                    self.kept.append((key, value, "%s is set differently elsewhere" % sym_name))
                 continue
-            candidate = Candidate(sym_name, literal, locations, ours.strip(), theirs.strip())
-            candidate.overwritten = overwritten
-            self._consider(candidate)
+            self._consider(Candidate(sym_name, literal, locations, ours.strip(), theirs.strip()))
 
         self._drop_conflicts()
 
@@ -288,9 +272,6 @@ class Analysis(object):
                 found[(section, option)] = (rendered.get(section, option) or "").strip()
         return found
 
-    def _block(self, key, value, reason, overwritten):
-        (self.blocked if overwritten else self.kept).append((key, value, reason))
-
     def _drop_conflicts(self):
         """A toggle or choice can't take two values, so neither edit that needs it can be imported"""
         wanted = {}
@@ -299,8 +280,7 @@ class Analysis(object):
         for candidate in [c for c in self.candidates if len(wanted[c.set_key]) > 1]:
             self.candidates.remove(candidate)
             for key in candidate.locations:
-                self._block(key, candidate.cfg_value, "%s is needed two ways" % candidate.set_key,
-                            candidate.overwritten)
+                self.kept.append((key, candidate.cfg_value, "%s is needed two ways" % candidate.set_key))
 
     def _consider(self, candidate):
         sym = self.kconf.syms[candidate.sym_name]
@@ -327,7 +307,7 @@ class Analysis(object):
             self.candidates.append(candidate)
         else:
             for key in candidate.locations:
-                self._block(key, candidate.cfg_value, reason, candidate.overwritten)
+                self.kept.append((key, candidate.cfg_value, reason))
 
     def _reproduces(self, set_sym, value, candidate):
         """
@@ -405,19 +385,26 @@ class Analysis(object):
         return {
             "kconfig": os.path.abspath(self.kconfig_path),
             "imported": rows([(key, c.cfg_value, c.note()) for c in self.candidates for key in c.locations]),
-            "blocked": rows(self.blocked),
             "kept": rows(self.kept),
             "settings": [[c.set_name, c.kconfig_value] for c in self.candidates],
         }
 
 
-def apply_settings(kconfig_path, settings, kconf=None):
-    """Save menuconfig values as explicit settings, keeping every other value as it was saved"""
+def apply_settings(kconfig_path, settings, kconf=None, baseline_dir=None):
+    """
+    Save menuconfig values as explicit settings, keeping every other value as it was saved.
+    With baseline_dir, also save the result there, with defaults recomputed, as the
+    baseline the build compares the post-menuconfig config with
+    """
     kconf = kconf or build.KConfig(kconfig_path)
     kconf.load_config(kconfig_path, filter_defaults=True)
     for name, value in settings:
         kconf.syms[name].set_value(value)
-    kconf.write_config(kconfig_path)
+    if settings:
+        kconf.write_config(kconfig_path)
+    if baseline_dir:
+        os.makedirs(baseline_dir, exist_ok=True)
+        kconf.write_config(os.path.join(baseline_dir, os.path.basename(kconfig_path)), save_old=False)
 
 
 def installed_files(config_home):
@@ -454,22 +441,20 @@ def show(path, verbose=False, out=None):
     failed = [r for r in reports if r.get("failed")]
     if failed:
         for r in failed:
-            print("WARNING: couldn't check '%s' for .cfg edits to import (%s), continuing with Merge"
+            print("WARNING: couldn't check '%s' for .cfg values to import (%s), continuing without"
                   % (os.path.basename(r["kconfig"]), r["failed"]), file=out)
         return EXIT_NOTHING
 
     # The import list comes last, straight above the prompt
     sections = (
-        ("blocked", "These manual .cfg edits can't be imported, so menuconfig will overwrite them:", True),
-        ("kept", "These manual .cfg edits stay in the .cfg files but can't be imported into menuconfig:",
-         verbose),
-        ("imported", "These manual .cfg edits will be imported into menuconfig:", True),
+        ("kept", "These .cfg values stay in the .cfg files but can't be imported into menuconfig:", verbose),
+        ("imported", "These .cfg values will be imported into menuconfig:", True),
     )
     for name, heading, wanted in sections:
         rows = [row for r in reports for row in r[name]]
         if rows and wanted:
             show_edits(heading, rows, verbose, out)
-    return EXIT_SHOWN if any(r["imported"] or r["blocked"] for r in reports) else EXIT_NOTHING
+    return EXIT_SHOWN if any(r["imported"] for r in reports) else EXIT_NOTHING
 
 
 def main(argv=None):
@@ -479,6 +464,7 @@ def main(argv=None):
     parser.add_argument("--report", metavar="FILE", help="append this Kconfig file's edits to FILE")
     parser.add_argument("--apply", metavar="FILE", help="import this Kconfig file's edits listed in FILE")
     parser.add_argument("--show", metavar="FILE", help="print the edits every Kconfig file reported")
+    parser.add_argument("--baseline", metavar="DIR", help="also save the Kconfig file to DIR for the build")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -490,7 +476,7 @@ def main(argv=None):
         settings = [s for r in read_report(args.apply) if r["kconfig"] == kconfig for s in r.get("settings", [])]
         if settings:
             try:
-                apply_settings(kconfig, settings)
+                apply_settings(kconfig, settings, baseline_dir=args.baseline)
             except (Exception, SystemExit) as e:
                 print("WARNING: couldn't import the .cfg edits into '%s' (%s)" % (os.path.basename(kconfig), e),
                       file=sys.stderr)
@@ -501,9 +487,12 @@ def main(argv=None):
     files = installed_files(os.path.expanduser(args.config_home or ""))
     if not files or not os.path.exists(kconfig):
         return EXIT_NOTHING
+    status = EXIT_NOTHING
     try:
-        report = Analysis(kconfig, files).report()
-        status = EXIT_NOTHING
+        analysis = Analysis(kconfig, files)
+        report = analysis.report()
+        if args.baseline:
+            apply_settings(kconfig, [], analysis.kconf, args.baseline)
     except (Exception, SystemExit) as e:
         report, status = {"kconfig": kconfig, "failed": str(e)}, EXIT_FAILED
     with open(args.report, "a", encoding="utf-8") as f:

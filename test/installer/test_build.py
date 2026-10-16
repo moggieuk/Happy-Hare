@@ -13,7 +13,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import glob
+import json
 import os
+import pickle
 import re
 import tempfile
 import unittest
@@ -424,7 +426,8 @@ class TestSupplementalParamRefresh(unittest.TestCase):
         fresh, text = self.build("htlf", "replace", [])
         with open(fresh, "w") as f:
             f.write(text.replace("cad_gate_width         : -60", "cad_gate_width         : -58"))
-        for mode, expected in (("refresh", "-58"), ("merge", "-60")):
+        # merge is now an alias of refresh
+        for mode, expected in (("refresh", "-58"), ("merge", "-58")):
             with self.subTest(mode=mode):
                 built, text = self.build("htlf", mode, [fresh])
                 self.assertEqual(self.count(text, "cad_gate_width"), 1)
@@ -439,8 +442,17 @@ class TestSupplementalParamRefresh(unittest.TestCase):
         self.assertEqual(ConfigBuilder(built).get(self.SECTION, "cad_gate_width"), "33")
 
 
-class TestMacroVarsMerge(unittest.TestCase):
-    """Merge mode lets the Kconfig value of a macro variable win over the installed one."""
+def write_menuconfig_baseline(out, kconfig, baseline):
+    """Save 'baseline' as the menuconfig baseline the build compares 'kconfig' with"""
+    from installer import build
+    path = os.path.join(out, "menuconfig_base", os.path.basename(kconfig.config_file) + ".pickle")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(build.parsed_kconfig_data(baseline, baseline.config_file), f)
+
+
+class TestMenuconfigChanges(unittest.TestCase):
+    """An interactive Refresh lets the Kconfig value win only where menuconfig changed it."""
 
     SECTION = "gcode_macro _MMU_FORM_TIP_VARS"
     OPTION = "variable_ramming_volume"
@@ -448,32 +460,61 @@ class TestMacroVarsMerge(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.syms = profiles.get("boxturtle").syms
         with cfg._env(cfg._SINGLE_UNIT_ENV):
-            self.kconfig = cfg._kconfig("macro-vars-merge", profiles.get("boxturtle").syms)
+            self.kconfig = cfg._kconfig("menuconfig-after", self.syms)
+        self.fresh = self.build(None, [], mode="replace")
+        self.kconfig_value = ConfigBuilder(self.fresh).get(self.SECTION, self.OPTION)
+        installed = ConfigBuilder(self.fresh)
+        installed.set(self.SECTION, self.OPTION, "123")
+        with open(self.fresh, "w") as f:
+            f.write(installed.write())
 
-    def build(self, mode, input_files):
+    def baseline(self, **syms):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            return cfg._kconfig("menuconfig-before", dict(self.syms, **syms))
+
+    def build(self, baseline, input_files, mode="refresh"):
         from installer import build
         out = tempfile.mkdtemp(dir=self.tmp.name)
         dest = os.path.join(out, "mmu_macro_vars.cfg")
+        if baseline is not None:
+            write_menuconfig_baseline(out, self.kconfig, baseline)
         extra = {"PARAM_TOTAL_NUM_GATES": self.kconfig.getint("PARAM_NUM_GATES")}
-        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
-                cfg._chdir(cfg.REPO_ROOT):
+        env = dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode,
+                   F_MENUCONFIG_BASELINE="y" if baseline is not None else "")
+        with cfg._env(env), cfg._chdir(cfg.REPO_ROOT):
             build.build_config_file("config/base/mmu_macro_vars.cfg", dest, self.kconfig,
                                     input_files, extra)
         return dest
 
-    def test_merge_takes_the_kconfig_form_tip_value(self):
-        fresh = self.build("replace", [])
-        kconfig_value = ConfigBuilder(fresh).get(self.SECTION, self.OPTION)
-        self.assertNotEqual(kconfig_value, "123")
-        installed = ConfigBuilder(fresh)
-        installed.set(self.SECTION, self.OPTION, "123")
-        with open(fresh, "w") as f:
-            f.write(installed.write())
-        for mode, expected in (("refresh", "123"), ("merge", kconfig_value)):
+    def value(self, built):
+        return ConfigBuilder(built).get(self.SECTION, self.OPTION)
+
+    def test_without_a_baseline_the_cfg_value_is_kept(self):
+        for mode in ("refresh", "merge"):
             with self.subTest(mode=mode):
-                built = self.build(mode, [fresh])
-                self.assertEqual(ConfigBuilder(built).get(self.SECTION, self.OPTION), expected)
+                self.assertEqual(self.value(self.build(None, [self.fresh], mode)), "123")
+
+    def test_unchanged_in_menuconfig_the_cfg_value_is_kept(self):
+        self.assertEqual(self.value(self.build(self.baseline(), [self.fresh])), "123")
+
+    def test_changed_in_menuconfig_the_kconfig_value_wins(self):
+        self.assertNotEqual(self.kconfig_value, "7")
+        with self.assertLogs(level="WARNING") as logs:
+            built = self.build(self.baseline(VAR_FORM_TIP_RAMMING_VOLUME="7"), [self.fresh])
+        self.assertEqual(self.value(built), self.kconfig_value)
+        # The 123 was a hand edit menuconfig didn't know about, so the replacement is reported
+        self.assertTrue(any("variable_ramming_volume: 123 -> %s" % self.kconfig_value in line
+                            for line in logs.output), logs.output)
+
+    def test_replaced_edits_are_recorded_for_the_summary(self):
+        report = os.path.join(self.tmp.name, "replaced")
+        with cfg._env({"HH_REPLACED_REPORT": report}), self.assertLogs(level="WARNING"):
+            self.build(self.baseline(VAR_FORM_TIP_RAMMING_VOLUME="7"), [self.fresh])
+        with open(report) as f:
+            self.assertEqual([json.loads(line) for line in f],
+                             [["mmu_macro_vars.cfg", self.SECTION, self.OPTION]])
 
 
 if __name__ == "__main__":
@@ -512,11 +553,17 @@ class TestLedEffectUpgrade(unittest.TestCase):
     def effect(self, built, option):
         return built.get("mmu_leds unit0", option).split(",")[0].strip()
 
-    def test_merge_applies_emu_mappings_with_their_definitions(self):
-        built = self.build("merge")
+    def test_effect_changed_in_menuconfig_comes_with_its_definition(self):
+        # Before menuconfig the gate effect was the stock one the install still has
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            baseline = cfg._kconfig("led-effect-before", dict(
+                profiles.get("emu").syms, PARAM_EFFECT_GATE_AVAILABLE="mmu_static_green, (0, 0.5, 0)"))
+        write_menuconfig_baseline(os.path.dirname(self.dest), self.kconfig, baseline)
+        with cfg._env({"F_MENUCONFIG_BASELINE": "y"}):
+            built = self.build("refresh")
         self.assertEqual(self.effect(built, "effect_gate_available"), "mmu_static_white_dim_unit0")
         self.assertTrue(built.has_section("mmu_led_effect mmu_static_white_dim_unit0"))
-        self.assertEqual(self.effect(built, "effect_error"), "mmu_red_strobe")
+        self.assertEqual(self.effect(built, "effect_error"), "mmu_sparkle")
 
     def test_refresh_keeps_installed_mappings_and_adds_definitions(self):
         built = self.build("refresh")
