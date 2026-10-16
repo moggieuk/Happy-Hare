@@ -494,3 +494,43 @@ class TestSemicolonComments(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestValues(unittest.TestCase):
+    """values() must answer exactly as options() and get() do for each section"""
+
+    CFG = (
+        "[a]\n"
+        "x: 1\n"
+        "y:\n"
+        "x: 2  # last one wins\n"
+        "\n"
+        "[b]\n"
+        "z: multi\n"
+        "  line\n"
+        "\n"
+        "[a]\n"
+        "w: from the second [a]\n"
+        "\n"
+        "# EXCLUDE FROM CONFIG BUILDER\n"
+        "[c]\n"
+        "v: excluded\n"
+    )
+
+    def expected(self, builder, scope):
+        return [(section, [(option, builder.get(section, option)) for option in builder.options(section)])
+                for section in builder.sections(scope=scope)]
+
+    def test_matches_options_and_get(self):
+        builder = build(self.CFG)
+        for scope in ("all", "included", "excluded"):
+            with self.subTest(scope=scope):
+                expected = self.expected(builder, scope)
+                self.assertEqual([(s, dict(o)) for s, o in builder.values(scope=scope)],
+                                 [(s, dict(o)) for s, o in expected])
+
+    def test_shape(self):
+        self.assertEqual(build(self.CFG).values(scope="included"),
+                         [("a", [("w", "from the second [a]")]),
+                          ("b", [("z", "multi\n  line")]),
+                          ("a", [("w", "from the second [a]")])])
