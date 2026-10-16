@@ -102,6 +102,14 @@ class TestCfgDiff(unittest.TestCase):
         self.assertIn("<I>gear_unload_speed: 80 -> 77</>\n", out)
         self.assertTrue(out.endswith("\n<N>%s</>\n\n" % ("-" * 106)), out)
 
+    def test_restore_is_compared_with_the_backup_it_restored(self):
+        _, out = self.summary(restored=True)
+        self.assertIn("Summary of changes to the .cfg files restored from 'mmu.old-20261016-120005':\n", out)
+        with open(os.path.join(self.install, "base", "mmu_parameters_unit0.cfg"), "w") as f:
+            f.write(OLD)
+        _, out = self.summary(restored=True)
+        self.assertIn("No changes to the values in the .cfg files restored from 'mmu.old-20261016-120005'\n", out)
+
     def test_first_install_prints_nothing(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):

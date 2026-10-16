@@ -199,6 +199,7 @@ class TestInstallSh(unittest.TestCase):
             TESTDIR=
             recover_previous_config
             [ "$F_NO_MMU_BACKUP" = y ]
+            [ "$HH_RESTORED_FROM" = {config}/mmu.old-20260830-120000 ]
         """.format(
             repo=shlex.quote(str(repo_dest)),
             config=shlex.quote(str(config_home)),
@@ -319,6 +320,19 @@ class TestInstallSh(unittest.TestCase):
             "$(call backup,$(basename $@),$(F_NO_MMU_BACKUP))",
             MAKEFILE.read_text(encoding="utf-8"),
         )
+
+    def test_build_reads_the_baselines_of_a_custom_config_name(self):
+        base = self.root / "out" / "menuconfig_base"
+        for name in ("myprinter.cfg", "myprinter.cfg_unit0", "myprinter.cfg.pickle", ".mmu_config"):
+            self.write(base / name)
+        extra = self.write(self.root / "extra.mk", "print_baseline_pickles:\n\t@echo $(baseline_pickles)\n")
+        result = subprocess.run(
+            ["make", "--no-print-directory", "-s", "-f", "Makefile", "-f", str(extra), "print_baseline_pickles",
+             "KCONFIG_CONFIG={}".format(self.root / "myprinter.cfg"), "OUT={}".format(self.root / "out"),
+             "F_MENUCONFIG_BASELINE=y"],
+            cwd=REPO_ROOT, text=True, capture_output=True, check=True)
+        self.assertEqual(sorted(result.stdout.split()),
+                         [str(base / "myprinter.cfg.pickle"), str(base / "myprinter.cfg_unit0.pickle")])
 
     def test_unit_config_is_stale_when_parent_config_is_newer(self):
         # Future mtimes put both files after every Kconfig source, so only

@@ -71,8 +71,8 @@ def show_lines(heading, rows, lines):
             lines.append(line)
 
 
-def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
-    """Print the changes. False if nothing changed"""
+def summary(backup_dir, install_dir, verbose=False, out=None, replaced=(), restored=False):
+    """Print the changes. False if nothing changed. 'restored' if install.sh restored backup_dir"""
     out = out or sys.stdout
     names = sorted(set(os.listdir(os.path.join(backup_dir, "base"))) | set(os.listdir(os.path.join(install_dir, "base"))))
     lines = []
@@ -96,9 +96,12 @@ def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
                          " and %d new section(s)" % sections if sections else ""))
 
     shown = bool(lines)
-    if shown:
-        heading = "Summary of changes to your Happy Hare .cfg files (previous files are in '%s'):" \
-            % os.path.basename(backup_dir)
+    name = os.path.basename(backup_dir)
+    if restored:
+        heading = ("Summary of changes to the .cfg files restored from '%s':" if shown else
+                   "No changes to the values in the .cfg files restored from '%s'") % name
+    elif shown:
+        heading = "Summary of changes to your Happy Hare .cfg files (previous files are in '%s'):" % name
     else:
         heading = "No changes to the values in your Happy Hare .cfg files"
     # Set apart as a block from the install output around it: the frame in NOTICE, the changes in INFO
@@ -126,13 +129,15 @@ def main(argv=None):
     parser.add_argument("backup_dir", help="the mmu.old-<timestamp> backup this install made")
     parser.add_argument("install_dir", help="the installed mmu directory")
     parser.add_argument("--replaced", metavar="FILE", help="hand edits the build replaced (HH_REPLACED_REPORT)")
+    parser.add_argument("--restored", action="store_true", help="backup_dir is the backup install.sh restored")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
     if not all(os.path.isdir(os.path.join(d, "base")) for d in (args.backup_dir, args.install_dir)):
         return 0
     try:
-        summary(args.backup_dir, args.install_dir, args.verbose, replaced=read_replaced(args.replaced))
+        summary(args.backup_dir, args.install_dir, args.verbose, replaced=read_replaced(args.replaced),
+                restored=args.restored)
     except Exception as e:
         print("WARNING: couldn't summarize the .cfg changes (%s)" % e, file=sys.stderr)
     return 0

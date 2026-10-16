@@ -508,6 +508,25 @@ class TestMenuconfigChanges(unittest.TestCase):
         self.assertTrue(any("variable_ramming_volume: 123 -> %s" % self.kconfig_value in line
                             for line in logs.output), logs.output)
 
+    def test_value_written_another_way_isnt_reported_as_an_edit(self):
+        installed = ConfigBuilder(self.fresh)
+        installed.set(self.SECTION, self.OPTION, "7.0")
+        with open(self.fresh, "w") as f:
+            f.write(installed.write())
+        with self.assertNoLogs(level="WARNING"):
+            built = self.build(self.baseline(VAR_FORM_TIP_RAMMING_VOLUME="7"), [self.fresh])
+        self.assertEqual(self.value(built), self.kconfig_value)
+
+    def test_missing_baseline_is_reported(self):
+        from installer import build
+        env = dict(cfg._SINGLE_UNIT_ENV, OUT=self.tmp.name, F_MENUCONFIG_BASELINE="y")
+        with cfg._env(env), self.assertLogs(level="WARNING") as logs:
+            self.assertIsNone(build.menuconfig_baseline(self.kconfig, has_install=True))
+        self.assertIn("menuconfig changes", logs.output[0])
+        # A unit added in this menuconfig has nothing installed to keep
+        with cfg._env(env), self.assertNoLogs(level="WARNING"):
+            self.assertIsNone(build.menuconfig_baseline(self.kconfig, has_install=False))
+
     def test_replaced_edits_are_recorded_for_the_summary(self):
         report = os.path.join(self.tmp.name, "replaced")
         with cfg._env({"HH_REPLACED_REPORT": report}), self.assertLogs(level="WARNING"):

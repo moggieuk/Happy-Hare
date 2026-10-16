@@ -306,8 +306,9 @@ restart_service = \
 # Interactive Refresh only: each Kconfig file as it was just before menuconfig opened, so
 # the build applies just what menuconfig changed (installer/cfg_import.py writes them)
 MENUCONFIG_BASE := $(OUT)/menuconfig_base
+summary_base = $(or $(HH_RESTORED_FROM),$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu))
 baseline_pickles := $(if $(filter y,$(F_MENUCONFIG_BASELINE)), \
-	$(addsuffix .pickle,$(filter-out %.pickle,$(wildcard $(MENUCONFIG_BASE)/.mmu_config*))))
+	$(addsuffix .pickle,$(filter-out %.pickle,$(wildcard $(MENUCONFIG_BASE)/$(notdir $(KCONFIG_CONFIG))*))))
 
 KCONFIG_PREREQS := \
 	$(KCONFIG_CONFIG) \
@@ -447,9 +448,10 @@ install: $(install_targets)
 	$(Q)$(if $(wildcard $(KCONFIG_CONFIG).unit_migration),$(eval restart_klipper = 1))
 	-$(Q)$(PY) -m installer.unit_migration apply --kconfig "$(KCONFIG_CONFIG)"
 	-$(Q)$(PY) -m installer.unit_migration gate-lists --kconfig "$(KCONFIG_CONFIG)" --config-home "$(KLIPPER_CONFIG_HOME)"
-	@# What this install changed in the Happy Hare .cfg files, against the backup it made (none on a first install)
-	-$(Q)[ ! -d "$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)" ] || $(PY) -m installer.cfg_diff $(V) \
-		--replaced "$(HH_REPLACED_REPORT)" "$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)" "$(KLIPPER_CONFIG_HOME)/mmu"
+	@# What this install changed in the Happy Hare .cfg files, against the backup it made or the one
+	@# install.sh restored (none on a first install)
+	-$(Q)[ ! -d "$(summary_base)" ] || $(PY) -m installer.cfg_diff $(V) $(if $(HH_RESTORED_FROM),--restored) \
+		--replaced "$(HH_REPLACED_REPORT)" "$(summary_base)" "$(KLIPPER_CONFIG_HOME)/mmu"
 	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))

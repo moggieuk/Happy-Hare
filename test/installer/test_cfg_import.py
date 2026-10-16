@@ -230,7 +230,62 @@ class TestCandidates(_Install):
         # [mmu_unit] toolhead is a literal in the template, so there is nothing to import
         self.edit("mmu_hardware_unit0.cfg", "toolhead", "other", section="mmu_unit unit0")
         analysis = self.analyse()
+        self.assertEqual(analysis.candidates, [])
+        self.assertEqual(self.reasons(analysis), {("mmu_unit unit0", "toolhead"): "not set by one menuconfig value"})
+
+    def test_version_the_upgrade_sets_isnt_an_edit(self):
+        # A config saved by an older release still holds its version until olddefconfig runs
+        with open(self.kconfig) as f:
+            text = f.read()
+        with open(self.kconfig, "w") as f:
+            f.write(re.sub(r'(?m)^CONFIG_HAPPY_HARE_VERSION=.*$', 'CONFIG_HAPPY_HARE_VERSION="4.0.0"', text))
+        analysis = self.analyse()
         self.assertEqual((analysis.candidates, analysis.kept), ([], []))
+
+    def test_symbol_this_parse_lacks_is_left_in_the_cfg(self):
+        # e.g. a per-gate symbol from an environment this parse doesn't share
+        self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
+        lines = cfg_import.symbol_lines
+
+        def missing(rendered):
+            found = lines(rendered)
+            found[("mmu_unit_parameters unit0", "gear_load_speed")] = ("PARAM_NOT_IN_THIS_PARSE_0", False)
+            return found
+        with mock.patch.object(cfg_import, "symbol_lines", missing):
+            analysis = self.analyse()
+        self.assertEqual(analysis.candidates, [])
+        self.assertEqual(self.reasons(analysis), {("mmu_unit_parameters unit0", "gear_load_speed"):
+                                                  "not set by one menuconfig value"})
+
+    def test_computed_value_is_left_in_the_cfg(self):
+        self.edit("mmu_hardware_unit0.cfg", "exit_leds", "neopixel:_unit0_leds (1-3)")
+        self.assertEqual(self.reasons(self.analyse()),
+                         {("mmu_leds unit0", "exit_leds"): "not set by one menuconfig value"})
+
+    def test_edit_to_an_option_menuconfig_always_sets_is_listed_as_replaced(self):
+        self.edit("mmu_hardware_unit0.cfg", "buffer", "other", section="mmu_unit unit0")
+        analysis = self.analyse()
+        self.assertEqual((analysis.candidates, analysis.kept), ([], []))
+        self.assertEqual(analysis.replaced, [(("mmu_unit unit0", "buffer"), "other", "unit0")])
+
+    def test_value_mmu_config_cant_hold_is_kept(self):
+        # install.sh and make read .mmu_config as shell and make syntax
+        for value in ("My\n    Box", "My $HOME", "My `id`"):
+            self.edit("mmu_hardware_unit0.cfg", "display_name", value)
+            analysis = self.analyse()
+            self.assertNotIn("PARAM_DISPLAY_NAME", self.by_symbol(analysis), value)
+            self.assertEqual(self.reasons(analysis)[("mmu_unit unit0", "display_name")],
+                             "has a newline, $ or ` that .mmu_config can't hold")
+            self.edit("mmu_hardware_unit0.cfg", "display_name", "BoxTurtle-0")
+
+    def test_import_hidden_by_another_import_is_kept(self):
+        # Each is fine alone, but max relief isn't shown once flowguard is off
+        self.edit("mmu_parameters_unit0.cfg", "flowguard_enabled", "0")
+        self.edit("mmu_parameters_unit0.cfg", "flowguard_max_relief", "45")
+        analysis = self.analyse()
+        self.assertEqual(list(self.by_symbol(analysis)), ["PARAM_FLOWGUARD_ENABLED"])
+        self.assertEqual(self.reasons(analysis)[("mmu_unit_parameters unit0", "flowguard_max_relief")],
+                         "not shown in menuconfig with the other imported values")
 
     def test_symbol_set_differently_in_two_places_is_reported(self):
         shared = [(sym, keys) for (sym, _literal), keys in self.symbol_uses().items() if len(keys) > 1]
@@ -454,6 +509,9 @@ class TestCli(_Install):
         self.assertIn("These .cfg values stay in the .cfg files but can't be imported into menuconfig:\n"
                       "\n"
                       "> mmu_hardware_unit0.cfg:\n"
+                      "[mmu_unit unit0]\n"
+                      "toolhead: other (not set by one menuconfig value)\n"
+                      "\n"
                       "[mmu_stepper unit0_gear]\n"
                       "dir_pin: foo bar (rejected by menuconfig's validation)\n", out)
 
@@ -484,6 +542,27 @@ class TestCli(_Install):
         with open(os.path.join(baseline, ".mmu_config")) as f:
             self.assertEqual(f.read(), self.saved())
         self.assertIn("\nCONFIG_PARAM_GEAR_LOAD_SPEED=123\n", self.saved())
+
+    def test_apply_rewrites_the_baseline_of_a_file_with_nothing_imported(self):
+        # A unit's defaults can follow values another file just imported
+        baseline = os.path.join(self.tmp.name, "baseline")
+        os.makedirs(baseline)
+        with open(self.report, "w") as f:
+            f.write('{"kconfig": "/other", "imported": [], "kept": [], "settings": []}\n')
+        self.run_cli("--kconfig", self.kconfig, "--apply", self.report, "--baseline", baseline)
+        self.assertTrue(os.path.exists(os.path.join(baseline, ".mmu_config")))
+
+    def test_edits_menuconfig_replaces_are_always_shown(self):
+        self.edit("mmu_hardware_unit0.cfg", "buffer", "other", section="mmu_unit unit0")
+        self.report_pass()
+        _, out = self.show()
+        self.assertIn("These .cfg values are always set by menuconfig, so your edits will be replaced:\n"
+                      "\n"
+                      "> mmu_hardware_unit0.cfg:\n"
+                      "[mmu_unit unit0]\n"
+                      "buffer: other\n", out)
+        _, out = self.show(verbose=True)
+        self.assertIn("buffer: other (menuconfig sets unit0)\n", out)
 
     def test_apply_ignores_other_files_entries(self):
         self.report_pass()

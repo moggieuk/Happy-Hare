@@ -628,7 +628,7 @@ def rendered_options(buffer):
     return found
 
 
-def menuconfig_baseline(kcfg):
+def menuconfig_baseline(kcfg, has_install):
     """
     The Kconfig values saved just before menuconfig opened in an interactive Refresh, or
     None. Pre-parsed like the Kconfig file itself so the two render alike
@@ -638,16 +638,39 @@ def menuconfig_baseline(kcfg):
     pickle_file = os.path.join(os.getenv("OUT"), "menuconfig_base",
                                os.path.basename(kcfg.config_file) + ".pickle")
     if not os.path.exists(pickle_file):
+        # A unit added in this menuconfig has none, and nothing installed to keep
+        if has_install:
+            logging.warning("No menuconfig baseline for '%s', so menuconfig changes to options your .cfg files "
+                            "already hold are not applied" % os.path.basename(kcfg.config_file))
         return None
     return load_parsed_kconfig(kcfg.config_file, pickle_file)
 
 
-def menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered):
+def same_value(a, b, literal=False):
+    """Whether two .cfg values say the same, e.g. 80 and 80.0"""
+    a, b = (a or "").strip(), (b or "").strip()
+    if a == b:
+        return True
+    if literal:
+        try:
+            return ast.literal_eval(a) == ast.literal_eval(b)
+        except (ValueError, SyntaxError):
+            return False
+    try:
+        return float(a) == float(b)
+    except ValueError:
+        pass
+    truthy = {"true": True, "1": True, "false": False, "0": False}
+    return a.lower() in truthy and truthy[a.lower()] == truthy.get(b.lower())
+
+
+def menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered, hhcfg):
     """
     The (section, option)s whose rendered value changed since the baseline, so changed in
     menuconfig this run, and the baseline render. Empty without a baseline
     """
-    base_kcfg = menuconfig_baseline(kcfg)
+    has_install = any(key[1] is not None and hhcfg.has_option(*key) for key in rendered)
+    base_kcfg = menuconfig_baseline(kcfg, has_install)
     if base_kcfg is None:
         return set(), {}
     before = rendered_options(render_template(cfg_file_basename, base_kcfg, extra_params))
@@ -743,7 +766,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     if refresh_mode == 'refresh':
         # 7.Update the builder Config from the existing master HHConfig (existing .cfg's) so
         #   user edits are preserved, except where a setting was changed in menuconfig this run
-        changed, before = menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered)
+        changed, before = menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered, hhcfg)
         hhcfg.update_builder(builder, changed, origin=os.path.basename(dest_file))
         report_replaced_edits(dest_file_basename, hhcfg, changed, before, rendered)
 
@@ -772,7 +795,7 @@ def report_replaced_edits(dest_file_basename, hhcfg, changed, before, rendered):
         if not hhcfg.has_option(*key) or key[1] == "gcode":
             continue
         value = (hhcfg.get(*key) or "").strip()
-        if value != before.get(key) and value != rendered.get(key):
+        if not same_value(value, before.get(key)) and not same_value(value, rendered.get(key)):
             replaced.append((key, value))
     if replaced:
         logging.warning("These edits in {} were replaced by settings changed in menuconfig:".format(dest_file_basename))

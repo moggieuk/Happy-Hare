@@ -51,6 +51,10 @@ _SECTION = re.compile(r"^\[([^\]]+)\]")
 _OPTION = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*[:=]")
 _NUM_GATES = re.compile(r"^CONFIG_PARAM_NUM_GATES=(\d+)")
 _PREVIOUS_MEMBER = re.compile(r"_PREVIOUS(_\d+)?$")
+# Set by the version upgrade, never a hand edit
+_UPGRADE_OWNED = {("mmu_machine", "happy_hare_version")}
+# install.sh sources .mmu_config as shell and make includes it, so a value can't hold these
+_UNSAVEABLE = re.compile(r"[\n\r$`]")
 
 
 class Candidate(object):
@@ -128,23 +132,6 @@ def symbol_lines(rendered):
     return found
 
 
-def same_value(a, b, literal=False):
-    a, b = (a or "").strip(), (b or "").strip()
-    if a == b:
-        return True
-    if literal:
-        try:
-            return ast.literal_eval(a) == ast.literal_eval(b)
-        except (ValueError, SyntaxError):
-            return False
-    try:
-        return float(a) == float(b)
-    except ValueError:
-        pass
-    truthy = {"true": True, "1": True, "false": False, "0": False}
-    return a.lower() in truthy and truthy[a.lower()] == truthy.get(b.lower())
-
-
 def kconfig_value(sym, text, literal):
     """The value to assign, or None if the .cfg text can't be one"""
     text = text.strip()
@@ -160,6 +147,16 @@ def kconfig_value(sym, text, literal):
     return text
 
 
+def saved_as(sym, value):
+    """
+    True if .mmu_config would save the value just set. kconfiglib keeps a value outside the
+    range, or of a symbol that isn't shown, but saves the clamped value or the default
+    """
+    if sym.orig_type in (kconfiglib.BOOL, kconfiglib.BOOLINT, kconfiglib.TRISTATE):
+        return sym.tri_value == {"y": 2, "1": 2, "m": 1, "n": 0, "0": 0}.get(value, value)
+    return sym.str_value == value
+
+
 HIDDEN = "not shown in menuconfig"
 
 
@@ -171,6 +168,8 @@ def why_not_settable(sym, value):
         return HIDDEN
     if value is None:
         return "not a valid %s value" % kconfiglib.TYPE_TO_STR[sym.orig_type]
+    if _UNSAVEABLE.search(value):
+        return "has a newline, $ or ` that .mmu_config can't hold"
     validator = getattr(sym, "validator", None)
     if validator is not None and sym.orig_type == kconfiglib.STRING:
         sep = getattr(sym, "array_editor", None)
@@ -187,6 +186,7 @@ class Analysis(object):
         self.kconfig_path = kconfig_path
         self.candidates = []
         self.kept = []                         # Can't be imported: [((section, option), value, reason)]
+        self.replaced = []                     # Always set by menuconfig: [((section, option), value, menuconfig's)]
 
         # Recomputed defaults are what menuconfig shows, so a .cfg still holding a default
         # a release has since changed is imported too. Trial values are judged here, so
@@ -233,11 +233,16 @@ class Analysis(object):
                 key = (section, option)
                 self.order[key] = len(self.order)
                 ref = symbols.get(key)
-                if ref is None or option == "gcode" or not hhcfg.has_option(*key) or \
-                        (section.split(" ", 1)[0], option) in build.KCONFIG_OWNED_OPTIONS:
+                if option == "gcode" or not hhcfg.has_option(*key) or key in _UPGRADE_OWNED:
                     continue
                 ours, theirs = rendered.get(*key) or "", hhcfg.get(*key) or ""
-                if not same_value(ours, theirs, ref[1]):
+                if build.same_value(ours, theirs, ref[1] if ref else False):
+                    continue
+                if (section.split(" ", 1)[0], option) in build.KCONFIG_OWNED_OPTIONS:
+                    self.replaced.append((key, theirs, ours.strip()))
+                elif ref is None or ref[0] not in self.kconf.syms:
+                    self.kept.append((key, theirs, "not set by one menuconfig value"))
+                else:
                     edited.setdefault(ref, []).append((key, ours, theirs))
 
         for (sym_name, literal), edits in sorted(edited.items()):
@@ -251,6 +256,7 @@ class Analysis(object):
             self._consider(Candidate(sym_name, literal, locations, ours.strip(), theirs.strip()))
 
         self._drop_conflicts()
+        self._check_together()
 
     def _params(self, values):
         params = dict(values)
@@ -282,6 +288,23 @@ class Analysis(object):
             self.candidates.remove(candidate)
             for key in candidate.locations:
                 self.kept.append((key, candidate.cfg_value, "%s is needed two ways" % candidate.set_key))
+
+    def _check_together(self):
+        """Each import was checked alone, so drop any that doesn't reproduce once all are set"""
+        while self.candidates:
+            for candidate in self.candidates:
+                self.kconf.syms[candidate.set_name].set_value(candidate.kconfig_value)
+            unsaved = [c for c in self.candidates if not saved_as(self.kconf.syms[c.set_name], c.kconfig_value)]
+            after = self._options(self._render(self.kconf.as_dict()))
+            self.kconf.load_config(self.kconfig_path, filter_defaults=True)
+            failed = [c for c in self.candidates if c in unsaved
+                      or not all(build.same_value(after.get(key), c.cfg_value, c.literal) for key in c.locations)]
+            if not failed:
+                return
+            for candidate in failed:
+                self.candidates.remove(candidate)
+                for key in candidate.locations:
+                    self.kept.append((key, candidate.cfg_value, "not shown in menuconfig with the other imported values"))
 
     def _consider(self, candidate):
         sym = self.kconf.syms[candidate.sym_name]
@@ -318,17 +341,13 @@ class Analysis(object):
         """
         if not set_sym.set_value(value):
             return None
-        # kconfiglib keeps a value outside the symbol's range but saves the clamped one
-        if set_sym.orig_type in (kconfiglib.BOOL, kconfiglib.BOOLINT, kconfiglib.TRISTATE):
-            honoured = set_sym.tri_value == {"y": 2, "1": 2, "m": 1, "n": 0, "0": 0}.get(value, value)
-        else:
-            honoured = set_sym.str_value == value
+        honoured = saved_as(set_sym, value)
         after = self._options(self._render(self.kconf.as_dict()))
         self.kconf.load_config(self.kconfig_path, filter_defaults=True)
         if not honoured:
             return False
 
-        ok = all(same_value(after.get(key), candidate.cfg_value, candidate.literal) for key in candidate.locations)
+        ok = all(build.same_value(after.get(key), candidate.cfg_value, candidate.literal) for key in candidate.locations)
         changed = [key for key in sorted(set(after) | set(self.live), key=str)
                    if key not in candidate.locations and after.get(key) != self.live.get(key)]
         if ok and changed:
@@ -387,6 +406,7 @@ class Analysis(object):
             "kconfig": os.path.abspath(self.kconfig_path),
             "imported": rows([(key, c.cfg_value, c.note()) for c in self.candidates for key in c.locations]),
             "kept": rows(self.kept),
+            "replaced": rows([(key, value, "menuconfig sets %s" % ours) for key, value, ours in self.replaced]),
             "settings": [[c.set_name, c.kconfig_value] for c in self.candidates],
         }
 
@@ -452,10 +472,11 @@ def show(path, verbose=False, out=None):
     # The import list comes last, straight above the prompt
     sections = (
         ("kept", "These .cfg values stay in the .cfg files but can't be imported into menuconfig:", verbose),
+        ("replaced", "These .cfg values are always set by menuconfig, so your edits will be replaced:", True),
         ("imported", "These .cfg values will be imported into menuconfig:", True),
     )
     for name, heading, wanted in sections:
-        rows = [row for r in reports for row in r[name]]
+        rows = [row for r in reports for row in r.get(name, [])]
         if rows and wanted:
             show_edits(heading, rows, verbose, out)
     return EXIT_SHOWN if any(r["imported"] for r in reports) else EXIT_NOTHING
@@ -478,13 +499,15 @@ def main(argv=None):
     kconfig = os.path.abspath(args.kconfig)
     if args.apply:
         settings = [s for r in read_report(args.apply) if r["kconfig"] == kconfig for s in r.get("settings", [])]
-        if settings:
+        # Every baseline is saved again, since a file's defaults can follow values imported into another
+        if settings or args.baseline:
             try:
                 apply_settings(kconfig, settings, baseline_dir=args.baseline)
             except (Exception, SystemExit) as e:
                 print("WARNING: couldn't import the .cfg edits into '%s' (%s)" % (os.path.basename(kconfig), e),
                       file=sys.stderr)
                 return EXIT_FAILED
+        if settings:
             print("Imported %d value(s) into '%s'" % (len(settings), os.path.basename(kconfig)))
         return EXIT_NOTHING
 
