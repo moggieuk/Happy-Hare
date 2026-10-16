@@ -431,6 +431,13 @@ class TestCli(_Install):
         self.assertIn("continuing without", out)
         self.assertEqual(self.saved(), before)
 
+    def test_failed_report_still_saves_the_baseline(self):
+        baseline = os.path.join(self.tmp.name, "baseline")
+        with mock.patch.object(cfg_import, "Analysis", side_effect=RuntimeError("boom")):
+            self.run_cli("--kconfig", self.kconfig, "--config-home", self.home, "--report", self.report,
+                         "--baseline", baseline)
+        self.assertTrue(os.path.exists(os.path.join(baseline, ".mmu_config")))
+
     def test_report_without_an_install_does_nothing(self):
         empty = os.path.join(self.tmp.name, "empty")
         status, _ = self.run_cli("--kconfig", self.kconfig, "--config-home", empty, "--report", self.report)
@@ -638,6 +645,32 @@ class TestMultiUnitRefreshPipeline(_Pipeline, _MultiUnitInstall):
                         for t in cfg_import.UNIT_TEMPLATES]
         self.assertEqual(self.build_all(targets, build_env, baseline=True),
                          self.build_all(targets, build_env, baseline=False))
+
+
+class TestCleanMultiUnitInstall(unittest.TestCase):
+    """An untouched multi-unit install built the way make install builds it has nothing to import"""
+
+    def test_nothing_listed(self):
+        prof = profiles.SHARED_ENCODER
+        rendered = cfg.render_via_files(prof)
+        parent = os.path.join(cfg._scratch[0], ".mmu_config")
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, "mmu", "base"))
+            for key, text in rendered.items():
+                with open(os.path.join(home, "mmu", "base", os.path.basename(key)), "w") as f:
+                    f.write(text)
+            names = [u.name for u in prof.units]
+            common = dict(cfg._SINGLE_UNIT_ENV, HH_VERSION=cfg.hh_version(), F_MULTI_UNIT="y")
+            runs = [(parent, dict(common, F_MULTI_UNIT_ENTRY_POINT="y", UNIT_NAME=",".join(names),
+                                  MCU_NAME=",".join(names), KCONFIG_CONFIG=parent))]
+            runs += [("%s_%s" % (parent, u.name),
+                      dict(common, UNIT_NAME=u.name, MCU_NAME=u.mcu_name, UNIT_INDEX=str(u.index),
+                           KCONFIG_CONFIG="%s_%s" % (parent, u.name), KCONFIG_PARENT=parent))
+                     for u in prof.units]
+            for kconfig, env in runs:
+                with self.subTest(kconfig=os.path.basename(kconfig)), cfg._env(env), cfg._chdir(cfg.INSTALLER):
+                    analysis = cfg_import.Analysis(kconfig, cfg_import.installed_files(home))
+                    self.assertEqual(([c.sym_name for c in analysis.candidates], analysis.kept), ([], []))
 
 
 if __name__ == "__main__":

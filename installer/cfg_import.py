@@ -487,16 +487,24 @@ def main(argv=None):
     files = installed_files(os.path.expanduser(args.config_home or ""))
     if not files or not os.path.exists(kconfig):
         return EXIT_NOTHING
-    status = EXIT_NOTHING
+    status, analysis = EXIT_NOTHING, None
     try:
         analysis = Analysis(kconfig, files)
         report = analysis.report()
-        if args.baseline:
-            apply_settings(kconfig, [], analysis.kconf, args.baseline)
     except (Exception, SystemExit) as e:
         report, status = {"kconfig": kconfig, "failed": str(e)}, EXIT_FAILED
     with open(args.report, "a", encoding="utf-8") as f:
         f.write(json.dumps(report) + "\n")
+
+    # Without a baseline the build ignores this file's menuconfig changes, so save one even
+    # when the analysis failed
+    if args.baseline:
+        try:
+            apply_settings(kconfig, [], analysis.kconf if analysis else None, args.baseline)
+        except (Exception, SystemExit) as e:
+            print("WARNING: couldn't save the menuconfig baseline for '%s' (%s), so menuconfig changes to it "
+                  "won't be applied" % (os.path.basename(kconfig), e), file=sys.stderr)
+            status = EXIT_FAILED
     return status
 
 
