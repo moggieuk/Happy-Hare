@@ -511,6 +511,83 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("[update_manager happy-hare]\nprimary_branch: v3", moonraker)
         self.assertEqual((log_dir / "self-update").read_text().strip(), "v3")
         self.assertEqual((log_dir / "reexec").read_text().strip(), "v3:force:YES")
+        # An install that still has its hooks keeps them as they are
+        self.assertEqual(moonraker.count("[update_manager happy-hare]"), 1)
+        self.assertEqual((config_home / "printer.cfg").read_text(encoding="utf-8"),
+                         "[include mmu/base/*.cfg]\n[include other.cfg]\n")
+        self.assertEqual(list(config_home.glob("printer.cfg.old-*")), [])
+
+    def test_v3_blue_choice_restores_what_a_v4_uninstall_removed(self):
+        # './install.sh -d' then 'cp -a mmu.V3 mmu': no update manager section and no mmu/ includes
+        config_home = self.make_v3_install()
+        self.write(config_home / "printer.cfg", "[include other.cfg]\n")
+        self.write(config_home / "moonraker.conf", "[server]\nport: 7125\n")
+        self.write(config_home / "mmu" / "optional" / "client_macros.cfg")
+        self.write(config_home / "mmu" / "addons" / "blobifier.cfg")
+        fake_checkout = self.root / "checkout"
+        self_update = self.write(fake_checkout / "installer" / "self_update.sh", "#!/bin/sh\n")
+        self_update.chmod(0o755)
+        reexec = self.write(self.root / "reexec.sh", "#!/bin/sh\n")
+        reexec.chmod(0o755)
+
+        result = self.run_shell("""
+            SCRIPT_DIR={checkout}
+            CONFIG_KLIPPER_CONFIG_HOME={config}
+            KCONFIG_CONFIG={missing}
+            TESTDIR=
+            offer_v3_v4_choice
+        """.format(
+            checkout=shlex.quote(str(fake_checkout)),
+            config=shlex.quote(str(config_home)),
+            missing=shlex.quote(str(self.root / "missing-kconfig")),
+        ), stdin="1\n", argv0=reexec)
+
+        moonraker = (config_home / "moonraker.conf").read_text(encoding="utf-8")
+        self.assertIn("[server]\nport: 7125\n", moonraker)
+        self.assertIn(
+            "[update_manager happy-hare]\ntype: git_repo\npath: {}\n"
+            "origin: https://github.com/moggieuk/Happy-Hare.git\nprimary_branch: v3\n"
+            "managed_services: klipper\n".format(fake_checkout), moonraker)
+
+        self.assertEqual((config_home / "printer.cfg").read_text(encoding="utf-8"),
+                         "[include mmu/base/*.cfg]\n[include other.cfg]\n")
+        backups = list(config_home.glob("printer.cfg.old-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(encoding="utf-8"), "[include other.cfg]\n")
+        self.assertIn("[include mmu/optional/client_macros.cfg]", result.stdout)
+        self.assertIn("[include mmu/addons/blobifier.cfg]", result.stdout)
+        self.assertNotIn("mmu_menu.cfg", result.stdout)
+
+    def test_v3_blue_choice_leaves_a_klippain_printer_cfg_alone(self):
+        config_home = self.make_v3_install()
+        self.write(config_home / "printer.cfg", "[include config/hardware/mmu.cfg]\n")
+        fake_checkout = self.root / "checkout"
+        self_update = self.write(fake_checkout / "installer" / "self_update.sh", "#!/bin/sh\n")
+        self_update.chmod(0o755)
+        reexec = self.write(self.root / "reexec.sh", "#!/bin/sh\n")
+        reexec.chmod(0o755)
+
+        self.run_shell("""
+            SCRIPT_DIR={checkout}
+            CONFIG_KLIPPER_CONFIG_HOME={config}
+            offer_v3_v4_choice
+        """.format(
+            checkout=shlex.quote(str(fake_checkout)),
+            config=shlex.quote(str(config_home)),
+        ), stdin="1\n", argv0=reexec)
+
+        self.assertEqual((config_home / "printer.cfg").read_text(encoding="utf-8"),
+                         "[include config/hardware/mmu.cfg]\n")
+
+    def test_v3_red_choice_drops_only_a_v3_branch(self):
+        for branch, expected in (("v3", ""), ("development", "development")):
+            with self.subTest(branch=branch):
+                result = self.run_shell("""
+                    export BRANCH={branch}
+                    offer_v3_v4_choice
+                    echo "BRANCH=${{BRANCH:-}}"
+                """.format(branch=branch), stdin="2\n")
+                self.assertIn("BRANCH=%s\n" % expected, result.stdout)
 
     def test_self_update_switches_before_checking_current_branch(self):
         remote = self.root / "remote.git"

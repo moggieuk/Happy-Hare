@@ -487,6 +487,42 @@ set_moonraker_primary_branch() {
     fi
 }
 
+# Staying on v3 after './install.sh -d' removed v4: the uninstall also took the update manager
+# section and printer.cfg includes, which the v3 upgrade run doesn't put back (its own update
+# manager section would track 'main'). Its [mmu_server] section it does restore
+restore_v3_hooks() {
+    config_home=$(guess_klipper_config_home)
+    moonraker_conf="${config_home}/moonraker.conf"
+    printer_cfg="${config_home}/printer.cfg"
+
+    if [ -f "${moonraker_conf}" ] && ! grep -q '^\[update_manager happy-hare\]' "${moonraker_conf}"; then
+        echo "${C_INFO}Adding Happy Hare's update manager to '$(basename "${moonraker_conf}")' on the 'v3' branch...${C_OFF}"
+        printf '\n[update_manager happy-hare]\ntype: git_repo\npath: %s\norigin: https://github.com/moggieuk/Happy-Hare.git\nprimary_branch: v3\nmanaged_services: klipper\n' \
+            "${SCRIPT_DIR}" >>"${moonraker_conf}"
+    fi
+
+    # Only an uninstall leaves no mmu/ include; a Klippain config includes the MMU its own way
+    if [ -f "${printer_cfg}" ] &&
+       ! grep -q '^[[:space:]]*\[include mmu/' "${printer_cfg}" &&
+       ! grep -q '^[[:space:]]*\[include config/hardware/mmu.cfg\]' "${printer_cfg}"; then
+        printer_backup="${printer_cfg}.old-$(date +%Y%m%d-%H%M%S)"
+        echo "${C_INFO}Adding [include mmu/base/*.cfg] to '$(basename "${printer_cfg}")' (previous file is '$(basename "${printer_backup}")')${C_OFF}"
+        cp -p "${printer_cfg}" "${printer_backup}"
+        { echo '[include mmu/base/*.cfg]'; cat "${printer_backup}"; } >"${printer_cfg}"
+
+        optional=
+        for include in optional/client_macros.cfg optional/mmu_menu.cfg \
+                       addons/blobifier.cfg addons/mmu_erec_cutter.cfg addons/mmu_eject_buttons.cfg; do
+            [ -f "${config_home}/mmu/${include}" ] && optional="${optional}  [include mmu/${include}]
+"
+        done
+        if [ -n "${optional}" ]; then
+            echo "${C_WARNING}Add any of these you used with v3 to '$(basename "${printer_cfg}")' yourself:${C_OFF}"
+            printf '%s' "${optional}"
+        fi
+    fi
+}
+
 
 ##### V3 Upgrade support vvv ##################################################################
 
@@ -538,6 +574,7 @@ offer_v3_v4_choice() {
         echo "${C_INFO}Switching to the 'v3' branch...${C_OFF}"
         export BRANCH=v3
         "$SCRIPT_DIR/installer/self_update.sh" || exit 1
+        restore_v3_hooks
         # The branch switch above already fetched and pulled v3. Its installer uses
         # SKIP_UPDATE (rather than v4's F_SKIP_UPDATE) to suppress a redundant update.
         SKIP_UPDATE=YES F_SKIP_UPDATE=force exec "$0" "$@"
@@ -545,6 +582,11 @@ offer_v3_v4_choice() {
         echo "${C_WARNING}Proceeding with the v4 upgrade. Your v3 'mmu' config directory will be${C_OFF}"
         echo "${C_WARNING}renamed to 'mmu.V3' for reference - nothing is deleted.${C_OFF}"
         echo
+        # '-b v3' would otherwise still switch the checkout to v3
+        if [ "${BRANCH:-}" = v3 ]; then
+            echo "${C_NOTICE}Ignoring '-b v3' to upgrade to v4${C_OFF}"
+            unset BRANCH
+        fi
         # Consulted once Kconfig has resolved real paths (see v3_upgrade_cleanup),
         # since CONFIG_KLIPPER_CONFIG_HOME etc. don't exist yet at this point in the
         # script. export, not just assignment, so it survives the self-update re-exec.
