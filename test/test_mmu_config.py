@@ -31,6 +31,22 @@ PARAMS = 'config/base/mmu_parameters.cfg'
 MACRO_VARS = 'config/base/mmu_macro_vars.cfg'
 
 
+class TestExtruderSpeedsRender(unittest.TestCase):
+
+    def test_load_and_unload_speeds_are_independent(self):
+        for name in ('boxturtle', 'ercf_vvd'):
+            with self.subTest(profile=name):
+                profile = profiles.get(name).derive(
+                    name + '_extruder_speeds',
+                    syms=dict(PARAM_EXTRUDER_LOAD_SPEED=17.5,
+                              PARAM_EXTRUDER_UNLOAD_SPEED=23.5))
+                rendered = cfg.render(profile)
+                cfg.assert_sane(rendered)
+                params = cfg.assemble(rendered)['mmu_parameters']
+                self.assertEqual(params.getfloat('extruder_load_speed'), 17.5)
+                self.assertEqual(params.getfloat('extruder_unload_speed'), 23.5)
+
+
 class TestKlipperTuningRender(unittest.TestCase):
 
     def test_shipped_defaults_and_custom_values_for_single_and_multi_unit(self):
