@@ -6,6 +6,7 @@
 #   PARAM_SELECTOR_ROTATION_DISTANCE
 #   PARAM_SELECTOR_RUN_CURRENT
 #   PARAM_SELECTOR_HOLD_CURRENT
+#   PARAM_SELECTOR_STALLGUARD_THRESHOLD (prompt only; declared with the TMC driver)
 #   PARAM_SELECTOR_ENDSTOP_NAME
 #   PARAM_SELECTOR_HOMING_RETRACT_DIST
 #   PARAM_SELECTOR_MICROSTEPS
@@ -41,6 +42,14 @@ if MMU_HAS_SELECTOR_STEPPER
     label     := Selector
     pad_width := 32
     source "components/Kconfig.tmc_driver_menu_current"
+
+    config PARAM_SELECTOR_STALLGUARD_THRESHOLD
+      prompt "$(pad,32,Selector stallguard threshold)" if BOOL_SELECTOR_TMC_HAS_STALLGUARD && PIN_SELECTOR_DIAG != ""
+      help
+        Sensitivity for selector "touch" movement, written only when a
+        diag pin is set. Expect to tune it. The scale depends on the chip:
+        SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
+        lower is more sensitive.
 
     config PARAM_SELECTOR_ENDSTOP_NAME
       string
