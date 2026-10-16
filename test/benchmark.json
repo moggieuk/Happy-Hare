@@ -1,7 +1,7 @@
 {
  "_comment": "Reference per-file timings for test/select.py's picker, shown to anyone who hasn't run the suite locally yet (see test/README.md section 1). CI runner timings are too variable to use as the reference, so this is a manual, occasional step: run `make ALL=1 JOBS=4 test` on a warm machine, copy the 'times' block out of the repo-root .mmu_test_state it produces into this file's 'times' key, and update the metadata below by hand. total_seconds is the parallel parent-process wall time, not the sum of overlapping per-file timings. Commit alongside whatever change motivated the re-measurement.",
  "generated": "2026-10-16",
- "git_rev": "b2e05354+#1382-#1386",
+ "git_rev": "7ec0f653",
  "python": "Python 3.13.7",
  "machine": "Apple M1 Pro MacBook Pro (macOS, warm venv, 4 isolated workers, longest-first)",
  "total_seconds": 174.7,
