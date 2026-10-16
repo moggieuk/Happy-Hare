@@ -1064,10 +1064,11 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
     echo
     echo "${C_WARNING}1) Merge/Refresh (select 1)${C_OFF} (Default upgrade path)"
-    echo "   This KEEPS every change you made directly to your .cfg files. Before menuconfig opens,"
-    echo "   the simple settings your .cfg files hold are copied into menuconfig (you'll see the list"
-    echo "   and confirm), so menuconfig shows what you are actually running. Only the settings you"
-    echo "   then change in menuconfig are applied to your .cfg files, and new options are added."
+    echo "   This KEEPS the values you edited directly in your .cfg files (but not edited macro gcode)."
+    echo "   Before menuconfig opens, the simple settings your .cfg files hold are copied into menuconfig"
+    echo "   (you'll see the list and confirm), so menuconfig shows what you are actually running. Only"
+    echo "   the settings you then change in menuconfig are applied to your .cfg files, and new options"
+    echo "   are added."
     echo
     echo "${C_WARNING}2) Replace (select 2)${C_OFF} (Recommended)"
     echo "   This will OVERWRITE changes made directly to your .cfg files and create new default"
