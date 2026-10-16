@@ -151,6 +151,13 @@ Worker output is captured per file. Passing files get one progress line; a faili
 labelled block containing its complete standard `unittest` traceback and failure summary. Output
 from another worker cannot appear inside that block.
 
+The run order is not the picker's order. Files start **slowest first**, by the same times the
+picker shows, so no long file is left running alone after the other workers go idle. A file's
+line is printed when it **finishes**, so lines arrive in finishing order and `[n/N]` counts
+finished files — it is not the file's number in the picker. The cost is a quiet start: nothing
+prints until the quickest of the first four (slowest) files is done, ~40 s on an M1 laptop and
+much longer on a Pi. Starting in picker order would print sooner but finish later.
+
 Typing `n` then `+nfc` then Enter runs just the NFC files. `p` recalls the last selection you
 narrowed to — a full run doesn't overwrite it, so you can alternate between a focused loop
 and a full check without retyping. `q` quits without running anything, and exits non-zero on
