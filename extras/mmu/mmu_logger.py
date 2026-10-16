@@ -75,6 +75,8 @@ class MmuLogger:
             )
 
     def shutdown(self):
+        # The registration would otherwise keep this logger, and the printer it reaches, alive
+        atexit.unregister(self.shutdown)
         if self.queue_listener is not None:
             self.queue_listener.stop()
 

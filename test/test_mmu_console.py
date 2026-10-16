@@ -13,6 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import contextlib
+import gc
 import io
 import logging
 import os
@@ -21,6 +22,7 @@ import sys
 import tempfile
 import time
 import unittest
+import weakref
 from types import SimpleNamespace
 from unittest import mock
 
@@ -2135,6 +2137,28 @@ class TestConsoleScript(unittest.TestCase):
         rc, out = self._run(['MMU_STATUS'], ['--profile', root, '--header', 'off'])
         self.assertEqual(rc, 0, out[-2000:])
         self.assertIn('Happy Hare', out)
+
+
+class TestClosedConsoleIsFreed(unittest.TestCase):
+    """A closed console must not keep its printer alive - TestTheDefaultProfile boots one per test"""
+
+    def boot_and_close(self):
+        console = console_mod.Console(
+            console_mod.parse_args(['--plain', '--no-log', '--header', 'off']))
+        try:
+            console.boot()
+            for command in ('MMU_SELECT GATE=%d' % (console.hh.mmu.num_gates - 1), 'MMU_LOAD', 'MMU_UNLOAD'):
+                console._dispatch(command)
+            return weakref.ref(console.hh.printer)
+        finally:
+            console.close()
+
+    def test_printer_is_freed(self):
+        first = self.boot_and_close()
+        # NFC readers are registered by name, so only the latest printer may stay reachable
+        self.boot_and_close()
+        gc.collect()
+        self.assertIsNone(first())
 
 
 class TestTheDefaultProfile(unittest.TestCase):
