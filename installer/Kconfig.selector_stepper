@@ -73,6 +73,9 @@ if MMU_HAS_SELECTOR_STEPPER
       help
         200 for 1.8 degree, 400 for 0.9 degree
 
+    comment "_"
+    comment "_Behavior"
+
     config PARAM_STARTUP_HOME_SELECTOR
       boolint "Home selector at startup?"
       default 0
