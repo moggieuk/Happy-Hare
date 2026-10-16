@@ -219,7 +219,8 @@ prepare_refresh() {
     run_kconfig_units kconfig_import n
 
     import_status=0
-    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH:-}" \
+    C_NOTICE="${C_NOTICE:-}" C_OFF="${C_OFF:-}" \
+        PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH:-}" \
         "${INSTALLER_PY:-python3}" -m installer.cfg_import ${V:-} --show "${HH_IMPORT_REPORT}" || import_status=$?
 
     if [ "${import_status}" -eq 10 ]; then
@@ -240,15 +241,6 @@ prepare_refresh() {
     export F_MENUCONFIG_BASELINE=y
 }
 
-# What the install changed in the Happy Hare .cfg files, against the backup it made
-# (none on a first install, or after recovering a backup)
-show_cfg_changes() {
-    since=$1
-    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH:-}" \
-        "${INSTALLER_PY:-python3}" -m installer.cfg_diff ${V:-} --since "${since}" \
-        --replaced "${HH_REPLACED_REPORT:-}" "$(guess_klipper_config_home)" || true
-    [ -z "${HH_REPLACED_REPORT:-}" ] || rm -f "${HH_REPLACED_REPORT}"
-}
 
 # The name a single unit has before menuconfig (unit0 when there is no config
 # yet), or nothing for multi-unit
@@ -1024,7 +1016,7 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo
     echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
     echo
-    echo "${C_WARNING}1) Refresh (select 1)${C_OFF} (Default upgrade path)"
+    echo "${C_WARNING}1) Merge/Refresh (select 1)${C_OFF} (Default upgrade path)"
     echo "   This KEEPS every change you made directly to your .cfg files. Before menuconfig opens,"
     echo "   the simple settings your .cfg files hold are copied into menuconfig (you'll see the list"
     echo "   and confirm), so menuconfig shows what you are actually running. Only the settings you"
@@ -1239,8 +1231,8 @@ install_and_clean() {
 }
 
 unit_migration_step prepare || exit 1
-install_started=$(date '+%Y%m%d-%H%M%S')
+# Hand edits the build replaced with a menuconfig change, for make install's summary
 HH_REPLACED_REPORT=$(mktemp -t hh_replaced.XXXXXX)
 export HH_REPLACED_REPORT
 time_elapsed install_and_clean
-show_cfg_changes "${install_started}"
+rm -f "${HH_REPLACED_REPORT}"

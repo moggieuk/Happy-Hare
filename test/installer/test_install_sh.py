@@ -649,19 +649,6 @@ class TestInstallSh(unittest.TestCase):
         self.assertNotIn("kconfig_baseline_clean", out)
         self.assertIn("baseline=\n", out)
 
-    def test_cfg_changes_summary_gets_the_install_start_and_replaced_report(self):
-        fake = self.write(self.root / "fake-python", "#!/bin/sh\necho \"DIFF $*\"\nexit 1\n")
-        fake.chmod(0o755)
-        replaced = self.write(self.root / "replaced", "")
-        out = self.run_shell("""
-            INSTALLER_PY=%s TESTDIR=%s HH_REPLACED_REPORT=%s
-            show_cfg_changes 20261016-120000
-            [ -e "$HH_REPLACED_REPORT" ] && echo LEFT || echo REMOVED
-        """ % (shlex.quote(str(fake)), shlex.quote(str(self.root)), shlex.quote(str(replaced)))).stdout
-        self.assertIn("-m installer.cfg_diff --since 20261016-120000 --replaced %s %s/printer_data/config"
-                      % (replaced, self.root), out)
-        self.assertIn("REMOVED", out)
-
     def test_unit_review_no_change_and_append_go_without_asking(self):
         for status in (0, 10):
             with self.subTest(status=status):

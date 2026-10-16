@@ -53,17 +53,20 @@ class TestCfgDiff(unittest.TestCase):
             f.write(text)
         return path
 
-    def summary(self, **kwargs):
+    def summary(self, colour=None, **kwargs):
         out = io.StringIO()
-        shown = cfg_diff.summary(self.backup, self.install, out=out, **kwargs)
+        # make test exports the installer's colour codes
+        with cfg._env(colour or {"C_NOTICE": "", "C_OFF": ""}):
+            shown = cfg_diff.summary(self.backup, self.install, out=out, **kwargs)
         return shown, out.getvalue()
 
     def test_values_changed_removed_and_added_are_summarised(self):
         shown, out = self.summary()
         self.assertTrue(shown)
         self.assertEqual(out, (
-            "Changes to your Happy Hare .cfg files (previous files are in 'mmu.old-20261016-120005'):\n"
-            "From mmu_parameters_unit0.cfg:\n"
+            "Summary of changes to your Happy Hare .cfg files (previous files are in 'mmu.old-20261016-120005'):\n"
+            "\n"
+            "> mmu_parameters_unit0.cfg:\n"
             "Changed:\n"
             "[mmu_unit_parameters unit0]\n"
             "gear_unload_speed: 80 -> 77\n"
@@ -90,17 +93,15 @@ class TestCfgDiff(unittest.TestCase):
         self.assertFalse(shown)
         self.assertEqual(out, "No changes to the values in your Happy Hare .cfg files\n")
 
-    def test_backup_must_be_from_this_install(self):
-        self.files("mmu.old-20261016-120005-1", OLD)
-        self.files("mmu.old-20250101-000000", OLD)
-        self.assertEqual(cfg_diff.backup_since(self.home, "20261016-120000"),
-                         os.path.join(self.home, "mmu.old-20261016-120005-1"))
-        self.assertIsNone(cfg_diff.backup_since(self.home, "20261016-130000"))
+    def test_lines_use_the_notice_colour(self):
+        _, out = self.summary(colour={"C_NOTICE": "<N>", "C_OFF": "</N>"})
+        self.assertTrue(out.startswith("<N>Summary of changes"), out)
+        self.assertIn("<N>> mmu_parameters_unit0.cfg:</N>\n", out)
 
     def test_first_install_prints_nothing(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            self.assertEqual(cfg_diff.main([self.home, "--since", "20261016-130000"]), 0)
+            self.assertEqual(cfg_diff.main([os.path.join(self.home, "mmu.old-missing"), self.install]), 0)
         self.assertEqual(out.getvalue(), "")
 
 

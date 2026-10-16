@@ -447,6 +447,9 @@ install: $(install_targets)
 	$(Q)$(if $(wildcard $(KCONFIG_CONFIG).unit_migration),$(eval restart_klipper = 1))
 	-$(Q)$(PY) -m installer.unit_migration apply --kconfig "$(KCONFIG_CONFIG)"
 	-$(Q)$(PY) -m installer.unit_migration gate-lists --kconfig "$(KCONFIG_CONFIG)" --config-home "$(KLIPPER_CONFIG_HOME)"
+	@# What this install changed in the Happy Hare .cfg files, against the backup it made (none on a first install)
+	-$(Q)[ ! -d "$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)" ] || $(PY) -m installer.cfg_diff $(V) \
+		--replaced "$(HH_REPLACED_REPORT)" "$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)" "$(KLIPPER_CONFIG_HOME)/mmu"
 	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))

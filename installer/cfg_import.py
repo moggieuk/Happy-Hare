@@ -37,10 +37,11 @@ EXIT_FAILED = 2
 EXIT_SHOWN = 10
 
 # One symbol as the whole value, any trailing comment: "option: [[SYMBOL]]",
-# "option: [[SYMBOL|klipper_string_literal]]" or a per-gate "option_[[i]]: [[ (SYMBOL_|d)[i] ]]"
+# "option: [[SYMBOL|klipper_string_literal]]" or a per-gate "option_[[i]]: [[ (SYMBOL_|d)[i] ]]".
+# The option name may itself be templated, e.g. [[ ("driver_" ~ FIELD).ljust(25) ]]
 _SYMBOL = r"(?:PARAM|VAR|PIN)_[A-Z0-9_]+"
 _PLAIN_REF = re.compile(
-    r"^(?P<head>[A-Za-z_][A-Za-z0-9_]*(?:\[\[[^\]]*\]\])?\s*[:=]\s*)"
+    r"^(?P<head>(?:[A-Za-z_][A-Za-z0-9_]*|\[\[[^\]]*\]\])(?:[A-Za-z0-9_]|\[\[[^\]]*\]\])*\s*[:=]\s*)"
     r"(?P<value>\[\[\s*(?:"
     r"(?P<sym>%s)\s*(?P<literal>\|\s*klipper_string_literal\s*)?"
     r"|\(\s*(?P<array>%s_)\s*\|\s*d\s*\)\s*\[(?P<index>[^\]]+)\]\s*"
@@ -411,22 +412,23 @@ def installed_files(config_home):
     return sorted(glob.glob(os.path.join(config_home, "mmu", "base", "*.cfg")))
 
 
+def notice(text):
+    return "%s%s%s" % (os.getenv("C_NOTICE", ""), text, os.getenv("C_OFF", ""))
+
+
 def show_edits(heading, rows, verbose, out):
-    """Print report rows grouped by .cfg file, then section"""
-    print(heading, file=out)
+    """Print report rows grouped by .cfg file, then section, a blank line between sections"""
     grouped = {}
     for name, section, option, value, note in rows:
         line = "%s: %s" % (option, value) + (" (%s)" % note if verbose else "")
         grouped.setdefault(name, {}).setdefault(section, []).append(line)
-    for i, (name, sections) in enumerate(grouped.items()):
-        if i:
-            print(file=out)
-        print("From %s:" % name, file=out)
-        for section, lines in sections.items():
-            print("[%s]" % section, file=out)
-            for line in lines:
-                print(line, file=out)
-    print(file=out)
+    lines = [heading]
+    for name, sections in grouped.items():
+        lines += ["", "> %s:" % name]
+        for i, (section, options) in enumerate(sections.items()):
+            lines += ([""] if i else []) + ["[%s]" % section] + options
+    for line in lines + [""]:
+        print(notice(line) if line else "", file=out)
 
 
 def read_report(path):

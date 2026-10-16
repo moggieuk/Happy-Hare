@@ -24,6 +24,9 @@ from installer import build, cfg_import  # noqa: E402 (needs kconfiglib on the p
 
 DEFAULT_TOKEN = " #~DEFAULT~#"
 
+# make test exports the installer's colour codes
+NO_COLOUR = {"C_NOTICE": "", "C_OFF": ""}
+
 SINGLE_UNIT_FILES = {
     "config/base/mmu.cfg": "mmu.cfg",
     "config/base/mmu_macro_vars.cfg": "mmu_macro_vars.cfg",
@@ -178,6 +181,24 @@ class TestCandidates(_Install):
         reason = self.reasons(analysis)[("mmu_unit unit0", "num_gates")]
         self.assertTrue(reason.startswith("would also change ["), reason)
 
+    def test_templated_option_name_is_recognised(self):
+        # [[ ("driver_" ~ PARAM_GEAR_TMC_STALLGUARD_FIELD).ljust(25) ]]: [[PARAM_GEAR_STALLGUARD_THRESHOLD]].
+        # Menuconfig has no setting for the threshold, so the edit stays in the .cfg
+        self.edit("mmu_hardware_unit0.cfg", "driver_SGTHRS", "77", section="tmc2209 mmu_stepper unit0_gear")
+        analysis = self.analyse()
+        self.assertNotIn("PARAM_GEAR_STALLGUARD_THRESHOLD", self.by_symbol(analysis))
+        self.assertIn(("tmc2209 mmu_stepper unit0_gear", "driver_SGTHRS"), self.reasons(analysis))
+
+    def test_summary_sections_are_spaced_and_coloured(self):
+        self.edit("mmu_hardware_unit0.cfg", "step_pin", "unit0:PA9", section="mmu_stepper unit0_gear")
+        self.edit("mmu_hardware_unit0.cfg", "mmu_entry_switch_pin_1", "^unit0:PA10", section="mmu_sensors unit0")
+        out = io.StringIO()
+        with cfg._env({"C_NOTICE": "<N>", "C_OFF": "</N>"}):
+            cfg_import.show_edits("Heading", cfg_import_rows(self.analyse()), False, out)
+        self.assertEqual(out.getvalue(), "<N>Heading</N>\n\n<N>> mmu_hardware_unit0.cfg:</N>\n"
+                         "<N>[mmu_stepper unit0_gear]</N>\n<N>step_pin: unit0:PA9</N>\n\n"
+                         "<N>[mmu_sensors unit0]</N>\n<N>mmu_entry_switch_pin_1: ^unit0:PA10</N>\n\n")
+
     def test_string_literal_value_is_decoded(self):
         self.edit("mmu_macro_vars.cfg", "variable_user_pre_initialize_extension", '"MY_INIT"')
         candidate = self.by_symbol(self.analyse())["VAR_SOFTWARE_USER_PRE_INITIALIZE_EXTENSION"]
@@ -241,6 +262,10 @@ class TestCandidates(_Install):
     def test_value_equal_to_the_default_isnt_imported(self):
         self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "100.0")
         self.assertNotIn("PARAM_GEAR_LOAD_SPEED", self.by_symbol(self.analyse()))
+
+
+def cfg_import_rows(analysis):
+    return analysis.report()["imported"]
 
 
 class TestApply(_Install):
@@ -343,7 +368,8 @@ class TestCli(_Install):
 
     def show(self, verbose=False):
         out = io.StringIO()
-        status = cfg_import.show(self.report, verbose, out=out)
+        with cfg._env(NO_COLOUR):
+            status = cfg_import.show(self.report, verbose, out=out)
         return status, out.getvalue()
 
     def test_report_writes_nothing_to_menuconfig(self):
@@ -358,11 +384,12 @@ class TestCli(_Install):
         self.assertEqual(status, cfg_import.EXIT_SHOWN)
         self.assertIn(
             "These .cfg values will be imported into menuconfig:\n"
-            "From mmu_macro_vars.cfg:\n"
+            "\n"
+            "> mmu_macro_vars.cfg:\n"
             "[gcode_macro _MMU_SOFTWARE_VARS]\n"
             "variable_home_mmu: True\n"
             "\n"
-            "From mmu_parameters_unit0.cfg:\n"
+            "> mmu_parameters_unit0.cfg:\n"
             "[mmu_unit_parameters unit0]\n"
             "gear_load_speed: 123\n"
             "gear_unload_speed: 88\n", out)
@@ -376,7 +403,8 @@ class TestCli(_Install):
         self.assertIn("variable_home_mmu: True (was False; VAR_SOFTWARE_HOME_MMU, set by BOOL_SOFTWARE_HOME_MMU)\n",
                       out)
         self.assertIn("These .cfg values stay in the .cfg files but can't be imported into menuconfig:\n"
-                      "From mmu_hardware_unit0.cfg:\n"
+                      "\n"
+                      "> mmu_hardware_unit0.cfg:\n"
                       "[mmu_stepper unit0_gear]\n"
                       "dir_pin: foo bar (rejected by menuconfig's validation)\n", out)
 
@@ -615,10 +643,11 @@ class TestMultiUnit(_MultiUnitInstall):
             with cfg._env(env), cfg._chdir(cfg.INSTALLER):
                 cfg_import.main(["--kconfig", kconfig, "--config-home", self.home, "--report", report])
         out = io.StringIO()
-        self.assertEqual(cfg_import.show(report, out=out), cfg_import.EXIT_SHOWN)
+        with cfg._env(NO_COLOUR):
+            self.assertEqual(cfg_import.show(report, out=out), cfg_import.EXIT_SHOWN)
         self.assertEqual(out.getvalue().count("will be imported into menuconfig"), 1)
-        self.assertIn("From mmu_macro_vars.cfg:", out.getvalue())
-        self.assertIn("From mmu_parameters_unit1.cfg:", out.getvalue())
+        self.assertIn("> mmu_macro_vars.cfg:", out.getvalue())
+        self.assertIn("> mmu_parameters_unit1.cfg:", out.getvalue())
 
     def test_shared_macro_variable_lands_in_the_top_level(self):
         self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")

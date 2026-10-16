@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 #
-# Summarize what an install changed in the Happy Hare .cfg files, comparing the backup the
+# Summarize what an install changed in the Happy Hare .cfg files, comparing the backup make
 # install made (mmu.old-<timestamp>) with the newly installed mmu/base files. Values are
 # compared, not text, so comments, layout and template wording don't show
 #
@@ -8,26 +8,15 @@
 #
 
 import argparse
-import glob
 import json
 import os
-import re
 import subprocess
 import sys
 
 from .parser import ConfigBuilder
 
-_BACKUP = re.compile(r"^mmu\.old-(\d{8}-\d{6})(-\d+)?$")
-
-
-def backup_since(config_home, since):
-    """The newest mmu.old-<timestamp> backup made at or after 'since', or None"""
-    found = []
-    for path in glob.glob(os.path.join(config_home, "mmu.old-*")):
-        m = _BACKUP.match(os.path.basename(path))
-        if m and os.path.isdir(path) and m.group(1) >= since:
-            found.append((m.group(1), int((m.group(2) or "-0")[1:]), path))
-    return max(found)[2] if found else None
+def notice(text):
+    return "%s%s%s" % (os.getenv("C_NOTICE", ""), text, os.getenv("C_OFF", ""))
 
 
 def options(path):
@@ -69,17 +58,14 @@ def file_changes(old, new, replaced=()):
 
 
 def show_lines(heading, rows, out):
-    print(heading, file=out)
+    print(notice(heading), file=out)
     current = None
     for section, line in rows:
-        if line is None:
-            print("[%s]" % section, file=out)
+        if line is None or section != current:
+            print(notice("[%s]" % section), file=out)
             current = section
-            continue
-        if section != current:
-            print("[%s]" % section, file=out)
-            current = section
-        print(line, file=out)
+        if line is not None:
+            print(notice(line), file=out)
 
 
 def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
@@ -95,10 +81,11 @@ def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
         if not (changed or removed or added):
             continue
         if not shown:
-            print("Changes to your Happy Hare .cfg files (previous files are in '%s'):" % os.path.basename(backup_dir),
-                  file=out)
+            print(notice("Summary of changes to your Happy Hare .cfg files (previous files are in '%s'):"
+                         % os.path.basename(backup_dir)), file=out)
             shown = True
-        print("From %s:" % name, file=out)
+        print(file=out)
+        print(notice("> %s:" % name), file=out)
         if changed:
             show_lines("Changed:", changed, out)
         if removed:
@@ -107,13 +94,14 @@ def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
             show_lines("Added:", added, out)
         elif added:
             sections = sum(1 for _, line in added if line is None)
-            print("Added: %d new option(s)%s" % (len(added) - sections,
-                  " and %d new section(s)" % sections if sections else ""), file=out)
-        print(file=out)
+            print(notice("Added: %d new option(s)%s" % (len(added) - sections,
+                         " and %d new section(s)" % sections if sections else "")), file=out)
     if not shown:
-        print("No changes to the values in your Happy Hare .cfg files", file=out)
-    elif verbose:
-        word_diff(os.path.join(backup_dir, "base"), os.path.join(install_dir, "base"), out)
+        print(notice("No changes to the values in your Happy Hare .cfg files"), file=out)
+    else:
+        print(file=out)
+        if verbose:
+            word_diff(os.path.join(backup_dir, "base"), os.path.join(install_dir, "base"), out)
     return shown
 
 
@@ -129,20 +117,16 @@ def word_diff(old_dir, new_dir, out):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Summarize what an install changed in the Happy Hare .cfg files")
-    parser.add_argument("config_home")
-    parser.add_argument("--since", required=True, help="YYYYMMDD-HHMMSS the install started")
+    parser.add_argument("backup_dir", help="the mmu.old-<timestamp> backup this install made")
+    parser.add_argument("install_dir", help="the installed mmu directory")
     parser.add_argument("--replaced", metavar="FILE", help="hand edits the build replaced (HH_REPLACED_REPORT)")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
-    config_home = os.path.expanduser(args.config_home)
-    install_dir = os.path.join(config_home, "mmu")
-    backup_dir = backup_since(config_home, args.since)
-    if backup_dir is None or not os.path.isdir(os.path.join(backup_dir, "base")) or \
-            not os.path.isdir(os.path.join(install_dir, "base")):
+    if not all(os.path.isdir(os.path.join(d, "base")) for d in (args.backup_dir, args.install_dir)):
         return 0
     try:
-        summary(backup_dir, install_dir, args.verbose, replaced=read_replaced(args.replaced))
+        summary(args.backup_dir, args.install_dir, args.verbose, replaced=read_replaced(args.replaced))
     except Exception as e:
         print("WARNING: couldn't summarize the .cfg changes (%s)" % e, file=sys.stderr)
     return 0
