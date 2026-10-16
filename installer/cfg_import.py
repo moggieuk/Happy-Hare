@@ -213,6 +213,7 @@ class Analysis(object):
 
         rendered = self._render(values)
         self.live = self._options(rendered)
+        theirs_by_key = {(section, option): value for section, options in hhcfg.values() for option, value in options}
         symbols = {}
         for template in self.templates:
             with open(os.path.join(REPO_ROOT, template), encoding="utf-8") as f:
@@ -228,14 +229,14 @@ class Analysis(object):
 
         edited = {}
         self.order = {}
-        for section in rendered.sections(scope="included"):
-            for option in rendered.options(section):
+        for section, options in rendered.values(scope="included"):
+            for option, ours in options:
                 key = (section, option)
                 self.order[key] = len(self.order)
                 ref = symbols.get(key)
-                if option == "gcode" or not hhcfg.has_option(*key) or key in _UPGRADE_OWNED:
+                if option == "gcode" or key not in theirs_by_key or key in _UPGRADE_OWNED:
                     continue
-                ours, theirs = rendered.get(*key) or "", hhcfg.get(*key) or ""
+                ours, theirs = ours or "", theirs_by_key[key] or ""
                 if build.same_value(ours, theirs, ref[1] if ref else False):
                     continue
                 if (section.split(" ", 1)[0], option) in build.KCONFIG_OWNED_OPTIONS:
@@ -247,7 +248,7 @@ class Analysis(object):
 
         for (sym_name, literal), edits in sorted(edited.items()):
             locations = uses[(sym_name, literal)]
-            cfg_values = {(hhcfg.get(*key) or "").strip() for key in locations}
+            cfg_values = {(theirs_by_key.get(key) or "").strip() for key in locations}
             _, ours, theirs = edits[0]
             if len(cfg_values) > 1:
                 for key, _, value in edits:
@@ -273,10 +274,10 @@ class Analysis(object):
     def _options(rendered):
         """{(section, option): value}, with None for each section, for comparing renders"""
         found = {}
-        for section in rendered.sections(scope="included"):
+        for section, options in rendered.values(scope="included"):
             found[(section, None)] = None
-            for option in rendered.options(section):
-                found[(section, option)] = (rendered.get(section, option) or "").strip()
+            for option, value in options:
+                found[(section, option)] = (value or "").strip()
         return found
 
     def _drop_conflicts(self):

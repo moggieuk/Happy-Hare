@@ -1215,22 +1215,42 @@ class ConfigBuilder(object):
     def rename_option(self, section_name, option_name, new_option_name):
         self._for_option(section_name, option_name, rename, new_option_name)
 
-    def get(self, section_name, option_name, default=None, with_comments=False):
+    @staticmethod
+    def _value(option, default=None, with_comments=False):
         def serialize(node, buf, _):
             if not with_comments and isinstance(node, CommentNode):
                 return False, buf
             return True, buf + node.serialize()
 
+        if len(option.body) == 0:
+            return default
+        value = ""
+        for value_line in option.body:
+            value = value_line.walk(serialize, value)
+        return value.strip()
+
+    def get(self, section_name, option_name, default=None, with_comments=False):
         try:
-            option = self._get_option(section_name, option_name)
-            if len(option.body) == 0:
-                return default
-            value = ""
-            for value_line in option.body:
-                value = value_line.walk(serialize, value)
-            return value.strip()
+            return self._value(self._get_option(section_name, option_name), default, with_comments)
         except KeyError:
             return default
+
+    def values(self, scope="all"):
+        """[(section, [(option, value), ...]), ...] in sections(scope) order: what options() and
+        get() give for every section, in one pass rather than a document walk per lookup"""
+        def collect_option(node, ctx, _):
+            if isinstance(node, OptionNode):
+                ctx.append(node)
+            return isinstance(node, SectionNode), ctx
+
+        last = {sec.name: sec for sec in self._for_section(None, collect, [])}
+        result = []
+        for name in self.sections(scope=scope):
+            options = {}
+            for option in last[name].walk(collect_option, []):
+                options[option.name] = self._value(option)
+            result.append((name, list(options.items())))
+        return result
 
     def getint(self, section_name, option_name, default=None):
         value = self.get(section_name, option_name)
