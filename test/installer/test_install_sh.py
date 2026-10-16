@@ -608,11 +608,10 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("UNITS kconfig_import home=/printer/config", out)
         self.assertIn("AFTER home=\n", out)
 
-    def test_cfg_import_not_offered_outside_merge_or_under_yes(self):
-        for env in ({"F_CFG_UPGRADE_MODE": "refresh"}, {"F_CFG_UPGRADE_MODE": "replace"},
-                    {"F_CFG_UPGRADE_MODE": "merge", "F_YES": "y"}):
-            with self.subTest(**env):
-                self.assertNotIn("kconfig_import", self.offer_import(**env))
+    def test_cfg_import_not_offered_outside_merge(self):
+        for mode in ("refresh", "replace"):
+            with self.subTest(mode=mode):
+                self.assertNotIn("kconfig_import", self.offer_import(F_CFG_UPGRADE_MODE=mode))
 
     def test_unit_review_no_change_and_append_go_without_asking(self):
         for status in (0, 10):

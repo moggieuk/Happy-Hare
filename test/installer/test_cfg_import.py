@@ -251,33 +251,70 @@ class TestReview(_Install):
         super().setUp()
         self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
         self.edit("mmu_parameters_unit0.cfg", "gear_unload_speed", "88")
+        self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")
+        self.edit("mmu_hardware_unit0.cfg", "toolhead", "other", section="mmu_unit unit0")
         self.analysis = self.analyse()
 
-    def review(self, *answers):
-        with mock.patch("builtins.input", side_effect=list(answers)):
-            return [c.sym_name for c in cfg_import.review(self.analysis, out=io.StringIO())]
+    def review(self, *answers, verbose=False, env=None):
+        out = io.StringIO()
+        with mock.patch("builtins.input", side_effect=list(answers)), \
+                mock.patch.dict(os.environ, env or {}), contextlib.redirect_stdout(out):
+            proceed = cfg_import.review(self.analysis, verbose, out=out)
+        return proceed, out.getvalue()
 
-    def test_declining_the_review_imports_nothing(self):
-        self.assertEqual(self.review("n"), [])
+    def test_summary_lists_edits_by_file_and_section(self):
+        proceed, out = self.review("y")
+        self.assertTrue(proceed)
+        self.assertIn(
+            "These manual .cfg edits will be imported into menuconfig:\n"
+            "From mmu_macro_vars.cfg:\n"
+            "[gcode_macro _MMU_SOFTWARE_VARS]\n"
+            "variable_home_mmu: True\n"
+            "\n"
+            "From mmu_parameters_unit0.cfg:\n"
+            "[mmu_unit_parameters unit0]\n"
+            "gear_load_speed: 123\n"
+            "gear_unload_speed: 88\n", out)
+        self.assertIn(
+            "These manual .cfg edits can't be imported, so Merge will overwrite them:\n"
+            "From mmu_hardware_unit0.cfg:\n"
+            "[mmu_unit unit0]\n"
+            "toolhead: other\n", out)
 
-    def test_each_value_is_asked_for(self):
-        self.assertEqual(self.review("y", "n", "y"), ["PARAM_GEAR_UNLOAD_SPEED"])
+    def test_verbose_summary_says_what_each_value_replaces(self):
+        _, out = self.review("y", verbose=True)
+        self.assertIn("gear_load_speed: 123 (was 100; PARAM_GEAR_LOAD_SPEED)\n", out)
+        self.assertIn("variable_home_mmu: True (was False; VAR_SOFTWARE_HOME_MMU, set by BOOL_SOFTWARE_HOME_MMU)\n",
+                      out)
+        self.assertIn("toolhead: other (not a plain menuconfig value)\n", out)
 
-    def test_all_and_quit(self):
-        self.assertEqual(self.review("y", "a"), ["PARAM_GEAR_LOAD_SPEED", "PARAM_GEAR_UNLOAD_SPEED"])
-        self.assertEqual(self.review("y", "y", "q"), ["PARAM_GEAR_LOAD_SPEED"])
+    def test_declining_or_end_of_input_imports_nothing(self):
+        self.assertFalse(self.review("n")[0])
+        self.assertFalse(self.review(EOFError())[0])
 
-    def test_end_of_input_imports_nothing(self):
-        self.assertEqual(self.review(EOFError()), [])
+    def test_yes_flag_answers_the_prompt(self):
+        proceed, out = self.review(env={"F_YES": "y"})
+        self.assertTrue(proceed)
+        self.assertIn("Proceed (y/n)? y", out)
 
-    def test_main_imports_accepted_values(self):
-        with mock.patch("builtins.input", side_effect=["y", "y", "n"]), \
-                contextlib.redirect_stdout(io.StringIO()), \
+    def main(self, *answers):
+        out = io.StringIO()
+        with mock.patch("builtins.input", side_effect=list(answers)), contextlib.redirect_stdout(out), \
                 cfg._env(self.env), cfg._chdir(cfg.INSTALLER):
             status = cfg_import.main(["--kconfig", self.kconfig, "--config-home", self.home])
         self.assertEqual(status, cfg_import.EXIT_NOTHING)
+        return out.getvalue()
+
+    def test_main_imports_every_listed_value(self):
+        self.assertIn("Imported 3 value(s)", self.main("y"))
         self.assertIn("\nCONFIG_PARAM_GEAR_LOAD_SPEED=123\n", self.saved())
-        self.assertNotIn("CONFIG_PARAM_GEAR_UNLOAD_SPEED=88", self.saved())
+        self.assertIn("\nCONFIG_PARAM_GEAR_UNLOAD_SPEED=88\n", self.saved())
+        self.assertIn("\nCONFIG_BOOL_SOFTWARE_HOME_MMU=y\n", self.saved())
+
+    def test_main_declined_leaves_the_config_alone(self):
+        before = self.saved()
+        self.assertIn("Nothing imported", self.main("n"))
+        self.assertEqual(self.saved(), before)
 
     def test_main_fails_open(self):
         before = self.saved()

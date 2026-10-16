@@ -202,10 +202,10 @@ set_units_restructure() {
     fi
 }
 
-# Merge applies every value menuconfig holds, so first offer to import values that were
-# hand edited in the .cfg files. Not under -y, since each value needs a person's answer
+# Merge applies every value menuconfig holds, so first import values that were hand edited
+# in the .cfg files, after showing them (-y answers the prompt)
 offer_cfg_import() {
-    [ "${F_CFG_UPGRADE_MODE:-}" = merge ] && [ -z "${F_YES:-}" ] || return 0
+    [ "${F_CFG_UPGRADE_MODE:-}" = merge ] || return 0
 
     export HH_CONFIG_HOME="${CONFIG_KLIPPER_CONFIG_HOME:-}"
     run_kconfig_top kconfig_import n
@@ -1000,9 +1000,10 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo
     echo "${C_WARNING}3) Merge (select 3)${C_OFF}"
     echo "   This will MERGE simple parameter values set in menuconfig but will retain other changes made"
-    echo "   directly to your .cfg files. This is useful if you manage most parameters via menuconfig but"
-    echo "   don't want, for example, to accidentally overwrite your carefully tweaked hardware configuration."
-    echo "   It first offers to import values you edited in the .cfg files into menuconfig"
+    echo "   directly to your .cfg files. Simple values you edited directly in your .cfg files are first"
+    echo "   imported into menuconfig (you'll see the list and can decline) so they aren't overwritten."
+    echo "   This is useful if you manage most parameters via menuconfig but don't want, for example,"
+    echo "   to accidentally overwrite your carefully tweaked hardware configuration"
     echo
     echo "(Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
     echo

@@ -51,11 +51,11 @@ class Candidate(object):
         self.set_name = None                    # The symbol menuconfig sets: this one, or its toggle
         self.kconfig_value = None
 
-    def describe(self):
-        where = ", ".join("[%s] %s" % loc for loc in self.locations)
+    def note(self):
+        """Verbose detail: the value it replaces and the symbol that holds it"""
         sym = self.sym_name if self.set_name in (None, self.sym_name) else \
             "%s, set by %s" % (self.sym_name, self.set_name)
-        return "%s: menuconfig %s / .cfg %s (%s)" % (where, self.menuconfig_value, self.cfg_value, sym)
+        return "was %s; %s" % (self.menuconfig_value, sym)
 
 
 def templates_for(values):
@@ -187,6 +187,14 @@ class Analysis(object):
         self.kconf = build.KConfig(kconfig_path)
         saved = self.kconf.as_dict()
 
+        # The installed file each option is in, for the summary
+        self.origin = {}
+        for path in installed_files:
+            installed = ConfigBuilder(path)
+            for section in installed.sections():
+                for option in installed.options(section):
+                    self.origin.setdefault((section, option), os.path.basename(path))
+
         hhcfg = build.HHConfig(installed_files)
         build.upgrade_hhconfig(hhcfg, "existing config")
 
@@ -213,9 +221,11 @@ class Analysis(object):
         self.mapped = sorted(uses)
 
         edited = {}
+        self.order = {}
         for section in rendered.sections(scope="included"):
             for option in rendered.options(section):
                 key = (section, option)
+                self.order[key] = len(self.order)
                 if option == "gcode" or not hhcfg.has_option(*key) or \
                         (section.split(" ", 1)[0], option) in build.KCONFIG_OWNED_OPTIONS or \
                         not build.kconfig_wins(section, option, excluded_params, excluded_vars):
@@ -322,52 +332,69 @@ def installed_files(config_home):
     return sorted(glob.glob(os.path.join(config_home, "mmu", "base", "*.cfg")))
 
 
-def ask(question, choices="yn"):
-    """First letter of the answer, from 'choices'; end of input answers n"""
+def ask(question):
+    """True for y; end of input answers n, and -y answers y"""
+    if os.environ.get("F_YES"):
+        print("%s (y/n)? y" % question)
+        return True
     while True:
         try:
-            answer = input("%s (%s)? " % (question, "/".join(choices))).strip().lower()
+            answer = input("%s (y/n)? " % question).strip().lower()
         except EOFError:
             print()
-            return "n"
-        if answer[:1] in choices:
-            return answer[:1]
+            return False
+        if answer[:1] in ("y", "n"):
+            return answer[:1] == "y"
 
 
-def review(analysis, out=None):
-    """Show the hand edits and ask which to import. Returns the accepted candidates"""
+def show_edits(heading, rows, out):
+    """Print (file, section, line) rows grouped by file then section"""
+    print(heading, file=out)
+    grouped = {}
+    for name, section, line in rows:
+        grouped.setdefault(name, {}).setdefault(section, []).append(line)
+    for i, (name, sections) in enumerate(grouped.items()):
+        if i:
+            print(file=out)
+        print("From %s:" % name, file=out)
+        for section, lines in sections.items():
+            print("[%s]" % section, file=out)
+            for line in lines:
+                print(line, file=out)
+    print(file=out)
+
+
+def summary_rows(analysis, entries, verbose):
+    """(file, section, line) rows in rendered order from (key, value, note) entries"""
+    rows = []
+    for key, value, note in sorted(entries, key=lambda e: analysis.order.get(e[0], 0)):
+        line = "%s: %s" % (key[1], value.strip())
+        if verbose:
+            line += " (%s)" % note
+        rows.append((analysis.origin.get(key, "?"), key[0], line))
+    return rows
+
+
+def review(analysis, verbose=False, out=None):
+    """Show what will be imported and what Merge will still overwrite. True to import"""
     out = out or sys.stdout
-    name = os.path.basename(analysis.kconfig_path)
     if analysis.blocked:
-        print("Merge will overwrite these .cfg edits, which can't be imported into '%s':" % name, file=out)
-        for (section, option), value, reason in analysis.blocked:
-            print("  [%s] %s: %s  (%s)" % (section, option, value, reason), file=out)
+        show_edits("These manual .cfg edits can't be imported, so Merge will overwrite them:",
+                   summary_rows(analysis, analysis.blocked, verbose), out)
     if not analysis.candidates:
-        return []
+        return False
 
-    print("These .cfg edits differ from '%s' and Merge would revert them:" % name, file=out)
-    for candidate in analysis.candidates:
-        print("  " + candidate.describe(), file=out)
-    if ask("Review these .cfg values for import into menuconfig") != "y":
-        return []
-
-    accepted = []
-    for i, candidate in enumerate(analysis.candidates):
-        answer = ask("%s. Use the .cfg value" % candidate.describe(), "ynaq")
-        if answer == "a":
-            accepted.extend(analysis.candidates[i:])
-            break
-        if answer == "q":
-            break
-        if answer == "y":
-            accepted.append(candidate)
-    return accepted
+    entries = [(key, c.cfg_value, c.note()) for c in analysis.candidates for key in c.locations]
+    show_edits("These manual .cfg edits will be imported into menuconfig:",
+               summary_rows(analysis, entries, verbose), out)
+    return ask("Proceed")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Import hand-edited .cfg values into menuconfig")
     parser.add_argument("--kconfig", required=True)
     parser.add_argument("--config-home", required=True)
+    parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
     files = installed_files(os.path.expanduser(args.config_home))
@@ -376,10 +403,11 @@ def main(argv=None):
 
     try:
         analysis = Analysis(args.kconfig, files)
-        accepted = review(analysis)
-        if accepted:
-            analysis.apply(accepted)
-            print("Imported %d value(s) into '%s'" % (len(accepted), os.path.basename(args.kconfig)))
+        if review(analysis, args.verbose):
+            analysis.apply(analysis.candidates)
+            print("Imported %d value(s) into '%s'" % (len(analysis.candidates), os.path.basename(args.kconfig)))
+        elif analysis.candidates:
+            print("Nothing imported, so Merge will overwrite these with the menuconfig values")
     except (Exception, SystemExit) as e:
         print("WARNING: couldn't check the .cfg files for values to import (%s), continuing with Merge" % e,
               file=sys.stderr)
