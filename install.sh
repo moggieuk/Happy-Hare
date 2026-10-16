@@ -366,7 +366,7 @@ restore_mmu_config() {
     fi
 
     echo "${C_INFO}Restoring MMU config from '$(basename "${selected_config}")'${C_OFF}"
-    cp -R "${selected_config}" "${current_config}"
+    cp -Rp "${selected_config}" "${current_config}"
     copy_recovered_kconfigs "${current_config}"
     # The restored backup is what make install's change summary compares with
     export F_NO_MMU_BACKUP=y HH_RESTORED_FROM="${selected_config}"

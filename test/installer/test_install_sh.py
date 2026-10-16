@@ -192,6 +192,8 @@ class TestInstallSh(unittest.TestCase):
             ".mmu_config.old",
             "newer-marker",
         )
+        # An old backup's config must still look older than the Kconfig files, so it's refreshed
+        os.utime(newer / ".mmu_config", (1000000000, 1000000000))
 
         result = self.run_shell("""
             SCRIPT_DIR={repo}
@@ -219,6 +221,7 @@ class TestInstallSh(unittest.TestCase):
         self.assertFalse((current / "current-marker").exists())
         self.assertTrue((repo_dest / ".mmu_config_unit0").exists())
         self.assertFalse((repo_dest / ".mmu_config.old").exists())
+        self.assertEqual((repo_dest / ".mmu_config").stat().st_mtime, 1000000000)
 
         preserved = [
             path for path in config_home.glob("mmu.old-*")
