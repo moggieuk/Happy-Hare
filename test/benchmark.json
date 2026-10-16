@@ -1,190 +1,238 @@
 {
  "_comment": "Reference per-file timings for test/select.py's picker, shown to anyone who hasn't run the suite locally yet (see test/README.md section 1). CI runner timings are too variable to use as the reference, so this is a manual, occasional step: run `make ALL=1 JOBS=4 test` on a warm machine, copy the 'times' block out of the repo-root .mmu_test_state it produces into this file's 'times' key, and update the metadata below by hand. total_seconds is the parallel parent-process wall time, not the sum of overlapping per-file timings. Commit alongside whatever change motivated the re-measurement.",
- "generated": "2026-10-03",
- "git_rev": "73aa75d5",
+ "generated": "2026-10-16",
+ "git_rev": "b2e05354+#1382-#1386",
  "python": "Python 3.13.7",
  "machine": "Apple M1 Pro MacBook Pro (macOS, warm venv, 4 isolated workers, longest-first)",
- "total_seconds": 115.9,
- "total_tests": 2301,
+ "total_seconds": 174.7,
+ "total_tests": 2642,
  "times": {
   "test.installer.test_blobifier_renders": [
-   0.98,
+   1.09,
    2
   ],
   "test.installer.test_board_defaults": [
-   0.47,
+   0.49,
    3
   ],
+  "test.installer.test_board_fan_pins": [
+   2.2,
+   5
+  ],
+  "test.installer.test_board_pin_conflicts": [
+   5.9,
+   8
+  ],
   "test.installer.test_build": [
-   13.3,
-   15
+   26.81,
+   30
+  ],
+  "test.installer.test_cfg_diff": [
+   0.11,
+   7
+  ],
+  "test.installer.test_cfg_import": [
+   142.16,
+   58
+  ],
+  "test.installer.test_chameleon_x5": [
+   3.32,
+   26
   ],
   "test.installer.test_custom_hardware_hints": [
-   1.43,
-   2
+   3.58,
+   3
+  ],
+  "test.installer.test_environment_sensor_component": [
+   1.31,
+   1
+  ],
+  "test.installer.test_extruder_homing_defaults": [
+   17.37,
+   5
   ],
   "test.installer.test_filament_buffer": [
-   2.74,
+   3.16,
    2
   ],
   "test.installer.test_htlf": [
-   1.01,
+   1.05,
    4
   ],
+  "test.installer.test_i2c_bus_component": [
+   25.31,
+   15
+  ],
   "test.installer.test_install_sh": [
-   14.44,
-   29
+   13.11,
+   37
   ],
   "test.installer.test_kconfig_comment_output": [
-   0.36,
+   0.41,
    3
   ],
   "test.installer.test_kconfig_default_choice": [
-   0.65,
+   0.73,
    2
   ],
   "test.installer.test_kconfig_default_when_hidden": [
-   0.63,
+   0.76,
    4
   ],
   "test.installer.test_kconfig_env_hygiene": [
-   0.38,
+   0.43,
    2
   ],
   "test.installer.test_kconfig_macro_names": [
-   0.42,
-   12
+   0.48,
+   16
   ],
   "test.installer.test_kconfig_references": [
-   1.65,
+   2.02,
    2
   ],
   "test.installer.test_kconfig_rename_migration": [
-   6.19,
-   14
+   9.12,
+   18
   ],
   "test.installer.test_kconfig_repeat_source": [
-   0.07,
+   0.08,
+   2
+  ],
+  "test.installer.test_kconfig_stallguard_menu": [
+   0.72,
    2
   ],
   "test.installer.test_kconfig_structure": [
-   5.47,
-   8
+   6.95,
+   10
   ],
   "test.installer.test_kconfig_validator": [
-   14.59,
-   29
+   17.74,
+   38
   ],
   "test.installer.test_kconfigfunctions": [
-   0.1,
+   0.09,
    14
   ],
   "test.installer.test_kms": [
-   0.82,
+   0.88,
    3
   ],
   "test.installer.test_low_rider": [
-   2.62,
+   2.95,
    9
   ],
+  "test.installer.test_macro_vars_map": [
+   0.14,
+   1
+  ],
   "test.installer.test_manual_mcu": [
-   4.49,
+   5.14,
    7
   ],
   "test.installer.test_menuconfig": [
-   0.17,
-   45
+   0.18,
+   60
+  ],
+  "test.installer.test_misc_hardware_vars": [
+   0.05,
+   2
   ],
   "test.installer.test_mmx": [
-   1.55,
+   1.88,
    3
   ],
   "test.installer.test_nfc_readers": [
-   2.39,
+   2.32,
    8
   ],
   "test.installer.test_night_owl": [
-   0.95,
+   1.09,
    4
   ],
   "test.installer.test_num_gates": [
-   0.67,
+   0.77,
    5
   ],
   "test.installer.test_olddefconfig_report": [
-   31.74,
+   37.1,
    9
   ],
   "test.installer.test_parser": [
    0.08,
-   45
+   47
   ],
   "test.installer.test_pin_warnings": [
-   2.14,
+   2.55,
    8
   ],
   "test.installer.test_printer_capabilities": [
-   3.06,
+   3.69,
    5
   ],
   "test.installer.test_qidi_box": [
-   3.45,
-   13
+   4.19,
+   18
   ],
   "test.installer.test_render_via_files": [
-   11.16,
+   15.26,
    1
   ],
   "test.installer.test_sequence_edit": [
-   0.07,
+   0.06,
    24
   ],
+  "test.installer.test_servo_component": [
+   11.26,
+   9
+  ],
   "test.installer.test_servo_selector": [
-   0.46,
+   0.44,
    2
   ],
   "test.installer.test_shared_buffer": [
-   30.95,
-   14
+   50.63,
+   24
   ],
   "test.installer.test_shared_components": [
-   1.31,
+   0.49,
    17
   ],
   "test.installer.test_shared_encoder": [
-   7.93,
-   7
+   12.55,
+   15
   ],
   "test.installer.test_td1": [
-   5.06,
+   5.18,
    26
   ],
   "test.installer.test_template_cache": [
-   0.15,
+   0.17,
    4
   ],
   "test.installer.test_tmc_driver_render": [
-   2.26,
+   2.38,
    4
   ],
   "test.installer.test_tmc_sense_resistor": [
-   1.09,
+   1.21,
    3
   ],
   "test.installer.test_uart_address": [
-   3.37,
+   3.91,
    10
   ],
   "test.installer.test_unit_migration": [
-   0.35,
-   62
+   0.33,
+   69
   ],
   "test.installer.test_upgrade_htlf": [
-   0.11,
+   0.13,
    5
   ],
   "test.installer.test_vendor_choices": [
-   0.67,
+   0.71,
    2
   ],
   "test.installer.test_vvd": [
@@ -192,184 +240,200 @@
    5
   ],
   "test.test_mmu_adc_compat": [
-   0.12,
+   0.1,
    14
   ],
   "test.test_mmu_blobifier": [
-   1.47,
+   1.44,
    6
   ],
   "test.test_mmu_bootup": [
-   7.17,
+   6.59,
    50
   ],
   "test.test_mmu_bowden_persistence": [
-   1.94,
+   1.81,
    10
   ],
   "test.test_mmu_calibration_events": [
-   1.3,
+   1.26,
    3
   ],
   "test.test_mmu_check_gate": [
-   5.58,
+   4.75,
    45
   ],
   "test.test_mmu_compound_endstop": [
-   0.1,
+   0.09,
    16
   ],
   "test.test_mmu_config": [
-   44.04,
-   94
+   50.03,
+   104
   ],
   "test.test_mmu_console": [
-   36.99,
-   233
+   31.75,
+   234
   ],
   "test.test_mmu_current_nesting": [
-   1.25,
+   1.29,
    2
   ],
   "test.test_mmu_dev_test": [
-   6.08,
+   4.77,
    22
   ],
   "test.test_mmu_drying": [
-   1.24,
-   4
+   1.26,
+   5
   ],
   "test.test_mmu_encoder": [
-   4.81,
+   4.29,
    41
   ],
   "test.test_mmu_endless_spool": [
-   3.89,
+   3.4,
    41
   ],
   "test.test_mmu_fan": [
-   9.09,
-   38
+   15.83,
+   72
   ],
   "test.test_mmu_filament_display": [
-   0.26,
+   0.24,
    3
   ],
   "test.test_mmu_flowguard": [
-   2.37,
+   2.2,
+   12
+  ],
+  "test.test_mmu_gear_overrides": [
+   2.43,
    12
   ],
   "test.test_mmu_import": [
-   0.94,
+   0.87,
    13
   ],
   "test.test_mmu_leds": [
-   6.82,
+   5.8,
    44
   ],
   "test.test_mmu_local_gate": [
-   4.61,
+   3.78,
    17
   ],
   "test.test_mmu_moonraker": [
-   6.14,
+   6.15,
    61
   ],
   "test.test_mmu_motion": [
-   5.17,
+   4.23,
    70
   ],
   "test.test_mmu_nfc": [
-   4.99,
+   4.18,
    36
   ],
   "test.test_mmu_nfc_gain": [
-   0.77,
+   0.76,
    10
   ],
   "test.test_mmu_nfc_i2c": [
-   0.62,
+   0.7,
    20
   ],
   "test.test_mmu_nfc_neighbor": [
-   7.46,
+   5.86,
    77
   ],
   "test.test_mmu_nfc_pn532_i2c": [
    0.13,
-   17
+   19
   ],
   "test.test_mmu_nfc_probe": [
-   0.15,
+   0.14,
    53
   ],
   "test.test_mmu_nfc_scan": [
-   5.81,
+   4.9,
    55
   ],
   "test.test_mmu_nfc_spi": [
-   2.85,
+   3.23,
    9
   ],
   "test.test_mmu_nfc_uart": [
-   1.39,
+   1.35,
    80
   ],
+  "test.test_mmu_pressure_advance": [
+   1.49,
+   7
+  ],
   "test.test_mmu_profiles": [
-   10.15,
-   64
+   9.92,
+   65
   ],
   "test.test_mmu_reactor": [
    0.14,
    24
   ],
   "test.test_mmu_roundtrip": [
-   5.73,
+   4.74,
    59
   ],
   "test.test_mmu_save_variables": [
-   1.92,
+   1.74,
    9
   ],
   "test.test_mmu_selector": [
-   9.8,
+   8.5,
    95
   ],
   "test.test_mmu_sensor_enable": [
-   4.1,
+   3.6,
    21
   ],
   "test.test_mmu_sensor_runout": [
-   4.79,
+   4.17,
    31
   ],
   "test.test_mmu_stepper_current": [
-   3.21,
+   2.85,
    8
   ],
   "test.test_mmu_stepper_sharing": [
-   1.28,
+   1.26,
    3
   ],
   "test.test_mmu_sync_feedback": [
-   5.87,
-   21
+   5.79,
+   29
   ],
   "test.test_mmu_tag_parser": [
-   0.14,
+   0.13,
    36
   ],
   "test.test_mmu_tangle_prevention": [
-   2.16,
+   1.83,
    10
   ],
   "test.test_mmu_td1": [
-   13.9,
+   12.0,
    195
   ],
   "test.test_mmu_toolchange": [
-   2.99,
+   2.61,
    30
+  ],
+  "test.test_mmu_vent": [
+   5.71,
+   31
+  ],
+  "test.test_select": [
+   0.07,
+   5
   ]
  }
 }
