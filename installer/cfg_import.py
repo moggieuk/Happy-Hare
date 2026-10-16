@@ -411,7 +411,7 @@ def review(analysis, verbose=False, out=None):
     """Show what will be imported and what Merge will still overwrite. True to import"""
     out = out or sys.stdout
     if analysis.blocked:
-        show_edits("These manual .cfg edits can't be imported, so Merge will overwrite them:",
+        show_edits("These manual .cfg edits can't be imported, so menuconfig will overwrite them:",
                    summary_rows(analysis, analysis.blocked, verbose), out)
     if not analysis.candidates:
         return False

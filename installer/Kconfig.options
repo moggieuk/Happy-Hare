@@ -223,6 +223,10 @@ menu "Software Options"
       Essential is minimal; Developer is very verbose.
       Recommend "Debug"
 
+    config CHOICE_LOG_FILE_LEVEL_OFF
+      bool "Off [[DIM]]/ no mmu.log[[/DIM]]"
+      help
+        Don't write the mmu.log file at all
     config CHOICE_LOG_FILE_LEVEL_ESSENTIAL
       bool "Essential"
       help
@@ -247,6 +251,7 @@ menu "Software Options"
 
   config PARAM_LOG_FILE_LEVEL
     int
+    default -1 if CHOICE_LOG_FILE_LEVEL_OFF
     default 0 if CHOICE_LOG_FILE_LEVEL_ESSENTIAL
     default 1 if CHOICE_LOG_FILE_LEVEL_INFO
     default 2 if CHOICE_LOG_FILE_LEVEL_DEBUG

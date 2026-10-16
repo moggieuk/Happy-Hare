@@ -134,9 +134,17 @@ class TestCandidates(_Install):
         self.assertEqual((candidate.set_name, candidate.kconfig_value), ("CHOICE_LOG_FILE_LEVEL_STEPPER", "y"))
         self.assertEqual(candidate.set_key, "CHOICE_LOG_FILE_LEVEL")
 
-    def test_value_no_choice_option_gives_is_reported(self):
-        # -1 disables the log file, which the menuconfig list doesn't offer
+    def test_log_file_turned_off_is_offered_through_its_choice(self):
         self.edit("mmu.cfg", "log_file_level", "-1")
+        analysis = self.analyse()
+        candidate = self.by_symbol(analysis)["PARAM_LOG_FILE_LEVEL"]
+        self.assertEqual(candidate.set_name, "CHOICE_LOG_FILE_LEVEL_OFF")
+        analysis.apply([candidate])
+        mmu = self.merge_build("config/base/mmu.cfg", "mmu.cfg")
+        self.assertEqual(mmu.get("mmu_parameters", "log_file_level").strip(), "-1")
+
+    def test_value_no_choice_option_gives_is_reported(self):
+        self.edit("mmu.cfg", "log_file_level", "7")
         analysis = self.analyse()
         self.assertNotIn("PARAM_LOG_FILE_LEVEL", self.by_symbol(analysis))
         self.assertEqual(self.reasons(analysis)[("mmu_parameters", "log_file_level")],
@@ -305,7 +313,7 @@ class TestReview(_Install):
             "gear_load_speed: 123\n"
             "gear_unload_speed: 88\n", out)
         self.assertIn(
-            "These manual .cfg edits can't be imported, so Merge will overwrite them:\n"
+            "These manual .cfg edits can't be imported, so menuconfig will overwrite them:\n"
             "From mmu_hardware_unit0.cfg:\n"
             "[mmu_unit unit0]\n"
             "toolhead: other\n", out)

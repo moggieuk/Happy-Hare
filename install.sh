@@ -999,11 +999,11 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "   useful if you get into trouble and want to reset your starting position or change MMU."
     echo
     echo "${C_WARNING}3) Merge (select 3)${C_OFF}"
-    echo "   This will MERGE simple parameter values set in menuconfig but will retain other changes made"
-    echo "   directly to your .cfg files. Simple values you edited directly in your .cfg files are first"
-    echo "   imported into menuconfig (you'll see the list and can decline) so they aren't overwritten."
-    echo "   This is useful if you manage most parameters via menuconfig but don't want, for example,"
-    echo "   to accidentally overwrite your carefully tweaked hardware configuration"
+    echo "   This will apply the settings from menuconfig to your .cfg files but keep other changes you"
+    echo "   made directly to them, such as carefully tweaked hardware configuration. Before menuconfig"
+    echo "   opens, any simple setting you changed directly in a .cfg file is copied into menuconfig, so"
+    echo "   your change isn't lost. You'll see what will be copied and be asked to confirm. This is"
+    echo "   useful if you manage most settings via menuconfig but have also edited some .cfg files"
     echo
     echo "(Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
     echo
