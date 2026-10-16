@@ -1085,6 +1085,9 @@ class TestKalico(MotionTestCase):
         self._assert_all_mmu_steppers_on_the_emulator()
         self.assertEqual(self.hh.errors, [])
 
+    def test_boot_has_no_kalico_support_warning(self):
+        self.assertEqual([m for m in self.hh.console if 'Kalico' in m], [])
+
     def _assert_all_mmu_steppers_on_the_emulator(self):
         _assert_all_mmu_steppers_on_the_emulator(self)
 

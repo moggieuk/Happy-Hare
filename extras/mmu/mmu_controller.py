@@ -324,14 +324,6 @@ class MmuController(MmuFilamentMovement):
         self.log_to_file(gcmd.get_commandline())
 
         try:
-            # Kalico (especially "bleeding edge" users) need reminding of possible incompatibility
-            if self.kalico:
-                msg = "Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!"
-                if not self.p.suppress_klipper_warnings:
-                    self.log_warning(msg)
-                else:
-                    self.log_debug(msg)
-
             # Look for filament_switch_sensors already configured to warn for possible conflicts
             for section in self.config.get_prefix_sections('filament_switch_sensor'):
                 # Determine if this is created by HH or user

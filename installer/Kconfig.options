@@ -287,9 +287,9 @@ menu "Software Options"
     boolint "Suppress startup Klipper compatibility warnings?"
     default 0
     help
-      Demote Happy Hare's startup notices about Kalico compatibility, existing
-      filament_switch_sensor sections, and NFC readers on MCU firmware that
-      cannot report an I2C NACK to debug messages. With default log levels they
+      Demote Happy Hare's startup notices about existing filament_switch_sensor
+      sections and NFC readers on MCU firmware that cannot report an I2C NACK
+      to debug messages. With default log levels they
       go to mmu.log instead of the console (console shows them at Debug or
       higher; mmu.log needs file level Debug or higher). Not all Klipper
       warnings are suppressed. Default 0 keeps these notices visible.
