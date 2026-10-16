@@ -412,8 +412,8 @@ def installed_files(config_home):
     return sorted(glob.glob(os.path.join(config_home, "mmu", "base", "*.cfg")))
 
 
-def notice(text):
-    return "%s%s%s" % (os.getenv("C_NOTICE", ""), text, os.getenv("C_OFF", ""))
+def coloured(colour, text):
+    return "%s%s%s" % (os.getenv(colour, ""), text, os.getenv("C_OFF", "")) if text else ""
 
 
 def show_edits(heading, rows, verbose, out):
@@ -422,13 +422,15 @@ def show_edits(heading, rows, verbose, out):
     for name, section, option, value, note in rows:
         line = "%s: %s" % (option, value) + (" (%s)" % note if verbose else "")
         grouped.setdefault(name, {}).setdefault(section, []).append(line)
-    lines = [heading]
+    lines = []
     for name, sections in grouped.items():
         lines += ["", "> %s:" % name]
         for i, (section, options) in enumerate(sections.items()):
             lines += ([""] if i else []) + ["[%s]" % section] + options
+    # The heading in NOTICE, the values themselves in INFO
+    print(coloured("C_NOTICE", heading), file=out)
     for line in lines + [""]:
-        print(notice(line) if line else "", file=out)
+        print(coloured("C_INFO", line), file=out)
 
 
 def read_report(path):

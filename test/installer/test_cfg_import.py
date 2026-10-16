@@ -25,7 +25,7 @@ from installer import build, cfg_import  # noqa: E402 (needs kconfiglib on the p
 DEFAULT_TOKEN = " #~DEFAULT~#"
 
 # make test exports the installer's colour codes
-NO_COLOUR = {"C_NOTICE": "", "C_OFF": ""}
+NO_COLOUR = {"C_NOTICE": "", "C_INFO": "", "C_OFF": ""}
 
 SINGLE_UNIT_FILES = {
     "config/base/mmu.cfg": "mmu.cfg",
@@ -203,11 +203,11 @@ class TestCandidates(_Install):
         self.edit("mmu_hardware_unit0.cfg", "step_pin", "unit0:PA9", section="mmu_stepper unit0_gear")
         self.edit("mmu_hardware_unit0.cfg", "mmu_entry_switch_pin_1", "^unit0:PA10", section="mmu_sensors unit0")
         out = io.StringIO()
-        with cfg._env({"C_NOTICE": "<N>", "C_OFF": "</N>"}):
+        with cfg._env({"C_NOTICE": "<N>", "C_INFO": "<I>", "C_OFF": "</>"}):
             cfg_import.show_edits("Heading", cfg_import_rows(self.analyse()), False, out)
-        self.assertEqual(out.getvalue(), "<N>Heading</N>\n\n<N>> mmu_hardware_unit0.cfg:</N>\n"
-                         "<N>[mmu_stepper unit0_gear]</N>\n<N>step_pin: unit0:PA9</N>\n\n"
-                         "<N>[mmu_sensors unit0]</N>\n<N>mmu_entry_switch_pin_1: ^unit0:PA10</N>\n\n")
+        self.assertEqual(out.getvalue(), "<N>Heading</>\n\n<I>> mmu_hardware_unit0.cfg:</>\n"
+                         "<I>[mmu_stepper unit0_gear]</>\n<I>step_pin: unit0:PA9</>\n\n"
+                         "<I>[mmu_sensors unit0]</>\n<I>mmu_entry_switch_pin_1: ^unit0:PA10</>\n\n")
 
     def test_string_literal_value_is_decoded(self):
         self.edit("mmu_macro_vars.cfg", "variable_user_pre_initialize_extension", '"MY_INIT"')

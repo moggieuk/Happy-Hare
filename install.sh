@@ -219,7 +219,7 @@ prepare_refresh() {
     run_kconfig_units kconfig_import n
 
     import_status=0
-    C_NOTICE="${C_NOTICE:-}" C_OFF="${C_OFF:-}" \
+    C_NOTICE="${C_NOTICE:-}" C_INFO="${C_INFO:-}" C_OFF="${C_OFF:-}" \
         PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH:-}" \
         "${INSTALLER_PY:-python3}" -m installer.cfg_import ${V:-} --show "${HH_IMPORT_REPORT}" || import_status=$?
 

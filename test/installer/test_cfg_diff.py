@@ -56,7 +56,7 @@ class TestCfgDiff(unittest.TestCase):
     def summary(self, colour=None, **kwargs):
         out = io.StringIO()
         # make test exports the installer's colour codes
-        with cfg._env(colour or {"C_INFO": "", "C_OFF": ""}):
+        with cfg._env(colour or {"C_NOTICE": "", "C_INFO": "", "C_OFF": ""}):
             shown = cfg_diff.summary(self.backup, self.install, out=out, **kwargs)
         return shown, out.getvalue()
 
@@ -95,10 +95,12 @@ class TestCfgDiff(unittest.TestCase):
         self.assertFalse(shown)
         self.assertIn("\nNo changes to the values in your Happy Hare .cfg files\n\n", out)
 
-    def test_block_uses_the_info_colour(self):
-        _, out = self.summary(colour={"C_INFO": "<I>", "C_OFF": "</I>"})
-        self.assertTrue(out.startswith("\n<I>%s</I>\n\n<I>Summary of changes" % ("-" * 106)), out)
-        self.assertIn("<I>> mmu_parameters_unit0.cfg:</I>\n", out)
+    def test_frame_is_notice_and_changes_are_info(self):
+        _, out = self.summary(colour={"C_NOTICE": "<N>", "C_INFO": "<I>", "C_OFF": "</>"})
+        self.assertTrue(out.startswith("\n<N>%s</>\n\n<N>Summary of changes" % ("-" * 106)), out)
+        self.assertIn("<I>> mmu_parameters_unit0.cfg:</>\n", out)
+        self.assertIn("<I>gear_unload_speed: 80 -> 77</>\n", out)
+        self.assertTrue(out.endswith("\n<N>%s</>\n\n" % ("-" * 106)), out)
 
     def test_first_install_prints_nothing(self):
         out = io.StringIO()

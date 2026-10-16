@@ -18,8 +18,8 @@ from .parser import ConfigBuilder
 RULE = "-" * 106
 
 
-def info(text):
-    return "%s%s%s" % (os.getenv("C_INFO", ""), text, os.getenv("C_OFF", "")) if text else ""
+def coloured(colour, text):
+    return "%s%s%s" % (os.getenv(colour, ""), text, os.getenv("C_OFF", "")) if text else ""
 
 
 def options(path):
@@ -97,13 +97,15 @@ def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
 
     shown = bool(lines)
     if shown:
-        lines.insert(0, "Summary of changes to your Happy Hare .cfg files (previous files are in '%s'):"
-                     % os.path.basename(backup_dir))
+        heading = "Summary of changes to your Happy Hare .cfg files (previous files are in '%s'):" \
+            % os.path.basename(backup_dir)
     else:
-        lines = ["No changes to the values in your Happy Hare .cfg files"]
-    # Set apart as a block from the install output around it
-    for line in ["", RULE, ""] + lines + ["", RULE, ""]:
-        print(info(line), file=out)
+        heading = "No changes to the values in your Happy Hare .cfg files"
+    # Set apart as a block from the install output around it: the frame in NOTICE, the changes in INFO
+    block = [("C_NOTICE", line) for line in ("", RULE, "", heading)] + [("C_INFO", line) for line in lines] + \
+        [("C_NOTICE", line) for line in ("", RULE, "")]
+    for colour, line in block:
+        print(coloured(colour, line), file=out)
     if shown and verbose:
         word_diff(os.path.join(backup_dir, "base"), os.path.join(install_dir, "base"), out)
     return shown
