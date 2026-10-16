@@ -960,8 +960,7 @@ def _menuconfig(stdscr):
                 return res, code
 
         elif c in ("r", "R"): # Happy Hare: Added to "unset" user change and reset to default
-            sel_node = _shown[_sel_node_i]
-            _reset_node(sel_node)
+            _reset_key(_shown[_sel_node_i])
 
 
 # Happy Hare: Modified to also return status for subsequent action
@@ -1674,6 +1673,23 @@ def _visible(node):
         node.prompt and
         (_normally_visible(node) or _forced(node))
     )
+
+
+def _reset_key(node): # Happy Hare: Added method
+    # The 'r' key: reset 'node' to its default. Clearing a user value changes what
+    # gets saved, so mark the configuration changed or quitting wouldn't save it
+
+    global _conf_changed
+
+    sc = node.item
+    had_value = (isinstance(sc, Symbol) and
+                 (sc.user_value is not None or
+                  (sc.choice is not None and sc.choice.user_selection is not None))) or \
+                (isinstance(sc, Choice) and
+                 (sc.user_selection is not None or any(m.user_value is not None for m in sc.syms)))
+
+    if _reset_node(node) and had_value:
+        _conf_changed = True
 
 
 def _reset_node(node): # Happy Hare: Added method

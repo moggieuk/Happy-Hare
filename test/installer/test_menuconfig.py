@@ -771,3 +771,59 @@ config UNITS
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestResetMarksChanged(unittest.TestCase):
+    """'r' on a value the user set must make quitting save, even when nothing else changed"""
+
+    KCONFIG = """
+config PARAM_DISTANCE
+    int "Distance"
+    default 40
+
+choice CHOICE_LEVEL
+    prompt "Level"
+    default CHOICE_LEVEL_LOW
+config CHOICE_LEVEL_LOW
+    bool "Low"
+config CHOICE_LEVEL_HIGH
+    bool "High"
+endchoice
+"""
+
+    def setUp(self):
+        import os
+        import tempfile
+        import kconfiglib
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "Kconfig")
+        with open(path, "w") as f:
+            f.write(self.KCONFIG)
+        self.kconf = kconfiglib.Kconfig(path, warn=False)
+        patches = [patch.object(menuconfig, "_update_menu"), patch.object(menuconfig, "_leave_menu"),
+                   patch.object(menuconfig, "_kconf", self.kconf, create=True),
+                   patch.object(menuconfig, "_conf_changed", False, create=True)]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def node(self, name):
+        item = self.kconf.named_choices.get(name) or self.kconf.syms[name]
+        return item.nodes[0]
+
+    def test_resetting_a_user_value_marks_the_config_changed(self):
+        self.kconf.syms["PARAM_DISTANCE"].set_value("50")
+        menuconfig._reset_key(self.node("PARAM_DISTANCE"))
+        self.assertTrue(menuconfig._conf_changed)
+        self.assertEqual(self.kconf.syms["PARAM_DISTANCE"].str_value, "40")
+
+    def test_resetting_a_chosen_list_option_marks_the_config_changed(self):
+        self.kconf.syms["CHOICE_LEVEL_HIGH"].set_value(2)
+        menuconfig._reset_key(self.node("CHOICE_LEVEL"))
+        self.assertTrue(menuconfig._conf_changed)
+        self.assertEqual(self.kconf.named_choices["CHOICE_LEVEL"].selection.name, "CHOICE_LEVEL_LOW")
+
+    def test_resetting_a_default_changes_nothing(self):
+        menuconfig._reset_key(self.node("PARAM_DISTANCE"))
+        self.assertFalse(menuconfig._conf_changed)

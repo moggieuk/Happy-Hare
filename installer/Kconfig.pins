@@ -219,13 +219,6 @@ menu "Pins / TMC"
         validator "$(pin_validator)"
         help
           $(pin_help)
-      config PARAM_SELECTOR_STALLGUARD_THRESHOLD
-        prompt "$(pad,$(pin_pad),Selector stallguard)" if BOOL_SELECTOR_TMC_HAS_STALLGUARD && PIN_SELECTOR_DIAG != ""
-        help
-          Sensitivity for selector "touch" movement, written only when a
-          diag pin is set. Expect to tune it. The scale depends on the chip:
-          SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
-          lower is more sensitive.
     endif
   endmenu
 

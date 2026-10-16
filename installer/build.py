@@ -121,8 +121,7 @@ def follow_visibility(existing, rendered):
     merged = [n if o.lstrip("_") == n.lstrip("_") else o for o, n in zip(old, new)]
     return existing if merged == old else ", ".join(merged)
 
-# This mapping is used to identify Kconfig parameter names and map then to the
-# correct cfg config section. This is used for the "merge" (option 3) approach
+# The gcode_macro section and variable each VAR_ symbol renders as
 VAR_SECTION_MAP = {
     "var_software_":     "gcode_macro _MMU_SOFTWARE_VARS",
     "var_state_":        "gcode_macro _MMU_STATE_VARS",
@@ -420,16 +419,12 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
-    def update_builder(self, builder, excluded_params, excluded_vars, origin=None):
+    def update_builder(self, builder, kconfig_keys=(), origin=None):
         """
         Update the builder config selectively from the existing config HH data.
-        'excluded_params' is a list of params that should NOT be updated (we want the
-        new values from Kconfig to win. It is empty for the non-interactive upgrade
-        case where all previous params are retained
+        'kconfig_keys' are the (section, option)s where the rendered Kconfig value wins
+        instead: those changed in menuconfig this run. Kconfig-owned options always do
         """
-
-        excluded_var_sections = {section for section, _ in excluded_vars}
-        excluded_vars = set(excluded_vars)
 
         # Copy over included options
         for section in sorted(builder.sections(scope="included")):
@@ -437,20 +432,10 @@ class HHConfig(ConfigBuilder):
                 if self.has_option(section, option):
 
                     is_gcode = option == "gcode"
-                    is_macro_section = section.startswith("gcode_macro")
-                    is_var_section = section in excluded_var_sections
-                    is_excluded_var = (section, option) in excluded_vars or \
+                    kconfig_wins = (section, option) in kconfig_keys or \
                         (section.split(" ", 1)[0], option) in KCONFIG_OWNED_OPTIONS
-                    is_excluded_param = (
-                        not is_macro_section
-                        and option in excluded_params
-                    )
 
-                    if (
-                        not is_gcode
-                        and not is_excluded_var
-                        and (is_var_section or not is_excluded_param)
-                    ):
+                    if not is_gcode and not kconfig_wins:
                         value = self.get(section, option)
                         if (section.split(" ", 1)[0], option) in KCONFIG_OWNED_VISIBILITY:
                             value = follow_visibility(value, builder.get(section, option))
@@ -616,6 +601,84 @@ def split_csv(raw):
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+def upgrade_hhconfig(hhcfg, label):
+    """Apply version upgrade transforms to the aggregated existing config"""
+    to_version = get_target_version()
+    from_version = get_current_version(hhcfg)
+
+    if major_minor(from_version) != major_minor(to_version):
+        logging.debug("Upgrading {} from v{} to v{}".format(label, from_version, to_version))
+        upgrades = Upgrades()
+        upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
+
+        # Important to update version in case .mmu_config is not changed
+        if hhcfg.has_section("mmu_machine"):
+            hhcfg.set("mmu_machine", "happy_hare_version", to_version)
+
+
+def rendered_options(buffer):
+    """{(section, option): value} of a rendered template, with (section, None) for each section"""
+    rendered = ConfigBuilder()
+    rendered.read_buf(buffer)
+    found = {}
+    for section in rendered.sections(scope="included"):
+        found[(section, None)] = None
+        for option in rendered.options(section):
+            found[(section, option)] = (rendered.get(section, option) or "").strip()
+    return found
+
+
+def menuconfig_baseline(kcfg, has_install):
+    """
+    The Kconfig values saved just before menuconfig opened in an interactive Refresh, or
+    None. Pre-parsed like the Kconfig file itself so the two render alike
+    """
+    if os.getenv("F_MENUCONFIG_BASELINE") != "y":
+        return None
+    pickle_file = os.path.join(os.getenv("OUT"), "menuconfig_base",
+                               os.path.basename(kcfg.config_file) + ".pickle")
+    if not os.path.exists(pickle_file):
+        # A unit added in this menuconfig has none, and nothing installed to keep
+        if has_install:
+            logging.warning("No menuconfig baseline for '%s', so menuconfig changes to options your .cfg files "
+                            "already hold are not applied" % os.path.basename(kcfg.config_file))
+        return None
+    return load_parsed_kconfig(kcfg.config_file, pickle_file)
+
+
+def same_value(a, b, literal=False):
+    """Whether two .cfg values say the same, e.g. 80 and 80.0"""
+    a, b = (a or "").strip(), (b or "").strip()
+    if a == b:
+        return True
+    if literal:
+        try:
+            return ast.literal_eval(a) == ast.literal_eval(b)
+        except (ValueError, SyntaxError):
+            return False
+    try:
+        return float(a) == float(b)
+    except ValueError:
+        pass
+    truthy = {"true": True, "1": True, "false": False, "0": False}
+    return a.lower() in truthy and truthy[a.lower()] == truthy.get(b.lower())
+
+
+def menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered, hhcfg):
+    """
+    The (section, option)s whose rendered value changed since the baseline, so changed in
+    menuconfig this run, and the baseline render. Empty without a baseline
+    """
+    has_install = any(key[1] is not None and hhcfg.has_option(*key) for key in rendered)
+    base_kcfg = menuconfig_baseline(kcfg, has_install)
+    if base_kcfg is None:
+        return set(), {}
+    before = rendered_options(render_template(cfg_file_basename, base_kcfg, extra_params))
+    changed = {key for key in set(before) | set(rendered)
+               if key[1] is not None and before.get(key) != rendered.get(key)}
+    return changed, before
+
+
 # TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
 def build(cfg_file, dest_file, kconfig, input_files):
     logging.debug("Building {} -> {} with kconfig {}".format(cfg_file, dest_file, kconfig))
@@ -659,17 +722,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     hhcfg = HHConfig(input_files)
 
     # 2.Run upgrade transform on aggregated master HH Config
-    to_version = get_target_version()
-    from_version = get_current_version(hhcfg)
-
-    if major_minor(from_version) != major_minor(to_version):
-        logging.debug("Upgrading {} from v{} to v{}".format(cfg_file_basename, from_version, to_version))
-        upgrades = Upgrades()
-        upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
-
-        # Important to update version in case .mmu_config is not changed
-        if hhcfg.has_section("mmu_machine"):
-            hhcfg.set("mmu_machine", "happy_hare_version", to_version)
+    upgrade_hhconfig(hhcfg, cfg_file_basename)
 
     # 3.Render cfg template expanding KConfig parameters from read .mmu_config
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
@@ -682,6 +735,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder = ConfigBuilder()
     builder.read_buf(buffer)
     report_parse_errors(builder, cfg_file_basename)
+    rendered = rendered_options(buffer)
 
     # 5.Special case cfg files that contains parameters so we can add back any optional,
     #   hidden or supplemental params because they are not present in cfg template
@@ -701,46 +755,20 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     # 6.Determine how much of the HHConfig (existing .cfg's) do we re-apply
     refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
+    if refresh_mode == 'merge':
+        # Merge is now part of an interactive Refresh
+        refresh_mode = 'refresh'
 
-    if refresh_mode == 'refresh':
-        # Default choice (always used when menuconfig UI is not run)
-        # Here we use the refreshed cfg templates as a starting point but
-        # then replace every matching parameter with existing value.
-        # Unused options will be reported.
-        excluded_params = [] # Don't filter out any existing params in HHConfig
-        excluded_vars = []   # Don't filter out any existing macro variables
-
-    elif refresh_mode == 'replace':
-        # Here we (re)create pristine cfg files based on kconfig settings
-        pass
-
-    elif refresh_mode == 'merge':
-        # Experimental. Here we selectively ignore simple PARAM_ and VAR_ parameter
-        # settings so that the Kconfig value "wins" in these cases
-
-        excluded_params = [
-            k.lower()[6:]
-            for k in kcfg.as_dict()
-            if k.lower().startswith("param_")
-        ]
-        #logging.debug("The following parameters are being filtered: %s" % ", ".join(excluded_params))
-
-        excluded_vars = []
-        for k in kcfg.as_dict():
-            target = macro_var_option(k.lower())
-            if target:
-                excluded_vars.append(target)
-        #logging.debug("The following macro variables are being filtered: %s", excluded_vars)
-
-    else:
+    if refresh_mode not in ('refresh', 'replace'):
         logging.error("Invalid F_CFG_UPGRADE_MODE '%s'" % refresh_mode)
         exit(1)
 
-    if refresh_mode != 'replace':
-        # 7.Update the builder Config from the existing master HHConfig (existing .cfg's)
-        #   to ensure user edits are preserved. The 'excluded_params' is a list that is
-        #   excluded from consideration (i.e. ignored from existing .cfg's)
-        hhcfg.update_builder(builder, excluded_params, excluded_vars, origin=os.path.basename(dest_file))
+    if refresh_mode == 'refresh':
+        # 7.Update the builder Config from the existing master HHConfig (existing .cfg's) so
+        #   user edits are preserved, except where a setting was changed in menuconfig this run
+        changed, before = menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered, hhcfg)
+        hhcfg.update_builder(builder, changed, origin=os.path.basename(dest_file))
+        report_replaced_edits(dest_file_basename, hhcfg, changed, before, rendered)
 
         # 8.Report on deprecated/unused options
         first = True
@@ -758,6 +786,28 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     data = builder.write()
     with open(dest_file, "wb") as f:
         f.write(data.encode("utf-8"))
+
+
+def report_replaced_edits(dest_file_basename, hhcfg, changed, before, rendered):
+    """Warn about .cfg values, unknown to menuconfig, that a setting changed in menuconfig replaced"""
+    replaced = []
+    for key in sorted(changed):
+        if not hhcfg.has_option(*key) or key[1] == "gcode":
+            continue
+        value = (hhcfg.get(*key) or "").strip()
+        if not same_value(value, before.get(key)) and not same_value(value, rendered.get(key)):
+            replaced.append((key, value))
+    if replaced:
+        logging.warning("These edits in {} were replaced by settings changed in menuconfig:".format(dest_file_basename))
+        for (section, option), value in replaced:
+            logging.warning("[{}] {}: {} -> {}".format(section, option, value, rendered.get((section, option))))
+
+        # For install.sh's closing summary of changes
+        report = os.getenv("HH_REPLACED_REPORT")
+        if report:
+            with open(report, "a", encoding="utf-8") as f:
+                for (section, option), _ in replaced:
+                    f.write(json.dumps([os.path.basename(dest_file_basename), section, option]) + "\n")
 
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
@@ -982,32 +1032,35 @@ def check_version(kconfig, input_files):
 #        exit(1)
 
 
-def pre_parse_kconfig(kconfig):
+def parsed_kconfig_data(kcfg, config_file):
+    """What a pickle holds of a parsed Kconfig: its values and choice selections"""
+    return {
+        "config_file": config_file,
+        "values": kcfg.as_dict(),
+        "choices": {
+            # Choice.selection silently discards
+            # choice.user_selection if the selected member isn't
+            # currently visible (same trap as Symbol.str_value
+            # discarding Symbol.user_value -- see KConfig.as_dict()).
+            # Prefer the raw user_selection so an explicit choice
+            # sticks even when the choice/members are invisible.
+            name: (choice.user_selection or choice.selection).name
+            for name, choice in kcfg.named_choices.items()
+            if choice.user_selection or choice.selection
+        },
+    }
+
+
+def pre_parse_kconfig(kconfig, pickle_file=None):
     out = os.getenv("OUT")
     base = os.path.basename(kconfig)
-    pickle_file = "%s/%s.pickle" % (out, base)
+    pickle_file = pickle_file or "%s/%s.pickle" % (out, base)
 
     logging.debug(" > Pickling kconfig file: %s -> %s" % (kconfig, pickle_file))
 
     tmp_file = pickle_file + ".tmp"
     try:
-        kcfg = KConfig(kconfig)
-
-        data = {
-            "config_file": kconfig,
-            "values": kcfg.as_dict(),
-            "choices": {
-                # Choice.selection silently discards
-                # choice.user_selection if the selected member isn't
-                # currently visible (same trap as Symbol.str_value
-                # discarding Symbol.user_value -- see KConfig.as_dict()).
-                # Prefer the raw user_selection so an explicit choice
-                # sticks even when the choice/members are invisible.
-                name: (choice.user_selection or choice.selection).name
-                for name, choice in kcfg.named_choices.items()
-                if choice.user_selection or choice.selection
-            },
-        }
+        data = parsed_kconfig_data(KConfig(kconfig), kconfig)
         with open(tmp_file, "wb") as f:
             pickle.dump(data, f)
 
@@ -1020,10 +1073,10 @@ def pre_parse_kconfig(kconfig):
         exit(1)
 
 
-def load_parsed_kconfig(kconfig):
+def load_parsed_kconfig(kconfig, pickle_file=None):
     out = os.getenv("OUT")
     base = os.path.basename(kconfig)
-    pickle_file = "%s/%s.pickle" % (out, base)
+    pickle_file = pickle_file or "%s/%s.pickle" % (out, base)
 
     logging.debug(" > Loading pickled kconfig file: %s" % pickle_file)
 
@@ -1067,7 +1120,7 @@ def main():
     parser.add_argument("--install-includes", nargs=2)
     parser.add_argument("--uninstall-includes", nargs=1)
     parser.add_argument("--restart-service", nargs=3)
-    parser.add_argument("--pre-parse-kconfig", nargs=1)
+    parser.add_argument("--pre-parse-kconfig", nargs="+", metavar=("KCONFIG", "PICKLE"))
     args = parser.parse_args()
 
     if args.verbose:
@@ -1100,7 +1153,7 @@ def main():
         check_version(args.check_version[0], args.check_version[1:])
 
     if args.pre_parse_kconfig:
-        pre_parse_kconfig(args.pre_parse_kconfig[0])
+        pre_parse_kconfig(*args.pre_parse_kconfig[:2])
 
 
 if __name__ == "__main__":
