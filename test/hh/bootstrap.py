@@ -229,6 +229,11 @@ class Session:
             self.moonraker.close()
             self.moonraker = self.moonraker_link = None
         try:
+            if self.printer is not None:
+                self.printer.send_event('klippy:disconnect')
+        except Exception:
+            logging.debug('klippy:disconnect handler failed', exc_info=True)
+        try:
             mmu = self.printer.lookup_object('mmu', None) if self.printer else None
             logger = getattr(mmu, 'logger', None) if mmu else None
             if logger is not None and hasattr(logger, 'shutdown'):
