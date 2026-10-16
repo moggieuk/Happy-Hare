@@ -215,6 +215,8 @@ prepare_refresh() {
     run_make kconfig_baseline_clean
     HH_IMPORT_REPORT=$(mktemp -t hh_import.XXXXXX)
     export HH_IMPORT_REPORT HH_CONFIG_HOME="${CONFIG_KLIPPER_CONFIG_HOME:-}"
+    # Each Kconfig file is parsed in turn, which is slow on a multi-unit install
+    echo "${C_INFO}Checking your .cfg files for values to import into menuconfig...${C_OFF}"
     run_kconfig_top kconfig_import n
     run_kconfig_units kconfig_import n
 
@@ -229,6 +231,7 @@ prepare_refresh() {
             echo "${C_INFO}Not imported: menuconfig will show its previous values, and your .cfg files are kept as they are${C_OFF}"
         else
             export HH_IMPORT_APPLY=y
+            echo "${C_INFO}Importing them into menuconfig...${C_OFF}"
             run_kconfig_top kconfig_import n
             run_kconfig_units kconfig_import n
             unset HH_IMPORT_APPLY
@@ -239,6 +242,7 @@ prepare_refresh() {
     rm -f "${HH_IMPORT_REPORT}"
     unset HH_IMPORT_REPORT HH_CONFIG_HOME
     export F_MENUCONFIG_BASELINE=y
+    echo "${C_INFO}Opening menuconfig...${C_OFF}"
 }
 
 
