@@ -15,8 +15,11 @@ import sys
 
 from .parser import ConfigBuilder
 
-def notice(text):
-    return "%s%s%s" % (os.getenv("C_NOTICE", ""), text, os.getenv("C_OFF", ""))
+RULE = "-" * 106
+
+
+def info(text):
+    return "%s%s%s" % (os.getenv("C_INFO", ""), text, os.getenv("C_OFF", "")) if text else ""
 
 
 def options(path):
@@ -57,22 +60,22 @@ def file_changes(old, new, replaced=()):
     return changed, removed, added
 
 
-def show_lines(heading, rows, out):
-    print(notice(heading), file=out)
+def show_lines(heading, rows, lines):
+    lines.append(heading)
     current = None
     for section, line in rows:
         if line is None or section != current:
-            print(notice("[%s]" % section), file=out)
+            lines.append("[%s]" % section)
             current = section
         if line is not None:
-            print(notice(line), file=out)
+            lines.append(line)
 
 
 def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
     """Print the changes. False if nothing changed"""
     out = out or sys.stdout
     names = sorted(set(os.listdir(os.path.join(backup_dir, "base"))) | set(os.listdir(os.path.join(install_dir, "base"))))
-    shown = False
+    lines = []
     for name in [n for n in names if n.endswith(".cfg")]:
         old_path, new_path = (os.path.join(d, "base", name) for d in (backup_dir, install_dir))
         old = options(old_path) if os.path.exists(old_path) else {}
@@ -80,28 +83,29 @@ def summary(backup_dir, install_dir, verbose=False, out=None, replaced=()):
         changed, removed, added = file_changes(old, new, {(s, o) for f, s, o in replaced if f == name})
         if not (changed or removed or added):
             continue
-        if not shown:
-            print(notice("Summary of changes to your Happy Hare .cfg files (previous files are in '%s'):"
-                         % os.path.basename(backup_dir)), file=out)
-            shown = True
-        print(file=out)
-        print(notice("> %s:" % name), file=out)
+        lines += ["", "> %s:" % name]
         if changed:
-            show_lines("Changed:", changed, out)
+            show_lines("Changed:", changed, lines)
         if removed:
-            show_lines("Removed:", removed, out)
+            show_lines("Removed:", removed, lines)
         if added and verbose:
-            show_lines("Added:", added, out)
+            show_lines("Added:", added, lines)
         elif added:
             sections = sum(1 for _, line in added if line is None)
-            print(notice("Added: %d new option(s)%s" % (len(added) - sections,
-                         " and %d new section(s)" % sections if sections else "")), file=out)
-    if not shown:
-        print(notice("No changes to the values in your Happy Hare .cfg files"), file=out)
+            lines.append("Added: %d new option(s)%s" % (len(added) - sections,
+                         " and %d new section(s)" % sections if sections else ""))
+
+    shown = bool(lines)
+    if shown:
+        lines.insert(0, "Summary of changes to your Happy Hare .cfg files (previous files are in '%s'):"
+                     % os.path.basename(backup_dir))
     else:
-        print(file=out)
-        if verbose:
-            word_diff(os.path.join(backup_dir, "base"), os.path.join(install_dir, "base"), out)
+        lines = ["No changes to the values in your Happy Hare .cfg files"]
+    # Set apart as a block from the install output around it
+    for line in ["", RULE, ""] + lines + ["", RULE, ""]:
+        print(info(line), file=out)
+    if shown and verbose:
+        word_diff(os.path.join(backup_dir, "base"), os.path.join(install_dir, "base"), out)
     return shown
 
 

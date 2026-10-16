@@ -56,14 +56,16 @@ class TestCfgDiff(unittest.TestCase):
     def summary(self, colour=None, **kwargs):
         out = io.StringIO()
         # make test exports the installer's colour codes
-        with cfg._env(colour or {"C_NOTICE": "", "C_OFF": ""}):
+        with cfg._env(colour or {"C_INFO": "", "C_OFF": ""}):
             shown = cfg_diff.summary(self.backup, self.install, out=out, **kwargs)
         return shown, out.getvalue()
 
     def test_values_changed_removed_and_added_are_summarised(self):
         shown, out = self.summary()
         self.assertTrue(shown)
+        rule = "-" * 106
         self.assertEqual(out, (
+            "\n" + rule + "\n\n"
             "Summary of changes to your Happy Hare .cfg files (previous files are in 'mmu.old-20261016-120005'):\n"
             "\n"
             "> mmu_parameters_unit0.cfg:\n"
@@ -75,7 +77,7 @@ class TestCfgDiff(unittest.TestCase):
             "old_option: 1\n"
             "[mmu_removed_section]\n"
             "Added: 3 new option(s) and 1 new section(s)\n"
-            "\n"))
+            "\n" + rule + "\n\n"))
 
     def test_verbose_lists_what_was_added(self):
         with mock_word_diff():
@@ -91,12 +93,12 @@ class TestCfgDiff(unittest.TestCase):
             f.write(OLD.replace("# a comment", "# changed wording"))
         shown, out = self.summary()
         self.assertFalse(shown)
-        self.assertEqual(out, "No changes to the values in your Happy Hare .cfg files\n")
+        self.assertIn("\nNo changes to the values in your Happy Hare .cfg files\n\n", out)
 
-    def test_lines_use_the_notice_colour(self):
-        _, out = self.summary(colour={"C_NOTICE": "<N>", "C_OFF": "</N>"})
-        self.assertTrue(out.startswith("<N>Summary of changes"), out)
-        self.assertIn("<N>> mmu_parameters_unit0.cfg:</N>\n", out)
+    def test_block_uses_the_info_colour(self):
+        _, out = self.summary(colour={"C_INFO": "<I>", "C_OFF": "</I>"})
+        self.assertTrue(out.startswith("\n<I>%s</I>\n\n<I>Summary of changes" % ("-" * 106)), out)
+        self.assertIn("<I>> mmu_parameters_unit0.cfg:</I>\n", out)
 
     def test_first_install_prints_nothing(self):
         out = io.StringIO()
