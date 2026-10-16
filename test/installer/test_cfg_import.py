@@ -47,6 +47,7 @@ class _Install(unittest.TestCase):
     """A single-unit BoxTurtle, installed in Replace mode"""
 
     PROFILE = "boxturtle"
+    SYMS = {}
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -56,7 +57,7 @@ class _Install(unittest.TestCase):
         self.kconfig = os.path.join(self.tmp.name, ".mmu_config")
         self.env = dict(cfg._SINGLE_UNIT_ENV, HH_VERSION=cfg.hh_version(), KCONFIG_CONFIG=self.kconfig)
         with cfg._env(self.env):
-            kc = cfg._kconfig("cfg-import", profiles.get(self.PROFILE).syms)
+            kc = cfg._kconfig("cfg-import", dict(profiles.get(self.PROFILE).syms, **self.SYMS))
         kc.write_config(self.kconfig)
         self.extra = {"PARAM_TOTAL_NUM_GATES": kc.getint("PARAM_NUM_GATES")}
         build_files(self.env, self.home, kc, SINGLE_UNIT_FILES, self.extra)
@@ -183,11 +184,20 @@ class TestCandidates(_Install):
 
     def test_templated_option_name_is_recognised(self):
         # [[ ("driver_" ~ PARAM_GEAR_TMC_STALLGUARD_FIELD).ljust(25) ]]: [[PARAM_GEAR_STALLGUARD_THRESHOLD]].
-        # Menuconfig has no setting for the threshold, so the edit stays in the .cfg
+        # Gears 1-3 render the same threshold, so an edit to gear 0 alone stays in the .cfg
         self.edit("mmu_hardware_unit0.cfg", "driver_SGTHRS", "77", section="tmc2209 mmu_stepper unit0_gear")
         analysis = self.analyse()
         self.assertNotIn("PARAM_GEAR_STALLGUARD_THRESHOLD", self.by_symbol(analysis))
-        self.assertIn(("tmc2209 mmu_stepper unit0_gear", "driver_SGTHRS"), self.reasons(analysis))
+        self.assertEqual(self.reasons(analysis)[("tmc2209 mmu_stepper unit0_gear", "driver_SGTHRS")],
+                         "PARAM_GEAR_STALLGUARD_THRESHOLD is set differently elsewhere")
+
+    def test_threshold_edited_on_every_gear_is_imported(self):
+        gears = ["tmc2209 mmu_stepper unit0_gear"] + ["tmc2209 mmu_stepper unit0_gear_%d" % i for i in (1, 2, 3)]
+        for section in gears:
+            self.edit("mmu_hardware_unit0.cfg", "driver_SGTHRS", "77", section=section)
+        candidate = self.by_symbol(self.analyse())["PARAM_GEAR_STALLGUARD_THRESHOLD"]
+        self.assertEqual(sorted(candidate.locations), [(section, "driver_SGTHRS") for section in gears])
+        self.assertEqual(candidate.kconfig_value, "77")
 
     def test_summary_sections_are_spaced_and_coloured(self):
         self.edit("mmu_hardware_unit0.cfg", "step_pin", "unit0:PA9", section="mmu_stepper unit0_gear")
@@ -343,6 +353,45 @@ class TestPins(_Install):
         self.assertEqual(analysis.candidates, [])
         reason = analysis.kept[0][2]
         self.assertTrue(reason.startswith("would also change [mmu_stepper unit0_gear] extra_endstops"), reason)
+
+
+class TestGearOverrides(_Install):
+    """A gear whose override is on renders its values from its own per-gate symbols"""
+
+    SYMS = {
+        "BOOL_GEAR_OVERRIDE_1": True,
+        "PARAM_GEAR_RUN_CURRENT_1": "0.6",
+        "PARAM_GEAR_MICROSTEPS_1": "32",
+    }
+
+    def test_tmc_value_is_imported_to_its_gate(self):
+        self.edit("mmu_hardware_unit0.cfg", "run_current", "0.7", section="tmc2209 mmu_stepper unit0_gear_1")
+        analysis = self.analyse()
+        candidate = self.by_symbol(analysis)["PARAM_GEAR_RUN_CURRENT_1"]
+        self.assertEqual(candidate.locations, [("tmc2209 mmu_stepper unit0_gear_1", "run_current")])
+        self.assertEqual((candidate.set_name, candidate.kconfig_value), ("PARAM_GEAR_RUN_CURRENT_1", "0.7"))
+        analysis.apply([candidate])
+        self.assertIn('\nCONFIG_PARAM_GEAR_RUN_CURRENT_1="0.7"\n', self.saved())
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        self.assertEqual(hardware.get("tmc2209 mmu_stepper unit0_gear_1", "run_current").strip(), "0.7")
+
+    def test_stepper_value_is_imported_to_its_gate(self):
+        self.edit("mmu_hardware_unit0.cfg", "microsteps", "64", section="mmu_stepper unit0_gear_1")
+        candidate = self.by_symbol(self.analyse())["PARAM_GEAR_MICROSTEPS_1"]
+        self.assertEqual((candidate.set_name, candidate.kconfig_value), ("PARAM_GEAR_MICROSTEPS_1", "64"))
+
+    def test_stallguard_is_imported_to_its_gate(self):
+        self.edit("mmu_hardware_unit0.cfg", "driver_SGTHRS", "77", section="tmc2209 mmu_stepper unit0_gear_1")
+        candidate = self.by_symbol(self.analyse())["PARAM_GEAR_STALLGUARD_THRESHOLD_1"]
+        self.assertEqual(candidate.locations, [("tmc2209 mmu_stepper unit0_gear_1", "driver_SGTHRS")])
+        self.assertEqual(candidate.kconfig_value, "77")
+
+    def test_stallguard_on_a_gear_without_override_is_gear_0s(self):
+        self.edit("mmu_hardware_unit0.cfg", "driver_SGTHRS", "77", section="tmc2209 mmu_stepper unit0_gear_2")
+        analysis = self.analyse()
+        self.assertEqual(analysis.candidates, [])
+        self.assertEqual(self.reasons(analysis)[("tmc2209 mmu_stepper unit0_gear_2", "driver_SGTHRS")],
+                         "PARAM_GEAR_STALLGUARD_THRESHOLD is set differently elsewhere")
 
 
 class TestCli(_Install):
