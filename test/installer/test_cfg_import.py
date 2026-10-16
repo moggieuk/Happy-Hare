@@ -69,7 +69,7 @@ class _Install(unittest.TestCase):
             m = re.match(r"^\[([^\]]+)\]", line)
             if m:
                 current = m.group(1)
-            m = re.match(r"^(%s\s*[:=]\s*)(\S.*?)(\s+[#;].*)?$" % re.escape(option), line)
+            m = re.match(r"^(%s\s*[:=]\s*)(\S.*?)?(\s+[#;].*)?$" % re.escape(option), line)
             if m and not done and (section is None or current == section):
                 lines[i] = m.group(1) + value + (m.group(3) or "")
                 done = True
@@ -169,12 +169,12 @@ class TestCandidates(_Install):
         self.assertIn(("mmu_leds unit0", "logo_effect"), self.reasons(analysis))
 
     def test_value_that_changes_another_rendered_value_is_reported(self):
-        # The LED chain length defaults from the gate count
+        # The gate count also adds per-gate options
         self.edit("mmu_hardware_unit0.cfg", "num_gates", "6", section="mmu_unit unit0")
         analysis = self.analyse()
         self.assertNotIn("PARAM_NUM_GATES", self.by_symbol(analysis))
         reason = self.reasons(analysis)[("mmu_unit unit0", "num_gates")]
-        self.assertTrue(reason.startswith("would also change") and "PARAM_CHAIN_COUNT" in reason, reason)
+        self.assertTrue(reason.startswith("would also change ["), reason)
 
     def test_string_literal_value_is_decoded(self):
         self.edit("mmu_macro_vars.cfg", "variable_user_pre_initialize_extension", '"MY_INIT"')
@@ -282,7 +282,41 @@ class TestApply(_Install):
                                         "variable_user_pre_initialize_extension").strip(), '"MY_INIT"')
 
 
-class TestReview(_Install):
+class TestPins(_Install):
+    """Merge keeps a hand-edited pin, so importing it only brings menuconfig into line"""
+
+    def test_plain_pin_is_imported(self):
+        self.edit("mmu_hardware_unit0.cfg", "step_pin", "unit0:PA9", section="mmu_stepper unit0_gear")
+        analysis = self.analyse()
+        candidate = self.by_symbol(analysis)["PIN_GEAR_STEP"]
+        self.assertEqual((candidate.kconfig_value, candidate.overwritten), ("unit0:PA9", False))
+        analysis.apply([candidate])
+        self.assertIn('\nCONFIG_PIN_GEAR_STEP="unit0:PA9"\n', self.saved())
+        hardware = self.merge_build("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        self.assertEqual(hardware.get("mmu_stepper unit0_gear", "step_pin").strip(), "unit0:PA9")
+
+    def test_per_gate_pin_maps_to_its_gate(self):
+        self.edit("mmu_hardware_unit0.cfg", "mmu_entry_switch_pin_1", "^unit0:PA10", section="mmu_sensors unit0")
+        candidate = self.by_symbol(self.analyse())["PIN_ENTRY_SENSOR_1"]
+        self.assertEqual(candidate.locations, [("mmu_sensors unit0", "mmu_entry_switch_pin_1")])
+
+    def test_invalid_pin_is_kept_not_listed(self):
+        self.edit("mmu_hardware_unit0.cfg", "dir_pin", "foo bar", section="mmu_stepper unit0_gear")
+        analysis = self.analyse()
+        self.assertEqual((analysis.candidates, analysis.blocked), ([], []))
+        self.assertEqual([(key, reason) for key, _, reason in analysis.kept],
+                         [(("mmu_stepper unit0_gear", "dir_pin"), "rejected by menuconfig's validation")])
+
+    def test_pin_that_switches_other_config_is_kept(self):
+        # Without a diag pin the template drops the gear steppers' extra_endstops
+        self.edit("mmu_hardware_unit0.cfg", "diag_pin", "", section="tmc2209 mmu_stepper unit0_gear")
+        analysis = self.analyse()
+        self.assertEqual(analysis.candidates, [])
+        reason = analysis.kept[0][2]
+        self.assertTrue(reason.startswith("would also change [mmu_stepper unit0_gear] extra_endstops"), reason)
+
+
+class TestCli(_Install):
 
     def setUp(self):
         super().setUp()
@@ -290,18 +324,34 @@ class TestReview(_Install):
         self.edit("mmu_parameters_unit0.cfg", "gear_unload_speed", "88")
         self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")
         self.edit("mmu_hardware_unit0.cfg", "toolhead", "other", section="mmu_unit unit0")
-        self.analysis = self.analyse()
+        self.edit("mmu_hardware_unit0.cfg", "dir_pin", "foo bar", section="mmu_stepper unit0_gear")
+        self.report = os.path.join(self.tmp.name, "report")
 
-    def review(self, *answers, verbose=False, env=None):
+    def run_cli(self, *args, env=None):
         out = io.StringIO()
-        with mock.patch("builtins.input", side_effect=list(answers)), \
-                mock.patch.dict(os.environ, env or {}), contextlib.redirect_stdout(out):
-            proceed = cfg_import.review(self.analysis, verbose, out=out)
-        return proceed, out.getvalue()
+        with contextlib.redirect_stdout(out), cfg._env(env or self.env), cfg._chdir(cfg.INSTALLER):
+            status = cfg_import.main(list(args))
+        return status, out.getvalue()
 
-    def test_summary_lists_edits_by_file_and_section(self):
-        proceed, out = self.review("y")
-        self.assertTrue(proceed)
+    def report_pass(self, kconfig=None, env=None):
+        return self.run_cli("--kconfig", kconfig or self.kconfig, "--config-home", self.home,
+                            "--report", self.report, env=env)
+
+    def show(self, verbose=False):
+        out = io.StringIO()
+        status = cfg_import.show(self.report, verbose, out=out)
+        return status, out.getvalue()
+
+    def test_report_writes_nothing_to_menuconfig(self):
+        before = self.saved()
+        self.assertEqual(self.report_pass()[0], cfg_import.EXIT_NOTHING)
+        self.assertEqual(self.saved(), before)
+        self.assertEqual(len(cfg_import.read_report(self.report)), 1)
+
+    def test_show_lists_edits_by_file_and_section(self):
+        self.report_pass()
+        status, out = self.show()
+        self.assertEqual(status, cfg_import.EXIT_SHOWN)
         self.assertIn(
             "These manual .cfg edits will be imported into menuconfig:\n"
             "From mmu_macro_vars.cfg:\n"
@@ -317,56 +367,57 @@ class TestReview(_Install):
             "From mmu_hardware_unit0.cfg:\n"
             "[mmu_unit unit0]\n"
             "toolhead: other\n", out)
+        self.assertNotIn("dir_pin", out)
 
-    def test_verbose_summary_says_what_each_value_replaces(self):
-        _, out = self.review("y", verbose=True)
+    def test_verbose_show_says_what_each_value_replaces(self):
+        self.report_pass()
+        _, out = self.show(verbose=True)
         self.assertIn("gear_load_speed: 123 (was 100; PARAM_GEAR_LOAD_SPEED)\n", out)
         self.assertIn("variable_home_mmu: True (was False; VAR_SOFTWARE_HOME_MMU, set by BOOL_SOFTWARE_HOME_MMU)\n",
                       out)
         self.assertIn("toolhead: other (not a plain menuconfig value)\n", out)
+        self.assertIn("These manual .cfg edits stay in the .cfg files but can't be imported into menuconfig:\n"
+                      "From mmu_hardware_unit0.cfg:\n"
+                      "[mmu_stepper unit0_gear]\n"
+                      "dir_pin: foo bar (rejected by menuconfig's validation)\n", out)
 
-    def test_declining_or_end_of_input_imports_nothing(self):
-        self.assertFalse(self.review("n")[0])
-        self.assertFalse(self.review(EOFError())[0])
-
-    def test_yes_flag_answers_the_prompt(self):
-        proceed, out = self.review(env={"F_YES": "y"})
-        self.assertTrue(proceed)
-        self.assertIn("Proceed (y/n)? y", out)
-
-    def main(self, *answers):
-        out = io.StringIO()
-        with mock.patch("builtins.input", side_effect=list(answers)), contextlib.redirect_stdout(out), \
-                cfg._env(self.env), cfg._chdir(cfg.INSTALLER):
-            status = cfg_import.main(["--kconfig", self.kconfig, "--config-home", self.home])
+    def test_apply_imports_what_was_reported(self):
+        self.report_pass()
+        status, out = self.run_cli("--kconfig", self.kconfig, "--apply", self.report)
         self.assertEqual(status, cfg_import.EXIT_NOTHING)
-        return out.getvalue()
-
-    def test_main_imports_every_listed_value(self):
-        self.assertIn("Imported 3 value(s)", self.main("y"))
+        self.assertIn("Imported 3 value(s)", out)
         self.assertIn("\nCONFIG_PARAM_GEAR_LOAD_SPEED=123\n", self.saved())
         self.assertIn("\nCONFIG_PARAM_GEAR_UNLOAD_SPEED=88\n", self.saved())
         self.assertIn("\nCONFIG_BOOL_SOFTWARE_HOME_MMU=y\n", self.saved())
 
-    def test_main_declined_leaves_the_config_alone(self):
+    def test_apply_ignores_other_files_entries(self):
+        self.report_pass()
+        other = os.path.join(self.tmp.name, ".mmu_config_other")
+        with open(other, "w") as f:
+            f.write(self.saved())
         before = self.saved()
-        self.assertIn("Nothing imported", self.main("n"))
+        self.assertEqual(self.run_cli("--kconfig", other, "--apply", self.report)[1], "")
         self.assertEqual(self.saved(), before)
 
-    def test_main_fails_open(self):
+    def test_nothing_to_show_asks_nothing(self):
+        with open(self.report, "w") as f:
+            f.write('{"kconfig": "/x", "imported": [], "blocked": [], "kept": [], "settings": []}\n')
+        self.assertEqual(self.show(), (cfg_import.EXIT_NOTHING, ""))
+
+    def test_failed_report_fails_open(self):
         before = self.saved()
-        err = io.StringIO()
-        with mock.patch.object(cfg_import, "Analysis", side_effect=RuntimeError("boom")), \
-                contextlib.redirect_stderr(err):
-            status = cfg_import.main(["--kconfig", self.kconfig, "--config-home", self.home])
-        self.assertEqual(status, cfg_import.EXIT_FAILED)
-        self.assertIn("continuing with Merge", err.getvalue())
+        with mock.patch.object(cfg_import, "Analysis", side_effect=RuntimeError("boom")):
+            self.assertEqual(self.report_pass()[0], cfg_import.EXIT_FAILED)
+        status, out = self.show()
+        self.assertEqual(status, cfg_import.EXIT_NOTHING)
+        self.assertIn("continuing with Merge", out)
         self.assertEqual(self.saved(), before)
 
-    def test_main_without_an_install_does_nothing(self):
+    def test_report_without_an_install_does_nothing(self):
         empty = os.path.join(self.tmp.name, "empty")
-        self.assertEqual(cfg_import.main(["--kconfig", self.kconfig, "--config-home", empty]),
-                         cfg_import.EXIT_NOTHING)
+        status, _ = self.run_cli("--kconfig", self.kconfig, "--config-home", empty, "--report", self.report)
+        self.assertEqual(status, cfg_import.EXIT_NOTHING)
+        self.assertFalse(os.path.exists(self.report))
 
 
 class TestMultiUnit(_Install):
@@ -413,6 +464,20 @@ class TestMultiUnit(_Install):
         candidates = self.analyse(self.unit_kconfig("unit1"), self.unit_envs["unit1"]).candidates
         self.assertEqual([(c.sym_name, c.locations) for c in candidates],
                          [("PARAM_GEAR_LOAD_SPEED", [("mmu_unit_parameters unit1", "gear_load_speed")])])
+
+    def test_one_summary_covers_every_unit(self):
+        self.edit("mmu_parameters_unit1.cfg", "gear_load_speed", "123")
+        self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")
+        report = os.path.join(self.tmp.name, "report")
+        for kconfig, env in [(self.kconfig, self.env)] + \
+                [(self.unit_kconfig(u), self.unit_envs[u]) for u in self.UNITS]:
+            with cfg._env(env), cfg._chdir(cfg.INSTALLER):
+                cfg_import.main(["--kconfig", kconfig, "--config-home", self.home, "--report", report])
+        out = io.StringIO()
+        self.assertEqual(cfg_import.show(report, out=out), cfg_import.EXIT_SHOWN)
+        self.assertEqual(out.getvalue().count("will be imported into menuconfig"), 1)
+        self.assertIn("From mmu_macro_vars.cfg:", out.getvalue())
+        self.assertIn("From mmu_parameters_unit1.cfg:", out.getvalue())
 
     def test_shared_macro_variable_lands_in_the_top_level(self):
         self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")

@@ -39,8 +39,8 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   # Never probe for menuconfig or uninstall and only if KCONFIG exists
   # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
   # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
-  # the file picker in test/select.py, and 'kconfig_import' asks before importing
-  ifeq ($(strip $(filter menuconfig uninstall variables fix_links console test plot_sync kconfig_import,$(MAKECMDGOALS))),)
+  # the file picker in test/select.py
+  ifeq ($(strip $(filter menuconfig uninstall variables fix_links console test plot_sync,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -756,7 +756,10 @@ olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"
 
-# Merge mode: offer values hand edited in the installed .cfg files back to menuconfig.
-# A unit's config has no paths, so install.sh passes the top level's in HH_CONFIG_HOME
+# Merge mode: report values hand edited in the installed .cfg files to HH_IMPORT_REPORT,
+# or with HH_IMPORT_APPLY import those reported. A unit's config has no paths, so
+# install.sh passes the top level's in HH_CONFIG_HOME
 kconfig_import: | python_deps
-	-$(Q)$(PY) -m installer.cfg_import $(V) --kconfig "$(KCONFIG_CONFIG)" --config-home "$(or $(HH_CONFIG_HOME),$(KLIPPER_CONFIG_HOME))"
+	-$(Q)$(PY) -m installer.cfg_import $(V) --kconfig "$(KCONFIG_CONFIG)" \
+		--config-home "$(or $(HH_CONFIG_HOME),$(KLIPPER_CONFIG_HOME))" \
+		$(if $(HH_IMPORT_APPLY),--apply,--report) "$(HH_IMPORT_REPORT)"

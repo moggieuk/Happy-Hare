@@ -203,14 +203,37 @@ set_units_restructure() {
 }
 
 # Merge applies every value menuconfig holds, so first import values that were hand edited
-# in the .cfg files, after showing them (-y answers the prompt)
+# in the .cfg files. Every Kconfig file reports its edits, they're shown together and the
+# user confirms once (-y answers), then each file imports what it reported. Declining
+# stops the install before anything is written
 offer_cfg_import() {
     [ "${F_CFG_UPGRADE_MODE:-}" = merge ] || return 0
 
-    export HH_CONFIG_HOME="${CONFIG_KLIPPER_CONFIG_HOME:-}"
+    HH_IMPORT_REPORT=$(mktemp -t hh_import.XXXXXX)
+    export HH_IMPORT_REPORT HH_CONFIG_HOME="${CONFIG_KLIPPER_CONFIG_HOME:-}"
     run_kconfig_top kconfig_import n
     run_kconfig_units kconfig_import n
-    unset HH_CONFIG_HOME
+
+    import_status=0
+    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH:-}" \
+        "${INSTALLER_PY:-python3}" -m installer.cfg_import ${V:-} --show "${HH_IMPORT_REPORT}" || import_status=$?
+
+    if [ "${import_status}" -eq 10 ]; then
+        # prompt_yn returns 0 for no
+        if prompt_yn "Proceed"; then
+            rm -f "${HH_IMPORT_REPORT}"
+            echo "${C_WARNING}Merge cancelled, nothing was changed. Re-run './install.sh -i' and choose Refresh (1)" \
+                "to keep your .cfg edits as they are, or Replace (2) to rebuild them from menuconfig${C_OFF}"
+            exit 1
+        fi
+        export HH_IMPORT_APPLY=y
+        run_kconfig_top kconfig_import n
+        run_kconfig_units kconfig_import n
+        unset HH_IMPORT_APPLY
+    fi
+
+    rm -f "${HH_IMPORT_REPORT}"
+    unset HH_IMPORT_REPORT HH_CONFIG_HOME
 }
 
 # The name a single unit has before menuconfig (unit0 when there is no config
@@ -1002,8 +1025,9 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "   This will apply the settings from menuconfig to your .cfg files but keep other changes you"
     echo "   made directly to them, such as carefully tweaked hardware configuration. Before menuconfig"
     echo "   opens, any simple setting you changed directly in a .cfg file is copied into menuconfig, so"
-    echo "   your change isn't lost. You'll see what will be copied and be asked to confirm. This is"
-    echo "   useful if you manage most settings via menuconfig but have also edited some .cfg files"
+    echo "   your change isn't lost. You'll see what will be copied and be asked to confirm; if you"
+    echo "   don't, the install stops without changing anything. This is useful if you manage most"
+    echo "   settings via menuconfig but have also edited some .cfg files"
     echo
     echo "(Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
     echo

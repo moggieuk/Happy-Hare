@@ -1,12 +1,17 @@
 # Happy Hare MMU Software
 #
-# Offer values hand edited in the installed .cfg files back to menuconfig before a
-# Merge install. Merge applies every PARAM_/VAR_ value saved in .mmu_config, so without
-# this a value tuned only in a .cfg file reverts to the older value menuconfig holds.
+# Import values hand edited in the installed .cfg files into menuconfig before a Merge
+# install. Merge applies every PARAM_/VAR_ value saved in .mmu_config, so without this a
+# value tuned only in a .cfg file reverts to the older value menuconfig holds. Values Merge
+# keeps, such as pins, are imported too so menuconfig matches the .cfg files.
 #
 # Only a template line whose whole value is one symbol can be traced back to it, and
 # only a symbol menuconfig shows can hold a user value. Everything else Merge would
-# overwrite is listed so the user knows
+# overwrite is listed so the user knows.
+#
+# Each Kconfig file needs its own parse environment, so install.sh runs this once per file
+# to --report, shows the combined report with --show and asks once, then runs it once per
+# file again to --apply what was shown
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
@@ -14,6 +19,7 @@
 import argparse
 import ast
 import glob
+import json
 import os
 import re
 import sys
@@ -29,12 +35,17 @@ UNIT_TEMPLATES = ["config/base/mmu_hardware.cfg", "config/base/mmu_parameters.cf
 
 EXIT_NOTHING = 0
 EXIT_FAILED = 2
+EXIT_SHOWN = 10
 
-# "option: [[SYMBOL]]" or "option: [[SYMBOL|klipper_string_literal]]", any trailing comment
+# One symbol as the whole value, any trailing comment: "option: [[SYMBOL]]",
+# "option: [[SYMBOL|klipper_string_literal]]" or a per-gate "option_[[i]]: [[ (SYMBOL_|d)[i] ]]"
+_SYMBOL = r"(?:PARAM|VAR|PIN)_[A-Z0-9_]+"
 _PLAIN_REF = re.compile(
-    r"^(?P<head>[A-Za-z_][A-Za-z0-9_]*\s*[:=]\s*)"
-    r"\[\[\s*(?P<sym>(?:PARAM|VAR)_[A-Z0-9_]+)\s*(?P<literal>\|\s*klipper_string_literal\s*)?\]\]"
-    r"(?P<tail>.*)$")
+    r"^(?P<head>[A-Za-z_][A-Za-z0-9_]*(?:\[\[[^\]]*\]\])?\s*[:=]\s*)"
+    r"(?P<value>\[\[\s*(?:"
+    r"(?P<sym>%s)\s*(?P<literal>\|\s*klipper_string_literal\s*)?"
+    r"|\(\s*(?P<array>%s_)\s*\|\s*d\s*\)\s*\[(?P<index>[^\]]+)\]\s*"
+    r")\]\])(?P<tail>.*)$" % (_SYMBOL, _SYMBOL))
 _MARKER = re.compile(r"@@HHSYM (\S+) ([01])@@")
 _SECTION = re.compile(r"^\[([^\]]+)\]")
 _OPTION = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*[:=]")
@@ -52,6 +63,7 @@ class Candidate(object):
         self.set_name = None                    # The symbol menuconfig sets: this one, its toggle or choice member
         self.set_key = None                     # What can only take one value: set_name, or the choice
         self.kconfig_value = None
+        self.overwritten = True                 # False when Merge keeps the .cfg value anyway
 
     def note(self):
         """Verbose detail: the value it replaces and the symbol that holds it"""
@@ -89,9 +101,10 @@ def mark_template(text):
     for line in text.split("\n"):
         m = _PLAIN_REF.match(line)
         if m:
-            line = "%s[[%s%s]]@@HHSYM %s %d@@%s" % (
-                m.group("head"), m.group("sym"), m.group("literal") or "",
-                m.group("sym"), 1 if m.group("literal") else 0, m.group("tail"))
+            # An array element's marker renders its index into the symbol name
+            sym = m.group("sym") or "%s[[ %s ]]" % (m.group("array"), m.group("index").strip())
+            line = "%s%s@@HHSYM %s %d@@%s" % (
+                m.group("head"), m.group("value"), sym, 1 if m.group("literal") else 0, m.group("tail"))
         out.append(line)
     return "\n".join(out)
 
@@ -148,16 +161,6 @@ def kconfig_value(sym, text, literal):
     return text
 
 
-def rendered_value(sym, literal):
-    """What the template renders for the symbol's current value"""
-    value = sym.str_value
-    if sym.orig_type == kconfiglib.BOOLINT:
-        value = "1" if value in ("1", "y") else "0"
-    elif sym.orig_type == kconfiglib.BOOL:
-        value = str(value == "y")
-    return build.klipper_string_literal(value) if literal else value
-
-
 HIDDEN = "not shown in menuconfig"
 
 
@@ -179,12 +182,13 @@ def why_not_settable(sym, value):
 
 
 class Analysis(object):
-    """Hand edits a Merge install would overwrite, split into importable candidates and the rest"""
+    """Hand edits menuconfig doesn't hold, split into importable candidates and the rest"""
 
     def __init__(self, kconfig_path, installed_files):
         self.kconfig_path = kconfig_path
         self.candidates = []
-        self.blocked = []                      # [((section, option), cfg value, reason)]
+        self.blocked = []                      # Merge overwrites these: [((section, option), value, reason)]
+        self.kept = []                         # Merge keeps these in the .cfg files, same shape
 
         self.kconf = build.KConfig(kconfig_path)
         saved = self.kconf.as_dict()
@@ -200,16 +204,16 @@ class Analysis(object):
         hhcfg = build.HHConfig(installed_files)
         build.upgrade_hhconfig(hhcfg, "existing config")
 
-        params = dict(saved)
-        params["PARAM_TOTAL_NUM_GATES"] = total_gates(kconfig_path, saved)
-        env = build._jinja_env(REPO_ROOT)
+        self.templates = templates_for(saved)
+        self.total_gates = total_gates(kconfig_path, saved)
+        self.env = build._jinja_env(REPO_ROOT)
 
-        rendered = ConfigBuilder()
+        rendered = self._render(saved)
         symbols = {}
-        for template in templates_for(saved):
-            rendered.read_buf(env.get_template(template).render(params))
+        for template in self.templates:
             with open(os.path.join(REPO_ROOT, template), encoding="utf-8") as f:
-                symbols.update(symbol_lines(env.from_string(mark_template(f.read())).render(params)))
+                marked = mark_template(f.read())
+            symbols.update(symbol_lines(self.env.from_string(marked).render(self._params(saved))))
 
         excluded_params, excluded_vars = build.merge_exclusions(saved)
         excluded_vars = set(excluded_vars)
@@ -220,7 +224,6 @@ class Analysis(object):
         for key, ref in symbols.items():
             if ref and rendered.has_option(*key) and hhcfg.has_option(*key):
                 uses.setdefault(ref, []).append(key)
-        self.mapped = sorted(uses)
 
         edited = {}
         self.order = {}
@@ -229,34 +232,64 @@ class Analysis(object):
                 key = (section, option)
                 self.order[key] = len(self.order)
                 if option == "gcode" or not hhcfg.has_option(*key) or \
-                        (section.split(" ", 1)[0], option) in build.KCONFIG_OWNED_OPTIONS or \
-                        not build.kconfig_wins(section, option, excluded_params, excluded_vars):
+                        (section.split(" ", 1)[0], option) in build.KCONFIG_OWNED_OPTIONS:
                     continue
                 ref = symbols.get(key)
-                ours, theirs = rendered.get(*key), hhcfg.get(*key)
+                overwritten = build.kconfig_wins(section, option, excluded_params, excluded_vars)
+                if ref is None and not overwritten:
+                    continue
+                ours, theirs = rendered.get(*key) or "", hhcfg.get(*key) or ""
                 if same_value(ours, theirs, ref[1] if ref else False):
                     continue
                 if ref is None:
                     self.blocked.append((key, theirs, "not a plain menuconfig value"))
                 else:
-                    edited.setdefault(ref, []).append((key, ours, theirs))
+                    edited.setdefault(ref, []).append((key, ours, theirs, overwritten))
 
         # Recomputed defaults are what menuconfig shows and saves. Trial values are judged
         # here, so kconfiglib's warnings about rejecting them are only noise
         self.kconf.load_config(kconfig_path, filter_defaults=True)
         self.kconf.warn = False
+        self.live = self._options(self._render(self.kconf.as_dict()))
 
         for (sym_name, literal), edits in sorted(edited.items()):
             locations = uses[(sym_name, literal)]
-            cfg_values = {hhcfg.get(*key).strip() for key in locations}
-            _, ours, theirs = edits[0]
+            overwritten = any(e[3] for e in edits)
+            cfg_values = {(hhcfg.get(*key) or "").strip() for key in locations}
+            _, ours, theirs, _ = edits[0]
             if len(cfg_values) > 1:
-                for key, _, value in edits:
-                    self.blocked.append((key, value, "%s is set differently elsewhere" % sym_name))
+                for key, _, value, _ in edits:
+                    self._block(key, value, "%s is set differently elsewhere" % sym_name, overwritten)
                 continue
-            self._consider(Candidate(sym_name, literal, locations, ours.strip(), theirs.strip()))
+            candidate = Candidate(sym_name, literal, locations, ours.strip(), theirs.strip())
+            candidate.overwritten = overwritten
+            self._consider(candidate)
 
         self._drop_conflicts()
+
+    def _params(self, values):
+        params = dict(values)
+        params["PARAM_TOTAL_NUM_GATES"] = self.total_gates
+        return params
+
+    def _render(self, values):
+        rendered = ConfigBuilder()
+        for template in self.templates:
+            rendered.read_buf(self.env.get_template(template).render(self._params(values)))
+        return rendered
+
+    @staticmethod
+    def _options(rendered):
+        """{(section, option): value}, with None for each section, for comparing renders"""
+        found = {}
+        for section in rendered.sections(scope="included"):
+            found[(section, None)] = None
+            for option in rendered.options(section):
+                found[(section, option)] = (rendered.get(section, option) or "").strip()
+        return found
+
+    def _block(self, key, value, reason, overwritten):
+        (self.blocked if overwritten else self.kept).append((key, value, reason))
 
     def _drop_conflicts(self):
         """A toggle or choice can't take two values, so neither edit that needs it can be imported"""
@@ -266,7 +299,8 @@ class Analysis(object):
         for candidate in [c for c in self.candidates if len(wanted[c.set_key]) > 1]:
             self.candidates.remove(candidate)
             for key in candidate.locations:
-                self.blocked.append((key, candidate.cfg_value, "%s is needed two ways" % candidate.set_key))
+                self._block(key, candidate.cfg_value, "%s is needed two ways" % candidate.set_key,
+                            candidate.overwritten)
 
     def _consider(self, candidate):
         sym = self.kconf.syms[candidate.sym_name]
@@ -274,7 +308,7 @@ class Analysis(object):
         reason = why_not_settable(sym, value)
         setting = None
         if reason is None:
-            ok = self._reproduces(sym, value, sym, candidate)
+            ok = self._reproduces(sym, value, candidate)
             setting = (sym, value) if ok is True else None
             reason = None if ok is True else {
                 False: "outside the range menuconfig allows",
@@ -293,36 +327,43 @@ class Analysis(object):
             self.candidates.append(candidate)
         else:
             for key in candidate.locations:
-                self.blocked.append((key, candidate.cfg_value, reason))
+                self._block(key, candidate.cfg_value, reason, candidate.overwritten)
 
-    def _reproduces(self, set_sym, value, sym, candidate):
+    def _reproduces(self, set_sym, value, candidate):
         """
-        True if setting set_sym to value makes sym render the .cfg value. None if the value
-        can't be set, or the reason when it would also change another value Merge renders
+        True if setting set_sym to value renders the .cfg value and changes nothing else.
+        None if the value can't be set, False if it doesn't render, or the reason when it
+        would also change another option or section
         """
-        others = [ref for ref in self.mapped if ref[0] != sym.name]
-        before = [self._value(ref) for ref in others]
         if not set_sym.set_value(value):
             return None
-        ok = same_value(rendered_value(sym, candidate.literal), candidate.cfg_value, candidate.literal)
-        changed = [ref[0] for ref, old in zip(others, before) if self._value(ref) != old]
+        # kconfiglib keeps a value outside the symbol's range but saves the clamped one
+        if set_sym.orig_type in (kconfiglib.BOOL, kconfiglib.BOOLINT, kconfiglib.TRISTATE):
+            honoured = set_sym.tri_value == {"y": 2, "1": 2, "m": 1, "n": 0, "0": 0}.get(value, value)
+        else:
+            honoured = set_sym.str_value == value
+        after = self._options(self._render(self.kconf.as_dict()))
         self.kconf.load_config(self.kconfig_path, filter_defaults=True)
-        if ok and changed:
-            return "would also change %s" % ", ".join(changed)
-        return ok
+        if not honoured:
+            return False
 
-    def _value(self, ref):
-        return rendered_value(self.kconf.syms[ref[0]], ref[1])
+        ok = all(same_value(after.get(key), candidate.cfg_value, candidate.literal) for key in candidate.locations)
+        changed = [key for key in sorted(set(after) | set(self.live), key=str)
+                   if key not in candidate.locations and after.get(key) != self.live.get(key)]
+        if ok and changed:
+            return "would also change %s" % ", ".join(
+                "[%s]" % s if o is None else "[%s] %s" % (s, o) for s, o in changed[:2])
+        return ok
 
     def _conditions(self, sym):
         return {s for _, cond in sym.defaults for s in kconfiglib.expr_items(cond)
                 if isinstance(s, kconfiglib.Symbol)}
 
-    def _through(self, sym, candidate, trials, what):
+    def _through(self, candidate, trials, what):
         """((symbol, value), None) for the first trial that gives the .cfg value, else (None, reason)"""
         side_effect = None
         for set_sym, value in trials:
-            ok = self._reproduces(set_sym, value, sym, candidate)
+            ok = self._reproduces(set_sym, value, candidate)
             if ok is True:
                 return (set_sym, value), None
             if isinstance(ok, str):
@@ -337,7 +378,7 @@ class Analysis(object):
                    and why_not_settable(s, "y") is None]
         if len(toggles) != 1:
             return None, None
-        return self._through(sym, candidate, [(toggles[0], v) for v in ("y", "n")],
+        return self._through(candidate, [(toggles[0], v) for v in ("y", "n")],
                              "setting of %s" % toggles[0].name)
 
     def _through_choice(self, sym, candidate):
@@ -351,39 +392,44 @@ class Analysis(object):
             return None, None
         # A *_PREVIOUS member only re-offers the saved value
         members = [m for m in choice.syms if m.visibility and not _PREVIOUS_MEMBER.search(m.name)]
-        return self._through(sym, candidate, [(m, "y") for m in members], "%s option" % choice.name)
+        return self._through(candidate, [(m, "y") for m in members], "%s option" % choice.name)
 
     def apply(self, accepted):
-        """Save the accepted candidates as explicit menuconfig values"""
-        for candidate in accepted:
-            self.kconf.syms[candidate.set_name].set_value(candidate.kconfig_value)
-        self.kconf.write_config(self.kconfig_path)
+        apply_settings(self.kconfig_path, [[c.set_name, c.kconfig_value] for c in accepted], self.kconf)
+
+    def report(self):
+        """The JSON-ready summary --show prints and the settings --apply makes"""
+        def rows(entries):
+            return [[self.origin.get(key, "?"), key[0], key[1], value.strip(), note]
+                    for key, value, note in sorted(entries, key=lambda e: self.order.get(e[0], 0))]
+        return {
+            "kconfig": os.path.abspath(self.kconfig_path),
+            "imported": rows([(key, c.cfg_value, c.note()) for c in self.candidates for key in c.locations]),
+            "blocked": rows(self.blocked),
+            "kept": rows(self.kept),
+            "settings": [[c.set_name, c.kconfig_value] for c in self.candidates],
+        }
+
+
+def apply_settings(kconfig_path, settings, kconf=None):
+    """Save menuconfig values as explicit settings, keeping every other value as it was saved"""
+    kconf = kconf or build.KConfig(kconfig_path)
+    kconf.load_config(kconfig_path, filter_defaults=True)
+    for name, value in settings:
+        kconf.syms[name].set_value(value)
+    kconf.write_config(kconfig_path)
 
 
 def installed_files(config_home):
     return sorted(glob.glob(os.path.join(config_home, "mmu", "base", "*.cfg")))
 
 
-def ask(question):
-    """True for y; end of input answers n, and -y answers y"""
-    if os.environ.get("F_YES"):
-        print("%s (y/n)? y" % question)
-        return True
-    while True:
-        try:
-            answer = input("%s (y/n)? " % question).strip().lower()
-        except EOFError:
-            print()
-            return False
-        if answer[:1] in ("y", "n"):
-            return answer[:1] == "y"
-
-
-def show_edits(heading, rows, out):
-    """Print (file, section, line) rows grouped by file then section"""
+def show_edits(heading, rows, verbose, out):
+    """Print report rows grouped by .cfg file, then section"""
     print(heading, file=out)
     grouped = {}
-    for name, section, line in rows:
+    for name, section, option, value, note in rows:
+        line = "%s: %s" % (option, value) + (" (%s)" % note if verbose else "")
         grouped.setdefault(name, {}).setdefault(section, []).append(line)
     for i, (name, sections) in enumerate(grouped.items()):
         if i:
@@ -396,55 +442,73 @@ def show_edits(heading, rows, out):
     print(file=out)
 
 
-def summary_rows(analysis, entries, verbose):
-    """(file, section, line) rows in rendered order from (key, value, note) entries"""
-    rows = []
-    for key, value, note in sorted(entries, key=lambda e: analysis.order.get(e[0], 0)):
-        line = "%s: %s" % (key[1], value.strip())
-        if verbose:
-            line += " (%s)" % note
-        rows.append((analysis.origin.get(key, "?"), key[0], line))
-    return rows
+def read_report(path):
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
 
 
-def review(analysis, verbose=False, out=None):
-    """Show what will be imported and what Merge will still overwrite. True to import"""
+def show(path, verbose=False, out=None):
+    """Print the combined report. EXIT_SHOWN if there is anything to confirm"""
     out = out or sys.stdout
-    if analysis.blocked:
-        show_edits("These manual .cfg edits can't be imported, so menuconfig will overwrite them:",
-                   summary_rows(analysis, analysis.blocked, verbose), out)
-    if not analysis.candidates:
-        return False
+    reports = read_report(path)
+    failed = [r for r in reports if r.get("failed")]
+    if failed:
+        for r in failed:
+            print("WARNING: couldn't check '%s' for .cfg edits to import (%s), continuing with Merge"
+                  % (os.path.basename(r["kconfig"]), r["failed"]), file=out)
+        return EXIT_NOTHING
 
-    entries = [(key, c.cfg_value, c.note()) for c in analysis.candidates for key in c.locations]
-    show_edits("These manual .cfg edits will be imported into menuconfig:",
-               summary_rows(analysis, entries, verbose), out)
-    return ask("Proceed")
+    # The import list comes last, straight above the prompt
+    sections = (
+        ("blocked", "These manual .cfg edits can't be imported, so menuconfig will overwrite them:", True),
+        ("kept", "These manual .cfg edits stay in the .cfg files but can't be imported into menuconfig:",
+         verbose),
+        ("imported", "These manual .cfg edits will be imported into menuconfig:", True),
+    )
+    for name, heading, wanted in sections:
+        rows = [row for r in reports for row in r[name]]
+        if rows and wanted:
+            show_edits(heading, rows, verbose, out)
+    return EXIT_SHOWN if any(r["imported"] or r["blocked"] for r in reports) else EXIT_NOTHING
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Import hand-edited .cfg values into menuconfig")
-    parser.add_argument("--kconfig", required=True)
-    parser.add_argument("--config-home", required=True)
+    parser.add_argument("--kconfig")
+    parser.add_argument("--config-home")
+    parser.add_argument("--report", metavar="FILE", help="append this Kconfig file's edits to FILE")
+    parser.add_argument("--apply", metavar="FILE", help="import this Kconfig file's edits listed in FILE")
+    parser.add_argument("--show", metavar="FILE", help="print the edits every Kconfig file reported")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
-    files = installed_files(os.path.expanduser(args.config_home))
-    if not files or not os.path.exists(args.kconfig):
+    if args.show:
+        return show(args.show, args.verbose)
+
+    kconfig = os.path.abspath(args.kconfig)
+    if args.apply:
+        settings = [s for r in read_report(args.apply) if r["kconfig"] == kconfig for s in r.get("settings", [])]
+        if settings:
+            try:
+                apply_settings(kconfig, settings)
+            except (Exception, SystemExit) as e:
+                print("WARNING: couldn't import the .cfg edits into '%s' (%s)" % (os.path.basename(kconfig), e),
+                      file=sys.stderr)
+                return EXIT_FAILED
+            print("Imported %d value(s) into '%s'" % (len(settings), os.path.basename(kconfig)))
         return EXIT_NOTHING
 
+    files = installed_files(os.path.expanduser(args.config_home or ""))
+    if not files or not os.path.exists(kconfig):
+        return EXIT_NOTHING
     try:
-        analysis = Analysis(args.kconfig, files)
-        if review(analysis, args.verbose):
-            analysis.apply(analysis.candidates)
-            print("Imported %d value(s) into '%s'" % (len(analysis.candidates), os.path.basename(args.kconfig)))
-        elif analysis.candidates:
-            print("Nothing imported, so Merge will overwrite these with the menuconfig values")
+        report = Analysis(kconfig, files).report()
+        status = EXIT_NOTHING
     except (Exception, SystemExit) as e:
-        print("WARNING: couldn't check the .cfg files for values to import (%s), continuing with Merge" % e,
-              file=sys.stderr)
-        return EXIT_FAILED
-    return EXIT_NOTHING
+        report, status = {"kconfig": kconfig, "failed": str(e)}, EXIT_FAILED
+    with open(args.report, "a", encoding="utf-8") as f:
+        f.write(json.dumps(report) + "\n")
+    return status
 
 
 if __name__ == "__main__":

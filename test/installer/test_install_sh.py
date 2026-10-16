@@ -591,22 +591,50 @@ class TestInstallSh(unittest.TestCase):
         """.format(status=status), stdin=stdin, env=env)
         return result.stdout
 
-    # offer_cfg_import() runs the import for the top level and every unit, in Merge only
-    def offer_import(self, **env):
+    # offer_cfg_import() has every Kconfig file report, shows the reports once and asks once,
+    # then has every file apply - or stops the install on "n"
+    def offer_import(self, show_status=10, stdin="", **env):
+        show = self.write(self.root / "fake-python", "#!/bin/sh\necho \"SHOW $*\"\nexit {}\n".format(show_status))
+        show.chmod(0o755)
         result = self.run_shell("""
-            run_kconfig_top() { echo "TOP $1 home=${HH_CONFIG_HOME:-}"; }
-            run_kconfig_units() { echo "UNITS $1 home=${HH_CONFIG_HOME:-}"; }
+            run_kconfig_top() { echo "TOP $1 apply=${HH_IMPORT_APPLY:-} home=${HH_CONFIG_HOME:-}"; }
+            run_kconfig_units() { echo "UNITS $1 apply=${HH_IMPORT_APPLY:-}"; }
             CONFIG_KLIPPER_CONFIG_HOME=/printer/config
-            offer_cfg_import
-            echo "AFTER home=${HH_CONFIG_HOME:-}"
-        """, env=env)
+            INSTALLER_PY=%s
+            status=0
+            ( offer_cfg_import; echo "AFTER report=${HH_IMPORT_REPORT:-} home=${HH_CONFIG_HOME:-}" ) || status=$?
+            echo "STATUS=$status"
+        """ % shlex.quote(str(show)), stdin=stdin, env=env)
         return result.stdout
 
-    def test_cfg_import_offered_in_merge(self):
-        out = self.offer_import(F_CFG_UPGRADE_MODE="merge")
-        self.assertIn("TOP kconfig_import home=/printer/config", out)
-        self.assertIn("UNITS kconfig_import home=/printer/config", out)
-        self.assertIn("AFTER home=\n", out)
+    def test_cfg_import_reports_shows_once_and_applies(self):
+        out = self.offer_import(stdin="y\n", F_CFG_UPGRADE_MODE="merge")
+        self.assertIn("TOP kconfig_import apply= home=/printer/config", out)
+        self.assertIn("UNITS kconfig_import apply=\n", out)
+        self.assertEqual(out.count("SHOW "), 1)
+        self.assertEqual(out.count("Proceed (y/n)?"), 1)
+        self.assertIn("TOP kconfig_import apply=y", out)
+        self.assertIn("UNITS kconfig_import apply=y", out)
+        self.assertIn("AFTER report= home=\n", out)
+        self.assertIn("STATUS=0", out)
+
+    def test_cfg_import_declined_stops_the_install(self):
+        out = self.offer_import(stdin="n\n", F_CFG_UPGRADE_MODE="merge")
+        self.assertIn("Merge cancelled, nothing was changed", out)
+        self.assertNotIn("apply=y", out)
+        self.assertNotIn("AFTER", out)
+        self.assertIn("STATUS=1", out)
+
+    def test_cfg_import_with_nothing_to_show_asks_nothing(self):
+        out = self.offer_import(show_status=0, F_CFG_UPGRADE_MODE="merge")
+        self.assertNotIn("Proceed", out)
+        self.assertNotIn("apply=y", out)
+        self.assertIn("STATUS=0", out)
+
+    def test_cfg_import_yes_flag_proceeds(self):
+        out = self.offer_import(F_CFG_UPGRADE_MODE="merge", F_YES="y")
+        self.assertIn("Proceed (y/n)? y", out)
+        self.assertIn("UNITS kconfig_import apply=y", out)
 
     def test_cfg_import_not_offered_outside_merge(self):
         for mode in ("refresh", "replace"):
