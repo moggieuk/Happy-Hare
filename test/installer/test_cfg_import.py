@@ -777,6 +777,17 @@ class TestMultiUnit(_MultiUnitInstall):
         self.assertIn("> mmu_macro_vars.cfg:", out.getvalue())
         self.assertIn("> mmu_parameters_unit1.cfg:", out.getvalue())
 
+    def test_report_says_which_file_it_is_checking(self):
+        report = os.path.join(self.tmp.name, "report")
+        said = []
+        for kconfig, env in [(self.kconfig, self.env)] + \
+                [(self.unit_kconfig(u), self.unit_envs[u]) for u in self.UNITS]:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), cfg._env(dict(env, **NO_COLOUR)), cfg._chdir(cfg.INSTALLER):
+                cfg_import.main(["--kconfig", kconfig, "--config-home", self.home, "--report", report])
+            said.append(out.getvalue())
+        self.assertEqual(said, ["  shared settings\n", "  unit 'unit0'\n", "  unit 'unit1'\n"])
+
     def test_shared_macro_variable_lands_in_the_top_level(self):
         self.edit("mmu_macro_vars.cfg", "variable_home_mmu", "True")
         self.assertEqual([c.sym_name for c in self.analyse().candidates], ["VAR_SOFTWARE_HOME_MMU"])

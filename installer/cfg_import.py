@@ -453,6 +453,14 @@ def show_edits(heading, rows, verbose, out):
         print(coloured("C_INFO", line), file=out)
 
 
+def progress():
+    """On a multi-unit install, which Kconfig file the report pass is checking"""
+    if os.getenv("F_MULTI_UNIT_ENTRY_POINT") == "y":
+        print(coloured("C_INFO", "  shared settings"), flush=True)
+    elif os.getenv("F_MULTI_UNIT") == "y":
+        print(coloured("C_INFO", "  unit '%s'" % os.getenv("UNIT_NAME", "")), flush=True)
+
+
 def read_report(path):
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
@@ -514,6 +522,7 @@ def main(argv=None):
     files = installed_files(os.path.expanduser(args.config_home or ""))
     if not files or not os.path.exists(kconfig):
         return EXIT_NOTHING
+    progress()
     status, analysis = EXIT_NOTHING, None
     try:
         analysis = Analysis(kconfig, files)

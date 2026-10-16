@@ -639,6 +639,17 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("AFTER report= home= baseline=y\n", out)
         self.assertIn("STATUS=0", out)
 
+    def test_refresh_says_what_it_is_doing_until_menuconfig_opens(self):
+        out = self.prepare_refresh(stdin="y\n", F_CFG_UPGRADE_MODE="refresh")
+        order = [out.index(text) for text in (
+            "Checking your .cfg files for values to import into menuconfig...\n",
+            "TOP kconfig_import apply= ",
+            "Importing them into menuconfig...\n",
+            "TOP kconfig_import apply=y ",
+            "UNITS kconfig_import apply=y",
+            "Opening menuconfig...\n")]
+        self.assertEqual(order, sorted(order))
+
     def test_refresh_declined_continues_without_importing(self):
         out = self.prepare_refresh(stdin="n\n", F_CFG_UPGRADE_MODE="refresh")
         self.assertIn("Not imported", out)
