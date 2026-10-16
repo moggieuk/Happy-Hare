@@ -1332,9 +1332,9 @@ class MmuServer:
             for f in items:
                 if str(f.get("color_hex") or "").upper() == color_hex:
                     return int(f["id"])
-            # The tag carries a colour that none of the existing filaments of this
+            # The tag carries a color that none of the existing filaments of this
             # material (+ vendor) has. Fall through and create a filament for it
-            # instead of attaching the spool to an unrelated colour.
+            # instead of attaching the spool to an unrelated color.
 
         # --- Create: tag data first, filling gaps from SpoolmanDB (Bambu) ---
         # Vendor is stored separately (vendor_id), so keep it OUT of the filament
