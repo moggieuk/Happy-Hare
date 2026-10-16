@@ -126,7 +126,32 @@ class TestCandidates(_Install):
         analysis = self.analyse()
         self.assertNotIn("VAR_SOFTWARE_HOME_MMU", self.by_symbol(analysis))
         self.assertEqual(self.reasons(analysis)[("gcode_macro _MMU_SOFTWARE_VARS", "variable_home_mmu")],
-                         cfg_import.HIDDEN)
+                         "no setting of BOOL_SOFTWARE_HOME_MMU gives this value")
+
+    def test_hidden_value_is_offered_through_its_choice(self):
+        self.edit("mmu.cfg", "log_file_level", "4")
+        candidate = self.by_symbol(self.analyse())["PARAM_LOG_FILE_LEVEL"]
+        self.assertEqual((candidate.set_name, candidate.kconfig_value), ("CHOICE_LOG_FILE_LEVEL_STEPPER", "y"))
+        self.assertEqual(candidate.set_key, "CHOICE_LOG_FILE_LEVEL")
+
+    def test_value_no_choice_option_gives_is_reported(self):
+        # -1 disables the log file, which the menuconfig list doesn't offer
+        self.edit("mmu.cfg", "log_file_level", "-1")
+        analysis = self.analyse()
+        self.assertNotIn("PARAM_LOG_FILE_LEVEL", self.by_symbol(analysis))
+        self.assertEqual(self.reasons(analysis)[("mmu_parameters", "log_file_level")],
+                         "no CHOICE_LOG_FILE_LEVEL option gives this value")
+
+    def test_one_choice_needed_two_ways_is_reported(self):
+        analysis = self.analyse()
+        for name, member, key in (("PARAM_A", "CHOICE_X_ONE", ("s", "a")), ("PARAM_B", "CHOICE_X_TWO", ("s", "b"))):
+            candidate = cfg_import.Candidate(name, False, [key], "0", "1")
+            candidate.set_name, candidate.set_key, candidate.kconfig_value = member, "CHOICE_X", "y"
+            analysis.candidates.append(candidate)
+        analysis._drop_conflicts()
+        self.assertEqual(analysis.candidates, [])
+        self.assertEqual(self.reasons(analysis), {("s", "a"): "CHOICE_X is needed two ways",
+                                                  ("s", "b"): "CHOICE_X is needed two ways"})
 
     def test_capability_flag_is_never_used_as_a_toggle(self):
         # PARAM_LOGO_EFFECT is hidden and its defaults are conditional on MMU_HAS_LEDS
@@ -230,6 +255,7 @@ class TestApply(_Install):
 
     def test_merge_keeps_imported_values(self):
         self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
+        self.edit("mmu.cfg", "log_file_level", "4")
         self.edit("mmu_macro_vars.cfg", "variable_user_pre_initialize_extension", '"MY_INIT"')
 
         reverted = self.merge_build("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
@@ -240,6 +266,9 @@ class TestApply(_Install):
 
         params = self.merge_build("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
         self.assertEqual(params.get("mmu_unit_parameters unit0", "gear_load_speed").strip(), "123")
+        self.assertIn("\nCONFIG_CHOICE_LOG_FILE_LEVEL_STEPPER=y\n", self.saved())
+        mmu = self.merge_build("config/base/mmu.cfg", "mmu.cfg")
+        self.assertEqual(mmu.get("mmu_parameters", "log_file_level").strip(), "4")
         macro_vars = self.merge_build("config/base/mmu_macro_vars.cfg", "mmu_macro_vars.cfg")
         self.assertEqual(macro_vars.get("gcode_macro _MMU_SOFTWARE_VARS",
                                         "variable_user_pre_initialize_extension").strip(), '"MY_INIT"')

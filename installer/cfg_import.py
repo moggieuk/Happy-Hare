@@ -39,6 +39,7 @@ _MARKER = re.compile(r"@@HHSYM (\S+) ([01])@@")
 _SECTION = re.compile(r"^\[([^\]]+)\]")
 _OPTION = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*[:=]")
 _NUM_GATES = re.compile(r"^CONFIG_PARAM_NUM_GATES=(\d+)")
+_PREVIOUS_MEMBER = re.compile(r"_PREVIOUS(_\d+)?$")
 
 
 class Candidate(object):
@@ -48,7 +49,8 @@ class Candidate(object):
         self.locations = locations              # [(section, option), ...]
         self.menuconfig_value = menuconfig_value
         self.cfg_value = cfg_value
-        self.set_name = None                    # The symbol menuconfig sets: this one, or its toggle
+        self.set_name = None                    # The symbol menuconfig sets: this one, its toggle or choice member
+        self.set_key = None                     # What can only take one value: set_name, or the choice
         self.kconfig_value = None
 
     def note(self):
@@ -254,14 +256,17 @@ class Analysis(object):
                 continue
             self._consider(Candidate(sym_name, literal, locations, ours.strip(), theirs.strip()))
 
-        # One toggle can't take two values
+        self._drop_conflicts()
+
+    def _drop_conflicts(self):
+        """A toggle or choice can't take two values, so neither edit that needs it can be imported"""
         wanted = {}
         for candidate in self.candidates:
-            wanted.setdefault(candidate.set_name, set()).add(candidate.kconfig_value)
-        for candidate in [c for c in self.candidates if len(wanted[c.set_name]) > 1]:
+            wanted.setdefault(candidate.set_key, set()).add((candidate.set_name, candidate.kconfig_value))
+        for candidate in [c for c in self.candidates if len(wanted[c.set_key]) > 1]:
             self.candidates.remove(candidate)
             for key in candidate.locations:
-                self.blocked.append((key, candidate.cfg_value, "%s is needed both ways" % candidate.set_name))
+                self.blocked.append((key, candidate.cfg_value, "%s is needed two ways" % candidate.set_key))
 
     def _consider(self, candidate):
         sym = self.kconf.syms[candidate.sym_name]
@@ -276,11 +281,15 @@ class Analysis(object):
                 None: "not a valid %s value" % kconfiglib.TYPE_TO_STR[sym.orig_type],
             }.get(ok, ok)
         elif reason == HIDDEN:
-            setting = self._through_toggle(sym, candidate)
-            reason = None if setting else reason
+            for through in (self._through_toggle, self._through_choice):
+                setting, why = through(sym, candidate)
+                if setting or why:
+                    reason = why
+                    break
 
         if reason is None:
             candidate.set_name, candidate.kconfig_value = setting[0].name, setting[1]
+            candidate.set_key = setting[0].choice.name if setting[0].choice else setting[0].name
             self.candidates.append(candidate)
         else:
             for key in candidate.locations:
@@ -305,21 +314,44 @@ class Analysis(object):
     def _value(self, ref):
         return rendered_value(self.kconf.syms[ref[0]], ref[1])
 
+    def _conditions(self, sym):
+        return {s for _, cond in sym.defaults for s in kconfiglib.expr_items(cond)
+                if isinstance(s, kconfiglib.Symbol)}
+
+    def _through(self, sym, candidate, trials, what):
+        """((symbol, value), None) for the first trial that gives the .cfg value, else (None, reason)"""
+        side_effect = None
+        for set_sym, value in trials:
+            ok = self._reproduces(set_sym, value, sym, candidate)
+            if ok is True:
+                return (set_sym, value), None
+            if isinstance(ok, str):
+                side_effect = side_effect or ok
+        return None, side_effect or "no %s gives this value" % what
+
     def _through_toggle(self, sym, candidate):
-        """(toggle, value) for a hidden symbol whose defaults follow one menuconfig toggle"""
+        """For a hidden symbol whose defaults follow one menuconfig toggle; (None, None) if none do"""
         # Only a BOOL_ partner: a capability flag in the same condition switches hardware
-        toggles = {
-            s for _, cond in sym.defaults for s in kconfiglib.expr_items(cond)
-            if isinstance(s, kconfiglib.Symbol) and s.name.startswith("BOOL_")
-            and s.orig_type in (kconfiglib.BOOL, kconfiglib.BOOLINT) and why_not_settable(s, "y") is None
-        }
+        toggles = [s for s in self._conditions(sym)
+                   if s.name.startswith("BOOL_") and s.orig_type in (kconfiglib.BOOL, kconfiglib.BOOLINT)
+                   and why_not_settable(s, "y") is None]
         if len(toggles) != 1:
-            return None
-        toggle = toggles.pop()
-        for value in ("y", "n"):
-            if self._reproduces(toggle, value, sym, candidate) is True:
-                return toggle, value
-        return None
+            return None, None
+        return self._through(sym, candidate, [(toggles[0], v) for v in ("y", "n")],
+                             "setting of %s" % toggles[0].name)
+
+    def _through_choice(self, sym, candidate):
+        """For a hidden symbol whose defaults follow one menuconfig list; (None, None) if none do"""
+        choices = {s.choice for s in self._conditions(sym)
+                   if s.choice is not None and (s.choice.name or "").startswith("CHOICE_")}
+        if len(choices) != 1:
+            return None, None
+        choice = choices.pop()
+        if not choice.visibility:
+            return None, None
+        # A *_PREVIOUS member only re-offers the saved value
+        members = [m for m in choice.syms if m.visibility and not _PREVIOUS_MEMBER.search(m.name)]
+        return self._through(sym, candidate, [(m, "y") for m in members], "%s option" % choice.name)
 
     def apply(self, accepted):
         """Save the accepted candidates as explicit menuconfig values"""
