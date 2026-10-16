@@ -402,6 +402,14 @@ def _menu(entries, times, local, previous, jobs):
 
 # -- entry point -------------------------------------------------------------------
 
+def _raspberry_pi(model_file='/proc/device-tree/model'):
+    try:
+        with open(model_file, errors='replace') as handle:
+            return 'Raspberry Pi' in handle.read()
+    except OSError:
+        return False
+
+
 def _job_count(value):
     try:
         number = int(value)
@@ -450,6 +458,12 @@ def main(argv=None):
         print('%d module(s) failed to import - running everything so the error shows.'
               % len(loader.errors), file=sys.stderr)
         return _run(sink, ['discover', '-p', '*'] + passthrough, None, entries)
+
+    if _raspberry_pi():
+        c = _colours()
+        print('%sOn a Raspberry Pi a full run takes half an hour or more, and the ~ reference '
+              'times are from an M1 laptop.\nPick fewer files, or run the whole '
+              'suite on a desktop.%s' % (c['warn'], c['off']), flush=True)
 
     if args.last:
         # Ahead of the tty check: --last is an explicit "no menu, run this" and means the
