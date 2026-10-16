@@ -348,8 +348,9 @@ class TestInstallSh(unittest.TestCase):
             os.utime(unit, (now + 1000, now + 1000))
             os.utime(parent, (parent_mtime, parent_mtime))
             return subprocess.run(
+                # PY= as install.sh passes it; the recipe reads a python failure as "n"
                 ["make", "--no-print-directory", "-s", "kconfig_needs_update",
-                 "KCONFIG_CONFIG={}".format(unit), *extra],
+                 "PY={}".format(sys.executable), "KCONFIG_CONFIG={}".format(unit), *extra],
                 cwd=REPO_ROOT, text=True, capture_output=True, check=True,
             ).stdout.strip()
 
@@ -379,6 +380,7 @@ class TestInstallSh(unittest.TestCase):
             os.utime(sharer, (now + 1000, now + 1000))
             return subprocess.run(
                 ["make", "--no-print-directory", "-s", "kconfig_needs_update",
+                 "PY={}".format(sys.executable),
                  "KCONFIG_CONFIG={}".format(sharer), "KCONFIG_PARENT={}".format(parent)],
                 cwd=REPO_ROOT, text=True, capture_output=True, check=True,
             ).stdout.strip()
