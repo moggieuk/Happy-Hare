@@ -760,6 +760,8 @@ class MmuSyncFeedback:
             sensor_type = self._get_sensor_type(),
             use_twolevel_for_type_p = self.p.sync_feedback_force_twolevel,
             rd_start = rd_start,
+            rd_twolevel_speed_multiplier = self.p.sync_feedback_speed_multiplier / 100.,
+            rd_twolevel_boost_multiplier = self.p.sync_feedback_boost_multiplier / 100.,
             flowguard_relief_mm = self.p.flowguard_max_relief,
         )
         # EKF "extreme" threshold tracks the analog sensor trigger point (type-P only)
@@ -776,6 +778,17 @@ class MmuSyncFeedback:
         """
         if not self.mmu_unit.has_buffer() or self.ctrl is None: return
         self.ctrl.cfg.flowguard_relief_mm = self.p.flowguard_max_relief
+
+
+    def apply_twolevel_tuning(self):
+        """
+        Push live twolevel speed/boost multipliers to a running controller so
+        MMU_TEST_CONFIG changes take effect immediately without a controller reset.
+        """
+        if not self.mmu_unit.has_buffer() or self.ctrl is None: return
+        self.ctrl.cfg.rd_twolevel_speed_multiplier = self.p.sync_feedback_speed_multiplier / 100.
+        self.ctrl.cfg.rd_twolevel_boost_multiplier = self.p.sync_feedback_boost_multiplier / 100.
+        self.ctrl.apply_twolevel_tuning()
 
 
     def apply_extrude_threshold(self):
