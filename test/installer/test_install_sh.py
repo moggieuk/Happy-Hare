@@ -512,6 +512,16 @@ class TestInstallSh(unittest.TestCase):
         self.assertEqual((log_dir / "self-update").read_text().strip(), "v3")
         self.assertEqual((log_dir / "reexec").read_text().strip(), "v3:force:YES")
 
+    def test_v3_red_choice_drops_only_a_v3_branch(self):
+        for branch, expected in (("v3", ""), ("development", "development")):
+            with self.subTest(branch=branch):
+                result = self.run_shell("""
+                    export BRANCH={branch}
+                    offer_v3_v4_choice
+                    echo "BRANCH=${{BRANCH:-}}"
+                """.format(branch=branch), stdin="2\n")
+                self.assertIn("BRANCH=%s\n" % expected, result.stdout)
+
     def test_self_update_switches_before_checking_current_branch(self):
         remote = self.root / "remote.git"
         checkout = self.root / "checkout"
