@@ -65,8 +65,10 @@ class ToolHead:
             # of this API at all, exactly like the real one.
             self.register_step_generator = _register_step_generator.__get__(
                 self, ToolHead)
-            self.unregister_step_generator = _unregister_step_generator.__get__(
-                self, ToolHead)
+            if 'unregister_step_generator' not in getattr(
+                    self.printer, 'harness_toolhead_missing', ()):
+                self.unregister_step_generator = _unregister_step_generator.__get__(
+                    self, ToolHead)
         self.lookahead_callbacks = []
         # -- assertion surfaces -------------------------------------------
         self.moves = []             # [(newpos, speed)] every commanded move
