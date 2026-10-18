@@ -140,7 +140,8 @@ menu "Purging"
       Enable this if you have a Blobifier purging system fitted.
 
       NOTE: There is a lot of setup for Blobifier. After enabling this
-      be sure to edit Macro variables
+      be sure to edit its Macro variables (link below the standalone
+      purging option once Blobifier is selected there)
 
   if MMU_HAS_BLOBIFIER
     config MMU_HAS_BLOBIFIER_BUCKET_SWITCH
@@ -313,6 +314,20 @@ menu "Purging"
     default ""                if CHOICE_PURGE_MACRO_SLICER
     default PURGE_MACRO_OTHER if CHOICE_PURGE_MACRO_OTHER
     default ""
+
+  if CHOICE_PURGE_MACRO_PURGE
+    comment "Simple purge macro variables"
+      link VAR_PURGE_EXTRUDER_PURGE_SPEED
+      help
+        Extruder purge speed for the simple bucket purge macro
+  endif
+
+  if CHOICE_PURGE_MACRO_BLOBIFIER
+    comment "Blobifier macro variables"
+      link VAR_BLOBIFIER_PURGE_SPD
+      help
+        Purge, brush, bucket and tray settings for the Blobifier macro
+  endif
 
 
   # -------------------------------------

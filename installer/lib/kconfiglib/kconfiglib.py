@@ -1939,7 +1939,8 @@ class Kconfig(object):
 
             elif expr_value(node.dep) and \
                  ((item is MENU and expr_value(node.visibility)) or
-                  (item is COMMENT and expr_value(node.prompt[1]))): # Happy Hare: skip hidden comments
+                  (item is COMMENT and expr_value(node.prompt[1]) and
+                   not getattr(node, "link", None))): # Happy Hare: skip hidden and link comments
 
                 # Happy Hare: Orig: add("\n#\n# {}\n#\n".format(node.prompt[0]))
                 # Happy Hare: Reformatted and indented
@@ -3620,6 +3621,7 @@ class Kconfig(object):
                 node.is_menuconfig = False
                 #node.prompt = (self._expect_str_and_eol(), self.y)
                 node.prompt = self._expect_str_and_cond() # Happy Hare: Modification
+                node.help = None # Happy Hare: A link comment can have help
                 node.list = None
                 node.parent = parent
                 node.filename = self.filename
@@ -3760,6 +3762,14 @@ class Kconfig(object):
                     self._parse_error("dim is only valid for comments")
 
                 node.dim = True
+
+            elif t0 is _T_LINK: # Happy Hare: Added to make a comment jump to a symbol in menuconfig
+                if node.item is not COMMENT:
+                    self._parse_error("link is only valid for comments")
+
+                node.link = self._expect_nonconst_sym()
+                if self._tokens[self._tokens_i] is not None:
+                    self._trailing_tokens_error()
 
             elif t0 is _T_DEFAULT_WHEN_HIDDEN: # Happy Hare: Added to save hidden symbols as defaults
                 if node.item.__class__ is not Symbol and node.item is not MENU:
@@ -6685,6 +6695,7 @@ class MenuNode(object):
         "ranges",
         "forceshow",   # Happy Hare: Added to force UI visibility
         "dim",         # Happy Hare: Added to draw a comment dimmed
+        "link",        # Happy Hare: Added; a comment's link target symbol
         "default_when_hidden", # Happy Hare: Added, see _saved_as_default()
     )
 
@@ -8150,7 +8161,8 @@ except AttributeError:
     _T_APPEND_ONLY_UNLESS, # Happy Hare: Added; appended to preserve existing token values
     _T_REPARSE_ENV,        # Happy Hare: Added; appended to preserve existing token values
     _T_DIM,                # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 65) # Happy Hare: Added custom tokens through DIM
+    _T_LINK,               # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 66) # Happy Hare: Added custom tokens through LINK
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -8177,6 +8189,7 @@ _get_keyword = {
     "def_string":     _T_DEF_STRING,
     "def_tristate":   _T_DEF_TRISTATE,
     "dim":            _T_DIM, # Happy Hare: Added
+    "link":           _T_LINK, # Happy Hare: Added
     "default":        _T_DEFAULT,
     "generated_default": _T_GENERATED_DEFAULT, # Happy Hare: Added
     "defconfig_list": _T_DEFCONFIG_LIST,
