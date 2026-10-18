@@ -168,8 +168,8 @@ menu "Tip Forming / Cutting"
       Checked (recommended): Happy Hare forms or cuts the tip on every tool
       change in a print using the method above. Turn off slicer tip forming.
       Unchecked: the slicer forms the tip. Tip cutting needs this checked.
-      See "Turning off slicer tip forming" on the wiki's Slicer Setup page:
-      https://github.com/moggieuk/Happy-Hare/wiki/Slicer-Setup
+      See "Turning off slicer tip forming" in the Slicer Setup doc:
+      https://moggieuk.github.io/Happy-Hare-Doc/Slicer-Setup/
   config PARAM_SLICER_TIP_PARK_POS
     string
     default "0"

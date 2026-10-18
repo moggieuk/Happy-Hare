@@ -327,8 +327,8 @@ menu "Purging"
       Checked (recommended): Happy Hare purges after every tool change in
       a print using the method above. Turn off the slicer's wipe tower.
       Unchecked: the slicer's wipe tower purges during a print.
-      See "Turning off slicer wipetower" on the wiki's Slicer Setup page:
-      https://github.com/moggieuk/Happy-Hare/wiki/Slicer-Setup
+      See "Turning off the slicer wipe tower" in the Slicer Setup doc:
+      https://moggieuk.github.io/Happy-Hare-Doc/Slicer-Setup/
   config PARAM_EXTRUDER_PURGE_CURRENT
     int "Extruder purging current           "
     default 100
