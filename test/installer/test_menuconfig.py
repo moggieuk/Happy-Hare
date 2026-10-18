@@ -421,6 +421,42 @@ config SOMETIMES
         self.assertTrue(menuconfig._visible(self.node("SOMETIMES")))
 
 
+
+class TestLockedSecondPrompt(unittest.TestCase):
+    """A force-shown prompt that is off shows locked, even when another prompt can change it."""
+
+    KCONFIG = """
+config MMU_HAS_CUTTER
+    bool "Cutter"
+
+config MMU_HAS_CUTTER
+    prompt "Cutter" if n
+    forceshow
+"""
+
+    parse = TestDimComment.parse
+
+    def setUp(self):
+        self.kconf = self.parse(self.KCONFIG)
+        self.kconf.syms["MMU_HAS_CUTTER"].set_value(2)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf,
+                                 _show_name=False, _show_all=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.editable, self.locked = self.kconf.syms["MMU_HAS_CUTTER"].nodes
+
+    def test_the_locked_row_looks_fixed(self):
+        self.assertEqual(menuconfig._value_str(self.locked), "-*-")
+        row = menuconfig._node_str(self.locked)
+        self.assertIn("(FIXED)", row)
+        self.assertNotIn("NOT DEFAULT", row)
+
+    def test_the_editable_row_is_unchanged(self):
+        self.assertEqual(menuconfig._value_str(self.editable), "[*]")
+        row = menuconfig._node_str(self.editable)
+        self.assertNotIn("(FIXED)", row)
+        self.assertIn("NOT DEFAULT", row)
+
 class TestReparseEnv(unittest.TestCase):
     """Changing a 'reparse_env' symbol re-parses with the new value, in place.
 

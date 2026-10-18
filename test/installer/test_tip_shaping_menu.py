@@ -71,6 +71,7 @@ class TestToolheadCutterPrompt(unittest.TestCase):
                 node = self.node(ENTRY_POINT_ENV, {'MMU_HAS_TOOLHEAD_CUTTER': value})
                 self.assertTrue(menuconfig._visible(node))
                 self.assertFalse(menuconfig._changeable(node))
+                self.assertEqual(menuconfig._value_str(node), '-*-' if value else '- -')
 
     def test_toolhead_menu_still_changes_it_at_a_multi_unit_entry_point(self):
         node = self.node(ENTRY_POINT_ENV, {})

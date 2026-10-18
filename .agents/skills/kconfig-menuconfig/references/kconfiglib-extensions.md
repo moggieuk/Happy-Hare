@@ -67,8 +67,10 @@ the buffer sensor bools, which a unit sharing another unit's buffer sees as a su
 instead.
 
 A forced row whose own prompt condition is false is read-only: `_changeable` blocks
-space and `_reset_key` blocks `r`. `MMU_HAS_TOOLHEAD_CUTTER`'s second prompt in
-`Kconfig.tip_shaping` uses this to show a multi-unit printer-level flag locked.
+space and `_reset_key` blocks `r`. `_pinned` draws it as fixed (`-*-`/`- -`,
+"(FIXED)", no "(NOT DEFAULT)") even when another prompt makes the symbol
+assignable. `MMU_HAS_TOOLHEAD_CUTTER`'s second prompt in `Kconfig.tip_shaping`
+uses this to show a multi-unit printer-level flag locked.
 
 ## 4. ` #~DEFAULT~#` default token
 
