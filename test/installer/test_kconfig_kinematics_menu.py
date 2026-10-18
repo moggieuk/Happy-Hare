@@ -1,7 +1,7 @@
-# The per-unit "MMU Kinematics" and "Other Settings" menus.
+# The per-unit "MMU Kinematics & Speeds" and "Other Settings" menus.
 #
 # Both are per-unit, so a single unit and every unit of a multi-unit setup show
-# them, with Speeds nested under MMU Kinematics. A multi-unit entry point shows
+# them, with Speeds nested under it. A multi-unit entry point shows
 # neither, and keeps its own top-level Speeds for the extruder speeds.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
@@ -46,13 +46,13 @@ class TestKinematicsMenu(unittest.TestCase):
         for label, env in sorted(ENVS.items()):
             with self.subTest(env=label):
                 menus = _top_menus(env, 'kinematics_' + label)
-                self.assertEqual(menus['MMU Kinematics'], KINEMATICS)
+                self.assertEqual(menus['MMU Kinematics & Speeds'], KINEMATICS)
                 self.assertEqual(menus['Other Settings'], OTHER)
                 self.assertNotIn('Speeds', menus)
 
     def test_multi_unit_entry_point_keeps_a_top_level_speeds(self):
         menus = _top_menus(ENTRY_POINT_ENV, 'kinematics_entry')
-        self.assertNotIn('MMU Kinematics', menus)
+        self.assertNotIn('MMU Kinematics & Speeds', menus)
         self.assertNotIn('Other Settings', menus)
         self.assertIn('PARAM_EXTRUDER_LOAD_SPEED', menus['Speeds'])
         self.assertNotIn('PARAM_GEAR_LOAD_SPEED', menus['Speeds'])

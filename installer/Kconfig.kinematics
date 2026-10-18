@@ -3,9 +3,9 @@
 # (Once user edits values here they are sticky and
 # will override defaults)
 
-menu "MMU Kinematics"
+menu "MMU Kinematics & Speeds"
   help
-    MMU Kinematics
+    MMU Kinematics & Speeds
     Number of gates, the gear stepper, selector stepper and selector servo,
     and movement speeds. Allows override of designer defaults. Change these
     settings if you know what you are doing (or have MMU customizations)
