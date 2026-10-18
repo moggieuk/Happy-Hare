@@ -2062,8 +2062,10 @@ def _set_sel_node_tri_val(tri_val):
     # Sets the value of the currently selected menu entry to 'tri_val', if that
     # value can be assigned
 
-    sc = _shown[_sel_node_i].item
-    if isinstance(sc, (Symbol, Choice)) and tri_val in sc.assignable:
+    node = _shown[_sel_node_i]
+    sc = node.item
+    # Happy Hare: a force-shown row whose own prompt is off is read-only here too
+    if _changeable(node) and tri_val in sc.assignable:
         _set_val(sc, tri_val)
 
 

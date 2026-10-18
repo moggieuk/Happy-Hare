@@ -451,6 +451,15 @@ config MMU_HAS_CUTTER
         self.assertIn("(FIXED)", row)
         self.assertNotIn("NOT DEFAULT", row)
 
+    def test_y_and_n_keys_leave_the_locked_row_alone(self):
+        for node, expected in ((self.locked, "y"), (self.editable, "n")):
+            with self.subTest(locked=node is self.locked), \
+                    patch.multiple(menuconfig, create=True, _shown=[node], _sel_node_i=0,
+                                   _conf_changed=False, _update_menu=lambda: None):
+                menuconfig._set_sel_node_tri_val(0)
+                self.assertEqual(self.kconf.syms["MMU_HAS_CUTTER"].str_value, expected)
+                self.kconf.syms["MMU_HAS_CUTTER"].set_value(2)
+
     def test_the_editable_row_is_unchanged(self):
         self.assertEqual(menuconfig._value_str(self.editable), "[*]")
         row = menuconfig._node_str(self.editable)
