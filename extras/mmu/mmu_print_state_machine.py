@@ -163,6 +163,7 @@ class MmuPrintStateMachine:
             self.mmu.log_trace("on_print_start(->started)")
             self.mmu._clear_saved_toolhead_position()
             self.mmu.num_toolchanges = 0
+            self.mmu._next_tool = TOOL_GATE_UNKNOWN # Discard any marker left by a failed toolchange outside a print
             self.paused_extruder_temp = None
             self.mmu._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.mmu.reactor.update_timer(self.mmu.hotend_off_timer, self.mmu.reactor.NEVER) # Don't automatically turn off extruder heaters

@@ -732,6 +732,7 @@ The test files, grouped by what they're about:
 | **Filament handling** | | |
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |
+| `test_mmu_confirm_loaded.py` | 20 | the in-print "loaded" sensor check after a toolchange or RESUME, and where it must not fire |
 | `test_mmu_pressure_advance.py` | 7 | pressure advance zeroed and restored around tip forming and purging; the already-0 debug note |
 | `test_mmu_encoder.py` | 36 | gate homing by encoder motion instead of by switch |
 | `test_mmu_flowguard.py` | 11 | encoder FlowGuard on an encoder shared by two units: arming, handover on toolchange, pause/resume, runout |
