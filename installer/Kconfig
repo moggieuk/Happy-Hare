@@ -361,7 +361,7 @@ if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.tip_shaping"
     source "Kconfig.purging"
   endif
-  source "Kconfig.speeds"           # All speeds
+  source "Kconfig.kinematics"       # Gate count, gear/selector steppers, selector servo and speeds
   if !MULTI_UNIT
     source "macro_vars/Kconfig"     # Variables for all macros
   endif

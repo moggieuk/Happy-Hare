@@ -44,9 +44,9 @@
 console_stat_column := (pre_unload|form_tip|unload|post_unload|pre_load|load|purge|post_load|total)
 console_stat_row    := (total|total_average|job|job_average|last)
 
-menu "Software Options"
+menu "Global software options"
   help
-    Software Options
+    Global software options
     This covers some of the more common software setup options. Further
     configuration can be achieved later by editing generated klipper
     config files.

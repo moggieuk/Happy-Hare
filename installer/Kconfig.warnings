@@ -284,7 +284,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
   comment "_Config Warnings / Errors"
 
   if SHOW_SHARED_WARNINGS
-    comment "Caution: You opted to not install client macros [Software Options]"               if SW1
+    comment "Caution: You opted to not install client macros [Global software options]"        if SW1
     comment "Toolhead sensor is enabled but no MCU pin defined"                                if SW2
     comment "Extruder sensor is enabled but no MCU pin defined"                                if SW3
     comment "Blobifier bucket switch is enabled but no valid MCU pin is defined"               if SW4
