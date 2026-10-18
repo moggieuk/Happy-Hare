@@ -316,11 +316,12 @@ if MULTI_UNIT_ENTRY_POINT
   comment "_Shared System Options"
   source "toolheads/Kconfig"        # Toolhead Selection menu
   source "Kconfig.toolhead"         # Toolhead Sensors/Settings
-  comment "_"
   source "Kconfig.options"          # Main software options
   source "Kconfig.tip_shaping"
   source "Kconfig.purging"
-  source "Kconfig.speeds"           # Access to extruder speeds
+  menu "Extruder speeds"
+    source "Kconfig.extruder_speeds"
+  endmenu
   source "macro_vars/Kconfig"       # Variables for all macros
 
   # These are duplicated settings that are excluded from units when MULTI_UNIT
@@ -332,7 +333,6 @@ if MULTI_UNIT_ENTRY_POINT
     source "Kconfig.shared_pins"    # Pins on components shared across units
   endmenu
 
-  comment "_"
   source "Kconfig.paths_services"   # Advanced install options
 endif
 
@@ -363,7 +363,8 @@ if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.tip_shaping"
     source "Kconfig.purging"
   endif
-  source "Kconfig.kinematics"       # Gate count, gear/selector steppers, selector servo and speeds
+  source "Kconfig.kinematics"       # Gear/selector steppers and selector servo
+  source "Kconfig.speeds"           # Bowden, selector (and single-unit extruder) speeds
   if !MULTI_UNIT
     source "macro_vars/Kconfig"     # Variables for all macros
   endif

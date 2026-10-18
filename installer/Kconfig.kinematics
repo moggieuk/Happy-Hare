@@ -1,20 +1,23 @@
-# Per-unit gate count, the steppers/servo that move filament and select gates,
-# and their speeds (the multi-unit entry point sources Kconfig.speeds itself)
+# Per-unit steppers/servo that move filament and select gates
 # (Once user edits values here they are sticky and
 # will override defaults)
 
-menu "MMU Kinematics & Speeds"
+# Declared after the machine types so a type's default comes first. The gate
+# count's prompt is under MMU Type -> Design attributes (Kconfig.capabilities)
+config PARAM_DESIGN_NUM_GATES
+  int
+  default 0
+
+menu "MMU Kinematics"
   help
-    MMU Kinematics & Speeds
-    Number of gates, the gear stepper, selector stepper and selector servo,
-    and movement speeds. Allows override of designer defaults. Change these
-    settings if you know what you are doing (or have MMU customizations)
+    MMU Kinematics
+    The gear stepper, selector stepper and selector servo. Allows override
+    of designer defaults. Change these settings if you know what you are
+    doing (or have MMU customizations)
 
   if !MULTI_UNIT_ENTRY_POINT
-    source "Kconfig.num_gates"
     source "Kconfig.gear_stepper"
     source "Kconfig.selector_stepper"
     source "Kconfig.selector_servo"
-    source "Kconfig.speeds"
   endif
 endmenu
