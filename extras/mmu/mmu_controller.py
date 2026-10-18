@@ -4245,6 +4245,10 @@ class MmuWrapperResumeCommand(BaseCommand):
                 self.mmu.log_always("Automatically set filament state to LOADED based on toolhead sensor")
             if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_LOADED]:
                 raise MmuError("Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again")
+            interrupted_tool = self.mmu.position_checker.interrupted_tool
+            if interrupted_tool is not None and interrupted_tool >= 0 and self.mmu.tool_selected != interrupted_tool:
+                raise MmuError("Cannot resume because the change to T%d was stopped by the position check. Run T%d to complete it, then RESUME again" % (interrupted_tool, interrupted_tool))
+            self.mmu.position_checker.interrupted_tool = None
 
             # Prevent BASE_RESUME from moving toolhead
             if TOOLHEAD_POSITION_STATE in self.mmu.gcode_move.saved_states:

@@ -137,19 +137,43 @@ class CheckPositionsTestCase(unittest.TestCase):
         self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=%d' % tool)
         self.hh.settle(0.5)
 
-    def test_resume_without_fix_continues(self):
+    def test_resume_requires_the_interrupted_tool_change(self):
         self.pin_near_y_max()
         self.start_print()
         self.skew.set_factors(yz=YZ)
         self.change_tool(1)
         self.assertTrue(self.hh.mmu.is_mmu_paused())
+        self.assertEqual(self.hh.mmu.tool_selected, 0)
+        self.assertTrue(any("Run T1 to complete it" in e for e in self.hh.errors), self.hh.errors)
+
+        # Resuming would print the rest of the T1 section with T0 loaded
         del self.hh.gcode.errors[:]
         self.hh.run_gcode('RESUME')
         self.hh.settle(0.5)
+        self.assertTrue(self.hh.mmu.is_mmu_paused())
+        self.assertTrue(any("Cannot resume because the change to T1" in e for e in self.hh.errors), self.hh.errors)
+
+        # Completing the change (config left as is) then resuming continues without re-checking
+        del self.hh.gcode.errors[:]
         self.change_tool(1)
+        self.assertEqual(self.hh.mmu.tool_selected, 1)
+        self.hh.run_gcode('RESUME')
+        self.hh.settle(0.5)
         self.assertEqual(self.hh.errors, [])
         self.assertFalse(self.hh.mmu.is_mmu_paused())
-        self.assertEqual(self.hh.mmu.tool_selected, 1)
+        self.change_tool(0)
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.tool_selected, 0)
+
+    def test_runout_does_not_pause_but_next_toolchange_does(self):
+        self.pin_near_y_max()
+        self.start_print()
+        self.skew.set_factors(yz=YZ)
+        self.hh.mmu.position_checker.before_toolhead_operation('runout')     # Check runs here...
+        self.assertFalse(self.hh.mmu.is_mmu_paused())
+        self.change_tool(1)                                                 # ...and pauses here
+        self.assertTrue(self.hh.mmu.is_mmu_paused())
+        self.assertEqual(self.hh.mmu.tool_selected, 0)
 
     def test_checked_once_per_print_then_only_on_change(self):
         self.start_print()

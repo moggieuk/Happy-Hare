@@ -223,6 +223,27 @@ class ParkMacroTestCase(unittest.TestCase):
         moves = self.park((165, 100, 0.2), "X=-999 Y=-999 Z_HOP=5 RAMP=200")
         self.assert_xyz(moves[0], (175., 178., 5.2))     # Machine centre, i.e. gcode X 165
 
+    def test_restore_near_limit_has_no_sideways_move_at_print_height(self):
+        # Printing 0.006mm inside Y max with a 20mm lift: the restore XY is out of range at the
+        # lifted height so gets pulled in, and must be put back on the way down
+        effects = self.hh.printer.harness_macro_effects
+        for name in ('_MMU_SAVE_POSITION', '_MMU_RESTORE_POSITION'):
+            effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
+        seq = self.hh.printer.lookup_object('gcode_macro _MMU_SEQUENCE_VARS')
+        seq.variables = dict(seq.variables, park_toolchange=[-999, -999, 20, 0, 0], restore_xy_pos='last')
+        self.skew.set_factors(yz=YZ)
+        self.hh.run_gcode("G90\nG1 X100 Y355.99 Z0.2")
+        printing_at = self.toolhead.get_position()[:3]
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("MMU_CHANGE_TOOL TOOL=1")
+        self.hh.settle(0.5)
+        self.assertEqual(self.hh.errors, [])
+        moves = [pos[:3] for pos, _ in self.toolhead.moves[first:]]
+        self.assertGreater(max(z for _, _, z in moves), 20.)
+        back = next(i for i, m in enumerate(moves) if i > 0 and m[2] == printing_at[2] and moves[i - 1][2] > printing_at[2])
+        for m in moves[back:]:
+            self.assert_xyz(m, printing_at)
+
     def test_park_at_y_limit_with_skew_stays_in_range(self):
         self.skew.set_factors(yz=YZ)
         moves = self.park((100, 300, 63.092), "X=47.893 Y=356 Z_HOP=5")
@@ -230,8 +251,8 @@ class ParkMacroTestCase(unittest.TestCase):
         self.assertAlmostEqual(moves[-1][2], 68.092, places=4)
 
 
-class BlobifierShakeTestCase(unittest.TestCase):
-    """BLOBIFIER_SHAKE_BUCKET run for real: purge row at Y max and Y shakes stay in range under skew"""
+class BlobifierTestCase(unittest.TestCase):
+    """Blobifier macros run for real: purge row at Y max, purge rises and shakes stay in range under skew"""
 
     PROFILE = profiles.get('boxturtle').derive('boxturtle_blobifier_skew', syms={
         'MMU_HAS_BLOBIFIER': True,
@@ -246,6 +267,8 @@ class BlobifierShakeTestCase(unittest.TestCase):
                 macro.printer.lookup_object('gcode_macro BLOBIFIER'), 'variables',
                 dict(macro.printer.lookup_object('gcode_macro BLOBIFIER').variables, initialized=1)),
             'BLOBIFIER_SHAKE_BUCKET': lambda macro, gcmd: macro.run_body(gcmd),
+            'BLOBIFIER': lambda macro, gcmd: macro.run_body(gcmd),
+            '__BLOBIFIER_EXTRUDER_MOVE': lambda macro, gcmd: macro.run_body(gcmd),
         }
         self.hh.boot()
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
@@ -254,6 +277,10 @@ class BlobifierShakeTestCase(unittest.TestCase):
         self.hh.printer.lookup_object('skew_correction').set_factors(xy=-0.002, yz=YZ)
         configfile = self.hh.printer.lookup_object('configfile')
         configfile.status_settings = dict(configfile.status_settings, mmu_parameters={'log_m117_messages': 0})
+        configfile.status_raw_config = dict(configfile.status_raw_config, extruder={'filament_diameter': '1.75'})
+        fan = type('Fan', (), {'get_status': lambda self, eventtime=None: {'speed': 0.}})()
+        self.hh.printer.add_object('fan', fan)
+        self.hh.printer.add_object(self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS').variables['fan_name'], fan)
 
     def tearDown(self):
         self.hh.close()
@@ -265,5 +292,23 @@ class BlobifierShakeTestCase(unittest.TestCase):
         moves = [pos[:3] for pos, _ in self.toolhead.moves[first:]]
         self.assertEqual(self.hh.errors, [])
         self.assertGreater(len(moves), 4)
+        for x, y, z in moves:
+            self.assertTrue(0. <= x <= 350. and 0. <= y <= Y_MAX, (x, y, z))
+
+    def set_vars(self, macro, **values):
+        obj = self.hh.printer.lookup_object('gcode_macro %s' % macro)
+        obj.variables = dict(obj.variables, **values)
+
+    def test_purge_without_tray_descent_stays_in_range_for_every_blob(self):
+        # Can't descend to the tray so each blob's relative Z rise adds to the last
+        self.set_vars('_BLOBIFIER_SAFE_DESCEND', tray=False, print_height=60.)
+        self.set_vars('_BLOBIFIER_VARS', z_raise=10., purge_length_maximum=50., enable_shaker=False,
+                      clean_macro='')
+        self.hh.run_gcode("G90\nG1 X150 Y200 Z60")
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("BLOBIFIER PURGE_LENGTH=100")
+        moves = [pos[:3] for pos, _ in self.toolhead.moves[first:]]
+        self.assertEqual(self.hh.errors, [])
+        self.assertGreater(max(z for _, _, z in moves), 79.)          # Both blobs rose
         for x, y, z in moves:
             self.assertTrue(0. <= x <= 350. and 0. <= y <= Y_MAX, (x, y, z))

@@ -248,6 +248,8 @@ class GCodeDispatch:
             key, val = m.group(1).upper(), m.group(2)
             if len(val) >= 2 and val[0] in '"\'' and val[-1] == val[0]:
                 val = val[1:-1]
+            else:
+                val = val.replace('\\"', '"')     # Klipper's shlex keeps an escaped quote
             params[key] = val
         return command, params, line
 

@@ -25,7 +25,7 @@ PARK_CHECK_MACRO      = "_MMU_PARK_CHECK_POSITIONS"
 CUT_TIP_CHECK_MACRO   = "_MMU_CUT_TIP_CHECK_POSITIONS"
 
 # Operations that move filament and so would run the cut tip
-BLOCKING_OPERATIONS = ['toolchange', 'load', 'unload', 'runout']
+CHECK_OPERATIONS = ['toolchange', 'load', 'unload', 'runout']
 
 
 class MmuCheckPositionsCommand(BaseCommand):
@@ -59,6 +59,8 @@ class MmuCheckPositionsCommand(BaseCommand):
     def reset_print_state(self):
         self._last_summary = None
         self._last_fingerprint = None
+        self._pending_fatal = None
+        self.interrupted_tool = None # Tool change stopped by this check, must complete before RESUME
 
     def _run(self, gcmd):
         mmu = self.mmu
@@ -166,7 +168,7 @@ class MmuCheckPositionsCommand(BaseCommand):
             mmu.log_always("All configured positions are within axis limits (checked Z=0 to %.1f)" % limits[2][1])
         self._last_summary = summary
         fatal_summary = ("Configured position(s) are out of range and would cause a 'Move out of range' error:\n  %s\n"
-                         "Adjust the configuration (MMU_CHECK_POSITIONS to re-check) or RESUME to continue anyway" % "\n  ".join(fatal)) if fatal else None
+                         "Adjust the configuration (MMU_CHECK_POSITIONS to re-check)" % "\n  ".join(fatal)) if fatal else None
         return summary, fatal_summary
 
     def before_toolhead_operation(self, operation):
@@ -174,17 +176,21 @@ class MmuCheckPositionsCommand(BaseCommand):
         Called before Happy Hare parks the toolhead. Checks once per print and again only if
         skew correction or the XY gcode offset changes (skew is often loaded after the print
         starts). The Z offset is ignored because positions are checked over the whole machine
-        Z range regardless. Resuming without a fix is the user's choice so isn't re-checked
+        Z range regardless. A failure pauses at the next tool change, before anything moves,
+        and that tool change must be completed before RESUME. Resuming without a config fix
+        is the user's choice so isn't re-checked
         """
         mmu = self.mmu
-        if operation not in BLOCKING_OPERATIONS or not mmu.is_printing():
+        if operation not in CHECK_OPERATIONS or not mmu.is_printing():
             return
         if 'xy' not in mmu.toolhead.get_status(mmu.reactor.monotonic())['homed_axes']:
             return
         fingerprint = (tuple(mmu.gcode_move.base_position[:2]), skew_fingerprint(mmu))
-        if fingerprint == self._last_fingerprint:
-            return
-        self._last_fingerprint = fingerprint
-        _, fatal = self.check()
-        if fatal:
-            raise MmuError(fatal)
+        if fingerprint != self._last_fingerprint:
+            self._last_fingerprint = fingerprint
+            _, self._pending_fatal = self.check()
+        if self._pending_fatal and operation == 'toolchange':
+            fatal, self._pending_fatal = self._pending_fatal, None
+            self.interrupted_tool = mmu._next_tool
+            raise MmuError("%s\nThe change to T%d was not started. Run T%d to complete it, then RESUME"
+                           % (fatal, self.interrupted_tool, self.interrupted_tool))
