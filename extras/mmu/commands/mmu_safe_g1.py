@@ -78,7 +78,9 @@ def safe_target(mmu, requested, limits, max_z=None):
     """
     Build the target of an absolute move exactly as Klipper's G1 does (gcode value plus
     offset, current position for axes not given) and, like Klipper's range check, look
-    only at axes that move once skew is applied. Any that would end outside 'limits' are
+    only at axes that move once skew is applied. Movement is measured from the toolhead's
+    actual position because skew's round trip isn't exact, so an axis resting on a limit
+    can appear to move just past it. Any that would end outside 'limits' are
     pulled just inside. With max_z, X and Y are also kept in range for any later Z move up
     to max_z, since skew moves them as Z changes.
     Returns the (possibly adjusted) target in Klipper's offset coordinates and a list of
@@ -100,7 +102,7 @@ def safe_target(mmu, requested, limits, max_z=None):
     heights = [raw[2]]
     if max_z is not None and min(max_z + base[2], z_hi) > raw[2]:
         heights.append(min(max_z + base[2], z_hi))
-    start = _xy_kinematic(skew, current, current[2])
+    start = mmu.toolhead.get_position()[:2] # Where Klipper's range check measures movement from
 
     # Y first because skewed X depends on Y. Each skewed axis moves 1:1 with its own axis
     for i, axis in ((1, 'y'), (0, 'x')):

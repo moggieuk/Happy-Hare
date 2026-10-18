@@ -118,6 +118,21 @@ class SafeG1TestCase(unittest.TestCase):
         self.assertEqual(self.hh.gcode.executed[-1], "G1 X10 F6000")
         self.assertEqual(self.warnings(), [])
 
+    def test_skew_rounding_at_limit(self):
+        # After homing Klipper resets its gcode position from the toolhead through the inverse
+        # skew. That round trip isn't exact, so moving to where the toolhead already is puts X
+        # at 350.00000000000006, which Klipper sees as X moving past its 350 limit
+        self.skew.set_factors(xy=0.001, yz=-0.0187)
+        gm = self.hh.printer.lookup_object('gcode_move')
+        self.toolhead.commanded_pos[:3] = [350., 100., 10.]
+        gm.last_position[:3] = self.skew.calc_unskew([350., 100., 10., 0.])[:3]
+        here = "X=%r Y=%r" % tuple(gm.last_position[:2])
+        with self.assertRaisesRegex(self.hh.printer.command_error, "Move out of range: 350.000"):
+            self.hh.run_gcode("G1 " + here.replace("=", ""))
+        self.hh.run_gcode("_SAFE_G1 " + here)
+        self.assertLessEqual(self.kin_pos()[0], 350.)
+        self.assertGreater(self.kin_pos()[0], 349.98)
+
     def test_max_z_keeps_later_relative_z_moves_in_range(self):
         self.skew.set_factors(yz=YZ)
         self.hh.run_gcode("G1 X100 Y300 Z0.2")
