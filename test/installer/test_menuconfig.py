@@ -519,6 +519,231 @@ endmenu
         self.assertIn("boom", error.call_args.args[0])
 
 
+class TestLink(unittest.TestCase):
+    """A comment with 'link SYMBOL' jumps to SYMBOL; leaving that menu comes back."""
+
+    KCONFIG = """
+config FLAG
+    bool "Flag"
+    default y
+
+menu "Source"
+config A
+    bool "A"
+comment "Plain"
+comment "Go to target"
+    link TARGET
+comment "Go nowhere"
+    link HIDDEN
+comment "Up top"
+    link TOP
+endmenu
+
+menu "Dest"
+comment "_Heading"
+config FIRST
+    bool "First"
+config TARGET
+    bool "Target"
+menu "Deeper"
+config DEEP
+    bool "Deep"
+comment "Back to source"
+    link A
+endmenu
+endmenu
+
+config HIDDEN
+    bool "Hidden" if !FLAG
+
+config TOP
+    bool "Top"
+"""
+
+    parse = TestDimComment.parse
+
+    def setUp(self):
+        self.kconf = self.parse(self.KCONFIG)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf,
+                                 _show_name=False, _show_all=False, _menu_win=FakeWindow(),
+                                 _menu_scroll=0, _parent_screen_rows=[], _link_return=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.nodes = {n.prompt[0]: n for n in self.kconf.node_iter() if n.prompt}
+
+    def at(self, menu, prompt):
+        menuconfig._cur_menu = self.nodes[menu]
+        menuconfig._shown = menuconfig._shown_nodes(self.nodes[menu])
+        menuconfig._sel_node_i = menuconfig._shown.index(self.nodes[prompt])
+
+    def where(self):
+        menu = menuconfig._cur_menu
+        menu = "(Top)" if menu is self.kconf.top_node else menu.prompt[0]
+        return menu, menuconfig._shown[menuconfig._sel_node_i].prompt[0]
+
+    def follow(self):
+        return menuconfig._follow_link(menuconfig._shown[menuconfig._sel_node_i])
+
+    def test_link_is_only_valid_on_comments(self):
+        import kconfiglib
+        with self.assertRaisesRegex(kconfiglib.KconfigError, "link is only valid for comments"):
+            self.parse('config FOO\n    bool "Foo"\n    link FOO\n')
+
+    def test_link_rows_are_selectable_and_plain_comments_are_not(self):
+        self.at("Source", "A")
+        menuconfig._select_next_menu_entry()
+        self.assertEqual(self.where(), ("Source", "Go to target"))
+
+    def test_following_lands_on_the_target_in_its_menu(self):
+        self.at("Source", "Go to target")
+        self.assertTrue(self.follow())
+        self.assertEqual(self.where(), ("Dest", "Target"))
+
+    def test_leaving_the_target_menu_returns_to_the_link(self):
+        self.at("Source", "Go to target")
+        self.follow()
+        menuconfig._leave_menu()
+        self.assertEqual(self.where(), ("Source", "Go to target"))
+        menuconfig._leave_menu()
+        self.assertEqual(self.where(), ("(Top)", "Source"))
+
+    def test_a_submenu_of_the_target_is_left_normally(self):
+        self.at("Source", "Go to target")
+        self.follow()
+        menuconfig._enter_menu(self.nodes["Deeper"])
+        menuconfig._leave_menu()
+        self.assertEqual(self.where(), ("Dest", "Deeper"))
+        menuconfig._leave_menu()
+        self.assertEqual(self.where(), ("Source", "Go to target"))
+
+    def test_chained_links_unwind_in_order(self):
+        self.at("Source", "Go to target")
+        self.follow()
+        menuconfig._enter_menu(self.nodes["Deeper"])
+        menuconfig._select_next_menu_entry()
+        self.follow()
+        self.assertEqual(self.where(), ("Source", "A"))
+        menuconfig._leave_menu()
+        self.assertEqual(self.where(), ("Deeper", "Back to source"))
+        menuconfig._leave_menu()
+        menuconfig._leave_menu()
+        self.assertEqual(self.where(), ("Source", "Go to target"))
+
+    def test_a_top_level_target_returns_instead_of_quitting(self):
+        self.at("Source", "Up top")
+        self.follow()
+        self.assertEqual(self.where(), ("(Top)", "Top"))
+        self.assertTrue(menuconfig._in_link_target())
+        menuconfig._leave_menu()
+        self.assertEqual(self.where(), ("Source", "Up top"))
+        self.assertFalse(menuconfig._in_link_target())
+
+    def test_a_hidden_target_is_reported_without_moving(self):
+        self.at("Source", "Go nowhere")
+        with patch.object(menuconfig, "_error") as error:
+            self.assertFalse(self.follow())
+        self.assertIn("Go nowhere", error.call_args.args[0])
+        self.assertFalse(menuconfig._show_all)
+        self.assertEqual(self.where(), ("Source", "Go nowhere"))
+        self.assertEqual(menuconfig._link_return, [])
+
+    def test_row_and_help_name_the_destination(self):
+        link = self.nodes["Go to target"]
+        self.assertTrue(menuconfig._node_str(link).endswith(" Go to target  --->"))
+        self.assertIn("Jumps to: [[B]](Top) -> Dest[[/B]]", menuconfig._link_help(link))
+
+    def test_link_rows_are_not_saved(self):
+        import os
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, ".config")
+        self.kconf.write_config(path, save_old=False)
+        with open(path) as f:
+            saved = f.read()
+        self.assertIn("Plain", saved)
+        self.assertNotIn("Go to target", saved)
+
+
+class TestShippedLinks(unittest.TestCase):
+    """The links in the real tree reach their targets."""
+
+    def links(self, kconf):
+        return [n for n in kconf.node_iter() if getattr(n, "link", None)]
+
+    def test_every_link_targets_a_prompted_symbol(self):
+        from test.installer.test_kconfig_references import _SHAPES
+        from test.hh import cfg
+        for shape, env in sorted(_SHAPES.items()):
+            with self.subTest(shape=shape):
+                with cfg._env(env):
+                    kconf = cfg._new_kconfig('links_' + shape)
+                for link in self.links(kconf):
+                    self.assertTrue(any(n.prompt for n in link.link.nodes),
+                                    "%s:%d links to %s, which has no prompt"
+                                    % (link.filename, link.linenr, link.link.name))
+
+    # Link prompt -> (menu it sits in, values that show it, values that hide it,
+    # Macro Variables submenu it opens)
+    SHIPPED = {
+        "Blobifier macro variables": (
+            "Purging", {"MMU_HAS_BLOBIFIER": 2, "CHOICE_PURGE_MACRO_BLOBIFIER": 2},
+            {"MMU_HAS_BLOBIFIER": 2, "CHOICE_PURGE_MACRO_PURGE": 2}, "Blobifier"),
+        "Simple purge macro variables": (
+            "Purging", {"CHOICE_PURGE_MACRO_PURGE": 2}, {"CHOICE_PURGE_MACRO_SLICER": 2}, "Purge"),
+        "Servo cutter macro variables": (
+            "Tip Forming / Cutting", {"MMU_HAS_SERVO_CUTTER": 2}, {"MMU_HAS_SERVO_CUTTER": 0},
+            "Servo cutter at MMU"),
+        "Tip forming macro variables": (
+            "Tip Forming / Cutting", {"CHOICE_FORM_TIP_MACRO_FORM_TIP": 2},
+            {"CHOICE_FORM_TIP_MACRO_SLICER": 2}, "Tip forming"),
+        "Tip cutting macro variables": (
+            "Tip Forming / Cutting",
+            {"MMU_HAS_TOOLHEAD_CUTTER": 2, "CHOICE_FORM_TIP_MACRO_CUT_TIP": 2},
+            {"MMU_HAS_TOOLHEAD_CUTTER": 2, "CHOICE_FORM_TIP_MACRO_FORM_TIP": 2},
+            "Toolhead tip cutting"),
+    }
+
+    def test_each_link_opens_its_macro_variables(self):
+        from test.hh import cfg
+        shapes = {
+            'single unit': cfg._SINGLE_UNIT_ENV,
+            'multi-unit entry point': {
+                'UNIT_NAME': 'unit0,unit1', 'MCU_NAME': 'unit0,unit1', 'UNIT_INDEX': '0',
+                'F_MULTI_UNIT': 'y', 'F_MULTI_UNIT_ENTRY_POINT': 'y'},
+        }
+
+        def apply(kconf, values):
+            for name, value in values.items():
+                kconf.syms[name].set_value(value)
+
+        for shape, env in sorted(shapes.items()):
+            with cfg._env(env):
+                kconf = cfg._new_kconfig('shipped_links_' + shape)
+            for prompt, (menu, on, off, opens) in sorted(self.SHIPPED.items()):
+                with self.subTest(shape=shape, link=prompt), \
+                        patch.multiple(menuconfig, create=True, _kconf=kconf, _show_all=False):
+                    kconf.unset_values()
+                    link = [n for n in self.links(kconf)
+                            if n.prompt[0] == prompt
+                            and menuconfig._parent_menu(n).prompt[0] == menu]
+                    self.assertTrue(link)
+                    apply(kconf, off)
+                    self.assertFalse(any(menuconfig._reachable(n) for n in link))
+                    apply(kconf, on)
+                    link = [n for n in link if menuconfig._reachable(n)]
+                    self.assertEqual(len(link), 1)
+                    target = menuconfig._link_target(link[0])
+                    self.assertIsNotNone(target)
+                    path = menuconfig._menu_path_prompts(menuconfig._parent_menu(target))
+                    self.assertEqual(path[1], "Macro Variables")
+                    self.assertTrue(path[2].startswith(opens + " "), path[2])
+            self.assertEqual(
+                sorted(self.SHIPPED),
+                sorted({n.prompt[0] for n in self.links(kconf)}),
+                "every shipped link should be in SHIPPED")
+
+
 class FakeDialogWindow(FakeWindow):
     def __init__(self, height=20, width=80):
         self.height, self.width = height, width

@@ -116,6 +116,10 @@
 #     caller (anything else stays one symbol name, as upstream):
 #       servo_visible := MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
 #       prompt "..." if $(servo_visible)
+# 24. 'link <SYMBOL>' on a comment makes it a menuconfig row that jumps to where SYMBOL is
+#     shown (its menu, cursor on it); ESC from there returns. Comments accept help for it:
+#       comment "Blobifier macro variables"
+#         link VAR_BLOBIFIER_PURGE_SPD
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -125,6 +129,7 @@
 # 5. Added array editor - used on "," or ";" separated strings
 # 6. Edited strings are checked against their 'validator' regexp
 # 7. Added sequence editor - list editor with explicit add/rename/remove/move
+# 8. Link rows ('link <SYMBOL>' comments) jump elsewhere in the tree; ESC returns to them
 #
 #
 # Capability params:

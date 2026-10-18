@@ -42,7 +42,8 @@ menu "Tip Forming / Cutting"
     help
       Enable this if you have a servo based cutter at your MMU
 
-      NOTE: After enabling this be sure to edit Macro variables
+      NOTE: After enabling this be sure to edit its Macro variables
+      (link at the end of this section)
 
   if MMU_HAS_SERVO_CUTTER
 
@@ -67,6 +68,13 @@ menu "Tip Forming / Cutting"
   servo_max_hint      :=
   servo_angle_hint    :=
   source "components/Kconfig.servo"
+
+  if MMU_HAS_SERVO_CUTTER
+    comment "Servo cutter macro variables"
+      link VAR_SERVO_CUTTER_SERVO_CLOSED_ANGLE
+      help
+        Servo angles and timing, feed and cut lengths for the cutter macro
+  endif
 
 
 # -------------------------------------
@@ -122,6 +130,13 @@ menu "Tip Forming / Cutting"
     default FORM_TIP_MACRO_OTHER if CHOICE_FORM_TIP_MACRO_OTHER
     default ""
 
+  if CHOICE_FORM_TIP_MACRO_FORM_TIP
+    comment "Tip forming macro variables"
+      link VAR_FORM_TIP_RAMMING_VOLUME
+      help
+        Ramming, cooling moves and temperatures for the tip forming macro
+  endif
+
 
 # -------------------------------------
 # Toolhead cutter configuration
@@ -151,6 +166,13 @@ menu "Tip Forming / Cutting"
   servo_max_hint      :=
   servo_angle_hint    :=
   source "components/Kconfig.servo"
+
+  if CHOICE_FORM_TIP_MACRO_CUT_TIP
+    comment "Tip cutting macro variables"
+      link BOOL_CUT_TIP_RESTORE_POSITION
+      help
+        Blade and cutting positions and moves for the toolhead cutter macro
+  endif
 
 
 # -------------------------------------
