@@ -12,6 +12,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
+import sys
 import unittest
 
 from test.hh import profiles, session
@@ -164,6 +165,22 @@ class CheckPositionsTestCase(unittest.TestCase):
         self.change_tool(0)
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.hh.mmu.tool_selected, 0)
+
+    def test_resume_requires_the_interrupted_tool_to_be_loaded(self):
+        # A failed retry of the tool change can select T1 without loading it
+        self.pin_near_y_max()
+        self.start_print()
+        self.skew.set_factors(yz=YZ)
+        self.change_tool(1)
+        self.assertTrue(self.hh.mmu.is_mmu_paused())
+        self.hh.mmu.select_tool(1)
+        unloaded = sys.modules[type(self.hh.mmu).__module__].FILAMENT_POS_UNLOADED
+        self.hh.mmu.set_filament_pos_state(unloaded, silent=True)
+        del self.hh.gcode.errors[:]
+        self.hh.run_gcode('RESUME')
+        self.hh.settle(0.5)
+        self.assertTrue(self.hh.mmu.is_mmu_paused())
+        self.assertTrue(any("T1 is not loaded" in e for e in self.hh.errors), self.hh.errors)
 
     def test_runout_does_not_pause_but_next_toolchange_does(self):
         self.pin_near_y_max()
