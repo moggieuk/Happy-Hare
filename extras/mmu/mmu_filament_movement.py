@@ -2741,6 +2741,10 @@ class MmuFilamentMovement:
             synced_extruder_unload = False
             park_pos = 0.
             do_form_tip = form_tip if form_tip is not None else FORM_TIP_STANDALONE # Default to standalone
+            if do_form_tip == FORM_TIP_STANDALONE and not self._macro_name(self.p.form_tip_macro):
+                self.log_debug("Tip forming skipped because no 'form_tip_macro' is configured")
+                do_form_tip = FORM_TIP_NONE
+
             if do_form_tip == FORM_TIP_SLICER:
                 # Slicer was responsible for the tip, but the user must set the slicer_tip_park_pos
                 park_pos = self.p.slicer_tip_park_pos

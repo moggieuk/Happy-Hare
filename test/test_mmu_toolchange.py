@@ -238,6 +238,19 @@ class TestUnload(ToolchangeTestCase):
         """
         self.assertIn('gcode_macro _MMU_FORM_TIP', self.hh.printer.objects)
 
+    def test_empty_tip_forming_macro_skips_tip_forming(self):
+        """
+        menuconfig's slicer-only tip forming choice renders form_tip_macro empty. Out of a
+        print HH still owns the tip, and with no macro an unload must just go ahead without
+        one - as an empty purge_macro skips purging - not fail looking up macro ''.
+        """
+        self.hh.mmu.p.form_tip_macro = ''
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertNotIn('Forming tip...', self.hh.console[at:])
+
 
 class TestToolChange(ToolchangeTestCase):
     PRELOAD_GATES = (0, 1, 2)
