@@ -364,8 +364,7 @@ if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.tip_shaping"
     source "Kconfig.purging"
   endif
-  source "Kconfig.kinematics"       # Gear/selector steppers and selector servo
-  source "Kconfig.speeds"           # Bowden, selector (and single-unit extruder) speeds
+  source "Kconfig.kinematics"       # Gear/selector steppers, selector servo and speeds
   if !MULTI_UNIT
     source "macro_vars/Kconfig"     # Variables for all macros
   endif

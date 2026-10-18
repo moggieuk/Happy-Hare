@@ -1,4 +1,4 @@
-# Per-unit steppers/servo that move filament and select gates
+# Per-unit steppers/servo that move filament and select gates, and their speeds
 # (Once user edits values here they are sticky and
 # will override defaults)
 
@@ -8,16 +8,17 @@ config PARAM_DESIGN_NUM_GATES
   int
   default 0
 
-menu "MMU Kinematics"
+menu "MMU Kinematics and Speeds"
   help
-    MMU Kinematics
-    The gear stepper, selector stepper and selector servo. Allows override
-    of designer defaults. Change these settings if you know what you are
-    doing (or have MMU customizations)
+    MMU Kinematics and Speeds
+    The gear stepper, selector stepper and selector servo, and movement
+    speeds. Allows override of designer defaults. Change these settings if
+    you know what you are doing (or have MMU customizations)
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.gear_stepper"
     source "Kconfig.selector_stepper"
     source "Kconfig.selector_servo"
+    source "Kconfig.speeds"
   endif
 endmenu

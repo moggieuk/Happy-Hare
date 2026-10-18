@@ -1,9 +1,9 @@
-# The per-unit "MMU Kinematics", "Speeds" and "Other Settings" menus, and where the
+# The per-unit "MMU Kinematics and Speeds" and "Other Settings" menus, and where the
 # gate count is set.
 #
-# All three are per-unit, so a single unit and every unit of a multi-unit setup show
-# them, Speeds straight after MMU Kinematics. A multi-unit entry point shows neither
-# MMU Kinematics nor Other Settings, and has an "Extruder speeds" menu instead of Speeds.
+# Both are per-unit, so a single unit and every unit of a multi-unit setup show them,
+# with Speeds nested in MMU Kinematics and Speeds. A multi-unit entry point shows
+# neither, and has a top-level "Extruder speeds" menu instead.
 # The gate count is under MMU Type -> Design attributes for every machine type.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
@@ -24,7 +24,7 @@ ENVS = {
 ENTRY_POINT_ENV = dict(cfg._SINGLE_UNIT_ENV, F_MULTI_UNIT='y', F_MULTI_UNIT_ENTRY_POINT='y',
                        UNIT_NAME='u0,u1', MCU_NAME='u0,u1')
 
-KINEMATICS = ['Gear stepper', 'Selector stepper', 'Selector servo']
+KINEMATICS = ['Gear stepper', 'Selector stepper', 'Selector servo', 'Speeds']
 OTHER = ['PARAM_EXTRUDER_NAME', 'Filament sensors', 'MMU/Extruder sync', 'Calibration/Autotuning']
 
 
@@ -33,42 +33,52 @@ def _kconfig(env, label, profile='tradrack'):
         return cfg._kconfig(label, profiles.get(profile).syms)
 
 
-def _top_menus(env, label):
+def _menus(env, label):
+    """{menu title: [its rows]} for every shown menu, and the top-level menu titles in order"""
     kc = _kconfig(env, label)
     with patch.multiple(menuconfig, create=True, _kconf=kc, _show_name=False, _show_all=False):
         menus = {}
-        for node in menuconfig._shown_nodes(kc.top_node):
-            if node.item is kconfiglib.MENU:
-                menus[node.prompt[0]] = [
-                    child.prompt[0].strip() if child.item is kconfiglib.MENU else child.item.name
-                    for child in menuconfig._shown_nodes(node)
-                    if child.parent is node and child.item is not kconfiglib.COMMENT]
-        return menus
+
+        def walk(menu):
+            for node in menuconfig._shown_nodes(menu):
+                if node.item is kconfiglib.MENU and node.parent is menu:
+                    menus[node.prompt[0]] = [
+                        child.prompt[0].strip() if child.item is kconfiglib.MENU else child.item.name
+                        for child in menuconfig._shown_nodes(node)
+                        if child.parent is node and child.item is not kconfiglib.COMMENT]
+                    walk(node)
+
+        walk(kc.top_node)
+        top = [node.prompt[0] for node in menuconfig._shown_nodes(kc.top_node)
+               if node.item is kconfiglib.MENU and node.parent is kc.top_node]
+        return menus, top
 
 
 class TestKinematicsMenu(unittest.TestCase):
 
-    def test_each_unit_has_kinematics_then_speeds_and_other_settings(self):
+    def test_each_unit_has_kinematics_and_speeds_and_other_settings(self):
         for label, env in sorted(ENVS.items()):
             with self.subTest(env=label):
-                menus = _top_menus(env, 'kinematics_' + label)
-                self.assertEqual(menus['MMU Kinematics'], KINEMATICS)
+                menus, top = _menus(env, 'kinematics_' + label)
+                self.assertEqual(menus['MMU Kinematics and Speeds'], KINEMATICS)
                 self.assertEqual(menus['Other Settings'], OTHER)
                 self.assertIn('PARAM_GEAR_LOAD_SPEED', menus['Speeds'])
-                names = list(menus)
-                self.assertEqual(names.index('MMU Kinematics') + 1, names.index('Speeds'))
+                self.assertNotIn('Speeds', top)
 
     def test_single_unit_speeds_include_the_extruder_speeds(self):
-        self.assertIn('PARAM_EXTRUDER_LOAD_SPEED', _top_menus(cfg._SINGLE_UNIT_ENV, 'speeds_single')['Speeds'])
+        menus, _ = _menus(cfg._SINGLE_UNIT_ENV, 'speeds_single')
+        self.assertIn('PARAM_EXTRUDER_LOAD_SPEED', menus['Speeds'])
 
     def test_multi_unit_unit_speeds_leave_out_the_extruder_speeds(self):
-        self.assertNotIn('PARAM_EXTRUDER_LOAD_SPEED', _top_menus(ENVS['multi-unit unit'], 'speeds_unit')['Speeds'])
+        menus, _ = _menus(ENVS['multi-unit unit'], 'speeds_unit')
+        self.assertNotIn('PARAM_EXTRUDER_LOAD_SPEED', menus['Speeds'])
 
     def test_multi_unit_entry_point_has_only_extruder_speeds(self):
-        menus = _top_menus(ENTRY_POINT_ENV, 'kinematics_entry')
-        self.assertNotIn('MMU Kinematics', menus)
+        menus, top = _menus(ENTRY_POINT_ENV, 'kinematics_entry')
+        self.assertNotIn('MMU Kinematics and Speeds', menus)
         self.assertNotIn('Other Settings', menus)
         self.assertNotIn('Speeds', menus)
+        self.assertIn('Extruder speeds', top)
         self.assertIn('PARAM_EXTRUDER_LOAD_SPEED', menus['Extruder speeds'])
         self.assertNotIn('PARAM_GEAR_LOAD_SPEED', menus['Extruder speeds'])
 
