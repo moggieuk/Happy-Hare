@@ -2558,7 +2558,9 @@ class MmuController(MmuFilamentMovement):
             return
 
         if self.is_printing(force_in_print):
-            self.sensor_manager.confirm_loaded() # Can throw MmuError
+            # Only where filament should reach the nozzle: a completed load, or an interrupted toolchange/load
+            if operation != 'unload' and (self.filament_pos == FILAMENT_POS_LOADED or self._next_tool != TOOL_GATE_UNKNOWN):
+                self.sensor_manager.confirm_loaded() # Can throw MmuError
             self.is_handling_runout = False
             self.initialize_encoder(dwell=None) # Encoder 0000
 
