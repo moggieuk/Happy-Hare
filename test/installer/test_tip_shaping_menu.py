@@ -5,6 +5,8 @@
 # prompt is a printer-level flag: a multi-unit entry point shows it but only
 # lets "Toolhead sensors/settings" change it.
 
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -92,6 +94,55 @@ class TestToolheadTypeComment(unittest.TestCase):
     def test_hidden_for_other_unknown(self):
         self.assertEqual(self.comment({'CHOICE_TOOLHEAD_TYPE_OTHER': True})[1], 0)
 
+
+
+class TestExtruderCurrents(unittest.TestCase):
+    """Each method's extruder current sits under the method, hidden when Happy Hare never runs one"""
+
+    CASES = (('PARAM_EXTRUDER_FORM_TIP_CURRENT', 'CHOICE_FORM_TIP_MACRO', 'PARAM_FORCE_FORM_TIP_STANDALONE'),
+             ('PARAM_EXTRUDER_PURGE_CURRENT', 'CHOICE_PURGE_MACRO', 'PARAM_FORCE_PURGE_STANDALONE'))
+
+    def test_hidden_only_for_none(self):
+        for current, choice, _ in self.CASES:
+            for member, shown in (('PURGE' if 'PURGE' in choice else 'FORM_TIP', True), ('SLICER', False)):
+                with self.subTest(current=current, method=member):
+                    kc = _kconfig('current_%s_%s' % (current, member), cfg._SINGLE_UNIT_ENV,
+                                  {'%s_%s' % (choice, member): True})
+                    self.assertEqual(bool(kc.syms[current].visibility), shown)
+
+    def test_between_the_method_and_the_in_print_toggle(self):
+        kc = _kconfig('current_order', cfg._SINGLE_UNIT_ENV, {})
+        order = [node.item for node in kc.node_iter() if kconfiglib.expr_value(node.dep)]
+        for current, choice, toggle in self.CASES:
+            with self.subTest(current=current):
+                positions = [order.index(item) for item in
+                             (kc.named_choices[choice], kc.syms[current], kc.syms[toggle])]
+                self.assertEqual(positions, sorted(positions))
+
+
+class TestInPrintToggleForcedOffForNone(unittest.TestCase):
+    """With method None, the in-print toggle shows locked off and saves as a default"""
+
+    CASES = (('PARAM_FORCE_FORM_TIP_STANDALONE', 'CHOICE_FORM_TIP_MACRO_SLICER', 'Kconfig.tip_shaping'),
+             ('PARAM_FORCE_PURGE_STANDALONE', 'CHOICE_PURGE_MACRO_SLICER', 'Kconfig.purging'))
+
+    def test_locked_off_even_when_the_user_had_it_on(self):
+        for toggle, none, filename in self.CASES:
+            with self.subTest(toggle=toggle):
+                kc = _kconfig('forced_' + toggle, cfg._SINGLE_UNIT_ENV, {none: True, toggle: True})
+                patcher = patch.multiple(menuconfig, create=True, _kconf=kc,
+                                         _show_name=False, _show_all=False)
+                patcher.start()
+                self.addCleanup(patcher.stop)
+                node = _active_node(kc.syms[toggle], filename)
+                self.assertEqual(kc.syms[toggle].str_value, '0')
+                self.assertTrue(menuconfig._visible(node))
+                self.assertFalse(menuconfig._changeable(node))
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = os.path.join(tmp, '.config')
+                    kc.write_config(path)
+                    with open(path) as f:
+                        self.assertIn('CONFIG_%s=0 #~DEFAULT~#\n' % toggle, f.read())
 
 if __name__ == '__main__':
     unittest.main()
