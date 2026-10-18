@@ -1014,6 +1014,13 @@ config CHOICE_LEVEL_LOW
 config CHOICE_LEVEL_HIGH
     bool "High"
 endchoice
+
+config MMU_HAS_CUTTER
+    bool "Cutter"
+
+config MMU_HAS_CUTTER
+    prompt "Cutter" if n
+    forceshow
 """
 
     def setUp(self):
@@ -1052,3 +1059,9 @@ endchoice
     def test_resetting_a_default_changes_nothing(self):
         menuconfig._reset_key(self.node("PARAM_DISTANCE"))
         self.assertFalse(menuconfig._conf_changed)
+
+    def test_a_force_shown_read_only_entry_is_not_reset(self):
+        self.kconf.syms["MMU_HAS_CUTTER"].set_value(2)
+        menuconfig._reset_key(self.kconf.syms["MMU_HAS_CUTTER"].nodes[1])
+        self.assertFalse(menuconfig._conf_changed)
+        self.assertEqual(self.kconf.syms["MMU_HAS_CUTTER"].str_value, "y")

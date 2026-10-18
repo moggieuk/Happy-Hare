@@ -66,6 +66,10 @@ enable a capability the type didn't imply).
 the buffer sensor bools, which a unit sharing another unit's buffer sees as a summary
 instead.
 
+A forced row whose own prompt condition is false is read-only: `_changeable` blocks
+space and `_reset_key` blocks `r`. `MMU_HAS_TOOLHEAD_CUTTER`'s second prompt in
+`Kconfig.tip_shaping` uses this to show a multi-unit printer-level flag locked.
+
 ## 4. ` #~DEFAULT~#` default token
 
 The modifiable-defaults mechanism (see SKILL.md "naming contract").

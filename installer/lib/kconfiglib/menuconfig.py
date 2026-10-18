@@ -1801,6 +1801,10 @@ def _reset_key(node): # Happy Hare: Added method
 
     global _conf_changed
 
+    # A force-shown entry whose prompt is off is read-only
+    if not (node.prompt and expr_value(node.prompt[1])):
+        return
+
     sc = node.item
     had_value = (isinstance(sc, Symbol) and
                  (sc.user_value is not None or

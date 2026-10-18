@@ -4,6 +4,8 @@
 #   MMU_HAS_GANTRY_BUMPER_SERVO (and PIN_GANTRY_BUMPER_SERVO)
 #   MMU_HAS_SERVO_CUTTER        (and PIN_SERVO_CUTTER_SERVO)
 #
+# Adds a second prompt for MMU_HAS_TOOLHEAD_CUTTER (defined in Kconfig.toolhead)
+#
 # Via components/Kconfig.servo, for GANTRY_SERVO and SERVO_CUTTER:
 #   PARAM_*_MIN_PULSE_WIDTH, PARAM_*_MAX_PULSE_WIDTH, PARAM_*_MAXIMUM_ANGLE
 #   BOOL_*_INITIAL_ANGLE (and PARAM_*_INITIAL_ANGLE)
@@ -78,11 +80,52 @@ menu "Tip Forming / Cutting"
 
 
 # -------------------------------------
+# Toolhead cutter configuration
+# -------------------------------------
+
+  # Printer-level, so a multi-unit setup shows it locked (set under Toolhead sensors/settings)
+  config MMU_HAS_TOOLHEAD_CUTTER
+    prompt "Have toolhead cutter?" if !MULTI_UNIT
+    forceshow if MULTI_UNIT
+    help
+      Select if you have a filament cutter built into the toolhead that
+      uses toolhead motion for cutting action.
+      Same setting as under "Toolhead sensors/settings". In a multi-unit
+      setup it can only be changed there.
+
+  config MMU_HAS_GANTRY_BUMPER_SERVO
+    prompt "Have servo operated gantry bumper?" if MMU_HAS_TOOLHEAD_CUTTER
+
+  config PIN_GANTRY_BUMPER_SERVO
+    prompt "$(pad,35,Gantry servo pin)" if MMU_HAS_TOOLHEAD_CUTTER && MMU_HAS_GANTRY_BUMPER_SERVO
+    validator "$(pin_validator)"
+    help
+      Optional. Used to deploy fold-down "bumper" for tip cutting
+      when using a toolhead mounted filament cutting blade
+      $(pin_help)
+
+  prefix              := GANTRY_SERVO
+  servo_suffix        :=
+  servo_visible       := MMU_HAS_TOOLHEAD_CUTTER && MMU_HAS_GANTRY_BUMPER_SERVO
+  label               := Gantry servo
+  pad_width           := 35
+  servo_min_pulse     := 0.00075
+  servo_max_pulse     := 0.00225
+  servo_initial_angle := 180
+  servo_initial_on    := y
+  servo_rest_angle    := "Gantry servo up angle"$(nl)under Macro Variables -> Toolhead tip cutting
+  servo_min_hint      :=
+  servo_max_hint      :=
+  servo_angle_hint    :=
+  source "components/Kconfig.servo"
+
+
+# -------------------------------------
 # Standalone tip forming choice
 # -------------------------------------
 
   comment "_"
-  comment "_Essential tip forming configuration"
+  comment "_Essential tip forming/cutting config"
 
   choice CHOICE_FORM_TIP_MACRO
     bool "Happy Hare tip forming/cutting method"
@@ -94,7 +137,7 @@ menu "Tip Forming / Cutting"
       forming/cutting" is set.
 
     config CHOICE_FORM_TIP_MACRO_FORM_TIP
-      bool "Tip shaping using filament movement"
+      bool "Tip forming using filament movement"
       help
         Uses repeated retract/extrude operations to shape filament
         tip into a torpedo shape without strings.
@@ -139,36 +182,6 @@ menu "Tip Forming / Cutting"
       help
         Ramming, cooling moves and temperatures for the tip forming macro
   endif
-
-
-# -------------------------------------
-# Toolhead cutter configuration
-# -------------------------------------
-
-  config MMU_HAS_GANTRY_BUMPER_SERVO
-    prompt "Have servo operated gantry bumper?" if CHOICE_FORM_TIP_MACRO_CUT_TIP
-
-  config PIN_GANTRY_BUMPER_SERVO
-    prompt "Gantry servo pin" if CHOICE_FORM_TIP_MACRO_CUT_TIP && MMU_HAS_GANTRY_BUMPER_SERVO
-    validator "$(pin_validator)"
-    help
-      Optional. Used to deploy fold-down "bumper" for tip cutting
-      when using a toolhead mounted filament cutting blade
-
-  prefix              := GANTRY_SERVO
-  servo_suffix        :=
-  servo_visible       := CHOICE_FORM_TIP_MACRO_CUT_TIP && MMU_HAS_GANTRY_BUMPER_SERVO
-  label               := Gantry servo
-  pad_width           := 35
-  servo_min_pulse     := 0.00075
-  servo_max_pulse     := 0.00225
-  servo_initial_angle := 180
-  servo_initial_on    := y
-  servo_rest_angle    := "Gantry servo up angle"$(nl)under Macro Variables -> Toolhead tip cutting
-  servo_min_hint      :=
-  servo_max_hint      :=
-  servo_angle_hint    :=
-  source "components/Kconfig.servo"
 
   if CHOICE_FORM_TIP_MACRO_CUT_TIP
     comment "Tip cutting macro variables"

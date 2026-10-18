@@ -105,6 +105,8 @@ menu "Toolhead sensors/settings"
 
   comment "_"
   comment "_Toolhead dimensions"
+  comment "Toolhead: [[VALUE:PARAM_TOOLHEAD_TYPE]]" if !CHOICE_TOOLHEAD_TYPE_OTHER
+    dim
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     float "Extruder entrance to nozzle"

@@ -264,7 +264,7 @@ menu "Purging"
   # -------------------------------------
 
   comment "_"
-  comment "_Essential purge configuration"
+  comment "_Essential purge config"
 
   choice CHOICE_PURGE_MACRO
     prompt "Happy Hare purging method          "
