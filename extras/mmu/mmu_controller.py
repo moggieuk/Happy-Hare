@@ -471,6 +471,12 @@ class MmuController(MmuFilamentMovement):
         # Give macros a chance to initialize if they need to
         self.init_macros()
 
+        # Report configured positions made unreachable by skew correction or gcode offset
+        try:
+            self.position_checker.check()
+        except Exception as e:
+            self.log_debug("Unable to check configured positions: %s" % str(e))
+
         # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
 
@@ -2592,6 +2598,8 @@ class MmuController(MmuFilamentMovement):
 
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
+        self.position_checker.before_toolhead_operation(operation)
+
         if operation not in ['complete', 'cancel'] and 'xyz' not in self.toolhead.get_status(self.reactor.monotonic())['homed_axes']:
             self.gcode.run_script_from_command(self.p.toolhead_homing_macro)
             self.movequeue_wait()
@@ -2625,7 +2633,9 @@ class MmuController(MmuFilamentMovement):
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
-                    self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position'][:2] = next_pos
+                    # Saved last_position includes the gcode offset, next_pos does not
+                    saved_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
+                    saved_state['last_position'][:2] = [next_pos[i] + saved_state['base_position'][i] for i in range(2)]
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
@@ -2671,8 +2681,7 @@ class MmuController(MmuFilamentMovement):
                     if sequence_vars_macro:
                         if sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
                             # Don't change x,y position on toolchange
-                            current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
-                            self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
+                            self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position'][:2] = self.gcode_move.last_position[:2]
                         travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
                     gcode_pos = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position']
                     display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
@@ -4239,9 +4248,8 @@ class MmuWrapperResumeCommand(BaseCommand):
 
             # Prevent BASE_RESUME from moving toolhead
             if TOOLHEAD_POSITION_STATE in self.mmu.gcode_move.saved_states:
-                gcode_pos = self.mmu.gcode_move.get_status(self.mmu.reactor.monotonic())['gcode_position']
                 try:
-                    self.mmu.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
+                    self.mmu.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = self.mmu.gcode_move.last_position[:3]
                 except KeyError:
                     self.mmu.log_error("PAUSE_STATE not defined!")
 

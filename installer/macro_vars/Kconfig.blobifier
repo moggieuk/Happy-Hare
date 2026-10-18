@@ -71,6 +71,11 @@ menu "Blobifier            (_BLOBIFIER)"
   config VAR_BLOBIFIER_SKEW_CORRECTION
     float "Skew correction                "
     default 0.1
+    help
+      Distance in mm Blobifier keeps away from the maximum Y (and adds to the
+      shaker X position) so purge moves stay in range when Klipper skew
+      correction is enabled. MMU_CHECK_POSITIONS reports the value needed for
+      your skew at maximum Z.
 
   config VAR_BLOBIFIER_Y_OFFSET
     float "Y offset                       "

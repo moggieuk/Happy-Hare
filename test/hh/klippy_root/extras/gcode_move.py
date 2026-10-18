@@ -9,6 +9,10 @@
 # with "list indices must be integers or slices, not str". Shape ported verbatim from
 # klippy/extras/gcode_move.py:226-234.
 
+import collections
+
+Coord = collections.namedtuple('Coord', ('x', 'y', 'z', 'e'))
+
 
 class GCodeMove:
     def __init__(self, config):
@@ -22,10 +26,51 @@ class GCodeMove:
         self.last_position = [0., 0., 0., 0.]
         self.homing_position = [0., 0., 0., 0.]
         self.saved_states = {}
+        self.move_transform = None
         gcode = self.printer.lookup_object('gcode')
         for cmd in ('SAVE_GCODE_STATE', 'RESTORE_GCODE_STATE', 'SET_GCODE_OFFSET',
-                    'GET_POSITION'):
+                    'GET_POSITION', 'G0', 'G1', 'G90', 'G91'):
             gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
+
+    # -- moves ---------------------------------------------------------------
+    # XYZ only: E is ignored so Python-issued `G1 E..` stays a no-op, as it was when
+    # G1 was unhandled. Moves go through the transform chain (skew_correction) to the
+    # toolhead, which is what lets a test see the final kinematic position.
+    def set_move_transform(self, transform, force=False):
+        if self.move_transform is not None and not force:
+            raise self.printer.config_error("G-Code move transform already specified")
+        old = self.move_transform or self.printer.lookup_object('toolhead')
+        self.move_transform = transform
+        return old
+
+    def _move_with_transform(self, speed):
+        toolhead = self.printer.lookup_object('toolhead')
+        target = self.move_transform or toolhead
+        target.move(list(self.last_position[:3]) + toolhead.get_position()[3:], speed)
+
+    def cmd_G1(self, gcmd):
+        params = gcmd.get_command_parameters()
+        moved = False
+        for pos, axis in enumerate('XYZ'):
+            if axis in params:
+                v = float(params[axis])
+                if self.absolute_coord:
+                    self.last_position[pos] = v + self.base_position[pos]
+                else:
+                    self.last_position[pos] += v
+                moved = True
+        if 'F' in params:
+            self.speed = float(params['F']) * self.speed_factor
+        if moved:
+            self._move_with_transform(self.speed)
+
+    cmd_G0 = cmd_G1
+
+    def cmd_G90(self, gcmd):
+        self.absolute_coord = True
+
+    def cmd_G91(self, gcmd):
+        self.absolute_coord = False
 
     def cmd_SAVE_GCODE_STATE(self, gcmd):
         self.saved_states[gcmd.get('NAME', 'default')] = {
@@ -52,9 +97,22 @@ class GCodeMove:
         self.speed = state['speed']
         self.speed_factor = state['speed_factor']
         self.extrude_factor = state['extrude_factor']
+        if gcmd.get_int('MOVE', 0):
+            self.speed = gcmd.get_float('MOVE_SPEED', self.speed * 60.) / 60.
+            self._move_with_transform(self.speed)
 
     def cmd_SET_GCODE_OFFSET(self, gcmd):
-        pass
+        # Ported from klippy/extras/gcode_move.py (MOVE= not supported)
+        for pos, axis in enumerate('XYZ'):
+            offset = gcmd.get_float(axis, None)
+            if offset is None:
+                offset = gcmd.get_float(axis + '_ADJUST', None)
+                if offset is None:
+                    continue
+                offset += self.homing_position[pos]
+            delta = offset - self.homing_position[pos]
+            self.base_position[pos] += delta
+            self.homing_position[pos] = offset
 
     def cmd_GET_POSITION(self, gcmd):
         gcmd.respond_info('Position: %s' % (self.last_position,))
@@ -66,9 +124,10 @@ class GCodeMove:
             'extrude_factor': self.extrude_factor,
             'absolute_coordinates': self.absolute_coord,
             'absolute_extrude': self.absolute_extrude,
-            'homing_origin': tuple(self.homing_position),
-            'position': tuple(self.last_position),
-            'gcode_position': tuple(self.last_position),
+            'homing_origin': Coord(*self.homing_position[:4]),
+            'position': Coord(*self.last_position[:4]),
+            'gcode_position': Coord(*[lp - bp for lp, bp in
+                                      zip(self.last_position[:4], self.base_position[:4])]),
         }
 
 
