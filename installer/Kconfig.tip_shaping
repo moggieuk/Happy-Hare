@@ -33,7 +33,12 @@ config PIN_SERVO_CUTTER_SERVO
 
 menu "Tip Forming / Cutting"
   help
-    Tip Shaping
+    Before unloading, the filament tip must be made clean so strings or
+    blobs can't jam or block the MMU (gate, selector or bowden).
+    Tip forming shapes the tip with extruder moves: no extra hardware,
+    but it needs tuning. Tip cutting with a cutter is cleaner, but the
+    fragment left below the cut must also be purged, so it needs a bigger
+    purge volume.
 
 # -------------------------------------
 # Servo cutter configuration
@@ -178,6 +183,13 @@ menu "Tip Forming / Cutting"
     default FORM_TIP_MACRO_OTHER if CHOICE_FORM_TIP_MACRO_OTHER
     default ""
 
+  config PARAM_EXTRUDER_FORM_TIP_CURRENT
+    int "Extruder tip forming current" if !CHOICE_FORM_TIP_MACRO_SLICER
+    default 100
+    default_when_hidden
+    help
+      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
+
   if CHOICE_FORM_TIP_MACRO_FORM_TIP
     comment "Tip forming macro variables"
       link VAR_FORM_TIP_RAMMING_VOLUME
@@ -191,13 +203,6 @@ menu "Tip Forming / Cutting"
       help
         Blade and cutting positions and moves for the toolhead cutter macro
   endif
-
-  config PARAM_EXTRUDER_FORM_TIP_CURRENT
-    int "Extruder tip forming current" if !CHOICE_FORM_TIP_MACRO_SLICER
-    default 100
-    default_when_hidden
-    help
-      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
 
 
 # -------------------------------------
@@ -213,9 +218,9 @@ menu "Tip Forming / Cutting"
     default 0 if CHOICE_FORM_TIP_MACRO_SLICER
     default 1
     help
-      Checked (recommended): Happy Hare forms or cuts the tip on every tool
+      [[B]]Checked[[/B]] (recommended): Happy Hare forms or cuts the tip on every tool
       change in a print using the method above. Turn off slicer tip forming.
-      Unchecked: the slicer forms the tip. Tip cutting needs this checked.
+      [[B]]Unchecked[[/B]]: the slicer forms the tip. Tip cutting needs this checked.
       Always off when the method above is None.
       See "Turning off slicer tip forming" in the Slicer Setup doc:
       https://moggieuk.github.io/Happy-Hare-Doc/Slicer-Setup/

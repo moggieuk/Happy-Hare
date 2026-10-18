@@ -110,13 +110,16 @@ class TestExtruderCurrents(unittest.TestCase):
                                   {'%s_%s' % (choice, member): True})
                     self.assertEqual(bool(kc.syms[current].visibility), shown)
 
-    def test_between_the_method_and_the_in_print_toggle(self):
+    def test_under_the_method_and_above_its_macro_link_and_the_in_print_toggle(self):
         kc = _kconfig('current_order', cfg._SINGLE_UNIT_ENV, {})
-        order = [node.item for node in kc.node_iter() if kconfiglib.expr_value(node.dep)]
+        nodes = [node for node in kc.node_iter() if kconfiglib.expr_value(node.dep)]
+        items = [node.item for node in nodes]
         for current, choice, toggle in self.CASES:
             with self.subTest(current=current):
-                positions = [order.index(item) for item in
-                             (kc.named_choices[choice], kc.syms[current], kc.syms[toggle])]
+                link = next(i for i, node in enumerate(nodes) if node.item is kconfiglib.COMMENT
+                            and hasattr(node, 'link') and i > items.index(kc.named_choices[choice]))
+                positions = [items.index(kc.named_choices[choice]), items.index(kc.syms[current]),
+                             link, items.index(kc.syms[toggle])]
                 self.assertEqual(positions, sorted(positions))
 
 

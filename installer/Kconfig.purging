@@ -128,7 +128,12 @@ source "components/Kconfig.tmc_driver_types"
 
 menu "Purging"
   help
-    Purging
+    After a tool change the previous filament is still in the extruder
+    and nozzle. Purging pushes it out so the new filament prints clean,
+    without mixed colors or materials.
+    Happy Hare can purge into a bucket or a Blobifier, or leave it to the
+    slicer's wipe tower. A tip cut needs a bigger purge than a formed tip
+    because the cut fragment must also be purged.
 
   # -------------------------------------
   # Blobifier configuration
@@ -315,6 +320,13 @@ menu "Purging"
     default PURGE_MACRO_OTHER if CHOICE_PURGE_MACRO_OTHER
     default ""
 
+  config PARAM_EXTRUDER_PURGE_CURRENT
+    int "Extruder purging current           " if !CHOICE_PURGE_MACRO_SLICER
+    default 100
+    default_when_hidden
+    help
+      % of extruder current (100%-150%) to use when purging (100 to disable feature)
+
   if CHOICE_PURGE_MACRO_PURGE
     comment "Simple purge macro variables"
       link VAR_PURGE_EXTRUDER_PURGE_SPEED
@@ -328,13 +340,6 @@ menu "Purging"
       help
         Purge, brush, bucket and tray settings for the Blobifier macro
   endif
-
-  config PARAM_EXTRUDER_PURGE_CURRENT
-    int "Extruder purging current           " if !CHOICE_PURGE_MACRO_SLICER
-    default 100
-    default_when_hidden
-    help
-      % of extruder current (100%-150%) to use when purging (100 to disable feature)
 
 
   # -------------------------------------
@@ -350,9 +355,9 @@ menu "Purging"
     default 0 if CHOICE_PURGE_MACRO_SLICER
     default 1
     help
-      Checked (recommended): Happy Hare purges after every tool change in
+      [[B]]Checked[[/B]] (recommended): Happy Hare purges after every tool change in
       a print using the method above. Turn off the slicer's wipe tower.
-      Unchecked: the slicer's wipe tower purges during a print.
+      [[B]]Unchecked[[/B]]: the slicer's wipe tower purges during a print.
       Always off when the method above is None.
       See "Turning off the slicer wipe tower" in the Slicer Setup doc:
       https://moggieuk.github.io/Happy-Hare-Doc/Slicer-Setup/
