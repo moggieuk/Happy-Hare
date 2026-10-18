@@ -266,11 +266,12 @@ menu "Purging"
   comment "_Essential purge configuration"
 
   choice CHOICE_PURGE_MACRO
-    prompt "Select standalone purging option   "
+    prompt "Happy Hare purging method          "
     default CHOICE_PURGE_MACRO_BLOBIFIER if MMU_HAS_BLOBIFIER
     default CHOICE_PURGE_MACRO_PURGE
     help
-      How to perform standalone purging operation.
+      What Happy Hare runs whenever it purges: always outside a print,
+      and in a print when "Happy Hare controlled in-print purge" is set.
 
     config CHOICE_PURGE_MACRO_PURGE
       bool "Simple purge into bucket"
@@ -288,9 +289,10 @@ menu "Purging"
     endif
 
     config CHOICE_PURGE_MACRO_SLICER
-      bool "Slicer managed"
+      bool "None [[DIM]]/ slicer only[[/DIM]]"
       help
-        Purging is controlled and managed by the slicer rather than Happy-Hare.
+        Happy Hare never purges. The slicer's wipe tower purges during a
+        print and nothing is purged outside a print.
 
     config CHOICE_PURGE_MACRO_OTHER
       bool "Other / manually entered"
@@ -322,9 +324,11 @@ menu "Purging"
     default 0 if CHOICE_PURGE_MACRO_SLICER
     default 1
     help
-      You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.
-      To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
-      and be sure to TURN OFF in your slicer
+      Checked (recommended): Happy Hare purges after every tool change in
+      a print using the method above. Turn off the slicer's wipe tower.
+      Unchecked: the slicer's wipe tower purges during a print.
+      See "Turning off slicer wipetower" on the wiki's Slicer Setup page:
+      https://github.com/moggieuk/Happy-Hare/wiki/Slicer-Setup
   config PARAM_EXTRUDER_PURGE_CURRENT
     int "Extruder purging current           "
     default 100

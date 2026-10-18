@@ -77,11 +77,13 @@ menu "Tip Forming / Cutting"
   comment "_Essential tip forming configuration"
 
   choice CHOICE_FORM_TIP_MACRO
-    bool "Select standalone tip shaping option"
+    bool "Happy Hare tip forming/cutting method"
     default CHOICE_FORM_TIP_MACRO_CUT_TIP if MMU_HAS_TOOLHEAD_CUTTER
     default CHOICE_FORM_TIP_MACRO_FORM_TIP
     help
-      How to perform standalone tip shaping (forming or cutting)
+      What Happy Hare runs whenever it forms or cuts a tip: always outside
+      a print, and in a print when "Happy Hare controlled in-print tip
+      forming/cutting" is set.
 
     config CHOICE_FORM_TIP_MACRO_FORM_TIP
       bool "Tip shaping using filament movement"
@@ -98,9 +100,10 @@ menu "Tip Forming / Cutting"
         via toolhead movement.
 
     config CHOICE_FORM_TIP_MACRO_SLICER
-      bool "Slicer controlled tip forming"
+      bool "None [[DIM]]/ slicer only[[/DIM]]"
       help
-        Tip forming is controlled and managed by the slicer rather than Happy Hare.
+        Happy Hare never forms or cuts a tip. The slicer forms the tip
+        during a print and nothing is done outside a print.
 
     config CHOICE_FORM_TIP_MACRO_OTHER
       bool "Other / manually entered macro"
@@ -162,8 +165,11 @@ menu "Tip Forming / Cutting"
     default 0 if CHOICE_FORM_TIP_MACRO_SLICER
     default 1
     help
-      You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
-      To use tip cutting ensure this selection is checked and be sure to turn off in your slicer
+      Checked (recommended): Happy Hare forms or cuts the tip on every tool
+      change in a print using the method above. Turn off slicer tip forming.
+      Unchecked: the slicer forms the tip. Tip cutting needs this checked.
+      See "Turning off slicer tip forming" on the wiki's Slicer Setup page:
+      https://github.com/moggieuk/Happy-Hare/wiki/Slicer-Setup
   config PARAM_SLICER_TIP_PARK_POS
     string
     default "0"
