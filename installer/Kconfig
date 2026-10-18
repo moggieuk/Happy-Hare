@@ -316,6 +316,7 @@ if MULTI_UNIT_ENTRY_POINT
   comment "_Shared System Options"
   source "toolheads/Kconfig"        # Toolhead Selection menu
   source "Kconfig.toolhead"         # Toolhead Sensors/Settings
+  comment "_"
   source "Kconfig.options"          # Main software options
   source "Kconfig.tip_shaping"
   source "Kconfig.purging"
@@ -331,6 +332,7 @@ if MULTI_UNIT_ENTRY_POINT
     source "Kconfig.shared_pins"    # Pins on components shared across units
   endmenu
 
+  comment "_"
   source "Kconfig.paths_services"   # Advanced install options
 endif
 
