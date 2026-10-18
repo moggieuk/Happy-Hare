@@ -1,10 +1,11 @@
 # Happy Hare test harness - MMU_CHECK_POSITIONS.
 #
-# The parking, cut tip and Blobifier macros each report the X,Y points they move to
-# (via _MMU_CHECK_POSITION) and Happy Hare checks them against the axis limits after
-# gcode offset and skew correction, from Z=0 up to the axis maximum. Park positions are
-# adjusted at runtime by _SAFE_G1 so are only reported; cut tip and Blobifier positions
-# can't be adjusted so pause the print before the toolchange that would fail.
+# The parking and cut tip macros each report the X,Y points they move to (via
+# _MMU_CHECK_POSITION) and Happy Hare checks them against the axis limits after gcode
+# offset and skew correction, from Z=0 up to the axis maximum. Park positions are
+# adjusted at runtime by _SAFE_G1 so are only reported; the cut stroke can't be adjusted
+# so pauses the print before the toolchange that would fail. Blobifier moves all go
+# through _SAFE_G1 so aren't checked.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_check_positions
 #
@@ -22,7 +23,7 @@ Y_MAX = 356.
 Z_MAX = 340.
 YZ = (Y_MAX - 357.271) / 68.092
 STUB = PRINTER_STUB + "\n[skew_correction]\n"
-CHECK_MACROS = ('_MMU_PARK_CHECK_POSITIONS', '_MMU_CUT_TIP_CHECK_POSITIONS', '_BLOBIFIER_CHECK_POSITIONS')
+CHECK_MACROS = ('_MMU_PARK_CHECK_POSITIONS', '_MMU_CUT_TIP_CHECK_POSITIONS')
 
 
 def _run_body(macro, gcmd):
@@ -77,12 +78,17 @@ class CheckPositionsTestCase(unittest.TestCase):
         self.hh.settle(1.0)
         self.assertEqual(self.hh.errors, [], 'print start failed')
 
+    def pin_near_y_max(self):
+        # With YZ skew pushing toward Y max this cut stroke is out of range above Z~54
+        self.set_vars('_MMU_CUT_TIP_VARS', pin_loc_xy=[14., Y_MAX - 1.], pin_loc_compressed_xy=[0.5, Y_MAX - 1.])
+
     def test_profile_uses_cut_tip_and_blobifier(self):
         self.assertEqual(self.hh.mmu.p.form_tip_macro, '_MMU_CUT_TIP')
         self.assertEqual(self.hh.mmu.p.purge_macro, 'BLOBIFIER')
         self.assertIsNotNone(self.blobifier)
 
-    def test_shipped_defaults_in_range_without_skew(self):
+    def test_shipped_defaults_in_range_with_skew(self):
+        self.skew.set_factors(yz=YZ)
         out = self.check()
         self.assertIn("All configured positions are within axis limits", out)
         for macro in CHECK_MACROS:
@@ -106,13 +112,16 @@ class CheckPositionsTestCase(unittest.TestCase):
         out = self.check()
         self.assertIn("park_pause (x:50.0, y:350.0): Y exceeds maximum by 4.00mm, use y <= 345.99", out)
 
-    def test_blobifier_with_skew_is_fatal(self):
+    def test_cut_stroke_with_skew_is_fatal(self):
+        self.pin_near_y_max()
         self.skew.set_factors(yz=YZ)
         out = self.check()
-        self.assertIn("blobifier_purge", out)
+        self.assertIn("cut_tip_pin_park (x:19.0, y:355.0): Y exceeds maximum by", out)
+        self.assertIn("above Z=53.6", out)
         self.assertIn("will pause print", out)
 
-    def test_blobifier_failure_pauses_print_before_toolchange(self):
+    def test_cut_stroke_failure_pauses_print_before_toolchange(self):
+        self.pin_near_y_max()
         self.start_print()
         self.skew.set_factors(yz=YZ)      # Typically loaded in PRINT_START after MMU_PRINT_START
         self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=1')
@@ -129,6 +138,7 @@ class CheckPositionsTestCase(unittest.TestCase):
         self.hh.settle(0.5)
 
     def test_resume_without_fix_continues(self):
+        self.pin_near_y_max()
         self.start_print()
         self.skew.set_factors(yz=YZ)
         self.change_tool(1)
@@ -159,6 +169,7 @@ class CheckPositionsTestCase(unittest.TestCase):
         self.assertEqual(self.hh.errors, [])
 
     def test_skew_loaded_mid_print_pauses_at_next_toolchange(self):
+        self.pin_near_y_max()
         self.start_print()
         self.change_tool(1)
         self.assertFalse(self.hh.mmu.is_mmu_paused())
@@ -169,7 +180,6 @@ class CheckPositionsTestCase(unittest.TestCase):
 
     def test_next_print_checks_again_with_same_skew(self):
         self.skew.set_factors(yz=YZ)
-        self.set_vars('_BLOBIFIER_VARS', skew_correction=10.)
         self.start_print()
         self.change_tool(1)
         first = self.park_checks()
@@ -193,7 +203,6 @@ class CheckPositionsTestCase(unittest.TestCase):
         self.assertFalse(self.hh.mmu.is_mmu_paused())
 
     def test_park_failure_does_not_pause(self):
-        self.set_vars('_BLOBIFIER_VARS', skew_correction=10.)
         self.set_vars('_MMU_SEQUENCE_VARS', park_toolchange=[50., Y_MAX, 1., 0., 2.])
         self.start_print()
         self.skew.set_factors(yz=YZ)

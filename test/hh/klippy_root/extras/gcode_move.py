@@ -50,6 +50,7 @@ class GCodeMove:
 
     def cmd_G1(self, gcmd):
         params = gcmd.get_command_parameters()
+        previous = list(self.last_position)
         moved = False
         for pos, axis in enumerate('XYZ'):
             if axis in params:
@@ -62,7 +63,12 @@ class GCodeMove:
         if 'F' in params:
             self.speed = float(params['F']) * self.speed_factor
         if moved:
-            self._move_with_transform(self.speed)
+            try:
+                self._move_with_transform(self.speed)
+            except Exception:
+                # Klipper resets last_position on gcode:command_error
+                self.last_position = previous
+                raise
 
     cmd_G0 = cmd_G1
 

@@ -4,8 +4,8 @@
 #                          moggieuk@hotmail.com
 #
 # Implements MMU_CHECK_POSITIONS and _MMU_CHECK_POSITION commands
-#  - Checks the X,Y positions configured for Happy Hare macros (parking, cut tip,
-#    Blobifier) against the axis limits after gcode offset and skew correction
+#  - Checks the X,Y positions configured for Happy Hare macros (parking, cut tip)
+#    against the axis limits after gcode offset and skew correction
 #
 #
 # (\_/)
@@ -23,9 +23,8 @@ from .mmu_safe_g1      import config_limits, gcode_to_kinematic, skew_fingerprin
 # Each macro reports the points it moves to by calling _MMU_CHECK_POSITION
 PARK_CHECK_MACRO      = "_MMU_PARK_CHECK_POSITIONS"
 CUT_TIP_CHECK_MACRO   = "_MMU_CUT_TIP_CHECK_POSITIONS"
-BLOBIFIER_CHECK_MACRO = "_BLOBIFIER_CHECK_POSITIONS"
 
-# Operations that move filament and so would run cut tip / Blobifier
+# Operations that move filament and so would run the cut tip
 BLOCKING_OPERATIONS = ['toolchange', 'load', 'unload', 'runout']
 
 
@@ -35,17 +34,17 @@ class MmuCheckPositionsCommand(BaseCommand):
     HELP_BRIEF = "Check configured macro X,Y positions are reachable with current skew correction and gcode offset"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "PAUSE = [0|1] Pause the print if a cut tip or Blobifier position is out of range\n"
+        + "PAUSE = [0|1] Pause the print if a cut tip position is out of range\n"
     )
     HELP_SUPPLEMENT = (
         "Positions are checked from Z=0 up to the axis maximum because skew correction moves\n"
         + "the toolhead further as Z increases. Park positions are adjusted automatically when\n"
-        + "used so are only reported. Cut tip and Blobifier positions must be exact so, if out\n"
-        + "of range, a print is paused before the next toolchange. This check also runs at\n"
+        + "used so are only reported. The cut tip pin positions must be exact so, if out of\n"
+        + "range, a print is paused before the next toolchange. This check also runs at\n"
         + "startup and, during a print, whenever skew correction or the gcode offset changes\n"
         + "Examples:\n"
         + f"{CMD}         ...Report any out of range positions\n"
-        + f"{CMD} PAUSE=1 ...Also pause the print if a cut tip or Blobifier position is out of range\n"
+        + f"{CMD} PAUSE=1 ...Also pause the print if a cut tip position is out of range\n"
     )
 
     def __init__(self, mmu):
@@ -83,8 +82,6 @@ class MmuCheckPositionsCommand(BaseCommand):
         macros = [PARK_CHECK_MACRO]
         if mmu._macro_name(mmu.p.form_tip_macro).upper() == MACRO_CUT_TIP:
             macros.append(CUT_TIP_CHECK_MACRO)
-        if mmu._macro_name(mmu.p.purge_macro).upper() == MACRO_BLOBIFIER or mmu.has_blobifier:
-            macros.append(BLOBIFIER_CHECK_MACRO)
         return [m for m in macros if mmu.printer.lookup_object("gcode_macro %s" % m, None)]
 
     def _collect_points(self):

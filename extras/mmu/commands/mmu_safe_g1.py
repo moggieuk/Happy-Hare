@@ -69,39 +69,53 @@ def gcode_to_kinematic(mmu, gpos):
     return skew.calc_skew(raw + [0.])[:3] if skew else raw
 
 
-def clamp_gcode_position(mmu, gpos, limits):
+def _xy_kinematic(skew, raw, z):
+    pos = [raw[0], raw[1], z, 0.]
+    return skew.calc_skew(pos)[:2] if skew else pos[:2]
+
+
+def safe_target(mmu, requested, limits, max_z=None):
     """
-    Map an absolute gcode XYZ the way Klipper does (offset, then skew) and pull any
-    axis that would end outside 'limits' back inside. Returns the (possibly adjusted)
-    gcode XYZ and a list of (axis, kinematic_pos, limit) for each axis that was over
+    Build the target of an absolute move exactly as Klipper's G1 does (gcode value plus
+    offset, current position for axes not given) and, like Klipper's range check, look
+    only at axes that move once skew is applied. Any that would end outside 'limits' are
+    pulled just inside. With max_z, X and Y are also kept in range for any later Z move up
+    to max_z, since skew moves them as Z changes.
+    Returns the (possibly adjusted) target in Klipper's offset coordinates and a list of
+    (axis, kinematic_pos, limit) for each axis that was over
     """
-    base = mmu.gcode_move.base_position
-    raw = [gpos[i] + base[i] for i in range(3)]
+    gm = mmu.gcode_move
+    base = gm.base_position
+    current = list(gm.last_position[:3])
+    raw = [requested[i] + base[i] if requested[i] is not None else current[i] for i in range(3)]
     overs = []
 
     # Skew passes Z through unchanged so Z is settled first
     z_hi = limits[2][1]
-    if raw[2] > z_hi:
+    if raw[2] != current[2] and raw[2] > z_hi:
         overs.append(('z', raw[2], z_hi))
         raw[2] = z_hi - LIMIT_MARGIN
 
     skew = _skew(mmu)
-    kpos = skew.calc_skew(raw + [0.])[:3] if skew else list(raw)
-    adjusted = False
-    for i, axis in ((0, 'x'), (1, 'y')):
-        lo, hi = limits[i]
-        if kpos[i] < lo:
-            overs.append((axis, kpos[i], lo))
-            kpos[i] = lo + LIMIT_MARGIN
-            adjusted = True
-        elif kpos[i] > hi:
-            overs.append((axis, kpos[i], hi))
-            kpos[i] = hi - LIMIT_MARGIN
-            adjusted = True
+    heights = [raw[2]]
+    if max_z is not None and min(max_z + base[2], z_hi) > raw[2]:
+        heights.append(min(max_z + base[2], z_hi))
+    start = _xy_kinematic(skew, current, current[2])
 
-    if adjusted:
-        raw = skew.calc_unskew(kpos + [0.])[:3] if skew else kpos
-    return [raw[i] - base[i] for i in range(3)], overs
+    # Y first because skewed X depends on Y. Each skewed axis moves 1:1 with its own axis
+    for i, axis in ((1, 'y'), (0, 'x')):
+        lo, hi = limits[i]
+        kin = [_xy_kinematic(skew, raw, z)[i] for z in heights]
+        checked = kin if kin[0] != start[i] else kin[1:]
+        if not checked:
+            continue
+        if max(checked) > hi:
+            overs.append((axis, max(checked), hi))
+            raw[i] += hi - LIMIT_MARGIN - max(checked)
+        elif min(checked) < lo:
+            overs.append((axis, min(checked), lo))
+            raw[i] += lo + LIMIT_MARGIN - min(checked)
+    return raw, overs
 
 
 class MmuSafeG1Command(BaseCommand):
@@ -114,6 +128,7 @@ class MmuSafeG1Command(BaseCommand):
         + "Y = #(mm) Absolute Y\n"
         + "Z = #(mm) Absolute Z\n"
         + "F = #(mm/min) Speed\n"
+        + "MAX_Z = #(mm) Also keep X,Y in range for following Z moves up to this height\n"
     )
     HELP_SUPPLEMENT = (
         "Coordinates are always absolute, as with G90, and only X, Y, Z are supported. If the\n"
@@ -122,6 +137,7 @@ class MmuSafeG1Command(BaseCommand):
         + "in a 'user_park_move_macro'\n"
         + "Examples:\n"
         + f"{CMD} X=10 Y=300 F=12000 ...Move to (10, 300), adjusted if necessary\n"
+        + f"{CMD} Y=350 MAX_Z=40     ...Move to Y=350, adjusted so later Z moves up to 40 stay in range\n"
     )
 
     def __init__(self, mmu):
@@ -138,35 +154,34 @@ class MmuSafeG1Command(BaseCommand):
         params = gcmd.get_command_parameters()
         requested = [gcmd.get_float(a, None) for a in "XYZ"]
         speed = gcmd.get_float('F', None, above=0.)
+        max_z = gcmd.get_float('MAX_Z', None)
         if all(r is None for r in requested):
             return
 
         gm = mmu.gcode_move
-        new = None
+        axes = ["%s%s" % (a, params[a]) for a in "XYZ" if a in params] # As requested
         limits = live_limits(mmu)
         if limits:
-            current = gm.get_status(mmu.reactor.monotonic())['gcode_position']
-            target = [r if r is not None else current[i] for i, r in enumerate(requested)]
-            new, overs = clamp_gcode_position(mmu, target, limits)
+            raw, overs = safe_target(mmu, requested, limits, max_z)
             if overs:
+                base = gm.base_position
+                target = [raw[i] - base[i] for i in range(3)]
+                axes = []
+                for i, a in enumerate("XYZ"):
+                    if requested[i] is not None and raw[i] == requested[i] + base[i]:
+                        axes.append("%s%s" % (a, params[a]))
+                    elif requested[i] is not None or raw[i] != gm.last_position[i]:
+                        axes.append("%s%.6f" % (a, target[i]))
                 over_str = ", ".join("%s %.3f beyond limit %.3f" % (a.upper(), p, l) for a, p, l in overs)
-                msg = ("Move to (x:%.3f, y:%.3f, z:%.3f) adjusted to (x:%.3f, y:%.3f, z:%.3f) to stay within axis limits (%s)"
-                       % (tuple(target) + tuple(new) + (over_str,)))
+                msg = ("Move to (%s) adjusted to (%s) to stay within axis limits (%s)"
+                       % (" ".join("%s%s" % (a, params[a]) for a in "XYZ" if a in params), " ".join(axes), over_str))
                 if not self.warned:
                     self.warned = True
                     mmu.log_warning("Warning: %s. Likely skew_correction or gcode offset. Run MMU_CHECK_POSITIONS to review configured positions" % msg)
                 else:
                     mmu.log_debug(msg)
-            else:
-                new = None
 
-        if new is None:
-            # Unchanged so issue as requested
-            axes = " ".join("%s%s" % (a, params[a]) for a in "XYZ" if a in params)
-        else:
-            axes = " ".join("%s%.6f" % (a, v) for a, v, r, o in zip("XYZ", new, requested, target)
-                            if r is not None or abs(v - o) > 1e-9)
-        cmd = "G1 %s" % axes
+        cmd = "G1 %s" % " ".join(axes)
         if speed is not None:
             cmd += " F%s" % params['F']
         if not gm.absolute_coord:

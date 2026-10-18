@@ -13,7 +13,7 @@
 import logging
 import unittest
 
-from test.hh import session
+from test.hh import profiles, session
 from test.hh.bootstrap import PRINTER_STUB
 
 logging.getLogger().setLevel(logging.CRITICAL)
@@ -106,6 +106,26 @@ class SafeG1TestCase(unittest.TestCase):
         self.assertEqual(self.kin_pos()[:2], [20., 30.])
         self.assertFalse(self.hh.printer.lookup_object('gcode_move').absolute_coord)
 
+    def test_axis_resting_on_limit_is_left_alone(self):
+        # (255.307 - -0.7) + -0.7 rounds to just above 255.307, so rebuilding the position from
+        # the gcode position would see Y over the limit even though Y isn't moving
+        self.kin.set_limits((0., 0., 0.), (350., 255.307, 340.))
+        self.hh.run_gcode("SET_GCODE_OFFSET Y=-0.7")
+        gm = self.hh.printer.lookup_object('gcode_move')
+        gm.last_position[1] = 255.307
+        self.toolhead.commanded_pos[1] = 255.307
+        self.hh.run_gcode("_SAFE_G1 X=10 F=6000")
+        self.assertEqual(self.hh.gcode.executed[-1], "G1 X10 F6000")
+        self.assertEqual(self.warnings(), [])
+
+    def test_max_z_keeps_later_relative_z_moves_in_range(self):
+        self.skew.set_factors(yz=YZ)
+        self.hh.run_gcode("G1 X100 Y300 Z0.2")
+        self.hh.run_gcode("_SAFE_G1 Y=355.9 MAX_Z=20.2")
+        self.hh.run_gcode("G91\nG1 Z20\nG90")      # e.g. Blobifier raising Z while purging
+        self.assertAlmostEqual(self.kin_pos()[1], Y_MAX - 0.01, places=6)
+        self.assertAlmostEqual(self.kin_pos()[2], 20.2, places=6)
+
     def test_unhomed_passes_through(self):
         self.kin.limits = [(1., -1.)] * 3
         with self.assertRaisesRegex(self.hh.printer.command_error, "Must home axis first"):
@@ -193,3 +213,42 @@ class ParkMacroTestCase(unittest.TestCase):
         moves = self.park((100, 300, 63.092), "X=47.893 Y=356 Z_HOP=5")
         self.assertAlmostEqual(moves[-1][1], Y_MAX - 0.01, places=4)
         self.assertAlmostEqual(moves[-1][2], 68.092, places=4)
+
+
+class BlobifierShakeTestCase(unittest.TestCase):
+    """BLOBIFIER_SHAKE_BUCKET run for real: purge row at Y max and Y shakes stay in range under skew"""
+
+    PROFILE = profiles.get('boxturtle').derive('boxturtle_blobifier_skew', syms={
+        'MMU_HAS_BLOBIFIER': True,
+        'PIN_BLOBIFIER_SERVO': 'unit0:PA1',
+    })
+
+    def setUp(self):
+        self.hh = session(self.PROFILE, printer_stub=STUB)
+        self.hh.build()
+        self.hh.printer.harness_macro_effects = {
+            'BLOBIFIER_INIT': lambda macro, gcmd: setattr(
+                macro.printer.lookup_object('gcode_macro BLOBIFIER'), 'variables',
+                dict(macro.printer.lookup_object('gcode_macro BLOBIFIER').variables, initialized=1)),
+            'BLOBIFIER_SHAKE_BUCKET': lambda macro, gcmd: macro.run_body(gcmd),
+        }
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.toolhead = self.hh.printer.lookup_object('toolhead')
+        self.toolhead.get_kinematics().set_limits((0., 0., 0.), (350., Y_MAX, 340.))
+        self.hh.printer.lookup_object('skew_correction').set_factors(xy=-0.002, yz=YZ)
+        configfile = self.hh.printer.lookup_object('configfile')
+        configfile.status_settings = dict(configfile.status_settings, mmu_parameters={'log_m117_messages': 0})
+
+    def tearDown(self):
+        self.hh.close()
+
+    def test_shake_at_height_stays_in_range(self):
+        self.hh.run_gcode("G90\nG1 X150 Y200 Z60")
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("BLOBIFIER_SHAKE_BUCKET SHAKES=3")
+        moves = [pos[:3] for pos, _ in self.toolhead.moves[first:]]
+        self.assertEqual(self.hh.errors, [])
+        self.assertGreater(len(moves), 4)
+        for x, y, z in moves:
+            self.assertTrue(0. <= x <= 350. and 0. <= y <= Y_MAX, (x, y, z))
