@@ -15,10 +15,19 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import collections
 import mcu as mcu_mod
+
+Coord = collections.namedtuple('Coord', ('x', 'y', 'z', 'e'))
 
 
 class DummyKinematics:
+    # No `limits` attribute by default, like a kinematics without box limits (delta),
+    # so nothing range-checks. set_limits() gives it cartesian-style limits, and the
+    # toolhead then rejects out-of-range moves the way cartesian._check_endstops does.
+    axes_min = Coord(0., 0., 0., 0.)
+    axes_max = Coord(200., 200., 200., 0.)
+
     def get_steppers(self):
         return []
 
@@ -28,9 +37,23 @@ class DummyKinematics:
     def check_move(self, move):
         pass
 
+    def set_limits(self, mins, maxs):
+        self.axes_min = Coord(*(list(mins) + [0.]))
+        self.axes_max = Coord(*(list(maxs) + [0.]))
+        self.limits = [(lo, hi) for lo, hi in zip(mins, maxs)]
+
+    def check_limits(self, oldpos, newpos):
+        for i in (0, 1, 2):
+            lo, hi = self.limits[i]
+            if newpos[i] != oldpos[i] and (newpos[i] < lo or newpos[i] > hi):
+                if lo > hi:
+                    return "Must home axis first: %.3f %.3f %.3f [%.3f]" % tuple(newpos[:4])
+                return "Move out of range: %.3f %.3f %.3f [%.3f]" % tuple(newpos[:4])
+        return None
+
     def get_status(self, eventtime):
-        return {'homed_axes': 'xyz', 'axis_minimum': (0., 0., 0., 0.),
-                'axis_maximum': (200., 200., 200., 0.)}
+        return {'homed_axes': 'xyz', 'axis_minimum': self.axes_min,
+                'axis_maximum': self.axes_max}
 
 
 def _register_step_generator(self, handler):
@@ -111,6 +134,10 @@ class ToolHead:
         self.commanded_pos = list(newpos)
 
     def move(self, newpos, speed):
+        if getattr(self.kin, 'limits', None) is not None:
+            err = self.kin.check_limits(self.commanded_pos, newpos)
+            if err:
+                raise self.printer.command_error(err)
         self.moves.append((list(newpos), speed))
         old_extruder_pos = self.commanded_pos[3]
         self.commanded_pos = list(newpos)
@@ -182,6 +209,8 @@ class ToolHead:
             'minimum_cruise_ratio': 0.5,
             'square_corner_velocity': 5.,
             'homed_axes': 'xyz',
+            'axis_minimum': self.kin.axes_min,
+            'axis_maximum': self.kin.axes_max,
         }
 
     def stats(self, eventtime):
