@@ -421,6 +421,51 @@ config SOMETIMES
         self.assertTrue(menuconfig._visible(self.node("SOMETIMES")))
 
 
+
+class TestLockedSecondPrompt(unittest.TestCase):
+    """A force-shown prompt that is off shows locked, even when another prompt can change it."""
+
+    KCONFIG = """
+config MMU_HAS_CUTTER
+    bool "Cutter"
+
+config MMU_HAS_CUTTER
+    prompt "Cutter" if n
+    forceshow
+"""
+
+    parse = TestDimComment.parse
+
+    def setUp(self):
+        self.kconf = self.parse(self.KCONFIG)
+        self.kconf.syms["MMU_HAS_CUTTER"].set_value(2)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf,
+                                 _show_name=False, _show_all=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.editable, self.locked = self.kconf.syms["MMU_HAS_CUTTER"].nodes
+
+    def test_the_locked_row_looks_fixed(self):
+        self.assertEqual(menuconfig._value_str(self.locked), "-*-")
+        row = menuconfig._node_str(self.locked)
+        self.assertIn("(FIXED)", row)
+        self.assertNotIn("NOT DEFAULT", row)
+
+    def test_y_and_n_keys_leave_the_locked_row_alone(self):
+        for node, expected in ((self.locked, "y"), (self.editable, "n")):
+            with self.subTest(locked=node is self.locked), \
+                    patch.multiple(menuconfig, create=True, _shown=[node], _sel_node_i=0,
+                                   _conf_changed=False, _update_menu=lambda: None):
+                menuconfig._set_sel_node_tri_val(0)
+                self.assertEqual(self.kconf.syms["MMU_HAS_CUTTER"].str_value, expected)
+                self.kconf.syms["MMU_HAS_CUTTER"].set_value(2)
+
+    def test_the_editable_row_is_unchanged(self):
+        self.assertEqual(menuconfig._value_str(self.editable), "[*]")
+        row = menuconfig._node_str(self.editable)
+        self.assertNotIn("(FIXED)", row)
+        self.assertIn("NOT DEFAULT", row)
+
 class TestReparseEnv(unittest.TestCase):
     """Changing a 'reparse_env' symbol re-parses with the new value, in place.
 
@@ -1014,6 +1059,13 @@ config CHOICE_LEVEL_LOW
 config CHOICE_LEVEL_HIGH
     bool "High"
 endchoice
+
+config MMU_HAS_CUTTER
+    bool "Cutter"
+
+config MMU_HAS_CUTTER
+    prompt "Cutter" if n
+    forceshow
 """
 
     def setUp(self):
@@ -1052,3 +1104,9 @@ endchoice
     def test_resetting_a_default_changes_nothing(self):
         menuconfig._reset_key(self.node("PARAM_DISTANCE"))
         self.assertFalse(menuconfig._conf_changed)
+
+    def test_a_force_shown_read_only_entry_is_not_reset(self):
+        self.kconf.syms["MMU_HAS_CUTTER"].set_value(2)
+        menuconfig._reset_key(self.kconf.syms["MMU_HAS_CUTTER"].nodes[1])
+        self.assertFalse(menuconfig._conf_changed)
+        self.assertEqual(self.kconf.syms["MMU_HAS_CUTTER"].str_value, "y")

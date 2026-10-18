@@ -105,6 +105,8 @@ menu "Toolhead sensors/settings"
 
   comment "_"
   comment "_Toolhead dimensions"
+  comment "Toolhead: [[VALUE:PARAM_TOOLHEAD_TYPE]]" if !CHOICE_TOOLHEAD_TYPE_OTHER
+    dim
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     float "Extruder entrance to nozzle"
@@ -147,8 +149,9 @@ menu "Toolhead sensors/settings"
       is needed. Needing more than +5mm of reduction also suggests the toolhead settings are incorrect.
       Recommend starting with 0
 
+  # Per unit in a multi-unit setup (Endstops and Bowden movement)
   config PARAM_TOOLHEAD_UNLOAD_SAFETY_MARGIN
-    float "Unload safety margin       "
+    float "Unload safety margin       " if !MULTI_UNIT
     default 10
     help
       Extra movement (mm) added to the extruder unload movement to ensure filament is free of the extruder.

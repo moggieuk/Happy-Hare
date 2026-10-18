@@ -1801,6 +1801,10 @@ def _reset_key(node): # Happy Hare: Added method
 
     global _conf_changed
 
+    # A force-shown entry whose prompt is off is read-only
+    if not (node.prompt and expr_value(node.prompt[1])):
+        return
+
     sc = node.item
     had_value = (isinstance(sc, Symbol) and
                  (sc.user_value is not None or
@@ -2058,8 +2062,10 @@ def _set_sel_node_tri_val(tri_val):
     # Sets the value of the currently selected menu entry to 'tri_val', if that
     # value can be assigned
 
-    sc = _shown[_sel_node_i].item
-    if isinstance(sc, (Symbol, Choice)) and tri_val in sc.assignable:
+    node = _shown[_sel_node_i]
+    sc = node.item
+    # Happy Hare: a force-shown row whose own prompt is off is read-only here too
+    if _changeable(node) and tri_val in sc.assignable:
         _set_val(sc, tri_val)
 
 
@@ -3996,8 +4002,8 @@ def _node_str(node):
                 node.item.orig_type and
                 node.item.orig_type not in (STRING, INT, HEX, FLOAT) and
                 not _is_y_mode_choice_sym(node.item) and
-                len(node.item.assignable) <= 1 and
-                not isinstance(node.item, Choice)
+                not isinstance(node.item, Choice) and
+                _pinned(node)
             ):
                 s += " [[DIM]](FIXED)[[/DIM]]"
 
@@ -4047,6 +4053,7 @@ def _node_str(node):
         if (
             (sym.user_value is not None or sym._was_set) and
             sym.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_')) and
+            node.prompt and expr_value(node.prompt[1]) and
             differs_from_default(node, sym)[0]
         ):
             s += " [[DIM]](NOT DEFAULT)[[/DIM]]"
@@ -4086,6 +4093,12 @@ def _should_show_name(node):
            (_show_name and isinstance(node.item, (Symbol, Choice)))
 
 
+def _pinned(node): # Happy Hare: Added method
+    # A symbol pinned to one value, or a row whose own prompt is off (a
+    # force-shown entry that is changed elsewhere, if anywhere)
+    return len(node.item.assignable) <= 1 or not (node.prompt and expr_value(node.prompt[1]))
+
+
 def _value_str(node):
     # Returns the value part ("[*]", "<M>", "(foo)" etc.) of a menu node
 
@@ -4112,9 +4125,11 @@ def _value_str(node):
 
     tri_val_str = (" ", "M", "*")[item.tri_value]
 
-    if len(item.assignable) <= 1:
-        # Pinned to a single value
-        return "" if isinstance(item, Choice) else "-{}-".format(tri_val_str)
+    if isinstance(item, Choice) and len(item.assignable) <= 1:
+        return ""
+
+    if not isinstance(item, Choice) and _pinned(node):
+        return "-{}-".format(tri_val_str)
 
     if item.type in (BOOL, BOOLINT):
         return "[{}]".format(tri_val_str)

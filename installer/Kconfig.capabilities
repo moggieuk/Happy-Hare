@@ -147,6 +147,15 @@ menu "Design attributes"
 
     It is unlikely that you want to change anything here so be careful.
 
+  # Each machine type sets the default
+  config PARAM_NUM_GATES
+    int
+    prompt "Number of gates/lanes?"
+    help
+      The number of gates is set based on MMU type but some
+      designs allow for a configurable number. Ensure this
+      matches the number in your specific build.
+
   source "Kconfig.selector_type" 
 
   source "Kconfig.bypass" 

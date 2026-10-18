@@ -49,6 +49,8 @@
 # 2. Added float type
 # 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met.
 #    'forceshow if <expr>' does so only while <expr> holds
+#    A forced row whose prompt condition is false is read-only: neither space nor 'r' changes it,
+#    and it shows as fixed (-*- or - -) even when another prompt can change the symbol
 # 4. Recording of default value with #~DEFAULT~# magic token
 # 5. Preprocessor function 'saved-config-value' to read a symbol's previous assignment from
 #    KCONFIG_CONFIG before normal config loading, including lines marked with #~DEFAULT~#
@@ -318,7 +320,9 @@ if MULTI_UNIT_ENTRY_POINT
   source "Kconfig.options"          # Main software options
   source "Kconfig.tip_shaping"
   source "Kconfig.purging"
-  source "Kconfig.speeds"           # Access to extruder speeds
+  menu "Extruder speeds"
+    source "Kconfig.extruder_speeds"
+  endmenu
   source "macro_vars/Kconfig"       # Variables for all macros
 
   # These are duplicated settings that are excluded from units when MULTI_UNIT
@@ -360,7 +364,7 @@ if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.tip_shaping"
     source "Kconfig.purging"
   endif
-  source "Kconfig.speeds"           # All speeds
+  source "Kconfig.kinematics"       # Gear/selector steppers, selector servo and speeds
   if !MULTI_UNIT
     source "macro_vars/Kconfig"     # Variables for all macros
   endif
