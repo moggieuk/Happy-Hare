@@ -3,7 +3,7 @@
 # The last extruder load move is synced (gear+extruder), so a sync-feedback buffer's travel
 # can absorb gear push when the extruder fails to grip and the encoder still reads movement.
 # When the buffer's own grip check (toolhead_entry_tension_test) has confirmed the extruder
-# is pulling, the encoder test is skipped; otherwise it still runs.
+# is pulling, only the shortfall test is skipped: no movement at all still fails the load.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_extruder_load
 #
@@ -20,7 +20,7 @@ logging.getLogger().setLevel(logging.CRITICAL)
 FILAMENT_POS_LOADED = 10
 TIP_AT_GATE = -40.0
 NOZZLE_MOVE = 'Loading filament to nozzle'
-SKIPPED = 'Skipping encoder load check'
+SKIPPED = 'Skipping encoder shortfall check'
 
 
 class ExtruderLoadTestCase(unittest.TestCase):
@@ -43,8 +43,8 @@ class ExtruderLoadTestCase(unittest.TestCase):
     def tearDown(self):
         self.hh.close()
 
-    def load_with_encoder_under_read(self):
-        """MMU_LOAD with the encoder seeing only 10% of the final move to the nozzle"""
+    def load_with_encoder_reading(self, fraction):
+        """MMU_LOAD with the encoder seeing only `fraction` of the final move to the nozzle"""
         move_filament = self.mmu.move_filament
         traces = []
         start = len(self.hh.console)
@@ -53,7 +53,7 @@ class ExtruderLoadTestCase(unittest.TestCase):
             traces.append(trace_str)
             actual, homed, measured, delta = move_filament(trace_str, dist, *args, **kwargs)
             if trace_str == NOZZLE_MOVE:
-                measured = abs(actual) * 0.1
+                measured = abs(actual) * fraction
                 delta = abs(actual) - measured
             return actual, homed, measured, delta
 
@@ -62,14 +62,14 @@ class ExtruderLoadTestCase(unittest.TestCase):
         self.assertIn(NOZZLE_MOVE, traces, 'never made the final move to the nozzle')
         return '\n'.join(self.hh.console[start:])
 
-    def nozzle_failures(self):
-        return [e for e in self.hh.errors if 'Move to nozzle failed' in e]
+    def nozzle_failures(self, reason='Move to nozzle failed'):
+        return [e for e in self.hh.errors if reason in e]
 
 
 class GripCheckCases:
 
-    def test_grip_confirmed_by_buffer_skips_the_encoder_check(self):
-        console = self.load_with_encoder_under_read()
+    def test_grip_confirmed_by_buffer_skips_the_shortfall_check(self):
+        console = self.load_with_encoder_reading(0.1)
         self.assertIn(self.GRIP_CHECK, console)
         self.assertIn(SKIPPED, console)
         self.assertEqual(self.nozzle_failures(), [])
@@ -77,11 +77,27 @@ class GripCheckCases:
 
     def test_encoder_check_still_runs_without_the_grip_check(self):
         self.hh.run_gcode('MMU_TEST_CONFIG toolhead_entry_tension_test=0')
-        console = self.load_with_encoder_under_read()
+        console = self.load_with_encoder_reading(0.1)
         self.assertNotIn(self.GRIP_CHECK, console)
         self.assertNotIn(SKIPPED, console)
-        self.assertTrue(self.nozzle_failures(), self.hh.errors)
+        self.assertTrue(self.nozzle_failures('sufficient movement'), self.hh.errors)
         self.assertNotEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
+
+    def test_no_movement_still_fails_after_grip_confirmed(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG toolhead_move_error_tolerance=100')
+        console = self.load_with_encoder_reading(0.0)
+        self.assertIn(self.GRIP_CHECK, console)
+        self.assertTrue(self.nozzle_failures('any movement'), self.hh.errors)
+        self.assertNotEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
+
+    def test_no_movement_ignored_on_a_short_move_after_grip_confirmed(self):
+        # Remaining move no longer than encoder_move_step_size is too short to judge
+        self.mmu.mmu_unit().p.encoder_move_step_size = 1000.
+        console = self.load_with_encoder_reading(0.0)
+        self.assertIn(self.GRIP_CHECK, console)
+        self.assertIn(SKIPPED, console)
+        self.assertEqual(self.nozzle_failures(), [])
+        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
 
 
 class TestCompressionBuffer(GripCheckCases, ExtruderLoadTestCase):

@@ -1956,29 +1956,31 @@ class MmuFilamentMovement:
             u.extruder_wrapper.set_filament_remaining(0., color)
 
             # Encoder based validation test to validate the filament was picked up by extruder.
-            # This runs if we are short of deterministic sensors and test makes sense. Skipped
-            # if the buffer already confirmed grip because buffer play can mask a failed load
-            if grip_validated and self.can_use_encoder():
-                self.log_debug("Skipping encoder load check: extruder grip confirmed by sync-feedback buffer")
-
+            # This runs if we are short of deterministic sensors and test makes sense. If the buffer
+            # already confirmed grip only the no-movement test applies because buffer play can mask
+            # a shortfall
             if (
                 self.gate_selected != TOOL_GATE_BYPASS
                 and self.can_use_encoder()
                 and not fhomed
                 and not extruder_only
-                and not grip_validated
             ):
                 self.log_debug(
                     f"Total measured movement: {measured:.1f}mm, "
                     f"total delta: {delta:.1f}mm"
                 )
 
-                if measured < self.encoder().movement_min():
+                if measured < self.encoder().movement_min() and (
+                    not grip_validated or length > u.p.encoder_move_step_size
+                ):
                     raise MmuError(
                         "Move to nozzle failed (encoder didn't sense any "
                         "movement). Extruder may not have picked up "
                         "filament or filament did not find homing sensor."
                     )
+
+                elif grip_validated:
+                    self.log_debug("Skipping encoder shortfall check: extruder grip confirmed by sync-feedback buffer")
 
                 elif delta > length * (
                     u.p.toolhead_move_error_tolerance / 100.0
