@@ -20,6 +20,7 @@ from .mmu_base_command import *
 # Clamped positions are pulled this far inside the limit. Also absorbs the small
 # error when bed_mesh sits ahead of skew_correction in the move transform chain
 LIMIT_MARGIN = 0.01
+MAX_ADJUSTMENT = 5.0 # Maximum correction per axis, including LIMIT_MARGIN
 
 
 def live_limits(mmu):
@@ -106,7 +107,8 @@ class MmuSafeG1Command(BaseCommand):
     HELP_SUPPLEMENT = (
         "Coordinates are always absolute, as with G90, and only X, Y, Z are supported. If the\n"
         + "move would end out of range once Klipper applies gcode offset and skew_correction\n"
-        + "it is adjusted to just inside the limit and a warning is logged. Use in place of G1\n"
+        + "it is adjusted to just inside the limit and a warning is logged. Corrections greater\n"
+        + "than 5mm on any axis (including the boundary margin) error before moving. Use in place of G1\n"
         + "in a 'user_park_move_macro'\n"
         + "Examples:\n"
         + f"{CMD} X=10 Y=300 F=12000 ...Move to (10, 300), adjusted if necessary\n"
@@ -138,6 +140,16 @@ class MmuSafeG1Command(BaseCommand):
             raw, overs = safe_target(mmu, requested, limits, max_z)
             if overs:
                 base = gm.base_position
+                # Compare with the original target, including axes moved implicitly by skew
+                # or MAX_Z. Reject before issuing G1 or consuming the per-print warning.
+                for i, axis in enumerate("XYZ"):
+                    original = requested[i] + base[i] if requested[i] is not None else gm.last_position[i]
+                    adjustment = abs(raw[i] - original)
+                    if adjustment > MAX_ADJUSTMENT:
+                        raise gcmd.error(
+                            "_SAFE_G1 %s adjustment %.3fmm exceeds the %.0fmm limit; "
+                            "check macro positions, gcode offsets and skew compensation"
+                            % (axis, adjustment, MAX_ADJUSTMENT))
                 target = [raw[i] - base[i] for i in range(3)]
                 requested_str = " ".join("%s%s" % (a, params[a]) for a in "XYZ" if a in params)
                 axes, adjusted = [], []
