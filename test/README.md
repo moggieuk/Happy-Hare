@@ -735,6 +735,7 @@ The test files, grouped by what they're about:
 | `test_mmu_confirm_loaded.py` | 20 | the in-print "loaded" sensor check after a toolchange or RESUME, and where it must not fire |
 | `test_mmu_pressure_advance.py` | 7 | pressure advance zeroed and restored around tip forming and purging; the already-0 debug note |
 | `test_mmu_encoder.py` | 36 | gate homing by encoder motion instead of by switch |
+| `test_mmu_extruder_load.py` | 8 | the encoder check on the final load to the nozzle, and skipping its shortfall test once a buffer has confirmed extruder grip |
 | `test_mmu_flowguard.py` | 11 | encoder FlowGuard on an encoder shared by two units: arming, handover on toolchange, pause/resume, runout |
 | `test_mmu_endless_spool.py` | 18 | runout detection, clog-vs-runout, gate remapping |
 | **NFC and Spoolman** | | |
