@@ -1915,6 +1915,7 @@ class MmuFilamentMovement:
             # -------------------------------------------------------------------------------
             # If possible validate we are actually in the extruder
             # -------------------------------------------------------------------------------
+            grip_validated = False
             if (
                 self.gate_selected != TOOL_GATE_BYPASS
                 and u.p.toolhead_entry_tension_test
@@ -1925,6 +1926,7 @@ class MmuFilamentMovement:
                     # Sensorless + proportional sensor: distinct grip-establish + extruder pull validation
                     overshoot = self._validate_extruder_load_proportional(length)
                     length -= overshoot
+                    grip_validated = overshoot > 0
 
                 elif self.sensor_manager.check_sensor(SENSOR_COMPRESSION): # None if no mmu_buffer
                     # If we have a compression sensor indicating compression we can
@@ -1937,6 +1939,7 @@ class MmuFilamentMovement:
                         actual, success = u.sync_feedback.adjust_filament_tension(use_gear_motor=False, max_move=max_range)
                         if success:
                             length -= actual
+                            grip_validated = True
                         else:
                             self.set_filament_pos_state(FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
                             raise MmuError("Failed to load filament passed the extruder entrance (sync-feedback buffer didn't detect neutral tension)")
@@ -1953,12 +1956,17 @@ class MmuFilamentMovement:
             u.extruder_wrapper.set_filament_remaining(0., color)
 
             # Encoder based validation test to validate the filament was picked up by extruder.
-            # This runs if we are short of deterministic sensors and test makes sense
+            # This runs if we are short of deterministic sensors and test makes sense. Skipped
+            # if the buffer already confirmed grip because buffer play can mask a failed load
+            if grip_validated and self.can_use_encoder():
+                self.log_debug("Skipping encoder load check: extruder grip confirmed by sync-feedback buffer")
+
             if (
                 self.gate_selected != TOOL_GATE_BYPASS
                 and self.can_use_encoder()
                 and not fhomed
                 and not extruder_only
+                and not grip_validated
             ):
                 self.log_debug(
                     f"Total measured movement: {measured:.1f}mm, "
