@@ -191,10 +191,10 @@ class MmuSyncFeedback:
 
         # Enable encoder based Flowguard, taking over a shared encoder armed by another unit
         if u.has_encoder() and (not u.encoder.is_flowguard_enabled() or u.encoder.active_mmu_unit is not u):
-            if not u.encoder.enable_flowguard(u):
-                return # Must be in off mode
-            self.flowguard_active = True
-            msg = msg or "FlowGuard monitoring with encoder activated"
+            # Encoder monitoring may be off while buffer FlowGuard still activates.
+            if u.encoder.enable_flowguard(u):
+                self.flowguard_active = True
+                msg = msg or "FlowGuard monitoring with encoder activated"
 
         if msg:
             self.mmu.log_info(msg)
