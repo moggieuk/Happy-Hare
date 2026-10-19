@@ -172,7 +172,6 @@ class MmuPrintStateMachine:
             self.mmu._enable_filament_monitoring() # Enable filament monitoring while printing
             self.mmu.initialize_encoder(dwell=None) # Encoder 0000
             self.mmu.safe_g1.reset_print_state()
-            self.mmu.position_checker.reset_print_state()
             self.set_print_state("started", call_macro=False)
 
         if not pre_start_only and self.print_state not in ["printing"]:

@@ -471,12 +471,6 @@ class MmuController(MmuFilamentMovement):
         # Give macros a chance to initialize if they need to
         self.init_macros()
 
-        # Report configured positions made unreachable by skew correction or gcode offset
-        try:
-            self.position_checker.check()
-        except Exception as e:
-            self.log_debug("Unable to check configured positions: %s" % str(e))
-
         # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
 
@@ -2600,8 +2594,6 @@ class MmuController(MmuFilamentMovement):
 
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
-        self.position_checker.before_toolhead_operation(operation)
-
         if operation not in ['complete', 'cancel'] and 'xyz' not in self.toolhead.get_status(self.reactor.monotonic())['homed_axes']:
             self.gcode.run_script_from_command(self.p.toolhead_homing_macro)
             self.movequeue_wait()
@@ -4247,11 +4239,6 @@ class MmuWrapperResumeCommand(BaseCommand):
                 self.mmu.log_always("Automatically set filament state to LOADED based on toolhead sensor")
             if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_LOADED]:
                 raise MmuError("Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again")
-            interrupted_tool = self.mmu.position_checker.interrupted_tool
-            if (interrupted_tool is not None and interrupted_tool >= 0
-                    and (self.mmu.tool_selected != interrupted_tool or self.mmu.filament_pos != FILAMENT_POS_LOADED)):
-                raise MmuError("Cannot resume because the change to T%d was stopped by the position check and T%d is not loaded. Run T%d to complete it, then RESUME again" % (interrupted_tool, interrupted_tool, interrupted_tool))
-            self.mmu.position_checker.interrupted_tool = None
 
             # Prevent BASE_RESUME from moving toolhead
             if TOOLHEAD_POSITION_STATE in self.mmu.gcode_move.saved_states:
