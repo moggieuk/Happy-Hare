@@ -428,12 +428,17 @@ class HHConfig(ConfigBuilder):
 
         # Copy over included options
         for section in sorted(builder.sections(scope="included")):
+            section_type = section.split(" ", 1)[0]
             for option in sorted(builder.options(section)):
                 if self.has_option(section, option):
 
                     is_gcode = option == "gcode"
                     kconfig_wins = (section, option) in kconfig_keys or \
                         (section.split(" ", 1)[0], option) in KCONFIG_OWNED_OPTIONS
+                    # Sensor drivers may add options unknown to Happy Hare; Refresh keeps
+                    # the complete existing configuration for matching sensor sections.
+                    if section_type == "temperature_sensor":
+                        kconfig_wins = False
 
                     if not is_gcode and not kconfig_wins:
                         value = self.get(section, option)
@@ -446,6 +451,13 @@ class HHConfig(ConfigBuilder):
                         logging.debug("Kconfig override:   [%s] %s: %s --> Using: %s", section, option, self.get(section, option), builder.get(section, option))
 
                     self.used_options.add((section, option))
+
+            if section_type == "temperature_sensor" and self.has_section(section):
+                # Retain driver-specific options not emitted by the HH template.
+                for option in self.options(section):
+                    if not builder.has_option(section, option):
+                        builder.copy_option(self, section, option)
+                        self.used_options.add((section, option))
 
         # If existing config has excluded options use them in lieu of builder excluded options
         if self.excluded_nodes(origin=origin) and builder.excluded_nodes():

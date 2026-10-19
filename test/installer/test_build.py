@@ -273,6 +273,35 @@ class TestFanVisibilityRefresh(_HardwareRefresh):
                                   "unit0_fan3", "unit0_fan4"])
 
 
+class TestTemperatureSensorRefresh(_HardwareRefresh):
+    """Refresh preserves complete temperature sensor configurations."""
+
+    SENSOR = "temperature_sensor unit0_Env0"
+    OPTIONS = {
+        "i2c_mcu": "custom_gate0_mcu",
+        "i2c_bus": "custom_i2c_bus",
+        "min_temp": "0",
+        "max_temp": "100",
+        "zero_temperature_on_error": "False",
+        "zero_humidity_on_error": "True",
+        "stop_sampling_after_failures": "10",
+    }
+
+    def test_refresh_keeps_complete_sensor_configuration(self):
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        self.assertIn(self.SENSOR, existing.sections())
+        for option, value in self.OPTIONS.items():
+            existing.set(self.SENSOR, option, value)
+        with open(installed, "w") as f:
+            f.write(existing.write())
+
+        built = ConfigBuilder(self.build("emu", {}, "refresh", [installed]))
+        for option, value in self.OPTIONS.items():
+            with self.subTest(option=option):
+                self.assertEqual(built.get(self.SENSOR, option), value)
+
+
 def _hidden_name_symbols():
     """Kconfig name symbols with a "_" hiding default, "$(i)" repeats as their "X_" template form."""
     symbols, symbol = set(), None
