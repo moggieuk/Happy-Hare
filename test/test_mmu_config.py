@@ -385,6 +385,64 @@ class TestConditionalMacroDefaults(unittest.TestCase):
                 self.assertTrue(kc.syms[name].config_string)
 
 
+class TestEncoderValidationOptions(unittest.TestCase):
+
+    # .cfg option -> (Kconfig symbol, shipped default, custom value)
+    OPTIONS = {
+        'encoder_move_step_size':            ('PARAM_ENCODER_MOVE_STEP_SIZE', 15.0, 20.5),
+        'bowden_pre_unload_error_tolerance': ('PARAM_BOWDEN_PRE_UNLOAD_ERROR_TOLERANCE', 50, 35),
+        'bowden_move_error_tolerance':       ('PARAM_BOWDEN_MOVE_ERROR_TOLERANCE', 60, 70),
+        'toolhead_move_error_tolerance':     ('PARAM_TOOLHEAD_MOVE_ERROR_TOLERANCE', 80, 90),
+        'toolhead_post_load_tighten':        ('PARAM_TOOLHEAD_POST_LOAD_TIGHTEN', 60, 25),
+    }
+
+    @staticmethod
+    def _params(profile):
+        return cfg.assemble(cfg.render(profile))['mmu_unit_parameters unit0']
+
+    def test_defaults_and_custom_values_render_with_an_encoder(self):
+        params = self._params(profiles.get('encoder'))
+        for option, (_, default, _) in self.OPTIONS.items():
+            with self.subTest(option=option):
+                self.assertEqual(params.getfloat(option), default)
+
+        profile = profiles.get('encoder').derive(
+            'encoder_custom_validation_options',
+            syms={sym: custom for sym, _, custom in self.OPTIONS.values()})
+        params = self._params(profile)
+        for option, (_, _, custom) in self.OPTIONS.items():
+            with self.subTest(option=option):
+                self.assertEqual(params.getfloat(option), custom)
+
+    def test_not_rendered_without_an_encoder(self):
+        params = self._params(profiles.get('boxturtle'))
+        for option in self.OPTIONS:
+            with self.subTest(option=option):
+                self.assertNotIn(option, params)
+
+    def test_dependent_prompts_hide_but_keep_rendering_defaults(self):
+        hidden_by = {
+            'PARAM_BOWDEN_PRE_UNLOAD_TEST': ['PARAM_BOWDEN_PRE_UNLOAD_ERROR_TOLERANCE'],
+            'PARAM_ENCODER_MOVE_VALIDATION': ['PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA',
+                                              'PARAM_BOWDEN_APPLY_CORRECTION',
+                                              'PARAM_BOWDEN_MOVE_ERROR_TOLERANCE',
+                                              'PARAM_TOOLHEAD_MOVE_ERROR_TOLERANCE',
+                                              'PARAM_TOOLHEAD_POST_LOAD_TIGHTEN'],
+        }
+        defaults = {sym: default for sym, default, _ in self.OPTIONS.values()}
+        defaults.update(PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA=20.0, PARAM_BOWDEN_APPLY_CORRECTION=0)
+        for switch, dependents in hidden_by.items():
+            syms = dict(profiles.get('encoder').syms, **{switch: 0})
+            with cfg._env(cfg._SINGLE_UNIT_ENV):
+                kc = cfg._kconfig('encoder_without_' + switch.lower(), syms)
+                kc_on = cfg._kconfig('encoder_with_' + switch.lower(), profiles.get('encoder').syms)
+            for sym in dependents:
+                with self.subTest(switch=switch, symbol=sym):
+                    self.assertEqual(kc.syms[sym].visibility, 0)
+                    self.assertGreater(kc_on.syms[sym].visibility, 0)
+                    self.assertEqual(float(kc.syms[sym].str_value), defaults[sym])
+
+
 class TestHardwareConfigurationWarnings(unittest.TestCase):
 
     @staticmethod

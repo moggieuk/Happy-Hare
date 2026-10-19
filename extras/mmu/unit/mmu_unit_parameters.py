@@ -393,7 +393,7 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Encoder
         ParamSpec('encoder_dwell',                    'float',   0.1, section="ENCODER",    limits=dict(minval=0.0, maxval=2.0),  hidden=True),
-        ParamSpec('encoder_move_step_size',           'float',  15.0, section="ENCODER",    limits=dict(minval=5.0, maxval=25.0), hidden=True),
+        ParamSpec('encoder_move_step_size',           'float',  15.0, section="ENCODER",    limits=dict(minval=5.0, maxval=25.0), guard=_guard_has_encoder),
 
         # eSpooler
         ParamSpec('espooler_min_distance',            'float',  50.0, section="ESPOOLER",   limits=dict(above=0.0),              guard=_guard_has_espooler),
