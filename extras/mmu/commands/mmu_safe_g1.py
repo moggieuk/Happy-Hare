@@ -139,26 +139,26 @@ class MmuSafeG1Command(BaseCommand):
             if overs:
                 base = gm.base_position
                 target = [raw[i] - base[i] for i in range(3)]
-                axes = []
+                requested_str = " ".join("%s%s" % (a, params[a]) for a in "XYZ" if a in params)
+                axes, adjusted = [], []
                 for i, a in enumerate("XYZ"):
                     if requested[i] is not None and raw[i] == requested[i] + base[i]:
                         axes.append("%s%s" % (a, params[a]))
                     elif requested[i] is not None or raw[i] != gm.last_position[i]:
                         axes.append("%s%.6f" % (a, target[i]))
-                over_str = ", ".join("%s %.3f beyond limit %.3f" % (a.upper(), p, l) for a, p, l in overs)
-                msg = ("Move to (%s) adjusted to (%s) to stay within axis limits (%s)"
-                       % (" ".join("%s%s" % (a, params[a]) for a in "XYZ" if a in params), " ".join(axes), over_str))
+                        adjusted.append("%s%.2f" % (a, target[i]))
                 if not self.warned:
                     self.warned = True
+                    over_str = ", ".join("%s %.3f beyond limit %.3f" % (a.upper(), p, l) for a, p, l in overs)
                     mmu.log_warning(
-                        "Warning: %s.\n"
+                        "Warning: Move to (%s) adjusted to (%s) to stay within axis limits (%s).\n"
                         "Check your Happy Hare macros for positions or movement that exceed your build volume envelope. "
                         "To allow for Klipper skew compensation (or an X,Y gcode offset) it is often necessary to move "
-                        "park/place coordinates slightly inside the boundary. Further adjustments this print are only "
-                        "logged at debug level" % msg
+                        "park/place coordinates slightly inside the boundary. Further automatic adjustments during this "
+                        "print will be logged at debug level" % (requested_str, " ".join(axes), over_str)
                     )
                 else:
-                    mmu.log_debug(msg)
+                    mmu.log_debug("_SAFE_G1 adjusted %s -> %s" % (requested_str, " ".join(adjusted)))
 
         cmd = "G1 %s" % " ".join(axes)
         if speed is not None:
