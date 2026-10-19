@@ -108,7 +108,7 @@ class MmuSafeG1Command(BaseCommand):
         "Coordinates are always absolute, as with G90, and only X, Y, Z are supported. If the\n"
         + "move would end out of range once Klipper applies gcode offset and skew_correction\n"
         + "it is adjusted to just inside the limit and a warning is logged. Corrections greater\n"
-        + "than 5mm on any axis (including the boundary margin) error before moving. Use in place of G1\n"
+        + f"than {MAX_ADJUSTMENT:g}mm on any axis (including the boundary margin) error before moving. Use in place of G1\n"
         + "in a 'user_park_move_macro'\n"
         + "Examples:\n"
         + f"{CMD} X=10 Y=300 F=12000 ...Move to (10, 300), adjusted if necessary\n"
@@ -145,9 +145,9 @@ class MmuSafeG1Command(BaseCommand):
                 for i, axis in enumerate("XYZ"):
                     original = requested[i] + base[i] if requested[i] is not None else gm.last_position[i]
                     adjustment = abs(raw[i] - original)
-                    if adjustment > MAX_ADJUSTMENT:
+                    if adjustment > MAX_ADJUSTMENT + 1e-9: # Ignore floating-point noise at the boundary
                         raise gcmd.error(
-                            "_SAFE_G1 %s adjustment %.3fmm exceeds the %.0fmm limit; "
+                            "_SAFE_G1 %s adjustment %.3fmm exceeds the %gmm limit; "
                             "check macro positions, gcode offsets and skew compensation"
                             % (axis, adjustment, MAX_ADJUSTMENT))
                 target = [raw[i] - base[i] for i in range(3)]

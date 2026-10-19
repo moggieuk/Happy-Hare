@@ -275,6 +275,7 @@ menu "Sequence macros      (_MMU_SEQUENCE)"
       e.g. to avoid an area. Called with X, Y and F (plus RESTORE=1 when
       restoring). Enter the macro name without surrounding quotes. Use
       '_SAFE_G1 X= Y= F=' in place of 'G1' to keep moves within the axis limits
-      when skew correction or a gcode offset is in effect
+      when skew correction or a gcode offset is in effect. Corrections over 5mm
+      on any axis (including the boundary margin) error before moving
 
 endmenu
