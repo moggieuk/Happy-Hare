@@ -109,14 +109,18 @@ class _StatusWrapper:
     def __getitem__(self, key):
         obj = self.printer.lookup_object(key, None)
         if obj is None or not hasattr(obj, 'get_status'):
-            return {}
+            # Jinja's `is defined` must be false for missing printer objects.
+            raise KeyError(key)
         et = self.eventtime
         if et is None:
             et = self.printer.get_reactor().monotonic()
         return obj.get_status(et)
 
     def __getattr__(self, key):
-        return self[key]
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(key)
 
     def __contains__(self, key):
         return self.printer.lookup_object(key, None) is not None

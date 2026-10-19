@@ -26,7 +26,8 @@ STUB = PRINTER_STUB + "\n[skew_correction]\n"
 class SafeG1TestCase(unittest.TestCase):
 
     def setUp(self):
-        self.hh = session('boxturtle', printer_stub=STUB)
+        self.hh = session(profiles.get('boxturtle').derive('cutter_safe_g1',
+                          syms={'MMU_HAS_TOOLHEAD_CUTTER': True}), printer_stub=STUB)
         self.hh.boot()
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
         self.toolhead = self.hh.printer.lookup_object('toolhead')
@@ -140,6 +141,105 @@ class SafeG1TestCase(unittest.TestCase):
         self.hh.run_gcode("G91\nG1 Z20\nG90")      # e.g. Blobifier raising Z while purging
         self.assertAlmostEqual(self.kin_pos()[1], Y_MAX - 0.01, places=6)
         self.assertAlmostEqual(self.kin_pos()[2], 20.2, places=6)
+
+    def test_adjustment_limit_includes_margin(self):
+        # 4.99mm overshoot + 0.01mm inset is exactly the allowed 5mm.
+        self.hh.run_gcode("_SAFE_G1 Y=360.99")
+        self.assertAlmostEqual(self.kin_pos()[1], 355.99)
+
+    def test_adjustment_boundary_ignores_float_noise(self):
+        self.kin.set_limits((0., 0., 0.), (350., 0.03, 340.))
+        self.hh.run_gcode("_SAFE_G1 Y=5.0200000000000005")
+        self.assertAlmostEqual(self.kin_pos()[1], 0.02)
+        with self.assertRaisesRegex(self.hh.gcode.error, "Y adjustment"):
+            self.hh.run_gcode("_SAFE_G1 Y=5.020001")
+
+    def test_cutter_restores_current_after_errors_and_success(self):
+        # Run the actual top-level macro and current helpers, including their saved map.
+        for name in ('_MMU_CUT_TIP', '_CUT_TIP_ADJUST_CURRENT', '_CUT_TIP_RESTORE_CURRENT',
+                     '_CUT_TIP_MOVE_TO_CUTTER_PIN', '_CUT_TIP_DO_CUT_MOTION'):
+            self.hh.printer.harness_macro_effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
+        current = {'run_current': 0.8}
+        driver = type('Driver', (), {'get_status': lambda _, eventtime=None: dict(current)})()
+        self.hh.printer.add_object('tmc2209 stepper_x', driver)
+        history = []
+        def set_current(gcmd):
+            current['run_current'] = gcmd.get_float('CURRENT')
+            history.append(current['run_current'])
+        self.hh.gcode.register_command('SET_TMC_CURRENT', None)
+        self.hh.gcode.register_command('SET_TMC_CURRENT', set_current)
+        vars = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS')
+        vars.variables = dict(vars.variables, cut_axis_steppers='stepper_x',
+                              cut_stepper_current=150, retract_length=0., pushback_length=0.,
+                              gantry_servo_enabled=True, cutting_axis='x', pin_park_dist=0.,
+                              pin_loc_xy=[110., 100.], pin_loc_compressed_xy=[100., 100.],
+                              rip_length=0., restore_position=False)
+        for failure in ('approach', 'stroke', 'plain_g1', None):
+            with self.subTest(failure=failure):
+                self.hh.run_gcode("G90\nG1 X120 Y100 Z10")
+                vars.variables['pin_loc_xy'] = [110., 362. if failure == 'approach' else 100.]
+                vars.variables['pin_loc_compressed_xy'] = [100., 362. if failure == 'stroke' else 100.]
+                self.hh.printer.harness_macro_effects['_CUT_TIP_DO_CUT_MOTION'] = (
+                    (lambda macro, gcmd: self.hh.run_gcode("G1 Y400")) if failure == 'plain_g1'
+                    else (lambda macro, gcmd: macro.run_body(gcmd)))
+                if failure:
+                    error = self.hh.printer.command_error if failure == 'plain_g1' else self.hh.gcode.error
+                    with self.assertRaisesRegex(error, 'Move out of range' if failure == 'plain_g1' else 'adjustment'):
+                        self.hh.run_gcode('_MMU_CUT_TIP')
+                else:
+                    self.hh.run_gcode('_MMU_CUT_TIP')
+                self.assertAlmostEqual(current['run_current'], 0.8)
+                self.assertAlmostEqual(history[-2], 1.2)
+                saved = self.hh.printer.lookup_object('gcode_macro _CUT_TIP_ADJUST_CURRENT')
+                self.assertEqual(saved.variables['current_map'], {})
+
+    def test_excessive_adjustments_fail_without_moving(self):
+        self.hh.run_gcode("G1 X100 Y100 Z10")
+        self.hh.run_gcode("G91")
+        for command in ("X=-5", "X=355", "Y=361", "Z=345"):
+            with self.subTest(command=command):
+                before = len(self.toolhead.moves)
+                with self.assertRaisesRegex(self.hh.gcode.error, "adjustment.*exceeds.*5"):
+                    self.hh.run_gcode("_SAFE_G1 " + command)
+                self.assertEqual(len(self.toolhead.moves), before)
+                self.assertEqual(self.kin_pos(), [100., 100., 10.])
+                self.assertFalse(self.hh.mmu.gcode_move.absolute_coord)
+                self.assertFalse(self.hh.mmu.safe_g1.warned)
+
+    def test_excessive_implicit_axis_adjustment_fails(self):
+        self.skew.set_factors(yz=-0.1)
+        self.hh.run_gcode("G1 X100 Y355 Z0")
+        with self.assertRaisesRegex(self.hh.gcode.error, "Y adjustment"):
+            self.hh.run_gcode("_SAFE_G1 Z=100")
+        self.assertEqual(self.kin_pos(), [100., 355., 0.])
+
+    def test_excessive_max_z_adjustment_fails(self):
+        self.skew.set_factors(yz=-0.1)
+        with self.assertRaisesRegex(self.hh.gcode.error, "Y adjustment"):
+            self.hh.run_gcode("_SAFE_G1 Y=356 MAX_Z=100")
+
+    def test_excessive_offset_adjustment_fails(self):
+        self.hh.run_gcode("SET_GCODE_OFFSET Y=6")
+        with self.assertRaisesRegex(self.hh.gcode.error, "Y adjustment"):
+            self.hh.run_gcode("_SAFE_G1 Y=356")
+
+    def test_cutter_approach_and_stroke_clamp_small_skew_overshoot(self):
+        for name in ('_CUT_TIP_MOVE_TO_CUTTER_PIN', '_CUT_TIP_DO_CUT_MOTION'):
+            self.hh.printer.harness_macro_effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
+        vars = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS')
+        vars.variables = dict(vars.variables, gantry_servo_enabled=True,
+                              pin_loc_compressed_xy=[100., 356.], cut_iterations=1,
+                              cut_fast_move_fraction=0.5, rip_length=0.)
+        self.skew.set_factors(yz=-0.01)
+        self.hh.run_gcode("G1 X120 Y300 Z10")
+        self.hh.run_gcode("_CUT_TIP_MOVE_TO_CUTTER_PIN PIN_PARK_X_LOC=110 PIN_PARK_Y_LOC=356")
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("_CUT_TIP_DO_CUT_MOTION PIN_PARK_X_LOC=110 PIN_PARK_Y_LOC=356")
+        moves = [pos[:3] for pos, _ in self.toolhead.moves[first:]]
+        self.assertEqual([p[0] for p in moves], [105., 100., 110.])
+        for pos in moves:
+            self.assertAlmostEqual(pos[1], 355.99)
+        self.assertEqual(self.hh.errors, [])
 
     def test_unhomed_passes_through(self):
         self.kin.limits = [(1., -1.)] * 3
