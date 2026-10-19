@@ -150,7 +150,13 @@ class MmuSafeG1Command(BaseCommand):
                        % (" ".join("%s%s" % (a, params[a]) for a in "XYZ" if a in params), " ".join(axes), over_str))
                 if not self.warned:
                     self.warned = True
-                    mmu.log_warning("Warning: %s. Likely skew_correction or gcode offset" % msg)
+                    mmu.log_warning(
+                        "Warning: %s.\n"
+                        "Check your Happy Hare macros for positions or movement that exceed your build volume envelope. "
+                        "To allow for Klipper skew compensation (or an X,Y gcode offset) it is often necessary to move "
+                        "park/place coordinates slightly inside the boundary. Further adjustments this print are only "
+                        "logged at debug level" % msg
+                    )
                 else:
                     mmu.log_debug(msg)
 
