@@ -216,15 +216,18 @@ class _HardwareRefresh(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-    def build(self, profile, syms, mode, input_files):
+    def build(self, profile, syms, mode, input_files, baseline=None):
         out = tempfile.mkdtemp(dir=self.tmp.name)
         dest = os.path.join(out, "mmu_hardware_unit0.cfg")
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig("fan-visibility-refresh",
                                    dict(profiles.get(profile).syms, **syms))
+        if baseline is not None:
+            write_menuconfig_baseline(out, kconfig, baseline)
         from installer import build
         extra = {"PARAM_TOTAL_NUM_GATES": kconfig.getint("PARAM_NUM_GATES")}
-        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode,
+                           F_MENUCONFIG_BASELINE="y" if baseline is not None else "")), \
                 cfg._chdir(cfg.REPO_ROOT):
             build.build_config_file("config/base/mmu_hardware.cfg", dest, kconfig,
                                     input_files, extra)
@@ -315,6 +318,47 @@ class TestTemperatureSensorRefresh(_HardwareRefresh):
         self.assertLess(custom, second)
         self.assertRegex(rendered[first:second],
                          r"stop_sampling_after_failures: 10\n\n$")
+
+    def test_sensor_type_change_replaces_only_that_sensor(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            baseline = cfg._kconfig("temperature-sensor-before", profiles.get("emu").syms)
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        for sensor in (self.SENSOR, self.SECOND_SENSOR):
+            for option, value in self.OPTIONS.items():
+                existing.set(sensor, option, value)
+        with open(installed, "w") as f:
+            f.write(existing.write())
+
+        built = ConfigBuilder(self.build(
+            "emu", {"CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_0": True}, "refresh",
+            [installed], baseline=baseline))
+        self.assertEqual(built.get(self.SENSOR, "sensor_type"), "BME280")
+        for option in self.OPTIONS:
+            with self.subTest(option=option):
+                self.assertFalse(built.has_option(self.SENSOR, option))
+        for option, value in self.OPTIONS.items():
+            with self.subTest(sensor=self.SECOND_SENSOR, option=option):
+                self.assertEqual(built.get(self.SECOND_SENSOR, option), value)
+
+    def test_other_sensor_changes_keep_custom_options(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            baseline = cfg._kconfig("temperature-sensor-before", profiles.get("emu").syms)
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        for option in ("zero_temperature_on_error", "zero_humidity_on_error",
+                       "stop_sampling_after_failures"):
+            existing.set(self.SENSOR, option, self.OPTIONS[option])
+        with open(installed, "w") as f:
+            f.write(existing.write())
+
+        built = ConfigBuilder(self.build(
+            "emu", {"PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS_0": 57}, "refresh",
+            [installed], baseline=baseline))
+        self.assertEqual(built.get(self.SENSOR, "i2c_address"), "57")
+        for option in ("zero_temperature_on_error", "zero_humidity_on_error",
+                       "stop_sampling_after_failures"):
+            self.assertEqual(built.get(self.SENSOR, option), self.OPTIONS[option])
 
 
 def _hidden_name_symbols():
