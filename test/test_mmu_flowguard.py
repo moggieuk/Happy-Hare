@@ -18,6 +18,34 @@ logging.getLogger().setLevel(logging.CRITICAL)
 UNIT0, UNIT1 = 'unit0', 'unit1'   # the 'encoder_shared' profile's two Tradracks
 
 
+class TestBufferFlowGuardWithEncoderOff(unittest.TestCase):
+    def setUp(self):
+        self.hh = session('quattrobox_v2', virtual_nfc=True)
+        self.addCleanup(self.hh.close)
+        self.hh.boot(calibrate=True)
+        self.assertEqual(self.hh.errors, [])
+        self.unit = self.hh.mmu.mmu_unit()
+        self.assertTrue(self.unit.has_buffer())
+        self.assertTrue(self.unit.has_encoder())
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_enabled=1 flowguard_encoder_mode=0')
+        self.hh.mmu._disable_filament_monitoring()
+        self.hh.gcode.console.clear()
+
+    def test_print_start_arms_buffer_protection_with_encoder_monitoring_off(self):
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.assertTrue(self.unit.sync_feedback.flowguard_active)
+        self.assertFalse(self.unit.sync_feedback.ctrl.autotune._paused)
+        self.assertFalse(self.unit.encoder.is_flowguard_enabled())
+        self.hh.run_gcode('MMU_FLOWGUARD')
+        self.assertTrue(any('enabled and currently active' in line for line in self.hh.console))
+
+    def test_print_start_reports_buffer_flowguard_activation(self):
+        # Encoder monitoring being off must not hide buffer FlowGuard activation.
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.assertTrue(any('FlowGuard monitoring activated and Autotune resumed' in line
+                            for line in self.hh.console))
+
+
 class SharedEncoderFlowGuardTestCase(unittest.TestCase):
     """FlowGuard arming on an encoder shared by two units."""
 
