@@ -277,6 +277,7 @@ class TestTemperatureSensorRefresh(_HardwareRefresh):
     """Refresh preserves complete temperature sensor configurations."""
 
     SENSOR = "temperature_sensor unit0_Env0"
+    SECOND_SENSOR = "temperature_sensor unit0_Env1"
     OPTIONS = {
         "i2c_mcu": "custom_gate0_mcu",
         "i2c_bus": "custom_i2c_bus",
@@ -291,15 +292,29 @@ class TestTemperatureSensorRefresh(_HardwareRefresh):
         installed = self.build("emu", {}, "replace", [])
         existing = ConfigBuilder(installed)
         self.assertIn(self.SENSOR, existing.sections())
-        for option, value in self.OPTIONS.items():
-            existing.set(self.SENSOR, option, value)
+        for sensor in (self.SENSOR, self.SECOND_SENSOR):
+            self.assertIn(sensor, existing.sections())
+            for option, value in self.OPTIONS.items():
+                existing.set(sensor, option, value)
         with open(installed, "w") as f:
             f.write(existing.write())
 
-        built = ConfigBuilder(self.build("emu", {}, "refresh", [installed]))
-        for option, value in self.OPTIONS.items():
-            with self.subTest(option=option):
-                self.assertEqual(built.get(self.SENSOR, option), value)
+        path = self.build("emu", {}, "refresh", [installed])
+        built = ConfigBuilder(path)
+        for sensor in (self.SENSOR, self.SECOND_SENSOR):
+            for option, value in self.OPTIONS.items():
+                with self.subTest(sensor=sensor, option=option):
+                    self.assertEqual(built.get(sensor, option), value)
+
+        with open(path) as f:
+            rendered = f.read()
+        first = rendered.index("[{}]".format(self.SENSOR))
+        second = rendered.index("[{}]".format(self.SECOND_SENSOR))
+        custom = rendered.index("zero_temperature_on_error: False", first)
+        self.assertLess(rendered.index("i2c_bus", first), custom)
+        self.assertLess(custom, second)
+        self.assertRegex(rendered[first:second],
+                         r"stop_sampling_after_failures: 10\n\n$")
 
 
 def _hidden_name_symbols():

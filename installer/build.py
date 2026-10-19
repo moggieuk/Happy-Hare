@@ -456,7 +456,7 @@ class HHConfig(ConfigBuilder):
                 # Retain driver-specific options not emitted by the HH template.
                 for option in self.options(section):
                     if not builder.has_option(section, option):
-                        builder.copy_option(self, section, option)
+                        builder.copy_option(self, section, option, before_section_tail=True)
                         self.used_options.add((section, option))
 
         # If existing config has excluded options use them in lieu of builder excluded options

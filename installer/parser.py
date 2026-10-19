@@ -1159,38 +1159,42 @@ class ConfigBuilder(object):
         except KeyError:
             return False
 
-    def copy_option(self, src_config, section_name, option_name):
+    def copy_option(self, src_config, section_name, option_name, before_section_tail=False):
         option = src_config._get_option(section_name, option_name)
         section = self._get_section(section_name)
 
         cloned = OptionNode(option.name, copy.deepcopy(option.body), option.assign_op, option.trailing_ws)
-        # Pull document-level tail (comments/whitespace after this section) back into the section (your existing behavior)
-
-        doc_body = self.document.body
-        try:
-            sec_doc_idx = doc_body.index(section)
-        except ValueError:
-            sec_doc_idx = -1
-
-        if sec_doc_idx != -1:
-            j = sec_doc_idx + 1
-            while j < len(doc_body) and isinstance(doc_body[j], (CommentNode, WhitespaceNode, HiddenOptionCommentNode)):
-                j += 1
-            if j > sec_doc_idx + 1:
-                section.body.extend(doc_body[sec_doc_idx + 1 : j])
-                del doc_body[sec_doc_idx + 1 : j]
-
-        # Decide insertion point: after marker if present, else end
-        insert_at = len(section.body)
-        marker_idx = None
-        for idx, node in enumerate(section.body):
-            if isinstance(node, HiddenOptionCommentNode):
-                marker_idx = idx
-
-        if marker_idx is not None:
-            insert_at = marker_idx + 1
+        if before_section_tail:
+            # Keep generated spacing and comments between this section and the next
+            # section in place. The copied option belongs after the last generated
+            # option, but before that tail.
+            insert_at = max([i + 1 for i, node in enumerate(section.body)
+                             if isinstance(node, OptionNode)] or [0])
         else:
+            # Pull document-level tail (comments/whitespace after this section) back into the section.
+            doc_body = self.document.body
+            try:
+                sec_doc_idx = doc_body.index(section)
+            except ValueError:
+                sec_doc_idx = -1
+
+            if sec_doc_idx != -1:
+                j = sec_doc_idx + 1
+                while j < len(doc_body) and isinstance(doc_body[j], (CommentNode, WhitespaceNode, HiddenOptionCommentNode)):
+                    j += 1
+                if j > sec_doc_idx + 1:
+                    section.body.extend(doc_body[sec_doc_idx + 1 : j])
+                    del doc_body[sec_doc_idx + 1 : j]
+
+            # Decide insertion point: after marker if present, else end
             insert_at = len(section.body)
+            marker_idx = None
+            for idx, node in enumerate(section.body):
+                if isinstance(node, HiddenOptionCommentNode):
+                    marker_idx = idx
+
+            if marker_idx is not None:
+                insert_at = marker_idx + 1
 
         # Ensure we don't tack onto previous line: add newline BEFORE cloned if needed, else AFTER
         nodes_to_insert = []
