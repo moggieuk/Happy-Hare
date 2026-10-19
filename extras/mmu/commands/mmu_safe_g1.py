@@ -33,40 +33,11 @@ def live_limits(mmu):
     return [tuple(l) for l in limits[:3]]
 
 
-def config_limits(mmu):
-    """
-    The configured axis limits (valid before homing), or None if the kinematics has
-    no box limits
-    """
-    kin = mmu.toolhead.get_kinematics()
-    if getattr(kin, 'limits', None) is None:
-        return None
-    status = kin.get_status(mmu.reactor.monotonic())
-    lo, hi = status['axis_minimum'], status['axis_maximum']
-    return [(lo[i], hi[i]) for i in range(3)]
-
-
 def _skew(mmu):
     skew = mmu.printer.lookup_object('skew_correction', None)
     if callable(getattr(skew, 'calc_skew', None)) and callable(getattr(skew, 'calc_unskew', None)):
         return skew
     return None
-
-
-def skew_fingerprint(mmu):
-    """The skew in effect, read through the transform so it doesn't depend on attribute names"""
-    skew = _skew(mmu)
-    if skew is None:
-        return None
-    return tuple(tuple(skew.calc_skew(p)[:2]) for p in ([0., 1., 0., 0.], [0., 0., 1., 0.]))
-
-
-def gcode_to_kinematic(mmu, gpos):
-    """Where Klipper's range check will see an absolute gcode XYZ"""
-    base = mmu.gcode_move.base_position
-    raw = [gpos[i] + base[i] for i in range(3)]
-    skew = _skew(mmu)
-    return skew.calc_skew(raw + [0.])[:3] if skew else raw
 
 
 def _xy_kinematic(skew, raw, z):
@@ -179,7 +150,7 @@ class MmuSafeG1Command(BaseCommand):
                        % (" ".join("%s%s" % (a, params[a]) for a in "XYZ" if a in params), " ".join(axes), over_str))
                 if not self.warned:
                     self.warned = True
-                    mmu.log_warning("Warning: %s. Likely skew_correction or gcode offset. Run MMU_CHECK_POSITIONS to review configured positions" % msg)
+                    mmu.log_warning("Warning: %s. Likely skew_correction or gcode offset" % msg)
                 else:
                     mmu.log_debug(msg)
 
