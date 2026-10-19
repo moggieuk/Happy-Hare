@@ -13,7 +13,7 @@ import logging
 import unittest
 from unittest.mock import patch
 
-from test.hh import session
+from test.hh import profiles, session
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -29,7 +29,10 @@ class ExtruderLoadTestCase(unittest.TestCase):
     GRIP_CHECK = None   # Console text proving the buffer grip check ran
 
     def setUp(self):
-        self.hh = session(self.PROFILE, **self.SESSION_KWARGS)
+        self.start_session(self.PROFILE)
+
+    def start_session(self, profile):
+        self.hh = session(profile, **self.SESSION_KWARGS)
         self.hh.boot(calibrate=True)
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
         self.mmu = self.hh.mmu
@@ -47,12 +50,14 @@ class ExtruderLoadTestCase(unittest.TestCase):
         """MMU_LOAD with the encoder seeing only `fraction` of the final move to the nozzle"""
         move_filament = self.mmu.move_filament
         traces = []
+        self.nozzle_move_lengths = []
         start = len(self.hh.console)
 
         def under_read(trace_str, dist, *args, **kwargs):
             traces.append(trace_str)
             actual, homed, measured, delta = move_filament(trace_str, dist, *args, **kwargs)
             if trace_str == NOZZLE_MOVE:
+                self.nozzle_move_lengths.append(abs(actual))
                 measured = abs(actual) * fraction
                 delta = abs(actual) - measured
             return actual, homed, measured, delta
@@ -91,9 +96,23 @@ class GripCheckCases:
         self.assertNotEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
 
     def test_no_movement_ignored_on_a_short_move_after_grip_confirmed(self):
-        # Remaining move no longer than encoder_move_step_size is too short to judge
-        self.mmu.mmu_unit().p.encoder_move_step_size = 1000.
+        # A compact buffer and short hotend leave a genuinely short final move
+        # after the real grip check. Keep the normal 15 mm encoder threshold.
+        self.hh.close()
+        profile = profiles.get(self.PROFILE).derive(
+            self.PROFILE + "_short_extruder",
+            syms={
+                "PARAM_BUFFER_MAXRANGE": 6,
+                "PARAM_BUFFER_RANGE": 4,
+                "PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE": 18,
+            },
+        )
+        self.start_session(profile)
+        self.assertEqual(self.mmu.mmu_unit().p.encoder_move_step_size, 15.)
         console = self.load_with_encoder_reading(0.0)
+        self.assertEqual(len(self.nozzle_move_lengths), 1)
+        self.assertGreater(self.nozzle_move_lengths[0], 0.)
+        self.assertLessEqual(self.nozzle_move_lengths[0], 15.)
         self.assertIn(self.GRIP_CHECK, console)
         self.assertIn(SKIPPED, console)
         self.assertEqual(self.nozzle_failures(), [])
