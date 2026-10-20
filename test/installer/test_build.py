@@ -276,6 +276,65 @@ class TestFanVisibilityRefresh(_HardwareRefresh):
                                   "unit0_fan3", "unit0_fan4"])
 
 
+class TestFanOptionRefresh(_HardwareRefresh):
+    TYPES = {"fan_generic", "heater_fan", "controller_fan"}
+    EXTENSIONS = {"cycle_time": "0.02", "hardware_pwm": "True",
+                  "off_below": "0.15", "tachometer_pin": "^unit0:PA7"}
+
+    def test_shared_and_per_gate_fan_extensions_survive_refresh(self):
+        cases = [
+            ("qidi", {"MMU_HAS_FANS": True, "PIN_FAN": "unit0:PA8",
+                      "CUSTOM_CONTROLLER_FAN_SETUP": False,
+                      "PIN_HEATER_FAN": "unit0:PA9",
+                      "MMU_HAS_CONTROLLER_FAN": True,
+                      "PIN_CONTROLLER_FAN": "unit0:PA10"}),
+            ("emu", {"MMU_HAS_HEATER": True, "PIN_HEATER_FAN_0": "unit0:PA9",
+                     "MMU_HAS_CONTROLLER_FAN": True,
+                     "PIN_CONTROLLER_FAN_0": "unit0:PA10"}),
+        ]
+        from installer.build import template_managed_options
+        with cfg._chdir(cfg.REPO_ROOT):
+            policies = template_managed_options("config/base/mmu_hardware.cfg")
+        emitted = {kind: set() for kind in self.TYPES}
+        for profile, syms in cases:
+            for with_heater in (False, True):
+                with self.subTest(profile=profile, with_heater=with_heater):
+                    initial = dict(syms, BOOL_CONTROLLER_FAN_WITH_HEATER=with_heater)
+                    installed = self.build(profile, initial, "replace", [])
+                    existing = ConfigBuilder(installed)
+                    fans = [section for section in existing.sections(scope="included")
+                            if section.split(" ", 1)[0] in self.TYPES]
+                    self.assertEqual({s.split(" ", 1)[0] for s in fans}, self.TYPES)
+                    for section in fans:
+                        emitted[section.split(" ", 1)[0]].update(existing.options(section))
+                        for option, value in self.EXTENSIONS.items():
+                            existing.set(section, option, value)
+                    with open(installed, "w") as f:
+                        f.write(existing.write())
+                    with cfg._env(cfg._SINGLE_UNIT_ENV):
+                        baseline = cfg._kconfig("fan-options-before",
+                                                dict(profiles.get(profile).syms, **initial))
+                    suffix = "_0" if profile == "emu" else ""
+                    changes = {"PARAM_%s_MAX_POWER%s" % (prefix, suffix): 0.6
+                               for prefix in ("FAN", "HEATER_FAN", "CONTROLLER_FAN")}
+                    built = ConfigBuilder(self.build(profile, dict(initial, **changes),
+                                                      "refresh", [installed], baseline))
+                    for section in fans:
+                        for option, value in self.EXTENSIONS.items():
+                            self.assertEqual(built.get(section, option), value)
+                        if profile != "emu" or section.endswith("0"):
+                            self.assertEqual(built.get(section, "max_power"), "0.6")
+                    removed_syms = {"PIN_%s%s" % (prefix, suffix): ""
+                                    for prefix in ("FAN", "HEATER_FAN", "CONTROLLER_FAN")}
+                    removed = ConfigBuilder(self.build(profile, dict(initial, **removed_syms),
+                                                        "refresh", [installed]))
+                    for section in fans:
+                        if profile != "emu" or section.endswith("0"):
+                            self.assertFalse(removed.has_section(section))
+        for kind, options in emitted.items():
+            self.assertEqual(policies[kind], options, kind)
+
+
 class TestTemperatureSensorRefresh(_HardwareRefresh):
     """Refresh preserves extensions while respecting template-owned omissions."""
 
