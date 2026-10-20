@@ -1,4 +1,4 @@
-menu "Toolhead tip cutting (_MMU_CUT_TIP)"
+menu "Toolhead tip cutting     (_MMU_CUT_TIP)"
   visible if MMU_HAS_TOOLHEAD_CUTTER
   forceshow
   help

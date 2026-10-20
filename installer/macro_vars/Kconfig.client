@@ -1,4 +1,4 @@
-menu "Client macros        (_MMU_CLIENT)"
+menu "Client macros            (_MMU_CLIENT)"
   visible if INSTALL_CLIENT_MACROS
   forceshow
   help
