@@ -317,12 +317,16 @@ reassembling a line. Output produced by a tick is printed above the prompt and t
 then rebuilt from `readline.get_line_buffer()`, so a tick landing while you are mid-command
 cannot eat what you have typed.
 
-The tick fires every `LIVE_INTERVAL` = **0.5 s** and advances by the *real* time measured
+The tick fires every `LIVE_INTERVAL` = **0.25 s** and advances by the *real* time measured
 since the last one, not by that constant — so the interval sets how often the header is
-repainted, not how fast the clock runs. Halving it (it was 1.0 s) therefore costs a second
-repaint per second, not twice the reactor work, and it is what makes an `led_effect`
-animation legible: at `frame_rate: 24` a one-second sample showed every 24th frame, which
-reads as a jump rather than a fade.
+repainted, not how fast the clock runs. Halving it from 0.5 s doubles display refreshes
+from two to four per second, not the LED frame calculations: at `frame_rate: 24` the display
+now samples every sixth frame instead of every twelfth.
+
+`make test` does not run this console timer or repaint the display. LED effects still
+calculate frames at their configured rate, but only as tests advance virtual time; there
+is no wall-clock wait between frames. The faster console refresh adds no test overhead.
+Keeping the configured effect rate in tests preserves animation and timer behavior.
 
 The clock itself costs under **1% of one core**: measured on `ercf_vvd`, `advance(60)` is
 8.6 ms of CPU per virtual second, and live mode spends that over a real second. (It was
