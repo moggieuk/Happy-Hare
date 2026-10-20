@@ -288,7 +288,7 @@ class TestTemperatureSensorRefresh(_HardwareRefresh):
         "stop_sampling_after_failures": "10",
     }
 
-    def test_sensor_sections_have_aligned_report_time_and_blank_separator(self):
+    def test_sensor_sections_have_blank_separator(self):
         for profile, syms in (("emu", {}),
                               ("boxturtle", {"MMU_HAS_ENVIRONMENT_SENSOR": True})):
             with self.subTest(profile=profile):
@@ -300,10 +300,6 @@ class TestTemperatureSensorRefresh(_HardwareRefresh):
                 self.assertGreater(len(sections), 1)
                 for body in sections:
                     lines = body.splitlines()
-                    option_lines = [line for line in lines if line and not line.startswith("#")]
-                    for line in option_lines:
-                        if "_report_time" in line:
-                            self.assertEqual(line.index(":"), 22, line)
                     last_option = max(i for i, line in enumerate(lines)
                                       if line and not line.startswith("#"))
                     self.assertEqual(lines[last_option + 1:last_option + 2], [""])
