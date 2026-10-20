@@ -2500,7 +2500,7 @@ class MmuController(MmuFilamentMovement):
                 if hint:
                     self.log_always(hint)
                 if not self.error_dialog_shown:
-                    self._show_mmu_error_dialog("Print is still paused", reason, hint) # e.g. RESUME failed after clearing it
+                    self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True) # e.g. RESUME failed after clearing it
                 recover_pos = self.p.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
@@ -2553,7 +2553,7 @@ class MmuController(MmuFilamentMovement):
         return lines
 
 
-    def _show_mmu_error_dialog(self, msg, reason, hint=None):
+    def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False):
         dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
         if not (self.p.show_error_dialog and dialog_macro is not None):
             return
@@ -2561,9 +2561,9 @@ class MmuController(MmuFilamentMovement):
         flat = " ".join(l if l[-1] in ".:!?" else l + "." for l in lines).replace("'", "")
         self.wrap_gcode_command(
             '%s MSG="%s" REASON="%s"' % (self.p.error_dialog_macro, msg, flat),
-            variables={'reason_lines': lines, 'action': " ".join(self._dialog_lines(hint or ""))}
+            variables={'reason_lines': lines, 'action': " ".join(self._dialog_lines(hint or "")), 'still_paused': still_paused}
         )
-        dialog_macro.variables.update({'reason_lines': [], 'action': ''})
+        dialog_macro.variables.update({'reason_lines': [], 'action': '', 'still_paused': False})
         self.error_dialog_shown = True
 
 

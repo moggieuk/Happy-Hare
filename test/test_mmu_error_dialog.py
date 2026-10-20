@@ -128,13 +128,42 @@ class TestDialogContent(ErrorDialogTestCase):
 
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertEqual(texts, [
-            "Print paused",
             "Load sequence failed because:",
             "Couldn't pick up filament at gate.",
             "Gate marked as empty.",
             "Occurred when changing tool: T0 > T1",
             "After fixing, press RESUME to continue printing (UNLOCK restores the nozzle temperature first)",
         ])
+
+    def test_title_defaults_and_can_be_overridden_and_a_fresh_pause_has_no_headline(self):
+        self.start_print()
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Gate 1 jammed')
+        dialog = self.last_dialog(self.prompts_since(mark))
+        self.assertEqual(dialog[0], 'action:prompt_begin Happy Hare Pause Notice')
+        self.assertNotIn('Print paused', self.texts(dialog))
+        self.assertEqual(self.texts(dialog)[0], 'Gate 1 jammed')
+
+        self.gcode('MMU_UNLOCK')
+        self.gcode('RESUME')
+        self.assertFalse(self.mmu.is_mmu_paused())
+        self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG').variables['title'] = 'My "custom\\ title'
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Gate 1 jammed')
+        self.assertEqual(self.last_dialog(self.prompts_since(mark))[0], "action:prompt_begin My 'custom/ title")
+
+    def test_still_paused_headline_only_when_the_dialog_is_shown_again(self):
+        self.start_print()
+        self.gcode('MMU_CHANGE_TOOL TOOL=3') # Gate 3 never preloaded
+        self.mmu.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=True)
+        mark = self.mark()
+        self.gcode('RESUME')
+        prompts = self.prompts_since(mark)
+        dialog = self.last_dialog(prompts[prompts.index('action:prompt_end'):])
+        self.assertEqual(self.texts(dialog)[0], 'Print is still paused')
+        # Happy Hare's per-call flag does not stick for the next, fresh pause
+        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
+        self.assertFalse(macro.variables['still_paused'])
 
     def test_buttons_are_footer_buttons_and_abort_is_optional(self):
         self.start_print()

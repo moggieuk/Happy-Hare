@@ -185,8 +185,9 @@ class TestPauseDialogReachesTheUi(WebUiBridgeTestCase):
         self.hh.run_gcode('MMU_PAUSE FORCE_IN_PRINT=1 MSG="Gate 1 jammed"')
         self.bridge.service()
         prompts = [l for l in self.pushed() if l.startswith('// action:prompt_')]
-        self.assertEqual(prompts[0], '// action:prompt_begin Happy Hare Error Notice')
-        self.assertIn('// action:prompt_text Print paused', prompts)
+        self.assertEqual(prompts[0], '// action:prompt_begin Happy Hare Pause Notice')
+        self.assertIn('// action:prompt_text Gate 1 jammed', prompts)
+        self.assertNotIn('// action:prompt_text Print paused', prompts)
         self.assertTrue([p for p in prompts if p.startswith('// action:prompt_footer_button RESUME|RESUME|')], prompts)
         self.assertEqual(prompts[-1], '// action:prompt_show')
 
