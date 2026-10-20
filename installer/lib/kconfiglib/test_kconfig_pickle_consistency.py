@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+
+# Happy Hare MMU Software
+# Pickle consistency test for .mmu_config files
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 """
 Regression test: verify that every explicit CONFIG_* assignment in a raw
 .mmu_config-style file survives correctly into the pickled dict produced by
