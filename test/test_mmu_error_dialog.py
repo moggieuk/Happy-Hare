@@ -105,6 +105,32 @@ class ErrorDialogTestCase(unittest.TestCase):
 
 class TestDialogContent(ErrorDialogTestCase):
 
+    def test_line_breaks_in_title_keep_the_dialog_valid(self):
+        self.start_print()
+        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
+        for separator in ('\n', '\r\n', '\r'):
+            with self.subTest(separator=repr(separator)):
+                macro.variables['title'] = 'MMU paused' + separator + 'Intervention needed'
+                mark = self.mark()
+                self.mmu._show_mmu_error_dialog('Print paused', 'Gate 1 jammed')
+                dialog = self.last_dialog(self.prompts_since(mark))
+                self.assertEqual(dialog[0], 'action:prompt_begin MMU paused Intervention needed')
+                self.assertEqual(len(self.footer_buttons(dialog)), 2)
+
+    def test_line_breaks_in_custom_paragraphs_keep_the_dialog_valid(self):
+        self.start_print()
+        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
+        for separator in ('\n', '\r\n', '\r'):
+            with self.subTest(separator=repr(separator)):
+                macro.variables['custom_msg'] = ['Check the tube.' + separator + 'Then reload.',
+                                                 'Keep this as a separate paragraph.']
+                mark = self.mark()
+                self.mmu._show_mmu_error_dialog('Print paused', 'Gate 1 jammed')
+                dialog = self.last_dialog(self.prompts_since(mark))
+                self.assertEqual(self.texts(dialog)[-2:], [
+                    'Check the tube. Then reload.', 'Keep this as a separate paragraph.'])
+                self.assertEqual(len(self.footer_buttons(dialog)), 2)
+
     def test_reason_with_gcode_special_characters_still_shows(self):
         self.start_print()
         mark = self.mark()
@@ -240,6 +266,30 @@ class TestDialogContent(ErrorDialogTestCase):
 
 
 class TestDialogLifecycle(ErrorDialogTestCase):
+
+    def test_unloaded_bypass_start_reaches_pause_with_espooler(self):
+        self.start_print()
+        self.gcode('MMU_UNLOAD')
+        self.gcode('MMU_SELECT_BYPASS')
+        self.assertTrue(self.mmu.has_espooler())
+        self.hh.printer.harness_macro_effects['MMU_START_LOAD_INITIAL_TOOL'] = \
+            lambda macro, gcmd: macro.run_body(gcmd)
+        mark = self.mark()
+        self.gcode('MMU_START_LOAD_INITIAL_TOOL')
+        self.assertTrue(self.mmu.is_mmu_paused())
+        dialog = self.last_dialog(self.prompts_since(mark))
+        self.assertIn('Load bypass or initial tool before resuming print', self.texts(dialog))
+        self.assertEqual(len(self.footer_buttons(dialog)), 2)
+
+    def test_espooler_status_handles_bypass_and_preserves_gate_values(self):
+        from extras.mmu.mmu_constants import ESPOOLER_NONE, ESPOOLER_OFF, TOOL_GATE_UNKNOWN
+        self.assertTrue(self.mmu.has_espooler())
+        self.assertEqual(self.mmu.get_status(0)['espooler_active'],
+                         self.mmu.espooler().get_operation(self.mmu.gate_selected)[0])
+        self.mmu._set_gate_selected(TOOL_GATE_UNKNOWN)
+        self.assertEqual(self.mmu.get_status(0)['espooler_active'], ESPOOLER_OFF)
+        self.gcode('MMU_SELECT_BYPASS')
+        self.assertEqual(self.mmu.get_status(0)['espooler_active'], ESPOOLER_NONE)
 
     def test_refused_resume_shows_the_dialog_again(self):
         self.start_print(0)

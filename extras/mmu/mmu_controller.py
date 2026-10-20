@@ -641,6 +641,8 @@ class MmuController(MmuFilamentMovement):
 
     # Note: Returning new lists/dicts so that moonraker sees the change
     def get_status(self, eventtime):
+        # Bypass has no gate operation even when the current unit has an espooler.
+        espooler_operation = self.espooler().get_operation(self.gate_selected) if self.has_espooler() else None
         status = {
             'enabled': self.is_enabled,
             'kalico': int(self.kalico),
@@ -678,7 +680,7 @@ class MmuController(MmuFilamentMovement):
             'encoder': None,
 
             # DEPRECATED but possibly still used in UI's or by users custom macros
-            'espooler_active': self.espooler().get_operation(self.gate_selected)[0] if self.has_espooler() else ESPOOLER_NONE, # DEPRECATED
+            'espooler_active': espooler_operation[0] if espooler_operation is not None else ESPOOLER_NONE, # DEPRECATED
             'runout': self.is_handling_runout, # DEPRECATED but still used in HH macros (better to use operation)
             'is_paused': self.is_mmu_paused(), # DEPRECATED (better to use print_state)
             'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused) Still referenced in Mainsail interface
