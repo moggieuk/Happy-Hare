@@ -563,7 +563,7 @@ class MmuController(MmuFilamentMovement):
                 if exception:
                     raise MmuError(
                         "Error running %s: %s" % (macro, str(e)),
-                        hint="Fix the cause of the %s error on %s, %s" % (macro, self.gate_name(), HINT_RELOAD)
+                        hint="Resolve the cause of the %s error on %s, %s" % (macro, self.gate_name(), HINT_RELOAD)
                     ) from e
                 else:
                     self.log_error("Error running %s: %s" % (macro, str(e)))
@@ -2463,7 +2463,7 @@ class MmuController(MmuFilamentMovement):
             return ee
         if self.printer.is_shutdown() or not self.is_in_print():
             raise ee
-        return MmuError("Klipper error: %s" % str(ee), hint="Fix the cause of the Klipper error, %s" % HINT_RELOAD)
+        return MmuError("Klipper error: %s" % str(ee), hint="Resolve the cause of the Klipper error, %s" % HINT_RELOAD)
 
 
     # reason may be an MmuError, whose hint (what to do next) is shown with it.
@@ -2471,6 +2471,7 @@ class MmuController(MmuFilamentMovement):
     # pause/error handling. For callers whose failure left the position genuinely unknown.
     def handle_mmu_error(self, reason, force_in_print=False, recover=True):
         hint = getattr(reason, 'hint', None)
+        context = getattr(reason, 'context', None)
         reason = str(reason)
         self.psm.fix_started_state() # Get out of 'started' state before transition to mmu pause
 
@@ -2482,7 +2483,7 @@ class MmuController(MmuFilamentMovement):
                 self.psm.resume_to_state = 'printing' if self.is_in_print() else 'ready'
                 self.psm.reason_for_pause = reason # Only store reason on first error
                 self.psm.pause_hint = hint
-                self._display_mmu_error()
+                self._display_mmu_error(context)
                 self.psm.paused_extruder_temp = self.printer.lookup_object(self.mmu_unit().extruder_name()).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
@@ -2500,7 +2501,7 @@ class MmuController(MmuFilamentMovement):
                 if hint:
                     self.log_always(hint)
                 if not self.error_dialog_shown:
-                    self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True) # e.g. RESUME failed after clearing it
+                    self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True, context=context, unlock_first=self.is_mmu_paused_and_locked()) # e.g. RESUME failed after clearing it
                 recover_pos = self.p.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
@@ -2532,8 +2533,8 @@ class MmuController(MmuFilamentMovement):
 
 
     # Displays MMU error/pause as pop-up dialog and/or via console
-    def _display_mmu_error(self):
-        self._show_mmu_error_dialog("Print paused", self.psm.reason_for_pause, self.psm.pause_hint)
+    def _display_mmu_error(self, context=None):
+        self._show_mmu_error_dialog("Print paused", self.psm.reason_for_pause, self.psm.pause_hint, context=context, unlock_first=True) # About to be paused and locked
         self.log_error("MMU issue detected. Print paused\nReason: %s" % self.psm.reason_for_pause)
         self.log_always(self.psm.pause_hint or "After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
 
@@ -2553,17 +2554,30 @@ class MmuController(MmuFilamentMovement):
         return lines
 
 
-    def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False):
+    def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False, context=None, unlock_first=False):
+        """
+        The reason is one paragraph rather than a line per line of the console message, with what
+        was being attempted (the error's context, which ends the message) kept apart so the dialog
+        can lead with it.
+        """
         dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
         if not (self.p.show_error_dialog and dialog_macro is not None):
             return
+        def sentences(lines): # Lines read on as sentences; the last is left as the error wrote it
+            return " ".join([l if l[-1] in ".:!?" else l + "." for l in lines[:-1]] + lines[-1:])
         lines = self._dialog_lines(reason)
         flat = " ".join(l if l[-1] in ".:!?" else l + "." for l in lines).replace("'", "")
+        body = reason[:-len(context)] if context and reason.endswith(context) else reason
+        paragraph = sentences(self._dialog_lines(body))
         self.wrap_gcode_command(
             '%s MSG="%s" REASON="%s"' % (self.p.error_dialog_macro, msg, flat),
-            variables={'reason_lines': lines, 'action': " ".join(self._dialog_lines(hint or "")), 'still_paused': still_paused}
+            variables={'reason_lines': [paragraph] if paragraph else [],
+                       'context_line': " ".join(self._dialog_lines(context or "")),
+                       'action': " ".join(self._dialog_lines(hint or "")),
+                       'still_paused': still_paused,
+                       'unlock_first': unlock_first}
         )
-        dialog_macro.variables.update({'reason_lines': [], 'action': '', 'still_paused': False})
+        dialog_macro.variables.update({'reason_lines': [], 'context_line': '', 'action': '', 'still_paused': False, 'unlock_first': False})
         self.error_dialog_shown = True
 
 
@@ -4230,7 +4244,7 @@ class MmuController(MmuFilamentMovement):
                         self._select_and_load_tool(self.tool_selected, purge=PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
                     except (MmuError, self.printer.command_error) as e:
                         ee = self.mmu_error_from(e)
-                        raise ee.with_message("%s.\nOccurred during EndlessSpool swap of %s to gate %d" % (str(ee), where, next_gate)) from e
+                        raise ee.with_context("Occurred during EndlessSpool swap of %s to gate %d" % (where, next_gate)) from e
 
                     self._continue_after("endless_spool")
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did

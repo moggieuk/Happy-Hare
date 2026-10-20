@@ -117,23 +117,42 @@ class TestDialogContent(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertIn("Klipper reports: sensor 'mmu_gate, it's stuck at #3", texts)
 
-    def test_each_reason_line_is_its_own_text_and_the_action_is_last(self):
+    def test_multi_line_reason_reads_as_one_paragraph_and_the_action_is_last(self):
         self.start_print()
         mark = self.mark()
         self.mmu.handle_mmu_error(
             "Load sequence failed because:\n"
-            "Couldn't pick up filament at gate.\n"
-            "Gate marked as empty.\n"
-            ".\nOccurred when changing tool: T0 > T1")
+            "Couldn't pick up filament at gate\n"
+            "Gate marked as empty. Use 'MMU_GATE_MAP GATE=1 AVAILABLE=1' to reset")
 
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertEqual(texts, [
-            "Load sequence failed because:",
-            "Couldn't pick up filament at gate.",
-            "Gate marked as empty.",
-            "Occurred when changing tool: T0 > T1",
+            "Load sequence failed because: Couldn't pick up filament at gate. "
+            "Gate marked as empty. Use 'MMU_GATE_MAP GATE=1 AVAILABLE=1' to reset",
             "After fixing, press RESUME to continue printing (UNLOCK restores the nozzle temperature first)",
         ])
+
+    def test_error_context_is_kept_through_rewording(self):
+        error = MmuError('Gate 1 jammed', hint='Free it').with_context('Occurred when loading tool')
+        self.assertEqual(str(error), 'Gate 1 jammed.\nOccurred when loading tool')
+        self.assertEqual(error.context, 'Occurred when loading tool')
+        reworded = error.with_message('Load sequence failed because:\n%s' % str(error))
+        self.assertEqual((reworded.hint, reworded.context), ('Free it', 'Occurred when loading tool'))
+
+    def test_context_leads_the_dialog_and_still_ends_the_logged_reason(self):
+        self.start_print()
+        mark = self.mark()
+        error = MmuError("Load sequence failed because:\nGate 1 jammed", hint='Free gate 1, then RESUME')
+        self.mmu.handle_mmu_error(error.with_context('Occurred when changing tool: T0 > T1'))
+
+        texts = self.texts(self.last_dialog(self.prompts_since(mark)))
+        self.assertEqual(texts, [
+            "Occurred when changing tool: T0 > T1",
+            "Load sequence failed because: Gate 1 jammed.",
+            "Fix: UNLOCK to restore heating, then free gate 1, then RESUME",
+        ])
+        self.assertEqual(self.mmu.psm.reason_for_pause,
+                         "Load sequence failed because:\nGate 1 jammed.\nOccurred when changing tool: T0 > T1")
 
     def test_title_defaults_and_can_be_overridden_and_a_fresh_pause_has_no_headline(self):
         self.start_print()
@@ -164,6 +183,7 @@ class TestDialogContent(ErrorDialogTestCase):
         # Happy Hare's per-call flag does not stick for the next, fresh pause
         macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
         self.assertFalse(macro.variables['still_paused'])
+        self.assertFalse(macro.variables['unlock_first'])
 
     def test_buttons_are_footer_buttons_and_abort_is_optional(self):
         self.start_print()
@@ -220,7 +240,7 @@ class TestDialogLifecycle(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(prompts[prompts.index('action:prompt_end'):]))
         self.assertEqual(texts[0], 'Print is still paused')
         self.assertTrue(any(t.startswith('Cannot resume because') for t in texts), texts)
-        self.assertTrue(texts[-1].startswith('Finish loading or unloading the filament, run MMU_RECOVER'), texts)
+        self.assertTrue(texts[-1].startswith('Fix: Finish loading or unloading the filament, run MMU_RECOVER'), texts)
 
     def test_failed_loaded_check_on_resume_pauses_with_a_dialog(self):
         self.start_print(0)
@@ -265,7 +285,7 @@ class TestActionableReasons(ErrorDialogTestCase):
         self.assertIn('Clear the bowden, then RESUME', self.hh.console)
 
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
-        self.assertEqual(texts[-1], 'Clear the bowden, then RESUME')
+        self.assertEqual(texts[-1], 'Fix: UNLOCK to restore heating, then clear the bowden, then RESUME')
 
     def test_hint_follows_custom_msg_as_the_last_line(self):
         self.start_print()
@@ -273,7 +293,7 @@ class TestActionableReasons(ErrorDialogTestCase):
         mark = self.mark()
         self.mmu.handle_mmu_error(MmuError('Gate 1 jammed', hint='Free gate 1'))
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
-        self.assertEqual(texts[-2:], ['Print requires tools: T0', 'Free gate 1'])
+        self.assertEqual(texts[-2:], ['Print requires tools: T0', 'Fix: UNLOCK to restore heating, then free gate 1'])
 
     def test_resume_clears_the_hint(self):
         self.start_print()
@@ -326,11 +346,13 @@ class TestKlipperErrors(ErrorDialogTestCase):
         reason = self.mmu.psm.reason_for_pause
         self.assertIn('Requested temperature (300.0) out of range', reason)
         self.assertIn('Occurred when changing tool: T0 > T1', reason)
-        self.assertTrue(self.mmu.psm.pause_hint.startswith('Fix the cause of the Klipper error'))
+        self.assertTrue(self.mmu.psm.pause_hint.startswith('Resolve the cause of the Klipper error'))
 
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertIn('Klipper error: Requested temperature (300.0) out of range (0.0:290.0).', texts)
-        self.assertEqual(texts[-1], self.mmu.psm.pause_hint)
+        self.assertTrue(texts[0].startswith('Occurred when changing tool'), texts)
+        hint = self.mmu.psm.pause_hint
+        self.assertEqual(texts[-1], 'Fix: UNLOCK to restore heating, then ' + hint[0].lower() + hint[1:])
 
     def test_toolchange_does_not_retry_a_klipper_error(self):
         self.mmu.p.retry_tool_change_on_error = 1
@@ -449,7 +471,7 @@ class TestEndlessSpoolSwapFailure(ErrorDialogTestCase):
         reason = self.mmu.psm.reason_for_pause
         self.assertIn('Klipper error: Move out of range', reason)
         self.assertIn('Occurred during EndlessSpool swap of T0 (gate %d)' % gate, reason)
-        self.assertTrue(self.mmu.psm.pause_hint.startswith('Fix the cause of the Klipper error'))
+        self.assertTrue(self.mmu.psm.pause_hint.startswith('Resolve the cause of the Klipper error'))
 
 
 if __name__ == '__main__':
