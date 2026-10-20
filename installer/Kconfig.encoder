@@ -198,6 +198,7 @@ if MMU_HAS_ENCODER
       prompt "$(pad,32,Pre-unload test tolerance %)" if PARAM_BOWDEN_PRE_UNLOAD_TEST
       range 0 100
       default 50
+      keep_when_hidden
       help
         ADVANCED: How much of the pre-unload test move the encoder may miss
         before the test fails, as a % of the move. A failure means the filament
@@ -216,6 +217,7 @@ if MMU_HAS_ENCODER
       boolint
       prompt "Apply bowden correction moves?" if PARAM_ENCODER_MOVE_VALIDATION
       default 0
+      keep_when_hidden
       help
         Make correction moves when the fast bowden load falls short, e.g. from
         missed steps caused by "jerking" on a heavy spool. Happy Hare believes
@@ -227,6 +229,7 @@ if MMU_HAS_ENCODER
       float
       prompt "$(pad,32,Bowden allowable encoder delta)" if PARAM_ENCODER_MOVE_VALIDATION
       default 20.0
+      keep_when_hidden
       help
         Slippage threshold (mm) for the fast bowden move. When the encoder
         measures a load or unload short by at least this much, a slippage
@@ -239,6 +242,7 @@ if MMU_HAS_ENCODER
       prompt "$(pad,32,Bowden move error tolerance %)" if PARAM_ENCODER_MOVE_VALIDATION
       range 0 100
       default 60
+      keep_when_hidden
       help
         ADVANCED: How much of the fast bowden load move the encoder may miss
         before the load fails, as a % of the move ("filament stuck in the gate").
@@ -249,6 +253,7 @@ if MMU_HAS_ENCODER
       prompt "$(pad,32,Toolhead move error tolerance %)" if PARAM_ENCODER_MOVE_VALIDATION
       range 0 100
       default 80
+      keep_when_hidden
       help
         ADVANCED: How much of the final extruder load the encoder may miss before
         the load fails, as a % of the move (unload only warns). Not used when the
@@ -262,6 +267,7 @@ if MMU_HAS_ENCODER
       prompt "$(pad,32,Post-load tighten %)" if PARAM_ENCODER_MOVE_VALIDATION
       range 0 100
       default 60
+      keep_when_hidden
       help
         After a load, pull the filament back with the gear at 50% current to take
         up bowden slack that can cause a false encoder clog detection. The pull is

@@ -13,8 +13,8 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
 13 and 14, items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
-item 7), item 13 is its item 20, item 23 is its item 23, and item 24 is its item 24
-(also `Menuconfig:` item 8). When you add an extension, update **both** this file and that
+item 7), item 13 is its item 20, item 23 is its item 23, item 24 is its item 24
+(also `Menuconfig:` item 8), and item 25 is its item 25. When you add an extension, update **both** this file and that
 header block.
 
 ## 1. `generated_default`
@@ -707,3 +707,36 @@ comment "Blobifier macro variables"
   targets a prompted symbol, and each one in its `SHIPPED` table is hidden
   with its feature off and opens its Macro Variables submenu with it on.
   Add a new link to `SHIPPED`; the test fails on one that isn't there.
+
+## 25. `keep_when_hidden`
+
+The opposite of `default_when_hidden` (item 16). A hidden prompt makes
+kconfiglib ignore the symbol's user value (`Symbol.str_value`/`tri_value`
+only honour it while visible), so `write_config` writes the default instead:
+as a frozen assignment when the prompt is hidden by `prompt ... if X`, or not
+at all when an enclosing `if` also disables the defaults. Turning a parent
+off and saving therefore loses the customization, and `build.py`, which
+renders raw user values, renders the default.
+
+`keep_when_hidden` on a `menuconfig`, `menu` or symbol makes a hidden symbol
+under it save its user value instead (`_kept_config_string()`, used by
+`_config_contents`), with no #~DEFAULT~# token. Nothing else changes:
+expressions and visibility still see the default while it is hidden, a
+symbol with no user value is written as before, and the load path already
+keeps user values on hidden symbols. When the prompt shows again, menuconfig
+shows the kept value as NOT DEFAULT and `r` resets it.
+
+- **Precedence:** `_hidden_policy()` takes the nearest of the two keywords
+  walking up from the symbol's nodes, so `keep_when_hidden` on a symbol
+  overrides `default_when_hidden` on its menu. Both on one node is a parse
+  error, and so is either one on a choice.
+- **Use it only where the hidden value isn't imposed.** It suits options the
+  .cfg still renders while hidden, under a switch that can be turned back on,
+  even at runtime with `MMU_TEST_CONFIG`: the encoder validation tolerances,
+  the flowguard relief and tangle-prevention levels, `servo_duration`, the
+  bowden homing distances. Don't use it where hiding means "forced" or "off":
+  `PARAM_SYNC_TO_EXTRUDER`/`_FORM_TIP`/`_PURGE` are forced to 1 when the
+  filament is always gripped, and a blank `PARAM_ENVIRONMENT_SENSOR_<n>`
+  means that gate has no sensor. A kept value would override those, because
+  the build reads raw values.
+- **Tests:** `test/installer/test_kconfig_keep_when_hidden.py`.

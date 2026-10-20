@@ -181,6 +181,7 @@ menu "Endstops and Bowden movement"
     float
     prompt "Maximum bowden move         " if PARAM_REQUIRE_BOWDEN_MOVE
     default 2000
+    keep_when_hidden
     help
       Maximum attempted bowden move (mm) used during calibration.
       Set this larger than the actual Bowden length.
@@ -189,6 +190,7 @@ menu "Endstops and Bowden movement"
     float
     prompt "Bowden load homing buffer   " if PARAM_REQUIRE_BOWDEN_MOVE
     default 20
+    keep_when_hidden
     help
       Distance to reduce fast bowden load to prevent collisions
       and allow for accurate extruder homing
@@ -197,6 +199,7 @@ menu "Endstops and Bowden movement"
     float
     prompt "Bowden unload homing buffer " if PARAM_REQUIRE_BOWDEN_MOVE
     default 40
+    keep_when_hidden
     help
       Distance to reduce fast bowden unload to allow for accurate
       gate homing and no gate overshoot when filament is being unloaded
