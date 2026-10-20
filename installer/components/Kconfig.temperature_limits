@@ -1,0 +1,19 @@
+# Optional limits for [temperature_sensor]. Caller sets temp_limit_prefix/suffix/pad.
+# Strings allow blank (Klipper default), zero, and signed fractional temperatures.
+config PARAM_$(temp_limit_prefix)_MIN_TEMP$(temp_limit_suffix)
+  string "$(pad,$(temp_limit_pad),Min temperature)"
+  default ""
+  validator "([-+]?([0-9]+([.][0-9]*)?|[.][0-9]+))?"
+  help
+    Optional minimum temperature for this sensor, in Celsius.
+    Leave blank to omit min_temp and use Klipper's default.
+    A reading outside the configured limits can shut down the printer.
+
+config PARAM_$(temp_limit_prefix)_MAX_TEMP$(temp_limit_suffix)
+  string "$(pad,$(temp_limit_pad),Max temperature)"
+  default ""
+  validator "([-+]?([0-9]+([.][0-9]*)?|[.][0-9]+))?"
+  help
+    Optional maximum temperature for this sensor, in Celsius.
+    Leave blank to omit max_temp and use Klipper's default.
+    A reading outside the configured limits can shut down the printer.

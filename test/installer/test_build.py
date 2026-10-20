@@ -216,15 +216,18 @@ class _HardwareRefresh(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-    def build(self, profile, syms, mode, input_files):
+    def build(self, profile, syms, mode, input_files, baseline=None):
         out = tempfile.mkdtemp(dir=self.tmp.name)
         dest = os.path.join(out, "mmu_hardware_unit0.cfg")
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig("fan-visibility-refresh",
                                    dict(profiles.get(profile).syms, **syms))
+        if baseline is not None:
+            write_menuconfig_baseline(out, kconfig, baseline)
         from installer import build
         extra = {"PARAM_TOTAL_NUM_GATES": kconfig.getint("PARAM_NUM_GATES")}
-        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode,
+                           F_MENUCONFIG_BASELINE="y" if baseline is not None else "")), \
                 cfg._chdir(cfg.REPO_ROOT):
             build.build_config_file("config/base/mmu_hardware.cfg", dest, kconfig,
                                     input_files, extra)
@@ -271,6 +274,256 @@ class TestFanVisibilityRefresh(_HardwareRefresh):
                 self.assertEqual(built.get(self.UNIT, "fans").split(", "),
                                  ["unit0_fan0", "unit0_fan1", "my_fan",
                                   "unit0_fan3", "unit0_fan4"])
+
+
+class TestFanOptionRefresh(_HardwareRefresh):
+    TYPES = {"fan_generic", "heater_fan", "controller_fan"}
+    EXTENSIONS = {"cycle_time": "0.02", "hardware_pwm": "True",
+                  "off_below": "0.15", "tachometer_pin": "^unit0:PA7"}
+
+    def test_shared_and_per_gate_fan_extensions_survive_refresh(self):
+        cases = [
+            ("qidi", {"MMU_HAS_FANS": True, "PIN_FAN": "unit0:PA8",
+                      "CUSTOM_CONTROLLER_FAN_SETUP": False,
+                      "PIN_HEATER_FAN": "unit0:PA9",
+                      "MMU_HAS_CONTROLLER_FAN": True,
+                      "PIN_CONTROLLER_FAN": "unit0:PA10"}),
+            ("emu", {"MMU_HAS_HEATER": True, "PIN_HEATER_FAN_0": "unit0:PA9",
+                     "MMU_HAS_CONTROLLER_FAN": True,
+                     "PIN_CONTROLLER_FAN_0": "unit0:PA10"}),
+        ]
+        from installer.build import template_managed_options
+        with cfg._chdir(cfg.REPO_ROOT):
+            policies = template_managed_options("config/base/mmu_hardware.cfg")
+        emitted = {kind: set() for kind in self.TYPES}
+        for profile, syms in cases:
+            for with_heater in (False, True):
+                with self.subTest(profile=profile, with_heater=with_heater):
+                    initial = dict(syms, BOOL_CONTROLLER_FAN_WITH_HEATER=with_heater)
+                    installed = self.build(profile, initial, "replace", [])
+                    existing = ConfigBuilder(installed)
+                    fans = [section for section in existing.sections(scope="included")
+                            if section.split(" ", 1)[0] in self.TYPES]
+                    self.assertEqual({s.split(" ", 1)[0] for s in fans}, self.TYPES)
+                    for section in fans:
+                        emitted[section.split(" ", 1)[0]].update(existing.options(section))
+                        for option, value in self.EXTENSIONS.items():
+                            existing.set(section, option, value)
+                    with open(installed, "w") as f:
+                        f.write(existing.write())
+                    with cfg._env(cfg._SINGLE_UNIT_ENV):
+                        baseline = cfg._kconfig("fan-options-before",
+                                                dict(profiles.get(profile).syms, **initial))
+                    suffix = "_0" if profile == "emu" else ""
+                    changes = {"PARAM_%s_MAX_POWER%s" % (prefix, suffix): 0.6
+                               for prefix in ("FAN", "HEATER_FAN", "CONTROLLER_FAN")}
+                    built = ConfigBuilder(self.build(profile, dict(initial, **changes),
+                                                      "refresh", [installed], baseline))
+                    for section in fans:
+                        for option, value in self.EXTENSIONS.items():
+                            self.assertEqual(built.get(section, option), value)
+                        if profile != "emu" or section.endswith("0"):
+                            self.assertEqual(built.get(section, "max_power"), "0.6")
+                    removed_syms = {"PIN_%s%s" % (prefix, suffix): ""
+                                    for prefix in ("FAN", "HEATER_FAN", "CONTROLLER_FAN")}
+                    removed = ConfigBuilder(self.build(profile, dict(initial, **removed_syms),
+                                                        "refresh", [installed]))
+                    for section in fans:
+                        if profile != "emu" or section.endswith("0"):
+                            self.assertFalse(removed.has_section(section))
+        for kind, options in emitted.items():
+            self.assertEqual(policies[kind], options, kind)
+
+
+class TestTemperatureSensorRefresh(_HardwareRefresh):
+    """Refresh preserves extensions while respecting template-owned omissions."""
+
+    SENSOR = "temperature_sensor unit0_Env0"
+    SECOND_SENSOR = "temperature_sensor unit0_Env1"
+    OPTIONS = {
+        "i2c_mcu": "custom_gate0_mcu",
+        "zero_temperature_on_error": "False",
+        "zero_humidity_on_error": "True",
+        "stop_sampling_after_failures": "10",
+    }
+
+    def test_sensor_sections_have_blank_separator(self):
+        for profile, syms in (("emu", {}),
+                              ("boxturtle", {"MMU_HAS_ENVIRONMENT_SENSOR": True})):
+            with self.subTest(profile=profile):
+                path = self.build(profile, syms, "replace", [])
+                with open(path) as f:
+                    rendered = f.read()
+                sections = re.findall(r"^\[temperature_sensor [^\n]+\]\n(.*?)(?=^\[|\Z)",
+                                      rendered, re.MULTILINE | re.DOTALL)
+                self.assertGreater(len(sections), 1)
+                for body in sections:
+                    lines = body.splitlines()
+                    last_option = max(i for i, line in enumerate(lines)
+                                      if line and not line.startswith("#"))
+                    self.assertEqual(lines[last_option + 1:last_option + 2], [""])
+
+    def test_refresh_keeps_complete_sensor_configuration(self):
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        self.assertIn(self.SENSOR, existing.sections())
+        for sensor in (self.SENSOR, self.SECOND_SENSOR):
+            self.assertIn(sensor, existing.sections())
+            for option, value in self.OPTIONS.items():
+                existing.set(sensor, option, value)
+        with open(installed, "w") as f:
+            f.write(existing.write())
+
+        path = self.build("emu", {}, "refresh", [installed])
+        built = ConfigBuilder(path)
+        for sensor in (self.SENSOR, self.SECOND_SENSOR):
+            for option, value in self.OPTIONS.items():
+                with self.subTest(sensor=sensor, option=option):
+                    self.assertEqual(built.get(sensor, option), value)
+
+        with open(path) as f:
+            rendered = f.read()
+        first = rendered.index("[{}]".format(self.SENSOR))
+        second = rendered.index("[{}]".format(self.SECOND_SENSOR))
+        custom = rendered.index("zero_temperature_on_error: False", first)
+        self.assertLess(rendered.index("i2c_mcu", first), custom)
+        self.assertLess(custom, second)
+        self.assertRegex(rendered[first:second],
+                         r"stop_sampling_after_failures: 10\n\n$")
+
+    def test_sensor_type_change_replaces_only_that_sensor(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            baseline = cfg._kconfig("temperature-sensor-before", profiles.get("emu").syms)
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        for sensor in (self.SENSOR, self.SECOND_SENSOR):
+            for option, value in self.OPTIONS.items():
+                existing.set(sensor, option, value)
+        with open(installed, "w") as f:
+            f.write(existing.write())
+
+        built = ConfigBuilder(self.build(
+            "emu", {"CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_0": True}, "refresh",
+            [installed], baseline=baseline))
+        self.assertEqual(built.get(self.SENSOR, "sensor_type"), "BME280")
+        self.assertNotEqual(built.get(self.SENSOR, "i2c_mcu"), self.OPTIONS["i2c_mcu"])
+        for option in self.OPTIONS:
+            if option != "i2c_mcu":
+                with self.subTest(option=option):
+                    self.assertFalse(built.has_option(self.SENSOR, option))
+        for option, value in self.OPTIONS.items():
+            with self.subTest(sensor=self.SECOND_SENSOR, option=option):
+                self.assertEqual(built.get(self.SECOND_SENSOR, option), value)
+
+    def test_reset_managed_options_does_not_copy_them_back(self):
+        cases = [
+            ({}, {"PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_0": 0},
+             ("aht10_report_time",)),
+            ({"CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D_0": True,
+              "CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_TEMP14_HUM12_0": True,
+              "PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER_0": True},
+             {"CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION_DEFAULT_0": True,
+              "PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER_0": False},
+             ("htu21d_resolution", "htu21d_hold_master")),
+            ({"CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_0": True,
+              "PIN_ENVIRONMENT_SENSOR_I2C_SCL_0": "unit0:PA1",
+              "PIN_ENVIRONMENT_SENSOR_I2C_SDA_0": "unit0:PA2"},
+             {"CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE_0": True},
+             ("i2c_software_scl_pin", "i2c_software_sda_pin")),
+        ]
+        cases.extend([
+            ({"PARAM_ENVIRONMENT_SENSOR_I2C_BUS_0": "i2c1"},
+             {"PARAM_ENVIRONMENT_SENSOR_I2C_BUS_0": ""}, ("i2c_bus",)),
+            ({"PARAM_ENVIRONMENT_SENSOR_I2C_BUS_0": "i2c1"},
+             {"CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_0": True,
+              "PIN_ENVIRONMENT_SENSOR_I2C_SCL_0": "unit0:PA1",
+              "PIN_ENVIRONMENT_SENSOR_I2C_SDA_0": "unit0:PA2"}, ("i2c_bus",)),
+        ])
+        for initial, changes, removed in cases:
+            with self.subTest(removed=removed):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    baseline = cfg._kconfig("sensor-reset-before",
+                                            dict(profiles.get("emu").syms, **initial))
+                installed = self.build("emu", initial, "replace", [])
+                existing = ConfigBuilder(installed)
+                for option in removed:
+                    self.assertTrue(existing.has_option(self.SENSOR, option))
+                existing.set(self.SENSOR, "custom_driver_option", "42")
+                with open(installed, "w") as f:
+                    f.write(existing.write())
+                built = ConfigBuilder(self.build("emu", dict(initial, **changes),
+                                                  "refresh", [installed], baseline))
+                for option in removed:
+                    self.assertFalse(built.has_option(self.SENSOR, option), option)
+                self.assertEqual(built.get(self.SENSOR, "custom_driver_option"), "42")
+
+    def test_removed_sensor_and_replace_mode_do_not_restore_extensions(self):
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        existing.set(self.SENSOR, "custom_driver_option", "42")
+        with open(installed, "w") as f:
+            f.write(existing.write())
+        removed = ConfigBuilder(self.build("emu", {"PARAM_ENVIRONMENT_SENSOR_GATE_0": False},
+                                           "refresh", [installed]))
+        self.assertFalse(removed.has_section(self.SENSOR))
+        self.assertTrue(removed.has_section(self.SECOND_SENSOR))
+        replaced = ConfigBuilder(self.build("emu", {}, "replace", [installed]))
+        self.assertFalse(replaced.has_option(self.SENSOR, "custom_driver_option"))
+
+    def test_temperature_limits_render_merge_and_reset(self):
+        for profile, symbols, sensor in (
+                ("emu", {"PARAM_ENVIRONMENT_SENSOR_MIN_TEMP_0": "-5.5",
+                         "PARAM_ENVIRONMENT_SENSOR_MAX_TEMP_0": "100"}, self.SENSOR),
+                ("boxturtle", {"MMU_HAS_ENVIRONMENT_SENSOR": True,
+                               "PARAM_ENVIRONMENT_SENSOR_MIN_TEMP": "0",
+                               "PARAM_ENVIRONMENT_SENSOR_MAX_TEMP": "80.5"},
+                 "temperature_sensor unit0_Env"),
+                ("boxturtle", {"PARAM_MCU_ENVIRONMENT_SENSOR_MIN_TEMP": "0",
+                               "PARAM_MCU_ENVIRONMENT_SENSOR_MAX_TEMP": "90"},
+                 "temperature_sensor _unit0_mcu")):
+            with self.subTest(profile=profile, sensor=sensor):
+                default = ConfigBuilder(self.build(profile,
+                    {k: v for k, v in symbols.items() if not k.endswith(("TEMP", "TEMP_0"))},
+                    "replace", []))
+                self.assertFalse(default.has_option(sensor, "min_temp"))
+                self.assertFalse(default.has_option(sensor, "max_temp"))
+                installed = self.build(profile, symbols, "replace", [])
+                existing = ConfigBuilder(installed)
+                for option in ("min_temp", "max_temp"):
+                    key = next(k for k in symbols if option.upper() in k)
+                    self.assertEqual(existing.get(sensor, option), symbols[key])
+                existing.set(sensor, "max_temp", "95")
+                with open(installed, "w") as f:
+                    f.write(existing.write())
+                refreshed = ConfigBuilder(self.build(profile, symbols, "refresh", [installed]))
+                self.assertEqual(refreshed.get(sensor, "max_temp"), "95")
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    baseline = cfg._kconfig("limits-before",
+                                            dict(profiles.get(profile).syms, **symbols))
+                reset = {k: "" if k.endswith(("TEMP", "TEMP_0")) else v
+                         for k, v in symbols.items()}
+                refreshed = ConfigBuilder(self.build(profile, reset, "refresh", [installed], baseline))
+                self.assertFalse(refreshed.has_option(sensor, "min_temp"))
+                self.assertFalse(refreshed.has_option(sensor, "max_temp"))
+
+    def test_other_sensor_changes_keep_custom_options(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            baseline = cfg._kconfig("temperature-sensor-before", profiles.get("emu").syms)
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        for option in ("zero_temperature_on_error", "zero_humidity_on_error",
+                       "stop_sampling_after_failures"):
+            existing.set(self.SENSOR, option, self.OPTIONS[option])
+        with open(installed, "w") as f:
+            f.write(existing.write())
+
+        built = ConfigBuilder(self.build(
+            "emu", {"PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS_0": 57}, "refresh",
+            [installed], baseline=baseline))
+        self.assertEqual(built.get(self.SENSOR, "i2c_address"), "57")
+        for option in ("zero_temperature_on_error", "zero_humidity_on_error",
+                       "stop_sampling_after_failures"):
+            self.assertEqual(built.get(self.SENSOR, option), self.OPTIONS[option])
 
 
 def _hidden_name_symbols():
@@ -682,6 +935,57 @@ class TestRefreshKeepsEditsAfterGcodeSequence(MmuCfgBuild):
                 self.assertEqual(self.option(built, "default_endless_spool_groups"), "0, 1, 0, 1")
                 self.assertEqual(sum(1 for line in text.splitlines()
                                      if line.split(":")[0].strip() == "default_endless_spool_groups"), 1)
+
+
+class TestManagedOptionPolicies(unittest.TestCase):
+    def policies(self, source):
+        from installer.build import template_managed_options
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "template.cfg")
+            with open(path, "w") as f:
+                f.write(source)
+            with cfg._chdir(root):
+                return template_managed_options("template.cfg")
+
+    def test_source_declarations_survive_false_branches(self):
+        policies = self.policies("[% if false %]\n"
+            "[# @managed-options fan: pin, shutdown_speed #]\n[% endif %]")
+        self.assertEqual(policies, {"fan": {"pin", "shutdown_speed"}})
+
+    def test_generic_policy_opt_in_and_exact_name_override(self):
+        from installer.build import HHConfig, validate_managed_options
+        policies = self.policies("[# @managed-options fan: pin, shutdown_speed #]\n"
+                                 "[# @managed-options fan special: pin, vendor_option #]")
+        old = HHConfig([])
+        old.read_buf("[fan normal]\npin: old\nshutdown_speed: 1\nvendor_option: 42\n"
+                     "[fan special]\npin: old\nvendor_option: 42\n"
+                     "[temperature_sensor undeclared]\nsensor_type: AHT10\ncustom: 42\n"
+                     "[fan removed]\npin: old\nvendor_option: 42\n")
+        built = ConfigBuilder()
+        built.read_buf("[fan normal]\npin: new\n\n[fan special]\npin: new\n\n"
+                       "[temperature_sensor undeclared]\nsensor_type: AHT10\n")
+        validate_managed_options(built, policies)
+        old.update_builder(built, managed_options=policies)
+        self.assertEqual(built.get("fan normal", "pin"), "old")
+        self.assertEqual(built.get("fan normal", "vendor_option"), "42")
+        self.assertFalse(built.has_option("fan normal", "shutdown_speed"))
+        self.assertFalse(built.has_option("fan special", "vendor_option"))
+        self.assertFalse(built.has_option("temperature_sensor undeclared", "custom"))
+        self.assertFalse(built.has_section("fan removed"))
+
+    def test_invalid_or_duplicate_declarations_are_rejected(self):
+        for source in ("[# @managed-options fan pin #]",
+                       "[# @managed-options fan: bad-option #]",
+                       "[# @managed-options fan: pin #][# @managed-options fan: other #]"):
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                self.policies(source)
+
+    def test_emitted_options_must_be_declared(self):
+        from installer.build import validate_managed_options
+        built = ConfigBuilder()
+        built.read_buf("[fan test]\npin: PA1\nshutdown_speed: 0\n")
+        with self.assertRaisesRegex(ValueError, "shutdown_speed"):
+            validate_managed_options(built, {"fan": {"pin"}})
 
 
 class TestEncoderValidationRefresh(unittest.TestCase):

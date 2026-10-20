@@ -683,6 +683,11 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         return kc, sensors
 
     def _assert_sensor(self, sensor, member):
+        # All driver alternatives must stay covered by the source declaration.
+        from installer.build import template_managed_options
+        with cfg._chdir(cfg.REPO_ROOT):
+            managed = template_managed_options(HARDWARE)['temperature_sensor']
+        self.assertFalse(set(sensor) - managed, set(sensor) - managed)
         sensor_type, address, option = self.SENSOR_TYPES[member]
         self.assertEqual(sensor['sensor_type'], sensor_type)
         self.assertEqual(sensor['i2c_address'], address)

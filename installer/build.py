@@ -418,17 +418,30 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
-    def update_builder(self, builder, kconfig_keys=(), origin=None):
+    def update_builder(self, builder, kconfig_keys=(), origin=None, managed_options=None):
         """
         Update the builder config selectively from the existing config HH data.
         'kconfig_keys' are the (section, option)s where the rendered Kconfig value wins
         instead: those changed in menuconfig this run. Kconfig-owned options always do
         """
 
+        # A declaration opts a section type (or exact section name) into copy-back.
+        # Managed options stay absent when the template deliberately omits them.
+        managed_options = managed_options or {}
+
         # Copy over included options
         for section in sorted(builder.sections(scope="included")):
+            section_type = section.split(" ", 1)[0]
+            sensor_type_changed = section_type == "temperature_sensor" and \
+                (section, "sensor_type") in kconfig_keys
             for option in sorted(builder.options(section)):
                 if self.has_option(section, option):
+
+                    if sensor_type_changed:
+                        # A new driver may reject options understood only by the old
+                        # driver, so replace this sensor section as a whole.
+                        self.used_options.add((section, option))
+                        continue
 
                     is_gcode = option == "gcode"
                     kconfig_wins = (section, option) in kconfig_keys or \
@@ -445,6 +458,15 @@ class HHConfig(ConfigBuilder):
                         logging.debug("Kconfig override:   [%s] %s: %s --> Using: %s", section, option, self.get(section, option), builder.get(section, option))
 
                     self.used_options.add((section, option))
+
+            managed = managed_options.get(section, managed_options.get(section_type))
+            if managed is not None and not sensor_type_changed and self.has_section(section):
+                # Only unmanaged extensions may be restored into a surviving section.
+                for option in self.options(section):
+                    if option not in managed and (section, option) not in kconfig_keys and \
+                            not builder.has_option(section, option):
+                        builder.copy_option(self, section, option, before_section_tail=True)
+                        self.used_options.add((section, option))
 
         # If existing config has excluded options use them in lieu of builder excluded options
         if self.excluded_nodes(origin=origin) and builder.excluded_nodes():
@@ -581,6 +603,42 @@ def _jinja_env(template_root):
     )
     env.filters["klipper_string_literal"] = klipper_string_literal
     return env
+
+
+def template_managed_options(template_file):
+    """Read opt-in copy-back declarations from source, including hidden branches.
+
+    A selector is a section type or an exact, literal section name. Exact names
+    override type declarations. These Jinja comments never reach installed cfgs.
+    """
+    source, _, _ = jinja_env().loader.get_source(jinja_env(), os.path.relpath(template_file))
+    policies = {}
+    for comment in re.findall(r"\[#(.*?)#\]", source, re.DOTALL):
+        if not comment.strip().startswith("@managed-options"):
+            continue
+        match = re.fullmatch(r"\s*@managed-options\s+([\w.-]+(?: +[\w.-]+)?)\s*:(.*?)\s*",
+                             comment, re.DOTALL)
+        if not match:
+            raise ValueError("Invalid @managed-options declaration in " + template_file)
+        selector, raw = match.groups()
+        options = [option.strip() for option in raw.split(",") if option.strip()]
+        if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*", option) for option in options):
+            raise ValueError("Invalid managed option in " + template_file)
+        if selector in policies:
+            raise ValueError("Duplicate @managed-options selector: " + selector)
+        policies[selector] = frozenset(options)
+    return policies
+
+
+def validate_managed_options(builder, policies):
+    """Catch emitted options missing from an opted-in section's declaration."""
+    for section in builder.sections(scope="included"):
+        managed = policies.get(section, policies.get(section.split(" ", 1)[0]))
+        if managed is not None:
+            missing = set(builder.options(section)) - managed
+            if missing:
+                raise ValueError("[{}] template options missing from @managed-options: {}"
+                                 .format(section, ", ".join(sorted(missing))))
 
 
 def render_template(template_file, kcfg, extra_params):
@@ -735,6 +793,8 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder.read_buf(buffer)
     report_parse_errors(builder, cfg_file_basename)
     rendered = rendered_options(buffer)
+    managed_options = template_managed_options(cfg_file_basename)
+    validate_managed_options(builder, managed_options)
 
     # 5.Special case cfg files that contains parameters so we can add back any optional,
     #   hidden or supplemental params because they are not present in cfg template
@@ -766,7 +826,8 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         # 7.Update the builder Config from the existing master HHConfig (existing .cfg's) so
         #   user edits are preserved, except where a setting was changed in menuconfig this run
         changed, before = menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered, hhcfg)
-        hhcfg.update_builder(builder, changed, origin=os.path.basename(dest_file))
+        hhcfg.update_builder(builder, changed, origin=os.path.basename(dest_file),
+                             managed_options=managed_options)
         report_replaced_edits(dest_file_basename, hhcfg, changed, before, rendered)
 
         # 8.Report on deprecated/unused options
