@@ -142,8 +142,8 @@ class TestDialogContent(ErrorDialogTestCase):
         self.mmu.handle_mmu_error('Gate 2 is empty')
         dialog = self.last_dialog(self.prompts_since(mark))
         self.assertEqual(self.footer_buttons(dialog), [
-            ['UNLOCK', 'MMU_UNLOCK', 'secondary'],
-            ['RESUME', 'RESUME', 'primary'],
+            ['RESUME', 'RESUME', 'warning'],
+            ['UNLOCK', 'MMU_UNLOCK', 'primary'],
         ])
         self.assertFalse([p for p in dialog if p.startswith('action:prompt_button')])
 
