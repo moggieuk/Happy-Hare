@@ -268,6 +268,73 @@ class TestActionableReasons(ErrorDialogTestCase):
         self.assertEqual(self.mmu.psm.reason_for_pause, 'Paused by MMU_PAUSE (no MSG reason given)')
 
 
+class TestKlipperErrors(ErrorDialogTestCase):
+    """A Klipper command_error raised part way through an MMU operation in a print."""
+
+    KLIPPER_ERROR = "Requested temperature (300.0) out of range (0.0:290.0)" # M104 from a gate map temperature
+
+    def command_error(self):
+        return self.hh.printer.command_error(self.KLIPPER_ERROR)
+
+    def test_toolchange_pauses_with_a_dialog(self):
+        self.start_print(0)
+        mark = self.mark()
+        with patch.object(self.mmu, '_load_bowden', side_effect=self.command_error()):
+            self.gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertTrue(self.mmu.is_mmu_paused())
+
+        reason = self.mmu.psm.reason_for_pause
+        self.assertIn('Requested temperature (300.0) out of range', reason)
+        self.assertIn('Occurred when changing tool: T0 > T1', reason)
+        self.assertTrue(self.mmu.psm.pause_hint.startswith('Fix the cause of the Klipper error'))
+
+        texts = self.texts(self.last_dialog(self.prompts_since(mark)))
+        self.assertIn('Klipper error: Requested temperature (300.0) out of range (0.0:290.0).', texts)
+        self.assertEqual(texts[-1], self.mmu.psm.pause_hint)
+
+    def test_toolchange_does_not_retry_a_klipper_error(self):
+        self.mmu.p.retry_tool_change_on_error = 1
+        self.start_print(0)
+        with patch.object(self.mmu, '_load_bowden', side_effect=self.command_error()) as load_bowden:
+            self.gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertTrue(self.mmu.is_mmu_paused())
+        self.assertEqual(load_bowden.call_count, 1)
+
+    def test_load_pauses(self):
+        self.start_print(0)
+        self.gcode('MMU_UNLOAD')
+        with patch.object(self.mmu, '_load_bowden', side_effect=self.command_error()):
+            self.gcode('MMU_LOAD')
+        self.assertTrue(self.mmu.is_mmu_paused())
+        self.assertIn('Requested temperature (300.0) out of range', self.mmu.psm.reason_for_pause)
+        self.assertIn('Occurred when loading tool', self.mmu.psm.reason_for_pause)
+
+    def test_unload_pauses(self):
+        self.start_print(0)
+        with patch.object(self.mmu, '_unload_bowden', side_effect=self.command_error()):
+            self.gcode('MMU_UNLOAD')
+        self.assertTrue(self.mmu.is_mmu_paused())
+        self.assertIn('Requested temperature (300.0) out of range', self.mmu.psm.reason_for_pause)
+        self.assertIn('Occurred when unloading tool', self.mmu.psm.reason_for_pause)
+
+    def test_out_of_a_print_the_klipper_error_is_raised_unchanged(self):
+        self.assertFalse(self.mmu.is_in_print())
+        with patch.object(self.mmu, '_load_bowden', side_effect=self.command_error()):
+            with self.assertRaises(self.hh.printer.command_error) as raised:
+                self.gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertEqual(str(raised.exception), self.KLIPPER_ERROR)
+        self.assertFalse(self.mmu.is_mmu_paused())
+
+    def test_after_a_shutdown_the_klipper_error_is_raised_unchanged(self):
+        self.start_print(0)
+        with patch.object(self.mmu, '_load_bowden', side_effect=self.command_error()), \
+             patch.object(self.hh.printer, 'is_shutdown', return_value=True):
+            with self.assertRaises(self.hh.printer.command_error) as raised:
+                self.gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertEqual(str(raised.exception), self.KLIPPER_ERROR)
+        self.assertFalse(self.mmu.is_mmu_paused())
+
+
 class TestEndlessSpoolSwapFailure(ErrorDialogTestCase):
 
     def setUp(self):
@@ -293,6 +360,19 @@ class TestEndlessSpoolSwapFailure(ErrorDialogTestCase):
         self.assertIn('Load failed', reason)
         self.assertIn('Occurred during EndlessSpool swap of T0 (gate %d) to gate %d' % (gate, self.mmu.gate_selected), reason)
         self.assertEqual(self.mmu.psm.pause_hint, 'Fix the gate')
+
+    def test_klipper_error_during_the_swap_pauses(self):
+        self.start_print(0)
+        gate = self.mmu.gate_selected
+        with patch.object(self.mmu, '_select_and_load_tool', side_effect=self.hh.printer.command_error('Move out of range')):
+            self.hh.filament().exhaust(gate)
+            self.hh.settle()
+        self.assertTrue(self.mmu.is_mmu_paused())
+
+        reason = self.mmu.psm.reason_for_pause
+        self.assertIn('Klipper error: Move out of range', reason)
+        self.assertIn('Occurred during EndlessSpool swap of T0 (gate %d)' % gate, reason)
+        self.assertTrue(self.mmu.psm.pause_hint.startswith('Fix the cause of the Klipper error'))
 
 
 if __name__ == '__main__':
