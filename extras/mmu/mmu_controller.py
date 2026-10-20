@@ -4334,7 +4334,11 @@ class MmuWrapperResumeCommand(BaseCommand):
                     self.mmu.log_error("PAUSE_STATE not defined!")
 
             self.mmu.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None)
-            self.mmu._continue_after("resume", force_in_print=force_in_print)
+            try:
+                self.mmu._continue_after("resume", force_in_print=force_in_print)
+            except self.mmu.printer.command_error as ee:
+                # The print is already running again, so a failed restore move must pause it again
+                raise self.mmu.mmu_error_from(ee) from ee
         except MmuError as ee:
             self.mmu.handle_mmu_error(ee)
 

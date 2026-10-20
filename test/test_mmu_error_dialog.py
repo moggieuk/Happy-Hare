@@ -317,6 +317,43 @@ class TestKlipperErrors(ErrorDialogTestCase):
         self.assertIn('Requested temperature (300.0) out of range', self.mmu.psm.reason_for_pause)
         self.assertIn('Occurred when unloading tool', self.mmu.psm.reason_for_pause)
 
+    def failing_restore_move(self, times):
+        """The post-toolchange RESTORE_GCODE_STATE move raises 'Move out of range' the first 'times' times."""
+        real = self.mmu.gcode.run_script_from_command
+        left = [times]
+        def run_script_from_command(script):
+            if script.startswith('RESTORE_GCODE_STATE NAME=MMU_state') and 'MOVE=1' in script and left[0] > 0:
+                left[0] -= 1
+                raise self.hh.printer.command_error('Move out of range: 400.000 10.000 1.000 [0.000]')
+            return real(script)
+        return patch.object(self.mmu.gcode, 'run_script_from_command', side_effect=run_script_from_command)
+
+    def test_failed_restore_move_pauses_and_resume_completes(self):
+        self.start_print(0)
+        with self.failing_restore_move(1):
+            self.gcode('MMU_CHANGE_TOOL TOOL=1')
+            self.assertTrue(self.mmu.is_mmu_paused())
+            reason = self.mmu.psm.reason_for_pause
+            self.assertIn('Klipper error: Move out of range', reason)
+            self.assertIn('Occurred when changing tool: T0 > T1', reason)
+
+            self.gcode('RESUME')
+        self.assertFalse(self.mmu.is_mmu_paused())
+        self.assertTrue(self.mmu.is_printing())
+        self.assertFalse(self.mmu.saved_toolhead_operation)
+
+    def test_restore_move_that_keeps_failing_pauses_again_on_resume(self):
+        self.start_print(0)
+        with self.failing_restore_move(99):
+            self.gcode('MMU_CHANGE_TOOL TOOL=1')
+            self.assertTrue(self.mmu.is_mmu_paused())
+            mark = self.mark()
+            self.gcode('RESUME') # Must not raise, or the print carries on from the park position
+        self.assertTrue(self.mmu.is_mmu_paused())
+        self.assertTrue(self.hh.printer.lookup_object('pause_resume').is_paused)
+        texts = self.texts(self.last_dialog(self.prompts_since(mark)))
+        self.assertTrue(any('Move out of range' in t for t in texts), texts)
+
     def test_out_of_a_print_the_klipper_error_is_raised_unchanged(self):
         self.assertFalse(self.mmu.is_in_print())
         with patch.object(self.mmu, '_load_bowden', side_effect=self.command_error()):
