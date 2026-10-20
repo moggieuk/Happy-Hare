@@ -149,7 +149,7 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertEqual(texts, [
             "Occurred when changing tool: T0 > T1",
             "Load sequence failed because: Gate 1 jammed.",
-            "To fix: Free gate 1, then RESUME",
+            "Fix: UNLOCK to restore heating, then free gate 1, then RESUME",
         ])
         self.assertEqual(self.mmu.psm.reason_for_pause,
                          "Load sequence failed because:\nGate 1 jammed.\nOccurred when changing tool: T0 > T1")
@@ -183,6 +183,7 @@ class TestDialogContent(ErrorDialogTestCase):
         # Happy Hare's per-call flag does not stick for the next, fresh pause
         macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
         self.assertFalse(macro.variables['still_paused'])
+        self.assertFalse(macro.variables['unlock_first'])
 
     def test_buttons_are_footer_buttons_and_abort_is_optional(self):
         self.start_print()
@@ -239,7 +240,7 @@ class TestDialogLifecycle(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(prompts[prompts.index('action:prompt_end'):]))
         self.assertEqual(texts[0], 'Print is still paused')
         self.assertTrue(any(t.startswith('Cannot resume because') for t in texts), texts)
-        self.assertTrue(texts[-1].startswith('To fix: Finish loading or unloading the filament, run MMU_RECOVER'), texts)
+        self.assertTrue(texts[-1].startswith('Fix: Finish loading or unloading the filament, run MMU_RECOVER'), texts)
 
     def test_failed_loaded_check_on_resume_pauses_with_a_dialog(self):
         self.start_print(0)
@@ -284,7 +285,7 @@ class TestActionableReasons(ErrorDialogTestCase):
         self.assertIn('Clear the bowden, then RESUME', self.hh.console)
 
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
-        self.assertEqual(texts[-1], 'To fix: Clear the bowden, then RESUME')
+        self.assertEqual(texts[-1], 'Fix: UNLOCK to restore heating, then clear the bowden, then RESUME')
 
     def test_hint_follows_custom_msg_as_the_last_line(self):
         self.start_print()
@@ -292,7 +293,7 @@ class TestActionableReasons(ErrorDialogTestCase):
         mark = self.mark()
         self.mmu.handle_mmu_error(MmuError('Gate 1 jammed', hint='Free gate 1'))
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
-        self.assertEqual(texts[-2:], ['Print requires tools: T0', 'To fix: Free gate 1'])
+        self.assertEqual(texts[-2:], ['Print requires tools: T0', 'Fix: UNLOCK to restore heating, then free gate 1'])
 
     def test_resume_clears_the_hint(self):
         self.start_print()
@@ -350,7 +351,8 @@ class TestKlipperErrors(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertIn('Klipper error: Requested temperature (300.0) out of range (0.0:290.0).', texts)
         self.assertTrue(texts[0].startswith('Occurred when changing tool'), texts)
-        self.assertEqual(texts[-1], 'To fix: ' + self.mmu.psm.pause_hint)
+        hint = self.mmu.psm.pause_hint
+        self.assertEqual(texts[-1], 'Fix: UNLOCK to restore heating, then ' + hint[0].lower() + hint[1:])
 
     def test_toolchange_does_not_retry_a_klipper_error(self):
         self.mmu.p.retry_tool_change_on_error = 1

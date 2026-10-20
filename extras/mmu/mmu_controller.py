@@ -2501,7 +2501,7 @@ class MmuController(MmuFilamentMovement):
                 if hint:
                     self.log_always(hint)
                 if not self.error_dialog_shown:
-                    self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True, context=context) # e.g. RESUME failed after clearing it
+                    self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True, context=context, unlock_first=self.is_mmu_paused_and_locked()) # e.g. RESUME failed after clearing it
                 recover_pos = self.p.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
@@ -2534,7 +2534,7 @@ class MmuController(MmuFilamentMovement):
 
     # Displays MMU error/pause as pop-up dialog and/or via console
     def _display_mmu_error(self, context=None):
-        self._show_mmu_error_dialog("Print paused", self.psm.reason_for_pause, self.psm.pause_hint, context=context)
+        self._show_mmu_error_dialog("Print paused", self.psm.reason_for_pause, self.psm.pause_hint, context=context, unlock_first=True) # About to be paused and locked
         self.log_error("MMU issue detected. Print paused\nReason: %s" % self.psm.reason_for_pause)
         self.log_always(self.psm.pause_hint or "After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
 
@@ -2554,7 +2554,7 @@ class MmuController(MmuFilamentMovement):
         return lines
 
 
-    def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False, context=None):
+    def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False, context=None, unlock_first=False):
         """
         The reason is one paragraph rather than a line per line of the console message, with what
         was being attempted (the error's context, which ends the message) kept apart so the dialog
@@ -2574,9 +2574,10 @@ class MmuController(MmuFilamentMovement):
             variables={'reason_lines': [paragraph] if paragraph else [],
                        'context_line': " ".join(self._dialog_lines(context or "")),
                        'action': " ".join(self._dialog_lines(hint or "")),
-                       'still_paused': still_paused}
+                       'still_paused': still_paused,
+                       'unlock_first': unlock_first}
         )
-        dialog_macro.variables.update({'reason_lines': [], 'context_line': '', 'action': '', 'still_paused': False})
+        dialog_macro.variables.update({'reason_lines': [], 'context_line': '', 'action': '', 'still_paused': False, 'unlock_first': False})
         self.error_dialog_shown = True
 
 
