@@ -306,9 +306,9 @@ TIME_COLOUR = '90'
 # the header is therefore repainted. Halving this does NOT double the reactor's work: _tick
 # advances by the REAL time measured since the last one, not by this constant, so virtual
 # seconds per wall second is invariant and only the per-tick overhead (chiefly repaint)
-# scales. 0.25s gives four display updates per second, sampling every sixth frame of a
+# scales. 0.125s gives eight display updates per second, sampling every third frame of a
 # 24 fps LED effect. This timer is console-only; tests advance the reactor directly.
-LIVE_INTERVAL = 0.25
+LIVE_INTERVAL = 0.125
 # Never advance more than this in one tick. A laptop that slept, or a SIGSTOP, would
 # otherwise come back to a catch-up of hours - which is both slow and, past about seven
 # virtual minutes, over the reactor's iteration cap.

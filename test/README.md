@@ -317,11 +317,11 @@ reassembling a line. Output produced by a tick is printed above the prompt and t
 then rebuilt from `readline.get_line_buffer()`, so a tick landing while you are mid-command
 cannot eat what you have typed.
 
-The tick fires every `LIVE_INTERVAL` = **0.25 s** and advances by the *real* time measured
+The tick fires every `LIVE_INTERVAL` = **0.125 s** and advances by the *real* time measured
 since the last one, not by that constant — so the interval sets how often the header is
-repainted, not how fast the clock runs. Halving it from 0.5 s doubles display refreshes
-from two to four per second, not the LED frame calculations: at `frame_rate: 24` the display
-now samples every sixth frame instead of every twelfth.
+repainted, not how fast the clock runs. Reducing it from 0.5 s increases display refreshes
+from two to eight per second without increasing LED frame calculations: at `frame_rate: 24`
+the display now samples every third frame instead of every twelfth.
 
 `make test` does not run this console timer or repaint the display. LED effects still
 calculate frames at their configured rate, but only as tests advance virtual time; there
