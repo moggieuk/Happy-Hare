@@ -1,4 +1,4 @@
-menu "Servo cutter at MMU  (_MMU_SERVO_CUTTER)"
+menu "Servo cutter at MMU      (_MMU_SERVO_CUTTER)"
   visible if MMU_HAS_SERVO_CUTTER
   forceshow
   help

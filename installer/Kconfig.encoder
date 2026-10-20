@@ -55,7 +55,7 @@ if MMU_HAS_ENCODER
         encoder must see the filament from each MMU, so this is not common.
 
     config PARAM_ENCODER_NAME
-      string "$(pad,32,Encoder name)" if !MMU_SHARED_ENCODER
+      string "$(pad,36,Encoder name)" if !MMU_SHARED_ENCODER
       validator "$(object_name_validator)"
       help
         The Klipper object name of this unit's encoder: [mmu_encoder [[B]][[VALUE:PARAM_ENCODER_NAME]][[/B]]].
@@ -63,7 +63,7 @@ if MMU_HAS_ENCODER
         Use lowercase letters, digits, "_" and "-", starting with a letter.
 
     config PARAM_ENCODER_NAME
-      string "$(pad,32,Shared encoder object name)" if MMU_SHARED_ENCODER
+      string "$(pad,36,Shared encoder object name)" if MMU_SHARED_ENCODER
       # A sharer's saved name, unless it is older installs' placeholder
       default "$(saved-config-value,PARAM_ENCODER_NAME)" if MMU_SHARED_ENCODER && "$(saved-config-value,MMU_SHARED_ENCODER)" = "y" && \
         "$(saved-config-value,PARAM_ENCODER_NAME)" != "-specify name-"
@@ -122,6 +122,12 @@ if MMU_HAS_ENCODER
             Select for any other encoder and ensure you set the resolution correctly.
       endchoice
 
+      config PIN_ENCODER
+        prompt "$(pad,36,Encoder pin)"
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
+
       config PARAM_ENCODER_RESOLUTION
         help
           Ensure this matches the resolution of your encoder. It represents
@@ -129,7 +135,7 @@ if MMU_HAS_ENCODER
           only used as an initial value and it overridden by calibration.
 
           (defaults are based on a 23.5mm rotation distance BMG gear)
-        float "Uncalibrated encoder resolution "
+        float "$(pad,36,Uncalibrated encoder resolution)"
         default 0.7059 if CHOICE_ENCODER_TYPE_TCRT5000
         default 0.979  if CHOICE_ENCODER_TYPE_BINKY_12
         default 1.175  if CHOICE_ENCODER_TYPE_BINKY_10
@@ -137,16 +143,10 @@ if MMU_HAS_ENCODER
         default 1.0    if CHOICE_ENCODER_TYPE_OTHER
         default 1.0
 
-      config PIN_ENCODER
-        prompt "Encoder pin                     "
-        validator "$(pin_validator)"
-        help
-          $(pin_help)
-
     endif
 
     config PARAM_GATE_ENDSTOP_TO_ENCODER
-      float "Gate endstop to encoder distance"
+      float "$(pad,36,Gate endstop to encoder distance)"
       default 10 if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
       default 0
       help
@@ -158,7 +158,7 @@ if MMU_HAS_ENCODER
         shares another unit's encoder, because each unit has its own gate endstop.
 
     config PARAM_ENCODER_MOVE_STEP_SIZE
-      float "$(pad,32,Encoder small move step size)"
+      float "$(pad,36,Encoder small move step size)"
       range 5 25
       default 15.0
       help
@@ -182,10 +182,10 @@ if MMU_HAS_ENCODER
     endif
 
     comment "_"
-    comment "_Encoder Validation Options"
+    comment "_Encoder safety checks"
 
     config PARAM_BOWDEN_PRE_UNLOAD_TEST
-      boolint "Check for bowden movement before full unload pull?"
+      boolint "Apply pre-unload movement test before full unload?"
       default 1
       help
         This safety check uses the encoder to verify the filament is free of the
@@ -211,7 +211,7 @@ if MMU_HAS_ENCODER
       default 1
       help
         ADVANCED: Determines if encoder measurement should be used to validate movement distance.
-        Disabling eliminates slight pause between moves but is less safe
+        With a reliable encoder this can help detect loading and unloading issues.
 
     config PARAM_BOWDEN_APPLY_CORRECTION
       boolint

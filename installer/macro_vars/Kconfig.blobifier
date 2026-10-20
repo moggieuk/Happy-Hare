@@ -1,4 +1,4 @@
-menu "Blobifier            (_BLOBIFIER)"
+menu "Blobifier                (_BLOBIFIER)"
   visible if MMU_HAS_BLOBIFIER
   forceshow
   help

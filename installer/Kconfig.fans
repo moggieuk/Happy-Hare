@@ -76,7 +76,7 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
         Configure the pin and electrical behavior of the shared managed fan.
 
       config PARAM_FAN_MAX_POWER
-        float "Fan maximum power  "
+        float "$(pad,23,Fan maximum power)"
         default 1.0
         range 0.1 1.0
         help
@@ -84,14 +84,14 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           1.0 = 100% power
 
       config PARAM_FAN_KICK_START_TIME
-        float "Fan kick start time"
+        float "$(pad,23,Fan kick start time)"
         default 0.5
         range 0 3.0
         help
           Time in seconds to run fan at full power before resetting to target speed.
 
       config PIN_FAN
-        string "Fan pin(s)         "
+        string "$(pad,23,Fan pin(s))"
         validator "$(pin_list_validator)"
         default ""
         help
@@ -102,7 +102,7 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           driven as one [fan_generic] through a [multi_pin] alias.
 
       config BOOL_HIDE_FAN
-        bool "Hide in Mainsail / Fluidd"
+        bool "Hide in Mainsail/Fluidd"
         default y
         help
           Prefix the fan name with an underscore to hide it in the UI.
@@ -131,14 +131,14 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
 
           if PARAM_FAN_GATE_$(i)
             config PARAM_FAN_MAX_POWER_$(i)
-              float "Fan maximum power  "
+              float "$(pad,23,Fan maximum power)"
               default 1.0
               range 0.1 1.0
               help
                 Maximum power setting for this gate's fan (0.1 to 1.0).
 
             config PARAM_FAN_KICK_START_TIME_$(i)
-              float "Fan kick start time"
+              float "$(pad,23,Fan kick start time)"
               default 0.5
               range 0 3.0
               help
@@ -146,7 +146,7 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
                 resetting to its target speed.
 
             config PIN_FAN_$(i)
-              string "Fan pin(s)         "
+              string "$(pad,23,Fan pin(s))"
               validator "$(pin_list_validator)"
               help
                 Leave blank if this gate does not have a managed fan installed.
@@ -162,7 +162,7 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
       @endrepeat@
 
       config BOOL_HIDE_FAN
-        bool "Hide in Mainsail / Fluidd"
+        bool "Hide in Mainsail/Fluidd"
         default y
         help
           Prefix every gate's fan name with an underscore to hide them in the UI.
@@ -366,7 +366,7 @@ menu "Controller fan h/w config"
       driven as one [controller_fan] through a [multi_pin] alias.
 
   config BOOL_HIDE_CONTROLLER_FAN
-    bool "Hide in Mainsail / Fluidd"
+    bool "Hide in Mainsail/Fluidd"
     default y
     help
       Prefix the fan name with an underscore to hide it in the UI.
@@ -450,7 +450,7 @@ if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CO
         boards sit inside the heated enclosures.
 
     config BOOL_HIDE_CONTROLLER_FAN
-      bool "Hide in Mainsail / Fluidd"
+      bool "Hide in Mainsail/Fluidd"
       default y
       help
         Prefix every gate's fan name with an underscore to hide them in the UI.

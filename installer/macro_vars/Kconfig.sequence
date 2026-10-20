@@ -5,7 +5,7 @@ xyz_items    := $(seq_num)( *, *$(seq_num)){2}
 park_tuple   := ($(park_items)|[(] *$(park_items) *[)])
 xyz_position := ($(xyz_items)|[(] *$(xyz_items) *[)])
 
-menu "Sequence macros      (_MMU_SEQUENCE)"
+menu "Sequence macros          (_MMU_SEQUENCE)"
   help
     Happy Hare sequence macro configuration variables.
 

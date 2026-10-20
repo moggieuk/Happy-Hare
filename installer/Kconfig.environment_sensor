@@ -132,7 +132,7 @@ config BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
 
 if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
   config BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
-    bool "Hide in Mainsail / Fluidd"
+    bool "Hide in Mainsail/Fluidd"
     default n if MMU_HAS_PER_GATE_MCU
     default y
     help
