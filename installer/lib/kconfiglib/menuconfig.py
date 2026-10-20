@@ -1580,6 +1580,11 @@ def _draw_main():
 
     _bot_sep_win.erase()
 
+    # Draw arrows pointing down if the symbol window is scrolled up
+    arrows = _menu_scroll < _max_scroll(_shown, _menu_win) # Happy Hare: Added
+    if arrows:
+        _safe_hline(_bot_sep_win, 0, 4, curses.ACS_DARROW, _N_SCROLL_ARROWS)
+
     # Indicate when show-name/show-help/show-all mode is enabled
     enabled_modes = []
     # Happy Hare: Always show the help lines
@@ -1594,23 +1599,16 @@ def _draw_main():
         _safe_addstr(_bot_sep_win, 0, max(term_width - len(s) - 2, 0), s)
 
     # Happy Hare: Label the separator above the help pane, with the .cfg option the
-    # selection sets dimmed either side, clear of the modes
+    # selection sets dimmed either side, clear of the modes. The scroll arrows take the
+    # file label's place
     help_label = " Help "
     help_x = max((term_width - len(help_label)) // 2, 0)
     _safe_addstr(_bot_sep_win, 0, help_x, help_label)
     file_label, option_label = _cfg_labels(1, help_x, help_x + len(help_label),
                                            term_width - len(s) - 3 if enabled_modes else term_width - 1)
-    for label in (file_label, option_label):
+    for label in (None if arrows else file_label, option_label):
         if label:
             _safe_addstr(_bot_sep_win, 0, label[0], label[1], _style["separator"] | curses.A_DIM)
-
-    # Draw arrows pointing down if the symbol window is scrolled up
-    if _menu_scroll < _max_scroll(_shown, _menu_win):
-        # Happy Hare: After the file label, short of the help label
-        arrows_x = file_label[0] + len(file_label[1]) + 1 if file_label else 4
-        n_arrows = min(_N_SCROLL_ARROWS, help_x - 1 - arrows_x)
-        if n_arrows > 0:
-            _safe_hline(_bot_sep_win, 0, arrows_x, curses.ACS_DARROW, n_arrows)
 
     #
     # Update the help window, which shows either key bindings or help texts

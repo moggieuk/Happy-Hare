@@ -243,7 +243,7 @@ use a width inside anything padded.
 - Link rows that jump elsewhere in the tree (item 24).
 - **Help separator names the .cfg option** (`_cfg_labels`): ` Help ` stays
   centred, with a dimmed part either side of it.
-  - ` (<file>) ` is left-justified. The scroll arrows, when shown, follow it.
+  - ` (<file>) ` is left-justified. It is left out while the scroll arrows show.
   - ` [<section>] <option> (+N more) ` is right-justified.
   - On a narrow line each part shortens independently: the section goes first,
     then the part itself. ` Help ` is never dropped.
