@@ -70,6 +70,7 @@ menu "Selector servo"
       depends on !PARAM_SERVO_ALWAYS_ACTIVE
       default 0.6 if SERVO_SELECTOR
       default 0.4
+      keep_when_hidden
       help
         Duration of servo PWM signal if not always active
 

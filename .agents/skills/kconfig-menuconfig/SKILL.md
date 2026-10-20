@@ -442,7 +442,10 @@ in this repo:
    `make verify_pickle`; `test_kconfig_pickle_consistency.py` exists because
    this exact class of silent value-dropping has happened several times.
    Related: BOOL `user_value` is an int tristate (0/1/2), not `"n"/"y"` —
-   normalize with `TRI_TO_STR`.
+   normalize with `TRI_TO_STR`. The write side has the same trap: saving
+   writes a hidden symbol's default, losing a customization when its parent
+   is off. `keep_when_hidden` (extension catalog item 25) saves the user value
+   instead, for options whose hidden value isn't imposed.
 3. **`#~DEFAULT~#` is live syntax** inside `.mmu_config`. `saved-config-value`
    (a kconfiglib preprocessor function, `kconfigfunctions.py`, cached by
    mtime+size) and the load path both parse it. Tooling that rewrites value

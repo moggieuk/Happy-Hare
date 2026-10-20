@@ -26,6 +26,7 @@ config PARAM_FLOWGUARD_MAX_RELIEF
 config PARAM_FLOWGUARD_MAX_RELIEF
   prompt "Max relief movement"
   depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && PARAM_FLOWGUARD_ENABLED
+  keep_when_hidden
   help
     The amount of relief movement (effective mm change in filament length between MMU and extruder) that
     Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since
@@ -51,6 +52,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
   config PARAM_TANGLE_PREVENTION_THRESHOLD
     prompt "Tension threshold to boost gear current"
     depends on PARAM_TANGLE_PREVENTION_ENABLED
+    keep_when_hidden
     help
       Proportional sensor tension level (0.2-0.9, fraction of the tension half of the sensor range) at which the
       gear current is boosted to 100%. Lower values trigger the boost sooner. Increase if you get false triggers.
@@ -62,6 +64,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
   config PARAM_TANGLE_PREVENTION_RELEASE
     prompt "Tension level to restore gear current"
     depends on PARAM_TANGLE_PREVENTION_ENABLED
+    keep_when_hidden
     help
       Tension level (0.15-0.8) at which the boosted gear current is restored to normal once tension eases. Must be
       below the threshold - the gap between the two provides hysteresis to prevent the current thrashing on and off.

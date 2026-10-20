@@ -1911,7 +1911,8 @@ class Kconfig(object):
                     continue
                 item._visited = True
 
-                conf_string = item.config_string
+                # Happy Hare: a hidden 'keep_when_hidden' symbol saves its user value
+                conf_string = _kept_config_string(item) or item.config_string
                 if not conf_string:
                     continue
 
@@ -3774,8 +3775,18 @@ class Kconfig(object):
             elif t0 is _T_DEFAULT_WHEN_HIDDEN: # Happy Hare: Added to save hidden symbols as defaults
                 if node.item.__class__ is not Symbol and node.item is not MENU:
                     self._parse_error("default_when_hidden is only valid for symbols and menus")
+                if hasattr(node, "keep_when_hidden"):
+                    self._parse_error("default_when_hidden and keep_when_hidden can't both be set")
 
                 node.default_when_hidden = True
+
+            elif t0 is _T_KEEP_WHEN_HIDDEN: # Happy Hare: Added to save hidden symbols' user values
+                if node.item.__class__ is not Symbol and node.item is not MENU:
+                    self._parse_error("keep_when_hidden is only valid for symbols and menus")
+                if hasattr(node, "default_when_hidden"):
+                    self._parse_error("default_when_hidden and keep_when_hidden can't both be set")
+
+                node.keep_when_hidden = True
 
             elif t0 is _T_ARRAY_EDITOR: # Happy Hare: Added multi-line/array editor for STRING symbols
                 if node.item.__class__ is not Symbol:
@@ -6697,6 +6708,7 @@ class MenuNode(object):
         "dim",         # Happy Hare: Added to draw a comment dimmed
         "link",        # Happy Hare: Added; a comment's link target symbol
         "default_when_hidden", # Happy Hare: Added, see _saved_as_default()
+        "keep_when_hidden",    # Happy Hare: Added, see _kept_config_string()
     )
 
     def __init__(self):
@@ -7665,18 +7677,54 @@ def _locs(sc):
 
 
 # Happy Hare: Added
+def _hidden_policy(sym):
+    # What to save for a symbol whose prompt is hidden: "default" under a
+    # 'default_when_hidden' node, "keep" under a 'keep_when_hidden' node (the
+    # nearest one wins), else None. Symbols without a prompt have no policy
+    if sym.visibility or not any(node.prompt for node in sym.nodes):
+        return None
+    for node in sym.nodes:
+        while node is not None:
+            if hasattr(node, "keep_when_hidden"):
+                return "keep"
+            if hasattr(node, "default_when_hidden"):
+                return "default"
+            node = node.parent
+    return None
+
+
+# Happy Hare: Added
 def _saved_as_default(sym):
     # A symbol whose prompt is hidden is written with its default value. Under a
     # 'default_when_hidden' node, record it as a default too, so a user value that
     # no longer applies is not frozen in the saved configuration.
-    if sym.visibility or not any(node.prompt for node in sym.nodes):
-        return False
-    for node in sym.nodes:
-        while node is not None:
-            if hasattr(node, "default_when_hidden"):
-                return True
-            node = node.parent
-    return False
+    return _hidden_policy(sym) == "default"
+
+
+# Happy Hare: Added
+def _kept_config_string(sym):
+    # The assignment for a hidden 'keep_when_hidden' symbol's user value, so a
+    # customization survives while its prompt is hidden. None without one
+    if sym.user_value is None or _hidden_policy(sym) != "keep":
+        return None
+
+    prefix = sym.kconfig.config_prefix
+    val = sym.user_value
+    if sym.orig_type is BOOLINT:
+        return "{}{}={}\n".format(prefix, sym.name, "1" if val else "0")
+
+    if sym.orig_type in _BOOL_TRISTATE:
+        val = TRI_TO_STR[val]
+        return "{}{}={}\n".format(prefix, sym.name, val) \
+               if val != "n" else \
+               "# {}{} is not set\n".format(prefix, sym.name)
+
+    if sym.orig_type in _INT_HEX_FLOAT:
+        return "{}{}={}\n".format(prefix, sym.name, val)
+
+    if sym.name.startswith('VAR_'):
+        val = val.strip() or "''"
+    return '{}{}="{}"\n'.format(prefix, sym.name, escape(val))
 
 
 def _expr_depends_on(expr, sym):
@@ -8162,7 +8210,8 @@ except AttributeError:
     _T_REPARSE_ENV,        # Happy Hare: Added; appended to preserve existing token values
     _T_DIM,                # Happy Hare: Added; appended to preserve existing token values
     _T_LINK,               # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 66) # Happy Hare: Added custom tokens through LINK
+    _T_KEEP_WHEN_HIDDEN,   # Happy Hare: Added; appended to preserve existing token values
+) = range(1, 67) # Happy Hare: Added custom tokens through KEEP_WHEN_HIDDEN
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -8200,6 +8249,7 @@ _get_keyword = {
     "env":            _T_ENV,
     "forceshow":      _T_FORCESHOW, # Happy Hare: Added
     "default_when_hidden": _T_DEFAULT_WHEN_HIDDEN, # Happy Hare: Added
+    "keep_when_hidden": _T_KEEP_WHEN_HIDDEN, # Happy Hare: Added
     "float":          _T_FLOAT,     # Happy Hare: Added
     "grsource":       _T_ORSOURCE,  # Backwards compatibility
     "gsource":        _T_OSOURCE,   # Backwards compatibility

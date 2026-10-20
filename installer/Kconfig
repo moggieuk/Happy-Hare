@@ -122,6 +122,10 @@
 #     shown (its menu, cursor on it); ESC from there returns. Comments accept help for it:
 #       comment "Blobifier macro variables"
 #         link VAR_BLOBIFIER_PURGE_SPD
+# 25. 'keep_when_hidden' on a menuconfig/menu (or symbol) saves a symbol under it
+#     whose prompt is hidden with the user's value, not the default, so turning a
+#     parent off doesn't lose the customization (the opposite of 15). Use it where
+#     the .cfg still renders the option while hidden and hiding doesn't impose a value
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

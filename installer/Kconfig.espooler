@@ -152,6 +152,7 @@ if MMU_HAS_ESPOOLER
     config PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
       prompt "Espooler assist burst trigger max"
       depends on PARAM_ESPOOLER_ASSIST_BURST_TRIGGER
+      keep_when_hidden
       help
         If trigger assist switch is fitted this limits the max number of back-to-back advances
 
