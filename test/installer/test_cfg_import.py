@@ -794,6 +794,155 @@ class TestMultiUnit(_MultiUnitInstall):
         self.assertEqual(self.analyse(self.unit_kconfig("unit0"), self.unit_envs["unit0"]).candidates, [])
 
 
+def locations(kconfig, env):
+    """(Kconfig, symbol_locations, choice_locations) for a saved config"""
+    with cfg._env(env), cfg._chdir(cfg.INSTALLER):
+        kconf = build.KConfig(kconfig)
+        symbols = cfg_import.symbol_locations(kconf.as_dict(), kconfig)
+        return kconf, symbols, cfg_import.choice_locations(kconf, symbols)
+
+
+def installed_once(test_class, install_class):
+    """Build one install for every test in the class"""
+    install = install_class()
+    install.setUp()
+    test_class.addClassCleanup(install.doCleanups)
+    return install
+
+
+class TestSymbolLocations(unittest.TestCase):
+    """Where each symbol menuconfig sets lands in the installed files, for its help label"""
+
+    @classmethod
+    def setUpClass(cls):
+        install = installed_once(cls, _Install)
+        _, cls.symbols, cls.choices = locations(install.kconfig, install.env)
+
+    def test_plain_param(self):
+        self.assertEqual(self.symbols["PARAM_GEAR_LOAD_SPEED"],
+                         [("mmu_parameters_unit0.cfg", "mmu_unit_parameters unit0", "gear_load_speed")])
+
+    def test_shared_file_keeps_its_name(self):
+        self.assertEqual(self.symbols["VAR_SOFTWARE_HOME_MMU"],
+                         [("mmu_macro_vars.cfg", "gcode_macro _MMU_SOFTWARE_VARS", "variable_home_mmu")])
+
+    def test_per_gate_element_lands_in_its_gate(self):
+        self.assertEqual(self.symbols["PIN_GEAR_DIR_1"],
+                         [("mmu_hardware_unit0.cfg", "mmu_stepper unit0_gear_1", "dir_pin")])
+
+    def test_symbol_used_on_every_gear_lists_each(self):
+        where = self.symbols["PARAM_GEAR_STALLGUARD_THRESHOLD"]
+        self.assertEqual(len(where), 4)
+        self.assertEqual(where[0], ("mmu_hardware_unit0.cfg", "tmc2209 mmu_stepper unit0_gear", "driver_SGTHRS"))
+
+    def test_toggles_and_capabilities_have_no_location(self):
+        self.assertFalse([name for name in self.symbols if name.startswith(("BOOL_", "MMU_HAS_"))])
+
+    def test_choice_lands_where_its_param_does(self):
+        self.assertEqual(self.choices["CHOICE_LOG_LEVEL"], [("mmu.cfg", "mmu_parameters", "log_level")])
+
+    def test_param_named_after_the_choice_comes_first(self):
+        where = self.choices["CHOICE_GATE_HOMING_ENDSTOP"]
+        self.assertEqual(where[0][2], "gate_homing_endstop")
+        self.assertGreater(len(where), 1)
+
+
+class TestChoiceLocations(unittest.TestCase):
+    """Only a promptless symbol set by one choice's members alone takes the choice's label"""
+
+    KCONFIG = """
+choice CHOICE_LEVEL
+    prompt "Level"
+config CHOICE_LEVEL_LOW
+    bool "Low"
+config CHOICE_LEVEL_HIGH
+    bool "High"
+endchoice
+
+config FLAG
+    bool "Flag"
+
+config PARAM_OTHER
+    int
+    default 5 if CHOICE_LEVEL_HIGH
+
+config PARAM_LEVEL
+    int
+    default 0 if CHOICE_LEVEL_LOW
+    default 1
+
+config PARAM_PROMPTED
+    int "Prompted"
+    default 2 if CHOICE_LEVEL_HIGH
+
+config PARAM_MIXED
+    int
+    default 3 if CHOICE_LEVEL_HIGH && FLAG
+
+if CHOICE_LEVEL_HIGH
+config PARAM_INSIDE
+    int
+    default 4
+endif
+
+config PARAM_SHARED
+    int
+    default 6 if CHOICE_LEVEL_LOW
+
+if FLAG
+config PARAM_SHARED
+    int
+    default 7 if PARAM_OTHER = 5
+endif
+"""
+
+    NAMES = ("PARAM_OTHER", "PARAM_LEVEL", "PARAM_PROMPTED", "PARAM_MIXED", "PARAM_INSIDE", "PARAM_SHARED")
+
+    def choice_locations(self, flag):
+        import kconfiglib
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "Kconfig")
+            with open(path, "w") as f:
+                f.write(self.KCONFIG)
+            kconf = kconfiglib.Kconfig(path, warn=False)
+        kconf.syms["FLAG"].set_value("y" if flag else "n")
+        where = {name: [("mmu.cfg", "mmu_parameters", name.lower())] for name in self.NAMES}
+        return [option for _, _, option in cfg_import.choice_locations(kconf, where).get("CHOICE_LEVEL", [])]
+
+    def test_only_symbols_the_choice_alone_sets(self):
+        self.assertEqual(self.choice_locations(flag=False), ["param_level", "param_other", "param_shared"])
+
+    def test_a_definition_its_if_block_enables_counts(self):
+        # Like PARAM_BUFFER_SPRING_STATE, whose shared-buffer definition only applies to a shared buffer
+        self.assertNotIn("param_shared", self.choice_locations(flag=True))
+
+
+class TestMultiUnitSymbolLocations(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.install = installed_once(cls, _MultiUnitInstall)
+
+    def test_unit_parse_names_its_own_files(self):
+        _, symbols, _ = locations(self.install.unit_kconfig("unit1"), self.install.unit_envs["unit1"])
+        self.assertEqual(symbols["PARAM_GEAR_LOAD_SPEED"],
+                         [("mmu_parameters_unit1.cfg", "mmu_unit_parameters unit1", "gear_load_speed")])
+        self.assertNotIn("VAR_SOFTWARE_HOME_MMU", symbols)
+
+    def test_entry_point_has_only_shared_files(self):
+        _, symbols, _ = locations(self.install.kconfig, self.install.env)
+        self.assertIn("VAR_SOFTWARE_HOME_MMU", symbols)
+        self.assertEqual({f for where in symbols.values() for f, _, _ in where}, {"mmu.cfg", "mmu_macro_vars.cfg"})
+
+    def test_entry_point_before_any_unit_is_saved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kconfig = os.path.join(tmp, ".mmu_config")
+            with open(self.install.kconfig) as f, open(kconfig, "w") as out:
+                out.write(f.read())
+            _, symbols, _ = locations(kconfig, dict(self.install.env, KCONFIG_CONFIG=kconfig))
+        self.assertIn("VAR_SOFTWARE_HOME_MMU", symbols)
+
+
 class TestMultiUnitRefreshPipeline(_Pipeline, _MultiUnitInstall):
 
     def test_no_menuconfig_changes_build_as_plain_refresh(self):

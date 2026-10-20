@@ -132,6 +132,65 @@ def symbol_lines(rendered):
     return found
 
 
+_marked_templates = {}
+
+
+def installed_name(template, values):
+    """The file make install renders a template into, e.g. mmu_parameters_<unit>.cfg"""
+    name = os.path.basename(template)
+    if template in UNIT_TEMPLATES:
+        name = "%s_%s.cfg" % (os.path.splitext(name)[0], values["UNIT_NAME"])
+    return name
+
+
+def symbol_locations(values, kconfig_path):
+    """{symbol: [(installed file, section, option), ...]} in template order, for each line one symbol sets"""
+    try:
+        gates = total_gates(kconfig_path, values)
+    except OSError:
+        # A first multi-unit install has no unit files yet; only the per-tool macros use it
+        gates = 0
+    params = dict(values, PARAM_TOTAL_NUM_GATES=gates)
+    found = {}
+    for template in templates_for(values):
+        if template not in _marked_templates:
+            with open(os.path.join(REPO_ROOT, template), encoding="utf-8") as f:
+                _marked_templates[template] = build._jinja_env(REPO_ROOT).from_string(mark_template(f.read()))
+        name = installed_name(template, values)
+        for (section, option), ref in symbol_lines(_marked_templates[template].render(params)).items():
+            if ref:
+                found.setdefault(ref[0], []).append((name, section, option))
+    return found
+
+
+def choice_locations(kconf, locations):
+    """
+    {choice: [(installed file, section, option), ...]} for each named choice that alone sets
+    a promptless symbol through its 'default ... if <member>' lines. Only the conditions as
+    written count, not the enclosing if blocks parsing adds to them, and only in the
+    definitions those if blocks currently enable
+    """
+    found = {}
+    for name, where in locations.items():
+        sym = kconf.syms.get(name)
+        if sym is None or any(node.prompt for node in sym.nodes):
+            continue
+        conds = [s for node in sym.nodes if kconfiglib.expr_value(node.dep)
+                 for _, cond in node.orig_defaults
+                 for s in kconfiglib.expr_items(cond) if isinstance(s, kconfiglib.Symbol) and not s.is_constant]
+        choices = {s.choice for s in conds}
+        if len(choices) != 1:
+            continue
+        choice = choices.pop()
+        if choice is None or not (choice.name or "").startswith("CHOICE_"):
+            continue
+        # The symbol named after the choice comes first
+        wheres = found.setdefault(choice.name, [])
+        named = name.split("_", 1)[1] == choice.name[len("CHOICE_"):]
+        wheres.insert(0 if named else len(wheres), where)
+    return {choice: [loc for where in wheres for loc in where] for choice, wheres in found.items()}
+
+
 def kconfig_value(sym, text, literal):
     """The value to assign, or None if the .cfg text can't be one"""
     text = text.strip()

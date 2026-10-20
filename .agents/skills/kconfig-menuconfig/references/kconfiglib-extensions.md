@@ -241,6 +241,27 @@ use a width inside anything padded.
 - Comment-aware cursor navigation (item 9).
 - The sequence editor dialog (item 21).
 - Link rows that jump elsewhere in the tree (item 24).
+- **Help separator names the .cfg option** (`_cfg_labels`): ` Help ` stays
+  centred, with a dimmed part either side of it.
+  - ` (<file>) ` is left-justified. The scroll arrows, when shown, follow it.
+  - ` [<section>] <option> (+N more) ` is right-justified.
+  - On a narrow line each part shortens independently: the section goes first,
+    then the part itself. ` Help ` is never dropped.
+  - **Symbols:** shown when the selected symbol is a template line's whole value.
+    `cfg_import.symbol_locations` renders the marked templates from the live
+    `_kconf` (`build.KConfig.as_dict`).
+  - **Choices and their members:** shown when the choice alone sets a promptless
+    symbol through `default ... if <member>`.
+    `cfg_import.choice_locations` reads `node.orig_defaults`, so enclosing `if`
+    conditions don't count. It reads only definitions whose `if` blocks currently
+    hold, so a shared-buffer copy doesn't block `CHOICE_BUFFER_SPRING_STATE`.
+  - **Toggles and computed values:** no label.
+  - **Options in a section the render leaves out:** no label. For example,
+    `[controller_fan]` is written only once `PIN_CONTROLLER_FAN` is set.
+  - **Rendering:** lazy, on the next draw that needs it. It runs again after every
+    value change, reset or re-parse. A failure shows no label.
+  - **Cost:** the first render takes about 190 ms on a Mac, a re-render about
+    11 ms. `HH_MENUCONFIG_CFG_TIMING=<file>` logs each render.
 
 ## 12. `source` family
 
