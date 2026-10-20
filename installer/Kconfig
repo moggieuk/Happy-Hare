@@ -49,6 +49,8 @@
 # 2. Added float type
 # 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met.
 #    'forceshow if <expr>' does so only while <expr> holds
+#    A forced row whose prompt condition is false is read-only: neither space nor 'r' changes it,
+#    and it shows as fixed (-*- or - -) even when another prompt can change the symbol
 # 4. Recording of default value with #~DEFAULT~# magic token
 # 5. Preprocessor function 'saved-config-value' to read a symbol's previous assignment from
 #    KCONFIG_CONFIG before normal config loading, including lines marked with #~DEFAULT~#
@@ -116,6 +118,10 @@
 #     caller (anything else stays one symbol name, as upstream):
 #       servo_visible := MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
 #       prompt "..." if $(servo_visible)
+# 24. 'link <SYMBOL>' on a comment makes it a menuconfig row that jumps to where SYMBOL is
+#     shown (its menu, cursor on it); ESC from there returns. Comments accept help for it:
+#       comment "Blobifier macro variables"
+#         link VAR_BLOBIFIER_PURGE_SPD
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -125,6 +131,7 @@
 # 5. Added array editor - used on "," or ";" separated strings
 # 6. Edited strings are checked against their 'validator' regexp
 # 7. Added sequence editor - list editor with explicit add/rename/remove/move
+# 8. Link rows ('link <SYMBOL>' comments) jump elsewhere in the tree; ESC returns to them
 #
 #
 # Capability params:
@@ -313,7 +320,9 @@ if MULTI_UNIT_ENTRY_POINT
   source "Kconfig.options"          # Main software options
   source "Kconfig.tip_shaping"
   source "Kconfig.purging"
-  source "Kconfig.speeds"           # Access to extruder speeds
+  menu "Extruder speeds"
+    source "Kconfig.extruder_speeds"
+  endmenu
   source "macro_vars/Kconfig"       # Variables for all macros
 
   # These are duplicated settings that are excluded from units when MULTI_UNIT
@@ -355,7 +364,7 @@ if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.tip_shaping"
     source "Kconfig.purging"
   endif
-  source "Kconfig.speeds"           # All speeds
+  source "Kconfig.kinematics"       # Gear/selector steppers, selector servo and speeds
   if !MULTI_UNIT
     source "macro_vars/Kconfig"     # Variables for all macros
   endif

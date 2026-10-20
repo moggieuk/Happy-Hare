@@ -8,7 +8,7 @@ menu "Client macros        (_MMU_CLIENT)"
     PAUSE, RESUME, and CANCEL_PRINT macros.
 
     (if disabled but desired, select "install default client macros" option
-     under "Software Options --->" menu)
+     under "Global software options --->" menu)
 
   config BOOL_CLIENT_RESET_TTG_ON_CANCEL
     bool "Reset TTG map on cancel"

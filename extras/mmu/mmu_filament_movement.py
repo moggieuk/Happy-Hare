@@ -1915,6 +1915,7 @@ class MmuFilamentMovement:
             # -------------------------------------------------------------------------------
             # If possible validate we are actually in the extruder
             # -------------------------------------------------------------------------------
+            grip_validated = False
             if (
                 self.gate_selected != TOOL_GATE_BYPASS
                 and u.p.toolhead_entry_tension_test
@@ -1925,6 +1926,7 @@ class MmuFilamentMovement:
                     # Sensorless + proportional sensor: distinct grip-establish + extruder pull validation
                     overshoot = self._validate_extruder_load_proportional(length)
                     length -= overshoot
+                    grip_validated = overshoot > 0
 
                 elif self.sensor_manager.check_sensor(SENSOR_COMPRESSION): # None if no mmu_buffer
                     # If we have a compression sensor indicating compression we can
@@ -1937,6 +1939,7 @@ class MmuFilamentMovement:
                         actual, success = u.sync_feedback.adjust_filament_tension(use_gear_motor=False, max_move=max_range)
                         if success:
                             length -= actual
+                            grip_validated = True
                         else:
                             self.set_filament_pos_state(FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
                             raise MmuError("Failed to load filament passed the extruder entrance (sync-feedback buffer didn't detect neutral tension)")
@@ -1953,7 +1956,9 @@ class MmuFilamentMovement:
             u.extruder_wrapper.set_filament_remaining(0., color)
 
             # Encoder based validation test to validate the filament was picked up by extruder.
-            # This runs if we are short of deterministic sensors and test makes sense
+            # This runs if we are short of deterministic sensors and test makes sense. If the buffer
+            # already confirmed grip only the no-movement test applies because buffer play can mask
+            # a shortfall
             if (
                 self.gate_selected != TOOL_GATE_BYPASS
                 and self.can_use_encoder()
@@ -1965,12 +1970,17 @@ class MmuFilamentMovement:
                     f"total delta: {delta:.1f}mm"
                 )
 
-                if measured < self.encoder().movement_min():
+                if measured < self.encoder().movement_min() and (
+                    not grip_validated or length > u.p.encoder_move_step_size
+                ):
                     raise MmuError(
                         "Move to nozzle failed (encoder didn't sense any "
                         "movement). Extruder may not have picked up "
                         "filament or filament did not find homing sensor."
                     )
+
+                elif grip_validated:
+                    self.log_debug("Skipping encoder shortfall check: extruder grip confirmed by sync-feedback buffer")
 
                 elif delta > length * (
                     u.p.toolhead_move_error_tolerance / 100.0
@@ -2741,6 +2751,10 @@ class MmuFilamentMovement:
             synced_extruder_unload = False
             park_pos = 0.
             do_form_tip = form_tip if form_tip is not None else FORM_TIP_STANDALONE # Default to standalone
+            if do_form_tip == FORM_TIP_STANDALONE and not self._macro_name(self.p.form_tip_macro):
+                self.log_debug("Tip forming skipped because no 'form_tip_macro' is configured")
+                do_form_tip = FORM_TIP_NONE
+
             if do_form_tip == FORM_TIP_SLICER:
                 # Slicer was responsible for the tip, but the user must set the slicer_tip_park_pos
                 park_pos = self.p.slicer_tip_park_pos

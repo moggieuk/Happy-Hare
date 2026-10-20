@@ -72,7 +72,6 @@ hidden_params = [
     "restore_position_macro",
     "clear_position_macro",
     "encoder_dwell",
-    "encoder_move_step_size",
     "gear_buzz_accel",
 
     # For proportional sync-feedback sensor

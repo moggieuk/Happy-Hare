@@ -349,8 +349,16 @@ menu "Endstops and Bowden movement"
     help
       Additional distance to advance in order to attempt to home to toolhead sensor
 
+  # A unit setting: a single unit shows it with the toolhead dimensions instead
+  comment "_" if MULTI_UNIT
+  comment "_Toolhead unloading" if MULTI_UNIT
+
   config PARAM_TOOLHEAD_UNLOAD_SAFETY_MARGIN
     float
+    prompt "Unload safety margin        " if MULTI_UNIT
     default 10
+    help
+      Extra movement (mm) added to the extruder unload movement to ensure filament is free of the extruder.
+      This provides tolerance for slightly incorrect configuration or extruder slippage.
 
 endmenu

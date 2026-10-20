@@ -6,11 +6,16 @@
 #   PARAM_ENCODER_NAME
 #   PARAM_ENCODER_RESOLUTION
 #   PARAM_GATE_ENDSTOP_TO_ENCODER
+#   PARAM_ENCODER_MOVE_STEP_SIZE
 #   PIN_ENCODER (duplicate with pins)
+#   PARAM_BOWDEN_PRE_UNLOAD_TEST
+#   PARAM_BOWDEN_PRE_UNLOAD_ERROR_TOLERANCE
+#   PARAM_ENCODER_MOVE_VALIDATION
 #   PARAM_BOWDEN_APPLY_CORRECTION
 #   PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
-#   PARAM_BOWDEN_PRE_UNLOAD_TEST
-#   PARAM_ENCODER_MOVE_VALIDATION
+#   PARAM_BOWDEN_MOVE_ERROR_TOLERANCE
+#   PARAM_TOOLHEAD_MOVE_ERROR_TOLERANCE
+#   PARAM_TOOLHEAD_POST_LOAD_TIGHTEN
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_ENCODER
@@ -152,6 +157,18 @@ if MMU_HAS_ENCODER
         less that the actual movement. Set on every unit, including one that
         shares another unit's encoder, because each unit has its own gate endstop.
 
+    config PARAM_ENCODER_MOVE_STEP_SIZE
+      float "$(pad,32,Encoder small move step size)"
+      range 5 25
+      default 15.0
+      help
+        ADVANCED: Length (mm) of the short encoder-checked moves: the bowden
+        pre-unload test, the check for filament left in the extruder gears and
+        each step when unloading back to an encoder gate endstop. A final
+        extruder unload no longer than this skips the encoder check, as does
+        a load once a buffer has confirmed grip. Shorter is quicker but
+        harder for the encoder to see.
+
     if !MMU_SHARED_ENCODER
       config PARAM_REGISTER_AS_SENSOR
         boolint "Register as virtual switch sensor"
@@ -165,34 +182,28 @@ if MMU_HAS_ENCODER
     endif
 
     comment "_"
-    comment "_Bowden movement"
-
-    config PARAM_BOWDEN_APPLY_CORRECTION
-      boolint "Apply bowden correction moves?"
-      default 0
-      help
-        In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to
-        detect missed steps caused by "jerking" on a heavy spool. If bowden correction is enabled Happy Hare
-        will "believe" the encoder reading and make correction moves to bring the filament to within the
-        'bowden_allowable_encoder_delta' of the end of bowden position (this does require a reliable encoder
-        and is not recommended for very high speed loading >350mm/s)
-
-    config PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
-      float "Bowden allowable encoder delta  "
-      default 20.0
-      help
-        How close in mm the correction moves will attempt to get to target
+    comment "_Encoder Validation Options"
 
     config PARAM_BOWDEN_PRE_UNLOAD_TEST
       boolint "Check for bowden movement before full unload pull?"
       default 1
       help
-        This safety check uses the encoder to verify the filament is free of extruder before the fast bowden
-        movement to reduce possibility of grinding filament. If enabled the trigger can be tuned by setting
-        the "bowden_pre_unload_error_tolerance" which represents the percentage of allowable mismatch between
-        actual movement and that seen by encoder. Setting to 50% tolerance usually works well. Increasing
-        will make test more tolerant and a value of 100% essentially disables error detection.
+        This safety check uses the encoder to verify the filament is free of the
+        extruder before the fast bowden unload, to reduce the possibility of
+        grinding filament. Tune it with "Pre-unload test tolerance %".
         1 to check for bowden movement before full pull (slower), 0 don't check (faster)
+
+    config PARAM_BOWDEN_PRE_UNLOAD_ERROR_TOLERANCE
+      int
+      prompt "$(pad,32,Pre-unload test tolerance %)" if PARAM_BOWDEN_PRE_UNLOAD_TEST
+      range 0 100
+      default 50
+      help
+        ADVANCED: How much of the pre-unload test move the encoder may miss
+        before the test fails, as a % of the move. A failure means the filament
+        looks stuck in the extruder, so the fast bowden unload is not attempted.
+        50% usually works well. Raise it if the test fails when the filament is
+        free; 100 effectively disables the test.
 
     config PARAM_ENCODER_MOVE_VALIDATION
       boolint "Use encoder to validate movement distance?"
@@ -200,6 +211,62 @@ if MMU_HAS_ENCODER
       help
         ADVANCED: Determines if encoder measurement should be used to validate movement distance.
         Disabling eliminates slight pause between moves but is less safe
+
+    config PARAM_BOWDEN_APPLY_CORRECTION
+      boolint
+      prompt "Apply bowden correction moves?" if PARAM_ENCODER_MOVE_VALIDATION
+      default 0
+      help
+        Make correction moves when the fast bowden load falls short, e.g. from
+        missed steps caused by "jerking" on a heavy spool. Happy Hare believes
+        the encoder and moves the filament to within "Bowden allowable encoder
+        delta" of the end of the bowden. Needs a reliable encoder; not
+        recommended for very high speed loading (>350mm/s).
+
+    config PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
+      float
+      prompt "$(pad,32,Bowden allowable encoder delta)" if PARAM_ENCODER_MOVE_VALIDATION
+      default 20.0
+      help
+        Slippage threshold (mm) for the fast bowden move. When the encoder
+        measures a load or unload short by at least this much, a slippage
+        warning is logged and the move is left out of auto-calibration.
+        With bowden correction on, correction moves try to bring the load
+        within this distance of the target.
+
+    config PARAM_BOWDEN_MOVE_ERROR_TOLERANCE
+      int
+      prompt "$(pad,32,Bowden move error tolerance %)" if PARAM_ENCODER_MOVE_VALIDATION
+      range 0 100
+      default 60
+      help
+        ADVANCED: How much of the fast bowden load move the encoder may miss
+        before the load fails, as a % of the move ("filament stuck in the gate").
+        Lower is stricter; 100 effectively turns the check off.
+
+    config PARAM_TOOLHEAD_MOVE_ERROR_TOLERANCE
+      int
+      prompt "$(pad,32,Toolhead move error tolerance %)" if PARAM_ENCODER_MOVE_VALIDATION
+      range 0 100
+      default 80
+      help
+        ADVANCED: How much of the final extruder load the encoder may miss before
+        the load fails, as a % of the move (unload only warns). Not used when the
+        load homes to a toolhead sensor or a sync-feedback buffer confirms grip.
+        A failure usually means load speed or filament friction is too high:
+        fix those before raising this.
+        Lower is stricter; 100 effectively turns the check off.
+
+    config PARAM_TOOLHEAD_POST_LOAD_TIGHTEN
+      int
+      prompt "$(pad,32,Post-load tighten %)" if PARAM_ENCODER_MOVE_VALIDATION
+      range 0 100
+      default 60
+      help
+        After a load, pull the filament back with the gear at 50% current to take
+        up bowden slack that can cause a false encoder clog detection. The pull is
+        this % of the clog detection length, at most 15mm. Only used with encoder
+        flowguard enabled and the gear not synced to the extruder. 0 to disable.
 
   endmenu
 endif

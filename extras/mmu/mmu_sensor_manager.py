@@ -617,8 +617,8 @@ class MmuSensorManager:
         """
         sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if any(state is False for state in sensors.values()):
-            MmuError("Loaded check failed:\nFilament not detected by sensors: %s" %
-                     ', '.join([n for n, s in sensors.items() if s is False]))
+            raise MmuError("Loaded check failed:\nFilament not detected by sensors: %s" %
+                           ', '.join([n for n, s in sensors.items() if s is False]))
 
 
     def enable_runout(self, gate):

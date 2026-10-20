@@ -68,10 +68,6 @@ menu "Blobifier            (_BLOBIFIER)"
     float "Brush acceleration             "
     default 0
 
-  config VAR_BLOBIFIER_SKEW_CORRECTION
-    float "Skew correction                "
-    default 0.1
-
   config VAR_BLOBIFIER_Y_OFFSET
     float "Y offset                       "
     default 0

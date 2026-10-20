@@ -13,7 +13,8 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
 13 and 14, items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
-item 7), item 13 is its item 20, and item 23 is its item 23. When you add an extension, update **both** this file and that
+item 7), item 13 is its item 20, item 23 is its item 23, and item 24 is its item 24
+(also `Menuconfig:` item 8). When you add an extension, update **both** this file and that
 header block.
 
 ## 1. `generated_default`
@@ -64,6 +65,12 @@ enable a capability the type didn't imply).
 `forceshow if <expr>` forces it only while `<expr>` holds (`menuconfig._forced`), e.g.
 the buffer sensor bools, which a unit sharing another unit's buffer sees as a summary
 instead.
+
+A forced row whose own prompt condition is false is read-only: `_changeable` blocks
+space and `_reset_key` blocks `r`. `_pinned` draws it as fixed (`-*-`/`- -`,
+"(FIXED)", no "(NOT DEFAULT)") even when another prompt makes the symbol
+assignable. `MMU_HAS_TOOLHEAD_CUTTER`'s second prompt in `Kconfig.tip_shaping`
+uses this to show a multi-unit printer-level flag locked.
 
 ## 4. ` #~DEFAULT~#` default token
 
@@ -233,6 +240,7 @@ use a width inside anything padded.
   `aquatic` for the multi-unit entry point (single unit: `default`).
 - Comment-aware cursor navigation (item 9).
 - The sequence editor dialog (item 21).
+- Link rows that jump elsewhere in the tree (item 24).
 
 ## 12. `source` family
 
@@ -659,3 +667,43 @@ caller (`servo_visible`) instead of being sourced inside the caller's `if`.
   ends kconfiglib's automatic submenu (`_finalize_node` only nests consecutive
   siblings that depend on the toggle). A prompt condition doesn't, which is the
   other reason to pass a condition rather than wrap the `source`.
+
+## 24. `link <SYMBOL>` on a comment
+
+A comment with a `link` property is a selectable row that jumps to wherever
+SYMBOL is shown, for settings that belong together but live in different
+menus. Purging and Tip Forming / Cutting use them to reach the macro
+variables of Blobifier, simple purge, tip forming, toolhead tip cutting and
+the servo cutter, e.g.:
+
+```
+comment "Blobifier macro variables"
+  link VAR_BLOBIFIER_PURGE_SPD
+  help
+    Purge, brush, bucket and tray settings for the Blobifier macro
+```
+
+- **Parsing** (the `_T_LINK` branch of `_parse_props`): only valid on comments;
+  the target goes through `_expect_nonconst_sym`, so a misspelt target is a
+  node-less symbol that `TestNoDanglingSymbolReferences` fails on. Comments
+  accept `help` for this (`node.help = None` in the `_T_COMMENT` branch).
+  A link row is not written to the value file.
+- **Target:** a symbol, because menus have no names. Following the link opens
+  the symbol's menu (`_parent_menu`) with the cursor on it, so link to a
+  menu's first symbol to "open" that menu. The first of the symbol's nodes
+  that is reachable wins (`_reachable`: shown, and every menu above it shown
+  and not a force-shown disabled placeholder). Keep the link's own `if` in
+  step with the target's visibility; a hidden target gets an error box rather
+  than show-all.
+- **Return:** `_follow_link` pushes the origin on `_link_return`; leaving the
+  menu it landed in (`_leave_menu`, ESC/Left, even at the top level) returns to
+  the link row. Submenus entered from there behave as usual, chained links
+  unwind one jump per ESC, and `_reparse` clears the stack.
+- **Display:** `<prompt>  --->`, like a menu entry, since ESC brings you back
+  as it would from a submenu. The help pane adds the destination path and
+  "ESC returns here" to any help text.
+- **Tests:** `TestLink` and `TestShippedLinks` in
+  `test/installer/test_menuconfig.py`. The second checks every shipped link
+  targets a prompted symbol, and each one in its `SHIPPED` table is hidden
+  with its feature off and opens its Macro Variables submenu with it on.
+  Add a new link to `SHIPPED`; the test fails on one that isn't there.

@@ -931,3 +931,47 @@ class TestManagedOptionPolicies(unittest.TestCase):
         built.read_buf("[fan test]\npin: PA1\nshutdown_speed: 0\n")
         with self.assertRaisesRegex(ValueError, "shutdown_speed"):
             validate_managed_options(built, {"fan": {"pin"}})
+
+
+class TestEncoderValidationRefresh(unittest.TestCase):
+    """Encoder validation options that used to be template literals keep hand-edited values."""
+
+    SECTION = "mmu_unit_parameters unit0"
+    EDITS = {
+        "bowden_pre_unload_error_tolerance": "45",
+        "bowden_move_error_tolerance": "65",
+        "toolhead_move_error_tolerance": "60",
+        "toolhead_post_load_tighten": "30",
+        "encoder_move_step_size": "20",
+    }
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            self.kconfig = cfg._kconfig("encoder-validation-refresh", profiles.get("encoder").syms)
+        self.installed = os.path.join(self.tmp.name, "mmu_parameters_unit0.cfg")
+        with open(self.installed, "w") as f:
+            f.write("[%s]\n" % self.SECTION)
+            f.write("".join("%s: %s\n" % item for item in self.EDITS.items()))
+
+    def build(self, with_baseline):
+        from installer import build
+        out = tempfile.mkdtemp(dir=self.tmp.name)
+        dest = os.path.join(out, "mmu_parameters_unit0.cfg")
+        if with_baseline:
+            write_menuconfig_baseline(out, self.kconfig, self.kconfig)
+        extra = {"PARAM_TOTAL_NUM_GATES": self.kconfig.getint("PARAM_NUM_GATES")}
+        env = dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE="refresh",
+                   F_MENUCONFIG_BASELINE="y" if with_baseline else "")
+        with cfg._env(env), cfg._chdir(cfg.REPO_ROOT):
+            build.build_config_file("config/base/mmu_parameters.cfg", dest, self.kconfig,
+                                    [self.installed], extra)
+        return ConfigBuilder(dest)
+
+    def test_hand_edited_values_survive_refresh(self):
+        for with_baseline in (False, True):
+            built = self.build(with_baseline)
+            for option, value in self.EDITS.items():
+                with self.subTest(baseline=with_baseline, option=option):
+                    self.assertEqual(built.get(self.SECTION, option), value)

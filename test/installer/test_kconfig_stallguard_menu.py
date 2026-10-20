@@ -1,7 +1,7 @@
 # Happy Hare installer: where menuconfig shows each stepper's stallguard threshold.
 #
 # The threshold is a driver tuning value, so it belongs with that stepper's currents in
-# Other Settings, for the selector as for the gear, not with the pins.
+# MMU Kinematics and Speeds, for the selector as for the gear, not with the pins.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 

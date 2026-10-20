@@ -261,6 +261,9 @@ _ENCODING_FALLBACKS = str.maketrans({
     "°": "^",
 })
 
+# Happy Hare: Followed links, see _link_return below and _init()
+_link_return = []
+
 # Height of the help window in show-help mode
 _SHOW_HELP_HEIGHT = 7
 _ALWAYS_SHOW_HELP_WINDOW = True
@@ -821,6 +824,11 @@ def _needs_save():
 #     appeared on. This is used to prevent the scrolling from jumping around
 #     when going in and out of menus.
 #
+#   _link_return:
+#     Happy Hare: stack of followed links, (origin menu, link node, screen
+#     row, saved _parent_screen_rows, target menu). Leaving a target menu
+#     returns to its link instead of the target's parent
+#
 #   _show_help/_show_name/_show_all:
 #     If True, the corresponding mode is on. See the module docstring.
 #
@@ -887,13 +895,17 @@ def _menuconfig(stdscr):
         elif c == " ":
             # Toggle the node if possible
             sel_node = _shown[_sel_node_i]
-            if not _change_node(sel_node):
+            if _is_link(sel_node): # Happy Hare: Added
+                _follow_link(sel_node)
+            elif not _change_node(sel_node):
                 _enter_menu(sel_node)
 
         elif c in (curses.KEY_RIGHT, "\n", "l", "L"):
             # Enter the node if possible
             sel_node = _shown[_sel_node_i]
-            if not _enter_menu(sel_node):
+            if _is_link(sel_node): # Happy Hare: Added
+                _follow_link(sel_node)
+            elif not _enter_menu(sel_node):
                 _change_node(sel_node)
 
         elif c in ("n", "N"):
@@ -908,7 +920,7 @@ def _menuconfig(stdscr):
         elif c in (curses.KEY_LEFT, curses.KEY_BACKSPACE, _ERASE_CHAR,
                    "\x1B", "h", "H"):  # \x1B = ESC
 
-            if c == "\x1B" and _cur_menu is _kconf.top_node:
+            if c == "\x1B" and _cur_menu is _kconf.top_node and not _in_link_target(): # Happy Hare: Links return first
                 res, code = _quit_dialog()
                 if res:
                     return res, code
@@ -1013,6 +1025,7 @@ def _init():
     global _help_win
 
     global _parent_screen_rows
+    global _link_return
     global _cur_menu
     global _shown
     global _sel_node_i
@@ -1057,6 +1070,8 @@ def _init():
     # The rows we'd like the nodes in the parent menus to appear on. This
     # prevents the scroll from jumping around when going in and out of menus.
     _parent_screen_rows = []
+
+    _link_return = [] # Happy Hare: Added
 
     # Initial state
 
@@ -1246,6 +1261,10 @@ def _leave_menu():
     global _sel_node_i
     global _menu_scroll
 
+    # Happy Hare: Leaving the menu a link jumped into returns to the link
+    if _in_link_target() and _return_from_link():
+        return
+
     if _cur_menu is _kconf.top_node:
         return
 
@@ -1268,6 +1287,105 @@ def _leave_menu():
         _center_vertically()
 
 
+# Happy Hare: Added. A comment with a 'link <SYMBOL>' property is a selectable
+# row that jumps to where SYMBOL is shown. Leaving the menu it lands in returns
+# to the link (see _link_return), so links read like a detour, not a move.
+def _is_link(node):
+    return getattr(node, "link", None) is not None
+
+
+def _reachable(node):
+    # True if 'node' is shown in its menu and every menu above it can be entered
+    if node not in _shown_nodes(_parent_menu(node)):
+        return False
+    menu = _parent_menu(node)
+    while menu is not _kconf.top_node:
+        if _forced_disabled_menu(menu) or \
+           menu not in _shown_nodes(_parent_menu(menu)):
+            return False
+        menu = _parent_menu(menu)
+    return True
+
+
+def _link_target(link):
+    # The first node of the link's symbol that is currently reachable, or None
+    for node in link.link.nodes:
+        if _reachable(node):
+            return node
+    return None
+
+
+def _link_help(link):
+    # Help pane text for a link: its own help, then where it goes
+    lines = [link.help] if getattr(link, "help", None) else []
+    target = _link_target(link) or (link.link.nodes[0] if link.link.nodes else None)
+    if target:
+        path = " -> ".join(" ".join(p.split()) for p in
+                           _menu_path_prompts(_parent_menu(target)))
+        lines.append("Jumps to: [[B]]{}[[/B]]".format(path))
+        lines.append("ESC returns here")
+    return "\n".join(lines)
+
+
+def _follow_link(link):
+    # Jumps to the link's target, remembering where to return to. Never turns
+    # on show-all: a hidden target is reported instead.
+
+    global _cur_menu
+    global _shown
+    global _sel_node_i
+    global _menu_scroll
+    global _parent_screen_rows
+
+    target = _link_target(link)
+    if target is None:
+        _error("'{}' is not shown with the current settings."
+               .format(_TAG_RE.sub("", link.prompt[0]).strip()))
+        return False
+
+    menu = _parent_menu(target)
+    _link_return.append((_cur_menu, link, _sel_node_i - _menu_scroll,
+                         _parent_screen_rows, menu))
+    _parent_screen_rows = []
+
+    _cur_menu = menu
+    _shown = _shown_nodes(menu)
+    _sel_node_i = _shown.index(target)
+    _center_vertically()
+    return True
+
+
+def _in_link_target():
+    return bool(_link_return) and _link_return[-1][4] is _cur_menu
+
+
+def _return_from_link():
+    # Returns from the current link target to its link. Returns False, with
+    # the entry dropped, if nothing in the origin menu can take the cursor.
+
+    global _cur_menu
+    global _shown
+    global _sel_node_i
+    global _menu_scroll
+    global _parent_screen_rows
+
+    origin, link, screen_row, parent_rows, _ = _link_return.pop()
+    shown = _shown_nodes(origin)
+    if link in shown:
+        sel = shown.index(link)
+    else:
+        sel = _first_selectable_index(shown)
+        if sel is None:
+            return False
+
+    _cur_menu = origin
+    _shown = shown
+    _sel_node_i = sel
+    _parent_screen_rows = parent_rows
+    _menu_scroll = max(_sel_node_i - min(screen_row, _height(_menu_win) - 1), 0)
+    return True
+
+
 def _first_selectable_index(nodes):
     # Comments provide structure and explanation, but are not interactive menu
     # entries. Return None when a list contains comments only.
@@ -1277,7 +1395,7 @@ def _first_selectable_index(nodes):
 def _next_selectable_index(nodes, start, step):
     i = start + step
     while 0 <= i < len(nodes):
-        if nodes[i].item != COMMENT:
+        if nodes[i].item != COMMENT or _is_link(nodes[i]): # Happy Hare: Links are selectable
             return i
         i += step
     return None
@@ -1498,7 +1616,7 @@ def _draw_main():
         _help_win.erase()
 
         node = _shown[_sel_node_i]
-        help_text = getattr(node, "help", None)
+        help_text = _link_help(node) if _is_link(node) else getattr(node, "help", None) # Happy Hare: Links say where they go
         help_lines = help_text.split("\n") if help_text else []  # Happy Hare: Retain line formatting
         for i in range(min(_SHOW_HELP_HEIGHT, len(help_lines))):
             _safe_addstr_markup(_help_win, i, 1, help_lines[i], _style["show-help"]) # Happy Hare: Allow markup
@@ -1637,6 +1755,8 @@ def _shown_nodes(menu):
 
 def _node_has_help():
     node = _shown[_sel_node_i]
+    if _is_link(node): # Happy Hare: Added
+        return True
     return (isinstance(node.item, (Symbol, Choice)) or node.item == MENU) and \
         getattr(node, "help", None)
 
@@ -1680,6 +1800,10 @@ def _reset_key(node): # Happy Hare: Added method
     # gets saved, so mark the configuration changed or quitting wouldn't save it
 
     global _conf_changed
+
+    # A force-shown entry whose prompt is off is read-only
+    if not (node.prompt and expr_value(node.prompt[1])):
+        return
 
     sc = node.item
     had_value = (isinstance(sc, Symbol) and
@@ -1938,8 +2062,10 @@ def _set_sel_node_tri_val(tri_val):
     # Sets the value of the currently selected menu entry to 'tri_val', if that
     # value can be assigned
 
-    sc = _shown[_sel_node_i].item
-    if isinstance(sc, (Symbol, Choice)) and tri_val in sc.assignable:
+    node = _shown[_sel_node_i]
+    sc = node.item
+    # Happy Hare: a force-shown row whose own prompt is off is read-only here too
+    if _changeable(node) and tri_val in sc.assignable:
         _set_val(sc, tri_val)
 
 
@@ -2052,6 +2178,7 @@ def _reparse(sym):
 
     kconf.warn = False
     _kconf = kconf
+    del _link_return[:] # Happy Hare: Its nodes belong to the old tree
 
     nodes = {_node_key(node): node for node in kconf.node_iter()}
     nodes[("top",)] = kconf.top_node
@@ -3850,7 +3977,9 @@ def _node_str(node):
     if node.prompt:
         prompt = _expand_values(node.prompt[0]) # Happy Hare: Live [[VALUE:SYM]] markup
         if node.item == COMMENT:
-            if prompt == '_': # Happy Hare
+            if _is_link(node): # Happy Hare: Link rows look like a menu entry
+                s += " {}  --->".format(prompt)
+            elif prompt == '_': # Happy Hare
                 s = "    "
             elif prompt.startswith('_'): # Happy Hare: Added special section header style for comments
                 max_width = 62
@@ -3873,8 +4002,8 @@ def _node_str(node):
                 node.item.orig_type and
                 node.item.orig_type not in (STRING, INT, HEX, FLOAT) and
                 not _is_y_mode_choice_sym(node.item) and
-                len(node.item.assignable) <= 1 and
-                not isinstance(node.item, Choice)
+                not isinstance(node.item, Choice) and
+                _pinned(node)
             ):
                 s += " [[DIM]](FIXED)[[/DIM]]"
 
@@ -3924,6 +4053,7 @@ def _node_str(node):
         if (
             (sym.user_value is not None or sym._was_set) and
             sym.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_')) and
+            node.prompt and expr_value(node.prompt[1]) and
             differs_from_default(node, sym)[0]
         ):
             s += " [[DIM]](NOT DEFAULT)[[/DIM]]"
@@ -3963,6 +4093,12 @@ def _should_show_name(node):
            (_show_name and isinstance(node.item, (Symbol, Choice)))
 
 
+def _pinned(node): # Happy Hare: Added method
+    # A symbol pinned to one value, or a row whose own prompt is off (a
+    # force-shown entry that is changed elsewhere, if anywhere)
+    return len(node.item.assignable) <= 1 or not (node.prompt and expr_value(node.prompt[1]))
+
+
 def _value_str(node):
     # Returns the value part ("[*]", "<M>", "(foo)" etc.) of a menu node
 
@@ -3989,9 +4125,11 @@ def _value_str(node):
 
     tri_val_str = (" ", "M", "*")[item.tri_value]
 
-    if len(item.assignable) <= 1:
-        # Pinned to a single value
-        return "" if isinstance(item, Choice) else "-{}-".format(tri_val_str)
+    if isinstance(item, Choice) and len(item.assignable) <= 1:
+        return ""
+
+    if not isinstance(item, Choice) and _pinned(node):
+        return "-{}-".format(tri_val_str)
 
     if item.type in (BOOL, BOOLINT):
         return "[{}]".format(tri_val_str)

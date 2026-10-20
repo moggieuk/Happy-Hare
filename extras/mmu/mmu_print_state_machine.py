@@ -163,6 +163,7 @@ class MmuPrintStateMachine:
             self.mmu.log_trace("on_print_start(->started)")
             self.mmu._clear_saved_toolhead_position()
             self.mmu.num_toolchanges = 0
+            self.mmu._next_tool = TOOL_GATE_UNKNOWN # Discard any marker left by a failed toolchange outside a print
             self.paused_extruder_temp = None
             self.mmu._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.mmu.reactor.update_timer(self.mmu.hotend_off_timer, self.mmu.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -170,6 +171,7 @@ class MmuPrintStateMachine:
             self.mmu.gate_maps.clear_slicer_tool_map()
             self.mmu._enable_filament_monitoring() # Enable filament monitoring while printing
             self.mmu.initialize_encoder(dwell=None) # Encoder 0000
+            self.mmu.safe_g1.reset_print_state()
             self.set_print_state("started", call_macro=False)
 
         if not pre_start_only and self.print_state not in ["printing"]:

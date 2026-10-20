@@ -30,7 +30,8 @@ choice CHOICE_TOOLHEAD_TYPE
     If your toolhead appears in this list you are lucky and can benefit from tuned values
     from others. It is still recommended you learn how to measure and calibrate your own
     because of the number of modifications and versions of hardware. If you are unsure,
-    just select the default and perform calibration as described in the wiki
+    just select the default and perform calibration as described in the Toolhead Calibration doc:
+    https://moggieuk.github.io/Happy-Hare-Doc/Calibration-Toolhead/
 
   rsource "Kconfig.*"
 
