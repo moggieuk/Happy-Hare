@@ -2235,7 +2235,7 @@ class MmuFilamentMovement:
                 if not fhomed:
                     raise MmuError(
                         "Filament did not clear the extruder entry sensor after moving %.1fmm" % actual,
-                        hint=f"Filament from {self.gate_name()} may be stuck in the extruder (check the tip or cut). Free it, " + HINT_RELOAD
+                        hint=f"Free filament from {self.gate_name()} stuck in the extruder (check the tip or cut), " + HINT_RELOAD
                     )
 
                 # We don't need to validate and know exactly where end of filament is so true up
@@ -2285,7 +2285,7 @@ class MmuFilamentMovement:
                     if not fhomed:
                         raise MmuError(
                             "Filament did not clear the toolhead sensor after moving %.1fmm" % actual,
-                            hint=f"Filament from {self.gate_name()} may be stuck in the extruder (check the tip or cut). Free it, " + HINT_RELOAD
+                            hint=f"Free filament from {self.gate_name()} stuck in the extruder (check the tip or cut), " + HINT_RELOAD
                         )
                     else:
                         validate = False

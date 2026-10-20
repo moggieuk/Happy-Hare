@@ -68,4 +68,4 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
 
         except (MmuError, mmu.printer.command_error) as ee:
             ee = mmu.mmu_error_from(ee)
-            mmu.handle_mmu_error(ee.with_message("%s.\nOccurred when unloading tool" % str(ee)))
+            mmu.handle_mmu_error(ee.with_context("Occurred when unloading tool"))
