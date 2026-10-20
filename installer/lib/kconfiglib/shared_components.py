@@ -1,3 +1,16 @@
+# Happy Hare MMU Software
+# Components shared between units of a multi-unit MMU
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 """
 Components one unit of a multi-unit MMU can share with another (sync-feedback buffer, encoder),
 and the printer-level capabilities (toolhead sensors) every unit takes from the top level.

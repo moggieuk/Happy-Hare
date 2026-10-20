@@ -1,9 +1,10 @@
 # HH kconfiglib fork — extension catalog
 
 `installer/lib/kconfiglib/` is a vendored **kconfiglib v14.1** (Nordic/UMS
-upstream) carrying HH patches marked `# Happy Hare:` inline. Grep for that
-marker to get the full patch list; this catalog explains what each extension
-*does* and how to use it in a Kconfig file. Anchors are function and
+upstream) carrying HH patches. The patches are not marked inline; diff
+against an upstream v14.1 copy (Klipper vendors one in `lib/kconfiglib/`, plus
+its own small `kconfiglib.patch`) to get the full patch list. This catalog
+explains what each extension *does* and how to use it in a Kconfig file. Anchors are function and
 symbol names; grep for them.
 
 The root `installer/Kconfig` header comment is the user-facing summary of
