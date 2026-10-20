@@ -136,6 +136,7 @@
 # 6. Edited strings are checked against their 'validator' regexp
 # 7. Added sequence editor - list editor with explicit add/rename/remove/move
 # 8. Link rows ('link <SYMBOL>' comments) jump elsewhere in the tree; ESC returns to them
+# 9. The help separator names the [section], option and .cfg file a symbol or choice sets
 #
 #
 # Capability params:

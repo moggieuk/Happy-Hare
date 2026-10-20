@@ -789,6 +789,131 @@ class TestShippedLinks(unittest.TestCase):
                 "every shipped link should be in SHIPPED")
 
 
+class TestCfgHelpLabel(unittest.TestCase):
+    """The help separator shows the .cfg option the selected symbol or choice sets"""
+
+    KCONFIG = """
+config PARAM_SPEED
+    int "Speed"
+    default 1
+
+config BOOL_TOGGLE
+    bool "Toggle"
+
+choice CHOICE_LEVEL
+    prompt "Level"
+    default CHOICE_LEVEL_LOW
+
+config CHOICE_LEVEL_LOW
+    bool "Low"
+
+config CHOICE_LEVEL_HIGH
+    bool "High"
+
+endchoice
+"""
+
+    SPEED = ("mmu_parameters_unit0.cfg", "mmu_unit_parameters unit0", "gear_load_speed")
+    LEVEL = ("mmu.cfg", "mmu_parameters", "log_level")
+
+    def setUp(self):
+        import os
+        import tempfile
+        import kconfiglib
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = tmp.name
+        path = os.path.join(tmp.name, "Kconfig")
+        with open(path, "w") as f:
+            f.write(self.KCONFIG)
+        self.kconf = kconfiglib.Kconfig(path, warn=False)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf, _show_all=False,
+                                 _conf_filename=os.path.join(tmp.name, ".mmu_config"),
+                                 _cfg_locs={"PARAM_SPEED": [self.SPEED], "CHOICE_LEVEL": [self.LEVEL]},
+                                 _cfg_locs_renders=0, _show_name=False, _conf_changed=False, _menu_scroll=0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        env = patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("HH_MENUCONFIG_CFG_TIMING", None)
+        self.select(self.kconf.top_node, self.kconf.syms["PARAM_SPEED"])
+
+    def select(self, menu, item):
+        menuconfig._cur_menu = menu
+        menuconfig._shown = menuconfig._shown_nodes(menu)
+        menuconfig._sel_node_i = [n.item for n in menuconfig._shown].index(item)
+
+    def labels(self, width):
+        """(file label, option label) as _draw_main places them, with ' Help ' centred"""
+        help_x = (width - 6) // 2
+        return menuconfig._cfg_labels(1, help_x, help_x + 6, width - 1)
+
+    def texts(self, width):
+        return [label[1] if label else None for label in self.labels(width)]
+
+    def test_file_left_and_option_right(self):
+        option = " [mmu_unit_parameters unit0] gear_load_speed "
+        self.assertEqual(self.labels(200), ((1, " (mmu_parameters_unit0.cfg) "), (199 - len(option), option)))
+
+    def test_each_side_shortens_or_goes_before_help(self):
+        self.assertEqual(self.texts(100), [" (mmu_parameters_unit0.cfg) ", " gear_load_speed "])
+        self.assertEqual(self.texts(60), [None, " gear_load_speed "])
+        self.assertEqual(self.texts(40), [None, None])
+
+    def test_labels_stay_clear_of_help(self):
+        for width in range(20, 200):
+            help_x = (width - 6) // 2
+            file_label, option_label = self.labels(width)
+            if file_label:
+                self.assertLessEqual(file_label[0] + len(file_label[1]), help_x - 2, width)
+            if option_label:
+                self.assertGreaterEqual(option_label[0], help_x + 8, width)
+                self.assertLessEqual(option_label[0] + len(option_label[1]), width - 1, width)
+
+    def test_other_locations_are_counted(self):
+        menuconfig._cfg_locs["PARAM_SPEED"].append(self.SPEED)
+        self.assertEqual(self.texts(200)[1], " [mmu_unit_parameters unit0] gear_load_speed (+1 more) ")
+        self.assertEqual(self.texts(100)[1], " gear_load_speed (+1 more) ")
+
+    def test_choice_and_its_members_show_what_the_choice_sets(self):
+        expected = [" (mmu.cfg) ", " [mmu_parameters] log_level "]
+        choice = self.kconf.named_choices["CHOICE_LEVEL"]
+        self.select(self.kconf.top_node, choice)
+        self.assertEqual(self.texts(100), expected)
+        self.select(choice.nodes[0], self.kconf.syms["CHOICE_LEVEL_HIGH"])
+        self.assertEqual(self.texts(100), expected)
+
+    def test_symbol_without_a_location_has_no_label(self):
+        self.select(self.kconf.top_node, self.kconf.syms["BOOL_TOGGLE"])
+        self.assertEqual(self.labels(200), (None, None))
+
+    def test_failed_render_shows_no_label(self):
+        menuconfig._cfg_locs = None
+        with patch("installer.cfg_import.symbol_locations", side_effect=RuntimeError("boom")):
+            self.assertEqual(self.labels(200), (None, None))
+        self.assertEqual(menuconfig._cfg_locs, {})
+
+    def test_a_change_renders_again(self):
+        menuconfig._set_val(self.kconf.syms["PARAM_SPEED"], "5")
+        self.assertIsNone(menuconfig._cfg_locs)
+
+    def test_timing_log(self):
+        import os
+        log = os.path.join(self.tmp, "timing")
+        os.environ["HH_MENUCONFIG_CFG_TIMING"] = log
+        menuconfig._cfg_locs = None
+        with patch("installer.cfg_import.symbol_locations", return_value={"PARAM_SPEED": [self.SPEED]}), \
+                patch("installer.cfg_import.choice_locations", return_value={}):
+            menuconfig._cfg_locations()
+            menuconfig._cfg_locations_changed()
+            menuconfig._cfg_locations()
+        with open(log) as f:
+            lines = f.read().splitlines()
+        self.assertEqual([line.split()[0] for line in lines], ["startup", "refresh"])
+        self.assertTrue(all(line.endswith(" 1 entries") for line in lines))
+
+
 class FakeDialogWindow(FakeWindow):
     def __init__(self, height=20, width=80):
         self.height, self.width = height, width

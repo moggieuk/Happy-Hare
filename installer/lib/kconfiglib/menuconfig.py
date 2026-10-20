@@ -217,6 +217,7 @@ import textwrap
 
 import contextlib # Happy Hare: Added
 import tempfile # Happy Hare: Added
+import time # Happy Hare: Added
 
 import sequence_edit # Happy Hare: Added
 
@@ -1580,17 +1581,9 @@ def _draw_main():
     _bot_sep_win.erase()
 
     # Draw arrows pointing down if the symbol window is scrolled up
-    if _menu_scroll < _max_scroll(_shown, _menu_win):
+    arrows = _menu_scroll < _max_scroll(_shown, _menu_win) # Happy Hare: Added
+    if arrows:
         _safe_hline(_bot_sep_win, 0, 4, curses.ACS_DARROW, _N_SCROLL_ARROWS)
-
-    # Happy Hare: Label the separator above the help pane
-    help_label = " Help "
-    _safe_addstr(
-        _bot_sep_win,
-        0,
-        max((term_width - len(help_label)) // 2, 0),
-        help_label,
-    )
 
     # Indicate when show-name/show-help/show-all mode is enabled
     enabled_modes = []
@@ -1604,6 +1597,18 @@ def _draw_main():
     if enabled_modes:
         s = " and ".join(enabled_modes) + " mode enabled"
         _safe_addstr(_bot_sep_win, 0, max(term_width - len(s) - 2, 0), s)
+
+    # Happy Hare: Label the separator above the help pane, with the .cfg option the
+    # selection sets dimmed either side, clear of the modes. The scroll arrows take the
+    # file label's place
+    help_label = " Help "
+    help_x = max((term_width - len(help_label)) // 2, 0)
+    _safe_addstr(_bot_sep_win, 0, help_x, help_label)
+    file_label, option_label = _cfg_labels(1, help_x, help_x + len(help_label),
+                                           term_width - len(s) - 3 if enabled_modes else term_width - 1)
+    for label in (None if arrows else file_label, option_label):
+        if label:
+            _safe_addstr(_bot_sep_win, 0, label[0], label[1], _style["separator"] | curses.A_DIM)
 
     #
     # Update the help window, which shows either key bindings or help texts
@@ -1669,6 +1674,79 @@ def _draw_main():
         _safe_addstr(_path_win, s)
 
     _path_win.noutrefresh()
+
+
+# Happy Hare: Added. The installed .cfg options each symbol's or choice's value lands in,
+# for the help separator. Rendered again after every change, when next needed.
+# HH_MENUCONFIG_CFG_TIMING=<file> logs how long each render takes
+_cfg_locs = None
+_cfg_locs_renders = 0
+
+
+def _cfg_locations():
+    global _cfg_locs
+    global _cfg_locs_renders
+
+    if _cfg_locs is not None:
+        return _cfg_locs
+
+    start = time.time()
+    error = None
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        if root not in sys.path:
+            sys.path.append(root)
+        from installer import build, cfg_import
+        locs = cfg_import.symbol_locations(build.KConfig.as_dict(_kconf), _conf_filename)
+        locs.update(cfg_import.choice_locations(_kconf, locs))
+        _cfg_locs = locs
+    except Exception as e:
+        _cfg_locs = {}
+        error = e
+
+    log = os.environ.get("HH_MENUCONFIG_CFG_TIMING")
+    if log:
+        with open(log, "a") as f:
+            f.write("{} {:.1f}ms {} entries{}\n".format(
+                "refresh" if _cfg_locs_renders else "startup", (time.time() - start) * 1000,
+                len(_cfg_locs), " error: {!r}".format(error) if error else ""))
+    _cfg_locs_renders += 1
+    return _cfg_locs
+
+
+def _cfg_locations_changed():
+    global _cfg_locs
+
+    _cfg_locs = None
+
+
+def _cfg_labels(left, help_x, help_end, right):
+    # Happy Hare: Added. Returns (file_label, option_label), each (x, label) or None, for
+    # the .cfg option the selected symbol or choice sets: its file starting at 'left', and
+    # its [section] option right-justified to end at 'right', each kept clear of the help
+    # label between 'help_x' and 'help_end' and shortened or left out when it doesn't fit
+
+    item = _shown[_sel_node_i].item if _shown else None
+    if isinstance(item, Symbol) and item.choice is not None:
+        item = item.choice
+    if not isinstance(item, (Symbol, Choice)) or not item.name:
+        return None, None
+    locs = _cfg_locations().get(item.name)
+    if not locs:
+        return None, None
+
+    filename, section, option = locs[0]
+    more = " (+{} more)".format(len(locs) - 1) if len(locs) > 1 else ""
+
+    file_label = " ({}) ".format(filename)
+    file_label = (left, file_label) if left + len(file_label) <= help_x - 2 else None
+
+    option_label = None
+    for label in (" [{}] {}{} ".format(section, option, more), " {}{} ".format(option, more)):
+        if right - len(label) >= help_end + 2:
+            option_label = (right - len(label), label)
+            break
+    return file_label, option_label
 
 
 def _parent_menu(node):
@@ -1814,6 +1892,7 @@ def _reset_key(node): # Happy Hare: Added method
 
     if _reset_node(node) and had_value:
         _conf_changed = True
+        _cfg_locations_changed()
 
 
 def _reset_node(node): # Happy Hare: Added method
@@ -2083,6 +2162,7 @@ def _set_val(sc, val):
     if val != sc.str_value:
         sc.set_value(val)
         _conf_changed = True
+        _cfg_locations_changed() # Happy Hare: Added
 
         # Changing the value of the symbol might have changed what items in the
         # current menu are visible. Recalculate the state.
@@ -2179,6 +2259,7 @@ def _reparse(sym):
     kconf.warn = False
     _kconf = kconf
     del _link_return[:] # Happy Hare: Its nodes belong to the old tree
+    _cfg_locations_changed()
 
     nodes = {_node_key(node): node for node in kconf.node_iter()}
     nodes[("top",)] = kconf.top_node
