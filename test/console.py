@@ -75,6 +75,8 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
+API_PORT = 7125                                 # Moonraker's own port, so UIs find it unprompted
+API_PORT_TRIES = 10                             # next ports to try if the default is taken
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -500,7 +502,8 @@ class Console:
         self.tee = None                             # the ScrollbackTee, while interacting
         self.hh = None
         self.fil = None
-        self.bridge = None                          # --serve: the web UI's Moonraker API
+        self.bridge = None                          # the web UI's Moonraker API
+        self.bridge_error = None                    # why it did not start, if it was asked to
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
@@ -588,8 +591,8 @@ class Console:
         if not a.no_moonraker:
             self.hh.attach_moonraker(spools=self.hh.spools_for_gate_map())
 
-        if a.serve is not None:
-            self._start_bridge(a.serve)
+        if self._wants_bridge():
+            self._start_bridge(API_PORT if a.serve is None else a.serve, explicit=a.serve is not None)
 
         # LAST, so startup itself stays instant no matter what pacing is asked for - preloading
         # 13 gates at --pace 1 would otherwise cost minutes of virtual time before the first
@@ -614,20 +617,69 @@ class Console:
         self.clock_epoch = self.hh.reactor.monotonic()
         return self
 
-    def _start_bridge(self, port):
+    def _wants_bridge(self):
+        """
+        On by default at a terminal, off for scripts and tests. --serve forces it on and
+        --no-serve off. The terminal condition is not a nicety: the web UI is only served from
+        the idle tick under the prompt, and a test that built a Console would otherwise
+        fight every other one for the port.
+        """
+        a = self.args
+        if a.no_serve:
+            return False
+        if a.serve is not None:
+            return True
+        return not a.script and sys.stdin.isatty() and sys.stdout.isatty()
+
+    def _start_bridge(self, port, explicit=False):
         """
         Serve a Moonraker-compatible API so a real Mainsail/Fluidd can connect to this
         simulator (see test/hh/webui_bridge.py). The pause dialog is a gcode macro whose body
         is a no-op in the general-purpose harness, so it is made real here: the UI needs the
         genuine action:prompt lines to draw anything.
+
+        A port that is taken (a real Moonraker, or another console) is skipped for the next
+        free one unless the user named it, in which case that is reported and left alone.
         """
         printer = self.hh.printer
+        tries = 1 if explicit or port == 0 else API_PORT_TRIES
+        for candidate in range(port, port + tries):
+            try:
+                self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=candidate).start()
+                break
+            except OSError as exc:
+                self.bridge_error = 'Web API not started: port %d: %s' % (candidate, exc.strerror or exc)
+        if self.bridge is None:
+            return
+        self.bridge_error = None
         printer.harness_macro_effects['_MMU_ERROR_DIALOG'] = self._run_macro_body
-        self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port).start()
         responder = printer.lookup_object('respond', None)
         if responder is not None:
             responder.host_listener = self.bridge.host_output
-        self.info('Web UI API on http://127.0.0.1:%d - point Mainsail or Fluidd at it' % self.bridge.port)
+
+    def web_api_lines(self):
+        """What to tell the user about the web API: where it is and how to point a UI at it."""
+        if self.bridge is None:
+            return [self.bridge_error] if self.bridge_error else []
+        port = self.bridge.port
+        return ['Web API (for Mainsail/Fluidd): host 127.0.0.1  port %d  (http://127.0.0.1:%d)'
+                % (port, port),
+                '/web for how to connect; --no-serve turns it off.']
+
+    def _meta_web(self, args):
+        lines = self.web_api_lines()
+        if self.bridge is None:
+            print('\n'.join(lines) if lines else 'The web API is off. Start the console without --no-serve.')
+            return
+        port = self.bridge.port
+        for line in lines[:1]:
+            self.info(line)
+        self.info('Mainsail dev server, from a Mainsail checkout:\n'
+                  '  VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=%d npx vite serve\n'
+                  'A built Mainsail or Fluidd: add a printer at 127.0.0.1:%d in its connection '
+                  'dialog.\n'
+                  'Then /print start, /exhaust 1 and MMU_CHANGE_TOOL TOOL=1 make a pause '
+                  'dialog appear.' % (port, port))
 
     def _run_for_bridge(self, script):
         """A script sent from the web UI: shown and run as if typed at the prompt."""
@@ -1415,6 +1467,7 @@ class Console:
         ('/selector [POS|gate N|home|end] [UNIT=n]',
          'where the selector carriage physically is - set it as you would by hand'),
         ('/heat [TEMP]', 'set the extruder temperature'),
+        ('/web', 'where the web API is and how to point Mainsail or Fluidd at it'),
         ('/print [start|end]', 'act as a print in progress (or finished), so an error pauses it'),
         ('/pace [FACTOR]', 'how much of each move\'s real duration to spend: 0=instant '
                            '(default), 0.5=twice as fast as real, 1=real time '
@@ -2339,6 +2392,8 @@ class Console:
                       % (mmu.num_gates, self.args.temp))
         if not self.args.no_log:
             self.info('Log: %s' % self.hh.mmu_log)
+        for line in self.web_api_lines():
+            self.info(line)
         self.info('/help for meta-commands, MMU_HELP for Happy Hare commands, '
                   'Ctrl-D to quit.')
         if self.scrollback is not None and sys.stdout.isatty():
@@ -2880,10 +2935,13 @@ def parse_args(argv=None):
     p.add_argument('--no-moonraker', action='store_true',
                    help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
                         'unanswered - which is what a printer with Moonraker down looks like')
-    p.add_argument('--serve', nargs='?', const=7125, default=None, type=int, metavar='PORT',
-                   help='serve a Moonraker-compatible API (default port 7125) so a real '
-                        'Mainsail or Fluidd can connect to the simulator. Needs a terminal: '
-                        'the web UI is served between keystrokes')
+    p.add_argument('--serve', nargs='?', const=API_PORT, default=None, type=int, metavar='PORT',
+                   help='serve the Moonraker-compatible web API on this port (default %d). It is '
+                        'already on by default at a terminal, so this is for choosing the port or '
+                        'turning it on when not at one' % API_PORT)
+    p.add_argument('--no-serve', '--no_serve', dest='no_serve', action='store_true',
+                   help='do not serve the web API that lets Mainsail or Fluidd connect to the '
+                        'simulator')
     p.add_argument('--wall', dest='wall', action='store_true', default=None,
                    help='with --pace, sleep in real time so an operation can be watched '
                         '(the default at an interactive prompt, off for a script or pipe)')
