@@ -1,4 +1,8 @@
-# Happy Hare: Model behind menuconfig's 'sequence_editor' dialog.
+# Happy Hare MMU Software
+# Model behind menuconfig's 'sequence_editor' dialog
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # A sequence_editor symbol holds an ordered list of unique names. The value
 # alone cannot tell a rename from a remove plus an add, so this model tracks
@@ -6,7 +10,12 @@
 # a '<config>.<SYMBOL>.changes' JSON sidecar. It has no curses dependency so
 # the installer and tests can use it directly.
 #
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 import json
 import os

@@ -349,9 +349,10 @@ limit for every prompted pin.
    the tests for it are `make verify_pickle` (pickle consistency),
    `make test UT=test_menuconfig.py` (`test/installer/test_menuconfig.py`,
    menuconfig cursor behavior), and
-   profile tests. The vendored base is kconfiglib **v14.1** — the HH patches
-   are marked `# Happy Hare:` inline; if you re-sync upstream, that grep is
-   your change list.
+   profile tests. The vendored base is kconfiglib **v14.1**; the HH changes
+   are not marked inline, so to get the change list diff against an upstream
+   v14.1 copy (Klipper vendors one in `lib/kconfiglib/`, plus its own small
+   `kconfiglib.patch`).
 
 ## Machine- and board-specific defaults (cross-file)
 
