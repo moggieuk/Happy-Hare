@@ -378,6 +378,8 @@ Useful flags — `make console ARGS='...'`:
 --no-prime                     # leave the gate map blank instead of filling it in
 --seed N                       # seed for the primed gate map (default 0, reproducible)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
+--serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
+--no-serve                     # don't serve the web API for Mainsail/Fluidd
 --pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
 --wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
 --script FILE                  # run non-interactively (this is how it is tested)
@@ -496,6 +498,49 @@ Unit : ------------- unit0 -------------
 
 `#` and not `!`: `!! …` is already a command that raised and `?? …` one that does not
 exist, so a lone `!` would read as a quieter error rather than as a note.
+
+### Driving a real Mainsail or Fluidd — the web API
+
+At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
+(the next free port if that is taken, so it can sit beside a real Moonraker), so an
+unmodified Mainsail (or Fluidd) can connect to the simulator: the MMU panel shows live state,
+the console shows everything Happy Hare says, and `RESUME`, `UNLOCK` and anything else typed
+or clicked in the UI runs in the session as if typed at the prompt. The banner says where it
+is, and `/web` repeats it with the commands to connect:
+
+```text
+Web API (for Mainsail/Fluidd): host 127.0.0.1  port 7125  (http://127.0.0.1:7125)
+```
+
+It is a development and documentation aid for seeing what the web UIs really do with Happy
+Hare, such as the pause dialog; it is not a Moonraker clone. A method the UI asks for that is
+not served gets a JSON-RPC error, and `http://127.0.0.1:7125/sim/unsupported` lists them.
+`--no-serve` turns it off, and `--serve PORT` picks the port. Scripts and tests never start
+it unless `--serve` is given, so they cannot fight over the port.
+
+Point Mainsail at it by running its dev server with that address, from a Mainsail checkout:
+
+```bash
+VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=7125 npx vite serve
+```
+
+or, for a built Mainsail or Fluidd, add a printer at `127.0.0.1:7125` in its connection
+dialog.
+
+To see the pause dialog, pretend a print is running and make something fail:
+
+```text
+/print start
+/exhaust 1
+MMU_CHANGE_TOOL TOOL=1
+```
+
+The shipped `_MMU_ERROR_DIALOG` macro really runs while the API is on (macro bodies are
+otherwise no-ops in the harness), and its `RESPOND TYPE=command` lines reach the UI as the
+`// action:prompt_*` host commands Klipper would send, not as console text.
+
+Requests are only served between keystrokes, from the same idle tick as `/live`, so it needs a
+terminal. Everything lives in `test/hh/webui_bridge.py`, which is standard library only.
 
 ### The log
 
@@ -754,7 +799,8 @@ The test files, grouped by what they're about:
 | `test_mmu_roundtrip.py` | 54 | Klipper and Moonraker talking to each other |
 | **Presentation** | | |
 | `test_mmu_leds.py` | 34 | LED effects, flashes, the pending overlay |
-| `test_mmu_console.py` | 205 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_console.py` | 211 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_webui_bridge.py` | 8 | the Moonraker-compatible web API the console serves: handshake, status, gcode, and the pause dialog reaching a UI |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |
 
 Counts as the picker reports them.

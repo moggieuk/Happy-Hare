@@ -18,6 +18,7 @@ import io
 import logging
 import os
 import shutil
+import socket
 import sys
 import tempfile
 import time
@@ -2102,6 +2103,71 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('━', block[-1], 'no heavy rule closing the status section')
         self.assertNotIn('━', console.rule(), 'the light rule should not be heavy')
         self.assertIn('─', console.rule())
+
+    def test_print_meta_command_makes_an_error_pause_instead_of_fail(self):
+        console = self._make_console(['--no-log', '--header', 'off'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/print start')
+            self.assertTrue(console.hh.mmu.is_printing())
+            console.run_command('MMU_PAUSE MSG="Gate 1 jammed"')
+            self.assertTrue(console.hh.mmu.is_mmu_paused())
+            console.meta('/print end')
+        self.assertFalse(console.hh.mmu.is_printing())
+
+    def test_serve_starts_the_web_ui_api_and_close_stops_it(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve', '0'])
+        self.assertIsNotNone(console.bridge)
+        port = console.bridge.port
+        self.assertGreater(port, 0)
+        # The pause dialog is a real macro body here, and its host commands go to the UI
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/print start')
+            console.run_command('MMU_PAUSE MSG="Gate 1 jammed"')
+        sent = [e['message'] for e in console.bridge.gcode_store]
+        self.assertIn('// action:prompt_show', sent)
+        self.assertFalse([l for l in console.sink if l.startswith('action:prompt_')])
+        console.close()
+        with self.assertRaises(OSError):
+            socket.create_connection(('127.0.0.1', port), timeout=1)
+
+    def test_the_web_api_is_off_without_a_terminal_and_never_in_scripts(self):
+        # Tests and pipes must not fight over a port, so it only defaults on at a terminal
+        console = self._make_console(['--no-log', '--header', 'off'])
+        self.assertIsNone(console.bridge)
+        self.assertEqual(console.web_api_lines(), [])
+
+    def test_no_serve_beats_serve_and_accepts_both_spellings(self):
+        for flag in ('--no-serve', '--no_serve'):
+            console = self._make_console(['--no-log', '--header', 'off', '--serve', '0', flag])
+            self.assertIsNone(console.bridge, flag)
+
+    def test_the_banner_says_where_to_point_mainsail(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve', '0'])
+        port = console.bridge.port
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            console.banner()
+            console.meta('/web')
+        out = buf.getvalue()
+        self.assertIn('host 127.0.0.1  port %d' % port, out)
+        self.assertIn('--no-serve', out)
+        self.assertIn('VUE_APP_PORT=%d' % port, out)
+
+    def test_a_taken_default_port_moves_on_but_a_named_one_is_reported(self):
+        taken = socket.socket()
+        self.addCleanup(taken.close)
+        taken.bind(('127.0.0.1', 0))
+        taken.listen(1)
+        port = taken.getsockname()[1]
+        console = self._make_console(['--no-log', '--header', 'off'])
+        console._start_bridge(port)                  # the default: next free port
+        self.assertIsNotNone(console.bridge)
+        self.assertNotEqual(console.bridge.port, port)
+        console.bridge.close()
+        console.bridge = None
+        console._start_bridge(port, explicit=True)   # named: left alone, and said so
+        self.assertIsNone(console.bridge)
+        self.assertIn('Web API not started: port %d' % port, console.web_api_lines()[0])
 
     def test_meta_commands_do_not_crash(self):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',
