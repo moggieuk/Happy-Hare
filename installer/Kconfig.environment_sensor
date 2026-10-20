@@ -131,6 +131,12 @@ config BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
     Create [temperature_sensor] sections for the MCUs themselves for CPU temperature monitoring.
 
 if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
+  # One pair of limits applies to all generated MCU CPU sensors, including buffer MCUs.
+  temp_limit_prefix := MCU_ENVIRONMENT_SENSOR
+  temp_limit_suffix :=
+  temp_limit_pad := 24
+  source "components/Kconfig.temperature_limits"
+
   config BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
     bool "Hide in Mainsail / Fluidd"
     default n if MMU_HAS_PER_GATE_MCU
