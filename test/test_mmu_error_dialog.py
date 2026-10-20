@@ -163,6 +163,16 @@ class TestDialogContent(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertEqual(texts[-2:], ['Print requires tools: T0 (Gate0)', 'Manually ensure that T0 is loaded'])
 
+    def test_custom_msg_with_gcode_special_characters_still_shows(self):
+        self.start_print()
+        self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG').variables['custom_msg'] = \
+            ['Check the 3" tube', "Don't skip it", 'See C:\\notes']
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Gate 2 is empty')
+        dialog = self.last_dialog(self.prompts_since(mark))
+        self.assertEqual(self.texts(dialog)[-3:], ["Check the 3' tube", "Don't skip it", 'See C:/notes'])
+        self.assertEqual(len(self.footer_buttons(dialog)), 2)
+
 
 class TestDialogLifecycle(ErrorDialogTestCase):
 
@@ -181,6 +191,7 @@ class TestDialogLifecycle(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(prompts[prompts.index('action:prompt_end'):]))
         self.assertEqual(texts[0], 'Print is still paused')
         self.assertTrue(any(t.startswith('Cannot resume because') for t in texts), texts)
+        self.assertTrue(texts[-1].startswith('Finish loading or unloading the filament, run MMU_RECOVER'), texts)
 
     def test_failed_loaded_check_on_resume_pauses_with_a_dialog(self):
         self.start_print(0)
@@ -252,7 +263,7 @@ class TestActionableReasons(ErrorDialogTestCase):
         reason = self.mmu.psm.reason_for_pause
         self.assertIn('A clog has been detected on T0 (gate 0) by mmu_compression', reason)
         self.assertIn('FlowGuard trip reason: Compression stuck after 30.0mm motion', reason)
-        self.assertTrue(self.mmu.psm.pause_hint.startswith('Check the nozzle and extruder for a clog'))
+        self.assertTrue(self.mmu.psm.pause_hint.startswith('Check the nozzle and extruder of T0 (gate 0) for a clog'))
         self.assertIsNone(self.mmu.flowguard_trip_reason)
 
     def test_standalone_failure_does_not_suggest_resume(self):
