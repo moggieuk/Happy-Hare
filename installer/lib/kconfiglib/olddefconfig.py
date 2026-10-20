@@ -3,6 +3,12 @@
 # Copyright (c) 2018-2019, Ulf Magnusson
 # SPDX-License-Identifier: ISC
 
+#
+# Customized for Happy Hare
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+
 """
 Updates an old .config file or creates a new one, by filling in default values
 for all new symbols. This is the same as picking the default selection for all
@@ -20,26 +26,26 @@ import sys
 
 import kconfiglib
 
-# Happy Hare: only settings that carry HH_DEFAULT_TOKEN; other symbols are plumbing for these
+# Only settings that carry HH_DEFAULT_TOKEN; other symbols are plumbing for these
 _SETTING_PREFIXES = ('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_')
 
-# Happy Hare: a *_PREVIOUS member re-offers the saved value, so moving onto it changes nothing
+# A *_PREVIOUS member re-offers the saved value, so moving onto it changes nothing
 _PREVIOUS_MEMBER = re.compile(r'_PREVIOUS(_\d+)?$')
 
 
 def main():
     kconf = kconfiglib.standard_kconfig(__doc__)
     filename = kconfiglib.standard_config_filename()
-    before = read_values(kconf, filename) # Happy Hare: Added
+    before = read_values(kconf, filename)
     print(kconf.load_config())
     print(kconf.write_config())
-    # Happy Hare: stdout is discarded by the Makefile, so the report goes to stderr
+    # stdout is discarded by the Makefile, so the report goes to stderr
     if before is not None:
         for line in change_report(kconf, before, read_values(kconf, filename) or {}):
             print(line, file=sys.stderr)
 
 
-# Happy Hare: Added - report values the refresh changed without the user asking
+# Report values the refresh changed without the user asking
 
 def read_values(kconf, filename):
     """Map each assigned symbol name to (raw value, saved-as-default), or None if unreadable."""
