@@ -180,6 +180,9 @@ class TestDialogContent(ErrorDialogTestCase):
         prompts = self.prompts_since(mark)
         dialog = self.last_dialog(prompts[prompts.index('action:prompt_end'):])
         self.assertEqual(self.texts(dialog)[0], 'Print is still paused')
+        # One sentence runs on across the message's lines rather than being split by periods
+        self.assertIn('run MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER to reset state, then RESUME again', self.texts(dialog)[1])
+        self.assertNotIn('MMU_RECOVER.', self.texts(dialog)[1])
         # Happy Hare's per-call flag does not stick for the next, fresh pause
         macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
         self.assertFalse(macro.variables['still_paused'])
@@ -220,6 +223,19 @@ class TestDialogContent(ErrorDialogTestCase):
         self.mmu.handle_mmu_error('Gate 2 is empty')
         dialog = self.last_dialog(self.prompts_since(mark))
         self.assertEqual(self.texts(dialog)[-3:], ["Check the 3' tube", "Don't skip it", 'See C:/notes'])
+        self.assertEqual(len(self.footer_buttons(dialog)), 2)
+
+    def test_semicolons_in_a_title_or_custom_line_do_not_break_the_dialog(self):
+        # Klipper ends a command at ';' even inside quotes, which would lose the buttons
+        self.start_print()
+        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
+        macro.variables['title'] = 'MMU paused; intervention needed'
+        macro.variables['custom_msg'] = ['Check the tube; then the gate']
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Gate 2 is empty')
+        dialog = self.last_dialog(self.prompts_since(mark))
+        self.assertEqual(dialog[0], 'action:prompt_begin MMU paused, intervention needed')
+        self.assertIn('Check the tube, then the gate', self.texts(dialog))
         self.assertEqual(len(self.footer_buttons(dialog)), 2)
 
 

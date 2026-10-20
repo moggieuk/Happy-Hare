@@ -4339,7 +4339,7 @@ class MmuWrapperResumeCommand(BaseCommand):
                 self.mmu.log_always("Automatically set filament state to LOADED based on toolhead sensor")
             if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_LOADED]:
                 raise MmuError(
-                    "Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again",
+                    "Cannot resume because filament position not indicated as fully loaded (or unloaded).\nEnsure filament is loaded/unloaded and run MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER to reset state, then RESUME again",
                     hint="Finish loading or unloading the filament, run MMU_RECOVER (MMU_RECOVER LOADED=1 if it is loaded to the nozzle), then RESUME"
                 )
 
