@@ -43,9 +43,15 @@ def is_kalico(printer):
 
 class MmuError(Exception):
     """
-    Wrapper exception for all MMU errors.
+    Wrapper exception for all MMU errors. The optional hint tells the user what to do next.
     """
-    pass
+    def __init__(self, *args, hint=None):
+        super().__init__(*args)
+        self.hint = hint
+
+    def with_message(self, msg):
+        """The same error re-worded, e.g. with context prepended. Keeps the hint."""
+        return MmuError(msg, hint=self.hint)
 
 
 class MmuGateHomingMiss(MmuError):

@@ -137,4 +137,4 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
                                     mmu.initialize_encoder() # Encoder 0000
 
         except MmuError as ee:
-            mmu.handle_mmu_error("Filament eject for gate %d failed: %s" % (gate, str(ee)))
+            mmu.handle_mmu_error(ee.with_message("Filament eject for gate %d failed: %s" % (gate, str(ee))))

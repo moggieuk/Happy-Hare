@@ -120,4 +120,4 @@ class MmuRecoverCommand(BaseCommand):
             mmu.log_info(f"{mmu.get_filament_position_string()}", color=True)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

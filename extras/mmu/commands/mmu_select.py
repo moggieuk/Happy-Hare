@@ -80,4 +80,4 @@ class MmuSelectCommand(BaseCommand):
                 # Ensure correct tool/gate mapping and display visual to user
                 mmu.refresh_tool_gate(quiet=quiet)
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

@@ -829,6 +829,6 @@ class MmuCalibrateSelectorCommand(BaseCommand):
                     selector.disable_motors()
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
         finally:
             mmu.calibrating = False

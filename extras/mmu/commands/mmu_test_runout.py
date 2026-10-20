@@ -60,4 +60,4 @@ class MmuTestRunoutCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 mmu._runout(event_type=event_type, sensor="TEST")
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

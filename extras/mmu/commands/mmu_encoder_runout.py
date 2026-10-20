@@ -89,4 +89,4 @@ class MmuEncoderRunoutCommand(BaseCommand):
                 mmu._runout(sensor="Encoder")
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
