@@ -1,4 +1,4 @@
-# Happy Hare: Model behind menuconfig's 'sequence_editor' dialog.
+# Model behind menuconfig's 'sequence_editor' dialog.
 #
 # A sequence_editor symbol holds an ordered list of unique names. The value
 # alone cannot tell a rename from a remove plus an add, so this model tracks
