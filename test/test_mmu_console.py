@@ -18,6 +18,7 @@ import io
 import logging
 import os
 import shutil
+import socket
 import sys
 import tempfile
 import time
@@ -2102,6 +2103,32 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('━', block[-1], 'no heavy rule closing the status section')
         self.assertNotIn('━', console.rule(), 'the light rule should not be heavy')
         self.assertIn('─', console.rule())
+
+    def test_print_meta_command_makes_an_error_pause_instead_of_fail(self):
+        console = self._make_console(['--no-log', '--header', 'off'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/print start')
+            self.assertTrue(console.hh.mmu.is_printing())
+            console.run_command('MMU_PAUSE MSG="Gate 1 jammed"')
+            self.assertTrue(console.hh.mmu.is_mmu_paused())
+            console.meta('/print end')
+        self.assertFalse(console.hh.mmu.is_printing())
+
+    def test_serve_starts_the_web_ui_api_and_close_stops_it(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve', '0'])
+        self.assertIsNotNone(console.bridge)
+        port = console.bridge.port
+        self.assertGreater(port, 0)
+        # The pause dialog is a real macro body here, and its host commands go to the UI
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/print start')
+            console.run_command('MMU_PAUSE MSG="Gate 1 jammed"')
+        sent = [e['message'] for e in console.bridge.gcode_store]
+        self.assertIn('// action:prompt_show', sent)
+        self.assertFalse([l for l in console.sink if l.startswith('action:prompt_')])
+        console.close()
+        with self.assertRaises(OSError):
+            socket.create_connection(('127.0.0.1', port), timeout=1)
 
     def test_meta_commands_do_not_crash(self):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',
