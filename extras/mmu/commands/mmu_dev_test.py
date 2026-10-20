@@ -222,7 +222,7 @@ class MmuTestCommand(BaseCommand):
                                     mmu.wrap_gcode_command(mmu.p.post_load_macro, exception=False, wait=True)
                                 mmu._restore_toolhead_position('toolchange')
                     except MmuError as ee:
-                        mmu.handle_mmu_error(str(ee))
+                        mmu.handle_mmu_error(ee)
                 mmu.log_info("Statistics:%s" % mmu.last_statistics)
                 mmu.set_print_state("idle")
 

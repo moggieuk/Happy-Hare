@@ -56,4 +56,4 @@ class MmuSelectBypassCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 mmu.select_bypass()
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

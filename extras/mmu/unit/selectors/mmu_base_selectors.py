@@ -514,7 +514,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                     if grip:
                         mmu_unit.selector.filament_drive()
         except MmuError as ee:
-            mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+            mmu.handle_mmu_error(ee.with_message("Soaktest abandoned because of error: %s" % str(ee)))
 
 
 

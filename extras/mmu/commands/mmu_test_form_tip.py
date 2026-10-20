@@ -118,7 +118,7 @@ class MmuTestFormTipCommand(BaseCommand):
                     mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
 
 
     # Helper to infer type for setting gcode macro variables

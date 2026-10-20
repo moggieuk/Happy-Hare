@@ -673,6 +673,7 @@ class MmuSyncFeedback:
                 sensor = sm.get_sensor_obj(sensor_key)
 
                 if sensor is not None and sensor.runout_helper.sensor_enabled:
+                    self.mmu.flowguard_trip_reason = f_reason
                     sensor.runout_helper.note_clog_tangle(f_trigger)
                 elif sensor is not None:
                     self.mmu.log_debug(

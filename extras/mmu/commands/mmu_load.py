@@ -91,6 +91,6 @@ class MmuLoadCommand(BaseCommand):
                     mmu._persist_swap_statistics()
 
         except MmuError as ee:
-            mmu.handle_mmu_error("%s.\nOccurred when loading tool: %s" % (str(ee), mmu._last_toolchange))
+            mmu.handle_mmu_error(ee.with_message("%s.\nOccurred when loading tool: %s" % (str(ee), mmu._last_toolchange)))
             if mmu.tool_selected == TOOL_GATE_BYPASS:
                 mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN)

@@ -55,4 +55,4 @@ class MmuSensorClogCommand(ClogTangleMixin, BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 self._handle_clog_tangle(gcmd, "clog") # From mixin
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

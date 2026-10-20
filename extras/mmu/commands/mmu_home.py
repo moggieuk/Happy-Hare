@@ -87,5 +87,5 @@ class MmuHomeCommand(BaseCommand):
                         mmu.select_tool(tool)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
             return True # Abort UNIT=ALL iteration over any remaining units

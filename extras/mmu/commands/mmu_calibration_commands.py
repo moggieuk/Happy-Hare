@@ -188,7 +188,7 @@ class MmuCalibrateEncoderCommand(CalibrationMixin, BaseCommand):
                     _,_,_,_ = mmu.move_filament("Parking filament", -advance)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
 
         finally:
             mmu.calibrating = False
@@ -299,7 +299,7 @@ class MmuCalibrateGateCommand(CalibrationMixin, BaseCommand):
                         mmu.log_always("Phew! End of auto gate calibration")
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
 
         finally:
             mmu.calibrating = False
@@ -449,7 +449,7 @@ class MmuCalibrateBowdenCommand(CalibrationMixin, BaseCommand):
                             calibrator.update_clog_detection_length(cdl, push=True)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
         finally:
             mmu.calibrating = False
 
@@ -610,7 +610,7 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
                 mmu._unload_gate()
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
         finally:
             mmu.calibrating = False
 
@@ -811,7 +811,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
                 mmu.log_warning(msg)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
 
         finally:
             mmu.calibrating = False

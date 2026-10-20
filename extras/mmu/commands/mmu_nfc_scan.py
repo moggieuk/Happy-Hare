@@ -133,4 +133,4 @@ class MmuNfcScanCommand(BaseCommand):
                                     mmu.initialize_encoder() # Encoder 0000
 
         except MmuError as ee:
-            mmu.handle_mmu_error("NFC scan for gate %d failed: %s" % (gate, str(ee)))
+            mmu.handle_mmu_error(ee.with_message("NFC scan for gate %d failed: %s" % (gate, str(ee))))

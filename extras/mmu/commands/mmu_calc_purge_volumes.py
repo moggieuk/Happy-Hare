@@ -92,7 +92,7 @@ class MmuCalcPurgeVolumesCommand(BaseCommand):
                 raise MmuError("Error generating purge volumes: %s" % str(e))
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
 
 
     # Generate purge matrix based on filament colors

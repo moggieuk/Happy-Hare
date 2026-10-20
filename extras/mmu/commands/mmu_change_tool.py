@@ -251,7 +251,7 @@ class MmuChangeToolCommand(BaseCommand):
                                     break
                                 except MmuError as ee:
                                     if i == attempts - 1:
-                                        raise MmuError("%s.\nOccurred when changing tool: %s" % (str(ee), mmu._last_toolchange))
+                                        raise ee.with_message("%s.\nOccurred when changing tool: %s" % (str(ee), mmu._last_toolchange)) from ee
                                     mmu.log_error("%s.\nOccurred when changing tool: %s. Retrying..." % (str(ee), mmu._last_toolchange))
                                     # Try again but recover_filament_pos will ensure conservative treatment of unload
                                     mmu.recover_filament_pos()
@@ -289,4 +289,4 @@ class MmuChangeToolCommand(BaseCommand):
                             mmu.log_info("Retracting %.1fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

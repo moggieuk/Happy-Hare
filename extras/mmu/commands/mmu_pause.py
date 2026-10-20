@@ -54,6 +54,6 @@ class MmuPauseCommand(BaseCommand):
         if self.check_if_disabled(): return
 
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimic in-print
-        msg = gcmd.get('MSG', "MMU_PAUSE macro was directly called")
+        msg = gcmd.get('MSG', "Paused by MMU_PAUSE (no MSG reason given)")
 
         mmu.handle_mmu_error(msg, force_in_print)

@@ -630,7 +630,7 @@ class TestBootupOutput(unittest.TestCase):
             console.run_command('MMU_EJECT')
             console.run_command('MMU_PRELOAD GATE=0')
 
-        self.assertIn("Couldn't pick up filament at gate", output.getvalue())
+        self.assertIn("Couldn't pick up filament at gate 0", output.getvalue())
         self.assertEqual(console.hh.mmu.gate_status[0], 0)
         self.assertFalse(console.hh.sensor('mmu_entry_0').present)
 

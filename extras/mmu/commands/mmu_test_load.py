@@ -75,4 +75,4 @@ class MmuTestLoadCommand(BaseCommand):
                     mmu.load_sequence(bowden_move=length, skip_extruder=True)
 
         except MmuError as ee:
-            mmu.handle_mmu_error("Load test failed: %s" % str(ee))
+            mmu.handle_mmu_error(ee.with_message("Load test failed: %s" % str(ee)))

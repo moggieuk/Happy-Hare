@@ -104,4 +104,4 @@ class MmuTestTrackingCommand(BaseCommand):
                 mmu._unload_tool()
 
         except MmuError as ee:
-            mmu.handle_mmu_error("Tracking test failed: %s" % str(ee))
+            mmu.handle_mmu_error(ee.with_message("Tracking test failed: %s" % str(ee)))

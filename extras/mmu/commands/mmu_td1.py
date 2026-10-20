@@ -254,7 +254,7 @@ class MmuTd1Command(BaseCommand):
                     mmu.td1.devices[serial].owner = None
                     mmu.td1.refresh(serial, reset=True)
             except MmuError as ee:
-                mmu.handle_mmu_error(str(ee), recover=False)
+                mmu.handle_mmu_error(ee, recover=False)
                 return
             mmu.log_always("TD-1: rebooted all scanners on all units")
             return
@@ -294,7 +294,7 @@ class MmuTd1Command(BaseCommand):
         try:
             self._do_device_action(gcmd, gates, serial, operation)
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee), recover=False)
+            mmu.handle_mmu_error(ee, recover=False)
 
 
     def _do_device_action(self, gcmd, gates, serial, operation):

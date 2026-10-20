@@ -67,4 +67,4 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
                     self._handle_unload(gcmd)
 
         except MmuError as ee:
-            mmu.handle_mmu_error("%s.\nOccurred when unloading tool" % str(ee))
+            mmu.handle_mmu_error(ee.with_message("%s.\nOccurred when unloading tool" % str(ee)))

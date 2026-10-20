@@ -81,6 +81,9 @@ GATE_EMPTY = 0
 GATE_AVAILABLE = 1 # Available to load from either buffer or spool
 GATE_AVAILABLE_FROM_BUFFER = 2
 
+# Tail of most pause hints: RESUME continues the print but never reloads the tool itself
+HINT_RELOAD = "then reload the tool (MMU_RECOVER first if needed) and RESUME"
+
 FILAMENT_POS_UNKNOWN = -1
 FILAMENT_POS_UNLOADED = 0       # Parked in gate
 FILAMENT_POS_HOMED_GATE = 1     # Homed at either gate or mmu exit sensor (currently assumed mutually exclusive sensors)
