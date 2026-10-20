@@ -181,6 +181,7 @@ class TestDialogLifecycle(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(prompts[prompts.index('action:prompt_end'):]))
         self.assertEqual(texts[0], 'Print is still paused')
         self.assertTrue(any(t.startswith('Cannot resume because') for t in texts), texts)
+        self.assertTrue(texts[-1].startswith('Finish loading or unloading the filament, run MMU_RECOVER'), texts)
 
     def test_failed_loaded_check_on_resume_pauses_with_a_dialog(self):
         self.start_print(0)
@@ -252,7 +253,7 @@ class TestActionableReasons(ErrorDialogTestCase):
         reason = self.mmu.psm.reason_for_pause
         self.assertIn('A clog has been detected on T0 (gate 0) by mmu_compression', reason)
         self.assertIn('FlowGuard trip reason: Compression stuck after 30.0mm motion', reason)
-        self.assertTrue(self.mmu.psm.pause_hint.startswith('Check the nozzle and extruder for a clog'))
+        self.assertTrue(self.mmu.psm.pause_hint.startswith('Check the nozzle and extruder of T0 (gate 0) for a clog'))
         self.assertIsNone(self.mmu.flowguard_trip_reason)
 
     def test_standalone_failure_does_not_suggest_resume(self):

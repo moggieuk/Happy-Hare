@@ -4231,7 +4231,7 @@ class MmuController(MmuFilamentMovement):
             if flowguard_reason:
                 reason += "\nFlowGuard trip reason: %s" % flowguard_reason
             if event_type == "clog":
-                hint = "Check the nozzle and extruder for a clog of %s, %s" % (where, HINT_RELOAD)
+                hint = "Check the nozzle and extruder of %s for a clog, %s" % (where, HINT_RELOAD)
             elif event_type == "tangle":
                 hint = "Check the spool for %s for a tangle or snag, %s" % (self.gate_name(), HINT_RELOAD)
             else:
@@ -4310,7 +4310,10 @@ class MmuWrapperResumeCommand(BaseCommand):
                 self.mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
                 self.mmu.log_always("Automatically set filament state to LOADED based on toolhead sensor")
             if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_LOADED]:
-                raise MmuError("Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again")
+                raise MmuError(
+                    "Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again",
+                    hint="Finish loading or unloading the filament, run MMU_RECOVER (MMU_RECOVER LOADED=1 if it is loaded to the nozzle), then RESUME"
+                )
 
             # Prevent BASE_RESUME from moving toolhead
             if TOOLHEAD_POSITION_STATE in self.mmu.gcode_move.saved_states:
