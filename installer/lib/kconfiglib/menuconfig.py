@@ -3,6 +3,12 @@
 # Copyright (c) 2018-2019, Nordic Semiconductor ASA and Ulf Magnusson
 # SPDX-License-Identifier: ISC
 
+#
+# Customized for Happy Hare
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+
 """
 Overview
 ========

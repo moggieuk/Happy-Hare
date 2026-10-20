@@ -3,6 +3,12 @@
 # Copyright (c) 2018-2019, Ulf Magnusson
 # SPDX-License-Identifier: ISC
 
+#
+# Customized for Happy Hare
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+
 """
 Updates an old .config file or creates a new one, by filling in default values
 for all new symbols. This is the same as picking the default selection for all
