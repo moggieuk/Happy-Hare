@@ -163,6 +163,16 @@ class TestDialogContent(ErrorDialogTestCase):
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertEqual(texts[-2:], ['Print requires tools: T0 (Gate0)', 'Manually ensure that T0 is loaded'])
 
+    def test_custom_msg_with_gcode_special_characters_still_shows(self):
+        self.start_print()
+        self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG').variables['custom_msg'] = \
+            ['Check the 3" tube', "Don't skip it", 'See C:\\notes']
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Gate 2 is empty')
+        dialog = self.last_dialog(self.prompts_since(mark))
+        self.assertEqual(self.texts(dialog)[-3:], ["Check the 3' tube", "Don't skip it", 'See C:/notes'])
+        self.assertEqual(len(self.footer_buttons(dialog)), 2)
+
 
 class TestDialogLifecycle(ErrorDialogTestCase):
 
