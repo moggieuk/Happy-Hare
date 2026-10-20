@@ -161,5 +161,5 @@ class MmuSensorRunoutCommand(BaseCommand):
                     # Undo what runout sensor handling did
                     mmu.pause_resume.send_resume_command()
 
-        except MmuError as ee:
-            mmu.handle_mmu_error(ee)
+        except (MmuError, mmu.printer.command_error) as ee:
+            mmu.handle_mmu_error(mmu.mmu_error_from(ee))

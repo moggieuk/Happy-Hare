@@ -2453,6 +2453,19 @@ class MmuController(MmuFilamentMovement):
 # ERROR HANDLING AND RESUME LOGIC
 # -----------------------------------------------------------------------------------------------------------
 
+    def mmu_error_from(self, ee):
+        """
+        A Klipper command_error from part way through an MMU operation in a print, as an MmuError
+        so it pauses like any MMU failure. Out of a print, or once Klipper has shut down, the
+        original error is re-raised so the gcode command still fails as it always has.
+        """
+        if isinstance(ee, MmuError):
+            return ee
+        if self.printer.is_shutdown() or not self.is_in_print():
+            raise ee
+        return MmuError("Klipper error: %s" % str(ee), hint="Fix the cause of the Klipper error, %s" % HINT_RELOAD)
+
+
     # reason may be an MmuError, whose hint (what to do next) is shown with it.
     # recover=False suppresses the sensor-based position guess but keeps the normal
     # pause/error handling. For callers whose failure left the position genuinely unknown.
@@ -4215,8 +4228,9 @@ class MmuController(MmuFilamentMovement):
                         self.select_gate(next_gate) # Necessary if unloaded to waste gate
                         self.gate_maps.remap_tool(self.tool_selected, next_gate)
                         self._select_and_load_tool(self.tool_selected, purge=PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
-                    except MmuError as ee:
-                        raise ee.with_message("%s.\nOccurred during EndlessSpool swap of %s to gate %d" % (str(ee), where, next_gate)) from ee
+                    except (MmuError, self.printer.command_error) as e:
+                        ee = self.mmu_error_from(e)
+                        raise ee.with_message("%s.\nOccurred during EndlessSpool swap of %s to gate %d" % (str(ee), where, next_gate)) from e
 
                     self._continue_after("endless_spool")
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
@@ -4323,7 +4337,11 @@ class MmuWrapperResumeCommand(BaseCommand):
                     self.mmu.log_error("PAUSE_STATE not defined!")
 
             self.mmu.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None)
-            self.mmu._continue_after("resume", force_in_print=force_in_print)
+            try:
+                self.mmu._continue_after("resume", force_in_print=force_in_print)
+            except self.mmu.printer.command_error as ee:
+                # The print is already running again, so a failed restore move must pause it again
+                raise self.mmu.mmu_error_from(ee) from ee
         except MmuError as ee:
             self.mmu.handle_mmu_error(ee)
 

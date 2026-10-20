@@ -290,3 +290,7 @@ class MmuChangeToolCommand(BaseCommand):
 
         except MmuError as ee:
             mmu.handle_mmu_error(ee)
+        except mmu.printer.command_error as ee:
+            # Caught outside the load attempts so a Klipper error is never retried
+            ee = mmu.mmu_error_from(ee)
+            mmu.handle_mmu_error(ee.with_message("%s.\nOccurred when changing tool: %s" % (str(ee), mmu._last_toolchange)))
