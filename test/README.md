@@ -777,6 +777,7 @@ The test files, grouped by what they're about:
 | `test_mmu_bootup.py` | 36 | config load → `klippy:connect` → `klippy:ready` → `mmu:bootup` |
 | `test_mmu_profiles.py` | 43 | the same checks across the bootable machine profiles |
 | `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
+| `test_mmu_hall_endstop.py` | 5 | the hall-effect `[mmu_toolhead]` endstop booting on ADC pins and following their readings |
 | **Filament handling** | | |
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |
