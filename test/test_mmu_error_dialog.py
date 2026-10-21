@@ -94,17 +94,6 @@ class ErrorDialogTestCase(unittest.TestCase):
 
 class TestDialogContent(ErrorDialogTestCase):
 
-    def test_line_breaks_in_title_keep_the_dialog_valid(self):
-        self.start_print()
-        for separator in ('\n', '\r\n', '\r'):
-            with self.subTest(separator=repr(separator)):
-                self.mmu.p.error_dialog_title = 'MMU paused' + separator + 'Intervention needed'
-                mark = self.mark()
-                self.mmu._show_mmu_error_dialog('Print paused', 'Gate 1 jammed')
-                dialog = self.last_dialog(self.prompts_since(mark))
-                self.assertEqual(dialog[0], 'action:prompt_begin MMU paused Intervention needed')
-                self.assertEqual(len(self.footer_buttons(dialog)), 2)
-
     def test_line_breaks_in_custom_paragraphs_keep_the_dialog_valid(self):
         self.start_print()
         for separator in ('\n', '\r\n', '\r'):
@@ -162,7 +151,7 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertEqual(self.mmu.psm.reason_for_pause,
                          "Load sequence failed because:\nGate 1 jammed.\nOccurred when changing tool: T0 > T1")
 
-    def test_title_defaults_and_can_be_overridden_and_a_fresh_pause_has_no_headline(self):
+    def test_title_and_a_fresh_pause_has_no_headline(self):
         self.start_print()
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 1 jammed')
@@ -170,14 +159,6 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertEqual(dialog[0], 'action:prompt_begin Happy Hare Pause Notice')
         self.assertNotIn('Print paused', self.texts(dialog))
         self.assertEqual(self.texts(dialog)[0], 'Gate 1 jammed')
-
-        self.gcode('MMU_UNLOCK')
-        self.gcode('RESUME')
-        self.assertFalse(self.mmu.is_mmu_paused())
-        self.gcode('MMU_TEST_CONFIG error_dialog_title="My custom title" QUIET=1')
-        mark = self.mark()
-        self.mmu.handle_mmu_error('Gate 1 jammed')
-        self.assertEqual(self.last_dialog(self.prompts_since(mark))[0], "action:prompt_begin My custom title")
 
     def test_still_paused_headline_only_when_the_dialog_is_shown_again(self):
         self.start_print()
@@ -204,7 +185,7 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertFalse([p for p in dialog if p.startswith('action:prompt_button')])
 
         self.gcode('RESUME')
-        self.gcode('MMU_ERROR_DIALOG BUTTONS=abort')
+        self.gcode('MMU_ERROR_DIALOG ABORT=1')
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 2 is empty')
         dialog = self.last_dialog(self.prompts_since(mark))
@@ -227,14 +208,12 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertEqual(self.texts(dialog)[-3:], ['Check the 3" tube', "Don't skip it", 'See C:\\notes'])
         self.assertEqual(len(self.footer_buttons(dialog)), 2)
 
-    def test_semicolons_in_a_title_or_custom_line_are_kept(self):
+    def test_semicolons_in_a_custom_line_are_kept(self):
         self.start_print()
-        self.mmu.p.error_dialog_title = 'MMU paused; intervention needed'
         self.mmu.error_dialog.set(lines=['Check the tube; then the gate'])
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 2 is empty')
         dialog = self.last_dialog(self.prompts_since(mark))
-        self.assertEqual(dialog[0], 'action:prompt_begin MMU paused; intervention needed')
         self.assertIn('Check the tube; then the gate', self.texts(dialog))
         self.assertEqual(len(self.footer_buttons(dialog)), 2)
 
@@ -323,40 +302,14 @@ class TestDialogConfiguration(ErrorDialogTestCase):
         self.assertEqual(self.prompts_since(mark), [])
         self.assertTrue(any('Gate 2 is empty' in e for e in self.hh.errors))
 
-    def test_configured_buttons_with_a_custom_entry(self):
+    def test_abort_can_be_turned_off_again(self):
         self.start_print()
-        self.gcode('MMU_TEST_CONFIG error_dialog_buttons="PARK|MMU_PARK|info,unlock" QUIET=1')
-        self.assertEqual(self.footer_buttons(self.pause()), [
-            ['PARK', 'MMU_PARK', 'info'],
-            ['UNLOCK', 'MMU_UNLOCK', 'primary'],
-        ])
-
-    def test_empty_button_list_uses_the_defaults(self):
-        self.start_print()
-        self.gcode('MMU_TEST_CONFIG error_dialog_buttons="" QUIET=1')
-        self.assertEqual(self.mmu.p.error_dialog_buttons, [])
+        self.gcode('MMU_ERROR_DIALOG ABORT=1')
+        self.gcode('MMU_ERROR_DIALOG ABORT=0')
         self.assertEqual(self.footer_buttons(self.pause()), [
             ['RESUME', 'RESUME', 'warning'],
             ['UNLOCK', 'MMU_UNLOCK', 'primary'],
         ])
-
-    def test_extra_button_already_configured_is_shown_once(self):
-        self.start_print()
-        self.gcode('MMU_ERROR_DIALOG BUTTONS=unlock')
-        self.assertEqual(self.footer_buttons(self.pause()), [
-            ['UNLOCK', 'MMU_UNLOCK', 'primary'],
-            ['RESUME', 'RESUME', 'warning'],
-        ])
-
-    def test_invalid_buttons_are_rejected(self):
-        for script in ('MMU_ERROR_DIALOG BUTTONS=bogus',
-                       'MMU_ERROR_DIALOG BUTTONS="GO|MMU_HOME|loud"',
-                       'MMU_TEST_CONFIG error_dialog_buttons=bogus'):
-            with self.subTest(script=script):
-                with self.assertRaises(self.hh.gcode.error):
-                    self.hh.run_gcode(script)
-        self.assertEqual(self.mmu.error_dialog.extra_buttons, [])
-        self.assertEqual(self.mmu.p.error_dialog_buttons, ['resume', 'unlock'])
 
     def test_start_macro_message_survives_klipper_parsing(self):
         # The line MMU_START_SETUP renders from {custom_msg|join('\\n')}
@@ -370,20 +323,20 @@ class TestDialogConfiguration(ErrorDialogTestCase):
 
     def test_overrides_reset_at_print_end_and_next_print_start(self):
         self.start_print()
-        self.gcode('MMU_ERROR_DIALOG BUTTONS=abort MSG="Stale"')
+        self.gcode('MMU_ERROR_DIALOG ABORT=1 MSG="Stale"')
         self.gcode('MMU_PRINT_END STATE=cancelled')
-        self.assertEqual((self.mmu.error_dialog.extra_lines, self.mmu.error_dialog.extra_buttons), ([], []))
+        self.assertEqual((self.mmu.error_dialog.extra_lines, self.mmu.error_dialog.show_abort), ([], False))
 
-        self.mmu.error_dialog.set(lines=['Stale'], buttons=['abort']) # e.g. a manual call between prints
+        self.mmu.error_dialog.set(lines=['Stale'], show_abort=True) # e.g. a manual call between prints
         self.start_print()
-        self.assertEqual((self.mmu.error_dialog.extra_lines, self.mmu.error_dialog.extra_buttons), ([], []))
+        self.assertEqual((self.mmu.error_dialog.extra_lines, self.mmu.error_dialog.show_abort), ([], False))
 
     def test_overrides_set_during_print_start_survive_it(self):
         # MMU_START_SETUP runs MMU_PRINT_START before it sets its overrides, and print_stats
         # detection may run the full print start (AUTOMATIC=1) after them
         self.hh.printer.lookup_object('print_stats').set_state('printing')
         self.mmu.psm.on_print_start(pre_start_only=True)
-        self.gcode('MMU_ERROR_DIALOG BUTTONS=abort MSG="Start-up help"')
+        self.gcode('MMU_ERROR_DIALOG ABORT=1 MSG="Start-up help"')
         self.gcode('MMU_PRINT_START AUTOMATIC=1')
         self.gcode('MMU_PRINT_START')
         dialog = self.pause()
@@ -392,7 +345,7 @@ class TestDialogConfiguration(ErrorDialogTestCase):
 
     def test_reset_command_restores_the_defaults(self):
         self.start_print()
-        self.gcode('MMU_ERROR_DIALOG BUTTONS=abort MSG="Custom"')
+        self.gcode('MMU_ERROR_DIALOG ABORT=1 MSG="Custom"')
         self.gcode('MMU_ERROR_DIALOG RESET=1')
         dialog = self.pause()
         self.assertEqual(self.texts(dialog)[-1], 'After fixing, press RESUME to continue printing (UNLOCK restores the nozzle temperature first)')

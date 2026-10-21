@@ -13,43 +13,13 @@
 #
 import re
 
-BUTTON_STYLES = ('primary', 'secondary', 'info', 'warning', 'error')
-
-BUILTIN_BUTTONS = {
-    'abort':  ('ABORT',  'CANCEL_PRINT', 'error'),
-    'resume': ('RESUME', 'RESUME',       'warning'),
-    'unlock': ('UNLOCK', 'MMU_UNLOCK',   'primary'),
-}
-
-DEFAULT_ERROR_DIALOG_TITLE = "Happy Hare Pause Notice"
-DEFAULT_ERROR_DIALOG_BUTTONS = ["resume", "unlock"]
+ERROR_DIALOG_TITLE = "Happy Hare Pause Notice"
 DIALOG_RESUME_HINT = "After fixing, press RESUME to continue printing (UNLOCK restores the nozzle temperature first)"
 
-
-def parse_buttons(entries):
-    """
-    Convert button entries into (label, gcode, style) tuples. Each entry is either a
-    BUILTIN_BUTTONS key or a custom 'LABEL|GCODE[|style]'. Raises ValueError if invalid
-    """
-    buttons = []
-    for entry in entries:
-        entry = str(entry).strip()
-        builtin = BUILTIN_BUTTONS.get(entry.lower())
-        if builtin:
-            buttons.append(builtin)
-            continue
-        parts = [p.strip() for p in entry.split('|')]
-        if len(parts) not in (2, 3) or not parts[0] or not parts[1]:
-            raise ValueError(
-                "button '%s' must be one of %s or 'LABEL|GCODE[|style]'"
-                % (entry, ", ".join(BUILTIN_BUTTONS)))
-        style = parts[2].lower() if len(parts) == 3 and parts[2] else 'primary'
-        if style not in BUTTON_STYLES:
-            raise ValueError(
-                "button '%s' has invalid style '%s' (choose from %s)"
-                % (entry, style, ", ".join(BUTTON_STYLES)))
-        buttons.append((parts[0], parts[1], style))
-    return buttons
+# Footer buttons, left to right. UNLOCK is usually the first step (reheat, then fix) so is the right-most, primary button
+ABORT_BUTTON  = ('ABORT',  'CANCEL_PRINT', 'error')
+RESUME_BUTTON = ('RESUME', 'RESUME',       'warning')
+UNLOCK_BUTTON = ('UNLOCK', 'MMU_UNLOCK',   'primary')
 
 
 def flatten(text):
@@ -111,36 +81,28 @@ class MmuDialog:
 
 class MmuErrorDialog(MmuDialog):
     """
-    MMU pause dialog. Title and buttons come from parameters, with optional per-print text and
-    extra buttons set by the print start macros via MMU_ERROR_DIALOG
+    MMU pause dialog, with optional per-print text and ABORT button set by the print start
+    macros via MMU_ERROR_DIALOG
     """
 
     def __init__(self, mmu):
         super().__init__(mmu.gcode)
         self.mmu = mmu
-        self.extra_lines = []   # Shown after the reason, replacing DIALOG_RESUME_HINT when there is no action
-        self.extra_buttons = [] # Shown ahead (left) of the configured buttons
+        self.extra_lines = [] # Shown after the reason, replacing DIALOG_RESUME_HINT when there is no action
+        self.show_abort = False
 
-    def set(self, lines=None, buttons=None):
+    def set(self, lines=None, show_abort=None):
         if lines is not None:
             self.extra_lines = [flatten(l) for l in lines if flatten(l)]
-        if buttons is not None:
-            self.extra_buttons = parse_buttons(buttons)
+        if show_abort is not None:
+            self.show_abort = show_abort
 
     def reset(self):
         self.extra_lines = []
-        self.extra_buttons = []
-
-    def title(self):
-        return flatten(self.mmu.p.error_dialog_title) or DEFAULT_ERROR_DIALOG_TITLE
+        self.show_abort = False
 
     def buttons(self):
-        result = []
-        configured = self.mmu.p.error_dialog_buttons or DEFAULT_ERROR_DIALOG_BUTTONS
-        for button in self.extra_buttons + parse_buttons(configured):
-            if button not in result:
-                result.append(button)
-        return result
+        return ([ABORT_BUTTON] if self.show_abort else []) + [RESUME_BUTTON, UNLOCK_BUTTON]
 
     def show_error(self, headline, reason, hint=None, context=None, still_paused=False, unlock_first=False):
         """
@@ -166,4 +128,4 @@ class MmuErrorDialog(MmuDialog):
             lines.append("Fix: %s" % action)
         elif not self.extra_lines:
             lines.append(DIALOG_RESUME_HINT)
-        self.show(self.title(), [l for l in lines if l], footer_buttons=self.buttons())
+        self.show(ERROR_DIALOG_TITLE, [l for l in lines if l], footer_buttons=self.buttons())
