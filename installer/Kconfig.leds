@@ -235,7 +235,7 @@ if MMU_HAS_LEDS
           Set the Neopixel data pin on each gate MCU. Each configured gate gets
           its own generated LED chain.
 
-        @repeat var=i min=0 max=11@
+        @repeat var=i min=0 max=$(max_gate)@
           config PIN_NEOPIXEL_$(i)
             string
             prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
@@ -252,7 +252,7 @@ if MMU_HAS_LEDS
           Set the additional box-side Neopixel data pin for each EMU gate using
           an SLB v1 board.
 
-        @repeat var=i min=0 max=11@
+        @repeat var=i min=0 max=$(max_gate)@
           config PIN_NEOPIXEL_BOX_$(i)
             string
             prompt "Neopixel box gate $(i) pin" if PARAM_NUM_GATES > $(i)

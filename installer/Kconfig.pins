@@ -79,14 +79,14 @@ menu "Pins / TMC"
       help
         $(pin_help)
 
-    @repeat var=i min=1 max=11@
+    @repeat var=i min=1 max=$(max_gate)@
       config PARAM_GEAR_UART_ADDRESS_$(i)
         int
         default 0
         range 0 3
     @endrepeat@
 
-    @repeat var=i min=1 max=11@
+    @repeat var=i min=1 max=$(max_gate)@
       config PIN_GEAR_UART_$(i)
         string
       config PIN_GEAR_CS_$(i)
@@ -102,7 +102,7 @@ menu "Pins / TMC"
     @endrepeat@
 
     if MULTIGEAR
-      @repeat var=i min=1 max=11@
+      @repeat var=i min=1 max=$(max_gate)@
         if PARAM_NUM_GATES > $(i)
           comment "_"
           config PIN_GEAR_UART_$(i)
@@ -159,7 +159,7 @@ menu "Pins / TMC"
     string
   config PIN_SELECTOR_ENDSTOP
     string
-  @repeat var=i min=4 max=11@
+  @repeat var=i min=4 max=$(max_gate)@
     config PIN_GATE_ENDSTOP_$(i)
       string
   @endrepeat@
@@ -253,7 +253,7 @@ menu "Pins / TMC"
   menu "eSpooler pins"
     depends on MMU_HAS_ESPOOLER
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       if PARAM_NUM_GATES > $(i)
         comment "_"
         config PIN_ESPOOLER_EN_$(i)
@@ -299,7 +299,7 @@ menu "Pins / TMC"
   menu "Vent servo per-gate pins"
     depends on MMU_HAS_VENT_SERVO && MMU_HAS_PER_GATE_CONFIG
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_VENT_SERVO_$(i)
         string
         prompt "$(pad,$(pin_pad),Vent servo gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_VENT_SERVO_GATE_$(i)
@@ -317,7 +317,7 @@ menu "Pins / TMC"
   menu "Mmu eject buttons"
     depends on MMU_HAS_EJECT_BUTTONS
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_EJECT_BUTTON_$(i)
         string
         prompt "$(pad,$(pin_pad),Eject button $(i) pin)" if PARAM_NUM_GATES > $(i)
@@ -374,7 +374,7 @@ menu "Pins / TMC"
   menu "Mmu entry sensor pins"
     depends on MMU_HAS_SENSOR_ENTRY
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_ENTRY_SENSOR_$(i)
         string
         prompt "$(pad,$(pin_pad),Entry sensor $(i) pin)" if PARAM_NUM_GATES > $(i)
@@ -392,7 +392,7 @@ menu "Pins / TMC"
   menu "Mmu exit sensor pins"
     depends on MMU_HAS_SENSOR_EXIT
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_EXIT_SENSOR_$(i)
         string
         prompt "$(pad,$(pin_pad),Exit sensor $(i) pin)" if PARAM_NUM_GATES > $(i)
@@ -435,7 +435,7 @@ menu "Pins / TMC"
   menu "Neopixel per-gate pins" 
     depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_NEOPIXEL_$(i)
         string "$(pad,$(pin_pad),Neopixel gate $(i) pin)" if PARAM_NUM_GATES > $(i)
         validator "$(pin_validator)"
@@ -447,7 +447,7 @@ menu "Pins / TMC"
   menu "Neopixel box pins" 
     depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_NEOPIXEL_BOX_$(i)
         string "$(pad,$(pin_pad),Neopixel box gate $(i) pin)" if PARAM_NUM_GATES > $(i)
         validator "$(pin_validator)"
@@ -472,7 +472,7 @@ menu "Pins / TMC"
   menu "Managed fan per-gate pins"
     depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_FAN_$(i)
         string
         prompt "$(pad,$(pin_pad),Managed fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
@@ -511,7 +511,7 @@ menu "Pins / TMC"
   menu "Controller fan per-gate pins"
     depends on MMU_HAS_CONTROLLER_FAN && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_CONTROLLER_FAN_SETUP
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_CONTROLLER_FAN_$(i)
         string
         prompt "$(pad,$(pin_pad),Controller fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i)
@@ -539,7 +539,7 @@ menu "Pins / TMC"
   menu "Heater fan per-gate pins"
     depends on MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_HEATER_FAN_$(i)
         string
         prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)

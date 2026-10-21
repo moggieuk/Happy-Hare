@@ -108,7 +108,7 @@ if MMU_HAS_TD1
     endif
 
     if MMU_HAS_PER_GATE_TD1
-      @repeat var=i min=0 max=11@
+      @repeat var=i min=0 max=$(max_gate)@
         if PARAM_NUM_GATES > $(i)
 
           config PARAM_TD1_DEVICE_$(i)

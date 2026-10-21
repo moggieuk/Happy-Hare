@@ -793,6 +793,8 @@ class TestCfgHelpLabel(unittest.TestCase):
     """The help separator shows the .cfg option the selected symbol or choice sets"""
 
     KCONFIG = """
+max_gate := 11
+
 config PARAM_SPEED
     int "Speed"
     default 1

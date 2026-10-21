@@ -1439,7 +1439,7 @@ class MmuController(MmuFilamentMovement):
             return # Timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        elapsed = self.toolhead.get_last_move_time() - self.track[name]
+        elapsed = float(self.toolhead.get_last_move_time() - self.track[name])
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
@@ -1487,7 +1487,7 @@ class MmuController(MmuFilamentMovement):
         try:
             if gate >= 0:
                 if isinstance(count, float):
-                    self.gate_statistics[gate][key] = round(self.gate_statistics[gate][key] + count, 3)
+                    self.gate_statistics[gate][key] = round(float(self.gate_statistics[gate][key] + count), 3)
                 else:
                     self.gate_statistics[gate][key] += count
         except Exception as e:
@@ -1767,7 +1767,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _persist_swap_statistics(self):
-        self.statistics = {key: round(value, 2) if isinstance(value, float) else value for key, value in self.statistics.items()}
+        self.statistics = {key: round(float(value), 2) if isinstance(value, float) else value for key, value in self.statistics.items()}
         self.var_manager.set(VARS_MMU_SWAP_STATISTICS, self.statistics, write=True)
 
 

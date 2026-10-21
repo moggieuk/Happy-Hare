@@ -45,6 +45,10 @@ class TestBasicFunctions(unittest.TestCase):
         self.assertEqual(funcs.word_at(None, None, 'can0:a can1:b', '2'), 'can1:b')
         self.assertEqual(funcs.word_at(None, None, 'can0:a', '2'), '')
 
+    def test_last_index_of_a_count(self):
+        self.assertEqual(funcs.last_index(None, None, '12'), '11')
+        self.assertEqual(funcs.last_index(None, None, '1'), '0')
+
     def test_padding_never_truncates(self):
         self.assertEqual(funcs.pad(None, None, '5', 'x'), 'x    ')
         self.assertEqual(funcs.pad(None, None, '2', 'long'), 'long')

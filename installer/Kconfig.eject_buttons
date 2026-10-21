@@ -32,7 +32,7 @@ endif
 if MMU_HAS_EJECT_BUTTONS
 
   menu "Mmu eject buttons"
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       config PIN_EJECT_BUTTON_$(i)
         prompt "Eject button $(i) pin " if PARAM_NUM_GATES > $(i)
         validator "$(pin_validator)"

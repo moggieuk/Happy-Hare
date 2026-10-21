@@ -118,6 +118,7 @@ _BASE_ENV = {
     'CONFIG_MOONRAKER_HOME': '/nonexistent/moonraker',
     'CONFIG_SERVICE_KLIPPER': 'klipper.service',
     'F_PER_GATE_MCU': '',
+    'F_MAX_GATES': '',
     # `make test` exports KCONFIG_CONFIG=.mmu_config; saved-config-value must not read a
     # developer's real one. A unit parse of a multi-unit render sets KCONFIG_PARENT itself.
     'KCONFIG_CONFIG': '/nonexistent/.mmu_config',
@@ -329,6 +330,7 @@ def render(profile):
     # unchanged-boxturtle leak test would pass by returning a cached render.
     key = (profile.name,
            getattr(profile, 'unit_name', None),
+           getattr(profile, 'max_gates', None),
            tuple(sorted(profile.syms.items())),
            tuple(sorted(profile.extra_params.items())),
            tuple((u.name, u.mcu_name, u.index, tuple(sorted(u.syms.items())))
@@ -343,8 +345,14 @@ def render(profile):
     return out
 
 
+def profile_env(profile):
+    """The parse env a profile adds to every unit's, as install.sh exports it (-g)."""
+    max_gates = getattr(profile, 'max_gates', None)
+    return {'F_MAX_GATES': str(max_gates)} if max_gates else {}
+
+
 def _render_single_unit(profile):
-    env = dict(_SINGLE_UNIT_ENV)
+    env = dict(_SINGLE_UNIT_ENV, **profile_env(profile))
     if getattr(profile, 'unit_name', None):
         env.update(UNIT_NAME=profile.unit_name, MCU_NAME=profile.unit_name)
     with _env(env):
@@ -398,7 +406,7 @@ def _render_multi_unit(profile, units, via_files=False):
     # Entry point. UNIT_NAME is set to the joined list because Kconfig:159-162 defaults
     # MMU_UNITS from it; a profile that sets MMU_UNITS explicitly (as it should) just
     # overrides that with the same value.
-    with _env(dict(_SINGLE_UNIT_ENV,
+    with _env(dict(_SINGLE_UNIT_ENV, **profile_env(profile),
                    F_MULTI_UNIT='y',
                    F_MULTI_UNIT_ENTRY_POINT='y',
                    UNIT_NAME=','.join(names),
@@ -409,7 +417,7 @@ def _render_multi_unit(profile, units, via_files=False):
     entry_kc.write_config(parent)
 
     def unit_kconfig(unit):
-        with _env(dict(_SINGLE_UNIT_ENV,
+        with _env(dict(_SINGLE_UNIT_ENV, **profile_env(profile),
                        F_MULTI_UNIT='y',
                        F_MULTI_UNIT_ENTRY_POINT='',
                        UNIT_NAME=unit.name,
@@ -429,7 +437,8 @@ def _render_multi_unit(profile, units, via_files=False):
 
     if via_files:
         import installer.build as build
-        with _env(dict(_SINGLE_UNIT_ENV, KCONFIG_CONFIG=parent)), _chdir(INSTALLER):
+        with _env(dict(_SINGLE_UNIT_ENV, **profile_env(profile), KCONFIG_CONFIG=parent)), \
+                _chdir(INSTALLER):
             entry_kc = build.KConfig(parent)
             unit_kcs = [(unit, build.KConfig('%s_%s' % (parent, unit.name)))
                         for unit, _kc in unit_kcs]

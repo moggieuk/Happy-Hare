@@ -223,9 +223,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 class TestPinValidator(unittest.TestCase):
 
     # Pins that take a comma-separated list, validated by pin_list_validator
-    FAN_PINS = ('PIN_HEATER_FAN', 'PIN_FAN', 'PIN_CONTROLLER_FAN')
-    LIST_PINS = ({'PIN_FAN_SPARE'} | set(FAN_PINS)
-                 | {'%s_%d' % (pin, gate) for pin in FAN_PINS for gate in range(12)})
+    LIST_PINS = re.compile(r'PIN_FAN_SPARE|(PIN_HEATER_FAN|PIN_FAN|PIN_CONTROLLER_FAN)(_\d+)?')
 
     @classmethod
     def setUpClass(cls):
@@ -248,7 +246,7 @@ class TestPinValidator(unittest.TestCase):
     def test_every_prompted_pin_has_the_shared_validator(self):
         pins = self._prompted_pins()
         self.assertGreater(len(pins), 100)
-        expected = lambda sym: self.list_pattern if sym.name in self.LIST_PINS else self.pattern
+        expected = lambda sym: self.list_pattern if self.LIST_PINS.fullmatch(sym.name) else self.pattern
         self.assertEqual([sym.name for sym in pins
                           if sym.validator is None or sym.validator.pattern != expected(sym)], [])
 
@@ -308,7 +306,7 @@ class TestPinValidator(unittest.TestCase):
                         checked += 1
                         value = re.sub(r'\$\((\w+)\)', lambda m: macros.get(m.group(1), m.group(0)),
                                        match.group(1))
-                        validator = self.list_validator if sym in self.LIST_PINS else self.validator
+                        validator = self.list_validator if self.LIST_PINS.fullmatch(sym) else self.validator
                         if not validator.fullmatch(value.strip()):
                             failures.append('%s:%d %s = "%s"' % (
                                 os.path.relpath(path, REPO_ROOT), linenr, sym, match.group(1)))
@@ -318,10 +316,10 @@ class TestPinValidator(unittest.TestCase):
     def test_every_profile_pin_value_passes(self):
         failures = set()
         for name, profile in sorted(profiles.PROFILES.items()):
-            with cfg._env(cfg._SINGLE_UNIT_ENV):
+            with cfg._env(dict(cfg._SINGLE_UNIT_ENV, **cfg.profile_env(profile))):
                 kc = cfg._kconfig('pin_validator_' + name, profile.syms)
             for sym in kc.unique_defined_syms:
-                validator = self.list_validator if sym.name in self.LIST_PINS else self.validator
+                validator = self.list_validator if self.LIST_PINS.fullmatch(sym.name) else self.validator
                 if sym.name.startswith('PIN_') and not validator.fullmatch(sym.str_value.strip()):
                     failures.add((name, sym.name, sym.str_value))
         self.assertEqual(sorted(failures), [])

@@ -90,7 +90,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER
     help
       Configure the temperature and humidity sensor of each gate.
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       if PARAM_NUM_GATES > $(i)
 
         config PARAM_ENVIRONMENT_SENSOR_$(i)
@@ -155,7 +155,7 @@ if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
     default "_$(UNIT_NAME)_mcu_buffer" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
     default "$(UNIT_NAME)_mcu_buffer"
 
-  @repeat var=i min=0 max=11@
+  @repeat var=i min=0 max=$(max_gate)@
     config PARAM_MCU_ENVIRONMENT_SENSOR_NAME_$(i)
       string
       default "_$(UNIT_NAME)_mcu$(i)" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS

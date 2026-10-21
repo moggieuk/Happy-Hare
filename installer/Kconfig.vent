@@ -69,7 +69,7 @@ menu "Vent servo h/w config"
   servo_angle_hint    :=
   source "components/Kconfig.servo"
 
-  @repeat var=i min=0 max=11@
+  @repeat var=i min=0 max=$(max_gate)@
     menuconfig PARAM_VENT_SERVO_GATE_$(i)
       bool
       prompt "Gate $(i) vent servo" if MMU_HAS_PER_GATE_CONFIG && PARAM_NUM_GATES > $(i)

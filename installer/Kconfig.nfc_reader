@@ -327,7 +327,7 @@ if MMU_HAS_NFC_READER
     nfc_gate_pad := 28
 
     if MMU_HAS_PER_GATE_NFC_READERS
-      @repeat var=i min=0 max=11@
+      @repeat var=i min=0 max=$(max_gate)@
         if PARAM_NUM_GATES > $(i)
 
           config PARAM_NFC_READER_$(i)

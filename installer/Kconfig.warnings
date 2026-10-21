@@ -57,7 +57,7 @@ config SW7
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=34@
+  @repeat var=i min=1 max=35@
     default y if W$(i)
   @endrepeat@
 
@@ -86,7 +86,7 @@ config W6
 config W7
     def_bool y if MMU_HAS_FANS && PIN_FAN = "" && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
 
-@repeat var=i min=0 max=11@
+@repeat var=i min=0 max=$(max_gate)@
 config W7
     def_bool y if MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP && \
         PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i) && PIN_FAN_$(i) = ""
@@ -114,21 +114,22 @@ config W13
     def_bool y if MMU_HAS_HEATER && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && \
         PARAM_FILAMENT_HEATER = ""
 
-@repeat var=i min=0 max=11@
+@repeat var=i min=0 max=$(max_gate)@
 config W13
     def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_SETUP && \
         PARAM_NUM_GATES > $(i) && PARAM_FILAMENT_HEATER_GATE_$(i) && \
         PARAM_FILAMENT_HEATER_$(i) = ""
 @endrepeat@
 
+config HAS_ENVIRONMENT_SENSOR_NAME
+    bool
+    default y if PARAM_ENVIRONMENT_SENSOR != ""
+    @repeat var=i min=0 max=$(max_gate)@
+    default y if PARAM_ENVIRONMENT_SENSOR_$(i) != ""
+    @endrepeat@
+
 config W14
-    def_bool y if MMU_HAS_ENVIRONMENT_SENSOR && PARAM_ENVIRONMENT_SENSOR = "" && \
-        PARAM_ENVIRONMENT_SENSOR_0 = "" && PARAM_ENVIRONMENT_SENSOR_1 = "" && \
-        PARAM_ENVIRONMENT_SENSOR_2 = "" && PARAM_ENVIRONMENT_SENSOR_3 = "" && \
-        PARAM_ENVIRONMENT_SENSOR_4 = "" && PARAM_ENVIRONMENT_SENSOR_5 = "" && \
-        PARAM_ENVIRONMENT_SENSOR_6 = "" && PARAM_ENVIRONMENT_SENSOR_7 = "" && \
-        PARAM_ENVIRONMENT_SENSOR_8 = "" && PARAM_ENVIRONMENT_SENSOR_9 = "" && \
-        PARAM_ENVIRONMENT_SENSOR_10 = "" && PARAM_ENVIRONMENT_SENSOR_11 = ""
+    def_bool y if MMU_HAS_ENVIRONMENT_SENSOR && !HAS_ENVIRONMENT_SENSOR_NAME
 
 # Also for a buffer this unit declares the sensors of without defining it
 config W15
@@ -172,7 +173,7 @@ config W21
     def_bool y if MMU_HAS_HEATER && MMU_HAS_HEATER_FANS && !MMU_HAS_PER_GATE_CONFIG && \
         !CUSTOM_HEATER_FAN_SETUP && PIN_HEATER_FAN = ""
 
-@repeat var=i min=0 max=11@
+@repeat var=i min=0 max=$(max_gate)@
 config W21
     def_bool y if MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP && \
         PARAM_NUM_GATES > $(i) && \
@@ -191,7 +192,7 @@ config W23
          (!BOOL_GEAR_TMC_SPI && PIN_GEAR_UART = ""))
 
 # Check additional motors that are present in the rendered configuration.
-@repeat var=i min=1 max=11@
+@repeat var=i min=1 max=$(max_gate)@
 config W22
     def_bool y if MULTIGEAR && PARAM_NUM_GATES > $(i) && \
         (PIN_GEAR_STEP_$(i) = "" || PIN_GEAR_DIR_$(i) = "")
@@ -235,7 +236,7 @@ config W30
 config W31
     def_bool y if MMU_HAS_VENT_SERVO && PIN_VENT_SERVO = "" && !MMU_HAS_PER_GATE_CONFIG
 
-@repeat var=i min=0 max=11@
+@repeat var=i min=0 max=$(max_gate)@
 config W31
     def_bool y if MMU_HAS_VENT_SERVO && MMU_HAS_PER_GATE_CONFIG && \
         PARAM_NUM_GATES > $(i) && PARAM_VENT_SERVO_GATE_$(i) && PIN_VENT_SERVO_$(i) = ""
@@ -245,7 +246,7 @@ config W32
     def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG && \
         PIN_CONTROLLER_FAN = ""
 
-@repeat var=i min=0 max=11@
+@repeat var=i min=0 max=$(max_gate)@
 config W32
     def_bool y if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG && \
         PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i) && PIN_CONTROLLER_FAN_$(i) = ""
@@ -272,6 +273,9 @@ config W34
     def_bool y if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER && \
         "$(owner-name,encoder,$(i))" != "" && PARAM_ENCODER_NAME = "$(owner-name,encoder,$(i))"
 @endrepeat@
+
+config W35
+    def_bool y if PARAM_NUM_GATES > $(max_gates)
 
 
 
@@ -328,5 +332,6 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Controller fan is enabled but no MCU pin defined"                                 if W32
     comment "Buffer name is blank or another unit's buffer name [Buffer config]"               if W33
     comment "Encoder name is blank or another unit's encoder name [Encoder config]"            if W34
+    comment "More gates than the $(max_gates) menuconfig can configure: ./install.sh -g <gates>" if W35
   endif
 endif
