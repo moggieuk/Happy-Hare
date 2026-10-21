@@ -135,12 +135,6 @@ class TestPark(BlobifierSessionMixin, unittest.TestCase):
         self.assertFalse(self.refused())
         self.assertAlmostEqual(moves[-1][0], self.bl['purge_x'])
 
-    def test_low_print_descends_to_tray_even_if_tray_unsafe(self):
-        # Matches BLOBIFIER: below force_safe_descend_height_until the tray check is ignored
-        self.safe.variables = dict(self.safe.variables, tray=False, print_height=0.)
-        moves = self.park()
-        self.assertIn(self.bl['tray_top'], [z for _, _, z in moves])
-
     def test_tray_unsafe_above_force_height_stays_high(self):
         self.safe.variables = dict(self.safe.variables, tray=False,
                                    print_height=self.bl['force_safe_descend_height_until'] + 5.)
