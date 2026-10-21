@@ -40,4 +40,6 @@ if BOARD_TYPE_EASY_BRD_RP2040
     default "^$(MCU_NAME):gpio3" if MMU_HAS_ENCODER
   config PIN_SHARED_EXIT_SENSOR
     default "^$(MCU_NAME):gpio3" if !MMU_HAS_ENCODER 
+
+# No fan headers
 endif

@@ -18,17 +18,30 @@ def _pair(name, owner, sharer):
 
 BOXTURTLE = profiles.get('boxturtle').syms
 TRADRACK = profiles.get('tradrack').syms
-BUFFER_SHARER = dict(TRADRACK, MMU_HAS_SYNC_FEEDBACK_BUFFER=True,
-                     MMU_SHARED_SYNC_FEEDBACK_BUFFER=True)
+ENCODER = profiles.get('encoder').syms
+
+
+def _buffer_sharer(syms, name):
+    return dict(syms, MMU_HAS_SYNC_FEEDBACK_BUFFER=True, MMU_SHARED_SYNC_FEEDBACK_BUFFER=True,
+                PARAM_SYNC_FEEDBACK_BUFFER_NAME=name)
+
+
+BUFFER_SHARER = _buffer_sharer(TRADRACK, 'unit0')
 
 CASES = [p for p in profiles.PROFILES.values() if p.units] + [
     profiles.SHARED_ENCODER,
     _pair('via_files_buffer_sharer', BOXTURTLE, BUFFER_SHARER),
-    _pair('via_files_qidi_owner', profiles.get('qidi').syms, dict(BOXTURTLE,
-                                                                  MMU_SHARED_SYNC_FEEDBACK_BUFFER=True)),
+    _pair('via_files_qidi_owner', profiles.get('qidi').syms, _buffer_sharer(BOXTURTLE, 'unit0')),
     profiles.Profile('via_files_sharer_first', units=[
-        profiles.UnitProfile('unit0', syms=BUFFER_SHARER, index=0),
+        profiles.UnitProfile('unit0', syms=_buffer_sharer(TRADRACK, 'unit1'), index=0),
         profiles.UnitProfile('unit1', syms=BOXTURTLE, index=1)]),
+    _pair('via_files_custom_owner_names',
+          dict(ENCODER, PARAM_SYNC_FEEDBACK_BUFFER_NAME='box_buf', PARAM_ENCODER_NAME='box_enc'),
+          dict(_buffer_sharer(TRADRACK, 'box_buf'), MMU_HAS_ENCODER=True,
+               MMU_SHARED_ENCODER=True, PARAM_ENCODER_NAME='box_enc')),
+    _pair('via_files_private_buffer', BOXTURTLE,
+          dict(_buffer_sharer(TRADRACK, 'private_buf'), MMU_HAS_SENSOR_BUFFER_TENSION=True,
+               CHOICE_BUFFER_SPRING_STATE_TENSION=True)),
 ]
 
 

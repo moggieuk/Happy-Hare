@@ -43,9 +43,24 @@ def is_kalico(printer):
 
 class MmuError(Exception):
     """
-    Wrapper exception for all MMU errors.
+    Wrapper exception for all MMU errors. The optional hint tells the user what to do next.
     """
-    pass
+    def __init__(self, *args, hint=None, context=None):
+        super().__init__(*args)
+        self.hint = hint
+        self.context = context # What was being attempted, already at the end of the message
+
+    def with_message(self, msg):
+        """The same error re-worded, e.g. with context prepended. Keeps the hint and context."""
+        return MmuError(msg, hint=self.hint, context=self.context)
+
+    def with_context(self, context):
+        """
+        The same error, saying what was being attempted ("Occurred when changing tool: ...").
+        The message ends with it, as the console and log show it, but it is also kept apart so
+        the pause dialog can lead with it.
+        """
+        return MmuError("%s.\n%s" % (str(self), context), hint=self.hint, context=context)
 
 
 class MmuGateHomingMiss(MmuError):

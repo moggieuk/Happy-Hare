@@ -187,7 +187,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links kconfig_needs_update olddefconfig kconfig_import kconfig_baseline_clean verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -303,13 +303,21 @@ restart_service = \
 ##### Build targets #####
 #########################
 
+# Interactive Refresh only: each Kconfig file as it was just before menuconfig opened, so
+# the build applies just what menuconfig changed (installer/cfg_import.py writes them)
+MENUCONFIG_BASE := $(OUT)/menuconfig_base
+summary_base = $(or $(HH_RESTORED_FROM),$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu))
+baseline_pickles := $(if $(filter y,$(F_MENUCONFIG_BASELINE)), \
+	$(addsuffix .pickle,$(filter-out %.pickle,$(wildcard $(MENUCONFIG_BASE)/$(notdir $(KCONFIG_CONFIG))*))))
+
 KCONFIG_PREREQS := \
 	$(KCONFIG_CONFIG) \
-	$(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle
+	$(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle \
+	$(baseline_pickles)
 
 ## Conditional per-unit prerequisite ".mmu_config_<unit>" when multi-unit, else to ".mmu_config" (and pickles)
 KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
-	$(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle, \
+	$(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle $(baseline_pickles), \
 	$(KCONFIG_PREREQS))
 
 # Link existing config files to the out/in directory to break circular dependency
@@ -440,6 +448,10 @@ install: $(install_targets)
 	$(Q)$(if $(wildcard $(KCONFIG_CONFIG).unit_migration),$(eval restart_klipper = 1))
 	-$(Q)$(PY) -m installer.unit_migration apply --kconfig "$(KCONFIG_CONFIG)"
 	-$(Q)$(PY) -m installer.unit_migration gate-lists --kconfig "$(KCONFIG_CONFIG)" --config-home "$(KLIPPER_CONFIG_HOME)"
+	@# What this install changed in the Happy Hare .cfg files, against the backup it made or the one
+	@# install.sh restored (none on a first install)
+	-$(Q)[ ! -d "$(summary_base)" ] || $(PY) -m installer.cfg_diff $(V) $(if $(HH_RESTORED_FROM),--restored) \
+		--replaced "$(HH_REPLACED_REPORT)" "$(summary_base)" "$(KLIPPER_CONFIG_HOME)/mmu"
 	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
@@ -547,6 +559,9 @@ $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) $(kconfig_sources) 
 $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle: $(KCONFIG_CONFIG)_% $(kconfig_sources) | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG)_$*)$(C_OFF)"
 	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)_$*"
+
+$(MENUCONFIG_BASE)/%.pickle: $(MENUCONFIG_BASE)/% | python_deps
+	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$<" "$@"
 
 
 diff= \
@@ -755,3 +770,14 @@ kconfig_needs_update:
 olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"
+
+# Interactive Refresh: report .cfg values menuconfig doesn't show to HH_IMPORT_REPORT and
+# save the menuconfig baseline, or with HH_IMPORT_APPLY import those reported. A unit's
+# config has no paths, so install.sh passes the top level's in HH_CONFIG_HOME
+kconfig_import: | python_deps
+	-$(Q)$(PY) -m installer.cfg_import $(V) --kconfig "$(KCONFIG_CONFIG)" \
+		--config-home "$(or $(HH_CONFIG_HOME),$(KLIPPER_CONFIG_HOME))" \
+		$(if $(HH_IMPORT_APPLY),--apply,--report) "$(HH_IMPORT_REPORT)" --baseline "$(MENUCONFIG_BASE)"
+
+kconfig_baseline_clean:
+	$(Q)rm -rf "$(MENUCONFIG_BASE)"

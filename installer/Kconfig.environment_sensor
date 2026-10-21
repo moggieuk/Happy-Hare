@@ -14,14 +14,19 @@
 #     PARAM_ENVIRONMENT_SENSOR_I2C_BUS
 #
 #   CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE (i2c bus type)
-#     PIN_ENVIRONMENT_SENSOR_SCL
-#     PIN_ENVIRONMENT_SENSOR_SDA
+#     PIN_ENVIRONMENT_SENSOR_I2C_SCL
+#     PIN_ENVIRONMENT_SENSOR_I2C_SDA
 #
 # Per-gate:
 #   as above with _<gate_index> extension
 #
-# The sensor type, report time, HTU21D options and i2c address come from
-# components/Kconfig.environment_sensor_{type,address}, shared with Kconfig.per_gate
+# MCU CPU temperature sensors:
+#   BOOL_CREATE_MCU_ENVIRONMENT_SENSORS, BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+#   PARAM_MCU_ENVIRONMENT_SENSOR_NAME, PARAM_BUFFER_MCU_ENVIRONMENT_SENSOR_NAME
+#   PARAM_MCU_ENVIRONMENT_SENSOR_NAME_X (per-gate MCU)
+#
+# Everything but the sensor name comes from components/Kconfig.environment_sensor,
+# shared by both layouts. The board files offer the i2c buses
 #
 # SUPPORTED SENSOR TYPES
 #   - AHT10     (humidity/temperature, legacy name known to every Klipper/Kalico)
@@ -34,9 +39,7 @@
 #   - SHT3X     (humidity/temperature, SHT30/SHT31/SHT35)
 #   - LM75      (temperature only)
 #
-# SUPPORTED I2C HARDWARE BUS OPTIONS:
-#   - i2c2_PB10_PB11  (default)
-#   - i2c3_PB3_PB4    (alternative)
+# I2C HARDWARE BUSES: offered by the board file, plus a custom name (blank = MCU default)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
@@ -57,6 +60,7 @@ if !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
       Select if the MMU has a humidity/temperature sensor in the filament storage enclosure
 endif
 comment "$(misc_hardware_hint)" if MMU_HAS_ENVIRONMENT_SENSOR && CUSTOM_ENVIRONMENT_SENSOR_SETUP
+  dim
 
 
 # -------------------------------------
@@ -76,73 +80,41 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
         E.g., "temperature_sensor MMU_enclosure" or just "MMU_enclosure"
 
 
-    # -------------------------------------
-    # Single MCU: all settings on one page
-    # -------------------------------------
+    env_sensor_suffix :=
+    source "components/Kconfig.environment_sensor"
+  endmenu
+endif
 
-      choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE
-        prompt "i2c bus type      "
-        default CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
-        help
-          Select whether to use hardware or software i2c bus for the sensor
+if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER_GATE_CONFIG
+  menu "Environment sensor h/w config"
+    help
+      Configure the temperature and humidity sensor of each gate.
 
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
-          bool "Hardware i2c"
+    @repeat var=i min=0 max=11@
+      if PARAM_NUM_GATES > $(i)
+
+        config PARAM_ENVIRONMENT_SENSOR_$(i)
+          string
+
+        menuconfig PARAM_ENVIRONMENT_SENSOR_GATE_$(i)
+          bool "Gate $(i) sensor"
+          default y
           help
-            Use hardware i2c bus (faster, recommended)
+            Create an environment sensor for this gate.
 
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
-          bool "Software i2c"
-          help
-            Use software i2c bus
-      endchoice
+        if PARAM_ENVIRONMENT_SENSOR_GATE_$(i)
 
-      env_sensor_suffix :=
-      source "components/Kconfig.environment_sensor_type"
-
-      env_sensor_suffix :=
-      source "components/Kconfig.environment_sensor_address"
-
-      if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
-        choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
-          prompt "i2c bus name      "
-          default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3 if BOARD_TYPE_EBB_GEN1
-          default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-          help
-            Select the hardware i2c bus to use for the environment sensor
-
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-            bool "i2c2_PB10_PB11"
+          config PARAM_ENVIRONMENT_SENSOR_$(i)
+            string "Sensor name       "
+            default "$(UNIT_NAME)_Env$(i)"
             help
-              Hardware i2c bus i2c2 with SCL on PB10 and SDA on PB11
+              Name of the environment sensor section in the printer config.
 
-        config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
-            bool "i2c3_PB3_PB4"
-            help
-              Hardware i2c bus i2c3 with SCL on PB3 and SDA on PB4
-        endchoice
-
-        config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
-            string
-            default "i2c2_PB10_PB11" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
-            default "i2c3_PB3_PB4"   if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3
+          env_sensor_suffix := _$(i)
+          source "components/Kconfig.environment_sensor"
+        endif
       endif
-
-      if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE
-        config PIN_ENVIRONMENT_SENSOR_SCL
-          string "SCL pin           "
-          validator "$(pin_validator)"
-          default ""
-          help
-            Software i2c SCL pin (e.g., "PB10")
-
-        config PIN_ENVIRONMENT_SENSOR_SDA
-          string "SDA pin           "
-          validator "$(pin_validator)"
-          default ""
-          help
-            Software i2c SDA pin (e.g., "PB11")
-      endif
+    @endrepeat@
   endmenu
 endif
 
@@ -159,10 +131,34 @@ config BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
     Create [temperature_sensor] sections for the MCUs themselves for CPU temperature monitoring.
 
 if BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
+  # One pair of limits applies to all generated MCU CPU sensors, including buffer MCUs.
+  temp_limit_prefix := MCU_ENVIRONMENT_SENSOR
+  temp_limit_suffix :=
+  temp_limit_pad := 24
+  source "components/Kconfig.temperature_limits"
+
   config BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
-    bool "Hide in Mainsail / Fluidd"
-    default y if MMU_HAS_ENVIRONMENT_SENSOR
-    default n
+    bool "Hide in Mainsail/Fluidd"
+    default n if MMU_HAS_PER_GATE_MCU
+    default y
     help
-      Hide MCU temperature sensors in Mainsail / Fluidd interface.
+      Prefix the MCU sensor names with an underscore to hide them in the UI.
+      Disable to show the sensors. Fan temperature control is unchanged.
+
+  config PARAM_MCU_ENVIRONMENT_SENSOR_NAME
+    string
+    default "_$(UNIT_NAME)_mcu" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+    default "$(UNIT_NAME)_mcu"
+
+  config PARAM_BUFFER_MCU_ENVIRONMENT_SENSOR_NAME
+    string
+    default "_$(UNIT_NAME)_mcu_buffer" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+    default "$(UNIT_NAME)_mcu_buffer"
+
+  @repeat var=i min=0 max=11@
+    config PARAM_MCU_ENVIRONMENT_SENSOR_NAME_$(i)
+      string
+      default "_$(UNIT_NAME)_mcu$(i)" if BOOL_HIDE_MCU_ENVIRONMENT_SENSORS
+      default "$(UNIT_NAME)_mcu$(i)"
+  @endrepeat@
 endif

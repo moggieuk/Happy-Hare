@@ -385,6 +385,64 @@ class TestConditionalMacroDefaults(unittest.TestCase):
                 self.assertTrue(kc.syms[name].config_string)
 
 
+class TestEncoderValidationOptions(unittest.TestCase):
+
+    # .cfg option -> (Kconfig symbol, shipped default, custom value)
+    OPTIONS = {
+        'encoder_move_step_size':            ('PARAM_ENCODER_MOVE_STEP_SIZE', 15.0, 20.5),
+        'bowden_pre_unload_error_tolerance': ('PARAM_BOWDEN_PRE_UNLOAD_ERROR_TOLERANCE', 50, 35),
+        'bowden_move_error_tolerance':       ('PARAM_BOWDEN_MOVE_ERROR_TOLERANCE', 60, 70),
+        'toolhead_move_error_tolerance':     ('PARAM_TOOLHEAD_MOVE_ERROR_TOLERANCE', 80, 90),
+        'toolhead_post_load_tighten':        ('PARAM_TOOLHEAD_POST_LOAD_TIGHTEN', 60, 25),
+    }
+
+    @staticmethod
+    def _params(profile):
+        return cfg.assemble(cfg.render(profile))['mmu_unit_parameters unit0']
+
+    def test_defaults_and_custom_values_render_with_an_encoder(self):
+        params = self._params(profiles.get('encoder'))
+        for option, (_, default, _) in self.OPTIONS.items():
+            with self.subTest(option=option):
+                self.assertEqual(params.getfloat(option), default)
+
+        profile = profiles.get('encoder').derive(
+            'encoder_custom_validation_options',
+            syms={sym: custom for sym, _, custom in self.OPTIONS.values()})
+        params = self._params(profile)
+        for option, (_, _, custom) in self.OPTIONS.items():
+            with self.subTest(option=option):
+                self.assertEqual(params.getfloat(option), custom)
+
+    def test_not_rendered_without_an_encoder(self):
+        params = self._params(profiles.get('boxturtle'))
+        for option in self.OPTIONS:
+            with self.subTest(option=option):
+                self.assertNotIn(option, params)
+
+    def test_dependent_prompts_hide_but_keep_rendering_defaults(self):
+        hidden_by = {
+            'PARAM_BOWDEN_PRE_UNLOAD_TEST': ['PARAM_BOWDEN_PRE_UNLOAD_ERROR_TOLERANCE'],
+            'PARAM_ENCODER_MOVE_VALIDATION': ['PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA',
+                                              'PARAM_BOWDEN_APPLY_CORRECTION',
+                                              'PARAM_BOWDEN_MOVE_ERROR_TOLERANCE',
+                                              'PARAM_TOOLHEAD_MOVE_ERROR_TOLERANCE',
+                                              'PARAM_TOOLHEAD_POST_LOAD_TIGHTEN'],
+        }
+        defaults = {sym: default for sym, default, _ in self.OPTIONS.values()}
+        defaults.update(PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA=20.0, PARAM_BOWDEN_APPLY_CORRECTION=0)
+        for switch, dependents in hidden_by.items():
+            syms = dict(profiles.get('encoder').syms, **{switch: 0})
+            with cfg._env(cfg._SINGLE_UNIT_ENV):
+                kc = cfg._kconfig('encoder_without_' + switch.lower(), syms)
+                kc_on = cfg._kconfig('encoder_with_' + switch.lower(), profiles.get('encoder').syms)
+            for sym in dependents:
+                with self.subTest(switch=switch, symbol=sym):
+                    self.assertEqual(kc.syms[sym].visibility, 0)
+                    self.assertGreater(kc_on.syms[sym].visibility, 0)
+                    self.assertEqual(float(kc.syms[sym].str_value), defaults[sym])
+
+
 class TestHardwareConfigurationWarnings(unittest.TestCase):
 
     @staticmethod
@@ -625,6 +683,11 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         return kc, sensors
 
     def _assert_sensor(self, sensor, member):
+        # All driver alternatives must stay covered by the source declaration.
+        from installer.build import template_managed_options
+        with cfg._chdir(cfg.REPO_ROOT):
+            managed = template_managed_options(HARDWARE)['temperature_sensor']
+        self.assertFalse(set(sensor) - managed, set(sensor) - managed)
         sensor_type, address, option = self.SENSOR_TYPES[member]
         self.assertEqual(sensor['sensor_type'], sensor_type)
         self.assertEqual(sensor['i2c_address'], address)
@@ -1309,6 +1372,187 @@ TWO_UNIT = profiles.clone_across_units(
     description='two BoxTurtles, for the multi-unit render path')
 
 
+class TestMmuCfgTunables(unittest.TestCase):
+    """mmu.cfg callback macros and servo geometry come from Kconfig, defaulting to the old literals"""
+
+    MACROS = {
+        'pause_macro': 'PAUSE',
+        'action_changed_macro': '_MMU_ACTION_CHANGED',
+        'print_state_changed_macro': '_MMU_PRINT_STATE_CHANGED',
+        'mmu_event_macro': '_MMU_EVENT',
+        'post_preload_macro': '_MMU_POST_PRELOAD',
+        'pre_unload_macro': '_MMU_PRE_UNLOAD',
+        'post_form_tip_macro': '_MMU_POST_FORM_TIP',
+        'post_unload_macro': '_MMU_POST_UNLOAD',
+        'pre_load_macro': '_MMU_PRE_LOAD',
+        'post_load_macro': '_MMU_POST_LOAD',
+        'unload_sequence_macro': '_MMU_UNLOAD_SEQUENCE',
+        'load_sequence_macro': '_MMU_LOAD_SEQUENCE',
+    }
+    GANTRY = {'maximum_servo_angle': '180', 'minimum_pulse_width': '0.00075',
+              'maximum_pulse_width': '0.00225', 'initial_angle': '180'}
+    CUTTER = {'maximum_servo_angle': '180', 'minimum_pulse_width': '0.0005',
+              'maximum_pulse_width': '0.0025'}
+    SERVOS = {
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+        'MMU_HAS_GANTRY_BUMPER_SERVO': True,
+        'PIN_GANTRY_BUMPER_SERVO': 'unit0:PA3',
+        'MMU_HAS_SERVO_CUTTER': True,
+        'PIN_SERVO_CUTTER_SERVO': 'unit0:PA4',
+        'MMU_HAS_BLOBIFIER': True,
+        'PIN_BLOBIFIER_SERVO': 'unit0:PA1',
+        'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
+    }
+
+    def _render(self, name, syms):
+        rendered = cfg.render(profiles.get('boxturtle').derive(name, syms=syms))
+        cfg.assert_sane(rendered)
+        return cfg.assemble({MMU: rendered[MMU]}, macros=False)
+
+    def _assert_options(self, parser, section, expected):
+        options = dict(parser.items(section))
+        for key, value in expected.items():
+            with self.subTest(section=section, option=key):
+                self.assertEqual(options[key], value)
+
+    def test_defaults_match_previous_literals(self):
+        parser = self._render('mmu_cfg_tunable_defaults', self.SERVOS)
+        self._assert_options(parser, 'mmu_parameters', self.MACROS)
+        self._assert_options(parser, 'mmu_servo mmu_gantry_servo', self.GANTRY)
+        self._assert_options(parser, 'mmu_servo cut_servo', self.CUTTER)
+        self._assert_options(parser, 'mmu_servo blobifier', {
+            'maximum_servo_angle': '180', 'minimum_pulse_width': '0.00053',
+            'maximum_pulse_width': '0.0023'})
+        # Only the gantry servo set an initial angle before it was optional
+        self.assertNotIn('initial_angle', parser['mmu_servo cut_servo'])
+        self.assertNotIn('initial_angle', parser['mmu_servo blobifier'])
+
+    def test_initial_angle_toggles(self):
+        parser = self._render('mmu_cfg_tunable_initial_angles', dict(self.SERVOS, **{
+            'BOOL_GANTRY_SERVO_INITIAL_ANGLE': False,
+            'BOOL_SERVO_CUTTER_INITIAL_ANGLE': True,
+            'BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE': True,
+        }))
+        self.assertNotIn('initial_angle', parser['mmu_servo mmu_gantry_servo'])
+        self._assert_options(parser, 'mmu_servo cut_servo', {'initial_angle': '70'})
+        self._assert_options(parser, 'mmu_servo blobifier', {'initial_angle': '180'})
+
+    def test_gantry_defaults_survive_hidden_prompts(self):
+        # Gantry servo enabled (e.g. implied) while tip cutting, and so its prompts, is off
+        syms = dict(self.SERVOS, MMU_HAS_TOOLHEAD_CUTTER=False)
+        parser = self._render('mmu_cfg_tunable_hidden_gantry', syms)
+        self._assert_options(parser, 'mmu_servo mmu_gantry_servo', self.GANTRY)
+
+    def test_values_are_rendered(self):
+        parser = self._render('mmu_cfg_tunable_values', dict(self.SERVOS, **{
+            'PARAM_PAUSE_MACRO': 'MY_PAUSE',
+            'PARAM_LOAD_SEQUENCE_MACRO': 'MY_LOAD_SEQUENCE',
+            'PARAM_GANTRY_SERVO_MAXIMUM_ANGLE': 270,
+            'PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH': '0.0006',
+            'PARAM_GANTRY_SERVO_MAX_PULSE_WIDTH': '0.0024',
+            'PARAM_GANTRY_SERVO_INITIAL_ANGLE': 170,
+            'PARAM_SERVO_CUTTER_MAXIMUM_ANGLE': 60,
+            'PARAM_SERVO_CUTTER_MIN_PULSE_WIDTH': '0.0007',
+            'PARAM_SERVO_CUTTER_MAX_PULSE_WIDTH': '0.0023',
+            'BOOL_SERVO_CUTTER_INITIAL_ANGLE': True,
+            'PARAM_SERVO_CUTTER_INITIAL_ANGLE': 15,
+            'PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE': 270,
+            'BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE': True,
+            'PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE': 160,
+        }))
+        self._assert_options(parser, 'mmu_parameters', dict(
+            self.MACROS, pause_macro='MY_PAUSE', load_sequence_macro='MY_LOAD_SEQUENCE'))
+        self._assert_options(parser, 'mmu_servo mmu_gantry_servo', {
+            'maximum_servo_angle': '270', 'minimum_pulse_width': '0.0006',
+            'maximum_pulse_width': '0.0024', 'initial_angle': '170'})
+        self._assert_options(parser, 'mmu_servo cut_servo', {
+            'maximum_servo_angle': '60', 'minimum_pulse_width': '0.0007',
+            'maximum_pulse_width': '0.0023', 'initial_angle': '15'})
+        self._assert_options(parser, 'mmu_servo blobifier', {
+            'maximum_servo_angle': '270', 'initial_angle': '160'})
+
+    STEPPER = {
+        'MMU_HAS_BLOBIFIER': True,
+        'CHOICE_BLOBIFIER_TYPE_STEPPER': True,
+        'MMU_HAS_BLOBIFIER_BUCKET_SWITCH': False,
+        'PIN_BLOBIFIER_STEP': 'unit0:PD4',
+        'PIN_BLOBIFIER_DIR': '!unit0:PD3',
+        'PIN_BLOBIFIER_ENABLE': '!unit0:PD6',
+        'PIN_BLOBIFIER_ENDSTOP': '^!unit0:PC15',
+    }
+
+    def test_blobifier_stepper_defaults_match_previous_literals(self):
+        parser = self._render('mmu_cfg_tunable_stepper_defaults', self.STEPPER)
+        self._assert_options(parser, 'manual_stepper stepper_blobifier', {
+            'microsteps': '4', 'gear_ratio': '1:1', 'rotation_distance': '62.83',
+            'position_min': '0', 'position_max': '21', 'homing_speed': '20',
+            'velocity': '150', 'accel': '1000'})
+
+    def test_blobifier_stepper_values_are_rendered(self):
+        parser = self._render('mmu_cfg_tunable_stepper_values', dict(self.STEPPER, **{
+            'PARAM_BLOBIFIER_STEPPER_MICROSTEPS': 16,
+            'PARAM_BLOBIFIER_STEPPER_GEAR_RATIO': '57:11, 2:1',
+            'PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE': '40.5',
+            'PARAM_BLOBIFIER_STEPPER_POSITION_MIN': '-1',
+            'PARAM_BLOBIFIER_STEPPER_POSITION_MAX': '25',
+            'PARAM_BLOBIFIER_STEPPER_HOMING_SPEED': '10',
+            'PARAM_BLOBIFIER_STEPPER_VELOCITY': '120',
+            'PARAM_BLOBIFIER_STEPPER_ACCEL': '800',
+        }))
+        self._assert_options(parser, 'manual_stepper stepper_blobifier', {
+            'microsteps': '16', 'gear_ratio': '57:11, 2:1', 'rotation_distance': '40.5',
+            'position_min': '-1', 'position_max': '25', 'homing_speed': '10',
+            'velocity': '120', 'accel': '800'})
+
+    def test_multi_unit_renders_macro_defaults(self):
+        rendered = cfg.render(TWO_UNIT)
+        parser = cfg.assemble({MMU: rendered[MMU]}, macros=False)
+        self._assert_options(parser, 'mmu_parameters', self.MACROS)
+
+
+class TestConsoleStatistics(unittest.TestCase):
+    """mmu.cfg console statistics options come from Kconfig, defaulting to the old literals"""
+
+    DEFAULTS = {
+        'console_stat_columns': 'unload, load, post_load, total',
+        'console_stat_rows': 'total, total_average, job, job_average, last',
+        'console_gate_stat': 'emoticon',
+        'console_always_output_full': '1',
+        'console_show_colored_text': '1',
+        'console_show_filament_color': '1',
+    }
+
+    def _options(self, rendered):
+        cfg.assert_sane(rendered)
+        parser = cfg.assemble({MMU: rendered[MMU]}, macros=False)
+        return {k: parser['mmu_parameters'][k] for k in self.DEFAULTS}
+
+    def test_defaults_match_previous_literals(self):
+        rendered = cfg.render(profiles.get('boxturtle').derive('console_stat_defaults', syms={}))
+        self.assertEqual(self._options(rendered), self.DEFAULTS)
+
+    def test_values_are_rendered(self):
+        rendered = cfg.render(profiles.get('boxturtle').derive('console_stat_values', syms={
+            'PARAM_CONSOLE_STAT_COLUMNS': 'pre_load, purge, total',
+            'PARAM_CONSOLE_STAT_ROWS': 'last, job',
+            'CHOICE_CONSOLE_GATE_STAT_PERCENTAGE': True,
+            'PARAM_CONSOLE_ALWAYS_OUTPUT_FULL': 0,
+            'PARAM_CONSOLE_SHOW_COLORED_TEXT': 0,
+            'PARAM_CONSOLE_SHOW_FILAMENT_COLOR': 0,
+        }))
+        self.assertEqual(self._options(rendered), {
+            'console_stat_columns': 'pre_load, purge, total',
+            'console_stat_rows': 'last, job',
+            'console_gate_stat': 'percentage',
+            'console_always_output_full': '0',
+            'console_show_colored_text': '0',
+            'console_show_filament_color': '0',
+        })
+
+    def test_multi_unit_renders_defaults(self):
+        self.assertEqual(self._options(cfg.render(TWO_UNIT)), self.DEFAULTS)
+
+
 class TestMultiUnitRender(unittest.TestCase):
     """
     A multi-unit render is THREE Kconfig parses with different env, not one
@@ -1429,25 +1673,23 @@ class TestComponentNames(unittest.TestCase):
                 self.assertIn('mmu_%s unit0' % kind, sections)
                 self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', kind), 'unit0')
 
-    def test_a_name_saved_by_an_older_install_is_reset_on_upgrade(self):
+    def test_a_name_saved_by_an_older_install_names_the_section_too(self):
         """
-        Older installs prompted for these names on an owning unit, so .mmu_config may hold
-        one. The symbol is now promptless there, and the olddefconfig pass a stale config
-        gets on upgrade writes it back out as its UNIT_NAME default.
+        v4.0 prompted for these names on an owning unit but named the section after the
+        unit, so a typed name left [mmu_unit] pointing at nothing. It now names the section.
         """
-        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
-            kc = cfg._kconfig('stale_names', dict(
-                profiles.get('boxturtle').syms,
-                MMU_HAS_ENCODER=True,
-                PIN_ENCODER='unit0:PB7',
-                PARAM_ENCODER_NAME='headcoder',
-                PARAM_SYNC_FEEDBACK_BUFFER_NAME='shared_bowden_buffer'))
-            path = os.path.join(tmp, '.mmu_config')
-            kc.write_config(path)
-            with open(path) as handle:
-                saved = [line.strip() for line in handle if '_NAME=' in line]
-        self.assertIn('CONFIG_PARAM_ENCODER_NAME="unit0"', saved)
-        self.assertIn('CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="unit0"', saved)
+        rendered = cfg.render(profiles.get('boxturtle').derive('stale_names', syms={
+            'MMU_HAS_ENCODER': True,
+            'PIN_ENCODER': 'unit0:PB7',
+            'PARAM_ENCODER_NAME': 'headcoder',
+            'PARAM_SYNC_FEEDBACK_BUFFER_NAME': 'shared_bowden_buffer'}))
+        cfg.assert_sane(rendered)
+        sections = cfg.sections(rendered[HARDWARE])
+        for kind, name in (('encoder', 'headcoder'), ('buffer', 'shared_bowden_buffer')):
+            with self.subTest(kind=kind):
+                self.assertIn('mmu_%s %s' % (kind, name), sections)
+                self.assertNotIn('mmu_%s unit0' % kind, sections)
+                self.assertEqual(self._declared(rendered[HARDWARE], 'unit0', kind), name)
 
     def test_only_the_owning_unit_defines_a_shared_component(self):
         """The sharer points at the owner's sections and renders none of its own."""
@@ -1894,11 +2136,11 @@ esac
 # LED chain-name resolution - a render-level guard, because it must also cover
 # machine types the harness does not boot.
 #
-# QuattroBox is a real shipped machine but is not wired up here (no board/gate-homing/
-# NFC pin definitions), so it dies on empty pins at boot long before the LED load -
-# the render path is the only place its generated config can be checked. These are
-# inline fixtures rather than PROFILES-registry entries for that reason (see the note
-# above TWO_UNIT).
+# QuattroBox v1.0/v1.1 have no default board, so they die on empty pins at boot long
+# before the LED load - the render path is the only place their generated config can be
+# checked. v2 defaults to the Chameleon X5 and boots as the quattrobox_v2 profile; it is
+# kept here so all three versions get the same render check. These are inline fixtures
+# rather than PROFILES-registry entries for that reason (see the note above TWO_UNIT).
 # ---------------------------------------------------------------------------
 
 

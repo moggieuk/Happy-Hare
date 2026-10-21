@@ -6,6 +6,7 @@
 #   PARAM_SELECTOR_ROTATION_DISTANCE
 #   PARAM_SELECTOR_RUN_CURRENT
 #   PARAM_SELECTOR_HOLD_CURRENT
+#   PARAM_SELECTOR_STALLGUARD_THRESHOLD (prompt only; declared with the TMC driver)
 #   PARAM_SELECTOR_ENDSTOP_NAME
 #   PARAM_SELECTOR_HOMING_RETRACT_DIST
 #   PARAM_SELECTOR_MICROSTEPS
@@ -25,9 +26,9 @@
 if MMU_HAS_SELECTOR_STEPPER
   menu "Selector stepper"
 
-# -------------------------------------
-# Basic stepper settings
-# -------------------------------------
+    # -------------------------------------
+    # Basic stepper settings
+    # -------------------------------------
 
     config PARAM_SELECTOR_GEAR_RATIO
       string "Selector gear ratio             "
@@ -41,6 +42,14 @@ if MMU_HAS_SELECTOR_STEPPER
     label     := Selector
     pad_width := 32
     source "components/Kconfig.tmc_driver_menu_current"
+
+    config PARAM_SELECTOR_STALLGUARD_THRESHOLD
+      prompt "$(pad,32,Selector stallguard threshold)" if BOOL_SELECTOR_TMC_HAS_STALLGUARD && PIN_SELECTOR_DIAG != ""
+      help
+        Sensitivity for selector "touch" movement, written only when a
+        diag pin is set. Expect to tune it. The scale depends on the chip:
+        SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
+        lower is more sensitive.
 
     config PARAM_SELECTOR_ENDSTOP_NAME
       string
@@ -64,6 +73,9 @@ if MMU_HAS_SELECTOR_STEPPER
       help
         200 for 1.8 degree, 400 for 0.9 degree
 
+    comment "_"
+    comment "_Behavior"
+
     config PARAM_STARTUP_HOME_SELECTOR
       boolint "Home selector at startup?"
       default 0
@@ -73,29 +85,29 @@ if MMU_HAS_SELECTOR_STEPPER
             MMU_MOTORS_OFF discards that saved position and does require a re-home)
 
 
-# -------------------------------------
-# Selector touch Operation
-# -------------------------------------
+    # -------------------------------------
+    # Selector touch Operation
+    # -------------------------------------
 
-  config PARAM_SELECTOR_TOUCH_ENABLED
-    boolint "Enable touch selector movement using TMC Stallguard?"
-    default 0
-    help
-      This allows for additional selector recovery steps but is difficult to tune.
-      Not recommended if you are new to MMU/Happy-Hare.
-      The MCU must have DIAG output for steppers. Possible to configure later
-    depends on MMU_HAS_SELECTOR_STEPPER && (LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR)
-  if BOARD_TYPE_EASY_BRD
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on PARAM_SELECTOR_TOUCH_ENABLED
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on !PARAM_SELECTOR_TOUCH_ENABLED
-  endif
+    config PARAM_SELECTOR_TOUCH_ENABLED
+      boolint "Enable touch selector movement using TMC Stallguard?"
+      default 0
+      help
+        This allows for additional selector recovery steps but is difficult to tune.
+        Not recommended if you are new to MMU/Happy-Hare.
+        The MCU must have DIAG output for steppers. Possible to configure later
+      depends on MMU_HAS_SELECTOR_STEPPER && (LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR)
+    if BOARD_TYPE_EASY_BRD
+      comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+        depends on PARAM_SELECTOR_TOUCH_ENABLED
+      comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+        depends on !PARAM_SELECTOR_TOUCH_ENABLED
+    endif
 
 
-# -------------------------------------
-# RotarySelector additions
-# -------------------------------------
+    # -------------------------------------
+    # RotarySelector additions
+    # -------------------------------------
 
     if ROTARY_SELECTOR || TESTING_SELECTOR
 
@@ -137,9 +149,9 @@ if MMU_HAS_SELECTOR_STEPPER
     endif
 
 
-# -------------------------------------
-# Index Selector additions
-# -------------------------------------
+    # -------------------------------------
+    # Index Selector additions
+    # -------------------------------------
 
     if INDEXED_SELECTOR || TESTING_SELECTOR
 

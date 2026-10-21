@@ -1,4 +1,8 @@
-# Happy Hare: Model behind menuconfig's 'sequence_editor' dialog.
+# Happy Hare MMU Software
+# Model behind menuconfig's 'sequence_editor' dialog
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # A sequence_editor symbol holds an ordered list of unique names. The value
 # alone cannot tell a rename from a remove plus an add, so this model tracks
@@ -6,7 +10,12 @@
 # a '<config>.<SYMBOL>.changes' JSON sidecar. It has no curses dependency so
 # the installer and tests can use it directly.
 #
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 import json
 import os
@@ -16,6 +25,13 @@ def split_sequence(value, separator):
     if not value:
         return []
     return [part.strip() for part in value.split(separator) if part.strip()]
+
+
+def join_sequence(names, separator):
+    # Separator plus a space ("a, b"), the spacing the shipped defaults use,
+    # unless the separator already ends in one
+    joiner = separator if separator[-1:].isspace() else separator + " "
+    return joiner.join(names)
 
 
 def changes_path(config_filename, sym_name):
@@ -88,7 +104,7 @@ class SequenceModel:
         return [name for name in self.baseline if name not in used]
 
     def value(self, separator):
-        return separator.join(self.names())
+        return join_sequence(self.names(), separator)
 
     def is_changed(self):
         return self.rows != [[name, name] for name in self.baseline]

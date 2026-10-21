@@ -106,4 +106,4 @@ class MmuSoaktestLoadSequenceCommand(BaseCommand):
                 mmu.select_tool(initial_tool)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

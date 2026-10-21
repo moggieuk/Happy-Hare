@@ -3,6 +3,12 @@
 # Copyright (c) 2018-2019, Nordic Semiconductor ASA and Ulf Magnusson
 # SPDX-License-Identifier: ISC
 
+#
+# Customized for Happy Hare
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+
 """
 Overview
 ========
@@ -215,12 +221,12 @@ import locale
 import re
 import textwrap
 
-import contextlib # Happy Hare: Added
-import tempfile # Happy Hare: Added
+import contextlib
+import tempfile
+import time
 
-import sequence_edit # Happy Hare: Added
+import sequence_edit
 
-# Happy Hare: Added FLOAT
 from kconfiglib import Kconfig, Symbol, Choice, MENU, COMMENT, MenuNode, \
                        BOOL, BOOLINT, TRISTATE, STRING, FLOAT, INT, HEX, \
                        AND, OR, \
@@ -242,7 +248,7 @@ from kconfiglib import Kconfig, Symbol, Choice, MENU, COMMENT, MenuNode, \
 # Related PEP: https://www.python.org/dev/peps/pep-0538/
 _CHANGE_C_LC_CTYPE_TO_UTF8 = True
 
-# Happy Hare: Added control over initial value indentation
+# Control over initial value indentation
 _VALUE_INDENT = 3
 
 # How many steps an implicit submenu will be indented. Implicit submenus are
@@ -261,6 +267,9 @@ _ENCODING_FALLBACKS = str.maketrans({
     "°": "^",
 })
 
+# Followed links, see _link_return below and _init()
+_link_return = []
+
 # Height of the help window in show-help mode
 _SHOW_HELP_HEIGHT = 7
 _ALWAYS_SHOW_HELP_WINDOW = True
@@ -278,11 +287,6 @@ _INPUT_DIALOG_NUM_MIN_WIDTH = 30
 _N_SCROLL_ARROWS = 14
 
 # Lines of help text shown at the bottom of the "main" display
-#_MAIN_HELP_LINES = """
-#+[Space/Enter] Toggle/enter      [F] Toggle show-help mode
-#+[Q] Quit (prompts for save)     [ESC] Leave menu
-#"""[1:-1].split("\n")
-# Happy Hare: Remove show-help text...
 _MAIN_HELP_LINES = """
  [Space/Enter] Toggle/enter  [R] Reset parameter to default  [Q] Quit (prompts for save)  [ESC] Leave menu
 """[1:-1].split("\n")
@@ -752,7 +756,7 @@ def menuconfig(kconf):
 
     # Enter curses mode. _menuconfig() returns a string to print on exit, after
     # curses has been de-initialized.
-    msg, code = curses.wrapper(_menuconfig) # Happy Hare: Modified to also return exit code
+    msg, code = curses.wrapper(_menuconfig)
     print(msg)
     sys.exit(code)
 
@@ -821,6 +825,11 @@ def _needs_save():
 #     appeared on. This is used to prevent the scrolling from jumping around
 #     when going in and out of menus.
 #
+#   _link_return:
+#     Stack of followed links, (origin menu, link node, screen
+#     row, saved _parent_screen_rows, target menu). Leaving a target menu
+#     returns to its link instead of the target's parent
+#
 #   _show_help/_show_name/_show_all:
 #     If True, the corresponding mode is on. See the module docstring.
 #
@@ -887,13 +896,17 @@ def _menuconfig(stdscr):
         elif c == " ":
             # Toggle the node if possible
             sel_node = _shown[_sel_node_i]
-            if not _change_node(sel_node):
+            if _is_link(sel_node):
+                _follow_link(sel_node)
+            elif not _change_node(sel_node):
                 _enter_menu(sel_node)
 
         elif c in (curses.KEY_RIGHT, "\n", "l", "L"):
             # Enter the node if possible
             sel_node = _shown[_sel_node_i]
-            if not _enter_menu(sel_node):
+            if _is_link(sel_node):
+                _follow_link(sel_node)
+            elif not _enter_menu(sel_node):
                 _change_node(sel_node)
 
         elif c in ("n", "N"):
@@ -908,50 +921,49 @@ def _menuconfig(stdscr):
         elif c in (curses.KEY_LEFT, curses.KEY_BACKSPACE, _ERASE_CHAR,
                    "\x1B", "h", "H"):  # \x1B = ESC
 
-            if c == "\x1B" and _cur_menu is _kconf.top_node:
+            if c == "\x1B" and _cur_menu is _kconf.top_node and not _in_link_target(): # Links return first
                 res, code = _quit_dialog()
                 if res:
                     return res, code
             else:
                 _leave_menu()
 
-        elif False and c in ("o", "O"): # Happy Hare: Disable
+        elif False and c in ("o", "O"): # Disabled
             _load_dialog()
 
-        elif False and c in ("s", "S"): # Happy Hare: Disable
+        elif False and c in ("s", "S"): # Disabled
             filename = _save_dialog(_write_config, _conf_filename,
                                     "configuration")
             if filename:
                 _conf_filename = filename
                 _conf_changed = False
 
-        elif False and c in ("d", "D"): # Happy Hare: Disable
+        elif False and c in ("d", "D"): # Disabled
             filename = _save_dialog(_kconf.write_min_config, _minconf_filename,
                                     "minimal configuration")
             if filename:
                 _minconf_filename = filename
 
-        elif False and c == "/": # Happy Hare: Disable
+        elif False and c == "/": # Disabled
             _jump_to_dialog()
             # The terminal might have been resized while the fullscreen jump-to
             # dialog was open
             _resize_main()
 
-        elif False and c == "?": # Happy Hare: Disable
+        elif False and c == "?": # Disabled
             _info_dialog(_shown[_sel_node_i], False)
             # The terminal might have been resized while the fullscreen info
             # dialog was open
             _resize_main()
 
-        elif False and c in ("f", "F"): # Happy Hare: Disable
+        elif False and c in ("f", "F"): # Disabled
             _show_help = not _show_help
-            # _set_style(_help_win, "show-help" if _show_help else "help")
             _resize_main()
 
-        elif False and c in ("c", "C"): # Happy Hare: Disable (but ENABLE when debugging)
+        elif False and c in ("c", "C"): # Disabled (enable when debugging)
             _show_name = not _show_name
 
-        elif False and c in ("a", "A"): # Happy Hare: Disable (but ENABLE when debugging)
+        elif False and c in ("a", "A"): # Disabled (enable when debugging)
             _toggle_show_all()
 
         elif c in ("q", "Q"):
@@ -959,12 +971,11 @@ def _menuconfig(stdscr):
             if res:
                 return res, code
 
-        elif c in ("r", "R"): # Happy Hare: Added to "unset" user change and reset to default
-            sel_node = _shown[_sel_node_i]
-            _reset_node(sel_node)
+        elif c in ("r", "R"): # Unset user change and reset to default
+            _reset_key(_shown[_sel_node_i])
 
 
-# Happy Hare: Modified to also return status for subsequent action
+# Returns (msg, status) for subsequent action
 def _quit_dialog():
     if not _conf_changed:
         msg = "No changes to save (for '{}')".format(_conf_filename)
@@ -1014,6 +1025,7 @@ def _init():
     global _help_win
 
     global _parent_screen_rows
+    global _link_return
     global _cur_menu
     global _shown
     global _sel_node_i
@@ -1058,6 +1070,8 @@ def _init():
     # The rows we'd like the nodes in the parent menus to appear on. This
     # prevents the scroll from jumping around when going in and out of menus.
     _parent_screen_rows = []
+
+    _link_return = []
 
     # Initial state
 
@@ -1142,7 +1156,7 @@ def _enter_menu(menu):
     if not menu.is_menuconfig:
         return False  # Not a menu
 
-    # Happy Hare: A force-shown menu whose dependencies are not met is a
+    # A force-shown menu whose dependencies are not met is a
     # disabled placeholder. Keep it visible for context/help, but do not allow
     # navigation into its inactive children.
     if _forced_disabled_menu(menu):
@@ -1247,6 +1261,10 @@ def _leave_menu():
     global _sel_node_i
     global _menu_scroll
 
+    # Leaving the menu a link jumped into returns to the link
+    if _in_link_target() and _return_from_link():
+        return
+
     if _cur_menu is _kconf.top_node:
         return
 
@@ -1269,6 +1287,105 @@ def _leave_menu():
         _center_vertically()
 
 
+# A comment with a 'link <SYMBOL>' property is a selectable
+# row that jumps to where SYMBOL is shown. Leaving the menu it lands in returns
+# to the link (see _link_return), so links read like a detour, not a move.
+def _is_link(node):
+    return getattr(node, "link", None) is not None
+
+
+def _reachable(node):
+    # True if 'node' is shown in its menu and every menu above it can be entered
+    if node not in _shown_nodes(_parent_menu(node)):
+        return False
+    menu = _parent_menu(node)
+    while menu is not _kconf.top_node:
+        if _forced_disabled_menu(menu) or \
+           menu not in _shown_nodes(_parent_menu(menu)):
+            return False
+        menu = _parent_menu(menu)
+    return True
+
+
+def _link_target(link):
+    # The first node of the link's symbol that is currently reachable, or None
+    for node in link.link.nodes:
+        if _reachable(node):
+            return node
+    return None
+
+
+def _link_help(link):
+    # Help pane text for a link: its own help, then where it goes
+    lines = [link.help] if getattr(link, "help", None) else []
+    target = _link_target(link) or (link.link.nodes[0] if link.link.nodes else None)
+    if target:
+        path = " -> ".join(" ".join(p.split()) for p in
+                           _menu_path_prompts(_parent_menu(target)))
+        lines.append("Jumps to: [[B]]{}[[/B]]".format(path))
+        lines.append("ESC returns here")
+    return "\n".join(lines)
+
+
+def _follow_link(link):
+    # Jumps to the link's target, remembering where to return to. Never turns
+    # on show-all: a hidden target is reported instead.
+
+    global _cur_menu
+    global _shown
+    global _sel_node_i
+    global _menu_scroll
+    global _parent_screen_rows
+
+    target = _link_target(link)
+    if target is None:
+        _error("'{}' is not shown with the current settings."
+               .format(_TAG_RE.sub("", link.prompt[0]).strip()))
+        return False
+
+    menu = _parent_menu(target)
+    _link_return.append((_cur_menu, link, _sel_node_i - _menu_scroll,
+                         _parent_screen_rows, menu))
+    _parent_screen_rows = []
+
+    _cur_menu = menu
+    _shown = _shown_nodes(menu)
+    _sel_node_i = _shown.index(target)
+    _center_vertically()
+    return True
+
+
+def _in_link_target():
+    return bool(_link_return) and _link_return[-1][4] is _cur_menu
+
+
+def _return_from_link():
+    # Returns from the current link target to its link. Returns False, with
+    # the entry dropped, if nothing in the origin menu can take the cursor.
+
+    global _cur_menu
+    global _shown
+    global _sel_node_i
+    global _menu_scroll
+    global _parent_screen_rows
+
+    origin, link, screen_row, parent_rows, _ = _link_return.pop()
+    shown = _shown_nodes(origin)
+    if link in shown:
+        sel = shown.index(link)
+    else:
+        sel = _first_selectable_index(shown)
+        if sel is None:
+            return False
+
+    _cur_menu = origin
+    _shown = shown
+    _sel_node_i = sel
+    _parent_screen_rows = parent_rows
+    _menu_scroll = max(_sel_node_i - min(screen_row, _height(_menu_win) - 1), 0)
+    return True
+
+
 def _first_selectable_index(nodes):
     # Comments provide structure and explanation, but are not interactive menu
     # entries. Return None when a list contains comments only.
@@ -1278,7 +1395,7 @@ def _first_selectable_index(nodes):
 def _next_selectable_index(nodes, start, step):
     i = start + step
     while 0 <= i < len(nodes):
-        if nodes[i].item != COMMENT:
+        if nodes[i].item != COMMENT or _is_link(nodes[i]): # Links are selectable
             return i
         i += step
     return None
@@ -1451,8 +1568,7 @@ def _draw_main():
         else:
             style = _style["inv-selection" if i == _sel_node_i else "inv-list"]
 
-        # Happy Hare: _safe_addstr(_menu_win, i - _menu_scroll, 0, _node_str(node), style)
-        _safe_addstr_markup(_menu_win, i - _menu_scroll, 0, _node_str(node), style) # Happy Hare: Added
+        _safe_addstr_markup(_menu_win, i - _menu_scroll, 0, _node_str(node), style)
 
     _menu_win.noutrefresh()
 
@@ -1463,23 +1579,12 @@ def _draw_main():
     _bot_sep_win.erase()
 
     # Draw arrows pointing down if the symbol window is scrolled up
-    if _menu_scroll < _max_scroll(_shown, _menu_win):
+    arrows = _menu_scroll < _max_scroll(_shown, _menu_win)
+    if arrows:
         _safe_hline(_bot_sep_win, 0, 4, curses.ACS_DARROW, _N_SCROLL_ARROWS)
-
-    # Happy Hare: Label the separator above the help pane
-    help_label = " Help "
-    _safe_addstr(
-        _bot_sep_win,
-        0,
-        max((term_width - len(help_label)) // 2, 0),
-        help_label,
-    )
 
     # Indicate when show-name/show-help/show-all mode is enabled
     enabled_modes = []
-    # Happy Hare: Always show the help lines
-    # if _show_help:
-    #     enabled_modes.append("show-help (toggle with [F])")
     if _show_name:
         enabled_modes.append("show-name")
     if _show_all:
@@ -1488,23 +1593,35 @@ def _draw_main():
         s = " and ".join(enabled_modes) + " mode enabled"
         _safe_addstr(_bot_sep_win, 0, max(term_width - len(s) - 2, 0), s)
 
+    # Label the separator above the help pane, with the .cfg option the
+    # selection sets dimmed either side, clear of the modes. The scroll arrows take the
+    # file label's place
+    help_label = " Help "
+    help_x = max((term_width - len(help_label)) // 2, 0)
+    _safe_addstr(_bot_sep_win, 0, help_x, help_label)
+    file_label, option_label = _cfg_labels(1, help_x, help_x + len(help_label),
+                                           term_width - len(s) - 3 if enabled_modes else term_width - 1)
+    for label in (None if arrows else file_label, option_label):
+        if label:
+            _safe_addstr(_bot_sep_win, 0, label[0], label[1], _style["separator"] | curses.A_DIM)
+
     #
     # Update the help window, which shows either key bindings or help texts
     #
 
     show_item_help = _ALWAYS_SHOW_HELP_WINDOW or (_show_help and _node_has_help())
-    if show_item_help:  # Happy Hare: Added
+    if show_item_help:
         _set_style(_help_win, "show-help")
         _resize_main()
         _help_win.erase()
 
         node = _shown[_sel_node_i]
-        help_text = getattr(node, "help", None)
-        help_lines = help_text.split("\n") if help_text else []  # Happy Hare: Retain line formatting
+        help_text = _link_help(node) if _is_link(node) else getattr(node, "help", None) # Links say where they go
+        help_lines = help_text.split("\n") if help_text else []  # Retain line formatting
         for i in range(min(_SHOW_HELP_HEIGHT, len(help_lines))):
-            _safe_addstr_markup(_help_win, i, 1, help_lines[i], _style["show-help"]) # Happy Hare: Allow markup
+            _safe_addstr_markup(_help_win, i, 1, help_lines[i], _style["show-help"])
 
-        # Happy Hare: Reset the background of the main help lines
+        # Reset the background of the main help lines
         _set_style(_help_win, "help")
         for i in range(len(_MAIN_HELP_LINES)):
             _help_win.chgat(_SHOW_HELP_HEIGHT + i, 0, -1, _style["help"])
@@ -1513,7 +1630,7 @@ def _draw_main():
         _resize_main()
         _help_win.erase()
 
-    # Happy Hare: Always show the main help lines
+    # Always show the main help lines
     for i, line in enumerate(_MAIN_HELP_LINES):
         _safe_addstr(_help_win, (_SHOW_HELP_HEIGHT if show_item_help else 0) + i, 0, line)
 
@@ -1533,18 +1650,7 @@ def _draw_main():
 
     # Draw the menu path ("(Top) -> Menu -> Submenu -> ...")
 
-    menu_prompts = []
-
-    menu = _cur_menu
-    while menu is not _kconf.top_node:
-        # Promptless choices can be entered in show-all mode. Use
-        # standard_sc_expr_str() for them, so they show up as
-        # '<choice (name if any)>'.
-        menu_prompts.append(menu.prompt[0] if menu.prompt else
-                            standard_sc_expr_str(menu.item))
-        menu = menu.parent
-    menu_prompts.append("(Top)")
-    menu_prompts.reverse()
+    menu_prompts = _menu_path_prompts(_cur_menu)
 
     # Hack: We can't put ACS_RARROW directly in the string. Temporarily
     # represent it with NULL.
@@ -1563,6 +1669,79 @@ def _draw_main():
         _safe_addstr(_path_win, s)
 
     _path_win.noutrefresh()
+
+
+# The installed .cfg options each symbol's or choice's value lands in,
+# for the help separator. Rendered again after every change, when next needed.
+# HH_MENUCONFIG_CFG_TIMING=<file> logs how long each render takes
+_cfg_locs = None
+_cfg_locs_renders = 0
+
+
+def _cfg_locations():
+    global _cfg_locs
+    global _cfg_locs_renders
+
+    if _cfg_locs is not None:
+        return _cfg_locs
+
+    start = time.time()
+    error = None
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        if root not in sys.path:
+            sys.path.append(root)
+        from installer import build, cfg_import
+        locs = cfg_import.symbol_locations(build.KConfig.as_dict(_kconf), _conf_filename)
+        locs.update(cfg_import.choice_locations(_kconf, locs))
+        _cfg_locs = locs
+    except Exception as e:
+        _cfg_locs = {}
+        error = e
+
+    log = os.environ.get("HH_MENUCONFIG_CFG_TIMING")
+    if log:
+        with open(log, "a") as f:
+            f.write("{} {:.1f}ms {} entries{}\n".format(
+                "refresh" if _cfg_locs_renders else "startup", (time.time() - start) * 1000,
+                len(_cfg_locs), " error: {!r}".format(error) if error else ""))
+    _cfg_locs_renders += 1
+    return _cfg_locs
+
+
+def _cfg_locations_changed():
+    global _cfg_locs
+
+    _cfg_locs = None
+
+
+def _cfg_labels(left, help_x, help_end, right):
+    # Returns (file_label, option_label), each (x, label) or None, for
+    # the .cfg option the selected symbol or choice sets: its file starting at 'left', and
+    # its [section] option right-justified to end at 'right', each kept clear of the help
+    # label between 'help_x' and 'help_end' and shortened or left out when it doesn't fit
+
+    item = _shown[_sel_node_i].item if _shown else None
+    if isinstance(item, Symbol) and item.choice is not None:
+        item = item.choice
+    if not isinstance(item, (Symbol, Choice)) or not item.name:
+        return None, None
+    locs = _cfg_locations().get(item.name)
+    if not locs:
+        return None, None
+
+    filename, section, option = locs[0]
+    more = " (+{} more)".format(len(locs) - 1) if len(locs) > 1 else ""
+
+    file_label = " ({}) ".format(filename)
+    file_label = (left, file_label) if left + len(file_label) <= help_x - 2 else None
+
+    option_label = None
+    for label in (" [{}] {}{} ".format(section, option, more), " {}{} ".format(option, more)):
+        if right - len(label) >= help_end + 2:
+            option_label = (right - len(label), label)
+            break
+    return file_label, option_label
 
 
 def _parent_menu(node):
@@ -1649,6 +1828,8 @@ def _shown_nodes(menu):
 
 def _node_has_help():
     node = _shown[_sel_node_i]
+    if _is_link(node):
+        return True
     return (isinstance(node.item, (Symbol, Choice)) or node.item == MENU) and \
         getattr(node, "help", None)
 
@@ -1663,26 +1844,53 @@ def _normally_visible(node):
     )
 
 
+def _forced(node):
+    # 'forceshow' (or 'forceshow if <expr>' while <expr> holds)
+    return hasattr(node, "forceshow") and bool(expr_value(node.forceshow))
+
+
 def _forced_disabled_menu(node):
     # A force-shown menu remains listed when inactive, but acts as a disabled
     # placeholder rather than an enterable submenu.
     return (
         node.item == MENU and
-        hasattr(node, "forceshow") and
+        _forced(node) and
         not _normally_visible(node)
     )
 
 
 def _visible(node):
     # Returns True if the node should appear in the menu (outside show-all
-    # mode). Happy Hare: forceshow can make inactive symbols and menus visible.
+    # mode). forceshow can make inactive symbols and menus visible.
     return bool(
         node.prompt and
-        (_normally_visible(node) or hasattr(node, "forceshow"))
+        (_normally_visible(node) or _forced(node))
     )
 
 
-def _reset_node(node): # Happy Hare: Added method
+def _reset_key(node):
+    # The 'r' key: reset 'node' to its default. Clearing a user value changes what
+    # gets saved, so mark the configuration changed or quitting wouldn't save it
+
+    global _conf_changed
+
+    # A force-shown entry whose prompt is off is read-only
+    if not (node.prompt and expr_value(node.prompt[1])):
+        return
+
+    sc = node.item
+    had_value = (isinstance(sc, Symbol) and
+                 (sc.user_value is not None or
+                  (sc.choice is not None and sc.choice.user_selection is not None))) or \
+                (isinstance(sc, Choice) and
+                 (sc.user_selection is not None or any(m.user_value is not None for m in sc.syms)))
+
+    if _reset_node(node) and had_value:
+        _conf_changed = True
+        _cfg_locations_changed()
+
+
+def _reset_node(node):
     # Clears user set value and marks as never set
     # Returns False if the value of 'node' can't be changed.
 
@@ -1736,7 +1944,7 @@ def _reset_node(node): # Happy Hare: Added method
     return True
 
 
-def _value_repr(item): # Happy Hare: Added method
+def _value_repr(item):
     # Uniform textual value for compare/display
     if isinstance(item, Choice):
         sel = item.selection
@@ -1749,7 +1957,7 @@ def _value_repr(item): # Happy Hare: Added method
 # Determine if default value by resetting any change and seeing if value changes
 # Then restores any changes
 # Returns (changed_flag, current_value, default_value_if_user_cleared)
-def differs_from_default(node, sc, reset=True): # Happy Hare: Added method
+def differs_from_default(node, sc, reset=True):
 
     if isinstance(sc, Choice):
         cur = _value_repr(sc)
@@ -1847,16 +2055,16 @@ def _change_node(node):
     # sc = symbol/choice
     sc = node.item
 
-    if sc.orig_type in (INT, HEX, FLOAT, STRING): # Happy Hare: Added FLOAT
+    if sc.orig_type in (INT, HEX, FLOAT, STRING):
         s = sc.str_value
 
         while True:
-            # Happy Hare: The sequence editor validates each entry itself
+            # The sequence editor validates each entry itself
             if sc.orig_type == STRING and getattr(sc, "sequence_editor", None):
                 _sequence_dialog(node)
                 break
 
-            # Happy Hare: Use multi-line/array editor when the symbol declares
+            # Use multi-line/array editor when the symbol declares
             # an 'array_editor' separator in the Kconfig file
             if sc.orig_type == STRING and getattr(sc, "array_editor", None):
                 s = _multiline_input_dialog(
@@ -1866,12 +2074,12 @@ def _change_node(node):
                 s = _input_dialog(
                     "{} ({})".format(node.prompt[0], TYPE_TO_STR[sc.orig_type]),
                     s, _range_info(sc),
-                    sc.orig_type) # Happy Hare: Added passing of orig_type
+                    sc.orig_type)
 
             if s is None:
                 break
 
-            if sc.orig_type in (INT, HEX, FLOAT): # Happy Hare: Added FLOAT
+            if sc.orig_type in (INT, HEX, FLOAT):
                 s = s.strip()
 
                 # 'make menuconfig' does this too. Hex values not starting with
@@ -1919,7 +2127,6 @@ def _changeable(node):
     if not (node.prompt and expr_value(node.prompt[1])):
         return False
 
-    # Happy Hare: Added FLOAT
     return sc.orig_type in (STRING, INT, HEX, FLOAT) or len(sc.assignable) > 1 \
         or _is_y_mode_choice_sym(sc)
 
@@ -1928,8 +2135,10 @@ def _set_sel_node_tri_val(tri_val):
     # Sets the value of the currently selected menu entry to 'tri_val', if that
     # value can be assigned
 
-    sc = _shown[_sel_node_i].item
-    if isinstance(sc, (Symbol, Choice)) and tri_val in sc.assignable:
+    node = _shown[_sel_node_i]
+    sc = node.item
+    # A force-shown row whose own prompt is off is read-only here too
+    if _changeable(node) and tri_val in sc.assignable:
         _set_val(sc, tri_val)
 
 
@@ -1947,16 +2156,17 @@ def _set_val(sc, val):
     if val != sc.str_value:
         sc.set_value(val)
         _conf_changed = True
+        _cfg_locations_changed()
 
         # Changing the value of the symbol might have changed what items in the
         # current menu are visible. Recalculate the state.
         _update_menu()
 
-        if getattr(sc, "reparse_env", None): # Happy Hare: Added
+        if getattr(sc, "reparse_env", None):
             _reparse(sc)
 
 
-# Happy Hare: Added. A 'reparse_env' symbol mirrors environment variables the
+# A 'reparse_env' symbol mirrors environment variables the
 # tree was built from (e.g. UNIT_NAME), so defaults derived from them are only
 # right after parsing again with the new value. Nodes are matched across the
 # two parses by where they are defined, which the reparse doesn't change.
@@ -2042,6 +2252,8 @@ def _reparse(sym):
 
     kconf.warn = False
     _kconf = kconf
+    del _link_return[:] # Its nodes belong to the old tree
+    _cfg_locations_changed()
 
     nodes = {_node_key(node): node for node in kconf.node_iter()}
     nodes[("top",)] = kconf.top_node
@@ -2087,7 +2299,7 @@ def _update_menu():
     _menu_scroll = max(_sel_node_i - old_row, 0)
 
 
-def _input_dialog(title, initial_text, info_text=None, sym_type=None): # Happy Hare: Added sym_type
+def _input_dialog(title, initial_text, info_text=None, sym_type=None):
     # Pops up a dialog that prompts the user for a string
     #
     # title:
@@ -2106,7 +2318,7 @@ def _input_dialog(title, initial_text, info_text=None, sym_type=None): # Happy H
     info_lines = info_text.split("\n") if info_text else []
 
     # Give the input dialog its initial size
-    _resize_input_dialog(win, title, info_lines, sym_type) # Happy Hare: Pass in sym_type
+    _resize_input_dialog(win, title, info_lines, sym_type)
 
     _safe_curs_set(2)
 
@@ -2136,7 +2348,7 @@ def _input_dialog(title, initial_text, info_text=None, sym_type=None): # Happy H
         if c == curses.KEY_RESIZE:
             # Resize the main display too. The dialog floats above it.
             _resize_main()
-            _resize_input_dialog(win, title, info_lines, sym_type) # Happy Hare: Pass in sym_type
+            _resize_input_dialog(win, title, info_lines, sym_type)
 
         elif c == "\n":
             _safe_curs_set(0)
@@ -2160,7 +2372,7 @@ def _resize_input_dialog(win, title, info_lines, sym_type=None):
         win_height += len(info_lines) + 1
     win_height = min(win_height, screen_height)
 
-    # Happy Hare: Added variable dialog width
+    # Variable dialog width
     def_min_width = _INPUT_DIALOG_MIN_WIDTH
     if sym_type in (INT, HEX, FLOAT):
         def_min_width = _INPUT_DIALOG_NUM_MIN_WIDTH
@@ -2196,7 +2408,12 @@ def _draw_input_dialog(win, title, info_lines, s, i, hscroll):
     win.noutrefresh()
 
 
-# Happy Hare: Added multi-line/array editor for STRING values with a
+# Joins array editor lines the way sequence_edit.join_sequence() does ("a, b")
+def _join_array_lines(lines, separator):
+    return sequence_edit.join_sequence([line.strip() for line in lines], separator)
+
+
+# Multi-line/array editor for STRING values with a
 # configurable separator (set via the 'array_editor' Kconfig property)
 def _multiline_input_dialog(title, initial_text, separator):
     # Pops up a dialog that edits a separator-delimited string as multiple
@@ -2211,7 +2428,7 @@ def _multiline_input_dialog(title, initial_text, separator):
         "[Enter] New line  [Backspace/Delete] Remove"
     ]
 
-    # Happy Hare: Split the string into editor lines using the configured separator
+    # Split the string into editor lines using the configured separator
     lines = [line.strip() for line in initial_text.split(separator)] or [""]
 
     row = 0
@@ -2239,8 +2456,8 @@ def _multiline_input_dialog(title, initial_text, separator):
 
         elif c == "\x04":  # Ctrl-D
             _safe_curs_set(0)
-            # Happy Hare: Rejoin edited lines using the configured separator (allow blank lines)
-            return separator.join(line.strip() for line in lines)
+            # Rejoin edited lines using the configured separator (allow blank lines)
+            return _join_array_lines(lines, separator)
 
         elif c == "\x1B":  # \x1B = ESC
             _safe_curs_set(0)
@@ -2304,14 +2521,14 @@ def _multiline_input_dialog(title, initial_text, separator):
             lines[row] = lines[row][:col] + c + lines[row][col:]
             col += 1
 
-        # Happy Hare: Keep cursor row visible in multi-line editor
+        # Keep cursor row visible in multi-line editor
         if row < scroll:
             scroll = row
         elif row >= scroll + edit_height:
             scroll = row - edit_height + 1
 
 
-# Happy Hare: Added resize helper for multi-line STRING editor
+# Resize helper for multi-line STRING editor
 def _resize_multiline_input_dialog(win, title, help_lines):
     screen_height, screen_width = _stdscr.getmaxyx()
 
@@ -2323,7 +2540,7 @@ def _resize_multiline_input_dialog(win, title, help_lines):
               (screen_width - win_width)//2)
 
 
-# Happy Hare: Added draw helper for multi-line STRING editor
+# Draw helper for multi-line STRING editor
 def _draw_multiline_input_dialog(win, title, help_lines, lines,
                                  row, col, scroll):
     edit_height = max(_height(win) - len(help_lines) - 4, 1)
@@ -2354,7 +2571,7 @@ def _draw_multiline_input_dialog(win, title, help_lines, lines,
     win.noutrefresh()
 
 
-# Happy Hare: Added list editor for 'sequence_editor' STRING symbols. It tracks
+# List editor for 'sequence_editor' STRING symbols. It tracks
 # where each entry came from so renames, removals and moves can be told apart
 # from additions (see sequence_edit.py)
 
@@ -2446,7 +2663,9 @@ def _sequence_dialog(node):
             else:
                 changed = model.to_changes() != saved.to_changes()
                 _sequence_models[sym.name] = model
-                _set_val(sym, model.value(sym.sequence_editor))
+                # An unedited list keeps its saved spelling rather than counting as a change
+                if model.names() != sequence_edit.split_sequence(sym.str_value, sym.sequence_editor):
+                    _set_val(sym, model.value(sym.sequence_editor))
                 if changed:
                     _conf_changed = True
                 return
@@ -3303,7 +3522,7 @@ def _draw_info_dialog(node, lines, scroll, top_line_win, text_win,
     text_win.erase()
 
     for i, line in enumerate(lines[scroll:scroll + text_win_height]):
-        _safe_addstr_markup(text_win, i, 0, line, _style["text"]) # Happy Hare: Allow markup
+        _safe_addstr_markup(text_win, i, 0, line, _style["text"])
 
     text_win.noutrefresh()
 
@@ -3610,6 +3829,24 @@ def _include_path_info(node):
                     for filename, linenr in node.include_path))
 
 
+def _menu_path_prompts(menu):
+    # Prompts from (Top) down to 'menu' for the menu path bar
+
+    menu_prompts = []
+
+    while menu is not _kconf.top_node:
+        # Promptless choices can be entered in show-all mode. Use
+        # standard_sc_expr_str() for them, so they show up as
+        # '<choice (name if any)>'.
+        # The path bar is drawn without markup, so strip any tags
+        menu_prompts.append(_TAG_RE.sub("", menu.prompt[0]) if menu.prompt else
+                            standard_sc_expr_str(menu.item))
+        menu = menu.parent
+    menu_prompts.append("(Top)")
+    menu_prompts.reverse()
+    return menu_prompts
+
+
 def _menu_path_info(node):
     # Returns a string describing the menu path leading up to 'node'
 
@@ -3791,16 +4028,14 @@ def _node_str(node):
         parent = parent.parent
 
     # This approach gives nice alignment for empty string symbols ("()  Foo")
-    # Happy Hare: Orig: s = "{:{}}".format(_value_str(node), 3 + indent)
-    # Happy Hare: Added FLOAT type
     v = _value_str(node)
     tcc = _token_char_count(v)
 
-    # Happy Hare: display editable value nodes on the right of label -- it just looks better
+    # Display editable value nodes on the right of label -- it just looks better
     s = ""
     display_left = (node.item in (MENU, COMMENT) or node.item.orig_type not in (STRING, INT, HEX, FLOAT))
     if display_left:
-        s += "{:>{}}".format(v, _VALUE_INDENT + indent + tcc) # Happy Hare: Revised to right-aligned formatting
+        s += "{:>{}}".format(v, _VALUE_INDENT + indent + tcc)
     else:
         s += "{:>{}}".format("[[DIM]]>[[/DIM]]", _VALUE_INDENT + indent + 15)
 
@@ -3813,22 +4048,26 @@ def _node_str(node):
             s += " " + standard_sc_expr_str(node.item)
 
     if node.prompt:
-        prompt = _expand_values(node.prompt[0]) # Happy Hare: Live [[VALUE:SYM]] markup
+        prompt = _expand_values(node.prompt[0]) # Live [[VALUE:SYM]] markup
         if node.item == COMMENT:
-            if prompt == '_': # Happy Hare
+            if _is_link(node): # Link rows look like a menu entry
+                s += " {}  --->".format(prompt)
+            elif prompt == '_':
                 s = "    "
-            elif prompt.startswith('_'): # Happy Hare: Added special section header style for comments
+            elif prompt.startswith('_'): # Section header style for comments
                 max_width = 62
                 text = prompt[1:]
                 middle = f" {text.upper()} "
                 heading = "───────" + middle
-                # Happy Hare: Markup tokens in the text are zero-width so discount them from the rule padding
+                # Markup tokens in the text are zero-width so discount them from the rule padding
                 width = len(heading) - _token_char_count(heading)
                 if width < max_width:
                     heading += "─" * (max_width - width)
                 s = "{}".format(heading)
             else:
                 s += " *** {} ***".format(prompt)
+            if getattr(node, "dim", False): # Comment 'dim' option
+                s = "[[DIM]]{}[[/DIM]]".format(s)
         else:
             s += " " + prompt
             if (
@@ -3836,25 +4075,15 @@ def _node_str(node):
                 node.item.orig_type and
                 node.item.orig_type not in (STRING, INT, HEX, FLOAT) and
                 not _is_y_mode_choice_sym(node.item) and
-                len(node.item.assignable) <= 1 and
-                not isinstance(node.item, Choice)
+                not isinstance(node.item, Choice) and
+                _pinned(node)
             ):
                 s += " [[DIM]](FIXED)[[/DIM]]"
 
         if isinstance(node.item, Symbol):
             sym = node.item
 
-
-# Happy Hare: More useful to display non-default values
-#            # Print "(NEW)" next to symbols without a user value (from e.g. a
-#            # .config), but skip it for choice symbols in choices in y mode,
-#            # and for symbols of UNKNOWN type (which generate a warning though)
-#            if sym.user_value is None and sym.orig_type and \
-#               not (sym.choice and sym.choice.tri_value == 2):
-#
-#                s += " (NEW)"
-
-    # Happy Hare: display editable value nodes on the right of label -- it just looks better
+    # Display editable value nodes on the right of label -- it just looks better
     if not display_left:
         s += " {}".format(v)
 
@@ -3877,7 +4106,7 @@ def _node_str(node):
                         s += " ({})".format(sym_node.prompt[0])
                         break
 
-    # Happy Hare: Append "not default" message where the "r" reset keystroke is available
+    # Append "not default" message where the "r" reset keystroke is available
     # By limiting to known prefixes, we can still prevent reset of certain symbols/choices
     # To be able to be reset, symbols must have prompt and be named:
     #   PARAM_, VAR_, PIN_, BOOL_, or MMU_HAS_
@@ -3887,6 +4116,7 @@ def _node_str(node):
         if (
             (sym.user_value is not None or sym._was_set) and
             sym.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_')) and
+            node.prompt and expr_value(node.prompt[1]) and
             differs_from_default(node, sym)[0]
         ):
             s += " [[DIM]](NOT DEFAULT)[[/DIM]]"
@@ -3926,6 +4156,12 @@ def _should_show_name(node):
            (_show_name and isinstance(node.item, (Symbol, Choice)))
 
 
+def _pinned(node):
+    # A symbol pinned to one value, or a row whose own prompt is off (a
+    # force-shown entry that is changed elsewhere, if anywhere)
+    return len(node.item.assignable) <= 1 or not (node.prompt and expr_value(node.prompt[1]))
+
+
 def _value_str(node):
     # Returns the value part ("[*]", "<M>", "(foo)" etc.) of a menu node
 
@@ -3938,12 +4174,11 @@ def _value_str(node):
     if not item.orig_type:
         return ""
 
-    if item.orig_type in (STRING, INT, HEX, FLOAT): # Happy Hare: Added FLOAT
-        if item._was_set: # Happy Hare: Added style formatting for non-defaults
+    if item.orig_type in (STRING, INT, HEX, FLOAT):
+        if item._was_set: # Style non-defaults
             return "([[B]]{}[[/B]])".format(item.str_value)
         else:
             return "([[B]]{}[[/B]])".format(item.str_value)
-            #return "({})".format(item.str_value)
 
     # BOOL, BOOLINT, or TRISTATE
 
@@ -3952,9 +4187,11 @@ def _value_str(node):
 
     tri_val_str = (" ", "M", "*")[item.tri_value]
 
-    if len(item.assignable) <= 1:
-        # Pinned to a single value
-        return "" if isinstance(item, Choice) else "-{}-".format(tri_val_str)
+    if isinstance(item, Choice) and len(item.assignable) <= 1:
+        return ""
+
+    if not isinstance(item, Choice) and _pinned(node):
+        return "-{}-".format(tri_val_str)
 
     if item.type in (BOOL, BOOLINT):
         return "[{}]".format(tri_val_str)
@@ -3976,7 +4213,7 @@ def _check_valid(sym, s):
     # Returns True if the string 's' is a well-formed value for 'sym'.
     # Otherwise, displays an error and returns False.
 
-    if sym.orig_type == FLOAT: # Happy Hare: Added FLOAT check
+    if sym.orig_type == FLOAT:
         try:
             float(s)
         except ValueError:
@@ -4001,9 +4238,9 @@ def _check_valid(sym, s):
     if sym.orig_type not in (INT, HEX):
         if "\\" in s:
             _error("Backquote character '\\' is not allowed in strings")
-            return False  # Happy Hare: Can easily message up klipper config
+            return False  # Can easily mess up klipper config
 
-        # Happy Hare: If this is an array_editor STRING with a size
+        # If this is an array_editor STRING with a size
         # reference, validate the number of elements against the
         # referenced symbol's current value
         size_sym = getattr(sym, "array_size_sym", None)
@@ -4026,7 +4263,7 @@ def _check_valid(sym, s):
                                    expected, n))
                     return False
 
-        # Happy Hare: Validate against the symbol's 'validator' regexp, per
+        # Validate against the symbol's 'validator' regexp, per
         # element for an array_editor STRING (an empty array has none)
         validator = getattr(sym, "validator", None)
         if validator is not None and sym.orig_type == STRING:
@@ -4067,7 +4304,7 @@ def _range_info(sym):
     # Returns a string with information about the valid range for the symbol
     # 'sym', or None if 'sym' doesn't have a range
 
-    if sym.orig_type in (INT, HEX, FLOAT): # Happy Hare: Added FLOAT
+    if sym.orig_type in (INT, HEX, FLOAT):
         intervals = sym.active_ranges()
         if intervals:
             return "Range: " + " or ".join(
@@ -4083,20 +4320,6 @@ def _is_num(name):
     # when printing expressions. Things like 16 are actually symbol names, only
     # they get their name as their value when the symbol is undefined.
 
-#    try:
-#        int(name)
-#    except ValueError:
-#        if not name.startswith(("0x", "0X")):
-#            return False
-#
-#        try:
-#            int(name, 16)
-#        except ValueError:
-#            return False
-#
-#    return True
-
-    # Happy Hare: Rework
     try:
         float(name)
         return True
@@ -4211,15 +4434,14 @@ def _safe_addstr(win, *args):
         pass
 
 
-# Happy Hare: Tight matching of allowable markup tokens
-#_TAG_RE = re.compile(r"\[\[(/?)([A-Za-z]+)(?::(\d+))?\]\]")
+# Tight matching of allowable markup tokens
 _TAG_RE = re.compile(r"""
 \[\[
 (?= (?:/?(?:BOLD|B|UNDERLINE|U|REVERSE|REV|DIM) | (?:COLOR|C):[0-9]+ | /(?:COLOR|C) | RESET ) \]\] ) # whitelist gate, short and long forms
 (?P<slash>/)?(?P<name>[A-Z]+)(?::(?P<digits>[0-9]+))?     # captures: /?, name, :digits
 \]\]
 """, re.X)
-# Happy Hare: [[VALUE:SYMBOL]] markup shows the symbol's current value wherever text is
+# [[VALUE:SYMBOL]] markup shows the symbol's current value wherever text is
 # drawn (a width keeps a fixed-width layout such as the header box aligned)
 def _expand_values(text):
     return expand_value_markup(globals().get("_kconf"), text)
@@ -4230,11 +4452,11 @@ def _display_len(text):
     return len(text) - _token_char_count(text)
 
 
-# Happy Hare: Added to count how many "tag" characters there are in the string
+# Count how many "tag" characters there are in the string
 def _token_char_count(s):
     return sum(len(m.group(0)) for m in _TAG_RE.finditer(s))
 
-# Happy Hare: Added alternative to _safe_addstr() that allows simple embedded markup
+# Alternative to _safe_addstr() that allows simple embedded markup
 def _safe_addstr_markup(win, *args):
     # Render text with inline tags using _safe_addstr().
     # Call styles:

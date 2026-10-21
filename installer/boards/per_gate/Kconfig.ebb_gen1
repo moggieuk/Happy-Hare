@@ -8,6 +8,9 @@ if BOARD_TYPE_EBB_GEN1
   config PARAM_BOARD_TYPE
     default "EBB36/42 gen1"
 
+  # Heater output for a [heater_generic]: HE0 PA2 (v1.1) or PB13 (v1.2). Thermistor TH0 PA3
+  # is used for the PSF buffer
+
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_CANBUS
   endchoice
@@ -45,8 +48,11 @@ if BOARD_TYPE_EBB_GEN1
     config PIN_NEOPIXEL
       default "$(MCU_NAME):PD3"
 
+    # Fan headers (VIN): FAN1 managed fan, FAN2 controller fan
     config PIN_FAN
       default "$(MCU_NAME):PA0"
+    config PIN_CONTROLLER_FAN
+      default "$(MCU_NAME):PA1"
 
     config PIN_BUFFER_TENSION
       default "^$(MCU_NAME):PB8"
@@ -109,8 +115,11 @@ if BOARD_TYPE_EBB_GEN1
       config PIN_NEOPIXEL_$(gate)
         default "$(MCU_NAME)_gate$(gate):PD3"
 
+      # Fan headers (VIN): FAN1 managed fan, FAN2 controller fan
       config PIN_FAN_$(gate)
         default "$(MCU_NAME)_gate$(gate):PA0"
+      config PIN_CONTROLLER_FAN_$(gate)
+        default "$(MCU_NAME)_gate$(gate):PA1"
 
     endif
     @endrepeat@

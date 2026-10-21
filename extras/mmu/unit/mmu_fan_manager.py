@@ -152,6 +152,17 @@ class MmuFanManager:
             return
         self.reactor.update_timer(self._timer, self.reactor.monotonic())
 
+    def get_status(self, eventtime=None):
+        # Live per-fan modes (None for a gate without a fan) so a fan can be forced on
+        # (e.g. while venting) and later restored to what it was
+        return {
+            'unit': self.mmu_unit.name,
+            'first_gate': self.mmu_unit.first_gate,
+            'per_gate': self.has_per_gate_fans(),
+            'enabled': self._enabled,
+            'modes': [mode if fan else None for fan, mode in zip(self.fans, self._modes)],
+        }
+
     def get_snapshot(self, gates=None, eventtime=None):
         eventtime = self.reactor.monotonic() if eventtime is None else eventtime
         snapshot = []
@@ -249,19 +260,14 @@ class MmuFanManager:
         return list(per_gate_names)
 
     def _mcu_temperature_sensor_names(self, fan_index):
+        # MCU sensors may be hidden in the UI with a leading "_", so try both forms
         unit_name = self.mmu_unit.name
         if self.has_per_gate_fans():
-            suffix = "%s_mcu%d" % (unit_name, fan_index)
-            return ["temperature_sensor _" + suffix,
-                    "temperature_sensor " + suffix,
-                    "temperature_sensor %s_mcu" % unit_name]
-
-        names = ["temperature_sensor %s_mcu" % unit_name]
-        for index in range(self.mmu_unit.num_gates):
-            suffix = "%s_mcu%d" % (unit_name, index)
-            names.extend(["temperature_sensor _" + suffix,
-                          "temperature_sensor " + suffix])
-        return names
+            names = ["%s_mcu%d" % (unit_name, fan_index), "%s_mcu" % unit_name]
+        else:
+            names = ["%s_mcu" % unit_name]
+            names.extend("%s_mcu%d" % (unit_name, index) for index in range(self.mmu_unit.num_gates))
+        return ["temperature_sensor %s%s" % (prefix, name) for name in names for prefix in ("_", "")]
 
     def _indexes_for_gates(self, gates):
         if not self.has_per_gate_fans():

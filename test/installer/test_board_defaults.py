@@ -76,8 +76,10 @@ EXPECTED_WINS = {
     'boards/Kconfig.easy_brd_rp2040': 13,       'boards/Kconfig.ebb42_1_2': 12,
     'boards/Kconfig.erb_1': 27,                 'boards/Kconfig.erb_2': 27,
     'boards/Kconfig.mellow_easy_brd_can_1': 25, 'boards/Kconfig.mellow_easy_brd_can_2': 25,
-    'boards/Kconfig.mmb_1_0': 23,               'boards/Kconfig.mmb_1_1': 23,
-    'boards/Kconfig.mmb_2_0': 23,               'boards/Kconfig.owlfc_mini_1_0': 18,
+    # MMB under Tradrack: the shared exit sensor holds the gear diag header (1.x)
+    # and gives PA15 to the selector endstop (2.0)
+    'boards/Kconfig.mmb_1_0': 22,               'boards/Kconfig.mmb_1_1': 22,
+    'boards/Kconfig.mmb_2_0': 22,               'boards/Kconfig.owlfc_mini_1_0': 18,
     'boards/Kconfig.skr_pico_1': 15,            'boards/Kconfig.tzb_1_0': 32,
     'boards/Kconfig.wgb_3_0': 44,               'boards/custom/Kconfig.kms': 39,
     'boards/custom/Kconfig.qidi_box': 23,       'boards/custom/Kconfig.vvd': 24,

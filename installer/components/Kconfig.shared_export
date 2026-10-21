@@ -1,17 +1,19 @@
-# One capability a sharing unit takes from the owner it picked (shared_components.py).
+# One capability a sharing unit takes from the sibling owner its shared name names
+# (shared_components.py).
 #
-# Sourced inside the consumer's `if <shared flag>` block, once per exported symbol, after
-# Kconfig.shared_choice. The caller sets, immediately before each source:
+# Sourced inside the consumer's `if <shared flag>` block, once per exported symbol, after the
+# shared name symbol. The caller sets, immediately before each source:
 #
-#   shared_kind    key in shared_components.KINDS, e.g. buffer
-#   shared_export  the symbol, e.g. MMU_HAS_SENSOR_BUFFER_COMPRESSION (a bool or a string)
+#   shared_kind      key in shared_components.KINDS, e.g. buffer
+#   shared_name_sym  the shared name symbol, e.g. PARAM_SYNC_FEEDBACK_BUFFER_NAME
+#   shared_export    the symbol, e.g. MMU_HAS_SENSOR_BUFFER_COMPRESSION (a bool or a string)
 #
-# The last default keeps the value this unit saved when there is nothing to read: the owner
-# isn't configured yet, the saved owner is unresolved, or the parse isn't a unit parse run
-# by install.sh (no KCONFIG_PARENT).
+# The owner is matched live, so a name edited in menuconfig takes effect at once. There is
+# nothing to match without the other units (no KCONFIG_PARENT: not a unit parse run by
+# install.sh), when the name is in the user's own config, or when the owner isn't
+# configured yet.
 
 config $(shared_export)
-  @repeat var=i min=1 max=$(shared_slots)@
-  default "$(shared-export,$(shared_kind),$(i),$(shared_export))" if $(shared-member,$(shared_kind),$(i)) && $(shared-owner,$(shared_kind),$(i))
+  @repeat var=i min=0 max=$(owner-max,$(shared_kind))@
+  default "$(owner-export,$(shared_kind),$(i),$(shared_export))" if "$(owner-name,$(shared_kind),$(i))" != "" && $(shared_name_sym) = "$(owner-name,$(shared_kind),$(i))"
   @endrepeat@
-  default "$(shared-saved-export,$(shared_kind),$(shared_export))"

@@ -1,4 +1,4 @@
-menu "Blobifier            (_BLOBIFIER)"
+menu "Blobifier                (_BLOBIFIER)"
   visible if MMU_HAS_BLOBIFIER
   forceshow
   help
@@ -67,10 +67,6 @@ menu "Blobifier            (_BLOBIFIER)"
   config VAR_BLOBIFIER_BRUSH_ACCEL
     float "Brush acceleration             "
     default 0
-
-  config VAR_BLOBIFIER_SKEW_CORRECTION
-    float "Skew correction                "
-    default 0.1
 
   config VAR_BLOBIFIER_Y_OFFSET
     float "Y offset                       "

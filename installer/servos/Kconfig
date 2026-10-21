@@ -3,7 +3,8 @@
 #
 # Note that servo choices and settings are centralized here
 # but are specific to mmu type and override the defaults
-# in Kconfig.selector_servo
+# in Kconfig.selector_servo (pulse widths: components/Kconfig.servo).
+# They win because mmu_types/ sources this file first
 #
 # Responsible for modifying defaults for:
 #   PARAM_SERVO_MIN_PULSE_WIDTH

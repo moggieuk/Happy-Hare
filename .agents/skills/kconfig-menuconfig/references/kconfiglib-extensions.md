@@ -1,9 +1,10 @@
 # HH kconfiglib fork — extension catalog
 
 `installer/lib/kconfiglib/` is a vendored **kconfiglib v14.1** (Nordic/UMS
-upstream) carrying HH patches marked `# Happy Hare:` inline. Grep for that
-marker to get the full patch list; this catalog explains what each extension
-*does* and how to use it in a Kconfig file. Anchors are function and
+upstream) carrying HH patches. The patches are not marked inline; diff
+against an upstream v14.1 copy (Klipper vendors one in `lib/kconfiglib/`, plus
+its own small `kconfiglib.patch`) to get the full patch list. This catalog
+explains what each extension *does* and how to use it in a Kconfig file. Anchors are function and
 symbol names; grep for them.
 
 The root `installer/Kconfig` header comment is the user-facing summary of
@@ -13,7 +14,8 @@ item is part of item 7, its "if XX" comment-line construct of item 9, its
 generated file, the pickle, default-resolution semantics) and the `@if`
 macros of item 6 are not in the header; items 16-20 are its items 15-17,
 13 and 14, items 21-22 are its items 18-19 (item 21 also `Menuconfig:`
-item 7), and item 13 is its item 20. When you add an extension, update **both** this file and that
+item 7), item 13 is its item 20, item 23 is its item 23, item 24 is its item 24
+(also `Menuconfig:` item 8), and item 25 is its item 25. When you add an extension, update **both** this file and that
 header block.
 
 ## 1. `generated_default`
@@ -60,6 +62,16 @@ coercion).
 Option on symbols *and menus*: shown in menuconfig even when the visibility
 condition isn't met (used e.g. on `MMU_HAS_EJECT_BUTTONS` so users can
 enable a capability the type didn't imply).
+
+`forceshow if <expr>` forces it only while `<expr>` holds (`menuconfig._forced`), e.g.
+the buffer sensor bools, which a unit sharing another unit's buffer sees as a summary
+instead.
+
+A forced row whose own prompt condition is false is read-only: `_changeable` blocks
+space and `_reset_key` blocks `r`. `_pinned` draws it as fixed (`-*-`/`- -`,
+"(FIXED)", no "(NOT DEFAULT)") even when another prompt makes the symbol
+assignable. `MMU_HAS_TOOLHEAD_CUTTER`'s second prompt in `Kconfig.tip_shaping`
+uses this to show a multi-unit printer-level flag locked.
 
 ## 4. ` #~DEFAULT~#` default token
 
@@ -110,7 +122,7 @@ once expanded and can be nested.
 - `@repeat var=i min=0 max=11@ ... @endrepeat@` — the body lines are
   emitted once per `i` in `[min..max]` with `$(i)` substituted (`var=`
   names the placeholder; `min`/`max` are required integers, or preprocessor
-  variables expanding to one, e.g. `max=$(shared_slots)`). Used for
+  variables or functions expanding to one, e.g. `max=$(owner-max,buffer)`). Used for
   per-gate pin/prompt blocks where the gate count is compile-time fixed
   (max 12) and prompts are conditionally hidden via
   `prompt "..." if PARAM_NUM_GATES > $(i)`.
@@ -134,7 +146,7 @@ once expanded and can be nested.
   When a count is shared — several blocks, or Python code — define it once
   as a preprocessor variable (`max=$(var)`; an undefined one is a parse
   error) and have Python read it from `kconf.variables` rather than keep a
-  copy (`shared_components._limit`).
+  copy.
 - `@if <ENV_VAR>@ ... @endif@` / `@ifnot <ENV_VAR>@ ... @endif@` — the
   block's lines are only fed to the tokenizer when the *environment* variable
   named by the arg is set to a truthy value (`y/yes/1/true`, case-insensitive;
@@ -151,8 +163,10 @@ raw text entry: `array_editor ","` (separator; optional second arg is an
 literal value is a parse error; see the `_T_ARRAY_EDITOR` branch of
 `_parse_props` and the `array_size_sym` docstring on `Symbol`). It suits
 value lists that may be empty or repeat values, e.g. per-gate angles. The
-editor splits/joins on the separator, and `_check_valid` in `menuconfig.py`
-rejects an edit whose element count differs from the size symbol's value.
+editor splits on the separator and saves the lines joined by the separator
+plus a space (`a, b`, `x; y` — `_join_array_lines`), the spacing the shipped
+defaults use. `_check_valid` in `menuconfig.py` rejects an edit whose element
+count differs from the size symbol's value.
 A list of *names* whose identity matters (`MMU_UNITS`) uses item 21 instead.
 
 `array_size_mismatch ARRAY` on a promptless BOOL makes it evaluate to `y`
@@ -180,7 +194,11 @@ BOOLINT branch and `getint`'s special case).
   `comment "_" if SHOW_HIDDEN`.
 - Comment lines are first-class UI: `comment "_"` draws a full-width
   separator, `comment "_Heading"` a section heading, plain `comment "..."`
-  an inline note; flexible/multi-line comments are preserved. The menuconfig
+  an inline note; flexible/multi-line comments are preserved. A `dim`
+  property line under a comment (`_T_DIM`, `node.dim`, only valid on
+  comments) makes `_node_str` wrap the whole row, `***` included, in
+  `[[DIM]]` — used for the `$(misc_hardware_hint)` notes. Markup inside the
+  text alone can't reach the `***` that menuconfig adds. The menuconfig
   cursor skips comment runs when navigating (regression-tested in
   `test/installer/test_menuconfig.py` — a comment-only menu is not entered).
 
@@ -223,6 +241,28 @@ use a width inside anything padded.
   `aquatic` for the multi-unit entry point (single unit: `default`).
 - Comment-aware cursor navigation (item 9).
 - The sequence editor dialog (item 21).
+- Link rows that jump elsewhere in the tree (item 24).
+- **Help separator names the .cfg option** (`_cfg_labels`): ` Help ` stays
+  centred, with a dimmed part either side of it.
+  - ` (<file>) ` is left-justified. It is left out while the scroll arrows show.
+  - ` [<section>] <option> (+N more) ` is right-justified.
+  - On a narrow line each part shortens independently: the section goes first,
+    then the part itself. ` Help ` is never dropped.
+  - **Symbols:** shown when the selected symbol is a template line's whole value.
+    `cfg_import.symbol_locations` renders the marked templates from the live
+    `_kconf` (`build.KConfig.as_dict`).
+  - **Choices and their members:** shown when the choice alone sets a promptless
+    symbol through `default ... if <member>`.
+    `cfg_import.choice_locations` reads `node.orig_defaults`, so enclosing `if`
+    conditions don't count. It reads only definitions whose `if` blocks currently
+    hold, so a shared-buffer copy doesn't block `CHOICE_BUFFER_SPRING_STATE`.
+  - **Toggles and computed values:** no label.
+  - **Options in a section the render leaves out:** no label. For example,
+    `[controller_fan]` is written only once `PIN_CONTROLLER_FAN` is set.
+  - **Rendering:** lazy, on the next draw that needs it. It runs again after every
+    value change, reset or re-parse. A failure shows no label.
+  - **Cost:** the first render takes about 190 ms on a Mac, a re-render about
+    11 ms. `HH_MENUCONFIG_CFG_TIMING=<file>` logs each render.
 
 ## 12. `source` family
 
@@ -234,51 +274,117 @@ anything from outside the tree: `test_kconfig_env_hygiene.py` fails the suite
 if a Kconfig sources an absolute path or a parse reads a file outside
 `installer/` (a generated `/tmp/.Kconfig.generated` used to leak into parses).
 
-## 13. Shared components (`shared_components.py`, `shared-*` functions)
+## 13. Shared components (`shared_components.py`, `owner-*` functions)
 
-A unit of a multi-unit machine can share a component another unit owns (the
-sync-feedback buffer and the encoder). Each unit is a separate parse, so the sharer
-reads what the other units SAVED: `KCONFIG_PARENT` (the top-level
-`.mmu_config`, for `MMU_UNITS`) and each sibling `<parent>_<unit>`.
-`installer/lib/kconfiglib/shared_components.py` holds the registry (`KINDS`:
-the component's has/shared flags, the name symbol the templates read, the
-choice name and the exported capability symbols) and registers the
-`shared-*` preprocessor functions in `kconfigfunctions.functions`.
+A unit can use an encoder or sync-feedback buffer it doesn't define: another unit's, or a
+section in the user's own config. This works on single units too.
 
-- **Only unit parses run by install.sh read anything** (`KCONFIG_PARENT`
-  set). The build's pickle parse and `verify_pickle` see no other units and
-  keep the saved values, so every cross-unit value must be decided by a
-  menuconfig/olddefconfig unit pass and SAVED in the unit's own file.
-- **Consumers source two fragments** inside their `if <shared flag>` block:
-  `components/Kconfig.shared_choice` (a `CHOICE_SHARED_<KIND>` pick list of `$(shared_slots)` `@repeat`
-  slots whose member names come from unit names, plus the name
-  symbol's per-slot defaults; source it BEFORE the name symbol's own
-  definition so they win) and `components/Kconfig.shared_export` once per
-  exported symbol (per-slot defaults from the owner, then the unit's own
-  saved value as a sticky fallback). A kind with nothing to export (the
-  encoder) sources only the first.
-- **The saved name is the identity**; the choice is a view of it. A name that
-  no longer matches an owner is kept as `CHOICE_SHARED_<KIND>_UNRESOLVED` and
-  warned (W29 buffer, W30 encoder) — never re-pointed. Don't name that member
-  `_PREVIOUS` (olddefconfig hides those from its change report).
-  `unit_migration.rewrite_kconfig` rewrites the registry's name symbols on a
-  unit rename even though they're saved as `#~DEFAULT~#`.
-- **Exports come only from owners**, never another sharer, so one refresh
-  converges. `kconfig_needs_update` also marks a sharer stale when its saved
-  exports differ from its owner's (`python -m shared_components stale`), and
-  install.sh runs a second stale-only unit pass for an owner configured
-  after its sharer.
-- **Adding a shareable kind:** a `KINDS` entry, the two fragments sourced in
-  the component's Kconfig, a W-check for the unresolved member, and guard
-  every machine-type `select`/`imply`/`default` of an exported symbol with
-  `!<shared flag>` (otherwise it overrides the owner's value).
-- **Printer-level capabilities** use the same reader with the top-level
-  config as the only owner: `$(printer-flag,SYM)` returns the parent's saved
-  value, n without one (`PRINTER_FLAGS`). A unit goes stale when the parent is
-  newer, so no extra staleness check is needed.
-- The test harness writes each unit's config to a scratch dir in order
-  (`cfg._render_multi_unit`) and keys its parse cache on
-  `shared_components.context_key()`.
+**Identity is a plain name.**
+- The name is a string PARAM: `PARAM_ENCODER_NAME` or `PARAM_SYNC_FEEDBACK_BUFFER_NAME`, checked
+  with `object_name_validator`, the lowercase Klipper object-name regex or blank.
+- `MMU_SHARED_ENCODER` / `MMU_SHARED_SYNC_FEEDBACK_BUFFER` ("Use shared ...?", first in the
+  component's menu) mean "this unit renders no section".
+- The templates name the owner's section from the PARAM, e.g. `[mmu_encoder [[PARAM_ENCODER_NAME]]]`,
+  and `[mmu_unit] encoder:`/`buffer:` render the same PARAM. The owner's default is `UNIT_NAME`,
+  so the historical `[mmu_encoder <unit>]` output is unchanged.
+
+**One symbol, two prompt nodes.**
+- "Encoder name" `if !MMU_SHARED_ENCODER`; "Shared encoder object name" `if MMU_SHARED_ENCODER`.
+  Only one shows at a time. Find a symbol's *visible* prompt node, not its first.
+- A sharer's name defaults to "". A name saved by a sharer as `#~DEFAULT~#` (the old pick list
+  did this) is kept via `saved-config-value`, except v4.0's `-specify name-` placeholder.
+- A user value survives toggling the shared flag, so a typed owner name becomes the shared
+  name and vice versa. W33/W34 catch the duplicate this can create.
+
+**Owners are found by name, live.**
+- Each unit is a separate parse, so a unit reads what the other units SAVED: `KCONFIG_PARENT`
+  (the top-level `.mmu_config`, for `MMU_UNITS`) and each sibling `<parent>_<unit>`.
+- `owners(kind)` lists the other units that have the component and don't share it, with their
+  saved name (their unit name if none is saved).
+- Kconfig reads them with `@repeat var=i min=0 max=$(owner-max,KIND)@` and compares the name
+  symbol to `"$(owner-name,KIND,$(i))"` literals, guarded by `!= ""` for past-the-end slots.
+  The repeat predates item 23, when a macro could only expand to one symbol name.
+  Because the comparison is a real expression, a name edited in menuconfig is matched at once.
+- Promptless `SHARED_BUFFER_FOUND` / `SHARED_ENCODER_FOUND` say the shared name is a sibling
+  owner's.
+- **Only unit parses run by install.sh read anything** (`KCONFIG_PARENT` set). The build's
+  pickle parse and `verify_pickle` see no owners: FOUND is n there, and the saved values are
+  applied. So every cross-unit value must be decided by a menuconfig/olddefconfig unit pass and
+  SAVED in the unit's own file. `test_render_via_files.py` checks that the two agree.
+
+**Buffer capabilities (`KINDS["buffer"].exports`).**
+- The three `MMU_HAS_SENSOR_BUFFER_*` bools and `PARAM_BUFFER_SPRING_STATE` are the only buffer
+  values another unit's menu reads, for endstop, autocal and homing defaults. The encoder
+  exports nothing.
+- `components/Kconfig.shared_export`, sourced once per export inside `if <shared flag>`, gives
+  each symbol the matching owner's value (`$(owner-export,...)`). These defaults are parsed
+  before the symbols' own definitions, so they win.
+- Layout splits *capabilities* from *contents*:
+  - The sensor bools and spring-state choice live in `if !MMU_SHARED... || !SHARED_BUFFER_FOUND`.
+    The bools are `forceshow if` the same condition (item 3), so owners still see type-fixed
+    ones.
+  - Pins, analog tuning, range/maxrange and register are `!MMU_SHARED...` only. A name no sibling
+    owns, i.e. the user's own config, therefore declares its sensors and spring state but no
+    pins.
+- Nothing is carried over when the owner goes (renamed, removed or switched off). The
+  capability symbols fall back to their normal defaults for the user to enter, and
+  olddefconfig's change report lists the derived defaults that move.
+- Guard every machine-type `select`/`imply` of an exported symbol with `!<shared flag>`,
+  otherwise it overrides the owner's value. kconfiglib warns about a select of an unmet bool.
+
+**What a sharer sees.** All are dim comments, so they render as `*** ... ***`.
+- Under the shared name: `Known shared buffers: $(first-nonempty,$(owner-names,buffer),none)`.
+  The encoder has the same. This is evaluated at parse time, from what the siblings had saved.
+- A known buffer: one block, padded with `$(pad,51,...)` so the `***` line up, with the owner's
+  spring state as the choice label and each sensor as yes/no. The Fitted Sensors heading and
+  its blank line are hidden.
+- An unknown buffer name: "No other unit owns this buffer: enter its capabilities below".
+- An unknown encoder name: "No other unit owns this encoder: define it in your own config".
+
+**Staleness.**
+- Exports come only from owners, never another sharer, so one refresh converges.
+- `kconfig_needs_update` also marks a sharer stale when its saved exports differ from those of
+  the owner its saved name names (`python -m shared_components stale`). install.sh runs a second
+  stale-only unit pass, for an owner configured after its sharer.
+
+**Warnings.**
+- W29/W30: a blank shared name.
+- W33/W34: an owner name that is blank or another sibling owner's, via `@repeat` over
+  `owner-name`. Two sections of one name merge in Klipper.
+- W15/W16 also check a share that declares its sensors.
+- There is deliberately no warning for an unknown shared name: it is legitimate for a private
+  cfg.
+
+**Unit rename/remove (`installer/unit_migration.py`).**
+- `rewrite_kconfig` rewrites an owner's name only when it is exactly the file's old unit name.
+  A default keeps its token, so siblings read the new name before olddefconfig runs. A shared
+  name is never rewritten, and never goes in the manual-edit list.
+- `check` doesn't refuse over shared names. `shared_name_warnings` prints a WARNING, before
+  "Apply these unit changes?", for a sharer whose name a rename or removal changes or drops.
+- `mmu_<encoder>_encoder_*` vars move by *encoder* name, and only for units that own an
+  encoder: `component_names` → `install["encoders"]`, from `prepare`. A removed owner's are
+  dropped.
+
+**Refresh/Merge.** `[mmu_unit] encoder`/`buffer` are `KCONFIG_OWNED_OPTIONS` (`build.py`,
+matched by section type), because the section headers they name always come from the template.
+
+**Adding a shareable kind.** You need:
+- a `KINDS` entry;
+- the shared flag and the two-node name symbol;
+- a FOUND helper and the known-names comment;
+- the exports sourced in the component's Kconfig;
+- the W-checks;
+- the `!<shared flag>` guards on machine-type selects.
+
+**Printer-level capabilities** use the same reader with the top-level config as the only
+owner. `$(printer-flag,SYM)` returns the parent's saved value, or n without one
+(`PRINTER_FLAGS`). A unit goes stale when the parent is newer, so no extra staleness check is
+needed.
+
+**Test harness.** It writes each unit's config to a scratch dir in order
+(`cfg._render_multi_unit`) and keys its parse cache on `shared_components.context_key()`.
+Everything a parse reads must be in that key: owners' names and exports, and the unit's own
+saved flag and name. Otherwise a cached tree leaks between profiles.
 
 ## 14. The pickle (value transport)
 
@@ -411,6 +517,22 @@ so every caller carries a saved value across a rename. See SKILL.md
 ("Renaming a symbol discards the user's value…") for the rules and its one
 limit: a symbol `make` or `install.sh` reads by name cannot be renamed this way.
 
+Two v4.1 companions run in the same load, both idempotent because they only
+act on old-format lines:
+- `HH_MCU_PREFIXED_RENAMES`: the environment sensor's i2c pins
+  (`PIN_ENVIRONMENT_SENSOR_SCL*` → `PIN_ENVIRONMENT_SENSOR_I2C_SCL*`) gain the MCU
+  the template used to add (`_mcu_prefixed_pin`: the gate's MCU on a per-gate-MCU
+  design), after any `^`/`~`/`!` modifier. The builder takes the saved `MCU_NAME`,
+  as its template render does; olddefconfig takes the environment's, which it saves.
+- `HH_REMOVED_I2C_BUSES`: the environment sensor's old fixed i2c2/i2c3 members
+  become "Custom bus name" with the same bus name, recorded default or not, so
+  the render doesn't change. Skipped when the board now offers that bus.
+
+The NFC reader's bus name, free text in v4.0, needs no migration: "Custom bus name"
+is its default wherever a board doesn't preselect a bus, so a typed name stays
+visible. Only on the Chameleon X5, which preselects i2c1, does a typed name give
+way to that bus.
+
 ## 21. `sequence_editor <separator> [baseline]` / `append_only_unless <expr>`
 
 An ordered list of **unique names** whose identity matters, edited as a list
@@ -427,7 +549,10 @@ config MMU_UNITS
 - **Not a type.** The symbol stays `string` and its value a plain
   separator-joined list, so `make` and `install.sh` read it unchanged. The
   attributes only pick a different dialog (`_change_node` → `_sequence_dialog`),
-  the way `array_editor` does.
+  the way `array_editor` does. An edit is saved as `a, b`
+  (`sequence_edit.join_sequence`, shared with the array editor); every reader
+  strips the names. Closing the dialog with the names unchanged leaves the saved
+  value as it was, so a differently spaced old value isn't a pending change.
 - **Parsing** (the `_T_SEQUENCE_EDITOR` / `_T_APPEND_ONLY_UNLESS` branches of
   `_parse_props`): only the first argument is lexed as a string
   (`_STRING_LEX`). A quoted second argument arrives as a *constant symbol*
@@ -536,3 +661,104 @@ an "Updating configuration…" box.
   - **Checking the result:** after saving, `CONFIG_MCU_NAME` equal to the new
     name proves the re-parse ran, and the `#~DEFAULT~#` pin lines should carry
     the new prefix.
+
+## 23. Macros that expand to an expression
+
+Upstream lexes a `$(macro)` in a symbol position as part of ONE name, however
+it expands, so `if $(cond)` with `cond := A && !B` tested a junk symbol named
+`A && !B`: always n, with no error. The Happy Hare branch after `_expand_name`
+in `_tokenize` re-lexes the expansion in place, as the expression it spells,
+when it holds whitespace or starts with `!` or `(` (`_expanded_expr_match`).
+Write a condition with spaces around its operators.
+
+Anything else stays one symbol name, exactly as upstream. That matters: an
+undefined symbol's value is its own name, and a choice member named from a
+device path (`$(mmu_serial_config,...)`, only `-` replaced) can hold `:`, `=`
+or `+` and is both declared and defaulted to through the macro. No existing
+macro expands to whitespace or a leading `!`/`(`, so nothing that parsed before
+changes meaning.
+
+This is what lets `components/Kconfig.servo` take its prompt condition from the
+caller (`servo_visible`) instead of being sourced inside the caller's `if`.
+
+- `test_kconfig_macro_names.py` (`TestMacroExpandingToAnExpression`) covers the
+  tokenizer, including a device-style name; `test_kconfig_structure.py` fails
+  on any symbol name with spaces or operators in the shipped (harness) tree,
+  which is what catches `A&&B` written without spaces.
+- An `if` block *between* a menu toggle and the prompts it should nest still
+  ends kconfiglib's automatic submenu (`_finalize_node` only nests consecutive
+  siblings that depend on the toggle). A prompt condition doesn't, which is the
+  other reason to pass a condition rather than wrap the `source`.
+
+## 24. `link <SYMBOL>` on a comment
+
+A comment with a `link` property is a selectable row that jumps to wherever
+SYMBOL is shown, for settings that belong together but live in different
+menus. Purging and Tip Forming / Cutting use them to reach the macro
+variables of Blobifier, simple purge, tip forming, toolhead tip cutting and
+the servo cutter, e.g.:
+
+```
+comment "Blobifier macro variables"
+  link VAR_BLOBIFIER_PURGE_SPD
+  help
+    Purge, brush, bucket and tray settings for the Blobifier macro
+```
+
+- **Parsing** (the `_T_LINK` branch of `_parse_props`): only valid on comments;
+  the target goes through `_expect_nonconst_sym`, so a misspelt target is a
+  node-less symbol that `TestNoDanglingSymbolReferences` fails on. Comments
+  accept `help` for this (`node.help = None` in the `_T_COMMENT` branch).
+  A link row is not written to the value file.
+- **Target:** a symbol, because menus have no names. Following the link opens
+  the symbol's menu (`_parent_menu`) with the cursor on it, so link to a
+  menu's first symbol to "open" that menu. The first of the symbol's nodes
+  that is reachable wins (`_reachable`: shown, and every menu above it shown
+  and not a force-shown disabled placeholder). Keep the link's own `if` in
+  step with the target's visibility; a hidden target gets an error box rather
+  than show-all.
+- **Return:** `_follow_link` pushes the origin on `_link_return`; leaving the
+  menu it landed in (`_leave_menu`, ESC/Left, even at the top level) returns to
+  the link row. Submenus entered from there behave as usual, chained links
+  unwind one jump per ESC, and `_reparse` clears the stack.
+- **Display:** `<prompt>  --->`, like a menu entry, since ESC brings you back
+  as it would from a submenu. The help pane adds the destination path and
+  "ESC returns here" to any help text.
+- **Tests:** `TestLink` and `TestShippedLinks` in
+  `test/installer/test_menuconfig.py`. The second checks every shipped link
+  targets a prompted symbol, and each one in its `SHIPPED` table is hidden
+  with its feature off and opens its Macro Variables submenu with it on.
+  Add a new link to `SHIPPED`; the test fails on one that isn't there.
+
+## 25. `keep_when_hidden`
+
+The opposite of `default_when_hidden` (item 16). A hidden prompt makes
+kconfiglib ignore the symbol's user value (`Symbol.str_value`/`tri_value`
+only honour it while visible), so `write_config` writes the default instead:
+as a frozen assignment when the prompt is hidden by `prompt ... if X`, or not
+at all when an enclosing `if` also disables the defaults. Turning a parent
+off and saving therefore loses the customization, and `build.py`, which
+renders raw user values, renders the default.
+
+`keep_when_hidden` on a `menuconfig`, `menu` or symbol makes a hidden symbol
+under it save its user value instead (`_kept_config_string()`, used by
+`_config_contents`), with no #~DEFAULT~# token. Nothing else changes:
+expressions and visibility still see the default while it is hidden, a
+symbol with no user value is written as before, and the load path already
+keeps user values on hidden symbols. When the prompt shows again, menuconfig
+shows the kept value as NOT DEFAULT and `r` resets it.
+
+- **Precedence:** `_hidden_policy()` takes the nearest of the two keywords
+  walking up from the symbol's nodes, so `keep_when_hidden` on a symbol
+  overrides `default_when_hidden` on its menu. Both on one node is a parse
+  error, and so is either one on a choice.
+- **Use it only where the hidden value isn't imposed.** It suits options the
+  .cfg still renders while hidden, under a switch that can be turned back on,
+  even at runtime with `MMU_TEST_CONFIG`: the encoder validation tolerances,
+  the flowguard relief and tangle-prevention levels, `servo_duration`, the
+  bowden homing distances. Don't use it where hiding means "forced" or "off":
+  `PARAM_SYNC_TO_EXTRUDER`/`_FORM_TIP`/`_PURGE` are forced to 1 when the
+  filament is always gripped, and a blank `PARAM_ENVIRONMENT_SENSOR_<n>`
+  means that gate has no sensor. A kept value would override those, because
+  the build reads raw values.
+- **Tests:** `test/installer/test_kconfig_keep_when_hidden.py`.

@@ -53,10 +53,11 @@ Load-bearing facts about the flow:
   `run_kconfig_units` / `run_kconfig_one`. The per-unit config file and the
   installed `.cfg` files both gain a `_<unit>` suffix. A unit parse also
   reads the OTHER units' saved files (`KCONFIG_PARENT`) for components one
-  unit shares with another — the pick list of owners and the owner's
+  unit shares with another — the owners' encoder/buffer names and an owner's
   capabilities; see [extensions item 13](references/kconfiglib-extensions.md).
 - **A unit's name is its identity** — per-unit Kconfig file, every section
-  and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
+  (except its encoder and buffer, named by their own PARAM, which defaults to the
+  unit's name: item 13) and pin prefix, and the `mmu_<unit>_*` keys in `mmu_vars.cfg`. `MMU_UNITS`
   is a `sequence_editor` symbol (extension catalog item 21) so the list
   editor can record renames, removals and moves (a comma list alone can't) in
   `.mmu_config.MMU_UNITS.changes`, relative to `F_UNITS_BASELINE` (the
@@ -131,14 +132,43 @@ Load-bearing facts about the flow:
   is sourced once per consumer with `prefix := X` preprocessor variables, so
   one definition generates `PARAM_X_…` for each. `installer/Kconfig.purging`
   and `installer/components/Kconfig.tmc_driver_*` are the worked example;
-  `components/Kconfig.environment_sensor_*` is sourced from inside an
-  `@repeat` (once per gate) as well as once for the shared sensor
+  `components/Kconfig.environment_sensor` (type, i2c bus, address) is
+  sourced from inside an `@repeat` (once per gate) as well as once for the
+  shared sensor, and itself sources `components/Kconfig.i2c_bus`, the bus type,
+  bus name and `PIN_*_I2C_SCL/SDA` pins every i2c device shares with the NFC
+  reader. Its bus choice declares only "Custom bus name" (blank = the MCU's
+  default bus); board files add the buses they route through
+  `components/Kconfig.i2c_board_bus` (one source per bus: board condition, a
+  tag unique across boards, Klipper bus name, label, and per device whether
+  to offer and preselect it). Klipper's bus names depend on the chip family
+  (`i2c3` on F4, `i2c3_PB3_PB4` on G0, `i2c0a` on RP2040): take them from
+  the target's `src/stm32/i2c.c`, `stm32f0_i2c.c` or `src/rp2040/i2c.c`
   ([references/environment-sensors.md](references/environment-sensors.md)
   has the Klipper sensor facts and design behind it). Three rules: re-assign every variable immediately before each `source`
-  (they are global for the whole parse); keep declarations and prompts in
-  separate fragments, because `_propagate_deps` ANDs an enclosing `if` into
-  defaults as well as prompts; and pad prompts with `$(pad,width,text)`
-  rather than literal spaces.
+  (they are global for the whole parse); keep an enclosing `if` away from
+  the defaults, because `_propagate_deps` ANDs it into defaults as well as
+  prompts; and pad prompts with `$(pad,width,text)` rather than literal
+  spaces. TMC does the second by splitting declarations from prompts.
+  `components/Kconfig.servo` (every `[mmu_servo]`: selector, vent incl.
+  per gate, Blobifier, gantry, cutter) does it in one file: the caller
+  sources it outside its feature `if` and passes the prompt condition as
+  `servo_visible` (extension 23), straight after the toggle the prompts
+  should nest under.
+- **The one-file servo shape needs a prompt on every node.** A promptless
+  node's automatic-submenu test looks at its `dep` (`_auto_menu_dep`), and
+  outside the `if` that dep can't mention the toggle, so the first one ends
+  the submenu. TMC's derived symbols (`PARAM_*_TMC`, `BOOL_*_TMC_*`) can't
+  have prompts, so merging its types into the menu fragment drops the
+  Blobifier stepper prompts out from under "Have Blobifier?"; that is why it
+  stays split. Where losing defaults while hidden is fine, as for the
+  environment sensor, source the whole thing inside the `if` instead.
+  Callers' differences go in variables, servo style: an optional prompt is
+  `prompt "…" if $(flag) && …` (the servo's initial angle), extra help lines a
+  `$(nl)`-prefixed hint, and extra choice members a re-opened named choice
+  in a board file (the buses `components/Kconfig.i2c_bus` offers).
+- **Pins always carry their MCU prefix, typed by the user.** A template never
+  prepends one: the environment sensor's did, until v4.1 moved that into the
+  value (`HH_MCU_PREFIXED_RENAMES`, extension catalog item 20).
 
 ## The symbol-naming contract
 
@@ -253,6 +283,11 @@ with no parent), feeding promptless `MMU_HAS_*` defaults in its
 **Help display limit: at most seven lines per Kconfig `help` block, including
 blank lines.** Menuconfig can display only seven lines. Keep lines short enough
 to avoid wrapping beyond that limit; put longer explanations in documentation.
+Count lines *after* preprocessor expansion: a `$(nl)` adds one, and the
+`$(pin_help)` every prompted `PIN_` symbol ends with (beside its
+`validator "$(pin_validator)"`) adds two (syntax + example), so a pin's own
+text gets five. `test_kconfig_validator.py` enforces the validator and the
+limit for every prompted pin.
 
 1. **Name it per the contract** above. A symbol that should be a *modifiable
    default* (user-tweakable, `r`-resettable) needs a special prefix **and a
@@ -314,9 +349,10 @@ to avoid wrapping beyond that limit; put longer explanations in documentation.
    the tests for it are `make verify_pickle` (pickle consistency),
    `make test UT=test_menuconfig.py` (`test/installer/test_menuconfig.py`,
    menuconfig cursor behavior), and
-   profile tests. The vendored base is kconfiglib **v14.1** — the HH patches
-   are marked `# Happy Hare:` inline; if you re-sync upstream, that grep is
-   your change list.
+   profile tests. The vendored base is kconfiglib **v14.1**; the HH changes
+   are not marked inline, so to get the change list diff against an upstream
+   v14.1 copy (Klipper vendors one in `lib/kconfiglib/`, plus its own small
+   `kconfiglib.patch`).
 
 ## Machine- and board-specific defaults (cross-file)
 
@@ -355,9 +391,10 @@ in this repo:
 - **A named `choice` can gain members from another file; an unnamed one
   can't.** Re-opening `choice CHOICE_X ... endchoice` with just the new
   `config` lines adds them to the same choice; give each one a `depends on`
-  its board or type so it shows only there. `boards/per_gate/Kconfig.slb`
-  and `Kconfig.ebb_gen1` add their i2c buses to
-  `CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)` this way. A machine/board file
+  its board or type so it shows only there: a member inside the board's `if`
+  block is still offered on every board. `boards/per_gate/Kconfig.slb` and
+  `Kconfig.ebb_gen1` add their i2c buses to `CHOICE_*_I2C_BUS_$(gate)` this
+  way; regular boards use `components/Kconfig.i2c_board_bus`, which does it. A machine/board file
   can also steer an existing choice with `default <CHOICE_MEMBER> if <cond>`.
   Selection is first-satisfied over the merged `choice.defaults` list, in parse order
   (`Choice._selection_from_defaults`; the member must also be visible) —
@@ -406,7 +443,10 @@ in this repo:
    `make verify_pickle`; `test_kconfig_pickle_consistency.py` exists because
    this exact class of silent value-dropping has happened several times.
    Related: BOOL `user_value` is an int tristate (0/1/2), not `"n"/"y"` —
-   normalize with `TRI_TO_STR`.
+   normalize with `TRI_TO_STR`. The write side has the same trap: saving
+   writes a hidden symbol's default, losing a customization when its parent
+   is off. `keep_when_hidden` (extension catalog item 25) saves the user value
+   instead, for options whose hidden value isn't imposed.
 3. **`#~DEFAULT~#` is live syntax** inside `.mmu_config`. `saved-config-value`
    (a kconfiglib preprocessor function, `kconfigfunctions.py`, cached by
    mtime+size) and the load path both parse it. Tooling that rewrites value

@@ -104,4 +104,4 @@ class MmuTtgMapCommand(BaseCommand):
                 mmu.log_info(msg, color=True)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)

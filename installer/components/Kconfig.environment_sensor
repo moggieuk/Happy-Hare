@@ -1,14 +1,16 @@
-# Environment sensor - sensor type, report time and HTU21D options.
+# Environment sensor - type, i2c bus and address of one [temperature_sensor].
 #
-# Sourced once for the shared sensor (Kconfig.environment_sensor) and once
-# per gate (Kconfig.per_gate). The caller sets:
+# Sourced once for the shared sensor and once per gate (Kconfig.environment_sensor),
+# inside the caller's feature `if`. The caller sets:
 #
-#   env_sensor_suffix   appended to every symbol name: empty for the shared
-#                       sensor, _<gate> for a per-gate one
+#   env_sensor_suffix  appended to every symbol name: empty for the shared
+#                      sensor, _<gate> for a per-gate one
 #
-# and must re-assign it on the line before each source: preprocessor
-# variables are global for the whole parse, and @repeat substitutes its
-# variable only in its own body, never in a sourced file.
+# and must re-assign it on the line before each source: preprocessor variables
+# are global for the whole parse, and @repeat substitutes its variable only in
+# its own body, never in a sourced file.
+#
+# The i2c bus comes from components/Kconfig.i2c_bus, shared with the NFC reader.
 #
 # Defines, for each $(env_sensor_suffix):
 #   CHOICE_ENVIRONMENT_SENSOR_TYPE* PARAM_ENVIRONMENT_SENSOR_TYPE*
@@ -16,6 +18,8 @@
 #   CHOICE_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION*
 #   PARAM_ENVIRONMENT_SENSOR_HTU21D_RESOLUTION*
 #   PARAM_ENVIRONMENT_SENSOR_HTU21D_HOLD_MASTER*
+#   PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS*
+#   and the i2c bus symbols (components/Kconfig.i2c_bus)
 
 choice CHOICE_ENVIRONMENT_SENSOR_TYPE$(env_sensor_suffix)
   prompt "Sensor type       "
@@ -167,3 +171,27 @@ if PARAM_SENSOR_REPORT_TIME_PARAM$(env_sensor_suffix) = "htu21d_report_time"
       Read with hold master mode commands (htu21d_hold_master).
       Leave off unless your sensor needs it.
 endif
+
+i2c_prefix    := ENVIRONMENT_SENSOR
+i2c_suffix    := $(env_sensor_suffix)
+i2c_stem      := i2c
+i2c_pad       := 18
+i2c_type_hint :=
+source "components/Kconfig.i2c_bus"
+
+config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS$(env_sensor_suffix)
+  int "i2c address       "
+  default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280$(env_sensor_suffix)
+  default 64  if CHOICE_ENVIRONMENT_SENSOR_TYPE_HTU21D$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7013$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7020$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SI7021$(env_sensor_suffix) || CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT21$(env_sensor_suffix)
+  default 68  if CHOICE_ENVIRONMENT_SENSOR_TYPE_SHT3X$(env_sensor_suffix)
+  default 72  if CHOICE_ENVIRONMENT_SENSOR_TYPE_LM75$(env_sensor_suffix)
+  default 56
+  help
+    i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280, 64 [0x40] for HTU21D family, 68 [0x44] for SHT3X, 72 [0x48] for LM75)
+    BMP180, BMP388 and some BME280 sensors use 119 [0x77] instead of 118.
+
+# Shared and per-gate sensors use the same optional temperature limits.
+temp_limit_prefix := ENVIRONMENT_SENSOR
+temp_limit_suffix := $(env_sensor_suffix)
+temp_limit_pad := 18
+source "components/Kconfig.temperature_limits"

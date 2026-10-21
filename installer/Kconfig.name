@@ -25,7 +25,7 @@ menu "Name"
   comment "Klipper object name: $(UNIT_NAME)  (rename with './install.sh -i', REPLACE mode)" if !MULTI_UNIT && "$(env-default,F_UNITS_RESTRUCTURE,n)" != "y"
 
   config PARAM_DISPLAY_NAME
-    string "Display name"
+    string "Display name       "
     generated_default "%s-%d" "PARAM_VENDOR UNIT_INDEX" if PARAM_VENDOR != "Other"
     default UNIT_NAME
     help

@@ -127,7 +127,8 @@ def namespaced(variable, namespace):
 # Kconfig value files
 # -----------------------------------------------------------------------------
 
-SHARED_NAMES = {kind.name for kind in shared_components.KINDS.values()}
+# The names of encoders and buffers, which only follow a rename of the unit that owns one
+SHARED_KINDS = {kind.name: kind for kind in shared_components.KINDS.values()}
 KCONFIG_LINE = re.compile(r'^(CONFIG_[A-Za-z0-9_]+)=(.*?)(\s+' + DEFAULT_TOKEN + r')?\s*$')
 
 
@@ -170,17 +171,21 @@ def _loose_pattern(names):
     return re.compile(r'(?<![A-Za-z0-9-])(' + alternatives + r')(?![A-Za-z0-9-])')
 
 
-def rewrite_kconfig(path, renames, known_names, identity=None):
+def rewrite_kconfig(path, renames, known_names, identity=None, own=None):
     """
     Rewrite unit names in the explicit values of a Kconfig value file.
     Values saved with #~DEFAULT~# are left alone since they are recomputed on
-    the next load, except the name of a shared component's owner: that default
-    is recomputed FROM the saved name. 'identity' forces UNIT_NAME/MCU_NAME/UNIT_INDEX.
+    the next load. 'identity' forces UNIT_NAME/MCU_NAME/UNIT_INDEX.
+
+    An encoder or buffer name is only renamed by 'own' (this file's old unit name -> new),
+    when the unit owns the component and the name is exactly its old unit name. A shared
+    one names another unit's or the user's own section, which the user has to keep right.
 
     Returns (rewritten lines, lines that may still need a manual edit).
     """
     with open(path, "r", encoding="utf-8") as f:
         lines = f.read().split("\n")
+    values = read_kconfig(path)
 
     renames = {old: new for old, new in renames.items() if old != new}
     pattern = _names_pattern(set(renames) | set(known_names)) if renames else None
@@ -195,9 +200,14 @@ def rewrite_kconfig(path, renames, known_names, identity=None):
         key, value, default = m.group(1), m.group(2), m.group(3) or ""
         sym = key[len("CONFIG_"):]
 
-        if identity and sym in identity:
+        if sym in SHARED_KINDS:
+            name = _unquote(value)
+            if not own or name not in own or values.get(SHARED_KINDS[sym].shared) == "y":
+                continue
+            new_value = _quote(own[name])
+        elif identity and sym in identity:
             new_value = identity[sym]
-        elif (default and sym not in SHARED_NAMES) or pattern is None or sym == SYMBOL:
+        elif default or pattern is None or sym == SYMBOL:
             continue
         else:
             new_value = pattern.sub(lambda mm: mm.group(1) + renames.get(mm.group(2), mm.group(2)), value)
@@ -205,7 +215,8 @@ def rewrite_kconfig(path, renames, known_names, identity=None):
         if new_value != value:
             lines[i] = "%s=%s%s" % (key, new_value, default)
             rewritten.append("%s: %s -> %s" % (sym, value, new_value))
-        if loose and not default and sym != SYMBOL and loose.search(new_value):
+        if loose and not default and sym not in (SYMBOL,) + tuple(SHARED_KINDS) \
+                and loose.search(new_value):
             manual.append("%s:%d: %s" % (path, i + 1, lines[i]))
 
     if rewritten:
@@ -358,7 +369,7 @@ class Plan:
             errors.append("Unit names in %s must be unique: %s" % (SYMBOL, ", ".join(self.current)))
         if not self.current:
             errors.append("%s cannot be empty" % SYMBOL)
-        # A unit sharing an object (encoder, buffer, NFC reader, ...) of a removed unit
+        # A unit sharing an object (NFC reader, ...) of a removed unit
         applied = _applied(self.kconfig, self.baseline)
         removed = {applied.get(old) or old: old for old in self.removed}
         if removed:
@@ -371,7 +382,7 @@ class Plan:
                 # Once migrated, a reused name in the file means the unit that now has it
                 reused = set(self.current) if applied.get(origin) != origin else set()
                 for sym, value in read_kconfig(path).items():
-                    if sym in ("UNIT_NAME", "MCU_NAME"):
+                    if sym in ("UNIT_NAME", "MCU_NAME") or sym in SHARED_KINDS:
                         continue
                     for m in pattern.finditer(value):
                         if m.group(2) in removed and m.group(2) not in reused:
@@ -387,6 +398,59 @@ def _applied(kconfig, base):
     if not isinstance(applied, dict):
         applied = {}
     return {o: applied.get(o, o) for o in base}
+
+
+def _unit_values(kconfig, plan, applied, unit, baseline=True):
+    """The saved values of a baseline unit (or, with baseline=False, a current one)."""
+    if plan.single:
+        return read_kconfig(kconfig)
+    if baseline:
+        have = applied.get(unit)
+        return read_kconfig(unit_file(kconfig, have) if have else removed_file(kconfig, unit))
+    origin = plan.origin.get(unit)
+    return read_kconfig(unit_file(kconfig, (applied.get(origin) if origin else None) or unit))
+
+
+def component_names(kconfig, plan, kind):
+    """
+    Baseline unit -> (name before, name after) of the component it owns (its name, which
+    defaults to the unit's), None after for a removed unit. A name that is the file's unit
+    name follows the rename, whether or not the file is migrated yet.
+    """
+    applied = _applied(kconfig, plan.baseline)
+    names = {}
+    for old, new in plan.target.items():
+        values = _unit_values(kconfig, plan, applied, old)
+        if not shared_components.is_owner(values, kind):
+            continue
+        name = values.get(kind.name)
+        if name is None or name in (old, values.get("UNIT_NAME")):
+            names[old] = (old, new)
+        else:
+            names[old] = (name, name if new else None)
+    return names
+
+
+def shared_name_warnings(kconfig, plan):
+    """Sharers still naming an encoder/buffer that the change renames or removes."""
+    if plan.single:
+        return []
+    applied = _applied(kconfig, plan.baseline)
+    warnings = []
+    for kind_name, kind in sorted(shared_components.KINDS.items()):
+        names = component_names(kconfig, plan, kind).values()
+        after = {new for _old, new in names}
+        changed = {old: new for old, new in names if old not in after}
+        for unit in plan.current:
+            values = _unit_values(kconfig, plan, applied, unit, baseline=False)
+            name = values.get(kind.name)
+            if values.get(kind.has) != "y" or values.get(kind.shared) != "y" or name not in changed:
+                continue
+            fate = ("is renamed to '%s'" % changed[name] if changed[name]
+                    else "no unit owns after this change")
+            warnings.append("Unit '%s' shares %s '%s', which %s. Change its shared %s name in"
+                            " its configuration" % (unit, kind_name, name, fate, kind_name))
+    return warnings
 
 
 # -----------------------------------------------------------------------------
@@ -427,6 +491,9 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
               " Re-run './install.sh -i' and choose option 2, or %s to undo the pending change"
               % undo, file=out)
         return EXIT_REFUSED
+
+    for warning in shared_name_warnings(kconfig, plan):
+        print("WARNING: %s" % warning, file=out)
 
     if config_home and installed_units(config_home) is not None:
         if gates_moved(*_check_layout(plan, config_home)):
@@ -500,7 +567,9 @@ def migrate_kconfig(kconfig, base, out=sys.stdout):
         if not os.path.exists(path):
             continue
         identity = {"UNIT_NAME": _quote(name), "MCU_NAME": _quote(name), "UNIT_INDEX": str(index)}
-        rewritten, flagged = rewrite_kconfig(path, renames, known, identity)
+        was = previous.get(plan.origin.get(name))
+        own = {was: name} if was and was != name else None
+        rewritten, flagged = rewrite_kconfig(path, renames, known, identity, own)
         manual.extend(flagged)
         for line in rewritten:
             print("  %s: %s" % (os.path.basename(path), line), file=out)
@@ -530,7 +599,8 @@ def _rename_single_unit(kconfig, installed, out):
     if "generated" not in state:
         state["generated"] = generated_hardware_lines(kconfig, [])
         write_state(kconfig, state)
-    rewritten, manual = rewrite_kconfig(kconfig, {o: new for o in olds}, olds | {new})
+    renames = {o: new for o in olds}
+    rewritten, manual = rewrite_kconfig(kconfig, renames, olds | {new}, own=renames)
     for line in rewritten:
         print("  %s: %s" % (os.path.basename(kconfig), line), file=out)
     for line in manual:
@@ -565,6 +635,9 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
             "vars_file": vars_file(config_home, kconfig),
             "default_extruder_temp": int(float(temp)),
             "warnings": manual_edit_warnings(plan, config_home, kconfig),
+            "encoders": {before: after for before, after in
+                         component_names(kconfig, plan, shared_components.KINDS["encoder"]).values()
+                         if before != after},
         }
     elif not plan.changed() and not read_state(kconfig):
         return
@@ -733,10 +806,15 @@ def migrate_vars(variables, install):
     for old, new in target.items():
         if old == new:
             continue
-        keys = [namespaced(v, old) for v in UNIT_VARS + ENCODER_VARS]
+        keys = [namespaced(v, old) for v in UNIT_VARS]
         stats = namespaced(C.VARS_MMU_GATE_STATISTICS_PREFIX, old)
         keys += [k for k in variables if k.startswith(stats) and k[len(stats):].isdigit()]
         for key in keys:
+            if key in variables:
+                moves[key] = None if new is None else namespaced("mmu_", new) + key[len(namespaced("mmu_", old)):]
+    # Encoder variables, by the encoder's name (prepare: before -> after, None if removed)
+    for old, new in install.get("encoders", {}).items():
+        for key in (namespaced(v, old) for v in ENCODER_VARS):
             if key in variables:
                 moves[key] = None if new is None else namespaced("mmu_", new) + key[len(namespaced("mmu_", old)):]
     for key in moves:

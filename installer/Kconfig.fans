@@ -3,9 +3,9 @@
 #   MMU_HAS_PER_GATE_CONFIG
 #
 # Managed fan parameter tokens
-#   PARAM_FAN_MAX_POWER, PARAM_FAN_KICK_START_TIME, PIN_FAN
+#   PARAM_FAN_MAX_POWER, PARAM_FAN_KICK_START_TIME, PIN_FAN, PARAM_FAN_NAME
 #     (shared configuration)
-#   PARAM_FAN_MAX_POWER_X, PARAM_FAN_KICK_START_TIME_X, PIN_FAN_X
+#   PARAM_FAN_MAX_POWER_X, PARAM_FAN_KICK_START_TIME_X, PIN_FAN_X, PARAM_FAN_NAME_X
 #     (per-gate configuration)
 #
 # Fan control parameter tokens
@@ -19,12 +19,28 @@
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_FANS
+#
+# Responsible for defining/setting controller fan configuration:
+#   MMU_HAS_CONTROLLER_FAN
+#
+# Can be disabled and forced off with:
+#   select UNSELECT_MMU_HAS_CONTROLLER_FAN
+#
+# Controller fan parameter tokens
+#   PARAM_CONTROLLER_FAN_MAX_POWER, PARAM_CONTROLLER_FAN_KICK_START_TIME,
+#   PARAM_CONTROLLER_FAN_SPEED, PARAM_CONTROLLER_FAN_IDLE_TIMEOUT,
+#   PIN_CONTROLLER_FAN, PARAM_CONTROLLER_FAN_NAME (shared configuration)
+#   PARAM_CONTROLLER_FAN_MAX_POWER_X, PARAM_CONTROLLER_FAN_KICK_START_TIME_X,
+#   PARAM_CONTROLLER_FAN_SPEED_X, PARAM_CONTROLLER_FAN_IDLE_TIMEOUT_X,
+#   PIN_CONTROLLER_FAN_X, PARAM_CONTROLLER_FAN_NAME_X (per-gate configuration)
+#   BOOL_CONTROLLER_FAN_WITH_HEATER (also run while the enclosure heater is on)
 
 
 if CUSTOM_FAN_SETUP
   comment "_"
   comment "_Managed Environment Fan"
   comment "$(misc_hardware_hint)"
+    dim
 endif
 
 if !CUSTOM_FAN_SETUP
@@ -43,7 +59,8 @@ if !CUSTOM_FAN_SETUP
       help
         Configure [fan_generic] objects managed by Happy Hare for environmental
         cooling or ventilation. A configured environment or MCU temperature
-        sensor is required. Heater fans are configured with their heaters.
+        sensor is required. Heater fans are configured with their heaters and
+        the electronics cooling fan with the controller fan below.
   endif
 endif
 
@@ -59,7 +76,7 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
         Configure the pin and electrical behavior of the shared managed fan.
 
       config PARAM_FAN_MAX_POWER
-        float "Fan maximum power  "
+        float "$(pad,23,Fan maximum power)"
         default 1.0
         range 0.1 1.0
         help
@@ -67,21 +84,89 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
           1.0 = 100% power
 
       config PARAM_FAN_KICK_START_TIME
-        float "Fan kick start time"
+        float "$(pad,23,Fan kick start time)"
         default 0.5
         range 0 3.0
         help
           Time in seconds to run fan at full power before resetting to target speed.
 
       config PIN_FAN
-        string "Fan pin            "
-        validator "$(pin_validator)"
+        string "$(pad,23,Fan pin(s))"
+        validator "$(pin_list_validator)"
         default ""
         help
           Pin for the fan shared by this MMU unit.
           Leave blank if you don't have a fan installed.
           Empty pins will be ignored in the generated configuration.
+          Separate several fans that run together with commas; they are
+          driven as one [fan_generic] through a [multi_pin] alias.
 
+      config BOOL_HIDE_FAN
+        bool "Hide in Mainsail/Fluidd"
+        default y
+        help
+          Prefix the fan name with an underscore to hide it in the UI.
+          Disable to show the fan. Automatic fan control is unchanged.
+
+      config PARAM_FAN_NAME
+        string
+        default "_$(UNIT_NAME)_fan" if BOOL_HIDE_FAN
+        default "$(UNIT_NAME)_fan"
+
+    endmenu
+  endif
+
+  if MMU_HAS_PER_GATE_CONFIG
+    menu "Fan h/w config"
+      help
+        Configure the managed fan of each gate.
+
+      @repeat var=i min=0 max=11@
+        if PARAM_NUM_GATES > $(i)
+          menuconfig PARAM_FAN_GATE_$(i)
+            bool "Gate $(i) fan"
+            default y
+            help
+              Create a [fan_generic] managed by Happy Hare for this gate.
+
+          if PARAM_FAN_GATE_$(i)
+            config PARAM_FAN_MAX_POWER_$(i)
+              float "$(pad,23,Fan maximum power)"
+              default 1.0
+              range 0.1 1.0
+              help
+                Maximum power setting for this gate's fan (0.1 to 1.0).
+
+            config PARAM_FAN_KICK_START_TIME_$(i)
+              float "$(pad,23,Fan kick start time)"
+              default 0.5
+              range 0 3.0
+              help
+                Time in seconds to run this gate's fan at full power before
+                resetting to its target speed.
+
+            config PIN_FAN_$(i)
+              string "$(pad,23,Fan pin(s))"
+              validator "$(pin_list_validator)"
+              help
+                Leave blank if this gate does not have a managed fan installed.
+                Separate several fans that run together with commas; they are
+                driven as one [fan_generic] through a [multi_pin] alias.
+
+            config PARAM_FAN_NAME_$(i)
+              string
+              default "_$(UNIT_NAME)_fan$(i)" if BOOL_HIDE_FAN
+              default "$(UNIT_NAME)_fan$(i)"
+          endif
+        endif
+      @endrepeat@
+
+      config BOOL_HIDE_FAN
+        bool "Hide in Mainsail/Fluidd"
+        default y
+        help
+          Prefix every gate's fan name with an underscore to hide them in the UI.
+          Disable to show the fans. Automatic fan control is unchanged.
     endmenu
   endif
 
@@ -194,5 +279,181 @@ if MMU_HAS_FANS && !CUSTOM_FAN_SETUP
       default 1 if PARAM_FAN_FORCED_MODE_ON
       default 2 if PARAM_FAN_FORCED_MODE_AUTO
 
+  endmenu
+endif
+
+
+# -------------------------------------
+# Controller fan
+# -------------------------------------
+
+comment "_"
+comment "_Controller Fan"
+comment "$(misc_hardware_hint)" if CUSTOM_CONTROLLER_FAN_SETUP
+  dim
+
+config UNSELECT_MMU_HAS_CONTROLLER_FAN
+  def_bool n
+
+if !UNSELECT_MMU_HAS_CONTROLLER_FAN
+  config MMU_HAS_CONTROLLER_FAN
+    bool "Enable controller fan?"
+    depends on !CUSTOM_CONTROLLER_FAN_SETUP
+    forceshow
+    default n
+    help
+      Configure a Klipper [controller_fan] that cools this unit's electronics.
+      It runs while any of this unit's gear or selector steppers is enabled
+      and for the idle timeout after they are all disabled. It is not tied to
+      the extruder heater, but can also run while the enclosure heater is on.
+      With per-gate configuration each gate can have its own fan, which
+      follows that gate's gear stepper (and heater).
+endif
+
+menu "Controller fan h/w config"
+  visible if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && !MMU_HAS_PER_GATE_CONFIG
+  help
+    Configure the controller fan output and operating speed.
+
+  config PARAM_CONTROLLER_FAN_MAX_POWER
+    float "Fan maximum power  "
+    default 1.0
+    range 0.1 1.0
+    help
+      Maximum power setting for the controller fan (0.1 to 1.0).
+      1.0 = 100% power
+
+  config PARAM_CONTROLLER_FAN_KICK_START_TIME
+    float "Fan kick start time"
+    default 0.5
+    range 0 3.0
+    help
+      Time in seconds to run the controller fan at full power before
+      resetting to target speed.
+
+  config PARAM_CONTROLLER_FAN_SPEED
+    float "Fan speed          "
+    default 1.0
+    range 0.0 1.0
+    help
+      Fan speed while any of this unit's steppers is enabled (0.0 to 1.0).
+
+  config PARAM_CONTROLLER_FAN_IDLE_TIMEOUT
+    int "Fan idle timeout   "
+    default 30
+    range 0 3600
+    help
+      Time in seconds the fan keeps running after this unit's steppers
+      are all disabled.
+
+  config BOOL_CONTROLLER_FAN_WITH_HEATER
+    bool "Also run while the enclosure heater is on"
+    depends on MMU_HAS_HEATER
+    default n
+    help
+      Also run the fan while the enclosure heater is on, e.g. during a
+      drying cycle when the steppers are idle. Select if the MCU board sits
+      inside the heated enclosure.
+
+  config PIN_CONTROLLER_FAN
+    string "Fan pin(s)         "
+    validator "$(pin_list_validator)"
+    default ""
+    help
+      Pin for the fan cooling this MMU unit's electronics.
+      Empty pins will be ignored in the generated configuration.
+      Separate several fans that run together with commas; they are
+      driven as one [controller_fan] through a [multi_pin] alias.
+
+  config BOOL_HIDE_CONTROLLER_FAN
+    bool "Hide in Mainsail/Fluidd"
+    default y
+    help
+      Prefix the fan name with an underscore to hide it in the UI.
+      Disable to show the fan. Automatic fan control is unchanged.
+
+  config PARAM_CONTROLLER_FAN_NAME
+    string
+    default "_$(UNIT_NAME)_controller_fan" if BOOL_HIDE_CONTROLLER_FAN
+    default "$(UNIT_NAME)_controller_fan"
+
+endmenu
+
+if MMU_HAS_CONTROLLER_FAN && !CUSTOM_CONTROLLER_FAN_SETUP && MMU_HAS_PER_GATE_CONFIG
+  menu "Controller fan h/w config"
+    help
+      Configure the controller fan of each gate.
+
+    @repeat var=i min=0 max=11@
+      if PARAM_NUM_GATES > $(i)
+        menuconfig PARAM_CONTROLLER_FAN_GATE_$(i)
+          bool "Gate $(i) controller fan"
+          default y
+          help
+            Create a [controller_fan] for this gate that runs while the
+            gate's gear stepper is enabled.
+
+        if PARAM_CONTROLLER_FAN_GATE_$(i)
+          config PARAM_CONTROLLER_FAN_MAX_POWER_$(i)
+            float "Fan maximum power  "
+            default 1.0
+            range 0.1 1.0
+            help
+              Maximum power setting for this gate's controller fan (0.1 to 1.0).
+
+          config PARAM_CONTROLLER_FAN_KICK_START_TIME_$(i)
+            float "Fan kick start time"
+            default 0.5
+            range 0 3.0
+            help
+              Time in seconds to run this gate's controller fan at full
+              power before resetting to its target speed.
+
+          config PARAM_CONTROLLER_FAN_SPEED_$(i)
+            float "Fan speed          "
+            default 1.0
+            range 0.0 1.0
+            help
+              Fan speed while this gate's gear stepper is enabled (0.0 to 1.0).
+
+          config PARAM_CONTROLLER_FAN_IDLE_TIMEOUT_$(i)
+            int "Fan idle timeout   "
+            default 30
+            range 0 3600
+            help
+              Time in seconds the fan keeps running after this gate's
+              gear stepper is disabled.
+
+          config PIN_CONTROLLER_FAN_$(i)
+            string "Fan pin(s)         "
+            validator "$(pin_list_validator)"
+            help
+              Leave blank if this gate does not have a controller fan installed.
+              Separate several fans that run together with commas; they are
+              driven as one [controller_fan] through a [multi_pin] alias.
+
+          config PARAM_CONTROLLER_FAN_NAME_$(i)
+            string
+            default "_$(UNIT_NAME)_controller_fan$(i)" if BOOL_HIDE_CONTROLLER_FAN
+            default "$(UNIT_NAME)_controller_fan$(i)"
+        endif
+      endif
+    @endrepeat@
+
+    config BOOL_CONTROLLER_FAN_WITH_HEATER
+      bool "Also run while the gate's heater is on"
+      depends on MMU_HAS_HEATER
+      default n
+      help
+        Also run each gate's fan while that gate's heater is on, e.g. during
+        a drying cycle when the steppers are idle. Select if the gates' MCU
+        boards sit inside the heated enclosures.
+
+    config BOOL_HIDE_CONTROLLER_FAN
+      bool "Hide in Mainsail/Fluidd"
+      default y
+      help
+        Prefix every gate's fan name with an underscore to hide them in the UI.
+        Disable to show the fans. Automatic fan control is unchanged.
   endmenu
 endif

@@ -78,13 +78,6 @@ menu "Pins / TMC"
       validator "$(pin_validator)"
       help
         $(pin_help)
-    config PARAM_GEAR_STALLGUARD_THRESHOLD
-      prompt "$(pad,$(pin_pad),Gear stallguard)" if BOOL_GEAR_TMC_HAS_STALLGUARD && PIN_GEAR_DIAG != ""
-      help
-        Sensitivity for "touch" homing, written only when a diag pin is set.
-        Expect to tune it. The scale depends on the chip: SGTHRS is 0-255
-        and higher is more sensitive, SGT is -64..63 and lower is more
-        sensitive.
 
     @repeat var=i min=1 max=11@
       config PARAM_GEAR_UART_ADDRESS_$(i)
@@ -226,13 +219,6 @@ menu "Pins / TMC"
         validator "$(pin_validator)"
         help
           $(pin_help)
-      config PARAM_SELECTOR_STALLGUARD_THRESHOLD
-        prompt "$(pad,$(pin_pad),Selector stallguard)" if BOOL_SELECTOR_TMC_HAS_STALLGUARD && PIN_SELECTOR_DIAG != ""
-        help
-          Sensitivity for selector "touch" movement, written only when a
-          diag pin is set. Expect to tune it. The scale depends on the chip:
-          SGTHRS is 0-255 and higher is more sensitive, SGT is -64..63 and
-          lower is more sensitive.
     endif
   endmenu
 
@@ -295,6 +281,31 @@ menu "Pins / TMC"
           help
             $(pin_help)
       endif
+    @endrepeat@
+  endmenu
+
+
+  # -------------------------------------
+  # Enclosure vent
+  # -------------------------------------
+
+  config PIN_VENT_SERVO
+    string
+    prompt "$(pad,$(pin_pad),Vent servo pin)" if MMU_HAS_VENT_SERVO && !MMU_HAS_PER_GATE_CONFIG
+    validator "$(pin_validator)"
+    help
+      $(pin_help)
+
+  menu "Vent servo per-gate pins"
+    depends on MMU_HAS_VENT_SERVO && MMU_HAS_PER_GATE_CONFIG
+
+    @repeat var=i min=0 max=11@
+      config PIN_VENT_SERVO_$(i)
+        string
+        prompt "$(pad,$(pin_pad),Vent servo gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_VENT_SERVO_GATE_$(i)
+        validator "$(pin_validator)"
+        help
+          $(pin_help)
     @endrepeat@
   endmenu
 
@@ -452,10 +463,11 @@ menu "Pins / TMC"
 
   config PIN_FAN
     string
-    prompt "$(pad,$(pin_pad),Managed fan pin)" if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
-    validator "$(pin_validator)"
+    prompt "$(pad,$(pin_pad),Managed fan pin(s))" if MMU_HAS_FANS && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
+    validator "$(pin_list_validator)"
     help
       $(pin_help)
+      Comma-separate several fans that run together.
 
   menu "Managed fan per-gate pins"
     depends on MMU_HAS_FANS && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_FAN_SETUP
@@ -463,10 +475,11 @@ menu "Pins / TMC"
     @repeat var=i min=0 max=11@
       config PIN_FAN_$(i)
         string
-        prompt "$(pad,$(pin_pad),Managed fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
-        validator "$(pin_validator)"
+        prompt "$(pad,$(pin_pad),Managed fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_FAN_GATE_$(i)
+        validator "$(pin_list_validator)"
         help
           $(pin_help)
+          Comma-separate several fans that run together.
     @endrepeat@
   endmenu
 
@@ -483,16 +496,57 @@ menu "Pins / TMC"
       $(pin_help)
       Comma-separate several fans that run together.
 
+  # -------------------------------------
+  # Controller fan
+  # -------------------------------------
+
+  config PIN_CONTROLLER_FAN
+    string
+    prompt "$(pad,$(pin_pad),Controller fan pin(s))" if MMU_HAS_CONTROLLER_FAN && !MMU_HAS_PER_GATE_CONFIG && !CUSTOM_CONTROLLER_FAN_SETUP
+    validator "$(pin_list_validator)"
+    help
+      $(pin_help)
+      Comma-separate several fans that run together.
+
+  menu "Controller fan per-gate pins"
+    depends on MMU_HAS_CONTROLLER_FAN && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_CONTROLLER_FAN_SETUP
+
+    @repeat var=i min=0 max=11@
+      config PIN_CONTROLLER_FAN_$(i)
+        string
+        prompt "$(pad,$(pin_pad),Controller fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_CONTROLLER_FAN_GATE_$(i)
+        validator "$(pin_list_validator)"
+        help
+          $(pin_help)
+          Comma-separate several fans that run together.
+    @endrepeat@
+  endmenu
+
+  # -------------------------------------
+  # Spare fan headers
+  # -------------------------------------
+
+  config PIN_FAN_SPARE
+    string
+    prompt "$(pad,$(pin_pad),Spare fan pin(s))"
+    validator "$(pin_list_validator)"
+    help
+      Fan headers on the board that no fan setting uses. Board files list
+      them here so they aren't forgotten; they are only noted as a comment
+      in mmu_hardware.cfg. Any of them can be used for any kind of fan by
+      moving it to that fan's pin. Comma-separate several pins.
+
   menu "Heater fan per-gate pins"
     depends on MMU_HAS_HEATER && MMU_HAS_PER_GATE_CONFIG && !CUSTOM_HEATER_FAN_SETUP
 
     @repeat var=i min=0 max=11@
       config PIN_HEATER_FAN_$(i)
         string
-        prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin)" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
-        validator "$(pin_validator)"
+        prompt "$(pad,$(pin_pad),Heater fan gate $(i) pin(s))" if PARAM_NUM_GATES > $(i) && PARAM_HEATER_FAN_GATE_$(i)
+        validator "$(pin_list_validator)"
         help
           $(pin_help)
+          Comma-separate several fans that run together.
     @endrepeat@
   endmenu
 

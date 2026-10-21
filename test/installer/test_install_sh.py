@@ -192,6 +192,8 @@ class TestInstallSh(unittest.TestCase):
             ".mmu_config.old",
             "newer-marker",
         )
+        # An old backup's config must still look older than the Kconfig files, so it's refreshed
+        os.utime(newer / ".mmu_config", (1000000000, 1000000000))
 
         result = self.run_shell("""
             SCRIPT_DIR={repo}
@@ -199,6 +201,7 @@ class TestInstallSh(unittest.TestCase):
             TESTDIR=
             recover_previous_config
             [ "$F_NO_MMU_BACKUP" = y ]
+            [ "$HH_RESTORED_FROM" = {config}/mmu.old-20260830-120000 ]
         """.format(
             repo=shlex.quote(str(repo_dest)),
             config=shlex.quote(str(config_home)),
@@ -218,6 +221,7 @@ class TestInstallSh(unittest.TestCase):
         self.assertFalse((current / "current-marker").exists())
         self.assertTrue((repo_dest / ".mmu_config_unit0").exists())
         self.assertFalse((repo_dest / ".mmu_config.old").exists())
+        self.assertEqual((repo_dest / ".mmu_config").stat().st_mtime, 1000000000)
 
         preserved = [
             path for path in config_home.glob("mmu.old-*")
@@ -320,6 +324,19 @@ class TestInstallSh(unittest.TestCase):
             MAKEFILE.read_text(encoding="utf-8"),
         )
 
+    def test_build_reads_the_baselines_of_a_custom_config_name(self):
+        base = self.root / "out" / "menuconfig_base"
+        for name in ("myprinter.cfg", "myprinter.cfg_unit0", "myprinter.cfg.pickle", ".mmu_config"):
+            self.write(base / name)
+        extra = self.write(self.root / "extra.mk", "print_baseline_pickles:\n\t@echo $(baseline_pickles)\n")
+        result = subprocess.run(
+            ["make", "--no-print-directory", "-s", "-f", "Makefile", "-f", str(extra), "print_baseline_pickles",
+             "KCONFIG_CONFIG={}".format(self.root / "myprinter.cfg"), "OUT={}".format(self.root / "out"),
+             "F_MENUCONFIG_BASELINE=y"],
+            cwd=REPO_ROOT, text=True, capture_output=True, check=True)
+        self.assertEqual(sorted(result.stdout.split()),
+                         [str(base / "myprinter.cfg.pickle"), str(base / "myprinter.cfg_unit0.pickle")])
+
     def test_unit_config_is_stale_when_parent_config_is_newer(self):
         # Future mtimes put both files after every Kconfig source, so only
         # their order relative to each other decides.
@@ -331,8 +348,9 @@ class TestInstallSh(unittest.TestCase):
             os.utime(unit, (now + 1000, now + 1000))
             os.utime(parent, (parent_mtime, parent_mtime))
             return subprocess.run(
+                # PY= as install.sh passes it; the recipe reads a python failure as "n"
                 ["make", "--no-print-directory", "-s", "kconfig_needs_update",
-                 "KCONFIG_CONFIG={}".format(unit), *extra],
+                 "PY={}".format(sys.executable), "KCONFIG_CONFIG={}".format(unit), *extra],
                 cwd=REPO_ROOT, text=True, capture_output=True, check=True,
             ).stdout.strip()
 
@@ -362,6 +380,7 @@ class TestInstallSh(unittest.TestCase):
             os.utime(sharer, (now + 1000, now + 1000))
             return subprocess.run(
                 ["make", "--no-print-directory", "-s", "kconfig_needs_update",
+                 "PY={}".format(sys.executable),
                  "KCONFIG_CONFIG={}".format(sharer), "KCONFIG_PARENT={}".format(parent)],
                 cwd=REPO_ROOT, text=True, capture_output=True, check=True,
             ).stdout.strip()
@@ -493,6 +512,16 @@ class TestInstallSh(unittest.TestCase):
         self.assertEqual((log_dir / "self-update").read_text().strip(), "v3")
         self.assertEqual((log_dir / "reexec").read_text().strip(), "v3:force:YES")
 
+    def test_v3_red_choice_drops_only_a_v3_branch(self):
+        for branch, expected in (("v3", ""), ("development", "development")):
+            with self.subTest(branch=branch):
+                result = self.run_shell("""
+                    export BRANCH={branch}
+                    offer_v3_v4_choice
+                    echo "BRANCH=${{BRANCH:-}}"
+                """.format(branch=branch), stdin="2\n")
+                self.assertIn("BRANCH=%s\n" % expected, result.stdout)
+
     def test_self_update_switches_before_checking_current_branch(self):
         remote = self.root / "remote.git"
         checkout = self.root / "checkout"
@@ -590,6 +619,75 @@ class TestInstallSh(unittest.TestCase):
             echo "RESTRUCTURED=${{F_UNITS_RESTRUCTURED:-}}"
         """.format(status=status), stdin=stdin, env=env)
         return result.stdout
+
+    # prepare_refresh() has every Kconfig file report (saving its baseline), shows the reports
+    # once and asks once, then on yes has every file apply; the build then uses the baselines
+    def prepare_refresh(self, show_status=10, stdin="", **env):
+        show = self.write(self.root / "fake-python", "#!/bin/sh\necho \"SHOW $*\"\nexit {}\n".format(show_status))
+        show.chmod(0o755)
+        result = self.run_shell("""
+            run_make() { echo "MAKE $*"; }
+            run_kconfig_top() { echo "TOP $1 apply=${HH_IMPORT_APPLY:-} home=${HH_CONFIG_HOME:-}"; }
+            run_kconfig_units() { echo "UNITS $1 apply=${HH_IMPORT_APPLY:-}"; }
+            CONFIG_KLIPPER_CONFIG_HOME=/printer/config
+            INSTALLER_PY=%s
+            status=0
+            ( prepare_refresh
+              echo "AFTER report=${HH_IMPORT_REPORT:-} home=${HH_CONFIG_HOME:-} baseline=${F_MENUCONFIG_BASELINE:-}" ) \
+                || status=$?
+            echo "STATUS=$status"
+        """ % shlex.quote(str(show)), stdin=stdin, env=env)
+        return result.stdout
+
+    def test_refresh_reports_shows_once_and_applies(self):
+        out = self.prepare_refresh(stdin="y\n", F_CFG_UPGRADE_MODE="refresh")
+        self.assertIn("MAKE kconfig_baseline_clean", out)
+        self.assertIn("TOP kconfig_import apply= home=/printer/config", out)
+        self.assertIn("UNITS kconfig_import apply=\n", out)
+        self.assertEqual(out.count("SHOW "), 1)
+        self.assertEqual(out.count("Import these .cfg values into menuconfig (y/n)?"), 1)
+        self.assertIn("TOP kconfig_import apply=y", out)
+        self.assertIn("UNITS kconfig_import apply=y", out)
+        self.assertIn("AFTER report= home= baseline=y\n", out)
+        self.assertIn("STATUS=0", out)
+
+    def test_refresh_says_what_it_is_doing_until_menuconfig_opens(self):
+        out = self.prepare_refresh(stdin="y\n", F_CFG_UPGRADE_MODE="refresh")
+        order = [out.index(text) for text in (
+            "Checking your .cfg files for values to import into menuconfig...\n",
+            "TOP kconfig_import apply= ",
+            "Importing them into menuconfig...\n",
+            "TOP kconfig_import apply=y ",
+            "UNITS kconfig_import apply=y",
+            "Opening menuconfig...\n")]
+        self.assertEqual(order, sorted(order))
+
+    def test_refresh_declined_continues_without_importing(self):
+        out = self.prepare_refresh(stdin="n\n", F_CFG_UPGRADE_MODE="refresh")
+        self.assertIn("Not imported", out)
+        self.assertNotIn("apply=y", out)
+        self.assertIn("baseline=y", out)
+        self.assertIn("STATUS=0", out)
+
+    def test_refresh_with_nothing_to_import_asks_nothing(self):
+        out = self.prepare_refresh(show_status=0, F_CFG_UPGRADE_MODE="refresh")
+        self.assertNotIn("Import these", out)
+        self.assertNotIn("apply=y", out)
+        self.assertIn("baseline=y", out)
+
+    def test_refresh_yes_flag_imports(self):
+        out = self.prepare_refresh(F_CFG_UPGRADE_MODE="refresh", F_YES="y")
+        self.assertIn("Import these .cfg values into menuconfig (y/n)? y", out)
+        self.assertIn("UNITS kconfig_import apply=y", out)
+
+    def test_merge_is_refresh(self):
+        self.assertIn("apply=y", self.prepare_refresh(stdin="y\n", F_CFG_UPGRADE_MODE="merge"))
+
+    def test_replace_skips_the_import_and_baselines(self):
+        out = self.prepare_refresh(F_CFG_UPGRADE_MODE="replace")
+        self.assertNotIn("kconfig_import", out)
+        self.assertNotIn("kconfig_baseline_clean", out)
+        self.assertIn("baseline=\n", out)
 
     def test_unit_review_no_change_and_append_go_without_asking(self):
         for status in (0, 10):

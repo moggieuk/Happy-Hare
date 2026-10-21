@@ -1,0 +1,57 @@
+# Board i2c bus - one hardware i2c bus a board routes to a header, offered to
+# the i2c devices' bus choices (components/Kconfig.i2c_bus).
+#
+# Sourced from a board file, once per bus, inside its `if BOARD_TYPE_X` block.
+# The caller sets:
+#
+#   i2c_board        condition the bus is offered under, e.g. BOARD_TYPE_WGB_3_0
+#                    (spaces around operators: see extension 23 in installer/Kconfig)
+#   i2c_tag          choice member infix, unique across every board, e.g. WGB_I2C1
+#                    (a tag two boards share merges their members and defaults)
+#   i2c_bus          Klipper's name for the bus on this MCU, e.g. i2c1 or i2c3_PB3_PB4
+#   i2c_label        menu label, e.g. i2c1 (I2C header)
+#   i2c_env          y/n, offer it to the environment sensor
+#   i2c_env_default  y/n, preselect it for the environment sensor
+#   i2c_nfc          y/n, offer it to the NFC readers (shared and per gate)
+#   i2c_nfc_default  y/n, preselect it for the NFC readers
+#
+# and must re-assign all of them immediately before each source, because
+# preprocessor variables are global for the whole parse.
+#
+# Each member depends on the board: a member inside the board's `if` block
+# would otherwise be offered on every board. Preselect only where a device has
+# its own header or sits on the bus, so a saved config keeps rendering the same.
+
+choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
+  default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i2c_tag) if $(i2c_env_default)
+
+  config CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i2c_tag)
+    bool "$(i2c_label)"
+    depends on $(i2c_board) && $(i2c_env)
+endchoice
+config PARAM_ENVIRONMENT_SENSOR_I2C_BUS
+  default "$(i2c_bus)" if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i2c_tag)
+
+choice CHOICE_NFC_READER_I2C_BUS
+  default CHOICE_NFC_READER_I2C_BUS_$(i2c_tag) if $(i2c_nfc_default)
+
+  config CHOICE_NFC_READER_I2C_BUS_$(i2c_tag)
+    bool "$(i2c_label)"
+    depends on $(i2c_board) && $(i2c_nfc)
+endchoice
+config PARAM_NFC_READER_I2C_BUS
+  default "$(i2c_bus)" if CHOICE_NFC_READER_I2C_BUS_$(i2c_tag)
+
+@repeat var=gate min=0 max=11@
+if PARAM_NUM_GATES > $(gate)
+  choice CHOICE_NFC_READER_I2C_BUS_$(gate)
+    default CHOICE_NFC_READER_I2C_BUS_$(i2c_tag)_$(gate) if $(i2c_nfc_default)
+
+    config CHOICE_NFC_READER_I2C_BUS_$(i2c_tag)_$(gate)
+      bool "$(i2c_label)"
+      depends on $(i2c_board) && $(i2c_nfc)
+  endchoice
+  config PARAM_NFC_READER_I2C_BUS_$(gate)
+    default "$(i2c_bus)" if CHOICE_NFC_READER_I2C_BUS_$(i2c_tag)_$(gate)
+endif
+@endrepeat@

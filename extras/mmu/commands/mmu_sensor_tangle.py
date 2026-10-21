@@ -54,5 +54,5 @@ class MmuSensorTangleCommand(ClogTangleMixin, BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 self._handle_clog_tangle(gcmd, "tangle") # From mixin
-        except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+        except (MmuError, mmu.printer.command_error) as ee:
+            mmu.handle_mmu_error(mmu.mmu_error_from(ee))

@@ -17,7 +17,7 @@
 # This defines the current version.
 # IMPORTANT keep version string up-to-date and consistent with git tag
 # Config upgrades are performed when <major>,<minor> is changed
-VERSION = "4.0.0" # When <major.minor> is revved, Happy Hare will instruct users to re-run ./install.sh
+VERSION = "4.1.0" # When <major.minor> is revved, Happy Hare will instruct users to re-run ./install.sh
 
 # Vendor MMU's supported
 VENDOR_ERCF           = "ERCF"
@@ -80,6 +80,9 @@ GATE_UNKNOWN = -1
 GATE_EMPTY = 0
 GATE_AVAILABLE = 1 # Available to load from either buffer or spool
 GATE_AVAILABLE_FROM_BUFFER = 2
+
+# Tail of most pause hints: RESUME continues the print but never reloads the tool itself
+HINT_RELOAD = "then reload the tool (MMU_RECOVER first if needed) and RESUME"
 
 FILAMENT_POS_UNKNOWN = -1
 FILAMENT_POS_UNLOADED = 0       # Parked in gate

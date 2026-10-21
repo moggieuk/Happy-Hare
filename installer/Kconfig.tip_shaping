@@ -4,6 +4,12 @@
 #   MMU_HAS_GANTRY_BUMPER_SERVO (and PIN_GANTRY_BUMPER_SERVO)
 #   MMU_HAS_SERVO_CUTTER        (and PIN_SERVO_CUTTER_SERVO)
 #
+# Adds a second prompt for MMU_HAS_TOOLHEAD_CUTTER (defined in Kconfig.toolhead)
+#
+# Via components/Kconfig.servo, for GANTRY_SERVO and SERVO_CUTTER:
+#   PARAM_*_MIN_PULSE_WIDTH, PARAM_*_MAX_PULSE_WIDTH, PARAM_*_MAXIMUM_ANGLE
+#   BOOL_*_INITIAL_ANGLE (and PARAM_*_INITIAL_ANGLE)
+#
 # Responsible for setting:
 #   PARAM_FORCE_FORM_TIP_STANDALONE
 #   PARAM_SLICER_TIP_PARK_POS
@@ -27,7 +33,12 @@ config PIN_SERVO_CUTTER_SERVO
 
 menu "Tip Forming / Cutting"
   help
-    Tip Shaping
+    Before unloading, the filament tip must be made clean so strings or
+    blobs can't jam or block the MMU (gate, selector or bowden).
+    Tip forming shapes the tip with extruder moves: no extra hardware,
+    but it needs tuning. Tip cutting with a cutter is cleaner, but the
+    fragment left below the cut must also be purged, so it needs a bigger
+    purge volume.
 
 # -------------------------------------
 # Servo cutter configuration
@@ -38,7 +49,8 @@ menu "Tip Forming / Cutting"
     help
       Enable this if you have a servo based cutter at your MMU
 
-      NOTE: After enabling this be sure to edit Macro variables
+      NOTE: After enabling this be sure to edit its Macro variables
+      (link at the end of this section)
 
   if MMU_HAS_SERVO_CUTTER
 
@@ -47,8 +59,72 @@ menu "Tip Forming / Cutting"
       validator "$(pin_validator)"
       help
         $(pin_help)
-
   endif
+
+  prefix              := SERVO_CUTTER
+  servo_suffix        :=
+  servo_visible       := MMU_HAS_SERVO_CUTTER
+  label               := Cutting servo
+  pad_width           := 35
+  servo_min_pulse     := 0.0005
+  servo_max_pulse     := 0.0025
+  servo_initial_angle := 70
+  servo_initial_on    := n
+  servo_rest_angle    := "Servo closed angle"$(nl)under Macro Variables -> Servo cutter at MMU
+  servo_min_hint      :=
+  servo_max_hint      :=
+  servo_angle_hint    :=
+  source "components/Kconfig.servo"
+
+  if MMU_HAS_SERVO_CUTTER
+    comment "Servo cutter macro variables"
+      link VAR_SERVO_CUTTER_SERVO_CLOSED_ANGLE
+      help
+        Servo angles and timing, feed and cut lengths for the cutter macro
+  endif
+
+
+# -------------------------------------
+# Toolhead cutter configuration
+# -------------------------------------
+
+  comment "_"
+
+  # Printer-level, so a multi-unit setup shows it locked (set under Toolhead sensors/settings)
+  config MMU_HAS_TOOLHEAD_CUTTER
+    prompt "Have toolhead cutter?" if !MULTI_UNIT
+    forceshow if MULTI_UNIT
+    help
+      Select if you have a filament cutter built into the toolhead that
+      uses toolhead motion for cutting action.
+      Same setting as under "Toolhead sensors/settings". In a multi-unit
+      setup it can only be changed there.
+
+  config MMU_HAS_GANTRY_BUMPER_SERVO
+    prompt "Have servo operated gantry bumper?" if MMU_HAS_TOOLHEAD_CUTTER
+
+  config PIN_GANTRY_BUMPER_SERVO
+    prompt "$(pad,35,Gantry servo pin)" if MMU_HAS_TOOLHEAD_CUTTER && MMU_HAS_GANTRY_BUMPER_SERVO
+    validator "$(pin_validator)"
+    help
+      Optional. Used to deploy fold-down "bumper" for tip cutting
+      when using a toolhead mounted filament cutting blade
+      $(pin_help)
+
+  prefix              := GANTRY_SERVO
+  servo_suffix        :=
+  servo_visible       := MMU_HAS_TOOLHEAD_CUTTER && MMU_HAS_GANTRY_BUMPER_SERVO
+  label               := Gantry servo
+  pad_width           := 35
+  servo_min_pulse     := 0.00075
+  servo_max_pulse     := 0.00225
+  servo_initial_angle := 180
+  servo_initial_on    := y
+  servo_rest_angle    := "Gantry servo up angle"$(nl)under Macro Variables -> Toolhead tip cutting
+  servo_min_hint      :=
+  servo_max_hint      :=
+  servo_angle_hint    :=
+  source "components/Kconfig.servo"
 
 
 # -------------------------------------
@@ -56,17 +132,19 @@ menu "Tip Forming / Cutting"
 # -------------------------------------
 
   comment "_"
-  comment "_Essential tip forming configuration"
+  comment "_Essential tip forming/cutting config"
 
   choice CHOICE_FORM_TIP_MACRO
-    bool "Select standalone tip shaping option"
+    bool "Happy Hare tip forming/cutting method"
     default CHOICE_FORM_TIP_MACRO_CUT_TIP if MMU_HAS_TOOLHEAD_CUTTER
     default CHOICE_FORM_TIP_MACRO_FORM_TIP
     help
-      How to perform standalone tip shaping (forming or cutting)
+      What Happy Hare runs whenever it forms or cuts a tip: always outside
+      a print, and in a print when "Happy Hare controlled in-print tip
+      forming/cutting" is set.
 
     config CHOICE_FORM_TIP_MACRO_FORM_TIP
-      bool "Tip shaping using filament movement"
+      bool "Tip forming using filament movement"
       help
         Uses repeated retract/extrude operations to shape filament
         tip into a torpedo shape without strings.
@@ -80,9 +158,10 @@ menu "Tip Forming / Cutting"
         via toolhead movement.
 
     config CHOICE_FORM_TIP_MACRO_SLICER
-      bool "Slicer controlled tip forming"
+      bool "None [[DIM]]/ slicer only[[/DIM]]"
       help
-        Tip forming is controlled and managed by the slicer rather than Happy Hare.
+        Happy Hare never forms or cuts a tip. The slicer forms the tip
+        during a print and nothing is done outside a print.
 
     config CHOICE_FORM_TIP_MACRO_OTHER
       bool "Other / manually entered macro"
@@ -104,23 +183,25 @@ menu "Tip Forming / Cutting"
     default FORM_TIP_MACRO_OTHER if CHOICE_FORM_TIP_MACRO_OTHER
     default ""
 
+  config PARAM_EXTRUDER_FORM_TIP_CURRENT
+    int "Extruder tip forming current" if !CHOICE_FORM_TIP_MACRO_SLICER
+    default 100
+    default_when_hidden
+    help
+      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
 
-# -------------------------------------
-# Toolhead cutter configuration
-# -------------------------------------
+  if CHOICE_FORM_TIP_MACRO_FORM_TIP
+    comment "Tip forming macro variables"
+      link VAR_FORM_TIP_RAMMING_VOLUME
+      help
+        Ramming, cooling moves and temperatures for the tip forming macro
+  endif
 
   if CHOICE_FORM_TIP_MACRO_CUT_TIP
-
-    config MMU_HAS_GANTRY_BUMPER_SERVO
-      prompt "Have servo operated gantry bumper?"
-      default n
-
-    config PIN_GANTRY_BUMPER_SERVO
-      prompt "Gantry servo pin" if MMU_HAS_GANTRY_BUMPER_SERVO
-      validator "$(pin_validator)"
+    comment "Tip cutting macro variables"
+      link BOOL_CUT_TIP_RESTORE_POSITION
       help
-        Optional. Used to deploy fold-down "bumper" for tip cutting
-        when using a toolhead mounted filament cutting blade
+        Blade and cutting positions and moves for the toolhead cutter macro
   endif
 
 
@@ -128,13 +209,21 @@ menu "Tip Forming / Cutting"
 # Other tip shaping options
 # -------------------------------------
 
+  comment "_"
+
   config PARAM_FORCE_FORM_TIP_STANDALONE
-    boolint "Happy Hare controlled in-print tip forming/cutting"
+    boolint "Happy Hare controlled in-print tip forming/cutting" if !CHOICE_FORM_TIP_MACRO_SLICER
+    forceshow
+    default_when_hidden
     default 0 if CHOICE_FORM_TIP_MACRO_SLICER
     default 1
     help
-      You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
-      To use tip cutting ensure this selection is checked and be sure to turn off in your slicer
+      [[B]]Checked[[/B]] (recommended): Happy Hare forms or cuts the tip on every tool
+      change in a print using the method above. Turn off slicer tip forming.
+      [[B]]Unchecked[[/B]]: the slicer forms the tip. Tip cutting needs this checked.
+      Always off when the method above is None.
+      See "Turning off slicer tip forming" in the Slicer Setup doc:
+      https://moggieuk.github.io/Happy-Hare-Doc/Slicer-Setup/
   config PARAM_SLICER_TIP_PARK_POS
     string
     default "0"
@@ -145,11 +234,5 @@ menu "Tip Forming / Cutting"
       This specifies the position of filament in extruder after slicer completes tip forming
       and is usually a setting in the slicer config.
       (It is necessary to help Happy Hare complete the extruder unloading process)
-
-  config PARAM_EXTRUDER_FORM_TIP_CURRENT
-    int "Extruder tip forming current"
-    default 100
-    help
-      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
 
 endmenu

@@ -135,6 +135,11 @@ class MmuUnitParameters(TunableParametersBase):
         if new != old:
             self._mmu_unit.sync_feedback.apply_flowguard_tuning()
 
+    def _on_twolevel_tuning_change(self, old, new):
+        # Push live twolevel speed/boost multipliers to a running controller
+        if new != old:
+            self._mmu_unit.sync_feedback.apply_twolevel_tuning()
+
     def _on_sync_feedback_extrude_threshold_change(self, old, new):
         # Apply new extruder sampling threshold immediately if we're active
         if new != old:
@@ -359,7 +364,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('extruder_collision_homing_step',   'int',       3, section="EXTRUDER MOVE", limits=dict(minval=2, maxval=5), guard=_guard_has_encoder),
         ParamSpec('toolhead_homing_max',              'float',  20.0, section="EXTRUDER MOVE", limits=dict(minval=0.0),         guard=_guard_has_sensor(SENSOR_TOOLHEAD)),
         ParamSpec('toolhead_unload_safety_margin',    'float',  10.0, section="EXTRUDER MOVE", limits=dict(minval=0.0)),
-        ParamSpec('toolhead_move_error_tolerance',    'int',     100, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
+        ParamSpec('toolhead_move_error_tolerance',    'int',      80, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
         ParamSpec('toolhead_entry_tension_test',      'int',       1, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
         ParamSpec('toolhead_post_load_tighten',       'int',      60, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
         ParamSpec('toolhead_post_load_tension_adjust','int',       1, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
@@ -388,7 +393,7 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Encoder
         ParamSpec('encoder_dwell',                    'float',   0.1, section="ENCODER",    limits=dict(minval=0.0, maxval=2.0),  hidden=True),
-        ParamSpec('encoder_move_step_size',           'float',  15.0, section="ENCODER",    limits=dict(minval=5.0, maxval=25.0), hidden=True),
+        ParamSpec('encoder_move_step_size',           'float',  15.0, section="ENCODER",    limits=dict(minval=5.0, maxval=25.0), guard=_guard_has_encoder),
 
         # eSpooler
         ParamSpec('espooler_min_distance',            'float',  50.0, section="ESPOOLER",   limits=dict(above=0.0),              guard=_guard_has_espooler),
@@ -408,8 +413,8 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Sync-feedback
         ParamSpec('sync_feedback_enabled',            'int',       0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0, maxval=1),    guard=_guard_has_buffer, fmt="%d"),
-        ParamSpec('sync_feedback_speed_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, fmt="%.1f"),
-        ParamSpec('sync_feedback_boost_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, fmt="%.1f"),
+        ParamSpec('sync_feedback_speed_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, on_change=_on_twolevel_tuning_change, fmt="%.1f"),
+        ParamSpec('sync_feedback_boost_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, on_change=_on_twolevel_tuning_change, fmt="%.1f"),
         ParamSpec('sync_feedback_extrude_threshold',  'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(above=1.0),             guard=_guard_has_buffer, on_change=_on_sync_feedback_extrude_threshold_change, fmt="%.1f"),
         ParamSpec('sync_feedback_debug_log',          'int',       0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0, maxval=1),    guard=_guard_has_buffer, fmt="%d"),
         ParamSpec('sync_feedback_force_twolevel',     'int',       0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0, maxval=1),    guard=_guard_has_buffer, hidden=True),
@@ -434,6 +439,11 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('heater_vent_macro',                'str',      '', section="HEATER",                             guard=_guard_has_heater),
         ParamSpec('heater_vent_interval',             'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_rotate_interval',           'float',   5.0, section="HEATER",    limits=dict(minval=1.0), guard=_guard_has_heater, fmt="%.1f"),
+        ParamSpec('heater_vent_duration',             'float',  10.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
+        ParamSpec('heater_vent_run_fan',              'int',       1, section="HEATER",    limits=dict(minval=0, maxval=1), guard=_guard_has_heater),
+        ParamSpec('heater_vent_open_angle',           'float',  90.0, section="HEATER",    limits=dict(minval=0.0, maxval=360.0), guard=_guard_has_heater, fmt="%.1f"),
+        ParamSpec('heater_vent_close_angle',          'float',   0.0, section="HEATER",    limits=dict(minval=0.0, maxval=360.0), guard=_guard_has_heater, fmt="%.1f"),
+        ParamSpec('heater_vent_servo_duration',       'float',   1.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
 
         # Fan
         ParamSpec('default_fan_temperature_source',   'choice', 'environment', section="FAN", choices={o: o for o in ('',) + FAN_TEMPERATURE_SOURCES}, guard=_guard_has_fan, on_change=_on_default_fan_temperature_source_change),

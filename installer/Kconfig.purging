@@ -14,14 +14,24 @@
 #
 # Blobifier servo tray:
 #   PIN_BLOBIFIER_SERVO
-#   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
-#   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
+#   PARAM_BLOBIFIER_SERVO_MIN_PULSE_WIDTH, PARAM_BLOBIFIER_SERVO_MAX_PULSE_WIDTH,
+#   PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE,
+#   BOOL_BLOBIFIER_SERVO_INITIAL_ANGLE (and PARAM_BLOBIFIER_SERVO_INITIAL_ANGLE)
+#   (via components/Kconfig.servo)
 #
 # Blobifier stepper tray: (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
 #   PIN_BLOBIFIER_STEP
 #   PIN_BLOBIFIER_DIR
 #   PIN_BLOBIFIER_ENABLE
 #   PIN_BLOBIFIER_ENDSTOP
+#   PARAM_BLOBIFIER_STEPPER_MICROSTEPS
+#   PARAM_BLOBIFIER_STEPPER_GEAR_RATIO
+#   PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE
+#   PARAM_BLOBIFIER_STEPPER_POSITION_MIN
+#   PARAM_BLOBIFIER_STEPPER_POSITION_MAX
+#   PARAM_BLOBIFIER_STEPPER_HOMING_SPEED
+#   PARAM_BLOBIFIER_STEPPER_VELOCITY
+#   PARAM_BLOBIFIER_STEPPER_ACCEL
 #   PARAM_BLOBIFIER_TMC
 #   PIN_BLOBIFIER_UART
 #   PIN_BLOBIFIER_CS
@@ -70,6 +80,38 @@ config PIN_BLOBIFIER_ENDSTOP
   string
   default ""
 
+config PARAM_BLOBIFIER_STEPPER_MICROSTEPS
+  int
+  default 4
+
+config PARAM_BLOBIFIER_STEPPER_GEAR_RATIO
+  string
+  default "1:1"
+
+config PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE
+  float
+  default 62.83
+
+config PARAM_BLOBIFIER_STEPPER_POSITION_MIN
+  float
+  default 0
+
+config PARAM_BLOBIFIER_STEPPER_POSITION_MAX
+  float
+  default 21
+
+config PARAM_BLOBIFIER_STEPPER_HOMING_SPEED
+  float
+  default 20
+
+config PARAM_BLOBIFIER_STEPPER_VELOCITY
+  float
+  default 150
+
+config PARAM_BLOBIFIER_STEPPER_ACCEL
+  float
+  default 1000
+
 # The TMC driver definitions are shared with the other steppers. Every
 # variable is re-assigned immediately before each source, because they are
 # global for the whole parse and Kconfig.purging is itself sourced twice.
@@ -86,7 +128,12 @@ source "components/Kconfig.tmc_driver_types"
 
 menu "Purging"
   help
-    Purging
+    After a tool change the previous filament is still in the extruder
+    and nozzle. Purging pushes it out so the new filament prints clean,
+    without mixed colors or materials.
+    Happy Hare can purge into a bucket or a Blobifier, or leave it to the
+    slicer's wipe tower. A tip cut needs a bigger purge than a formed tip
+    because the cut fragment must also be purged.
 
   # -------------------------------------
   # Blobifier configuration
@@ -98,7 +145,8 @@ menu "Purging"
       Enable this if you have a Blobifier purging system fitted.
 
       NOTE: There is a lot of setup for Blobifier. After enabling this
-      be sure to edit Macro variables
+      be sure to edit its Macro variables (link below the standalone
+      purging option once Blobifier is selected there)
 
   if MMU_HAS_BLOBIFIER
     config MMU_HAS_BLOBIFIER_BUCKET_SWITCH
@@ -133,24 +181,25 @@ menu "Purging"
         validator "$(pin_validator)"
         help
           $(pin_help)
-
-      config PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
-        float "Servo min pulse width          "
-        default 0.00053
-        help
-          Adjust until a 'BLOBIFIER_SERVO POS=out' extends the tray fully without a buzzing sound
-
-          The default value is likely to be close so don't worry about this for now
-
-      config PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
-        float "Servo max pulse width          "
-        default 0.0023
-        help
-          Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
-
-          The default value is likely to be close so don't worry about this for now
     endif
+  endif
 
+  prefix              := BLOBIFIER_SERVO
+  servo_suffix        :=
+  servo_visible       := MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
+  label               := Servo
+  pad_width           := 31
+  servo_min_pulse     := 0.00053
+  servo_max_pulse     := 0.0023
+  servo_initial_angle := 180
+  servo_initial_on    := n
+  servo_rest_angle    := "Tray angle in"$(nl)under Macro Variables -> Blobifier
+  servo_min_hint      := $(nl)$(nl)Test with 'BLOBIFIER_SERVO POS=out': the tray extends fully
+  servo_max_hint      := $(nl)$(nl)Test with 'BLOBIFIER_SERVO POS=in': the tray retracts fully
+  servo_angle_hint    := $(nl)Recommend 180: the tray angles under Macro Variables -> Blobifier$(nl)are relative to it
+  source "components/Kconfig.servo"
+
+  if MMU_HAS_BLOBIFIER
     if CHOICE_BLOBIFIER_TYPE_STEPPER
       prefix     := BLOBIFIER
       label      := Stepper
@@ -182,6 +231,35 @@ menu "Purging"
         validator "$(pin_validator)"
         help
           The pull-up/invert ( ^! ) is typically required here
+
+      config PARAM_BLOBIFIER_STEPPER_MICROSTEPS
+        prompt "Stepper microsteps             "
+
+      config PARAM_BLOBIFIER_STEPPER_GEAR_RATIO
+        prompt "Stepper gear ratio             "
+        validator "[0-9.]+ *: *[0-9.]+( *, *[0-9.]+ *: *[0-9.]+)*"
+        help
+          E.g. 1:1 or 57:11, 2:1
+
+      config PARAM_BLOBIFIER_STEPPER_ROTATION_DISTANCE
+        prompt "Stepper rotation distance      "
+
+      config PARAM_BLOBIFIER_STEPPER_POSITION_MIN
+        prompt "Stepper position min           "
+
+      config PARAM_BLOBIFIER_STEPPER_POSITION_MAX
+        prompt "Stepper position max           "
+
+      config PARAM_BLOBIFIER_STEPPER_HOMING_SPEED
+        prompt "Stepper homing speed           "
+        help
+          Unused in the macros, here for completeness
+
+      config PARAM_BLOBIFIER_STEPPER_VELOCITY
+        prompt "Stepper velocity               "
+
+      config PARAM_BLOBIFIER_STEPPER_ACCEL
+        prompt "Stepper accel                  "
     endif
   endif
 
@@ -191,14 +269,15 @@ menu "Purging"
   # -------------------------------------
 
   comment "_"
-  comment "_Essential purge configuration"
+  comment "_Essential purge config"
 
   choice CHOICE_PURGE_MACRO
-    prompt "Select standalone purging option   "
+    prompt "Happy Hare purging method          "
     default CHOICE_PURGE_MACRO_BLOBIFIER if MMU_HAS_BLOBIFIER
     default CHOICE_PURGE_MACRO_PURGE
     help
-      How to perform standalone purging operation.
+      What Happy Hare runs whenever it purges: always outside a print,
+      and in a print when "Happy Hare controlled in-print purge" is set.
 
     config CHOICE_PURGE_MACRO_PURGE
       bool "Simple purge into bucket"
@@ -216,9 +295,10 @@ menu "Purging"
     endif
 
     config CHOICE_PURGE_MACRO_SLICER
-      bool "Slicer managed"
+      bool "None [[DIM]]/ slicer only[[/DIM]]"
       help
-        Purging is controlled and managed by the slicer rather than Happy-Hare.
+        Happy Hare never purges. The slicer's wipe tower purges during a
+        print and nothing is purged outside a print.
 
     config CHOICE_PURGE_MACRO_OTHER
       bool "Other / manually entered"
@@ -240,23 +320,46 @@ menu "Purging"
     default PURGE_MACRO_OTHER if CHOICE_PURGE_MACRO_OTHER
     default ""
 
+  config PARAM_EXTRUDER_PURGE_CURRENT
+    int "Extruder purging current           " if !CHOICE_PURGE_MACRO_SLICER
+    default 100
+    default_when_hidden
+    help
+      % of extruder current (100%-150%) to use when purging (100 to disable feature)
+
+  if CHOICE_PURGE_MACRO_PURGE
+    comment "Simple purge macro variables"
+      link VAR_PURGE_EXTRUDER_PURGE_SPEED
+      help
+        Extruder purge speed for the simple bucket purge macro
+  endif
+
+  if CHOICE_PURGE_MACRO_BLOBIFIER
+    comment "Blobifier macro variables"
+      link VAR_BLOBIFIER_PURGE_SPD
+      help
+        Purge, brush, bucket and tray settings for the Blobifier macro
+  endif
+
 
   # -------------------------------------
   # Other purge options
   # -------------------------------------
 
+  comment "_"
+
   config PARAM_FORCE_PURGE_STANDALONE
-    boolint "Happy Hare controlled in-print purge"
+    boolint "Happy Hare controlled in-print purge" if !CHOICE_PURGE_MACRO_SLICER
+    forceshow
+    default_when_hidden
     default 0 if CHOICE_PURGE_MACRO_SLICER
     default 1
     help
-      You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.
-      To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
-      and be sure to TURN OFF in your slicer
-  config PARAM_EXTRUDER_PURGE_CURRENT
-    int "Extruder purging current           "
-    default 100
-    help
-      % of extruder current (100%-150%) to use when purging (100 to disable feature)
+      [[B]]Checked[[/B]] (recommended): Happy Hare purges after every tool change in
+      a print using the method above. Turn off the slicer's wipe tower.
+      [[B]]Unchecked[[/B]]: the slicer's wipe tower purges during a print.
+      Always off when the method above is None.
+      See "Turning off the slicer wipe tower" in the Slicer Setup doc:
+      https://moggieuk.github.io/Happy-Hare-Doc/Slicer-Setup/
 
 endmenu

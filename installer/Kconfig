@@ -47,12 +47,15 @@
 #   generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
 #
 # 2. Added float type
-# 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met
+# 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met.
+#    'forceshow if <expr>' does so only while <expr> holds
+#    A forced row whose prompt condition is false is read-only: neither space nor 'r' changes it,
+#    and it shows as fixed (-*- or - -) even when another prompt can change the symbol
 # 4. Recording of default value with #~DEFAULT~# magic token
 # 5. Preprocessor function 'saved-config-value' to read a symbol's previous assignment from
 #    KCONFIG_CONFIG before normal config loading, including lines marked with #~DEFAULT~#
 # 6. repeat expansion macro to avoid multiple lines (can be nested); min/max may also be
-#    preprocessor variables, e.g. max=$(shared_slots):
+#    preprocessor variables or functions, e.g. max=$(owner-max,buffer):
 #      @repeat var=i min=0 max=3@
 #        config PARAM_MMU_CANBUS_UNIT_$(i)
 #          string "CANbus UUID for MMU unit $(i)"
@@ -81,6 +84,8 @@
 #     from a renamed symbol to its replacement at load time. Add an entry in
 #     the same commit as the rename. Cannot be used for a symbol that make or
 #     install.sh reads by name, since both read the file before this runs.
+#     HH_MCU_PREFIXED_RENAMES adds the MCU to a carried pin, and
+#     HH_REMOVED_I2C_BUSES keeps a v4.0 environment sensor i2c bus
 # 15. 'default_when_hidden' on a menuconfig/menu (or symbol) saves a symbol
 #     under it whose prompt is hidden as a #~DEFAULT~# value, so turning the
 #     entry off reverts any customization to the (still tracked) default.
@@ -99,12 +104,28 @@
 # 19. 'reparse_env "<VAR> [<VAR>...]"' on a symbol whose value the tree is built from via
 #     those env vars (UNIT_NAME): changing it in menuconfig re-parses with the new value
 #     so every default derived from them is recomputed in the same session
-# 20. Shared components: 'shared-*' preprocessor functions (shared_components.py) let a unit
-#     parse read the OTHER units' saved configs via KCONFIG_PARENT, giving a pick list of the
-#     units owning a component and the owner's capabilities. Used through the
-#     components/Kconfig.shared_choice and Kconfig.shared_export fragments.
+# 20. Shared components: 'owner-*' preprocessor functions (shared_components.py) let a unit
+#     parse read the OTHER units' saved configs via KCONFIG_PARENT: the names of the units'
+#     own encoders/buffers and an owner's capabilities, for a sharer naming it. Used through
+#     the components/Kconfig.shared_export fragment.
 #     $(printer-flag,SYM) reads a printer-level flag from the top-level config
 # 21. 'range' accepts multiple low/high pairs: 'range 0 0 5 200' allows 0 or 5-200.
+# 22. 'dim' on a comment draws its whole row dimmed, including the "***" decoration:
+#       comment "Note" if COND
+#         dim
+# 23. A $(macro) in a symbol position whose expansion holds whitespace or starts with '!'
+#     or '(' is lexed as that expression, so a component can take a condition from its
+#     caller (anything else stays one symbol name, as upstream):
+#       servo_visible := MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
+#       prompt "..." if $(servo_visible)
+# 24. 'link <SYMBOL>' on a comment makes it a menuconfig row that jumps to where SYMBOL is
+#     shown (its menu, cursor on it); ESC from there returns. Comments accept help for it:
+#       comment "Blobifier macro variables"
+#         link VAR_BLOBIFIER_PURGE_SPD
+# 25. 'keep_when_hidden' on a menuconfig/menu (or symbol) saves a symbol under it
+#     whose prompt is hidden with the user's value, not the default, so turning a
+#     parent off doesn't lose the customization (the opposite of 15). Use it where
+#     the .cfg still renders the option while hidden and hiding doesn't impose a value
 #
 # Menuconfig:
 # 1. 'r' to reset value to default
@@ -114,6 +135,8 @@
 # 5. Added array editor - used on "," or ";" separated strings
 # 6. Edited strings are checked against their 'validator' regexp
 # 7. Added sequence editor - list editor with explicit add/rename/remove/move
+# 8. Link rows ('link <SYMBOL>' comments) jump elsewhere in the tree; ESC returns to them
+# 9. The help separator names the [section], option and .cfg file a symbol or choice sets
 #
 #
 # Capability params:
@@ -125,6 +148,7 @@
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_HEATER
 #   MMU_HAS_HEATER_FANS
+#   MMU_HAS_CONTROLLER_FAN
 #   MMU_HAS_LEDS
 #   MMU_HAS_FANS
 #   MMU_HAS_PER_GATE_CONFIG
@@ -165,10 +189,6 @@ mmu_has_sensor_toolhead := $(printer-flag,MMU_HAS_SENSOR_TOOLHEAD)
 mmu_has_sensor_extruder := $(printer-flag,MMU_HAS_SENSOR_EXTRUDER)
 mmu_has_toolhead_cutter := $(printer-flag,MMU_HAS_TOOLHEAD_CUTTER)
 
-# The most units a pick list offers for a shared component that another unit owns
-# (components/Kconfig.shared_*, read by shared_components.py too)
-shared_slots := 4
-
 # Used to dynamically get the serial device paths
 all_serial_devices  := $(shell, ls /dev/serial/by-id/* 2>/dev/null || true)
 serial_device        = $(serial-device,$(all_serial_devices),$(1),$(2))
@@ -203,6 +223,9 @@ nl            := $(hh-newline)
 pin_item           := [~^]?!?([A-Za-z0-9_-]+:)?[A-Za-z0-9_./-]+
 pin_validator      := ($(pin_item))?
 pin_list_validator := ($(pin_item)( *, *$(pin_item))*)?
+
+# A Klipper object name (as for a unit), or empty
+object_name_validator := ([a-z][a-z0-9_-]*)?
 pin_syntax    := Syntax:  [[REV]][^|~] [!] [chip_name:] pin_or_alias_name[[/REV]]
 pin_example   := $(hh-pin-example,$(F_MULTI_UNIT_ENTRY_POINT))
 pin_help      := $(pin_syntax)$(nl)$(pin_example)
@@ -213,7 +236,7 @@ pin_help      := $(pin_syntax)$(nl)$(pin_example)
 comma := ,
 
 # Shown under a feature whose hardware a board supplies itself (CUSTOM_* flag)
-misc_hardware_hint := Defined by the mcu board's misc hardware
+misc_hardware_hint := Defined and fixed by design/mcu
 quote := "
 ml = $(hh-multiline,$(1))
 
@@ -302,7 +325,9 @@ if MULTI_UNIT_ENTRY_POINT
   source "Kconfig.options"          # Main software options
   source "Kconfig.tip_shaping"
   source "Kconfig.purging"
-  source "Kconfig.speeds"           # Access to extruder speeds
+  menu "Extruder speeds"
+    source "Kconfig.extruder_speeds"
+  endmenu
   source "macro_vars/Kconfig"       # Variables for all macros
 
   # These are duplicated settings that are excluded from units when MULTI_UNIT
@@ -344,7 +369,7 @@ if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.tip_shaping"
     source "Kconfig.purging"
   endif
-  source "Kconfig.speeds"           # All speeds
+  source "Kconfig.kinematics"       # Gear/selector steppers, selector servo and speeds
   if !MULTI_UNIT
     source "macro_vars/Kconfig"     # Variables for all macros
   endif

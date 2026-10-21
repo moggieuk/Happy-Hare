@@ -634,9 +634,19 @@ class _PN532Base:
                                    timeout=timeout)
         target_info = _parse_inlist_payload(payload)
         if target_info is None:
+            # No tag within the timeout. With MxRtyPassiveActivation at its 0xFF
+            # default the InListPassiveTarget is still running on the chip; abandoning
+            # it leaves the next command (often InRelease) to hit a busy chip, which
+            # was seen to wedge the I2C bus (BUS_TIMEOUT on the write). Abort it the
+            # same way the non-blocking probe does.
+            try:
+                self._probe_abort()
+            except Exception as e:
+                logger.info("[%s %s] read_target: abort after miss failed: %s",
+                            self._name, self._transport_name, e)
             self._clear_current_card()
             if self._debug >= 4:
-                logger.info("[%s %s] read_target: no tag",
+                logger.info("[%s %s] read_target: no tag (in-flight scan aborted)",
                             self._name, self._transport_name)
             return None
 

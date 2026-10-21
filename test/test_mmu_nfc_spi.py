@@ -109,8 +109,8 @@ class TestStaleChipPins(unittest.TestCase):
     def test_common_pn532_drops_pn7160_pins(self):
         profile = profiles.NFC_PN532.derive(
             'nfc_pn532_stale_pn7160_pins',
-            syms={'PARAM_NFC_READER_VEN_PIN': 'unit0:PB2',
-                  'PARAM_NFC_READER_IRQ_PIN': 'unit0:PB3'})
+            syms={'PIN_NFC_READER_VEN': 'unit0:PB2',
+                  'PIN_NFC_READER_IRQ': 'unit0:PB3'})
         keys = reader_sections(profile)['unit0_nfc']
         self.assertNotIn('ven_pin', keys)
         self.assertNotIn('irq_pin', keys)
@@ -118,8 +118,8 @@ class TestStaleChipPins(unittest.TestCase):
     def test_per_gate_pn532_drops_pn7160_pins(self):
         profile = profiles.NFC_PN532_SW_I2C.derive(
             'nfc_pn532_sw_i2c_stale_pn7160_pins',
-            syms={'PARAM_NFC_READER_VEN_PIN_0': 'unit0:PB2',
-                  'PARAM_NFC_READER_IRQ_PIN_1': 'unit0:PB3'})
+            syms={'PIN_NFC_READER_VEN_0': 'unit0:PB2',
+                  'PIN_NFC_READER_IRQ_1': 'unit0:PB3'})
         sections = reader_sections(profile)
         for name in ('unit0_nfc0', 'unit0_nfc1'):
             self.assertNotIn('ven_pin', sections[name], name)
@@ -129,8 +129,8 @@ class TestStaleChipPins(unittest.TestCase):
         profile = profiles.NFC_PN532.derive(
             'nfc_pn7160_pins',
             syms={'CHOICE_NFC_READER_TYPE_PN7160': True,
-                  'PARAM_NFC_READER_VEN_PIN': 'unit0:PB2',
-                  'PARAM_NFC_READER_IRQ_PIN': 'unit0:PB3'})
+                  'PIN_NFC_READER_VEN': 'unit0:PB2',
+                  'PIN_NFC_READER_IRQ': 'unit0:PB3'})
         keys = reader_sections(profile)['unit0_nfc']
         self.assertEqual((keys['reader_type'], keys['interface']), ('pn7160', 'i2c'))
         self.assertEqual((keys.get('ven_pin'), keys.get('irq_pin')),

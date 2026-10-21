@@ -26,6 +26,7 @@ config PARAM_FLOWGUARD_MAX_RELIEF
 config PARAM_FLOWGUARD_MAX_RELIEF
   prompt "Max relief movement"
   depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && PARAM_FLOWGUARD_ENABLED
+  keep_when_hidden
   help
     The amount of relief movement (effective mm change in filament length between MMU and extruder) that
     Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since
@@ -51,6 +52,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
   config PARAM_TANGLE_PREVENTION_THRESHOLD
     prompt "Tension threshold to boost gear current"
     depends on PARAM_TANGLE_PREVENTION_ENABLED
+    keep_when_hidden
     help
       Proportional sensor tension level (0.2-0.9, fraction of the tension half of the sensor range) at which the
       gear current is boosted to 100%. Lower values trigger the boost sooner. Increase if you get false triggers.
@@ -62,6 +64,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
   config PARAM_TANGLE_PREVENTION_RELEASE
     prompt "Tension level to restore gear current"
     depends on PARAM_TANGLE_PREVENTION_ENABLED
+    keep_when_hidden
     help
       Tension level (0.15-0.8) at which the boosted gear current is restored to normal once tension eases. Must be
       below the threshold - the gap between the two provides hysteresis to prevent the current thrashing on and off.
@@ -75,8 +78,10 @@ if MMU_HAS_ENCODER
       Encoder runout/clog/tangle detection watches for movement over either a static or automatically adjusted distance - if
       no encoder movement is seen when the extruder moves this distance runout/ clog/tangle event will be generated. Allowing
       the distance to be adjusted automatically will generally allow for a quicker trigger but use a static length
-      (mode=1, set encoder_max_motion) if you get false triggers (see flowguard guide on wiki for more details).
+      (mode=1, set encoder_max_motion) if you get false triggers.
       Note that this feature cannot distinguish between clog or tangle.
+      See "Tuning" in the FlowGuard doc:
+      https://moggieuk.github.io/Happy-Hare-Doc/Feature-FlowGuard/
 
   config BOOL_FLOWGUARD_ENCODER_MODE_AUTO
     bool "Enable automatic detection length?"

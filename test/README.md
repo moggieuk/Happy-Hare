@@ -151,6 +151,13 @@ Worker output is captured per file. Passing files get one progress line; a faili
 labelled block containing its complete standard `unittest` traceback and failure summary. Output
 from another worker cannot appear inside that block.
 
+The run order is not the picker's order. Files start **slowest first**, by the same times the
+picker shows, so no long file is left running alone after the other workers go idle. A file's
+line is printed when it **finishes**, so lines arrive in finishing order and `[n/N]` counts
+finished files — it is not the file's number in the picker. The cost is a quiet start: nothing
+prints until the quickest of the first four (slowest) files is done, ~40 s on an M1 laptop and
+much longer on a Pi. Starting in picker order would print sooner but finish later.
+
 Typing `n` then `+nfc` then Enter runs just the NFC files. `p` recalls the last selection you
 narrowed to — a full run doesn't overwrite it, so you can alternate between a focused loop
 and a full check without retyping. `q` quits without running anything, and exits non-zero on
@@ -310,12 +317,16 @@ reassembling a line. Output produced by a tick is printed above the prompt and t
 then rebuilt from `readline.get_line_buffer()`, so a tick landing while you are mid-command
 cannot eat what you have typed.
 
-The tick fires every `LIVE_INTERVAL` = **0.5 s** and advances by the *real* time measured
+The tick fires every `LIVE_INTERVAL` = **0.125 s** and advances by the *real* time measured
 since the last one, not by that constant — so the interval sets how often the header is
-repainted, not how fast the clock runs. Halving it (it was 1.0 s) therefore costs a second
-repaint per second, not twice the reactor work, and it is what makes an `led_effect`
-animation legible: at `frame_rate: 24` a one-second sample showed every 24th frame, which
-reads as a jump rather than a fade.
+repainted, not how fast the clock runs. Reducing it from 0.5 s increases display refreshes
+from two to eight per second without increasing LED frame calculations: at `frame_rate: 24`
+the display now samples every third frame instead of every twelfth.
+
+`make test` does not run this console timer or repaint the display. LED effects still
+calculate frames at their configured rate, but only as tests advance virtual time; there
+is no wall-clock wait between frames. The faster console refresh adds no test overhead.
+Keeping the configured effect rate in tests preserves animation and timer behavior.
 
 The clock itself costs under **1% of one core**: measured on `ercf_vvd`, `advance(60)` is
 8.6 ms of CPU per virtual second, and live mode spends that over a real second. (It was
@@ -367,6 +378,8 @@ Useful flags — `make console ARGS='...'`:
 --no-prime                     # leave the gate map blank instead of filling it in
 --seed N                       # seed for the primed gate map (default 0, reproducible)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
+--serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
+--no-serve                     # don't serve the web API for Mainsail/Fluidd
 --pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
 --wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
 --script FILE                  # run non-interactively (this is how it is tested)
@@ -485,6 +498,49 @@ Unit : ------------- unit0 -------------
 
 `#` and not `!`: `!! …` is already a command that raised and `?? …` one that does not
 exist, so a lone `!` would read as a quieter error rather than as a note.
+
+### Driving a real Mainsail or Fluidd — the web API
+
+At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
+(the next free port if that is taken, so it can sit beside a real Moonraker), so an
+unmodified Mainsail (or Fluidd) can connect to the simulator: the MMU panel shows live state,
+the console shows everything Happy Hare says, and `RESUME`, `UNLOCK` and anything else typed
+or clicked in the UI runs in the session as if typed at the prompt. The banner says where it
+is, and `/web` repeats it with the commands to connect:
+
+```text
+Web API (for Mainsail/Fluidd): host 127.0.0.1  port 7125  (http://127.0.0.1:7125)
+```
+
+It is a development and documentation aid for seeing what the web UIs really do with Happy
+Hare, such as the pause dialog; it is not a Moonraker clone. A method the UI asks for that is
+not served gets a JSON-RPC error, and `http://127.0.0.1:7125/sim/unsupported` lists them.
+`--no-serve` turns it off, and `--serve PORT` picks the port. Scripts and tests never start
+it unless `--serve` is given, so they cannot fight over the port.
+
+Point Mainsail at it by running its dev server with that address, from a Mainsail checkout:
+
+```bash
+VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=7125 npx vite serve
+```
+
+or, for a built Mainsail or Fluidd, add a printer at `127.0.0.1:7125` in its connection
+dialog.
+
+To see the pause dialog, pretend a print is running and make something fail:
+
+```text
+/print start
+/exhaust 1
+MMU_CHANGE_TOOL TOOL=1
+```
+
+The shipped `_MMU_ERROR_DIALOG` macro really runs while the API is on (macro bodies are
+otherwise no-ops in the harness), and its `RESPOND TYPE=command` lines reach the UI as the
+`// action:prompt_*` host commands Klipper would send, not as console text.
+
+Requests are only served between keystrokes, from the same idle tick as `/live`, so it needs a
+terminal. Everything lives in `test/hh/webui_bridge.py`, which is standard library only.
 
 ### The log
 
@@ -725,7 +781,10 @@ The test files, grouped by what they're about:
 | **Filament handling** | | |
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |
+| `test_mmu_confirm_loaded.py` | 20 | the in-print "loaded" sensor check after a toolchange or RESUME, and where it must not fire |
+| `test_mmu_pressure_advance.py` | 7 | pressure advance zeroed and restored around tip forming and purging; the already-0 debug note |
 | `test_mmu_encoder.py` | 36 | gate homing by encoder motion instead of by switch |
+| `test_mmu_extruder_load.py` | 8 | the encoder check on the final load to the nozzle, and skipping its shortfall test once a buffer has confirmed extruder grip |
 | `test_mmu_flowguard.py` | 11 | encoder FlowGuard on an encoder shared by two units: arming, handover on toolchange, pause/resume, runout |
 | `test_mmu_endless_spool.py` | 18 | runout detection, clog-vs-runout, gate remapping |
 | **NFC and Spoolman** | | |
@@ -740,7 +799,8 @@ The test files, grouped by what they're about:
 | `test_mmu_roundtrip.py` | 54 | Klipper and Moonraker talking to each other |
 | **Presentation** | | |
 | `test_mmu_leds.py` | 34 | LED effects, flashes, the pending overlay |
-| `test_mmu_console.py` | 205 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_console.py` | 211 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_webui_bridge.py` | 8 | the Moonraker-compatible web API the console serves: handshake, status, gcode, and the pause dialog reaching a UI |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |
 
 Counts as the picker reports them.
@@ -893,7 +953,8 @@ templates** from them, so a broken template shows up as a test failure.
 | `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
 | `pico_mmu` | PicoMMU's `ServoSelector`; deliberately boots uncalibrated because its gate angles depend on the physical cam build |
 | `mmx` | MMX's `ServoSelector` with its vendor gate-angle order; also used for a full load/unload selector test |
-| `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
+| `quattrobox_v2` | QuattroBox v2 on its Chameleon X5 board: eject buttons, Binky encoder, PSF-style proportional buffer, heater on two 3950 thermistors, two BME280s, and a shared PN532 reader and bowden TD-1 |
+| `emu` | 5 gates; with `quattrobox_v2`, the shipped profiles with an analog buffer sensor |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
 | `nfc_per_gate` | one reader per gate |

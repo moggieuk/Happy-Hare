@@ -296,9 +296,9 @@ NFC_PN5180 = BOXTURTLE.derive(
     'nfc_pn5180',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
           'CHOICE_NFC_READER_TYPE_PN5180': True,
-          'PARAM_NFC_READER_CS_PIN': 'unit0:PA4',
-          'PARAM_NFC_READER_BUSY_PIN': 'unit0:PB0',
-          'PARAM_NFC_READER_RESET_PIN': 'unit0:PB1'},
+          'PIN_NFC_READER_CS': 'unit0:PA4',
+          'PIN_NFC_READER_BUSY': 'unit0:PB0',
+          'PIN_NFC_READER_RESET': 'unit0:PB1'},
     description='BoxTurtle + one common NFC reader (PN5180/SPI)')
 
 # Deliberately MIXED: gate 0 is PN5180, gates 1-3 stay RC522. The per-gate params are
@@ -309,9 +309,9 @@ NFC_PN5180_PER_GATE = BOXTURTLE.derive(
     'nfc_pn5180_per_gate',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
           'CHOICE_NFC_READER_TYPE_PN5180_0': True,
-          'PARAM_NFC_READER_CS_PIN_0': 'unit0:PA4',
-          'PARAM_NFC_READER_BUSY_PIN_0': 'unit0:PB0',
-          'PARAM_NFC_READER_RESET_PIN_0': 'unit0:PB1'},
+          'PIN_NFC_READER_CS_0': 'unit0:PA4',
+          'PIN_NFC_READER_BUSY_0': 'unit0:PB0',
+          'PIN_NFC_READER_RESET_0': 'unit0:PB1'},
     description='BoxTurtle + per-gate readers, gate 0 PN5180 and the rest RC522')
 
 # PN532 is the first I2C reader type to get a profile at all - before this the whole
@@ -335,12 +335,12 @@ NFC_PN532_SW_I2C = BOXTURTLE.derive(
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
           'CHOICE_NFC_READER_TYPE_PN532_0': True,
           'CHOICE_NFC_READER_I2C_SOFTWARE_0': True,
-          'PARAM_NFC_READER_SCL_PIN_0': 'unit0:PB8',
-          'PARAM_NFC_READER_SDA_PIN_0': 'unit0:PB9',
+          'PIN_NFC_READER_I2C_SCL_0': 'unit0:PB8',
+          'PIN_NFC_READER_I2C_SDA_0': 'unit0:PB9',
           'CHOICE_NFC_READER_TYPE_PN532_1': True,
           'CHOICE_NFC_READER_I2C_SOFTWARE_1': True,
-          'PARAM_NFC_READER_SCL_PIN_1': 'unit0:PC4',
-          'PARAM_NFC_READER_SDA_PIN_1': 'unit0:PC5'},
+          'PIN_NFC_READER_I2C_SCL_1': 'unit0:PC4',
+          'PIN_NFC_READER_I2C_SDA_1': 'unit0:PC5'},
     description='Two per-gate PN532 readers, each on its own software i2c bus')
 
 # PN532 over HSU/UART - the only reader that is NOT MCU-mediated. klippy opens a host
@@ -380,7 +380,7 @@ NFC_PN532_SPI = BOXTURTLE.derive(
     'nfc_pn532_spi',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
           'CHOICE_NFC_READER_TYPE_PN532_SPI': True,
-          'PARAM_NFC_READER_CS_PIN': 'unit0:PA4'},
+          'PIN_NFC_READER_CS': 'unit0:PA4'},
     description='BoxTurtle + one common NFC reader (PN532/SPI)')
 
 # Mixed per-gate, for the same reason as NFC_PN532_UART_PER_GATE: gate 0 PN532/SPI
@@ -389,7 +389,7 @@ NFC_PN532_SPI_PER_GATE = BOXTURTLE.derive(
     'nfc_pn532_spi_per_gate',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
           'CHOICE_NFC_READER_TYPE_PN532_SPI_0': True,
-          'PARAM_NFC_READER_CS_PIN_0': 'unit0:PA4'},
+          'PIN_NFC_READER_CS_0': 'unit0:PA4'},
     description='BoxTurtle + per-gate readers, gate 0 PN532/SPI and the rest RC522')
 
 # The round-trip profile: per-gate NFC + Spoolman in a WRITABLE mode + auto-create
@@ -459,14 +459,14 @@ THREE_MS = Profile(
 # the AttributeError at mmu_rotary_selector.py:229 sat in the release path until this profile
 # reached it. See TestRotarySelector in test_mmu_selector.py.
 #
-# TWO SYMBOLS SET BEYOND THE MACHINE TYPE, both because the vendor Kconfig leaves them open and
+# THREE SYMBOLS SET BEYOND THE MACHINE TYPE, all because the vendor Kconfig leaves them open and
 # a real user would have to answer them at menuconfig:
 #
 #   BOARD_TYPE_MMB_2_0        Kconfig.3d_chameleon sets no board default (unlike box_turtle,
 #       tradrack and emu, which each default one), so the choice falls to BOARD_TYPE_OTHER and
 #       every pin renders empty - config load dies on "Invalid pin description ''". MMB 2.0 is
-#       tradrack's own default and supplies the gear stepper, a selector stepper WITH an
-#       endstop, and PIN_SHARED_EXIT_SENSOR. Note that boards/Kconfig.chameleon_x5_1, despite
+#       tradrack's own default and supplies the gear stepper and a selector stepper WITH an
+#       endstop. Note that boards/Kconfig.chameleon_x5_1, despite
 #       the name, is a QuattroBox per-gate board with four gear steppers and no selector pins.
 #   MMU_HAS_SENSOR_SHARED_EXIT  The type ships no sensor and no encoder, which leaves the gate
 #       homing choice on CHOICE_GATE_HOMING_ENDSTOP_NONE and renders gate_homing_endstop as ''
@@ -474,6 +474,9 @@ THREE_MS = Profile(
 #       as "Choice '' for option 'gate_homing_endstop' is not a valid choice". A single sensor
 #       at the combiner exit is the shape of the machine (four gates, one output path) and the
 #       cheapest honest answer; it is also what tradrack selects.
+#   PIN_SHARED_EXIT_SENSOR  MMB 2.0's shared exit header (PA15) is the selector endstop on a
+#       machine with a selector stepper, so the board leaves the sensor unassigned. PC7 is the
+#       entry-0 header, which only a multigear MMU uses.
 #
 # filament_always_gripped renders 0 (no vendor override, and DEF_PROFILE's default is False in
 # mmu_unit.py:97), which is what puts the lazy-grip release path in play at all. That is not
@@ -482,7 +485,8 @@ CHAMELEON = Profile(
     'chameleon',
     syms={'MMU_TYPE_3D_CHAMELEON_1_0': True,
           'BOARD_TYPE_MMB_2_0': True,
-          'MMU_HAS_SENSOR_SHARED_EXIT': True},
+          'MMU_HAS_SENSOR_SHARED_EXIT': True,
+          'PIN_SHARED_EXIT_SENSOR': '^unit0:PC7'},
     description='3D Chameleon 1.0 - 4 gates, the only RotarySelector')
 
 # HTLF: the second RotarySelector, and the one whose gates run the other way. Gate 0's cam lobe
@@ -546,10 +550,43 @@ QIDI = Profile(
         'filament_compression': 900.0,
     })
 
-# EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
-# sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
-# for real, and the virtual compression/tension sensors derived from an analog reading
-# rather than from switches.
+# QuattroBox v2 on its Chameleon X5 board, which supplies nearly everything as defaults: eject
+# buttons, a Binky encoder at the hub, a proportional buffer on the T2 port, the heater on HEAT0
+# averaging two Generic 3950 (100K NTC, beta 3950) thermistors, a Chamber BME280 as the
+# environment sensor and an Outside BME280 as misc hardware, plus vent servo and fans.
+#
+# Set beyond the machine type:
+#   CHOICE_ENCODER_TYPE_BINKY_12  the current default, pinned so the profile keeps its meaning
+#   PSF buffer                    OPTION_PSF_BUFFER exists only for EMU, so its effect (tension
+#                                 resting state, 16 mm range) is spelled out here
+#   PN532 on i2c1                 one common reader for every gate on the X5's I2C_0 header; the
+#                                 board has no free pins for an SPI reader
+#   TD-1 in the shared bowden     one scanner serving every gate
+QUATTROBOX_V2 = Profile(
+    'quattrobox_v2',
+    syms={
+        'MMU_FAMILY_QUATTRO_BOX': True,
+        'MMU_TYPE_QUATTRO_BOX_2_0': True,
+        'CHOICE_ENCODER_TYPE_BINKY_12': True,
+        'CHOICE_BUFFER_SPRING_STATE_TENSION': True,
+        'PARAM_BUFFER_RANGE': 16,
+        'PARAM_BUFFER_MAXRANGE': 16,
+        'MMU_HAS_NFC_READER': True,
+        'MMU_HAS_COMMON_NFC_READER': True,
+        'CHOICE_NFC_READER_TYPE_PN532': True,
+        'MMU_HAS_TD1': True,
+        'PARAM_TD1_BOWDEN_DEVICE': 'TD1-QB2',
+    },
+    description='QuattroBox v2 on Chameleon X5 - heater, BME280s, PSF buffer, shared NFC + TD-1',
+    # Preload parks 10 mm past the per-gate exit and gate parking is 30 mm before the hub, so
+    # the hub needs the same clearance as BoxTurtle's. gate_endstop_to_encoder is 0: the
+    # encoder sits at the hub.
+    filament_layout={'mmu_shared_exit': 150.0, 'mmu_encoder': 150.0})
+
+# EMU: 5 gates, and one of the two shipped profiles (with QuattroBox v2) that bring a
+# PROPORTIONAL (analog) buffer sensor with them. It is the profile that exercises
+# MmuAdcHelper's ADC compat shim for real, and the virtual compression/tension sensors
+# derived from an analog reading rather than from switches.
 #
 # NOTE this is 5 gates on ONE unit. Genuine multi-unit needs F_MULTI_UNIT plus per-unit
 # Kconfig loading (installer/build.py:481-491), which cfg.py deliberately bypasses - so
@@ -594,9 +631,9 @@ ENCODER = BOXTURTLE_TEST.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
-# Two BoxTurtles where unit1 shares unit0's encoder AND buffer through the "Shared with
-# existing unit?" flags. A component's section is always named after the unit that owns it,
-# so the sharer names the owning unit and renders neither section of its own.
+# Two BoxTurtles where unit1 shares unit0's encoder AND buffer through the "Use shared ...?"
+# flags. An owner's section is named after its unit by default, so the sharer names unit0
+# and renders neither section of its own.
 #
 # gate_endstop_to_encoder is a per-unit distance, so unit1 sets its own (25) rather than the
 # 10 unit0 gets by default.
@@ -613,8 +650,10 @@ SHARED_ENCODER = Profile(
             ENCODER.syms, PIN_ENCODER='unit0:PB7')),
         UnitProfile('unit1', index=1, syms=dict(
             {k: v for k, v in ENCODER.syms.items() if k != 'PIN_ENCODER'},
-            MMU_SHARED_ENCODER=True,                    # the pick lists' only owner: unit0
+            MMU_SHARED_ENCODER=True,
+            PARAM_ENCODER_NAME='unit0',
             MMU_SHARED_SYNC_FEEDBACK_BUFFER=True,
+            PARAM_SYNC_FEEDBACK_BUFFER_NAME='unit0',
             PARAM_GATE_ENDSTOP_TO_ENCODER=25)),
     ],
     description="two BoxTurtles, unit1 sharing unit0's encoder and buffer")
@@ -643,7 +682,8 @@ ENCODER_SHARED = Profile(
         UnitProfile('unit1', index=1, syms={
             'MMU_TYPE_TRADRACK_1_0': True,
             'MMU_HAS_ENCODER': True,
-            'MMU_SHARED_ENCODER': True,                  # the share; unit0 is the only owner
+            'MMU_SHARED_ENCODER': True,
+            'PARAM_ENCODER_NAME': 'unit0',
             'BOOL_FLOWGUARD_ENCODER_MODE': True,
             'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True,
         }),
@@ -863,7 +903,7 @@ run_current: 0.6
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
 CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
-                    EMU, EMU_EBB, ENCODER,
+                    QUATTROBOX_V2, EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,

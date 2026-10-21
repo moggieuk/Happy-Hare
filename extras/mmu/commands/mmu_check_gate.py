@@ -316,7 +316,7 @@ class MmuCheckGateCommand(BaseCommand):
         except MmuError as ee:
             # recover_on_error is cleared only where motion was left unresolved: a sensor
             # sweep cannot establish a position the failure itself made unknown.
-            mmu.handle_mmu_error(str(ee), recover=recover_on_error)
+            mmu.handle_mmu_error(ee, recover=recover_on_error)
 
     def _check_path_unloaded(self, gate):
         """Refuse a gate whose path isn't clear, before anything is selected or moved."""

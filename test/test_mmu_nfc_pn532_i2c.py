@@ -116,6 +116,41 @@ class TestNewFirmwareUsesCheckedTransfer(unittest.TestCase):
         self.assertEqual(ctx.exception.label, 'status')
 
 
+NOT_READY = [0x00]
+
+
+class TestReadTargetMissAbortsInflightScan(unittest.TestCase):
+    """A blocking read_target() that times out without a tag must not leave its
+    InListPassiveTarget running on the chip.
+
+    PN532 MxRtyPassiveActivation defaults to 0xFF, so with no tag in the field the scan
+    retries forever. If read_target() just gives up, the next command (typically the
+    InRelease at the start of the following scan) is written to a busy chip; on real
+    hardware (EMU NFC reader, one PN532 per gate) that wedged the I2C bus with
+    BUS_TIMEOUT until a power cycle. The non-blocking probe already aborts with an ACK
+    frame (_probe_abort); the blocking miss path must do the same.
+    """
+
+    def test_miss_sends_abort_ack_frame(self):
+        # write InListPassiveTarget, ACK, then the chip stays busy past the timeout;
+        # plenty of not-ready status bytes cover the polls, the abort and its drain.
+        drv, i2c = pn532(script=[WRITE_OK, READY, ACK] + [NOT_READY] * 200)
+        self.assertIsNone(drv.read_target(timeout=0.05))
+        writes = [w for op, (w, n) in i2c.transcript if op == 'i2c_transfer' and n == 0]
+        self.assertEqual(writes[0][6], 0x4A)             # InListPassiveTarget sent ...
+        self.assertIn(list(PN532_ACK), writes[1:])       # ... and aborted after the miss
+        self.assertIsNone(drv._probe_stage)
+
+    def test_hit_does_not_send_abort(self):
+        target = _frame(0x4B, [0x01, 0x01, 0x00, 0x44, 0x00, 0x07,
+                               0x04, 0x5D, 0x83, 0x6D, 0xD7, 0x2A, 0x81])
+        drv, i2c = pn532(script=[WRITE_OK, READY, ACK, READY, target])
+        info = drv.read_target(timeout=0.05)
+        self.assertEqual(info['uid'], '045D836DD72A81')
+        writes = [w for op, (w, n) in i2c.transcript if op == 'i2c_transfer' and n == 0]
+        self.assertNotIn(list(PN532_ACK), writes)
+
+
 class _GcodeError(Exception):
     pass
 

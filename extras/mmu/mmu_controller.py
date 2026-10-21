@@ -161,6 +161,8 @@ class MmuController(MmuFilamentMovement):
         self.runout_last_enable_time = self.runout_last_disable_time = \
             self.runout_last_handled_time = self.reactor.monotonic()
         self.is_handling_runout = False # True whilst handling a runout
+        self.flowguard_trip_reason = None # Detail of the FlowGuard trip that raised the pending clog/tangle
+        self.error_dialog_shown = False # Pause dialog sent and not yet cleared by HH
 
         self.unit_selected = None       # Must not stay None, set when initial gate is set or in _load_persisted_state()
         self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
@@ -559,7 +561,10 @@ class MmuController(MmuFilamentMovement):
         except Exception as e:
             if exception is not None:
                 if exception:
-                    raise MmuError("Error running %s: %s" % (macro, str(e))) from e
+                    raise MmuError(
+                        "Error running %s: %s" % (macro, str(e)),
+                        hint="Resolve the cause of the %s error on %s, %s" % (macro, self.gate_name(), HINT_RELOAD)
+                    ) from e
                 else:
                     self.log_error("Error running %s: %s" % (macro, str(e)))
             else:
@@ -636,6 +641,8 @@ class MmuController(MmuFilamentMovement):
 
     # Note: Returning new lists/dicts so that moonraker sees the change
     def get_status(self, eventtime):
+        # Bypass has no gate operation even when the current unit has an espooler.
+        espooler_operation = self.espooler().get_operation(self.gate_selected) if self.has_espooler() else None
         status = {
             'enabled': self.is_enabled,
             'kalico': int(self.kalico),
@@ -666,13 +673,14 @@ class MmuController(MmuFilamentMovement):
             'action': self._get_action_string(),
             'sync_drive': self.drive().is_synced_to_extruder(),
             'reason_for_pause': self.psm.reason_for_pause if self.is_mmu_paused() else "",
+            'pause_hint': (self.psm.pause_hint or "") if self.is_mmu_paused() else "",
             'spoolman_support': self.p.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
             'print_start_detection': self.p.print_start_detection, # For Klippain. Not really sure it is necessary
             'encoder': None,
 
             # DEPRECATED but possibly still used in UI's or by users custom macros
-            'espooler_active': self.espooler().get_operation(self.gate_selected)[0] if self.has_espooler() else ESPOOLER_NONE, # DEPRECATED
+            'espooler_active': espooler_operation[0] if espooler_operation is not None else ESPOOLER_NONE, # DEPRECATED
             'runout': self.is_handling_runout, # DEPRECATED but still used in HH macros (better to use operation)
             'is_paused': self.is_mmu_paused(), # DEPRECATED (better to use print_state)
             'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused) Still referenced in Mainsail interface
@@ -734,6 +742,10 @@ class MmuController(MmuFilamentMovement):
             if st['shared'] is not None or st['gates']:
                 nfc_status.append(st)
         status['nfc'] = nfc_status
+
+        # Managed fan modes, one dict per unit that has managed fans
+        status['fans'] = [unit.fan_manager.get_status(eventtime) for unit in self.mmu_machine.units
+                          if getattr(unit, 'fan_manager', None) is not None and unit.fan_manager.has_fans()]
 
         # Development/testing hook
         if hasattr(self, "developer_status_update"):
@@ -2443,9 +2455,26 @@ class MmuController(MmuFilamentMovement):
 # ERROR HANDLING AND RESUME LOGIC
 # -----------------------------------------------------------------------------------------------------------
 
+    def mmu_error_from(self, ee):
+        """
+        A Klipper command_error from part way through an MMU operation in a print, as an MmuError
+        so it pauses like any MMU failure. Out of a print, or once Klipper has shut down, the
+        original error is re-raised so the gcode command still fails as it always has.
+        """
+        if isinstance(ee, MmuError):
+            return ee
+        if self.printer.is_shutdown() or not self.is_in_print():
+            raise ee
+        return MmuError("Klipper error: %s" % str(ee), hint="Resolve the cause of the Klipper error, %s" % HINT_RELOAD)
+
+
+    # reason may be an MmuError, whose hint (what to do next) is shown with it.
     # recover=False suppresses the sensor-based position guess but keeps the normal
     # pause/error handling. For callers whose failure left the position genuinely unknown.
     def handle_mmu_error(self, reason, force_in_print=False, recover=True):
+        hint = getattr(reason, 'hint', None)
+        context = getattr(reason, 'context', None)
+        reason = str(reason)
         self.psm.fix_started_state() # Get out of 'started' state before transition to mmu pause
 
         run_pause_macro = run_error_macro = recover_pos = send_event = False
@@ -2455,7 +2484,8 @@ class MmuController(MmuFilamentMovement):
                 self._track_pause_start()
                 self.psm.resume_to_state = 'printing' if self.is_in_print() else 'ready'
                 self.psm.reason_for_pause = reason # Only store reason on first error
-                self._display_mmu_error()
+                self.psm.pause_hint = hint
+                self._display_mmu_error(context)
                 self.psm.paused_extruder_temp = self.printer.lookup_object(self.mmu_unit().extruder_name()).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
@@ -2470,6 +2500,10 @@ class MmuController(MmuFilamentMovement):
                 self.psm.set_print_state("pause_locked")
             else:
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
+                if hint:
+                    self.log_always(hint)
+                if not self.error_dialog_shown:
+                    self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True, context=context, unlock_first=self.is_mmu_paused_and_locked()) # e.g. RESUME failed after clearing it
                 recover_pos = self.p.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
@@ -2501,23 +2535,59 @@ class MmuController(MmuFilamentMovement):
 
 
     # Displays MMU error/pause as pop-up dialog and/or via console
-    def _display_mmu_error(self):
-        msg= "Print%s paused" % (" was already" if self.is_printer_paused() else " will be")
+    def _display_mmu_error(self, context=None):
+        self._show_mmu_error_dialog("Print paused", self.psm.reason_for_pause, self.psm.pause_hint, context=context, unlock_first=True) # About to be paused and locked
+        self.log_error("MMU issue detected. Print paused\nReason: %s" % self.psm.reason_for_pause)
+        self.log_always(self.psm.pause_hint or "After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
+
+
+    @staticmethod
+    def _dialog_lines(text):
+        """
+        Split text into dialog-safe lines. Every rendered line is re-parsed as gcode by Klipper,
+        where ';' truncates even inside quotes and shlex treats '"' and '\\' specially.
+        """
+        lines = []
+        for line in str(text).split("\n"):
+            line = line.replace('"', "'").replace(';', ',').replace('\\', '/')
+            line = re.sub(r'([.:!?])\.+$', r'\1', " ".join(line.split()))
+            if line and line != '.':
+                lines.append(line)
+        return lines
+
+
+    def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False, context=None, unlock_first=False):
+        """
+        The reason is one paragraph rather than a line per line of the console message, with what
+        was being attempted (the error's context, which ends the message) kept apart so the dialog
+        can lead with it.
+        """
         dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
-        if self.p.show_error_dialog and dialog_macro is not None:
-            # Klipper doesn't handle string quoting so strip problematic characters
-            reason = self.psm.reason_for_pause.replace("\n", ". ")
-            for c in "#;'":
-                reason = reason.replace(c, "")
-            self.wrap_gcode_command('%s MSG="%s" REASON="%s"' % (self.p.error_dialog_macro, msg, reason))
-        self.log_error("MMU issue detected. %s\nReason: %s" % (msg, self.psm.reason_for_pause))
-        self.log_always("After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
+        if not (self.p.show_error_dialog and dialog_macro is not None):
+            return
+        def sentences(lines): # Lines read on as sentences; the last is left as the error wrote it
+            return " ".join([l if l[-1] in ".:!?" else l + "." for l in lines[:-1]] + lines[-1:])
+        lines = self._dialog_lines(reason)
+        flat = " ".join(l if l[-1] in ".:!?" else l + "." for l in lines).replace("'", "")
+        body = reason[:-len(context)] if context and reason.endswith(context) else reason
+        paragraph = sentences(self._dialog_lines(body))
+        self.wrap_gcode_command(
+            '%s MSG="%s" REASON="%s"' % (self.p.error_dialog_macro, msg, flat),
+            variables={'reason_lines': [paragraph] if paragraph else [],
+                       'context_line': " ".join(self._dialog_lines(context or "")),
+                       'action': " ".join(self._dialog_lines(hint or "")),
+                       'still_paused': still_paused,
+                       'unlock_first': unlock_first}
+        )
+        dialog_macro.variables.update({'reason_lines': [], 'context_line': '', 'action': '', 'still_paused': False, 'unlock_first': False})
+        self.error_dialog_shown = True
 
 
     def _clear_mmu_error_dialog(self):
         dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
         if self.p.show_error_dialog and dialog_macro is not None:
             self.wrap_gcode_command('RESPOND TYPE=command MSG="action:prompt_end"')
+        self.error_dialog_shown = False
 
 
     def _mmu_unlock(self):
@@ -2539,7 +2609,7 @@ class MmuController(MmuFilamentMovement):
             # Cancel any pending shared-NFC spool_id: resuming (e.g. after pausing to load a
             # spool) may not fire a movement action, so it wouldn't be caught by _set_action.
             self._clear_pending()
-            self.psm.reason_for_pause = None
+            self.psm.reason_for_pause = self.psm.pause_hint = None
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.psm.paused_extruder_temp = None
             self._track_pause_end()
@@ -2554,7 +2624,9 @@ class MmuController(MmuFilamentMovement):
             return
 
         if self.is_printing(force_in_print):
-            self.sensor_manager.confirm_loaded() # Can throw MmuError
+            # Only where filament should reach the nozzle: a completed load, or an interrupted toolchange/load
+            if operation != 'unload' and (self.filament_pos == FILAMENT_POS_LOADED or self._next_tool != TOOL_GATE_UNKNOWN):
+                self.sensor_manager.confirm_loaded() # Can throw MmuError
             self.is_handling_runout = False
             self.initialize_encoder(dwell=None) # Encoder 0000
 
@@ -2621,7 +2693,9 @@ class MmuController(MmuFilamentMovement):
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
-                    self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position'][:2] = next_pos
+                    # Saved last_position includes the gcode offset, next_pos does not
+                    saved_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
+                    saved_state['last_position'][:2] = [next_pos[i] + saved_state['base_position'][i] for i in range(2)]
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
@@ -2667,8 +2741,7 @@ class MmuController(MmuFilamentMovement):
                     if sequence_vars_macro:
                         if sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
                             # Don't change x,y position on toolchange
-                            current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
-                            self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
+                            self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position'][:2] = self.gcode_move.last_position[:2]
                         travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
                     gcode_pos = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position']
                     display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
@@ -3058,6 +3131,16 @@ class MmuController(MmuFilamentMovement):
             return "unknown"
         else:
             return "#%d" % gate
+
+
+    def gate_name(self, gate=None):
+        if gate is None:
+            gate = self.gate_selected
+        if gate == TOOL_GATE_BYPASS:
+            return "bypass"
+        elif gate == TOOL_GATE_UNKNOWN:
+            return "unknown gate"
+        return "gate %d" % gate
 
 
     def selected_unit_string(self, unit=None):
@@ -4109,6 +4192,9 @@ class MmuController(MmuFilamentMovement):
             self._save_toolhead_position_and_park('runout') # includes "clog" and "tangle"
 
             type_str = event_type or "runout/clog/tangle"
+            where = "%s (%s)" % (self.selected_tool_string(), self.gate_name())
+            sensor = sensor or "unknown sensor"
+            flowguard_reason, self.flowguard_trip_reason = self.flowguard_trip_reason, None
             if self.tool_selected < 0:
                 raise MmuError("Filament %s on an unknown or bypass tool\nManual intervention is required" % type_str)
 
@@ -4125,7 +4211,11 @@ class MmuController(MmuFilamentMovement):
                     # Eliminate runout
                     event_type = "clog/tangle"
                     self.is_handling_runout = False
-                    raise MmuError("A clog/tangle has been detected and requires manual intervention")
+                    raise MmuError(
+                        "A clog/tangle has been detected on %s and requires manual intervention" % where,
+                        hint="Check the nozzle and extruder for a clog and the spool for %s for a tangle, %s"
+                             % (self.gate_name(), HINT_RELOAD)
+                    )
                 else:
                     # We definitely have a filament runout
                     type_str = event_type = "runout"
@@ -4137,27 +4227,46 @@ class MmuController(MmuFilamentMovement):
                     self.gate_maps.set_gate_status(self.gate_selected, GATE_EMPTY) # Indicate current gate is empty
                     next_gate, msg = self.gate_maps.get_next_endless_spool_gate(self.tool_selected, self.gate_selected)
                     if next_gate == -1:
-                        raise MmuError("Runout detected on %s\nNo alternative gates available after checking %s" % (sensor, msg))
+                        raise MmuError(
+                            "Runout detected on %s by %s\nNo alternative gates available after checking %s" % (where, sensor, msg),
+                            hint="Load a new spool (MMU_UNLOAD the old filament first if needed), %s" % HINT_RELOAD
+                        )
 
                     self.log_error("A runout has been detected. Checking for alternative gates %s" % msg)
                     self.log_info("Remapping T%d to gate %d" % (self.tool_selected, next_gate))
 
-                    if self.p.endless_spool_eject_gate >= 0:
-                        self.log_info("Ejecting filament remains to designated waste gate %d" % self.p.endless_spool_eject_gate)
-                        self.select_gate(self.p.endless_spool_eject_gate)
-                    self._unload_tool(form_tip=FORM_TIP_STANDALONE)
-                    self._eject_from_gate() # Push completely out of gate
-                    self.select_gate(next_gate) # Necessary if unloaded to waste gate
-                    self.gate_maps.remap_tool(self.tool_selected, next_gate)
-                    self._select_and_load_tool(self.tool_selected, purge=PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
+                    try:
+                        if self.p.endless_spool_eject_gate >= 0:
+                            self.log_info("Ejecting filament remains to designated waste gate %d" % self.p.endless_spool_eject_gate)
+                            self.select_gate(self.p.endless_spool_eject_gate)
+                        self._unload_tool(form_tip=FORM_TIP_STANDALONE)
+                        self._eject_from_gate() # Push completely out of gate
+                        self.select_gate(next_gate) # Necessary if unloaded to waste gate
+                        self.gate_maps.remap_tool(self.tool_selected, next_gate)
+                        self._select_and_load_tool(self.tool_selected, purge=PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
+                    except (MmuError, self.printer.command_error) as e:
+                        ee = self.mmu_error_from(e)
+                        raise ee.with_context("Occurred during EndlessSpool swap of %s to gate %d" % (where, next_gate)) from e
 
                     self._continue_after("endless_spool")
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
                     return
                 else:
-                    raise MmuError("Runout detected on %s\nEndlessSpool mode is off - manual intervention is required" % sensor)
+                    raise MmuError(
+                        "Runout detected on %s by %s\nEndlessSpool mode is off - manual intervention is required" % (where, sensor),
+                        hint="Load a new spool (MMU_UNLOAD the old filament first if needed), %s" % HINT_RELOAD
+                    )
 
-            raise MmuError("A %s has been detected on %s and requires manual intervention" % (type_str, sensor))
+            reason = "A %s has been detected on %s by %s and requires manual intervention" % (type_str, where, sensor)
+            if flowguard_reason:
+                reason += "\nFlowGuard trip reason: %s" % flowguard_reason
+            if event_type == "clog":
+                hint = "Check the nozzle and extruder of %s for a clog, %s" % (where, HINT_RELOAD)
+            elif event_type == "tangle":
+                hint = "Check the spool for %s for a tangle or snag, %s" % (self.gate_name(), HINT_RELOAD)
+            else:
+                hint = None
+            raise MmuError(reason, hint=hint)
 
 
     # Wait for all movement to stop
@@ -4231,20 +4340,26 @@ class MmuWrapperResumeCommand(BaseCommand):
                 self.mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
                 self.mmu.log_always("Automatically set filament state to LOADED based on toolhead sensor")
             if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_LOADED]:
-                raise MmuError("Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again")
+                raise MmuError(
+                    "Cannot resume because filament position not indicated as fully loaded (or unloaded).\nEnsure filament is loaded/unloaded and run MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER to reset state, then RESUME again",
+                    hint="Finish loading or unloading the filament, run MMU_RECOVER (MMU_RECOVER LOADED=1 if it is loaded to the nozzle), then RESUME"
+                )
 
             # Prevent BASE_RESUME from moving toolhead
             if TOOLHEAD_POSITION_STATE in self.mmu.gcode_move.saved_states:
-                gcode_pos = self.mmu.gcode_move.get_status(self.mmu.reactor.monotonic())['gcode_position']
                 try:
-                    self.mmu.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
+                    self.mmu.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = self.mmu.gcode_move.last_position[:3]
                 except KeyError:
                     self.mmu.log_error("PAUSE_STATE not defined!")
 
             self.mmu.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None)
-            self.mmu._continue_after("resume", force_in_print=force_in_print)
+            try:
+                self.mmu._continue_after("resume", force_in_print=force_in_print)
+            except self.mmu.printer.command_error as ee:
+                # The print is already running again, so a failed restore move must pause it again
+                raise self.mmu.mmu_error_from(ee) from ee
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            self.mmu.handle_mmu_error(ee)
 
 
 class MmuWrapperPauseCommand(BaseCommand):

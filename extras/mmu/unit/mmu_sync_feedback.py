@@ -191,10 +191,10 @@ class MmuSyncFeedback:
 
         # Enable encoder based Flowguard, taking over a shared encoder armed by another unit
         if u.has_encoder() and (not u.encoder.is_flowguard_enabled() or u.encoder.active_mmu_unit is not u):
-            if not u.encoder.enable_flowguard(u):
-                return # Must be in off mode
-            self.flowguard_active = True
-            msg = msg or "FlowGuard monitoring with encoder activated"
+            # Encoder monitoring may be off while buffer FlowGuard still activates.
+            if u.encoder.enable_flowguard(u):
+                self.flowguard_active = True
+                msg = msg or "FlowGuard monitoring with encoder activated"
 
         if msg:
             self.mmu.log_info(msg)
@@ -673,6 +673,7 @@ class MmuSyncFeedback:
                 sensor = sm.get_sensor_obj(sensor_key)
 
                 if sensor is not None and sensor.runout_helper.sensor_enabled:
+                    self.mmu.flowguard_trip_reason = f_reason
                     sensor.runout_helper.note_clog_tangle(f_trigger)
                 elif sensor is not None:
                     self.mmu.log_debug(
@@ -760,6 +761,8 @@ class MmuSyncFeedback:
             sensor_type = self._get_sensor_type(),
             use_twolevel_for_type_p = self.p.sync_feedback_force_twolevel,
             rd_start = rd_start,
+            rd_twolevel_speed_multiplier = self.p.sync_feedback_speed_multiplier / 100.,
+            rd_twolevel_boost_multiplier = self.p.sync_feedback_boost_multiplier / 100.,
             flowguard_relief_mm = self.p.flowguard_max_relief,
         )
         # EKF "extreme" threshold tracks the analog sensor trigger point (type-P only)
@@ -776,6 +779,17 @@ class MmuSyncFeedback:
         """
         if not self.mmu_unit.has_buffer() or self.ctrl is None: return
         self.ctrl.cfg.flowguard_relief_mm = self.p.flowguard_max_relief
+
+
+    def apply_twolevel_tuning(self):
+        """
+        Push live twolevel speed/boost multipliers to a running controller so
+        MMU_TEST_CONFIG changes take effect immediately without a controller reset.
+        """
+        if not self.mmu_unit.has_buffer() or self.ctrl is None: return
+        self.ctrl.cfg.rd_twolevel_speed_multiplier = self.p.sync_feedback_speed_multiplier / 100.
+        self.ctrl.cfg.rd_twolevel_boost_multiplier = self.p.sync_feedback_boost_multiplier / 100.
+        self.ctrl.apply_twolevel_tuning()
 
 
     def apply_extrude_threshold(self):

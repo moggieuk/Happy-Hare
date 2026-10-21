@@ -1,0 +1,63 @@
+# Extruder movement speeds, shared by all mmu_units (in [mmu_parameters])
+#
+# Sourced inside "Speeds" for a single unit, and as the multi-unit entry
+# point's "Extruder speeds" menu
+#
+# Responsible for setting:
+#   PARAM_EXTRUDER_LOAD_SPEED
+#   PARAM_EXTRUDER_UNLOAD_SPEED
+#   PARAM_EXTRUDER_SYNC_LOAD_SPEED
+#   PARAM_EXTRUDER_SYNC_UNLOAD_SPEED
+#   PARAM_EXTRUDER_SYNC_ACCEL
+#   PARAM_EXTRUDER_HOMING_SPEED
+#   PARAM_EXTRUDER_ACCEL
+
+  comment "_Extruder movement speeds (mm/s)"
+
+  config PARAM_EXTRUDER_LOAD_SPEED
+    float "Extruder load speed             "
+    default 16
+    help
+      Speed of load move inside extruder from homing position to meltzone
+
+  config PARAM_EXTRUDER_UNLOAD_SPEED
+    float "Extruder unload speed           "
+    default 16
+    help
+      Speed of unload moves inside of extruder
+      (very initial move from meltzone is 50% of this)
+
+  config PARAM_EXTRUDER_SYNC_LOAD_SPEED
+    float "Extruder sync load speed        "
+    default 18
+    help
+      Speed of load move inside extruder from homing position to meltzone
+      when synced with MMU gear stepper
+
+  config PARAM_EXTRUDER_SYNC_UNLOAD_SPEED
+    float "Extruder sync unload speed      "
+    default 18
+    help
+      Speed of unload moves inside of extruder when synced with MMU gear stepper
+      (very initial move from meltzone is 50% of this)
+
+  config PARAM_EXTRUDER_SYNC_ACCEL
+    float "Extruder sync acceleration      "
+    default 400
+    help
+      Acceleration of moves led by the MMU gear stepper with the extruder synced
+      to it (limited to the extruder acceleration)
+
+  config PARAM_EXTRUDER_HOMING_SPEED
+    float "Extruder homing speed           "
+    default 16
+    help
+      Speed of extruder only homing moves (e.g. to toolhead sensor)
+
+  config PARAM_EXTRUDER_ACCEL
+    float "Extruder acceleration           "
+    default 1500
+    help
+      The acceleration of the extruder stepper is limited to this value when performing MMU
+      filament load/unload moves. This prevents too rapid a movement that could cause the
+      extruder stepper to loose steps

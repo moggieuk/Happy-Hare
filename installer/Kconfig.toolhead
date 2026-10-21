@@ -39,7 +39,8 @@ menu "Toolhead sensors/settings"
     Also configure some properties like how much filament remains in the extruder after unload.
     They are used to ensure exact toolhead filament loading without excessive oozing.
     Note: If you have a toolhead sensor you can automate the calculation of these parameters!
-    Read about the 'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
+    Read about the 'MMU_CALIBRATE_TOOLHEAD' command in the Toolhead Calibration doc:
+    https://moggieuk.github.io/Happy-Hare-Doc/Calibration-Toolhead/
 
 # -------------------------------------
 # Toolhead features
@@ -92,7 +93,7 @@ menu "Toolhead sensors/settings"
       $(pin_help)
 
   config PARAM_REGISTER_TOOLHEAD_SENSORS
-    boolint "Register toolhead sensors in Mainsail / Fluidd"
+    boolint "Register toolhead sensors in Mainsail/Fluidd"
     default 1
     help
       Whether to register the sensors for visibility in klipper UI's
@@ -104,6 +105,8 @@ menu "Toolhead sensors/settings"
 
   comment "_"
   comment "_Toolhead dimensions"
+  comment "Toolhead: [[VALUE:PARAM_TOOLHEAD_TYPE]]" if !CHOICE_TOOLHEAD_TYPE_OTHER
+    dim
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     float "Extruder entrance to nozzle"
@@ -128,7 +131,9 @@ menu "Toolhead sensors/settings"
       This setting represents how much residual filament (mm) is left behind in the nozzle when filament is
       removed. it is thus used to reduce the extruder loading length and prevent excessive blobbing but also
       in the calculation of purge volume.
-      Note that this value can also be measured with 'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
+      Note that this value can also be measured with 'MMU_CALIBRATE_TOOLHEAD' command.
+      See "Calibrating the Toolhead" in the Blobbing and Stringing doc:
+      https://moggieuk.github.io/Happy-Hare-Doc/Blobbing-and-Stringing/
 
 # This is for tuning and can mask other issues with toolhead dimensions
   config PARAM_TOOLHEAD_OOZE_REDUCTION
@@ -144,8 +149,9 @@ menu "Toolhead sensors/settings"
       is needed. Needing more than +5mm of reduction also suggests the toolhead settings are incorrect.
       Recommend starting with 0
 
+  # Per unit in a multi-unit setup (Endstops and Bowden movement)
   config PARAM_TOOLHEAD_UNLOAD_SAFETY_MARGIN
-    float "Unload safety margin       "
+    float "Unload safety margin       " if !MULTI_UNIT
     default 10
     help
       Extra movement (mm) added to the extruder unload movement to ensure filament is free of the extruder.

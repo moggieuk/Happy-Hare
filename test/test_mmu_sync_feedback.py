@@ -444,5 +444,114 @@ class TestPrintEndReleaseGuards(unittest.TestCase):
         self.assertEqual(hh.errors, [])
 
 
+class TestTwolevelSpeedMultipliers(unittest.TestCase):
+    """sync_feedback_speed/boost_multiplier must reach the controller (were stuck at 5%)."""
+
+    def setUp(self):
+        self.hh = session('emu')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [])
+        self.sf = self.hh.mmu.mmu_unit(0).sync_feedback
+
+    def force_twolevel(self):
+        ctrl = self.sf.ctrl
+        ctrl.cfg.use_twolevel_for_type_p = True
+        ctrl._set_twolevel_active()
+        return ctrl
+
+    def test_configured_multipliers_build_the_controller_config(self):
+        self.sf.p.sync_feedback_speed_multiplier = 8.0
+        self.sf.p.sync_feedback_boost_multiplier = 3.0
+        self.sf._init_controller()
+        self.assertAlmostEqual(self.sf.ctrl.cfg.rd_twolevel_speed_multiplier, 0.08)
+        self.assertAlmostEqual(self.sf.ctrl.cfg.rd_twolevel_boost_multiplier, 0.03)
+
+    def test_live_speed_change_retunes_the_low_high_rd(self):
+        ctrl = self.force_twolevel()
+        ctrl._twolevel_boost_active = False
+        self.hh.run_gcode('MMU_TEST_CONFIG sync_feedback_speed_multiplier=8')
+        self.assertEqual(self.hh.errors, [])
+        self.assertAlmostEqual(ctrl.cfg.rd_twolevel_speed_multiplier, 0.08)
+        self.assertAlmostEqual(ctrl.rd_low, ctrl.rd_ref / 1.08)
+        self.assertAlmostEqual(ctrl.rd_high, ctrl.rd_ref / 0.92)
+
+    def test_live_boost_change_applies_while_boost_is_active(self):
+        ctrl = self.force_twolevel()
+        ctrl._twolevel_boost_active = True
+        self.hh.run_gcode('MMU_TEST_CONFIG sync_feedback_speed_multiplier=5 sync_feedback_boost_multiplier=2')
+        self.assertEqual(self.hh.errors, [])
+        self.assertAlmostEqual(ctrl.cfg.rd_twolevel_boost_multiplier, 0.02)
+        self.assertAlmostEqual(ctrl.rd_low, ctrl.rd_ref / 1.07)
+        self.assertAlmostEqual(ctrl.rd_high, ctrl.rd_ref / 0.93)
+
+
+class TestTwolevelTuningEvidence(unittest.TestCase):
+    def test_live_speed_change_discards_old_duty_measurements(self):
+        # Duty cycles measured at the old speeds cannot calibrate the new band.
+        with session('emu') as hh:
+            hh.boot()
+            sf = hh.mmu.mmu_unit(0).sync_feedback
+            ctrl = sf.ctrl
+            ctrl.cfg.use_twolevel_for_type_p = True
+            ctrl._set_twolevel_active()
+            ctrl._twolevel_boost_active = False
+            ctrl._set_low_high_rd(ctrl.rd_ref)
+            auto = ctrl.autotune
+            auto.note_twolevel_tick('low', True, 0)
+            for _ in range(6):
+                auto.note_twolevel_tick('low', False, 30)
+                auto.note_twolevel_tick('high', True, 0)
+                auto.note_twolevel_tick('high', False, 10)
+                auto.note_twolevel_tick('low', True, 0)
+            before, _ = auto._recommend_rd_from_twolevel()
+            self.assertIsNotNone(before)
+            auto._rd_cert_fifo.append(before)
+            auto.pause()
+            preserved = (ctrl.rd_ref, ctrl.rd_current, auto._autotune_current,
+                         auto._autotune_baseline, auto._total_motion_mm,
+                         auto._total_time_s, auto._autotune_last_motion_mm,
+                         auto._autotune_last_time_s)
+            hh.run_gcode('MMU_TEST_CONFIG sync_feedback_speed_multiplier=20')
+            self.assertTrue(auto._paused)
+            self.assertEqual(preserved, (ctrl.rd_ref, ctrl.rd_current,
+                auto._autotune_current, auto._autotune_baseline,
+                auto._total_motion_mm, auto._total_time_s,
+                auto._autotune_last_motion_mm, auto._autotune_last_time_s))
+            self.assertEqual(list(auto._rd_cert_fifo), [])
+            self.assertEqual(hh.errors, [])
+            after, note = auto._recommend_rd_from_twolevel()
+            self.assertIsNone(after, 'Old measurements must not yield a new-speed calibration: %s' % note)
+
+    def test_inactive_boost_change_preserves_evidence(self):
+        with session('emu') as hh:
+            hh.boot()
+            ctrl = hh.mmu.mmu_unit(0).sync_feedback.ctrl
+            ctrl.cfg.use_twolevel_for_type_p = True
+            ctrl._set_twolevel_active()
+            ctrl._twolevel_boost_active = False
+            ctrl._set_low_high_rd(ctrl.rd_ref)
+            ctrl.autotune._tl_cycles = [(30., 10.)]
+            hh.run_gcode('MMU_TEST_CONFIG sync_feedback_boost_multiplier=9')
+            self.assertEqual(hh.errors, [])
+            self.assertEqual(ctrl.autotune._tl_cycles, [(30., 10.)])
+
+    def test_active_boost_change_discards_evidence(self):
+        with session('emu') as hh:
+            hh.boot()
+            ctrl = hh.mmu.mmu_unit(0).sync_feedback.ctrl
+            ctrl.cfg.use_twolevel_for_type_p = True
+            ctrl._set_twolevel_active()
+            ctrl._set_low_high_rd(ctrl.rd_ref)
+            ctrl.autotune._tl_cycles = [(30., 10.)]
+            ctrl.autotune._tl_seg_mm = 12.
+            ctrl.autotune._tl_last_unpaired_low = 30.
+            hh.run_gcode('MMU_TEST_CONFIG sync_feedback_boost_multiplier=9')
+            self.assertEqual(hh.errors, [])
+            self.assertEqual(ctrl.autotune._tl_cycles, [])
+            self.assertEqual(ctrl.autotune._tl_seg_mm, 0.)
+            self.assertIsNone(ctrl.autotune._tl_last_unpaired_low)
+
+
 if __name__ == '__main__':
     unittest.main()

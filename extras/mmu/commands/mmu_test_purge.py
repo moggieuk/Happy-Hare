@@ -84,7 +84,7 @@ class MmuTestPurgeCommand(BaseCommand):
                 mmu.purge_standalone(extruder_only=extruder_only)
 
         except MmuError as ee:
-            mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(ee)
 
         finally:
             mmu.toolchange_purge_volume = mmu._slicer_purge_volume = 0.

@@ -23,6 +23,7 @@
 
 import time as _wall
 
+import logging
 import greenlet
 
 _NOW = 0.
@@ -461,7 +462,18 @@ class VirtualReactor:
                              'of virtual time' % (timeout,))
 
     def finalize(self):
+        # As Klipper does. A suspended greenlet's frames are invisible to the cycle collector,
+        # so one left parked would keep the whole printer alive for the rest of the process
         self._process = False
+        self._g_dispatch = None
+        self._greenlets = []
+        for g in self._all_greenlets:
+            try:
+                g.throw()
+            except Exception:
+                logging.exception('reactor finalize greenlet terminate')
+        self._all_greenlets = []
+        self._timers = []
 
 
 # Klipper's module exposes SelectReactor / EPollReactor; HH only ever receives the

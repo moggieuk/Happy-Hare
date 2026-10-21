@@ -15,6 +15,7 @@
 #   MMU_HAS_HEATER
 #   MMU_HAS_HEATER_FANS
 #   MMU_HAS_EJECT_BUTTONS
+#   MMU_HAS_VENT_SERVO
 #   MMU_HAS_BUFFER_MCU
 #
 # Per-gate capabilities/topology:
@@ -43,7 +44,9 @@
 #   CUSTOM_HEATER_SETUP
 #   CUSTOM_FAN_SETUP
 #   CUSTOM_HEATER_FAN_SETUP
+#   CUSTOM_CONTROLLER_FAN_SETUP
 #   CUSTOM_NFC_READER_SETUP
+#   CUSTOM_MISC_SETUP
 #
 
 config MMU_HAS_SELECTOR_STEPPER
@@ -86,6 +89,10 @@ config MMU_HAS_HEATER_FANS
 config MMU_HAS_EJECT_BUTTONS
   def_bool n
 
+config MMU_HAS_VENT_SERVO
+  def_bool n
+  depends on MMU_HAS_HEATER
+
 # Some new designs have mcu integrated in sync-feedback buffer mcu
 config MMU_HAS_BUFFER_MCU
   def_bool n
@@ -117,7 +124,14 @@ config CUSTOM_FAN_SETUP
 config CUSTOM_HEATER_FAN_SETUP
   bool
 
+config CUSTOM_CONTROLLER_FAN_SETUP
+  bool
+
 config CUSTOM_NFC_READER_SETUP
+  bool
+
+# No generic setup: this only chooses a board's other misc hardware
+config CUSTOM_MISC_SETUP
   bool
 
 
@@ -132,6 +146,15 @@ menu "Design attributes"
     specific setup.
 
     It is unlikely that you want to change anything here so be careful.
+
+  # Each machine type sets the default
+  config PARAM_NUM_GATES
+    int
+    prompt "Number of gates/lanes?"
+    help
+      The number of gates is set based on MMU type but some
+      designs allow for a configurable number. Ensure this
+      matches the number in your specific build.
 
   source "Kconfig.selector_type" 
 
@@ -192,8 +215,9 @@ menu "Design attributes"
     def_bool n
     prompt "Per-gate configuration?" if SHOW_HIDDEN
     help
-      Present environment sensor, heater and fan hardware configuration in a
-      separate menu for each gate. This is independent of the MCU topology.
+      Configure environment sensor, heater, fan and vent servo hardware for
+      each gate, in each feature's h/w config menu. This is independent of
+      the MCU topology.
 
   config MMU_HAS_PER_GATE_NFC_READERS
     def_bool n

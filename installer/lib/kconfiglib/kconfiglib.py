@@ -554,9 +554,9 @@ import importlib
 import os
 import re
 import sys
-import math # Happy Hare: Added
-import ast # Happy Hare: Added
-import operator # Happy Hare: Added
+import math
+import ast
+import operator
 
 # Get rid of some attribute lookups. These are obvious in context.
 from glob import iglob
@@ -564,9 +564,9 @@ from os.path import dirname, exists, expandvars, islink, join, realpath
 
 
 VERSION = (14, 1, 0)
-HH_DEFAULT_TOKEN = " #~DEFAULT~#" # Happy Hare: Added
+HH_DEFAULT_TOKEN = " #~DEFAULT~#"
 
-# Happy Hare: [[VALUE:SYMBOL]] or [[VALUE:SYMBOL:width]] stands for the symbol's current
+# [[VALUE:SYMBOL]] or [[VALUE:SYMBOL:width]] stands for the symbol's current
 # value, padded or truncated to 'width' when given
 _VALUE_MARKUP_RE = re.compile(r"\[\[VALUE:([A-Za-z0-9_]+)(?::([0-9]+))?\]\]")
 
@@ -585,7 +585,7 @@ def expand_value_markup(kconf, text):
 
     return _VALUE_MARKUP_RE.sub(value, text)
 
-# Happy Hare: Symbols renamed in a past release, old name -> new name. A saved
+# Symbols renamed in a past release, old name -> new name. A saved
 # .mmu_config assignment to the old name is transplanted onto the new symbol
 # while loading; see Kconfig._migrate_renamed_symbols. Without this kconfiglib
 # records the orphaned assignment in missing_syms and drops it, so a rename
@@ -598,7 +598,7 @@ def expand_value_markup(kconf, text):
 # as shell. A symbol that make or install.sh reads by name (MULTI_UNIT,
 # MMU_UNITS, KLIPPER_HOME, ...) cannot be renamed this way - that needs a
 # pass that rewrites the file itself.
-HH_RENAMED_SYMBOLS = { # Happy Hare: Added
+HH_RENAMED_SYMBOLS = {
     # v4.x: the Blobifier stepper dropped its "STEPPER" infix so the TMC
     # driver definitions could be shared with the gear and selector steppers.
     # The infix was never consistent - the chip-identity symbols
@@ -630,6 +630,38 @@ HH_RENAMED_SYMBOLS = { # Happy Hare: Added
     "CHOICE_GEAR_TMC2240":                   "CHOICE_GEAR_TMC2240_UART",
     "CHOICE_SELECTOR_TMC2240":               "CHOICE_SELECTOR_TMC2240_UART",
     "CHOICE_BLOBIFIER_TMC2240":              "CHOICE_BLOBIFIER_TMC2240_SPI",
+
+    # v4.x: the Blobifier servo took the PARAM_<servo>_* names of the shared
+    # servo definition (components/Kconfig.servo) used by every other servo.
+    "PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH":   "PARAM_BLOBIFIER_SERVO_MIN_PULSE_WIDTH",
+    "PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH":   "PARAM_BLOBIFIER_SERVO_MAX_PULSE_WIDTH",
+    "PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE":   "PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE",
+}
+
+# v4.1 - pins follow the PIN_ convention: i2c pins are named by the
+# shared i2c bus component (components/Kconfig.i2c_bus), and the NFC reader's
+# other pins lose their PARAM_/_PIN wrapping. The environment sensor's
+# template used to add the MCU; its pins now carry one like every other pin,
+# so a value carried to one of these gains it.
+HH_MCU_PREFIXED_RENAMES = set()
+for _gate in [""] + ["_%d" % _n for _n in range(12)]:
+    for _line in ("SCL", "SDA"):
+        HH_RENAMED_SYMBOLS["PARAM_NFC_READER_%s_PIN%s" % (_line, _gate)] = \
+            "PIN_NFC_READER_I2C_%s%s" % (_line, _gate)
+        HH_RENAMED_SYMBOLS["PIN_ENVIRONMENT_SENSOR_%s%s" % (_line, _gate)] = \
+            "PIN_ENVIRONMENT_SENSOR_I2C_%s%s" % (_line, _gate)
+        HH_MCU_PREFIXED_RENAMES.add("PIN_ENVIRONMENT_SENSOR_I2C_%s%s" % (_line, _gate))
+    for _line in ("CS", "BUSY", "RESET", "VEN", "IRQ"):
+        HH_RENAMED_SYMBOLS["PARAM_NFC_READER_%s_PIN%s" % (_line, _gate)] = \
+            "PIN_NFC_READER_%s%s" % (_line, _gate)
+del _gate, _line
+
+# v4.1 - hardware i2c buses are offered by the board files. A bus
+# the environment sensor used to list itself becomes its custom bus name, so a
+# saved selection renders the same (old member -> (prefix, bus name)).
+HH_REMOVED_I2C_BUSES = {
+    "CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2": ("ENVIRONMENT_SENSOR", "i2c2_PB10_PB11"),
+    "CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3": ("ENVIRONMENT_SENSOR", "i2c3_PB3_PB4"),
 }
 
 
@@ -935,8 +967,8 @@ class Kconfig(object):
         "_tokens",
         "_tokens_i",
         "_reuse_tokens",
-        "_line_queue", # Happy Hare added
-        "_line_queue_stack", # Happy Hare added
+        "_line_queue",
+        "_line_queue_stack",
     )
 
     #
@@ -1057,10 +1089,8 @@ class Kconfig(object):
 
         self.config_prefix = os.getenv("CONFIG_", "CONFIG_")
         # Regular expressions for parsing .config files
-        # Orig: _re_match(self.config_prefix + r"([^=]+)=(.*)")
-        #       _re_match(r"# {}([^ ]+) is not set".format(self.config_prefix))
-        self._set_match = _re_match(r"{0}([^=]+)=(.*?)(?={1}$|$)({1})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modified to include DEFAULT marker as group 3
-        self._unset_match = _re_match(r"# {}([^ ]+) is not set({})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modified to include DEFAULT marker as group 3
+        self._set_match = _re_match(r"{0}([^=]+)=(.*?)(?={1}$|$)({1})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Group 3 captures the DEFAULT marker
+        self._unset_match = _re_match(r"# {}([^ ]+) is not set({})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Group 3 captures the DEFAULT marker
 
         self.config_header = os.getenv("KCONFIG_CONFIG_HEADER", "")
         self.header_header = os.getenv("KCONFIG_AUTOHEADER_HEADER", "")
@@ -1069,7 +1099,7 @@ class Kconfig(object):
         self.const_syms = {}
         self.defined_syms = []
         self.missing_syms = []
-        self._missing_sym_defaults = [] # Happy Hare: Added
+        self._missing_sym_defaults = []
         self.named_choices = {}
         self.choices = []
         self.menus = []
@@ -1146,7 +1176,7 @@ class Kconfig(object):
         # files usually source other Kconfig files. See _enter_file().
         self._filestack = []
         self._include_path = ()
-        self._line_queue_stack = [] # Happy Hare: see _enter_file()
+        self._line_queue_stack = [] # See _enter_file()
 
         # The current parsing location
         self.filename = filename
@@ -1228,7 +1258,7 @@ class Kconfig(object):
 
         return None
 
-    def load_config(self, filename=None, replace=True, verbose=None, filter_defaults=True): # Happy Hare - added filter_defaults
+    def load_config(self, filename=None, replace=True, verbose=None, filter_defaults=True):
         """
         Loads symbol values from a file in the .config format. Equivalent to
         calling Symbol.set_value() to set each of the values.
@@ -1318,7 +1348,7 @@ class Kconfig(object):
         # This stub only exists to make sure _warn_assign_no_prompt gets
         # reenabled
         try:
-            self._load_config(filename, replace, filter_defaults) # Happy Hare - added filter_defaults
+            self._load_config(filename, replace, filter_defaults)
         except UnicodeDecodeError as e:
             _decoding_error(e, filename)
         finally:
@@ -1326,11 +1356,11 @@ class Kconfig(object):
 
         return ("Loaded" if replace else "Merged") + msg
 
-    def _load_config(self, filename, replace, filter_defaults=True): # Happy Hare - added filter_defaults
+    def _load_config(self, filename, replace, filter_defaults=True):
         with self._open_config(filename) as f:
             if replace:
                 self.missing_syms = []
-                self._missing_sym_defaults = [] # Happy Hare: Added
+                self._missing_sym_defaults = []
 
                 # If we're replacing the configuration, keep track of which
                 # symbols and choices got set so that we can unset the rest
@@ -1340,7 +1370,7 @@ class Kconfig(object):
 
                 for sym in self.unique_defined_syms:
                     sym._was_set = False
-                    sym._was_default = False # Happy Hare: Added
+                    sym._was_default = False
 
                 for choice in self.unique_choices:
                     choice._was_set = False
@@ -1443,7 +1473,7 @@ class Kconfig(object):
 
                 sym.set_value(val)
 
-                # Happy Hare - now clear value if implicitity saved as default and mark accordingly
+                # Clear value if implicitly saved as default and mark accordingly
                 if filter_defaults and default is not None:
                     sym.unset_value()
                     sym._was_set = False
@@ -1467,12 +1497,12 @@ class Kconfig(object):
                 if not choice._was_set:
                     choice.unset_value()
 
-        # Happy Hare: Added
         if replace:
             self._migrate_renamed_symbols(filter_defaults)
+            self._migrate_i2c_buses()
 
     def _migrate_renamed_symbols(self, filter_defaults):
-        """Happy Hare: Carry a saved value from a renamed symbol to its successor.
+        """Carry a saved value from a renamed symbol to its successor.
 
         Fires only while the old name is still present in the file, so it is
         idempotent by construction: the next write_config emits the new name
@@ -1519,6 +1549,9 @@ class Kconfig(object):
             if new_sym.orig_type in _BOOL_TRISTATE:
                 value = "y" if value in ("y", "1") else "n"
 
+            if new_name in HH_MCU_PREFIXED_RENAMES:
+                value = self._mcu_prefixed_pin(new_name, value, filter_defaults)
+
             # set_value validates and, on a type mismatch, warns and leaves
             # the symbol at its default rather than raising.
             if not new_sym.set_value(value):
@@ -1526,12 +1559,57 @@ class Kconfig(object):
             new_sym._was_set = True
             new_sym._was_default = False
 
+    def _mcu_prefixed_pin(self, name, pin, filter_defaults):
+        """Prefix a pin with the MCU the template used to add for it:
+        the gate's own MCU for a per-gate pin on a per-gate-MCU design. The
+        builder renders MCU_NAME from the saved value, while olddefconfig saves
+        the environment's, so each caller prefixes with the one it renders."""
+        modifiers, rest = _pin_modifiers_match(pin).groups()
+        mcu = self.syms.get("MCU_NAME")
+        if not rest or ":" in rest or mcu is None:
+            return pin
+        if filter_defaults or mcu.user_value is None:
+            mcu = mcu.str_value
+        else:
+            mcu = mcu.user_value
+        gate = _gate_suffix_search(name)
+        per_gate_mcu = self.syms.get("MMU_HAS_PER_GATE_MCU")
+        if gate and per_gate_mcu is not None and per_gate_mcu.tri_value == 2:
+            mcu += "_gate" + gate.group(1)
+        return "{}{}:{}".format(modifiers, mcu, rest)
+
+    def _migrate_i2c_buses(self):
+        """Keep a v4.0 i2c bus rendering the same under the bus
+        choice of components/Kconfig.i2c_bus. Idempotent: a removed member is
+        gone from the file after the next write."""
+        for old_name, raw in self.missing_syms:
+            removed = HH_REMOVED_I2C_BUSES.get(old_name)
+            if removed and raw == "y":
+                prefix, bus = removed
+                param = self.syms.get("PARAM_%s_I2C_BUS" % prefix)
+                # The board may offer that same bus now, e.g. the EBB's i2c3
+                if param is not None and param.str_value != bus:
+                    self._select_custom_i2c_bus(prefix, bus)
+
+    def _select_custom_i2c_bus(self, prefix, bus):
+        other = self.syms.get("CHOICE_%s_I2C_BUS_OTHER" % prefix)
+        param = self.syms.get("PARAM_%s_I2C_BUS" % prefix)
+        if other is None or param is None or not other.set_value(2):
+            return
+        other._was_set = True
+        other._was_default = False
+        other.choice._was_set = True
+        other.choice._was_default = False
+        if param.set_value(bus):
+            param._was_set = True
+            param._was_default = False
+
 
     def _undef_assign(self, name, val, filename, linenr, was_default=False):
         # Called for assignments to undefined symbols during .config loading
 
         self.missing_syms.append((name, val))
-        # Happy Hare: missing_syms stays 2-tuples because it is public API and
+        # missing_syms stays 2-tuples because it is public API and
         # menuconfig reads it; the default-marker flag rides alongside so
         # _migrate_renamed_symbols can tell a user value from a saved default.
         self._missing_sym_defaults.append(bool(was_default))
@@ -1665,14 +1743,14 @@ class Kconfig(object):
                 add('#define {}{} "{}"\n'
                     .format(self.config_prefix, sym.name, escape(val)))
 
-            elif sym.orig_type is FLOAT: # Happy Hare: Added clause
+            elif sym.orig_type is FLOAT:
                 if not val:
                     val = "0.0"
 
                 add("#define {}{} {}\n"
                     .format(self.config_prefix, sym.name, val))
 
-            else:  # sym.orig_type in _INT_HEX_FLOAT: # Happy Hare: Changed _INT_HEX > _INT_HEX_FLOAT
+            else:  # sym.orig_type in _INT_HEX_FLOAT:
                 if sym.orig_type is HEX and \
                    not val.startswith(("0x", "0X")):
                     val = "0x" + val
@@ -1788,7 +1866,7 @@ class Kconfig(object):
         after_end_comment = False
 
         node = self.top_node
-        menu_depth = 0 # Happy Hare: Added menu_depth
+        menu_depth = 0
         while 1:
             # Jump to the next node with an iterative tree walk
             if node.list:
@@ -1807,8 +1885,6 @@ class Kconfig(object):
                     if node.item is MENU and expr_value(node.dep) and \
                        expr_value(node.visibility) and \
                        node is not self.top_node:
-                        # Happy Hare: Orig: add("# end of {}\n".format(node.prompt[0]))
-                        # Happy Hare: Reformatted and indented
                         indent = "  " * max(menu_depth - 1, 0)
                         add("# {}end of {}\n".format(indent, node.prompt[0]))
                         after_end_comment = True
@@ -1830,18 +1906,12 @@ class Kconfig(object):
                     continue
                 item._visited = True
 
-                conf_string = item.config_string
+                # A hidden 'keep_when_hidden' symbol saves its user value
+                conf_string = _kept_config_string(item) or item.config_string
                 if not conf_string:
                     continue
 
-                 # Happy Hare: Comment formatting cleanup
-                 #if after_end_comment:
-                 #    # Add a blank line before the first symbol printed after an
-                 #    # '# end of ...' comment
-                 #    after_end_comment = False
-                 #    add("\n")
-
-                # Happy Hare added - mark PARAMS and CHOICE selections which are still default values
+                # Mark PARAMS and CHOICE selections which are still default values
                 # as such so they can be ignored on reloading .config and thus reset
                 if (
                     isinstance(item, Symbol) and
@@ -1858,10 +1928,9 @@ class Kconfig(object):
 
             elif expr_value(node.dep) and \
                  ((item is MENU and expr_value(node.visibility)) or
-                  (item is COMMENT and expr_value(node.prompt[1]))): # Happy Hare: skip hidden comments
+                  (item is COMMENT and expr_value(node.prompt[1]) and
+                   not getattr(node, "link", None))): # Skip hidden and link comments
 
-                # Happy Hare: Orig: add("\n#\n# {}\n#\n".format(node.prompt[0]))
-                # Happy Hare: Reformatted and indented
                 indent = "  " * menu_depth
                 add("# {}{}\n".format(indent, expand_value_markup(self, node.prompt[0])))
                 after_end_comment = False
@@ -2076,7 +2145,7 @@ class Kconfig(object):
                     # comment) in auto.conf
                     continue
 
-                name, val, _ = match.groups() # Happy Hare: added 3rd match group
+                name, val, _ = match.groups()
                 if name in self.syms:
                     sym = self.syms[name]
 
@@ -2381,7 +2450,7 @@ class Kconfig(object):
         # before entering the file
         self._filestack.append((self._include_path, self._readline))
 
-        # Happy Hare: lines queued by an @repeat/@if in the parent file belong
+        # Lines queued by an @repeat/@if in the parent file belong
         # after the sourced file, so park them until _leave_file()
         self._line_queue_stack.append(getattr(self, "_line_queue", []))
         self._line_queue = []
@@ -2423,16 +2492,14 @@ class Kconfig(object):
         # Restore include path and 'file' object
         self._readline.__self__.close()  # __self__ fetches the 'file' object
         self._include_path, self._readline = self._filestack.pop()
-        self._line_queue = self._line_queue_stack.pop() # Happy Hare: see _enter_file()
+        self._line_queue = self._line_queue_stack.pop() # See _enter_file()
 
-    # Happy Hare: Added
     def _queue_line(self, line, linenr=None):
         if not hasattr(self, "_line_queue"):
             self._line_queue = []
         self._line_queue.insert(0, (line, self.linenr if linenr is None else linenr))
 
 
-    # Happy Hare: Added
     def _read_physical_line(self):
         line = self._readline()
         if not line:
@@ -2450,7 +2517,6 @@ class Kconfig(object):
 
         return line, linenr
 
-    # Happy Hare: Added
     def _read_macro_line(self):
         if hasattr(self, "_line_queue") and self._line_queue:
             line, linenr = self._line_queue.pop(0)
@@ -2459,7 +2525,6 @@ class Kconfig(object):
 
         return self._read_physical_line()
 
-    # Happy Hare
     # Replacement with support for injecting expanded blocks via a simple macro:
     #
     #   @repeat var=i min=1 max=3@
@@ -2472,7 +2537,7 @@ class Kconfig(object):
     #   default "heater3" if PARAM_NUM_GATES = 3
     #
     # The placeholder $(i) is replaced with each value in the range [min..max].
-    # min and max may be preprocessor variables, e.g. max=$(shared_slots).
+    # min and max may be preprocessor variables or functions, e.g. max=$(owner-max,buffer).
     # Nested @repeat blocks are supported.
     #
     def _next_line(self):
@@ -2545,7 +2610,7 @@ class Kconfig(object):
                 self._line = raw_line
                 self._parse_error("@repeat var cannot be empty")
 
-            # A preprocessor variable (e.g. max=$(shared_slots)) keeps a count in one place
+            # A preprocessor variable or function (e.g. max=$(owner-max,buffer)) gives the count
             mn_i = _to_int(self._expand_whole(mn, ()), "min", "@repeat")
             mx_i = _to_int(self._expand_whole(mx, ()), "max", "@repeat")
 
@@ -2687,7 +2752,6 @@ class Kconfig(object):
         self._tokens = self._tokenize(line)
         self._tokens_i = 1
         return True
-        # Happy Hare added ^^^
 
     def _line_after_help(self, line):
         # Tokenizes a line after a help text. This case is special in that the
@@ -2859,7 +2923,21 @@ class Kconfig(object):
 
                     if "$" in name:
                         # Macro expansion within symbol name
+                        name_i = i
                         name, s, i = self._expand_name(s, i)
+
+                        # A macro that expands to an expression,
+                        # e.g. 'if $(cond)' with 'cond := A && !B', is re-lexed
+                        # in place as that expression, so a component can take
+                        # a condition from its caller. Upstream makes the whole
+                        # expansion one symbol name - a junk symbol that is
+                        # always n. Only whitespace or a leading '!' or '('
+                        # marks an expression: a name built from a device path
+                        # (mmu_serial_config) may hold ':' or '=' and must stay
+                        # one symbol, as upstream lexes it.
+                        if _expanded_expr_match(name) and "$" not in name:
+                            i = name_i
+                            continue
                     else:
                         i = match.end()
 
@@ -2879,7 +2957,7 @@ class Kconfig(object):
                     #
                     # Named choices ('choice FOO') also end up here.
 
-                    # Happy Hare: expand $(macro) references in a named choice,
+                    # Expand $(macro) references in a named choice,
                     # mirroring the non-const-symbol branch above.
                     # _id_keyword_match stops at the '(' of a '$(', so without
                     # this 'choice CHOICE_$(prefix)_TMC' lexed to the literal
@@ -3062,7 +3140,7 @@ class Kconfig(object):
 
         return expr
 
-    def _expect_str_and_cond(self): # Happy Hare: Added
+    def _expect_str_and_cond(self):
         token = self._tokens[self._tokens_i]
         self._tokens_i += 1
 
@@ -3503,7 +3581,7 @@ class Kconfig(object):
                 node.item = t0  # _T_MENU == MENU
                 node.is_menuconfig = True
                 node.prompt = (self._expect_str_and_eol(), self.y)
-                node.help = None # Happy Hare
+                node.help = None
                 node.visibility = self.y
                 node.parent = parent
                 node.filename = self.filename
@@ -3523,8 +3601,8 @@ class Kconfig(object):
                 node.kconfig = self
                 node.item = t0  # _T_COMMENT == COMMENT
                 node.is_menuconfig = False
-                #node.prompt = (self._expect_str_and_eol(), self.y)
-                node.prompt = self._expect_str_and_cond() # Happy Hare: Modification
+                node.prompt = self._expect_str_and_cond()
+                node.help = None # A link comment can have help
                 node.list = None
                 node.parent = parent
                 node.filename = self.filename
@@ -3653,19 +3731,44 @@ class Kconfig(object):
                 node.selects.append((self._expect_nonconst_sym(),
                                      self._parse_cond()))
 
-            elif t0 is _T_FORCESHOW: # Happy Hare: Added to allow forced showing of Symbols and menus
+            elif t0 is _T_FORCESHOW: # Force showing of symbols and menus
                 if node.item.__class__ is not Symbol and node.item is not MENU:
                     self._parse_error("forceshow is only valid for symbols and menus")
 
-                node.forceshow = True
+                # An optional 'if <expr>' limits it to while <expr> holds
+                node.forceshow = self._parse_cond()
 
-            elif t0 is _T_DEFAULT_WHEN_HIDDEN: # Happy Hare: Added to save hidden symbols as defaults
+            elif t0 is _T_DIM: # Draw a whole comment row dimmed
+                if node.item is not COMMENT:
+                    self._parse_error("dim is only valid for comments")
+
+                node.dim = True
+
+            elif t0 is _T_LINK: # Make a comment jump to a symbol in menuconfig
+                if node.item is not COMMENT:
+                    self._parse_error("link is only valid for comments")
+
+                node.link = self._expect_nonconst_sym()
+                if self._tokens[self._tokens_i] is not None:
+                    self._trailing_tokens_error()
+
+            elif t0 is _T_DEFAULT_WHEN_HIDDEN: # Save hidden symbols as defaults
                 if node.item.__class__ is not Symbol and node.item is not MENU:
                     self._parse_error("default_when_hidden is only valid for symbols and menus")
+                if hasattr(node, "keep_when_hidden"):
+                    self._parse_error("default_when_hidden and keep_when_hidden can't both be set")
 
                 node.default_when_hidden = True
 
-            elif t0 is _T_ARRAY_EDITOR: # Happy Hare: Added multi-line/array editor for STRING symbols
+            elif t0 is _T_KEEP_WHEN_HIDDEN: # Save hidden symbols' user values
+                if node.item.__class__ is not Symbol and node.item is not MENU:
+                    self._parse_error("keep_when_hidden is only valid for symbols and menus")
+                if hasattr(node, "default_when_hidden"):
+                    self._parse_error("default_when_hidden and keep_when_hidden can't both be set")
+
+                node.keep_when_hidden = True
+
+            elif t0 is _T_ARRAY_EDITOR: # Multi-line/array editor for STRING symbols
                 if node.item.__class__ is not Symbol:
                     self._parse_error("array_editor is only valid for symbols")
 
@@ -3680,7 +3783,7 @@ class Kconfig(object):
 
                 node.item.array_editor = sep_token
 
-                # Happy Hare: Optional second argument -- an unquoted
+                # Optional second argument -- an unquoted
                 # reference to an INT/HEX symbol whose value gives the
                 # required number of elements in the array, e.g.
                 #
@@ -3708,7 +3811,7 @@ class Kconfig(object):
                     if self._tokens[self._tokens_i] is not None:
                         self._trailing_tokens_error()
 
-            elif t0 is _T_SEQUENCE_EDITOR: # Happy Hare: Added identity-tracking list editor for STRING symbols
+            elif t0 is _T_SEQUENCE_EDITOR: # Identity-tracking list editor for STRING symbols
                 if node.item.__class__ is not Symbol:
                     self._parse_error("sequence_editor is only valid for symbols")
 
@@ -3743,7 +3846,7 @@ class Kconfig(object):
                     if self._tokens[self._tokens_i] is not None:
                         self._trailing_tokens_error()
 
-            elif t0 is _T_REPARSE_ENV: # Happy Hare: Added re-parse when a symbol mirroring env vars changes
+            elif t0 is _T_REPARSE_ENV: # Re-parse when a symbol mirroring env vars changes
                 if node.item.__class__ is not Symbol:
                     self._parse_error("reparse_env is only valid for symbols")
 
@@ -3756,13 +3859,13 @@ class Kconfig(object):
 
                 node.item.reparse_env = names.split()
 
-            elif t0 is _T_APPEND_ONLY_UNLESS: # Happy Hare: Added restriction of a sequence_editor to appending
+            elif t0 is _T_APPEND_ONLY_UNLESS: # Restrict a sequence_editor to appending
                 if node.item.__class__ is not Symbol:
                     self._parse_error("append_only_unless is only valid for symbols")
 
                 node.item.append_only_unless = self._expect_expr_and_eol()
 
-            elif t0 is _T_VALIDATOR: # Happy Hare: Added regexp validation of STRING values
+            elif t0 is _T_VALIDATOR: # Regexp validation of STRING values
                 if node.item.__class__ is not Symbol:
                     self._parse_error("validator is only valid for symbols")
 
@@ -3781,7 +3884,7 @@ class Kconfig(object):
                     self._parse_error("invalid validator regexp '{}': {}"
                                       .format(pattern, e))
 
-            elif t0 is _T_ARRAY_SIZE_MISMATCH: # Happy Hare: Added derived array length check
+            elif t0 is _T_ARRAY_SIZE_MISMATCH: # Derived array length check
                 if node.item.__class__ is not Symbol:
                     self._parse_error("array_size_mismatch is only valid for symbols")
 
@@ -3812,7 +3915,7 @@ class Kconfig(object):
             elif t0 is _T_PROMPT:
                 self._parse_prompt(node)
 
-            elif t0 is _T_RANGE: # Happy Hare: Allow multiple inclusive intervals
+            elif t0 is _T_RANGE: # Allow multiple inclusive intervals
                 bounds = []
                 while self._tokens[self._tokens_i] not in (None, _T_IF):
                     bounds.append(self._expect_sym())
@@ -3905,7 +4008,7 @@ class Kconfig(object):
 
                 node.item.is_optional = True
 
-            elif t0 is _T_GENERATED_DEFAULT: # Happy Hare: Added
+            elif t0 is _T_GENERATED_DEFAULT:
                 if node.item.__class__ is not Symbol:
                     self._parse_error("generated_default is only valid for symbols")
 
@@ -3970,7 +4073,7 @@ class Kconfig(object):
         sc.orig_type = new_type
 
     def _parse_default_expr(self, item):
-        # Happy Hare: BOOLINT uses normal Kconfig Boolean logic internally,
+        # BOOLINT uses normal Kconfig Boolean logic internally,
         # while allowing numeric 0/1 spellings for defaults.
         return self._normalize_boolint_default(item, self._parse_expr(False))
 
@@ -3998,17 +4101,17 @@ class Kconfig(object):
         if prompt.__class__ is not str:
             self._parse_error("expected prompt string")
 
-        if prompt != prompt.lstrip(): # Happy Hare: changed to lstrip()
+        if prompt != prompt.lstrip():
             self._warn(node.item.name_and_loc +
                        " has leading or trailing whitespace in its prompt")
 
             # This avoid issues for e.g. reStructuredText documentation, where
             # '*prompt *' is invalid
-            prompt = prompt.lstrip() # Happy Hare: changed to lstrip()
+            prompt = prompt.lstrip()
 
         node.prompt = (prompt, self._parse_cond())
 
-    def _macro_readline(self): # Happy Hare: Added
+    def _macro_readline(self):
         if hasattr(self, "_line_queue") and self._line_queue:
             return self._line_queue.pop(0), False
         return self._readline(), True
@@ -4074,7 +4177,7 @@ class Kconfig(object):
 
         node.help = "".join(lines).rstrip()
 
-        # Happy Hare: Expand $(macro) references so help text can be shared
+        # Expand $(macro) references so help text can be shared
         # through a preprocessor variable
         if "$(" in node.help:
             node.help = self._expand_whole(node.help, ())
@@ -4201,7 +4304,6 @@ class Kconfig(object):
                 if node.prompt:
                     depend_on(sym, node.prompt[1])
 
-            # Happy Hare: Added
             for template, args, separator, start_sym, stop_sym, cond in sym.generated_defaults:
                 for arg in args:
                     depend_on(sym, arg)
@@ -4211,7 +4313,7 @@ class Kconfig(object):
                     depend_on(sym, stop_sym)
                 depend_on(sym, cond)
 
-            # Happy Hare: Derived array-length warning predicates depend on
+            # Derived array-length warning predicates depend on
             # both the array and its configured size symbol.
             if sym.array_size_mismatch is not None:
                 depend_on(sym, sym.array_size_mismatch)
@@ -4390,7 +4492,6 @@ class Kconfig(object):
                                       cur.prompt[1],
                                       self._make_and(visible_if, dep)))
 
-                # Happy Hare: Added
                 if cur.generated_defaults:
                     cur.generated_defaults = [
                         (template, args, separator, start_sym, stop_sym, self._make_and(cond, dep))
@@ -4449,7 +4550,7 @@ class Kconfig(object):
             ]
 
         sym.defaults += node.defaults
-        sym.generated_defaults += node.generated_defaults # Happy Hare: Added
+        sym.generated_defaults += node.generated_defaults
         sym.ranges += node.ranges
         sym.selects += node.selects
         sym.implies += node.implies
@@ -4481,11 +4582,6 @@ class Kconfig(object):
 
             # 'not sym.nodes' implies a constant or undefined symbol, e.g. a plain
             # "123"
-#            if not sym.nodes:
-#                return _is_base_n(sym.name, _TYPE_TO_BASE[type_])
-#
-#            return sym.orig_type is type_
-            # Happy Hare: introduced FLOAT type
             if not sym.nodes:
                 return _is_float(sym.name) if type_ is FLOAT else \
                        _is_base_n(sym.name, _TYPE_TO_BASE[type_])
@@ -4532,7 +4628,7 @@ class Kconfig(object):
                                        "default value for string symbol "
                                        + sym.name_and_loc)
 
-                    elif not num_ok(default, sym.orig_type):  # INT/HEX # Happy Hare: or FLOAT
+                    elif not num_ok(default, sym.orig_type):  # INT/HEX/FLOAT
                         self._warn("the {0} symbol {1} has a non-{0} default {2}"
                                    .format(TYPE_TO_STR[sym.orig_type],
                                            sym.name_and_loc,
@@ -4549,7 +4645,7 @@ class Kconfig(object):
 
 
             if sym.ranges:
-                if sym.orig_type not in _INT_HEX_FLOAT: # Happy Hare: Changed _INT_HEX > _INT_HEX_FLOAT
+                if sym.orig_type not in _INT_HEX_FLOAT:
                     self._warn(
                         "the {} symbol {} has ranges, but is not int or hex"
                         .format(TYPE_TO_STR[sym.orig_type],
@@ -4903,8 +4999,8 @@ class Symbol(object):
       Like 'selects', for imply.
 
     ranges:
-      List of (low, high, cond) tuples for range properties. Happy Hare
-      allows extra bound pairs before cond: (low, high, low, high, ..., cond).
+      List of (low, high, cond) tuples for range properties. Extra
+      bound pairs may come before cond: (low, high, low, high, ..., cond).
       The first active entry supplies the allowed intervals.
       Bounds are Symbols; literals are represented as undefined Symbols.
       'depends on' and parent dependencies are propagated to the condition.
@@ -4979,7 +5075,7 @@ class Symbol(object):
       C implementation.
 
     array_editor:
-      Happy Hare: Added. None for symbols without an 'array_editor' property.
+      None for symbols without an 'array_editor' property.
       Otherwise, the separator string given to 'array_editor' on this STRING
       symbol, e.g. "," for
 
@@ -4993,7 +5089,7 @@ class Symbol(object):
       of a single-line text entry, and which separator to split/join lines on.
 
     array_size_sym:
-      Happy Hare: Added. None for symbols without an optional second
+      None for symbols without an optional second
       'array_editor' argument. Otherwise, the (possibly not-yet-defined) INT
       or HEX Symbol referenced as the second argument to 'array_editor',
       e.g. MMU_NUM_GATES for
@@ -5006,7 +5102,7 @@ class Symbol(object):
       there is parsed as a constant rather than a symbol reference.
 
     array_size_mismatch:
-      Happy Hare: Added. None for ordinary symbols. For a BOOL symbol with an
+      None for ordinary symbols. For a BOOL symbol with an
       'array_size_mismatch ARRAY' property, references the STRING symbol to
       validate. The BOOL evaluates to y when ARRAY is non-empty and its number
       of elements differs from ARRAY's array_size_sym value. Empty arrays stay
@@ -5014,7 +5110,7 @@ class Symbol(object):
       of shipping potentially unsafe gate angles.
 
     validator:
-      Happy Hare: Added. None for symbols without a 'validator' property.
+      None for symbols without a 'validator' property.
       Otherwise, the compiled regular expression given to 'validator' on this
       STRING symbol, e.g.
 
@@ -5027,7 +5123,7 @@ class Symbol(object):
       'array_editor' symbol the pattern applies to each element instead.
 
     sequence_editor:
-      Happy Hare: Added. None for symbols without a 'sequence_editor'
+      None for symbols without a 'sequence_editor'
       property. Otherwise, the separator string of a STRING symbol holding an
       ordered list of unique names, e.g.
 
@@ -5042,17 +5138,17 @@ class Symbol(object):
       the value itself cannot tell a rename from a remove plus an add.
 
     sequence_baseline:
-      Happy Hare: Added. None, or the optional second 'sequence_editor'
+      None, or the optional second 'sequence_editor'
       argument: the separator-joined list changes are measured against. An
       empty baseline means the symbol's current value.
 
     append_only_unless:
-      Happy Hare: Added. None, or the expression given to
+      None, or the expression given to
       'append_only_unless'. While it evaluates to n, a sequence_editor only
       allows appending new entries.
 
     reparse_env:
-      Happy Hare: Added. None, or the list of environment variable names given
+      None, or the list of environment variable names given
       to 'reparse_env', e.g.
 
         config UNIT_NAME
@@ -5085,19 +5181,19 @@ class Symbol(object):
         "_old_val",
         "_visited",
         "_was_set",
-        "_was_default", # Happy Hare: Added
+        "_was_default",
         "_write_to_conf",
-        "array_editor", # Happy Hare: Added
-        "array_size_sym", # Happy Hare: Added
-        "array_size_mismatch", # Happy Hare: Added
-        "validator", # Happy Hare: Added
-        "sequence_editor", # Happy Hare: Added
-        "sequence_baseline", # Happy Hare: Added
-        "append_only_unless", # Happy Hare: Added
-        "reparse_env", # Happy Hare: Added
+        "array_editor",
+        "array_size_sym",
+        "array_size_mismatch",
+        "validator",
+        "sequence_editor",
+        "sequence_baseline",
+        "append_only_unless",
+        "reparse_env",
         "choice",
         "defaults",
-        "generated_defaults", # Happy Hare: Added
+        "generated_defaults",
         "direct_dep",
         "env_var",
         "implies",
@@ -5172,7 +5268,7 @@ class Symbol(object):
 
             base = _TYPE_TO_BASE[self.orig_type]
 
-            # Happy Hare: Share interval selection with menuconfig.
+            # Share interval selection with menuconfig.
             active_ranges = self.active_ranges()
             intervals = [(int(low.str_value, base) if _is_base_n(low.str_value, base) else 0,
                           int(high.str_value, base) if _is_base_n(high.str_value, base) else 0)
@@ -5254,7 +5350,7 @@ class Symbol(object):
                 # If the symbol is visible and has a user value, use that
                 val = self.user_value
             else:
-                # Happy Hare: 'default' and 'generated_default' are resolved
+                # 'default' and 'generated_default' are resolved
                 # together, in declaration order, so either can override the
                 # other depending on which Kconfig file is parsed later
                 found_val, found = self._node_ordered_string_default()
@@ -5262,7 +5358,7 @@ class Symbol(object):
                     val = found_val
                     self._write_to_conf = True
 
-        elif self.orig_type is FLOAT: # Happy Hare: Added
+        elif self.orig_type is FLOAT:
             if vis and self.user_value is not None:
                 val = self.user_value
             else:
@@ -5284,7 +5380,7 @@ class Symbol(object):
         return val
 
     def active_ranges(self):
-        """Happy Hare: Bound-symbol pairs from the first active range line."""
+        """Bound-symbol pairs from the first active range line."""
         for entry in self.ranges:
             if expr_value(entry[-1]):
                 return list(zip(entry[:-1:2], entry[1:-1:2]))
@@ -5309,7 +5405,7 @@ class Symbol(object):
             self._cached_tri_val = 0
             return 0
 
-        # Happy Hare: A promptless derived bool used by Kconfig warnings to
+        # A promptless derived bool used by Kconfig warnings to
         # catch array values loaded from an existing config. The interactive
         # array editor rejects the same mismatch before accepting an edit.
         if self.array_size_mismatch is not None:
@@ -5433,12 +5529,12 @@ class Symbol(object):
                    "# {}{} is not set\n" \
                    .format(self.kconfig.config_prefix, self.name)
 
-        if self.orig_type in _INT_HEX_FLOAT: # Happy Hare: Changed _INT_HEX > _INT_HEX_FLOAT
+        if self.orig_type in _INT_HEX_FLOAT:
             return "{}{}={}\n" \
                    .format(self.kconfig.config_prefix, self.name, val)
 
         # sym.orig_type is STRING
-        if self.name.startswith('VAR_'): # Happy Hare: VAR names used in macros cannot be empty strings
+        if self.name.startswith('VAR_'): # VAR names used in macros cannot be empty strings
             val = val.strip() or "''"
         return '{}{}="{}"\n' \
                .format(self.kconfig.config_prefix, self.name, escape(val))
@@ -5517,7 +5613,7 @@ class Symbol(object):
                 self.orig_type is TRISTATE and value in TRI_TO_STR or
                 value.__class__ is str   and
                 (self.orig_type is STRING                          or
-                 self.orig_type is FLOAT and _is_float(value)      or # Happy Hare: Added
+                 self.orig_type is FLOAT and _is_float(value)      or
                  self.orig_type is INT   and _is_base_n(value, 10) or
                  self.orig_type is HEX   and _is_base_n(value, 16)
                                          and int(value, 16) >= 0)):
@@ -5694,7 +5790,7 @@ class Symbol(object):
         self.nodes = []
 
         self.defaults = []
-        self.generated_defaults = [] # Happy Hare: Added
+        self.generated_defaults = []
         self.selects = []
         self.implies = []
         self.ranges = []
@@ -5858,7 +5954,7 @@ class Symbol(object):
                    TRI_TO_STR[val]
 
         if self.orig_type is STRING:
-            # Happy Hare: 'default' and 'generated_default' are resolved
+            # 'default' and 'generated_default' are resolved
             # together, in declaration order -- see _node_ordered_string_default()
             val, found = self._node_ordered_string_default()
             if found:
@@ -5873,7 +5969,7 @@ class Symbol(object):
         return ""
 
     def _node_ordered_string_default(self):
-        # Happy Hare: Added. Resolves 'default' and 'generated_default'
+        # Resolves 'default' and 'generated_default'
         # together, walking self.nodes in source-parse order and checking
         # each node's own generated_defaults/defaults before moving to the
         # next node. This mirrors how multiple plain 'default's across
@@ -6104,7 +6200,7 @@ class Choice(object):
         "_dependents",
         "_visited",
         "_was_set",
-        "_was_default", # Happy Hare: Added
+        "_was_default",
         "defaults",
         "direct_dep",
         "is_constant",
@@ -6577,12 +6673,15 @@ class MenuNode(object):
 
         # Properties
         "defaults",
-        "generated_defaults", # Happy Hare: Added
+        "generated_defaults",
         "selects",
         "implies",
         "ranges",
-        "forceshow",   # Happy Hare: Added to force UI visibility
-        "default_when_hidden", # Happy Hare: Added, see _saved_as_default()
+        "forceshow",   # Force UI visibility
+        "dim",         # Draw a comment dimmed
+        "link",        # A comment's link target symbol
+        "default_when_hidden", # See _saved_as_default()
+        "keep_when_hidden",    # See _kept_config_string()
     )
 
     def __init__(self):
@@ -6590,7 +6689,7 @@ class MenuNode(object):
         # only applies to these, in case a symbol is defined in multiple
         # locations.
         self.defaults = []
-        self.generated_defaults = [] # Happy Hare: Added
+        self.generated_defaults = []
         self.selects = []
         self.implies = []
         self.ranges = []
@@ -6655,7 +6754,6 @@ class MenuNode(object):
             res |= expr_items(value)
             res |= expr_items(cond)
 
-        # Happy Hare: Added
         for template, args, separator, start_sym, stop_sym, cond in self.generated_defaults:
             res.update(args)
             if start_sym is not None:
@@ -7319,7 +7417,7 @@ def _is_base_n(s, n):
     except ValueError:
         return False
 
-def _is_float(s): # Happy Hare: Added
+def _is_float(s):
     try:
         return math.isfinite(float(s)) # Don't allow "nan", "inf" and "-inf"
     except ValueError:
@@ -7330,21 +7428,21 @@ def _strcmp(s1, s2):
 
     return (s1 > s2) - (s1 < s2)
 
-# Happy Hare: Added. Raised for any generated_default template that fails to
+# Raised for any generated_default template that fails to
 # render, so the one caller with file/line context (Symbol._node_ordered_string_default)
 # can warn with specifics instead of the value silently going to "".
 class GeneratedDefaultError(Exception):
     pass
 
-# Happy Hare: Added. Matches a single non-nested '{...}' block in a
+# Matches a single non-nested '{...}' block in a
 # generated_default template.
 _generated_default_brace_re = re.compile(r"\{([^{}]*)\}")
 
-# Happy Hare: Added. %s/%d/%i/%% tokens -- any other '%' (e.g. used as
+# %s/%d/%i/%% tokens -- any other '%' (e.g. used as
 # the modulo operator inside a '{...}' block) is left as literal text.
 _generated_default_token_re = re.compile(r"%[sdi%]")
 
-# Happy Hare: Added. Whitelisted operators for the restricted-arithmetic
+# Whitelisted operators for the restricted-arithmetic
 # evaluator used inside generated_default '{...}' blocks.
 _generated_default_binops = {
     ast.Add: operator.add,
@@ -7360,7 +7458,6 @@ _generated_default_unaryops = {
     ast.USub: operator.neg,
 }
 
-# Happy Hare: Added
 def _eval_generated_default_expr(node):
     # Evaluates an already-parsed AST node from a '{...}' block as a
     # whitelist-only numeric expression. By the time this runs, %s/%d/%i
@@ -7388,7 +7485,6 @@ def _eval_generated_default_expr(node):
 
     raise ValueError("disallowed syntax in {...}: %s" % type(node).__name__)
 
-# Happy Hare: Added
 def _render_generated_default(template, base_args, iter_value):
     # One full render of a generated_default template: substitutes
     # %s/%d/%i/%% (wherever they appear, inside or outside braces), then
@@ -7419,7 +7515,6 @@ def _render_generated_default(template, base_args, iter_value):
             ast.parse(m.group(1).strip(), mode="eval").body)),
         substituted)
 
-# Happy Hare: Added
 def _generated_default_value(template, args, separator=", ", start_sym=None, stop_sym=None):
     def sym_val(sym):
         if sym.orig_type is INT:
@@ -7477,9 +7572,6 @@ def _sym_to_num(sym):
     # For BOOL and TRISTATE, n/m/y count as 0/1/2. This mirrors 9059a3493ef
     # ("kconfig: fix relational operators for bool and tristate symbols") in
     # the C implementation.
-#    return sym.tri_value if sym.orig_type in _BOOL_TRISTATE else \
-#           int(sym.str_value, _TYPE_TO_BASE[sym.orig_type])
-    # Happy Hare: introduced float type
     if sym.orig_type is BOOLINT:
         return 1 if sym.tri_value else 0
     if sym.orig_type in _BOOL_TRISTATE:
@@ -7550,19 +7642,52 @@ def _locs(sc):
 # Menu manipulation
 
 
-# Happy Hare: Added
+def _hidden_policy(sym):
+    # What to save for a symbol whose prompt is hidden: "default" under a
+    # 'default_when_hidden' node, "keep" under a 'keep_when_hidden' node (the
+    # nearest one wins), else None. Symbols without a prompt have no policy
+    if sym.visibility or not any(node.prompt for node in sym.nodes):
+        return None
+    for node in sym.nodes:
+        while node is not None:
+            if hasattr(node, "keep_when_hidden"):
+                return "keep"
+            if hasattr(node, "default_when_hidden"):
+                return "default"
+            node = node.parent
+    return None
+
+
 def _saved_as_default(sym):
     # A symbol whose prompt is hidden is written with its default value. Under a
     # 'default_when_hidden' node, record it as a default too, so a user value that
     # no longer applies is not frozen in the saved configuration.
-    if sym.visibility or not any(node.prompt for node in sym.nodes):
-        return False
-    for node in sym.nodes:
-        while node is not None:
-            if hasattr(node, "default_when_hidden"):
-                return True
-            node = node.parent
-    return False
+    return _hidden_policy(sym) == "default"
+
+
+def _kept_config_string(sym):
+    # The assignment for a hidden 'keep_when_hidden' symbol's user value, so a
+    # customization survives while its prompt is hidden. None without one
+    if sym.user_value is None or _hidden_policy(sym) != "keep":
+        return None
+
+    prefix = sym.kconfig.config_prefix
+    val = sym.user_value
+    if sym.orig_type is BOOLINT:
+        return "{}{}={}\n".format(prefix, sym.name, "1" if val else "0")
+
+    if sym.orig_type in _BOOL_TRISTATE:
+        val = TRI_TO_STR[val]
+        return "{}{}={}\n".format(prefix, sym.name, val) \
+               if val != "n" else \
+               "# {}{} is not set\n".format(prefix, sym.name)
+
+    if sym.orig_type in _INT_HEX_FLOAT:
+        return "{}{}={}\n".format(prefix, sym.name, val)
+
+    if sym.name.startswith('VAR_'):
+        val = val.strip() or "''"
+    return '{}{}="{}"\n'.format(prefix, sym.name, escape(val))
 
 
 def _expr_depends_on(expr, sym):
@@ -7985,18 +8110,18 @@ except AttributeError:
 (
     _T_ALLNOCONFIG_Y,
     _T_AND,
-    _T_ARRAY_EDITOR, # Happy Hare: Added
+    _T_ARRAY_EDITOR,
     _T_BOOL,
     _T_CHOICE,
     _T_CLOSE_PAREN,
     _T_COMMENT,
     _T_CONFIG,
     _T_DEFAULT,
-    _T_GENERATED_DEFAULT, # Happy Hare: Added
+    _T_GENERATED_DEFAULT,
     _T_DEFCONFIG_LIST,
     _T_DEF_BOOL,
     _T_DEF_HEX,
-    _T_DEF_FLOAT, # Happy Hare: Added
+    _T_DEF_FLOAT,
     _T_DEF_INT,
     _T_DEF_STRING,
     _T_DEF_TRISTATE,
@@ -8006,8 +8131,8 @@ except AttributeError:
     _T_ENDMENU,
     _T_ENV,
     _T_EQUAL,
-    _T_FORCESHOW, # Happy Hare: Added
-    _T_FLOAT,     # Happy Hare: Added
+    _T_FORCESHOW,
+    _T_FLOAT,
     _T_GREATER,
     _T_GREATER_EQUAL,
     _T_HELP,
@@ -8038,51 +8163,58 @@ except AttributeError:
     _T_TRISTATE,
     _T_UNEQUAL,
     _T_VISIBLE,
-    _T_BOOLINT,      # Happy Hare: Added; appended to preserve existing token values
-    _T_DEF_BOOLINT,  # Happy Hare: Added; appended to preserve existing token values
-    _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added; appended to preserve existing token values
-    _T_DEFAULT_WHEN_HIDDEN, # Happy Hare: Added; appended to preserve existing token values
-    _T_VALIDATOR,    # Happy Hare: Added; appended to preserve existing token values
-    _T_SEQUENCE_EDITOR,    # Happy Hare: Added; appended to preserve existing token values
-    _T_APPEND_ONLY_UNLESS, # Happy Hare: Added; appended to preserve existing token values
-    _T_REPARSE_ENV,        # Happy Hare: Added; appended to preserve existing token values
-) = range(1, 64) # Happy Hare: Added custom tokens through REPARSE_ENV
+    # Appended to preserve existing token values
+    _T_BOOLINT,
+    _T_DEF_BOOLINT,
+    _T_ARRAY_SIZE_MISMATCH,
+    _T_DEFAULT_WHEN_HIDDEN,
+    _T_VALIDATOR,
+    _T_SEQUENCE_EDITOR,
+    _T_APPEND_ONLY_UNLESS,
+    _T_REPARSE_ENV,
+    _T_DIM,
+    _T_LINK,
+    _T_KEEP_WHEN_HIDDEN,
+) = range(1, 67)
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
 _get_keyword = {
     "---help---":     _T_HELP,
     "allnoconfig_y":  _T_ALLNOCONFIG_Y,
-    "array_editor":   _T_ARRAY_EDITOR, # Happy Hare: Added
-    "array_size_mismatch": _T_ARRAY_SIZE_MISMATCH, # Happy Hare: Added
-    "validator":      _T_VALIDATOR, # Happy Hare: Added
-    "sequence_editor": _T_SEQUENCE_EDITOR, # Happy Hare: Added
-    "append_only_unless": _T_APPEND_ONLY_UNLESS, # Happy Hare: Added
-    "reparse_env":    _T_REPARSE_ENV, # Happy Hare: Added
+    "array_editor":   _T_ARRAY_EDITOR,
+    "array_size_mismatch": _T_ARRAY_SIZE_MISMATCH,
+    "validator":      _T_VALIDATOR,
+    "sequence_editor": _T_SEQUENCE_EDITOR,
+    "append_only_unless": _T_APPEND_ONLY_UNLESS,
+    "reparse_env":    _T_REPARSE_ENV,
     "bool":           _T_BOOL,
     "boolean":        _T_BOOL,
-    "boolint":        _T_BOOLINT, # Happy Hare: Added
+    "boolint":        _T_BOOLINT,
     "choice":         _T_CHOICE,
     "comment":        _T_COMMENT,
     "config":         _T_CONFIG,
     "def_bool":       _T_DEF_BOOL,
-    "defboolint":     _T_DEF_BOOLINT, # Happy Hare: Added
+    "defboolint":     _T_DEF_BOOLINT,
     "def_hex":        _T_DEF_HEX,
-    "def_float":      _T_DEF_FLOAT, # Happy Hare: Added
+    "def_float":      _T_DEF_FLOAT,
     "def_int":        _T_DEF_INT,
     "def_string":     _T_DEF_STRING,
     "def_tristate":   _T_DEF_TRISTATE,
+    "dim":            _T_DIM,
+    "link":           _T_LINK,
     "default":        _T_DEFAULT,
-    "generated_default": _T_GENERATED_DEFAULT, # Happy Hare: Added
+    "generated_default": _T_GENERATED_DEFAULT,
     "defconfig_list": _T_DEFCONFIG_LIST,
     "depends":        _T_DEPENDS,
     "endchoice":      _T_ENDCHOICE,
     "endif":          _T_ENDIF,
     "endmenu":        _T_ENDMENU,
     "env":            _T_ENV,
-    "forceshow":      _T_FORCESHOW, # Happy Hare: Added
-    "default_when_hidden": _T_DEFAULT_WHEN_HIDDEN, # Happy Hare: Added
-    "float":          _T_FLOAT,     # Happy Hare: Added
+    "forceshow":      _T_FORCESHOW,
+    "default_when_hidden": _T_DEFAULT_WHEN_HIDDEN,
+    "keep_when_hidden": _T_KEEP_WHEN_HIDDEN,
+    "float":          _T_FLOAT,
     "grsource":       _T_ORSOURCE,  # Backwards compatibility
     "gsource":        _T_OSOURCE,   # Backwards compatibility
     "help":           _T_HELP,
@@ -8141,10 +8273,10 @@ REL_TO_STR = {
 # older versions.
 UNKNOWN  = 0
 BOOL     = _T_BOOL
-BOOLINT  = _T_BOOLINT # Happy Hare: Boolean with numeric 0/1 string output
+BOOLINT  = _T_BOOLINT # Boolean with numeric 0/1 string output
 TRISTATE = _T_TRISTATE
 STRING   = _T_STRING
-FLOAT    = _T_FLOAT # Happy Hare: Added
+FLOAT    = _T_FLOAT
 INT      = _T_INT
 HEX      = _T_HEX
 
@@ -8164,7 +8296,7 @@ TYPE_TO_STR = {
 _TYPE_TO_BASE = {
     HEX:      16,
     INT:      10,
-    FLOAT:    0, # Happy Hare: Added
+    FLOAT:    0,
     STRING:   0,
     UNKNOWN:  0,
 }
@@ -8174,7 +8306,7 @@ _DEF_TOKEN_TO_TYPE = {
     _T_DEF_BOOL:     BOOL,
     _T_DEF_BOOLINT:  BOOLINT,
     _T_DEF_HEX:      HEX,
-    _T_DEF_FLOAT:    FLOAT, # Happy Hare: Added
+    _T_DEF_FLOAT:    FLOAT,
     _T_DEF_INT:      INT,
     _T_DEF_STRING:   STRING,
     _T_DEF_TRISTATE: TRISTATE,
@@ -8188,17 +8320,17 @@ _DEF_TOKEN_TO_TYPE = {
 # these tokens. _T_CHOICE is included to avoid symbols being registered for
 # named choices.
 _STRING_LEX = frozenset({
-    _T_ARRAY_EDITOR, # Happy Hare: Added
-    _T_SEQUENCE_EDITOR, # Happy Hare: Added
-    _T_REPARSE_ENV, # Happy Hare: Added
-    _T_VALIDATOR, # Happy Hare: Added
+    _T_ARRAY_EDITOR,
+    _T_SEQUENCE_EDITOR,
+    _T_REPARSE_ENV,
+    _T_VALIDATOR,
     _T_BOOL,
     _T_BOOLINT,
     _T_CHOICE,
     _T_COMMENT,
     _T_HEX,
     _T_INT,
-    _T_FLOAT, # Happy Hare: Added
+    _T_FLOAT,
     _T_MAINMENU,
     _T_MENU,
     _T_ORSOURCE,
@@ -8208,7 +8340,7 @@ _STRING_LEX = frozenset({
     _T_SOURCE,
     _T_STRING,
     _T_TRISTATE,
-    _T_GENERATED_DEFAULT, # Happy Hare: Added
+    _T_GENERATED_DEFAULT,
 })
 
 # Various sets for quick membership tests. Gives a single global lookup and
@@ -8218,7 +8350,7 @@ _TYPE_TOKENS = frozenset({
     _T_BOOL,
     _T_BOOLINT,
     _T_TRISTATE,
-    _T_FLOAT, # Happy Hare: Added
+    _T_FLOAT,
     _T_INT,
     _T_HEX,
     _T_STRING,
@@ -8270,7 +8402,7 @@ _INT_HEX = frozenset({
     HEX,
 })
 
-_INT_HEX_FLOAT = frozenset({ # Happy Hare: Added
+_INT_HEX_FLOAT = frozenset({
     FLOAT,
     INT,
     HEX,
@@ -8348,6 +8480,15 @@ _string_special_search = _re_search(r'"|\'|\\|\$\(')
 # Special characters/strings while expanding a symbol name. Also includes
 # end-of-line, in case the macro is the last thing on the line.
 _name_special_search = _re_search(r'[^A-Za-z0-9_$/.-]|\$\(|$')
+
+# A macro expansion in a symbol position that spells an expression
+# rather than a name, so it is re-lexed - see _tokenize()
+_expanded_expr_match = _re_search(r'^[!(]|\s')
+
+# A Klipper pin's pull-up/invert modifiers and the rest, and the
+# gate number of a per-gate symbol - see _mcu_prefixed_pin()
+_pin_modifiers_match = _re_match(r'([~^]?!?)(.*)$')
+_gate_suffix_search = _re_search(r'_(\d+)$')
 
 # A valid right-hand side for an assignment to a string symbol in a .config
 # file, including escaped characters. Extracts the contents.

@@ -114,12 +114,17 @@ class MmuServo:
         angle = gcmd.get_float('ANGLE', None)
         self.set_position(width, angle, duration)
 
-    def set_position(self, width=None, angle=None, duration=None):
+    def set_position(self, width=None, angle=None, duration=None, print_time=None):
+        # print_time lets a timer move the servo now rather than after queued toolhead moves
         duration = max(duration, SERVO_SIGNAL_PERIOD) if duration else None
         if width is not None or angle is not None:
             value = self._get_pwm_from_pulse_width(width) if width is not None else self._get_pwm_from_angle(angle)
-            pt = self.printer.lookup_object('toolhead').get_last_move_time()
-            self._set_pwm(pt, value, duration)
+            if print_time is None:
+                print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+            self._set_pwm(print_time, value, duration)
+
+    def get_mcu(self):
+        return self.mcu_servo.get_mcu()
 
 
 def load_config_prefix(config):

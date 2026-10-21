@@ -9,6 +9,7 @@
 # definition site, or a generated name falling outside the prefix contract -
 # and the resulting config still renders and still boots.
 
+import re
 import unittest
 
 from test.hh import cfg
@@ -61,6 +62,11 @@ class TestComponentContract(unittest.TestCase):
                  [choice.name for choice in self.kconfig.unique_choices
                   if choice.name])
         self.assertEqual([n for n in names if '$' in n or '__' in n], [])
+
+    def test_no_name_is_an_unparsed_expression(self):
+        """A condition macro that the tokenizer took as one name is a junk
+        symbol that is always n - every prompt behind it silently hidden."""
+        self.assertEqual([n for n in self.kconfig.syms if re.search(r'[\s!&|=<>()]', n)], [])
 
     def test_the_tmc_component_is_sourced_once_per_consumer(self):
         """Node counts here are a product, and both factors matter.
@@ -199,6 +205,25 @@ class TestMenuText(unittest.TestCase):
                 top = prompts.index('(\\_/)')
                 self.assertEqual(prompts[top + 1], '( *,*)')
                 self.assertTrue(prompts[top + 2].startswith('(")_(") '), prompts[top + 2])
+
+
+class TestHelpHeight(unittest.TestCase):
+    """menuconfig's help window shows only the first _SHOW_HELP_HEIGHT lines of a help
+    text, so anything past them is silently cut off."""
+
+    def test_no_help_text_is_taller_than_the_help_window(self):
+        for label, env in (('single', cfg._SINGLE_UNIT_ENV), ('entry', _ENTRY_ENV),
+                           ('unit', _PER_UNIT_ENV)):
+            with cfg._env(env):
+                kc = cfg._new_kconfig('help_height_' + label)
+            import menuconfig  # importable once cfg has set up the kconfiglib path
+            with self.subTest(tree=label):
+                heights = [(node, len(node.help.split('\n'))) for node in kc.node_iter()
+                           if getattr(node, 'help', None)]
+                self.assertGreater(len(heights), 500)
+                self.assertEqual(['%s:%d (%d lines)' % (node.filename, node.linenr, height)
+                                  for node, height in heights
+                                  if height > menuconfig._SHOW_HELP_HEIGHT], [])
 
 
 if __name__ == '__main__':

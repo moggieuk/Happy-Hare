@@ -1,0 +1,84 @@
+# Servo - the [mmu_servo] hardware options shared by every servo.
+#
+# Sourced once per servo (selector, vent, Blobifier, gantry bumper, cutter).
+# The caller sets:
+#
+#   prefix               name infix, e.g. GANTRY_SERVO -> PARAM_GANTRY_SERVO_MIN_PULSE_WIDTH
+#   servo_suffix         appended to every symbol name: empty, or _<gate> for a per-gate servo
+#   servo_visible        prompt condition, e.g. y, MMU_HAS_SERVO_CUTTER or A && !B
+#                        (spaces around operators: see extension 23 in installer/Kconfig)
+#   label, pad_width     prompt text stem and the column prompts are padded to
+#   servo_min_pulse      default min pulse width
+#   servo_max_pulse      default max pulse width
+#   servo_initial_angle  default initial angle; empty if the servo has no initial angle option
+#   servo_initial_on     y/n, whether an initial angle is set by default
+#   servo_rest_angle     help: the macro variable the initial angle normally matches
+#   servo_min_hint, servo_max_hint, servo_angle_hint
+#                        help: extra lines for one servo, each starting with $(nl), or empty
+#
+# and must re-assign all of them immediately before each source, because
+# preprocessor variables are global for the whole parse, and @repeat substitutes
+# its variable only in its own body, never in a sourced file.
+#
+# Source this OUTSIDE the caller's feature `if` blocks and pass the condition as
+# servo_visible instead: _propagate_deps ANDs an enclosing `if` (or a menu's
+# `depends on`) into defaults as well as prompts, so the values would be empty
+# whenever the prompts are hidden. A prompt condition, or a menu's `visible if`,
+# hides the prompt only. To nest the prompts under the caller's toggle, source
+# this straight after it, with no `if` block in between: kconfiglib's automatic
+# submenu stops at the first node that does not depend on the toggle.
+#
+# Pins stay with the caller.
+#
+# Defines, for each $(prefix)$(servo_suffix):
+#   PARAM_*_MIN_PULSE_WIDTH PARAM_*_MAX_PULSE_WIDTH PARAM_*_MAXIMUM_ANGLE
+#   BOOL_*_INITIAL_ANGLE PARAM_*_INITIAL_ANGLE (inert unless servo_initial_angle is set)
+
+config PARAM_$(prefix)_MIN_PULSE_WIDTH$(servo_suffix)
+  float
+  prompt "$(pad,$(pad_width),$(label) min pulse width)" if $(servo_visible)
+  default $(servo_min_pulse)
+  help
+    Pulse width in seconds that drives the servo to 0 degrees.
+    Adjust until the servo reaches that end of its travel without
+    buzzing; the default is usually close.
+    Changing it shifts every angle set for this servo.$(servo_min_hint)
+
+config PARAM_$(prefix)_MAX_PULSE_WIDTH$(servo_suffix)
+  float
+  prompt "$(pad,$(pad_width),$(label) max pulse width)" if $(servo_visible)
+  default $(servo_max_pulse)
+  help
+    Pulse width in seconds that drives the servo to its h/w max angle.
+    Adjust until the servo reaches that end of its travel without
+    buzzing; the default is usually close.
+    Changing it shifts every angle set for this servo.$(servo_max_hint)
+
+config PARAM_$(prefix)_MAXIMUM_ANGLE$(servo_suffix)
+  int
+  prompt "$(pad,$(pad_width),$(label) h/w max angle)" if $(servo_visible)
+  range 1 360
+  default 180
+  help
+    The angle reached at the max pulse width, i.e. the servo's full
+    travel, e.g. 180, or 60 for a 60 degree servo. Angles scale
+    linearly between and Klipper never drives past it.
+    Changing it shifts every angle set for this servo.$(servo_angle_hint)
+
+# Conditions rather than an `if` block: an `if` node would end the caller's
+# automatic submenu. first-nonempty keeps an empty servo_initial_angle parsable
+menuconfig BOOL_$(prefix)_INITIAL_ANGLE$(servo_suffix)
+  bool
+  prompt "$(label) initial angle at startup?" if $(servo_visible) && $(nonempty,$(servo_initial_angle))
+  default $(first-nonempty,$(servo_initial_on),n) if $(nonempty,$(servo_initial_angle))
+  help
+    Move the servo to a set angle at Klipper startup.
+    Otherwise it is left unpowered until first used
+
+config PARAM_$(prefix)_INITIAL_ANGLE$(servo_suffix)
+  int
+  prompt "$(pad,$(pad_width),$(label) initial angle)" if $(servo_visible) && BOOL_$(prefix)_INITIAL_ANGLE$(servo_suffix)
+  range 0 360
+  default $(first-nonempty,$(servo_initial_angle),0) if $(nonempty,$(servo_initial_angle))
+  help
+    Normally its resting position: match $(servo_rest_angle)

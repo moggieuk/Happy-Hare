@@ -6,7 +6,8 @@ import unittest
 
 from test.hh import cfg, profiles
 
-HINT = "Defined by the mcu board's misc hardware"
+HINT = "Defined and fixed by design/mcu"
+X5 = {'BOARD_TYPE_CHAMELEON_X5_1_0': True}
 
 
 def _visible_hints(syms):
@@ -34,16 +35,39 @@ class TestCustomHardwareHints(unittest.TestCase):
     def test_hint_shows_for_each_custom_feature(self):
         cases = {
             'vvd': ({'MMU_TYPE_VVD_1_0': True, 'BOARD_TYPE_VVD_1_0': True},
-                    ['Kconfig.environment_sensor', 'Kconfig.fans', 'Kconfig.heater',
+                    ['Kconfig.environment_sensor', 'Kconfig.fans', 'Kconfig.fans', 'Kconfig.heater',
                      'Kconfig.heater', 'Kconfig.leds', 'Kconfig.nfc_reader']),
             'kms': (profiles.get('kms').syms, ['Kconfig.heater', 'Kconfig.heater']),
-            'qidi': (profiles.get('qidi').syms, ['Kconfig.nfc_reader']),
+            'qidi': (profiles.get('qidi').syms, ['Kconfig.fans', 'Kconfig.nfc_reader']),
             'boxturtle': (profiles.get('boxturtle').syms, []),
+            'x5_qb2': (dict(X5, MMU_FAMILY_QUATTRO_BOX=True, MMU_TYPE_QUATTRO_BOX_2_0=True),
+                       ['Kconfig.heater']),
+            'x5_boxturtle': (dict(X5, MMU_TYPE_BOX_TURTLE_1_0=True), []),
+            'x5_boxturtle_heater': (dict(X5, MMU_TYPE_BOX_TURTLE_1_0=True, MMU_HAS_HEATER=True), []),
+            'x5_per_gate_heater': (dict(X5, MMU_CUSTOM=True, MMU_HAS_HEATER=True,
+                                        MMU_HAS_PER_GATE_CONFIG=True), []),
         }
         for name, (syms, files) in cases.items():
             with self.subTest(machine=name):
                 hints = _visible_hints(syms)
                 self.assertEqual(sorted(h.split(':')[0] for h in hints), files, hints)
+
+    def test_custom_controller_fan_prompt_shows_fixed_off(self):
+        import kconfiglib
+        import menuconfig
+        for name, syms in (('vvd', {'MMU_TYPE_VVD_1_0': True, 'BOARD_TYPE_VVD_1_0': True}),
+                           ('qidi', profiles.get('qidi').syms)):
+            with self.subTest(machine=name):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconf = cfg._kconfig('custom_controller_fan_' + name, syms)
+                menuconfig._kconf = kconf
+                menuconfig._show_all = False
+                sym = kconf.syms['MMU_HAS_CONTROLLER_FAN']
+                node = sym.nodes[0]
+                self.assertIn(node, menuconfig._shown_nodes(menuconfig._parent_menu(node)))
+                self.assertEqual(sym.assignable, ())
+                self.assertEqual(sym.tri_value, 0)
+                self.assertNotIsInstance(node.parent.item, kconfiglib.Symbol)
 
     def test_no_hint_is_indented_under_the_prompt_it_follows(self):
         """A comment right after a symbol it depends on, in the same block,

@@ -239,6 +239,22 @@ def _parallel_estimate(modules, times, jobs):
     return max(loads) if loads else 0.0
 
 
+def _start_line(modules, times, jobs):
+    """What is about to run and when to expect output. Untimed files are scheduled last, so
+    the first result is the quickest of the `workers` slowest timed files."""
+    workers = min(jobs, len(modules))
+    line = 'Running %d file%s' % (len(modules), '' if len(modules) == 1 else 's')
+    line += ' on %d workers, slowest first' % workers if workers > 1 else ' serially'
+    known = [module for module in modules if module in times]
+    if not known:
+        return line
+    marker = '~' if len(known) == len(modules) else '>'
+    if 1 < workers <= len(known):
+        first = sorted((times[module] for module in known), reverse=True)[workers - 1]
+        line += ' - first result in ~%s' % _fmt_secs(first)
+    return line + ', all done in %s%s' % (marker, _fmt_secs(_parallel_estimate(known, times, jobs)))
+
+
 def _render(entries, selected, times, local, order, c, jobs):
     """`times` is reference-first, local-second (see main()) so it covers every module the
     user has ever measured OR that test/benchmark.json ships; `local` is just the modules the
@@ -344,7 +360,6 @@ def _menu(entries, times, local, previous, jobs):
             if not selected:
                 message = 'Nothing selected - tick something, or q to quit.'
                 continue
-            print('Running tests...', flush=True)
             return [module for module, _, _ in entries if module in selected]
 
         head, rest = line[0], line[1:].strip()
@@ -386,6 +401,14 @@ def _menu(entries, times, local, previous, jobs):
 
 
 # -- entry point -------------------------------------------------------------------
+
+def _raspberry_pi(model_file='/proc/device-tree/model'):
+    try:
+        with open(model_file, errors='replace') as handle:
+            return 'Raspberry Pi' in handle.read()
+    except OSError:
+        return False
+
 
 def _job_count(value):
     try:
@@ -436,6 +459,12 @@ def main(argv=None):
               % len(loader.errors), file=sys.stderr)
         return _run(sink, ['discover', '-p', '*'] + passthrough, None, entries)
 
+    if _raspberry_pi():
+        c = _colours()
+        print('%sOn a Raspberry Pi a full run takes half an hour or more, and the ~ reference '
+              'times are from an M1 laptop.\nPick fewer files, or run the whole '
+              'suite on a desktop.%s' % (c['warn'], c['off']), flush=True)
+
     if args.last:
         # Ahead of the tty check: --last is an explicit "no menu, run this" and means the
         # same from a script as it does from a terminal
@@ -461,6 +490,11 @@ def main(argv=None):
 
 
 def _dispatch(jobs, sink, entries, passthrough, selection, serial_argv):
+    if entries:
+        _, records = _load_state()
+        times = _load_reference()
+        times.update({module: seconds for module, (seconds, _) in records.items()})
+        print(_start_line([module for module, _, _ in entries], times, jobs), flush=True)
     if jobs == 1 or not entries:
         return _run(sink, serial_argv, selection, entries)
     return _run_parallel(jobs, entries, passthrough, selection)

@@ -1,5 +1,5 @@
 config BOARD_TYPE_AFC_PRO_1_0
-  bool "AFC Pro v1.0 / designed for Box Turtle"
+  bool "AFC Pro v1.0 [[DIM]]/ designed for Box Turtle[[/DIM]]"
   help
     This board was custom designed for the Box Turtle v1
 
@@ -202,6 +202,13 @@ if BOARD_TYPE_AFC_PRO_1_0
   endif
 
 
+  # Fan header (FV jumper: VIN/12V/5V): FAN managed fan
+  config PIN_FAN
+    default "$(MCU_NAME):PA10"
+
+
+# Heater output for a [heater_generic]: HT PA9. Thermistors: TH1 PA6, TH2 PA7
+
 # Spare neopixel ports:
 #   PC14, PC15, PA4
 
@@ -234,4 +241,14 @@ if BOARD_TYPE_AFC_PRO_1_0
 
   endif
 
+  # I2C header (JST-XH): hardware i2c3, SCL PA8 / SDA PC9
+  i2c_board       := BOARD_TYPE_AFC_PRO_1_0
+  i2c_tag         := AFC_PRO_I2C3
+  i2c_bus         := i2c3_PA8_PC9
+  i2c_label       := i2c3_PA8_PC9 [[DIM]]/ I2C header[[/DIM]]
+  i2c_env         := y
+  i2c_env_default := y
+  i2c_nfc         := y
+  i2c_nfc_default := n
+  source "components/Kconfig.i2c_board_bus"
 endif
