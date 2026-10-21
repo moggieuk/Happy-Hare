@@ -2548,7 +2548,9 @@ class MmuController(MmuFilamentMovement):
 
 
     def _clear_mmu_error_dialog(self):
-        self.error_dialog.close()
+        # When disabled, leave any other prompt (e.g. a user's own) alone unless ours is open
+        if self.p.show_error_dialog or self.error_dialog.active:
+            self.error_dialog.close()
 
 
     def _mmu_unlock(self):

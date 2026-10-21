@@ -368,6 +368,24 @@ class TestDialogConfiguration(ErrorDialogTestCase):
     def test_cancel_print_closes_the_dialog(self):
         self.assert_closes('CANCEL_PRINT')
 
+    def test_disabled_dialog_leaves_other_prompts_alone(self):
+        # e.g. a user's own recovery prompt opened while paused must survive RESUME
+        self.start_print()
+        self.gcode('MMU_TEST_CONFIG show_error_dialog=0 QUIET=1')
+        self.mmu.handle_mmu_error('Gate 2 is empty')
+        mark = self.mark()
+        for script in ('MMU_UNLOCK', 'RESUME', 'CLEAR_PAUSE'):
+            self.gcode(script)
+        self.assertEqual(self.prompts_since(mark), [])
+
+    def test_open_dialog_still_closes_after_it_is_disabled(self):
+        self.start_print()
+        self.pause()
+        self.gcode('MMU_TEST_CONFIG show_error_dialog=0 QUIET=1')
+        mark = self.mark()
+        self.gcode('CLEAR_PAUSE')
+        self.assertEqual(self.prompts_since(mark), ['action:prompt_end'])
+
     def test_close_is_sent_when_no_dialog_is_known_to_be_open(self):
         # After a Klipper restart a UI can still show a dialog restored from its console history
         mark = self.mark()
