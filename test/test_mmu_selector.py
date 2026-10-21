@@ -555,6 +555,22 @@ class TestServoSelector(SelectorTestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+class TestServoSelectorCalibrationSummary(SelectorTestCase):
+    """MMU_CALIBRATE_SERVO_SELECTOR with no args reports a fixed release and bypass angle."""
+
+    PROFILE = PROFILES['pico_mmu'].derive(
+        'pico_mmu_fixed_release',
+        syms={'PARAM_SERVO_RELEASE_ANGLE': 0, 'PARAM_SERVO_BYPASS_ANGLE': 130})
+    HOME_UNITS = ()
+
+    def test_summary_shows_fixed_release_and_bypass_angles(self):
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR')
+        self.assertEqual(self.hh.errors, [])
+        console = '\n'.join(self.hh.console)
+        self.assertIn('Release angle is fixed at: 0', console)
+        self.assertIn('Bypass angle: 130', console)
+
+
 class TestMacroSelector(SelectorTestCase):
     """The generated zero-switch config is direct mode and preserves the v3 GATE contract."""
 

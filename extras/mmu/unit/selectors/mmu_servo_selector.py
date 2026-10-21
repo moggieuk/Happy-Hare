@@ -491,12 +491,12 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
             lines.append(f"Current selector gate angle positions are: {selector.servo_gate_angles} degrees")
 
             if selector.servo_release_angle >= 0:
-                lines.append(f"Release angle is fixed at: {selector.servo_release_angle}{UI_DEGREES}")
+                lines.append(f"Release angle is fixed at: {selector.servo_release_angle}{UI_DEGREE}")
             else:
                 lines.append("Release angles configured to be between each gate angle")
 
             if selector.has_bypass():
-                lines.append(f"Bypass angle: {selector.servo_bypass_angle}{UI_DEGREES}")
+                lines.append(f"Bypass angle: {selector.servo_bypass_angle}{UI_DEGREE}")
             else:
                 lines.append("Bypass angle not configured")
 
