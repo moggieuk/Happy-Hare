@@ -68,7 +68,7 @@ usage() {
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
     echo "  -r allow running ${SCRIPT_NAME} from a root login (not through sudo)"
     echo "  -e, --emu Enables multi MCU support (e.g. for EMU design)"
-    echo "  -g <gates> most gates one MMU unit can configure (default 12, sticky; more is slower)"
+    echo "  -g <gates> most gates one MMU unit can configure (12 or more, default 12, sticky; more is slower)"
     echo "  -o override compatibility checks (e.g. unknown MIPS layout)"
     echo "  -t  activate test mode - write config to /tmp/mmu_test instead of your real install"
     echo "  (-q verbose make for debugging)"
@@ -249,6 +249,14 @@ prepare_refresh() {
 
 # The name a single unit has before menuconfig (unit0 when there is no config
 # yet), or nothing for multi-unit
+# True if $1 is a gate limit -g accepts: a whole number, at least the default 12
+valid_max_gates() {
+    case "$1" in
+        '' | *[!0-9]* | 0*) return 1 ;;
+    esac
+    [ "$1" -ge 12 ]
+}
+
 # The per-unit gate limit (-g) config file $1 was saved with, if any
 saved_max_gates() {
     (
@@ -769,12 +777,10 @@ done
 detect_platform
 enforce_root_policy
 
-case "${F_MAX_GATES:-1}" in
-    *[!0-9]* | 0*)
-        echo "${C_ERROR}-g needs a number of gates, not '${F_MAX_GATES}'${C_OFF}"
-        exit 1
-        ;;
-esac
+if [ -n "${F_MAX_GATES:-}" ] && ! valid_max_gates "${F_MAX_GATES}"; then
+    echo "${C_ERROR}-g needs a number of gates of at least 12, not '${F_MAX_GATES}'${C_OFF}"
+    exit 1
+fi
 
 if [ "${F_RECOVER_LAST}" ] && [ "${F_RECOVER_PREVIOUS}" ]; then
     echo "${C_ERROR}Can't use --last and --prev at the same time!${C_OFF}"
