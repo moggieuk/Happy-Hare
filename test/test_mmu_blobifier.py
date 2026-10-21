@@ -122,5 +122,45 @@ class TestNotInstalled(unittest.TestCase):
         self.assertEqual(hh.errors, [])
 
 
+class TestParkDescent(BlobifierSessionMixin, unittest.TestCase):
+    """Exercise the height override independently of the optional-QGL fix."""
+
+    PROFILE = _installed('boxturtle_blobifier_park_descent')
+
+    def setUp(self):
+        super().setUp()
+        self.hh.printer.harness_macro_effects['BLOBIFIER_PARK'] = (
+            lambda macro, gcmd: macro.run_body(gcmd))
+        qgl = type('QGL', (), {'get_status': lambda self, eventtime=None: {'applied': True}})()
+        self.hh.printer.add_object('quad_gantry_level', qgl)
+        self.toolhead = self.hh.printer.lookup_object('toolhead')
+        self.bl = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS').variables
+        self.safe = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_SAFE_DESCEND')
+        self.hh.run_gcode("G90\nG1 X150 Y150 Z20")
+
+    def park_heights(self, print_height):
+        self.safe.variables = dict(self.safe.variables, tray=False, print_height=print_height)
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("BLOBIFIER_PARK")
+        moves = self.toolhead.moves[first:]
+        self.assertTrue(moves)
+        return [pos[2] for pos, _ in moves]
+
+    def test_low_print_descends_to_tray_even_if_tray_unsafe(self):
+        self.assertIn(self.bl['tray_top'], self.park_heights(0.))
+
+    def test_tray_unsafe_at_force_height_stays_high(self):
+        self.assertNotIn(self.bl['tray_top'],
+                         self.park_heights(self.bl['force_safe_descend_height_until']))
+
+    def test_tray_unsafe_above_force_height_stays_high(self):
+        self.assertNotIn(self.bl['tray_top'],
+                         self.park_heights(self.bl['force_safe_descend_height_until'] + 5.))
+
+    def test_zero_force_height_disables_override(self):
+        self.bl['force_safe_descend_height_until'] = 0.
+        self.assertNotIn(self.bl['tray_top'], self.park_heights(0.))
+
+
 if __name__ == '__main__':
     unittest.main()
