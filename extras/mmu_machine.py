@@ -513,12 +513,14 @@ class MmuToolHead(toolhead.ToolHead, object):
 
             self.trapq = self.motion_queuing.allocate_trapq()
             self.trapq_append = self.motion_queuing.lookup_trapq_append()
+            self.finalize_has_history_arg = True
         else:
             # Setup iterative solver
             ffi_main, ffi_lib = chelper.get_ffi()
             self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
             self.trapq_append = ffi_lib.trapq_append
             self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
+            self.finalize_has_history_arg = self._probe_finalize_history_arg()
             # Motion flushing
             self.step_generators = []
             self.flush_trapqs = [self.trapq]
@@ -645,6 +647,20 @@ class MmuToolHead(toolhead.ToolHead, object):
         # if prev_sync_mode != self.sync_mode:
         #     self._resync_no_lock(prev_sync_mode)
 
+    # Older klipper (e.g. Creality K1 series) has trapq_finalize_moves(tq, print_time)
+    def _probe_finalize_history_arg(self):
+        try:
+            self.trapq_finalize_moves(self.trapq, self.reactor.NEVER, 0.)
+            return True
+        except TypeError:
+            return False
+
+    def _finalize_moves(self, tq, print_time, clear_history_time):
+        if self.finalize_has_history_arg:
+            self.trapq_finalize_moves(tq, print_time, clear_history_time)
+        else:
+            self.trapq_finalize_moves(tq, print_time)
+
     # Register stepper step generator with desired toolhead and add toolhead's trapq
     def _register(self, toolhead, stepper, trapq=None):
         trapq = trapq or toolhead.get_trapq()
@@ -743,7 +759,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         def _finalize_if_valid(tq, t):
             if tq is not None and tq != ffi_main.NULL:
-                self.trapq_finalize_moves(tq, t, t - MOVE_HISTORY_EXPIRE)
+                self._finalize_moves(tq, t, t - MOVE_HISTORY_EXPIRE)
 
         self.mmu.log_stepper("resync(%s --> %s)" % (self.sync_mode_to_string(self.sync_mode), self.sync_mode_to_string(new_sync_mode)))
 
