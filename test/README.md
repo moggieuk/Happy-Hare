@@ -535,9 +535,8 @@ To see the pause dialog, pretend a print is running and make something fail:
 MMU_CHANGE_TOOL TOOL=1
 ```
 
-The shipped `_MMU_ERROR_DIALOG` macro really runs while the API is on (macro bodies are
-otherwise no-ops in the harness), and its `RESPOND TYPE=command` lines reach the UI as the
-`// action:prompt_*` host commands Klipper would send, not as console text.
+Happy Hare sends the dialog as `// action:prompt_*` host command lines, which reach the UI
+as Klipper would send them and are kept out of the console text.
 
 Requests are only served between keystrokes, from the same idle tick as `/live`, so it needs a
 terminal. Everything lives in `test/hh/webui_bridge.py`, which is standard library only.

@@ -1,9 +1,9 @@
 # Happy Hare test harness - the pause dialog shown in Mainsail / Fluidd / KlipperScreen.
 #
-# handle_mmu_error() calls the shipped _MMU_ERROR_DIALOG macro, whose RESPOND lines become
-# action:prompt_* host commands. The real macro body is run here, and every line it and HH emit
-# is re-parsed with Klipper's own rules (';' truncates the line even inside quotes, extended
-# parameters go through posix shlex) because the harness parser is more forgiving than Klipper.
+# handle_mmu_error() sends the dialog as '// action:prompt_*' host command lines (respond_raw),
+# so its text is never re-parsed as gcode. Gcode that the print start macros send to
+# MMU_ERROR_DIALOG is checked with Klipper's own parsing rules (';' truncates the line even inside
+# quotes, extended parameters go through posix shlex) because the harness parser is more forgiving.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_error_dialog
 #
@@ -53,8 +53,6 @@ class ErrorDialogTestCase(unittest.TestCase):
             self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
         self.assertEqual(self.hh.errors, [], 'preload was not clean')
         self.hh.heat_extruder(220)
-        self.hh.printer.harness_macro_effects['_MMU_ERROR_DIALOG'] = \
-            lambda macro, gcmd: macro.run_body(gcmd)
 
     def tearDown(self):
         self.hh.close()
@@ -71,20 +69,11 @@ class ErrorDialogTestCase(unittest.TestCase):
         self.assertTrue(self.mmu.is_printing())
 
     def mark(self):
-        return len(self.hh.gcode.executed)
-
-    def lines_since(self, mark):
-        return self.hh.gcode.executed[mark:]
+        return len(self.hh.gcode.raw)
 
     def prompts_since(self, mark):
-        """Every action:prompt_* host command emitted since mark, as Klipper would send it."""
-        prompts = []
-        for line in self.lines_since(mark):
-            if line.split(None, 1)[0].upper() == 'RESPOND':
-                msg = klipper_params(line).get('MSG', '')
-                if msg.startswith('action:prompt_'):
-                    prompts.append(msg)
-        return prompts
+        """Every action:prompt_* host command emitted since mark, without Klipper's '// ' prefix."""
+        return [m[len('// '):] for m in self.hh.gcode.raw[mark:] if m.startswith('// action:prompt_')]
 
     def last_dialog(self, prompts):
         begins = [i for i, p in enumerate(prompts) if p.startswith('action:prompt_begin')]
@@ -105,25 +94,12 @@ class ErrorDialogTestCase(unittest.TestCase):
 
 class TestDialogContent(ErrorDialogTestCase):
 
-    def test_line_breaks_in_title_keep_the_dialog_valid(self):
-        self.start_print()
-        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
-        for separator in ('\n', '\r\n', '\r'):
-            with self.subTest(separator=repr(separator)):
-                macro.variables['title'] = 'MMU paused' + separator + 'Intervention needed'
-                mark = self.mark()
-                self.mmu._show_mmu_error_dialog('Print paused', 'Gate 1 jammed')
-                dialog = self.last_dialog(self.prompts_since(mark))
-                self.assertEqual(dialog[0], 'action:prompt_begin MMU paused Intervention needed')
-                self.assertEqual(len(self.footer_buttons(dialog)), 2)
-
     def test_line_breaks_in_custom_paragraphs_keep_the_dialog_valid(self):
         self.start_print()
-        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
         for separator in ('\n', '\r\n', '\r'):
             with self.subTest(separator=repr(separator)):
-                macro.variables['custom_msg'] = ['Check the tube.' + separator + 'Then reload.',
-                                                 'Keep this as a separate paragraph.']
+                self.mmu.error_dialog.set(lines=['Check the tube.' + separator + 'Then reload.',
+                                                 'Keep this as a separate paragraph.'])
                 mark = self.mark()
                 self.mmu._show_mmu_error_dialog('Print paused', 'Gate 1 jammed')
                 dialog = self.last_dialog(self.prompts_since(mark))
@@ -131,17 +107,12 @@ class TestDialogContent(ErrorDialogTestCase):
                     'Check the tube. Then reload.', 'Keep this as a separate paragraph.'])
                 self.assertEqual(len(self.footer_buttons(dialog)), 2)
 
-    def test_reason_with_gcode_special_characters_still_shows(self):
+    def test_reason_with_gcode_special_characters_is_shown_unchanged(self):
         self.start_print()
         mark = self.mark()
-        self.mmu.handle_mmu_error('Klipper reports: sensor "mmu_gate; it\'s stuck at #3')
-
-        invocation = [l for l in self.lines_since(mark) if l.startswith('_MMU_ERROR_DIALOG')]
-        self.assertEqual(len(invocation), 1)
-        klipper_params(invocation[0]) # Must not be malformed for Klipper
-
+        self.mmu.handle_mmu_error('Klipper reports: sensor "mmu_gate; it\'s stuck at #3 in C:\\path')
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
-        self.assertIn("Klipper reports: sensor 'mmu_gate, it's stuck at #3", texts)
+        self.assertIn('Klipper reports: sensor "mmu_gate; it\'s stuck at #3 in C:\\path', texts)
 
     def test_multi_line_reason_reads_as_one_paragraph_and_the_action_is_last(self):
         self.start_print()
@@ -180,7 +151,7 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertEqual(self.mmu.psm.reason_for_pause,
                          "Load sequence failed because:\nGate 1 jammed.\nOccurred when changing tool: T0 > T1")
 
-    def test_title_defaults_and_can_be_overridden_and_a_fresh_pause_has_no_headline(self):
+    def test_title_and_a_fresh_pause_has_no_headline(self):
         self.start_print()
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 1 jammed')
@@ -188,14 +159,6 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertEqual(dialog[0], 'action:prompt_begin Happy Hare Pause Notice')
         self.assertNotIn('Print paused', self.texts(dialog))
         self.assertEqual(self.texts(dialog)[0], 'Gate 1 jammed')
-
-        self.gcode('MMU_UNLOCK')
-        self.gcode('RESUME')
-        self.assertFalse(self.mmu.is_mmu_paused())
-        self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG').variables['title'] = 'My "custom\\ title'
-        mark = self.mark()
-        self.mmu.handle_mmu_error('Gate 1 jammed')
-        self.assertEqual(self.last_dialog(self.prompts_since(mark))[0], "action:prompt_begin My 'custom/ title")
 
     def test_still_paused_headline_only_when_the_dialog_is_shown_again(self):
         self.start_print()
@@ -209,10 +172,6 @@ class TestDialogContent(ErrorDialogTestCase):
         # One sentence runs on across the message's lines rather than being split by periods
         self.assertIn('run MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER to reset state, then RESUME again', self.texts(dialog)[1])
         self.assertNotIn('MMU_RECOVER.', self.texts(dialog)[1])
-        # Happy Hare's per-call flag does not stick for the next, fresh pause
-        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
-        self.assertFalse(macro.variables['still_paused'])
-        self.assertFalse(macro.variables['unlock_first'])
 
     def test_buttons_are_footer_buttons_and_abort_is_optional(self):
         self.start_print()
@@ -226,7 +185,7 @@ class TestDialogContent(ErrorDialogTestCase):
         self.assertFalse([p for p in dialog if p.startswith('action:prompt_button')])
 
         self.gcode('RESUME')
-        self.gcode('SET_GCODE_VARIABLE MACRO=_MMU_ERROR_DIALOG VARIABLE=show_abort VALUE=True')
+        self.gcode('MMU_ERROR_DIALOG ABORT=1')
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 2 is empty')
         dialog = self.last_dialog(self.prompts_since(mark))
@@ -234,34 +193,28 @@ class TestDialogContent(ErrorDialogTestCase):
 
     def test_custom_msg_replaces_the_default_action_line(self):
         self.start_print()
-        self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG').variables['custom_msg'] = \
-            ['Print requires tools: T0 (Gate0)', 'Manually ensure that T0 is loaded']
+        self.mmu.error_dialog.set(lines=['Print requires tools: T0 (Gate0)', 'Manually ensure that T0 is loaded'])
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 2 is empty')
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))
         self.assertEqual(texts[-2:], ['Print requires tools: T0 (Gate0)', 'Manually ensure that T0 is loaded'])
 
-    def test_custom_msg_with_gcode_special_characters_still_shows(self):
+    def test_custom_msg_with_gcode_special_characters_is_shown_unchanged(self):
         self.start_print()
-        self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG').variables['custom_msg'] = \
-            ['Check the 3" tube', "Don't skip it", 'See C:\\notes']
+        self.mmu.error_dialog.set(lines=['Check the 3" tube', "Don't skip it", 'See C:\\notes'])
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 2 is empty')
         dialog = self.last_dialog(self.prompts_since(mark))
-        self.assertEqual(self.texts(dialog)[-3:], ["Check the 3' tube", "Don't skip it", 'See C:/notes'])
+        self.assertEqual(self.texts(dialog)[-3:], ['Check the 3" tube', "Don't skip it", 'See C:\\notes'])
         self.assertEqual(len(self.footer_buttons(dialog)), 2)
 
-    def test_semicolons_in_a_title_or_custom_line_do_not_break_the_dialog(self):
-        # Klipper ends a command at ';' even inside quotes, which would lose the buttons
+    def test_semicolons_in_a_custom_line_are_kept(self):
         self.start_print()
-        macro = self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG')
-        macro.variables['title'] = 'MMU paused; intervention needed'
-        macro.variables['custom_msg'] = ['Check the tube; then the gate']
+        self.mmu.error_dialog.set(lines=['Check the tube; then the gate'])
         mark = self.mark()
         self.mmu.handle_mmu_error('Gate 2 is empty')
         dialog = self.last_dialog(self.prompts_since(mark))
-        self.assertEqual(dialog[0], 'action:prompt_begin MMU paused, intervention needed')
-        self.assertIn('Check the tube, then the gate', self.texts(dialog))
+        self.assertIn('Check the tube; then the gate', self.texts(dialog))
         self.assertEqual(len(self.footer_buttons(dialog)), 2)
 
 
@@ -334,6 +287,112 @@ class TestDialogLifecycle(ErrorDialogTestCase):
         self.assertEqual(self.prompts_since(mark), ['action:prompt_end'])
 
 
+class TestDialogConfiguration(ErrorDialogTestCase):
+
+    def pause(self):
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Gate 2 is empty')
+        return self.last_dialog(self.prompts_since(mark))
+
+    def test_disabled_dialog_still_logs_to_the_console(self):
+        self.start_print()
+        self.gcode('MMU_TEST_CONFIG show_error_dialog=0 QUIET=1')
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Gate 2 is empty')
+        self.assertEqual(self.prompts_since(mark), [])
+        self.assertTrue(any('Gate 2 is empty' in e for e in self.hh.errors))
+
+    def test_abort_can_be_turned_off_again(self):
+        self.start_print()
+        self.gcode('MMU_ERROR_DIALOG ABORT=1')
+        self.gcode('MMU_ERROR_DIALOG ABORT=0')
+        self.assertEqual(self.footer_buttons(self.pause()), [
+            ['RESUME', 'RESUME', 'warning'],
+            ['UNLOCK', 'MMU_UNLOCK', 'primary'],
+        ])
+
+    def test_start_macro_message_survives_klipper_parsing(self):
+        # The line MMU_START_SETUP renders from {custom_msg|join('\\n')}
+        line = 'MMU_ERROR_DIALOG MSG="Print requires tools: T0 (Gate0), Initial Tool: T0\\nManually ensure that T0 is loaded"'
+        self.assertEqual(klipper_params(line)['MSG'],
+                         'Print requires tools: T0 (Gate0), Initial Tool: T0\\nManually ensure that T0 is loaded')
+        self.start_print()
+        self.gcode(line)
+        self.assertEqual(self.texts(self.pause())[-2:], [
+            'Print requires tools: T0 (Gate0), Initial Tool: T0', 'Manually ensure that T0 is loaded'])
+
+    def test_overrides_reset_at_print_end_and_next_print_start(self):
+        self.start_print()
+        self.gcode('MMU_ERROR_DIALOG ABORT=1 MSG="Stale"')
+        self.gcode('MMU_PRINT_END STATE=cancelled')
+        self.assertEqual((self.mmu.error_dialog.extra_lines, self.mmu.error_dialog.show_abort), ([], False))
+
+        self.mmu.error_dialog.set(lines=['Stale'], show_abort=True) # e.g. a manual call between prints
+        self.start_print()
+        self.assertEqual((self.mmu.error_dialog.extra_lines, self.mmu.error_dialog.show_abort), ([], False))
+
+    def test_overrides_set_during_print_start_survive_it(self):
+        # MMU_START_SETUP runs MMU_PRINT_START before it sets its overrides, and print_stats
+        # detection may run the full print start (AUTOMATIC=1) after them
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.mmu.psm.on_print_start(pre_start_only=True)
+        self.gcode('MMU_ERROR_DIALOG ABORT=1 MSG="Start-up help"')
+        self.gcode('MMU_PRINT_START AUTOMATIC=1')
+        self.gcode('MMU_PRINT_START')
+        dialog = self.pause()
+        self.assertEqual(self.footer_buttons(dialog)[0], ['ABORT', 'CANCEL_PRINT', 'error'])
+        self.assertIn('Start-up help', self.texts(dialog))
+
+    def test_reset_command_restores_the_defaults(self):
+        self.start_print()
+        self.gcode('MMU_ERROR_DIALOG ABORT=1 MSG="Custom"')
+        self.gcode('MMU_ERROR_DIALOG RESET=1')
+        dialog = self.pause()
+        self.assertEqual(self.texts(dialog)[-1], 'After fixing, press RESUME to continue printing (UNLOCK restores the nozzle temperature first)')
+        self.assertEqual(len(self.footer_buttons(dialog)), 2)
+
+    def assert_closes(self, script):
+        self.start_print()
+        self.pause()
+        mark = self.mark()
+        self.gcode(script)
+        self.assertEqual(self.prompts_since(mark).count('action:prompt_end'), 1)
+        self.assertFalse(self.mmu.error_dialog.active)
+
+    def test_unlock_closes_the_dialog(self):
+        self.assert_closes('MMU_UNLOCK')
+
+    def test_clear_pause_closes_the_dialog(self):
+        self.assert_closes('CLEAR_PAUSE')
+
+    def test_cancel_print_closes_the_dialog(self):
+        self.assert_closes('CANCEL_PRINT')
+
+    def test_disabled_dialog_leaves_other_prompts_alone(self):
+        # e.g. a user's own recovery prompt opened while paused must survive RESUME
+        self.start_print()
+        self.gcode('MMU_TEST_CONFIG show_error_dialog=0 QUIET=1')
+        self.mmu.handle_mmu_error('Gate 2 is empty')
+        mark = self.mark()
+        for script in ('MMU_UNLOCK', 'RESUME', 'CLEAR_PAUSE'):
+            self.gcode(script)
+        self.assertEqual(self.prompts_since(mark), [])
+
+    def test_open_dialog_still_closes_after_it_is_disabled(self):
+        self.start_print()
+        self.pause()
+        self.gcode('MMU_TEST_CONFIG show_error_dialog=0 QUIET=1')
+        mark = self.mark()
+        self.gcode('CLEAR_PAUSE')
+        self.assertEqual(self.prompts_since(mark), ['action:prompt_end'])
+
+    def test_close_is_sent_when_no_dialog_is_known_to_be_open(self):
+        # After a Klipper restart a UI can still show a dialog restored from its console history
+        mark = self.mark()
+        self.gcode('CLEAR_PAUSE')
+        self.assertEqual(self.prompts_since(mark), ['action:prompt_end'])
+
+
 class TestActionableReasons(ErrorDialogTestCase):
 
     def test_hint_survives_the_load_and_toolchange_wraps(self):
@@ -355,7 +414,7 @@ class TestActionableReasons(ErrorDialogTestCase):
 
     def test_hint_follows_custom_msg_as_the_last_line(self):
         self.start_print()
-        self.hh.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG').variables['custom_msg'] = ['Print requires tools: T0']
+        self.mmu.error_dialog.set(lines=['Print requires tools: T0'])
         mark = self.mark()
         self.mmu.handle_mmu_error(MmuError('Gate 1 jammed', hint='Free gate 1'))
         texts = self.texts(self.last_dialog(self.prompts_since(mark)))

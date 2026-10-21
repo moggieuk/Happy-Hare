@@ -164,8 +164,7 @@ class TestPauseDialogReachesTheUi(WebUiBridgeTestCase):
             self.hh.place_filament(gate, position=TIP_AT_GATE)
             self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
         self.hh.heat_extruder(220)
-        self.hh.printer.harness_macro_effects['_MMU_ERROR_DIALOG'] = \
-            lambda macro, gcmd: macro.run_body(gcmd)
+        self.hh.gcode.register_output_handler(self.bridge.host_output) # All output, as Moonraker relays it
 
     def pushed(self):
         lines = []

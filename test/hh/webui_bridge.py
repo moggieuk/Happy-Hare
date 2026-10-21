@@ -4,7 +4,7 @@
 # WHAT IT IS FOR. Everything the web UIs show about Happy Hare (the MMU panel, the pause
 # dialog, the console) is driven by Moonraker's JSON-RPC websocket. This serves just enough of
 # that API from the harness that an unmodified Mainsail connects, renders the live MMU state,
-# pops the real pause dialog from the real _MMU_ERROR_DIALOG macro, and sends its button
+# pops the real pause dialog Happy Hare sends, and sends its button
 # presses back as gcode. It is a development and documentation aid, not a Moonraker clone:
 # unknown methods get a JSON-RPC error and are logged so the gap is visible.
 #

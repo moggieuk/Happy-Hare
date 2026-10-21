@@ -64,7 +64,6 @@ hidden_params = [
     "serious",
     "test_random_failures",
     "test_force_in_print",
-    "error_dialog_macro",
     "error_macro",
     "toolhead_homing_macro",
     "park_macro",

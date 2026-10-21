@@ -173,6 +173,7 @@ class MmuPrintStateMachine:
             self.mmu._enable_filament_monitoring() # Enable filament monitoring while printing
             self.mmu.initialize_encoder(dwell=None) # Encoder 0000
             self.mmu.safe_g1.reset_print_state()
+            self.mmu.error_dialog.reset()
             self.set_print_state("started", call_macro=False)
 
         if not pre_start_only and self.print_state not in ["printing"]:
@@ -235,6 +236,7 @@ class MmuPrintStateMachine:
         if state == "standby" and not self.is_in_standby():
             self.set_print_state(state)
 
+        self.mmu.error_dialog.reset()
         self.mmu._clear_macro_state(reset=True)
 
 

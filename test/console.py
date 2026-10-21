@@ -634,9 +634,8 @@ class Console:
     def _start_bridge(self, port, explicit=False):
         """
         Serve a Moonraker-compatible API so a real Mainsail/Fluidd can connect to this
-        simulator (see test/hh/webui_bridge.py). The pause dialog is a gcode macro whose body
-        is a no-op in the general-purpose harness, so it is made real here: the UI needs the
-        genuine action:prompt lines to draw anything.
+        simulator (see test/hh/webui_bridge.py). Happy Hare's pause dialog arrives as
+        '// action:prompt_*' output lines, which reach the UI with the rest of the output.
 
         A port that is taken (a real Moonraker, or another console) is skipped for the next
         free one unless the user named it, in which case that is reported and left alone.
@@ -652,7 +651,6 @@ class Console:
         if self.bridge is None:
             return
         self.bridge_error = None
-        printer.harness_macro_effects['_MMU_ERROR_DIALOG'] = self._run_macro_body
         responder = printer.lookup_object('respond', None)
         if responder is not None:
             responder.host_listener = self.bridge.host_output
@@ -792,9 +790,11 @@ class Console:
             self.tee.write_capture(text + '\n')
 
     def _on_output(self, msg):
-        self.sink.append(msg)
         if self.bridge is not None:
             self.bridge.host_output(msg)
+        if msg.startswith('// action:'):
+            return # Host commands for a UI, not console text
+        self.sink.append(msg)
         # Stamp NOW, not when it is printed. _drain() runs after the command returns, so
         # stamping there gave every line of an operation the same reading - the clock as it
         # stood at the END - which hid the very progression /timestamp exists to show. Under
