@@ -23,7 +23,7 @@ from typing                import Sequence
 
 # Happy Hare imports
 from ..mmu_constants       import *
-from ..mmu_sensor_utils    import MmuSensorFactory, MmuVirtualEndstopSensor
+from ..mmu_sensor_utils    import MmuSensorFactory, MmuVirtualEndstopSensor, MmuAdcHelper
 from ..mmu_base_parameters import TunableParametersBase, ParamSpec
 
 
