@@ -221,6 +221,56 @@ class TestLinearSelector(SelectorTestCase):
         self.assertAlmostEqual(axis.carriage, before, places=3)
 
 
+class TestTestMoveGrip(SelectorTestCase):
+    """
+    MMU_TEST_MOVE GRIP=1 leaves a type-A (servo) unit gripped, e.g. ready for
+    MMU_CALIBRATE_GEAR; without GRIP the move ends released as before.
+    """
+
+    PROFILE = 'tradrack'
+
+    def setUp(self):
+        super().setUp()
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.assertEqual(self.hh.errors, [])
+
+    def grip_state(self):
+        return self.selector('unit0').get_filament_grip_state()
+
+    def test_grip_is_retained_after_the_move(self):
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=100 GRIP=1')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.grip_state(), FILAMENT_DRIVE_STATE)
+
+    def test_grip_is_restored_before_sync_after_an_extruder_only_move(self):
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=5 MOTOR=extruder GRIP=1')
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertEqual(self.grip_state(), FILAMENT_DRIVE_STATE)
+
+    def test_without_grip_the_filament_is_released(self):
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=100 GRIP=1')
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=-100')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.grip_state(), FILAMENT_RELEASE_STATE)
+
+
+class TestTestMoveGripAlwaysGripped(TestTestMoveGrip):
+    """mmx: a type-B ServoSelector, which stays gripped whatever GRIP says."""
+
+    PROFILE = 'mmx'
+
+    def test_without_grip_the_filament_is_released(self):
+        self.assertTrue(self.hh.mmu.mmu_unit().filament_always_gripped)
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=100')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.grip_state(), FILAMENT_DRIVE_STATE)
+
+
 class TestLinearMultiGearSelector(SelectorTestCase):
     """A type-C selector is still a physical axis and must home before absolute moves."""
 

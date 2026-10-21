@@ -4016,10 +4016,13 @@ class MmuFilamentMovement:
 
 
     @contextlib.contextmanager
-    def wrap_sync_gear_to_extruder(self):
+    def wrap_sync_gear_to_extruder(self, retain_grip=False):
         """
         Preserve sync state across a block. Grip restoration is only performed by
         the outermost wrapper, because it is often noisy / expensive on type-A MMUs.
+
+        Args:
+            retain_grip: Grip the filament on exit regardless of the restored sync state.
 
         Yields:
             self while nested operations may temporarily alter sync and grip state.
@@ -4038,7 +4041,10 @@ class MmuFilamentMovement:
         finally:
             self._sync_gear_wrap_depth -= 1
             outermost = self._sync_gear_wrap_depth == 0
-            self.reset_sync_gear_to_extruder(force_grip=outermost)
+            if outermost and retain_grip:
+                # Grip before restoring sync because servo down can undo it (buzz movement)
+                self.selector().filament_drive()
+            self.reset_sync_gear_to_extruder(force_grip=outermost and not retain_grip)
 
 
 # -----------------------------------------------------------------------------------------------------------
