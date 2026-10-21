@@ -713,6 +713,34 @@ class TestRefreshPipeline(_Pipeline, _Install):
         self.assertEqual(changed, ["mmu_parameters_unit0.cfg"])
 
 
+class TestFilamentBufferRefreshPipeline(_Pipeline, _Install):
+    """A hand-edited filament_buffer follows a capability flag, so it stays in the .cfg"""
+
+    PROFILE = "tradrack"
+    KEY = ("mmu_unit unit0", "filament_buffer")
+
+    def targets(self):
+        return [(self.kconfig, template, name.format(unit="unit0")) for template, name in SINGLE_UNIT_FILES.items()]
+
+    def refresh(self, **menuconfig):
+        self.edit("mmu_hardware_unit0.cfg", "filament_buffer", "0", section="mmu_unit unit0")
+        analysis = self.analyse()
+        self.assertNotIn("PARAM_FILAMENT_BUFFER", self.by_symbol(analysis))
+        self.assertEqual(self.reasons(analysis)[self.KEY], cfg_import.HIDDEN)
+        self.import_pass([(self.kconfig, self.env)], apply=True)
+        self.menuconfig(self.kconfig, self.env, **menuconfig)
+        self.olddefconfig(self.kconfig, self.env)
+        built = ConfigBuilder()
+        built.read_buf(self.build_all(self.targets(), self.env, baseline=True)["mmu_hardware_unit0.cfg"])
+        return built.get(*self.KEY).strip()
+
+    def test_hand_edit_survives_an_unchanged_menuconfig(self):
+        self.assertEqual(self.refresh(), "0")
+
+    def test_hand_edit_survives_other_menuconfig_changes(self):
+        self.assertEqual(self.refresh(PARAM_GEAR_UNLOAD_SPEED="77"), "0")
+
+
 class _MultiUnitInstall(_Install):
     """Two BoxTurtles, installed in Replace mode"""
 

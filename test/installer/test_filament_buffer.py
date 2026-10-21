@@ -94,6 +94,11 @@ class TestFilamentBufferRender(unittest.TestCase):
         self.assertEqual(value, "0")
         self.assertNotIn("gear_from_filament_buffer_speed", params)
 
+    def test_espooler_forces_the_buffer_off_over_a_stale_tick(self):
+        value, _ = self.rendered("ercf_espooler_stale", {
+            **self.ERCF, "MMU_HAS_ESPOOLER": True, "MMU_HAS_FILAMENT_BUFFER": True})
+        self.assertEqual(value, "0")
+
     def test_multi_unit_renders_each_unit_its_own_value(self):
         parser = cfg.assemble(cfg.render(profiles.get("ercf_vvd")))
         self.assertEqual(parser.get("mmu_unit unit0", "filament_buffer"), "1")
