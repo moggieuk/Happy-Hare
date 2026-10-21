@@ -35,6 +35,8 @@
 #
 #   PARAM_STARTUP_RESET_TTG_MAP
 #   PARAM_SHOW_ERROR_DIALOG
+#   PARAM_ERROR_DIALOG_TITLE
+#   PARAM_ERROR_DIALOG_BUTTONS
 #   PARAM_STRICT_FILAMENT_RECOVERY
 #   PARAM_FILAMENT_RECOVERY_ON_PAUSE
 #   PARAM_RETRY_TOOL_CHANGE_ON_ERROR
@@ -43,6 +45,9 @@
 # Statistics table tokens known to the MMU_STATS console table
 console_stat_column := (pre_unload|form_tip|unload|post_unload|pre_load|load|purge|post_load|total)
 console_stat_row    := (total|total_average|job|job_average|last)
+
+# Error dialog button: a built-in or a custom LABEL|GCODE[|style]
+error_dialog_button := (abort|resume|unlock|[^|,]+[|][^|,]+([|](primary|secondary|info|warning|error))?)
 
 menu "Global software options"
   help
@@ -458,6 +463,25 @@ menu "Global software options"
     default 1
     help
       Select to show pop-up dialog in addition to console message
+
+  config PARAM_ERROR_DIALOG_TITLE
+    string "Error dialog title"
+    default "Happy Hare Pause Notice"
+    help
+      Title of the pop-up dialog shown when the MMU pauses a print
+      Avoid ' #' and ' ;', which start a comment in the .cfg file
+
+  config PARAM_ERROR_DIALOG_BUTTONS
+    string "Error dialog buttons"
+    default "resume, unlock"
+    array_editor ","
+    validator "$(error_dialog_button)"
+    help
+      Footer buttons on the pop-up dialog, left to right. Built-ins:
+        abort (CANCEL_PRINT), resume (RESUME), unlock (MMU_UNLOCK)
+      Or a custom LABEL|GCODE[|style], e.g. PARK|MMU_PARK|info
+      Styles: primary, secondary, info, warning, error
+      Empty means the default: resume, unlock
 
   config PARAM_STRICT_FILAMENT_RECOVERY
     boolint "Use strict filament recovery?"

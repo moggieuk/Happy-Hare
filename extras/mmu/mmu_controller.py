@@ -31,6 +31,7 @@ from .mmu_print_state_machine   import MmuPrintStateMachine
 from .mmu_gate_maps             import MmuGateMaps
 from .mmu_td1                   import MmuTd1Bridge
 from .mmu_nfc_arbiter           import MmuNfcFieldArbiter
+from .mmu_dialog                import MmuErrorDialog
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
 
@@ -91,6 +92,7 @@ class MmuController(MmuFilamentMovement):
         self.gate_maps      = MmuGateMaps(self)          # Gate map / TTG map / EndlessSpool state
         self.td1            = MmuTd1Bridge(self)   # Moonraker transport for every TD-1 scanner
         self.nfc_arbiter    = MmuNfcFieldArbiter(self)   # NFC "noisy neighbor" field arbitration
+        self.error_dialog   = MmuErrorDialog(self)       # Pop-up dialog in Mainsail/Fluidd/KlipperScreen when MMU pauses
 
 
         # Register GCODE commands ---------------------------------------------------------------------------
@@ -162,7 +164,6 @@ class MmuController(MmuFilamentMovement):
             self.runout_last_handled_time = self.reactor.monotonic()
         self.is_handling_runout = False # True whilst handling a runout
         self.flowguard_trip_reason = None # Detail of the FlowGuard trip that raised the pending clog/tangle
-        self.error_dialog_shown = False # Pause dialog sent and not yet cleared by HH
 
         self.unit_selected = None       # Must not stay None, set when initial gate is set or in _load_persisted_state()
         self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
@@ -2502,7 +2503,7 @@ class MmuController(MmuFilamentMovement):
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
                 if hint:
                     self.log_always(hint)
-                if not self.error_dialog_shown:
+                if not self.error_dialog.active:
                     self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True, context=context, unlock_first=self.is_mmu_paused_and_locked()) # e.g. RESUME failed after clearing it
                 recover_pos = self.p.filament_recovery_on_pause
 
@@ -2541,53 +2542,13 @@ class MmuController(MmuFilamentMovement):
         self.log_always(self.psm.pause_hint or "After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
 
 
-    @staticmethod
-    def _dialog_lines(text):
-        """
-        Split text into dialog-safe lines. Every rendered line is re-parsed as gcode by Klipper,
-        where ';' truncates even inside quotes and shlex treats '"' and '\\' specially.
-        """
-        lines = []
-        for line in str(text).split("\n"):
-            line = line.replace('"', "'").replace(';', ',').replace('\\', '/')
-            line = re.sub(r'([.:!?])\.+$', r'\1', " ".join(line.split()))
-            if line and line != '.':
-                lines.append(line)
-        return lines
-
-
     def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False, context=None, unlock_first=False):
-        """
-        The reason is one paragraph rather than a line per line of the console message, with what
-        was being attempted (the error's context, which ends the message) kept apart so the dialog
-        can lead with it.
-        """
-        dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
-        if not (self.p.show_error_dialog and dialog_macro is not None):
-            return
-        def sentences(lines): # Lines read on as sentences; the last is left as the error wrote it
-            return " ".join([l if l[-1] in ".:!?" else l + "." for l in lines[:-1]] + lines[-1:])
-        lines = self._dialog_lines(reason)
-        flat = " ".join(l if l[-1] in ".:!?" else l + "." for l in lines).replace("'", "")
-        body = reason[:-len(context)] if context and reason.endswith(context) else reason
-        paragraph = sentences(self._dialog_lines(body))
-        self.wrap_gcode_command(
-            '%s MSG="%s" REASON="%s"' % (self.p.error_dialog_macro, msg, flat),
-            variables={'reason_lines': [paragraph] if paragraph else [],
-                       'context_line': " ".join(self._dialog_lines(context or "")),
-                       'action': " ".join(self._dialog_lines(hint or "")),
-                       'still_paused': still_paused,
-                       'unlock_first': unlock_first}
-        )
-        dialog_macro.variables.update({'reason_lines': [], 'context_line': '', 'action': '', 'still_paused': False, 'unlock_first': False})
-        self.error_dialog_shown = True
+        if self.p.show_error_dialog:
+            self.error_dialog.show_error(msg, reason, hint, context=context, still_paused=still_paused, unlock_first=unlock_first)
 
 
     def _clear_mmu_error_dialog(self):
-        dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
-        if self.p.show_error_dialog and dialog_macro is not None:
-            self.wrap_gcode_command('RESPOND TYPE=command MSG="action:prompt_end"')
-        self.error_dialog_shown = False
+        self.error_dialog.close()
 
 
     def _mmu_unlock(self):
@@ -4395,6 +4356,7 @@ class MmuWrapperClearPauseCommand(BaseCommand):
     def _run(self, gcmd):
         if self.mmu.is_enabled:
             self.mmu.log_debug("MMU CLEAR_PAUSE wrapper called")
+            self.mmu._clear_mmu_error_dialog()
             self.mmu._clear_macro_state()
             if self.mmu.saved_toolhead_operation == 'pause':
                 self.mmu._clear_saved_toolhead_position()

@@ -17,6 +17,7 @@ from typing               import Sequence
 # Happy Hare imports
 from .mmu_constants       import *
 from .mmu_base_parameters import TunableParametersBase, ParamSpec
+from .mmu_dialog          import parse_buttons, DEFAULT_ERROR_DIALOG_TITLE, DEFAULT_ERROR_DIALOG_BUTTONS
 
 
 class MmuMachineParameters(TunableParametersBase):
@@ -41,6 +42,12 @@ class MmuMachineParameters(TunableParametersBase):
         self._mmu_machine.mmu.init_macros()
 
 
+    # ---- Validators ----
+
+    def _validate_error_dialog_buttons(self, value):
+        parse_buttons(value)
+
+
     # ---- Specs ----
 
     _SPECS: Sequence[ParamSpec] = (
@@ -61,6 +68,8 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('print_start_detection',         'int',       1, section="PRINTER", limits=dict(minval=0, maxval=1), hidden=True),
         ParamSpec('startup_reset_ttg_map',         'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1), hidden=True),
         ParamSpec('show_error_dialog',             'int',       1, section="PRINTER", limits=dict(minval=0, maxval=1)),
+        ParamSpec('error_dialog_title',            'str',   DEFAULT_ERROR_DIALOG_TITLE, section="PRINTER"),
+        ParamSpec('error_dialog_buttons',          'list',  DEFAULT_ERROR_DIALOG_BUTTONS, section="PRINTER", validator=_validate_error_dialog_buttons),
 
         # Internal macro overrides
         ParamSpec('pause_macro',                   'str',   'PAUSE',                   section="MACROS"),
@@ -79,7 +88,6 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('load_sequence_macro',           'str',   '_MMU_LOAD_SEQUENCE',      section="MACROS", hidden=True),
 
         # These macros are not currently exposed but provide future flexibility
-        ParamSpec('error_dialog_macro',            'str',   '_MMU_ERROR_DIALOG',       section="MACROS", hidden=True),
         ParamSpec('error_macro',                   'str',   '_MMU_ERROR',              section="MACROS", hidden=True),
         ParamSpec('toolhead_homing_macro',         'str',   '_MMU_AUTO_HOME',          section="MACROS", hidden=True),
         ParamSpec('park_macro',                    'str',   '_MMU_PARK',               section="MACROS", hidden=True),
@@ -207,6 +215,7 @@ class MmuMachineParameters(TunableParametersBase):
 
         self.console_stat_columns         = list(self.console_stat_columns)
         self.console_stat_rows            = list(self.console_stat_rows)
+        self.error_dialog_buttons         = list(self.error_dialog_buttons)
 
         # endless_spool_eject_gate maxval depends on gate count
         max_gate = self._mmu_machine.num_gates - 1
