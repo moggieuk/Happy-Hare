@@ -173,7 +173,7 @@ if MMU_HAS_HEATER
         EXPERIMENTAL. Keep rotating spools with idle gear motors during a
         print. Can cause short print pauses if Klipper flushes its motion
         queue (e.g. a toolchange) while a spool is turning. Needs a recent
-        Klipper, otherwise rotation is skipped while printing.
+        Klipper or Kalico, otherwise rotation is skipped while printing.
 
     comment "_"
 

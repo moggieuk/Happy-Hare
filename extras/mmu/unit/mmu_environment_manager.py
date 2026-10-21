@@ -1171,7 +1171,7 @@ class MmuEnvironmentManager:
                 if self.can_rotate_while_printing():
                     reason = "set heater_rotate_in_print to enable it (experimental)"
                 else:
-                    reason = "it needs a gear per gate and a recent Klipper"
+                    reason = "it needs a gear per gate and a recent Klipper or Kalico"
                 self.mmu.log_warning("Spool rotation is skipped while printing on %s: %s" % (self.mmu_unit.name, reason))
             return
 

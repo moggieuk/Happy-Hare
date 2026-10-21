@@ -321,7 +321,7 @@ class TestDryingRotationOnKalico(unittest.TestCase):
         output = self._dry_and_rotate()
         self.assertTrue(self.manager.is_drying())
         self.assertEqual(len(self._gear(1).manual_trapq.moves), moves)
-        self.assertIn('needs a gear per gate and a recent Klipper', output)
+        self.assertIn('needs a gear per gate and a recent Klipper or Kalico', output)
         self.assertEqual(self.hh.errors, [])
 
     def test_outside_a_print_rotation_is_unchanged(self):
