@@ -642,6 +642,45 @@ class TestComponentNameRefresh(_HardwareRefresh):
                 self.assertEqual(built.get(self.UNIT, "encoder"), "xyz")
 
 
+class TestFilamentBufferRefresh(_HardwareRefresh):
+    """[mmu_unit] filament_buffer reaches existing installs and keeps hand edits."""
+
+    UNTICKED = {"MMU_HAS_FILAMENT_BUFFER": False}
+
+    def installed(self, value):
+        installed = self.build("tradrack", {}, "replace", [])
+        builder = ConfigBuilder(installed)
+        if value is None:
+            builder.remove_option(self.UNIT, "filament_buffer")
+        else:
+            builder.set(self.UNIT, "filament_buffer", value)
+        with open(installed, "w") as f:
+            f.write(builder.write())
+        return installed
+
+    def test_an_install_without_the_option_gets_the_menuconfig_value(self):
+        installed = self.installed(None)
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                built = ConfigBuilder(self.build("tradrack", self.UNTICKED, mode, [installed]))
+                self.assertEqual(built.get(self.UNIT, "filament_buffer"), "0")
+
+    def test_a_hand_edited_value_survives_refresh(self):
+        installed = self.installed("0")
+        for mode in ("refresh", "merge"):
+            with self.subTest(mode=mode):
+                built = ConfigBuilder(self.build("tradrack", {}, mode, [installed]))
+                self.assertEqual(built.get(self.UNIT, "filament_buffer"), "0")
+
+    def test_changed_in_menuconfig_the_kconfig_value_wins(self):
+        installed = self.installed("1")
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            before = cfg._kconfig("filament-buffer-before", profiles.get("tradrack").syms)
+        built = ConfigBuilder(self.build("tradrack", self.UNTICKED, "refresh", [installed],
+                                         baseline=before))
+        self.assertEqual(built.get(self.UNIT, "filament_buffer"), "0")
+
+
 class TestSupplementalParamRefresh(unittest.TestCase):
     """A supplemental param is only reinserted when the template doesn't already render it."""
 
