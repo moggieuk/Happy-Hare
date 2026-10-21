@@ -432,13 +432,13 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Heater
         ParamSpec('heater_max_temp',                  'float',  65.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
-        ParamSpec('heater_loaded_max_temp',           'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_default_dry_temp',          'float',  45.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_default_dry_time',          'float', 300.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_default_dry_humidity',      'float',  25.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_vent_macro',                'str',      '', section="HEATER",                             guard=_guard_has_heater),
         ParamSpec('heater_vent_interval',             'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_rotate_interval',           'float',   5.0, section="HEATER",    limits=dict(minval=1.0), guard=_guard_has_heater, fmt="%.1f"),
+        ParamSpec('heater_rotate_in_print',           'int',       0, section="HEATER",    limits=dict(minval=0, maxval=1), guard=_guard_has_heater),
         ParamSpec('heater_vent_duration',             'float',  10.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
         ParamSpec('heater_vent_run_fan',              'int',       1, section="HEATER",    limits=dict(minval=0, maxval=1), guard=_guard_has_heater),
         ParamSpec('heater_vent_open_angle',           'float',  90.0, section="HEATER",    limits=dict(minval=0.0, maxval=360.0), guard=_guard_has_heater, fmt="%.1f"),

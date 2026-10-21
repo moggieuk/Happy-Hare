@@ -177,10 +177,15 @@ class PrinterMotionQueuing:
         self.movequeue_activity.append(mq_time)
 
     MIN_KIN_TIME = 0.100
+    SDS_CHECK_TIME = 0.001
+
+    # Klipper's step generation runs ahead of the print time; tests set this to model that
+    last_step_gen_time = 0.
 
     def calc_step_gen_restart(self, est_print_time):
         # Klipper: no earlier than the steps already generated plus the flush delay
-        return est_print_time + self.MIN_KIN_TIME
+        kin_time = max(est_print_time + self.MIN_KIN_TIME, self.last_step_gen_time)
+        return kin_time + self.SDS_CHECK_TIME
 
     def drip_update_time(self, next_print_time, drip_completion):
         return next_print_time
