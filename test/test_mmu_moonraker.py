@@ -20,6 +20,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import ast
 import json
 import logging
 import unittest
@@ -578,6 +579,42 @@ class TestGateAssignment(MoonrakerTestCase):
         self.hh.call_remote('spoolman_unset_spool_gate', spool_id=None, gate=3,
                             sync=False, silent=True)
         self.assertEqual(self.hh.db.spool_gate(1), -1)
+
+
+class TestSpoolCreatedAfterStartup(MoonrakerTestCase):
+    """
+    #967: a spool created in Spoolman after the cache was built must come back with
+    its real attributes, not an empty dict that makes HH clear the gate.
+    """
+
+    SPOOLS = (dict(material='PLA'),)
+
+    def setUp(self):
+        super().setUp()
+        self.sid = self.hh.db.add_spool(material='PETG', vendor='Polymaker', uid=KNOWN_UID)
+
+    def gate_map(self):
+        cmd = self.last_gcode()
+        return ast.literal_eval(cmd.split('MAP="', 1)[1].split('"', 1)[0])
+
+    def test_push_gate_map_sends_new_spool_attributes(self):
+        self.hh.call_remote('spoolman_push_gate_map', gate_ids=[(3, self.sid)], silent=True)
+        self.assertEqual(self.hh.db.spool_gate(self.sid), 3)
+        attrs = self.gate_map()[3]
+        self.assertEqual(attrs['spool_id'], self.sid)
+        self.assertEqual(attrs['material'], 'PETG')
+        self.assertEqual(attrs['vendor'], 'Polymaker')
+
+    def test_push_gate_map_caches_new_spool_tag(self):
+        self.hh.call_remote('spoolman_push_gate_map', gate_ids=[(3, self.sid)], silent=True)
+        self.assertEqual(self.hh.mmu_server.uid_to_spool_id.get(KNOWN_UID), self.sid)
+
+    def test_set_spool_gate_sync_sends_new_spool_attributes(self):
+        self.hh.call_remote('spoolman_set_spool_gate', spool_id=self.sid, gate=2,
+                            sync=True, silent=True)
+        attrs = self.gate_map()[2]
+        self.assertEqual(attrs['spool_id'], self.sid)
+        self.assertEqual(attrs['material'], 'PETG')
 
 
 class TestSetSpoolUid(MoonrakerTestCase):
