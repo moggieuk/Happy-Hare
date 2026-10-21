@@ -123,7 +123,6 @@ class MmuSlicerToolMapCommand(BaseCommand):
             try:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
-                num_tools = mmu.num_gates
                 if n == 1:
                     calc = lambda x, y: volumes[0] * 2
                 elif n == num_slicer_tools:
@@ -135,7 +134,7 @@ class MmuSlicerToolMapCommand(BaseCommand):
                 else:
                     raise gcmd.error(
                         "Incorrect number of values for PURGE_VOLUMES. Expected 1, %d, %d, or %d, got %d"
-                        % (num_tools, num_tools * 2, num_tools ** 2, n)
+                        % (num_slicer_tools, num_slicer_tools * 2, num_slicer_tools ** 2, n)
                     )
 
                 should_calc = lambda x, y: x < num_slicer_tools and y < num_slicer_tools and x != y

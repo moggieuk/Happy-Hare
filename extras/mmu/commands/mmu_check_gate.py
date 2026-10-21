@@ -117,7 +117,7 @@ class MmuCheckGateCommand(BaseCommand):
                                         if 0 <= gate < mmu.num_gates:
                                             gates_tools.append([gate, -1])
                                 except ValueError:
-                                    raise MmuError("Invalid GATES parameter: %s" % tools)
+                                    raise MmuError("Invalid GATES parameter: %s" % gates)
                             elif tools != "!":
                                 # Tools used in print (may be empty list)
                                 try:

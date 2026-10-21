@@ -428,5 +428,19 @@ class TestPreloadWhilePaused(ToolchangeTestCase):
         self.assertEqual(self.hh.mmu.gate_selected, 0)
 
 
+class TestWaitForTemp(ToolchangeTestCase):
+    PRELOAD_GATES = ()
+
+    def test_missing_fan_warning_names_the_user_setting(self):
+        # The stub printer has no [fan]
+        self.hh.printer.harness_macro_effects['_WAIT_FOR_TEMP'] = (
+            lambda macro, gcmd: macro.run_body(gcmd))
+        tip_vars = self.hh.printer.lookup_object('gcode_macro _MMU_FORM_TIP_VARS')
+        tip_vars.variables = dict(tip_vars.variables, toolchange_fan_assist=True, toolchange_temp=200)
+        self.hh.run_gcode('_WAIT_FOR_TEMP')
+        self.assertTrue(any("Ignoring 'variable_toolchange_fan_assist' option" in e.replace('\xa0', ' ')
+                            for e in self.hh.errors), self.hh.errors)
+
+
 if __name__ == '__main__':
     unittest.main()
