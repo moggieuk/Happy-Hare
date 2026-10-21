@@ -1958,7 +1958,7 @@ class MmuController(MmuFilamentMovement):
     def _hotend_off_handler(self, eventtime):
         if not self.is_printing():
             self.log_info("Disabled extruder heater")
-            self.gcode.run_script_from_command("M104 S0")
+            self._set_extruder_temperature(0)
         return self.reactor.NEVER
 
 
@@ -2985,6 +2985,15 @@ class MmuController(MmuFilamentMovement):
         return "ENCODER" if self.mmu_unit().p.gate_homing_endstop == SENSOR_ENCODER else "%s sensor" % self.mmu_unit().p.gate_homing_endstop
 
 
+    def _set_extruder_temperature(self, temp):
+        # M104 only reaches the active extruder, which need not be this unit's (toolchanger/IDEX)
+        extruder_name = self.mmu_unit().extruder_name()
+        if self.toolhead.get_extruder().get_name() == extruder_name:
+            self.gcode.run_script_from_command("M104 S%.1f" % temp)
+        else:
+            self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (extruder_name, temp))
+
+
     def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
         extruder = self.printer.lookup_object(self.mmu_unit().extruder_name())
         current_temp = extruder.get_status(0)['temperature']
@@ -3060,7 +3069,7 @@ class MmuController(MmuFilamentMovement):
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
-            self.gcode.run_script_from_command("M104 S%.1f" % new_target_temp)
+            self._set_extruder_temperature(new_target_temp)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > self.p.extruder_temp_variance:
