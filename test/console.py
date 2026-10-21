@@ -651,9 +651,6 @@ class Console:
         if self.bridge is None:
             return
         self.bridge_error = None
-        responder = printer.lookup_object('respond', None)
-        if responder is not None:
-            responder.host_listener = self.bridge.host_output
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""

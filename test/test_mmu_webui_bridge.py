@@ -81,7 +81,6 @@ class WebUiBridgeTestCase(unittest.TestCase):
         self.hh.boot(calibrate=True)
         self.bridge = WebUiBridge(self.hh, self.hh.run_gcode, port=0).start()
         self.client = WebSocketClient(self.bridge.port)
-        self.hh.printer.lookup_object('respond').host_listener = self.bridge.host_output
 
     def tearDown(self):
         self.client.close()
