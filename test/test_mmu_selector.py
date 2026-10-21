@@ -244,6 +244,14 @@ class TestTestMoveGrip(SelectorTestCase):
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.grip_state(), FILAMENT_DRIVE_STATE)
 
+    def test_grip_is_restored_before_sync_after_an_extruder_only_move(self):
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=5 MOTOR=extruder GRIP=1')
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertEqual(self.grip_state(), FILAMENT_DRIVE_STATE)
+
     def test_without_grip_the_filament_is_released(self):
         self.hh.run_gcode('MMU_TEST_MOVE MOVE=100 GRIP=1')
         self.hh.run_gcode('MMU_TEST_MOVE MOVE=-100')
