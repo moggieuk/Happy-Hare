@@ -600,6 +600,16 @@ class MmuServer:
         return True
 
 
+    async def _cache_missing_spools(self, spool_ids):
+        '''
+        Fetch and cache spools created in Spoolman since the cache was built
+        '''
+        missing = [sid for sid in spool_ids if not self.spool_location.get(sid, (None, None, None))[2]]
+        for spool_info in await asyncio.gather(*[self._fetch_spool_info(sid) for sid in missing]):
+            if spool_info:
+                self._cache_insert_spool(spool_info)
+
+
     async def _unset_spool_gate(self, spool_id, silent=False) -> bool:
         if not await self._check_init_spoolman(): return False
 
@@ -755,6 +765,7 @@ class MmuServer:
                 for sid in updates.keys()
             }
             results = await asyncio.gather(*[task for task,_ in tasks.values()])
+            await self._cache_missing_spools([sid for sid, result in zip(tasks.keys(), results) if result and updates[sid] >= 0])
 
             # Log results and update cache
             for sid, result in zip(tasks.keys(), results):
@@ -861,6 +872,8 @@ class MmuServer:
             }
             tasks[spool_id] = (self._set_spool_gate(spool_id, self.printer_hostname, gate, silent=silent), gate)
             results = await asyncio.gather(*[task for task,_ in tasks.values()])
+            if dict(zip(tasks.keys(), results)).get(spool_id):
+                await self._cache_missing_spools([spool_id])
 
             # Log results and update cache
             updated_gate_ids = {}
