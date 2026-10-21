@@ -56,21 +56,56 @@ class TestDualExtruderHeating(unittest.TestCase):
         self.assertEqual(self.extruder1.get_heater().target_temp, 0)
         self.assertEqual(self.extruder.get_heater().target_temp, 210.)
 
-    def test_hotend_off_targets_the_extruder_paused_on(self):
+    def pause_on_unit0_then_select_unit1(self, paused_temp=210.):
         self.mmu.select_gate(0) # unit0, on the active extruder
-        self.extruder.get_heater().set_temp(210.)
+        self.extruder.get_heater().set_temp(paused_temp)
         self.extruder1.get_heater().set_temp(200.)
         self.hh.printer.lookup_object('print_stats').set_state('printing')
         self.hh.run_gcode('MMU_PRINT_START')
         self.mmu.handle_mmu_error("test pause", force_in_print=True)
         self.assertTrue(self.mmu.is_mmu_paused())
+        self.mmu.select_gate(9)
 
-        self.mmu.select_gate(9) # unit1 selected while the timer is pending
+    def let_hotend_off_timer_expire(self):
         for _ in range(int(self.mmu.p.disable_heater) // 60 + 1): # advance() caps iterations, so slice it
             self.hh.reactor.advance(60.)
 
+    def test_hotend_off_targets_the_extruder_paused_on(self):
+        self.pause_on_unit0_then_select_unit1()
+        self.let_hotend_off_timer_expire()
+
         self.assertEqual(self.extruder.get_heater().target_temp, 0)
         self.assertEqual(self.extruder1.get_heater().target_temp, 200.)
+
+    def test_unlock_restores_the_extruder_paused_on(self):
+        self.pause_on_unit0_then_select_unit1()
+        self.let_hotend_off_timer_expire()
+        mark = len(self.hh.gcode.executed)
+
+        self.hh.run_gcode('MMU_UNLOCK')
+
+        self.assertEqual(self.extruder.get_heater().target_temp, 210.)
+        self.assertEqual(self.extruder1.get_heater().target_temp, 200.)
+        for line in _heater_commands(self.hh.gcode.executed[mark:]):
+            self.assertNotIn('extruder1', line)
+
+    def test_resume_restores_the_extruder_paused_on(self):
+        self.pause_on_unit0_then_select_unit1()
+        self.let_hotend_off_timer_expire()
+
+        self.mmu._continue_after('resume')
+
+        self.assertEqual(self.extruder.get_heater().target_temp, 210.)
+        self.assertEqual(self.extruder1.get_heater().target_temp, 200.)
+
+    def test_paused_temperature_is_not_applied_to_another_units_extruder(self):
+        self.pause_on_unit0_then_select_unit1(paused_temp=245.)
+        self.extruder1.get_heater().set_temp(0.)
+
+        self.mmu._ensure_safe_extruder_temperature()
+
+        self.assertEqual(self.extruder1.get_heater().target_temp, self.mmu.p.default_extruder_temp)
+        self.assertEqual(self.extruder.get_heater().target_temp, 245.)
 
     def test_cold_pull_uses_the_units_extruder(self):
         effects = getattr(self.hh.printer, 'harness_macro_effects', None)

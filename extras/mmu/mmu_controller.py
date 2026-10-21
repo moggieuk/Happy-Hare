@@ -1953,13 +1953,12 @@ class MmuController(MmuFilamentMovement):
 
     def _setup_hotend_off_timer(self):
         self.hotend_off_timer = self.reactor.register_timer(self._hotend_off_handler, self.reactor.NEVER)
-        self.hotend_off_extruder = None
 
 
     def _hotend_off_handler(self, eventtime):
         if not self.is_printing():
             self.log_info("Disabled extruder heater")
-            self._set_extruder_temperature(0, self.hotend_off_extruder)
+            self._set_extruder_temperature(0, self.psm.paused_extruder)
         return self.reactor.NEVER
 
 
@@ -2488,9 +2487,9 @@ class MmuController(MmuFilamentMovement):
                 self.psm.reason_for_pause = reason # Only store reason on first error
                 self.psm.pause_hint = hint
                 self._display_mmu_error(context)
-                self.psm.paused_extruder_temp = self.printer.lookup_object(self.mmu_unit().extruder_name()).heater.target_temp
+                self.psm.paused_extruder = self.mmu_unit().extruder_name()
+                self.psm.paused_extruder_temp = self.printer.lookup_object(self.psm.paused_extruder).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
-                self.hotend_off_extruder = self.mmu_unit().extruder_name()
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
                 self.log_trace("Extruder heater will be disabled in %s" % (self._seconds_to_string(self.p.disable_heater)))
@@ -2997,7 +2996,11 @@ class MmuController(MmuFilamentMovement):
 
 
     def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
-        extruder = self.printer.lookup_object(self.mmu_unit().extruder_name())
+        extruder_name = self.mmu_unit().extruder_name()
+        if source == "pause" and self.psm.paused_extruder:
+            # Restore the extruder that was paused even if another unit has since been selected
+            extruder_name = self.psm.paused_extruder
+        extruder = self.printer.lookup_object(extruder_name)
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         new_target_temp = current_temp
@@ -3023,7 +3026,7 @@ class MmuController(MmuFilamentMovement):
         elif source == "auto": # Normal case
             if self.is_mmu_paused():
                 # In a pause we always want to restore the temp we paused at
-                if self.psm.paused_extruder_temp is not None:
+                if self.psm.paused_extruder_temp is not None and self.psm.paused_extruder in (None, extruder_name):
                     new_target_temp = self.psm.paused_extruder_temp
                     source = "pause"
                 else: # Pause temp should not be None
@@ -3071,7 +3074,7 @@ class MmuController(MmuFilamentMovement):
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
-            self._set_extruder_temperature(new_target_temp)
+            self._set_extruder_temperature(new_target_temp, extruder_name)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > self.p.extruder_temp_variance:
@@ -3079,7 +3082,7 @@ class MmuController(MmuFilamentMovement):
                     self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
                     self.gcode.run_script_from_command(
                         f"TEMPERATURE_WAIT "
-                        f"SENSOR={self.mmu_unit().extruder_name()} "
+                        f"SENSOR={extruder_name} "
                         f"MINIMUM={new_target_temp - self.p.extruder_temp_variance:.1f} "
                         f"MAXIMUM={new_target_temp + self.p.extruder_temp_variance:.1f}"
                     )
