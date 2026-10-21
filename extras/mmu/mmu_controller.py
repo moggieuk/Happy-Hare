@@ -1953,12 +1953,13 @@ class MmuController(MmuFilamentMovement):
 
     def _setup_hotend_off_timer(self):
         self.hotend_off_timer = self.reactor.register_timer(self._hotend_off_handler, self.reactor.NEVER)
+        self.hotend_off_extruder = None
 
 
     def _hotend_off_handler(self, eventtime):
         if not self.is_printing():
             self.log_info("Disabled extruder heater")
-            self._set_extruder_temperature(0)
+            self._set_extruder_temperature(0, self.hotend_off_extruder)
         return self.reactor.NEVER
 
 
@@ -2489,6 +2490,7 @@ class MmuController(MmuFilamentMovement):
                 self._display_mmu_error(context)
                 self.psm.paused_extruder_temp = self.printer.lookup_object(self.mmu_unit().extruder_name()).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
+                self.hotend_off_extruder = self.mmu_unit().extruder_name()
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
                 self.log_trace("Extruder heater will be disabled in %s" % (self._seconds_to_string(self.p.disable_heater)))
@@ -2985,9 +2987,9 @@ class MmuController(MmuFilamentMovement):
         return "ENCODER" if self.mmu_unit().p.gate_homing_endstop == SENSOR_ENCODER else "%s sensor" % self.mmu_unit().p.gate_homing_endstop
 
 
-    def _set_extruder_temperature(self, temp):
+    def _set_extruder_temperature(self, temp, extruder_name=None):
         # M104 only reaches the active extruder, which need not be this unit's (toolchanger/IDEX)
-        extruder_name = self.mmu_unit().extruder_name()
+        extruder_name = extruder_name or self.mmu_unit().extruder_name()
         if self.toolhead.get_extruder().get_name() == extruder_name:
             self.gcode.run_script_from_command("M104 S%.1f" % temp)
         else:
