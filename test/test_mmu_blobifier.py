@@ -214,3 +214,51 @@ class TestParkDescent(BlobifierSessionMixin, unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestPurgeTemperature(BlobifierSessionMixin, unittest.TestCase):
+    """BLOBIFIER and _BLOBIFIER_RESTORE_TEMP run for real; M104/M109 drive the fake heater"""
+
+    PROFILE = _installed('boxturtle_blobifier_purge_temp')
+
+    def setUp(self):
+        super().setUp()
+        run = lambda macro, gcmd: macro.run_body(gcmd)
+        self.hh.printer.harness_macro_effects.update(
+            {'BLOBIFIER': run, '_BLOBIFIER_RESTORE_TEMP': run})
+        fan = type('Fan', (), {'get_status': lambda self, eventtime=None: {'speed': 0.}})()
+        self.hh.printer.add_object('fan', fan)
+        self.hh.printer.lookup_object('configfile').status_raw_config = {
+            'extruder': {'filament_diameter': '1.75'}}
+        self.heater = self.hh.printer.lookup_object('extruder').heater
+        gcode = self.hh.printer.lookup_object('gcode')
+        gcode.register_command('M104', self._m104)
+        gcode.register_command('M109', self._m109)
+        self.bl = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS')
+        self.purge_temp = self.bl.variables['purge_temp_min']
+        self.waits = []
+        self.hh.run_gcode("G28\nG90\nG1 X150 Y150 Z20")
+
+    def _m104(self, gcmd):
+        self.heater.target_temp = gcmd.get_float('S', 0.)
+
+    def _m109(self, gcmd):
+        self.waits.append(gcmd.get_float('S', 0.))
+        self._m104(gcmd)
+        self.heater.smoothed_temp = self.heater.target_temp
+
+    def purge(self, temp):
+        self.heater.target_temp = self.heater.smoothed_temp = temp
+        self.hh.run_gcode("BLOBIFIER PURGE_LENGTH=20")
+        return self.heater.target_temp
+
+    def test_restores_target_after_raising_for_purge(self):
+        self.assertEqual(self.purge(self.purge_temp - 10), self.purge_temp - 10)
+        self.assertEqual(self.waits, [self.purge_temp])
+
+    def test_leaves_hotter_target_alone(self):
+        self.assertEqual(self.purge(self.purge_temp + 10), self.purge_temp + 10)
+
+    def test_does_not_override_target_set_during_purge(self):
+        self.bl.variables = dict(self.bl.variables, clean_macro='M104 S%d' % (self.purge_temp + 30))
+        self.assertEqual(self.purge(self.purge_temp - 10), self.purge_temp + 30)
