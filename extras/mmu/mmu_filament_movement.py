@@ -2357,7 +2357,7 @@ class MmuFilamentMovement:
                     if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
                         # Use proportional sync-feedback buffer movement to validate success
                         if not self._validate_extruder_unload_proportional():
-                            self._unload_validation_failed(
+                            self._unload_test_failed(
                                 "Proportional unload validation suggests the extruder is still gripping the filament",
                                 hint=f"Free filament from {self.gate_name()} stuck in the extruder (check the tip or cut), " + HINT_RELOAD,
                                 warned=True
@@ -2374,7 +2374,7 @@ class MmuFilamentMovement:
                         elif synced and delta > length * (u.p.toolhead_move_error_tolerance / 100.):
                             msg = "sufficient"
                         if msg:
-                            self._unload_validation_failed(
+                            self._unload_test_failed(
                                 f"Encoder not sensing {msg} movement during final extruder retraction move\n"
                                 "Concluding filament either stuck in the extruder, tip forming erroneously completely "
                                 "ejected filament or filament was not fully loaded",
@@ -2397,16 +2397,16 @@ class MmuFilamentMovement:
             return synced, overshoot, entry_datum_established
 
 
-    def _unload_validation_failed(self, msg, hint=None, warned=False):
+    def _unload_test_failed(self, msg, hint=None, warned=False):
         """
-        Act on a failed extruder unload validation according to 'toolhead_unload_validation'
+        Act on a failed extruder unload test according to 'toolhead_unload_test'
 
         Args:
             msg: Description of the failure.
             hint: Recovery hint attached to the error when pausing.
             warned: Whether the validation already logged its own warning.
         """
-        if self.mmu_unit().p.toolhead_unload_validation == UNLOAD_VALIDATION_PAUSE:
+        if self.mmu_unit().p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_PAUSE:
             raise MmuError(msg, hint=hint)
         if not warned:
             self.log_warning(f"Warning: {msg}\nWill attempt to continue...")
@@ -2445,7 +2445,7 @@ class MmuFilamentMovement:
             f"Unload homing took {actual:.1f}mm to clear {sensor} sensor (expected {expected:.1f}mm, "
             f"overrun {overrun:.1f}mm, threshold {threshold:.1f}mm)"
         )
-        if u.p.toolhead_unload_validation == UNLOAD_VALIDATION_DEFAULT or overrun <= threshold:
+        if u.p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_DEFAULT or overrun <= threshold:
             return
 
         cause = (
@@ -2453,7 +2453,7 @@ class MmuFilamentMovement:
             if cut_fragment > 0 else
             "The extruder may have slipped during tip forming"
         )
-        self._unload_validation_failed(
+        self._unload_test_failed(
             f"Filament took {actual:.1f}mm to clear the {sensor} sensor, expected about {expected:.1f}mm. {cause}",
             hint=("Check the cutter and for lost toolhead steps, " if cut_fragment > 0 else
                   "Check the toolhead dimensions and tip forming, ") + HINT_RELOAD

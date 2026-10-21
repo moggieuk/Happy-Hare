@@ -364,16 +364,4 @@ menu "Endstops and Bowden movement"
       Extra movement (mm) added to the extruder unload movement to ensure filament is free of the extruder.
       This provides tolerance for slightly incorrect configuration or extruder slippage.
 
-  config PARAM_TOOLHEAD_UNLOAD_VALIDATION
-    int
-    prompt "Unload validation           " if MULTI_UNIT
-    range 0 2
-    default 0
-    help
-      0 = existing warnings only, 1 = also validate the extruder unload and warn, 2 = pause instead.
-      With a toolhead or extruder sensor the distance taken to clear it is checked against the tip park
-      position. That can catch a missed cut if the cut fragment (blade_pos - retract_length) is big enough.
-      Without one the encoder or sync-feedback buffer checks the filament left the extruder.
-      Try 1 first and check the debug log before using 2.
-
 endmenu

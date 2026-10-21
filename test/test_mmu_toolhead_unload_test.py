@@ -1,9 +1,9 @@
-# Happy Hare test harness - toolhead_unload_validation.
+# Happy Hare test harness - toolhead_unload_test.
 #
 # With a toolhead or extruder entry sensor the reverse-homing distance of the extruder unload is
 # compared with the distance expected from the tip forming/cutting park position. A missed cut
 # leaves the filament longer by the cut fragment, so it takes that much further to clear the
-# sensor. Without such a sensor the existing encoder (or sync-feedback buffer) validation is
+# sensor. Without such a sensor the existing encoder (or sync-feedback buffer) check is
 # used, and the same parameter decides whether a failure warns or pauses.
 #
 # GEOMETRY. 3ms homes off the extruder entry sensor and its layout matches its toolhead
@@ -15,7 +15,7 @@
 # (unless the cut is "missed") the filament end is moved back by that fragment without moving
 # the extruder - which is what the blade does.
 #
-#   ./venv/bin/python -m unittest test.test_mmu_unload_validation
+#   ./venv/bin/python -m unittest test.test_mmu_toolhead_unload_test
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -34,7 +34,7 @@ TIP_AT_GATE = -40.0
 FRAGMENT = 10.0
 
 
-class UnloadValidationTestCase(unittest.TestCase):
+class UnloadTestCase(unittest.TestCase):
     PROFILE = '3ms'
     DISABLE_SENSORS = ()
 
@@ -70,7 +70,7 @@ class UnloadValidationTestCase(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def set_level(self, level):
-        self.unit.p.toolhead_unload_validation = level
+        self.unit.p.toolhead_unload_test = level
 
     def tip_effect(self, fragment=0., missed=False, slip=0.):
         """
@@ -101,11 +101,11 @@ class UnloadValidationTestCase(unittest.TestCase):
     def unload(self):
         self.hh.run_gcode('MMU_UNLOAD')
 
-    def validation_warnings(self):
+    def unload_warnings(self):
         return [w for w in self.warnings if 'to clear the' in w]
 
 
-class TestExtruderEntrySensor(UnloadValidationTestCase):
+class TestExtruderEntrySensor(UnloadTestCase):
 
     def test_good_cut_passes(self):
         self.set_level(2)
@@ -121,7 +121,7 @@ class TestExtruderEntrySensor(UnloadValidationTestCase):
         self.unload()
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
-        warnings = self.validation_warnings()
+        warnings = self.unload_warnings()
         self.assertEqual(len(warnings), 1)
         self.assertIn('extruder entry sensor', warnings[0])
         self.assertIn('may not have been cut', warnings[0])
@@ -137,7 +137,7 @@ class TestExtruderEntrySensor(UnloadValidationTestCase):
         self.tip_effect(FRAGMENT, missed=True)
         self.unload()
         self.assertEqual(self.hh.errors, [])
-        self.assertEqual(self.validation_warnings(), [])
+        self.assertEqual(self.unload_warnings(), [])
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
 
     def test_fragment_too_small_to_resolve_is_not_checked(self):
@@ -151,7 +151,7 @@ class TestExtruderEntrySensor(UnloadValidationTestCase):
         self.set_level(1)
         self.tip_effect(slip=self.unit.p.toolhead_unload_safety_margin + 5.)
         self.unload()
-        warnings = self.validation_warnings()
+        warnings = self.unload_warnings()
         self.assertEqual(len(warnings), 1)
         self.assertIn('slipped during tip forming', warnings[0])
 
@@ -168,7 +168,7 @@ class TestExtruderEntrySensor(UnloadValidationTestCase):
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
 
 
-class TestToolheadSensor(UnloadValidationTestCase):
+class TestToolheadSensor(UnloadTestCase):
     PROFILE = 'ercf_vvd'
     DISABLE_SENSORS = ('extruder',)
 
@@ -184,7 +184,7 @@ class TestToolheadSensor(UnloadValidationTestCase):
         self.tip_effect(FRAGMENT, missed=True)
         self.unload()
         self.assertEqual(self.hh.errors, [])
-        warnings = self.validation_warnings()
+        warnings = self.unload_warnings()
         self.assertEqual(len(warnings), 1)
         self.assertIn('toolhead sensor', warnings[0])
 
@@ -196,7 +196,7 @@ class TestToolheadSensor(UnloadValidationTestCase):
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_HOMED_TS)
 
 
-class TestEncoderValidation(UnloadValidationTestCase):
+class TestEncoderCheck(UnloadTestCase):
     """Without toolhead sensors the parameter decides what the existing encoder check does."""
     PROFILE = 'ercf_vvd'
     DISABLE_SENSORS = ('extruder', 'toolhead')
@@ -230,13 +230,13 @@ class TestEncoderValidation(UnloadValidationTestCase):
         self.assertTrue(any('Encoder not sensing any movement' in e for e in self.hh.errors), self.hh.errors)
 
 
-class TestThreshold(UnloadValidationTestCase):
+class TestThreshold(UnloadTestCase):
     """The threshold rules, driven directly."""
 
     def check(self, actual, expected, cut_fragment, buffer_slack=0.):
         self.set_level(1)
         self.hh.mmu._check_unload_homing_distance('toolhead', actual, expected, cut_fragment, buffer_slack)
-        return self.validation_warnings()
+        return self.unload_warnings()
 
     def test_cut_fires_past_half_the_fragment(self):
         self.assertEqual(self.check(34.9, 30., 10.), [])
