@@ -35,6 +35,7 @@ class MmuPrintStateMachine:
     def reinit(self):
         self.last_print_stats = None
         self.paused_extruder_temp = None
+        self.paused_extruder = None
         self.reason_for_pause = None
         self.pause_hint = None
         self.print_state = "ready"
