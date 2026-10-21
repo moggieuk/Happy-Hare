@@ -1,6 +1,6 @@
-# toolhead_unload_test is a [mmu_unit_parameters] option prompted beside
-# toolhead_entry_tension_test in the per-unit "MMU/Extruder sync" menu: on a single unit, on
-# each unit of a multi-unit setup, and never at the multi-unit entry point.
+# toolhead_unload_test is a printer-level [mmu_parameters] option prompted on the shared
+# "Tip Forming / Cutting" page: on a single unit and at the multi-unit entry point, but never in
+# a unit's own parse, and it renders once into mmu.cfg rather than into each unit's file.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -25,33 +25,32 @@ def _prompt_files(env, profile, label):
 
 class TestUnloadTestPrompt(unittest.TestCase):
 
-    def test_single_unit_shows_it_beside_the_entry_tension_test(self):
+    def test_single_unit_shows_it_on_the_tip_forming_page(self):
         kc, files = _prompt_files(cfg._SINGLE_UNIT_ENV, 'tradrack', 'unload_test_single')
-        self.assertEqual(files, ['Kconfig.motor_sync'])
+        self.assertEqual(files, ['Kconfig.tip_shaping'])
         self.assertEqual(kc.syms[SYM].str_value, '0')
 
-    def test_each_unit_of_a_multi_unit_setup_shows_it(self):
-        self.assertEqual(_prompt_files(UNIT_ENV, 'tradrack', 'unload_test_unit')[1],
-                         ['Kconfig.motor_sync'])
+    def test_multi_unit_entry_point_shows_it(self):
+        self.assertEqual(_prompt_files(ENTRY_POINT_ENV, 'tradrack', 'unload_test_entry')[1],
+                         ['Kconfig.tip_shaping'])
 
-    def test_multi_unit_entry_point_does_not(self):
-        self.assertEqual(_prompt_files(ENTRY_POINT_ENV, 'tradrack', 'unload_test_entry')[1], [])
+    def test_each_unit_of_a_multi_unit_setup_does_not(self):
+        self.assertEqual(_prompt_files(UNIT_ENV, 'tradrack', 'unload_test_unit')[1], [])
 
 
 class TestUnloadTestRender(unittest.TestCase):
 
-    def test_a_unit_value_reaches_that_units_parameters(self):
+    def test_the_value_renders_once_for_the_printer(self):
         profile = copy.deepcopy(profiles.get('ercf_vvd'))
         profile.name = 'ercf_vvd_unload_test'
-        profile.units[1].syms[SYM] = 2
+        profile.syms[SYM] = 2
         out = cfg.render_via_files(profile)
         levels = {}
         for path, text in out.items():
             for line in text.splitlines():
                 if line.startswith('toolhead_unload_test'):
                     levels[path] = line.split(':', 1)[1].split('#')[0].strip()
-        self.assertEqual(levels, {'config/base/mmu_parameters_unit0.cfg': '0',
-                                  'config/base/mmu_parameters_unit1.cfg': '2'})
+        self.assertEqual(levels, {'config/base/mmu.cfg': '2'})
 
 
 if __name__ == '__main__':

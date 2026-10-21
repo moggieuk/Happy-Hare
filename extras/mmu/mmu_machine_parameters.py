@@ -54,6 +54,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('gcode_unload_sequence',         'int',       0, section="PRINTER", hidden=True),
         ParamSpec('force_form_tip_standalone',     'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('slicer_tip_park_pos',           'float',   0.0, section="PRINTER", limits=dict(minval=0.0), guard=lambda self: not self.force_form_tip_standalone),
+        ParamSpec('toolhead_unload_test',          'int',       0, section="PRINTER", limits=dict(minval=0, maxval=2), fmt="%d"),
         ParamSpec('force_purge_standalone',        'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('strict_filament_recovery',      'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('filament_recovery_on_pause',    'int',       1, section="PRINTER", limits=dict(minval=0, maxval=1)),

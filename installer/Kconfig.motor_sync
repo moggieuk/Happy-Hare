@@ -9,7 +9,6 @@
 #   PARAM_SYNC_GEAR_CURRENT
 #   PARAM_TOOLHEAD_POST_LOAD_TENSION_ADJUST
 #   PARAM_TOOLHEAD_ENTRY_TENSION_TEST
-#   PARAM_TOOLHEAD_UNLOAD_TEST
 
 menu "MMU/Extruder sync"
   help
@@ -75,16 +74,5 @@ menu "MMU/Extruder sync"
       If sync-feedback compression sensor is available this test will ensure the filament passes the
       extruder entry by checking for neutral tension when moving filament with just the extruder.
       Recommended with sprung loaded sync-feedback buffers. This is ignored if toolhead sensor is available.
-
-  config PARAM_TOOLHEAD_UNLOAD_TEST
-    int "Test extruder unload (0-2)       "
-    range 0 2
-    default 0
-    help
-      0 = existing warnings only, 1 = also test the extruder unload and warn, 2 = pause instead.
-      With a toolhead or extruder sensor the distance taken to clear it is checked against the tip park
-      position. That can catch a missed cut if the cut fragment (blade_pos - retract_length) is big enough.
-      Without one the encoder or sync-feedback buffer checks the filament left the extruder.
-      Try 1 first and check the debug log before using 2.
 
 endmenu

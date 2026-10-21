@@ -2406,7 +2406,7 @@ class MmuFilamentMovement:
             hint: Recovery hint attached to the error when pausing.
             warned: Whether the validation already logged its own warning.
         """
-        if self.mmu_unit().p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_PAUSE:
+        if self.p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_PAUSE:
             raise MmuError(msg, hint=hint)
         if not warned:
             self.log_warning(f"Warning: {msg}\nWill attempt to continue...")
@@ -2445,7 +2445,7 @@ class MmuFilamentMovement:
             f"Unload homing took {actual:.1f}mm to clear {sensor} sensor (expected {expected:.1f}mm, "
             f"overrun {overrun:.1f}mm, threshold {threshold:.1f}mm)"
         )
-        if u.p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_DEFAULT or overrun <= threshold:
+        if self.p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_DEFAULT or overrun <= threshold:
             return
 
         cause = (

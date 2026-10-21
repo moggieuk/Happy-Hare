@@ -366,7 +366,6 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('toolhead_unload_safety_margin',    'float',  10.0, section="EXTRUDER MOVE", limits=dict(minval=0.0)),
         ParamSpec('toolhead_move_error_tolerance',    'int',      80, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
         ParamSpec('toolhead_entry_tension_test',      'int',       1, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
-        ParamSpec('toolhead_unload_test',             'int',       0, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=2), fmt="%d"),
         ParamSpec('toolhead_post_load_tighten',       'int',      60, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
         ParamSpec('toolhead_post_load_tension_adjust','int',       1, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
 

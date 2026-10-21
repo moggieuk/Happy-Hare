@@ -70,7 +70,7 @@ class UnloadTestCase(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def set_level(self, level):
-        self.unit.p.toolhead_unload_test = level
+        self.hh.mmu.p.toolhead_unload_test = level
 
     def tip_effect(self, fragment=0., missed=False, slip=0.):
         """
