@@ -232,8 +232,9 @@ class TestPurgeTemperature(BlobifierSessionMixin, unittest.TestCase):
             'extruder': {'filament_diameter': '1.75'}}
         self.heater = self.hh.printer.lookup_object('extruder').heater
         gcode = self.hh.printer.lookup_object('gcode')
-        gcode.register_command('M104', self._m104)
-        gcode.register_command('M109', self._m109)
+        for cmd, handler in (('M104', self._m104), ('M109', self._m109)):
+            gcode.register_command(cmd, None) # replace the harness's own handler to record waits
+            gcode.register_command(cmd, handler)
         self.bl = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS')
         self.purge_temp = self.bl.variables['purge_temp_min']
         self.waits = []
