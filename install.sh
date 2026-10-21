@@ -42,7 +42,7 @@ usage() {
     SPACE=$(echo "${USAGE}" | tr "[:print:]" " ")
     echo "${C_INFO}"
     echo "${USAGE} [-i] [-u] [-d] [-y] [-l] [-p] [-z] [-s] [-t] [-r]"
-    echo "${SPACE} [-b <branch>]"
+    echo "${SPACE} [-b <branch>] [-g <gates>]"
     echo "${SPACE} [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
     echo "${SPACE} [-a <kiauh_alternate_klipper>] [config_file]"
     echo "${C_OFF}"
@@ -68,6 +68,7 @@ usage() {
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
     echo "  -r allow running ${SCRIPT_NAME} from a root login (not through sudo)"
     echo "  -e, --emu Enables multi MCU support (e.g. for EMU design)"
+    echo "  -g <gates> most gates one MMU unit can configure (default 12, sticky; more is slower)"
     echo "  -o override compatibility checks (e.g. unknown MIPS layout)"
     echo "  -t  activate test mode - write config to /tmp/mmu_test instead of your real install"
     echo "  (-q verbose make for debugging)"
@@ -248,6 +249,20 @@ prepare_refresh() {
 
 # The name a single unit has before menuconfig (unit0 when there is no config
 # yet), or nothing for multi-unit
+# The per-unit gate limit (-g) config file $1 was saved with, if any
+saved_max_gates() {
+    (
+        unset CONFIG_MAX_GATES
+        [ -r "$1" ] && . "$1"
+        echo "${CONFIG_MAX_GATES:-}"
+    )
+}
+
+# True if -g asks for a different gate limit than config file $1 was saved with
+max_gates_changed() {
+    [ -n "${F_MAX_GATES:-}" ] && [ "$(saved_max_gates "$1")" != "${F_MAX_GATES}" ]
+}
+
 single_unit_name() {
     (
         unset CONFIG_MULTI_UNIT CONFIG_UNIT_NAME
@@ -712,7 +727,7 @@ for arg in "$@"; do
     esac
 done
 
-while getopts "rehfiudylpzsb:nk:c:m:a:toqv" arg; do
+while getopts "rehfiudylpzsb:nk:c:m:a:g:toqv" arg; do
     case $arg in
     f)
         FIX_LINKS=y
@@ -743,6 +758,7 @@ while getopts "rehfiudylpzsb:nk:c:m:a:toqv" arg; do
     q) export Q= ;;   # Developer: Disable quiet mode in Makefile
     v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
     e) export F_PER_GATE_MCU=y ;; # Allows multiple MCU selection but menuconfig startup time is increased
+    g) export F_MAX_GATES="${OPTARG}" ;;
     h) usage ;;
     *) usage ;;
     esac
@@ -752,6 +768,13 @@ done
 # sudo/root invocation needs to fail before either one runs.
 detect_platform
 enforce_root_policy
+
+case "${F_MAX_GATES:-1}" in
+    *[!0-9]* | 0*)
+        echo "${C_ERROR}-g needs a number of gates, not '${F_MAX_GATES}'${C_OFF}"
+        exit 1
+        ;;
+esac
 
 if [ "${F_RECOVER_LAST}" ] && [ "${F_RECOVER_PREVIOUS}" ]; then
     echo "${C_ERROR}Can't use --last and --prev at the same time!${C_OFF}"
@@ -1004,6 +1027,12 @@ if [ -r "${KCONFIG_CONFIG}" ] && grep -q '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCO
     export F_PER_GATE_MCU=y
 fi
 
+# Likewise keep the gate limit an earlier -g saved, for every unit's parse
+if [ -z "${F_MAX_GATES:-}" ]; then
+    F_MAX_GATES=$(saved_max_gates "${KCONFIG_CONFIG}")
+    [ -n "${F_MAX_GATES}" ] && export F_MAX_GATES
+fi
+
 # Decide whether interactive configuration is required.
 if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${F_MENUCONFIG:-}" ]; then
     echo "${C_INFO}No '${KCONFIG_CONFIG}' found, forcing interactive menu${C_OFF}"
@@ -1147,7 +1176,7 @@ run_kconfig_one() {
             "$@" \
             kconfig_needs_update)
 
-        [ "${needs}" = "y" ] || return 0
+        [ "${needs}" = "y" ] || max_gates_changed "${cfg}" || return 0
         echo "${C_INFO}Updating Kconfig defaults in '${cfg}'${C_OFF}"
     fi
 

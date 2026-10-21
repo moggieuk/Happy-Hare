@@ -222,7 +222,8 @@ per `VAR_SECTION_MAP` in `installer/build.py` (`variable_<name>` options),
 not into hardware files.
 
 **Naming trap — array grouping.** `KConfig.as_dict()` collapses any symbol
-matching `^(.+_)(\d+)$` with index ≤ 12 into a **list** in the render dict
+matching `^(.+_)(\d+)$` with index ≤ `max_gate` (the root `installer/Kconfig`'s
+last gate index; item 10 below) into a **list** in the render dict
 keyed by the prefix *including its trailing underscore*
 (`PIN_EJECT_BUTTON_0..11` → `PIN_EJECT_BUTTON_: [..]`, used in templates as
 `(PIN_EJECT_BUTTON_|d)[i]`); the individual `FOO_<n>` keys are then absent.
@@ -235,8 +236,8 @@ which is exactly what keeps version-numbered names like
   them rendered as one indexed list.
 - A non-choice symbol whose name ends in a small integer is only safe if no
   sibling with the same prefix exists.
-- The `> 12` index guard is a warning, not an error — `FOO_13` passes through
-  verbatim.
+- The `> max_gate` index guard is a warning, not an error — `FOO_12` passes
+  through verbatim under the default limit.
 
 ## Tree layout
 
@@ -301,8 +302,9 @@ limit for every prompted pin.
 3. **Wire it into the menu**: `source` it from `installer/Kconfig` (or a
    parent Kconfig file) at the right position. Use `menu "..."` with `help`
    for grouping, `comment "_"` / `comment "_Heading"` for separators,
-   `if !UNSELECT_X` for disable-able features, `@repeat` for per-gate
-   expansions (count = nodes per parse — pitfall 10), `prompt "..." if PARAM_NUM_GATES > $(i)`
+   `if !UNSELECT_X` for disable-able features, `@repeat ... max=$(max_gate)@`
+   for per-gate expansions (count = nodes per parse — pitfall 10; never a
+   literal gate count), `prompt "..." if PARAM_NUM_GATES > $(i)`
    to hide surplus
    gates.
 4. **Land it in a .cfg** (if it should): update the Jinja template(s) under
@@ -496,12 +498,17 @@ in this repo:
    (a re-declaration merges; a new index is a new list element).
 10. **`@repeat`'s cost is the count, not the macro.** Each expanded line
    becomes real symbol nodes on *every* `Kconfig()` construction (multi-
-   unit pays it per unit), so a `min=0 max=11` block costs 12× the body's
-   node count per parse — but writing the 12 copies out by hand costs
+   unit pays it per unit), so a `min=0 max=$(max_gate)` block costs 12× the
+   body's node count per parse — but writing the 12 copies out by hand costs
    exactly the same, so don't unroll for speed. Keep counts to what is
    needed and prefer `@repeat` over hand copies. A count used in more than
    one place belongs in a preprocessor variable (`max=$(var)`), which
    Python can read from `kconf.variables` instead of keeping a copy.
+   The per-gate count is `max_gates` in the root `installer/Kconfig`
+   (`max_gate` is its last index): 12 unless `./install.sh -g N` raises it,
+   which exports `F_MAX_GATES` and is saved as `MAX_GATES` so later runs keep
+   it (install.sh reads it back; Kconfig falls back to the saved value for a
+   bare `make menuconfig`). A raised limit costs every parse.
 
 ## Quick reference
 

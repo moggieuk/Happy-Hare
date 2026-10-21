@@ -90,7 +90,8 @@ class TestGateCountPrompt(unittest.TestCase):
             if getattr(profile, 'units', None) or getattr(profile, 'install_dir', False):
                 continue
             with self.subTest(profile=name):
-                kc = _kconfig(cfg._SINGLE_UNIT_ENV, 'num_gates_' + name, name)
+                kc = _kconfig(dict(cfg._SINGLE_UNIT_ENV, **cfg.profile_env(profile)),
+                              'num_gates_' + name, name)
                 menus = [node.parent.prompt[0] for node in kc.syms['PARAM_NUM_GATES'].nodes
                          if node.prompt and kconfiglib.expr_value(node.prompt[1])
                          and node.parent.item is kconfiglib.MENU]

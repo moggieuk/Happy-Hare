@@ -473,6 +473,14 @@ class TestHardwareConfigurationWarnings(unittest.TestCase):
             'configured_per_gate_environment_names', profiles.get('emu').syms
         ).is_enabled('W14'))
 
+    def test_a_per_gate_environment_sensor_above_gate_11_is_seen(self):
+        syms = dict(profiles.get('emu').syms, PARAM_NUM_GATES=profiles.MAX_GATES)
+        syms.update({'PARAM_ENVIRONMENT_SENSOR_GATE_%d' % gate: False
+                     for gate in range(profiles.MAX_GATES - 1)})
+        with cfg._env(dict(cfg._SINGLE_UNIT_ENV, F_MAX_GATES=str(profiles.MAX_GATES))):
+            kc = cfg._kconfig('last_gate_environment_name', syms)
+        self.assertFalse(kc.is_enabled('W14'))
+
 
 class TestCustomHardwareCapabilities(unittest.TestCase):
 

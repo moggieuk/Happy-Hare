@@ -184,7 +184,7 @@ if MMU_HAS_ESPOOLER
     comment "_"
     comment "_eSpooler pins"
 
-    @repeat var=i min=0 max=11@
+    @repeat var=i min=0 max=$(max_gate)@
       if PARAM_NUM_GATES > $(i)
         comment "_" if $(i) > 0
         config PIN_ESPOOLER_EN_$(i)
