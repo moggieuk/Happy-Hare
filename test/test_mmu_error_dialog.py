@@ -278,6 +278,23 @@ class TestDialogLifecycle(ErrorDialogTestCase):
         self.assertEqual(self.prompts_since(mark), [])
         self.assertEqual(self.mmu.psm.reason_for_pause, 'First problem')
 
+    def test_error_after_the_ui_closes_the_dialog_shows_it_again(self):
+        # Mainsail, Fluidd and KlipperScreen all close a prompt (the X) by sending this
+        self.start_print()
+        self.mmu.handle_mmu_error('First problem')
+        self.gcode('RESPOND TYPE=command MSG="action:prompt_end"')
+        self.assertFalse(self.mmu.error_dialog.active)
+        mark = self.mark()
+        self.mmu.handle_mmu_error('Second problem')
+        texts = self.texts(self.last_dialog(self.prompts_since(mark)))
+        self.assertEqual(texts[:2], ['Print is still paused', 'Second problem'])
+
+    def test_another_prompt_replacing_ours_counts_as_closed(self):
+        self.start_print()
+        self.mmu.handle_mmu_error('First problem')
+        self.gcode('RESPOND TYPE=command MSG="action:prompt_begin My own prompt"')
+        self.assertFalse(self.mmu.error_dialog.active)
+
     def test_successful_resume_closes_the_dialog(self):
         self.start_print()
         self.mmu.handle_mmu_error('Something happened')

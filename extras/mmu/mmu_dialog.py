@@ -51,6 +51,13 @@ class MmuDialog:
     def __init__(self, gcode):
         self.gcode = gcode
         self.active = False
+        gcode.register_output_handler(self._on_output)
+
+    def _on_output(self, msg):
+        # A UI's close (X) button sends 'RESPOND TYPE=command MSG=action:prompt_end', and any other
+        # prompt_begin replaces ours. show() sets active again after sending its own prompt_begin
+        if msg.startswith(("// action:prompt_end", "// action:prompt_begin")):
+            self.active = False
 
     def _send(self, action):
         self.gcode.respond_raw("// action:prompt_%s" % action)
