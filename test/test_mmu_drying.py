@@ -286,6 +286,64 @@ class TestDryingRotationWhilePrinting(unittest.TestCase):
         self.assertGreater(len(self._moves(1, before)), 0)
 
 
+class TestDryingRotationOnKalico(unittest.TestCase):
+    """Kalico releases up to v2026.10.00 have no motion_queuing, so rotation is skipped in a print."""
+
+    SESSION_KWARGS = {'kalico': True}
+
+    def setUp(self):
+        self.hh = session('qidi', **self.SESSION_KWARGS)
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.manager = self.unit.environment_manager
+        for gate in (1, 2):
+            self.hh.run_gcode('MMU_GATE_MAP GATE=%d AVAILABLE=0 QUIET=1' % gate)
+
+    def _gear(self, gate):
+        return self.unit.drive_obj(gate).mmu_gear_stepper
+
+    def _dry_and_rotate(self):
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 ROTATE=1 ROTATE_INTERVAL=1 TEMP=45 TIMER=60')
+        self.hh.reactor.advance(3 * ENV_CHECK_INTERVAL + 20)
+        return '\n'.join(self.hh.console[at:])
+
+    def test_background_moves_are_not_available(self):
+        self.assertFalse(self._gear(1).can_background_move())
+        self.assertFalse(self.manager.can_rotate_while_printing())
+
+    def test_drying_continues_without_rotation_while_printing(self):
+        self.unit.p.heater_rotate_in_print = 1
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        moves = len(self._gear(1).manual_trapq.moves)
+        output = self._dry_and_rotate()
+        self.assertTrue(self.manager.is_drying())
+        self.assertEqual(len(self._gear(1).manual_trapq.moves), moves)
+        self.assertIn('needs a gear per gate and a recent Klipper', output)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_outside_a_print_rotation_is_unchanged(self):
+        moves = len(self._gear(1).manual_trapq.moves)
+        output = self._dry_and_rotate()
+        self.assertIn('Rotating spools in gates: 0,1,2,3...', output)
+        self.assertGreater(len(self._gear(1).manual_trapq.moves), moves)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_shared_heater_limit_applies(self):
+        heater = self.hh.printer.lookup_object('heaters').heaters[self.unit.filament_heater.split()[-1]]
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 MATERIAL=PLA AVAILABLE=1 QUIET=1')
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 TEMP=60 TIMER=60')
+        self.assertEqual(heater.target_temp, 45.)
+
+
+class TestDryingRotationOnOldKlipper(TestDryingRotationOnKalico):
+    """Klipper before motion_queuing uses the same emulator."""
+
+    SESSION_KWARGS = {'old_klipper': True}
+
+
 class TestDryingEnclosureLimit(unittest.TestCase):
     """The QIDI Box has one heater, so every spool in it is heated, selected for drying or not."""
 
