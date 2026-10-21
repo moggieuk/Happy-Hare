@@ -51,7 +51,7 @@ menu "Gear stepper"
   # Stallguard is not inherited by mmu_unit, so every gear's value is written and an
   # untouched one must equal gear 0's. Declared outside the 'if' blocks below, which
   # would otherwise also gate the default
-  @repeat var=i min=1 max=11@
+  @repeat var=i min=1 max=$(max_gate)@
     config PARAM_GEAR_STALLGUARD_THRESHOLD_$(i)
       int
       default PARAM_GEAR_STALLGUARD_THRESHOLD
@@ -64,7 +64,7 @@ menu "Gear stepper"
         Enable a gear here to give it different values. Leave a field
         empty to keep inheriting it.
 
-      @repeat var=i min=1 max=11@
+      @repeat var=i min=1 max=$(max_gate)@
         if PARAM_NUM_GATES > $(i)
           menuconfig BOOL_GEAR_OVERRIDE_$(i)
             bool "Gear $(i) overrides"

@@ -776,6 +776,30 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("refresh/=y", result.stdout)
         self.assertIn("/=y", result.stdout.splitlines()[-1])
 
+    def test_max_gates_below_the_default_is_refused(self):
+        values = ("", "abc", "0", "1", "4", "11", "012", "-12", "12", "16", "24")
+        result = self.run_shell("\n".join(
+            'valid_max_gates {v} && echo "OK=[{l}]" || echo "NO=[{l}]"'.format(v=shlex.quote(v), l=v)
+            for v in values))
+        self.assertEqual([line for line in result.stdout.split() if line.startswith("OK=")],
+                         ["OK=[12]", "OK=[16]", "OK=[24]"])
+
+    def test_max_gates_is_read_back_and_compared(self):
+        saved = shlex.quote(str(self.write(self.root / ".mmu_config", "CONFIG_MAX_GATES=24\n")))
+        unsaved = shlex.quote(str(self.write(self.root / ".mmu_config_old", "CONFIG_SENTINEL=y\n")))
+        result = self.run_shell("\n".join((
+            "unset F_MAX_GATES",
+            'echo "SAVED=[$(saved_max_gates {s})] [$(saved_max_gates {u})]"',
+            "max_gates_changed {s} && echo unset-changed",
+            "F_MAX_GATES=24; max_gates_changed {s} || echo same",
+            "F_MAX_GATES=16; max_gates_changed {s} && echo lowered",
+            "max_gates_changed {u} && echo unsaved",
+        )).format(s=saved, u=unsaved))
+        self.assertIn("SAVED=[24] []", result.stdout)
+        self.assertNotIn("unset-changed", result.stdout)
+        for line in ("same", "lowered", "unsaved"):
+            self.assertIn(line, result.stdout.split())
+
     def test_single_unit_name(self):
         cases = {
             "no config": (None, "unit0"),

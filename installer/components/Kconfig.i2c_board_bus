@@ -42,7 +42,7 @@ endchoice
 config PARAM_NFC_READER_I2C_BUS
   default "$(i2c_bus)" if CHOICE_NFC_READER_I2C_BUS_$(i2c_tag)
 
-@repeat var=gate min=0 max=11@
+@repeat var=gate min=0 max=$(max_gate)@
 if PARAM_NUM_GATES > $(gate)
   choice CHOICE_NFC_READER_I2C_BUS_$(gate)
     default CHOICE_NFC_READER_I2C_BUS_$(i2c_tag)_$(gate) if $(i2c_nfc_default)

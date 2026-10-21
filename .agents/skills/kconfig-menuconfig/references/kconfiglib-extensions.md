@@ -123,8 +123,8 @@ once expanded and can be nested.
   emitted once per `i` in `[min..max]` with `$(i)` substituted (`var=`
   names the placeholder; `min`/`max` are required integers, or preprocessor
   variables or functions expanding to one, e.g. `max=$(owner-max,buffer)`). Used for
-  per-gate pin/prompt blocks where the gate count is compile-time fixed
-  (max 12) and prompts are conditionally hidden via
+  per-gate pin/prompt blocks, run to `max=$(max_gate)` (the last gate index
+  one unit can configure: 11 unless `./install.sh -g` raises it) and prompts are conditionally hidden via
   `prompt "..." if PARAM_NUM_GATES > $(i)`.
 - **`source` inside a body works.** Each sourced file starts with an empty
   line queue and the caller's queue resumes when it ends (`_enter_file` /
@@ -137,7 +137,7 @@ once expanded and can be nested.
   `test/installer/test_kconfig_repeat_source.py`.
 - **Cost is in the count, not the macro.** Every expanded line tokenizes
   into real symbol nodes (prompts, defaults, dep-graph entries), so a
-  `min=0 max=11` block adds 12× the body's node count to **every parse**
+  `min=0 max=$(max_gate)` block adds 12× the body's node count to **every parse**
   (menuconfig, olddefconfig, pre-parse-kconfig — and in multi-unit, one
   parse per unit *plus* the entry point). Writing the same 12 copies out
   by hand costs exactly the same; the expansion itself is a cheap line

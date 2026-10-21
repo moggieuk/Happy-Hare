@@ -184,6 +184,12 @@ title       := $(menu-title,$(F_MULTI_UNIT_ENTRY_POINT),$(hh_message),$(unit_suf
 caption     := $(menu-caption,$(F_MULTI_UNIT_ENTRY_POINT),$(hh_message),$(unit-suffix,$(UNIT_NAME),20))
 caption_pad := 50
 
+# Most gates one unit can configure: ./install.sh -g, else the saved MAX_GATES, else 12.
+# Every per-gate @repeat runs 0..max_gate
+saved_max_gates := $(first-nonempty,$(saved-config-value,MAX_GATES),12)
+max_gates := $(first-nonempty,$(env-default,F_MAX_GATES),$(saved_max_gates))
+max_gate  := $(last-index,$(max_gates))
+
 # Printer-level capabilities each unit takes from the top-level config (KCONFIG_PARENT)
 mmu_has_sensor_toolhead := $(printer-flag,MMU_HAS_SENSOR_TOOLHEAD)
 mmu_has_sensor_extruder := $(printer-flag,MMU_HAS_SENSOR_EXTRUDER)
@@ -259,6 +265,10 @@ config MULTI_UNIT_ENTRY_POINT
 config PER_GATE_MCU
   bool
   default "$(F_PER_GATE_MCU)"
+
+config MAX_GATES
+  int
+  default $(max_gates)
 
 if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
   config MMU_UNITS

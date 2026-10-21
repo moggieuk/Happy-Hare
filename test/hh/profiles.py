@@ -59,12 +59,15 @@ class Profile:
                   This never affects rendered printer configuration.
     unit_name:    single-unit only: the Klipper object name, as install.sh passes it
                   once menuconfig has renamed the unit (default unit0).
+    max_gates:    the most gates a unit can configure, as ./install.sh -g passes it
+                  (default: Kconfig's own, 12).
     """
 
     def __init__(self, name, syms=None, extra_params=None, description='', units=None,
-                 filament_layout=None, unit_name=None):
+                 filament_layout=None, unit_name=None, max_gates=None):
         self.name = name
         self.unit_name = unit_name
+        self.max_gates = max_gates
         self.syms = dict(syms or {})
         self.extra_params = dict(extra_params or {})
         self.description = description
@@ -72,7 +75,7 @@ class Profile:
         self.filament_layout = dict(filament_layout or {})
 
     def derive(self, name, syms=None, extra_params=None, description='', units=None,
-               filament_layout=None, unit_name=None):
+               filament_layout=None, unit_name=None, max_gates=None):
         merged_syms = dict(self.syms)
         merged_syms.update(syms or {})
         merged_params = dict(self.extra_params)
@@ -81,7 +84,7 @@ class Profile:
             name, merged_syms, merged_params, description or self.description,
             units if units is not None else self.units,
             self.filament_layout if filament_layout is None else filament_layout,
-            unit_name or self.unit_name)
+            unit_name or self.unit_name, max_gates or self.max_gates)
 
     def __repr__(self):
         return 'Profile(%r)' % (self.name,)
@@ -898,6 +901,36 @@ uart_pin: mcu:PB6
 run_current: 0.6
 """
 
+# Kconfig's default for the most gates one unit can configure, and a raised one
+# (./install.sh -g). Every per-gate symbol must exist up to it, or the gates above that point
+# render with blank pins.
+DEFAULT_MAX_GATES = 12
+MAX_GATES = 24
+
+
+def _per_gate_pins(gates, base, *pins, prefix='unit0:'):
+    return {'PIN_%s_%d' % (pin, gate): '%sgpio%d' % (prefix, base + 100 * k + gate)
+            for k, pin in enumerate(pins) for gate in gates}
+
+
+TRADRACK_MAX_GATES = TRADRACK.derive(
+    'tradrack_max_gates',
+    syms=dict({'PARAM_NUM_GATES': MAX_GATES,
+               'MMU_HAS_SENSOR_ENTRY': True,
+               'MMU_HAS_SENSOR_EXIT': True},
+              **_per_gate_pins(range(MAX_GATES), 100, 'ENTRY_SENSOR', 'EXIT_SENSOR', prefix='^unit0:')),
+    max_gates=MAX_GATES,
+    description='Tradrack with a raised gate limit, every entry/exit sensor wired')
+
+# BoxTurtle's board wires four gear steppers; the rest are given fake pins.
+BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
+    'boxturtle_max_gates',
+    syms=dict({'PARAM_NUM_GATES': MAX_GATES},
+              **_per_gate_pins(range(4, MAX_GATES), 300,
+                               'GEAR_STEP', 'GEAR_DIR', 'GEAR_ENABLE', 'GEAR_UART')),
+    max_gates=MAX_GATES,
+    description='Multigear BoxTurtle with a raised gate limit')
+
 # Profiles that `make console` can boot without extra fixture-only printer sections. This is
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
@@ -914,7 +947,8 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PI
                     TD1_OFFPATH, TD1_BOTH)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
-            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER, ENCODER_SHARED)}
+            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER, ENCODER_SHARED,
+             TRADRACK_MAX_GATES, BOXTURTLE_MAX_GATES)}
 
 
 def get(name):

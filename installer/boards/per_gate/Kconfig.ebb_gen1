@@ -83,7 +83,7 @@ if BOARD_TYPE_EBB_GEN1
     config PIN_GEAR_DIAG
       default ""
 
-    @repeat var=gate min=1 max=11@
+    @repeat var=gate min=1 max=$(max_gate)@
     if PARAM_NUM_GATES > $(gate)
 
       config PIN_GEAR_UART_$(gate)
@@ -100,7 +100,7 @@ if BOARD_TYPE_EBB_GEN1
     endif
     @endrepeat@
 
-    @repeat var=gate min=0 max=11@
+    @repeat var=gate min=0 max=$(max_gate)@
     if PARAM_NUM_GATES > $(gate)
 
       config PIN_ENTRY_SENSOR_$(gate)
@@ -139,7 +139,7 @@ if BOARD_TYPE_EBB_GEN1
     # carries both the per-gate environment sensors and the per-gate NFC
     # readers. Offer it to both by chipdef name - the feature files carry
     # no chipdef knowledge of their own.
-    @repeat var=gate min=0 max=11@
+    @repeat var=gate min=0 max=$(max_gate)@
     if PARAM_NUM_GATES > $(gate)
 
       choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(gate)
