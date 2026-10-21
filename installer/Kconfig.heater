@@ -16,7 +16,7 @@
 #   PARAM_HEATER_VENT_OPEN_ANGLE, PARAM_HEATER_VENT_CLOSE_ANGLE, PARAM_HEATER_VENT_RUN_FAN,
 #   PARAM_HEATER_VENT_DURATION, PARAM_HEATER_VENT_SERVO_DURATION
 #   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER or MMU_GEAR_ROTATES_SPOOL)
-#   PARAM_HEATER_ROTATE_IN_PRINT (if MMU_GEAR_ROTATES_SPOOL)
+#   PARAM_HEATER_ROTATE_IN_PRINT (if MMU_GEAR_ROTATES_SPOOL and MULTIGEAR)
 #
 # Heater fan parameter tokens:
 #   PARAM_HEATER_FAN_MAX_POWER, PARAM_HEATER_FAN_KICK_START_TIME,
@@ -168,13 +168,12 @@ if MMU_HAS_HEATER
     config PARAM_HEATER_ROTATE_IN_PRINT
       boolint "EXPERIMENTAL: Rotate while printing?"
       default 0
-      depends on MMU_GEAR_ROTATES_SPOOL && PARAM_HEATER_ROTATE_INTERVAL != "" && PARAM_HEATER_ROTATE_INTERVAL != "0"
+      depends on MMU_GEAR_ROTATES_SPOOL && MULTIGEAR && PARAM_HEATER_ROTATE_INTERVAL != "" && PARAM_HEATER_ROTATE_INTERVAL != "0"
       help
         EXPERIMENTAL. Keep rotating spools with idle gear motors during a
         print. Can cause short print pauses if Klipper flushes its motion
-        queue (e.g. a toolchange) while a spool is turning. Needs a gear per
-        gate (not ViViD) and a recent Klipper, otherwise rotation is skipped
-        while printing.
+        queue (e.g. a toolchange) while a spool is turning. Needs a recent
+        Klipper, otherwise rotation is skipped while printing.
 
     comment "_"
 

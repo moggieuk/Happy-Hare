@@ -454,6 +454,14 @@ class TestHeaterRotateInPrint(unittest.TestCase):
         rendered = cfg.render(profiles.get('qidi'))[PARAMS]
         self.assertRegex(rendered, r'(?m)^heater_rotate_in_print\s*: 0\s')
 
+    def test_not_offered_with_a_shared_gear(self):
+        vvd = profiles.get('ercf_vvd').units[-1].syms
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('rotate_in_print_shared_gear', vvd)
+        self.assertTrue(kc.is_enabled('MMU_GEAR_ROTATES_SPOOL'))
+        self.assertGreater(kc.syms['PARAM_HEATER_ROTATE_INTERVAL'].visibility, 0)
+        self.assertEqual(kc.syms['PARAM_HEATER_ROTATE_IN_PRINT'].visibility, 0)
+
     def test_shown_only_with_a_rotate_interval(self):
         sym = 'PARAM_HEATER_ROTATE_IN_PRINT'
         self.assertGreater(self._kconfig('rotate_interval_set').syms[sym].visibility, 0)
