@@ -93,6 +93,56 @@ class TestInstalledWithOtherPurge(BlobifierSessionMixin, unittest.TestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+class TestPark(BlobifierSessionMixin, unittest.TestCase):
+    """BLOBIFIER_PARK runs for real; the stub printer has no [quad_gantry_level]"""
+
+    PROFILE = _installed('boxturtle_blobifier_park')
+
+    def setUp(self):
+        super().setUp()
+        self.hh.printer.harness_macro_effects['BLOBIFIER_PARK'] = (
+            lambda macro, gcmd: macro.run_body(gcmd))
+        self.toolhead = self.hh.printer.lookup_object('toolhead')
+        self.bl = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS').variables
+        self.safe = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_SAFE_DESCEND')
+        self.hh.run_gcode("G90\nG1 X150 Y150 Z20")
+
+    def park(self):
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("BLOBIFIER_PARK")
+        return [pos[:3] for pos, _ in self.toolhead.moves[first:]]
+
+    def refused(self):
+        return any('Please home' in m for m in self.hh.console)
+
+    def add_qgl(self, applied):
+        qgl = type('QGL', (), {'get_status': lambda self, eventtime=None: {'applied': applied}})()
+        self.hh.printer.add_object('quad_gantry_level', qgl)
+
+    def test_parks_without_qgl(self):
+        moves = self.park()
+        self.assertFalse(self.refused())
+        self.assertAlmostEqual(moves[-1][0], self.bl['purge_x'])
+
+    def test_refuses_when_qgl_not_applied(self):
+        self.add_qgl(False)
+        self.assertEqual(self.park(), [])
+        self.assertTrue(self.refused())
+
+    def test_parks_when_qgl_applied(self):
+        self.add_qgl(True)
+        moves = self.park()
+        self.assertFalse(self.refused())
+        self.assertAlmostEqual(moves[-1][0], self.bl['purge_x'])
+
+    def test_tray_unsafe_above_force_height_stays_high(self):
+        self.safe.variables = dict(self.safe.variables, tray=False,
+                                   print_height=self.bl['force_safe_descend_height_until'] + 5.)
+        moves = self.park()
+        self.assertTrue(moves)
+        self.assertNotIn(self.bl['tray_top'], [z for _, _, z in moves])
+
+
 class TestNotInstalled(unittest.TestCase):
 
     def _boot(self, name, purge_macro):
