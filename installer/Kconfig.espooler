@@ -21,6 +21,12 @@
 # PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
 # PARAM_ESPOOLER_REWIND_BURST_POWER
 # PARAM_ESPOOLER_REWIND_BURST_DURATION
+# PARAM_ESPOOLER_PWM
+# PARAM_ESPOOLER_HARDWARE_PWM
+# PARAM_ESPOOLER_CYCLE_TIME
+# PARAM_ESPOOLER_SCALE
+# PARAM_ESPOOLER_VALUE
+# PARAM_ESPOOLER_SHUTDOWN_VALUE
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_ESPOOLER
@@ -176,6 +182,57 @@ if MMU_HAS_ESPOOLER
       default 0.4
       help
         The duration of the rewind burst move in seconds
+
+    comment "_"
+    menu "Advanced"
+
+      config PARAM_ESPOOLER_PWM
+        boolint "PWM motor control?"
+        default 1
+        help
+          1 = PWM control of the motor pins (typical)
+          0 = digital on/off control
+
+      config PARAM_ESPOOLER_HARDWARE_PWM
+        boolint
+        prompt "Hardware PWM?" if PARAM_ESPOOLER_PWM
+        default 0
+        keep_when_hidden
+        help
+          Use hardware PWM instead of software PWM.
+          See "hardware_pwm" in Klipper's [output_pin] documentation.
+
+      config PARAM_ESPOOLER_CYCLE_TIME
+        float
+        prompt "$(pad,33,PWM cycle time)" if PARAM_ESPOOLER_PWM
+        default 0.1
+        keep_when_hidden
+        help
+          The PWM cycle time in seconds.
+          See "cycle_time" in Klipper's [output_pin] documentation.
+
+      config PARAM_ESPOOLER_SCALE
+        float "$(pad,33,Scale)"
+        default 1
+        help
+          Scales the PWM output range. "Value" and "Shutdown value" are
+          given in this range.
+
+      config PARAM_ESPOOLER_VALUE
+        float "$(pad,33,Value)"
+        default 0
+        help
+          The initial motor pin value at startup (0 to "Scale").
+          See "value" in Klipper's [output_pin] documentation.
+
+      config PARAM_ESPOOLER_SHUTDOWN_VALUE
+        float "$(pad,33,Shutdown value)"
+        default 0
+        help
+          The motor pin value on MCU shutdown (0 to "Scale").
+          See "shutdown_value" in Klipper's [output_pin] documentation.
+
+    endmenu
 
 # -------------------------------------
 # eSpooler pins
