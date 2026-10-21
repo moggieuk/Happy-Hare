@@ -124,6 +124,11 @@ PURGE_NONE = 0                  # Skip purging after load
 PURGE_SLICER = 1                # Slicer purges on wipetower
 PURGE_STANDALONE = 2            # Happy Hare purges
 
+UNLOAD_VALIDATION_DEFAULT = 0   # Existing extruder unload warnings only
+UNLOAD_VALIDATION_WARN = 1      # Also check unload homing distance, warn on failure
+UNLOAD_VALIDATION_PAUSE = 2     # Also check unload homing distance, pause on failure
+UNLOAD_MIN_CUT_FRAGMENT = 2.0   # Smallest cut fragment (mm) whose absence the homing distance can resolve
+
 ACTION_IDLE = 0
 ACTION_LOADING = 1
 ACTION_LOADING_EXTRUDER = 2
