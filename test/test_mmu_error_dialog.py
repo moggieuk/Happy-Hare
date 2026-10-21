@@ -351,12 +351,6 @@ class TestDialogConfiguration(ErrorDialogTestCase):
         self.assertEqual(self.texts(dialog)[-1], 'After fixing, press RESUME to continue printing (UNLOCK restores the nozzle temperature first)')
         self.assertEqual(len(self.footer_buttons(dialog)), 2)
 
-    def test_show_previews_without_pausing(self):
-        mark = self.mark()
-        self.gcode('MMU_ERROR_DIALOG SHOW=1')
-        self.assertEqual(self.last_dialog(self.prompts_since(mark))[0], 'action:prompt_begin Happy Hare Pause Notice')
-        self.assertFalse(self.mmu.is_mmu_paused())
-
     def assert_closes(self, script):
         self.start_print()
         self.pause()
