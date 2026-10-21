@@ -2295,7 +2295,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
     file_path = os.path.join(path, filename)
     if not os.path.isfile(file_path):
         metadata.logger.info(f"File Not Found: {file_path}")
-        sys.exit(-1)
+        return
     try:
         metadata.logger.info(f"mmu_server: Pre-processing file: {file_path}")
         fname = os.path.basename(file_path)
@@ -2394,6 +2394,11 @@ if __name__ == "__main__":
 
     # Moonraker cancels with SIGTERM on timeout, exit normally so the temp file is removed
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(-1))
+
+    # A .ufp upload only contains the gcode, so it must be extracted before pre-processing
+    if config.get("ufp_path") is not None:
+        metadata.extract_ufp(config["ufp_path"], os.path.join(config["gcode_dir"], config["filename"]))
+        config["ufp_path"] = None
 
     # Parsing for mmu placeholders and next pos insertion. We do this first so we can add additional metadata
     main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos)
