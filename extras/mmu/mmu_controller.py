@@ -3024,9 +3024,9 @@ class MmuController(MmuFilamentMovement):
                 wait = False
 
         elif source == "auto": # Normal case
-            if self.is_mmu_paused():
+            if self.is_mmu_paused() and self.psm.paused_extruder in (None, extruder_name):
                 # In a pause we always want to restore the temp we paused at
-                if self.psm.paused_extruder_temp is not None and self.psm.paused_extruder in (None, extruder_name):
+                if self.psm.paused_extruder_temp is not None:
                     new_target_temp = self.psm.paused_extruder_temp
                     source = "pause"
                 else: # Pause temp should not be None

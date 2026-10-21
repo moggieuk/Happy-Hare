@@ -98,14 +98,30 @@ class TestDualExtruderHeating(unittest.TestCase):
         self.assertEqual(self.extruder.get_heater().target_temp, 210.)
         self.assertEqual(self.extruder1.get_heater().target_temp, 200.)
 
-    def test_paused_temperature_is_not_applied_to_another_units_extruder(self):
-        self.pause_on_unit0_then_select_unit1(paused_temp=245.)
+    def test_heating_another_unit_while_paused_keeps_its_target(self):
+        self.pause_on_unit0_then_select_unit1(paused_temp=230.)
+        self.extruder1.get_heater().set_temp(245.)
+        self.extruder1.get_heater().smoothed_temp = 180.
+        mark = len(self.hh.gcode.executed)
+
+        self.mmu._ensure_safe_extruder_temperature(wait=True) # as the load paths call it
+
+        self.assertEqual(self.extruder1.get_heater().target_temp, 245.)
+        self.assertEqual(self.extruder.get_heater().target_temp, 230.)
+        waits = [l for l in self.hh.gcode.executed[mark:] if l.startswith('TEMPERATURE_WAIT')]
+        self.assertEqual(len(waits), 1, waits)
+        self.assertIn('SENSOR=extruder1', waits[0])
+
+    def test_heating_another_cold_unit_while_paused_uses_its_gate_temperature(self):
+        self.pause_on_unit0_then_select_unit1(paused_temp=230.)
         self.extruder1.get_heater().set_temp(0.)
+        self.mmu.gate_temperature[9] = 245
+        self.assertNotEqual(self.mmu.p.default_extruder_temp, 245)
 
         self.mmu._ensure_safe_extruder_temperature()
 
-        self.assertEqual(self.extruder1.get_heater().target_temp, self.mmu.p.default_extruder_temp)
-        self.assertEqual(self.extruder.get_heater().target_temp, 245.)
+        self.assertEqual(self.extruder1.get_heater().target_temp, 245.)
+        self.assertEqual(self.extruder.get_heater().target_temp, 230.)
 
     def test_cold_pull_uses_the_units_extruder(self):
         effects = getattr(self.hh.printer, 'harness_macro_effects', None)
