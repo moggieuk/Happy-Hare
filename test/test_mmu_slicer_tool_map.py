@@ -55,5 +55,49 @@ class SlicerToolMapTestCase(unittest.TestCase):
         self.assertEqual(self.hh.mmu.gate_maps.slicer_tool_map['tools']['2']['material'], 'PLA')
 
 
+class ColorAutomapTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.hh = session('boxturtle')
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+
+    def tearDown(self):
+        self.hh.close()
+
+    def load_gates(self, *gates):
+        for gate, (color, material) in enumerate(gates):
+            self.hh.run_gcode('MMU_GATE_MAP GATE=%d COLOR=%s MATERIAL=%s QUIET=1' % (gate, color, material or "''"))
+
+    def automap_t0(self, color, material, strategy='color'):
+        self.hh.run_gcode("MMU_SLICER_TOOL_MAP TOOL=0 COLOR=%s MATERIAL='%s' AUTOMAP=%s" % (color, material, strategy))
+
+    def test_color_skips_same_color_gate_with_other_material(self):
+        # Every match is mapped in turn, so PETG on the later gate would win
+        self.load_gates(('ff0000', 'PLA'), ('000000', 'PLA'), ('000000', 'PETG'), ('ffffff', 'PLA'))
+        self.automap_t0('000000', 'pla')
+        self.assertEqual(self.hh.mmu.ttg_map[0], 1)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_color_with_no_matching_material_errors_and_keeps_map(self):
+        self.load_gates(('ff0000', 'PLA'), ('000000', 'PETG'), ('000000', 'PETG'), ('ffffff', 'PLA'))
+        self.automap_t0('000000', 'PLA')
+        self.assertEqual(self.hh.mmu.ttg_map[0], 0)
+        self.assertTrue(any('No gates found for tool 0 with Color 000000 (material PLA)' in e
+                            for e in self.hh.errors), self.hh.errors)
+
+    def test_color_without_tool_material_matches_on_color_alone(self):
+        self.load_gates(('ff0000', 'PLA'), ('ffffff', 'PLA'), ('000000', 'PETG'), ('ffffff', 'PLA'))
+        self.automap_t0('000000', 'unknown')
+        self.assertEqual(self.hh.mmu.ttg_map[0], 2)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_color_matches_gate_without_material(self):
+        self.load_gates(('ff0000', 'PLA'), ('ffffff', 'PLA'), ('000000', ''), ('ffffff', 'PLA'))
+        self.automap_t0('000000', 'PLA')
+        self.assertEqual(self.hh.mmu.ttg_map[0], 2)
+        self.assertEqual(self.hh.errors, [])
+
+
 if __name__ == '__main__':
     unittest.main()
