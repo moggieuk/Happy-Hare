@@ -119,7 +119,7 @@ class MmuESpooler:
 
                 name = "enable_%d" % gate
                 mcu_pin.setup_max_duration(0.)
-                mcu_pin.setup_start_value(self.last_value, self.shutdown_value)
+                mcu_pin.setup_start_value(start_value, self.shutdown_value)
                 self.motor_mcu_pins[name] = mcu_pin
                 self.last_value[name] = start_value
 
