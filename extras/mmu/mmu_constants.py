@@ -292,6 +292,7 @@ VARS_MMU_LAST_TOOL                 = "mmu_state_last_tool"
 VARS_MMU_FILAMENT_POS              = "mmu_state_filament_pos"
 VARS_MMU_FILAMENT_REMAINING        = "mmu_state_filament_remaining"
 VARS_MMU_FILAMENT_REMAINING_COLOR  = "mmu_state_filament_remaining_color"
+VARS_MMU_FILAMENT_REMAINING_MATERIAL = "mmu_state_filament_remaining_material"
 VARS_MMU_SWAP_STATISTICS           = "mmu_statistics_swaps"
 VARS_MMU_COUNTERS                  = "mmu_statistics_counters"
 

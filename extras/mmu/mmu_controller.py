@@ -67,6 +67,7 @@ class MmuController(MmuFilamentMovement):
         self.toolchange_retract = 0.            # Set from mmu_macro_vars
         self.toolchange_purge_volume = 0.       # During toolchange, the total calculated purge volume
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
+        self._material_purge_volume = 0.        # During toolchange, the material change contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
         self.bowden_start_pos = None            # If set then we can measure bowden progress
         self.has_blobifier = False              # Post load purging macro (like BLOBIFIER)
@@ -659,6 +660,7 @@ class MmuController(MmuFilamentMovement):
             'next_tool': self._next_tool,
             'slicer_purge': self.slicer_purge,
             'toolchange_purge_volume': self.toolchange_purge_volume,
+            'toolchange_material_purge_volume': self._material_purge_volume,
             'last_toolchange': self._last_toolchange,
             'operation': self.saved_toolhead_operation,
             'filament': "Loaded" if self.filament_pos == FILAMENT_POS_LOADED else
@@ -3359,28 +3361,29 @@ class MmuController(MmuFilamentMovement):
                     )
 
             # Determine purge volume for toolchange/load. Valid only during toolchange/load operation
-            self.toolchange_purge_volume, self._slicer_purge_volume  = self._calc_purge_volume(self._last_tool, tool)
+            self.toolchange_purge_volume, self._slicer_purge_volume, self._material_purge_volume = self._calc_purge_volume(self._last_tool, tool)
 
             self.load_sequence(purge=purge)
             self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
         finally:
-            self.toolchange_purge_volume = self._slicer_purge_volume = 0.
+            self.toolchange_purge_volume = self._slicer_purge_volume = self._material_purge_volume = 0.
 
 
-    def _calc_purge_volume(self, from_tool, to_tool):
+    def _calc_purge_volume(self, from_tool, to_tool, from_material=None):
         """
         Helper to determine purge volume for toolchange.
-        Uses new printer toolhead for residuals
+        Uses new printer toolhead for residuals and, unless from_material is given,
+        the material recorded for the filament in its extruder
 
           Rtn:
-            Tuple (total purge volume, slicer portion of volume)
+            Tuple (total purge volume, slicer portion of volume, material change portion of volume)
 
           TODO FIXME: This is no longer correct if switching between toolheads because
                       color in previous toolhead is not the last slicer color
         """
         if to_tool < 0:
-            return 0, 0
+            return 0, 0, 0
 
         fil_diameter = 1.75
         svolume = 0.
@@ -3394,11 +3397,20 @@ class MmuController(MmuFilamentMovement):
                 svolume = max(row[to_tool] for row in slicer_purge_volumes)
                     
         # Always add volume of residual filament (cut fragment and bit always left in the hotend)
-        to_unit = self.mmu_unit(gate=self.ttg_map[to_tool])
+        to_gate = self.ttg_map[to_tool]
+        to_unit = self.mmu_unit(gate=to_gate)
         remaining = to_unit.extruder_wrapper.get_status(0)['extruder_filament_remaining']
-        total = svolume + math.pi * ((fil_diameter / 2) ** 2) * remaining
 
-        return total, svolume
+        # Extra volume to flush out a different material
+        if from_material is None:
+            from_material = to_unit.extruder_wrapper.filament_remaining_material
+        mvolume = 0.
+        if self.gate_maps.is_material_change(from_material, self.gate_material[to_gate]):
+            mvolume = self.p.purge_material_change_volume
+
+        total = svolume + mvolume + math.pi * ((fil_diameter / 2) ** 2) * remaining
+
+        return total, svolume, mvolume
 
 
     # Primary method to unload current tool but retain selection
