@@ -35,7 +35,7 @@ class MmuExtruderWrapper():
 
         self.filament_remaining = 0.            # The amount of filament remaining in extruder hotend
         self.filament_remaining_color = UNKNOWN_FILAMENT_COLOR # Color of remaining filament
-        self.filament_remaining_material = ""   # Material of remaining filament
+        self.filament_remaining_material = ""   # Material last fully loaded and purged into the extruder
 
         # Per physical extruder, not per machine: units on different extruders each have their own
         self._run_current_percent = 100
@@ -173,14 +173,18 @@ class MmuExtruderWrapper():
         self._run_current_percent = 100
 
 
-    def set_filament_remaining(self, length, color=UNKNOWN_FILAMENT_COLOR, material=""):
+    def set_filament_remaining(self, length, color=UNKNOWN_FILAMENT_COLOR):
         self.filament_remaining = length
         self.filament_remaining_color = color
-        self.filament_remaining_material = material
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1))) # TODO TEMP Duplicate non-namespaced for older Mainsail/Fluidd UI
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color)              # TODO TEMP duplicate non-namespaced for older Mainsail/Fluidd UI
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1)), self.name)
-        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color, self.name)
+        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color, self.name, write=True)
+
+
+    # Only set once a load (and its purge) completes so a failed purge still counts as a material change
+    def set_filament_material(self, material):
+        self.filament_remaining_material = material
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_MATERIAL, material, self.name, write=True)
 
 

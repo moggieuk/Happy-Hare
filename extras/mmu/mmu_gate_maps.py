@@ -933,11 +933,9 @@ class MmuGateMaps:
     def material_family(self, material):
         return re.split(r"[\s\-+_/]", self._normalize_material(material), maxsplit=1)[0]
 
-    # Only a change between two known, different families counts
+    # Different families, or known to/from unknown, count as a change. Unknown to unknown doesn't
     def is_material_change(self, from_material, to_material):
-        ff = self.material_family(from_material)
-        tf = self.material_family(to_material)
-        return bool(ff and tf and ff != tf)
+        return self.material_family(from_material) != self.material_family(to_material)
 
 
     def restore_automap_option(self, skip=False):

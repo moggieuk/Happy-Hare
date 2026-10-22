@@ -1964,8 +1964,7 @@ class MmuFilamentMovement:
                 if self.gate_selected >= 0
                 else UNKNOWN_FILAMENT_COLOR
             )
-            material = self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
-            u.extruder_wrapper.set_filament_remaining(0., color, material)
+            u.extruder_wrapper.set_filament_remaining(0., color)
 
             # Encoder based validation test to validate the filament was picked up by extruder.
             # This runs if we are short of deterministic sensors and test makes sense. If the buffer
@@ -2643,6 +2642,11 @@ class MmuFilamentMovement:
                 with self._wrap_track_time('purge'):
                     self.purge_standalone()
 
+            if not skip_extruder:
+                u.extruder_wrapper.set_filament_material(
+                    self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
+                )
+
             if macros_and_track:
                 # Run POST_LOAD sequence macro
                 with self._wrap_track_time('post_load'):
@@ -2993,8 +2997,7 @@ class MmuFilamentMovement:
                 if self.gate_selected >= 0
                 else UNKNOWN_FILAMENT_COLOR
             )
-            material = self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
-            u.extruder_wrapper.set_filament_remaining(remaining, color, material)
+            u.extruder_wrapper.set_filament_remaining(remaining, color)
 
             # Encoder based validation test
             detected = True # Start with assumption that filament was present
