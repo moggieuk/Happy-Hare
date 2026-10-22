@@ -443,6 +443,41 @@ class TestEncoderValidationOptions(unittest.TestCase):
                     self.assertEqual(float(kc.syms[sym].str_value), defaults[sym])
 
 
+class TestHeaterRotateInPrint(unittest.TestCase):
+    """The experimental in-print rotation option only shows once a rotate interval is set."""
+
+    def _kconfig(self, name, **syms):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            return cfg._kconfig(name, dict(profiles.get('qidi').syms, **syms))
+
+    def test_defaults_off_in_the_rendered_parameters(self):
+        rendered = cfg.render(profiles.get('qidi'))[PARAMS]
+        self.assertRegex(rendered, r'(?m)^heater_rotate_in_print\s*: 0\s')
+
+    def test_not_offered_with_a_shared_gear(self):
+        vvd = profiles.get('ercf_vvd').units[-1].syms
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('rotate_in_print_shared_gear', vvd)
+        self.assertTrue(kc.is_enabled('MMU_GEAR_ROTATES_SPOOL'))
+        self.assertGreater(kc.syms['PARAM_HEATER_ROTATE_INTERVAL'].visibility, 0)
+        self.assertEqual(kc.syms['PARAM_HEATER_ROTATE_IN_PRINT'].visibility, 0)
+
+    def test_shown_only_with_a_rotate_interval(self):
+        sym = 'PARAM_HEATER_ROTATE_IN_PRINT'
+        self.assertGreater(self._kconfig('rotate_interval_set').syms[sym].visibility, 0)
+        for interval in ('', '0'):
+            with self.subTest(interval=interval):
+                kc = self._kconfig('rotate_interval_unset', PARAM_HEATER_ROTATE_INTERVAL=interval,
+                                   PARAM_HEATER_ROTATE_IN_PRINT=1)
+                self.assertEqual(kc.syms[sym].visibility, 0)
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = os.path.join(tmp, '.mmu_config')
+                    with cfg._chdir(cfg.INSTALLER):
+                        kc.write_config(path)
+                    with open(path) as f:
+                        self.assertNotIn('CONFIG_%s=' % sym, f.read())
+
+
 class TestAdvancedEncoderEspoolerOptions(unittest.TestCase):
 
     # section -> {.cfg option: (Kconfig symbol, shipped default, custom value)}

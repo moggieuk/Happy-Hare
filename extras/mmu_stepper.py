@@ -1200,6 +1200,52 @@ class MmuStepper(ExtruderStepper):
         return [stepper_positions[self.rail.get_name()], 0., 0.]
 
 
+    # =======================================================================
+    # BEGIN experimental background moves (opt-in in-print spool rotation)
+    # Lets an idle gear move without waiting on, or stalling, the toolhead.
+    # Only used by MmuEnvironmentManager when heater_rotate_in_print is set.
+    #
+
+    BACKGROUND_MOVE_START_TIME = 0.250 # Same margin as toolhead BUFFER_TIME_START
+
+    def can_background_move(self):
+        return hasattr(self.motion_queuing, 'calc_step_gen_restart') # Not with Kalico emulator
+
+
+    def do_background_move(self, movepos, speed, accel):
+        """
+        Queue a move at the earliest time step generation allows (the toolhead restart rule).
+        Returns the end time. Keep moves short: a full step flush waits for them to finish
+        """
+        self._require_standalone_manual_mode("MOVE")
+        est_print_time = self.printer.lookup_object('mcu').estimated_print_time(self.printer.get_reactor().monotonic())
+        kin_time = self.motion_queuing.calc_step_gen_restart(est_print_time)
+        start_time = max(self.next_cmd_time, est_print_time + self.BACKGROUND_MOVE_START_TIME, kin_time)
+        self.next_cmd_time = self._submit_move(start_time, movepos, speed, accel)
+        self.motion_queuing.note_mcu_movequeue_activity(self.next_cmd_time)
+        return self.next_cmd_time
+
+
+    def do_background_disable(self):
+        """
+        Disable motors without a toolhead dwell. Only call once background moves have
+        finished so the disable follows their auto-enable
+        """
+        est_print_time = self.printer.lookup_object('mcu').estimated_print_time(self.printer.get_reactor().monotonic())
+        print_time = max(self.next_cmd_time, self.motion_queuing.calc_step_gen_restart(est_print_time))
+        stepper_enable = self.printer.lookup_object('stepper_enable')
+        for stepper in self.steppers:
+            el = stepper_enable.lookup_enable(stepper.get_name())
+            if el.is_motor_enabled():
+                el.motor_disable(print_time)
+        # Allow time before the next auto-enable
+        self.next_cmd_time = print_time + DISABLE_STALL_TIME
+
+    #
+    # END experimental background moves
+    # =======================================================================
+
+
     # ----------------------------------------------------------------------
     # Status
     # ----------------------------------------------------------------------

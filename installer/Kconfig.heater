@@ -15,7 +15,8 @@
 #   PARAM_HEATER_VENT_INTERVAL
 #   PARAM_HEATER_VENT_OPEN_ANGLE, PARAM_HEATER_VENT_CLOSE_ANGLE, PARAM_HEATER_VENT_RUN_FAN,
 #   PARAM_HEATER_VENT_DURATION, PARAM_HEATER_VENT_SERVO_DURATION
-#   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER)
+#   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER or MMU_GEAR_ROTATES_SPOOL)
+#   PARAM_HEATER_ROTATE_IN_PRINT (if MMU_GEAR_ROTATES_SPOOL and MULTIGEAR)
 #
 # Heater fan parameter tokens:
 #   PARAM_HEATER_FAN_MAX_POWER, PARAM_HEATER_FAN_KICK_START_TIME,
@@ -163,6 +164,17 @@ if MMU_HAS_HEATER
       depends on MMU_HAS_ESPOOLER || MMU_GEAR_ROTATES_SPOOL
       help
         Interval in minutes to rotate filament (requires the filament end attached to spool)
+
+    config PARAM_HEATER_ROTATE_IN_PRINT
+      boolint "EXPERIMENTAL: Rotate while printing?"
+      default 0
+      depends on MMU_GEAR_ROTATES_SPOOL && MULTIGEAR && PARAM_HEATER_ROTATE_INTERVAL != "" && PARAM_HEATER_ROTATE_INTERVAL != "0"
+      help
+        EXPERIMENTAL. Keep rotating spools with idle gear motors during a
+        print. Can cause short print pauses if Klipper flushes its motion
+        queue (e.g. a toolchange) while a spool is turning. Needs a recent
+        Klipper or Kalico, otherwise rotation is skipped while printing.
+        Only applies to drying started with MMU_HEATER DRY=1 ROTATE=1.
 
     comment "_"
 
