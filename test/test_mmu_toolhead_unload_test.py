@@ -167,6 +167,16 @@ class TestExtruderEntrySensor(UnloadTestCase):
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
 
+    def test_missed_cut_pauses_in_the_gcode_unload_sequence(self):
+        self.set_level(2)
+        self.tip_effect(FRAGMENT, missed=True)
+        self.hh.mmu.p.gcode_unload_sequence = 1
+        effects = self.hh.printer.harness_macro_effects
+        self.addCleanup(effects.pop, '_MMU_UNLOAD_SEQUENCE', None)
+        effects['_MMU_UNLOAD_SEQUENCE'] = lambda macro, gcmd: macro.run_body(gcmd)
+        self.unload()
+        self.assertTrue(any('may not have been cut' in e for e in self.hh.errors), self.hh.errors)
+
 
 class TestToolheadSensor(UnloadTestCase):
     PROFILE = 'ercf_vvd'

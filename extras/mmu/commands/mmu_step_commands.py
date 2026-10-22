@@ -209,6 +209,7 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "EXTRUDER_ONLY   = [0|1] Extruder only unload (e.g. when in bypass)\n"
         + "PARK_POS        = mm    The starting position of the filament in extruder (after tip forming / retraction)\n"
+        + "CUT_FRAGMENT    = mm    Length cut off by tip cutting, used to detect a missed cut (default: current unload's)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
@@ -226,6 +227,7 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
 
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
         park_pos = gcmd.get_float('PARK_POS', -mmu.drive().get_filament_position())
+        cut_fragment = gcmd.get_float('CUT_FRAGMENT', mmu.unload_cut_fragment, minval=0.)
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 park_pos = min(
@@ -233,7 +235,7 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
                     max(0, park_pos)
                 )
                 mmu.drive().set_filament_position(-park_pos)
-                mmu._unload_extruder(extruder_only=extruder_only)
+                mmu._unload_extruder(extruder_only=extruder_only, cut_fragment=cut_fragment)
         except MmuError as ee:
             mmu.handle_mmu_error(ee.with_message("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee)))
 
