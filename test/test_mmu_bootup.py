@@ -326,6 +326,19 @@ class TestPinBindings(unittest.TestCase):
         finally:
             hh.close()
 
+    def test_soft_pwm_espooler_rejects_fractional_shutdown(self):
+        """Klipper's soft PWM only takes a 0 or full shutdown duty; the fake MCU doesn't check it."""
+        from configfile import error as ConfigError
+        hh = session(profiles.get('boxturtle').derive(
+            'espooler_soft_pwm_fractional_shutdown',
+            syms={'PARAM_ESPOOLER_SHUTDOWN_VALUE': 0.5}))
+        try:
+            with self.assertRaises(ConfigError) as cm:
+                hh.build()
+            self.assertIn('shutdown_value', str(cm.exception))
+        finally:
+            hh.close()
+
     def test_unknown_chip_is_rejected(self):
         """
         Chip registration is strict on purpose - auto-vivifying would let a pin typo

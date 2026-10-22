@@ -71,6 +71,8 @@ class MmuESpooler:
         self.cycle_time = config.getfloat("cycle_time", 0.100, above=0., maxval=MAX_SCHEDULE_TIME)
         if self.is_pwm:
             self.shutdown_value = config.getfloat('shutdown_value', 0., minval=0., maxval=self.scale) / self.scale
+            if not self.hardware_pwm and self.shutdown_value not in (0., 1.):
+                raise config.error("Option 'shutdown_value' in section '%s' must be 0 or scale (%s) with software PWM. Use hardware_pwm for values in between" % (config.get_name(), self.scale))
             start_value = config.getfloat('value', 0., minval=0., maxval=self.scale) / self.scale
         else:
             # A digital pin is on/off, so scale doesn't apply

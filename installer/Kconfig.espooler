@@ -227,7 +227,7 @@ if MMU_HAS_ESPOOLER
           Motor power (0-100%) is divided by this to give the PWM duty.
           1 = full range. 2 caps the motors at 50% duty, e.g. for a motor
           rated below the supply voltage. Below 1 they reach full duty sooner.
-          "Value" and "Shutdown value" are given in the range 0 to Scale.
+          "Value" and "Shutdown value" are given in the same units as Scale.
 
       config PARAM_ESPOOLER_VALUE
         float "$(pad,33,Value)"
@@ -244,8 +244,10 @@ if MMU_HAS_ESPOOLER
         default 0
         help
           The motor pin value the MCU falls back to when Klipper shuts it
-          down, e.g. on an error or emergency stop (0 to "Scale"). 0 stops
-          the motors, which is almost always what you want.
+          down, e.g. on an error or emergency stop. 0 stops the motors, which
+          is almost always what you want.
+          With software PWM it must be 0 or "Scale"; values in between need
+          hardware PWM (0 to "Scale").
           Without PWM any value above 0 means on (full power).
           See "shutdown_value" in Klipper's [output_pin] documentation.
 
