@@ -661,6 +661,7 @@ class MmuController(MmuFilamentMovement):
             'slicer_purge': self.slicer_purge,
             'toolchange_purge_volume': self.toolchange_purge_volume,
             'toolchange_material_purge_volume': self._material_purge_volume,
+            'purge_change_min_volume': self.p.purge_change_min_volume,
             'last_toolchange': self._last_toolchange,
             'operation': self.saved_toolhead_operation,
             'filament': "Loaded" if self.filament_pos == FILAMENT_POS_LOADED else
@@ -3409,6 +3410,7 @@ class MmuController(MmuFilamentMovement):
             mvolume = self.p.purge_material_change_volume
 
         total = svolume + mvolume + math.pi * ((fil_diameter / 2) ** 2) * remaining
+        total = max(total, self.p.purge_change_min_volume)
 
         return total, svolume, mvolume
 

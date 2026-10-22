@@ -3,6 +3,7 @@
 # purge_material_change_volume is added to the suggested toolchange purge volume when the
 # material last loaded and purged into the extruder and the incoming gate's material are
 # different families ("PLA Silk" is still PLA), or only one of them is known.
+# purge_change_min_volume is a floor on the whole suggested purge volume.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_material_purge
 #
@@ -33,7 +34,8 @@ class MaterialPurgeTestCase(unittest.TestCase):
     def tearDown(self):
         self.hh.close()
 
-    def material_volume_during_purge(self, from_material, to_material, fail_first_purge=False):
+    def material_volume_during_purge(self, from_material, to_material, fail_first_purge=False,
+                                     key='toolchange_material_purge_volume'):
         self.hh.run_gcode('MMU_GATE_MAP GATE=0 MATERIAL="%s" COLOR=000000' % from_material)
         self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL="%s" COLOR=000000' % to_material)
         self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
@@ -44,7 +46,7 @@ class MaterialPurgeTestCase(unittest.TestCase):
         original = effects.get(macro)
 
         def effect(m, gcmd):
-            seen.append(self.hh.mmu.get_status(0)['toolchange_material_purge_volume'])
+            seen.append(self.hh.mmu.get_status(0)[key])
             if fail_first_purge and len(seen) == 1:
                 raise gcmd.error("simulated purge failure")
             if original is not None:
@@ -64,6 +66,10 @@ class MaterialPurgeTestCase(unittest.TestCase):
 
     def test_change_to_unknown_material_adds_extra_volume(self):
         self.assertEqual(self.material_volume_during_purge('PLA', ''), [150.0])
+
+    def test_minimum_purge_applies_to_an_identical_filament(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG purge_change_min_volume=100')
+        self.assertEqual(self.material_volume_during_purge('PLA', 'PLA', key='toolchange_purge_volume'), [100.0])
 
     def test_retry_after_failed_purge_keeps_extra_volume(self):
         self.hh.run_gcode('MMU_TEST_CONFIG retry_tool_change_on_error=1')

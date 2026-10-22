@@ -3223,6 +3223,8 @@ class MmuFilamentMovement:
                 )
                 if self._material_purge_volume:
                     msg += f"\n- material change: {self._material_purge_volume:.1f}mm{UI_CUBE}"
+                if self.p.purge_change_min_volume and self.toolchange_purge_volume <= self.p.purge_change_min_volume:
+                    msg += f"\n- raised to minimum purge: {self.p.purge_change_min_volume:.1f}mm{UI_CUBE}"
                 self.log_debug(msg)
                 macro = self.p.purge_macro
                 if extruder_only:
