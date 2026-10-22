@@ -338,6 +338,43 @@ class TestSwitchBufferSpringRelease(unittest.TestCase):
                         'expected an explicit decline, got %r' % logged)
 
 
+class TestAdjustTensionRestoresSync(unittest.TestCase):
+    """
+    #1445: the Blobifier calls ADJUST_TENSION between blobs. Out of print the gear must be
+    re-synced afterwards, or the next blob is extruded against a gripped, stationary gear.
+    """
+
+    def test_nested_adjust_tension_resyncs_a_synced_gear(self):
+        # Type-A ERCF: not always gripped, so nothing else forces sync back on
+        hh = session('ercf_vvd_buffers')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        hh.run_gcode('MMU_SELECT GATE=0')
+        self.assertEqual(hh.errors, [])
+
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED
+        mmu = hh.mmu
+        mmu.filament_pos = FILAMENT_POS_LOADED
+        self.assertFalse(mmu.mmu_unit().filament_always_gripped)
+
+        # As set by the purge step with sync_purge: 1
+        mmu.reset_sync_gear_to_extruder(True, force_grip=True)
+        self.assertTrue(mmu.drive().is_synced_to_extruder())
+
+        sf = mmu.mmu_unit(0).sync_feedback
+        readings = [-0.5, -0.05]
+        with patch.object(sf, '_get_sensor_state',
+                          side_effect=lambda *a, **k: readings.pop(0) if len(readings) > 1 else readings[0]), \
+                patch.object(mmu, 'move_filament', side_effect=lambda reason, dist, *a, **k: dist) as move:
+            # Nested, as when the purge macro runs inside MMU_CHANGE_TOOL
+            with mmu.wrap_sync_gear_to_extruder():
+                hh.run_gcode('MMU_SYNC_FEEDBACK ADJUST_TENSION=1 UNIT=0')
+                self.assertTrue(move.called)
+                self.assertTrue(mmu.drive().is_synced_to_extruder(),
+                                'gear left gripped but unsynced after ADJUST_TENSION')
+        self.assertEqual(hh.errors, [])
+
+
 class TestPrintEndReleaseGuards(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
