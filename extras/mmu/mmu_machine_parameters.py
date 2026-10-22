@@ -55,6 +55,8 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('force_form_tip_standalone',     'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('slicer_tip_park_pos',           'float',   0.0, section="PRINTER", limits=dict(minval=0.0), guard=lambda self: not self.force_form_tip_standalone),
         ParamSpec('force_purge_standalone',        'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
+        ParamSpec('purge_material_change_volume',  'float',   0.0, section="PRINTER", limits=dict(minval=0.0)),
+        ParamSpec('purge_change_min_volume',       'float',   0.0, section="PRINTER", limits=dict(minval=0.0)),
         ParamSpec('strict_filament_recovery',      'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('filament_recovery_on_pause',    'int',       1, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('retry_tool_change_on_error',    'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
@@ -79,7 +81,6 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('load_sequence_macro',           'str',   '_MMU_LOAD_SEQUENCE',      section="MACROS", hidden=True),
 
         # These macros are not currently exposed but provide future flexibility
-        ParamSpec('error_dialog_macro',            'str',   '_MMU_ERROR_DIALOG',       section="MACROS", hidden=True),
         ParamSpec('error_macro',                   'str',   '_MMU_ERROR',              section="MACROS", hidden=True),
         ParamSpec('toolhead_homing_macro',         'str',   '_MMU_AUTO_HOME',          section="MACROS", hidden=True),
         ParamSpec('park_macro',                    'str',   '_MMU_PARK',               section="MACROS", hidden=True),

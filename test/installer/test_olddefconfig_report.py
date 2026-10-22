@@ -39,9 +39,10 @@ class TestOlddefconfigReport(unittest.TestCase):
             if profile.units:
                 continue
             with self.subTest(profile=profile.name):
-                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                env = dict(cfg._SINGLE_UNIT_ENV, **cfg.profile_env(profile))
+                with cfg._env(env):
                     kc = cfg._kconfig(profile.name, profile.syms)
-                self.assertEqual(self._refresh(lambda path: kc.write_config(path)), [])
+                self.assertEqual(self._refresh(lambda path: kc.write_config(path), env), [])
 
     def test_current_multi_unit_config_reports_nothing(self):
         """

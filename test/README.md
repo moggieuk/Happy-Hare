@@ -535,9 +535,8 @@ To see the pause dialog, pretend a print is running and make something fail:
 MMU_CHANGE_TOOL TOOL=1
 ```
 
-The shipped `_MMU_ERROR_DIALOG` macro really runs while the API is on (macro bodies are
-otherwise no-ops in the harness), and its `RESPOND TYPE=command` lines reach the UI as the
-`// action:prompt_*` host commands Klipper would send, not as console text.
+Happy Hare sends the dialog as `// action:prompt_*` host command lines, which reach the UI
+as Klipper would send them and are kept out of the console text.
 
 Requests are only served between keystrokes, from the same idle tick as `/live`, so it needs a
 terminal. Everything lives in `test/hh/webui_bridge.py`, which is standard library only.
@@ -778,6 +777,7 @@ The test files, grouped by what they're about:
 | `test_mmu_bootup.py` | 36 | config load → `klippy:connect` → `klippy:ready` → `mmu:bootup` |
 | `test_mmu_profiles.py` | 43 | the same checks across the bootable machine profiles |
 | `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
+| `test_mmu_hall_endstop.py` | 5 | the hall-effect `[mmu_toolhead]` endstop booting on ADC pins and following their readings |
 | **Filament handling** | | |
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |

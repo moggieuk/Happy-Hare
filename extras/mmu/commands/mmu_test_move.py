@@ -67,11 +67,10 @@ class MmuTestMoveCommand(MoveMixin, BaseCommand):
         grip = bool(gcmd.get_int('GRIP', 0, minval=0, maxval=1))
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
 
-        # If retaining grip must establish before wrap_sync_gear_to_extruder()
         if grip:
             mmu.selector().filament_drive()
 
-        with mmu.wrap_sync_gear_to_extruder():
+        with mmu.wrap_sync_gear_to_extruder(retain_grip=grip):
             with DebugStepperMovement(mmu, debug):
                 actual, _, measured, _ = self._move_cmd(gcmd, "Test move", allow_bypass=allow_bypass) # From Mixin
 

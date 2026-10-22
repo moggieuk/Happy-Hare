@@ -81,7 +81,6 @@ class WebUiBridgeTestCase(unittest.TestCase):
         self.hh.boot(calibrate=True)
         self.bridge = WebUiBridge(self.hh, self.hh.run_gcode, port=0).start()
         self.client = WebSocketClient(self.bridge.port)
-        self.hh.printer.lookup_object('respond').host_listener = self.bridge.host_output
 
     def tearDown(self):
         self.client.close()
@@ -164,8 +163,7 @@ class TestPauseDialogReachesTheUi(WebUiBridgeTestCase):
             self.hh.place_filament(gate, position=TIP_AT_GATE)
             self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
         self.hh.heat_extruder(220)
-        self.hh.printer.harness_macro_effects['_MMU_ERROR_DIALOG'] = \
-            lambda macro, gcmd: macro.run_body(gcmd)
+        self.hh.gcode.register_output_handler(self.bridge.host_output) # All output, as Moonraker relays it
 
     def pushed(self):
         lines = []

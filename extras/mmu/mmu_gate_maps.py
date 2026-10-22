@@ -831,14 +831,18 @@ class MmuGateMaps:
                     if strategy == AUTOMAP_FILAMENT_NAME:
                         equal = self._compare_unicode(tool_to_remap[tool_field], gate_feature)
                     elif strategy == AUTOMAP_COLOR:
-                        equal = tool_to_remap[tool_field].upper().ljust(8,'F') == gate_feature.upper().ljust(8,'F')
+                        equal = (tool_to_remap[tool_field].upper().ljust(8,'F') == gate_feature.upper().ljust(8,'F')
+                                 and self._material_matches(tool_to_remap['material'], self.gate_material[gn]))
                     else:
                         equal = tool_to_remap[tool_field] == gate_feature
                     if equal:
                         remaps.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
                         self.mmu.wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
                 if not remaps:
-                    errors.append("No gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
+                    material_str = ""
+                    if strategy == AUTOMAP_COLOR and self._normalize_material(tool_to_remap['material']):
+                        material_str = " (material %s)" % tool_to_remap['material']
+                    errors.append("No gates found for tool %s with %s %s%s" % (tool, strategy_str, tool_to_remap[tool_field], material_str))
 
             # 'colors' search for closest
             elif strategy == AUTOMAP_CLOSEST_COLOR:
@@ -913,6 +917,25 @@ class MmuGateMaps:
             a = a.lower()
             b = b.lower()
         return a == b
+
+
+    # Unset material on either side ("" or slicer's "unknown") matches anything
+    def _normalize_material(self, material):
+        material = (material or "").strip().replace('#', '').lower()
+        return "" if material == "unknown" else material
+
+    def _material_matches(self, tool_material, gate_material):
+        tm = self._normalize_material(tool_material)
+        gm = self._normalize_material(gate_material)
+        return not tm or not gm or tm == gm
+
+    # Base material family is the leading name, e.g. "PLA Silk", "PLA-CF" and "PLA+" are all "pla"
+    def material_family(self, material):
+        return re.split(r"[\s\-+_/]", self._normalize_material(material), maxsplit=1)[0]
+
+    # Different families, or known to/from unknown, count as a change. Unknown to unknown doesn't
+    def is_material_change(self, from_material, to_material):
+        return self.material_family(from_material) != self.material_family(to_material)
 
 
     def restore_automap_option(self, skip=False):

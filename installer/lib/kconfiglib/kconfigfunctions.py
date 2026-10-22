@@ -31,6 +31,11 @@ def env_default(_kconf, _name, variable, default=""):
     return os.environ.get(variable, default)
 
 
+def last_index(_kconf, _name, count):
+    """The last index of COUNT items, for an @repeat over them."""
+    return str(int(count) - 1)
+
+
 def nonempty(_kconf, _name, value):
     return "y" if value else "n"
 
@@ -270,6 +275,7 @@ functions = {
     "mmu-serial-gate-choice": (mmu_serial_gate_choice, 2, 2),
     "hh-multiline": (multiline, 1, 1),
     "hh-newline": (newline, 0, 0),
+    "last-index": (last_index, 1, 1),
     "nonempty": (nonempty, 1, 1),
     "hh-pad": (pad, 2, 2),
     "path-exists": (path_exists, 1, 1),

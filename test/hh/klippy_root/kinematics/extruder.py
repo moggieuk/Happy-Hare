@@ -168,8 +168,14 @@ class PrinterExtruder:
             self.extruder_stepper.stepper.set_trapq(self.trapq)
 
         self.printer.add_object(self.name, self)
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.set_extruder(self, 0.)
+        # As real Klipper: only [extruder] starts active and owns M104/M109, which act on
+        # whichever extruder is active unless T selects one.
+        if self.name == 'extruder':
+            toolhead = self.printer.lookup_object('toolhead')
+            toolhead.set_extruder(self, 0.)
+            gcode = self.printer.lookup_object('gcode')
+            gcode.register_command("M104", self.cmd_M104)
+            gcode.register_command("M109", self.cmd_M109)
         logging.info("Fake PrinterExtruder '%s' created (stepper=%s)",
                      self.name, self.extruder_stepper is not None)
 
@@ -188,6 +194,26 @@ class PrinterExtruder:
 
     def get_heater(self):
         return self.heater
+
+    def cmd_M104(self, gcmd, wait=False):
+        temp = gcmd.get_float('S', 0.)
+        index = gcmd.get_int('T', None, minval=0)
+        if index is not None:
+            section = 'extruder'
+            if index:
+                section = 'extruder%d' % (index,)
+            extruder = self.printer.lookup_object(section, None)
+            if extruder is None:
+                if temp <= 0.:
+                    return
+                raise gcmd.error("Extruder not configured")
+        else:
+            extruder = self.printer.lookup_object('toolhead').get_extruder()
+        pheaters = self.printer.lookup_object('heaters')
+        pheaters.set_temperature(extruder.get_heater(), temp, wait)
+
+    def cmd_M109(self, gcmd):
+        self.cmd_M104(gcmd, wait=True)
 
     def get_trapq(self):
         return self.trapq

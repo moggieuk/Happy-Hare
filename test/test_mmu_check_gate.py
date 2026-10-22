@@ -635,6 +635,11 @@ class TestCheckGate(unittest.TestCase):
         load.assert_not_called()
         self.assertEqual(hh.errors, [])
 
+    def test_invalid_gates_reports_the_gates_value(self):
+        hh = self.boot()
+        hh.run_gcode('MMU_CHECK_GATE GATES=0,x')
+        self.assertTrue(any('Invalid GATES parameter: 0,x' in e for e in hh.errors), hh.errors)
+
 
 if __name__ == '__main__':
     unittest.main()

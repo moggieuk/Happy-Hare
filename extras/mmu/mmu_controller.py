@@ -31,6 +31,7 @@ from .mmu_print_state_machine   import MmuPrintStateMachine
 from .mmu_gate_maps             import MmuGateMaps
 from .mmu_td1                   import MmuTd1Bridge
 from .mmu_nfc_arbiter           import MmuNfcFieldArbiter
+from .mmu_dialog                import MmuErrorDialog
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
 
@@ -66,6 +67,7 @@ class MmuController(MmuFilamentMovement):
         self.toolchange_retract = 0.            # Set from mmu_macro_vars
         self.toolchange_purge_volume = 0.       # During toolchange, the total calculated purge volume
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
+        self._material_purge_volume = 0.        # During toolchange, the material change contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
         self.bowden_start_pos = None            # If set then we can measure bowden progress
         self.has_blobifier = False              # Post load purging macro (like BLOBIFIER)
@@ -91,6 +93,7 @@ class MmuController(MmuFilamentMovement):
         self.gate_maps      = MmuGateMaps(self)          # Gate map / TTG map / EndlessSpool state
         self.td1            = MmuTd1Bridge(self)   # Moonraker transport for every TD-1 scanner
         self.nfc_arbiter    = MmuNfcFieldArbiter(self)   # NFC "noisy neighbor" field arbitration
+        self.error_dialog   = MmuErrorDialog(self)       # Pop-up dialog in Mainsail/Fluidd/KlipperScreen when MMU pauses
 
 
         # Register GCODE commands ---------------------------------------------------------------------------
@@ -162,7 +165,6 @@ class MmuController(MmuFilamentMovement):
             self.runout_last_handled_time = self.reactor.monotonic()
         self.is_handling_runout = False # True whilst handling a runout
         self.flowguard_trip_reason = None # Detail of the FlowGuard trip that raised the pending clog/tangle
-        self.error_dialog_shown = False # Pause dialog sent and not yet cleared by HH
 
         self.unit_selected = None       # Must not stay None, set when initial gate is set or in _load_persisted_state()
         self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
@@ -658,6 +660,8 @@ class MmuController(MmuFilamentMovement):
             'next_tool': self._next_tool,
             'slicer_purge': self.slicer_purge,
             'toolchange_purge_volume': self.toolchange_purge_volume,
+            'toolchange_material_purge_volume': self._material_purge_volume,
+            'purge_change_min_volume': self.p.purge_change_min_volume,
             'last_toolchange': self._last_toolchange,
             'operation': self.saved_toolhead_operation,
             'filament': "Loaded" if self.filament_pos == FILAMENT_POS_LOADED else
@@ -1438,7 +1442,7 @@ class MmuController(MmuFilamentMovement):
             return # Timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        elapsed = self.toolhead.get_last_move_time() - self.track[name]
+        elapsed = float(self.toolhead.get_last_move_time() - self.track[name])
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
@@ -1486,7 +1490,7 @@ class MmuController(MmuFilamentMovement):
         try:
             if gate >= 0:
                 if isinstance(count, float):
-                    self.gate_statistics[gate][key] = round(self.gate_statistics[gate][key] + count, 3)
+                    self.gate_statistics[gate][key] = round(float(self.gate_statistics[gate][key] + count), 3)
                 else:
                     self.gate_statistics[gate][key] += count
         except Exception as e:
@@ -1766,7 +1770,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _persist_swap_statistics(self):
-        self.statistics = {key: round(value, 2) if isinstance(value, float) else value for key, value in self.statistics.items()}
+        self.statistics = {key: round(float(value), 2) if isinstance(value, float) else value for key, value in self.statistics.items()}
         self.var_manager.set(VARS_MMU_SWAP_STATISTICS, self.statistics, write=True)
 
 
@@ -1957,7 +1961,7 @@ class MmuController(MmuFilamentMovement):
     def _hotend_off_handler(self, eventtime):
         if not self.is_printing():
             self.log_info("Disabled extruder heater")
-            self.gcode.run_script_from_command("M104 S0")
+            self._set_extruder_temperature(0, self.psm.paused_extruder)
         return self.reactor.NEVER
 
 
@@ -2486,7 +2490,8 @@ class MmuController(MmuFilamentMovement):
                 self.psm.reason_for_pause = reason # Only store reason on first error
                 self.psm.pause_hint = hint
                 self._display_mmu_error(context)
-                self.psm.paused_extruder_temp = self.printer.lookup_object(self.mmu_unit().extruder_name()).heater.target_temp
+                self.psm.paused_extruder = self.mmu_unit().extruder_name()
+                self.psm.paused_extruder_temp = self.printer.lookup_object(self.psm.paused_extruder).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
@@ -2502,7 +2507,7 @@ class MmuController(MmuFilamentMovement):
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
                 if hint:
                     self.log_always(hint)
-                if not self.error_dialog_shown:
+                if not self.error_dialog.active:
                     self._show_mmu_error_dialog("Print is still paused", reason, hint, still_paused=True, context=context, unlock_first=self.is_mmu_paused_and_locked()) # e.g. RESUME failed after clearing it
                 recover_pos = self.p.filament_recovery_on_pause
 
@@ -2541,53 +2546,15 @@ class MmuController(MmuFilamentMovement):
         self.log_always(self.psm.pause_hint or "After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
 
 
-    @staticmethod
-    def _dialog_lines(text):
-        """
-        Split text into dialog-safe lines. Every rendered line is re-parsed as gcode by Klipper,
-        where ';' truncates even inside quotes and shlex treats '"' and '\\' specially.
-        """
-        lines = []
-        for line in str(text).split("\n"):
-            line = line.replace('"', "'").replace(';', ',').replace('\\', '/')
-            line = re.sub(r'([.:!?])\.+$', r'\1', " ".join(line.split()))
-            if line and line != '.':
-                lines.append(line)
-        return lines
-
-
     def _show_mmu_error_dialog(self, msg, reason, hint=None, still_paused=False, context=None, unlock_first=False):
-        """
-        The reason is one paragraph rather than a line per line of the console message, with what
-        was being attempted (the error's context, which ends the message) kept apart so the dialog
-        can lead with it.
-        """
-        dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
-        if not (self.p.show_error_dialog and dialog_macro is not None):
-            return
-        def sentences(lines): # Lines read on as sentences; the last is left as the error wrote it
-            return " ".join([l if l[-1] in ".:!?" else l + "." for l in lines[:-1]] + lines[-1:])
-        lines = self._dialog_lines(reason)
-        flat = " ".join(l if l[-1] in ".:!?" else l + "." for l in lines).replace("'", "")
-        body = reason[:-len(context)] if context and reason.endswith(context) else reason
-        paragraph = sentences(self._dialog_lines(body))
-        self.wrap_gcode_command(
-            '%s MSG="%s" REASON="%s"' % (self.p.error_dialog_macro, msg, flat),
-            variables={'reason_lines': [paragraph] if paragraph else [],
-                       'context_line': " ".join(self._dialog_lines(context or "")),
-                       'action': " ".join(self._dialog_lines(hint or "")),
-                       'still_paused': still_paused,
-                       'unlock_first': unlock_first}
-        )
-        dialog_macro.variables.update({'reason_lines': [], 'context_line': '', 'action': '', 'still_paused': False, 'unlock_first': False})
-        self.error_dialog_shown = True
+        if self.p.show_error_dialog:
+            self.error_dialog.show_error(msg, reason, hint, context=context, still_paused=still_paused, unlock_first=unlock_first)
 
 
     def _clear_mmu_error_dialog(self):
-        dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.p.error_dialog_macro, None)
-        if self.p.show_error_dialog and dialog_macro is not None:
-            self.wrap_gcode_command('RESPOND TYPE=command MSG="action:prompt_end"')
-        self.error_dialog_shown = False
+        # When disabled, leave any other prompt (e.g. a user's own) alone unless ours is open
+        if self.p.show_error_dialog or self.error_dialog.active:
+            self.error_dialog.close()
 
 
     def _mmu_unlock(self):
@@ -3022,8 +2989,21 @@ class MmuController(MmuFilamentMovement):
         return "ENCODER" if self.mmu_unit().p.gate_homing_endstop == SENSOR_ENCODER else "%s sensor" % self.mmu_unit().p.gate_homing_endstop
 
 
+    def _set_extruder_temperature(self, temp, extruder_name=None):
+        # M104 only reaches the active extruder, which need not be this unit's (toolchanger/IDEX)
+        extruder_name = extruder_name or self.mmu_unit().extruder_name()
+        if self.toolhead.get_extruder().get_name() == extruder_name:
+            self.gcode.run_script_from_command("M104 S%.1f" % temp)
+        else:
+            self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (extruder_name, temp))
+
+
     def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
-        extruder = self.printer.lookup_object(self.mmu_unit().extruder_name())
+        extruder_name = self.mmu_unit().extruder_name()
+        if source == "pause" and self.psm.paused_extruder:
+            # Restore the extruder that was paused even if another unit has since been selected
+            extruder_name = self.psm.paused_extruder
+        extruder = self.printer.lookup_object(extruder_name)
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         new_target_temp = current_temp
@@ -3047,7 +3027,7 @@ class MmuController(MmuFilamentMovement):
                 wait = False
 
         elif source == "auto": # Normal case
-            if self.is_mmu_paused():
+            if self.is_mmu_paused() and self.psm.paused_extruder in (None, extruder_name):
                 # In a pause we always want to restore the temp we paused at
                 if self.psm.paused_extruder_temp is not None:
                     new_target_temp = self.psm.paused_extruder_temp
@@ -3097,7 +3077,7 @@ class MmuController(MmuFilamentMovement):
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
-            self.gcode.run_script_from_command("M104 S%.1f" % new_target_temp)
+            self._set_extruder_temperature(new_target_temp, extruder_name)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > self.p.extruder_temp_variance:
@@ -3105,7 +3085,7 @@ class MmuController(MmuFilamentMovement):
                     self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
                     self.gcode.run_script_from_command(
                         f"TEMPERATURE_WAIT "
-                        f"SENSOR={self.mmu_unit().extruder_name()} "
+                        f"SENSOR={extruder_name} "
                         f"MINIMUM={new_target_temp - self.p.extruder_temp_variance:.1f} "
                         f"MAXIMUM={new_target_temp + self.p.extruder_temp_variance:.1f}"
                     )
@@ -3382,28 +3362,29 @@ class MmuController(MmuFilamentMovement):
                     )
 
             # Determine purge volume for toolchange/load. Valid only during toolchange/load operation
-            self.toolchange_purge_volume, self._slicer_purge_volume  = self._calc_purge_volume(self._last_tool, tool)
+            self.toolchange_purge_volume, self._slicer_purge_volume, self._material_purge_volume = self._calc_purge_volume(self._last_tool, tool)
 
             self.load_sequence(purge=purge)
             self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
         finally:
-            self.toolchange_purge_volume = self._slicer_purge_volume = 0.
+            self.toolchange_purge_volume = self._slicer_purge_volume = self._material_purge_volume = 0.
 
 
-    def _calc_purge_volume(self, from_tool, to_tool):
+    def _calc_purge_volume(self, from_tool, to_tool, from_material=None):
         """
         Helper to determine purge volume for toolchange.
-        Uses new printer toolhead for residuals
+        Uses new printer toolhead for residuals and, unless from_material is given,
+        the material recorded for the filament in its extruder
 
           Rtn:
-            Tuple (total purge volume, slicer portion of volume)
+            Tuple (total purge volume, slicer portion of volume, material change portion of volume)
 
           TODO FIXME: This is no longer correct if switching between toolheads because
                       color in previous toolhead is not the last slicer color
         """
         if to_tool < 0:
-            return 0, 0
+            return 0, 0, 0
 
         fil_diameter = 1.75
         svolume = 0.
@@ -3417,11 +3398,21 @@ class MmuController(MmuFilamentMovement):
                 svolume = max(row[to_tool] for row in slicer_purge_volumes)
                     
         # Always add volume of residual filament (cut fragment and bit always left in the hotend)
-        to_unit = self.mmu_unit(gate=self.ttg_map[to_tool])
+        to_gate = self.ttg_map[to_tool]
+        to_unit = self.mmu_unit(gate=to_gate)
         remaining = to_unit.extruder_wrapper.get_status(0)['extruder_filament_remaining']
-        total = svolume + math.pi * ((fil_diameter / 2) ** 2) * remaining
 
-        return total, svolume
+        # Extra volume to flush out a different material
+        if from_material is None:
+            from_material = to_unit.extruder_wrapper.filament_remaining_material
+        mvolume = 0.
+        if self.gate_maps.is_material_change(from_material, self.gate_material[to_gate]):
+            mvolume = self.p.purge_material_change_volume
+
+        total = svolume + mvolume + math.pi * ((fil_diameter / 2) ** 2) * remaining
+        total = max(total, self.p.purge_change_min_volume)
+
+        return total, svolume, mvolume
 
 
     # Primary method to unload current tool but retain selection
@@ -4395,6 +4386,7 @@ class MmuWrapperClearPauseCommand(BaseCommand):
     def _run(self, gcmd):
         if self.mmu.is_enabled:
             self.mmu.log_debug("MMU CLEAR_PAUSE wrapper called")
+            self.mmu._clear_mmu_error_dialog()
             self.mmu._clear_macro_state()
             if self.mmu.saved_toolhead_operation == 'pause':
                 self.mmu._clear_saved_toolhead_position()

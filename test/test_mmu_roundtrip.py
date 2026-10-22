@@ -424,6 +424,15 @@ class TestGateMapMaintenance(RoundTripTestCase):
         self.rt.settle()
         self.assertEqual(self.rt.mmu.gate_spool_id[0], 1)
 
+    def test_spool_created_after_startup_sticks(self):
+        """#967: push mode must not clear a spool Moonraker hasn't cached yet."""
+        sid = self.rt.db.add_spool(material='PETG', vendor='Overture')
+        self.rt.run_gcode('MMU_GATE_MAP GATE=3 SPOOLID=%d' % sid)
+        self.assertEqual(self.rt.db.spool_gate(sid), 3)
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], sid)
+        self.assertEqual(self.rt.mmu.gate_material[3], 'PETG')
+        self.assertEqual(self.rt.mmu.gate_vendor[3], 'Overture')
+
 
 class TestSpoolmanOff(RoundTripTestCase):
     """

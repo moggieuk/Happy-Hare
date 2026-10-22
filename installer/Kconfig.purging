@@ -48,6 +48,8 @@
 #   PARAM_PURGE_MACRO
 #   PARAM_FORCE_PURGE_STANDALONE
 #   PARAM_EXTRUDER_PURGE_CURRENT
+#   PARAM_PURGE_MATERIAL_CHANGE_VOLUME
+#   PARAM_PURGE_CHANGE_MIN_VOLUME
 
 config MMU_HAS_BLOBIFIER
   def_bool n
@@ -326,6 +328,25 @@ menu "Purging"
     default_when_hidden
     help
       % of extruder current (100%-150%) to use when purging (100 to disable feature)
+
+  config PARAM_PURGE_MATERIAL_CHANGE_VOLUME
+    float "Extra purge on material change     " if !CHOICE_PURGE_MACRO_SLICER
+    default 0.0
+    default_when_hidden
+    help
+      Extra volume (mm^3) purged when the toolchange changes material
+      family, e.g. ABS to PLA, added to the color-based purge volume.
+      Materials are compared by their leading name, so "PLA Silk",
+      "PLA-CF" and "PLA+" all count as PLA. 0 to disable.
+
+  config PARAM_PURGE_CHANGE_MIN_VOLUME
+    float "Minimum purge volume               " if !CHOICE_PURGE_MACRO_SLICER
+    default 0.0
+    default_when_hidden
+    help
+      Smallest volume (mm^3) purged after any load, even between the same
+      color and material, e.g. an EndlessSpool switch to an identical
+      spool. Keeps the nozzle primed. 0 to disable.
 
   if CHOICE_PURGE_MACRO_PURGE
     comment "Simple purge macro variables"

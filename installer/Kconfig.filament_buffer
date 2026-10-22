@@ -1,5 +1,6 @@
 # Responsible for setting:
 #   MMU_HAS_FILAMENT_BUFFER
+#   PARAM_FILAMENT_BUFFER
 #
 # Whether MMU has loose filament catchment buffer. No options
 #
@@ -24,3 +25,8 @@ if !UNSELECT_MMU_HAS_FILAMENT_BUFFER
       because it rewinds filament onto the spool!
       Obviously this is not required if you have an espooler.
 endif
+
+config PARAM_FILAMENT_BUFFER
+  boolint
+  default 1 if MMU_HAS_FILAMENT_BUFFER
+  default 0

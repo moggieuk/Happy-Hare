@@ -64,7 +64,6 @@ hidden_params = [
     "serious",
     "test_random_failures",
     "test_force_in_print",
-    "error_dialog_macro",
     "error_macro",
     "toolhead_homing_macro",
     "park_macro",
@@ -248,6 +247,8 @@ class KConfig(kconfiglib.Kconfig):
         grouped = {}
         grouped_names = {}  # key -> {index: original symbol name}, for ungrouping singletons
 
+        max_index = int(self.variables["max_gate"].expanded_value)
+
         choice_member_names = {
             sym.name
             for choice in self.named_choices.values()
@@ -287,10 +288,10 @@ class KConfig(kconfiglib.Kconfig):
                 key = m.group(1)
                 nr = int(m.group(2))
 
-                if nr > 12:
+                if nr > max_index:
                     logging.warning(
                         f"Symbol '{sym_name}' looks like an indexed array element (index={nr}) "
-                        f"but the index exceeds the maximum supported value (12). Treating it as a normal symbol."
+                        f"but the index exceeds the maximum supported value ({max_index}). Treating it as a normal symbol."
                     )
                     result[sym_name] = value
                     continue
@@ -312,11 +313,10 @@ class KConfig(kconfiglib.Kconfig):
                 result[grouped_names[key][idx]] = value
                 continue
 
-            max_index = max(values)
             default = False if all(isinstance(v, bool) for v in values.values()) else ""
             result[key] = [
                 values.get(i, default)
-                for i in range(max_index + 1)
+                for i in range(max(values) + 1)
             ]
 
         return result

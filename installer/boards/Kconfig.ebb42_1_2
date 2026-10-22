@@ -60,7 +60,7 @@ if BOARD_TYPE_EBB_GEN1
   config EBB_GEN1_I2C3_IN_USE
     bool
     default y if CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_EBB_I2C3_PB3_PB4 || CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4
-    @repeat var=gate min=0 max=11@
+    @repeat var=gate min=0 max=$(max_gate)@
     default y if CHOICE_NFC_READER_I2C_BUS_EBB_I2C3_PB3_PB4_$(gate)
     @endrepeat@
 

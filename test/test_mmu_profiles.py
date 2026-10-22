@@ -77,6 +77,8 @@ BOOTABLE = {
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
     # its own assertions in TestMultiUnitMachine below.
     'ercf_vvd': (13, 'LinearServoSelector'),
+    'tradrack_max_gates': (24, 'LinearServoSelector'),
+    'boxturtle_max_gates': (24, 'VirtualSelector'),
 }
 
 # Selector classes reached only through a non-first unit, so the BOOTABLE table above cannot
@@ -156,6 +158,12 @@ class TestEveryBootableProfile(unittest.TestCase):
         """
         hh = self._check('tradrack')
         self.assertTrue(hasattr(hh.mmu.mmu_unit(0).selector, 'selector_stepper'))
+
+    def test_tradrack_max_gates(self):
+        self._check('tradrack_max_gates')
+
+    def test_boxturtle_max_gates(self):
+        self._check('boxturtle_max_gates')
 
     def test_3ms_load_unload_round_trip(self):
         hh = self._check('3ms')
@@ -645,6 +653,86 @@ class TestEveryBootableProfile(unittest.TestCase):
                                for section in parser.sections()
                                if section.startswith('mmu_unit '))
                 self.assertEqual(rendered, gates)
+
+
+class TestMaxGatesPerUnit(unittest.TestCase):
+    """Every per-gate option exists up to the most gates one unit can configure."""
+
+    @staticmethod
+    def _kconfig(name, syms, max_gates=None):
+        from test.hh import cfg
+        env = dict(cfg._SINGLE_UNIT_ENV)
+        if max_gates:
+            env['F_MAX_GATES'] = str(max_gates)
+        with cfg._env(env):
+            return cfg._kconfig(name, syms)
+
+    def test_the_limit_defaults_to_12_and_is_saved(self):
+        from test.hh import profiles
+        tradrack = profiles.get('tradrack').syms
+        for max_gates, expected in ((None, profiles.DEFAULT_MAX_GATES),
+                                    (profiles.MAX_GATES, profiles.MAX_GATES)):
+            with self.subTest(max_gates=max_gates):
+                kc = self._kconfig('max_gates', tradrack, max_gates)
+                self.assertEqual(int(kc.variables['max_gates'].expanded_value), expected)
+                self.assertEqual(int(kc.variables['max_gate'].expanded_value), expected - 1)
+                self.assertEqual(kc.syms['MAX_GATES'].str_value, str(expected))
+                self.assertIn('PIN_ENTRY_SENSOR_%d' % (expected - 1), kc.syms)
+                self.assertNotIn('PIN_ENTRY_SENSOR_%d' % expected, kc.syms)
+
+    def test_a_saved_limit_is_kept_without_install_sh(self):
+        import os
+        import tempfile
+        from test.hh import cfg, profiles
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = os.path.join(tmp, '.mmu_config')
+            with open(saved, 'w') as f:
+                f.write('CONFIG_MAX_GATES=%d\n' % profiles.MAX_GATES)
+            with cfg._env(dict(cfg._SINGLE_UNIT_ENV, KCONFIG_CONFIG=saved)):
+                kc = cfg._kconfig('saved_max_gates', profiles.get('tradrack').syms)
+        self.assertEqual(kc.syms['MAX_GATES'].str_value, str(profiles.MAX_GATES))
+
+    def test_a_gate_count_above_the_limit_is_kept_and_warned(self):
+        from test.hh import profiles
+        tradrack = profiles.get('tradrack').syms
+        self.assertFalse(self._kconfig('at_max_gates', dict(
+            tradrack, PARAM_NUM_GATES=profiles.DEFAULT_MAX_GATES)).is_enabled('W35'))
+        kc = self._kconfig('above_max_gates', dict(tradrack, PARAM_NUM_GATES=14))
+        self.assertEqual(kc.syms['PARAM_NUM_GATES'].str_value, '14')
+        self.assertTrue(kc.is_enabled('W35'))
+        self.assertTrue(kc.is_enabled('SHOW_PER_UNIT_WARNINGS'))
+        self.assertFalse(self._kconfig('raised_max_gates', dict(tradrack, PARAM_NUM_GATES=14),
+                                       profiles.MAX_GATES).is_enabled('W35'))
+
+    def test_every_entry_and_exit_sensor_pin_renders(self):
+        from test.hh import cfg, profiles
+        profile = profiles.get('tradrack_max_gates')
+        sensors = dict(cfg.assemble(cfg.render(profile)).items('mmu_sensors unit0'))
+        for gate in range(profiles.MAX_GATES):
+            with self.subTest(gate=gate):
+                self.assertEqual(sensors['mmu_entry_switch_pin_%d' % gate],
+                                 profile.syms['PIN_ENTRY_SENSOR_%d' % gate])
+                self.assertEqual(sensors['mmu_exit_switch_pin_%d' % gate],
+                                 profile.syms['PIN_EXIT_SENSOR_%d' % gate])
+
+    def test_every_sensor_boots(self):
+        from test.hh import profiles
+        hh = session('tradrack_max_gates')
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertEqual(hh.errors, [])
+        last = profiles.MAX_GATES - 1
+        self.assertFalse(hh.sensor('mmu_entry_%d' % last).present)
+        self.assertFalse(hh.sensor('mmu_exit_%d' % last).present)
+
+    def test_every_gear_stepper_renders(self):
+        from test.hh import cfg, profiles
+        profile = profiles.get('boxturtle_max_gates')
+        parser = cfg.assemble(cfg.render(profile))
+        last = profiles.MAX_GATES - 1
+        gear = dict(parser.items('mmu_stepper unit0_gear_%d' % last))
+        self.assertEqual(gear['step_pin'], profile.syms['PIN_GEAR_STEP_%d' % last])
+        self.assertIn('tmc2209 mmu_stepper unit0_gear_%d' % last, parser.sections())
 
 
 class TestMachineNfcDefaults(unittest.TestCase):

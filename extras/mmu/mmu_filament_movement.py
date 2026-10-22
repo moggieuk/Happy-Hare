@@ -2655,6 +2655,12 @@ class MmuFilamentMovement:
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
+            # After purging, including any purge in the post-load macro
+            if not skip_extruder:
+                u.extruder_wrapper.set_filament_material(
+                    self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
+                )
+
             td1_success = True
 
         except MmuError as ee:
@@ -3216,6 +3222,10 @@ class MmuFilamentMovement:
                     f"{self.selected_tool_string(self._next_tool)}: "
                     f"{toolchange_volume_str}"
                 )
+                if self._material_purge_volume:
+                    msg += f"\n- material change: {self._material_purge_volume:.1f}mm{UI_CUBE}"
+                if self.p.purge_change_min_volume and self.toolchange_purge_volume <= self.p.purge_change_min_volume:
+                    msg += f"\n- raised to minimum purge: {self.p.purge_change_min_volume:.1f}mm{UI_CUBE}"
                 self.log_debug(msg)
                 macro = self.p.purge_macro
                 if extruder_only:
@@ -4016,10 +4026,13 @@ class MmuFilamentMovement:
 
 
     @contextlib.contextmanager
-    def wrap_sync_gear_to_extruder(self):
+    def wrap_sync_gear_to_extruder(self, retain_grip=False):
         """
         Preserve sync state across a block. Grip restoration is only performed by
         the outermost wrapper, because it is often noisy / expensive on type-A MMUs.
+
+        Args:
+            retain_grip: Grip the filament on exit regardless of the restored sync state.
 
         Yields:
             self while nested operations may temporarily alter sync and grip state.
@@ -4038,7 +4051,10 @@ class MmuFilamentMovement:
         finally:
             self._sync_gear_wrap_depth -= 1
             outermost = self._sync_gear_wrap_depth == 0
-            self.reset_sync_gear_to_extruder(force_grip=outermost)
+            if outermost and retain_grip:
+                # Grip before restoring sync because servo down can undo it (buzz movement)
+                self.selector().filament_drive()
+            self.reset_sync_gear_to_extruder(force_grip=outermost and not retain_grip)
 
 
 # -----------------------------------------------------------------------------------------------------------

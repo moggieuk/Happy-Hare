@@ -93,6 +93,56 @@ class TestInstalledWithOtherPurge(BlobifierSessionMixin, unittest.TestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+class TestPark(BlobifierSessionMixin, unittest.TestCase):
+    """BLOBIFIER_PARK runs for real; the stub printer has no [quad_gantry_level]"""
+
+    PROFILE = _installed('boxturtle_blobifier_park')
+
+    def setUp(self):
+        super().setUp()
+        self.hh.printer.harness_macro_effects['BLOBIFIER_PARK'] = (
+            lambda macro, gcmd: macro.run_body(gcmd))
+        self.toolhead = self.hh.printer.lookup_object('toolhead')
+        self.bl = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS').variables
+        self.safe = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_SAFE_DESCEND')
+        self.hh.run_gcode("G90\nG1 X150 Y150 Z20")
+
+    def park(self):
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("BLOBIFIER_PARK")
+        return [pos[:3] for pos, _ in self.toolhead.moves[first:]]
+
+    def refused(self):
+        return any('Please home' in m for m in self.hh.console)
+
+    def add_qgl(self, applied):
+        qgl = type('QGL', (), {'get_status': lambda self, eventtime=None: {'applied': applied}})()
+        self.hh.printer.add_object('quad_gantry_level', qgl)
+
+    def test_parks_without_qgl(self):
+        moves = self.park()
+        self.assertFalse(self.refused())
+        self.assertAlmostEqual(moves[-1][0], self.bl['purge_x'])
+
+    def test_refuses_when_qgl_not_applied(self):
+        self.add_qgl(False)
+        self.assertEqual(self.park(), [])
+        self.assertTrue(self.refused())
+
+    def test_parks_when_qgl_applied(self):
+        self.add_qgl(True)
+        moves = self.park()
+        self.assertFalse(self.refused())
+        self.assertAlmostEqual(moves[-1][0], self.bl['purge_x'])
+
+    def test_tray_unsafe_above_force_height_stays_high(self):
+        self.safe.variables = dict(self.safe.variables, tray=False,
+                                   print_height=self.bl['force_safe_descend_height_until'] + 5.)
+        moves = self.park()
+        self.assertTrue(moves)
+        self.assertNotIn(self.bl['tray_top'], [z for _, _, z in moves])
+
+
 class TestNotInstalled(unittest.TestCase):
 
     def _boot(self, name, purge_macro):
@@ -122,5 +172,94 @@ class TestNotInstalled(unittest.TestCase):
         self.assertEqual(hh.errors, [])
 
 
+class TestParkDescent(BlobifierSessionMixin, unittest.TestCase):
+    """Exercise the height override independently of the optional-QGL fix."""
+
+    PROFILE = _installed('boxturtle_blobifier_park_descent')
+
+    def setUp(self):
+        super().setUp()
+        self.hh.printer.harness_macro_effects['BLOBIFIER_PARK'] = (
+            lambda macro, gcmd: macro.run_body(gcmd))
+        qgl = type('QGL', (), {'get_status': lambda self, eventtime=None: {'applied': True}})()
+        self.hh.printer.add_object('quad_gantry_level', qgl)
+        self.toolhead = self.hh.printer.lookup_object('toolhead')
+        self.bl = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS').variables
+        self.safe = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_SAFE_DESCEND')
+        self.hh.run_gcode("G90\nG1 X150 Y150 Z20")
+
+    def park_heights(self, print_height):
+        self.safe.variables = dict(self.safe.variables, tray=False, print_height=print_height)
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode("BLOBIFIER_PARK")
+        moves = self.toolhead.moves[first:]
+        self.assertTrue(moves)
+        return [pos[2] for pos, _ in moves]
+
+    def test_low_print_descends_to_tray_even_if_tray_unsafe(self):
+        self.assertIn(self.bl['tray_top'], self.park_heights(0.))
+
+    def test_tray_unsafe_at_force_height_stays_high(self):
+        self.assertNotIn(self.bl['tray_top'],
+                         self.park_heights(self.bl['force_safe_descend_height_until']))
+
+    def test_tray_unsafe_above_force_height_stays_high(self):
+        self.assertNotIn(self.bl['tray_top'],
+                         self.park_heights(self.bl['force_safe_descend_height_until'] + 5.))
+
+    def test_zero_force_height_disables_override(self):
+        self.bl['force_safe_descend_height_until'] = 0.
+        self.assertNotIn(self.bl['tray_top'], self.park_heights(0.))
+
+
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestPurgeTemperature(BlobifierSessionMixin, unittest.TestCase):
+    """BLOBIFIER and _BLOBIFIER_RESTORE_TEMP run for real; M104/M109 drive the fake heater"""
+
+    PROFILE = _installed('boxturtle_blobifier_purge_temp')
+
+    def setUp(self):
+        super().setUp()
+        run = lambda macro, gcmd: macro.run_body(gcmd)
+        self.hh.printer.harness_macro_effects.update(
+            {'BLOBIFIER': run, '_BLOBIFIER_RESTORE_TEMP': run})
+        fan = type('Fan', (), {'get_status': lambda self, eventtime=None: {'speed': 0.}})()
+        self.hh.printer.add_object('fan', fan)
+        self.hh.printer.lookup_object('configfile').status_raw_config = {
+            'extruder': {'filament_diameter': '1.75'}}
+        self.heater = self.hh.printer.lookup_object('extruder').heater
+        gcode = self.hh.printer.lookup_object('gcode')
+        for cmd, handler in (('M104', self._m104), ('M109', self._m109)):
+            gcode.register_command(cmd, None) # replace the harness's own handler to record waits
+            gcode.register_command(cmd, handler)
+        self.bl = self.hh.printer.lookup_object('gcode_macro _BLOBIFIER_VARS')
+        self.purge_temp = self.bl.variables['purge_temp_min']
+        self.waits = []
+        self.hh.run_gcode("G28\nG90\nG1 X150 Y150 Z20")
+
+    def _m104(self, gcmd):
+        self.heater.target_temp = gcmd.get_float('S', 0.)
+
+    def _m109(self, gcmd):
+        self.waits.append(gcmd.get_float('S', 0.))
+        self._m104(gcmd)
+        self.heater.smoothed_temp = self.heater.target_temp
+
+    def purge(self, temp):
+        self.heater.target_temp = self.heater.smoothed_temp = temp
+        self.hh.run_gcode("BLOBIFIER PURGE_LENGTH=20")
+        return self.heater.target_temp
+
+    def test_restores_target_after_raising_for_purge(self):
+        self.assertEqual(self.purge(self.purge_temp - 10), self.purge_temp - 10)
+        self.assertEqual(self.waits, [self.purge_temp])
+
+    def test_leaves_hotter_target_alone(self):
+        self.assertEqual(self.purge(self.purge_temp + 10), self.purge_temp + 10)
+
+    def test_does_not_override_target_set_during_purge(self):
+        self.bl.variables = dict(self.bl.variables, clean_macro='M104 S%d' % (self.purge_temp + 30))
+        self.assertEqual(self.purge(self.purge_temp - 10), self.purge_temp + 30)

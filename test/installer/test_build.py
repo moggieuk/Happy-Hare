@@ -642,6 +642,17 @@ class TestComponentNameRefresh(_HardwareRefresh):
                 self.assertEqual(built.get(self.UNIT, "encoder"), "xyz")
 
 
+class TestFilamentBufferBuild(_HardwareRefresh):
+    """[mmu_unit] filament_buffer follows the menuconfig option."""
+
+    def test_filament_buffer_follows_menuconfig(self):
+        for ticked, expected in ((True, "1"), (False, "0")):
+            with self.subTest(ticked=ticked):
+                built = ConfigBuilder(self.build("tradrack", {"MMU_HAS_FILAMENT_BUFFER": ticked},
+                                                 "replace", []))
+                self.assertEqual(built.get(self.UNIT, "filament_buffer"), expected)
+
+
 class TestSupplementalParamRefresh(unittest.TestCase):
     """A supplemental param is only reinserted when the template doesn't already render it."""
 
