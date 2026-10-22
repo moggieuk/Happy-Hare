@@ -475,6 +475,19 @@ class TestAdvancedEncoderEspoolerOptions(unittest.TestCase):
                     with self.subTest(label=label, section=section, option=option):
                         self.assertEqual(config[section].getfloat(option), values[column])
 
+    def test_pwm_only_options_still_render_with_pwm_off(self):
+        pwm_only = ('hardware_pwm', 'cycle_time', 'scale')
+        espooler = self.OPTIONS['mmu_espooler unit0']
+        custom = {espooler[option][0]: espooler[option][2] for option in pwm_only}
+        for label, syms, column in (('defaults', {}, 1), ('custom', custom, 2)):
+            profile = profiles.get('encoder').derive(
+                'encoder_espooler_digital_' + label, syms=dict(syms, PARAM_ESPOOLER_PWM=0))
+            section = cfg.assemble(cfg.render(profile))['mmu_espooler unit0']
+            self.assertEqual(section.getint('pwm'), 0)
+            for option in pwm_only:
+                with self.subTest(label=label, option=option):
+                    self.assertEqual(section.getfloat(option), espooler[option][column])
+
 
 class TestHardwareConfigurationWarnings(unittest.TestCase):
 

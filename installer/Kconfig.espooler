@@ -204,7 +204,7 @@ if MMU_HAS_ESPOOLER
 
       config PARAM_ESPOOLER_CYCLE_TIME
         float
-        prompt "$(pad,33,PWM cycle time)" if PARAM_ESPOOLER_PWM
+        prompt "$(pad,29,PWM cycle time)" if PARAM_ESPOOLER_PWM
         default 0.1
         keep_when_hidden
         help
@@ -212,8 +212,10 @@ if MMU_HAS_ESPOOLER
           See "cycle_time" in Klipper's [output_pin] documentation.
 
       config PARAM_ESPOOLER_SCALE
-        float "$(pad,33,Scale)"
+        float
+        prompt "$(pad,29,Scale)" if PARAM_ESPOOLER_PWM
         default 1
+        keep_when_hidden
         help
           Scales the PWM output range. "Value" and "Shutdown value" are
           given in this range.
@@ -223,6 +225,7 @@ if MMU_HAS_ESPOOLER
         default 0
         help
           The initial motor pin value at startup (0 to "Scale").
+          Without PWM any value above 0 means on.
           See "value" in Klipper's [output_pin] documentation.
 
       config PARAM_ESPOOLER_SHUTDOWN_VALUE
@@ -230,6 +233,7 @@ if MMU_HAS_ESPOOLER
         default 0
         help
           The motor pin value on MCU shutdown (0 to "Scale").
+          Without PWM any value above 0 means on.
           See "shutdown_value" in Klipper's [output_pin] documentation.
 
     endmenu
