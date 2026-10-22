@@ -70,6 +70,8 @@ class MmuController(MmuFilamentMovement):
         self._material_purge_volume = 0.        # During toolchange, the material change contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
         self.bowden_start_pos = None            # If set then we can measure bowden progress
+        self.step_unload_overshoot = 0.         # Handed from _MMU_STEP_UNLOAD_TOOLHEAD to _MMU_STEP_UNLOAD_BOWDEN
+        self.step_unload_homing_buffer = 0.     # Handed from _MMU_STEP_UNLOAD_BOWDEN to _MMU_STEP_UNLOAD_GATE
         self.has_blobifier = False              # Post load purging macro (like BLOBIFIER)
         self.has_mmu_cutter = False             # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False        # Form tip cutting macro (like _MMU_CUT_TIP)

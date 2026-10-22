@@ -2569,6 +2569,7 @@ class MmuFilamentMovement:
 
         self.set_filament_direction(DIRECTION_LOAD)
         self.initialize_filament_position(dwell=None) # Reset measurement to 0
+        self._reset_step_unload_handoff()
         td1_token = None
         td1_mgr = self.mmu_unit().td1_manager if self.gate_selected >= 0 else None
         if td1_mgr is not None and not extruder_only and full and not skip_extruder:
@@ -2781,6 +2782,15 @@ class MmuFilamentMovement:
 # UNLOAD SEQUENCE
 # -----------------------------------------------------------------------------------------------------------
 
+    def _reset_step_unload_handoff(self):
+        """
+        Forget the offsets the unload step commands hand to each other, so a later step never
+        applies one left over from an earlier or aborted unload.
+        """
+        self.step_unload_overshoot = 0.
+        self.step_unload_homing_buffer = 0.
+
+
     def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False):
         """
         Execute the complete filament unload sequence for the current gate and tool.
@@ -2917,6 +2927,7 @@ class MmuFilamentMovement:
             if self.p.gcode_unload_sequence and calibrated:
                 self.log_debug("Calling external user defined unloading sequence macro")
                 self.unload_cut_fragment = cut_fragment
+                self._reset_step_unload_handoff()
                 try:
                     self.wrap_gcode_command(
                         "%s FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f CUT_FRAGMENT=%.2f" % (
@@ -2931,6 +2942,7 @@ class MmuFilamentMovement:
                     )
                 finally:
                     self.unload_cut_fragment = 0.
+                    self._reset_step_unload_handoff()
 
             elif extruder_only:
                 if start_filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY:
