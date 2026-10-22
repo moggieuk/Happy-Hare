@@ -138,7 +138,7 @@ class MmuStepUnloadBowdenCommand(BaseCommand):
     def _run(self, gcmd):
         mmu = self.mmu
 
-        length = gcmd.get_float('LENGTH', mmu._get_bowden_length(mmu.gate_selected))
+        length = gcmd.get_float('LENGTH', None, minval=0.)
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 mmu._unload_bowden(length)

@@ -252,6 +252,21 @@ class TestUnload(ToolchangeTestCase):
         self.assertNotIn('Forming tip...', self.hh.console[at:])
 
 
+class TestUnloadSequenceMacro(ToolchangeTestCase):
+    """gcode_unload_sequence: 1 runs the shipped _MMU_UNLOAD_SEQUENCE and its step commands"""
+    PROFILE = '3ms'
+
+    def test_full_unload_through_the_sequence_macro(self):
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.hh.mmu.p.gcode_unload_sequence = 1
+        self.hh.printer.harness_macro_effects['_MMU_UNLOAD_SEQUENCE'] = lambda m, g: m.run_body(g)
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+
+
 class TestToolChange(ToolchangeTestCase):
     PRELOAD_GATES = (0, 1, 2)
 
