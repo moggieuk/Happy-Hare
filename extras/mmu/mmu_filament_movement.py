@@ -2148,7 +2148,7 @@ class MmuFilamentMovement:
 # UNLOAD EXTRUDER LOGIC
 # -----------------------------------------------------------------------------------------------------------
 
-    def _unload_extruder(self, extruder_only=False, validate=True):
+    def _unload_extruder(self, extruder_only=False, validate=True, cut_fragment=0.):
         """
         Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
         and we are parked somewhere in the extruder either by slicer or by stand alone tip creation
@@ -2159,6 +2159,7 @@ class MmuFilamentMovement:
         Args:
             extruder_only: Whether only the extruder path should be moved without normal MMU synchronization.
             validate: Whether encoder-based validation should be performed during unload.
+            cut_fragment: Length cut off by this unload's tip cutting (0 if not cut). Sizes the missed cut check.
 
         Returns:
             tuple[bool, float, bool]: Sync state, Overshoot, entry datum established
@@ -2168,10 +2169,19 @@ class MmuFilamentMovement:
               extruder-entry sensor; False when its position was assumed or not used.
         """
         u = self.mmu_unit()
-        self.log_trace_entry(f"_unload_extruder(extruder_only={extruder_only}, validate={validate})")
+        self.log_trace_entry(
+            f"_unload_extruder(extruder_only={extruder_only}, validate={validate}, cut_fragment={cut_fragment})"
+        )
 
         overshoot = 0.
         entry_datum_established = False
+
+        # Distance of the filament end from the nozzle as set by tip forming/cutting (0 if no tip formed)
+        park_pos = min(
+            max(0., -self.drive().get_filament_position()),
+            u.toolhead_wrapper.p.toolhead_extruder_to_nozzle
+        )
+
         with self.wrap_action(ACTION_UNLOADING_EXTRUDER):
             self.log_debug("Extracting filament from extruder")
             self.set_filament_direction(DIRECTION_UNLOAD)
@@ -2252,12 +2262,22 @@ class MmuFilamentMovement:
                         "toolhead, but the extruder sensor does not detect filament. "
                         "Possible sensor malfunction."
                     )
+
+                if entry_datum_established:
+                    self._check_unload_homing_distance(
+                        "extruder entry",
+                        abs(actual),
+                        u.toolhead_wrapper.p.toolhead_extruder_to_nozzle + u.toolhead_wrapper.p.toolhead_entry_to_extruder - park_pos,
+                        cut_fragment,
+                        buffer_slack=u.buffer.buffer_maxrange if u.has_buffer() else 0.,
+                    )
             else:
                 # -------------------------------------------------------------------------------
                 # NEXT BEST: With toolhead sensor we first home to toolhead sensor.
                 # Optionally synced
                 # -------------------------------------------------------------------------------
                 if self.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
+                    actual = None
                     if not self.sensor_manager.check_sensor(SENSOR_TOOLHEAD):
                         self.log_warning(
                             "Warning: Filament was not detected in the extruder by the "
@@ -2292,6 +2312,14 @@ class MmuFilamentMovement:
                         # We know exactly where end of filament is so true up
                         self.set_filament_pos_state(FILAMENT_POS_HOMED_TS)
                         self.drive().set_filament_position(-u.toolhead_wrapper.p.toolhead_sensor_to_nozzle)
+
+                        if actual is not None:
+                            self._check_unload_homing_distance(
+                                "toolhead",
+                                abs(actual),
+                                u.toolhead_wrapper.p.toolhead_sensor_to_nozzle - park_pos,
+                                cut_fragment,
+                            )
 
                 # -------------------------------------------------------------------------------
                 # Finish up with regular extruder exit movement. Optionally synced
@@ -2328,7 +2356,12 @@ class MmuFilamentMovement:
 
                     if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
                         # Use proportional sync-feedback buffer movement to validate success
-                        self._validate_extruder_unload_proportional()
+                        if not self._validate_extruder_unload_proportional():
+                            self._unload_test_failed(
+                                "Proportional unload validation suggests the extruder is still gripping the filament",
+                                hint=f"Free filament from {self.gate_name()} stuck in the extruder (check the tip or cut), " + HINT_RELOAD,
+                                warned=True
+                            )
 
                     elif self.can_use_encoder() and length > u.p.encoder_move_step_size:
                         # Encoder based validation test if it has high chance of being useful
@@ -2341,11 +2374,11 @@ class MmuFilamentMovement:
                         elif synced and delta > length * (u.p.toolhead_move_error_tolerance / 100.):
                             msg = "sufficient"
                         if msg:
-                            self.log_warning(
-                                f"Warning: Encoder not sensing {msg} movement during final extruder retraction move\n"
+                            self._unload_test_failed(
+                                f"Encoder not sensing {msg} movement during final extruder retraction move\n"
                                 "Concluding filament either stuck in the extruder, tip forming erroneously completely "
-                                "ejected filament or filament was not fully loaded\n"
-                                "Will attempt to continue..."
+                                "ejected filament or filament was not fully loaded",
+                                hint=f"Check filament from {self.gate_name()} isn't stuck in the extruder, " + HINT_RELOAD
                             )
 
                 # Finalize position and adjust for overshoot
@@ -2362,6 +2395,69 @@ class MmuFilamentMovement:
                 f"entry_datum_established={entry_datum_established})"
             )
             return synced, overshoot, entry_datum_established
+
+
+    def _unload_test_failed(self, msg, hint=None, warned=False):
+        """
+        Act on a failed extruder unload test according to 'toolhead_unload_test'
+
+        Args:
+            msg: Description of the failure.
+            hint: Recovery hint attached to the error when pausing.
+            warned: Whether the validation already logged its own warning.
+        """
+        if self.p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_PAUSE:
+            raise MmuError(msg, hint=hint)
+        if not warned:
+            self.log_warning(f"Warning: {msg}\nWill attempt to continue...")
+
+
+    def _check_unload_homing_distance(self, sensor, actual, expected, cut_fragment, buffer_slack=0.):
+        """
+        Compare the distance reverse homing took to clear a toolhead sensor with the distance expected
+        from the tip forming/cutting park position. Moving much further suggests the tip was not cut
+        (filament longer by the cut fragment) or the extruder slipped during tip forming
+
+        Args:
+            sensor: Name of the sensor homed off, for messages.
+            actual: Distance moved before the sensor cleared (mm).
+            expected: Distance from the filament end to the sensor based on park position (mm).
+            cut_fragment: Length cut off by tip cutting, 0 if the tip was formed rather than cut (mm).
+            buffer_slack: Sync-feedback buffer travel that can absorb part of the move (mm).
+        """
+        u = self.mmu_unit()
+        overrun = actual - expected
+
+        if cut_fragment > 0:
+            # Uncut filament is longer by the fragment, so split the difference
+            threshold = cut_fragment / 2.
+            if cut_fragment < UNLOAD_MIN_CUT_FRAGMENT or threshold <= buffer_slack:
+                self.log_debug(
+                    f"Unload homing took {actual:.1f}mm to clear {sensor} sensor (expected {expected:.1f}mm). "
+                    f"Not checked because cut fragment of {cut_fragment:.1f}mm is too small to detect"
+                    f"{' with sync-feedback buffer travel of %.1fmm' % buffer_slack if buffer_slack else ''}"
+                )
+                return
+        else:
+            threshold = u.p.toolhead_unload_safety_margin + buffer_slack
+
+        self.log_debug(
+            f"Unload homing took {actual:.1f}mm to clear {sensor} sensor (expected {expected:.1f}mm, "
+            f"overrun {overrun:.1f}mm, threshold {threshold:.1f}mm)"
+        )
+        if self.p.toolhead_unload_test == TOOLHEAD_UNLOAD_TEST_DEFAULT or overrun <= threshold:
+            return
+
+        cause = (
+            f"The tip may not have been cut (cut fragment is {cut_fragment:.1f}mm)"
+            if cut_fragment > 0 else
+            "The extruder may have slipped during tip forming"
+        )
+        self._unload_test_failed(
+            f"Filament took {actual:.1f}mm to clear the {sensor} sensor, expected about {expected:.1f}mm. {cause}",
+            hint=("Check the cutter and for lost toolhead steps, " if cut_fragment > 0 else
+                  "Check the toolhead dimensions and tip forming, ") + HINT_RELOAD
+        )
 
 
 # PAUL
@@ -2655,6 +2751,12 @@ class MmuFilamentMovement:
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
+            # After purging, including any purge in the post-load macro
+            if not skip_extruder:
+                u.extruder_wrapper.set_filament_material(
+                    self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
+                )
+
             td1_success = True
 
         except MmuError as ee:
@@ -2769,6 +2871,7 @@ class MmuFilamentMovement:
             # Tip forming ---------------------------------
             synced_extruder_unload = False
             park_pos = 0.
+            cut_fragment = 0.
             do_form_tip = form_tip if form_tip is not None else FORM_TIP_STANDALONE # Default to standalone
             if do_form_tip == FORM_TIP_STANDALONE and not self._macro_name(self.p.form_tip_macro):
                 self.log_debug("Tip forming skipped because no 'form_tip_macro' is configured")
@@ -2787,7 +2890,7 @@ class MmuFilamentMovement:
 
                 with self._wrap_track_time('form_tip'):
                     # Extruder only in runout case to give filament best chance to reach gear
-                    detected = self.form_tip_standalone(extruder_only=(extruder_only or runout))
+                    detected, cut_fragment = self.form_tip_standalone(extruder_only=(extruder_only or runout))
                     park_pos = -self.drive().get_filament_position()
 
                     # If handling runout warn if we don't see any filament near the gate
@@ -2813,22 +2916,29 @@ class MmuFilamentMovement:
 
             if self.p.gcode_unload_sequence and calibrated:
                 self.log_debug("Calling external user defined unloading sequence macro")
+                self.unload_cut_fragment = cut_fragment
                 self.step_unload_overshoot = 0.
                 self.step_unload_homing_buffer = 0.
-                self.wrap_gcode_command(
-                    "%s FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (
-                        self.p.unload_sequence_macro,
-                        start_filament_pos,
-                        bowden_move,
-                        extruder_only,
-                        park_pos
-                    ),
-                    exception=True
-                )
+                try:
+                    self.wrap_gcode_command(
+                        "%s FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f CUT_FRAGMENT=%.2f" % (
+                            self.p.unload_sequence_macro,
+                            start_filament_pos,
+                            bowden_move,
+                            extruder_only,
+                            park_pos,
+                            cut_fragment
+                        ),
+                        exception=True
+                    )
+                finally:
+                    self.unload_cut_fragment = 0.
 
             elif extruder_only:
                 if start_filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY:
-                    synced_extruder_unload,_,_ = self._unload_extruder(extruder_only=True, validate=do_form_tip == FORM_TIP_STANDALONE)
+                    synced_extruder_unload,_,_ = self._unload_extruder(
+                        extruder_only=True, validate=do_form_tip == FORM_TIP_STANDALONE, cut_fragment=cut_fragment
+                    )
                 else:
                     raise MmuError("Cannot unload extruder because filament not detected in extruder! (state: %s)" % start_filament_pos)
 
@@ -2845,7 +2955,8 @@ class MmuFilamentMovement:
                         ext_unload_overshoot,
                         extruder_entry_datum_established,
                     ) = self._unload_extruder(
-                        validate=do_form_tip == FORM_TIP_STANDALONE
+                        validate=do_form_tip == FORM_TIP_STANDALONE,
+                        cut_fragment=cut_fragment
                     )
 
                 if (
@@ -2954,7 +3065,9 @@ class MmuFilamentMovement:
             extruder_only: Whether only the extruder path should be moved without normal MMU synchronization.
 
         Returns:
-            bool: True when filament is believed to remain detected after tip forming; otherwise False.
+            tuple[bool, float]: Detected, Cut fragment
+              Detected: True when filament is believed to remain detected after tip forming; otherwise False.
+              Cut fragment: Length cut off and left in the toolhead when the macro reported a cut; otherwise 0.
         """
         u = self.mmu_unit()
         self.log_trace_entry(f"form_tip_standalone(extruder_only={extruder_only})")
@@ -2972,7 +3085,7 @@ class MmuFilamentMovement:
                 self.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
 
             self.drive().set_filament_position(-u.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
-            return False
+            return False, 0.
 
         macro_name = self._macro_name(self.p.form_tip_macro)
         gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro_name, None)
@@ -3030,8 +3143,9 @@ class MmuFilamentMovement:
                 # No detection. Best to assume we are somewhere in bowden for defensive unload
                 self.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
 
-            self.log_trace_exit(f"form_tip_standalone() => (detected={detected})")
-            return detected
+            cut_fragment = remaining if reported else 0.
+            self.log_trace_exit(f"form_tip_standalone() => (detected={detected}, cut_fragment={cut_fragment})")
+            return detected, cut_fragment
 
 
     def _do_form_tip(self, test=False):
@@ -3218,6 +3332,10 @@ class MmuFilamentMovement:
                     f"{self.selected_tool_string(self._next_tool)}: "
                     f"{toolchange_volume_str}"
                 )
+                if self._material_purge_volume:
+                    msg += f"\n- material change: {self._material_purge_volume:.1f}mm{UI_CUBE}"
+                if self.p.purge_change_min_volume and self.toolchange_purge_volume <= self.p.purge_change_min_volume:
+                    msg += f"\n- raised to minimum purge: {self.p.purge_change_min_volume:.1f}mm{UI_CUBE}"
                 self.log_debug(msg)
                 macro = self.p.purge_macro
                 if extruder_only:

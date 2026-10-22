@@ -124,6 +124,11 @@ PURGE_NONE = 0                  # Skip purging after load
 PURGE_SLICER = 1                # Slicer purges on wipetower
 PURGE_STANDALONE = 2            # Happy Hare purges
 
+TOOLHEAD_UNLOAD_TEST_DEFAULT = 0  # Existing extruder unload warnings only
+TOOLHEAD_UNLOAD_TEST_WARN = 1     # Also check unload homing distance, warn on failure
+TOOLHEAD_UNLOAD_TEST_PAUSE = 2    # Also check unload homing distance, pause on failure
+UNLOAD_MIN_CUT_FRAGMENT = 2.0     # Smallest cut fragment (mm) whose absence the homing distance can resolve
+
 ACTION_IDLE = 0
 ACTION_LOADING = 1
 ACTION_LOADING_EXTRUDER = 2
@@ -270,30 +275,31 @@ TD1_STATE_AUTO         = 'auto'      # Scanner in use, new readings applied auto
 TD1_STATE_DISABLED     = 'disabled'  # Scanner present but Happy Hare is ignoring it
 
 # mmu_vars.cfg variables
-VARS_MMU_REVISION                  = "mmu__revision"
-VARS_MMU_ENABLE_ENDLESS_SPOOL      = "mmu_state_enable_endless_spool"
-VARS_MMU_ENDLESS_SPOOL_GROUPS      = "mmu_state_endless_spool_groups"
-VARS_MMU_SENSOR_ENABLED            = "mmu_state_sensor_enabled"  # Sparse {qualified_sensor_name: False}, only disabled entries stored
-VARS_MMU_TOOL_TO_GATE_MAP          = "mmu_state_tool_to_gate_map"
-VARS_MMU_GATE_STATUS               = "mmu_state_gate_status"
-VARS_MMU_GATE_MATERIAL             = "mmu_state_gate_material"
-VARS_MMU_GATE_VENDOR               = "mmu_state_gate_vendor"
-VARS_MMU_GATE_TD                   = "mmu_state_gate_td"
-VARS_MMU_GATE_TD1_COLOR            = "mmu_state_gate_td1_color"
-VARS_MMU_GATE_COLOR                = "mmu_state_gate_color"
-VARS_MMU_GATE_FILAMENT_NAME        = "mmu_state_gate_filament_name"
-VARS_MMU_GATE_TEMPERATURE          = "mmu_state_gate_temperature"
-VARS_MMU_GATE_SPOOL_ID             = "mmu_state_gate_spool_id"
-VARS_MMU_GATE_SPOOL_RFID           = "mmu_state_gate_spool_rfid"
-VARS_MMU_GATE_SPEED_OVERRIDE       = "mmu_state_gate_speed_override"
-VARS_MMU_GATE_SELECTED             = "mmu_state_gate_selected"
-VARS_MMU_TOOL_SELECTED             = "mmu_state_tool_selected"
-VARS_MMU_LAST_TOOL                 = "mmu_state_last_tool"
-VARS_MMU_FILAMENT_POS              = "mmu_state_filament_pos"
-VARS_MMU_FILAMENT_REMAINING        = "mmu_state_filament_remaining"
-VARS_MMU_FILAMENT_REMAINING_COLOR  = "mmu_state_filament_remaining_color"
-VARS_MMU_SWAP_STATISTICS           = "mmu_statistics_swaps"
-VARS_MMU_COUNTERS                  = "mmu_statistics_counters"
+VARS_MMU_REVISION                    = "mmu__revision"
+VARS_MMU_ENABLE_ENDLESS_SPOOL        = "mmu_state_enable_endless_spool"
+VARS_MMU_ENDLESS_SPOOL_GROUPS        = "mmu_state_endless_spool_groups"
+VARS_MMU_SENSOR_ENABLED              = "mmu_state_sensor_enabled"  # Sparse {qualified_sensor_name: False}, only disabled entries stored
+VARS_MMU_TOOL_TO_GATE_MAP            = "mmu_state_tool_to_gate_map"
+VARS_MMU_GATE_STATUS                 = "mmu_state_gate_status"
+VARS_MMU_GATE_MATERIAL               = "mmu_state_gate_material"
+VARS_MMU_GATE_VENDOR                 = "mmu_state_gate_vendor"
+VARS_MMU_GATE_TD                     = "mmu_state_gate_td"
+VARS_MMU_GATE_TD1_COLOR              = "mmu_state_gate_td1_color"
+VARS_MMU_GATE_COLOR                  = "mmu_state_gate_color"
+VARS_MMU_GATE_FILAMENT_NAME          = "mmu_state_gate_filament_name"
+VARS_MMU_GATE_TEMPERATURE            = "mmu_state_gate_temperature"
+VARS_MMU_GATE_SPOOL_ID               = "mmu_state_gate_spool_id"
+VARS_MMU_GATE_SPOOL_RFID             = "mmu_state_gate_spool_rfid"
+VARS_MMU_GATE_SPEED_OVERRIDE         = "mmu_state_gate_speed_override"
+VARS_MMU_GATE_SELECTED               = "mmu_state_gate_selected"
+VARS_MMU_TOOL_SELECTED               = "mmu_state_tool_selected"
+VARS_MMU_LAST_TOOL                   = "mmu_state_last_tool"
+VARS_MMU_FILAMENT_POS                = "mmu_state_filament_pos"
+VARS_MMU_FILAMENT_REMAINING          = "mmu_state_filament_remaining"
+VARS_MMU_FILAMENT_REMAINING_COLOR    = "mmu_state_filament_remaining_color"
+VARS_MMU_FILAMENT_REMAINING_MATERIAL = "mmu_state_filament_remaining_material"
+VARS_MMU_SWAP_STATISTICS             = "mmu_statistics_swaps"
+VARS_MMU_COUNTERS                    = "mmu_statistics_counters"
 
 # Per-encoder variables (calibration)
 VARS_MMU_ENCODER_RESOLUTION        = "mmu_encoder_resolution"

@@ -13,6 +13,7 @@
 # Responsible for setting:
 #   PARAM_FORCE_FORM_TIP_STANDALONE
 #   PARAM_SLICER_TIP_PARK_POS
+#   PARAM_TOOLHEAD_UNLOAD_TEST
 #   PARAM_FORCE_PURGE_STANDALONE
 #   PARAM_FORM_TIP_MACRO
 
@@ -234,5 +235,16 @@ menu "Tip Forming / Cutting"
       This specifies the position of filament in extruder after slicer completes tip forming
       and is usually a setting in the slicer config.
       (It is necessary to help Happy Hare complete the extruder unloading process)
+
+  config PARAM_TOOLHEAD_UNLOAD_TEST
+    int "Test extruder unload (0-2)"
+    range 0 2
+    default 0
+    help
+      0 = existing warnings only, 1 = also test the extruder unload and warn, 2 = pause instead.
+      With a toolhead or extruder sensor the distance taken to clear it is checked against the tip park
+      position. That can catch a missed cut if the cut fragment (blade_pos - retract_length) is big enough.
+      Without one the encoder or sync-feedback buffer checks the filament left the extruder.
+      Try 1 first and check the debug log before using 2.
 
 endmenu

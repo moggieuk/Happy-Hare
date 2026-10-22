@@ -35,6 +35,7 @@ class MmuExtruderWrapper():
 
         self.filament_remaining = 0.            # The amount of filament remaining in extruder hotend
         self.filament_remaining_color = UNKNOWN_FILAMENT_COLOR # Color of remaining filament
+        self.filament_remaining_material = ""   # Material last fully loaded and purged into the extruder
 
         # Per physical extruder, not per machine: units on different extruders each have their own
         self._run_current_percent = 100
@@ -83,10 +84,11 @@ class MmuExtruderWrapper():
     def _handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller
 
-        # Always load length of filament remaining in extruder (after cut) and its color
+        # Always load length of filament remaining in extruder (after cut), its color and material
         self.var_manager = self.mmu_machine.var_manager
         self.filament_remaining = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING, self.filament_remaining, self.name)
         self.filament_remaining_color = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_COLOR, self.filament_remaining_color, self.name)
+        self.filament_remaining_material = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_MATERIAL, self.filament_remaining_material, self.name)
 
 
         # Setup extruder ------------------------------------------------------------------------------------
@@ -180,6 +182,12 @@ class MmuExtruderWrapper():
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color, self.name, write=True)
 
 
+    # Only set once a load (and its purge) completes so a failed purge still counts as a material change
+    def set_filament_material(self, material):
+        self.filament_remaining_material = material
+        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_MATERIAL, material, self.name, write=True)
+
+
     def get_status(self, eventtime):
         residual = getattr(self.mmu_unit.toolhead_wrapper.p, "toolhead_residual_filament", 0)
         return {
@@ -187,6 +195,7 @@ class MmuExtruderWrapper():
             'extruder_filament_remaining': self.filament_remaining + residual,
             'filament_remaining': self.filament_remaining,             # TODO Use this printer variable in UI's
             'filament_remaining_color': self.filament_remaining_color, # TODO Use this printer variable in UI's
+            'filament_remaining_material': self.filament_remaining_material,
         }
 
 
