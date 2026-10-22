@@ -181,41 +181,53 @@ if MMU_HAS_ENCODER
           float "$(pad,36,Desired headroom)"
           default 5.0
           help
-            The clog/runout headroom (mm) that the MMU attempts to maintain, i.e.
-            the closest the measured movement may come to triggering runout.
+            With automatic FlowGuard detection length, the headroom (mm) the MMU
+            tries to keep: how close the extruder may get to the end of the
+            detection length before the encoder sees movement. If it gets closer
+            the detection length grows; with more to spare it slowly shrinks.
+            Higher means fewer false clog/runout triggers but slower detection.
+            Also added once at the start of a print to soften early triggers.
 
         config PARAM_ENCODER_AVERAGE_SAMPLES
           int "$(pad,36,Average samples)"
           range 1 1000
           default 4
           help
-            The "damping" effect of the last measurement. A higher value means
-            slower automatic clog_length reduction.
+            With automatic FlowGuard detection length, how gently the detection
+            length is reduced when there is more headroom than "Desired headroom".
+            Each adjustment moves it 1/N of the way to the new measurement, so a
+            higher value shrinks it more slowly. (It always grows straight away
+            when the headroom is too small.)
 
         config PARAM_ENCODER_FLOWRATE_SAMPLES
           int "$(pad,36,Flowrate samples)"
           range 5 1000
           default 20
           help
-            How many "movements" of the extruder to measure the average
-            flowrate over.
+            How many recent encoder movements the flowrate % (encoder movement
+            vs. extruder movement, shown by MMU_ENCODER and in UIs) is measured
+            over. Higher gives a steadier reading that reacts more slowly to a
+            change. Minimum 5.
 
         config PARAM_ENCODER_NO_MOVEMENT_SAMPLES
           int "$(pad,36,No-movement samples)"
           range 1 1000
           default 10
           help
-            How many no-movement samples un-trigger the virtual sensor. The
-            sampling rate is 0.1s, so 10 = 1s of no movement.
+            The encoder also acts as a virtual sensor/endstop: triggered as soon
+            as it sees movement, released after this many samples with none.
+            The sampling rate is 0.1s, so 10 = 1s of no movement.
+            Lower reports a stop sooner; higher avoids the sensor flickering
+            off during slow or uneven movement.
 
         config PARAM_REGISTER_AS_SENSOR
           boolint "Register as virtual switch sensor"
           default 1
           help
-            This controls whether the encoder appears as a (virtual) filament switch
-            sensor in UI's like Mainsail and Fluidd.
-            Note that it is always available as an sensor/endstop. This controls
-            just the visibility in UI's
+            Show the encoder's virtual sensor (see "No-movement samples") as a
+            filament switch sensor in UIs like Mainsail and Fluidd.
+            It works as a sensor/endstop either way: this only controls whether
+            UIs list it.
 
       endmenu
     endif

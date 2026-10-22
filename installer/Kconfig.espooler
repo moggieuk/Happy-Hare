@@ -190,8 +190,11 @@ if MMU_HAS_ESPOOLER
         boolint "PWM motor control?"
         default 1
         help
-          1 = PWM control of the motor pins (typical)
-          0 = digital on/off control
+          On (typical): the motor pins are PWM, so motor power follows gear
+          speed and the % power settings above.
+          Off: the pins are simply on (full power) or off. Then also remove
+          "print" from "Espooler enabled operations" and set "Espooler min
+          stepper speed" to avoid over-rotating the spool.
 
       config PARAM_ESPOOLER_HARDWARE_PWM
         boolint
@@ -199,7 +202,9 @@ if MMU_HAS_ESPOOLER
         default 0
         keep_when_hidden
         help
-          Use hardware PWM instead of software PWM.
+          Use the MCU's hardware PWM instead of software PWM. The motor pins
+          must support it, and the real cycle time may then differ from
+          "PWM cycle time". Software PWM (off) works on any pin.
           See "hardware_pwm" in Klipper's [output_pin] documentation.
 
       config PARAM_ESPOOLER_CYCLE_TIME
@@ -208,7 +213,9 @@ if MMU_HAS_ESPOOLER
         default 0.1
         keep_when_hidden
         help
-          The PWM cycle time in seconds.
+          The length of one PWM on/off cycle in seconds (0.1 = 10Hz).
+          Shorter gives smoother motor drive but more MCU load; with software
+          PWM Klipper recommends 0.01 or more.
           See "cycle_time" in Klipper's [output_pin] documentation.
 
       config PARAM_ESPOOLER_SCALE
@@ -217,23 +224,29 @@ if MMU_HAS_ESPOOLER
         default 1
         keep_when_hidden
         help
-          Scales the PWM output range. "Value" and "Shutdown value" are
-          given in this range.
+          Motor power (0-100%) is divided by this to give the PWM duty.
+          1 = full range. 2 caps the motors at 50% duty, e.g. for a motor
+          rated below the supply voltage. Below 1 they reach full duty sooner.
+          "Value" and "Shutdown value" are given in the range 0 to Scale.
 
       config PARAM_ESPOOLER_VALUE
         float "$(pad,33,Value)"
         default 0
         help
-          The initial motor pin value at startup (0 to "Scale").
-          Without PWM any value above 0 means on.
+          The motor pin value Klipper sets at startup, before Happy Hare
+          drives the espooler (0 to "Scale"). 0 keeps the motors off, which
+          is almost always what you want.
+          Without PWM any value above 0 means on (full power).
           See "value" in Klipper's [output_pin] documentation.
 
       config PARAM_ESPOOLER_SHUTDOWN_VALUE
         float "$(pad,33,Shutdown value)"
         default 0
         help
-          The motor pin value on MCU shutdown (0 to "Scale").
-          Without PWM any value above 0 means on.
+          The motor pin value the MCU falls back to when Klipper shuts it
+          down, e.g. on an error or emergency stop (0 to "Scale"). 0 stops
+          the motors, which is almost always what you want.
+          Without PWM any value above 0 means on (full power).
           See "shutdown_value" in Klipper's [output_pin] documentation.
 
     endmenu
