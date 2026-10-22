@@ -160,12 +160,12 @@ class TestDryingRotationWhilePrinting(unittest.TestCase):
         mock.patch.object(self.motion_queuing, 'note_mcu_movequeue_activity', side_effect=note_mcu_movequeue_activity).start()
         return queued
 
-    def _dry_and_rotate(self, in_print=True, rotate_in_print=1):
+    def _dry_and_rotate(self, in_print=True, rotate_in_print=1, gates='GATES=1,2 '):
         self.unit.p.heater_rotate_in_print = rotate_in_print
         if in_print:
             self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
         at = len(self.hh.console)
-        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 ROTATE=1 ROTATE_INTERVAL=1 TEMP=45 TIMER=60')
+        self.hh.run_gcode('MMU_HEATER DRY=1 %sROTATE=1 ROTATE_INTERVAL=1 TEMP=45 TIMER=60' % gates)
         # Rotation runs on the third check
         self.hh.reactor.advance(3 * ENV_CHECK_INTERVAL + 20)
         return '\n'.join(self.hh.console[at:])
@@ -249,6 +249,15 @@ class TestDryingRotationWhilePrinting(unittest.TestCase):
             self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 ROTATE=1 TEMP=45 TIMER=60')
             self.hh.reactor.advance(ENV_CHECK_INTERVAL)
         self.assertTrue(self.manager.is_drying())
+        self.assertEqual(self.hh.errors, [])
+
+    def test_a_shared_heater_rotates_without_explicit_gates(self):
+        before = {gate: len(self._moves(gate)) for gate in (1, 2)}
+        output = self._dry_and_rotate(gates='')
+        self.assertTrue(self.manager.is_drying())
+        for gate in (1, 2):
+            self.assertGreater(len(self._moves(gate, before[gate])), 0)
+        self.assertNotIn('cannot rotate', output)
         self.assertEqual(self.hh.errors, [])
 
     def test_nothing_rotates_while_paused(self):

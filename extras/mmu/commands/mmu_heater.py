@@ -42,8 +42,8 @@ class MmuHeaterCommand(BaseCommand):
         + "TEMP            = #(degrees) Force temperature\n"
         + "HUMIDITY        = % Terminate drying when humidity goal is reached\n"
         + "GATES           = g1,g2 Gates to control ONLY IF MMU has per-gate heaters/dryers\n"
-        + "ROTATE          = [0|1] Rotate spool (requires eSpooler and explicit GATES)\n"
-        + "ROTATE_INTERVAL = #(mins) How often to rotate spools when drying (requires eSpooler)\n"
+        + "ROTATE          = [0|1] Rotate empty spools (requires eSpooler or gear that turns the spool, and GATES if per-gate heaters)\n"
+        + "ROTATE_INTERVAL = #(mins) How often to rotate spools when drying\n"
         + "VENT_INTERVAL   = #(mins) How often to open the vent in drying cycle\n"
         + "(no parameters for status report)"
     )
@@ -53,7 +53,7 @@ class MmuHeaterCommand(BaseCommand):
         + f"{CMD} DRY=1                               ...Dry with intelligent temperature/time recommended from 'drying_data'\n"
         + f"{CMD} DRY=1 TEMP=50 TIMER=240 HUMIDITY=12 ...Initiate drying cycle at 50{UI_DEGREE}C for 240 minutes with 12% humidity goal\n"
         + f"{CMD} STOP=1                              ...Stop current drying cycle\n"
-        + f"{CMD} DRY=1 ROTATE=1 GATES=1,3            ...Start drying cycle on gates 1 & 3 periodically rotating them (requires espooler)\n"
+        + f"{CMD} DRY=1 ROTATE=1 GATES=1,3            ...Start drying cycle on gates 1 & 3 periodically rotating them\n"
         + f"{CMD} DRYING_DATA=1                       ...List the current drying data database\n"
         + f"{CMD} DRY=1 VENT_INTERVAL=10              ...Initiate drying cycle opening the vent every 10 minutes\n"
         + f"With per-gate heaters:\n"
@@ -181,19 +181,22 @@ class MmuHeaterCommand(BaseCommand):
                 self.mmu.log_always("MMU already in filament drying cycle. Stop current cycle first")
                 return
 
-            # Optional spool rotation (requires eSpooler and explicit gates)
-            # (BTT ViViD is allowed if not in print)
+            # Optional spool rotation (requires eSpooler or gear that turns the spool)
+            # A shared heater rotates every empty gate so only per-gate heaters need explicit gates
             if rotate and not (mmu_unit.has_espooler() or mmu_unit.gear_rotates_spool):
                 self.mmu.log_warning("Rotation requested but no eSpooler and the gear motor cannot turn the spool - ignoring")
                 rotate = 0
 
-            if rotate and not gates_param:
+            if rotate and not gates_param and em.has_per_gate_heaters():
                 raise gcmd.error("ROTATE requires explicit GATES parameter")
 
-            if not rotate and not gates_param:
+            if not rotate and mmu_unit.p.heater_rotate_in_print:
+                self.mmu.log_info("Spools will not rotate: heater_rotate_in_print only applies to drying started with ROTATE=1")
+
+            if not gates_param:
                 gates = self.get_default_gates(mmu_unit, empty=False) # Default to all non empty gates
 
-            if rotate:
+            elif rotate:
                 for gate in gates:
                     if self.mmu.gate_status[gate] != GATE_EMPTY:
                         self.mmu.log_warning("Gate %d is not empty so cannot rotate (filament end must be removed from the gate and secured to the spool for rotation)" % gate)
