@@ -443,6 +443,52 @@ class TestEncoderValidationOptions(unittest.TestCase):
                     self.assertEqual(float(kc.syms[sym].str_value), defaults[sym])
 
 
+class TestAdvancedEncoderEspoolerOptions(unittest.TestCase):
+
+    # section -> {.cfg option: (Kconfig symbol, shipped default, custom value)}
+    OPTIONS = {
+        'mmu_encoder unit0': {
+            'desired_headroom':    ('PARAM_ENCODER_DESIRED_HEADROOM', 5.0, 7.5),
+            'average_samples':     ('PARAM_ENCODER_AVERAGE_SAMPLES', 4, 6),
+            'flowrate_samples':    ('PARAM_ENCODER_FLOWRATE_SAMPLES', 20, 30),
+            'no_movement_samples': ('PARAM_ENCODER_NO_MOVEMENT_SAMPLES', 10, 15),
+        },
+        'mmu_espooler unit0': {
+            'pwm':            ('PARAM_ESPOOLER_PWM', 1, 1),
+            'hardware_pwm':   ('PARAM_ESPOOLER_HARDWARE_PWM', 0, 1),
+            'cycle_time':     ('PARAM_ESPOOLER_CYCLE_TIME', 0.1, 0.01),
+            'scale':          ('PARAM_ESPOOLER_SCALE', 1, 2),
+            'value':          ('PARAM_ESPOOLER_VALUE', 0, 0.5),
+            'shutdown_value': ('PARAM_ESPOOLER_SHUTDOWN_VALUE', 0, 0.25),
+        },
+    }
+
+    def test_defaults_and_custom_values_render(self):
+        custom = {sym: value for options in self.OPTIONS.values()
+                  for sym, _, value in options.values()}
+        for label, profile, column in (
+                ('defaults', profiles.get('encoder'), 1),
+                ('custom', profiles.get('encoder').derive('encoder_custom_advanced', syms=custom), 2)):
+            config = cfg.assemble(cfg.render(profile))
+            for section, options in self.OPTIONS.items():
+                for option, values in options.items():
+                    with self.subTest(label=label, section=section, option=option):
+                        self.assertEqual(config[section].getfloat(option), values[column])
+
+    def test_pwm_only_options_still_render_with_pwm_off(self):
+        pwm_only = ('hardware_pwm', 'cycle_time', 'scale')
+        espooler = self.OPTIONS['mmu_espooler unit0']
+        custom = {espooler[option][0]: espooler[option][2] for option in pwm_only}
+        for label, syms, column in (('defaults', {}, 1), ('custom', custom, 2)):
+            profile = profiles.get('encoder').derive(
+                'encoder_espooler_digital_' + label, syms=dict(syms, PARAM_ESPOOLER_PWM=0))
+            section = cfg.assemble(cfg.render(profile))['mmu_espooler unit0']
+            self.assertEqual(section.getint('pwm'), 0)
+            for option in pwm_only:
+                with self.subTest(label=label, option=option):
+                    self.assertEqual(section.getfloat(option), espooler[option][column])
+
+
 class TestHardwareConfigurationWarnings(unittest.TestCase):
 
     @staticmethod

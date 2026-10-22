@@ -21,6 +21,12 @@
 # PARAM_ESPOOLER_ASSIST_BURST_TRIGGER_MAX
 # PARAM_ESPOOLER_REWIND_BURST_POWER
 # PARAM_ESPOOLER_REWIND_BURST_DURATION
+# PARAM_ESPOOLER_PWM
+# PARAM_ESPOOLER_HARDWARE_PWM
+# PARAM_ESPOOLER_CYCLE_TIME
+# PARAM_ESPOOLER_SCALE
+# PARAM_ESPOOLER_VALUE
+# PARAM_ESPOOLER_SHUTDOWN_VALUE
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_ESPOOLER
@@ -176,6 +182,76 @@ if MMU_HAS_ESPOOLER
       default 0.4
       help
         The duration of the rewind burst move in seconds
+
+    comment "_"
+    menu "Advanced"
+
+      config PARAM_ESPOOLER_PWM
+        boolint "PWM motor control?"
+        default 1
+        help
+          On (typical): the motor pins are PWM, so motor power follows gear
+          speed and the % power settings above.
+          Off: the pins are simply on (full power) or off. Then also remove
+          "print" from "Espooler enabled operations" and set "Espooler min
+          stepper speed" to avoid over-rotating the spool.
+
+      config PARAM_ESPOOLER_HARDWARE_PWM
+        boolint
+        prompt "Hardware PWM?" if PARAM_ESPOOLER_PWM
+        default 0
+        keep_when_hidden
+        help
+          Use the MCU's hardware PWM instead of software PWM. The motor pins
+          must support it, and the real cycle time may then differ from
+          "PWM cycle time". Software PWM (off) works on any pin.
+          See "hardware_pwm" in Klipper's [output_pin] documentation.
+
+      config PARAM_ESPOOLER_CYCLE_TIME
+        float
+        prompt "$(pad,29,PWM cycle time)" if PARAM_ESPOOLER_PWM
+        default 0.1
+        keep_when_hidden
+        help
+          The length of one PWM on/off cycle in seconds (0.1 = 10Hz).
+          Shorter gives smoother motor drive but more MCU load; with software
+          PWM Klipper recommends 0.01 or more.
+          See "cycle_time" in Klipper's [output_pin] documentation.
+
+      config PARAM_ESPOOLER_SCALE
+        float
+        prompt "$(pad,29,Scale)" if PARAM_ESPOOLER_PWM
+        default 1
+        keep_when_hidden
+        help
+          Motor power (0-100%) is divided by this to give the PWM duty.
+          1 = full range. 2 caps the motors at 50% duty, e.g. for a motor
+          rated below the supply voltage. Below 1 they reach full duty sooner.
+          "Value" and "Shutdown value" are given in the same units as Scale.
+
+      config PARAM_ESPOOLER_VALUE
+        float "$(pad,33,Value)"
+        default 0
+        help
+          The motor pin value Klipper sets at startup, before Happy Hare
+          drives the espooler (0 to "Scale"). 0 keeps the motors off, which
+          is almost always what you want.
+          Without PWM any value above 0 means on (full power).
+          See "value" in Klipper's [output_pin] documentation.
+
+      config PARAM_ESPOOLER_SHUTDOWN_VALUE
+        float "$(pad,33,Shutdown value)"
+        default 0
+        help
+          The motor pin value the MCU falls back to when Klipper shuts it
+          down, e.g. on an error or emergency stop. 0 stops the motors, which
+          is almost always what you want.
+          With software PWM it must be 0 or "Scale"; values in between need
+          hardware PWM (0 to "Scale").
+          Without PWM any value above 0 means on (full power).
+          See "shutdown_value" in Klipper's [output_pin] documentation.
+
+    endmenu
 
 # -------------------------------------
 # eSpooler pins

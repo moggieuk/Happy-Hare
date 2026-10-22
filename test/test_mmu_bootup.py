@@ -313,6 +313,32 @@ class TestPinBindings(unittest.TestCase):
                  if b.type in ('pwm', 'digital_out')}
         self.assertTrue(kinds, 'espooler bound no pwm/digital_out pins')
 
+    def test_digital_espooler_ignores_scale(self):
+        """With pwm off, value is on/off, so a hidden scale below it must not reject it."""
+        hh = session(profiles.get('boxturtle').derive(
+            'espooler_digital_low_scale',
+            syms={'PARAM_ESPOOLER_PWM': 0, 'PARAM_ESPOOLER_SCALE': 0.5, 'PARAM_ESPOOLER_VALUE': 1}))
+        try:
+            hh.build()
+            self.assertEqual(hh.errors, [])
+            espooler = hh.printer.lookup_object('mmu_machine').units[0].espooler
+            self.assertEqual(espooler.motor_mcu_pins['respool_0']._start_value, 1)
+        finally:
+            hh.close()
+
+    def test_soft_pwm_espooler_rejects_fractional_shutdown(self):
+        """Klipper's soft PWM only takes a 0 or full shutdown duty; the fake MCU doesn't check it."""
+        from configfile import error as ConfigError
+        hh = session(profiles.get('boxturtle').derive(
+            'espooler_soft_pwm_fractional_shutdown',
+            syms={'PARAM_ESPOOLER_SHUTDOWN_VALUE': 0.5}))
+        try:
+            with self.assertRaises(ConfigError) as cm:
+                hh.build()
+            self.assertIn('shutdown_value', str(cm.exception))
+        finally:
+            hh.close()
+
     def test_espooler_enable_pin_starts_at_configured_value(self):
         """BoxTurtle's gate 0 eSpooler enable pin (unit0:PA2) starts at `value` (0), not on."""
         starts = [b.obj._start_value for b in self.hh.pins.find('unit0:PA2')
