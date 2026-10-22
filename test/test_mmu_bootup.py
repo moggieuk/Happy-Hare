@@ -313,6 +313,12 @@ class TestPinBindings(unittest.TestCase):
                  if b.type in ('pwm', 'digital_out')}
         self.assertTrue(kinds, 'espooler bound no pwm/digital_out pins')
 
+    def test_espooler_enable_pin_starts_at_configured_value(self):
+        """BoxTurtle's gate 0 eSpooler enable pin (unit0:PA2) starts at `value` (0), not on."""
+        starts = [b.obj._start_value for b in self.hh.pins.find('unit0:PA2')
+                  if b.type == 'digital_out']
+        self.assertEqual(starts, [0])
+
     def test_unknown_chip_is_rejected(self):
         """
         Chip registration is strict on purpose - auto-vivifying would let a pin typo
