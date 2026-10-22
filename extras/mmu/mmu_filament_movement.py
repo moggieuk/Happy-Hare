@@ -2642,11 +2642,6 @@ class MmuFilamentMovement:
                 with self._wrap_track_time('purge'):
                     self.purge_standalone()
 
-            if not skip_extruder:
-                u.extruder_wrapper.set_filament_material(
-                    self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
-                )
-
             if macros_and_track:
                 # Run POST_LOAD sequence macro
                 with self._wrap_track_time('post_load'):
@@ -2659,6 +2654,12 @@ class MmuFilamentMovement:
                                 self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
+
+            # After purging, including any purge in the post-load macro
+            if not skip_extruder:
+                u.extruder_wrapper.set_filament_material(
+                    self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
+                )
 
             td1_success = True
 
