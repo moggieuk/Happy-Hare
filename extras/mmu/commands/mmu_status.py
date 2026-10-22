@@ -378,6 +378,24 @@ class MmuStatusCommand(BaseCommand):
                     "less tip-cutting reported park position to exit extruder"
                 )
 
+            unload_test = mmu.p.toolhead_unload_test
+            if unload_test != TOOLHEAD_UNLOAD_TEST_DEFAULT:
+                if mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY) or mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
+                    method = "the distance to clear the sensor compared with the tip park position"
+                elif mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
+                    method = "the sync-feedback buffer"
+                elif mmu.has_encoder():
+                    method = "the encoder"
+                else:
+                    method = None
+                if method:
+                    lines.append(
+                        f". Unload is tested using {method} and will "
+                        f"{'pause' if unload_test == TOOLHEAD_UNLOAD_TEST_PAUSE else 'warn'} on failure"
+                    )
+                else:
+                    lines.append(". Unload test is enabled but no sensor or encoder is available to perform it")
+
             # Bowden unloading ---------------------------------------------------
 
             if mmu_unit.require_bowden_move:

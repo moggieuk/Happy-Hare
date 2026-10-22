@@ -164,6 +164,7 @@ class MmuController(MmuFilamentMovement):
         self.runout_last_enable_time = self.runout_last_disable_time = \
             self.runout_last_handled_time = self.reactor.monotonic()
         self.is_handling_runout = False # True whilst handling a runout
+        self.unload_cut_fragment = 0.   # Tip cut fragment while the gcode unload sequence runs
         self.flowguard_trip_reason = None # Detail of the FlowGuard trip that raised the pending clog/tangle
 
         self.unit_selected = None       # Must not stay None, set when initial gate is set or in _load_persisted_state()
