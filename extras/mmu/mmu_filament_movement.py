@@ -2788,7 +2788,7 @@ class MmuFilamentMovement:
                 with self._wrap_track_time('form_tip'):
                     # Extruder only in runout case to give filament best chance to reach gear
                     detected = self.form_tip_standalone(extruder_only=(extruder_only or runout))
-                    park_pos = self.drive().get_filament_position()
+                    park_pos = -self.drive().get_filament_position()
 
                     # If handling runout warn if we don't see any filament near the gate
                     if runout and (
@@ -2813,6 +2813,8 @@ class MmuFilamentMovement:
 
             if self.p.gcode_unload_sequence and calibrated:
                 self.log_debug("Calling external user defined unloading sequence macro")
+                self.step_unload_overshoot = 0.
+                self.step_unload_homing_buffer = 0.
                 self.wrap_gcode_command(
                     "%s FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (
                         self.p.unload_sequence_macro,

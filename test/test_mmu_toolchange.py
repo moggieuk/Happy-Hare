@@ -267,6 +267,36 @@ class TestUnloadSequenceMacro(ToolchangeTestCase):
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
 
 
+class TestUnloadSequenceMacroParking(ToolchangeTestCase):
+    """The sequence macro must park where the built-in unload does, bowden included"""
+
+    def setUp(self):
+        self.hh = session(self.PROFILE)
+        self.hh.boot(calibrate=True)
+        self.fil = self.hh.filament()
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.heat_extruder(220)
+        self.hh.mmu.select_gate(0)
+
+    def _unload_moves(self):
+        start = len(self.fil.history)
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.assertEqual(self.hh.errors, [])
+        return [(round(delta, 1), reason) for _, delta, reason in self.fil.history[start:]]
+
+    def test_macro_unloads_like_the_built_in_sequence(self):
+        self.hh.run_gcode('MMU_LOAD')
+        built_in = self._unload_moves()
+        built_in_park = self.fil.tip[0]
+
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.mmu.p.gcode_unload_sequence = 1
+        self.hh.printer.harness_macro_effects['_MMU_UNLOAD_SEQUENCE'] = lambda m, g: m.run_body(g)
+        self.assertEqual(self._unload_moves(), built_in)
+        self.assertAlmostEqual(self.fil.tip[0], built_in_park, places=1)
+
+
 class TestToolChange(ToolchangeTestCase):
     PRELOAD_GATES = (0, 1, 2)
 

@@ -79,9 +79,10 @@ class MmuStepUnloadGateCommand(BaseCommand):
         mmu = self.mmu
 
         full = bool(gcmd.get_int('FULL', 0, minval=0, maxval=1))
+        homing_buffer, mmu.step_unload_homing_buffer = mmu.step_unload_homing_buffer, 0.
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                mmu._unload_gate(extra_homing=None if full else 0.)
+                mmu._unload_gate(extra_homing=None if full else homing_buffer)
         except MmuError as ee:
             mmu.handle_mmu_error(ee.with_message("_MMU_STEP_UNLOAD_GATE: %s" % str(ee)))
 
@@ -139,9 +140,10 @@ class MmuStepUnloadBowdenCommand(BaseCommand):
         mmu = self.mmu
 
         length = gcmd.get_float('LENGTH', None, minval=0.)
+        start_pos, mmu.step_unload_overshoot = mmu.step_unload_overshoot, 0.
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                mmu._unload_bowden(length)
+                _, mmu.step_unload_homing_buffer = mmu._unload_bowden(length, start_pos=start_pos)
         except MmuError as ee:
             mmu.handle_mmu_error(ee.with_message("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee)))
 
@@ -233,7 +235,7 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
                     max(0, park_pos)
                 )
                 mmu.drive().set_filament_position(-park_pos)
-                mmu._unload_extruder(extruder_only=extruder_only)
+                _, mmu.step_unload_overshoot, _ = mmu._unload_extruder(extruder_only=extruder_only)
         except MmuError as ee:
             mmu.handle_mmu_error(ee.with_message("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee)))
 
