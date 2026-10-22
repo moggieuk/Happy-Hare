@@ -296,6 +296,29 @@ class TestUnloadSequenceMacroParking(ToolchangeTestCase):
         self.assertEqual(self._unload_moves(), built_in)
         self.assertAlmostEqual(self.fil.tip[0], built_in_park, places=1)
 
+    def test_an_aborted_macro_leaves_no_offset_for_a_later_step(self):
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.mmu.p.gcode_unload_sequence = 1
+        gcode = self.hh.printer.lookup_object('gcode')
+
+        def abort_after_toolhead(macro, gcmd):
+            gcode.run_script_from_command('_MMU_STEP_UNLOAD_TOOLHEAD')
+            self.assertGreater(self.hh.mmu.step_unload_overshoot, 0.)
+            raise gcmd.error("simulated macro failure")
+
+        self.hh.printer.harness_macro_effects['_MMU_UNLOAD_SEQUENCE'] = abort_after_toolhead
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.assertNotEqual(self.hh.errors, [])
+
+        self.hh.mmu.p.gcode_unload_sequence = 0
+        del self.hh.gcode.errors[:]
+        self.hh.run_gcode('MMU_RECOVER')
+        self.hh.run_gcode('MMU_UNLOAD')
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.step_unload_overshoot, 0.)
+        self.assertEqual(self.hh.mmu.step_unload_homing_buffer, 0.)
+
 
 class TestToolChange(ToolchangeTestCase):
     PRELOAD_GATES = (0, 1, 2)
