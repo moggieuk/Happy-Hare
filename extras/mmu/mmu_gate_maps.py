@@ -929,6 +929,14 @@ class MmuGateMaps:
         gm = self._normalize_material(gate_material)
         return not tm or not gm or tm == gm
 
+    # Base material family is the leading name, e.g. "PLA Silk", "PLA-CF" and "PLA+" are all "pla"
+    def material_family(self, material):
+        return re.split(r"[\s\-+_/]", self._normalize_material(material), maxsplit=1)[0]
+
+    # Different families, or known to/from unknown, count as a change. Unknown to unknown doesn't
+    def is_material_change(self, from_material, to_material):
+        return self.material_family(from_material) != self.material_family(to_material)
+
 
     def restore_automap_option(self, skip=False):
         self.slicer_tool_map['skip_automap'] = skip

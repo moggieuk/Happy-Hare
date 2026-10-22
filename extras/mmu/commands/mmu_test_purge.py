@@ -73,7 +73,10 @@ class MmuTestPurgeCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
 
                 # Determine purge volume for test (mimic regular call to purge macro)
-                mmu.toolchange_purge_volume, mmu._slicer_purge_volume = mmu._calc_purge_volume(last_tool, next_tool)
+                from_material = mmu.gate_material[mmu.ttg_map[last_tool]] if last_tool >= 0 else ""
+                mmu.toolchange_purge_volume, mmu._slicer_purge_volume, mmu._material_purge_volume = mmu._calc_purge_volume(
+                    last_tool, next_tool, from_material=from_material
+                )
 
                 msg = "Note that the suggested purge volume is based on the current MMU_SLICER_TOOL_MAP"
                 msg += "\nIf this is not set you might find it useful to run 'MMU_CALC_PURGE_VOLUMES MULTIPLIER=..'"
@@ -87,5 +90,5 @@ class MmuTestPurgeCommand(BaseCommand):
             mmu.handle_mmu_error(ee)
 
         finally:
-            mmu.toolchange_purge_volume = mmu._slicer_purge_volume = 0.
+            mmu.toolchange_purge_volume = mmu._slicer_purge_volume = mmu._material_purge_volume = 0.
             mmu._last_tool, mmu._next_tool = _last_tool, _next_tool  # Restore real values
