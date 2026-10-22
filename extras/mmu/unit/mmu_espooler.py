@@ -69,8 +69,13 @@ class MmuESpooler:
         self.hardware_pwm = config.getboolean("hardware_pwm", False)
         self.scale = config.getfloat('scale', 1., above=0.)
         self.cycle_time = config.getfloat("cycle_time", 0.100, above=0., maxval=MAX_SCHEDULE_TIME)
-        self.shutdown_value = config.getfloat('shutdown_value', 0., minval=0., maxval=self.scale) / self.scale
-        start_value = config.getfloat('value', 0., minval=0., maxval=self.scale) / self.scale
+        if self.is_pwm:
+            self.shutdown_value = config.getfloat('shutdown_value', 0., minval=0., maxval=self.scale) / self.scale
+            start_value = config.getfloat('value', 0., minval=0., maxval=self.scale) / self.scale
+        else:
+            # A digital pin is on/off, so scale doesn't apply
+            self.shutdown_value = float(config.getfloat('shutdown_value', 0., minval=0.) > 0.)
+            start_value = float(config.getfloat('value', 0., minval=0.) > 0.)
 
         for gate in range(self.first_gate, self.first_gate + self.num_gates):
             self.respool_motor_pin = config.get('respool_motor_pin_%d' % gate, None)

@@ -313,6 +313,19 @@ class TestPinBindings(unittest.TestCase):
                  if b.type in ('pwm', 'digital_out')}
         self.assertTrue(kinds, 'espooler bound no pwm/digital_out pins')
 
+    def test_digital_espooler_ignores_scale(self):
+        """With pwm off, value is on/off, so a hidden scale below it must not reject it."""
+        hh = session(profiles.get('boxturtle').derive(
+            'espooler_digital_low_scale',
+            syms={'PARAM_ESPOOLER_PWM': 0, 'PARAM_ESPOOLER_SCALE': 0.5, 'PARAM_ESPOOLER_VALUE': 1}))
+        try:
+            hh.build()
+            self.assertEqual(hh.errors, [])
+            espooler = hh.printer.lookup_object('mmu_machine').units[0].espooler
+            self.assertEqual(espooler.motor_mcu_pins['respool_0']._start_value, 1)
+        finally:
+            hh.close()
+
     def test_unknown_chip_is_rejected(self):
         """
         Chip registration is strict on purpose - auto-vivifying would let a pin typo
