@@ -96,6 +96,8 @@ GATE_LIST_VARS = [
     (C.VARS_MMU_GATE_TEMPERATURE, None), # default_extruder_temp
     (C.VARS_MMU_GATE_SPOOL_ID, -1),
     (C.VARS_MMU_GATE_SPEED_OVERRIDE, 100),
+    (C.VARS_MMU_GATE_REMAINING_WEIGHT, -1),
+    (C.VARS_MMU_GATE_INITIAL_WEIGHT, -1),
     (C.VARS_MMU_GATE_SPOOL_RFID, ""),
 ]
 
@@ -113,6 +115,8 @@ GATE_LIST_OPTIONS = [
     "default_gate_spool_id",
     "default_gate_spool_rfid",
     "default_gate_speed_override",
+    "default_gate_remaining_weight",
+    "default_gate_initial_weight",
     "default_endless_spool_groups",
 ]
 

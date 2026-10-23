@@ -1823,6 +1823,14 @@ class MmuController(MmuFilamentMovement):
         return self.gate_maps.gate_spool_rfid
 
     @property
+    def gate_remaining_weight(self):
+        return self.gate_maps.gate_remaining_weight
+
+    @property
+    def gate_initial_weight(self):
+        return self.gate_maps.gate_initial_weight
+
+    @property
     def gate_color_rgb(self):
         return self.gate_maps.gate_color_rgb
 

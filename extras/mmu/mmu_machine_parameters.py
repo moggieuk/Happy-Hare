@@ -104,6 +104,8 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('default_gate_spool_id',         'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_spool_rfid',       'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_speed_override',   'intlist', [], section="DEFAULT MAPS", hidden=True),
+        ParamSpec('default_gate_remaining_weight', 'intlist', [], section="DEFAULT MAPS", hidden=True),
+        ParamSpec('default_gate_initial_weight',   'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_endless_spool_groups',  'intlist', [], section="DEFAULT MAPS", hidden=True),
 
         # TMC current control
@@ -205,6 +207,8 @@ class MmuMachineParameters(TunableParametersBase):
         self.default_gate_spool_id        = list(self.default_gate_spool_id)
         self.default_gate_spool_rfid      = list(self.default_gate_spool_rfid)
         self.default_gate_speed_override  = list(self.default_gate_speed_override)
+        self.default_gate_remaining_weight = list(self.default_gate_remaining_weight)
+        self.default_gate_initial_weight  = list(self.default_gate_initial_weight)
         self.default_endless_spool_groups = list(self.default_endless_spool_groups)
 
         self.console_stat_columns         = list(self.console_stat_columns)

@@ -823,7 +823,8 @@ Green is not the same as covered. Roughly where things stand:
 | Selector homing and selection | **good** | `LinearSelector`, `LinearServoSelector`, `LinearMultiGearSelector`, `RotarySelector`, `IndexedSelector`, `ServoSelector`, and `VirtualSelector` are booted or exercised — `test_mmu_selector.py`. `MacroSelector` direct-mode dispatch is covered without executing a user macro |
 | Calibration | **partial** | seeded by default for speed, but `MMU_CALIBRATE_SELECTOR` (manual and `AUTO=1`) and `MMU_CALIBRATE_BOWDEN` run for real — `test_mmu_selector.py` |
 | Developer commands (`_MMU_TEST`) | **partial** | every option is run and must not raise — `test_mmu_dev_test.py`. What the stress probes *provoke* is step-generation timing the harness does not model |
-| Espooler, FlowGuard | **none** | |
+| Espooler | **partial** | only spool-weight power scaling and its gate-map weights — `test_mmu_espooler.py` |
+| FlowGuard | **none** | |
 | Multi-unit machines | **good** | `ercf_vvd` renders, boots and loads on both units |
 | Klipper motion and timing | **none** | out of scope by design — see §9 |
 

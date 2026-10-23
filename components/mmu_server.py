@@ -474,7 +474,12 @@ class MmuServer:
         filament_id = filament.get('id', '')
         rfid_uids = self._get_uid_list_from_extra(spool_info.get('extra'))
         rfids = ','.join(rfid_uids)
-        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp, 'bed_temp': bed_temp, 'vendor': vendor, 'filament_id': filament_id, 'rfids': rfids}
+        # Net filament weights in grams (-1 if unknown). A spool without its own initial weight is
+        # assumed to have started with the filament's nominal net weight
+        remaining_weight = round(self._to_float(spool_info.get('remaining_weight'), -1))
+        initial_weight = round(self._to_float(spool_info.get('initial_weight'), self._to_float(filament.get('weight'), -1)))
+        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp, 'bed_temp': bed_temp, 'vendor': vendor, 'filament_id': filament_id, 'rfids': rfids,
+                'remaining_weight': remaining_weight, 'initial_weight': initial_weight}
 
 
     async def _build_spool_location_cache(self, fix=False, silent=False) -> bool:

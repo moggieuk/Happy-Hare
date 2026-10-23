@@ -12,6 +12,7 @@
 # PARAM_ESPOOLER_MIN_STEPPER_SPEED
 # PARAM_ESPOOLER_SPEED_EXPONENT
 # PARAM_ESPOOLER_ASSIST_REDUCED_SPEED
+# PARAM_ESPOOLER_FULL_SPOOL_POWER
 # PARAM_ESPOOLER_PRINTING_POWER
 # PARAM_ESPOOLER_OPERATIONS
 # PARAM_ESPOOLER_ASSIST_EXTRUDER_MOVE_LENGTH
@@ -97,6 +98,17 @@ if MMU_HAS_ESPOOLER
       default 50
       help
         Control the % of the rewind speed that is applied to assisting load (want rewind to be faster)
+
+    config PARAM_ESPOOLER_FULL_SPOOL_POWER
+      int "Espooler full spool power        "
+      range 10 100
+      default 100
+      help
+        The % of normal rewind/assist power used on a full spool, rising
+        linearly to 100% as the spool empties (a full spool turns slower
+        for the same filament speed). 100 = disabled.
+        Needs the spool's remaining and full weight, from Spoolman or
+        'MMU_GATE_MAP GATE=.. WEIGHT=.. INITIAL_WEIGHT=..'
 
     config PARAM_ESPOOLER_PRINTING_POWER
       int "Espooler printing power          "
