@@ -917,6 +917,24 @@ class TestEndlessSpoolGroupsRetired(MmuCfgBuild):
                     self.assertFalse(ConfigBuilder(built).has_option(self.SECTION, "endless_spool_groups"))
 
 
+class TestSpoolWeightDefaultsSurviveRefresh(MmuCfgBuild):
+    """The default_gate_*_weight lists aren't in the template, so a refresh must reinsert them."""
+
+    EDITS = (("default_gate_remaining_weight", "400, 400, 400, 400"),
+             ("default_gate_initial_weight", "1000, 1000, 1000, 1000"))
+
+    def edit(self, line):
+        if line.startswith("#default_gate_speed_override"):
+            return "\n".join([line] + ["%s: %s" % edit for edit in self.EDITS])
+        return line
+
+    def test_weight_defaults_survive_refresh(self):
+        built, _ = self.build("refresh", [self.installed(self.edit)])
+        for option, value in self.EDITS:
+            with self.subTest(option):
+                self.assertEqual(self.option(built, option), value)
+
+
 class TestRefreshKeepsEditsAfterGcodeSequence(MmuCfgBuild):
     """gcode_load_sequence was parsed as G-code, so it swallowed the rest of
     [mmu_parameters] and a refresh reset every edit below it."""

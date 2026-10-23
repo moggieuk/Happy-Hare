@@ -54,6 +54,8 @@ supplemental_params = [
     "default_gate_filament_name",
     "default_gate_temperature",
     "default_gate_speed_override",
+    "default_gate_remaining_weight",
+    "default_gate_initial_weight",
     "default_endless_spool_groups",
     "default_ttg_map",
 ]
