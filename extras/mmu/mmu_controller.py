@@ -2580,7 +2580,6 @@ class MmuController(MmuFilamentMovement):
     # Continue after load/unload/change_tool/runout operation or pause/error
     def _continue_after(self, operation, force_in_print=False, restore=True):
         self.log_debug("Continuing from %s state after %s" % (self.psm.print_state, operation))
-        resumed_toolchange = operation == 'resume' and self.is_mmu_paused() and self._next_tool != TOOL_GATE_UNKNOWN
         if self.is_mmu_paused() and operation == 'resume':
             # Cancel any pending shared-NFC spool_id: resuming (e.g. after pausing to load a
             # spool) may not fire a movement action, so it wouldn't be caught by _set_action.
@@ -2603,6 +2602,8 @@ class MmuController(MmuFilamentMovement):
             # Only where filament should reach the nozzle: a completed load, or an interrupted toolchange/load
             if operation != 'unload' and (self.filament_pos == FILAMENT_POS_LOADED or self._next_tool != TOOL_GATE_UNKNOWN):
                 self.sensor_manager.confirm_loaded() # Can throw MmuError
+                if self._next_tool != TOOL_GATE_UNKNOWN:
+                    self._print_toolchange_done = True # Pending toolchange is confirmed, later ones are the slicer's
             self.is_handling_runout = False
             self.initialize_encoder(dwell=None) # Encoder 0000
 
@@ -2617,10 +2618,6 @@ class MmuController(MmuFilamentMovement):
 
             # Re-establish desired syncing state AND grip (servo) position
             self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
-
-        # Filament is confirmed loaded, so the user resolved the failed toolchange and later ones are the slicer's
-        if resumed_toolchange and self.is_in_print(force_in_print):
-            self._print_toolchange_done = True
 
         # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
         self._next_tool = TOOL_GATE_UNKNOWN

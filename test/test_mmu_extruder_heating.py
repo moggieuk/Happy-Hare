@@ -312,6 +312,19 @@ class TestResidualFilamentHeating(unittest.TestCase):
         del self.mmu._restore_toolhead_position
         self.assertTrue(self.mmu._print_toolchange_done)
 
+    def test_failed_position_restore_after_initial_load_completes_it(self):
+        from extras.mmu.mmu_utils import MmuError
+        self.start_print()
+        def fail(*args, **kwargs):
+            raise MmuError('injected restore failure')
+        self.mmu._restore_toolhead_position = fail
+
+        self.hh.run_gcode('MMU_CHANGE_TOOL STANDALONE=1 TOOL=1')
+
+        del self.mmu._restore_toolhead_position
+        self.assertTrue(self.mmu.is_mmu_paused())
+        self.assertTrue(self.mmu._print_toolchange_done)
+
     def test_rejected_resume_keeps_initial_toolchange_open(self):
         self.start_print()
         self.fail_initial_load()
