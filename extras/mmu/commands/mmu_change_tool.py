@@ -294,3 +294,6 @@ class MmuChangeToolCommand(BaseCommand):
             # Caught outside the load attempts so a Klipper error is never retried
             ee = mmu.mmu_error_from(ee)
             mmu.handle_mmu_error(ee.with_context("Occurred when changing tool: %s" % mmu._last_toolchange))
+        finally:
+            if mmu.is_in_print():
+                mmu._print_toolchange_done = True # Later toolchanges in this print are the slicer's to heat

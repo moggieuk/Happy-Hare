@@ -200,6 +200,8 @@ class MmuController(MmuFilamentMovement):
 
         self.saved_toolhead_max_accel = None
         self.num_toolchanges = 0
+        self._print_toolchange_done = False # Set once the initial toolchange of a print has been requested
+        self._residual_restore = None   # (extruder, target before raise) while heated to expel the residual filament
 
         self.psm.reinit()
         self.mmu_machine.reinit() # Will iterate over all mmu_units
@@ -2493,6 +2495,9 @@ class MmuController(MmuFilamentMovement):
                 self.psm.reason_for_pause = reason # Only store reason on first error
                 self.psm.pause_hint = hint
                 self._display_mmu_error(context)
+                if self._residual_restore is not None:
+                    # Resume at the new filament temp, not the temp raised to expel the residual filament
+                    self._end_residual_heating(success=False)
                 self.psm.paused_extruder = self.mmu_unit().extruder_name()
                 self.psm.paused_extruder_temp = self.printer.lookup_object(self.psm.paused_extruder).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
@@ -3011,7 +3016,8 @@ class MmuController(MmuFilamentMovement):
         current_target_temp = extruder.heater.target_temp
         new_target_temp = current_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
-        gate_temp = self.gate_temperature[self.gate_selected] if self.gate_selected >= 0 and self.gate_temperature[self.gate_selected] > 0 else self.p.default_extruder_temp
+        gate_temp = self._gate_temperature(self.gate_selected)
+        residual_temp = self.mmu_unit().extruder_wrapper.filament_remaining_temp
         self.log_trace(
             f"_ensure_safe_extruder_temperature: "
             f"current_temp={current_temp}, "
@@ -3019,6 +3025,7 @@ class MmuController(MmuFilamentMovement):
             f"current_target_temp={current_target_temp}, "
             f"klipper_minimum_temp={klipper_minimum_temp}, "
             f"gate_temp={gate_temp}, "
+            f"residual_temp={residual_temp}, "
             f"default_extruder_temp={self.p.default_extruder_temp}, "
             f"source={source}"
         )
@@ -3071,8 +3078,21 @@ class MmuController(MmuFilamentMovement):
                 new_target_temp = self.p.default_extruder_temp
                 source = "mmu default"
 
+            # Hot enough to expel the residual filament, except on mid-print toolchanges (slicer's job)
+            if source != "pause" and self._residual_applies() and residual_temp > new_target_temp + self.p.extruder_temp_variance:
+                if self._residual_restore is None:
+                    self._residual_restore = (extruder_name, current_target_temp)
+                base_msg = "%s temp" % self._temperature_label(new_target_temp, source)
+                residual_material = self.mmu_unit().extruder_wrapper.filament_remaining_material
+                residual_msg = "previous filament (%s)" % residual_material if residual_material else "previous filament"
+                residual_msg = "to clear %s, above %s %.1f%sC" % (residual_msg, base_msg, new_target_temp, UI_DEGREE)
+                new_target_temp = residual_temp
+                source = "previous filament"
+
         if new_target_temp > current_target_temp:
-            if source in ["mmu default", "gatemap"]:
+            if source == "previous filament":
+                self.log_error("Alert: Heating extruder to %.1f%sC %s" % (new_target_temp, UI_DEGREE, residual_msg))
+            elif source in ["mmu default", "gatemap"]:
                 # We use error log channel to avoid heating surprise. This will also cause popup in Klipperscreen
                 self.log_error("Alert: Automatically heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             else:
@@ -3084,14 +3104,63 @@ class MmuController(MmuFilamentMovement):
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > self.p.extruder_temp_variance:
-                with self.wrap_action(ACTION_HEATING):
-                    self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
-                    self.gcode.run_script_from_command(
-                        f"TEMPERATURE_WAIT "
-                        f"SENSOR={extruder_name} "
-                        f"MINIMUM={new_target_temp - self.p.extruder_temp_variance:.1f} "
-                        f"MAXIMUM={new_target_temp + self.p.extruder_temp_variance:.1f}"
-                    )
+                self._wait_for_extruder_temperature(new_target_temp, source, extruder_name)
+
+
+    def _wait_for_extruder_temperature(self, temp, source, extruder_name):
+        with self.wrap_action(ACTION_HEATING):
+            self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, temp, UI_DEGREE))
+            self.gcode.run_script_from_command(
+                f"TEMPERATURE_WAIT "
+                f"SENSOR={extruder_name} "
+                f"MINIMUM={temp - self.p.extruder_temp_variance:.1f} "
+                f"MAXIMUM={temp + self.p.extruder_temp_variance:.1f}"
+            )
+
+
+    def _gate_temperature(self, gate):
+        return self.gate_temperature[gate] if gate >= 0 and self.gate_temperature[gate] > 0 else self.p.default_extruder_temp
+
+
+    # An unset gate map temp is the default temp so say so rather than imply the filament is known
+    def _temperature_label(self, temp, source):
+        if source == "mmu default" or (source == "gatemap" and temp == self.p.default_extruder_temp):
+            return "default"
+        return "new filament"
+
+
+    # Residual filament temp is honored for loads outside the slicer's control: the initial
+    # toolchange of a print and everything standalone
+    def _residual_applies(self):
+        return not self.is_printing() or (not self._print_toolchange_done and not self.is_handling_runout)
+
+
+    def _end_residual_heating(self, success=True):
+        """
+        Once the load (and purge) is complete, drop from the residual filament temp to the new
+        filament temp and record that as what is now in the nozzle
+        """
+        restore, self._residual_restore = self._residual_restore, None
+        if not self._residual_applies():
+            return
+
+        extruder_name = restore[0] if restore else self.mmu_unit().extruder_name()
+        heater = self.printer.lookup_object(extruder_name).get_heater()
+        prior_temp = restore[1] if restore else heater.target_temp
+        if prior_temp >= heater.min_extrude_temp:
+            new_temp, source = prior_temp, "current"
+        else:
+            new_temp, source = self._gate_temperature(self.gate_selected), "gatemap"
+        source = self._temperature_label(new_temp, source)
+
+        if restore and heater.target_temp > new_temp + self.p.extruder_temp_variance:
+            self.log_info("Reducing extruder to %.1f%sC (%s temp) after %s" % (new_temp, UI_DEGREE, source, "purge" if success else "error"))
+            self._set_extruder_temperature(new_temp, extruder_name)
+            if success and self.is_printing():
+                self._wait_for_extruder_temperature(new_temp, source, extruder_name)
+
+        if success:
+            self.mmu_unit().extruder_wrapper.set_filament_temp(new_temp)
 
 
     def selected_tool_string(self, tool=None):

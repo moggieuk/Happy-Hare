@@ -2757,6 +2757,7 @@ class MmuFilamentMovement:
                 u.extruder_wrapper.set_filament_material(
                     self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
                 )
+                self._end_residual_heating()
 
             td1_success = True
 
@@ -2765,6 +2766,8 @@ class MmuFilamentMovement:
             raise ee.with_message("Load sequence failed because:\n%s" % (str(ee))) from ee
 
         finally:
+            if self._residual_restore is not None and not td1_success:
+                self._end_residual_heating(success=False)
             if td1_mgr is not None:
                 td1_mgr.end_load(td1_token, td1_success)
             self._track_gate_statistics('loads', self.gate_selected)
