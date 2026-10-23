@@ -917,10 +917,14 @@ class TestEndlessSpoolGroupsRetired(MmuCfgBuild):
                     self.assertFalse(ConfigBuilder(built).has_option(self.SECTION, "endless_spool_groups"))
 
 
-class TestSpoolWeightDefaultsSurviveRefresh(MmuCfgBuild):
-    """The default_gate_*_weight lists aren't in the template, so a refresh must reinsert them."""
+class TestDefaultGateListsSurviveRefresh(MmuCfgBuild):
+    """default_gate_* lists without a live template line must be reinserted by a refresh."""
 
-    EDITS = (("default_gate_remaining_weight", "400, 400, 400, 400"),
+    EDITS = (("default_gate_vendor", "eSun, Prusa, eSun, Bambu"),
+             ("default_gate_td", "1.5, 2.5, 3.5, 4.5"),
+             ("default_gate_td1_color", "ff0000, 00ff00, 0000ff, ffffff"),
+             ("default_gate_spool_rfid", "04A1B2C3, , AABBCCDD, 11223344"),
+             ("default_gate_remaining_weight", "400, 400, 400, 400"),
              ("default_gate_initial_weight", "1000, 1000, 1000, 1000"))
 
     def edit(self, line):
@@ -928,7 +932,7 @@ class TestSpoolWeightDefaultsSurviveRefresh(MmuCfgBuild):
             return "\n".join([line] + ["%s: %s" % edit for edit in self.EDITS])
         return line
 
-    def test_weight_defaults_survive_refresh(self):
+    def test_default_gate_lists_survive_refresh(self):
         built, _ = self.build("refresh", [self.installed(self.edit)])
         for option, value in self.EDITS:
             with self.subTest(option):
