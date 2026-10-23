@@ -166,6 +166,8 @@ class MmuPrintStateMachine:
             self.mmu._clear_saved_toolhead_position()
             self.mmu.num_toolchanges = 0
             self.mmu._next_tool = TOOL_GATE_UNKNOWN # Discard any marker left by a failed toolchange outside a print
+            self.mmu._residual_restore = None
+            self.mmu._print_toolchange_done = False
             self.paused_extruder_temp = None
             self.mmu._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.mmu.reactor.update_timer(self.mmu.hotend_off_timer, self.mmu.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -212,10 +214,20 @@ class MmuPrintStateMachine:
             # safety timer and leave the hotend (and bed) hot — explicitly turn
             # heaters off before we tear down state.
             was_paused = self.is_mmu_paused()
+
+            # Record what the print left in the nozzle. Missed if PRINT_END has already turned the heater off
+            if self.is_in_print():
+                heater = self.printer.lookup_object(self.mmu.mmu_unit().extruder_name()).get_heater()
+                wrapper = self.mmu.mmu_unit().extruder_wrapper
+                # Not after a failed load, because the previous filament is still in the nozzle
+                if heater.target_temp >= heater.min_extrude_temp and not wrapper.residual_heating_failed:
+                    wrapper.set_filament_temp(heater.target_temp)
+
             self.mmu.movequeue_wait()
             self.mmu._clear_saved_toolhead_position()
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
+            self.mmu._residual_restore = None
             if was_paused and state in ("complete", "cancelled", "error"):
                 self.mmu.log_info("Turning off heaters (slicer PRINT_END was bypassed by MMU pause)")
                 self.mmu.gcode.run_script_from_command("TURN_OFF_HEATERS")

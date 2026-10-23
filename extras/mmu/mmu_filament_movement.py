@@ -2538,6 +2538,11 @@ class MmuFilamentMovement:
         Returns:
             None. Performs the load workflow, updates state and telemetry, or raises MmuError on failure.
         """
+        with self._wrap_residual_heating(purge if not skip_extruder else PURGE_NONE):
+            self._load_sequence(bowden_move, skip_extruder, purge, extruder_only)
+
+
+    def _load_sequence(self, bowden_move, skip_extruder, purge, extruder_only):
         u = self.mmu_unit()
         self.movequeue_wait()
         u.calibrator.restore_gear_rd()
@@ -2757,6 +2762,7 @@ class MmuFilamentMovement:
                 u.extruder_wrapper.set_filament_material(
                     self.gate_material[self.gate_selected] if self.gate_selected >= 0 else ""
                 )
+                self._end_residual_heating()
 
             td1_success = True
 

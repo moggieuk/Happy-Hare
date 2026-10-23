@@ -144,6 +144,7 @@ class MmuChangeToolCommand(BaseCommand):
             if tool is None:
                 tool = gcmd.get_int('TOOL', minval=0, maxval=mmu.num_gates - 1)
 
+        toolchange_succeeded = False
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during tool change
@@ -183,6 +184,7 @@ class MmuChangeToolCommand(BaseCommand):
                             mmu.filament_pos == FILAMENT_POS_LOADED
                         ):
                             mmu.log_always("Tool %s is already loaded" % mmu.selected_tool_string(tool))
+                            toolchange_succeeded = True
                             return
 
                         # Load only case
@@ -204,6 +206,7 @@ class MmuChangeToolCommand(BaseCommand):
                         if mmu.ttg_map[tool] == mmu.gate_selected and mmu.filament_pos == FILAMENT_POS_LOADED:
                             mmu.select_tool(tool)
                             mmu._note_toolchange(mmu.selected_tool_string(tool))
+                            toolchange_succeeded = True
                             return
 
                         # Ok, now ready to park and perform the swap
@@ -245,9 +248,10 @@ class MmuChangeToolCommand(BaseCommand):
                         try:
                             for i in range(attempts):
                                 try:
-                                    if mmu.filament_pos != FILAMENT_POS_UNLOADED:
-                                        mmu._unload_tool(form_tip=do_form_tip, prev_tool=prev_tool)
-                                    mmu._select_and_load_tool(tool, purge=do_purge)
+                                    with mmu._wrap_residual_heating(do_purge):
+                                        if mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                                            mmu._unload_tool(form_tip=do_form_tip, prev_tool=prev_tool)
+                                        mmu._select_and_load_tool(tool, purge=do_purge)
                                     break
                                 except MmuError as ee:
                                     if i == attempts - 1:
@@ -288,9 +292,14 @@ class MmuChangeToolCommand(BaseCommand):
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
                             mmu.log_info("Retracting %.1fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
 
+                    toolchange_succeeded = True
+
         except MmuError as ee:
             mmu.handle_mmu_error(ee)
         except mmu.printer.command_error as ee:
             # Caught outside the load attempts so a Klipper error is never retried
             ee = mmu.mmu_error_from(ee)
             mmu.handle_mmu_error(ee.with_context("Occurred when changing tool: %s" % mmu._last_toolchange))
+        finally:
+            if toolchange_succeeded and mmu.is_in_print():
+                mmu._print_toolchange_done = True # Later toolchanges in this print are the slicer's to heat

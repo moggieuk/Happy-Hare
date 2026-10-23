@@ -431,7 +431,7 @@ menu "Global software options"
     float "Default extruder temperature       "
     default 200
     help
-      Default temperature for performing swaps and forming tips when not in print (overridden by gate map)
+      Default temperature for performing swaps and forming tips when not in print (overridden by gate map, or the last filament's temp while HH purges if higher)
 
   config PARAM_EXTRUDER_TEMP_VARIANCE
     float "Extruder temperature variance      "

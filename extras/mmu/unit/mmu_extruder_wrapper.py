@@ -36,6 +36,8 @@ class MmuExtruderWrapper():
         self.filament_remaining = 0.            # The amount of filament remaining in extruder hotend
         self.filament_remaining_color = UNKNOWN_FILAMENT_COLOR # Color of remaining filament
         self.filament_remaining_material = ""   # Material last fully loaded and purged into the extruder
+        self.filament_remaining_temp = 0        # Nozzle temp that filament was run at (0 = unknown)
+        self.residual_heating_failed = False    # Load failed before the previous filament was purged
 
         # Per physical extruder, not per machine: units on different extruders each have their own
         self._run_current_percent = 100
@@ -89,6 +91,7 @@ class MmuExtruderWrapper():
         self.filament_remaining = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING, self.filament_remaining, self.name)
         self.filament_remaining_color = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_COLOR, self.filament_remaining_color, self.name)
         self.filament_remaining_material = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_MATERIAL, self.filament_remaining_material, self.name)
+        self.filament_remaining_temp = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_TEMP, self.filament_remaining_temp, self.name)
 
 
         # Setup extruder ------------------------------------------------------------------------------------
@@ -188,6 +191,21 @@ class MmuExtruderWrapper():
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_MATERIAL, material, self.name, write=True)
 
 
+    # Only a temp this heater can extrude at is used, else unknown (0)
+    def get_filament_temp(self):
+        temp = self.filament_remaining_temp
+        heater = self.printer.lookup_object(self.name).get_heater()
+        return temp if isinstance(temp, (int, float)) and heater.min_extrude_temp <= temp <= heater.max_temp else 0
+
+
+    def set_filament_temp(self, temp):
+        temp = int(round(temp))
+        if abs(temp - self.get_filament_temp()) <= self.mmu.p.extruder_temp_variance:
+            return
+        self.filament_remaining_temp = temp
+        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_TEMP, temp, self.name, write=True)
+
+
     def get_status(self, eventtime):
         residual = getattr(self.mmu_unit.toolhead_wrapper.p, "toolhead_residual_filament", 0)
         return {
@@ -196,6 +214,7 @@ class MmuExtruderWrapper():
             'filament_remaining': self.filament_remaining,             # TODO Use this printer variable in UI's
             'filament_remaining_color': self.filament_remaining_color, # TODO Use this printer variable in UI's
             'filament_remaining_material': self.filament_remaining_material,
+            'filament_remaining_temp': self.filament_remaining_temp,
         }
 
 
