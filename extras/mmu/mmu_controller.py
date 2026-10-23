@@ -1864,7 +1864,7 @@ class MmuController(MmuFilamentMovement):
             return {}
         gate = self.gate_selected
         if gate == TOOL_GATE_BYPASS:
-            return dict(self.bypass_filament)
+            return self.bypass_filament
         if gate < 0:
             return {}
         return {
@@ -2348,6 +2348,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def set_bypass_filament(self, filament):
+        # Always replace, never mutate in place, or webhooks won't see the change
         self.bypass_filament = filament
         self.var_manager.set(VARS_MMU_BYPASS_FILAMENT, filament, write=True)
 
