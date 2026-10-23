@@ -763,6 +763,35 @@ class TestPreload(MotionTestCase):
         self.assertEqual(banners, ['Ejecting gate 1...'])
         self.assertEqual(self.hh.mmu.gate_status[1], GATE_EMPTY)
 
+    def test_blind_eject_does_not_rewind_espooler(self):
+        """
+        #715: without an entry sensor the final eject is a blind move, and a rewinding
+        espooler keeps pulling after the gear lets go, dragging the tip off the spool.
+        The entry-sensor homing eject stops at the switch, so it keeps its rewind.
+        """
+        mmu = self.hh.mmu
+        ops = []
+        set_operation = mmu.espooler().set_operation
+        def spy(gate, value, operation):
+            ops.append((gate, operation))
+            return set_operation(gate, value, operation)
+        mmu.espooler().set_operation = spy
+
+        for gate in (1, 2):
+            self.hh.place_filament(gate, position=TIP_AT_GATE)
+            self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+
+        del ops[:]
+        self.hh.run_gcode('MMU_EJECT GATE=2')
+        self.assertIn((2, 'rewind'), ops)
+
+        # Only the reverse homing off mmu_exit_1, still in the gear's grip, may rewind
+        self.hh.run_gcode('MMU_SENSORS SENSOR=mmu_entry_1 ENABLE=0')
+        del ops[:]
+        self.hh.run_gcode('MMU_EJECT GATE=1')
+        self.assertEqual(ops.count((1, 'rewind')), 1, ops)
+        self.assertEqual(mmu.gate_status[1], GATE_EMPTY)
+
     def test_a_failed_preload_keeps_an_assigned_spool_id(self):
         """
         The pending spool is assigned while this gate is already EMPTY, so a failed
