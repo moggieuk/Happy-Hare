@@ -30,7 +30,7 @@ class MmuGateMapCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "QUIET        = 1 To minimize console reporting\n"
-        + "DETAILS      = 1 Include measured TD/color and the complete Spoolman RFID UID set for each gate\n"
+        + "DETAILS      = 1 Include measured TD/color, the complete Spoolman RFID UID set and spool weight for each gate\n"
         + "RESET        = 1 To reset specified GATE/GATES filament attributes to configured defaults\n"
         + "GATES        = g,g,g comma separated list of gates; required with RESET unless GATE is used\n"
         + "GATE         = g Specify a single gate; required with RESET unless GATES is used\n"

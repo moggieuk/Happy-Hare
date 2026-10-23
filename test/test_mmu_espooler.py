@@ -64,6 +64,12 @@ class TestEspoolerSpoolWeight(unittest.TestCase):
         self.hh.run_gcode('MMU_GATE_MAP GATE=0 SPOOLID=-1 QUIET=1')
         self.assertEqual((self.mmu.gate_remaining_weight[1], self.mmu.gate_initial_weight[1]), (400, 1000))
 
+    def test_gate_map_details_reports_weight_and_percent_remaining(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 WEIGHT=400 INITIAL_WEIGHT=1000 QUIET=1')
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_GATE_MAP DETAILS=1')
+        self.assertIn('[WEIGHT: 400/1000g (40%)]', '\n'.join(self.hh.console[at:]))
+
 
 if __name__ == '__main__':
     unittest.main()

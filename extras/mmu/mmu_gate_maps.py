@@ -776,8 +776,11 @@ class MmuGateMaps:
                 rfids = ','.join(self.gate_spool_rfid_aliases[g]) or "none"
                 extra_fstr += " [RFIDS: {}]".format(rfids)
                 if self.gate_remaining_weight[g] >= 0:
-                    initial = "/{}".format(self.gate_initial_weight[g]) if self.gate_initial_weight[g] > 0 else ""
-                    extra_fstr += " [WEIGHT: {}{}g]".format(self.gate_remaining_weight[g], initial)
+                    fraction = self.spool_fill_fraction(g)
+                    if fraction is not None:
+                        extra_fstr += " [WEIGHT: {}/{}g ({:.0f}%)]".format(self.gate_remaining_weight[g], self.gate_initial_weight[g], fraction * 100)
+                    else:
+                        extra_fstr += " [WEIGHT: {}g]".format(self.gate_remaining_weight[g])
 
             rows.append((gate_fstr, available_fstr, spool_fstr, material, temperature_fstr, color, name + speed_fstr + extra_fstr))
 
