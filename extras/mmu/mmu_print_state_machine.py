@@ -218,8 +218,11 @@ class MmuPrintStateMachine:
             # Record what the print left in the nozzle. Missed if PRINT_END has already turned the heater off
             if self.is_in_print():
                 heater = self.printer.lookup_object(self.mmu.mmu_unit().extruder_name()).get_heater()
-                if heater.target_temp >= heater.min_extrude_temp:
-                    self.mmu.mmu_unit().extruder_wrapper.set_filament_temp(heater.target_temp)
+                wrapper = self.mmu.mmu_unit().extruder_wrapper
+                # A failed initial load restored the destination temperature without
+                # clearing the old material. Cancellation must not overwrite its record.
+                if heater.target_temp >= heater.min_extrude_temp and not wrapper.residual_heating_failed:
+                    wrapper.set_filament_temp(heater.target_temp)
 
             self.mmu.movequeue_wait()
             self.mmu._clear_saved_toolhead_position()

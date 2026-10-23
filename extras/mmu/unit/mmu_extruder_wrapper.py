@@ -14,7 +14,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-import logging
+import logging, math
 
 # Happy Hare imports
 from ...mmu_stepper        import MmuStepper
@@ -37,6 +37,7 @@ class MmuExtruderWrapper():
         self.filament_remaining_color = UNKNOWN_FILAMENT_COLOR # Color of remaining filament
         self.filament_remaining_material = ""   # Material last fully loaded and purged into the extruder
         self.filament_remaining_temp = 0        # Nozzle temp that filament was run at (0 = unknown)
+        self.residual_heating_failed = False    # A restored target does not describe unpurged residual filament
 
         # Per physical extruder, not per machine: units on different extruders each have their own
         self._run_current_percent = 100
@@ -90,7 +91,9 @@ class MmuExtruderWrapper():
         self.filament_remaining = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING, self.filament_remaining, self.name)
         self.filament_remaining_color = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_COLOR, self.filament_remaining_color, self.name)
         self.filament_remaining_material = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_MATERIAL, self.filament_remaining_material, self.name)
-        self.filament_remaining_temp = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_TEMP, self.filament_remaining_temp, self.name)
+        self.filament_remaining_temp = self._validated_filament_temp(
+            self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_TEMP, 0, self.name)
+        )
 
 
         # Setup extruder ------------------------------------------------------------------------------------
@@ -190,8 +193,25 @@ class MmuExtruderWrapper():
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_MATERIAL, material, self.name, write=True)
 
 
+    def _validated_filament_temp(self, temp):
+        # Saved variables are arbitrary Python literals. Old installs have no key;
+        # malformed values or values outside a replacement heater's limits are unknown.
+        if isinstance(temp, bool) or not isinstance(temp, (int, float)):
+            return 0
+        try:
+            if not math.isfinite(temp):
+                return 0
+            heater = self.printer.lookup_object(self.extruder_name()).get_heater()
+            if not heater.min_extrude_temp <= temp <= heater.max_temp:
+                return 0
+            temp = int(round(temp))
+            return temp if heater.min_extrude_temp <= temp <= heater.max_temp else 0
+        except (ValueError, OverflowError):
+            return 0
+
+
     def set_filament_temp(self, temp):
-        temp = max(0, int(round(temp)))
+        temp = self._validated_filament_temp(temp)
         if abs(temp - self.filament_remaining_temp) <= self.mmu.p.extruder_temp_variance:
             return
         self.filament_remaining_temp = temp
