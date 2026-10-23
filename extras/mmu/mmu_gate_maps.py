@@ -115,31 +115,42 @@ class MmuGateMaps:
             List[str]: any validation / length / sanity warnings encountered
         """
         errors = []
+        resized = []
         var_manager = self.mmu.var_manager
+
+        # Saved per-gate lists are resized when the gate count changed without the installer
+        # migrating them (e.g. gates added). Existing gates keep their values, new ones the default
+        def fit(var, saved, default):
+            if not isinstance(saved, list):
+                errors.append("Invalid value specified with %s" % var)
+                return list(default)
+            if len(saved) != self.num_gates:
+                resized.append("%s (%d entries)" % (var, len(saved)))
+            return saved[:self.num_gates] + default[len(saved):]
 
         # Load EndlessSpool config
         self.endless_spool_enabled = var_manager.get(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
         endless_spool_groups = var_manager.get(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
-        if len(endless_spool_groups) == self.num_gates:
-            self.endless_spool_groups = endless_spool_groups
-        else:
-            errors.append("Incorrect number of gates specified in %s" % VARS_MMU_ENDLESS_SPOOL_GROUPS)
+        # New gates each get their own group rather than joining an existing one
+        next_group = max([g for g in endless_spool_groups if isinstance(g, int)] + [-1]) + 1
+        new_groups = [next_group + gate - len(endless_spool_groups) for gate in range(self.num_gates)]
+        self.endless_spool_groups = fit(VARS_MMU_ENDLESS_SPOOL_GROUPS, endless_spool_groups, new_groups)
 
         # Load TTG map
-        tool_to_gate_map = var_manager.get(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
-        if len(tool_to_gate_map) == self.num_gates:
-            self.ttg_map = tool_to_gate_map
-        else:
-            errors.append("Incorrect number of gates specified in %s" % VARS_MMU_TOOL_TO_GATE_MAP)
+        tool_to_gate_map = fit(VARS_MMU_TOOL_TO_GATE_MAP, var_manager.get(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map), self.ttg_map)
+        self.ttg_map = [g if isinstance(g, int) and g < self.num_gates else self.ttg_map[t]
+                        for t, g in enumerate(tool_to_gate_map)]
 
         # Load gate map
         for var, attr, _ in self._gate_map_vars:
-            value = var_manager.get(var, getattr(self, attr))
-            if len(value) == self.num_gates:
-                setattr(self, attr, value)
-            else:
-                errors.append("Incorrect number of gates specified with %s" % var)
+            setattr(self, attr, fit(var, var_manager.get(var, getattr(self, attr)), getattr(self, attr)))
         self.update_gate_color_rgb()
+
+        if resized:
+            self.mmu.log_warning(
+                "Warning: Persisted gate lists didn't match the %d gates and were resized (new gates use defaults):\n%s"
+                % (self.num_gates, "\n".join(resized))
+            )
 
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
