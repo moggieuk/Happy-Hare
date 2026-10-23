@@ -1256,11 +1256,13 @@ class MmuFilamentMovement:
                     wait=True,
                 )
             else:
-                # Blindly move the full distance
+                # Blindly move the full distance. No rewind: once out of the gear's grip it
+                # would keep pulling the filament off the gate and onto the spool
                 self.move_filament(
                     msg,
                     -u.p.gate_final_eject_distance,
                     wait=True,
+                    espooler=False,
                 )
         else:
             self.log_trace("No final eject, gate_final_eject_distance is 0")
@@ -3428,7 +3430,7 @@ class MmuFilamentMovement:
 
     # Used to wrap certain unload moves and activate eSpooler. Ensures eSpooler is always stopped
     @contextlib.contextmanager
-    def _wrap_espooler(self, motor, dist, speed, accel, homing_move):
+    def _wrap_espooler(self, motor, dist, speed, accel, homing_move, enabled=True):
         """
         Activate eSpooler assist or rewind around eligible moves and always stop it afterward.
 
@@ -3438,6 +3440,7 @@ class MmuFilamentMovement:
             speed: Requested move speed. When omitted, a context-appropriate default is chosen.
             accel: Requested acceleration. When omitted, a context-appropriate default is chosen.
             homing_move: Non-zero to perform a homing move; the sign indicates the expected trigger direction.
+            enabled: False to keep the eSpooler off for this move, stopping any operation in progress.
 
         Yields:
             self while eSpooler assist or rewind is active for the wrapped move.
@@ -3447,7 +3450,12 @@ class MmuFilamentMovement:
         self._wait_for_espooler = False
         espooler_operation = ESPOOLER_OFF
 
-        if self.has_espooler():
+        if not enabled:
+            # Don't leave a manually started operation running through the move
+            if self.has_espooler():
+                self.espooler().set_operation(self.gate_selected, 0, ESPOOLER_OFF)
+
+        elif self.has_espooler():
             pwm_value = 0
             if abs(dist) >= u.p.espooler_min_distance and speed > u.p.espooler_min_stepper_speed:
                 if dist > 0 and ESPOOLER_ASSIST in u.p.espooler_operations:
@@ -3482,7 +3490,7 @@ class MmuFilamentMovement:
 
     def move_filament(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0,
                       endstop_name="default", track=False, wait=False, encoder_dwell=False,
-                      speed_override=True, suppress_grip_change=False):
+                      speed_override=True, suppress_grip_change=False, espooler=True):
         """
         Execute a traced filament move and report actual motion, homing result, and encoder data.
 
@@ -3515,6 +3523,7 @@ class MmuFilamentMovement:
             encoder_dwell: Whether to add dwell time when sampling encoder position.
             speed_override: Whether per-gate speed overrides should be applied.
             suppress_grip_change: Prevents explicit calling to correct grip (buzz gear on down case)
+            espooler: False to leave the eSpooler off even if the move would otherwise activate it
 
         Returns:
             tuple[float, bool, float, float]: Actual movement, homing success flag, encoder-measured movement, and the difference between commanded and measured travel.
@@ -3585,7 +3594,7 @@ class MmuFilamentMovement:
             speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, virtual_endstop=is_v_endstop, speed_override=speed_override)
 
             # Espooler only needs to be live for the actual filament move ---
-            with self._wrap_espooler(motor, dist, speed, accel, homing_move):
+            with self._wrap_espooler(motor, dist, speed, accel, homing_move, enabled=espooler):
                 wait = wait or self._wait_for_espooler
 
                 start_pos = drive.get_filament_position()
