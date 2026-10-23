@@ -115,42 +115,77 @@ class MmuGateMaps:
             List[str]: any validation / length / sanity warnings encountered
         """
         errors = []
-        resized = []
+        notes = []
         var_manager = self.mmu.var_manager
+        saved_layout = self._valid_layout(var_manager.get(VARS_MMU_GATE_MAP_UNITS, None))
+        changed = saved_layout != self.current_layout()
 
-        # Saved per-gate lists are resized when the gate count changed without the installer
-        # migrating them (e.g. gates added). Existing gates keep their values, new ones the default
-        def fit(var, saved, default):
+        def load(var, default, apply):
+            """Saved per-gate list fitted to the current gates, or default if it can't be"""
+            nonlocal changed
+            saved = var_manager.get(var, None)
+            if saved is None:
+                return default
             if not isinstance(saved, list):
                 errors.append("Invalid value specified with %s" % var)
-                return list(default)
-            if len(saved) != self.num_gates:
-                resized.append("%s (%d entries)" % (var, len(saved)))
-            return saved[:self.num_gates] + default[len(saved):]
+                changed = True
+                return default
+            mapping, how = self._gate_mapping(len(saved), saved_layout)
+            if how:
+                notes.append("%s (%d entries): %s" % (var, len(saved), how))
+                changed = True
+            return default if mapping is None else apply(saved, mapping)
+
+        def apply_gates(default):
+            def apply(saved, mapping):
+                fitted = list(default)
+                for old, new in mapping.items():
+                    fitted[new] = saved[old]
+                return fitted
+            return apply
+
+        def apply_groups(saved, mapping):
+            # New gates each get their own group rather than joining an existing one
+            groups = [None] * self.num_gates
+            for old, new in mapping.items():
+                groups[new] = saved[old]
+            next_group = max([g for g in groups if isinstance(g, int)] + [-1]) + 1
+            for gate, group in enumerate(groups):
+                if group is None:
+                    groups[gate], next_group = next_group, next_group + 1
+            return groups
+
+        def apply_ttg(saved, mapping):
+            # Tools follow their gate. A gate that no longer exists, or never did, means the default
+            return [mapping.get(saved[t], self.ttg_map[t]) if t < len(saved) and isinstance(saved[t], int) else self.ttg_map[t]
+                    for t in range(self.num_gates)]
 
         # Load EndlessSpool config
         self.endless_spool_enabled = var_manager.get(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
-        endless_spool_groups = var_manager.get(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
-        # New gates each get their own group rather than joining an existing one
-        next_group = max([g for g in endless_spool_groups if isinstance(g, int)] + [-1]) + 1
-        new_groups = [next_group + gate - len(endless_spool_groups) for gate in range(self.num_gates)]
-        self.endless_spool_groups = fit(VARS_MMU_ENDLESS_SPOOL_GROUPS, endless_spool_groups, new_groups)
+        self.endless_spool_groups = load(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups, apply_groups)
 
         # Load TTG map
-        tool_to_gate_map = fit(VARS_MMU_TOOL_TO_GATE_MAP, var_manager.get(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map), self.ttg_map)
-        self.ttg_map = [g if isinstance(g, int) and g < self.num_gates else self.ttg_map[t]
-                        for t, g in enumerate(tool_to_gate_map)]
+        self.ttg_map = load(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, apply_ttg)
 
         # Load gate map
         for var, attr, _ in self._gate_map_vars:
-            setattr(self, attr, fit(var, var_manager.get(var, getattr(self, attr)), getattr(self, attr)))
+            default = getattr(self, attr)
+            setattr(self, attr, load(var, default, apply_gates(default)))
         self.update_gate_color_rgb()
 
-        if resized:
+        if notes:
             self.mmu.log_warning(
-                "Warning: Persisted gate lists didn't match the %d gates and were resized (new gates use defaults):\n%s"
-                % (self.num_gates, "\n".join(resized))
+                "Warning: Persisted gate lists didn't match the %d gates:\n%s" % (self.num_gates, "\n".join(notes))
             )
+
+        # Save the fitted lists together with the layout they now match
+        if changed:
+            var_manager.set(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
+            var_manager.set(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
+            for var, attr, _ in self._gate_map_vars:
+                var_manager.set(var, getattr(self, attr))
+            var_manager.set(VARS_MMU_GATE_MAP_UNITS, self.current_layout())
+            var_manager.write()
 
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
@@ -174,6 +209,58 @@ class MmuGateMaps:
         self.ensure_ttg_match()                    # Ensure tool/gate consistency. Will change tool if necessary
 
         return errors
+
+
+    def current_layout(self):
+        return [[unit.name, unit.num_gates] for unit in self.mmu.mmu_machine.units]
+
+
+    @staticmethod
+    def _valid_layout(layout):
+        if isinstance(layout, list) and all(
+            isinstance(unit, (list, tuple)) and len(unit) == 2 and isinstance(unit[0], str) and isinstance(unit[1], int)
+            for unit in layout
+        ):
+            return [list(unit) for unit in layout]
+        return None
+
+
+    def _gate_mapping(self, saved_len, saved_layout):
+        """
+        Map the gates of a saved per-gate list of saved_len entries onto the current gates.
+
+        Returns (mapping, how): mapping is {saved_index: current_index} or None if the gates
+        can't be identified, how describes any change ('' when the list already fits).
+        Gates are matched by unit name and local gate using the layout the list was saved
+        with. Without one only a change at the end (a single unit or appended units) is
+        provably safe.
+        """
+        if saved_len == self.num_gates:
+            return {g: g for g in range(saved_len)}, ''
+
+        layout = self.current_layout()
+        if saved_layout and sum(n for _, n in saved_layout) == saved_len:
+            saved_first, first = {}, 0
+            for name, n in saved_layout:
+                saved_first[name] = (first, n)
+                first += n
+            mapping, first = {}, 0
+            for name, n in layout:
+                if name in saved_first:
+                    old_first, old_n = saved_first[name]
+                    for local in range(min(old_n, n)):
+                        mapping[old_first + local] = first + local
+                first += n
+            return mapping, 'matched by unit, new gates use defaults'
+
+        prefix_sums, total = [], 0
+        for _, n in layout:
+            total += n
+            prefix_sums.append(total)
+        if len(layout) == 1 or saved_len in prefix_sums:
+            return {g: g for g in range(min(saved_len, self.num_gates))}, 'resized, new gates use defaults'
+
+        return None, "ignored because its gates can't be matched to units, using defaults"
 
 
     def persist_ttg_map(self):
@@ -250,6 +337,7 @@ class MmuGateMaps:
         self.mmu.var_manager.set(VARS_MMU_GATE_SPOOL_RFID, self.gate_spool_rfid)
         self.mmu.var_manager.set(VARS_MMU_GATE_REMAINING_WEIGHT, self.gate_remaining_weight)
         self.mmu.var_manager.set(VARS_MMU_GATE_INITIAL_WEIGHT, self.gate_initial_weight)
+        self.mmu.var_manager.set(VARS_MMU_GATE_MAP_UNITS, self.current_layout())
         self.mmu.var_manager.write()
         self.update_t_macros()
 
