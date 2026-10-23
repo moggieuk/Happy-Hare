@@ -298,6 +298,27 @@ class TestResidualFilamentHeating(unittest.TestCase):
 
         self.assertTrue(self.mmu._print_toolchange_done)
 
+    def test_rejected_resume_keeps_initial_toolchange_open(self):
+        self.start_print()
+        self.fail_initial_load()
+        self.hh.filament().remove(1)
+        self.hh.run_gcode('MMU_RECOVER LOADED=0')
+
+        self.hh.run_gcode('RESUME')
+
+        self.assertTrue(self.mmu.is_mmu_paused())
+        self.assertFalse(self.mmu._print_toolchange_done)
+
+    def test_pause_inside_purge_saves_new_filament_temp(self):
+        self.hh.printer.harness_macro_effects[self.mmu.p.purge_macro] = (
+            lambda macro, gcmd: self.mmu.gcode.run_script_from_command('MMU_PAUSE MSG="Empty purge bucket!"'))
+        self.start_print()
+
+        self.hh.run_gcode('MMU_CHANGE_TOOL STANDALONE=1 RESTORE=0 TOOL=1')
+
+        self.assertTrue(self.mmu.is_mmu_paused())
+        self.assertEqual(self.mmu.psm.paused_extruder_temp, 220)
+
     def test_restore_is_never_below_min_extrude_temp(self):
         self.mmu.gate_temperature[1] = 100
         self.start_print(temp=0)

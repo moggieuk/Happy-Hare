@@ -2497,6 +2497,9 @@ class MmuController(MmuFilamentMovement):
                 self._display_mmu_error(context)
                 self.psm.paused_extruder = self.mmu_unit().extruder_name()
                 self.psm.paused_extruder_temp = self.printer.lookup_object(self.psm.paused_extruder).heater.target_temp
+                residual = (self._residual_restore or {}).get(self.psm.paused_extruder)
+                if residual and residual['raised']:
+                    self.psm.paused_extruder_temp = residual['target'] # Resume at the new filament's temp, not the residual raise
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
@@ -2577,6 +2580,7 @@ class MmuController(MmuFilamentMovement):
     # Continue after load/unload/change_tool/runout operation or pause/error
     def _continue_after(self, operation, force_in_print=False, restore=True):
         self.log_debug("Continuing from %s state after %s" % (self.psm.print_state, operation))
+        resumed_toolchange = operation == 'resume' and self.is_mmu_paused() and self._next_tool != TOOL_GATE_UNKNOWN
         if self.is_mmu_paused() and operation == 'resume':
             # Cancel any pending shared-NFC spool_id: resuming (e.g. after pausing to load a
             # spool) may not fire a movement action, so it wouldn't be caught by _set_action.
@@ -2587,8 +2591,6 @@ class MmuController(MmuFilamentMovement):
             self._track_pause_end()
             if self.is_in_print(force_in_print):
                 self._enable_filament_monitoring() # Enable filament monitoring while printing
-                if self._next_tool != TOOL_GATE_UNKNOWN:
-                    self._print_toolchange_done = True # User resolved the failed toolchange, later ones are the slicer's
             self.psm.set_print_state(self.psm.resume_to_state)
             self.psm.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed")
@@ -2624,6 +2626,9 @@ class MmuController(MmuFilamentMovement):
 
         # Ensure espooler print assist is in correct state if fitted
         self._adjust_espooler_assist()
+
+        if resumed_toolchange and self.is_in_print(force_in_print):
+            self._print_toolchange_done = True # User resolved the failed toolchange, later ones are the slicer's
 
         # Ready to continue printing...
 
