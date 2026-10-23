@@ -108,7 +108,7 @@ class TestConfiguration(EndlessSpoolTestCase):
 class TestConfiguredDefaultGroups(unittest.TestCase):
     """
     default_endless_spool_groups is the group list used whenever mmu_vars.cfg has no
-    saved list, and what MMU_ENDLESS_SPOOL RESET=1 restores.
+    saved list of the right length, and what MMU_ENDLESS_SPOOL RESET=1 restores.
     """
 
     def boot(self, saved=None, **options):
@@ -142,8 +142,8 @@ class TestConfiguredDefaultGroups(unittest.TestCase):
     def test_saved_groups_win_over_the_default(self):
         self.assertEqual(self.boot(saved=[2, 2, 3, 3], default_endless_spool_groups='0,1,0,1'), [2, 2, 3, 3])
 
-    def test_saved_groups_for_fewer_gates_are_kept_and_new_gates_get_their_own_group(self):
-        self.assertEqual(self.boot(saved=[2, 2], default_endless_spool_groups='0,1,0,1'), [2, 2, 3, 4])
+    def test_saved_groups_of_the_wrong_length_fall_back_to_the_default(self):
+        self.assertEqual(self.boot(saved=[2, 2], default_endless_spool_groups='0,1,0,1'), [0, 1, 0, 1])
 
     def test_reset_restores_the_configured_default(self):
         self.boot(saved=[2, 2, 3, 3], default_endless_spool_groups='0,1,0,1')
