@@ -3028,10 +3028,9 @@ class MmuFilamentMovement:
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
-            # Bypass active_filament is set at load (pending spool_id / tag metadata), so clear
-            # it once unloaded (real gates derive it from gate selection instead)
-            if self.gate_selected == TOOL_GATE_BYPASS:
-                self.active_filament = {}
+            # The bypass filament has gone (real gates keep theirs in the gate map)
+            if self.gate_selected == TOOL_GATE_BYPASS and self.bypass_filament:
+                self.set_bypass_filament({})
 
             if macros_and_track:
                 # Run POST_UNLOAD sequence macro

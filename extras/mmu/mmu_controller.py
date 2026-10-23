@@ -177,7 +177,7 @@ class MmuController(MmuFilamentMovement):
         self._last_toolchange = "Unknown"
 
         self.calibrating = False        # True when calibrating
-        self.active_filament = {}
+        self.bypass_filament = {}       # Bypass has no gate-map row so its filament attributes live here
         self.filament_pos = FILAMENT_POS_UNKNOWN
         self.filament_direction = DIRECTION_UNKNOWN
         self.action = ACTION_IDLE
@@ -299,6 +299,7 @@ class MmuController(MmuFilamentMovement):
 
         # Previous filament position
         self.filament_pos = self.var_manager.get(VARS_MMU_FILAMENT_POS, self.filament_pos)
+        self.bypass_filament = self.var_manager.get(VARS_MMU_BYPASS_FILAMENT, self.bypass_filament)
 
         if len(errors) > 0:
             self.log_warning("Warning: Some persisted state was ignored because it contained errors:\n%s" % '\n'.join(errors))
@@ -1855,6 +1856,27 @@ class MmuController(MmuFilamentMovement):
     def slicer_tool_map(self):
         return self.gate_maps.slicer_tool_map
 
+    @property
+    def active_filament(self):
+        # The loaded filament, not the selected one. Built on read so a gate-map edit
+        # is always reflected
+        if self.filament_pos != FILAMENT_POS_LOADED:
+            return {}
+        gate = self.gate_selected
+        if gate == TOOL_GATE_BYPASS:
+            return dict(self.bypass_filament)
+        if gate < 0:
+            return {}
+        return {
+            'filament_name': self.gate_filament_name[gate],
+            'material': self.gate_material[gate],
+            'vendor': self.gate_vendor[gate],
+            'color': self.gate_color[gate],
+            'td': self.gate_td[gate],
+            'spool_id': self.gate_spool_id[gate],
+            'temperature': self.gate_temperature[gate],
+        }
+
 
 # -----------------------------------------------------------------------------------------------------------
 # MMU PRINT STATE MACHINE ACCESSOR METHODS
@@ -2285,26 +2307,26 @@ class MmuController(MmuFilamentMovement):
         """
         Bypass analog of _check_pending_filament, called on a successful bypass
         (extruder_only) load. The bypass has no gate-map row, so a resolved pending
-        spool_id is activated in Spoolman directly and 'active_filament' seeded; the
+        spool_id is activated in Spoolman directly and 'bypass_filament' seeded; the
         filament attributes arrive asynchronously via 'MMU_GATE_MAP BYPASS=1 ...'
         (requested here through the same Moonraker fetch used for real gates).
-        Without a spool_id, staged tag metadata populates active_filament locally
+        Without a spool_id, staged tag metadata populates bypass_filament locally
         (works with spoolman off). Consumes/clears the pending state.
         """
         spool_id, tag, measured = self._grab_pending()
-        # No gate-map row, so a measurement rides on active_filament. TD only: measured
+        # No gate-map row, so a measurement rides on bypass_filament. TD only: measured
         # color is a per-gate LED source with no bypass equivalent
         measured_td = measured['td'] if measured else None
         if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
             self.log_info("Spool ID: %s activated for bypass load" % spool_id)
             self._spoolman_activate_spool(spool_id)
             # Attributes filled by the async BYPASS=1 callback, which preserves 'td'
-            self.active_filament = {'spool_id': spool_id, 'td': measured_td}
+            self.set_bypass_filament({'spool_id': spool_id, 'td': measured_td})
             self._spoolman_update_filaments([(TOOL_GATE_BYPASS, spool_id)])
         elif measured_td is not None and tag is None:
             # A measurement with no identity attached: the bypass filament is still
             # whatever it was, it just has a TD now
-            self.active_filament = dict(self.active_filament, td=measured_td)
+            self.set_bypass_filament(dict(self.bypass_filament, td=measured_td))
             self.log_info("TD-1: measured TD %.2f applied to bypass filament" % measured_td)
 
         elif tag is not None:
@@ -2312,7 +2334,7 @@ class MmuController(MmuFilamentMovement):
             if isinstance(metadata, dict) and metadata.get('material'):
                 name, material, vendor, color, temperature = self._filament_from_metadata(metadata)
                 self.log_info("NFC: bypass filament attributes set from tag metadata (uid %s)" % uid)
-                self.active_filament = {
+                self.set_bypass_filament({
                     'filament_name': name,
                     'material': material,
                     'vendor': vendor,
@@ -2320,9 +2342,14 @@ class MmuController(MmuFilamentMovement):
                     'td': measured_td,
                     'spool_id': -1,
                     'temperature': temperature,
-                }
+                })
             else:
                 self.log_info("NFC: tag %s has no usable filament data for bypass" % uid)
+
+
+    def set_bypass_filament(self, filament):
+        self.bypass_filament = filament
+        self.var_manager.set(VARS_MMU_BYPASS_FILAMENT, filament, write=True)
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -3601,15 +3628,10 @@ class MmuController(MmuFilamentMovement):
         self.led_manager.gate_map_changed(gate)
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
-        self.active_filament = {
-            'filament_name': self.gate_filament_name[gate],
-            'material': self.gate_material[gate],
-            'vendor': self.gate_vendor[gate],
-            'color': self.gate_color[gate],
-            'td': self.gate_td[gate],
-            'spool_id': self.gate_spool_id[gate],
-            'temperature': self.gate_temperature[gate],
-        } if gate >= 0 else {}
+
+        # A real gate in use means the bypass filament is gone
+        if gate >= 0 and self.bypass_filament:
+            self.set_bypass_filament({})
 
 
     def _set_unit_selected(self, unit_index):

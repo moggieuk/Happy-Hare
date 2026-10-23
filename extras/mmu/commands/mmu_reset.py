@@ -66,6 +66,7 @@ class MmuResetCommand(BaseCommand):
         mmu.var_manager.set(VARS_MMU_GATE_SELECTED, mmu.gate_selected)
         mmu.var_manager.set(VARS_MMU_TOOL_SELECTED, mmu.tool_selected)
         mmu.var_manager.set(VARS_MMU_FILAMENT_POS, mmu.filament_pos)
+        mmu.var_manager.set(VARS_MMU_BYPASS_FILAMENT, mmu.bypass_filament)
         mmu.var_manager.write()
 
         mmu.log_always("MMU state reset")

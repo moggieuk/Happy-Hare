@@ -658,7 +658,7 @@ class MmuServer:
                             self._cache_insert_spool(spool_info) # A failed/404 fetch keeps the existing cached value
 
             # A negative gate addresses the bypass: it has no gate-map row on the Klipper side
-            # so its attributes are delivered via the singular 'BYPASS=1' form (-> active_filament)
+            # so its attributes are delivered via the singular 'BYPASS=1' form (-> bypass_filament)
             bypass_ids = [(g, sid) for g, sid in gate_ids if g is not None and g < 0]
             gate_ids = [(g, sid) for g, sid in gate_ids if g is None or g >= 0]
             for _g, spool_id in bypass_ids:
