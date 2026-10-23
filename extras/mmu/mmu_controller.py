@@ -2618,6 +2618,10 @@ class MmuController(MmuFilamentMovement):
             # Re-establish desired syncing state AND grip (servo) position
             self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
 
+        # Filament is confirmed loaded, so the user resolved the failed toolchange and later ones are the slicer's
+        if resumed_toolchange and self.is_in_print(force_in_print):
+            self._print_toolchange_done = True
+
         # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
         self._next_tool = TOOL_GATE_UNKNOWN
 
@@ -2626,9 +2630,6 @@ class MmuController(MmuFilamentMovement):
 
         # Ensure espooler print assist is in correct state if fitted
         self._adjust_espooler_assist()
-
-        if resumed_toolchange and self.is_in_print(force_in_print):
-            self._print_toolchange_done = True # User resolved the failed toolchange, later ones are the slicer's
 
         # Ready to continue printing...
 
