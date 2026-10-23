@@ -13,6 +13,8 @@
 import unittest
 
 from test.hh import cfg, profiles
+from installer import build
+from installer.parser import ConfigBuilder
 
 HARDWARE = 'config/base/mmu_hardware.cfg'
 MMU = 'config/base/mmu.cfg'
@@ -74,6 +76,11 @@ class TestRenderedDriverSectionsAreValid(unittest.TestCase):
                          'CHOICE_BLOBIFIER_TYPE_STEPPER': True})
         rendered = cfg.render(profiles.get(profile_name).derive(
             'driver_%s_%s' % (stepper, chip), syms=syms))[path]
+        builder = ConfigBuilder()
+        builder.read_buf(rendered)
+        with cfg._chdir(cfg.REPO_ROOT):
+            policies = build.template_managed_options(path)
+        build.validate_managed_options(builder, policies)
         parsed = cfg.assemble({path: rendered})
         return [(name, dict(parsed.items(name)))
                 for name in cfg.sections(rendered)

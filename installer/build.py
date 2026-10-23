@@ -23,7 +23,7 @@ import subprocess
 import pickle
 from functools import lru_cache
 
-from jinja2  import Environment, FileSystemLoader, UndefinedError
+from jinja2  import Environment, FileSystemLoader, UndefinedError, nodes
 from pathlib import Path
 
 import kconfiglib
@@ -105,6 +105,13 @@ KCONFIG_OWNED_VISIBILITY = {
     ("mmu_unit", "fan"),
     ("mmu_unit", "fans"),
 }
+
+# Transport settings omitted by a TMC template describe an inactive bus, not
+# an inherited tuning value. Never resurrect them via the additional-gear exception.
+TMC_TRANSPORT_OPTIONS = frozenset({
+    "uart_pin", "uart_address", "cs_pin", "spi_bus",
+    "spi_software_sclk_pin", "spi_software_mosi_pin", "spi_software_miso_pin",
+})
 
 
 def follow_visibility(existing, rendered):
@@ -461,9 +468,13 @@ class HHConfig(ConfigBuilder):
 
             managed = managed_options.get(section, managed_options.get(section_type))
             if managed is not None and not sensor_type_changed and self.has_section(section):
-                # Only unmanaged extensions may be restored into a surviving section.
+                # Additional gears inherit omitted tuning options; keep hand-added
+                # overrides unless menuconfig explicitly removed them this run.
+                # Bus changes must also work without a menuconfig baseline.
+                inherited_gear = re.fullmatch(r"tmc[0-9]+ mmu_stepper .+_gear_[0-9]+", section)
                 for option in self.options(section):
-                    if option not in managed and (section, option) not in kconfig_keys and \
+                    inherited_override = inherited_gear and option not in TMC_TRANSPORT_OPTIONS
+                    if (option not in managed or inherited_override) and (section, option) not in kconfig_keys and \
                             not builder.has_option(section, option):
                         builder.copy_option(self, section, option, before_section_tail=True)
                         self.used_options.add((section, option))
@@ -608,25 +619,44 @@ def _jinja_env(template_root):
 def template_managed_options(template_file):
     """Read opt-in copy-back declarations from source, including hidden branches.
 
+    Comma-separated selectors share a policy, including in static includes.
     A selector is a section type or an exact, literal section name. Exact names
     override type declarations. These Jinja comments never reach installed cfgs.
     """
-    source, _, _ = jinja_env().loader.get_source(jinja_env(), os.path.relpath(template_file))
+    env = jinja_env()
     policies = {}
-    for comment in re.findall(r"\[#(.*?)#\]", source, re.DOTALL):
-        if not comment.strip().startswith("@managed-options"):
-            continue
-        match = re.fullmatch(r"\s*@managed-options\s+([\w.-]+(?: +[\w.-]+)?)\s*:(.*?)\s*",
-                             comment, re.DOTALL)
-        if not match:
-            raise ValueError("Invalid @managed-options declaration in " + template_file)
-        selector, raw = match.groups()
-        options = [option.strip() for option in raw.split(",") if option.strip()]
-        if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*", option) for option in options):
-            raise ValueError("Invalid managed option in " + template_file)
-        if selector in policies:
-            raise ValueError("Duplicate @managed-options selector: " + selector)
-        policies[selector] = frozenset(options)
+    visited = set()
+
+    def read(path):
+        if path in visited:
+            return
+        visited.add(path)
+        source, _, _ = env.loader.get_source(env, path)
+        for comment in re.findall(r"\[#(.*?)#\]", source, re.DOTALL):
+            if not comment.strip().startswith("@managed-options"):
+                continue
+            match = re.fullmatch(r"\s*@managed-options\s+([^:]+):(.*?)\s*",
+                                 comment, re.DOTALL)
+            if not match:
+                raise ValueError("Invalid @managed-options declaration in " + path)
+            raw_selectors, raw_options = match.groups()
+            selectors = [selector.strip() for selector in raw_selectors.split(",")]
+            if any(not re.fullmatch(r"[\w.-]+(?: +[\w.-]+)*", selector)
+                   for selector in selectors):
+                raise ValueError("Invalid @managed-options selector in " + path)
+            options = [option.strip() for option in raw_options.split(",") if option.strip()]
+            if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*", option) for option in options):
+                raise ValueError("Invalid managed option in " + path)
+            for selector in selectors:
+                if selector in policies:
+                    raise ValueError("Duplicate @managed-options selector: " + selector)
+                policies[selector] = frozenset(options)
+        # Shared policy components use literal includes, even in hidden branches.
+        for include in env.parse(source).find_all(nodes.Include):
+            if isinstance(include.template, nodes.Const) and isinstance(include.template.value, str):
+                read(include.template.value)
+
+    read(os.path.relpath(template_file))
     return policies
 
 

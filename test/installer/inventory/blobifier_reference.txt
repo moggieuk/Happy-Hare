@@ -43,7 +43,6 @@ hold_current: 0.1
 interpolate: true
 stealthchop_threshold: 99999999
 rref: 12000
-driver_SLOPE_CONTROL: 2
 [gcode_macro _BLOBIFIER_BUCKET_SWITCH]
 variable_armed: 0
 gcode: 

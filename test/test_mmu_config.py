@@ -1251,9 +1251,9 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
         '5160':      {'run_current', 'hold_current', 'interpolate',
                       'stealthchop_threshold', 'sense_resistor'},
         '2240_spi':  {'run_current', 'hold_current', 'interpolate',
-                      'stealthchop_threshold', 'rref', 'driver_SLOPE_CONTROL'},
+                      'stealthchop_threshold', 'rref'},
         '2240_uart': {'run_current', 'hold_current', 'interpolate',
-                      'stealthchop_threshold', 'rref', 'driver_SLOPE_CONTROL'},
+                      'stealthchop_threshold', 'rref'},
     }
 
     def _render_driver(self, label, choice, section, bus_pin, extra):
@@ -1364,7 +1364,7 @@ class TestBlobifierTmcDriverChoice(unittest.TestCase):
                         {'cs_pin': 'unit0:PC14', 'run_current': '0.6',
                          'hold_current': '0.1', 'interpolate': 'true',
                          'stealthchop_threshold': '99999999',
-                         'driver_SLOPE_CONTROL': '2', 'rref': '12000'}),
+                         'rref': '12000'}),
         }
         for section, (syms, expected) in unchanged.items():
             with self.subTest(chip=section):

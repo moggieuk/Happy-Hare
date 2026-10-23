@@ -350,6 +350,8 @@ $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse) $(KCONFIG_PREREQS)
 		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
 	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
 
+$(OUT)/mmu/base/mmu.cfg $(addprefix $(OUT)/mmu/,$(filter base/mmu_hardware_%.cfg,$(hh_unit_config_files))): $(SRC)/config/components/tmc_options.jinja
+
 # Shared target rules don't work on old make so separate for portability
 $(OUT)/mmu/base/mmu_hardware_%.cfg: \
   $(SRC)/config/base/mmu_hardware.cfg $(hh_configs_to_parse) $(KCONF_REQS)
