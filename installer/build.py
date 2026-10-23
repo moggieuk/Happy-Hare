@@ -106,6 +106,13 @@ KCONFIG_OWNED_VISIBILITY = {
     ("mmu_unit", "fans"),
 }
 
+# Transport settings omitted by a TMC template describe an inactive bus, not
+# an inherited tuning value. Never resurrect them via the additional-gear exception.
+TMC_TRANSPORT_OPTIONS = frozenset({
+    "uart_pin", "uart_address", "cs_pin", "spi_bus",
+    "spi_software_sclk_pin", "spi_software_mosi_pin", "spi_software_miso_pin",
+})
+
 
 def follow_visibility(existing, rendered):
     """
@@ -461,11 +468,13 @@ class HHConfig(ConfigBuilder):
 
             managed = managed_options.get(section, managed_options.get(section_type))
             if managed is not None and not sensor_type_changed and self.has_section(section):
-                # Additional gears inherit omitted options; keep hand-added overrides,
-                # unless menuconfig explicitly removed them this run.
+                # Additional gears inherit omitted tuning options; keep hand-added
+                # overrides unless menuconfig explicitly removed them this run.
+                # Bus changes must also work without a menuconfig baseline.
                 inherited_gear = re.fullmatch(r"tmc[0-9]+ mmu_stepper .+_gear_[0-9]+", section)
                 for option in self.options(section):
-                    if (option not in managed or inherited_gear) and (section, option) not in kconfig_keys and \
+                    inherited_override = inherited_gear and option not in TMC_TRANSPORT_OPTIONS
+                    if (option not in managed or inherited_override) and (section, option) not in kconfig_keys and \
                             not builder.has_option(section, option):
                         builder.copy_option(self, section, option, before_section_tail=True)
                         self.used_options.add((section, option))

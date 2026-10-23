@@ -109,6 +109,40 @@ class TestGroupedDeclarations(unittest.TestCase):
 
 
 class TestTmcRefresh(_HardwareRefresh):
+    def test_bus_changes_without_baseline_drop_obsolete_transport_options(self):
+        # A saved Kconfig can be changed outside install.sh's interactive flow.
+        # Without its baseline, omitted transport settings must still stay absent.
+        spi = {'CHOICE_GEAR_TMC2240_SPI': True, 'PIN_GEAR_CS': 'unit0:PA0',
+               'PIN_GEAR_CS_1': 'unit0:PA1', 'PIN_GEAR_CS_2': 'unit0:PA2',
+               'PIN_GEAR_CS_3': 'unit0:PA3'}
+        configs = {
+            'uart': {'CHOICE_GEAR_TMC2240_UART': True},
+            'spi_default': spi,
+            'spi_named': dict(spi, PARAM_GEAR_SPI_BUS='spi2'),
+            'spi_software': dict(spi, PIN_GEAR_SPI_SCLK='unit0:PB0',
+                                 PIN_GEAR_SPI_MOSI='unit0:PB1',
+                                 PIN_GEAR_SPI_MISO='unit0:PB2'),
+        }
+        transport = {'uart_pin', 'uart_address', 'cs_pin', 'spi_bus',
+                     'spi_software_sclk_pin', 'spi_software_mosi_pin',
+                     'spi_software_miso_pin'}
+        installed = {name: self.build('boxturtle', syms, 'replace', [])
+                     for name, syms in configs.items()}
+        for before, source in installed.items():
+            for after, syms in configs.items():
+                if before == after:
+                    continue
+                with self.subTest(before=before, after=after):
+                    expected = ConfigBuilder(installed[after])
+                    result = ConfigBuilder(self.build('boxturtle', syms, 'refresh', [source]))
+                    sections = [s for s in expected.sections() if s.startswith('tmc2240 ')]
+                    self.assertEqual(len(sections), 4)
+                    for section in sections:
+                        self.assertEqual(
+                            {k: v for k, v in result.items(section) if k in transport},
+                            {k: v for k, v in expected.items(section) if k in transport},
+                            section)
+
     def test_manual_gate_overrides_survive_refresh_and_merge(self):
         installed = self.build('boxturtle', {}, 'replace', [])
         section = 'tmc2209 mmu_stepper unit0_gear_1'
