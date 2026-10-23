@@ -45,6 +45,8 @@ class MmuGateMapCommand(BaseCommand):
         + "TD           = Positive transmission distance, or blank to clear (also clears measured color)\n"
         + "               With BYPASS=1 sets the measured TD of the bypass filament\n"
         + "SPEED        = % Speed override (use <100 for soft TPU types)\n"
+        + "WEIGHT       = # Remaining filament weight on the spool in grams (-1 = unknown)\n"
+        + "INITIAL_WEIGHT = # Filament weight on the spool when full in grams (-1 = unknown)\n"
         + "RFID         = # Single hexadecimal RFID tag UID read at the gate (blank to clear)\n"
         + "AVAILABLE    = [-1|0|1|2] Filament availability: Unknown | Empty | Available | Available from filament buffer\n"
         + "(no parameters for status report)\n"
@@ -240,6 +242,8 @@ class MmuGateMapCommand(BaseCommand):
                         # REPLACE is authoritative for spool assignments, so absent aliases
                         # clear any set belonging to the outgoing spool.
                         mmu.gate_maps.set_gate_rfid_aliases(gate_idx, fil.get('rfids', ''))
+                        mmu.gate_remaining_weight[gate_idx] = self._weight(fil.get('remaining_weight'))
+                        mmu.gate_initial_weight[gate_idx] = self._weight(fil.get('initial_weight'))
                         # gate_speed_override and gate_status can be set locally
                 else:
                     # Update map (ui or from spoolman in "readonly" and "push" modes)
@@ -280,10 +284,14 @@ class MmuGateMapCommand(BaseCommand):
                             for (g, sid) in mod_gate_ids:
                                 ids_dict[g] = sid
 
-                        # Apply after assign_spool_id(), which clears aliases whenever the
-                        # spool changes.
+                        # Apply after assign_spool_id(), which clears aliases and weights
+                        # whenever the spool changes.
                         if 'rfids' in fil:
                             mmu.gate_maps.set_gate_rfid_aliases(gate_idx, fil.get('rfids'))
+                        if not from_spoolman or spool_id != -1:
+                            for key in ('remaining_weight', 'initial_weight'):
+                                if key in fil:
+                                    getattr(mmu, 'gate_' + key)[gate_idx] = self._weight(fil.get(key))
 
                     changed_gate_ids = list(ids_dict.items())
 
@@ -302,6 +310,8 @@ class MmuGateMapCommand(BaseCommand):
                 spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
                 temperature = gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp))
                 speed_override = gcmd.get_int('SPEED', None, minval=10, maxval=150)
+                remaining_weight = gcmd.get_int('WEIGHT', None, minval=-1)
+                initial_weight = gcmd.get_int('INITIAL_WEIGHT', None, minval=-1)
                 rfid = gcmd.get('RFID', None)
 
                 if available == GATE_EMPTY and mmu.gate_status[gate_idx] != GATE_EMPTY:
@@ -342,6 +352,11 @@ class MmuGateMapCommand(BaseCommand):
                     if rfids is not None:
                         mmu.gate_maps.set_gate_rfid_aliases(gate_idx, rfids)
 
+                    if remaining_weight is not None:
+                        mmu.gate_remaining_weight[gate_idx] = remaining_weight
+                    if initial_weight is not None:
+                        mmu.gate_initial_weight[gate_idx] = initial_weight
+
                     # A per-gate NFC scan that auto-created a Spoolman spool (console log
                     # complements the gate's LED feedback)
                     if created and spool_id and spool_id > 0:
@@ -354,7 +369,7 @@ class MmuGateMapCommand(BaseCommand):
                     mmu.gate_status[gate_idx] = available
                     if speed_override is not None:
                         mmu.gate_speed_override[gate_idx] = speed_override
-                    if any(x is not None for x in [material, vendor, color, spool_id, name]):
+                    if any(x is not None for x in [material, vendor, color, spool_id, name, remaining_weight, initial_weight]):
                         mmu.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % SPOOLMAN_PULL)
                         break
 
@@ -399,6 +414,14 @@ class MmuGateMapCommand(BaseCommand):
         if not math.isfinite(value) or value <= 0:
             raise gcmd.error("TD must be a finite positive number, or blank to clear")
         return True, value
+
+
+    def _weight(self, value):
+        """Weight in whole grams, or -1 if missing or invalid."""
+        try:
+            return max(int(round(float(value))), -1)
+        except (TypeError, ValueError):
+            return -1
 
 
     # Helper to ensure int when strings may be passed from UI

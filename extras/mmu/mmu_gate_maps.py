@@ -59,6 +59,8 @@ class MmuGateMaps:
             (VARS_MMU_GATE_SPOOL_ID,       'gate_spool_id', -1),
             (VARS_MMU_GATE_SPEED_OVERRIDE, 'gate_speed_override', 100),
             (VARS_MMU_GATE_SPOOL_RFID,     'gate_spool_rfid', ""),
+            (VARS_MMU_GATE_REMAINING_WEIGHT, 'gate_remaining_weight', -1),
+            (VARS_MMU_GATE_INITIAL_WEIGHT, 'gate_initial_weight', -1),
         ]
 
         for _, attr, default in self._gate_map_vars:
@@ -235,6 +237,8 @@ class MmuGateMaps:
         self.mmu.var_manager.set(VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
         self.mmu.var_manager.set(VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
         self.mmu.var_manager.set(VARS_MMU_GATE_SPOOL_RFID, self.gate_spool_rfid)
+        self.mmu.var_manager.set(VARS_MMU_GATE_REMAINING_WEIGHT, self.gate_remaining_weight)
+        self.mmu.var_manager.set(VARS_MMU_GATE_INITIAL_WEIGHT, self.gate_initial_weight)
         self.mmu.var_manager.write()
         self.update_t_macros()
 
@@ -437,6 +441,7 @@ class MmuGateMaps:
         if self.gate_spool_id[gate] != spool_id:
             self.gate_filament_changed(gate)
             self.gate_spool_rfid_aliases[gate] = tuple()
+            self.clear_spool_weight(gate)
         self.gate_spool_id[gate] = spool_id
         mod_gate_ids = [(gate, spool_id)]
         for i, sid in enumerate(self.gate_spool_id):
@@ -445,8 +450,26 @@ class MmuGateMaps:
                     self.gate_filament_changed(i)
                 self.gate_spool_id[i] = -1
                 self.gate_spool_rfid_aliases[i] = tuple()
+                self.clear_spool_weight(i)
                 mod_gate_ids.append((i, -1))
         return mod_gate_ids
+
+
+    def clear_spool_weight(self, gate):
+        self.gate_remaining_weight[gate] = -1
+        self.gate_initial_weight[gate] = -1
+
+
+    def spool_fill_fraction(self, gate):
+        """
+        Fraction (0-1) of the spool's filament remaining, or None if the weights aren't known.
+        """
+        if not (0 <= gate < self.num_gates):
+            return None
+        remaining, initial = self.gate_remaining_weight[gate], self.gate_initial_weight[gate]
+        if remaining < 0 or initial <= 0:
+            return None
+        return min(remaining / float(initial), 1.)
 
 
     def set_gate_filament_from_tag(self, gate, name=None, material=None, vendor=None,
@@ -752,6 +775,9 @@ class MmuGateMaps:
                 extra_fstr += " [TD: {} MEASURED COLOR: {}]".format(td, self.gate_td1_color[g] or "none")
                 rfids = ','.join(self.gate_spool_rfid_aliases[g]) or "none"
                 extra_fstr += " [RFIDS: {}]".format(rfids)
+                if self.gate_remaining_weight[g] >= 0:
+                    initial = "/{}".format(self.gate_initial_weight[g]) if self.gate_initial_weight[g] > 0 else ""
+                    extra_fstr += " [WEIGHT: {}{}g]".format(self.gate_remaining_weight[g], initial)
 
             rows.append((gate_fstr, available_fstr, spool_fstr, material, temperature_fstr, color, name + speed_fstr + extra_fstr))
 
@@ -959,6 +985,8 @@ class MmuGateMaps:
         self.gate_spool_id = list(self.gate_spool_id)
         self.gate_speed_override = list(self.gate_speed_override)
         self.gate_spool_rfid = list(self.gate_spool_rfid)
+        self.gate_remaining_weight = list(self.gate_remaining_weight)
+        self.gate_initial_weight = list(self.gate_initial_weight)
 
 
     def get_status(self, eventtime):
@@ -980,6 +1008,8 @@ class MmuGateMaps:
             'gate_spool_id': self.gate_spool_id,
             'gate_speed_override': self.gate_speed_override,
             'gate_spool_rfid': self.gate_spool_rfid,
+            'gate_remaining_weight': self.gate_remaining_weight,
+            'gate_initial_weight': self.gate_initial_weight,
             'gate_color_rgb': self.gate_color_rgb,
 
             'slicer_tool_map': self.slicer_tool_map,

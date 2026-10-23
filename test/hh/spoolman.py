@@ -138,7 +138,7 @@ class InMemorySpoolman:
         return fid
 
     def add_spool(self, filament_id=None, uid=None, printer=None, gate=None,
-                  remaining_weight=1000, **filament_kwargs):
+                  remaining_weight=1000, initial_weight=None, **filament_kwargs):
         if filament_id is None:
             filament_id = self.add_filament(**filament_kwargs)
         sid = self._take_id('spool')
@@ -158,7 +158,7 @@ class InMemorySpoolman:
             'filament': dict(self.filaments[filament_id]),
             'extra': extra,
             'remaining_weight': remaining_weight,
-            'initial_weight': remaining_weight,
+            'initial_weight': remaining_weight if initial_weight is None else initial_weight,
         }
         return sid
 

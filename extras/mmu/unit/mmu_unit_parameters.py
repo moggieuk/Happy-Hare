@@ -401,6 +401,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('espooler_min_stepper_speed',       'float',   0.0, section="ESPOOLER",   limits=dict(minval=0.0, below=lambda self: self.espooler_max_stepper_speed), guard=_guard_has_espooler),
         ParamSpec('espooler_speed_exponent',          'float',   0.5, section="ESPOOLER",   limits=dict(above=0.0),              guard=_guard_has_espooler),
         ParamSpec('espooler_assist_reduced_speed',    'int',      50, section="ESPOOLER",   limits=dict(minval=0, maxval=100),   guard=_guard_has_espooler),
+        ParamSpec('espooler_full_spool_power',        'int',     100, section="ESPOOLER",   limits=dict(minval=10, maxval=100),   guard=_guard_has_espooler),
         ParamSpec('espooler_printing_power',          'int',       0, section="ESPOOLER",   limits=dict(minval=0, maxval=100),   guard=_guard_has_espooler),
         ParamSpec('espooler_assist_extruder_move_length','float',100.0, section="ESPOOLER", limits=dict(above=10.0),             guard=_guard_has_espooler),
         ParamSpec('espooler_assist_burst_power',      'int',      50, section="ESPOOLER",   limits=dict(minval=0, maxval=100),   guard=_guard_has_espooler),

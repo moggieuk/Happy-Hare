@@ -2735,6 +2735,7 @@ class MmuFilamentMovement:
                 self._check_pending_bypass()
             elif self.gate_selected >= 0:
                 self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
+                self._refresh_spool_weight(self.gate_selected)
 
             # Deal with purging
             if purge == PURGE_SLICER and not skip_extruder:
@@ -2795,6 +2796,21 @@ class MmuFilamentMovement:
         """
         self.step_unload_overshoot = 0.
         self.step_unload_homing_buffer = 0.
+
+
+    def _refresh_spool_weight(self, gate):
+        """
+        Re-fetch the loaded spool from Spoolman so its remaining weight reflects filament used
+        since it was last loaded, ready for its next unload. Only needed when espooler power is
+        scaled by spool weight. The update arrives asynchronously, after the current toolchange.
+        """
+        if (
+            self.p.spoolman_support != SPOOLMAN_OFF
+            and gate >= 0 and self.gate_spool_id[gate] > 0
+            and self.has_espooler(gate)
+            and self.mmu_unit(gate).p.espooler_full_spool_power < 100
+        ):
+            self._spoolman_update_filaments([(gate, self.gate_spool_id[gate])])
 
 
     def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False):
@@ -3461,6 +3477,15 @@ class MmuFilamentMovement:
                     pwm_value = 1
                 else:
                     pwm_value = (speed / u.p.espooler_max_stepper_speed) ** u.p.espooler_speed_exponent
+
+            # A fuller spool has a larger winding radius so needs less power for the same filament speed
+            if espooler_operation != ESPOOLER_OFF and u.p.espooler_full_spool_power < 100:
+                fraction = self.gate_maps.spool_fill_fraction(self.gate_selected)
+                if fraction is not None:
+                    full_power = u.p.espooler_full_spool_power / 100.
+                    scale = full_power + (1. - full_power) * (1. - fraction)
+                    pwm_value *= scale
+                    self.log_trace("ESPOOLER: Spool %.0f%% full, scaling power by %.2f" % (fraction * 100, scale))
 
             # Reduce assist speed compared to rewind but also apply the "print" minimum
             # We want rewind to be faster than assist but never non-functional

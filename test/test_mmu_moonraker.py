@@ -624,6 +624,22 @@ class TestSpoolCreatedAfterStartup(MoonrakerTestCase):
         self.assertEqual(attrs['material'], 'PETG')
 
 
+class TestSpoolWeight(MoonrakerTestCase):
+    """
+    #856: the spool's remaining and full weight travel to Happy Hare in the gate map,
+    so espooler power can follow how full the spool is.
+    """
+
+    SPOOLS = (dict(material='PLA', remaining_weight=400, initial_weight=1000),)
+
+    def test_gate_map_carries_spool_weights(self):
+        self.hh.call_remote('spoolman_push_gate_map', gate_ids=[(1, 1)], silent=True)
+        cmd = self.last_gcode()
+        attrs = ast.literal_eval(cmd.split('MAP="', 1)[1].split('"', 1)[0])[1]
+        self.assertEqual(attrs['remaining_weight'], 400)
+        self.assertEqual(attrs['initial_weight'], 1000)
+
+
 class TestSetSpoolUid(MoonrakerTestCase):
     """
     Binding a tag onto an EXISTING spool - the opposite direction to get_spool_by_uid,
