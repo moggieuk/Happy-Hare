@@ -2771,8 +2771,6 @@ class MmuFilamentMovement:
             raise ee.with_message("Load sequence failed because:\n%s" % (str(ee))) from ee
 
         finally:
-            if self._residual_restore is not None and not td1_success:
-                self._end_residual_heating(success=False)
             if td1_mgr is not None:
                 td1_mgr.end_load(td1_token, td1_success)
             self._track_gate_statistics('loads', self.gate_selected)

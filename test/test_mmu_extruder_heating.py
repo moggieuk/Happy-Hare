@@ -229,6 +229,93 @@ class TestResidualFilamentHeating(unittest.TestCase):
 
         self.assertEqual(self.wrapper.filament_remaining_temp, 290)
 
+    def start_print(self, temp=220):
+        self.hh.heat_extruder(temp)
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+
+    def fail_initial_load(self):
+        from extras.mmu.mmu_utils import MmuError
+        def fail(*args, **kwargs):
+            self.mmu._ensure_safe_extruder_temperature(wait=True)
+            raise MmuError('injected load failure')
+        self.mmu.p.retry_tool_change_on_error = False
+        self.mmu._load_extruder = fail
+        self.hh.run_gcode('MMU_CHANGE_TOOL STANDALONE=1 RESTORE=0 TOOL=1')
+        del self.mmu._load_extruder
+        self.assertTrue(self.mmu.is_mmu_paused())
+
+    def test_failed_unload_restores_temperature(self):
+        self.wrapper.filament_remaining_temp = 0
+        self.hh.heat_extruder(270)
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0 RESTORE=0')
+        self.hh.heat_extruder(220)
+        def fail(macro, gcmd):
+            raise self.hh.printer.command_error('injected tip macro failure')
+        self.hh.printer.harness_macro_effects[self.mmu.p.form_tip_macro.split()[0]] = fail
+
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=1 RESTORE=0')
+
+        self.assertEqual(self.extruder.get_heater().target_temp, 220)
+
+    def test_failed_cold_load_restores_default_temp(self):
+        def fail(macro, gcmd):
+            raise self.hh.printer.command_error('injected purge failure')
+        self.hh.printer.harness_macro_effects[self.mmu.p.purge_macro] = fail
+        self.hh.run_gcode('MMU_SELECT GATE=1')
+
+        self.hh.run_gcode('MMU_LOAD')
+
+        self.assertEqual(self.extruder.get_heater().target_temp, self.mmu.p.default_extruder_temp)
+        self.assertEqual(self.wrapper.filament_remaining_temp, 270)
+
+    def test_slicer_purge_is_left_to_the_slicer(self):
+        self.mmu.p.force_purge_standalone = False
+        self.start_print()
+
+        self.hh.run_gcode('MMU_CHANGE_TOOL RESTORE=0 TOOL=1')
+
+        self.assertNotIn('M104 S270.0', _heater_commands(self.hh.gcode.executed))
+        self.assertEqual(self.extruder.get_heater().target_temp, 220)
+
+    def test_retry_after_failed_initial_load_heats_again(self):
+        self.start_print()
+        self.fail_initial_load()
+        self.assertEqual(self.extruder.get_heater().target_temp, 220)
+        self.hh.run_gcode('MMU_UNLOCK')
+        mark = len(self.hh.gcode.executed)
+
+        self.hh.run_gcode('MMU_CHANGE_TOOL STANDALONE=1 RESTORE=0 TOOL=1')
+
+        self.assertIn('M104 S270.0', _heater_commands(self.hh.gcode.executed[mark:]))
+        self.assertEqual(self.extruder.get_heater().target_temp, 220)
+
+    def test_resume_after_failed_initial_load_leaves_later_toolchanges_to_slicer(self):
+        self.start_print()
+        self.fail_initial_load()
+
+        self.mmu._continue_after('resume', restore=False)
+
+        self.assertTrue(self.mmu._print_toolchange_done)
+
+    def test_restore_is_never_below_min_extrude_temp(self):
+        self.mmu.gate_temperature[1] = 100
+        self.start_print(temp=0)
+
+        self.hh.run_gcode('MMU_CHANGE_TOOL STANDALONE=1 RESTORE=0 TOOL=1')
+
+        self.assertGreaterEqual(self.extruder.get_heater().target_temp, self.extruder.get_heater().min_extrude_temp)
+
+    def test_unreadable_saved_temp_is_unknown(self):
+        key = self.mmu.var_manager.namespace('mmu_state_filament_remaining_temp', self.wrapper.name)
+        self.mmu.var_manager.save_variables.allVariables[key] = 'unknown'
+        self.wrapper._handle_connect()
+        self.hh.run_gcode('MMU_SELECT GATE=1')
+
+        self.mmu._ensure_safe_extruder_temperature()
+
+        self.assertEqual(self.extruder.get_heater().target_temp, self.mmu.p.default_extruder_temp)
+
 
 if __name__ == '__main__':
     unittest.main()

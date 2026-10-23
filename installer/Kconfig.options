@@ -431,9 +431,7 @@ menu "Global software options"
     float "Default extruder temperature       "
     default 200
     help
-      Default swap/tip temperature outside print, overridden by gate map.
-      MMU-controlled loads/purges may temporarily use a higher residual
-      temperature. Slicer-controlled purges retain slicer temperature control.
+      Default temperature for performing swaps and forming tips when not in print (overridden by gate map, or the last filament's temp while HH purges if higher)
 
   config PARAM_EXTRUDER_TEMP_VARIANCE
     float "Extruder temperature variance      "
