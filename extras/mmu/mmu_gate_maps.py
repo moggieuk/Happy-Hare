@@ -232,20 +232,19 @@ class MmuGateMaps:
         Returns (mapping, how): mapping is {saved_index: current_index} or None if the gates
         can't be identified, how describes any change ('' when the list already fits).
         Gates are matched by unit name and local gate using the layout the list was saved
-        with. Without one only a change at the end (a single unit or appended units) is
-        provably safe.
+        with. Without one no gate's identity can be established (e.g. 5+4 saved gates look
+        just like a 9 gate first unit), so the list isn't used.
         """
         if saved_len == self.num_gates:
             return {g: g for g in range(saved_len)}, ''
 
-        layout = self.current_layout()
         if saved_layout and sum(n for _, n in saved_layout) == saved_len:
             saved_first, first = {}, 0
             for name, n in saved_layout:
                 saved_first[name] = (first, n)
                 first += n
             mapping, first = {}, 0
-            for name, n in layout:
+            for name, n in self.current_layout():
                 if name in saved_first:
                     old_first, old_n = saved_first[name]
                     for local in range(min(old_n, n)):
@@ -253,14 +252,7 @@ class MmuGateMaps:
                 first += n
             return mapping, 'matched by unit, new gates use defaults'
 
-        prefix_sums, total = [], 0
-        for _, n in layout:
-            total += n
-            prefix_sums.append(total)
-        if len(layout) == 1 or saved_len in prefix_sums:
-            return {g: g for g in range(min(saved_len, self.num_gates))}, 'resized, new gates use defaults'
-
-        return None, "ignored because its gates can't be matched to units, using defaults"
+        return None, "ignored because no saved unit layout matches it, using defaults"
 
 
     def persist_ttg_map(self):
