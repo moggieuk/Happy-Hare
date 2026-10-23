@@ -520,6 +520,14 @@ class TestVarsMigration(unittest.TestCase):
         self.assertEqual(result["mmu_state_sensor_enabled"],
                          {"mmu_entry_3": False, "b:mmu_shared_exit": False, "mmu_exit_2": False})
 
+    def test_moving_gate_maps_drops_the_saved_unit_layout(self):
+        variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
+                     "mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
+        install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": 2, "b": 1}, {"a": 2, "b": 1})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertEqual(result["mmu_state_gate_color"], ["b0", "a0", "a1"])
+        self.assertNotIn("mmu_state_gate_map_units", result)
+
     def test_append_pads_gate_maps(self):
         variables = {
             "mmu_state_gate_color": ["a0", "a1"],
