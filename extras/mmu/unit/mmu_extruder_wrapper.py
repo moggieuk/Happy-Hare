@@ -90,10 +90,7 @@ class MmuExtruderWrapper():
         self.filament_remaining = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING, self.filament_remaining, self.name)
         self.filament_remaining_color = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_COLOR, self.filament_remaining_color, self.name)
         self.filament_remaining_material = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_MATERIAL, self.filament_remaining_material, self.name)
-        try:
-            self.filament_remaining_temp = max(0, int(self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_TEMP, 0, self.name)))
-        except (TypeError, ValueError):
-            self.filament_remaining_temp = 0
+        self.filament_remaining_temp = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_TEMP, self.filament_remaining_temp, self.name)
 
 
         # Setup extruder ------------------------------------------------------------------------------------
