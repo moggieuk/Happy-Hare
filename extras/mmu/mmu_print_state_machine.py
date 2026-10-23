@@ -214,6 +214,13 @@ class MmuPrintStateMachine:
             # safety timer and leave the hotend (and bed) hot — explicitly turn
             # heaters off before we tear down state.
             was_paused = self.is_mmu_paused()
+
+            # Record what the print left in the nozzle. Missed if PRINT_END has already turned the heater off
+            if self.is_in_print():
+                heater = self.printer.lookup_object(self.mmu.mmu_unit().extruder_name()).get_heater()
+                if heater.target_temp >= heater.min_extrude_temp:
+                    self.mmu.mmu_unit().extruder_wrapper.set_filament_temp(heater.target_temp)
+
             self.mmu.movequeue_wait()
             self.mmu._clear_saved_toolhead_position()
             self.resume_to_state = "ready"

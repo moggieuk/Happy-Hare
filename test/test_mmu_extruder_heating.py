@@ -219,6 +219,16 @@ class TestResidualFilamentHeating(unittest.TestCase):
         self.assertEqual(commands[-1], 'M104 S%.1f' % self.mmu.p.default_extruder_temp)
         self.assertEqual(self.extruder.get_heater().target_temp, self.mmu.p.default_extruder_temp)
 
+    def test_print_end_records_the_print_temp(self):
+        self.hh.heat_extruder(220)
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.hh.heat_extruder(290)
+
+        self.hh.run_gcode('MMU_PRINT_END')
+
+        self.assertEqual(self.wrapper.filament_remaining_temp, 290)
+
 
 if __name__ == '__main__':
     unittest.main()
