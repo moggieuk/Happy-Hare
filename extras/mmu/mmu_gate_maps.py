@@ -448,9 +448,9 @@ class MmuGateMaps:
             if sid == spool_id and i != gate:
                 if sid > 0:
                     self.gate_filament_changed(i)
+                    self.clear_spool_weight(i)
                 self.gate_spool_id[i] = -1
                 self.gate_spool_rfid_aliases[i] = tuple()
-                self.clear_spool_weight(i)
                 mod_gate_ids.append((i, -1))
         return mod_gate_ids
 

@@ -58,6 +58,12 @@ class TestEspoolerSpoolWeight(unittest.TestCase):
         self.hh.run_gcode('MMU_GATE_MAP MAP="{0: {\'spool_id\': 5, \'material\': \'PLA\'}}" QUIET=1')
         self.assertEqual((self.mmu.gate_remaining_weight[0], self.mmu.gate_initial_weight[0]), (400, 1000))
 
+    def test_clearing_another_gates_spool_keeps_manual_weights(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 WEIGHT=400 INITIAL_WEIGHT=1000 QUIET=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 SPOOLID=7 QUIET=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 SPOOLID=-1 QUIET=1')
+        self.assertEqual((self.mmu.gate_remaining_weight[1], self.mmu.gate_initial_weight[1]), (400, 1000))
+
 
 if __name__ == '__main__':
     unittest.main()
