@@ -124,7 +124,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
             target = release_target if release else 0.
             try:
                 # Restore sync and grip after adjustment.
-                with mmu.wrap_sync_gear_to_extruder():
+                with mmu.wrap_sync_gear_to_extruder(restore_sync=True):
                     # Avoid spurious runout during tiny corrective moves (unlikely)
                     with mmu.wrap_suspend_filament_monitoring():
                         actual, success = sf.adjust_filament_tension(target=target)
