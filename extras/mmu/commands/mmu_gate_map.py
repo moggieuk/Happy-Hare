@@ -85,7 +85,7 @@ class MmuGateMapCommand(BaseCommand):
         replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         from_spoolman = bool(gcmd.get_int('FROM_SPOOLMAN', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
-        bypass = bool(gcmd.get_int('BYPASS', 0, minval=0, maxval=1)) # Target 'active_filament' for the bypass (no gate-map row)
+        bypass = bool(gcmd.get_int('BYPASS', 0, minval=0, maxval=1)) # Target 'bypass_filament' (no gate-map row)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
         lookup = gcmd.get_int('LOOKUP', None, minval=-2, maxval=-1)  # Hidden: failed per-gate lookup result from Moonraker
         created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
@@ -151,7 +151,7 @@ class MmuGateMapCommand(BaseCommand):
             return
 
         if bypass:
-            # Filament attributes for the bypass "gate" -> active_filament only (there is no
+            # Filament attributes for the bypass "gate" -> bypass_filament only (there is no
             # gate-map row). Normally sent by Moonraker (async, after a bypass spool
             # activation requested attributes) but can also be set manually
             if mmu.gate_selected != TOOL_GATE_BYPASS:
@@ -165,8 +165,8 @@ class MmuGateMapCommand(BaseCommand):
             # Spoolman does not model TD, so its async callback never sends one - keep
             # what was measured unless TD= says otherwise
             given, td_value = self._td_value(gcmd)
-            td = td_value if given else mmu.active_filament.get('td')
-            mmu.active_filament = {
+            td = td_value if given else mmu.bypass_filament.get('td')
+            mmu.set_bypass_filament({
                 'filament_name': gcmd.get('NAME', ''),
                 'material': gcmd.get('MATERIAL', '').upper(),
                 'vendor': gcmd.get('VENDOR', ''),
@@ -174,7 +174,7 @@ class MmuGateMapCommand(BaseCommand):
                 'td': td,
                 'spool_id': gcmd.get_int('SPOOLID', -1),
                 'temperature': max(gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp)), int(mmu.p.default_extruder_temp)),
-            }
+            })
             if not quiet:
                 mmu.log_always("Bypass filament attributes updated")
             return
