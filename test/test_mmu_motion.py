@@ -792,6 +792,15 @@ class TestPreload(MotionTestCase):
         self.assertEqual(ops.count((1, 'rewind')), 1, ops)
         self.assertEqual(mmu.gate_status[1], GATE_EMPTY)
 
+    def test_blind_eject_stops_a_running_espooler(self):
+        """Suppressing the rewind must still stop one already running, as the eject used to."""
+        self.hh.place_filament(1, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_SENSORS SENSOR=mmu_entry_1 ENABLE=0')
+        self.hh.run_gcode('MMU_ESPOOLER GATE=1 OPERATION=rewind')
+        self.assertEqual(self.hh.mmu.espooler().get_operation(1)[0], 'rewind')
+        self.hh.run_gcode('MMU_EJECT GATE=1')
+        self.assertEqual(self.hh.mmu.espooler().get_operation(1)[0], 'off')
+
     def test_a_failed_preload_keeps_an_assigned_spool_id(self):
         """
         The pending spool is assigned while this gate is already EMPTY, so a failed

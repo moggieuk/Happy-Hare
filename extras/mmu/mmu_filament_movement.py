@@ -3440,7 +3440,7 @@ class MmuFilamentMovement:
             speed: Requested move speed. When omitted, a context-appropriate default is chosen.
             accel: Requested acceleration. When omitted, a context-appropriate default is chosen.
             homing_move: Non-zero to perform a homing move; the sign indicates the expected trigger direction.
-            enabled: False to leave the eSpooler off for this move.
+            enabled: False to keep the eSpooler off for this move, stopping any operation in progress.
 
         Yields:
             self while eSpooler assist or rewind is active for the wrapped move.
@@ -3450,7 +3450,12 @@ class MmuFilamentMovement:
         self._wait_for_espooler = False
         espooler_operation = ESPOOLER_OFF
 
-        if enabled and self.has_espooler():
+        if not enabled:
+            # Don't leave a manually started operation running through the move
+            if self.has_espooler():
+                self.espooler().set_operation(self.gate_selected, 0, ESPOOLER_OFF)
+
+        elif self.has_espooler():
             pwm_value = 0
             if abs(dist) >= u.p.espooler_min_distance and speed > u.p.espooler_min_stepper_speed:
                 if dist > 0 and ESPOOLER_ASSIST in u.p.espooler_operations:
