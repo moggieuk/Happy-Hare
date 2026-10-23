@@ -1858,10 +1858,7 @@ class MmuController(MmuFilamentMovement):
 
     @property
     def active_filament(self):
-        # The loaded filament, not the selected one. Built on read so a gate-map edit
-        # is always reflected
-        if self.filament_pos != FILAMENT_POS_LOADED:
-            return {}
+        # The selected gate's filament. Built on read so a gate-map edit is always reflected
         gate = self.gate_selected
         if gate == TOOL_GATE_BYPASS:
             return self.bypass_filament
