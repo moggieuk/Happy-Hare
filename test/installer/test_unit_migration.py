@@ -438,7 +438,7 @@ class TestVarsMigration(unittest.TestCase):
     @staticmethod
     def install(frm, to, origin, old_gates, new_gates, encoders=None):
         return {"from": frm, "to": to, "origin": origin, "old_gates": old_gates,
-                "new_gates": new_gates, "default_extruder_temp": 215, "encoders": encoders or {}}
+                "new_gates": new_gates, "encoders": encoders or {}}
 
     def test_unit_keys_are_renamed_exactly(self):
         variables = {
@@ -478,7 +478,7 @@ class TestVarsMigration(unittest.TestCase):
             "mmu_state_gate_status": [1, 1, 1, 1],
         })
 
-    def test_removed_unit_keys_are_dropped_and_its_gates_cut_out(self):
+    def test_removed_unit_keys_are_dropped_and_its_gates_left_for_startup(self):
         variables = {
             "mmu_a_bowden_lengths": [1, 2],
             "mmu_b_bowden_lengths": [3, 4],
@@ -491,12 +491,14 @@ class TestVarsMigration(unittest.TestCase):
         result, _ = um.migrate_vars(variables, install)
         self.assertNotIn("mmu_a_bowden_lengths", result)
         self.assertEqual(result["mmu_b_bowden_lengths"], [3, 4])
-        self.assertEqual(result["mmu_state_gate_color"], ["b0", "b1"])
-        self.assertEqual(result["mmu_state_tool_to_gate_map"], [0, 1])
+        # Happy Hare cuts out the removed unit's gates at startup, matching by the saved layout
+        self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0", "b1"])
+        self.assertEqual(result["mmu_state_tool_to_gate_map"], [0, 1, 2, 3])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["", 2], ["b", 2]])
         self.assertEqual(result["mmu_state_gate_selected"], -1)
         self.assertEqual(result["mmu_state_tool_selected"], -1)
 
-    def test_reorder_moves_gate_maps_with_their_units(self):
+    def test_reorder_leaves_gate_maps_for_startup(self):
         variables = {
             "mmu_state_gate_color": ["a0", "a1", "b0", "b1", "b2"],
             "mmu_state_gate_spool_id": [10, 11, 20, 21, 22],
@@ -510,17 +512,50 @@ class TestVarsMigration(unittest.TestCase):
         install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"},
                                {"a": 2, "b": 3}, {"a": 2, "b": 3})
         result, _ = um.migrate_vars(variables, install)
-        self.assertEqual(result["mmu_state_gate_color"], ["b0", "b1", "b2", "a0", "a1"])
-        self.assertEqual(result["mmu_state_gate_spool_id"], [20, 21, 22, 10, 11])
-        # Tools keep their spools: T0 was gate 0 (a0), now gate 3
-        self.assertEqual(result["mmu_state_tool_to_gate_map"], [3, 4, 0, 1, 2])
-        self.assertEqual(result["mmu_state_endless_spool_groups"], [0, 1, 2, 0, 1])
+        for var in ("mmu_state_gate_color", "mmu_state_gate_spool_id", "mmu_state_tool_to_gate_map",
+                    "mmu_state_endless_spool_groups"):
+            self.assertEqual(result[var], variables[var])
+        # The layout still describes the lists, so Happy Hare can reorder them at startup
+        self.assertEqual(result["mmu_state_gate_map_units"], [["a", 2], ["b", 3]])
         self.assertEqual(result["mmu_state_gate_selected"], -1)
         self.assertEqual(result["mmu_state_tool_selected"], -1)
         self.assertEqual(result["mmu_state_sensor_enabled"],
                          {"mmu_entry_3": False, "b:mmu_shared_exit": False, "mmu_exit_2": False})
 
-    def test_append_pads_gate_maps(self):
+    def test_a_reorder_keeps_the_saved_unit_layout(self):
+        variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
+                     "mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
+        install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": 2, "b": 1}, {"a": 2, "b": 1})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0"])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["a", 2], ["b", 1]])
+
+    def test_a_rename_renames_the_saved_unit_layout(self):
+        variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
+                     "mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
+        install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": 2, "b": 1}, {"x": 2, "b": 1})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0"])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["x", 2], ["b", 1]])
+
+    def test_unknown_gate_counts_still_rename_the_saved_unit_layout(self):
+        variables = {"mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
+        install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": None, "b": 1}, {"x": 2, "b": 1})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertEqual(result["mmu_state_gate_map_units"], [["x", 2], ["b", 1]])
+
+    def test_a_stale_saved_unit_layout_is_dropped_when_it_cant_be_rebuilt(self):
+        variables = {"mmu_state_gate_map_units": [["old", 3]]}
+        install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": None, "b": 1}, {"a": 1, "b": 1})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertNotIn("mmu_state_gate_map_units", result)
+
+    def test_a_file_without_a_saved_unit_layout_is_not_given_one(self):
+        install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": 2, "b": 1}, {"x": 2, "b": 1})
+        result, _ = um.migrate_vars({"mmu_state_gate_color": ["a0", "a1", "b0"]}, install)
+        self.assertNotIn("mmu_state_gate_map_units", result)
+
+    def test_append_leaves_gate_maps_for_startup(self):
         variables = {
             "mmu_state_gate_color": ["a0", "a1"],
             "mmu_state_gate_temperature": [200, 210],
@@ -535,18 +570,19 @@ class TestVarsMigration(unittest.TestCase):
         # No existing gate was renumbered, so the selection stands
         self.assertEqual(result["mmu_state_gate_selected"], 1)
         self.assertEqual(result["mmu_state_tool_selected"], 0)
-        self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "", ""])
-        self.assertEqual(result["mmu_state_gate_temperature"], [200, 210, 215, 215])
-        self.assertEqual(result["mmu_state_gate_status"], [1, 0, -1, -1])
-        self.assertEqual(result["mmu_state_endless_spool_groups"], [0, 1, 2, 3])
-        self.assertEqual(result["mmu_state_tool_to_gate_map"], [1, 0, 2, 3])
+        for var in ("mmu_state_gate_color", "mmu_state_gate_temperature", "mmu_state_gate_status",
+                    "mmu_state_endless_spool_groups", "mmu_state_tool_to_gate_map"):
+            self.assertEqual(result[var], variables[var])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["a", 2]])
 
-    def test_gate_count_change_keeps_the_common_gates(self):
+    def test_gate_count_change_describes_the_old_gates(self):
         variables = {"mmu_state_gate_color": ["a0", "a1", "a2", "b0"]}
         install = self.install(["a", "b"], ["a", "b"], {"a": "a", "b": "b"},
                                {"a": 3, "b": 1}, {"a": 2, "b": 1})
-        result, _ = um.migrate_vars(variables, install)
-        self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0"])
+        result, notes = um.migrate_vars(variables, install)
+        self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "a2", "b0"])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["a", 3], ["b", 1]])
+        self.assertIn("Gate maps will be matched to their units when Klipper starts", notes)
 
     def test_a_rename_keeps_the_selection(self):
         variables = {"mmu_state_gate_selected": 3, "mmu_state_tool_selected": 3, "mmu_a_bowden_lengths": [1, 2]}
@@ -741,8 +777,10 @@ class TestRenameIntoADeletedName(Scratch):
         self.assertEqual(variables["mmu_unit1_encoder_resolution"], 0.5)
         for key in variables:
             self.assertFalse(key.startswith(("mmu_unit0_", "mmu_unit2_")), key)
-        self.assertEqual(variables["mmu_state_gate_color"], ["a0", "a1"])
-        self.assertEqual(variables["mmu_state_tool_to_gate_map"], [0, 1])
+        # Gate lists are matched at startup: the renamed unit takes old unit0's gates, never
+        # those of the deleted unit1, which is why the removed units are recorded nameless
+        self.assertEqual(variables["mmu_state_gate_color"], ["a0", "a1", "b0", "b1", "b2", "c0"])
+        self.assertEqual(variables["mmu_state_gate_map_units"], [["unit1", 2], ["", 3], ["", 1]])
         self.assertEqual(variables["mmu_state_sensor_enabled"], {"unit1:mmu_shared_exit": False})
 
         # Installed files of the unit names that no longer exist are removed

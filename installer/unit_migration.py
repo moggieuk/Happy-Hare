@@ -84,23 +84,6 @@ ENCODER_VARS = [
     C.VARS_MMU_ENCODER_CLOG_LENGTH,
 ]
 
-# Global per-gate lists and the value a new gate starts with (mmu_gate_maps.py)
-GATE_LIST_VARS = [
-    (C.VARS_MMU_GATE_STATUS, C.GATE_UNKNOWN),
-    (C.VARS_MMU_GATE_FILAMENT_NAME, ""),
-    (C.VARS_MMU_GATE_MATERIAL, ""),
-    (C.VARS_MMU_GATE_VENDOR, ""),
-    (C.VARS_MMU_GATE_TD, None),
-    (C.VARS_MMU_GATE_TD1_COLOR, ""),
-    (C.VARS_MMU_GATE_COLOR, ""),
-    (C.VARS_MMU_GATE_TEMPERATURE, None), # default_extruder_temp
-    (C.VARS_MMU_GATE_SPOOL_ID, -1),
-    (C.VARS_MMU_GATE_SPEED_OVERRIDE, 100),
-    (C.VARS_MMU_GATE_REMAINING_WEIGHT, -1),
-    (C.VARS_MMU_GATE_INITIAL_WEIGHT, -1),
-    (C.VARS_MMU_GATE_SPOOL_RFID, ""),
-]
-
 # Per-gate list options in [mmu_machine] that must match the total gate count
 GATE_LIST_OPTIONS = [
     "default_ttg_map",
@@ -622,9 +605,6 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
     state.pop("install", None)
 
     if plan.changed() and config_home and installed_units(config_home) is not None:
-        values = read_kconfig(kconfig)
-        temp = installed_option(config_home, "mmu.cfg", "mmu_parameters", "default_extruder_temp") \
-            or values.get("PARAM_DEFAULT_EXTRUDER_TEMP") or 200
         new_gates = {}
         for name in plan.current:
             gates = read_kconfig(kconfig if plan.single else unit_file(kconfig, name)).get("PARAM_NUM_GATES")
@@ -637,7 +617,6 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
             "old_gates": {o: installed_num_gates(config_home, o) for o in plan.baseline},
             "new_gates": new_gates,
             "vars_file": vars_file(config_home, kconfig),
-            "default_extruder_temp": int(float(temp)),
             "warnings": manual_edit_warnings(plan, config_home, kconfig),
             "encoders": {before: after for before, after in
                          component_names(kconfig, plan, shared_components.KINDS["encoder"]).values()
@@ -796,6 +775,21 @@ def gates_moved(mapping, old_total):
     return mapping is None or any(mapping.get(g) != g for g in range(old_total))
 
 
+def startup_layout(variables, install, target, identity):
+    """
+    The layout the saved gate lists still have, under the new unit names (target: old name ->
+    new name or None), or None when none is needed (no gate moved) or it can't be known. A
+    removed unit is named "" so no unit ever matches its gates.
+    """
+    saved = variables.get(C.VARS_MMU_GATE_MAP_UNITS)
+    if isinstance(saved, list) and all(isinstance(u, list) and len(u) == 2 and isinstance(u[1], int) for u in saved) \
+            and [name for name, _ in saved] == install["from"]:
+        return [[target[name] or "", n] for name, n in saved]
+    if identity or any(install["old_gates"].get(o) is None for o in install["from"]):
+        return None
+    return [[target[o] or "", install["old_gates"][o]] for o in install["from"]]
+
+
 def migrate_vars(variables, install):
     """Return (migrated copy of 'variables', notes)."""
     result = dict(variables)
@@ -836,38 +830,16 @@ def migrate_vars(variables, install):
     identity = mapping is not None and old_total == new_total and \
         all(mapping.get(g) == g for g in range(old_total))
 
-    if mapping is None:
-        notes.append("Gate counts unknown so gate maps were not migrated")
-    elif not identity:
-        for var, default in GATE_LIST_VARS:
-            old = variables.get(var)
-            if not isinstance(old, list) or len(old) != old_total:
-                continue
-            if default is None and var == C.VARS_MMU_GATE_TEMPERATURE:
-                default = install.get("default_extruder_temp", 200)
-            new = [default] * new_total
-            for og, ng in mapping.items():
-                new[ng] = old[og]
-            result[var] = new
-
-        groups = variables.get(C.VARS_MMU_ENDLESS_SPOOL_GROUPS)
-        if isinstance(groups, list) and len(groups) == old_total:
-            new = [None] * new_total
-            for og, ng in mapping.items():
-                new[ng] = groups[og]
-            next_group = max([g for g in new if isinstance(g, int)] + [-1]) + 1
-            for i, g in enumerate(new):
-                if g is None:
-                    new[i], next_group = next_group, next_group + 1
-            result[C.VARS_MMU_ENDLESS_SPOOL_GROUPS] = new
-
-        ttg = variables.get(C.VARS_MMU_TOOL_TO_GATE_MAP)
-        if isinstance(ttg, list) and len(ttg) == old_total:
-            result[C.VARS_MMU_TOOL_TO_GATE_MAP] = [
-                mapping.get(ttg[t], t) if t < old_total else t for t in range(new_total)
-            ]
-
-        notes.append("Gate maps moved with their units (%d -> %d gates)" % (old_total, new_total))
+    # The gate lists are left as they are. Happy Hare matches them to the units at startup using
+    # this layout: the order and gate counts they were saved with, under the new unit names
+    layout = startup_layout(variables, install, target, identity)
+    if layout is None:
+        result.pop(C.VARS_MMU_GATE_MAP_UNITS, None)
+    else:
+        result[C.VARS_MMU_GATE_MAP_UNITS] = layout
+    if not identity:
+        notes.append("Gate maps will be matched to their units when Klipper starts" if layout is not None
+                     else "Gate counts unknown so gate maps were not migrated")
 
     # The selection drives the selector position and active unit at startup
     if gates_moved(mapping, old_total):
