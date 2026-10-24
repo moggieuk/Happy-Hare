@@ -93,6 +93,15 @@ menu "Blobifier                (_BLOBIFIER)"
                           brush_front                       brush.
       _____PRINTER _________________________FRONT____
 
+  config VAR_BLOBIFIER_BRUSH_CLEARANCE_X
+    float "Brush X clearance              "
+    default 20
+    help
+      Distance left of brush_start (X) the nozzle parks
+      when approaching or leaving the brush, so it stays
+      clear of the tray and any Filametrix cutter pin.
+      Never moves below X=30.
+
   config VAR_BLOBIFIER_BRUSH_Y_OFFSET
     float "Brush Y offset                 "
     default 0
