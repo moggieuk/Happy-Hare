@@ -546,6 +546,14 @@ class TestVarsMigration(unittest.TestCase):
         self.assertEqual(second["mmu_state_gate_color"], ["a0", "a1", "b0"])
         self.assertEqual(second["mmu_state_gate_map_units"], [["a", 2], ["c", 1]])
 
+    def test_a_pending_layout_omitting_an_added_unit_survives_a_second_install(self):
+        first, _ = um.migrate_vars({"mmu_state_gate_color": ["a0", "a1"]},
+                                   self.install(["a"], ["a", "n"], {"a": "a", "n": None}, {"a": 2}, {"a": 2, "n": 1}))
+        self.assertEqual(first["mmu_state_gate_map_units"], [["a", 2]])
+        second, _ = um.migrate_vars(first, self.install(["a", "n"], ["a", "c"], {"a": "a", "c": "n"},
+                                                        {"a": 2, "n": 1}, {"a": 2, "c": 1}))
+        self.assertEqual(second["mmu_state_gate_map_units"], [["a", 2]])
+
     def test_unknown_gate_counts_still_rename_the_saved_unit_layout(self):
         variables = {"mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
         install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": None, "b": 1}, {"x": 2, "b": 1})

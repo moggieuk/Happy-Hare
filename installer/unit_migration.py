@@ -779,14 +779,14 @@ def startup_layout(variables, install, target, identity):
     new name or None), or None when none is needed (no gate moved) or it can't be known. A
     removed unit is named "" so no unit ever matches its gates.
 
-    A saved layout naming exactly the installed units is kept in its own order: it may be
+    A saved layout naming only installed units, each once, is kept in its own order: it may be
     pending from an earlier install that Klipper hasn't started on yet, so the lists still
-    have that order.
+    have that order. Units added since are missing from it because they have no saved gates.
     """
     saved = variables.get(C.VARS_MMU_GATE_MAP_UNITS)
     if isinstance(saved, list) and all(isinstance(u, list) and len(u) == 2 and isinstance(u[1], int) for u in saved):
         names = [name for name, _ in saved if name]
-        if sorted(names) == sorted(install["from"]) and len(set(names)) == len(names):
+        if set(names) <= set(install["from"]) and len(set(names)) == len(names):
             return [[target[name] or "" if name else "", n] for name, n in saved]
     if identity or any(install["old_gates"].get(o) is None for o in install["from"]):
         return None

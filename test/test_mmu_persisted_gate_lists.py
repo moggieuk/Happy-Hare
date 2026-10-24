@@ -40,13 +40,13 @@ def read_vars_file(path):
 
 class PersistedGateListsTestCase(unittest.TestCase):
 
-    def boot(self, profile, variables):
+    def boot(self, profile, variables, **boot_options):
         self.path = os.path.join(tempfile.mkdtemp(), 'mmu_vars.cfg')
         write_vars_file(self.path, dict({'mmu__revision': 7}, **variables))
         self.hh = session(profile)
         self.hh._mmu_vars_copy = lambda: self.path
         # Filament is physically in the gates, so bootup's gate check keeps their spools
-        self.hh.boot(gates_loaded_at=TIP_AT_GATE)
+        self.hh.boot(gates_loaded_at=TIP_AT_GATE, **boot_options)
         self.addCleanup(self.hh.close)
         self.mmu = self.hh.mmu
         return self.mmu
@@ -146,6 +146,24 @@ class TestUnitAwareResize(PersistedGateListsTestCase):
         # Gate 11 was unit1's last gate; it is now its third, so the selection can't stand
         self.assertNotEqual(self.mmu.gate_selected, 11)
         self.assertNotEqual(self.mmu.tool_selected, 11)
+        # ...and the drop is saved with the new layout, so a restart can't bring it back
+        self.hh.reactor.advance(1.0)
+        saved = read_vars_file(self.path)
+        self.assertEqual(saved['mmu_state_gate_map_units'], [['unit0', 9], ['unit1', 4]])
+        self.assertEqual((saved['mmu_state_gate_selected'], saved['mmu_state_tool_selected']), (-1, -1))
+
+    def test_a_renumbered_gate_cant_position_another_units_selector(self):
+        # Saved with unit1 first: gate 2 was unit1's, now it is unit0's. unit0 has no position of
+        # its own on record, so it would otherwise infer one from the old global gate
+        self.boot('ercf_vvd', {
+            'mmu_state_gate_map_units': [['unit1', 4], ['unit0', 9]],
+            'mmu_state_gate_spool_id': self.UNIT1 + self.UNIT0,
+            'mmu_state_gate_selected': 2,
+            'mmu_state_tool_selected': 2,
+        }, calibrate=True)
+        unit0 = self.mmu.mmu_machine.units[0]
+        self.assertFalse(unit0.selector.is_homed)
+        self.assertIsNone(self.mmu.var_manager.get('mmu_selector_last_pos', None, namespace='unit0'))
 
     def test_a_unit_missing_from_the_saved_layout_gets_defaults(self):
         self.boot('ercf_vvd', {
@@ -279,6 +297,20 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
         self.assertEqual(renamed['mmu_state_gate_map_units'], [['unit1', 4], ['unit0', 9]])
         self.boot('ercf_vvd', renamed)
         self.assertEqual(self.mmu.gate_spool_id, unit0 + unit1)
+
+    def test_unit_added_then_renamed_before_klipper_starts(self):
+        unit0 = list(range(10, 19))
+        variables = {
+            'mmu_state_gate_spool_id': unit0,
+            'mmu_state_tool_to_gate_map': list(range(9)),
+        }
+        added = self.migrate(variables, ['unit0'], ['unit0', 'new'], {'unit0': 'unit0', 'new': None},
+                             {'unit0': 9}, {'unit0': 9, 'new': 4})
+        renamed = self.migrate(added, ['unit0', 'new'], ['unit0', 'unit1'], {'unit0': 'unit0', 'unit1': 'new'},
+                               {'unit0': 9, 'new': 4}, {'unit0': 9, 'unit1': 4})
+        self.assertEqual(renamed['mmu_state_gate_map_units'], [['unit0', 9]])
+        self.boot('ercf_vvd', renamed)
+        self.assertEqual(self.mmu.gate_spool_id, unit0 + [-1] * 4)
 
 if __name__ == '__main__':
     unittest.main()

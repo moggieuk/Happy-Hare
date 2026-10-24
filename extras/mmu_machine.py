@@ -145,6 +145,9 @@ class MmuMachine:
         self.var_manager = SaveVariableManager(c, self)
         logging.info("MMU: Created SaveVariableManager")
 
+        # Before any klippy:ready handler: selectors restore their position from the saved selection
+        self.mmu_controller.gate_maps.handle_renumbered_gates(self.var_manager)
+
 
     def reinit(self):
         for unit in self.units:

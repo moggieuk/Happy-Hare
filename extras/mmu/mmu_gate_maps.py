@@ -83,6 +83,7 @@ class MmuGateMaps:
         # attribution. gate_spool_rfid remains the single UID physically observed
         # at the gate; this cache contains every UID registered to its spool.
         self.gate_spool_rfid_aliases = [tuple() for _ in range(self.num_gates)]
+        self._renumbered_gate_errors = [] # Set at config load by handle_renumbered_gates()
         self.update_gate_color_rgb()
 
         # Helper RGB map used by slicer color projection / UI / LEDs
@@ -123,15 +124,8 @@ class MmuGateMaps:
         saved_layout = self._valid_layout(var_manager.get(VARS_MMU_GATE_MAP_UNITS, None))
         changed = saved_layout != self.current_layout()
 
-        # Gates renumbered since the layout was saved: per-gate sensor disables move with them and a
-        # saved selection no longer names the same gate
-        moved = None
-        if saved_layout and changed:
-            saved_total = sum(n for _, n in saved_layout)
-            mapping, _ = self._gate_mapping(saved_total, saved_layout)
-            if any(mapping.get(g) != g for g in range(saved_total)):
-                moved = mapping
-                self._renumber_sensor_disables(mapping)
+        errors.extend(self._renumbered_gate_errors)
+        self._renumbered_gate_errors = []
 
         def load(var, default, apply):
             """Saved per-gate list fitted to the current gates, or default if it can't be"""
@@ -203,9 +197,6 @@ class MmuGateMaps:
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
         tool_selected = var_manager.get(VARS_MMU_TOOL_SELECTED, self.mmu.tool_selected)
-        if moved is not None and (gate_selected, tool_selected) != (TOOL_GATE_UNKNOWN, TOOL_GATE_UNKNOWN):
-            errors.append(f"Persisted gate/tool {gate_selected}/{tool_selected} dropped because gates were renumbered")
-            tool_selected = gate_selected = TOOL_GATE_UNKNOWN
         if not (TOOL_GATE_BYPASS <= gate_selected < self.num_gates):
             if gate_selected != TOOL_GATE_UNKNOWN:
                 errors.append("Invalid gate specified with %s or %s" % (VARS_MMU_TOOL_SELECTED, VARS_MMU_GATE_SELECTED))
@@ -227,9 +218,33 @@ class MmuGateMaps:
         return errors
 
 
-    def _renumber_sensor_disables(self, mapping):
+    def handle_renumbered_gates(self, var_manager):
+        """
+        Run at config load, before any klippy:ready handler. When gates have been renumbered
+        since the saved layout (units reordered, removed or resized), per-gate sensor disables
+        move with their gates and a saved selection is dropped. Both are staged for the first
+        save along with the gate lists, so a selector restoring its position never sees the old
+        gate and a restart can't bring the selection back.
+        """
+        saved_layout = self._valid_layout(var_manager.get(VARS_MMU_GATE_MAP_UNITS, None))
+        if not saved_layout or saved_layout == self.current_layout():
+            return
+        mapping = self._match_by_unit(saved_layout)
+        if all(mapping.get(g) == g for g in range(sum(n for _, n in saved_layout))):
+            return
+        self._renumber_sensor_disables(var_manager, mapping)
+        gate = var_manager.get(VARS_MMU_GATE_SELECTED, TOOL_GATE_UNKNOWN)
+        tool = var_manager.get(VARS_MMU_TOOL_SELECTED, TOOL_GATE_UNKNOWN)
+        if (gate, tool) != (TOOL_GATE_UNKNOWN, TOOL_GATE_UNKNOWN):
+            self._renumbered_gate_errors.append("Persisted gate/tool %s/%s dropped because gates were renumbered" % (gate, tool))
+            var_manager.set(VARS_MMU_GATE_SELECTED, TOOL_GATE_UNKNOWN)
+            var_manager.set(VARS_MMU_TOOL_SELECTED, TOOL_GATE_UNKNOWN)
+
+
+    @staticmethod
+    def _renumber_sensor_disables(var_manager, mapping):
         """Move persisted per-gate sensor disables to their gates' new numbers (dropped if the gate is gone)"""
-        disables = self.mmu.var_manager.get(VARS_MMU_SENSOR_ENABLED, {})
+        disables = var_manager.get(VARS_MMU_SENSOR_ENABLED, {})
         if not isinstance(disables, dict):
             return
         renumbered = {}
@@ -239,7 +254,7 @@ class MmuGateMaps:
                 renumbered[key] = value
             elif int(m.group(2)) in mapping:
                 renumbered["%s_%d" % (m.group(1), mapping[int(m.group(2))])] = value
-        self.mmu.var_manager.set(VARS_MMU_SENSOR_ENABLED, renumbered)
+        var_manager.set(VARS_MMU_SENSOR_ENABLED, renumbered)
 
 
     def current_layout(self):
@@ -271,23 +286,28 @@ class MmuGateMaps:
         if saved_layout and sum(n for _, n in saved_layout) == saved_len:
             if saved_layout == self.current_layout():
                 return {g: g for g in range(saved_len)}, ''
-            saved_first, first = {}, 0
-            for name, n in saved_layout:
-                saved_first[name] = (first, n)
-                first += n
-            mapping, first = {}, 0
-            for name, n in self.current_layout():
-                if name in saved_first:
-                    old_first, old_n = saved_first[name]
-                    for local in range(min(old_n, n)):
-                        mapping[old_first + local] = first + local
-                first += n
-            return mapping, 'matched to its units by name, any new gates use defaults'
+            return self._match_by_unit(saved_layout), 'matched to its units by name, any new gates use defaults'
 
         if saved_len == self.num_gates:
             return {g: g for g in range(saved_len)}, ''
 
         return None, "ignored because no saved unit layout matches it, using defaults"
+
+
+    def _match_by_unit(self, saved_layout):
+        """{saved_gate: current_gate} for the gates of units in both layouts, by name and local gate"""
+        saved_first, first = {}, 0
+        for name, n in saved_layout:
+            saved_first[name] = (first, n)
+            first += n
+        mapping, first = {}, 0
+        for name, n in self.current_layout():
+            if name in saved_first:
+                old_first, old_n = saved_first[name]
+                for local in range(min(old_n, n)):
+                    mapping[old_first + local] = first + local
+            first += n
+        return mapping
 
 
     def persist_ttg_map(self):
