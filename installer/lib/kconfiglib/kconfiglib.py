@@ -599,7 +599,6 @@ def expand_value_markup(kconf, text):
 # MMU_UNITS, KLIPPER_HOME, ...) cannot be renamed this way - that needs a
 # pass that rewrites the file itself.
 HH_RENAMED_SYMBOLS = {
-    "BOOL_OWN_SAVE_VARIABLES":              "BOOL_CUSTOM_SAVE_VARIABLES",
     # v4.x: the Blobifier stepper dropped its "STEPPER" infix so the TMC
     # driver definitions could be shared with the gear and selector steppers.
     # The infix was never consistent - the chip-identity symbols
