@@ -19,6 +19,9 @@ import logging, re, unicodedata
 from .mmu_constants import *
 from .mmu_utils     import MmuError, MmuColorUtils
 
+# Per-gate sensor names in the persisted sensor disables, e.g. 'mmu_exit_9' (global gate 9)
+GATE_SENSOR_KEY = re.compile(r"^(mmu_[a-z_]+?)_(\d+)$")
+
 
 class MmuGateMaps:
     """
@@ -120,6 +123,16 @@ class MmuGateMaps:
         saved_layout = self._valid_layout(var_manager.get(VARS_MMU_GATE_MAP_UNITS, None))
         changed = saved_layout != self.current_layout()
 
+        # Gates renumbered since the layout was saved: per-gate sensor disables move with them and a
+        # saved selection no longer names the same gate
+        moved = None
+        if saved_layout and changed:
+            saved_total = sum(n for _, n in saved_layout)
+            mapping, _ = self._gate_mapping(saved_total, saved_layout)
+            if any(mapping.get(g) != g for g in range(saved_total)):
+                moved = mapping
+                self._renumber_sensor_disables(mapping)
+
         def load(var, default, apply):
             """Saved per-gate list fitted to the current gates, or default if it can't be"""
             nonlocal changed
@@ -190,6 +203,9 @@ class MmuGateMaps:
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
         tool_selected = var_manager.get(VARS_MMU_TOOL_SELECTED, self.mmu.tool_selected)
+        if moved is not None and (gate_selected, tool_selected) != (TOOL_GATE_UNKNOWN, TOOL_GATE_UNKNOWN):
+            errors.append(f"Persisted gate/tool {gate_selected}/{tool_selected} dropped because gates were renumbered")
+            tool_selected = gate_selected = TOOL_GATE_UNKNOWN
         if not (TOOL_GATE_BYPASS <= gate_selected < self.num_gates):
             if gate_selected != TOOL_GATE_UNKNOWN:
                 errors.append("Invalid gate specified with %s or %s" % (VARS_MMU_TOOL_SELECTED, VARS_MMU_GATE_SELECTED))
@@ -209,6 +225,21 @@ class MmuGateMaps:
         self.ensure_ttg_match()                    # Ensure tool/gate consistency. Will change tool if necessary
 
         return errors
+
+
+    def _renumber_sensor_disables(self, mapping):
+        """Move persisted per-gate sensor disables to their gates' new numbers (dropped if the gate is gone)"""
+        disables = self.mmu.var_manager.get(VARS_MMU_SENSOR_ENABLED, {})
+        if not isinstance(disables, dict):
+            return
+        renumbered = {}
+        for key, value in disables.items():
+            m = GATE_SENSOR_KEY.match(key)
+            if m is None:
+                renumbered[key] = value
+            elif int(m.group(2)) in mapping:
+                renumbered["%s_%d" % (m.group(1), mapping[int(m.group(2))])] = value
+        self.mmu.var_manager.set(VARS_MMU_SENSOR_ENABLED, renumbered)
 
 
     def current_layout(self):

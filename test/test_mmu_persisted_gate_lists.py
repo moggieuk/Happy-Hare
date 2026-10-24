@@ -129,6 +129,24 @@ class TestUnitAwareResize(PersistedGateListsTestCase):
         self.assertEqual(self.mmu.ttg_map, list(range(8)) + [9, 10, 11, 12, 12])
         self.assertEqual(self.mmu.gate_maps.endless_spool_groups, list(range(8)) + [12, 8, 9, 10, 11])
 
+    def test_growing_the_first_unit_moves_sensor_disables_and_resets_the_selection(self):
+        self.boot('ercf_vvd', {
+            'mmu_state_gate_map_units': [['unit0', 8], ['unit1', 4]],
+            'mmu_state_gate_spool_id': self.UNIT0[:8] + self.UNIT1,
+            'mmu_state_sensor_enabled': {'mmu_exit_9': False, 'unit1:filament_tension': False},
+            'mmu_state_gate_selected': 11,
+            'mmu_state_tool_selected': 11,
+        })
+        # unit1's second gate was 9 and is now 10
+        self.assertEqual(self.mmu.var_manager.get('mmu_state_sensor_enabled', None),
+                         {'mmu_exit_10': False, 'unit1:filament_tension': False})
+        sensors = self.mmu.sensor_manager.all_sensors_map
+        self.assertFalse(sensors['mmu_exit_10'].runout_helper.sensor_enabled)
+        self.assertTrue(sensors['mmu_exit_9'].runout_helper.sensor_enabled)
+        # Gate 11 was unit1's last gate; it is now its third, so the selection can't stand
+        self.assertNotEqual(self.mmu.gate_selected, 11)
+        self.assertNotEqual(self.mmu.tool_selected, 11)
+
     def test_a_unit_missing_from_the_saved_layout_gets_defaults(self):
         self.boot('ercf_vvd', {
             'mmu_state_gate_map_units': [['unit0', 9], ['renamed', 3]],
@@ -210,6 +228,16 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
         self.single_unit(3)
         self.assertEqual(self.mmu.gate_spool_id, [1, 2, 3, -1])
 
+    def test_appending_a_gate_keeps_the_selection(self):
+        self.boot('boxturtle', {
+            'mmu_state_gate_map_units': [['unit0', 3]],
+            'mmu_state_gate_spool_id': [1, 2, 3],
+            'mmu_state_gate_selected': 1,
+            'mmu_state_tool_selected': 1,
+        })
+        self.assertEqual(self.mmu.gate_spool_id, [1, 2, 3, -1])
+        self.assertEqual(self.mmu.gate_selected, 1)
+
     def test_rename_and_one_gate_fewer(self):
         self.single_unit(5)
         self.assertEqual(self.mmu.gate_spool_id, [1, 2, 3, 4])
@@ -237,6 +265,20 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
         unit0, unit1 = self.reversed_units(8)
         self.assertEqual(self.mmu.gate_spool_id, unit0 + [-1] + unit1)
         self.assertEqual(self.mmu.ttg_map, [9, 10, 11, 12] + list(range(8)) + [12])
+
+    def test_units_reversed_then_renamed_before_klipper_starts(self):
+        unit1, unit0 = [20, 21, 22, 23], list(range(10, 19))
+        variables = {
+            'mmu_state_gate_spool_id': unit1 + unit0,
+            'mmu_state_tool_to_gate_map': list(range(13)),
+        }
+        reordered = self.migrate(variables, ['unit1', 'old'], ['old', 'unit1'], {'old': 'old', 'unit1': 'unit1'},
+                                 {'unit1': 4, 'old': 9}, {'old': 9, 'unit1': 4})
+        renamed = self.migrate(reordered, ['old', 'unit1'], ['unit0', 'unit1'], {'unit0': 'old', 'unit1': 'unit1'},
+                               {'old': 9, 'unit1': 4}, {'unit0': 9, 'unit1': 4})
+        self.assertEqual(renamed['mmu_state_gate_map_units'], [['unit1', 4], ['unit0', 9]])
+        self.boot('ercf_vvd', renamed)
+        self.assertEqual(self.mmu.gate_spool_id, unit0 + unit1)
 
 if __name__ == '__main__':
     unittest.main()

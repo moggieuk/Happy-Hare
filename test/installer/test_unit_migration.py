@@ -519,8 +519,8 @@ class TestVarsMigration(unittest.TestCase):
         self.assertEqual(result["mmu_state_gate_map_units"], [["a", 2], ["b", 3]])
         self.assertEqual(result["mmu_state_gate_selected"], -1)
         self.assertEqual(result["mmu_state_tool_selected"], -1)
-        self.assertEqual(result["mmu_state_sensor_enabled"],
-                         {"mmu_entry_3": False, "b:mmu_shared_exit": False, "mmu_exit_2": False})
+        # Per-gate sensor keys are renumbered at startup too, with the gate lists
+        self.assertEqual(result["mmu_state_sensor_enabled"], variables["mmu_state_sensor_enabled"])
 
     def test_a_reorder_keeps_the_saved_unit_layout(self):
         variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
@@ -537,6 +537,14 @@ class TestVarsMigration(unittest.TestCase):
         result, _ = um.migrate_vars(variables, install)
         self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0"])
         self.assertEqual(result["mmu_state_gate_map_units"], [["x", 2], ["b", 1]])
+
+    def test_a_pending_layout_survives_a_second_install_before_klipper_starts(self):
+        first, _ = um.migrate_vars({"mmu_state_gate_color": ["a0", "a1", "b0"]},
+                                   self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": 2, "b": 1}, {"a": 2, "b": 1}))
+        second, _ = um.migrate_vars(first, self.install(["b", "a"], ["c", "a"], {"c": "b", "a": "a"},
+                                                        {"b": 1, "a": 2}, {"c": 1, "a": 2}))
+        self.assertEqual(second["mmu_state_gate_color"], ["a0", "a1", "b0"])
+        self.assertEqual(second["mmu_state_gate_map_units"], [["a", 2], ["c", 1]])
 
     def test_unknown_gate_counts_still_rename_the_saved_unit_layout(self):
         variables = {"mmu_state_gate_map_units": [["a", 2], ["b", 1]]}

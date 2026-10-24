@@ -103,8 +103,6 @@ GATE_LIST_OPTIONS = [
     "default_endless_spool_groups",
 ]
 
-GATE_SENSOR_KEY = re.compile(r"^(mmu_[a-z_]+?)_(\d+)$")
-
 
 def namespaced(variable, namespace):
     return variable.replace("mmu_", "mmu_%s_" % namespace)
@@ -780,11 +778,16 @@ def startup_layout(variables, install, target, identity):
     The layout the saved gate lists still have, under the new unit names (target: old name ->
     new name or None), or None when none is needed (no gate moved) or it can't be known. A
     removed unit is named "" so no unit ever matches its gates.
+
+    A saved layout naming exactly the installed units is kept in its own order: it may be
+    pending from an earlier install that Klipper hasn't started on yet, so the lists still
+    have that order.
     """
     saved = variables.get(C.VARS_MMU_GATE_MAP_UNITS)
-    if isinstance(saved, list) and all(isinstance(u, list) and len(u) == 2 and isinstance(u[1], int) for u in saved) \
-            and [name for name, _ in saved] == install["from"]:
-        return [[target[name] or "", n] for name, n in saved]
+    if isinstance(saved, list) and all(isinstance(u, list) and len(u) == 2 and isinstance(u[1], int) for u in saved):
+        names = [name for name, _ in saved if name]
+        if sorted(names) == sorted(install["from"]) and len(set(names)) == len(names):
+            return [[target[name] or "" if name else "", n] for name, n in saved]
     if identity or any(install["old_gates"].get(o) is None for o in install["from"]):
         return None
     return [[target[o] or "", install["old_gates"][o]] for o in install["from"]]
@@ -851,6 +854,8 @@ def migrate_vars(variables, install):
         if reset:
             notes.append("Selected gate and tool reset to unknown")
 
+    # Unit-scoped sensor keys follow their unit's name. Per-gate keys are renumbered at startup,
+    # with the gate lists
     sensors = variables.get(C.VARS_MMU_SENSOR_ENABLED)
     if isinstance(sensors, dict):
         new = {}
@@ -859,12 +864,6 @@ def migrate_vars(variables, install):
             if sep and prefix in target:
                 if target[prefix] is not None:
                     new["%s:%s" % (target[prefix], rest)] = value
-                continue
-            m = GATE_SENSOR_KEY.match(key)
-            if m and mapping is not None and not identity:
-                gate = int(m.group(2))
-                if gate in mapping:
-                    new["%s_%d" % (m.group(1), mapping[gate])] = value
                 continue
             new[key] = value
         result[C.VARS_MMU_SENSOR_ENABLED] = new
