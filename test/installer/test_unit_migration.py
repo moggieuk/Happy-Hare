@@ -520,12 +520,31 @@ class TestVarsMigration(unittest.TestCase):
         self.assertEqual(result["mmu_state_sensor_enabled"],
                          {"mmu_entry_3": False, "b:mmu_shared_exit": False, "mmu_exit_2": False})
 
-    def test_moving_gate_maps_drops_the_saved_unit_layout(self):
+    def test_moving_gate_maps_saves_the_new_unit_layout(self):
         variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
                      "mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
         install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": 2, "b": 1}, {"a": 2, "b": 1})
         result, _ = um.migrate_vars(variables, install)
         self.assertEqual(result["mmu_state_gate_color"], ["b0", "a0", "a1"])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["b", 1], ["a", 2]])
+
+    def test_a_rename_renames_the_saved_unit_layout(self):
+        variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
+                     "mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
+        install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": 2, "b": 1}, {"x": 2, "b": 1})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0"])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["x", 2], ["b", 1]])
+
+    def test_unknown_gate_counts_drop_the_saved_unit_layout(self):
+        variables = {"mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
+        install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": None, "b": 1}, {"x": 2, "b": 1})
+        result, _ = um.migrate_vars(variables, install)
+        self.assertNotIn("mmu_state_gate_map_units", result)
+
+    def test_a_file_without_a_saved_unit_layout_is_not_given_one(self):
+        install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": 2, "b": 1}, {"x": 2, "b": 1})
+        result, _ = um.migrate_vars({"mmu_state_gate_color": ["a0", "a1", "b0"]}, install)
         self.assertNotIn("mmu_state_gate_map_units", result)
 
     def test_append_pads_gate_maps(self):

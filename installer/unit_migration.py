@@ -867,10 +867,14 @@ def migrate_vars(variables, install):
                 mapping.get(ttg[t], t) if t < old_total else t for t in range(new_total)
             ]
 
-        # The lists now match the new units, so the layout they were saved with no longer applies
-        result.pop(C.VARS_MMU_GATE_MAP_UNITS, None)
-
         notes.append("Gate maps moved with their units (%d -> %d gates)" % (old_total, new_total))
+
+    # The gate lists now match the new units (renamed, moved or resized), so the saved layout must too
+    if C.VARS_MMU_GATE_MAP_UNITS in variables:
+        if mapping is None:
+            result.pop(C.VARS_MMU_GATE_MAP_UNITS)
+        else:
+            result[C.VARS_MMU_GATE_MAP_UNITS] = [[name, install["new_gates"][name]] for name in install["to"]]
 
     # The selection drives the selector position and active unit at startup
     if gates_moved(mapping, old_total):
