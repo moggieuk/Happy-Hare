@@ -232,13 +232,14 @@ class MmuGateMaps:
         Returns (mapping, how): mapping is {saved_index: current_index} or None if the gates
         can't be identified, how describes any change ('' when the list already fits).
         Gates are matched by unit name and local gate using the layout the list was saved
-        with. Without one no gate's identity can be established (e.g. 5+4 saved gates look
-        just like a 9 gate first unit), so the list isn't used.
+        with, which the installer records (under any new unit names) when it changes units.
+        That layout is followed even when the length already fits, as for a reorder.
+        Without one no gate's identity can be established (e.g. 5+4 saved gates look just
+        like a 9 gate first unit), so only a list that already fits is used.
         """
-        if saved_len == self.num_gates:
-            return {g: g for g in range(saved_len)}, ''
-
         if saved_layout and sum(n for _, n in saved_layout) == saved_len:
+            if saved_layout == self.current_layout():
+                return {g: g for g in range(saved_len)}, ''
             saved_first, first = {}, 0
             for name, n in saved_layout:
                 saved_first[name] = (first, n)
@@ -250,7 +251,10 @@ class MmuGateMaps:
                     for local in range(min(old_n, n)):
                         mapping[old_first + local] = first + local
                 first += n
-            return mapping, 'matched by unit, new gates use defaults'
+            return mapping, 'matched to its units by name, any new gates use defaults'
+
+        if saved_len == self.num_gates:
+            return {g: g for g in range(saved_len)}, ''
 
         return None, "ignored because no saved unit layout matches it, using defaults"
 
