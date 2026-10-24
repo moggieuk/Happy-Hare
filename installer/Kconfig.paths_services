@@ -56,7 +56,7 @@ menu "Paths & Services"
     string "Moonraker config file   "
     default "moonraker.conf"
 
-  menuconfig BOOL_OWN_SAVE_VARIABLES
+  menuconfig BOOL_CUSTOM_SAVE_VARIABLES
     bool "Use your own [save_variables]?"
     default n
     help
@@ -68,13 +68,13 @@ menu "Paths & Services"
 
   config PARAM_MMU_VARS_CFG
     string
-    prompt "save_variables path     " if BOOL_OWN_SAVE_VARIABLES
+    prompt "save_variables path     " if BOOL_CUSTOM_SAVE_VARIABLES
     default "$(path-join,$(CONFIG_KLIPPER_CONFIG_HOME),mmu/mmu_vars.cfg)" if $(nonempty,$(CONFIG_KLIPPER_CONFIG_HOME))
     default "/usr/data/printer_data/config/mmu/mmu_vars.cfg" if $(path-exists,/usr/data/printer_data)
     default "~/printer_data/config/mmu/mmu_vars.cfg"
     keep_when_hidden
     help
-      The file your [save_variables] section uses. Happy Hare keeps
+      The file your [save_variables] section uses. Happy Hare persists
       its calibration and state there and migrates it when units
       are renamed, removed or reordered.
 

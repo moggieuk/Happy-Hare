@@ -49,7 +49,7 @@ config SW7
          PIN_BLOBIFIER_ENDSTOP = "^!")
 
 config SW8
-    def_bool y if BOOL_OWN_SAVE_VARIABLES
+    def_bool y if BOOL_CUSTOM_SAVE_VARIABLES
 
 
 
@@ -298,7 +298,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Blobifier tray stepper TMC is selected but no UART/CS pin is defined"             if SW5
     comment "Blobifier software SPI requires all three SCLK/MOSI/MISO pins"                    if SW6
     comment "Blobifier tray stepper is missing a step, dir, enable or endstop pin"             if SW7
-    comment "Own [save_variables]: filename must match save_variables path"                    if SW8
+    comment "Custom [save_variables]: filename must match save_variables path"                 if SW8
   endif
 
   if SHOW_PER_UNIT_WARNINGS

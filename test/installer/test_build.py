@@ -894,7 +894,7 @@ class MmuCfgBuild(unittest.TestCase):
         return ConfigBuilder(built).get(self.SECTION, option) or None
 
 
-class TestOwnSaveVariables(unittest.TestCase):
+class TestCustomSaveVariables(unittest.TestCase):
     """mmu_macro_vars.cfg leaves [save_variables] to the user when they define their own."""
 
     SECTION = "save_variables"
@@ -908,22 +908,28 @@ class TestOwnSaveVariables(unittest.TestCase):
         out = tempfile.mkdtemp(dir=self.tmp.name)
         dest = os.path.join(out, "mmu_macro_vars.cfg")
         with cfg._env(cfg._SINGLE_UNIT_ENV):
-            self.kconfig = cfg._kconfig("own-save-variables", dict(profiles.get("boxturtle").syms, **(syms or {})))
+            self.kconfig = cfg._kconfig("custom-save-variables", dict(profiles.get("boxturtle").syms, **(syms or {})))
         extra = {"PARAM_TOTAL_NUM_GATES": self.kconfig.getint("PARAM_NUM_GATES")}
         with cfg._env(dict(cfg._SINGLE_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
                 cfg._chdir(cfg.REPO_ROOT):
             build.build_config_file("config/base/mmu_macro_vars.cfg", dest, self.kconfig, list(input_files), extra)
+        with open(dest) as f:
+            self.rendered = f.read()
         return ConfigBuilder(dest)
 
     def test_happy_hare_defines_save_variables_by_default(self):
         built = self.build()
         self.assertTrue(built.get(self.SECTION, "filename").endswith("mmu/mmu_vars.cfg"))
         self.assertFalse(self.kconfig.is_enabled("SW8"))
+        self.assertIn("# Happy Hare stores configuration and state", self.rendered)
+        self.assertNotIn("# Using a custom [save_variables] section", self.rendered)
 
-    def test_own_save_variables_omits_the_section_and_warns(self):
-        built = self.build({"BOOL_OWN_SAVE_VARIABLES": True, "PARAM_MMU_VARS_CFG": "~/printer_data/config/variables.cfg"})
+    def test_custom_save_variables_omits_the_section_and_warns(self):
+        built = self.build({"BOOL_CUSTOM_SAVE_VARIABLES": True, "PARAM_MMU_VARS_CFG": "~/printer_data/config/variables.cfg"})
         self.assertFalse(built.has_section(self.SECTION))
         self.assertTrue(self.kconfig.is_enabled("SW8"))
+        self.assertNotIn("# Happy Hare stores configuration and state", self.rendered)
+        self.assertIn("# Using a custom [save_variables] section defined in your printer configuration.", self.rendered)
 
     def test_a_path_customized_before_the_option_existed_is_still_rendered(self):
         built = self.build({"PARAM_MMU_VARS_CFG": "~/printer_data/config/variables.cfg"})
@@ -933,7 +939,7 @@ class TestOwnSaveVariables(unittest.TestCase):
         installed = os.path.join(tempfile.mkdtemp(dir=self.tmp.name), "mmu_macro_vars.cfg")
         with open(installed, "w") as f:
             f.write("[save_variables]\nfilename: ~/printer_data/config/mmu/mmu_vars.cfg\n")
-        built = self.build({"BOOL_OWN_SAVE_VARIABLES": True}, mode="refresh", input_files=[installed])
+        built = self.build({"BOOL_CUSTOM_SAVE_VARIABLES": True}, mode="refresh", input_files=[installed])
         self.assertFalse(built.has_section(self.SECTION))
 
 
