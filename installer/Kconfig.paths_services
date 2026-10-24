@@ -56,11 +56,27 @@ menu "Paths & Services"
     string "Moonraker config file   "
     default "moonraker.conf"
 
+  menuconfig BOOL_CUSTOM_SAVE_VARIABLES
+    bool "Use your own [save_variables]?"
+    default n
+    help
+      Happy Hare normally adds a [save_variables] section using
+      mmu/mmu_vars.cfg. Klipper uses only one save_variables file.
+      Enable if your printer.cfg already defines [save_variables]:
+      Happy Hare then won't add its own. Set the path below to the
+      file your section uses and add 'mmu__revision = 0' to it.
+
   config PARAM_MMU_VARS_CFG
-    string "save_variables path     "
+    string
+    prompt "save_variables path     " if BOOL_CUSTOM_SAVE_VARIABLES
     default "$(path-join,$(CONFIG_KLIPPER_CONFIG_HOME),mmu/mmu_vars.cfg)" if $(nonempty,$(CONFIG_KLIPPER_CONFIG_HOME))
     default "/usr/data/printer_data/config/mmu/mmu_vars.cfg" if $(path-exists,/usr/data/printer_data)
     default "~/printer_data/config/mmu/mmu_vars.cfg"
+    keep_when_hidden
+    help
+      The file your [save_variables] section uses. Happy Hare persists
+      its calibration and state there and migrates it when units
+      are renamed, removed or reordered.
 
   config SERVICE_KLIPPER
     string "Klipper service name    "
