@@ -16,7 +16,7 @@ import os
 import tempfile
 import unittest
 
-from test.hh import session
+from test.hh import cfg, session
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -142,9 +142,18 @@ class TestUnitAwareResize(PersistedGateListsTestCase):
         self.assertEqual(self.mmu.gate_spool_id, [-1] * 13)
         self.assertIn('mmu_state_gate_spool_id', self.warnings())
 
-    def test_lists_already_the_right_length_ignore_a_stale_layout(self):
+    def test_a_saved_layout_is_followed_even_when_the_length_already_matches(self):
+        # Saved by an 8 + 5 gate machine: unit0's ninth gate is new, unit1's fifth is gone
         self.boot('ercf_vvd', {
             'mmu_state_gate_map_units': [['unit0', 8], ['unit1', 5]],
+            'mmu_state_gate_spool_id': self.UNIT0[:8] + [18] + self.UNIT1,
+        })
+        self.assertEqual(self.mmu.gate_spool_id, self.UNIT0[:8] + [-1, 18] + self.UNIT1[:3])
+        self.assertIn('mmu_state_gate_spool_id', self.warnings())
+
+    def test_a_layout_matching_the_units_loads_as_is_without_a_warning(self):
+        self.boot('ercf_vvd', {
+            'mmu_state_gate_map_units': [['unit0', 9], ['unit1', 4]],
             'mmu_state_gate_spool_id': self.UNIT0 + self.UNIT1,
         })
         self.assertEqual(self.mmu.gate_spool_id, self.UNIT0 + self.UNIT1)
@@ -160,6 +169,74 @@ class TestUnitAwareResize(PersistedGateListsTestCase):
         self.assertEqual(saved['mmu_state_gate_map_units'], [['unit0', 9], ['unit1', 4]])
         self.assertEqual(saved['mmu_state_gate_spool_id'], self.UNIT0[:8] + [-1] + self.UNIT1)
 
+
+
+class TestInstallerThenStartup(PersistedGateListsTestCase):
+    """
+    Unit renames and reorders: the installer only renames per-unit keys and records the old
+    layout under the new names, then Happy Hare maps and resizes the gate lists at startup.
+    """
+
+    def migrate(self, variables, frm, to, origin, old_gates, new_gates):
+        cfg._prepare_imports() # The installer imports the vendored kconfiglib helpers
+        from installer import unit_migration
+        install = {"from": frm, "to": to, "origin": origin, "old_gates": old_gates,
+                   "new_gates": new_gates, "encoders": {}}
+        migrated, _ = unit_migration.migrate_vars(variables, install)
+        for var in ('mmu_state_gate_spool_id', 'mmu_state_tool_to_gate_map'):
+            self.assertEqual(migrated[var], variables[var], 'the installer leaves %s to startup' % var)
+        return migrated
+
+    def single_unit(self, old_gates):
+        spools = list(range(1, old_gates + 1))
+        migrated = self.migrate({
+            'mmu_state_gate_spool_id': spools,
+            'mmu_state_tool_to_gate_map': list(range(old_gates)),
+            'mmu_old_bowden_lengths': [500.0] * old_gates,
+        }, ['old'], ['unit0'], {'unit0': 'old'}, {'old': old_gates}, {'unit0': 4})
+        self.assertIn('mmu_unit0_bowden_lengths', migrated)
+        self.assertNotIn('mmu_old_bowden_lengths', migrated)
+        self.boot('boxturtle', migrated)
+        return spools
+
+    def test_rename_only(self):
+        spools = self.single_unit(4)
+        self.assertEqual(self.mmu.gate_spool_id, spools)
+        self.assertEqual(self.warnings(), '')
+        self.hh.reactor.advance(1.0)
+        self.assertEqual(read_vars_file(self.path)['mmu_state_gate_map_units'], [['unit0', 4]])
+
+    def test_rename_and_one_more_gate(self):
+        self.single_unit(3)
+        self.assertEqual(self.mmu.gate_spool_id, [1, 2, 3, -1])
+
+    def test_rename_and_one_gate_fewer(self):
+        self.single_unit(5)
+        self.assertEqual(self.mmu.gate_spool_id, [1, 2, 3, 4])
+
+    def reversed_units(self, old_unit0_gates):
+        unit1, unit0 = [20, 21, 22, 23], list(range(10, 10 + old_unit0_gates))
+        migrated = self.migrate({
+            'mmu_state_gate_spool_id': unit1 + unit0,
+            'mmu_state_tool_to_gate_map': list(range(4 + old_unit0_gates)),
+            'mmu_unit0_bowden_lengths': [600.0] * old_unit0_gates,
+            'mmu_unit1_bowden_lengths': [700.0] * 4,
+        }, ['unit1', 'unit0'], ['unit0', 'unit1'], {'unit0': 'unit0', 'unit1': 'unit1'},
+            {'unit1': 4, 'unit0': old_unit0_gates}, {'unit0': 9, 'unit1': 4})
+        self.assertEqual(migrated['mmu_unit1_bowden_lengths'], [700.0] * 4)
+        self.boot('ercf_vvd', migrated)
+        return unit0, unit1
+
+    def test_units_reversed(self):
+        unit0, unit1 = self.reversed_units(9)
+        self.assertEqual(self.mmu.gate_spool_id, unit0 + unit1)
+        # T0-T3 were unit1's gates, now 9-12
+        self.assertEqual(self.mmu.ttg_map, [9, 10, 11, 12] + list(range(9)))
+
+    def test_units_reversed_and_the_first_one_more_gate(self):
+        unit0, unit1 = self.reversed_units(8)
+        self.assertEqual(self.mmu.gate_spool_id, unit0 + [-1] + unit1)
+        self.assertEqual(self.mmu.ttg_map, [9, 10, 11, 12] + list(range(8)) + [12])
 
 if __name__ == '__main__':
     unittest.main()
