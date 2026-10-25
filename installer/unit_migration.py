@@ -12,7 +12,7 @@
 #   prepare  - capture what the install step needs from the still-installed
 #              config (gate counts, save_variables file, manual-edit warnings)
 #   apply    - with Klipper stopped: remove stale unit files and migrate the
-#              save_variables file (unit namespaced keys and global gate lists)
+#              save_variables file with pending migration intent (state is applied at startup)
 #
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
@@ -23,14 +23,16 @@ import argparse
 import ast
 import configparser
 import datetime
-import importlib.util
 import json
+import importlib
+import importlib.util
 import os
 import re
 import shutil
 import subprocess
 import sys
 import traceback
+import uuid
 
 import sequence_edit
 import shared_components
@@ -52,37 +54,25 @@ DEFAULT_TOKEN = "#~DEFAULT~#"
 SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _load_constants():
-    path = os.path.join(SRC, "extras", "mmu", "mmu_constants.py")
-    spec = importlib.util.spec_from_file_location("hh_mmu_constants", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _load_state_migration():
+    # Load the dependency-free runtime helpers without importing Klipper's `extras`
+    # package into the installer process (or a test harness that installs it later).
+    package = "_hh_mmu_state"
+    if package not in sys.modules:
+        path = os.path.join(SRC, "extras", "mmu", "__init__.py")
+        spec = importlib.util.spec_from_file_location(package, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[package] = module
+        spec.loader.exec_module(module)
+    return importlib.import_module(package + ".mmu_state_migration")
 
 
-C = _load_constants()
+state_migration = _load_state_migration()
+C = state_migration.C
+gate_map = state_migration.gate_map
+gates_moved = state_migration.gates_moved
+queue_migration = state_migration.queue_migration
 
-# Variables namespaced by unit name (SaveVariableManager.namespace)
-UNIT_VARS = [
-    C.VARS_MMU_GEAR_ROTATION_DISTANCES,
-    C.VARS_MMU_BOWDEN_LENGTHS,
-    C.VARS_MMU_BOWDEN_HOME,
-    C.VARS_MMU_SELECTOR_OFFSETS,
-    C.VARS_MMU_SELECTOR_BYPASS_OFFSET,
-    C.VARS_MMU_SELECTOR_LAST_POS,
-    C.VARS_MMU_SELECTOR_ANGLES,
-    C.VARS_MMU_SELECTOR_BYPASS_ANGLE,
-    C.VARS_MMU_SELECTOR_RELEASE_ANGLE,
-    C.VARS_MMU_SELECTOR_SERVO_ANGLES,
-    C.VARS_MMU_SELECTOR_GATE_SEQUENCE,
-    C.VARS_MMU_SELECTOR_ENDSTOP_WIDTHS,
-]
-
-# Variables namespaced by encoder name, which defaults to the unit name
-ENCODER_VARS = [
-    C.VARS_MMU_ENCODER_RESOLUTION,
-    C.VARS_MMU_ENCODER_CLOG_LENGTH,
-]
 
 # Per-gate list options in [mmu_machine] that must match the total gate count
 GATE_LIST_OPTIONS = [
@@ -103,9 +93,6 @@ GATE_LIST_OPTIONS = [
     "default_endless_spool_groups",
 ]
 
-
-def namespaced(variable, namespace):
-    return variable.replace("mmu_", "mmu_%s_" % namespace)
 
 
 # -----------------------------------------------------------------------------
@@ -600,7 +587,7 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
     """Record, from the still-installed config, what 'apply' will need after install."""
     plan = Plan(kconfig, base)
     state = read_state(kconfig) or {"baseline": plan.baseline, "applied": _applied(kconfig, plan.baseline)}
-    state.pop("install", None)
+    previous_install = state.pop("install", None)
 
     if plan.changed() and config_home and installed_units(config_home) is not None:
         new_gates = {}
@@ -620,6 +607,10 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
                          component_names(kconfig, plan, shared_components.KINDS["encoder"]).values()
                          if before != after},
         }
+        if previous_install and all(previous_install.get(k) == state["install"].get(k)
+                                    for k in ("from", "to", "origin", "new_gates", "vars_file")):
+            state["install"] = previous_install
+        state["install"].setdefault("migration_id", uuid.uuid4().hex)
     elif not plan.changed() and not read_state(kconfig):
         return
     write_state(kconfig, state)
@@ -747,130 +738,6 @@ def write_vars(path, variables):
     os.replace(tmp, path)
 
 
-def gate_map(install):
-    """Old global gate -> new global gate, for gates whose unit is kept."""
-    old_gates, new_gates = install["old_gates"], install["new_gates"]
-    if any(old_gates.get(o) is None for o in install["from"]) or \
-       any(new_gates.get(n) is None for n in install["to"]):
-        return None
-
-    old_first, first = {}, 0
-    for unit in install["from"]:
-        old_first[unit] = first
-        first += old_gates[unit]
-    mapping, first = {}, 0
-    for unit in install["to"]:
-        origin = install["origin"].get(unit)
-        if origin is not None:
-            for local in range(min(old_gates[origin], new_gates[unit])):
-                mapping[old_first[origin] + local] = first + local
-        first += new_gates[unit]
-    return mapping
-
-
-def gates_moved(mapping, old_total):
-    """True if any existing gate is renumbered or dropped (unknown counts count as moved)."""
-    return mapping is None or any(mapping.get(g) != g for g in range(old_total))
-
-
-def startup_layout(variables, install, target, identity):
-    """
-    The layout the saved gate lists still have, under the new unit names (target: old name ->
-    new name or None), or None when none is needed (no gate moved) or it can't be known. A
-    removed unit is named "" so no unit ever matches its gates.
-
-    A saved layout naming only installed units, each once, is kept in its own order: it may be
-    pending from an earlier install that Klipper hasn't started on yet, so the lists still
-    have that order. Units added since are missing from it because they have no saved gates.
-    """
-    saved = variables.get(C.VARS_MMU_GATE_MAP_UNITS)
-    if isinstance(saved, list) and all(isinstance(u, list) and len(u) == 2 and isinstance(u[1], int) for u in saved):
-        names = [name for name, _ in saved if name]
-        if set(names) <= set(install["from"]) and len(set(names)) == len(names):
-            return [[target[name] or "" if name else "", n] for name, n in saved]
-    if identity or any(install["old_gates"].get(o) is None for o in install["from"]):
-        return None
-    return [[target[o] or "", install["old_gates"][o]] for o in install["from"]]
-
-
-def migrate_vars(variables, install):
-    """Return (migrated copy of 'variables', notes)."""
-    result = dict(variables)
-    notes = []
-    target = {o: None for o in install["from"]}
-    for new, old in install["origin"].items():
-        if old is not None:
-            target[old] = new
-
-    # Unit namespaced variables, by exact name
-    moves = {}
-    for old, new in target.items():
-        if old == new:
-            continue
-        keys = [namespaced(v, old) for v in UNIT_VARS]
-        stats = namespaced(C.VARS_MMU_GATE_STATISTICS_PREFIX, old)
-        keys += [k for k in variables if k.startswith(stats) and k[len(stats):].isdigit()]
-        for key in keys:
-            if key in variables:
-                moves[key] = None if new is None else namespaced("mmu_", new) + key[len(namespaced("mmu_", old)):]
-    # Encoder variables, by the encoder's name (prepare: before -> after, None if removed)
-    for old, new in install.get("encoders", {}).items():
-        for key in (namespaced(v, old) for v in ENCODER_VARS):
-            if key in variables:
-                moves[key] = None if new is None else namespaced("mmu_", new) + key[len(namespaced("mmu_", old)):]
-    for key in moves:
-        result.pop(key, None)
-    for key, new_key in moves.items():
-        if new_key is not None:
-            result[new_key] = variables[key]
-    renamed = sum(1 for k in moves.values() if k)
-    if moves:
-        notes.append("Renamed %d and removed %d unit variables" % (renamed, len(moves) - renamed))
-
-    mapping = gate_map(install)
-    old_total = sum(install["old_gates"].get(o) or 0 for o in install["from"])
-    new_total = sum(install["new_gates"].get(n) or 0 for n in install["to"])
-    identity = mapping is not None and old_total == new_total and \
-        all(mapping.get(g) == g for g in range(old_total))
-
-    # The gate lists are left as they are. Happy Hare matches them to the units at startup using
-    # this layout: the order and gate counts they were saved with, under the new unit names
-    layout = startup_layout(variables, install, target, identity)
-    if layout is None:
-        result.pop(C.VARS_MMU_GATE_MAP_UNITS, None)
-    else:
-        result[C.VARS_MMU_GATE_MAP_UNITS] = layout
-    if not identity:
-        notes.append("Gate maps will be matched to their units when Klipper starts" if layout is not None
-                     else "Gate counts unknown so gate maps were not migrated")
-
-    # The selection drives the selector position and active unit at startup
-    if gates_moved(mapping, old_total):
-        reset = False
-        for var in (C.VARS_MMU_GATE_SELECTED, C.VARS_MMU_TOOL_SELECTED):
-            if var in variables and variables[var] != C.TOOL_GATE_UNKNOWN:
-                result[var] = C.TOOL_GATE_UNKNOWN
-                reset = True
-        if reset:
-            notes.append("Selected gate and tool reset to unknown")
-
-    # Unit-scoped sensor keys follow their unit's name. Per-gate keys are renumbered at startup,
-    # with the gate lists
-    sensors = variables.get(C.VARS_MMU_SENSOR_ENABLED)
-    if isinstance(sensors, dict):
-        new = {}
-        for key, value in sensors.items():
-            prefix, sep, rest = key.partition(":")
-            if sep and prefix in target:
-                if target[prefix] is not None:
-                    new["%s:%s" % (target[prefix], rest)] = value
-                continue
-            new[key] = value
-        result[C.VARS_MMU_SENSOR_ENABLED] = new
-
-    return result, notes
-
-
 def stop_klipper(kconfig, out=sys.stdout):
     values = read_kconfig(kconfig)
     service = values.get("SERVICE_KLIPPER")
@@ -915,13 +782,13 @@ def apply(kconfig, no_service=False, out=sys.stdout):
         path = install.get("vars_file")
         if path and os.path.exists(path):
             variables = read_vars(path)
-            migrated, notes = migrate_vars(variables, install)
+            migrated, notes = queue_migration(variables, install)
             if migrated != variables:
                 if os.path.commonpath([os.path.abspath(path), os.path.abspath(mmu_dir)]) != os.path.abspath(mmu_dir):
                     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
                     shutil.copy2(path, "%s.old-%s" % (path, stamp))
                 write_vars(path, migrated)
-                print("Migrated saved state in %s" % path, file=out)
+                print("Recorded pending state migration in %s" % path, file=out)
             for note in notes:
                 print("  %s" % note, file=out)
 

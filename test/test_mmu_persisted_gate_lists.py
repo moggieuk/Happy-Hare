@@ -209,8 +209,7 @@ class TestUnitAwareResize(PersistedGateListsTestCase):
 
 class TestInstallerThenStartup(PersistedGateListsTestCase):
     """
-    Unit renames and reorders: the installer only renames per-unit keys and records the old
-    layout under the new names, then Happy Hare maps and resizes the gate lists at startup.
+    Unit renames and reorders: the installer records intent, then startup applies all state changes.
     """
 
     def migrate(self, variables, frm, to, origin, old_gates, new_gates):
@@ -218,7 +217,7 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
         from installer import unit_migration
         install = {"from": frm, "to": to, "origin": origin, "old_gates": old_gates,
                    "new_gates": new_gates, "encoders": {}}
-        migrated, _ = unit_migration.migrate_vars(variables, install)
+        migrated, _ = unit_migration.queue_migration(variables, install)
         for var in ('mmu_state_gate_spool_id', 'mmu_state_tool_to_gate_map'):
             self.assertEqual(migrated[var], variables[var], 'the installer leaves %s to startup' % var)
         return migrated
@@ -230,15 +229,16 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
             'mmu_state_tool_to_gate_map': list(range(old_gates)),
             'mmu_old_bowden_lengths': [500.0] * old_gates,
         }, ['old'], ['unit0'], {'unit0': 'old'}, {'old': old_gates}, {'unit0': 4})
-        self.assertIn('mmu_unit0_bowden_lengths', migrated)
-        self.assertNotIn('mmu_old_bowden_lengths', migrated)
+        self.assertIn('mmu_old_bowden_lengths', migrated)
         self.boot('boxturtle', migrated)
+        self.assertIsNotNone(self.mmu.var_manager.get('mmu_unit0_bowden_lengths', None))
+        self.assertIsNone(self.mmu.var_manager.get('mmu_old_bowden_lengths', None))
         return spools
 
     def test_rename_only(self):
         spools = self.single_unit(4)
         self.assertEqual(self.mmu.gate_spool_id, spools)
-        self.assertEqual(self.warnings(), '')
+        self.assertIn('Renamed', self.warnings())
         self.hh.reactor.advance(1.0)
         self.assertEqual(read_vars_file(self.path)['mmu_state_gate_map_units'], [['unit0', 4]])
 
@@ -294,7 +294,7 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
                                  {'unit1': 4, 'old': 9}, {'old': 9, 'unit1': 4})
         renamed = self.migrate(reordered, ['old', 'unit1'], ['unit0', 'unit1'], {'unit0': 'old', 'unit1': 'unit1'},
                                {'old': 9, 'unit1': 4}, {'unit0': 9, 'unit1': 4})
-        self.assertEqual(renamed['mmu_state_gate_map_units'], [['unit1', 4], ['unit0', 9]])
+        self.assertEqual(len(renamed['mmu_state_pending_migration']['steps']), 2)
         self.boot('ercf_vvd', renamed)
         self.assertEqual(self.mmu.gate_spool_id, unit0 + unit1)
 
@@ -308,7 +308,7 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
                              {'unit0': 9}, {'unit0': 9, 'new': 4})
         renamed = self.migrate(added, ['unit0', 'new'], ['unit0', 'unit1'], {'unit0': 'unit0', 'unit1': 'new'},
                                {'unit0': 9, 'new': 4}, {'unit0': 9, 'unit1': 4})
-        self.assertEqual(renamed['mmu_state_gate_map_units'], [['unit0', 9]])
+        self.assertEqual(len(renamed['mmu_state_pending_migration']['steps']), 2)
         self.boot('ercf_vvd', renamed)
         self.assertEqual(self.mmu.gate_spool_id, unit0 + [-1] * 4)
 

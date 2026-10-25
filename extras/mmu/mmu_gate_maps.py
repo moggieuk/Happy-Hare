@@ -19,9 +19,6 @@ import logging, re, unicodedata
 from .mmu_constants import *
 from .mmu_utils     import MmuError, MmuColorUtils
 
-# Per-gate sensor names in the persisted sensor disables, e.g. 'mmu_exit_9' (global gate 9)
-GATE_SENSOR_KEY = re.compile(r"^(mmu_[a-z_]+?)_(\d+)$")
-
 
 class MmuGateMaps:
     """
@@ -83,7 +80,8 @@ class MmuGateMaps:
         # attribution. gate_spool_rfid remains the single UID physically observed
         # at the gate; this cache contains every UID registered to its spool.
         self.gate_spool_rfid_aliases = [tuple() for _ in range(self.num_gates)]
-        self._renumbered_gate_errors = [] # Set at config load by handle_renumbered_gates()
+        self._migration_errors = []
+        self._migration_notes = []
         self.update_gate_color_rgb()
 
         # Helper RGB map used by slicer color projection / UI / LEDs
@@ -118,81 +116,17 @@ class MmuGateMaps:
         Returns:
             List[str]: any validation / length / sanity warnings encountered
         """
-        errors = []
-        notes = []
+        errors, self._migration_errors = self._migration_errors, []
         var_manager = self.mmu.var_manager
-        saved_layout = self._valid_layout(var_manager.get(VARS_MMU_GATE_MAP_UNITS, None))
-        changed = saved_layout != self.current_layout()
-
-        errors.extend(self._renumbered_gate_errors)
-        self._renumbered_gate_errors = []
-
-        def load(var, default, apply):
-            """Saved per-gate list fitted to the current gates, or default if it can't be"""
-            nonlocal changed
-            saved = var_manager.get(var, None)
-            if saved is None:
-                return default
-            if not isinstance(saved, list):
-                errors.append("Invalid value specified with %s" % var)
-                changed = True
-                return default
-            mapping, how = self._gate_mapping(len(saved), saved_layout)
-            if how:
-                notes.append("%s (%d entries): %s" % (var, len(saved), how))
-                changed = True
-            return default if mapping is None else apply(saved, mapping)
-
-        def apply_gates(default):
-            def apply(saved, mapping):
-                fitted = list(default)
-                for old, new in mapping.items():
-                    fitted[new] = saved[old]
-                return fitted
-            return apply
-
-        def apply_groups(saved, mapping):
-            # New gates each get their own group rather than joining an existing one
-            groups = [None] * self.num_gates
-            for old, new in mapping.items():
-                groups[new] = saved[old]
-            next_group = max([g for g in groups if isinstance(g, int)] + [-1]) + 1
-            for gate, group in enumerate(groups):
-                if group is None:
-                    groups[gate], next_group = next_group, next_group + 1
-            return groups
-
-        def apply_ttg(saved, mapping):
-            # Tools follow their gate. A gate that no longer exists, or never did, means the default
-            return [mapping.get(saved[t], self.ttg_map[t]) if t < len(saved) and isinstance(saved[t], int) else self.ttg_map[t]
-                    for t in range(self.num_gates)]
-
-        # Load EndlessSpool config
         self.endless_spool_enabled = var_manager.get(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
-        self.endless_spool_groups = load(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups, apply_groups)
-
-        # Load TTG map
-        self.ttg_map = load(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, apply_ttg)
-
-        # Load gate map
+        self.endless_spool_groups = list(var_manager.get(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
+        self.ttg_map = list(var_manager.get(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         for var, attr, _ in self._gate_map_vars:
-            default = getattr(self, attr)
-            setattr(self, attr, load(var, default, apply_gates(default)))
+            setattr(self, attr, list(var_manager.get(var, getattr(self, attr))))
         self.update_gate_color_rgb()
-
-        if notes:
-            self.mmu.log_warning(
-                "Warning: Persisted gate lists didn't match the %d gates:\n%s" % (self.num_gates, "\n".join(notes))
-            )
-
-        # Save the fitted lists together with the layout they now match
-        if changed:
-            var_manager.set(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
-            var_manager.set(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
-            for var, attr, _ in self._gate_map_vars:
-                var_manager.set(var, getattr(self, attr))
-            var_manager.set(VARS_MMU_GATE_MAP_UNITS, self.current_layout())
-            var_manager.write()
+        if self._migration_notes:
+            self.mmu.log_warning("Warning: Persisted gate lists / unit state migrated:\n%s" % "\n".join(self._migration_notes))
+            self._migration_notes = []
 
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
@@ -218,96 +152,8 @@ class MmuGateMaps:
         return errors
 
 
-    def handle_renumbered_gates(self, var_manager):
-        """
-        Run at config load, before any klippy:ready handler. When gates have been renumbered
-        since the saved layout (units reordered, removed or resized), per-gate sensor disables
-        move with their gates and a saved selection is dropped. Both are staged for the first
-        save along with the gate lists, so a selector restoring its position never sees the old
-        gate and a restart can't bring the selection back.
-        """
-        saved_layout = self._valid_layout(var_manager.get(VARS_MMU_GATE_MAP_UNITS, None))
-        if not saved_layout or saved_layout == self.current_layout():
-            return
-        mapping = self._match_by_unit(saved_layout)
-        if all(mapping.get(g) == g for g in range(sum(n for _, n in saved_layout))):
-            return
-        self._renumber_sensor_disables(var_manager, mapping)
-        gate = var_manager.get(VARS_MMU_GATE_SELECTED, TOOL_GATE_UNKNOWN)
-        tool = var_manager.get(VARS_MMU_TOOL_SELECTED, TOOL_GATE_UNKNOWN)
-        if (gate, tool) != (TOOL_GATE_UNKNOWN, TOOL_GATE_UNKNOWN):
-            self._renumbered_gate_errors.append("Persisted gate/tool %s/%s dropped because gates were renumbered" % (gate, tool))
-            var_manager.set(VARS_MMU_GATE_SELECTED, TOOL_GATE_UNKNOWN)
-            var_manager.set(VARS_MMU_TOOL_SELECTED, TOOL_GATE_UNKNOWN)
-
-
-    @staticmethod
-    def _renumber_sensor_disables(var_manager, mapping):
-        """Move persisted per-gate sensor disables to their gates' new numbers (dropped if the gate is gone)"""
-        disables = var_manager.get(VARS_MMU_SENSOR_ENABLED, {})
-        if not isinstance(disables, dict):
-            return
-        renumbered = {}
-        for key, value in disables.items():
-            m = GATE_SENSOR_KEY.match(key)
-            if m is None:
-                renumbered[key] = value
-            elif int(m.group(2)) in mapping:
-                renumbered["%s_%d" % (m.group(1), mapping[int(m.group(2))])] = value
-        var_manager.set(VARS_MMU_SENSOR_ENABLED, renumbered)
-
-
     def current_layout(self):
         return [[unit.name, unit.num_gates] for unit in self.mmu.mmu_machine.units]
-
-
-    @staticmethod
-    def _valid_layout(layout):
-        if isinstance(layout, list) and all(
-            isinstance(unit, (list, tuple)) and len(unit) == 2 and isinstance(unit[0], str) and isinstance(unit[1], int)
-            for unit in layout
-        ):
-            return [list(unit) for unit in layout]
-        return None
-
-
-    def _gate_mapping(self, saved_len, saved_layout):
-        """
-        Map the gates of a saved per-gate list of saved_len entries onto the current gates.
-
-        Returns (mapping, how): mapping is {saved_index: current_index} or None if the gates
-        can't be identified, how describes any change ('' when the list already fits).
-        Gates are matched by unit name and local gate using the layout the list was saved
-        with, which the installer records (under any new unit names) when it changes units.
-        That layout is followed even when the length already fits, as for a reorder.
-        Without one no gate's identity can be established (e.g. 5+4 saved gates look just
-        like a 9 gate first unit), so only a list that already fits is used.
-        """
-        if saved_layout and sum(n for _, n in saved_layout) == saved_len:
-            if saved_layout == self.current_layout():
-                return {g: g for g in range(saved_len)}, ''
-            return self._match_by_unit(saved_layout), 'matched to its units by name, any new gates use defaults'
-
-        if saved_len == self.num_gates:
-            return {g: g for g in range(saved_len)}, ''
-
-        return None, "ignored because no saved unit layout matches it, using defaults"
-
-
-    def _match_by_unit(self, saved_layout):
-        """{saved_gate: current_gate} for the gates of units in both layouts, by name and local gate"""
-        saved_first, first = {}, 0
-        for name, n in saved_layout:
-            saved_first[name] = (first, n)
-            first += n
-        mapping, first = {}, 0
-        for name, n in self.current_layout():
-            if name in saved_first:
-                old_first, old_n = saved_first[name]
-                for local in range(min(old_n, n)):
-                    mapping[old_first + local] = first + local
-            first += n
-        return mapping
 
 
     def persist_ttg_map(self):

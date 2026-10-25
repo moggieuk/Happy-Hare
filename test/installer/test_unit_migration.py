@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import sequence_edit
 from installer import unit_migration as um
+sm = um.state_migration
 
 EXCLUDE = ("# EXCLUDE FROM CONFIG BUILDER -- IMPORTANT do not alter or remove this line. "
            "Config below is never upgraded")
@@ -90,6 +91,13 @@ class Scratch(unittest.TestCase):
         out = io.StringIO()
         base = base if base is not None else um.baseline(self.kconfig, self.home)
         return um.check(self.kconfig, self.home, base, mode, out), out.getvalue()
+
+    def applied_vars(self):
+        # Inspect the runtime identity pass separately from gate fitting; the installer
+        # itself must leave every original state key untouched and only queue intent.
+        variables = um.read_vars(self.vars_file)
+        pending = variables[sm.C.VARS_MMU_PENDING_MIGRATION]
+        return sm.apply_intents(variables, pending['steps'][-1]['to'])[0]
 
     def run_all(self, base):
         um.migrate_kconfig(self.kconfig, base, io.StringIO())
@@ -452,7 +460,7 @@ class TestVarsMigration(unittest.TestCase):
                                {"left": "box", "box_2": "box_2"},
                                {"box": 2, "box_2": 2}, {"left": 2, "box_2": 2},
                                encoders={"box": "left"})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertEqual(result, {
             "mmu_left_bowden_lengths": [1, 2],
             "mmu_left_statistics_gate_1": {"x": 1},
@@ -471,7 +479,7 @@ class TestVarsMigration(unittest.TestCase):
         install = self.install(["box", "gone"], ["left"], {"left": "box"},
                                {"box": 4, "gone": 0}, {"left": 4},
                                encoders={"box_enc": "box_enc", "gone": None})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertEqual(result, {
             "mmu_box_encoder_resolution": 0.7,
             "mmu_box_enc_encoder_resolution": 0.8,
@@ -488,7 +496,7 @@ class TestVarsMigration(unittest.TestCase):
             "mmu_state_tool_selected": 1,
         }
         install = self.install(["a", "b"], ["b"], {"b": "b"}, {"a": 2, "b": 2}, {"b": 2})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertNotIn("mmu_a_bowden_lengths", result)
         self.assertEqual(result["mmu_b_bowden_lengths"], [3, 4])
         # Happy Hare cuts out the removed unit's gates at startup, matching by the saved layout
@@ -511,7 +519,7 @@ class TestVarsMigration(unittest.TestCase):
         }
         install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"},
                                {"a": 2, "b": 3}, {"a": 2, "b": 3})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         for var in ("mmu_state_gate_color", "mmu_state_gate_spool_id", "mmu_state_tool_to_gate_map",
                     "mmu_state_endless_spool_groups"):
             self.assertEqual(result[var], variables[var])
@@ -526,7 +534,7 @@ class TestVarsMigration(unittest.TestCase):
         variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
                      "mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
         install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": 2, "b": 1}, {"a": 2, "b": 1})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0"])
         self.assertEqual(result["mmu_state_gate_map_units"], [["a", 2], ["b", 1]])
 
@@ -534,41 +542,41 @@ class TestVarsMigration(unittest.TestCase):
         variables = {"mmu_state_gate_color": ["a0", "a1", "b0"],
                      "mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
         install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": 2, "b": 1}, {"x": 2, "b": 1})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "b0"])
         self.assertEqual(result["mmu_state_gate_map_units"], [["x", 2], ["b", 1]])
 
     def test_a_pending_layout_survives_a_second_install_before_klipper_starts(self):
-        first, _ = um.migrate_vars({"mmu_state_gate_color": ["a0", "a1", "b0"]},
+        first, _ = sm.migrate_unit_state({"mmu_state_gate_color": ["a0", "a1", "b0"]},
                                    self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": 2, "b": 1}, {"a": 2, "b": 1}))
-        second, _ = um.migrate_vars(first, self.install(["b", "a"], ["c", "a"], {"c": "b", "a": "a"},
+        second, _ = sm.migrate_unit_state(first, self.install(["b", "a"], ["c", "a"], {"c": "b", "a": "a"},
                                                         {"b": 1, "a": 2}, {"c": 1, "a": 2}))
         self.assertEqual(second["mmu_state_gate_color"], ["a0", "a1", "b0"])
         self.assertEqual(second["mmu_state_gate_map_units"], [["a", 2], ["c", 1]])
 
     def test_a_pending_layout_omitting_an_added_unit_survives_a_second_install(self):
-        first, _ = um.migrate_vars({"mmu_state_gate_color": ["a0", "a1"]},
+        first, _ = sm.migrate_unit_state({"mmu_state_gate_color": ["a0", "a1"]},
                                    self.install(["a"], ["a", "n"], {"a": "a", "n": None}, {"a": 2}, {"a": 2, "n": 1}))
         self.assertEqual(first["mmu_state_gate_map_units"], [["a", 2]])
-        second, _ = um.migrate_vars(first, self.install(["a", "n"], ["a", "c"], {"a": "a", "c": "n"},
+        second, _ = sm.migrate_unit_state(first, self.install(["a", "n"], ["a", "c"], {"a": "a", "c": "n"},
                                                         {"a": 2, "n": 1}, {"a": 2, "c": 1}))
         self.assertEqual(second["mmu_state_gate_map_units"], [["a", 2]])
 
     def test_unknown_gate_counts_still_rename_the_saved_unit_layout(self):
         variables = {"mmu_state_gate_map_units": [["a", 2], ["b", 1]]}
         install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": None, "b": 1}, {"x": 2, "b": 1})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_map_units"], [["x", 2], ["b", 1]])
 
     def test_a_stale_saved_unit_layout_is_dropped_when_it_cant_be_rebuilt(self):
         variables = {"mmu_state_gate_map_units": [["old", 3]]}
         install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"}, {"a": None, "b": 1}, {"a": 1, "b": 1})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertNotIn("mmu_state_gate_map_units", result)
 
     def test_a_file_without_a_saved_unit_layout_is_not_given_one(self):
         install = self.install(["a", "b"], ["x", "b"], {"x": "a", "b": "b"}, {"a": 2, "b": 1}, {"x": 2, "b": 1})
-        result, _ = um.migrate_vars({"mmu_state_gate_color": ["a0", "a1", "b0"]}, install)
+        result, _ = sm.migrate_unit_state({"mmu_state_gate_color": ["a0", "a1", "b0"]}, install)
         self.assertNotIn("mmu_state_gate_map_units", result)
 
     def test_append_leaves_gate_maps_for_startup(self):
@@ -582,7 +590,7 @@ class TestVarsMigration(unittest.TestCase):
             "mmu_state_tool_selected": 0,
         }
         install = self.install(["a"], ["a", "c"], {"a": "a", "c": None}, {"a": 2}, {"a": 2, "c": 2})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         # No existing gate was renumbered, so the selection stands
         self.assertEqual(result["mmu_state_gate_selected"], 1)
         self.assertEqual(result["mmu_state_tool_selected"], 0)
@@ -595,16 +603,16 @@ class TestVarsMigration(unittest.TestCase):
         variables = {"mmu_state_gate_color": ["a0", "a1", "a2", "b0"]}
         install = self.install(["a", "b"], ["a", "b"], {"a": "a", "b": "b"},
                                {"a": 3, "b": 1}, {"a": 2, "b": 1})
-        result, notes = um.migrate_vars(variables, install)
+        result, notes = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "a2", "b0"])
         self.assertEqual(result["mmu_state_gate_map_units"], [["a", 3], ["b", 1]])
-        self.assertIn("Gate maps will be matched to their units when Klipper starts", notes)
+        self.assertIn("Gate maps matched using the original unit layout", notes)
 
     def test_a_rename_keeps_the_selection(self):
         variables = {"mmu_state_gate_selected": 3, "mmu_state_tool_selected": 3, "mmu_a_bowden_lengths": [1, 2]}
         install = self.install(["a", "b"], ["a", "box"], {"a": "a", "box": "b"},
                                {"a": 2, "b": 2}, {"a": 2, "box": 2})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_selected"], 3)
         self.assertEqual(result["mmu_state_tool_selected"], 3)
 
@@ -613,7 +621,7 @@ class TestVarsMigration(unittest.TestCase):
         variables = {"mmu_state_gate_selected": 0, "mmu_state_tool_selected": 0}
         install = self.install(["a", "b"], ["a", "b"], {"a": "a", "b": "b"},
                                {"a": 2, "b": 2}, {"a": 3, "b": 2})
-        result, notes = um.migrate_vars(variables, install)
+        result, notes = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_selected"], -1)
         self.assertEqual(result["mmu_state_tool_selected"], -1)
         self.assertIn("Selected gate and tool reset to unknown", notes)
@@ -622,27 +630,52 @@ class TestVarsMigration(unittest.TestCase):
         variables = {"mmu_state_gate_selected": -2, "mmu_state_tool_selected": -2}
         install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"},
                                {"a": 2, "b": 2}, {"a": 2, "b": 2})
-        result, _ = um.migrate_vars(variables, install)
+        result, _ = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_selected"], -1)
         self.assertEqual(result["mmu_state_tool_selected"], -1)
 
     def test_identity_changes_nothing(self):
         variables = {"mmu_state_gate_color": ["a0", "a1"], "mmu_a_bowden_lengths": [1, 2]}
         install = self.install(["a"], ["a"], {"a": "a"}, {"a": 2}, {"a": 2})
-        self.assertEqual(um.migrate_vars(variables, install)[0], variables)
+        self.assertEqual(sm.migrate_unit_state(variables, install)[0], variables)
 
     def test_unknown_gate_counts_leave_gate_maps_alone(self):
         variables = {"mmu_state_gate_color": ["a0", "b0"], "mmu_b_bowden_lengths": [1],
                      "mmu_state_gate_selected": 1}
         install = self.install(["a", "b"], ["b", "a"], {"b": "b", "a": "a"},
                                {"a": None, "b": 1}, {"a": 1, "b": 1})
-        result, notes = um.migrate_vars(variables, install)
+        result, notes = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_color"], ["a0", "b0"])
         self.assertTrue(any("not migrated" in n for n in notes))
         self.assertEqual(result["mmu_state_gate_selected"], -1)
 
 
 class TestInstall(Scratch):
+
+    def test_retry_after_recording_intent_keeps_the_original_transaction(self):
+        original = {'mmu_a_bowden_lengths': [1, 2, 3, 4]}
+        self.install(['a', 'b'], variables=original)
+        self.unit('a', 0)
+        self.unit('b', 1)
+        self.edit(['a', 'b'], lambda m: m.rename(0, 'left'))
+        base = ['a', 'b']
+        um.migrate_kconfig(self.kconfig, base, io.StringIO())
+        um.prepare(self.kconfig, self.home, base, io.StringIO())
+        transaction = um.read_state(self.kconfig)['install']
+        with patch.object(um, 'stop_klipper'), patch.object(um, 'clear_state', side_effect=OSError('interrupted')):
+            with self.assertRaises(OSError):
+                um.apply(self.kconfig, out=io.StringIO())
+        queued = um.read_vars(self.vars_file)
+        self.assertEqual(queued['mmu_a_bowden_lengths'], original['mmu_a_bowden_lengths'])
+        self.assertNotIn('mmu_left_bowden_lengths', queued)
+        self.assertEqual(len(queued[sm.C.VARS_MMU_PENDING_MIGRATION]['steps']), 1)
+        # New config is installed; the old hardware file was removed by the first apply.
+        self.install(['left', 'b'])
+        um.prepare(self.kconfig, self.home, base, io.StringIO())
+        self.assertEqual(um.read_state(self.kconfig)['install'], transaction)
+        with patch.object(um, 'stop_klipper'):
+            um.apply(self.kconfig, out=io.StringIO())
+        self.assertEqual(um.read_vars(self.vars_file), queued)
 
     def test_rename_end_to_end(self):
         self.install(["a", "b"], variables={
@@ -655,7 +688,7 @@ class TestInstall(Scratch):
         base = um.baseline(self.kconfig, self.home)
         self.run_all(base)
 
-        variables = um.read_vars(self.vars_file)
+        variables = self.applied_vars()
         self.assertEqual(variables["mmu_left_bowden_lengths"], [1, 2, 3, 4])
         self.assertNotIn("mmu_a_bowden_lengths", variables)
         self.assertEqual(variables["mmu_state_gate_color"], list("01234567"))
@@ -678,7 +711,7 @@ class TestInstall(Scratch):
         self.unit("b", 1, lines=ENCODER_OWNER + ['CONFIG_PARAM_ENCODER_NAME="b_enc"'])
         self.edit(["a", "b"], lambda m: (m.rename(0, "left"), m.rename(1, "right")))
         self.run_all(um.baseline(self.kconfig, self.home))
-        variables = um.read_vars(self.vars_file)
+        variables = self.applied_vars()
         self.assertEqual(variables["mmu_left_encoder_resolution"], 0.5)
         self.assertNotIn("mmu_a_encoder_resolution", variables)
         self.assertEqual(variables["mmu_b_enc_encoder_resolution"], 0.7)
@@ -692,7 +725,7 @@ class TestInstall(Scratch):
         self.unit("b", 1, lines=ENCODER_OWNER + ['CONFIG_PARAM_ENCODER_NAME="a"'])
         self.edit(["a", "b"], lambda m: m.rename(0, "left"))
         self.run_all(um.baseline(self.kconfig, self.home))
-        variables = um.read_vars(self.vars_file)
+        variables = self.applied_vars()
         self.assertEqual(variables["mmu_a_encoder_resolution"], 0.5)
         self.assertNotIn("mmu_left_encoder_resolution", variables)
 
@@ -703,7 +736,7 @@ class TestInstall(Scratch):
         self.edit(["a"], lambda m: m.rename(0, "left"))
         self.run_all(um.baseline(self.kconfig, self.home))
         self.assertEqual(len([f for f in os.listdir(self.home) if f.startswith("elsewhere_vars.cfg.old-")]), 1)
-        self.assertIn("mmu_left_bowden_lengths", um.read_vars(self.vars_file))
+        self.assertIn("mmu_left_bowden_lengths", self.applied_vars())
 
     def test_nothing_to_do_leaves_everything_alone(self):
         self.install(["a"], variables={"mmu_a_bowden_lengths": [1]})
@@ -787,7 +820,7 @@ class TestRenameIntoADeletedName(Scratch):
         self.assertFalse(os.path.exists(um.unit_file(self.kconfig, "unit2")))
 
         # unit0's saved state now lives under unit1; the old unit1/unit2 state is gone
-        variables = um.read_vars(self.vars_file)
+        variables = self.applied_vars()
         self.assertEqual(variables["mmu_unit1_bowden_lengths"], [10, 11])
         self.assertEqual(variables["mmu_unit1_statistics_gate_1"], {"u": 0})
         self.assertEqual(variables["mmu_unit1_encoder_resolution"], 0.5)
@@ -885,7 +918,7 @@ class TestSingleUnitRename(Scratch):
         self.run_all(um.baseline(self.kconfig, self.home))
 
         self.assertEqual(self.kvalues()["PIN_X"], "box:PA1")
-        variables = um.read_vars(self.vars_file)
+        variables = self.applied_vars()
         self.assertEqual(variables["mmu_box_bowden_lengths"], [1, 2, 3, 4])
         self.assertNotIn("mmu_unit0_bowden_lengths", variables)
         self.assertEqual(variables["mmu_box_encoder_resolution"], 0.6)

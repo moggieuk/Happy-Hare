@@ -293,6 +293,7 @@ VARS_MMU_GATE_SPOOL_RFID             = "mmu_state_gate_spool_rfid"
 VARS_MMU_GATE_SPEED_OVERRIDE         = "mmu_state_gate_speed_override"
 VARS_MMU_GATE_REMAINING_WEIGHT       = "mmu_state_gate_remaining_weight"
 VARS_MMU_GATE_INITIAL_WEIGHT         = "mmu_state_gate_initial_weight"
+VARS_MMU_PENDING_MIGRATION = "mmu_state_pending_migration" # versioned installer intent, consumed with the migrated state
 VARS_MMU_GATE_MAP_UNITS              = "mmu_state_gate_map_units"      # [[unit_name, num_gates], ...] the gate lists were saved with
 VARS_MMU_GATE_SELECTED               = "mmu_state_gate_selected"
 VARS_MMU_TOOL_SELECTED               = "mmu_state_tool_selected"

@@ -65,8 +65,17 @@ Load-bearing facts about the flow:
   (only appending is allowed outside Replace mode, except before anything is
   installed), `kconfig` (renames/rewrites
   `.mmu_config_<unit>` before the per-unit menuconfig), `prepare` and `apply`
-  (in `make install`, Klipper stopped: retire old unit files, rename unit
-  keys and move global gate lists in the save_variables file). Its progress
+  (in `make install`, Klipper stopped: retire old unit files and append explicit
+  unit-change intent to `mmu_state_pending_migration` in the save_variables file).
+  The installer leaves all operational state untouched. At config load,
+  `extras/mmu/mmu_state_migration.py` validates and replays the versioned intent,
+  renames/removes unit and encoder keys, remaps sensor disables and gate lists,
+  invalidates obsolete selections, and stages the current layout. This happens
+  before calibration/selector consumers run. Consuming the intent and saving the
+  migrated state use the same variables-file snapshot; failed starts can retry.
+  Each prepared install has a stable ID so retries do not append it twice, and
+  multiple installs before startup are replayed in order (including name reuse).
+  Its progress
   lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
   A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
   name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT` and

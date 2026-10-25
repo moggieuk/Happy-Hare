@@ -31,6 +31,7 @@ try:
     from .mmu.mmu_sensor_utils       import MmuSensorFactory
     from .mmu.mmu_machine_parameters import MmuMachineParameters
     from .mmu.mmu_controller         import MmuController
+    from .mmu.mmu_state_migration    import stage_migration
 except Exception as e:
     _IMPORT_ERROR = e
 
@@ -145,8 +146,11 @@ class MmuMachine:
         self.var_manager = SaveVariableManager(c, self)
         logging.info("MMU: Created SaveVariableManager")
 
-        # Before any klippy:ready handler: selectors restore their position from the saved selection
-        self.mmu_controller.gate_maps.handle_renumbered_gates(self.var_manager)
+        # Normalize all saved state before calibration or selector recovery can read it.
+        try:
+            stage_migration(self)
+        except ValueError as e:
+            raise config.error(str(e))
 
 
     def reinit(self):
