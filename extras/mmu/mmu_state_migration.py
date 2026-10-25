@@ -87,14 +87,29 @@ def startup_layout(variables, install, target, identity):
     pending from an earlier install that Klipper hasn't started on yet, so the lists still
     have that order. Units added since are missing from it because they have no saved gates.
     """
-    saved = variables.get(C.VARS_MMU_GATE_MAP_UNITS)
-    if isinstance(saved, list) and all(isinstance(u, list) and len(u) == 2 and isinstance(u[1], int) for u in saved):
+    saved = valid_layout(variables.get(C.VARS_MMU_GATE_MAP_UNITS))
+    if saved is not None:
         names = [name for name, _ in saved if name]
-        if set(names) <= set(install["from"]) and len(set(names)) == len(names):
-            return [[target[name] or "" if name else "", n] for name, n in saved]
-    if identity or any(install["old_gates"].get(o) is None for o in install["from"]):
-        return None
-    return [[target[o] or "", install["old_gates"][o]] for o in install["from"]]
+        if not set(names) <= set(install["from"]):
+            saved = None
+    if saved is None:
+        if identity or any(install["old_gates"].get(o) is None for o in install["from"]):
+            return None
+        saved = [[o, install["old_gates"][o]] for o in install["from"]]
+    layout = []
+    for name, count in saved:
+        new = target.get(name)
+        if not new:
+            layout.append(["", count])
+            continue
+        # Preserve the original list offsets but tombstone gates removed at any
+        # intermediate install, so later growth cannot resurrect their state.
+        limits = [count, install["old_gates"].get(name), install["new_gates"].get(new)]
+        kept = min(n for n in limits if n is not None)
+        layout.append([new, kept])
+        if kept < count:
+            layout.append(["", count - kept])
+    return layout
 
 
 def migrate_unit_state(variables, install):
@@ -241,13 +256,6 @@ def append_history(history, install):
     pending["steps"].append(step)
     validate_pending(pending)
     return pending
-
-
-def queue_migration(variables, install):
-    """Compatibility helper for the earlier variables-file intent format."""
-    result = copy.deepcopy(variables)
-    result[C.VARS_MMU_PENDING_MIGRATION] = append_history(result.get(C.VARS_MMU_PENDING_MIGRATION), install)
-    return result, []
 
 
 def apply_history(variables, current_names, history):

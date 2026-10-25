@@ -139,6 +139,20 @@ class Scratch(unittest.TestCase):
 
 
 class TestConfigHistory(Scratch):
+    def test_fresh_and_parameter_only_installs_have_no_history(self):
+        self.top('a')
+        self.unit('a')
+        um.prepare(self.kconfig, self.home, [], io.StringIO())
+        self.assertNotIn('PARAM_STATE_MIGRATION', self.kvalues())
+        self.assertIsNone(um.read_state(self.kconfig))
+        self.install(['a'], variables={'mmu_a_bowden_lengths': [1, 2, 3, 4]})
+        for count in (4, 6, 3):
+            with self.subTest(count=count):
+                self.unit('a', gates=count, lines=['CONFIG_PARAM_DEFAULT_EXTRUDER_TEMP=220'])
+                um.prepare(self.kconfig, self.home, ['a'], io.StringIO())
+                self.assertNotIn('PARAM_STATE_MIGRATION', self.kvalues())
+                self.assertIsNone(um.read_state(self.kconfig))
+
     def test_history_survives_chained_installs_and_plain_reinstall(self):
         self.install(['a'], variables={'mmu_a_bowden_lengths': [1, 2, 3, 4]})
         self.unit('a')
@@ -735,7 +749,7 @@ class TestVarsMigration(unittest.TestCase):
                                {"a": 3, "b": 1}, {"a": 2, "b": 1})
         result, notes = sm.migrate_unit_state(variables, install)
         self.assertEqual(result["mmu_state_gate_color"], ["a0", "a1", "a2", "b0"])
-        self.assertEqual(result["mmu_state_gate_map_units"], [["a", 3], ["b", 1]])
+        self.assertEqual(result["mmu_state_gate_map_units"], [["a", 2], ["", 1], ["b", 1]])
         self.assertIn("Gate maps matched using the original unit layout", notes)
 
     def test_a_rename_keeps_the_selection(self):
