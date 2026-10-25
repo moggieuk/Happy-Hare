@@ -304,6 +304,33 @@ class TestUnrecordedRename(unittest.TestCase):
 
 
 class TestSelectionAfterResize(unittest.TestCase):
+    def test_removing_later_unit_resets_bypass_but_keeps_unchanged_gate(self):
+        for recorded in (False, True):
+            for gate in (-2, 0):
+                with self.subTest(recorded=recorded, gate=gate):
+                    # b may own the bypass; gate 0 belonging to a is not evidence
+                    # that the previous bypass destination still exists.
+                    original = {LAYOUT: [['a', 4], ['b', 4]], SPOOLS: list(range(8)),
+                                sm.C.VARS_MMU_GATE_SELECTED: gate, sm.C.VARS_MMU_TOOL_SELECTED: gate}
+                    history = sm.append_history(None, intent(['a', 'b'], ['a'], {'a': 'a'},
+                                                {'a': 4, 'b': 4}, {'a': 4})) if recorded else None
+                    result = sm.migrate_state(original, [['a', 4]], {SPOOLS: [-1] * 4}, history)[0]
+                    expected = -1 if gate == -2 else 0
+                    self.assertEqual(result[sm.C.VARS_MMU_GATE_SELECTED], expected)
+                    self.assertEqual(result[sm.C.VARS_MMU_TOOL_SELECTED], expected)
+                    self.assertEqual(result[SPOOLS], [0, 1, 2, 3])
+                    self.assertEqual(sm.migrate_state(result, [['a', 4]], {SPOOLS: [-1] * 4}, history)[0], result)
+
+    def test_recorded_renames_and_tail_shrink_preserve_bypass(self):
+        original = {LAYOUT: [['a', 4], ['b', 4]], SPOOLS: list(range(8)),
+                    sm.C.VARS_MMU_GATE_SELECTED: -2, sm.C.VARS_MMU_TOOL_SELECTED: -2}
+        history = sm.append_history(None, intent(['a', 'b'], ['left', 'right'],
+                    {'left': 'a', 'right': 'b'}, {'a': 4, 'b': 4}, {'left': 4, 'right': 3}))
+        result = sm.migrate_state(original, [['left', 4], ['right', 3]], {SPOOLS: [-1] * 7}, history)[0]
+        self.assertEqual(result[sm.C.VARS_MMU_GATE_SELECTED], -2)
+        self.assertEqual(result[sm.C.VARS_MMU_TOOL_SELECTED], -2)
+        self.assertEqual(result[SPOOLS], list(range(7)))
+
     def test_selection_follows_its_own_gate_not_other_gates(self):
         for counts, gate, tool, expected in (
                 ([4, 3], 0, 0, (0, 0)),
