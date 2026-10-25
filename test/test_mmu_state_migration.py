@@ -1,5 +1,17 @@
-# Happy Hare: installer intent and the complete startup migration transaction.
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Test installer intent and the complete startup state migration transaction
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 import copy
 import os
 import random

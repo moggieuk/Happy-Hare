@@ -1,4 +1,17 @@
-# Happy Hare test harness - persisted per-gate lists that don't match the gate count.
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Test preservation of persisted gate lists across unit and gate-count changes
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 #
 # Adding gates (a second unit, or more gates on a unit) without the installer migrating
 # mmu_vars.cfg leaves the saved lists short. Dropping them reset the gate map and, in
@@ -7,7 +20,6 @@
 # another unit's gate. Without it a gate's identity can't be established, so the lists
 # fall back to defaults as before.
 #
-# This file may be distributed under the terms of the GNU GPLv3 license.
 
 import ast
 import configparser

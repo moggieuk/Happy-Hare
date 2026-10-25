@@ -1,7 +1,19 @@
 # Happy Hare MMU Software
-# Saved-state migration shared by startup and the installer's intent recorder.
-# No Klipper or installer imports: migration is computed before staging any writes.
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Migrate saved MMU state at startup using explicit installer intent
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
+# Shared by startup and the installer; no Klipper or installer dependencies.
+# Compute the complete migration before staging any writes.
 
 import copy
 import re
