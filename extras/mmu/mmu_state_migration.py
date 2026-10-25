@@ -195,40 +195,40 @@ def _names(value):
             and all(isinstance(n, str) and n for n in value) and len(set(value)) == len(value))
 
 
-def validate_pending(pending):
+def validate_history(history):
     """Reject an incomplete/unknown journal before changing any live variables."""
-    if not isinstance(pending, dict) or pending.get("version") != 1:
-        raise ValueError("Unsupported pending MMU state migration version")
-    steps = pending.get("steps")
+    if not isinstance(history, dict) or history.get("version") != 1:
+        raise ValueError("Unsupported history MMU state migration version")
+    steps = history.get("steps")
     if not isinstance(steps, list) or not steps:
-        raise ValueError("Pending MMU state migration has no steps")
+        raise ValueError("Configured MMU state migration has no steps")
     ids, previous = set(), None
     for step in steps:
         if not isinstance(step, dict) or not _names(step.get("from")) or not _names(step.get("to")):
-            raise ValueError("Invalid unit names in pending MMU state migration")
+            raise ValueError("Invalid unit names in history MMU state migration")
         ident = step.get("id")
         if not isinstance(ident, str) or not ident or ident in ids:
-            raise ValueError("Invalid or duplicate pending MMU migration ID")
+            raise ValueError("Invalid or duplicate history MMU migration ID")
         ids.add(ident)
         if previous is not None and step["from"] != previous:
-            raise ValueError("Pending MMU state migrations do not form a continuous unit history")
+            raise ValueError("Configured MMU state migrations do not form a continuous unit history")
         previous = step["to"]
         origin = step.get("origin")
         if not isinstance(origin, dict) or set(origin) != set(step["to"]):
-            raise ValueError("Invalid pending MMU unit origins")
+            raise ValueError("Invalid history MMU unit origins")
         sources = [v for v in origin.values() if v is not None]
         if any(not isinstance(v, str) or v not in step["from"] for v in sources) or len(set(sources)) != len(sources):
-            raise ValueError("Invalid pending MMU unit origins")
+            raise ValueError("Invalid history MMU unit origins")
         for field, names in (("old_gates", step["from"]), ("new_gates", step["to"])):
             counts = step.get(field)
             if not isinstance(counts, dict) or set(counts) != set(names) or any(
                     n is not None and (type(n) is not int or n < 0) for n in counts.values()):
-                raise ValueError("Invalid gate counts in pending MMU state migration")
+                raise ValueError("Invalid gate counts in history MMU state migration")
         encoders = step.get("encoders")
         if not isinstance(encoders, dict) or any(
                 not isinstance(k, str) or not k or (v is not None and (not isinstance(v, str) or not v))
                 for k, v in encoders.items()):
-            raise ValueError("Invalid encoder names in pending MMU state migration")
+            raise ValueError("Invalid encoder names in history MMU state migration")
     return steps
 
 
@@ -239,23 +239,23 @@ def parse_history(value):
         raise ValueError("Invalid MMU state_migration history: %s" % e)
     if history in (None, {}):
         return None
-    validate_pending(history)
+    validate_history(history)
     return history
 
 
 def append_history(history, install):
     """Append one installer operation; retrying the same ID is idempotent."""
-    pending = parse_history(history) or {"version": 1, "steps": []}
+    updated = parse_history(history) or {"version": 1, "steps": []}
     step = {key: copy.deepcopy(install.get(key, {})) for key in INTENT_FIELDS}
     step["id"] = install.get("migration_id") or uuid.uuid4().hex
-    for existing in pending["steps"]:
+    for existing in updated["steps"]:
         if existing["id"] == step["id"]:
             if existing != step:
-                raise ValueError("Pending MMU migration ID was reused with different changes")
-            return pending
-    pending["steps"].append(step)
-    validate_pending(pending)
-    return pending
+                raise ValueError("MMU migration ID was reused with different changes")
+            return updated
+    updated["steps"].append(step)
+    validate_history(updated)
+    return updated
 
 
 def apply_history(variables, current_names, history):
@@ -266,50 +266,20 @@ def apply_history(variables, current_names, history):
         raise ValueError("Saved MMU migration checkpoint is missing from state_migration history; restore matching configuration and saved state")
     result = copy.deepcopy(variables)
     notes = []
-    # Accept the earlier PR's pending format entirely at runtime. The installer never
-    # needs to modify the variables file, including during this transition.
-    legacy = result.get(C.VARS_MMU_PENDING_MIGRATION)
-    if legacy is not None:
-        if checkpoint is not None:
-            raise ValueError("Legacy pending MMU migration conflicts with a saved config checkpoint")
-        steps = validate_pending(legacy)
-        legacy_id = steps[-1]["id"]
-        if history and legacy_id not in [s["id"] for s in history["steps"]]:
-            # Config history can start after an older pending install. Its initial
-            # layout must be the destination of that install.
-            if steps[-1]["to"] != history["steps"][0]["from"]:
-                raise ValueError("Legacy pending MMU migration conflicts with configured history")
-        elif history:
-            checkpoint = legacy_id
-        result, notes = apply_intents(result, steps[-1]["to"] if history else current_names)
     if not history:
         return result, notes
     steps = history["steps"]
     start = next((i + 1 for i, s in enumerate(steps) if s["id"] == checkpoint), 0)
     if start < len(steps):
-        result[C.VARS_MMU_PENDING_MIGRATION] = {"version": 1, "steps": steps[start:]}
-        result, messages = apply_intents(result, current_names)
-        notes.extend(messages)
+        if steps[-1]["to"] != current_names:
+            raise ValueError("Pending MMU migration does not match configured units; finish the installation before starting Klipper")
+        saved_layout = valid_layout(result.get(C.VARS_MMU_GATE_MAP_UNITS))
+        if saved_layout:
+            require_known_unit_changes([name for name, _ in saved_layout], steps[start]["from"])
+        for step in steps[start:]:
+            result, messages = migrate_unit_state(result, step)
+            notes.extend(messages)
     result[C.VARS_MMU_MIGRATION_APPLIED] = steps[-1]["id"]
-    return result, notes
-
-
-def apply_intents(variables, current_names):
-    """Replay unit identity changes on a private copy, retaining original gate-list order."""
-    result = copy.deepcopy(variables)
-    notes = []
-    if C.VARS_MMU_PENDING_MIGRATION not in result:
-        return result, notes
-    steps = validate_pending(result[C.VARS_MMU_PENDING_MIGRATION])
-    if steps[-1]["to"] != current_names:
-        raise ValueError("Pending MMU migration does not match configured units; finish the installation before starting Klipper")
-    saved_layout = valid_layout(result.get(C.VARS_MMU_GATE_MAP_UNITS))
-    if saved_layout:
-        require_known_unit_changes([name for name, _ in saved_layout], steps[0]["from"])
-    for step in steps:
-        result, messages = migrate_unit_state(result, step)
-        notes.extend(messages)
-    del result[C.VARS_MMU_PENDING_MIGRATION]
     return result, notes
 
 
@@ -414,7 +384,7 @@ def migrate_state(variables, current_layout, defaults, history=None):
                     if gate not in positions.values() or fitted[var][gate] is None:
                         fitted[var][gate], next_group = next_group, next_group + 1
     # Save the checkpoint with the migrated values, so a retry cannot apply a
-    # completed config history twice. Legacy pending intent is consumed here too.
+    # completed config history twice.
     result.update(fitted)
     result[C.VARS_MMU_GATE_MAP_UNITS] = current_layout
     return result, errors, notes

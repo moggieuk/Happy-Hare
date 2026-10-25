@@ -632,7 +632,7 @@ def trim_history(kconfig, history):
     except (OSError, UnicodeError, configparser.Error, ValueError, SyntaxError):
         return history
     checkpoint = variables.get(state_migration.C.VARS_MMU_MIGRATION_APPLIED)
-    if not isinstance(checkpoint, str) or state_migration.C.VARS_MMU_PENDING_MIGRATION in variables:
+    if not isinstance(checkpoint, str):
         return history
     for index, step in enumerate(history["steps"]):
         if step["id"] == checkpoint:

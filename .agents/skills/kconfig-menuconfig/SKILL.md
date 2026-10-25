@@ -81,8 +81,8 @@ Load-bearing facts about the flow:
   invalidates obsolete selections, and stages the current layout before calibration
   or selector recovery. The checkpoint and migrated state use the same saved snapshot;
   failed saves retry, completed migrations never replay. A checkpoint absent from
-  configured history is an error. The earlier variables-file pending intent format
-  remains readable at runtime for upgrades from earlier versions of this PR.
+  configured history is an error. Migration intent lives only in configuration;
+  saved variables contain the applied checkpoint and current gate layout.
   Unrecorded changes with both disappearing and unfamiliar unit names are rejected
   before mutations; empty-name removal markers are excluded. Recorded renames remain
   automatic. Failed baseline/check/preparation/history verification stops installation

@@ -26,7 +26,6 @@ install()
 from test.test_mmu_persisted_gate_lists import read_vars_file, write_vars_file
 from extras.mmu import mmu_state_migration as sm
 
-PENDING = sm.C.VARS_MMU_PENDING_MIGRATION
 SPOOLS = sm.C.VARS_MMU_GATE_SPOOL_ID
 LAYOUT = sm.C.VARS_MMU_GATE_MAP_UNITS
 
@@ -34,13 +33,6 @@ LAYOUT = sm.C.VARS_MMU_GATE_MAP_UNITS
 def intent(frm, to, origin, old, new, ident='install-1', encoders=None):
     return dict(zip(('from', 'to', 'origin', 'old_gates', 'new_gates', 'migration_id', 'encoders'),
                     (frm, to, origin, old, new, ident, encoders or {})))
-
-
-def queue_migration(variables, operation):
-    """Build the old pending format only for compatibility test fixtures."""
-    result = copy.deepcopy(variables)
-    result[PENDING] = sm.append_history(result.get(PENDING), operation)
-    return result, []
 
 
 def rename_intent():
@@ -58,47 +50,47 @@ def source_vars():
 
 class TestIntentJournal(unittest.TestCase):
     def test_history_append_is_immutable_and_retry_is_idempotent(self):
-        original = source_vars()
-        queued, _ = queue_migration(original, rename_intent())
-        self.assertEqual({k: v for k, v in queued.items() if k != PENDING}, original)
-        self.assertNotIn(PENDING, original)
-        self.assertEqual(queue_migration(queued, rename_intent())[0], queued)
+        history = sm.append_history(None, rename_intent())
+        before = copy.deepcopy(history)
+        self.assertEqual(sm.append_history(history, rename_intent()), history)
         conflicting = rename_intent()
         conflicting['new_gates']['unit0'] = 5
         with self.assertRaises(ValueError):
-            queue_migration(queued, conflicting)
+            sm.append_history(history, conflicting)
+        self.assertEqual(history, before)
 
     def test_malformed_or_discontinuous_history_is_rejected_without_changes(self):
-        queued, _ = queue_migration(source_vars(), rename_intent())
-        before = copy.deepcopy(queued)
+        history = sm.append_history(None, rename_intent())
+        before = copy.deepcopy(history)
+        original = source_vars()
         bad = intent(['other'], ['unit1'], {'unit1': 'other'}, {'other': 4}, {'unit1': 4}, 'install-2')
         with self.assertRaises(ValueError):
-            queue_migration(queued, bad)
-        self.assertEqual(queued, before)
+            sm.append_history(history, bad)
+        self.assertEqual(history, before)
         for change in (lambda p: p.update(version=99),
                        lambda p: p['steps'][0]['origin'].update(unit0='missing'),
                        lambda p: p['steps'][0]['old_gates'].update(old=-1)):
-            invalid = copy.deepcopy(queued)
-            change(invalid[PENDING])
+            invalid = copy.deepcopy(history)
+            change(invalid)
             snapshot = copy.deepcopy(invalid)
             with self.assertRaises(ValueError):
-                sm.migrate_state(invalid, [['unit0', 4]], {SPOOLS: [-1] * 4})
+                sm.migrate_state(original, [['unit0', 4]], {SPOOLS: [-1] * 4}, invalid)
             self.assertEqual(invalid, snapshot)
+            self.assertEqual(original, source_vars())
         with self.assertRaises(ValueError):
-            sm.migrate_state(queued, [['wrong_config', 4]], {SPOOLS: [-1] * 4})
+            sm.migrate_state(original, [['wrong_config', 4]], {SPOOLS: [-1] * 4}, history)
 
     def test_deleted_unit_name_reused_for_new_unit_does_not_inherit_state(self):
         v = {LAYOUT: [['a', 2], ['b', 2]], SPOOLS: [10, 11, 20, 21],
              'mmu_a_bowden_lengths': [500, 500], 'mmu_b_bowden_lengths': [600, 600]}
-        v, _ = queue_migration(v, intent(['a', 'b'], ['b'], {'b': 'b'},
+        history = sm.append_history(None, intent(['a', 'b'], ['b'], {'b': 'b'},
                                            {'a': 2, 'b': 2}, {'b': 2}))
-        v, _ = queue_migration(v, intent(['b'], ['a', 'b'], {'a': None, 'b': 'b'},
+        history = sm.append_history(history, intent(['b'], ['a', 'b'], {'a': None, 'b': 'b'},
                                            {'b': 2}, {'a': 2, 'b': 2}, 'install-2'))
-        result, _, _ = sm.migrate_state(v, [['a', 2], ['b', 2]], {SPOOLS: [-1] * 4})
+        result, _, _ = sm.migrate_state(v, [['a', 2], ['b', 2]], {SPOOLS: [-1] * 4}, history)
         self.assertEqual(result[SPOOLS], [-1, -1, 20, 21])
         self.assertNotIn('mmu_a_bowden_lengths', result)
         self.assertEqual(result['mmu_b_bowden_lengths'], [600, 600])
-        self.assertNotIn(PENDING, result)
 
     def test_composed_installs_follow_identity_through_rename_reuse_and_resize(self):
         rng = random.Random(1453)
@@ -108,6 +100,7 @@ class TestIntentJournal(unittest.TestCase):
             v = {LAYOUT: [[n, c] for n, c, _ in units], SPOOLS: list(range(5))}
             if case % 2:
                 del v[LAYOUT]
+            history = None
             surviving = set(original)
             for step in range(5):
                 before = list(units)
@@ -134,13 +127,12 @@ class TestIntentJournal(unittest.TestCase):
                     name, _, token = units[i]
                     units[i] = (name, rng.randint(1, 5), token)
                 surviving.intersection_update((token, local) for _, count, token in units for local in range(count))
-                v, _ = queue_migration(v, intent(
+                history = sm.append_history(history, intent(
                     [n for n, _, _ in before], [n for n, _, _ in units], origin,
                     {n: c for n, c, _ in before}, {n: c for n, c, _ in units}, str(step)))
             final = [(token, local) for _, count, token in units for local in range(count)]
             expected = [original.index(identity) if identity in surviving else -1 for identity in final]
             layout = [[n, c] for n, c, _ in units]
-            history = v.pop(PENDING)
             actual, _, _ = sm.migrate_state(v, layout, {SPOOLS: [-1] * len(final)}, history)
             self.assertEqual(actual[SPOOLS], expected, 'sequence %d' % case)
             self.assertEqual(sm.migrate_state(actual, layout, {SPOOLS: [-1] * len(final)}, history)[0], actual)
@@ -164,7 +156,6 @@ class TestStartupTransaction(unittest.TestCase):
         return hh
 
     def assert_migrated(self, saved):
-        self.assertNotIn(PENDING, saved)
         self.assertEqual(saved[sm.C.VARS_MMU_MIGRATION_APPLIED], self.history['steps'][-1]['id'])
         self.assertNotIn('mmu_old_gear_rotation_distances', saved)
         self.assertEqual(saved['mmu_unit0_gear_rotation_distances'][:3], [22.0, 23.0, 24.0])
@@ -291,19 +282,19 @@ class TestUnrecordedRename(unittest.TestCase):
 
     def test_pending_append_cannot_hide_an_earlier_unrecorded_rename(self):
         original = {LAYOUT: [['old', 4]], SPOOLS: [5, 6, 7, 8]}
-        queued, _ = queue_migration(original, intent(
+        history = sm.append_history(None, intent(
             ['unit0'], ['unit0', 'unit1'], {'unit0': 'unit0', 'unit1': None},
             {'unit0': 4}, {'unit0': 4, 'unit1': 4}))
-        before = copy.deepcopy(queued)
+        before = copy.deepcopy(original)
         with self.assertRaisesRegex(ValueError, 'Unrecorded'):
-            sm.migrate_state(queued, [['unit0', 4], ['unit1', 4]], {SPOOLS: [-1] * 8})
-        self.assertEqual(queued, before)
+            sm.migrate_state(original, [['unit0', 4], ['unit1', 4]], {SPOOLS: [-1] * 8}, history)
+        self.assertEqual(original, before)
 
     def test_explicit_replacement_and_tombstones_do_not_inherit_state(self):
         original = {LAYOUT: [['old', 4]], SPOOLS: [5, 6, 7, 8]}
-        queued, _ = queue_migration(original, intent(
+        history = sm.append_history(None, intent(
             ['old'], ['unit0'], {'unit0': None}, {'old': 4}, {'unit0': 4}))
-        result, _, _ = sm.migrate_state(queued, [['unit0', 4]], {SPOOLS: [-1] * 4})
+        result, _, _ = sm.migrate_state(original, [['unit0', 4]], {SPOOLS: [-1] * 4}, history)
         self.assertEqual(result[SPOOLS], [-1] * 4)
         original[LAYOUT] = [['', 4]]
         result, _, _ = sm.migrate_state(original, [['unit0', 4]], {SPOOLS: [-1] * 4})
@@ -332,7 +323,6 @@ class TestConfigCheckpoint(unittest.TestCase):
         result = self.migrate(self.original, self.both, 'c')
         self.assertEqual(result['mmu_c_bowden_lengths'], [10, 20])
         self.assertEqual(result[SPOOLS], [5, 6])
-        self.assertNotIn(PENDING, result)
 
     def test_missing_or_replaced_history_rejects_saved_checkpoint(self):
         migrated = self.migrate(self.original, self.both, 'c')
@@ -341,25 +331,6 @@ class TestConfigCheckpoint(unittest.TestCase):
             with self.subTest(history=history), self.assertRaisesRegex(ValueError, 'checkpoint is missing'):
                 self.migrate(migrated, history, 'c')
         self.assertEqual(migrated, snapshot)
-
-    def test_legacy_intent_can_precede_config_history(self):
-        legacy, _ = queue_migration(self.original, intent(['a'], ['b'], {'b': 'a'}, {'a': 2}, {'b': 2}))
-        suffix = {'version': 1, 'steps': self.both['steps'][1:]}
-        result = self.migrate(legacy, suffix, 'c')
-        self.assertEqual(result['mmu_c_bowden_lengths'], [10, 20])
-        self.assertNotIn(PENDING, result)
-
-    def test_legacy_intent_already_in_config_history_is_not_replayed(self):
-        legacy, _ = queue_migration(self.original, intent(['a'], ['b'], {'b': 'a'}, {'a': 2}, {'b': 2}))
-        result = self.migrate(legacy, self.both, 'c')
-        self.assertEqual(result['mmu_c_bowden_lengths'], [10, 20])
-        self.assertEqual(result[sm.C.VARS_MMU_MIGRATION_APPLIED], 'install-2')
-
-    def test_legacy_intent_with_a_config_checkpoint_is_rejected(self):
-        result = self.migrate(self.original, self.both, 'c')
-        result[PENDING] = self.first
-        with self.assertRaisesRegex(ValueError, 'conflicts with a saved config checkpoint'):
-            self.migrate(result, self.both, 'c')
 
     def test_empty_variables_initialize_to_current_configuration(self):
         result = self.migrate({}, self.both, 'c')
