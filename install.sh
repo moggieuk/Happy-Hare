@@ -165,10 +165,6 @@ review_unit_changes() {
     11)
         F_UNITS_RESTRUCTURED=y
         echo
-        if [ -n "${F_NO_SERVICE:-}" ] &&
-           prompt_yn "Service restarts are skipped so Klipper must be stopped first. Is it stopped"; then
-            return 1
-        fi
         if prompt_yn "Apply these unit changes"; then
             return 1
         fi

@@ -354,9 +354,9 @@ def migrate_state(variables, current_layout, defaults, history=None):
     fitted = {}
     for var, default in defaults.items():
         saved = result.get(var)
-        fitted[var] = list(default)
         if saved is None:
             continue
+        fitted[var] = list(default)
         if not isinstance(saved, list):
             errors.append("Invalid value specified with %s" % var)
             continue

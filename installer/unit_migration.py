@@ -423,7 +423,13 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
     if not plan.changed():
         return EXIT_NONE
 
-    if not plan.captured:
+    installed_values = read_kconfig(os.path.join(config_home, "mmu", ".mmu_config")) if config_home else {}
+    was_multi = installed_values.get("MULTI_UNIT", "n") if installed_values else None
+    mode_conversion = (plan.single and len(plan.baseline) > 1) or (
+        was_multi in ("y", "n") and (was_multi == "y") == plan.single)
+    # An explicit single/multi conversion is not an inferred rename. The normal
+    # Replace confirmation warns that unfamiliar names start as new units.
+    if not plan.captured and not mode_conversion:
         try:
             state_migration.require_known_unit_changes(plan.baseline, plan.current)
         except ValueError as e:
@@ -737,7 +743,7 @@ def apply(kconfig, out=sys.stdout):
     install = (state or {}).get("install")
     if state:
         home = install["config_home"] if install else read_kconfig(kconfig).get("KLIPPER_CONFIG_HOME")
-        actual = installed_option(home, "mmu.cfg", "mmu_machine", "state_migration") if home else None
+        actual = installed_option(os.path.expanduser(home), "mmu.cfg", "mmu_machine", "state_migration") if home else None
         if state_migration.parse_history(actual) != state.get("history"):
             raise ValueError("Installed mmu.cfg does not contain the prepared migration history; retry install")
     if install:

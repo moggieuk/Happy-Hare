@@ -205,6 +205,8 @@ class TestStartupTransaction(unittest.TestCase):
         hh.boot(gates_loaded_at=-40.0)
         hh.reactor.advance(1.0)
         maps = hh.mmu.gate_maps
+        hh.mmu.var_manager.set(sm.C.VARS_MMU_TOOL_TO_GATE_MAP, maps.ttg_map)
+        hh.mmu.var_manager.set(sm.C.VARS_MMU_ENDLESS_SPOOL_GROUPS, maps.endless_spool_groups)
         maps.load_persisted_state()
         for key, attr in ((SPOOLS, 'gate_spool_id'),
                           (sm.C.VARS_MMU_TOOL_TO_GATE_MAP, 'ttg_map'),
@@ -332,9 +334,20 @@ class TestConfigCheckpoint(unittest.TestCase):
                 self.migrate(migrated, history, 'c')
         self.assertEqual(migrated, snapshot)
 
+    def test_unsaved_lists_continue_to_follow_changed_defaults(self):
+        defaults = {SPOOLS: [1, 2], sm.C.VARS_MMU_TOOL_TO_GATE_MAP: [1, 0],
+                    sm.C.VARS_MMU_ENDLESS_SPOOL_GROUPS: [3, 3]}
+        result = sm.migrate_state({}, [['a', 2]], defaults)[0]
+        for key in defaults:
+            self.assertNotIn(key, result)
+        changed = {key: list(reversed(value)) for key, value in defaults.items()}
+        again = sm.migrate_state(result, [['a', 2]], changed)[0]
+        for key in defaults:
+            self.assertNotIn(key, again)
+
     def test_empty_variables_initialize_to_current_configuration(self):
         result = self.migrate({}, self.both, 'c')
-        self.assertEqual(result[SPOOLS], [-1, -1])
+        self.assertNotIn(SPOOLS, result)
         self.assertEqual(result[LAYOUT], [['c', 2]])
         self.assertEqual(result[sm.C.VARS_MMU_MIGRATION_APPLIED], 'install-2')
 

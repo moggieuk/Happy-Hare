@@ -119,10 +119,15 @@ class MmuGateMaps:
         errors, self._migration_errors = self._migration_errors, []
         var_manager = self.mmu.var_manager
         self.endless_spool_enabled = var_manager.get(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
-        self.endless_spool_groups = list(var_manager.get(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
-        self.ttg_map = list(var_manager.get(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
-        for var, attr, _ in self._gate_map_vars:
-            setattr(self, attr, list(var_manager.get(var, getattr(self, attr))))
+        lists = [(VARS_MMU_ENDLESS_SPOOL_GROUPS, 'endless_spool_groups'),
+                 (VARS_MMU_TOOL_TO_GATE_MAP, 'ttg_map')]
+        lists.extend((var, attr) for var, attr, _ in self._gate_map_vars)
+        for var, attr in lists:
+            value = var_manager.get(var, getattr(self, attr))
+            if isinstance(value, list) and len(value) == self.num_gates:
+                setattr(self, attr, list(value))
+            else:
+                errors.append("Invalid value or incorrect number of gates specified with %s" % var)
         self.update_gate_color_rgb()
         if self._migration_notes:
             self.mmu.log_warning("Warning: Persisted gate lists / unit state migrated:\n%s" % "\n".join(self._migration_notes))

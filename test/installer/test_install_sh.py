@@ -878,11 +878,12 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("RESTRUCTURED=\n", self.review_units(10))
         self.assertIn("RESULT=stop", self.review_units(11, stdin="n\n"))
 
-    def test_unit_review_skipped_restarts_need_klipper_stopped(self):
-        out = self.review_units(11, stdin="n\n", F_NO_SERVICE="y")
-        self.assertIn("Is it stopped", out)
-        self.assertIn("RESULT=stop", out)
-        self.assertIn("RESULT=go", self.review_units(11, stdin="y\ny\n", F_NO_SERVICE="y"))
+    def test_unit_review_skipped_restarts_only_confirms_unit_changes(self):
+        out = self.review_units(11, stdin="y\n", F_NO_SERVICE="y")
+        self.assertNotIn("Is it stopped", out)
+        self.assertIn("Apply these unit changes", out)
+        self.assertIn("RESULT=go", out)
+        self.assertIn("RESULT=stop", self.review_units(11, stdin="n\n", F_NO_SERVICE="y"))
 
     def test_unit_migration_runs_from_the_repo(self):
         kconfig = self.write(self.root / ".mmu_config",

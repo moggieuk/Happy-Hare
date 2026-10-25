@@ -114,6 +114,21 @@ class TestSingleUnitWithoutAMatchingList(PersistedGateListsTestCase):
 
 class TestInvalidPersistedValues(PersistedGateListsTestCase):
 
+    def test_reloading_runtime_lists_rejects_malformed_values(self):
+        self.boot('nfc_spoolman', {})
+        maps = self.mmu.gate_maps
+        for key, attr in (('mmu_state_tool_to_gate_map', 'ttg_map'),
+                          ('mmu_state_endless_spool_groups', 'endless_spool_groups'),
+                          ('mmu_state_gate_spool_id', 'gate_spool_id')):
+            for invalid in ([99], 'xxxx', 42):
+                with self.subTest(key=key, invalid=invalid):
+                    before = list(getattr(maps, attr))
+                    self.mmu.var_manager.set(key, invalid)
+                    errors = maps.load_persisted_state()
+                    self.assertEqual(getattr(maps, attr), before)
+                    self.assertTrue(any(key in error for error in errors))
+                    self.mmu.var_manager.set(key, before)
+
     def test_out_of_range_tool_to_gate_entries_use_the_default(self):
         self.boot('nfc_spoolman', {'mmu_state_tool_to_gate_map': [-10, 1, 2, 9]})
         self.assertEqual(self.mmu.ttg_map, [0, 1, 2, 3])

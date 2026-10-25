@@ -139,6 +139,46 @@ class Scratch(unittest.TestCase):
 
 
 class TestConfigHistory(Scratch):
+    def test_reinstall_with_history_expands_config_home(self):
+        self.test_history_survives_chained_installs_and_plain_reinstall()
+        history = self.history()
+        with open(self.kconfig, 'a') as handle:
+            handle.write('CONFIG_KLIPPER_CONFIG_HOME="~/config"\n')
+        um.prepare(self.kconfig, self.home, ['c'], io.StringIO())
+        self.publish_history()
+        with patch('os.path.expanduser', side_effect=lambda path: self.home if path == '~/config' else path):
+            self.assertEqual(um.main(['apply', '--kconfig', self.kconfig]), um.EXIT_NONE)
+        self.assertEqual(self.history(), history)
+        self.assertIsNone(um.read_state(self.kconfig))
+
+    def test_mode_conversions_in_replace_record_new_unit_identity(self):
+        for was_multi, baseline, current in ((True, ['a', 'b'], ['mmu']),
+                                             (False, ['unit0'], ['a', 'b'])):
+            with self.subTest(was_multi=was_multi):
+                self.install(baseline, variables={'mmu_state_gate_spool_id': [5] * (4 * len(baseline))})
+                self.write(os.path.join(self.home, 'mmu', '.mmu_config'),
+                           'CONFIG_MULTI_UNIT=y\n' if was_multi else
+                           '# CONFIG_MULTI_UNIT is not set\nCONFIG_UNIT_NAME="unit0"\n')
+                if was_multi:
+                    self.write(self.kconfig, 'CONFIG_UNIT_NAME="mmu"\nCONFIG_PARAM_NUM_GATES=4\n')
+                else:
+                    self.top(','.join(current))
+                    for unit in current:
+                        self.unit(unit)
+                code, output = self.check('replace', base=baseline)
+                self.assertEqual(code, um.EXIT_STRUCTURAL, output)
+                self.assertIn('treated as new', output)
+                self.assertNotEqual(self.check('refresh', base=baseline)[0], um.EXIT_STRUCTURAL)
+                um.prepare(self.kconfig, self.home, baseline, io.StringIO())
+                history = sm.parse_history(self.kvalues()['PARAM_STATE_MIGRATION'])
+                self.assertEqual(history['steps'][-1]['origin'], {name: None for name in current})
+                migrated = sm.migrate_state(read_vars(self.vars_file), [[name, 4] for name in current],
+                                            {'mmu_state_gate_spool_id': [-1] * (4 * len(current))}, history)[0]
+                self.assertEqual(migrated['mmu_state_gate_spool_id'], [-1] * (4 * len(current)))
+                um.clear_state(self.kconfig)
+                # Each scenario represents a separate original installation.
+                self.write(um._base(self.home, 'mmu.cfg'), '[mmu_machine]\nunits: unit0\n')
+
     def test_fresh_and_parameter_only_installs_have_no_history(self):
         self.top('a')
         self.unit('a')
