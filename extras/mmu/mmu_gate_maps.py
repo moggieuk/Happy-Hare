@@ -80,6 +80,8 @@ class MmuGateMaps:
         # attribution. gate_spool_rfid remains the single UID physically observed
         # at the gate; this cache contains every UID registered to its spool.
         self.gate_spool_rfid_aliases = [tuple() for _ in range(self.num_gates)]
+        self._migration_errors = []
+        self._migration_notes = []
         self.update_gate_color_rgb()
 
         # Helper RGB map used by slicer color projection / UI / LEDs
@@ -114,32 +116,22 @@ class MmuGateMaps:
         Returns:
             List[str]: any validation / length / sanity warnings encountered
         """
-        errors = []
+        errors, self._migration_errors = self._migration_errors, []
         var_manager = self.mmu.var_manager
-
-        # Load EndlessSpool config
         self.endless_spool_enabled = var_manager.get(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
-        endless_spool_groups = var_manager.get(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
-        if len(endless_spool_groups) == self.num_gates:
-            self.endless_spool_groups = endless_spool_groups
-        else:
-            errors.append("Incorrect number of gates specified in %s" % VARS_MMU_ENDLESS_SPOOL_GROUPS)
-
-        # Load TTG map
-        tool_to_gate_map = var_manager.get(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
-        if len(tool_to_gate_map) == self.num_gates:
-            self.ttg_map = tool_to_gate_map
-        else:
-            errors.append("Incorrect number of gates specified in %s" % VARS_MMU_TOOL_TO_GATE_MAP)
-
-        # Load gate map
-        for var, attr, _ in self._gate_map_vars:
+        lists = [(VARS_MMU_ENDLESS_SPOOL_GROUPS, 'endless_spool_groups'),
+                 (VARS_MMU_TOOL_TO_GATE_MAP, 'ttg_map')]
+        lists.extend((var, attr) for var, attr, _ in self._gate_map_vars)
+        for var, attr in lists:
             value = var_manager.get(var, getattr(self, attr))
-            if len(value) == self.num_gates:
-                setattr(self, attr, value)
+            if isinstance(value, list) and len(value) == self.num_gates:
+                setattr(self, attr, list(value))
             else:
-                errors.append("Incorrect number of gates specified with %s" % var)
+                errors.append("Invalid value or incorrect number of gates specified with %s" % var)
         self.update_gate_color_rgb()
+        if self._migration_notes:
+            self.mmu.log_warning("Warning: Persisted gate lists / unit state migrated:\n%s" % "\n".join(self._migration_notes))
+            self._migration_notes = []
 
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
@@ -163,6 +155,10 @@ class MmuGateMaps:
         self.ensure_ttg_match()                    # Ensure tool/gate consistency. Will change tool if necessary
 
         return errors
+
+
+    def current_layout(self):
+        return [[unit.name, unit.num_gates] for unit in self.mmu.mmu_machine.units]
 
 
     def persist_ttg_map(self):
@@ -239,6 +235,7 @@ class MmuGateMaps:
         self.mmu.var_manager.set(VARS_MMU_GATE_SPOOL_RFID, self.gate_spool_rfid)
         self.mmu.var_manager.set(VARS_MMU_GATE_REMAINING_WEIGHT, self.gate_remaining_weight)
         self.mmu.var_manager.set(VARS_MMU_GATE_INITIAL_WEIGHT, self.gate_initial_weight)
+        self.mmu.var_manager.set(VARS_MMU_GATE_MAP_UNITS, self.current_layout())
         self.mmu.var_manager.write()
         self.update_t_macros()
 

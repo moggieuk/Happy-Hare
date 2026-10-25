@@ -55,6 +55,24 @@ class SaveVariablesMixin:
         return hh
 
 
+class TestDictionaryPersistence(SaveVariablesMixin, unittest.TestCase):
+    def test_nested_dictionary_survives_disk_save_and_reload(self):
+        value = {'units': [['left', 4], ['right', 8]],
+                 'migration_applied': 'example-id',
+                 'nested': {'enabled': False, 'optional': None, 'distance': 12.5,
+                            'label': "left's spool"}}
+        for aio in (False, True):
+            with self.subTest(klipper_aio=aio):
+                hh = self.booted(klipper_aio=aio)
+                hh.mmu.var_manager.set('mmu_dictionary_test', value, write=True)
+                hh.reactor.advance(0.)
+                self.assertEqual(read_vars_file(hh)['mmu_dictionary_test'], value)
+                hh.save_variables.allVariables.clear()
+                hh.save_variables.loadVariables()
+                self.assertEqual(hh.save_variables.allVariables['mmu_dictionary_test'], value)
+                self.assertEqual(hh.errors, [])
+
+
 class TestPauseWindowRace(SaveVariablesMixin, unittest.TestCase):
     """
     L1 - a mutation that lands while SAVE_VARIABLE is paused on its worker thread.

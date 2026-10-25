@@ -7643,17 +7643,19 @@ def _locs(sc):
 
 
 def _hidden_policy(sym):
-    # What to save for a symbol whose prompt is hidden: "default" under a
+    # What to save for a hidden or promptless symbol: "default" under a
     # 'default_when_hidden' node, "keep" under a 'keep_when_hidden' node (the
-    # nearest one wins), else None. Symbols without a prompt have no policy
-    if sym.visibility or not any(node.prompt for node in sym.nodes):
+    # nearest one wins), else None. Only "keep" applies to promptless symbols;
+    # their calculated defaults retain the normal save behavior otherwise.
+    if sym.visibility:
         return None
+    has_prompt = any(node.prompt for node in sym.nodes)
     for node in sym.nodes:
         while node is not None:
             if hasattr(node, "keep_when_hidden"):
                 return "keep"
             if hasattr(node, "default_when_hidden"):
-                return "default"
+                return "default" if has_prompt else None
             node = node.parent
     return None
 

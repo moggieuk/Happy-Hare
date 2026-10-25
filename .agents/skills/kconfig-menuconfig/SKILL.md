@@ -65,9 +65,30 @@ Load-bearing facts about the flow:
   (only appending is allowed outside Replace mode, except before anything is
   installed), `kconfig` (renames/rewrites
   `.mmu_config_<unit>` before the per-unit menuconfig), `prepare` and `apply`
-  (in `make install`, Klipper stopped: retire old unit files, rename unit
-  keys and move global gate lists in the save_variables file). Its progress
-  lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
+  (`prepare` captures installed history and appends an operation; `apply` verifies
+  the installed history and retires old unit files). `PARAM_STATE_MIGRATION` is a
+  hidden, `keep_when_hidden`, installer-owned symbol rendered as `state_migration`
+  in `[mmu_machine]` in `mmu.cfg`. Refresh copy-back and cfg import must not overwrite
+  it, and Kconfig name rewriting must never rewrite historical identities inside it.
+  The installer optionally reads only the variables path in `PARAM_MMU_VARS_CFG`
+  (expanding `~`), never writes it, and never searches printer configuration files.
+  A valid matching checkpoint trims older history, retaining the checkpoint entry
+  and all pending changes. Missing/invalid files or unmatched checkpoints leave
+  history intact. Multiple installs before Klipper starts remain supported.
+  At config load, `extras/mmu/mmu_state_migration.py` applies only history after the
+  `mmu_state_migration_applied` checkpoint in Klipper's actual save_variables object.
+  It renames/removes unit and encoder keys, remaps sensor disables and gate lists,
+  invalidates obsolete selections, and stages the current layout before calibration
+  or selector recovery. The checkpoint and migrated state use the same saved snapshot;
+  failed saves retry, completed migrations never replay. A checkpoint absent from
+  configured history is an error. Migration intent lives only in configuration;
+  saved variables contain the applied checkpoint and current gate layout.
+  Unrecorded changes with both disappearing and unfamiliar unit names are rejected
+  before mutations; empty-name removal markers are excluded. Recorded renames remain
+  automatic. Failed baseline/check/preparation/history verification stops installation
+  before restart. Stable operation IDs and `.mmu_config.unit_migration` retain retry
+  information until the installed template is verified. History is not pruned: the
+  installer cannot know which operations have been applied without reading saved state.
   A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
   name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT` and
   `F_UNITS_RESTRUCTURE=y` (Replace mode or a first install, the same rule as
@@ -448,7 +469,8 @@ in this repo:
    normalize with `TRI_TO_STR`. The write side has the same trap: saving
    writes a hidden symbol's default, losing a customization when its parent
    is off. `keep_when_hidden` (extension catalog item 25) saves the user value
-   instead, for options whose hidden value isn't imposed.
+   instead, including promptless symbols, for options whose hidden value isn't imposed.
+   Without an assigned user value, calculated defaults remain unchanged.
 3. **`#~DEFAULT~#` is live syntax** inside `.mmu_config`. `saved-config-value`
    (a kconfiglib preprocessor function, `kconfigfunctions.py`, cached by
    mtime+size) and the load path both parse it. Tooling that rewrites value

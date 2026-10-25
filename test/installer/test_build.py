@@ -188,11 +188,11 @@ class TestUnitListRefresh(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.installed = self.build("replace", "unit0", [])
 
-    def build(self, mode, units, input_files):
+    def build(self, mode, units, input_files, history="{}"):
         out = tempfile.mkdtemp(dir=self.tmp.name)
         dest = os.path.join(out, "mmu.cfg")
         with cfg._env(dict(self.MULTI_UNIT_ENV, UNIT_NAME=units)):
-            kconfig = cfg._kconfig("unit-list-refresh", {"MMU_UNITS": units})
+            kconfig = cfg._kconfig("unit-list-refresh", {"MMU_UNITS": units, "PARAM_STATE_MIGRATION": history})
         from installer import build
         with cfg._env(dict(self.MULTI_UNIT_ENV, OUT=out, F_CFG_UPGRADE_MODE=mode)), \
                 cfg._chdir(cfg.REPO_ROOT):
@@ -205,6 +205,25 @@ class TestUnitListRefresh(unittest.TestCase):
             with self.subTest(mode=mode):
                 built = self.build(mode, "unit0,unit1", [self.installed])
                 self.assertEqual(ConfigBuilder(built).get("mmu_machine", "units"), "unit0,unit1")
+
+    def test_empty_migration_history_is_omitted(self):
+        for mode in ('refresh', 'merge', 'replace'):
+            with self.subTest(mode=mode):
+                rendered = self.build(mode, 'unit0', [self.installed])
+                with open(rendered) as handle:
+                    content = handle.read()
+                self.assertNotIn('state_migration', content)
+                self.assertNotIn('Installer-owned migration history', content)
+
+    def test_migration_history_is_template_owned_in_refresh_and_replace(self):
+        old = "{'version': 1, 'steps': ['old']}"
+        new = "{'version': 1, 'steps': ['old', 'new']}"
+        installed = self.build('replace', 'unit0', [], old)
+        for mode in ('refresh', 'replace'):
+            with self.subTest(mode=mode):
+                rendered = self.build(mode, 'unit0', [installed], new)
+                self.assertEqual(ConfigBuilder(rendered).get('mmu_machine', 'state_migration'), new)
+
 
 
 class _HardwareRefresh(unittest.TestCase):

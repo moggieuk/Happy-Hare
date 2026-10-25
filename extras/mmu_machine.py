@@ -31,6 +31,7 @@ try:
     from .mmu.mmu_sensor_utils       import MmuSensorFactory
     from .mmu.mmu_machine_parameters import MmuMachineParameters
     from .mmu.mmu_controller         import MmuController
+    from .mmu.mmu_state_migration    import stage_migration
 except Exception as e:
     _IMPORT_ERROR = e
 
@@ -144,6 +145,12 @@ class MmuMachine:
         # Create efficient and namespaced save variable management
         self.var_manager = SaveVariableManager(c, self)
         logging.info("MMU: Created SaveVariableManager")
+
+        # Normalize all saved state before calibration or selector recovery can read it.
+        try:
+            stage_migration(self, config.get("state_migration", "{}"))
+        except ValueError as e:
+            raise config.error(str(e))
 
 
     def reinit(self):
