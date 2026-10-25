@@ -138,6 +138,12 @@ class MmuSyncFeedback:
             self.ctrl._current_log_file = self._telemetry_log_path()
             self.ctrl._init_log()
 
+        # Likewise rebase correction on the rd calibrated now (may have been autotune-saved last print)
+        if self.active and self.ctrl is not None:
+            self._rd_start = self.mmu_unit.calibrator.get_gear_rd()
+            rd_tuned = self.ctrl.autotune.get_tuned_rd()
+            self.rd_correction = round((rd_tuned - self._rd_start) / self._rd_start * 100., 2)
+
 
     def is_enabled(self):
         """

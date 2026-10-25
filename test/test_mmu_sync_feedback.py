@@ -704,6 +704,18 @@ class TestAutotunedRd(unittest.TestCase):
             save.assert_called_once_with(0, target)
         self.assertEqual(sum('Autotune summary' in line for line in self.hh.console), 1)
 
+    def test_next_print_rebases_correction_on_saved_rd(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 1
+        target = self.unit.calibrator.get_gear_rd(0) * 1.02
+        self.sf.ctrl.autotune._autotune_baseline = target
+        self.process(autotune={'rd': target, 'note': '', 'save': True})
+        self.assertEqual(self.sf.rd_correction, 2.)
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.assertTrue(self.sf.active)
+        self.assertEqual(self.sf.rd_correction, 0.)
+
     def test_print_end_keeps_autotune_disabled_on_loaded_gate(self):
         self.start_loaded_print()
         self.unit.p.autotune_rotation_distance = 0
