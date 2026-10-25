@@ -618,7 +618,8 @@ class MmuCalibrator:
     def get_autotune_summary(self):
         """
         Returns list of compact "before -> after" lines, one per gate (plus encoder), for
-        autotuned settings that actually changed
+        autotuned settings that actually changed. Consecutive gates with identical changes
+        (e.g. shared rotation_distance) are collapsed into a single "Gates a-b" line
         """
         fmt = {
             'rd':      lambda b, a: "rotation_distance %.4f -> %.4f (%+.2f%%)" % (b, a, (a - b) / b * 100.),
@@ -633,15 +634,27 @@ class MmuCalibrator:
         }
 
         by_gate = {}
-        for (setting, gate), before in self._autotune_changes.items():
+        for (setting, gate), before in sorted(self._autotune_changes.items(), key=lambda kv: list(fmt).index(kv[0][0])):
             after = current[setting](gate)
             if round(before, precision[setting]) == round(after, precision[setting]):
                 continue
             by_gate.setdefault(gate, []).append(fmt[setting](before, after))
 
-        lines = []
+        # Runs of consecutive gates sharing the same text: [first, last, text]
+        runs = []
         for gate in sorted(g for g in by_gate if g is not None):
-            lines.append("Gate %d: %s" % (gate, ", ".join(by_gate[gate])))
+            text = ", ".join(by_gate[gate])
+            if runs and runs[-1][1] == gate - 1 and runs[-1][2] == text:
+                runs[-1][1] = gate
+            else:
+                runs.append([gate, gate, text])
+
+        lines = []
+        for first, last, text in runs:
+            if first == last:
+                lines.append("Gate %d: %s" % (first, text))
+            else:
+                lines.append("Gates %d-%d: %s" % (first, last, text))
         if None in by_gate:
             lines.append("%s encoder: %s" % (self.mmu_unit.name, ", ".join(by_gate[None])))
         return lines

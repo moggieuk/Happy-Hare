@@ -766,9 +766,10 @@ class TestAutotuneSummary(unittest.TestCase):
         cal.note_rd_telemetry(9, rd * 1.02)
         cal.note_rd_telemetry(10, rd * 1.03)
         summary = self.end_summary(hh)
-        for gate in unit.gate_range():
-            self.assertIn('Gate %d: rotation_distance %.4f -> %.4f' % (gate, rd, cal.get_gear_rd(gate)), summary)
-        self.assertEqual(summary.count('bowden_length %.1f -> %.1fmm' % (bowden, cal.get_bowden_length(9))), unit.num_gates)
+        mingate, maxgate = unit.gate_bounds()
+        self.assertEqual(summary.count('\n'), 1) # Header plus one collapsed line
+        self.assertIn('Gates %d-%d: rotation_distance %.4f -> %.4f' % (mingate, maxgate, rd, cal.get_gear_rd(9)), summary)
+        self.assertIn('bowden_length %.1f -> %.1fmm' % (bowden, cal.get_bowden_length(9)), summary)
 
     def test_shared_bowden_summary_keeps_original_baseline(self):
         hh = self.start_print('tradrack')
@@ -781,8 +782,22 @@ class TestAutotuneSummary(unittest.TestCase):
         current = cal.get_bowden_length(1)
         cal.note_load_telemetry(1, current, current * 1.1, None)
         summary = self.end_summary(hh)
-        for gate in unit.gate_range():
-            self.assertIn('Gate %d: bowden_length %.1f -> %.1fmm' % (gate, before, cal.get_bowden_length(gate)), summary)
+        mingate, maxgate = unit.gate_bounds()
+        self.assertEqual(summary.count('\n'), 1) # Header plus one collapsed line
+        self.assertIn('Gates %d-%d: bowden_length %.1f -> %.1fmm' % (mingate, maxgate, before, cal.get_bowden_length(0)), summary)
+
+    def test_summary_keeps_differing_adjacent_gates_separate(self):
+        hh = self.start_print('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertTrue(unit.variable_rotation_distances)
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        cal.note_rd_telemetry(0, cal.get_gear_rd(0) * 1.02)
+        cal.note_rd_telemetry(1, cal.get_gear_rd(1) * 1.03)
+        summary = self.end_summary(hh)
+        self.assertIn('\n  Gate 0: rotation_distance', summary)
+        self.assertIn('\n  Gate 1: rotation_distance', summary)
+        self.assertNotIn('Gates', summary)
 
     def test_summary_omits_settings_restored_to_original_value(self):
         hh = self.start_print('boxturtle')
