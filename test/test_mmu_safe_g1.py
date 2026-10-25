@@ -21,6 +21,11 @@ logging.getLogger().setLevel(logging.CRITICAL)
 Y_MAX = 356.
 YZ = (Y_MAX - 357.271) / 68.092     # The skew implied by the reported error
 STUB = PRINTER_STUB + "\n[skew_correction]\n"
+# A user_park_move_macro that parks but ignores RESTORE=1
+PARK_STUB = STUB + (
+    "\n[gcode_macro PARK_ONLY_MOVE]\ngcode:\n"
+    "  {% if not params.RESTORE %}\n  G1 X{params.X} Y{params.Y} F{params.F}\n  {% endif %}\n"
+)
 
 
 class SafeG1TestCase(unittest.TestCase):
@@ -271,7 +276,7 @@ class ParkMacroTestCase(unittest.TestCase):
     """_MMU_PARK body run for real: ramp direction/length and range-safe park moves"""
 
     def setUp(self):
-        self.hh = session('boxturtle', printer_stub=STUB)
+        self.hh = session('boxturtle', printer_stub=PARK_STUB)
         self.hh.boot()
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
         for gate in (0, 1):
@@ -343,6 +348,29 @@ class ParkMacroTestCase(unittest.TestCase):
         back = next(i for i, m in enumerate(moves) if i > 0 and m[2] == printing_at[2] and moves[i - 1][2] > printing_at[2])
         for m in moves[back:]:
             self.assert_xyz(m, printing_at)
+
+    def test_restore_with_user_park_move_macro_travels_before_descent(self):
+        # The user macro leaves the toolhead parked, so the XY travel must not fall to the lift descent
+        effects = self.hh.printer.harness_macro_effects
+        for name in ('_MMU_SAVE_POSITION', '_MMU_RESTORE_POSITION', 'PARK_ONLY_MOVE'):
+            effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
+        seq = self.hh.printer.lookup_object('gcode_macro _MMU_SEQUENCE_VARS')
+        seq.variables = dict(seq.variables, park_toolchange=[300, 300, 10, 0, 0], restore_xy_pos='next',
+                             user_park_move_macro='PARK_ONLY_MOVE')
+        lift_speed = float(seq.variables['park_lift_speed'])
+        self.hh.run_gcode("G90\nG1 X100 Y100 Z0.2")
+        start = self.toolhead.get_position()[:3]
+        first = len(self.toolhead.moves)
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=1 NEXT_POS="20,330"')
+        self.hh.settle(0.5)
+        self.assertEqual(self.hh.errors, [])
+        prev = start
+        for pos, speed in self.toolhead.moves[first:]:
+            xy = ((pos[0] - prev[0]) ** 2 + (pos[1] - prev[1]) ** 2) ** 0.5
+            if xy > 1.:
+                self.assertGreater(speed, lift_speed, "XY move %s -> %s at lift speed" % (prev, pos[:3]))
+            prev = pos[:3]
+        self.assert_xyz(prev, (20., 330., 0.2))
 
     def test_park_at_y_limit_with_skew_stays_in_range(self):
         self.skew.set_factors(yz=YZ)
