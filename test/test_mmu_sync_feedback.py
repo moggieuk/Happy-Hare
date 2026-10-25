@@ -728,5 +728,75 @@ class TestAutotunedRd(unittest.TestCase):
         self.assertFalse(any('Autotune summary' in line for line in self.hh.console))
 
 
+class TestAutotuneSummary(unittest.TestCase):
+    def start_print(self, profile):
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        hh.run_gcode('MMU_PRINT_START')
+        self.assertEqual(hh.errors, [])
+        return hh
+
+    def end_summary(self, hh):
+        hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(hh.errors, [])
+        return next(line for line in hh.console if 'Autotune summary' in line)
+
+    def test_bowden_summary_includes_later_rd_rescaling(self):
+        hh = self.start_print('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        unit.p.autotune_bowden_length = 1
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        before = cal.get_bowden_length(0)
+        cal.note_load_telemetry(0, before, before * 1.1, None)
+        cal.note_rd_telemetry(0, cal.get_gear_rd(0) * 1.02)
+        summary = self.end_summary(hh)
+        self.assertIn('bowden_length %.1f -> %.1fmm' % (before, cal.get_bowden_length(0)), summary)
+
+    def test_shared_rd_summary_tracks_all_affected_gates_and_bowdens(self):
+        hh = self.start_print('ercf_vvd_buffers')
+        unit = hh.mmu.mmu_machine.units[1]
+        self.assertFalse(unit.variable_rotation_distances)
+        self.assertFalse(unit.variable_bowden_lengths)
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        rd = cal.get_gear_rd(9)
+        bowden = cal.get_bowden_length(9)
+        cal.note_rd_telemetry(9, rd * 1.02)
+        cal.note_rd_telemetry(10, rd * 1.03)
+        summary = self.end_summary(hh)
+        for gate in unit.gate_range():
+            self.assertIn('Gate %d: rotation_distance %.4f -> %.4f' % (gate, rd, cal.get_gear_rd(gate)), summary)
+        self.assertEqual(summary.count('bowden_length %.1f -> %.1fmm' % (bowden, cal.get_bowden_length(9))), unit.num_gates)
+
+    def test_shared_bowden_summary_keeps_original_baseline(self):
+        hh = self.start_print('tradrack')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertFalse(unit.variable_bowden_lengths)
+        unit.p.autotune_bowden_length = 1
+        cal = unit.calibrator
+        before = cal.get_bowden_length(0)
+        cal.note_load_telemetry(0, before, before * 1.1, None)
+        current = cal.get_bowden_length(1)
+        cal.note_load_telemetry(1, current, current * 1.1, None)
+        summary = self.end_summary(hh)
+        for gate in unit.gate_range():
+            self.assertIn('Gate %d: bowden_length %.1f -> %.1fmm' % (gate, before, cal.get_bowden_length(gate)), summary)
+
+    def test_summary_omits_settings_restored_to_original_value(self):
+        hh = self.start_print('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        cal.update_gear_rd(5., gate=0)
+        cal.update_bowden_length(700., gate=0)
+        cal.note_rd_telemetry(0, 5.1)
+        cal.note_rd_telemetry(0, 5.)
+        hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(hh.errors, [])
+        self.assertFalse(any('Autotune summary' in line for line in hh.console))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -42,7 +42,7 @@ class MmuCalibrator:
         self.printer = config.get_printer()
 
         self.calibration_status = 0b0
-        self._autotune_changes = {} # (setting, gate) -> [before, after] for print-end summary
+        self._autotune_changes = {} # (setting, gate) -> original value for print-end summary
 
         # Klipper event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
@@ -502,8 +502,8 @@ class MmuCalibrator:
 
             new_resolution = self._ema_update(current_resolution, sampled_resolution, AUTOTUNE_ENCODER_WINDOW_LENGTH)
             self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_resolution:.4f}")
+            self._note_autotune_change('encoder', None, current_resolution)
             self.mmu_unit.encoder.set_resolution(new_resolution)
-            self._note_autotune_change('encoder', None, current_resolution, self.mmu_unit.encoder.get_resolution())
 
         else:
             pass # Currently this option is hidden from user so we hide evidence of it
@@ -525,8 +525,13 @@ class MmuCalibrator:
 
         if self.mmu_unit.p.autotune_rotation_distance:
             self.mmu.log_info(f"Autotune: {msg} -> Updated")
+            self._note_autotune_change('rd', gate, current_rd)
+            gates = [gate] if self.mmu_unit.variable_rotation_distances else self.mmu_unit.gate_range()
+            for g in gates:
+                bowden = self.get_bowden_length(g)
+                if bowden != UNCALIBRATED:
+                    self._note_autotune_change('bowden', g, bowden)
             self.update_gear_rd(new_rd, gate=gate)
-            self._note_autotune_change('rd', gate, current_rd, self.get_gear_rd(gate))
 
         else:
             self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
@@ -592,19 +597,20 @@ class MmuCalibrator:
 
             new_bowden_length = self._ema_update(bowden_length, bowden_travel, AUTOTUNE_BOWDEN_WINDOW_LENGTH)
             self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_bowden_length:.1f}mm")
+            self._note_autotune_change('bowden', gate, self.get_bowden_length(gate))
             self.update_bowden_length(new_bowden_length, gate=gate, console_msg=False, reason="saved")
-            self._note_autotune_change('bowden', gate, bowden_length, self.get_bowden_length(gate))
 
         else:
             self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
 
 
-    def _note_autotune_change(self, setting, gate, before, after):
-        """
-        Remember first 'before' and latest 'after' value of an autotuned setting
-        """
-        change = self._autotune_changes.setdefault((setting, gate), [before, after])
-        change[1] = after
+    def _note_autotune_change(self, setting, gate, before):
+        """Remember the original value for every gate sharing this setting."""
+        shared = (setting == 'rd' and not self.mmu_unit.variable_rotation_distances
+                  or setting == 'bowden' and not self.mmu_unit.variable_bowden_lengths)
+        gates = self.mmu_unit.gate_range() if shared else [gate]
+        for g in gates:
+            self._autotune_changes.setdefault((setting, g), before)
 
     def reset_autotune_changes(self):
         self._autotune_changes = {}
@@ -620,9 +626,15 @@ class MmuCalibrator:
             'encoder': lambda b, a: "resolution %.4f -> %.4f" % (b, a),
         }
         precision = {'rd': 4, 'bowden': 1, 'encoder': 4}
+        current = {
+            'rd': self.get_gear_rd,
+            'bowden': self.get_bowden_length,
+            'encoder': lambda gate: self.mmu_unit.encoder.get_resolution(),
+        }
 
         by_gate = {}
-        for (setting, gate), (before, after) in self._autotune_changes.items():
+        for (setting, gate), before in self._autotune_changes.items():
+            after = current[setting](gate)
             if round(before, precision[setting]) == round(after, precision[setting]):
                 continue
             by_gate.setdefault(gate, []).append(fmt[setting](before, after))
