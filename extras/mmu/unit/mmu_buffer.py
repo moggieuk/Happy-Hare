@@ -49,7 +49,7 @@ class MmuBuffer:
         self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
 
         register = bool(config.getint('register_buffer_sensors', 1, minval=0, maxval=1))
-        event_delay = config.get('event_delay', 0)
+        event_delay = config.getfloat('event_delay', 0., minval=0.)
         sf = MmuSensorFactory(self.printer)
 
         self.buffer_range = config.getfloat('buffer_range', 10.0, minval=0.)

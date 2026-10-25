@@ -74,7 +74,7 @@ class MmuToolheadWrapper():
         # Setup 'extruder' & 'toolhead' sensors connected to this toolhead
         # Allows for visibility, enable/disable control & insert/runout on extruder sensor
         register = bool(config.getint('register_toolhead_sensors', 1, minval=0, maxval=1))
-        event_delay = config.get('event_delay', 0.5)
+        event_delay = config.getfloat('event_delay', 0.5, minval=0.)
         self.sensor_factory = sf = MmuSensorFactory(self.printer)
 
         # --------------------------------------------
