@@ -65,24 +65,27 @@ Load-bearing facts about the flow:
   (only appending is allowed outside Replace mode, except before anything is
   installed), `kconfig` (renames/rewrites
   `.mmu_config_<unit>` before the per-unit menuconfig), `prepare` and `apply`
-  (in `make install`, Klipper stopped: retire old unit files and append explicit
-  unit-change intent to `mmu_state_pending_migration` in the save_variables file).
-  The installer resolves the variables filename from the configured printer file
-  and its nested/glob includes, falling back to `PARAM_MMU_VARS_CFG` only when no
-  definition exists. Missing required includes or cycles stop migration discovery.
-  The installer leaves all operational state untouched. At config load,
-  `extras/mmu/mmu_state_migration.py` validates and replays the versioned intent,
-  renames/removes unit and encoder keys, remaps sensor disables and gate lists,
-  invalidates obsolete selections, and stages the current layout. This happens
-  before calibration/selector consumers run. Consuming the intent and saving the
-  migrated state use the same variables-file snapshot; failed starts can retry.
-  Each prepared install has a stable ID so retries do not append it twice, and
-  multiple installs before startup are replayed in order (including name reuse).
+  (`prepare` captures installed history and appends an operation; `apply` verifies
+  the installed history and retires old unit files). `PARAM_STATE_MIGRATION` is a
+  hidden, `keep_when_hidden`, installer-owned symbol rendered as `state_migration`
+  in `[mmu_machine]` in `mmu.cfg`. Refresh copy-back and cfg import must not overwrite
+  it, and Kconfig name rewriting must never rewrite historical identities inside it.
+  The installer never locates or reads/writes the variables file. Config history is
+  retained across installs, including multiple installs before Klipper starts.
+  At config load, `extras/mmu/mmu_state_migration.py` applies only history after the
+  `mmu_state_migration_applied` checkpoint in Klipper's actual save_variables object.
+  It renames/removes unit and encoder keys, remaps sensor disables and gate lists,
+  invalidates obsolete selections, and stages the current layout before calibration
+  or selector recovery. The checkpoint and migrated state use the same saved snapshot;
+  failed saves retry, completed migrations never replay. A checkpoint absent from
+  configured history is an error. The earlier variables-file pending intent format
+  remains readable at runtime for upgrades from earlier versions of this PR.
   Unrecorded changes with both disappearing and unfamiliar unit names are rejected
-  before any saved-state mutations; empty-name removal markers are excluded.
-  Normal recorded renames remain automatic. Baseline/check/preparation failures,
-  and failure to record intent during install, stop installation before restart.
-  Its progress lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
+  before mutations; empty-name removal markers are excluded. Recorded renames remain
+  automatic. Failed baseline/check/preparation/history verification stops installation
+  before restart. Stable operation IDs and `.mmu_config.unit_migration` retain retry
+  information until the installed template is verified. History is not pruned: the
+  installer cannot know which operations have been applied without reading saved state.
   A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
   name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT` and
   `F_UNITS_RESTRUCTURE=y` (Replace mode or a first install, the same rule as

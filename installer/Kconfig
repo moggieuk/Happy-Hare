@@ -262,6 +262,13 @@ config MULTI_UNIT_ENTRY_POINT
   bool
   default "$(F_MULTI_UNIT_ENTRY_POINT)"
 
+# Installer-owned history: retained even when menuconfig rewrites hidden values.
+config PARAM_STATE_MIGRATION
+  string
+  prompt "Installer migration history" if n
+  default "{}"
+  keep_when_hidden
+
 config PER_GATE_MCU
   bool
   default "$(F_PER_GATE_MCU)"

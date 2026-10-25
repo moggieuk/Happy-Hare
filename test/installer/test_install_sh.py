@@ -718,7 +718,7 @@ class TestInstallSh(unittest.TestCase):
                 self.assertIn("RESULT=stop", result.stdout)
                 self.assertIn("BASELINE=a,b", result.stdout)
 
-    def test_failed_intent_write_stops_make_before_restart(self):
+    def test_failed_history_verification_stops_make_before_restart(self):
         command = next(line for line in MAKEFILE.read_text().splitlines()
                        if '-m installer.unit_migration apply ' in line)
         fail = self.write(self.root / 'fail-python', '#!/bin/sh\nexit 3\n')

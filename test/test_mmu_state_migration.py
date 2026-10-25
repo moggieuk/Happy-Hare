@@ -19,7 +19,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from test.hh import session
+from test.hh import session, profiles
 from test.hh.root import install
 
 install()
@@ -131,9 +131,10 @@ class TestIntentJournal(unittest.TestCase):
             final = [(token, local) for _, count, token in units for local in range(count)]
             expected = [original.index(identity) if identity in original else -1 for identity in final]
             layout = [[n, c] for n, c, _ in units]
-            actual, _, _ = sm.migrate_state(v, layout, {SPOOLS: [-1] * len(final)})
+            history = v.pop(PENDING)
+            actual, _, _ = sm.migrate_state(v, layout, {SPOOLS: [-1] * len(final)}, history)
             self.assertEqual(actual[SPOOLS], expected, 'sequence %d' % case)
-            self.assertEqual(sm.migrate_state(actual, layout, {SPOOLS: [-1] * len(final)})[0], actual)
+            self.assertEqual(sm.migrate_state(actual, layout, {SPOOLS: [-1] * len(final)}, history)[0], actual)
 
 
 class TestStartupTransaction(unittest.TestCase):
@@ -141,17 +142,21 @@ class TestStartupTransaction(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.path = os.path.join(tmp.name, 'mmu_vars.cfg')
-        self.queued, _ = sm.queue_migration(source_vars(), rename_intent())
+        self.history = sm.append_history(None, rename_intent())
+        self.queued = source_vars()
         write_vars_file(self.path, self.queued)
 
     def machine(self):
-        hh = session('boxturtle')
+        profile = profiles.get('boxturtle').derive('config-history',
+                    syms={'PARAM_STATE_MIGRATION': repr(self.history)})
+        hh = session(profile)
         hh._mmu_vars_copy = lambda: self.path
         self.addCleanup(hh.close)
         return hh
 
     def assert_migrated(self, saved):
         self.assertNotIn(PENDING, saved)
+        self.assertEqual(saved[sm.C.VARS_MMU_MIGRATION_APPLIED], self.history['steps'][-1]['id'])
         self.assertNotIn('mmu_old_gear_rotation_distances', saved)
         self.assertEqual(saved['mmu_unit0_gear_rotation_distances'][:3], [22.0, 23.0, 24.0])
         self.assertEqual(saved['mmu_unit0_encoder_resolution'], 0.7)
@@ -205,15 +210,15 @@ class TestStartupTransaction(unittest.TestCase):
         saved = read_vars_file(self.path)
         # Klipper variants may reject SAVE_VARIABLE before ready. Either outcome must
         # be retryable, never new namespace keys with the old intent/layout.
-        if PENDING in saved:
+        if sm.C.VARS_MMU_MIGRATION_APPLIED not in saved:
             self.assertEqual(saved, self.queued)
         else:
             self.assert_migrated(saved)
 
     def test_wrong_configuration_rejects_intent_without_touching_disk(self):
-        self.queued[PENDING]['steps'][-1]['to'] = ['wrong']
-        self.queued[PENDING]['steps'][-1]['origin'] = {'wrong': 'old'}
-        self.queued[PENDING]['steps'][-1]['new_gates'] = {'wrong': 4}
+        self.history['steps'][-1]['to'] = ['wrong']
+        self.history['steps'][-1]['origin'] = {'wrong': 'old'}
+        self.history['steps'][-1]['new_gates'] = {'wrong': 4}
         write_vars_file(self.path, self.queued)
         hh = self.machine()
         with self.assertRaisesRegex(Exception, 'does not match configured units'):
@@ -274,3 +279,73 @@ class TestUnrecordedRename(unittest.TestCase):
         original[LAYOUT] = [['', 4]]
         result, _, _ = sm.migrate_state(original, [['unit0', 4]], {SPOOLS: [-1] * 4})
         self.assertEqual(result[SPOOLS], [-1] * 4)
+
+
+class TestConfigCheckpoint(unittest.TestCase):
+    def setUp(self):
+        self.first = sm.append_history(None, intent(['a'], ['b'], {'b': 'a'}, {'a': 2}, {'b': 2}))
+        self.both = sm.append_history(self.first, intent(['b'], ['c'], {'c': 'b'}, {'b': 2}, {'c': 2}, 'install-2'))
+        self.original = {LAYOUT: [['a', 2]], SPOOLS: [5, 6], 'mmu_a_bowden_lengths': [10, 20]}
+
+    def migrate(self, values, history, name):
+        return sm.migrate_state(values, [[name, 2]], {SPOOLS: [-1, -1]}, history)[0]
+
+    def test_only_new_steps_apply_after_checkpoint(self):
+        first = self.migrate(self.original, self.first, 'b')
+        first['mmu_b_bowden_lengths'] = [30, 40]  # calibration changed since the first migration
+        result = self.migrate(first, self.both, 'c')
+        self.assertEqual(result['mmu_c_bowden_lengths'], [30, 40])
+        self.assertEqual(result[SPOOLS], [5, 6])
+        self.assertEqual(self.migrate(result, self.both, 'c'), result)
+        self.assertEqual(result[sm.C.VARS_MMU_MIGRATION_APPLIED], 'install-2')
+
+    def test_multiple_installs_before_startup_replay_all_steps(self):
+        result = self.migrate(self.original, self.both, 'c')
+        self.assertEqual(result['mmu_c_bowden_lengths'], [10, 20])
+        self.assertEqual(result[SPOOLS], [5, 6])
+        self.assertNotIn(PENDING, result)
+
+    def test_missing_or_replaced_history_rejects_saved_checkpoint(self):
+        migrated = self.migrate(self.original, self.both, 'c')
+        snapshot = copy.deepcopy(migrated)
+        for history in (None, {}, self.first):
+            with self.subTest(history=history), self.assertRaisesRegex(ValueError, 'checkpoint is missing'):
+                self.migrate(migrated, history, 'c')
+        self.assertEqual(migrated, snapshot)
+
+    def test_legacy_intent_can_precede_config_history(self):
+        legacy, _ = sm.queue_migration(self.original, intent(['a'], ['b'], {'b': 'a'}, {'a': 2}, {'b': 2}))
+        suffix = {'version': 1, 'steps': self.both['steps'][1:]}
+        result = self.migrate(legacy, suffix, 'c')
+        self.assertEqual(result['mmu_c_bowden_lengths'], [10, 20])
+        self.assertNotIn(PENDING, result)
+
+    def test_legacy_intent_already_in_config_history_is_not_replayed(self):
+        legacy, _ = sm.queue_migration(self.original, intent(['a'], ['b'], {'b': 'a'}, {'a': 2}, {'b': 2}))
+        result = self.migrate(legacy, self.both, 'c')
+        self.assertEqual(result['mmu_c_bowden_lengths'], [10, 20])
+        self.assertEqual(result[sm.C.VARS_MMU_MIGRATION_APPLIED], 'install-2')
+
+    def test_legacy_intent_with_a_config_checkpoint_is_rejected(self):
+        result = self.migrate(self.original, self.both, 'c')
+        result[PENDING] = self.first
+        with self.assertRaisesRegex(ValueError, 'conflicts with a saved config checkpoint'):
+            self.migrate(result, self.both, 'c')
+
+    def test_empty_variables_initialize_to_current_configuration(self):
+        result = self.migrate({}, self.both, 'c')
+        self.assertEqual(result[SPOOLS], [-1, -1])
+        self.assertEqual(result[LAYOUT], [['c', 2]])
+        self.assertEqual(result[sm.C.VARS_MMU_MIGRATION_APPLIED], 'install-2')
+
+    def test_applied_history_does_not_block_manual_gate_growth(self):
+        result = self.migrate(self.original, self.first, 'b')
+        grown = sm.migrate_state(result, [['b', 3]], {SPOOLS: [-1] * 3}, self.first)[0]
+        self.assertEqual(grown[SPOOLS], [5, 6, -1])
+
+    def test_history_is_immutable_and_invalid_text_is_rejected(self):
+        before = copy.deepcopy(self.both)
+        self.migrate(self.original, repr(self.both), 'c')
+        self.assertEqual(self.both, before)
+        with self.assertRaisesRegex(ValueError, 'Invalid MMU state_migration'):
+            self.migrate(self.original, 'not a literal', 'c')

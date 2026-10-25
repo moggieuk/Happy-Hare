@@ -216,6 +216,12 @@ class TestKeepWhenHiddenInTheTree(unittest.TestCase):
             reloaded.load_config(path, filter_defaults=True)
         return reloaded, saved
 
+    def test_installer_migration_history_survives_hidden_save_reload(self):
+        history = "{'version': 1, 'steps': [{'id': 'example'}]}"
+        reloaded, _ = self.save_and_reload('migration_history', {'PARAM_STATE_MIGRATION': history})
+        self.assertEqual(reloaded.syms['PARAM_STATE_MIGRATION'].user_value, history)
+        self.assertEqual(reloaded.as_dict()['PARAM_STATE_MIGRATION'], history)
+
     def render_parameters(self, kc):
         extra = {'PARAM_TOTAL_NUM_GATES': kc.getint('PARAM_NUM_GATES')}
         with cfg._env(cfg._SINGLE_UNIT_ENV):

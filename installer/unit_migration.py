@@ -10,9 +10,8 @@
 #   kconfig  - rename/rewrite the per-unit '.mmu_config_<unit>' files (before
 #              the per-unit menuconfig so a renamed unit keeps its settings)
 #   prepare  - capture what the install step needs from the still-installed
-#              config (gate counts, save_variables file, manual-edit warnings)
-#   apply    - with Klipper stopped: remove stale unit files and migrate the
-#              save_variables file with pending migration intent (state is applied at startup)
+#              config (gate counts, migration history, manual-edit warnings)
+#   apply    - verify installed migration history and remove stale unit files
 #
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
@@ -20,17 +19,13 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import argparse
-import ast
-import configparser
 import datetime
-import glob
 import json
 import importlib
 import importlib.util
 import os
 import re
 import shutil
-import subprocess
 import sys
 import traceback
 import uuid
@@ -69,10 +64,9 @@ def _load_state_migration():
 
 
 state_migration = _load_state_migration()
-C = state_migration.C
 gate_map = state_migration.gate_map
 gates_moved = state_migration.gates_moved
-queue_migration = state_migration.queue_migration
+append_history = state_migration.append_history
 
 
 # Per-gate list options in [mmu_machine] that must match the total gate count
@@ -180,7 +174,7 @@ def rewrite_kconfig(path, renames, known_names, identity=None, own=None):
             new_value = _quote(own[name])
         elif identity and sym in identity:
             new_value = identity[sym]
-        elif default or pattern is None or sym == SYMBOL:
+        elif default or pattern is None or sym in (SYMBOL, "PARAM_STATE_MIGRATION"):
             continue
         else:
             new_value = pattern.sub(lambda mm: mm.group(1) + renames.get(mm.group(2), mm.group(2)), value)
@@ -248,58 +242,6 @@ def installed_option(config_home, filename, section, option):
     return ConfigBuilder(path).get(section, option)
 
 
-def printer_vars_file(config_home, kconfig):
-    """Resolve [save_variables] through the active printer config's include tree.
-
-    Includes are relative to their containing file, globbed in sorted order, and
-    expanded in place so later definitions take precedence as they do in Klipper.
-    Do not scan unrelated files: old backups may name a different variables file.
-    """
-    values = read_kconfig(kconfig)
-    filename = os.path.expanduser(values.get("PRINTER_CONFIG_FILE") or "printer.cfg")
-    root = os.path.join(config_home or "", filename)
-    if not os.path.exists(root):
-        return None
-    active = set()
-
-    def expand(path):
-        identity = os.path.realpath(path)
-        if identity in active:
-            raise ValueError("Recursive printer config include: %s" % path)
-        active.add(identity)
-        try:
-            with open(path, encoding="utf-8") as f:
-                lines = f.readlines()
-            result = []
-            for line in lines:
-                include = re.match(r"^\[include\s+(.+?)\]\s*(?:[#;].*)?$", line.strip())
-                if include:
-                    pattern = os.path.join(os.path.dirname(path), os.path.expanduser(include.group(1)))
-                    matches = sorted(glob.glob(pattern))
-                    if not matches and not glob.has_magic(pattern):
-                        raise ValueError("Missing printer config include: %s" % pattern)
-                    for child in matches:
-                        result.append(expand(child))
-                else:
-                    result.append(line)
-            return "".join(result) + "\n"
-        finally:
-            active.remove(identity)
-
-    parser = configparser.RawConfigParser(strict=False, inline_comment_prefixes=("#", ";"))
-    parser.read_string(expand(root), source=root)
-    if not parser.has_section("save_variables"):
-        return None
-    path = parser.get("save_variables", "filename", fallback="").strip()
-    if not path:
-        raise ValueError("[save_variables] in printer configuration has no filename")
-    return path
-
-
-def vars_file(config_home, kconfig):
-    """Prefer the active printer configuration; otherwise use the menuconfig path."""
-    path = printer_vars_file(config_home, kconfig) or read_kconfig(kconfig).get("PARAM_MMU_VARS_CFG")
-    return os.path.expanduser(path) if path else None
 
 
 # -----------------------------------------------------------------------------
@@ -526,11 +468,9 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
                   " the install", file=out)
         else:
             print("Calibration, gate maps and saved state move with each unit", file=out)
-        path = vars_file(config_home, kconfig)
-        if path:
-            print("Saved state will be migrated in %s" % path, file=out)
-        for warning in _loaded_filament_warnings(plan, config_home, kconfig):
-            print("WARNING: %s" % warning, file=out)
+        print("Migration intent will be saved in mmu.cfg and applied by Klipper at startup", file=out)
+        if gates_moved(*_check_layout(plan, config_home)):
+            print("Unload filament before installing changes that renumber gates", file=out)
         for warning in manual_edit_warnings(plan, config_home, kconfig):
             print("WARNING: %s" % warning, file=out)
     return EXIT_STRUCTURAL
@@ -652,19 +592,40 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
             "origin": plan.origin,
             "old_gates": {o: installed_num_gates(config_home, o) for o in plan.baseline},
             "new_gates": new_gates,
-            "vars_file": vars_file(config_home, kconfig),
             "warnings": manual_edit_warnings(plan, config_home, kconfig),
             "encoders": {before: after for before, after in
                          component_names(kconfig, plan, shared_components.KINDS["encoder"]).values()
                          if before != after},
         }
         if previous_install and all(previous_install.get(k) == state["install"].get(k)
-                                    for k in ("from", "to", "origin", "new_gates", "vars_file")):
+                                    for k in ("from", "to", "origin", "new_gates")):
             state["install"] = previous_install
         state["install"].setdefault("migration_id", uuid.uuid4().hex)
-    elif not plan.changed() and not read_state(kconfig):
+    history = installed_option(config_home, "mmu.cfg", "mmu_machine", "state_migration") if config_home else None
+    history = state_migration.parse_history(history)
+    if state.get("install"):
+        history = append_history(history, state["install"])
+    if not history and not state.get("install") and not read_state(kconfig) and \
+            read_kconfig(kconfig).get("PARAM_STATE_MIGRATION", "{}") == "{}":
         return
+    state["history"] = history
+    # Save the retry ID and original counts before publishing the template value.
     write_state(kconfig, state)
+    write_history(kconfig, history)
+
+
+def write_history(kconfig, history):
+    """Carry installed history through template regeneration without touching saved state."""
+    with open(kconfig, encoding="utf-8") as f:
+        lines = [line for line in f if not line.startswith("CONFIG_PARAM_STATE_MIGRATION=")]
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    lines.append("CONFIG_PARAM_STATE_MIGRATION=%s\n" % _quote(repr(history or {})))
+    tmp = kconfig + ".migration-tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    shutil.copymode(kconfig, tmp)
+    os.replace(tmp, kconfig)
 
 
 def generated_hardware_lines(kconfig, names):
@@ -702,6 +663,8 @@ def manual_edit_warnings(plan, config_home, kconfig):
             return
         in_excluded = not excluded_only
         for i, line in enumerate(lines):
+            if re.match(r"^state_migration\s*[:=]", line):
+                continue  # Installer-owned history is never a manual unit reference.
             if MAGIC_EXCLUSION_COMMENT.match(line):
                 in_excluded = True
                 continue
@@ -742,83 +705,15 @@ def _check_layout(plan, config_home):
     return gate_map(layout), sum(n or 0 for n in old_gates.values())
 
 
-def _loaded_filament_warnings(plan, config_home, kconfig):
-    path = vars_file(config_home, kconfig)
-    variables = read_vars(path) if path else {}
-    if variables.get(C.VARS_MMU_FILAMENT_POS, C.FILAMENT_POS_UNLOADED) == C.FILAMENT_POS_UNLOADED:
-        return []
-    gate = variables.get(C.VARS_MMU_GATE_SELECTED, C.TOOL_GATE_UNKNOWN)
-    if gate == C.TOOL_GATE_UNKNOWN or not gates_moved(*_check_layout(plan, config_home)):
-        return []
-    return ["Filament is loaded (gate %d) but the selected gate and tool will be reset to unknown."
-            " Unload it before installing" % gate]
-
-
-# -----------------------------------------------------------------------------
-# apply (phase B)
-# -----------------------------------------------------------------------------
-
-def read_vars(path):
-    parser = configparser.ConfigParser(interpolation=None)
-    try:
-        if not parser.read(path):
-            return {}
-    except configparser.Error:
-        return {}
-    if not parser.has_section("Variables"):
-        return {}
-    result = {}
-    for name, value in parser.items("Variables"):
-        try:
-            result[name] = ast.literal_eval(value)
-        except (ValueError, SyntaxError):
-            result[name] = value
-    return result
-
-
-def write_vars(path, variables):
-    parser = configparser.ConfigParser(interpolation=None)
-    parser.add_section("Variables")
-    for name, value in sorted(variables.items()):
-        parser.set("Variables", name, repr(value))
-    tmp = path + ".unit-migration-tmp"
-    with open(tmp, "w") as f:
-        parser.write(f)
-    if os.path.exists(path):
-        shutil.copymode(path, tmp)
-    os.replace(tmp, path)
-
-
-def stop_klipper(kconfig, out=sys.stdout):
-    values = read_kconfig(kconfig)
-    service = values.get("SERVICE_KLIPPER")
-    if not service:
-        print("WARNING: No Klipper service configured. Make sure Klipper is stopped", file=out)
-        return
-    print("Stopping Klipper so saved state can be migrated...", file=out)
-    if values.get("INIT_SYSTEMD") == "y":
-        if not service.endswith(".service"):
-            service += ".service"
-        if subprocess.call("systemctl list-unit-files '%s'" % service, shell=True,
-                           stdout=subprocess.DEVNULL) == 0:
-            subprocess.call("sudo systemctl stop '%s'" % service, shell=True)
-            return
-    elif os.path.exists("/etc/init.d/" + service):
-        subprocess.call("/etc/init.d/%s stop" % service, shell=True)
-        return
-    print("WARNING: Klipper service '%s' not found. Make sure Klipper is stopped" % service, file=out)
-
-
-def apply(kconfig, no_service=False, out=sys.stdout):
+def apply(kconfig, out=sys.stdout):
     state = read_state(kconfig)
     install = (state or {}).get("install")
+    if state:
+        home = install["config_home"] if install else read_kconfig(kconfig).get("KLIPPER_CONFIG_HOME")
+        actual = installed_option(home, "mmu.cfg", "mmu_machine", "state_migration") if home else None
+        if state_migration.parse_history(actual) != state.get("history"):
+            raise ValueError("Installed mmu.cfg does not contain the prepared migration history; retry install")
     if install:
-        if no_service:
-            print("WARNING: Service restarts are skipped. Klipper must already be stopped or it may"
-                  " overwrite the migrated saved state", file=out)
-        else:
-            stop_klipper(kconfig, out)
-
         # 'make install' has already backed up the whole mmu directory
         config_home = install["config_home"]
         mmu_dir = os.path.join(config_home, "mmu")
@@ -829,19 +724,6 @@ def apply(kconfig, no_service=False, out=sys.stdout):
                 if os.path.exists(path):
                     os.remove(path)
                     print("Removed %s" % path, file=out)
-
-        path = install.get("vars_file")
-        if path and os.path.exists(path):
-            variables = read_vars(path)
-            migrated, notes = queue_migration(variables, install)
-            if migrated != variables:
-                if os.path.commonpath([os.path.abspath(path), os.path.abspath(mmu_dir)]) != os.path.abspath(mmu_dir):
-                    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-                    shutil.copy2(path, "%s.old-%s" % (path, stamp))
-                write_vars(path, migrated)
-                print("Recorded pending state migration in %s" % path, file=out)
-            for note in notes:
-                print("  %s" % note, file=out)
 
         for warning in install.get("warnings", []):
             print("WARNING: May need a manual edit for the new unit names: %s" % warning, file=out)
@@ -894,7 +776,6 @@ def main(argv=None):
     parser.add_argument("--config-home", default=None)
     parser.add_argument("--baseline", default=None)
     parser.add_argument("--mode", default=os.getenv("F_CFG_UPGRADE_MODE", "refresh"))
-    parser.add_argument("--no-service", action="store_true", default=bool(os.getenv("F_NO_SERVICE")))
     parser.add_argument("--mmu-cfg", default=None)
     parser.add_argument("--total-gates", type=int, default=None)
     args = parser.parse_args(argv)
@@ -931,7 +812,7 @@ def _run(args):
     elif args.action == "prepare":
         prepare(args.kconfig, config_home, base)
     elif args.action == "apply":
-        apply(args.kconfig, args.no_service)
+        apply(args.kconfig)
     elif args.action == "gate-lists":
         # Advisory only: must never stop an install
         try:

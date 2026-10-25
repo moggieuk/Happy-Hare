@@ -5,6 +5,8 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import ast
+import configparser
 import io
 import os
 import tempfile
@@ -14,6 +16,19 @@ from unittest.mock import patch
 import sequence_edit
 from installer import unit_migration as um
 sm = um.state_migration
+
+def read_vars(path):
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read(path)
+    return {k: ast.literal_eval(v) for k, v in parser.items('Variables')}
+
+
+def write_vars(path, values):
+    parser = configparser.ConfigParser(interpolation=None)
+    parser['Variables'] = {k: repr(v) for k, v in values.items()}
+    with open(path, 'w') as f:
+        parser.write(f)
+
 
 EXCLUDE = ("# EXCLUDE FROM CONFIG BUILDER -- IMPORTANT do not alter or remove this line. "
            "Config below is never upgraded")
@@ -61,6 +76,7 @@ class Scratch(unittest.TestCase):
 
     def install(self, units, gates=None, variables=None):
         gates = gates or {u: 4 for u in units}
+        history = um.installed_option(self.home, 'mmu.cfg', 'mmu_machine', 'state_migration')
         printer = os.path.join(self.home, "printer.cfg")
         if not os.path.exists(printer):
             self.write(printer, "[include mmu/base/mmu_macro_vars.cfg]\n")
@@ -74,8 +90,12 @@ class Scratch(unittest.TestCase):
                        "[mmu_unit %s]\nnum_gates: %d\n" % (u, gates[u]))
             self.write(um._base(self.home, "mmu_parameters_%s.cfg" % u),
                        "[mmu_unit_parameters %s]\n" % u)
+        if history:
+            builder = um.ConfigBuilder(um._base(self.home, 'mmu.cfg'))
+            builder.set('mmu_machine', 'state_migration', history)
+            self.write(um._base(self.home, 'mmu.cfg'), builder.write())
         if variables is not None:
-            um.write_vars(self.vars_file, dict(variables, mmu__revision=0))
+            write_vars(self.vars_file, dict(variables, mmu__revision=0))
 
     @staticmethod
     def write(path, text):
@@ -95,96 +115,70 @@ class Scratch(unittest.TestCase):
         base = base if base is not None else um.baseline(self.kconfig, self.home)
         return um.check(self.kconfig, self.home, base, mode, out), out.getvalue()
 
+    def history(self):
+        return sm.parse_history(um.installed_option(self.home, 'mmu.cfg', 'mmu_machine', 'state_migration'))
+
     def applied_vars(self):
-        # Inspect the runtime identity pass separately from gate fitting; the installer
-        # itself must leave every original state key untouched and only queue intent.
-        variables = um.read_vars(self.vars_file)
-        pending = variables[sm.C.VARS_MMU_PENDING_MIGRATION]
-        return sm.apply_intents(variables, pending['steps'][-1]['to'])[0]
+        history = self.history()
+        return sm.apply_history(read_vars(self.vars_file), history['steps'][-1]['to'], history)[0]
+
+    def publish_history(self):
+        # Simulate the installed template; real rendering is tested separately below.
+        path = um._base(self.home, 'mmu.cfg')
+        builder = um.ConfigBuilder(path)
+        builder.set('mmu_machine', 'state_migration', um.read_kconfig(self.kconfig).get('PARAM_STATE_MIGRATION', '{}'))
+        self.write(path, builder.write())
 
     def run_all(self, base):
         um.migrate_kconfig(self.kconfig, base, io.StringIO())
         um.prepare(self.kconfig, self.home, base, io.StringIO())
-        with patch.object(um, "stop_klipper"):
-            um.apply(self.kconfig, out=io.StringIO())
+        if os.path.exists(um._base(self.home, 'mmu.cfg')):
+            self.publish_history()
+        um.apply(self.kconfig, out=io.StringIO())
 
 
-class TestVarsFile(Scratch):
-    def setUp(self):
-        super().setUp()
-        self.top('a', PARAM_MMU_VARS_CFG='"~/fallback_vars.cfg"')
-        self.printer = os.path.join(self.home, 'printer.cfg')
-
-    def test_printer_definition_overrides_menuconfig_and_unincluded_mmu_file(self):
-        self.write(um._base(self.home, 'mmu_macro_vars.cfg'),
-                   '[save_variables]\nfilename: /stale/mmu_vars.cfg\n')
-        self.write(self.printer, '[save_variables]\nfilename: ~/custom_vars.cfg # comment\n')
-        self.assertEqual(um.vars_file(self.home, self.kconfig), os.path.expanduser('~/custom_vars.cfg'))
-
-    def test_nested_relative_glob_includes_follow_file_order(self):
-        os.makedirs(os.path.join(self.home, 'parts', 'nested'))
-        self.write(self.printer, '[include parts/*.cfg]\n')
-        self.write(os.path.join(self.home, 'parts', '10-main.cfg'),
-                   '[include nested/vars.cfg]\n[include optional-*.cfg]\n')
-        self.write(os.path.join(self.home, 'parts', 'nested', 'vars.cfg'),
-                   '[save_variables]\nfilename: /first.cfg\n')
-        self.write(os.path.join(self.home, 'parts', '20-override.cfg'),
-                   '[save_variables]\nfilename: /last.cfg\n')
-        self.assertEqual(um.vars_file(self.home, self.kconfig), '/last.cfg')
-
-    def test_custom_printer_config_and_parent_override_after_include(self):
-        self.top('a', PRINTER_CONFIG_FILE='"custom.cfg"', PARAM_MMU_VARS_CFG='"/fallback.cfg"')
-        self.write(os.path.join(self.home, 'custom.cfg'),
-                   '[include vars.cfg]\n[save_variables]\nfilename = /parent.cfg\n')
-        self.write(os.path.join(self.home, 'vars.cfg'), '[save_variables]\nfilename: /included.cfg\n')
-        self.assertEqual(um.vars_file(self.home, self.kconfig), '/parent.cfg')
-
-    def test_missing_definition_uses_menuconfig_not_unincluded_files(self):
-        self.write(self.printer, '# [save_variables]\n# filename: /ignored.cfg\n')
-        self.write(um._base(self.home, 'mmu_macro_vars.cfg'),
-                   '[save_variables]\nfilename: /unused.cfg\n')
-        self.assertEqual(um.vars_file(self.home, self.kconfig), os.path.expanduser('~/fallback_vars.cfg'))
-
-    def test_no_printer_file_uses_menuconfig(self):
-        self.assertEqual(um.vars_file(self.home, self.kconfig), os.path.expanduser('~/fallback_vars.cfg'))
-
-    def test_recursive_include_is_an_error_not_a_fallback(self):
-        self.write(self.printer, '[include loop.cfg]\n')
-        os.symlink(self.printer, os.path.join(self.home, 'loop.cfg'))
-        with self.assertRaisesRegex(ValueError, 'Recursive'):
-            um.vars_file(self.home, self.kconfig)
-
-    def test_missing_literal_include_is_an_error_not_a_fallback(self):
-        self.write(self.printer, '[include missing.cfg]\n')
-        with self.assertRaisesRegex(ValueError, 'missing.cfg'):
-            um.vars_file(self.home, self.kconfig)
-
-    def test_repeated_include_is_not_a_cycle(self):
-        self.write(self.printer, '[include vars.cfg]\n[include vars.cfg]\n')
-        self.write(os.path.join(self.home, 'vars.cfg'), '[save_variables]\nfilename: /shared.cfg\n')
-        self.assertEqual(um.vars_file(self.home, self.kconfig), '/shared.cfg')
-
-    def test_definition_without_filename_is_an_error_not_a_fallback(self):
-        self.write(self.printer, '[save_variables]\n')
-        with self.assertRaisesRegex(ValueError, 'no filename'):
-            um.vars_file(self.home, self.kconfig)
-
-    def test_custom_file_receives_intent_and_backup(self):
+class TestConfigHistory(Scratch):
+    def test_history_survives_chained_installs_and_plain_reinstall(self):
         self.install(['a'], variables={'mmu_a_bowden_lengths': [1, 2, 3, 4]})
-        original_default = self.read(self.vars_file)
-        custom = os.path.join(self.home, 'custom-state.cfg')
-        um.write_vars(custom, {'mmu__revision': 0, 'mmu_a_bowden_lengths': [10, 20, 30, 40]})
-        self.write(self.printer, '[include custom-vars.cfg]\n')
-        self.write(os.path.join(self.home, 'custom-vars.cfg'), '[save_variables]\nfilename: %s\n' % custom)
-        self.unit('a', 0)
-        self.edit(['a'], lambda m: m.rename(0, 'left'))
+        self.unit('a')
+        self.edit(['a'], lambda m: m.rename(0, 'b'))
+        before = self.read(self.vars_file)
         self.run_all(['a'])
-        self.assertEqual(self.read(self.vars_file), original_default)
-        queued = um.read_vars(custom)
-        self.assertIn(sm.C.VARS_MMU_PENDING_MIGRATION, queued)
-        migrated = sm.apply_intents(queued, ['left'])[0]
-        self.assertEqual(migrated['mmu_left_bowden_lengths'], [10, 20, 30, 40])
-        self.assertTrue(any(n.startswith('custom-state.cfg.old-') for n in os.listdir(self.home)))
+        first = self.history()
+        self.assertEqual(self.read(self.vars_file), before)
+        self.install(['b'])
+        self.edit(['b'], lambda m: m.rename(0, 'c'))
+        self.run_all(['b'])
+        history = self.history()
+        self.assertEqual(history['steps'][0], first['steps'][0])
+        self.assertEqual(len(history['steps']), 2)
+        self.assertEqual(self.read(self.vars_file), before)
+        self.assertEqual(self.applied_vars()['mmu_c_bowden_lengths'], [1, 2, 3, 4])
+        self.install(['c'])
+        self.top('c')  # menuconfig/recovery without a locally retained history value
+        self.run_all(['c'])
+        self.assertEqual(self.history(), history)
+        self.assertEqual(self.read(self.vars_file), before)
+
+    def test_history_is_not_rewritten_when_units_are_renamed_again(self):
+        self.top('b')
+        record = {'version': 1, 'steps': [{'from': ['a'], 'to': ['b']}]}
+        um.write_history(self.kconfig, record)
+        um.rewrite_kconfig(self.kconfig, {'a': 'x', 'b': 'c'}, {'a', 'b', 'c'})
+        self.assertEqual(ast.literal_eval(um.read_kconfig(self.kconfig)['PARAM_STATE_MIGRATION']), record)
+
+    def test_failed_history_publication_preserves_retry_id(self):
+        self.install(['a'])
+        self.unit('a')
+        self.edit(['a'], lambda m: m.rename(0, 'b'))
+        with patch.object(um, 'write_history', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                um.prepare(self.kconfig, self.home, ['a'])
+        first = um.read_state(self.kconfig)['install']['migration_id']
+        um.prepare(self.kconfig, self.home, ['a'])
+        self.assertEqual(um.read_state(self.kconfig)['install']['migration_id'], first)
+        self.assertEqual(len(sm.parse_history(um.read_kconfig(self.kconfig)['PARAM_STATE_MIGRATION'])['steps']), 1)
+
 
 
 class TestBaseline(Scratch):
@@ -271,17 +265,9 @@ class TestCheck(Scratch):
                 self.assertIn("saved state move with each unit", out)
                 (self.assertIn if renumbered else self.assertNotIn)("renumbered", out)
 
-    def test_the_saved_state_file_is_shown(self):
+    def test_history_destination_is_shown_without_a_variables_path(self):
         self.edit(["a", "b"], lambda m: m.rename(1, "box"))
-        self.assertIn("Saved state will be migrated in %s" % self.vars_file, self.check("replace")[1])
-
-    def test_the_saved_state_file_falls_back_to_the_menuconfig_path(self):
-        self.write(um._base(self.home, "mmu_macro_vars.cfg"), "[gcode_macro X]\ngcode:\n")
-        self.edit(["a", "b"], lambda m: m.rename(1, "box"))
-        with open(self.kconfig, "a") as f:
-            f.write('CONFIG_PARAM_MMU_VARS_CFG="~/elsewhere_vars.cfg"\n')
-        self.assertIn("Saved state will be migrated in %s" % os.path.expanduser("~/elsewhere_vars.cfg"),
-                      self.check("replace")[1])
+        self.assertIn("Migration intent will be saved in mmu.cfg", self.check("replace")[1])
 
     def test_explicit_remove_and_add_is_allowed_as_replacement(self):
         self.edit(["a", "b"], lambda m: (m.remove(1), m.add("box")))
@@ -355,23 +341,23 @@ class TestCheck(Scratch):
         self.assertEqual(self.check("replace")[0], um.EXIT_REFUSED)
 
     def test_loaded_filament_in_a_moving_gate_is_flagged(self):
-        um.write_vars(self.vars_file, {"mmu_state_filament_pos": 10, "mmu_state_gate_selected": 1})
+        write_vars(self.vars_file, {"mmu_state_filament_pos": 10, "mmu_state_gate_selected": 1})
         self.edit(["a", "b"], lambda m: m.move(0, 1))
-        self.assertIn("Unload it", self.check("replace")[1])
+        self.assertIn("Unload filament", self.check("replace")[1])
 
     def test_loaded_filament_is_flagged_when_any_gate_moves(self):
         # The selected gate 0 keeps its number, but removing b drops b's gates
-        um.write_vars(self.vars_file, {"mmu_state_filament_pos": 10, "mmu_state_gate_selected": 0})
+        write_vars(self.vars_file, {"mmu_state_filament_pos": 10, "mmu_state_gate_selected": 0})
         self.edit(["a", "b"], lambda m: m.remove(1))
         out = self.check("replace")[1]
-        self.assertIn("Unload it", out)
+        self.assertIn("Unload filament", out)
         self.assertIn("will be reset to unknown", out)
 
     def test_loaded_filament_in_a_gate_that_stays_is_not_flagged(self):
-        um.write_vars(self.vars_file, {"mmu_state_filament_pos": 10, "mmu_state_gate_selected": 1})
+        write_vars(self.vars_file, {"mmu_state_filament_pos": 10, "mmu_state_gate_selected": 1})
         self.edit(["a", "b"], lambda m: m.rename(1, "box"))
         out = self.check("replace")[1]
-        self.assertNotIn("Unload it", out)
+        self.assertNotIn("Unload filament", out)
         self.assertNotIn("will be reset", out)
 
 
@@ -741,7 +727,7 @@ class TestVarsMigration(unittest.TestCase):
 
 class TestInstall(Scratch):
 
-    def test_retry_after_recording_intent_keeps_the_original_transaction(self):
+    def test_retry_after_installing_history_keeps_original_transaction(self):
         original = {'mmu_a_bowden_lengths': [1, 2, 3, 4]}
         self.install(['a', 'b'], variables=original)
         self.unit('a', 0)
@@ -751,40 +737,32 @@ class TestInstall(Scratch):
         um.migrate_kconfig(self.kconfig, base, io.StringIO())
         um.prepare(self.kconfig, self.home, base, io.StringIO())
         transaction = um.read_state(self.kconfig)['install']
-        with patch.object(um, 'stop_klipper'), patch.object(um, 'clear_state', side_effect=OSError('interrupted')):
+        self.publish_history()
+        with patch.object(um, 'clear_state', side_effect=OSError('interrupted')):
             with self.assertRaises(OSError):
                 um.apply(self.kconfig, out=io.StringIO())
-        queued = um.read_vars(self.vars_file)
-        self.assertEqual(queued['mmu_a_bowden_lengths'], original['mmu_a_bowden_lengths'])
-        self.assertNotIn('mmu_left_bowden_lengths', queued)
-        self.assertEqual(len(queued[sm.C.VARS_MMU_PENDING_MIGRATION]['steps']), 1)
-        # New config is installed; the old hardware file was removed by the first apply.
+        self.assertEqual(read_vars(self.vars_file)['mmu_a_bowden_lengths'], original['mmu_a_bowden_lengths'])
         self.install(['left', 'b'])
         um.prepare(self.kconfig, self.home, base, io.StringIO())
         self.assertEqual(um.read_state(self.kconfig)['install'], transaction)
-        with patch.object(um, 'stop_klipper'):
-            um.apply(self.kconfig, out=io.StringIO())
-        self.assertEqual(um.read_vars(self.vars_file), queued)
+        self.publish_history()
+        um.apply(self.kconfig, out=io.StringIO())
+        self.assertEqual(len(self.history()['steps']), 1)
 
-    def test_failed_intent_write_retains_original_state_and_can_retry(self):
-        self.install(["a"], variables={"mmu_a_bowden_lengths": [1, 2, 3, 4]})
-        self.unit("a", 0)
-        self.edit(["a"], lambda m: m.rename(0, "left"))
-        um.migrate_kconfig(self.kconfig, ["a"], io.StringIO())
-        um.prepare(self.kconfig, self.home, ["a"], io.StringIO())
+    def test_stale_installed_history_keeps_retry_state(self):
+        self.install(['a'], variables={'mmu_a_bowden_lengths': [1, 2, 3, 4]})
+        self.unit('a', 0)
+        self.edit(['a'], lambda m: m.rename(0, 'left'))
+        um.migrate_kconfig(self.kconfig, ['a'], io.StringIO())
+        um.prepare(self.kconfig, self.home, ['a'], io.StringIO())
         before = self.read(self.vars_file)
         transaction = um.read_state(self.kconfig)
-        with patch.object(um, 'stop_klipper'), patch.object(um, 'write_vars', side_effect=OSError('disk full')):
-            with self.assertRaisesRegex(OSError, 'disk full'):
-                um.apply(self.kconfig, out=io.StringIO())
+        with self.assertRaisesRegex(ValueError, 'prepared migration history'):
+            um.apply(self.kconfig, out=io.StringIO())
         self.assertEqual(self.read(self.vars_file), before)
         self.assertEqual(um.read_state(self.kconfig), transaction)
-        with patch.object(um, 'stop_klipper'):
-            um.apply(self.kconfig, out=io.StringIO())
-        queued = um.read_vars(self.vars_file)
-        self.assertEqual(len(queued[sm.C.VARS_MMU_PENDING_MIGRATION]['steps']), 1)
-        self.assertEqual(queued[sm.C.VARS_MMU_PENDING_MIGRATION]['steps'][0]['id'],
-                         transaction['install']['migration_id'])
+        self.publish_history()
+        um.apply(self.kconfig, out=io.StringIO())
         self.assertEqual(self.applied_vars()['mmu_left_bowden_lengths'], [1, 2, 3, 4])
 
     def test_rename_end_to_end(self):
@@ -839,13 +817,13 @@ class TestInstall(Scratch):
         self.assertEqual(variables["mmu_a_encoder_resolution"], 0.5)
         self.assertNotIn("mmu_left_encoder_resolution", variables)
 
-    def test_vars_outside_the_mmu_directory_get_their_own_backup(self):
+    def test_installer_does_not_touch_custom_variables_files(self):
         self.vars_file = os.path.join(self.home, "elsewhere_vars.cfg")
         self.install(["a"], variables={"mmu_a_bowden_lengths": [1]})
         self.unit("a", 0)
         self.edit(["a"], lambda m: m.rename(0, "left"))
         self.run_all(um.baseline(self.kconfig, self.home))
-        self.assertEqual(len([f for f in os.listdir(self.home) if f.startswith("elsewhere_vars.cfg.old-")]), 1)
+        self.assertEqual(len([f for f in os.listdir(self.home) if f.startswith("elsewhere_vars.cfg.old-")]), 0)
         self.assertIn("mmu_left_bowden_lengths", self.applied_vars())
 
     def test_nothing_to_do_leaves_everything_alone(self):
@@ -857,18 +835,6 @@ class TestInstall(Scratch):
         self.assertEqual(self.read(self.vars_file), before)
         self.assertFalse(os.path.exists(um.state_path(self.kconfig)))
 
-    def test_klipper_is_stopped_only_when_there_is_state_to_migrate(self):
-        self.install(["a"], variables={})
-        self.unit("a", 0)
-        self.edit(["a"], lambda m: m.add("b"))
-        base = um.baseline(self.kconfig, self.home)
-        um.prepare(self.kconfig, self.home, base, io.StringIO())
-        with patch.object(um, "stop_klipper") as stop:
-            um.apply(self.kconfig, out=io.StringIO())
-        stop.assert_called_once()
-        with patch.object(um, "stop_klipper") as stop:
-            um.apply(self.kconfig, out=io.StringIO())
-        stop.assert_not_called()
 
 
 class TestRenameIntoADeletedName(Scratch):

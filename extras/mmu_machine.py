@@ -148,7 +148,7 @@ class MmuMachine:
 
         # Normalize all saved state before calibration or selector recovery can read it.
         try:
-            stage_migration(self)
+            stage_migration(self, config.get("state_migration", "{}"))
         except ValueError as e:
             raise config.error(str(e))
 

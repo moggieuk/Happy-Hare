@@ -52,7 +52,7 @@ _OPTION = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*[:=]")
 _NUM_GATES = re.compile(r"^CONFIG_PARAM_NUM_GATES=(\d+)")
 _PREVIOUS_MEMBER = re.compile(r"_PREVIOUS(_\d+)?$")
 # Set by the version upgrade, never a hand edit
-_UPGRADE_OWNED = {("mmu_machine", "happy_hare_version")}
+_UPGRADE_OWNED = {("mmu_machine", "happy_hare_version"), ("mmu_machine", "state_migration")}
 # install.sh sources .mmu_config as shell and make includes it, so a value can't hold these
 _UNSAVEABLE = re.compile(r"[\n\r$`]")
 

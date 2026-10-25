@@ -15,6 +15,7 @@
 # Shared by startup and the installer; no Klipper or installer dependencies.
 # Compute the complete migration before staging any writes.
 
+import ast
 import copy
 import re
 import uuid
@@ -216,23 +217,73 @@ def validate_pending(pending):
     return steps
 
 
-def queue_migration(variables, install):
-    """Installer: append intent only. The same prepared install may be retried safely."""
-    result = copy.deepcopy(variables)
-    pending = result.get(C.VARS_MMU_PENDING_MIGRATION, {"version": 1, "steps": []})
-    if C.VARS_MMU_PENDING_MIGRATION in result:
-        validate_pending(pending)
+def parse_history(value):
+    try:
+        history = ast.literal_eval(value) if isinstance(value, str) else copy.deepcopy(value)
+    except (ValueError, SyntaxError) as e:
+        raise ValueError("Invalid MMU state_migration history: %s" % e)
+    if history in (None, {}):
+        return None
+    validate_pending(history)
+    return history
+
+
+def append_history(history, install):
+    """Append one installer operation; retrying the same ID is idempotent."""
+    pending = parse_history(history) or {"version": 1, "steps": []}
     step = {key: copy.deepcopy(install.get(key, {})) for key in INTENT_FIELDS}
     step["id"] = install.get("migration_id") or uuid.uuid4().hex
     for existing in pending["steps"]:
         if existing["id"] == step["id"]:
             if existing != step:
                 raise ValueError("Pending MMU migration ID was reused with different changes")
-            return result, []
+            return pending
     pending["steps"].append(step)
     validate_pending(pending)
-    result[C.VARS_MMU_PENDING_MIGRATION] = pending
-    return result, ["Recorded unit migration for the next Klipper startup"]
+    return pending
+
+
+def queue_migration(variables, install):
+    """Compatibility helper for the earlier variables-file intent format."""
+    result = copy.deepcopy(variables)
+    result[C.VARS_MMU_PENDING_MIGRATION] = append_history(result.get(C.VARS_MMU_PENDING_MIGRATION), install)
+    return result, []
+
+
+def apply_history(variables, current_names, history):
+    """Apply only config records after the checkpoint saved with the migrated state."""
+    history = parse_history(history)
+    checkpoint = variables.get(C.VARS_MMU_MIGRATION_APPLIED)
+    if checkpoint is not None and (not history or checkpoint not in [s["id"] for s in history["steps"]]):
+        raise ValueError("Saved MMU migration checkpoint is missing from state_migration history; restore matching configuration and saved state")
+    result = copy.deepcopy(variables)
+    notes = []
+    # Accept the earlier PR's pending format entirely at runtime. The installer never
+    # needs to locate the variables file, including during this transition.
+    legacy = result.get(C.VARS_MMU_PENDING_MIGRATION)
+    if legacy is not None:
+        if checkpoint is not None:
+            raise ValueError("Legacy pending MMU migration conflicts with a saved config checkpoint")
+        steps = validate_pending(legacy)
+        legacy_id = steps[-1]["id"]
+        if history and legacy_id not in [s["id"] for s in history["steps"]]:
+            # Config history can start after an older pending install. Its initial
+            # layout must be the destination of that install.
+            if steps[-1]["to"] != history["steps"][0]["from"]:
+                raise ValueError("Legacy pending MMU migration conflicts with configured history")
+        elif history:
+            checkpoint = legacy_id
+        result, notes = apply_intents(result, steps[-1]["to"] if history else current_names)
+    if not history:
+        return result, notes
+    steps = history["steps"]
+    start = next((i + 1 for i, s in enumerate(steps) if s["id"] == checkpoint), 0)
+    if start < len(steps):
+        result[C.VARS_MMU_PENDING_MIGRATION] = {"version": 1, "steps": steps[start:]}
+        result, messages = apply_intents(result, current_names)
+        notes.extend(messages)
+    result[C.VARS_MMU_MIGRATION_APPLIED] = steps[-1]["id"]
+    return result, notes
 
 
 def apply_intents(variables, current_names):
@@ -295,9 +346,9 @@ def match_by_unit(saved_layout, current_layout):
     return mapping
 
 
-def migrate_state(variables, current_layout, defaults):
+def migrate_state(variables, current_layout, defaults, history=None):
     """One startup transaction: unit keys, selection, sensors, lists, layout, and receipt."""
-    result, notes = apply_intents(variables, [name for name, _ in current_layout])
+    result, notes = apply_history(variables, [name for name, _ in current_layout], history)
     saved_layout = valid_layout(result.get(C.VARS_MMU_GATE_MAP_UNITS))
     if saved_layout:
         require_known_unit_changes([name for name, _ in saved_layout],
@@ -354,14 +405,14 @@ def migrate_state(variables, current_layout, defaults):
                 for gate in range(num_gates):
                     if gate not in positions.values() or fitted[var][gate] is None:
                         fitted[var][gate], next_group = next_group, next_group + 1
-    # Store one coherent snapshot; a retry sees either the intent with old state or the
-    # fully migrated state without intent. No separate receipt file to synchronize.
+    # Save the checkpoint with the migrated values, so a retry cannot apply a
+    # completed config history twice. Legacy pending intent is consumed here too.
     result.update(fitted)
     result[C.VARS_MMU_GATE_MAP_UNITS] = current_layout
     return result, errors, notes
 
 
-def stage_migration(machine):
+def stage_migration(machine, history=None):
     """Called once at config load, before any unit's connect/ready consumers."""
     manager = machine.var_manager
     original = manager.save_variables.allVariables
@@ -370,7 +421,7 @@ def stage_migration(machine):
     defaults[C.VARS_MMU_TOOL_TO_GATE_MAP] = maps.ttg_map
     defaults[C.VARS_MMU_ENDLESS_SPOOL_GROUPS] = maps.endless_spool_groups
     layout = [[unit.name, unit.num_gates] for unit in machine.units]
-    migrated, errors, notes = migrate_state(original, layout, defaults)
+    migrated, errors, notes = migrate_state(original, layout, defaults, history)
     # No mutation until the entire migration has validated and completed.
     for key in set(original) - set(migrated):
         manager.delete(key)

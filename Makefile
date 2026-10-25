@@ -446,7 +446,7 @@ install: $(install_targets)
 	done
 	@# Remove config files retired by this release. The mmu directory backup above preserves them.
 	$(Q)$(SUDO)rm -f $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/,$(hh_old_config_files))
-	@# Migrate saved state and retire files of renamed, removed or reordered units
+	@# Verify installed migration history and retire files of renamed or removed units
 	$(Q)$(if $(wildcard $(KCONFIG_CONFIG).unit_migration),$(eval restart_klipper = 1))
 	$(Q)$(PY) -m installer.unit_migration apply --kconfig "$(KCONFIG_CONFIG)"
 	-$(Q)$(PY) -m installer.unit_migration gate-lists --kconfig "$(KCONFIG_CONFIG)" --config-home "$(KLIPPER_CONFIG_HOME)"

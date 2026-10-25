@@ -28,7 +28,7 @@ import os
 import tempfile
 import unittest
 
-from test.hh import cfg, session
+from test.hh import cfg, session, profiles
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -55,6 +55,9 @@ class PersistedGateListsTestCase(unittest.TestCase):
     def boot(self, profile, variables, **boot_options):
         self.path = os.path.join(tempfile.mkdtemp(), 'mmu_vars.cfg')
         write_vars_file(self.path, dict({'mmu__revision': 7}, **variables))
+        if getattr(self, 'intent_history', None):
+            profile = profiles.get(profile).derive('migration-' + profile,
+                        syms={'PARAM_STATE_MIGRATION': repr(self.intent_history)})
         self.hh = session(profile)
         self.hh._mmu_vars_copy = lambda: self.path
         # Filament is physically in the gates, so bootup's gate check keeps their spools
@@ -229,7 +232,8 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
         from installer import unit_migration
         install = {"from": frm, "to": to, "origin": origin, "old_gates": old_gates,
                    "new_gates": new_gates, "encoders": {}}
-        migrated, _ = unit_migration.queue_migration(variables, install)
+        self.intent_history = unit_migration.append_history(getattr(self, 'intent_history', None), install)
+        migrated = dict(variables)
         for var in ('mmu_state_gate_spool_id', 'mmu_state_tool_to_gate_map'):
             self.assertEqual(migrated[var], variables[var], 'the installer leaves %s to startup' % var)
         return migrated
@@ -306,7 +310,7 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
                                  {'unit1': 4, 'old': 9}, {'old': 9, 'unit1': 4})
         renamed = self.migrate(reordered, ['old', 'unit1'], ['unit0', 'unit1'], {'unit0': 'old', 'unit1': 'unit1'},
                                {'old': 9, 'unit1': 4}, {'unit0': 9, 'unit1': 4})
-        self.assertEqual(len(renamed['mmu_state_pending_migration']['steps']), 2)
+        self.assertEqual(len(self.intent_history['steps']), 2)
         self.boot('ercf_vvd', renamed)
         self.assertEqual(self.mmu.gate_spool_id, unit0 + unit1)
 
@@ -320,7 +324,7 @@ class TestInstallerThenStartup(PersistedGateListsTestCase):
                              {'unit0': 9}, {'unit0': 9, 'new': 4})
         renamed = self.migrate(added, ['unit0', 'new'], ['unit0', 'unit1'], {'unit0': 'unit0', 'unit1': 'new'},
                                {'unit0': 9, 'new': 4}, {'unit0': 9, 'unit1': 4})
-        self.assertEqual(len(renamed['mmu_state_pending_migration']['steps']), 2)
+        self.assertEqual(len(self.intent_history['steps']), 2)
         self.boot('ercf_vvd', renamed)
         self.assertEqual(self.mmu.gate_spool_id, unit0 + [-1] * 4)
 
