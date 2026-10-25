@@ -52,6 +52,8 @@ class MmuSyncFeedback:
         self.flowguard_active = False # FlowGuard armed in sync-feedback controller or just using encoder
         self.ctrl = None
         self.flow_rate = 100.         # Estimated % flowrate (calc only for proportional sensors)
+        self.rd_correction = 0.       # % deviation of tuned rd from the rd the gate started with
+        self._rd_start = None         # Calibrated rd the controller was last hard reset with
 
         # Coalescing state for deferred gear rd updates: keep only the latest
         # target with a single in-flight lookahead callback (all on reactor greenlet)
@@ -395,6 +397,7 @@ class MmuSyncFeedback:
             'sync_feedback_bias_raw': None,
             'sync_feedback_bias_modelled': None,
             'sync_feedback_flow_rate': None,
+            'sync_feedback_rd_correction': None,
             'flowguard': None,
             'tangle_prevention': None,
         }
@@ -414,6 +417,7 @@ class MmuSyncFeedback:
                 'sync_feedback_bias_raw': round(self._get_sync_bias_raw(), 2),
                 'sync_feedback_bias_modelled': round(self._get_sync_bias_modelled(), 2),
                 'sync_feedback_flow_rate': self.flow_rate,
+                'sync_feedback_rd_correction': self.rd_correction,
                 'flowguard': flowguard_status,
                 'tangle_prevention': {
                     'enabled': bool(self.p.tangle_prevention_enabled),
@@ -541,6 +545,8 @@ class MmuSyncFeedback:
         """
         if not self.mmu_unit.has_buffer(): return
         self._invalidate_rd_scheduler()
+        self.rd_correction = 0.
+        self._rd_start = None # Until the controller is reset for the new gate
 
         # Usually a no-op because the unsync ahead of the gate change already restored, but it
         # covers the paths where that handler bails early (feature toggled off mid-boost)
@@ -690,7 +696,8 @@ class MmuSyncFeedback:
         save = autotune.get('save', None)
         if rd is not None:
             msg = "MmuSyncFeedback: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
-            self.new_autotuned_rd = rd
+            if save:
+                self.new_autotuned_rd = rd # Only confident suggestions are persisted on unsync
             self.mmu.log_debug(msg)
 
         # Update gear stepper rd, subject to a fractional dead-band against the last
@@ -718,6 +725,9 @@ class MmuSyncFeedback:
             # if rd_current > rd_true then flowrate must be reduced
             self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
 
+        if self._rd_start:
+            self.rd_correction = round((rd_tuned - self._rd_start) / self._rd_start * 100., 2)
+
         # Tangle prevention: boost gear current on high tension (spool resistance)
         self._check_tangle_prevention(eventtime)
 
@@ -738,6 +748,7 @@ class MmuSyncFeedback:
         self.estimated_state = starting_state
         if hard_reset:
             rd_start = self.mmu_unit.calibrator.get_gear_rd()
+            self._rd_start = rd_start
         else:
             rd_start = self.ctrl.autotune.get_rec_rd()
         # Fresh controller state: invalidate so a stale queued lookahead callback

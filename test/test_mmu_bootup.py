@@ -106,7 +106,8 @@ class TestConfigLoad(unittest.TestCase):
         status = self.hh.mmu.get_status(self.hh.reactor.monotonic())
         for key in ('encoder', 'sync_feedback_state', 'sync_feedback_enabled',
                     'sync_feedback_bias_raw', 'sync_feedback_bias_modelled',
-                    'sync_feedback_flow_rate', 'flowguard', 'tangle_prevention'):
+                    'sync_feedback_flow_rate', 'sync_feedback_rd_correction',
+                    'flowguard', 'tangle_prevention'):
             self.assertIn(key, status)
             self.assertIsNone(status[key])
 
@@ -469,7 +470,8 @@ class TestReady(BootedSessionMixin, unittest.TestCase):
         self.assertIsNone(status['encoder'])
         for key in ('sync_feedback_state', 'sync_feedback_enabled',
                     'sync_feedback_bias_raw', 'sync_feedback_bias_modelled',
-                    'sync_feedback_flow_rate', 'flowguard', 'tangle_prevention'):
+                    'sync_feedback_flow_rate', 'sync_feedback_rd_correction',
+                    'flowguard', 'tangle_prevention'):
             self.assertIn(key, status)
             self.assertIsNotNone(status[key])
 

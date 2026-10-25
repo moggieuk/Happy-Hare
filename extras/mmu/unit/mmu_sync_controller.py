@@ -298,13 +298,16 @@ class _AutotuneEngine:
 
     # -------------------------------- API -----------------------------------
 
-    def restart(self, rd_init, reset_totals=True, reset_cooldown=True, reset_confidence=True):
+    def restart(self, rd_init, reset_totals=True, reset_cooldown=True, reset_confidence=True, reset_baseline=False):
         """
         Rebase all autotune anchors/windows on a fresh baseline for new starting rd value
           - Cooldown timers are either reset-to-now (default) or to a large negative origin
           - Total counts are optionally reset
+          - Persisted (tuned) baseline is optionally reset, e.g. for a new gate
         """
         self._autotune_current = rd_init
+        if reset_baseline:
+            self._autotune_baseline = rd_init
         self._paused = False
 
         # Reset or preserve cooldown origins
@@ -1105,7 +1108,7 @@ class SyncController:
 
         if hard_reset:
             # Rebase autotune helper on the new start
-            self.autotune.restart(rd_init)
+            self.autotune.restart(rd_init, reset_baseline=True)
 
         # Reset FlowGuard engine state on controller reset
         self.flowguard.reset()

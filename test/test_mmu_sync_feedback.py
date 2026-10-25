@@ -590,5 +590,68 @@ class TestTwolevelTuningEvidence(unittest.TestCase):
             self.assertIsNone(ctrl.autotune._tl_last_unpaired_low)
 
 
+class TestAutotunedRd(unittest.TestCase):
+    """Tuned rd is per gate, only confident suggestions persist, and correction % is reported."""
+
+    def setUp(self):
+        self.hh = session('emu')
+        self.addCleanup(self.hh.close)
+        self.hh.boot(calibrate=True)
+        self.assertEqual(self.hh.errors, [])
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.sf = self.unit.sync_feedback
+        self.now = self.hh.reactor.monotonic()
+
+    def process(self, autotune=None, rd_tuned=None):
+        status = self.sf.ctrl.update(self.now, 0.0, 0.0)
+        if autotune is not None:
+            status['output']['autotune'] = autotune
+        if rd_tuned is not None:
+            status['output']['rd_tuned'] = rd_tuned
+        self.sf._process_status(self.now, status)
+
+    def test_hard_reset_rebases_tuned_rd_for_new_gate(self):
+        self.sf.ctrl.reset(self.now, 21.70, 0.0, hard_reset=True)
+        self.sf.ctrl.reset(self.now, 22.50, 0.0, hard_reset=True)
+        self.assertEqual(self.sf.ctrl.autotune.get_tuned_rd(), 22.50)
+
+    def test_only_confident_suggestion_is_kept_for_saving(self):
+        self.sf.new_autotuned_rd = None
+        self.process(autotune={'rd': 22.61, 'note': '', 'save': False})
+        self.assertIsNone(self.sf.new_autotuned_rd)
+        self.process(autotune={'rd': 22.62, 'note': '', 'save': True})
+        self.assertEqual(self.sf.new_autotuned_rd, 22.62)
+
+    def test_status_reports_correction_from_starting_rd(self):
+        self.sf._reset_controller(self.now)
+        rd = self.unit.calibrator.get_gear_rd()
+        self.process(rd_tuned=rd * 1.02)
+        status = self.hh.mmu.get_status(self.now)
+        self.assertEqual(status['sync_feedback_rd_correction'], 2.0)
+        self.sf._handle_gate_selected(1, 0)
+        self.assertEqual(self.hh.mmu.get_status(self.now)['sync_feedback_rd_correction'], 0.)
+
+    def test_print_end_summarises_autotuned_rd(self):
+        cal = self.unit.calibrator
+        rd = cal.get_gear_rd(0)
+        self.unit.p.autotune_rotation_distance = 1
+        self.hh.run_gcode('MMU_PRINT_START')
+        cal.note_rd_telemetry(0, rd * 1.01)
+        self.assertTrue(any('Revised: %.4fmm (+1.00%%) -> Updated' % (rd * 1.01) in line for line in self.hh.console))
+        cal.note_rd_telemetry(0, rd * 1.02)
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(self.hh.errors, [])
+        summary = [line for line in self.hh.console if 'Autotune summary' in line]
+        self.assertEqual(len(summary), 1)
+        self.assertIn('Gate 0: rotation_distance %.4f -> %.4f (+2.00%%)' % (rd, round(rd * 1.02, 4)), summary[0])
+
+    def test_no_print_end_summary_without_autotune(self):
+        self.unit.p.autotune_rotation_distance = 0
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.unit.calibrator.note_rd_telemetry(0, self.unit.calibrator.get_gear_rd(0) * 1.02)
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.assertFalse(any('Autotune summary' in line for line in self.hh.console))
+
+
 if __name__ == '__main__':
     unittest.main()

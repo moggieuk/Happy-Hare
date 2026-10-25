@@ -42,6 +42,7 @@ class MmuCalibrator:
         self.printer = config.get_printer()
 
         self.calibration_status = 0b0
+        self._autotune_changes = {} # (setting, gate) -> [before, after] for print-end summary
 
         # Klipper event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
@@ -502,6 +503,7 @@ class MmuCalibrator:
             new_resolution = self._ema_update(current_resolution, sampled_resolution, AUTOTUNE_ENCODER_WINDOW_LENGTH)
             self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_resolution:.4f}")
             self.mmu_unit.encoder.set_resolution(new_resolution)
+            self._note_autotune_change('encoder', None, current_resolution, self.mmu_unit.encoder.get_resolution())
 
         else:
             pass # Currently this option is hidden from user so we hide evidence of it
@@ -517,12 +519,14 @@ class MmuCalibrator:
 
         msg = (
             f"Current rotation_distance for gate {gate}: "
-            f"{current_rd:.1f}mm, Revised: {new_rd:.1f}mm"
+            f"{current_rd:.4f}mm, Revised: {new_rd:.4f}mm "
+            f"({(new_rd - current_rd) / current_rd * 100.:+.2f}%)"
         )
 
         if self.mmu_unit.p.autotune_rotation_distance:
             self.mmu.log_info(f"Autotune: {msg} -> Updated")
             self.update_gear_rd(new_rd, gate=gate)
+            self._note_autotune_change('rd', gate, current_rd, self.get_gear_rd(gate))
 
         else:
             self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
@@ -589,9 +593,46 @@ class MmuCalibrator:
             new_bowden_length = self._ema_update(bowden_length, bowden_travel, AUTOTUNE_BOWDEN_WINDOW_LENGTH)
             self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_bowden_length:.1f}mm")
             self.update_bowden_length(new_bowden_length, gate=gate, console_msg=False, reason="saved")
+            self._note_autotune_change('bowden', gate, bowden_length, self.get_bowden_length(gate))
 
         else:
             self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
+
+
+    def _note_autotune_change(self, setting, gate, before, after):
+        """
+        Remember first 'before' and latest 'after' value of an autotuned setting
+        """
+        change = self._autotune_changes.setdefault((setting, gate), [before, after])
+        change[1] = after
+
+    def reset_autotune_changes(self):
+        self._autotune_changes = {}
+
+    def get_autotune_summary(self):
+        """
+        Returns list of compact "before -> after" lines, one per gate (plus encoder), for
+        autotuned settings that actually changed
+        """
+        fmt = {
+            'rd':      lambda b, a: "rotation_distance %.4f -> %.4f (%+.2f%%)" % (b, a, (a - b) / b * 100.),
+            'bowden':  lambda b, a: "bowden_length %.1f -> %.1fmm" % (b, a),
+            'encoder': lambda b, a: "resolution %.4f -> %.4f" % (b, a),
+        }
+        precision = {'rd': 4, 'bowden': 1, 'encoder': 4}
+
+        by_gate = {}
+        for (setting, gate), (before, after) in self._autotune_changes.items():
+            if round(before, precision[setting]) == round(after, precision[setting]):
+                continue
+            by_gate.setdefault(gate, []).append(fmt[setting](before, after))
+
+        lines = []
+        for gate in sorted(g for g in by_gate if g is not None):
+            lines.append("Gate %d: %s" % (gate, ", ".join(by_gate[gate])))
+        if None in by_gate:
+            lines.append("%s encoder: %s" % (self.mmu_unit.name, ", ".join(by_gate[None])))
+        return lines
 
 
     def _ema_update(self, old_avg, new_val, window_length):
