@@ -259,7 +259,7 @@ def apply_history(variables, current_names, history):
     result = copy.deepcopy(variables)
     notes = []
     # Accept the earlier PR's pending format entirely at runtime. The installer never
-    # needs to locate the variables file, including during this transition.
+    # needs to modify the variables file, including during this transition.
     legacy = result.get(C.VARS_MMU_PENDING_MIGRATION)
     if legacy is not None:
         if checkpoint is not None:

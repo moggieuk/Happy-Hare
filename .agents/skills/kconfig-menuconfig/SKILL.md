@@ -70,8 +70,11 @@ Load-bearing facts about the flow:
   hidden, `keep_when_hidden`, installer-owned symbol rendered as `state_migration`
   in `[mmu_machine]` in `mmu.cfg`. Refresh copy-back and cfg import must not overwrite
   it, and Kconfig name rewriting must never rewrite historical identities inside it.
-  The installer never locates or reads/writes the variables file. Config history is
-  retained across installs, including multiple installs before Klipper starts.
+  The installer optionally reads only the variables path in `PARAM_MMU_VARS_CFG`
+  (expanding `~`), never writes it, and never searches printer configuration files.
+  A valid matching checkpoint trims older history, retaining the checkpoint entry
+  and all pending changes. Missing/invalid files or unmatched checkpoints leave
+  history intact. Multiple installs before Klipper starts remain supported.
   At config load, `extras/mmu/mmu_state_migration.py` applies only history after the
   `mmu_state_migration_applied` checkpoint in Klipper's actual save_variables object.
   It renames/removes unit and encoder keys, remaps sensor disables and gate lists,

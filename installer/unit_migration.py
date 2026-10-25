@@ -19,6 +19,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import argparse
+import ast
+import configparser
 import datetime
 import json
 import importlib
@@ -608,10 +610,35 @@ def prepare(kconfig, config_home, base, out=sys.stdout):
     if not history and not state.get("install") and not read_state(kconfig) and \
             read_kconfig(kconfig).get("PARAM_STATE_MIGRATION", "{}") == "{}":
         return
+    history = trim_history(kconfig, history)
     state["history"] = history
     # Save the retry ID and original counts before publishing the template value.
     write_state(kconfig, state)
     write_history(kconfig, history)
+
+
+def trim_history(kconfig, history):
+    """Best-effort pruning using only the variables path recorded in Kconfig."""
+    if not history:
+        return history
+    path = read_kconfig(kconfig).get("PARAM_MMU_VARS_CFG")
+    if not path:
+        return history
+    try:
+        parser = configparser.ConfigParser(interpolation=None)
+        with open(os.path.expanduser(path), encoding="utf-8") as handle:
+            parser.read_file(handle)
+        variables = {key: ast.literal_eval(value) for key, value in parser.items("Variables")}
+    except (OSError, UnicodeError, configparser.Error, ValueError, SyntaxError):
+        return history
+    checkpoint = variables.get(state_migration.C.VARS_MMU_MIGRATION_APPLIED)
+    if not isinstance(checkpoint, str) or state_migration.C.VARS_MMU_PENDING_MIGRATION in variables:
+        return history
+    for index, step in enumerate(history["steps"]):
+        if step["id"] == checkpoint:
+            # Keep the checkpoint itself: startup validates it before skipping it.
+            return dict(history, steps=history["steps"][index:])
+    return history
 
 
 def write_history(kconfig, history):

@@ -8,6 +8,7 @@
 import ast
 import configparser
 import io
+import json
 import os
 import tempfile
 import unittest
@@ -159,6 +160,60 @@ class TestConfigHistory(Scratch):
         self.run_all(['c'])
         self.assertEqual(self.history(), history)
         self.assertEqual(self.read(self.vars_file), before)
+
+    def test_configured_checkpoint_trims_only_older_steps(self):
+        self.test_history_survives_chained_installs_and_plain_reinstall()
+        history = self.history()
+        values = self.applied_vars()
+        write_vars(self.vars_file, values)
+        before = self.read(self.vars_file)
+        self.top('c', PARAM_MMU_VARS_CFG=json.dumps(self.vars_file))
+        self.run_all(['c'])
+        self.assertEqual(self.history()['steps'], history['steps'][1:])
+        self.assertEqual(self.read(self.vars_file), before)
+        self.assertEqual(sm.apply_history(values, ['c'], self.history())[0], values)
+
+    def test_trim_keeps_pending_steps_and_appends_new_change(self):
+        self.test_history_survives_chained_installs_and_plain_reinstall()
+        history = self.history()
+        first = sm.apply_history(read_vars(self.vars_file), ['b'],
+                                 dict(history, steps=history['steps'][:1]))[0]
+        write_vars(self.vars_file, first)
+        self.top('c', PARAM_MMU_VARS_CFG=json.dumps(self.vars_file))
+        self.run_all(['c'])
+        self.assertEqual(self.history(), history)
+        values = sm.apply_history(first, ['c'], history)[0]
+        write_vars(self.vars_file, values)
+        self.edit(['c'], lambda m: m.rename(0, 'd'))
+        with open(self.kconfig, 'a') as handle:
+            handle.write('CONFIG_PARAM_MMU_VARS_CFG=%s\n' % json.dumps(self.vars_file))
+        self.run_all(['c'])
+        trimmed = self.history()
+        self.assertEqual(len(trimmed['steps']), 2)
+        self.assertEqual(trimmed['steps'][0], history['steps'][-1])
+        self.assertEqual(trimmed['steps'][1]['to'], ['d'])
+        migrated = sm.apply_history(values, ['d'], trimmed)[0]
+        self.assertEqual(migrated['mmu_d_bowden_lengths'], [1, 2, 3, 4])
+        self.assertEqual(read_vars(self.vars_file), values)
+
+    def test_checkpoint_lookup_falls_back_without_trimming(self):
+        self.test_history_survives_chained_installs_and_plain_reinstall()
+        history = self.history()
+        for contents in ('invalid ini', '[Variables]\n',
+                         '[Variables]\nmmu_state_migration_applied = invalid literal\n',
+                         '[Variables]\nmmu_state_migration_applied = []\n',
+                         "[Variables]\nmmu_state_migration_applied = 'unknown'\n",
+                         "[Variables]\nmmu_state_migration_applied = %r\nbroken = invalid literal\n"
+                         % history['steps'][-1]['id']):
+            with self.subTest(contents=contents):
+                self.write(self.vars_file, contents)
+                self.top('c', PARAM_MMU_VARS_CFG=json.dumps(self.vars_file))
+                self.run_all(['c'])
+                self.assertEqual(self.history(), history)
+                self.assertEqual(self.read(self.vars_file), contents)
+        os.remove(self.vars_file)
+        self.run_all(['c'])
+        self.assertEqual(self.history(), history)
 
     def test_history_is_not_rewritten_when_units_are_renamed_again(self):
         self.top('b')
