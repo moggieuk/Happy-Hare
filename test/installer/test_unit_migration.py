@@ -61,6 +61,9 @@ class Scratch(unittest.TestCase):
 
     def install(self, units, gates=None, variables=None):
         gates = gates or {u: 4 for u in units}
+        printer = os.path.join(self.home, "printer.cfg")
+        if not os.path.exists(printer):
+            self.write(printer, "[include mmu/base/mmu_macro_vars.cfg]\n")
         self.write(um._base(self.home, "mmu.cfg"),
                    "[mmu_machine]\nunits: %s\n\n[mmu_parameters]\ndefault_extruder_temp: 215\n"
                    % ",".join(units))
@@ -104,6 +107,84 @@ class Scratch(unittest.TestCase):
         um.prepare(self.kconfig, self.home, base, io.StringIO())
         with patch.object(um, "stop_klipper"):
             um.apply(self.kconfig, out=io.StringIO())
+
+
+class TestVarsFile(Scratch):
+    def setUp(self):
+        super().setUp()
+        self.top('a', PARAM_MMU_VARS_CFG='"~/fallback_vars.cfg"')
+        self.printer = os.path.join(self.home, 'printer.cfg')
+
+    def test_printer_definition_overrides_menuconfig_and_unincluded_mmu_file(self):
+        self.write(um._base(self.home, 'mmu_macro_vars.cfg'),
+                   '[save_variables]\nfilename: /stale/mmu_vars.cfg\n')
+        self.write(self.printer, '[save_variables]\nfilename: ~/custom_vars.cfg # comment\n')
+        self.assertEqual(um.vars_file(self.home, self.kconfig), os.path.expanduser('~/custom_vars.cfg'))
+
+    def test_nested_relative_glob_includes_follow_file_order(self):
+        os.makedirs(os.path.join(self.home, 'parts', 'nested'))
+        self.write(self.printer, '[include parts/*.cfg]\n')
+        self.write(os.path.join(self.home, 'parts', '10-main.cfg'),
+                   '[include nested/vars.cfg]\n[include optional-*.cfg]\n')
+        self.write(os.path.join(self.home, 'parts', 'nested', 'vars.cfg'),
+                   '[save_variables]\nfilename: /first.cfg\n')
+        self.write(os.path.join(self.home, 'parts', '20-override.cfg'),
+                   '[save_variables]\nfilename: /last.cfg\n')
+        self.assertEqual(um.vars_file(self.home, self.kconfig), '/last.cfg')
+
+    def test_custom_printer_config_and_parent_override_after_include(self):
+        self.top('a', PRINTER_CONFIG_FILE='"custom.cfg"', PARAM_MMU_VARS_CFG='"/fallback.cfg"')
+        self.write(os.path.join(self.home, 'custom.cfg'),
+                   '[include vars.cfg]\n[save_variables]\nfilename = /parent.cfg\n')
+        self.write(os.path.join(self.home, 'vars.cfg'), '[save_variables]\nfilename: /included.cfg\n')
+        self.assertEqual(um.vars_file(self.home, self.kconfig), '/parent.cfg')
+
+    def test_missing_definition_uses_menuconfig_not_unincluded_files(self):
+        self.write(self.printer, '# [save_variables]\n# filename: /ignored.cfg\n')
+        self.write(um._base(self.home, 'mmu_macro_vars.cfg'),
+                   '[save_variables]\nfilename: /unused.cfg\n')
+        self.assertEqual(um.vars_file(self.home, self.kconfig), os.path.expanduser('~/fallback_vars.cfg'))
+
+    def test_no_printer_file_uses_menuconfig(self):
+        self.assertEqual(um.vars_file(self.home, self.kconfig), os.path.expanduser('~/fallback_vars.cfg'))
+
+    def test_recursive_include_is_an_error_not_a_fallback(self):
+        self.write(self.printer, '[include loop.cfg]\n')
+        os.symlink(self.printer, os.path.join(self.home, 'loop.cfg'))
+        with self.assertRaisesRegex(ValueError, 'Recursive'):
+            um.vars_file(self.home, self.kconfig)
+
+    def test_missing_literal_include_is_an_error_not_a_fallback(self):
+        self.write(self.printer, '[include missing.cfg]\n')
+        with self.assertRaisesRegex(ValueError, 'missing.cfg'):
+            um.vars_file(self.home, self.kconfig)
+
+    def test_repeated_include_is_not_a_cycle(self):
+        self.write(self.printer, '[include vars.cfg]\n[include vars.cfg]\n')
+        self.write(os.path.join(self.home, 'vars.cfg'), '[save_variables]\nfilename: /shared.cfg\n')
+        self.assertEqual(um.vars_file(self.home, self.kconfig), '/shared.cfg')
+
+    def test_definition_without_filename_is_an_error_not_a_fallback(self):
+        self.write(self.printer, '[save_variables]\n')
+        with self.assertRaisesRegex(ValueError, 'no filename'):
+            um.vars_file(self.home, self.kconfig)
+
+    def test_custom_file_receives_intent_and_backup(self):
+        self.install(['a'], variables={'mmu_a_bowden_lengths': [1, 2, 3, 4]})
+        original_default = self.read(self.vars_file)
+        custom = os.path.join(self.home, 'custom-state.cfg')
+        um.write_vars(custom, {'mmu__revision': 0, 'mmu_a_bowden_lengths': [10, 20, 30, 40]})
+        self.write(self.printer, '[include custom-vars.cfg]\n')
+        self.write(os.path.join(self.home, 'custom-vars.cfg'), '[save_variables]\nfilename: %s\n' % custom)
+        self.unit('a', 0)
+        self.edit(['a'], lambda m: m.rename(0, 'left'))
+        self.run_all(['a'])
+        self.assertEqual(self.read(self.vars_file), original_default)
+        queued = um.read_vars(custom)
+        self.assertIn(sm.C.VARS_MMU_PENDING_MIGRATION, queued)
+        migrated = sm.apply_intents(queued, ['left'])[0]
+        self.assertEqual(migrated['mmu_left_bowden_lengths'], [10, 20, 30, 40])
+        self.assertTrue(any(n.startswith('custom-state.cfg.old-') for n in os.listdir(self.home)))
 
 
 class TestBaseline(Scratch):

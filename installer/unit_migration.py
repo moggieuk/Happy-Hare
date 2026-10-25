@@ -23,6 +23,7 @@ import argparse
 import ast
 import configparser
 import datetime
+import glob
 import json
 import importlib
 import importlib.util
@@ -247,13 +248,57 @@ def installed_option(config_home, filename, section, option):
     return ConfigBuilder(path).get(section, option)
 
 
+def printer_vars_file(config_home, kconfig):
+    """Resolve [save_variables] through the active printer config's include tree.
+
+    Includes are relative to their containing file, globbed in sorted order, and
+    expanded in place so later definitions take precedence as they do in Klipper.
+    Do not scan unrelated files: old backups may name a different variables file.
+    """
+    values = read_kconfig(kconfig)
+    filename = os.path.expanduser(values.get("PRINTER_CONFIG_FILE") or "printer.cfg")
+    root = os.path.join(config_home or "", filename)
+    if not os.path.exists(root):
+        return None
+    active = set()
+
+    def expand(path):
+        identity = os.path.realpath(path)
+        if identity in active:
+            raise ValueError("Recursive printer config include: %s" % path)
+        active.add(identity)
+        try:
+            with open(path, encoding="utf-8") as f:
+                lines = f.readlines()
+            result = []
+            for line in lines:
+                include = re.match(r"^\[include\s+(.+?)\]\s*(?:[#;].*)?$", line.strip())
+                if include:
+                    pattern = os.path.join(os.path.dirname(path), os.path.expanduser(include.group(1)))
+                    matches = sorted(glob.glob(pattern))
+                    if not matches and not glob.has_magic(pattern):
+                        raise ValueError("Missing printer config include: %s" % pattern)
+                    for child in matches:
+                        result.append(expand(child))
+                else:
+                    result.append(line)
+            return "".join(result) + "\n"
+        finally:
+            active.remove(identity)
+
+    parser = configparser.RawConfigParser(strict=False, inline_comment_prefixes=("#", ";"))
+    parser.read_string(expand(root), source=root)
+    if not parser.has_section("save_variables"):
+        return None
+    path = parser.get("save_variables", "filename", fallback="").strip()
+    if not path:
+        raise ValueError("[save_variables] in printer configuration has no filename")
+    return path
+
+
 def vars_file(config_home, kconfig):
-    """
-    The save_variables file: the installed [save_variables] filename, else the
-    menuconfig 'save_variables path'. Overrides made elsewhere aren't followed.
-    """
-    path = installed_option(config_home, "mmu_macro_vars.cfg", "save_variables", "filename") \
-        or read_kconfig(kconfig).get("PARAM_MMU_VARS_CFG")
+    """Prefer the active printer configuration; otherwise use the menuconfig path."""
+    path = printer_vars_file(config_home, kconfig) or read_kconfig(kconfig).get("PARAM_MMU_VARS_CFG")
     return os.path.expanduser(path) if path else None
 
 

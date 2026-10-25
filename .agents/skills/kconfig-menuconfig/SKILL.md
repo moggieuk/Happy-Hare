@@ -67,6 +67,9 @@ Load-bearing facts about the flow:
   `.mmu_config_<unit>` before the per-unit menuconfig), `prepare` and `apply`
   (in `make install`, Klipper stopped: retire old unit files and append explicit
   unit-change intent to `mmu_state_pending_migration` in the save_variables file).
+  The installer resolves the variables filename from the configured printer file
+  and its nested/glob includes, falling back to `PARAM_MMU_VARS_CFG` only when no
+  definition exists. Missing required includes or cycles stop migration discovery.
   The installer leaves all operational state untouched. At config load,
   `extras/mmu/mmu_state_migration.py` validates and replays the versioned intent,
   renames/removes unit and encoder keys, remaps sensor disables and gate lists,
