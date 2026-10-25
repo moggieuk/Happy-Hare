@@ -487,16 +487,6 @@ class _AutotuneEngine:
             status["note"] = "Autotune: {} {}".format(travel, _note) if _note else ""
             return status
 
-        # Do nothing on truly trivial changes
-        if not report_trivial and math.isclose(rec_rd, self._autotune_current, abs_tol=1e-3):
-            status["note"] = "Autotune: {} Rejected rd {:.4f} because too trivial a delta".format(travel, rec_rd)
-            return status
-
-        # We have new tuned rd value...
-        self._autotune_current = rec_rd
-        status["rd"] = rec_rd
-        status["note"] = "Autotune: {} {} and {}".format(travel, note, _note)
-
         # Should we recommend saving as new default reference?
         if self._rd_cert_last_score >= self._autotune_min_cert_score:
             frac = self._frac_speed_delta(rec_rd, self._autotune_baseline)
@@ -504,6 +494,16 @@ class _AutotuneEngine:
             if frac >= min_frac:
                 self._autotune_baseline = rec_rd
                 status["save"] = True
+
+        # Do nothing on truly trivial changes
+        if not report_trivial and not status["save"] and math.isclose(rec_rd, self._autotune_current, abs_tol=1e-3):
+            status["note"] = "Autotune: {} Rejected rd {:.4f} because too trivial a delta".format(travel, rec_rd)
+            return status
+
+        # We have new tuned rd value...
+        self._autotune_current = rec_rd
+        status["rd"] = rec_rd
+        status["note"] = "Autotune: {} {} and {}".format(travel, note, _note)
 
         self.restart(rec_rd, reset_totals=False, reset_cooldown=False, reset_confidence=False)
         return status

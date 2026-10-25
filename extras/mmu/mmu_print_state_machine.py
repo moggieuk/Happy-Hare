@@ -249,8 +249,10 @@ class MmuPrintStateMachine:
             # (must call after print_state is set)
             self.mmu.reset_sync_gear_to_extruder()
 
-            # After the unsync above so the final gate's autotuned rd is included
             if was_printing:
+                # Always-gripped machines can remain synced after print end.
+                for unit in self.mmu.mmu_machine.units:
+                    unit.sync_feedback.save_autotuned_rd()
                 lines = [line for unit in self.mmu.mmu_machine.units for line in unit.calibrator.get_autotune_summary()]
                 if lines:
                     self.mmu.log_info("Autotune summary:\n  " + "\n  ".join(lines))

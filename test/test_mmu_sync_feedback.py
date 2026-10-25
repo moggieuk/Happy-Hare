@@ -653,5 +653,68 @@ class TestAutotunedRd(unittest.TestCase):
         self.assertFalse(any('Autotune summary' in line for line in self.hh.console))
 
 
+    def start_loaded_print(self):
+        self.hh.heat_extruder(220)
+        self.hh.place_filament(0, position=-40.)
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(self.sf.active)
+
+    def test_stable_twolevel_recommendation_is_saved_when_confident(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 1
+        rd = self.unit.calibrator.get_gear_rd(0)
+        target = rd * 1.02
+        self.sf.ctrl.cfg.use_twolevel_for_type_p = True
+        self.sf._reset_controller(self.now)
+        suggestions = []
+        with patch.object(self.sf.ctrl.autotune, '_recommend_rd_from_twolevel',
+                          return_value=(target, 'stable estimate')):
+            for i in range(1, 17):
+                status = self.sf.ctrl.update(self.now + i * 20, 110., 0.)
+                self.sf._process_status(self.now + i * 20, status)
+                suggestions.append(status['output']['autotune'])
+        self.assertFalse(next(s for s in suggestions if s['rd'] is not None)['save'])
+        self.assertGreaterEqual(self.sf.ctrl.autotune._rd_cert_last_score, .5)
+        self.sf._handle_mmu_unsynced()
+        self.assertAlmostEqual(self.unit.calibrator.get_gear_rd(0), target, places=4)
+        self.assertEqual(sum(s['save'] for s in suggestions), 1)
+        self.assertEqual(self.sf.rd_correction, 2.)
+
+    def test_print_end_saves_final_gate_without_unsyncing(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 1
+        cal = self.unit.calibrator
+        rd = cal.get_gear_rd(0)
+        target = rd * 1.02
+        self.assertTrue(self.unit.filament_always_gripped)
+        self.process(autotune={'rd': target, 'note': '', 'save': True})
+        with patch.object(cal, 'note_rd_telemetry', wraps=cal.note_rd_telemetry) as save:
+            self.hh.run_gcode('MMU_PRINT_END')
+            self.assertEqual(self.hh.errors, [])
+            summary = [line for line in self.hh.console if 'Autotune summary' in line]
+            self.assertEqual(len(summary), 1)
+            self.assertIn('Gate 0: rotation_distance %.4f -> %.4f (+2.00%%)' % (rd, round(target, 4)), summary[0])
+            self.assertTrue(self.sf.active)
+            self.assertAlmostEqual(cal.get_gear_rd(0), target, places=4)
+            self.hh.run_gcode('MMU_PRINT_START')
+            self.hh.run_gcode('MMU_PRINT_END')
+            self.sf._handle_mmu_unsynced()
+            save.assert_called_once_with(0, target)
+        self.assertEqual(sum('Autotune summary' in line for line in self.hh.console), 1)
+
+    def test_print_end_keeps_autotune_disabled_on_loaded_gate(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 0
+        rd = self.unit.calibrator.get_gear_rd(0)
+        self.process(autotune={'rd': rd * 1.02, 'note': '', 'save': True})
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(self.sf.active)
+        self.assertEqual(self.unit.calibrator.get_gear_rd(0), rd)
+        self.assertFalse(any('Autotune summary' in line for line in self.hh.console))
+
+
 if __name__ == '__main__':
     unittest.main()

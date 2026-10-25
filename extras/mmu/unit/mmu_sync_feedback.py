@@ -519,14 +519,13 @@ class MmuSyncFeedback:
 
         if not self.active: return
 
+        self.save_autotuned_rd()
+
         # Deactivate sync feedback
         self.active = False
 
         # Reset tangle prevention state and restore current if boosted
         self._reset_tangle_prevention(eventtime)
-
-        if self.new_autotuned_rd is not None:
-            self.mmu_unit.calibrator.note_rd_telemetry(self.mmu.gate_selected, self.new_autotuned_rd)
 
         # Restore default (last tuned) rotation distance in case it wasn't "autotune-saved" above.
         # This snaps rd outside the scheduler so invalidate its memory
@@ -535,6 +534,14 @@ class MmuSyncFeedback:
 
         # Optional but let's turn off extruder movement events
         self.mmu_unit.extruder_monitor().remove_callback(self._handle_extruder_movement)
+
+
+    def save_autotuned_rd(self):
+        if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
+        if not self.mmu_unit.manages_gate(self.mmu.gate_selected): return
+        if self.new_autotuned_rd is not None:
+            self.mmu_unit.calibrator.note_rd_telemetry(self.mmu.gate_selected, self.new_autotuned_rd)
+            self.new_autotuned_rd = None
 
 
     def _handle_gate_selected(self, gate, prev_gate):
@@ -697,7 +704,7 @@ class MmuSyncFeedback:
         if rd is not None:
             msg = "MmuSyncFeedback: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
             if save:
-                self.new_autotuned_rd = rd # Only confident suggestions are persisted on unsync
+                self.new_autotuned_rd = rd # Only persist confident suggestions
             self.mmu.log_debug(msg)
 
         # Update gear stepper rd, subject to a fractional dead-band against the last
