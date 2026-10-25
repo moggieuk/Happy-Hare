@@ -154,7 +154,9 @@ class MmuSyncFeedbackCommand(BaseCommand):
                 rd_start = unit.calibrator.get_gear_rd()
                 rd_current = sf.ctrl.get_current_rd()
                 rd_rec = sf.ctrl.autotune.get_rec_rd()
-                msg += "- Current RD: %.2f, Autotune recommended: %.2f, Default: %.2f\n" % (rd_current, rd_rec, rd_start)
+                rd_tuned = sf.ctrl.autotune.get_tuned_rd()
+                msg += "- Current RD: %.2f, Autotune recommended: %.2f, Tuned: %.2f (%+.2f%%), Default: %.2f\n" % (
+                    rd_current, rd_rec, rd_tuned, sf.rd_correction, rd_start)
 
                 msg += "- State: %s\n" % sf.get_sync_feedback_string(detail=True)
                 msg += "- FlowGuard: %s" % ("Active" if sf.flowguard_active else "Inactive")

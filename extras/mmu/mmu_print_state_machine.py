@@ -170,6 +170,8 @@ class MmuPrintStateMachine:
             self.mmu._print_toolchange_done = False
             self.paused_extruder_temp = None
             self.mmu._reset_job_statistics() # Reset job stats but leave persisted totals alone
+            for unit in self.mmu.mmu_machine.units:
+                unit.calibrator.reset_autotune_changes()
             self.mmu.reactor.update_timer(self.mmu.hotend_off_timer, self.mmu.reactor.NEVER) # Don't automatically turn off extruder heaters
             self.mmu.is_handling_runout = False
             self.mmu.gate_maps.clear_slicer_tool_map()
@@ -214,9 +216,10 @@ class MmuPrintStateMachine:
             # safety timer and leave the hotend (and bed) hot — explicitly turn
             # heaters off before we tear down state.
             was_paused = self.is_mmu_paused()
+            was_printing = self.is_in_print()
 
             # Record what the print left in the nozzle. Missed if PRINT_END has already turned the heater off
-            if self.is_in_print():
+            if was_printing:
                 heater = self.printer.lookup_object(self.mmu.mmu_unit().extruder_name()).get_heater()
                 wrapper = self.mmu.mmu_unit().extruder_wrapper
                 # Not after a failed load, because the previous filament is still in the nozzle
@@ -245,6 +248,14 @@ class MmuPrintStateMachine:
             # Establish syncing state and grip (servo) position
             # (must call after print_state is set)
             self.mmu.reset_sync_gear_to_extruder()
+
+            if was_printing:
+                # Always-gripped machines can remain synced after print end.
+                for unit in self.mmu.mmu_machine.units:
+                    unit.sync_feedback.save_autotuned_rd()
+                lines = [line for unit in self.mmu.mmu_machine.units for line in unit.calibrator.get_autotune_summary()]
+                if lines:
+                    self.mmu.log_info("Autotune summary:\n  " + "\n  ".join(lines))
 
         if state == "standby" and not self.is_in_standby():
             self.set_print_state(state)

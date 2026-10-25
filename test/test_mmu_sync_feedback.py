@@ -590,5 +590,228 @@ class TestTwolevelTuningEvidence(unittest.TestCase):
             self.assertIsNone(ctrl.autotune._tl_last_unpaired_low)
 
 
+class TestAutotunedRd(unittest.TestCase):
+    """Tuned rd is per gate, only confident suggestions persist, and correction % is reported."""
+
+    def setUp(self):
+        self.hh = session('emu')
+        self.addCleanup(self.hh.close)
+        self.hh.boot(calibrate=True)
+        self.assertEqual(self.hh.errors, [])
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.sf = self.unit.sync_feedback
+        self.now = self.hh.reactor.monotonic()
+
+    def process(self, autotune=None, rd_tuned=None):
+        status = self.sf.ctrl.update(self.now, 0.0, 0.0)
+        if autotune is not None:
+            status['output']['autotune'] = autotune
+        if rd_tuned is not None:
+            status['output']['rd_tuned'] = rd_tuned
+        self.sf._process_status(self.now, status)
+
+    def test_hard_reset_rebases_tuned_rd_for_new_gate(self):
+        self.sf.ctrl.reset(self.now, 21.70, 0.0, hard_reset=True)
+        self.sf.ctrl.reset(self.now, 22.50, 0.0, hard_reset=True)
+        self.assertEqual(self.sf.ctrl.autotune.get_tuned_rd(), 22.50)
+
+    def test_only_confident_suggestion_is_kept_for_saving(self):
+        self.sf.new_autotuned_rd = None
+        self.process(autotune={'rd': 22.61, 'note': '', 'save': False})
+        self.assertIsNone(self.sf.new_autotuned_rd)
+        self.process(autotune={'rd': 22.62, 'note': '', 'save': True})
+        self.assertEqual(self.sf.new_autotuned_rd, 22.62)
+
+    def test_status_reports_correction_from_starting_rd(self):
+        self.sf._reset_controller(self.now)
+        rd = self.unit.calibrator.get_gear_rd()
+        self.process(rd_tuned=rd * 1.02)
+        status = self.hh.mmu.get_status(self.now)
+        self.assertEqual(status['sync_feedback_rd_correction'], 2.0)
+        self.sf._handle_gate_selected(1, 0)
+        self.assertEqual(self.hh.mmu.get_status(self.now)['sync_feedback_rd_correction'], 0.)
+
+    def test_print_end_summarises_autotuned_rd(self):
+        cal = self.unit.calibrator
+        rd = cal.get_gear_rd(0)
+        self.unit.p.autotune_rotation_distance = 1
+        self.hh.run_gcode('MMU_PRINT_START')
+        cal.note_rd_telemetry(0, rd * 1.01)
+        self.assertTrue(any('Revised: %.4fmm (+1.00%%) -> Updated' % (rd * 1.01) in line for line in self.hh.console))
+        cal.note_rd_telemetry(0, rd * 1.02)
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(self.hh.errors, [])
+        summary = [line for line in self.hh.console if 'Autotune summary' in line]
+        self.assertEqual(len(summary), 1)
+        self.assertIn('Gate 0: rotation_distance %.4f -> %.4f (+2.00%%)' % (rd, round(rd * 1.02, 4)), summary[0])
+
+    def test_no_print_end_summary_without_autotune(self):
+        self.unit.p.autotune_rotation_distance = 0
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.unit.calibrator.note_rd_telemetry(0, self.unit.calibrator.get_gear_rd(0) * 1.02)
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.assertFalse(any('Autotune summary' in line for line in self.hh.console))
+
+
+    def start_loaded_print(self):
+        self.hh.heat_extruder(220)
+        self.hh.place_filament(0, position=-40.)
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(self.sf.active)
+
+    def test_stable_twolevel_recommendation_is_saved_when_confident(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 1
+        rd = self.unit.calibrator.get_gear_rd(0)
+        target = rd * 1.02
+        self.sf.ctrl.cfg.use_twolevel_for_type_p = True
+        self.sf._reset_controller(self.now)
+        suggestions = []
+        with patch.object(self.sf.ctrl.autotune, '_recommend_rd_from_twolevel',
+                          return_value=(target, 'stable estimate')):
+            for i in range(1, 17):
+                status = self.sf.ctrl.update(self.now + i * 20, 110., 0.)
+                self.sf._process_status(self.now + i * 20, status)
+                suggestions.append(status['output']['autotune'])
+        self.assertFalse(next(s for s in suggestions if s['rd'] is not None)['save'])
+        self.assertGreaterEqual(self.sf.ctrl.autotune._rd_cert_last_score, .5)
+        self.sf._handle_mmu_unsynced()
+        self.assertAlmostEqual(self.unit.calibrator.get_gear_rd(0), target, places=4)
+        self.assertEqual(sum(s['save'] for s in suggestions), 1)
+        self.assertEqual(self.sf.rd_correction, 2.)
+
+    def test_print_end_saves_final_gate_without_unsyncing(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 1
+        cal = self.unit.calibrator
+        rd = cal.get_gear_rd(0)
+        target = rd * 1.02
+        self.assertTrue(self.unit.filament_always_gripped)
+        self.process(autotune={'rd': target, 'note': '', 'save': True})
+        with patch.object(cal, 'note_rd_telemetry', wraps=cal.note_rd_telemetry) as save:
+            self.hh.run_gcode('MMU_PRINT_END')
+            self.assertEqual(self.hh.errors, [])
+            summary = [line for line in self.hh.console if 'Autotune summary' in line]
+            self.assertEqual(len(summary), 1)
+            self.assertIn('Gate 0: rotation_distance %.4f -> %.4f (+2.00%%)' % (rd, round(target, 4)), summary[0])
+            self.assertTrue(self.sf.active)
+            self.assertAlmostEqual(cal.get_gear_rd(0), target, places=4)
+            self.hh.run_gcode('MMU_PRINT_START')
+            self.hh.run_gcode('MMU_PRINT_END')
+            self.sf._handle_mmu_unsynced()
+            save.assert_called_once_with(0, target)
+        self.assertEqual(sum('Autotune summary' in line for line in self.hh.console), 1)
+
+    def test_next_print_rebases_correction_on_saved_rd(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 1
+        target = self.unit.calibrator.get_gear_rd(0) * 1.02
+        self.sf.ctrl.autotune._autotune_baseline = target
+        self.process(autotune={'rd': target, 'note': '', 'save': True})
+        self.assertEqual(self.sf.rd_correction, 2.)
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.assertTrue(self.sf.active)
+        self.assertEqual(self.sf.rd_correction, 0.)
+
+    def test_print_end_keeps_autotune_disabled_on_loaded_gate(self):
+        self.start_loaded_print()
+        self.unit.p.autotune_rotation_distance = 0
+        rd = self.unit.calibrator.get_gear_rd(0)
+        self.process(autotune={'rd': rd * 1.02, 'note': '', 'save': True})
+        self.hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(self.hh.errors, [])
+        self.assertTrue(self.sf.active)
+        self.assertEqual(self.unit.calibrator.get_gear_rd(0), rd)
+        self.assertFalse(any('Autotune summary' in line for line in self.hh.console))
+
+
+class TestAutotuneSummary(unittest.TestCase):
+    def start_print(self, profile):
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        hh.run_gcode('MMU_PRINT_START')
+        self.assertEqual(hh.errors, [])
+        return hh
+
+    def end_summary(self, hh):
+        hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(hh.errors, [])
+        return next(line for line in hh.console if 'Autotune summary' in line)
+
+    def test_bowden_summary_includes_later_rd_rescaling(self):
+        hh = self.start_print('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        unit.p.autotune_bowden_length = 1
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        before = cal.get_bowden_length(0)
+        cal.note_load_telemetry(0, before, before * 1.1, None)
+        cal.note_rd_telemetry(0, cal.get_gear_rd(0) * 1.02)
+        summary = self.end_summary(hh)
+        self.assertIn('bowden_length %.1f -> %.1fmm' % (before, cal.get_bowden_length(0)), summary)
+
+    def test_shared_rd_summary_tracks_all_affected_gates_and_bowdens(self):
+        hh = self.start_print('ercf_vvd_buffers')
+        unit = hh.mmu.mmu_machine.units[1]
+        self.assertFalse(unit.variable_rotation_distances)
+        self.assertFalse(unit.variable_bowden_lengths)
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        rd = cal.get_gear_rd(9)
+        bowden = cal.get_bowden_length(9)
+        cal.note_rd_telemetry(9, rd * 1.02)
+        cal.note_rd_telemetry(10, rd * 1.03)
+        summary = self.end_summary(hh)
+        mingate, maxgate = unit.gate_bounds()
+        self.assertEqual(summary.count('\n'), 1) # Header plus one collapsed line
+        self.assertIn('Gates %d-%d: rotation_distance %.4f -> %.4f' % (mingate, maxgate, rd, cal.get_gear_rd(9)), summary)
+        self.assertIn('bowden_length %.1f -> %.1fmm' % (bowden, cal.get_bowden_length(9)), summary)
+
+    def test_shared_bowden_summary_keeps_original_baseline(self):
+        hh = self.start_print('tradrack')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertFalse(unit.variable_bowden_lengths)
+        unit.p.autotune_bowden_length = 1
+        cal = unit.calibrator
+        before = cal.get_bowden_length(0)
+        cal.note_load_telemetry(0, before, before * 1.1, None)
+        current = cal.get_bowden_length(1)
+        cal.note_load_telemetry(1, current, current * 1.1, None)
+        summary = self.end_summary(hh)
+        mingate, maxgate = unit.gate_bounds()
+        self.assertEqual(summary.count('\n'), 1) # Header plus one collapsed line
+        self.assertIn('Gates %d-%d: bowden_length %.1f -> %.1fmm' % (mingate, maxgate, before, cal.get_bowden_length(0)), summary)
+
+    def test_summary_keeps_differing_adjacent_gates_separate(self):
+        hh = self.start_print('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertTrue(unit.variable_rotation_distances)
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        cal.note_rd_telemetry(0, cal.get_gear_rd(0) * 1.02)
+        cal.note_rd_telemetry(1, cal.get_gear_rd(1) * 1.03)
+        summary = self.end_summary(hh)
+        self.assertIn('\n  Gate 0: rotation_distance', summary)
+        self.assertIn('\n  Gate 1: rotation_distance', summary)
+        self.assertNotIn('Gates', summary)
+
+    def test_summary_omits_settings_restored_to_original_value(self):
+        hh = self.start_print('boxturtle')
+        unit = hh.mmu.mmu_unit(0)
+        unit.p.autotune_rotation_distance = 1
+        cal = unit.calibrator
+        cal.update_gear_rd(5., gate=0)
+        cal.update_bowden_length(700., gate=0)
+        cal.note_rd_telemetry(0, 5.1)
+        cal.note_rd_telemetry(0, 5.)
+        hh.run_gcode('MMU_PRINT_END')
+        self.assertEqual(hh.errors, [])
+        self.assertFalse(any('Autotune summary' in line for line in hh.console))
+
+
 if __name__ == '__main__':
     unittest.main()
