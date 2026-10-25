@@ -77,6 +77,22 @@ def gates_moved(mapping, old_total):
     return mapping is None or any(mapping.get(g) != g for g in range(old_total))
 
 
+def selection_changed(variables, mapping, new_total):
+    """Keep selection only when its gate identity/index and tool still exist."""
+    gate = variables.get(C.VARS_MMU_GATE_SELECTED, C.TOOL_GATE_UNKNOWN)
+    tool = variables.get(C.VARS_MMU_TOOL_SELECTED, C.TOOL_GATE_UNKNOWN)
+    if gate == C.TOOL_GATE_UNKNOWN and tool == C.TOOL_GATE_UNKNOWN:
+        return False
+    if mapping is None:
+        return True
+    if gate == C.TOOL_GATE_BYPASS:
+        # A tail resize leaves bypass alone; replacing/reordering the first unit
+        # cannot safely retain the implicit bypass unit at startup.
+        return mapping.get(0) != 0
+    return (type(gate) is not int or gate < 0 or mapping.get(gate) != gate
+            or (tool != C.TOOL_GATE_UNKNOWN and (type(tool) is not int or not 0 <= tool < new_total)))
+
+
 def startup_layout(variables, install, target, identity):
     """
     The layout the saved gate lists still have, under the new unit names (target: old name ->
@@ -163,8 +179,11 @@ def migrate_unit_state(variables, install):
         notes.append("Gate maps matched using the original unit layout" if layout is not None
                      else "Gate counts unknown so gate maps were not migrated")
 
-    # The selection drives the selector position and active unit at startup
-    if gates_moved(mapping, old_total):
+    # Selection still refers to the original saved-list offsets, even when
+    # earlier pending installs have changed the configured gate numbering.
+    selection_mapping = match_by_unit(layout, [[name, install["new_gates"][name]] for name in install["to"]]) \
+        if layout is not None and all(install["new_gates"].get(name) is not None for name in install["to"]) else mapping
+    if selection_changed(variables, selection_mapping, new_total):
         reset = False
         for var in (C.VARS_MMU_GATE_SELECTED, C.VARS_MMU_TOOL_SELECTED):
             if var in variables and variables[var] != C.TOOL_GATE_UNKNOWN:
@@ -335,11 +354,9 @@ def migrate_state(variables, current_layout, defaults, history=None):
     mapping = match_by_unit(saved_layout, current_layout) if saved_layout else None
     errors = []
     if mapping is not None and gates_moved(mapping, sum(n for _, n in saved_layout)):
-        for key in (C.VARS_MMU_GATE_SELECTED, C.VARS_MMU_TOOL_SELECTED):
-            if result.get(key, C.TOOL_GATE_UNKNOWN) != C.TOOL_GATE_UNKNOWN:
-                errors.append("Persisted selection dropped because gates were renumbered")
-                break
-        result[C.VARS_MMU_GATE_SELECTED] = result[C.VARS_MMU_TOOL_SELECTED] = C.TOOL_GATE_UNKNOWN
+        if selection_changed(result, mapping, num_gates):
+            errors.append("Persisted selection dropped because its gate or tool was removed or renumbered")
+            result[C.VARS_MMU_GATE_SELECTED] = result[C.VARS_MMU_TOOL_SELECTED] = C.TOOL_GATE_UNKNOWN
         sensors = result.get(C.VARS_MMU_SENSOR_ENABLED, {})
         if isinstance(sensors, dict):
             renamed = {}

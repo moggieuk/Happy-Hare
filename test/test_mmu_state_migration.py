@@ -303,6 +303,34 @@ class TestUnrecordedRename(unittest.TestCase):
         self.assertEqual(result[SPOOLS], [-1] * 4)
 
 
+class TestSelectionAfterResize(unittest.TestCase):
+    def test_selection_follows_its_own_gate_not_other_gates(self):
+        for counts, gate, tool, expected in (
+                ([4, 3], 0, 0, (0, 0)),
+                ([4, 3], 6, 6, (6, 6)),
+                ([4, 3], 7, 7, (-1, -1)),
+                ([4, 3], 0, 7, (-1, -1)),
+                ([4, 3], -2, -2, (-2, -2)),
+                ([3, 4], 0, 0, (0, 0)),
+                ([3, 4], 4, 4, (-1, -1))):
+            for recorded in (False, True):
+                with self.subTest(counts=counts, gate=gate, tool=tool, recorded=recorded):
+                    original = {LAYOUT: [['a', 4], ['b', 4]], SPOOLS: list(range(8)),
+                                sm.C.VARS_MMU_GATE_SELECTED: gate, sm.C.VARS_MMU_TOOL_SELECTED: tool,
+                                sm.C.VARS_MMU_SENSOR_ENABLED: {'mmu_exit_7': False}}
+                    layout = [['a', counts[0]], ['b', counts[1]]]
+                    history = sm.append_history(None, intent(['a', 'b'], ['a', 'b'], {'a': 'a', 'b': 'b'},
+                        {'a': 4, 'b': 4}, dict(layout))) if recorded else None
+                    result = sm.migrate_state(original, layout, {SPOOLS: [-1] * 7}, history)[0]
+                    self.assertEqual((result[sm.C.VARS_MMU_GATE_SELECTED],
+                                      result[sm.C.VARS_MMU_TOOL_SELECTED]), expected)
+                    self.assertEqual(result[SPOOLS], list(range(7)) if counts == [4, 3]
+                                     else [0, 1, 2, 4, 5, 6, 7])
+                    self.assertEqual(result[sm.C.VARS_MMU_SENSOR_ENABLED], {} if counts == [4, 3]
+                                     else {'mmu_exit_6': False})
+                    self.assertEqual(sm.migrate_state(result, layout, {SPOOLS: [-1] * 7}, history)[0], result)
+
+
 class TestConfigCheckpoint(unittest.TestCase):
     def setUp(self):
         self.first = sm.append_history(None, intent(['a'], ['b'], {'b': 'a'}, {'a': 2}, {'b': 2}))

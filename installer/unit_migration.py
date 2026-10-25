@@ -472,7 +472,7 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
         if gates_moved(*_check_layout(plan, config_home)):
             print("Gates of units after the first moved or removed unit are renumbered. Calibration, gate"
                   " maps and saved state move with each unit", file=out)
-            print("The selected gate and tool will be reset to unknown, so select or home again after"
+            print("If the selected gate or tool is removed or the gate is renumbered, selection will be reset to unknown; select or home again after"
                   " the install", file=out)
         else:
             print("Calibration, gate maps and saved state move with each unit", file=out)

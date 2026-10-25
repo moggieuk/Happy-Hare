@@ -99,6 +99,21 @@ class TestMismatchedPersistedGateLists(PersistedGateListsTestCase):
 
 class TestSingleUnitWithoutAMatchingList(PersistedGateListsTestCase):
 
+    def test_tail_shrink_preserves_selection_on_boot_and_in_saved_file(self):
+        self.boot('nfc_spoolman', {
+            'mmu_state_gate_map_units': [['unit0', 6]],
+            'mmu_state_gate_spool_id': [5, 6, 7, 8, 9, 10],
+            'mmu_state_gate_selected': 1, 'mmu_state_tool_selected': 1,
+            'mmu_state_sensor_enabled': {'mmu_exit_5': False},
+        })
+        self.assertEqual(self.mmu.gate_selected, 1)
+        self.assertEqual(self.mmu.tool_selected, 1)
+        saved = read_vars_file(self.path)
+        self.assertEqual(saved['mmu_state_gate_selected'], 1)
+        self.assertEqual(saved['mmu_state_tool_selected'], 1)
+        self.assertEqual(saved['mmu_state_gate_spool_id'], [5, 6, 7, 8])
+        self.assertNotIn('mmu_exit_5', saved['mmu_state_sensor_enabled'])
+
     def test_long_lists_are_trimmed(self):
         self.boot('nfc_spoolman', {
             'mmu_state_gate_map_units': [['unit0', 6]],

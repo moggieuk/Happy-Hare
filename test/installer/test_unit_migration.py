@@ -815,15 +815,15 @@ class TestVarsMigration(unittest.TestCase):
         self.assertEqual(result["mmu_state_gate_selected"], 3)
         self.assertEqual(result["mmu_state_tool_selected"], 3)
 
-    def test_selection_is_reset_when_an_earlier_unit_changes(self):
+    def test_selection_is_kept_when_only_other_gates_move(self):
         # The selected gate itself keeps its number but b's gates shift
         variables = {"mmu_state_gate_selected": 0, "mmu_state_tool_selected": 0}
         install = self.install(["a", "b"], ["a", "b"], {"a": "a", "b": "b"},
                                {"a": 2, "b": 2}, {"a": 3, "b": 2})
         result, notes = sm.migrate_unit_state(variables, install)
-        self.assertEqual(result["mmu_state_gate_selected"], -1)
-        self.assertEqual(result["mmu_state_tool_selected"], -1)
-        self.assertIn("Selected gate and tool reset to unknown", notes)
+        self.assertEqual(result["mmu_state_gate_selected"], 0)
+        self.assertEqual(result["mmu_state_tool_selected"], 0)
+        self.assertNotIn("Selected gate and tool reset to unknown", notes)
 
     def test_bypass_selection_is_reset_too(self):
         variables = {"mmu_state_gate_selected": -2, "mmu_state_tool_selected": -2}
