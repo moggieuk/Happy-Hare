@@ -83,7 +83,7 @@ class MmuSensorRunoutCommand(BaseCommand):
 
                 # Events may be delivered after another gate or unit was selected. Read
                 # the exact sensor named by the event, not a generic sensor in the active map.
-                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate)
+                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate, eventtime=eventtime)
 
                 if sensor and sensor_state is not False:
                     state = "still detects filament" if sensor_state is True else "cannot be read"

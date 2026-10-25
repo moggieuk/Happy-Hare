@@ -519,7 +519,7 @@ menu "Global software options"
   comment "_"
   comment "_Advanced Klipper tuning"
 
-  # Shared compatibility and timing workarounds applied at Klipper startup.
+  # Shared compatibility and timing workarounds.
   # Keep defaults unless troubleshooting; these do not fix wiring or overloaded hardware.
 
   config PARAM_UPDATE_TRSYNC
@@ -552,5 +552,16 @@ menu "Global software options"
       replace that driver's command table at startup (affects every AHT10 sensor).
       Newer Klipper and Kalico v2026.06+ have no such table, so this does nothing
       there: use sensor type AHT3X instead. Default 0 leaves Klipper unchanged.
+
+  config PARAM_SENSOR_MIN_DEBOUNCE_DELAY
+    float "Minimum filament sensor debounce delay (s)"
+    default 0
+    range 0 1.0
+    help
+      Filament switch events (runout, insert, remove) re-read the switch before
+      acting. If that happens sooner than this after the switch changed, wait out
+      the rest first so a bouncing or glitching switch has settled. Applies to all
+      switch sensors on every unit and the toolhead. Max 1.0, typically 0.5.
+      Default 0 re-reads immediately.
 
 endmenu

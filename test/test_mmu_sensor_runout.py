@@ -181,6 +181,28 @@ class TestGateMap(RunoutFilterTestCase):
         self.assertEqual(self.mmu.gate_maps.gate_status[gate], GATE_EMPTY)
         self.assertEqual(len(self.runouts), 1, 'selected gate must still enter normal runout handling')
 
+    def test_min_debounce_delay_reads_sensor_after_bounce_settles(self):
+        gate = self.mmu.gate_selected
+        sensor = 'mmu_entry_%d' % gate
+        self.mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        self.mmu.endless_spool_enabled = False
+        self.mmu.p.sensor_min_debounce_delay = 0.5
+
+        # Switch still bouncing when the handler runs; settles empty 0.1s later
+        reactor = self.hh.reactor
+        tripped = reactor.monotonic()
+        self.set_sensor_state(sensor, True)
+        def settle(eventtime):
+            self.set_sensor_state(sensor, False)
+            return reactor.NEVER
+        reactor.register_timer(settle, tripped + 0.1)
+
+        # Deliver as a reactor callback, as the real handler runs, so the wait can yield
+        reactor.register_callback(lambda e: self.deliver(tripped, sensor=sensor, gate=gate))
+        reactor.advance(1.0)
+
+        self.assertEqual(len(self.runouts), 1, 'runout read mid-bounce was discarded')
+
     def test_bounced_idle_entry_runout_is_ignored_using_its_own_gate_sensor(self):
         # Gate 0 is active and clear; gate 2, named by the delayed event, has bounced
         # back to present. Reading the generic active sensor would accept this event.

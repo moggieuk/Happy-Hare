@@ -170,6 +170,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('canbus_comms_retries',          'int',      3, section="KLIPPER TUNING", limits=dict(minval=1, maxval=10), hidden=True),
         ParamSpec('update_bit_max_time',           'int',      0, section="KLIPPER TUNING", limits=dict(minval=0, maxval=1),  hidden=True),
         ParamSpec('update_aht10_commands',         'int',      0, section="KLIPPER TUNING", limits=dict(minval=0, maxval=1),  hidden=True),
+        ParamSpec('sensor_min_debounce_delay',     'float',  0.0, section="KLIPPER TUNING", limits=dict(minval=0.0, maxval=1.0)),
     )
 
 
