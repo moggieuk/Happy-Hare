@@ -70,7 +70,7 @@ class MmuSensorRemoveCommand(BaseCommand):
 
                 # Removal callbacks are queued. Resolve the exact callback source
                 # before dispatch so a bounced or now-unreadable sensor cannot mutate state.
-                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate)
+                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate, eventtime=eventtime)
                 if sensor_state is not False:
                     state = "still detects filament" if sensor_state is True else "cannot be read"
                     mmu.log_assertion(

@@ -68,7 +68,7 @@ class MmuSensorInsertCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
 
                 # Reject stale or bounced insert callbacks.
-                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate)
+                sensor_state = mmu.sensor_manager.check_event_sensor(raw_sensor, gate, eventtime=eventtime)
                 if sensor_state is not True:
                     state = "no longer detects filament" if sensor_state is False else "cannot be read"
                     mmu.log_assertion(
