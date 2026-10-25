@@ -40,7 +40,7 @@ class MmuSensors:
         self.name = config.get_name().split()[-1]
 
         register = bool(config.getint('register_mmu_sensors', 1, minval=0, maxval=1))
-        event_delay = config.get('event_delay', 0.5)
+        event_delay = config.getfloat('event_delay', 0.5, minval=0.)
         first_gate = mmu_unit.first_gate
         num_gates = mmu_unit.num_gates
 
