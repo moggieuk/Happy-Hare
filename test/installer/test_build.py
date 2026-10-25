@@ -206,6 +206,15 @@ class TestUnitListRefresh(unittest.TestCase):
                 built = self.build(mode, "unit0,unit1", [self.installed])
                 self.assertEqual(ConfigBuilder(built).get("mmu_machine", "units"), "unit0,unit1")
 
+    def test_empty_migration_history_is_omitted(self):
+        for mode in ('refresh', 'merge', 'replace'):
+            with self.subTest(mode=mode):
+                rendered = self.build(mode, 'unit0', [self.installed])
+                with open(rendered) as handle:
+                    content = handle.read()
+                self.assertNotIn('state_migration', content)
+                self.assertNotIn('Installer-owned migration history', content)
+
     def test_migration_history_is_template_owned_in_refresh_and_replace(self):
         old = "{'version': 1, 'steps': ['old']}"
         new = "{'version': 1, 'steps': ['old', 'new']}"

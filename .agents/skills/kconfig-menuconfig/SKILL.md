@@ -466,7 +466,8 @@ in this repo:
    normalize with `TRI_TO_STR`. The write side has the same trap: saving
    writes a hidden symbol's default, losing a customization when its parent
    is off. `keep_when_hidden` (extension catalog item 25) saves the user value
-   instead, for options whose hidden value isn't imposed.
+   instead, including promptless symbols, for options whose hidden value isn't imposed.
+   Without an assigned user value, calculated defaults remain unchanged.
 3. **`#~DEFAULT~#` is live syntax** inside `.mmu_config`. `saved-config-value`
    (a kconfiglib preprocessor function, `kconfigfunctions.py`, cached by
    mtime+size) and the load path both parse it. Tooling that rewrites value

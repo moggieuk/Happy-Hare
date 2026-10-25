@@ -180,6 +180,39 @@ endmenu
                 kc.syms['PARAM_TEST_PARENT'].set_value('n')
                 self.assertIn(expected, self.saved(kc)[1])
 
+    def test_promptless_values_survive_save_reload(self):
+        for inherited in (False, True):
+            with self.subTest(inherited=inherited):
+                text = KCONFIG.format(keyword='' if inherited else 'keep_when_hidden')
+                text = '\n'.join(line for line in text.splitlines()
+                                 if not line.strip().startswith('prompt '))
+                text = text.replace('int "Dropped"', 'int')
+                if inherited:
+                    text = 'menu "Settings"\n  keep_when_hidden\n' + text + '\nendmenu\n'
+                kc = self.kconfig(text)
+                for name, value in CUSTOM.items():
+                    kc.syms[name].set_value(value)
+                kc.syms['PARAM_TEST_PARENT'].set_value('n')
+                out, lines = self.saved(kc)
+                for line in KEPT_LINES.values():
+                    self.assertIn(line, lines)
+                for filter_defaults in (False, True):
+                    reloaded = self.kconfig(text)
+                    reloaded.load_config(out, filter_defaults=filter_defaults)
+                    for name in CUSTOM:
+                        self.assertEqual(reloaded.syms[name].user_value, kc.syms[name].user_value)
+                    self.assertEqual(self.saved(reloaded)[1], lines)
+
+    def test_promptless_defaults_without_keep_are_unchanged(self):
+        for keyword in ('', 'default_when_hidden', 'keep_when_hidden'):
+            with self.subTest(keyword=keyword):
+                kc = self.kconfig('config PARAM_TEST_INT\n  int\n  default 50\n  ' + keyword + '\n')
+                self.assertIn('CONFIG_PARAM_TEST_INT=50' + kconfiglib.HH_DEFAULT_TOKEN,
+                              self.saved(kc)[1])
+                if keyword != 'keep_when_hidden':
+                    kc.syms['PARAM_TEST_INT'].set_value('90')
+                    self.assertIn('CONFIG_PARAM_TEST_INT=50', self.saved(kc)[1])
+
     def test_both_keywords_on_one_node_is_an_error(self):
         with self.assertRaisesRegex(kconfiglib.KconfigError, "can't both be set"):
             self.kconfig('''
