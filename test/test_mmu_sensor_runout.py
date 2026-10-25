@@ -24,6 +24,7 @@
 
 import logging
 import unittest
+from unittest import mock
 
 from test.hh import session
 
@@ -202,6 +203,13 @@ class TestGateMap(RunoutFilterTestCase):
         reactor.advance(1.0)
 
         self.assertEqual(len(self.runouts), 1, 'runout read mid-bounce was discarded')
+
+    def test_zero_min_debounce_delay_never_waits(self):
+        self.mmu.p.sensor_min_debounce_delay = 0.
+        future = self.hh.reactor.monotonic() + 5.
+        with mock.patch.object(self.hh.reactor, 'pause') as pause:
+            self.mmu.sensor_manager.check_event_sensor('mmu_entry_0', 0, eventtime=future)
+        pause.assert_not_called()
 
     def test_bounced_idle_entry_runout_is_ignored_using_its_own_gate_sensor(self):
         # Gate 0 is active and clear; gate 2, named by the delayed event, has bounced

@@ -526,8 +526,9 @@ class MmuSensorManager:
         With eventtime, a read sooner than sensor_min_debounce_delay after the event
         first waits out the remainder so a bouncing switch has settled.
         """
-        if eventtime is not None:
-            settled = eventtime + self.mmu.p.sensor_min_debounce_delay
+        delay = self.mmu.p.sensor_min_debounce_delay
+        if delay > 0 and eventtime is not None:
+            settled = eventtime + delay
             if settled > self.mmu.reactor.monotonic():
                 self.mmu.reactor.pause(settled)
         mmu_unit = self.mmu.mmu_unit(gate) if gate is not None and gate >= 0 else None
