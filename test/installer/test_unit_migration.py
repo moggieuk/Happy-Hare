@@ -179,6 +179,21 @@ class TestConfigHistory(Scratch):
                 # Each scenario represents a separate original installation.
                 self.write(um._base(self.home, 'mmu.cfg'), '[mmu_machine]\nunits: unit0\n')
 
+    def test_mode_conversion_uses_custom_kconfig_basename(self):
+        self.kconfig = os.path.join(self.root, 'custom_mmu_config')
+        self.install(['unit0'])
+        self.write(os.path.join(self.home, 'mmu', 'custom_mmu_config'),
+                   '# CONFIG_MULTI_UNIT is not set\nCONFIG_UNIT_NAME="unit0"\n')
+        # A stale default-named file must not override the selected configuration.
+        self.write(os.path.join(self.home, 'mmu', '.mmu_config'), 'CONFIG_MULTI_UNIT=y\n')
+        self.top('a,b')
+        self.unit('a')
+        self.unit('b', index=1)
+        code, output = self.check('replace', base=['unit0'])
+        self.assertEqual(code, um.EXIT_STRUCTURAL, output)
+        self.assertIn('treated as new', output)
+        self.assertNotEqual(self.check('refresh', base=['unit0'])[0], um.EXIT_STRUCTURAL)
+
     def test_fresh_and_parameter_only_installs_have_no_history(self):
         self.top('a')
         self.unit('a')

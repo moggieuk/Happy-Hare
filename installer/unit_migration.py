@@ -423,7 +423,7 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
     if not plan.changed():
         return EXIT_NONE
 
-    installed_values = read_kconfig(os.path.join(config_home, "mmu", ".mmu_config")) if config_home else {}
+    installed_values = read_kconfig(os.path.join(config_home, "mmu", os.path.basename(kconfig))) if config_home else {}
     was_multi = installed_values.get("MULTI_UNIT", "n") if installed_values else None
     mode_conversion = (plan.single and len(plan.baseline) > 1) or (
         was_multi in ("y", "n") and (was_multi == "y") == plan.single)
