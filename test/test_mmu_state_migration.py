@@ -208,3 +208,57 @@ class TestStartupTransaction(unittest.TestCase):
             hh.build()
         hh.close()
         self.assertEqual(read_vars_file(self.path), self.queued)
+
+
+class TestUnrecordedRename(unittest.TestCase):
+    def test_unrecorded_renames_reject_before_changing_state(self):
+        for layout, current in (([['old', 4]], [['unit0', 4]]),
+                                ([['old', 9], ['unit1', 4]], [['unit0', 9], ['unit1', 4]])):
+            with self.subTest(layout=layout):
+                count = sum(n for _, n in layout)
+                original = {LAYOUT: layout, SPOOLS: list(range(5, 5 + count)),
+                            sm.C.VARS_MMU_SENSOR_ENABLED: {'mmu_exit_3': False},
+                            sm.C.VARS_MMU_GATE_SELECTED: 3, sm.C.VARS_MMU_TOOL_SELECTED: 3}
+                before = copy.deepcopy(original)
+                with self.assertRaisesRegex(ValueError, 'Unrecorded.*old.*unit0'):
+                    sm.migrate_state(original, current, {SPOOLS: [-1] * count})
+                self.assertEqual(original, before)
+
+    def test_ambiguous_startup_never_reaches_ready_or_writes_defaults(self):
+        for profile, layout in (('nfc_spoolman', [['old', 4]]),
+                                ('ercf_vvd', [['old', 9], ['unit1', 4]])):
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, 'mmu_vars.cfg')
+                original = {LAYOUT: layout, SPOOLS: list(range(5, 5 + sum(n for _, n in layout))),
+                            'mmu__revision': 7}
+                write_vars_file(path, original)
+                hh = session(profile)
+                hh._mmu_vars_copy = lambda: path
+                try:
+                    with self.assertRaisesRegex(Exception, 'Unrecorded'):
+                        hh.boot(gates_loaded_at=-40.0)
+                finally:
+                    hh.close()
+                self.assertEqual(read_vars_file(path), original)
+                calls = hh.printer.lookup_object('webhooks').calls
+                self.assertFalse(any(name == 'spoolman_push_gate_map' for name, _ in calls))
+
+    def test_pending_append_cannot_hide_an_earlier_unrecorded_rename(self):
+        original = {LAYOUT: [['old', 4]], SPOOLS: [5, 6, 7, 8]}
+        queued, _ = sm.queue_migration(original, intent(
+            ['unit0'], ['unit0', 'unit1'], {'unit0': 'unit0', 'unit1': None},
+            {'unit0': 4}, {'unit0': 4, 'unit1': 4}))
+        before = copy.deepcopy(queued)
+        with self.assertRaisesRegex(ValueError, 'Unrecorded'):
+            sm.migrate_state(queued, [['unit0', 4], ['unit1', 4]], {SPOOLS: [-1] * 8})
+        self.assertEqual(queued, before)
+
+    def test_explicit_replacement_and_tombstones_do_not_inherit_state(self):
+        original = {LAYOUT: [['old', 4]], SPOOLS: [5, 6, 7, 8]}
+        queued, _ = sm.queue_migration(original, intent(
+            ['old'], ['unit0'], {'unit0': None}, {'old': 4}, {'unit0': 4}))
+        result, _, _ = sm.migrate_state(queued, [['unit0', 4]], {SPOOLS: [-1] * 4})
+        self.assertEqual(result[SPOOLS], [-1] * 4)
+        original[LAYOUT] = [['', 4]]
+        result, _, _ = sm.migrate_state(original, [['unit0', 4]], {SPOOLS: [-1] * 4})
+        self.assertEqual(result[SPOOLS], [-1] * 4)

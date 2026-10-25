@@ -696,29 +696,40 @@ class TestInstallSh(unittest.TestCase):
                 self.assertIn("RESULT=go", out)
                 self.assertNotIn("(y/n)", out)
 
-    def test_unit_review_unrecorded_change_goes_without_migrating(self):
+    def test_unit_review_unrecorded_change_stops_without_losing_baseline(self):
         result = self.run_shell("""
-            unit_migration() {
-                case "$1" in
-                check) return 12 ;;
-                current) echo "a,box" ;;
-                esac
-            }
+            unit_migration() { return 12; }
             F_UNITS_BASELINE=a,b
-            review_unit_changes && echo "BASELINE=${F_UNITS_BASELINE}"
+            review_unit_changes && echo RESULT=go || echo RESULT=stop
+            echo "BASELINE=${F_UNITS_BASELINE}"
         """)
-        self.assertIn("BASELINE=a,box", result.stdout)
+        self.assertIn("RESULT=stop", result.stdout)
+        self.assertIn("BASELINE=a,b", result.stdout)
 
-    def test_unit_review_failed_migration_goes_without_migrating(self):
-        # 3: caught error, 1: uncaught error, 127: no interpreter
+    def test_unit_review_errors_stop_without_losing_baseline(self):
         for status in (3, 1, 127):
             with self.subTest(status=status):
                 result = self.run_shell("""
                     unit_migration() {{ return {status}; }}
                     F_UNITS_BASELINE=a,b
-                    review_unit_changes && echo "BASELINE=[${{F_UNITS_BASELINE}}]"
+                    review_unit_changes && echo RESULT=go || echo RESULT=stop
+                    echo "BASELINE=${{F_UNITS_BASELINE}}"
                 """.format(status=status))
-                self.assertIn("BASELINE=[]", result.stdout)
+                self.assertIn("RESULT=stop", result.stdout)
+                self.assertIn("BASELINE=a,b", result.stdout)
+
+    def test_failed_intent_write_stops_make_before_restart(self):
+        command = next(line for line in MAKEFILE.read_text().splitlines()
+                       if '-m installer.unit_migration apply ' in line)
+        fail = self.write(self.root / 'fail-python', '#!/bin/sh\nexit 3\n')
+        fail.chmod(0o755)
+        recipe = self.write(self.root / 'Makefile',
+                            'PY := %s\ninstall:\n%s\n\t@echo RESTART\n' % (fail, command))
+        # Override the outer test runner's command-line PY, inherited via MAKEFLAGS.
+        result = subprocess.run(['make', '-f', str(recipe), 'PY=' + str(fail), 'install'],
+                                text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('RESTART', result.stdout)
 
     def test_baseline_is_captured_from_the_migration(self):
         result = self.run_shell("""
@@ -731,7 +742,7 @@ class TestInstallSh(unittest.TestCase):
         self.assertIn("BASELINE=[a,b]", result.stdout)
         self.assertIn("RESTRUCTURE=n", result.stdout)
 
-    def test_a_failed_baseline_keeps_renaming_locked(self):
+    def test_a_failed_baseline_stops_before_menuconfig(self):
         # An empty baseline would otherwise look like a first install
         for mode in ("refresh", "replace"):
             with self.subTest(mode=mode):
@@ -740,23 +751,21 @@ class TestInstallSh(unittest.TestCase):
                     unit_migration() {{ return 3; }}
                     unset F_UNITS_RESTRUCTURE
                     F_CFG_UPGRADE_MODE={mode}
-                    capture_units_baseline
+                    capture_units_baseline && echo RESULT=go || echo RESULT=stop
                     echo "BASELINE=[${{F_UNITS_BASELINE}}]"
                     echo "RESTRUCTURE=${{F_UNITS_RESTRUCTURE:-n}}"
                 """.format(mode=mode))
-                self.assertIn("BASELINE=[]", result.stdout)
+                self.assertIn("RESULT=stop", result.stdout)
                 self.assertIn("RESTRUCTURE=n", result.stdout)
 
-    def test_unit_migration_step_failure_only_stops_a_confirmed_change(self):
-        result = self.run_shell("""
-            unit_migration() { return 1; }
-            unit_migration_step kconfig && echo RESULT=go
-            F_UNITS_RESTRUCTURED=y
-            unit_migration_step kconfig || echo RESULT=stop
-        """)
-        self.assertIn("RESULT=go", result.stdout)
-        self.assertIn("continuing without it", result.stdout)
-        self.assertIn("RESULT=stop", result.stdout)
+    def test_unit_migration_step_failure_stops_before_install(self):
+        for step in ('kconfig', 'prepare'):
+            result = self.run_shell("""
+                unit_migration() {{ return 1; }}
+                unit_migration_step {step} && echo RESULT=go || echo RESULT=stop
+            """.format(step=step))
+            self.assertIn("RESULT=stop", result.stdout)
+            self.assertNotIn("continuing without it", result.stdout)
 
     def test_units_can_be_restructured_in_replace_mode_or_before_anything_exists(self):
         result = self.run_shell("""

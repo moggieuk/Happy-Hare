@@ -202,12 +202,20 @@ class TestCheck(Scratch):
         self.assertIn("Saved state will be migrated in %s" % os.path.expanduser("~/elsewhere_vars.cfg"),
                       self.check("replace")[1])
 
-    def test_hand_edited_list_is_matched_by_name(self):
-        self.top("a,box")
+    def test_explicit_remove_and_add_is_allowed_as_replacement(self):
+        self.edit(["a", "b"], lambda m: (m.remove(1), m.add("box")))
         code, out = self.check("replace")
         self.assertEqual(code, um.EXIT_STRUCTURAL)
         self.assertIn("remove b", out)
-        self.assertIn("No renames were recorded", out)
+        self.assertIn("add box", out)
+        self.assertNotIn("Unrecorded", out)
+
+    def test_hand_edited_rename_requires_recorded_intent(self):
+        self.top("a,box")
+        code, out = self.check("replace")
+        self.assertEqual(code, um.EXIT_REFUSED)
+        self.assertIn("Unrecorded", out)
+        self.assertIn("rename", out)
 
     def test_removing_a_unit_whose_encoder_another_one_shares_warns(self):
         self.unit("a", 0, lines=ENCODER_OWNER)
@@ -248,12 +256,12 @@ class TestCheck(Scratch):
         self.edit(["a", "b"], lambda m: m.remove(0))
         self.assertEqual(self.check("replace")[0], um.EXIT_STRUCTURAL)
 
-    def test_unrecorded_divergence_outside_replace_is_left_alone(self):
+    def test_unrecorded_divergence_outside_replace_is_refused(self):
         # E.g. renamed with the old free-text editor, which recorded nothing
         self.top("a,box")
         code, out = self.check("refresh")
-        self.assertEqual(code, um.EXIT_UNTRACKED)
-        self.assertIn("nothing is migrated", out)
+        self.assertEqual(code, um.EXIT_REFUSED)
+        self.assertIn("Unrecorded", out)
 
     def test_a_recorded_change_outside_replace_is_refused_with_a_way_out(self):
         self.edit(["a", "b"], lambda m: m.remove(1))
@@ -676,6 +684,27 @@ class TestInstall(Scratch):
         with patch.object(um, 'stop_klipper'):
             um.apply(self.kconfig, out=io.StringIO())
         self.assertEqual(um.read_vars(self.vars_file), queued)
+
+    def test_failed_intent_write_retains_original_state_and_can_retry(self):
+        self.install(["a"], variables={"mmu_a_bowden_lengths": [1, 2, 3, 4]})
+        self.unit("a", 0)
+        self.edit(["a"], lambda m: m.rename(0, "left"))
+        um.migrate_kconfig(self.kconfig, ["a"], io.StringIO())
+        um.prepare(self.kconfig, self.home, ["a"], io.StringIO())
+        before = self.read(self.vars_file)
+        transaction = um.read_state(self.kconfig)
+        with patch.object(um, 'stop_klipper'), patch.object(um, 'write_vars', side_effect=OSError('disk full')):
+            with self.assertRaisesRegex(OSError, 'disk full'):
+                um.apply(self.kconfig, out=io.StringIO())
+        self.assertEqual(self.read(self.vars_file), before)
+        self.assertEqual(um.read_state(self.kconfig), transaction)
+        with patch.object(um, 'stop_klipper'):
+            um.apply(self.kconfig, out=io.StringIO())
+        queued = um.read_vars(self.vars_file)
+        self.assertEqual(len(queued[sm.C.VARS_MMU_PENDING_MIGRATION]['steps']), 1)
+        self.assertEqual(queued[sm.C.VARS_MMU_PENDING_MIGRATION]['steps'][0]['id'],
+                         transaction['install']['migration_id'])
+        self.assertEqual(self.applied_vars()['mmu_left_bowden_lengths'], [1, 2, 3, 4])
 
     def test_rename_end_to_end(self):
         self.install(["a", "b"], variables={

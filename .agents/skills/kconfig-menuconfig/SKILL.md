@@ -75,8 +75,11 @@ Load-bearing facts about the flow:
   migrated state use the same variables-file snapshot; failed starts can retry.
   Each prepared install has a stable ID so retries do not append it twice, and
   multiple installs before startup are replayed in order (including name reuse).
-  Its progress
-  lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
+  Unrecorded changes with both disappearing and unfamiliar unit names are rejected
+  before any saved-state mutations; empty-name removal markers are excluded.
+  Normal recorded renames remain automatic. Baseline/check/preparation failures,
+  and failure to record intent during install, stop installation before restart.
+  Its progress lives in `.mmu_config.unit_migration` so an aborted run resumes safely.
   A **single unit** names itself instead: `UNIT_NAME` has a "Klipper object
   name" prompt (in `Kconfig.name`) only when `!MULTI_UNIT` and
   `F_UNITS_RESTRUCTURE=y` (Replace mode or a first install, the same rule as

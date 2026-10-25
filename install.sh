@@ -159,9 +159,8 @@ review_unit_changes() {
         return 0
         ;;
     12)
-        # An unrecorded change outside Replace mode: carry on without migrating
-        F_UNITS_BASELINE=$(unit_migration current)
-        return 0
+        echo "${C_ERROR}Unrecorded MMU unit changes: stopping. Run './install.sh -i' in Replace mode to record the changes.${C_OFF}"
+        return 1
         ;;
     11)
         F_UNITS_RESTRUCTURED=y
@@ -180,17 +179,19 @@ review_unit_changes() {
         return 1
         ;;
     *)
-        # The migration itself failed: install as before, without migrating
-        F_UNITS_BASELINE=
-        return 0
+        echo "${C_ERROR}Could not verify MMU unit changes; stopping to preserve saved state. Resolve the error above and retry.${C_OFF}"
+        return 1
         ;;
     esac
 }
 
-# The installed unit list, before menuconfig can change it. If it can't be read,
-# renaming stays locked since nothing could be migrated
+# Capture identity before menuconfig can change it; a failed read is not a fresh install.
 capture_units_baseline() {
-    F_UNITS_BASELINE=$(unit_migration baseline) && set_units_restructure
+    F_UNITS_BASELINE=$(unit_migration baseline) || {
+        echo "${C_ERROR}Could not read the installed MMU units; stopping. Resolve the error above and retry.${C_OFF}"
+        return 1
+    }
+    set_units_restructure
     export F_UNITS_BASELINE
 }
 
@@ -293,16 +294,11 @@ single_unit_renamed() {
     )
 }
 
-# A failed migration step only stops the install once a confirmed unit change is
-# underway, otherwise it is skipped so it can never block an ordinary install
+# Never install/restart after a failed state-migration step: intent may be missing.
 unit_migration_step() {
     unit_migration "$@" && return 0
-    if [ -n "${F_UNITS_RESTRUCTURED:-}" ]; then
-        echo "${C_ERROR}MMU unit migration step '$1' failed, stopping${C_OFF}"
-        return 1
-    fi
-    echo "${C_WARNING}MMU unit migration step '$1' failed, continuing without it${C_OFF}"
-    return 0
+    echo "${C_ERROR}MMU unit migration step '$1' failed, stopping. Resolve the error above and retry.${C_OFF}"
+    return 1
 }
 
 time_elapsed() {
@@ -1198,7 +1194,7 @@ run_kconfig_one() {
 ##### Menuconfig / Refresh #####
 ################################
 
-capture_units_baseline
+capture_units_baseline || exit 1
 export F_UNIT_NAME_BEFORE="$(single_unit_name)"
 
 if [ -n "${F_MENUCONFIG:-}" ]; then

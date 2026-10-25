@@ -232,6 +232,9 @@ def apply_intents(variables, current_names):
     steps = validate_pending(result[C.VARS_MMU_PENDING_MIGRATION])
     if steps[-1]["to"] != current_names:
         raise ValueError("Pending MMU migration does not match configured units; finish the installation before starting Klipper")
+    saved_layout = valid_layout(result.get(C.VARS_MMU_GATE_MAP_UNITS))
+    if saved_layout:
+        require_known_unit_changes([name for name, _ in saved_layout], steps[0]["from"])
     for step in steps:
         result, messages = migrate_unit_state(result, step)
         notes.extend(messages)
@@ -246,6 +249,23 @@ def valid_layout(layout):
         return None
     names = [name for name, _ in layout if name]
     return [list(u) for u in layout] if len(names) == len(set(names)) else None
+
+
+def require_known_unit_changes(saved_names, current_names):
+    """A missing name plus a new name may be a rename; never guess its identity.
+
+    Empty names mark explicitly removed units and must not be paired with new ones.
+    Recorded intent has already renamed retained units and tombstoned removals.
+    """
+    removed = sorted(set(saved_names) - set(current_names) - {""})
+    added = sorted(set(current_names) - set(saved_names))
+    if removed and added:
+        raise ValueError(
+            "Unrecorded MMU unit change: previous unit(s) %s, new unit(s) %s. "
+            "Cannot distinguish a rename from replacement; saved state has not been migrated. "
+            "Restore the previous unit names, then run './install.sh -i' in Replace mode "
+            "and use the unit editor to rename, or explicitly remove and add units."
+            % (", ".join(removed), ", ".join(added)))
 
 
 def match_by_unit(saved_layout, current_layout):
@@ -267,6 +287,9 @@ def migrate_state(variables, current_layout, defaults):
     """One startup transaction: unit keys, selection, sensors, lists, layout, and receipt."""
     result, notes = apply_intents(variables, [name for name, _ in current_layout])
     saved_layout = valid_layout(result.get(C.VARS_MMU_GATE_MAP_UNITS))
+    if saved_layout:
+        require_known_unit_changes([name for name, _ in saved_layout],
+                                   [name for name, _ in current_layout])
     num_gates = sum(n for _, n in current_layout)
     mapping = match_by_unit(saved_layout, current_layout) if saved_layout else None
     errors = []

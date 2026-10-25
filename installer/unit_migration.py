@@ -434,6 +434,13 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
     if not plan.changed():
         return EXIT_NONE
 
+    if not plan.captured:
+        try:
+            state_migration.require_known_unit_changes(plan.baseline, plan.current)
+        except ValueError as e:
+            print("ERROR: %s" % e, file=out)
+            return EXIT_REFUSED
+
     for error in plan.errors():
         print("ERROR: %s" % error, file=out)
     if plan.errors():
@@ -453,8 +460,7 @@ def check(kconfig, config_home, base, mode, out=sys.stdout):
     if mode != "replace":
         if not plan.captured and not read_state(kconfig):
             # Not made with the unit editor (e.g. the list was edited before it existed)
-            print("WARNING: The installed units do not match %s but no change was recorded, so nothing"
-                  " is migrated. Use './install.sh -i' (Replace mode) to rename, remove or reorder"
+            print("ERROR: The installed units do not match %s but no change was recorded. Use './install.sh -i' (Replace mode) to rename, remove or reorder"
                   " units" % SYMBOL, file=out)
             return EXIT_UNTRACKED
         undo = ("set 'Klipper object name' back to '%s'" % plan.baseline[0] if plan.single

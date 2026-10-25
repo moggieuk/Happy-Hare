@@ -167,8 +167,8 @@ class TestUnitAwareResize(PersistedGateListsTestCase):
 
     def test_a_unit_missing_from_the_saved_layout_gets_defaults(self):
         self.boot('ercf_vvd', {
-            'mmu_state_gate_map_units': [['unit0', 9], ['renamed', 3]],
-            'mmu_state_gate_spool_id': self.UNIT0 + self.UNIT1[:3],
+            'mmu_state_gate_map_units': [['unit0', 9]],
+            'mmu_state_gate_spool_id': self.UNIT0,
         })
         self.assertEqual(self.mmu.gate_spool_id, self.UNIT0 + [-1] * 4)
 
