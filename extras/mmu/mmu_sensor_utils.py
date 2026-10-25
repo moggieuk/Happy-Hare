@@ -411,7 +411,11 @@ class MmuSwitchSensor(MmuSensor):
         if switch_pin is not None:
             buttons = self.printer.load_object(config, 'buttons')
             # TODO debounce_delay will be read for supplied config, could this solve mmu_entry flutter issue?
-            buttons.register_debounce_button(switch_pin, self._button_handler, config)
+            if hasattr(buttons, 'register_debounce_button'):
+                buttons.register_debounce_button(switch_pin, self._button_handler, config)
+            else:
+                # Klipper before v0.12.0-460 (e.g. RatOS) has no debounce support
+                buttons.register_buttons([switch_pin], self._button_handler)
 
 
     # Handler for digital switch sensors to update state
