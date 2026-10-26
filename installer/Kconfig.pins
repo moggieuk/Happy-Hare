@@ -77,7 +77,7 @@ menu "Pins / TMC"
       prompt "$(pad,$(pin_pad),Gear diag pin)" if PARAM_GEAR_TMC != ""
       validator "$(pin_validator)"
       help
-        $(pin_help)
+        $(diag_pin_help)
 
     @repeat var=i min=1 max=$(max_gate)@
       config PARAM_GEAR_UART_ADDRESS_$(i)
@@ -137,7 +137,7 @@ menu "Pins / TMC"
             prompt "$(pad,$(pin_pad),Gear $(i) diag pin)" if PARAM_GEAR_TMC != ""
             validator "$(pin_validator)"
             help
-              $(pin_help)
+              $(diag_pin_help)
         endif
       @endrepeat@
     endif
@@ -218,7 +218,7 @@ menu "Pins / TMC"
         prompt "$(pad,$(pin_pad),Selector diag pin)" if PARAM_SELECTOR_TMC != ""
         validator "$(pin_validator)"
         help
-          $(pin_help)
+          $(diag_pin_help)
     endif
   endmenu
 

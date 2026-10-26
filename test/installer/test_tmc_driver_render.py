@@ -30,7 +30,7 @@ ACCEPTED = {
     'tmc2130': {'cs_pin', 'spi_bus', 'spi_software_sclk_pin',
                 'spi_software_mosi_pin', 'spi_software_miso_pin',
                 'run_current', 'hold_current', 'interpolate',
-                'sense_resistor', 'stealthchop_threshold', 'diag_pin',
+                'sense_resistor', 'stealthchop_threshold', 'diag1_pin',
                 'driver_SGT'},
     # No hold_current and no stealthchop: spreadCycle only, idles via
     # idle_current_percent. No virtual endstop either, so no touch homing.
@@ -40,7 +40,7 @@ ACCEPTED = {
     'tmc5160': {'cs_pin', 'spi_bus', 'spi_software_sclk_pin',
                 'spi_software_mosi_pin', 'spi_software_miso_pin',
                 'run_current', 'hold_current', 'interpolate',
-                'sense_resistor', 'stealthchop_threshold', 'diag_pin',
+                'sense_resistor', 'stealthchop_threshold', 'diag1_pin',
                 'driver_SGT'},
     # The only chip that takes either bus - tmc2240.py:352 picks UART when
     # uart_pin is set and SPI otherwise. rref, not sense_resistor: it sizes
@@ -49,7 +49,7 @@ ACCEPTED = {
                 'spi_software_mosi_pin', 'spi_software_miso_pin',
                 'uart_pin', 'uart_address',
                 'run_current', 'hold_current', 'interpolate', 'rref',
-                'stealthchop_threshold', 'diag_pin', 'driver_SG4_THRS',
+                'stealthchop_threshold', 'diag1_pin', 'driver_SG4_THRS',
                 'driver_SLOPE_CONTROL'},
 }
 
@@ -116,12 +116,17 @@ class TestRenderedDriverSectionsAreValid(unittest.TestCase):
                             self.assertIn('cs_pin', options)
                             self.assertNotIn('uart_pin', options)
 
-    def test_the_stallguard_field_matches_the_chip(self):
-        """The field name differs per family, and so does its scale."""
-        expected = {'TMC2209': 'driver_SGTHRS', 'TMC2226': 'driver_SGTHRS',
-                    'TMC2130': 'driver_SGT', 'TMC5160': 'driver_SGT',
-                    'TMC2240_SPI': 'driver_SG4_THRS',
-                    'TMC2240_UART': 'driver_SG4_THRS'}
+    def test_the_stallguard_fields_match_the_chip(self):
+        """The field and diag pin names differ per family, and so does the scale.
+
+        Chips with two DIAG outputs take diag0_pin/diag1_pin and reject diag_pin.
+        """
+        expected = {'TMC2209': ('driver_SGTHRS', 'diag_pin'),
+                    'TMC2226': ('driver_SGTHRS', 'diag_pin'),
+                    'TMC2130': ('driver_SGT', 'diag1_pin'),
+                    'TMC5160': ('driver_SGT', 'diag1_pin'),
+                    'TMC2240_SPI': ('driver_SG4_THRS', 'diag1_pin'),
+                    'TMC2240_UART': ('driver_SG4_THRS', 'diag1_pin')}
         for stepper in ('gear', 'selector'):
             _, prefix, path, suffix = STEPPERS[stepper]
             for chip in CHIPS:
@@ -136,12 +141,13 @@ class TestRenderedDriverSectionsAreValid(unittest.TestCase):
                     name = [n for n in cfg.sections(rendered)
                             if n.startswith('tmc') and n.endswith(suffix)][0]
                     options = dict(parsed.items(name))
-                    field = expected.get(chip)
-                    if field is None:
+                    fields = expected.get(chip)
+                    if fields is None:
                         # No stallguard on this chip, so no diag pin either
-                        self.assertNotIn('diag_pin', options)
+                        self.assertFalse({'diag_pin', 'diag0_pin', 'diag1_pin'} & set(options))
                     else:
-                        self.assertIn(field, options)
+                        for field in fields:
+                            self.assertIn(field, options)
 
 
 class TestNoDriverMeansNoDriverSection(unittest.TestCase):

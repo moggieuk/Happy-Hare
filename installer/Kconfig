@@ -235,6 +235,7 @@ object_name_validator := ([a-z][a-z0-9_-]*)?
 pin_syntax    := Syntax:  [[REV]][^|~] [!] [chip_name:] pin_or_alias_name[[/REV]]
 pin_example   := $(hh-pin-example,$(F_MULTI_UNIT_ENTRY_POINT))
 pin_help      := $(pin_syntax)$(nl)$(pin_example)
+diag_pin_help := $(pin_help)$(nl)$(nl)TMC2209/2226 DIAG usually needs a pullup: [[REV]]^[[/REV]]$(nl)TMC2130/2240/5160 DIAG is active low so it usually needs pullup and invert: [[REV]]^![[/REV]]
 
 # To allow multiline config strings.
 # Important: Use $(comma) & $(quote) instead of real comma's or double quotes in multiline strings

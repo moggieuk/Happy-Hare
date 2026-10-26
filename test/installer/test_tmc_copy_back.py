@@ -28,7 +28,9 @@ class TestTmcPolicies(unittest.TestCase):
         policies = self.policies()
         for driver, options in ACCEPTED.items():
             with self.subTest(driver=driver):
-                self.assertEqual(policies[driver], options - {'driver_SLOPE_CONTROL'})
+                # Dual-DIAG chips reject diag_pin, so it stays managed to drop a leftover
+                stale = {'diag_pin'} if 'diag1_pin' in options else set()
+                self.assertEqual(policies[driver], (options | stale) - {'driver_SLOPE_CONTROL'})
 
     def refresh(self, section, extra, emitted='uart_pin: PA1\n', changes=()):
         old = build.HHConfig([])
@@ -47,6 +49,14 @@ class TestTmcPolicies(unittest.TestCase):
                     new = self.refresh(section, '%s: 42\ndriver_TOFF: 4\n' % field)
                     self.assertFalse(new.has_option(section, field))
                     self.assertEqual(new.get(section, 'driver_TOFF'), '4')
+
+    def test_dual_diag_drops_rejected_diag_pin_but_keeps_diag0(self):
+        for driver in ('tmc2130', 'tmc5160', 'tmc2240'):
+            section = driver + ' mmu_stepper unit0_gear'
+            with self.subTest(section=section):
+                new = self.refresh(section, 'diag_pin: PA2\ndiag0_pin: ^!PA3\n')
+                self.assertFalse(new.has_option(section, 'diag_pin'))
+                self.assertEqual(new.get(section, 'diag0_pin'), '^!PA3')
 
     def test_unmanaged_sgt_and_slope_survive(self):
         for driver in ('tmc2660', 'tmc2240'):
