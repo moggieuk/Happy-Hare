@@ -25,6 +25,10 @@
 # set) with UNIT=<unit> OPEN=1, plus GATES=<heated gates> with per-gate heaters. Closing does the
 # reverse with OPEN=0. Vent servos are also closed at startup and when drying stops.
 #
+# Pause: with 'heater_pause_temp' set (0 or above) the drying heater(s) are turned off (0) or lowered
+# to that temperature while the print is paused, and the drying temperature is restored on resume.
+# The drying timer keeps running. -1 (default) keeps drying through a pause.
+#
 # The manager will support automatic spool rotation if equipped with eSpooler and the dry cycle
 # is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
 # fastened to the spool and the GATES parameter must be supplied.
@@ -108,6 +112,7 @@ class MmuEnvironmentManager:
         self._drying_start_time = self._drying_end_time = None
         self._drying_gates = []
         self._drying_vent_interval = None
+        self._pause_heat = False      # Drying heat currently lowered or off for a print pause
 
         # Per-gate drying state (multi-heater mode)
         # gate -> dict(state, start_time, end_time, temp, humidity_target, done_reason, last_temp, last_humidity)
@@ -393,7 +398,8 @@ class MmuEnvironmentManager:
                 self._lower_drying_cap()
                 if self._drying_target() < temp:
                     self.mmu.log_info(self._drying_cap_message())
-                temp = self._drying_target()
+                self._drying_heat(self._drying_target())
+                return
             self._heater_on(temp)
             return
 
@@ -409,6 +415,8 @@ class MmuEnvironmentManager:
                 gd['temp'] = temp
                 if gd.get('state') == DRYING_STATE_QUEUED:
                     continue
+                self._drying_heat(temp, gate=gate)
+                continue
 
             self._heater_on(temp, gate=gate)
 
@@ -507,6 +515,9 @@ class MmuEnvironmentManager:
 
         now = self.reactor.monotonic()
 
+        # Lower or restore the drying heat if the print was paused or resumed
+        self._check_pause_heat()
+
         # Per-gate drying mode
         if self.has_per_gate_heaters():
             # Update active gates: check completion / humidity threshold
@@ -595,7 +606,7 @@ class MmuEnvironmentManager:
             # Filament may have been loaded since the last check
             if self._lower_drying_cap():
                 self.mmu.log_info(self._drying_cap_message())
-                self._heater_on(self._drying_target())
+                self._drying_heat(self._drying_target())
 
         # Run periodic venting
         if self._vent_timer is not None:
@@ -651,6 +662,7 @@ class MmuEnvironmentManager:
             self._vent_timer = None
 
         # Turn on heater or heaters depending on mode
+        self._pause_heat = self._pause_temp() is not None
         if not self.has_per_gate_heaters():
             # Single heater mode
             for gate in self.mmu_unit.gate_range():
@@ -658,7 +670,7 @@ class MmuEnvironmentManager:
                     self._state_set(gate, DRYING_STATE_ACTIVE)
                 except Exception:
                     pass
-            self._heater_on(self._drying_target())
+            self._drying_heat(self._drying_target())
 
         else:
             # Multi heater mode: Initialize per-gate state and start as many as possible
@@ -737,7 +749,55 @@ class MmuEnvironmentManager:
             gd['last_temp'] = cur_temp
             gd['last_humidity'] = cur_humidity
 
-            self._heater_on(gd.get('temp'), gate=gate)
+            self._drying_heat(gd.get('temp'), gate=gate)
+
+
+    def _pause_temp(self):
+        """
+        Drying heater target while the print is paused (heater_pause_temp), else None to keep drying
+        """
+        pause_temp = self.mmu_unit.p.heater_pause_temp
+        if pause_temp < 0 or not self.mmu.is_paused():
+            return None
+        return pause_temp
+
+
+    def _drying_heat(self, temp, gate=None):
+        """
+        Set a drying heater, turned off or lowered while the print is paused
+        """
+        pause_temp = self._pause_temp()
+        if pause_temp is not None and temp is not None:
+            if pause_temp == 0:
+                self._heater_off(gate=gate)
+                return
+            temp = min(temp, pause_temp)
+        self._heater_on(temp, gate=gate)
+
+
+    def _check_pause_heat(self):
+        """
+        Lower or turn off the drying heat when the print pauses and restore it on resume
+        """
+        pause_temp = self._pause_temp()
+        paused = pause_temp is not None
+        if paused == self._pause_heat:
+            return
+        self._pause_heat = paused
+        if paused:
+            if pause_temp == 0:
+                self.mmu.log_info("Print paused: drying heater turned off until resume")
+            else:
+                self.mmu.log_info("Print paused: drying heater lowered to %.1f°C until resume" % pause_temp)
+        else:
+            self.mmu.log_info("Print resumed: drying heater restored")
+        if self.has_per_gate_heaters():
+            for gate in list(self._get_active_gates()):
+                gd = self._gate_drying.get(gate)
+                if gd:
+                    self._drying_heat(gd.get('temp'), gate=gate)
+        else:
+            self._drying_heat(self._drying_target())
 
 
     def _drying_target(self):

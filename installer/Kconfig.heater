@@ -13,6 +13,7 @@
 #   PARAM_HEATER_DEFAULT_DRY_HUMIDITY
 #   PARAM_HEATER_VENT_MACRO
 #   PARAM_HEATER_VENT_INTERVAL
+#   PARAM_HEATER_PAUSE_TEMP
 #   PARAM_HEATER_VENT_OPEN_ANGLE, PARAM_HEATER_VENT_CLOSE_ANGLE, PARAM_HEATER_VENT_RUN_FAN,
 #   PARAM_HEATER_VENT_DURATION, PARAM_HEATER_VENT_SERVO_DURATION
 #   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER or MMU_GEAR_ROTATES_SPOOL)
@@ -157,6 +158,15 @@ if MMU_HAS_HEATER
       default "25"
       help
         Default humidity % goal. Drying will terminate if this value is reached
+
+    config PARAM_HEATER_PAUSE_TEMP
+      string "Temperature while paused  "
+      default "-1"
+      help
+        Drying heater target while the print is paused. -1 keeps drying as
+        usual, 0 turns the heater off, any other value lowers it to that
+        temperature. The drying temperature comes back on resume. The drying
+        timer keeps running during the pause.
 
     config PARAM_HEATER_ROTATE_INTERVAL
       string "Rotate interval           "
