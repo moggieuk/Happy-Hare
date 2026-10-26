@@ -309,9 +309,6 @@ class ServoSelector(PhysicalSelector):
                 if angle < 0:
                     self.mmu.log_error("Operation not possible because release gate position is not calibrated")
                     return
-
-                # Release position may grip another gate's filament so the gear must not follow the extruder
-                self.mmu.drive().sync_mode(DRIVE_UNSYNCED)
             else:
                 angle = self.servo_gate_angles[lgate]
                 state = FILAMENT_DRIVE_STATE
@@ -407,17 +404,17 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
     HELP_BRIEF = "Calibration of the selector servo angle for specified gate(s)"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "UNIT    = #(int) Optional if only one unit fitted to printer\n"
-        + "ANGLE   = #(int) Move servo to designated angle\n"
-        + "GATE    = #(int) Specify the gate by it's global logical index\n"
-        + "LGATE   = #(int) Specify gate by the local mmu unit index (same as GATE with single MMU unit)\n"
-        + "SAVE    = 1      To persist the calibration results else they will just be reported\n"
-        + "SINGLE  = 1      To force the calibration of a single gate only\n"
-        + "SPACING = #(int) Angle between gates for quick setting all gates\n"
-        + "BYPASS  = 1      To specify intention to define the bypass gate angle (if fitted)\n"
-        + "RELEASE = 1      To specify intention to define a fixed release angle\n"
-        + "RESET   = 1      To remove calibrated settings and default to configured starting values\n"
-        + "RESET_RELEASE = 1 To remove just the calibrated release angle\n"
+        + "UNIT          = #(int) Optional if only one unit fitted to printer\n"
+        + "ANGLE         = #(int) Move servo to designated angle\n"
+        + "GATE          = #(int) Specify the gate by it's global logical index\n"
+        + "LGATE         = #(int) Specify gate by the local mmu unit index (same as GATE with single MMU unit)\n"
+        + "SAVE          = 1      To persist the calibration results else they will just be reported\n"
+        + "SINGLE        = 1      To force the calibration of a single gate only\n"
+        + "SPACING       = #(int) Angle between gates for quick setting all gates\n"
+        + "BYPASS        = 1      To specify intention to define the bypass gate angle (if fitted)\n"
+        + "RELEASE       = 1      To specify intention to define a fixed release angle\n"
+        + "RESET         = 1      To remove calibrated settings and default to configured starting values\n"
+        + "RESET_RELEASE = 1      To remove just the calibrated release angle\n"
         + "(no options to show the current calibration)\n"
     )
     HELP_SUPPLEMENT = (

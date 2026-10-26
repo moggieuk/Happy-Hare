@@ -655,6 +655,7 @@ class TestServoSelectorReleaseGates(SelectorTestCase):
         self.hh.run_gcode('MMU_RELEASE')
         self.assertEqual(self.selector('unit0').grip_state, FILAMENT_RELEASE_STATE)
         self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertFalse(self.hh.mmu._standalone_sync)
         self.assertEqual(self.hh.errors, [])
 
     def test_print_start_grips_the_gate_before_syncing(self):

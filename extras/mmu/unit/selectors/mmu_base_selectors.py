@@ -602,6 +602,8 @@ class MmuReleaseCommand(BaseCommand):
 
         if gate >= 0:
             if not mmu_unit.filament_always_gripped:
-                mmu_unit.selector.filament_release()
+                if not mmu.is_in_print():
+                    mmu._standalone_sync = False
+                mmu.reset_sync_gear_to_extruder(False, force_grip=True)
             else:
                 mmu.log_error("Selector doesn't allow or not configured to allow filament release")
