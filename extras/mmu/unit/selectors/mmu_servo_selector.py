@@ -308,6 +308,9 @@ class ServoSelector(PhysicalSelector):
                 if angle < 0:
                     self.mmu.log_error("Operation not possible because release gate position is not calibrated")
                     return
+
+                # Release position may grip another gate's filament so the gear must not follow the extruder
+                self.mmu.drive().sync_mode(DRIVE_UNSYNCED)
             else:
                 angle = self.servo_gate_angles[lgate]
                 state = FILAMENT_DRIVE_STATE

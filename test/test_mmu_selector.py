@@ -641,6 +641,19 @@ class TestServoSelectorReleaseGates(SelectorTestCase):
                 self.assertEqual(selector.servo_angle, selector.servo_gate_angles[release_gate])
                 self.assertEqual(self.hh.errors, [])
 
+    def test_release_unsyncs_the_gear_before_gripping_the_release_gate(self):
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+
+        self.hh.run_gcode('MMU_RELEASE')
+        self.assertEqual(self.selector('unit0').grip_state, FILAMENT_RELEASE_STATE)
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertEqual(self.hh.errors, [])
+
 
 class TestMacroSelector(SelectorTestCase):
     """The generated zero-switch config is direct mode and preserves the v3 GATE contract."""
