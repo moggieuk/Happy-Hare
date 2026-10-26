@@ -107,6 +107,7 @@ class ServoSelector(PhysicalSelector):
 
         self.is_homed = True # No homing necessary
         self.requires_homing = False
+        self.grip_before_sync = True
 
         # Load selector servo hardware
         servo_name = mmu_unit.config.get('selector_servo', self.mmu_unit.name)
@@ -498,13 +499,15 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
         if reset:
             selector.servo_bypass_angle = selector.p.servo_bypass_angle
             selector.servo_release_angle = selector.p.servo_release_angle
-            selector.servo_gate_angles = selector.p.servo_gate_angles
+            num_gates = mmu_unit.num_gates
+            selector.servo_gate_angles = (list(selector.p.servo_gate_angles) + [-1] * num_gates)[:num_gates]
 
             var_manager.delete(VARS_MMU_SELECTOR_RELEASE_ANGLE, namespace=mmu_unit.name)
             var_manager.delete(VARS_MMU_SELECTOR_BYPASS_ANGLE, namespace=mmu_unit.name)
             var_manager.delete(VARS_MMU_SELECTOR_ANGLES, namespace=mmu_unit.name, write=True)
 
             mmu.log_always(f"Reset servo selector calibration on {mmu_unit.name}")
+            selector._check_calibrated()
             show()
             return
 

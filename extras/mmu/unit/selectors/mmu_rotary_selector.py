@@ -110,6 +110,8 @@ class RotarySelector(PhysicalSelector):
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
 
+        self.grip_before_sync = True
+
         self.selector_stepper_name = mmu_unit.config.get('selector_stepper') # Name of selector stepper
         stepper_section = f"mmu_stepper {self.selector_stepper_name}"
 

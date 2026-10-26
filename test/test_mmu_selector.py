@@ -626,8 +626,14 @@ class TestServoSelectorReleaseGates(SelectorTestCase):
 
     PROFILE = PROFILES['mmx'].derive(
         'mmx_release_gates',
-        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False})
+        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False, 'PARAM_SYNC_TO_EXTRUDER': True})
     HOME_UNITS = ()
+
+    def load_gate_0(self):
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
 
     def test_release_moves_to_the_release_gates_angle(self):
         selector = self.selector('unit0')
@@ -642,10 +648,7 @@ class TestServoSelectorReleaseGates(SelectorTestCase):
                 self.assertEqual(self.hh.errors, [])
 
     def test_release_unsyncs_the_gear_before_gripping_the_release_gate(self):
-        self.hh.place_filament(0, position=TIP_AT_GATE)
-        self.hh.run_gcode('MMU_PRELOAD GATE=0')
-        self.hh.run_gcode('MMU_SELECT GATE=0')
-        self.hh.run_gcode('MMU_LOAD')
+        self.load_gate_0()
         self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
         self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
 
@@ -653,6 +656,38 @@ class TestServoSelectorReleaseGates(SelectorTestCase):
         self.assertEqual(self.selector('unit0').grip_state, FILAMENT_RELEASE_STATE)
         self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
         self.assertEqual(self.hh.errors, [])
+
+    def test_print_start_grips_the_gate_before_syncing(self):
+        selector = self.selector('unit0')
+        self.load_gate_0()
+        self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.hh.settle(1.0)
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertEqual(selector.grip_state, FILAMENT_DRIVE_STATE)
+        self.assertEqual(selector.servo_angle, selector.servo_gate_angles[0])
+        self.assertEqual(self.hh.errors, [])
+
+
+class TestServoSelectorReset(SelectorTestCase):
+    """RESET=1 with no configured gate angles leaves a usable, uncalibrated selector."""
+
+    PROFILE = PROFILES['pico_mmu'].derive(
+        'pico_mmu_release_reset',
+        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False})
+    HOME_UNITS = ()
+
+    def test_release_after_reset_does_not_crash(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR ANGLE=10')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR LGATE=0 SPACING=25')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR RESET=1')
+
+        self.hh.run_gcode('MMU_RELEASE')
+        self.assertEqual(selector.servo_gate_angles, [-1, -1, -1, -1])
 
 
 class TestMacroSelector(SelectorTestCase):
