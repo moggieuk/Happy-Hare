@@ -49,6 +49,10 @@ class TestServoSelectorGateAngleDefaults(unittest.TestCase):
             6: "0, 60, 120, 180, 240, 300",
         })
 
+    def test_release_gates_default_to_the_next_gate(self):
+        self.kconfig.syms["PARAM_NUM_GATES"].set_value("4")
+        self.assertEqual(self.kconfig.syms["PARAM_SELECTOR_RELEASE_GATES"].str_value, "1, 2, 3, 0")
+
 
 if __name__ == "__main__":
     unittest.main()

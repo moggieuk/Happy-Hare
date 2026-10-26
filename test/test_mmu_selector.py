@@ -621,6 +621,27 @@ class TestServoSelectorCalibrationSummary(SelectorTestCase):
         self.assertIn('Bypass angle: 130', console)
 
 
+class TestServoSelectorReleaseGates(SelectorTestCase):
+    """With no fixed release angle, releasing moves the servo to the release gate's angle."""
+
+    PROFILE = PROFILES['mmx'].derive(
+        'mmx_release_gates',
+        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False})
+    HOME_UNITS = ()
+
+    def test_release_moves_to_the_release_gates_angle(self):
+        selector = self.selector('unit0')
+        self.assertEqual(selector.servo_release_angle, -1)
+        self.assertEqual(list(selector.p.selector_release_gates), [1, 2, 3, 0])
+        for gate, release_gate in enumerate(selector.p.selector_release_gates):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.hh.run_gcode('MMU_RELEASE')
+                self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+                self.assertEqual(selector.servo_angle, selector.servo_gate_angles[release_gate])
+                self.assertEqual(self.hh.errors, [])
+
+
 class TestMacroSelector(SelectorTestCase):
     """The generated zero-switch config is direct mode and preserves the v3 GATE contract."""
 
