@@ -280,6 +280,28 @@ class TestTestMoveGripAlwaysGripped(TestTestMoveGrip):
         self.assertEqual(self.grip_state(), FILAMENT_DRIVE_STATE)
 
 
+class TestLinearServoSelectorSync(SelectorTestCase):
+    """tradrack with sync_to_extruder: the servo must be down before the gear syncs."""
+
+    PROFILE = PROFILES['tradrack'].derive(
+        'tradrack_sync_to_extruder', syms={'PARAM_SYNC_TO_EXTRUDER': True})
+
+    def test_print_start_grips_before_syncing(self):
+        selector = self.selector('unit0')
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(selector.get_filament_grip_state(), FILAMENT_RELEASE_STATE)
+
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.hh.settle(1.0)
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertEqual(selector.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+        self.assertEqual(self.hh.errors, [])
+
+
 class TestLinearMultiGearSelector(SelectorTestCase):
     """A type-C selector is still a physical axis and must home before absolute moves."""
 
