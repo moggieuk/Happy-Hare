@@ -416,7 +416,7 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
         + "BYPASS  = 1      To specify intention to define the bypass gate angle (if fitted)\n"
         + "RELEASE = 1      To specify intention to define a fixed release angle\n"
         + "RESET   = 1      To remove calibrated settings and default to configured starting values\n"
-        + "RESET_RELEASE = 1 To remove just the calibrated release angle (selector_release_gates then apply if not configured)\n"
+        + "RESET_RELEASE = 1 To remove just the calibrated release angle\n"
         + "(no options to show the current calibration)\n"
     )
     HELP_SUPPLEMENT = (
