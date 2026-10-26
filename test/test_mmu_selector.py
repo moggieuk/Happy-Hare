@@ -690,6 +690,23 @@ class TestServoSelectorReset(SelectorTestCase):
         self.hh.run_gcode('MMU_RELEASE')
         self.assertEqual(selector.servo_gate_angles, [-1, -1, -1, -1])
 
+    def test_print_start_does_not_sync_when_the_grip_fails(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR ANGLE=10')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR LGATE=0 SPACING=25')
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR RESET=1')
+
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.hh.settle(1.0)
+        self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+
 
 class TestMacroSelector(SelectorTestCase):
     """The generated zero-switch config is direct mode and preserves the v3 GATE contract."""

@@ -4182,6 +4182,10 @@ class MmuFilamentMovement:
               and self.selector().get_filament_grip_state() != FILAMENT_DRIVE_STATE):
             self.selector().filament_drive() # Never sync while parked on another gate's grip position
 
+        # A failed grip (e.g. uncalibrated gate) can leave the selector on another gate's grip position
+        if sync and self.selector().grip_before_sync and self.selector().get_filament_grip_state() != FILAMENT_DRIVE_STATE:
+            sync = False
+
         # Adjust current drive sync state and stepper current
         self._sync_gear_to_extruder(sync)
         return sync
