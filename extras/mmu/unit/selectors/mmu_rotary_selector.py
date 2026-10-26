@@ -248,6 +248,9 @@ class RotarySelector(PhysicalSelector):
                     self.mmu.log_error("Operation not possible because release gate position is not calibrated")
                     return
 
+                # Release position grips another gate's filament so the gear must not follow the extruder
+                self.mmu.drive().sync_mode(DRIVE_UNSYNCED)
+
             else:
                 pos = self.selector_offsets[lgate]
                 state = FILAMENT_DRIVE_STATE
