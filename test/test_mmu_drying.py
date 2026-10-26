@@ -545,6 +545,51 @@ class TestDryingDuringPause(unittest.TestCase):
         self.hh.run_gcode('MMU_HEATER TEMP=50')
         self.assertEqual(self.heater.target_temp, 50.)
 
+    def test_manual_temperature_before_the_pause_is_noticed_is_restored(self):
+        # The command applies the pause before the 30 s check sees it
+        self.unit.p.heater_pause_temp = 0.
+        self._dry()
+        self.paused = True
+        self.hh.run_gcode('MMU_HEATER TEMP=50')
+        self.assertEqual(self.heater.target_temp, 0.)
+        self._pause(False)
+        self.assertEqual(self.heater.target_temp, 50.)
+
+    def test_disabling_the_option_while_paused_says_why(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry()
+        self._pause()
+        self.unit.p.heater_pause_temp = -1.
+        at = len(self.hh.console)
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        output = '\n'.join(self.hh.console[at:])
+        self.assertEqual(self.heater.target_temp, 60.)
+        self.assertIn('heater_pause_temp disabled: drying heater restored', output)
+        self.assertNotIn('Print resumed', output)
+
+    def test_status_shows_the_pause(self):
+        self.unit.p.heater_pause_temp = 30.
+        self._dry()
+        self._pause()
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER')
+        output = '\n'.join(self.hh.console[at:])
+        self.assertIn('Paused: drying heater lowered to 30.0°C until resume', output)
+        self._pause(False)
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER')
+        self.assertNotIn('Paused:', '\n'.join(self.hh.console[at:]))
+
+    def test_resume_on_the_last_check_does_not_heat_again(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry(timer=1)
+        self._pause()
+        with mock.patch.object(self.manager, '_heater_on', wraps=self.manager._heater_on) as heater_on:
+            self._pause(False)
+            self.assertFalse(self.manager.is_drying())
+        heater_on.assert_not_called()
+        self.assertEqual(self.heater.target_temp, 0.)
+
 
 # The EMU's per-gate heaters are the user's own [heater_generic] sections
 EMU_HEATERS_STUB = PRINTER_STUB + ''.join('''
