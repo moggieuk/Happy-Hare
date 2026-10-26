@@ -113,6 +113,7 @@ class MmuEnvironmentManager:
         self._drying_gates = []
         self._drying_vent_interval = None
         self._pause_heat = None       # heater_pause_temp the drying heat is held to while paused, None if not
+        self._pause_heat_gates = {}   # Same but per heater as last applied (gate, None for a shared heater)
 
         # Per-gate drying state (multi-heater mode)
         # gate -> dict(state, start_time, end_time, temp, humidity_target, done_reason, last_temp, last_humidity)
@@ -416,8 +417,10 @@ class MmuEnvironmentManager:
                 gd['temp'] = temp
                 if gd.get('state') == DRYING_STATE_QUEUED:
                     continue
-                self._drying_heat(temp, gate=gate)
-                continue
+                # Only a gate still drying follows the pause, a finished one is raw control as before
+                if gd.get('state') == DRYING_STATE_ACTIVE:
+                    self._drying_heat(temp, gate=gate)
+                    continue
 
             self._heater_on(temp, gate=gate)
 
@@ -665,6 +668,7 @@ class MmuEnvironmentManager:
 
         # Turn on heater or heaters depending on mode
         self._pause_heat = None
+        self._pause_heat_gates = {}
         if not self.has_per_gate_heaters():
             # Single heater mode
             for gate in self.mmu_unit.gate_range():
@@ -770,6 +774,7 @@ class MmuEnvironmentManager:
         """
         pause_temp = self._pause_temp()
         self._note_pause_heat(pause_temp)
+        self._pause_heat_gates[gate] = pause_temp
         if pause_temp is not None and temp is not None:
             if pause_temp == 0:
                 self._heater_off(gate=gate)
@@ -780,36 +785,34 @@ class MmuEnvironmentManager:
 
     def _note_pause_heat(self, pause_temp):
         """
-        Record the pause temperature the drying heat is held to (None if not held) and log a change.
-        Called wherever the drying heat is set so a later check knows what to restore.
-        Returns True if it changed
+        Record the pause temperature the drying heat is held to (None if not held) and log a change
         """
         if pause_temp == self._pause_heat:
-            return False
+            return
         self._pause_heat = pause_temp
         if pause_temp == 0:
             self.mmu.log_info("Print paused: drying heater turned off until resume")
         elif pause_temp is not None:
-            self.mmu.log_info("Print paused: drying heater lowered to %.1f°C until resume" % pause_temp)
+            self.mmu.log_info("Print paused: drying heater limited to %.1f°C until resume" % pause_temp)
         elif self.mmu.is_paused():
             self.mmu.log_info("heater_pause_temp disabled: drying heater restored")
         else:
             self.mmu.log_info("Print resumed: drying heater restored")
-        return True
 
 
     def _check_pause_heat(self):
         """
         Lower or turn off the drying heat when the print pauses and restore it on resume
         """
-        if not self._note_pause_heat(self._pause_temp()):
-            return
+        pause_temp = self._pause_temp()
+        self._note_pause_heat(pause_temp)
+        # Each heater is checked on its own as a command may already have set some of them
         if self.has_per_gate_heaters():
             for gate in list(self._get_active_gates()):
                 gd = self._gate_drying.get(gate)
-                if gd:
+                if gd and self._pause_heat_gates.get(gate) != pause_temp:
                     self._drying_heat(gd.get('temp'), gate=gate)
-        else:
+        elif self._pause_heat_gates.get(None) != pause_temp:
             self._drying_heat(self._drying_target())
 
 

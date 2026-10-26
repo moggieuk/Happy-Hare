@@ -79,7 +79,7 @@ class MmuHeaterCommand(BaseCommand):
             return ""
         if pause_temp == 0:
             return "\nPaused: drying heater off until resume"
-        return "\nPaused: drying heater lowered to %.1f°C until resume" % pause_temp
+        return "\nPaused: drying heater limited to %.1f°C until resume" % pause_temp
 
     def _format_minutes(self, minutes):
         hours, mins = divmod(int(minutes), 60)

@@ -493,7 +493,7 @@ class TestDryingDuringPause(unittest.TestCase):
         self._dry()
         output = self._pause()
         self.assertEqual(self.heater.target_temp, 30.)
-        self.assertIn('lowered to 30.0°C until resume', output)
+        self.assertIn('limited to 30.0°C until resume', output)
         self._pause(False)
         self.assertEqual(self.heater.target_temp, 60.)
 
@@ -574,7 +574,7 @@ class TestDryingDuringPause(unittest.TestCase):
         at = len(self.hh.console)
         self.hh.run_gcode('MMU_HEATER')
         output = '\n'.join(self.hh.console[at:])
-        self.assertIn('Paused: drying heater lowered to 30.0°C until resume', output)
+        self.assertIn('Paused: drying heater limited to 30.0°C until resume', output)
         self._pause(False)
         at = len(self.hh.console)
         self.hh.run_gcode('MMU_HEATER')
@@ -634,6 +634,48 @@ class TestDryingDuringPausePerGate(unittest.TestCase):
         self.paused = False
         self.hh.reactor.advance(ENV_CHECK_INTERVAL)
         self.assertEqual(self._targets(), [0., 50., 50., 0.])
+
+    def test_command_on_one_gate_while_paused_others_still_follow(self):
+        # Setting one gate before the check must not stop the other gate following the pause
+        self.unit.p.heater_pause_temp = 0.
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1 TEMP=50 TIMER=60')
+        self.assertEqual(self._targets(), [50., 50., 0., 0.])
+        self.paused = True
+        self.hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        self.assertEqual(self._targets(), [0., 50., 0., 0.])
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 0., 0.])
+        self.hh.reactor.advance(2 * ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 0., 0.])
+
+    def test_command_on_one_gate_before_resume_others_still_restored(self):
+        self.unit.p.heater_pause_temp = 0.
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1 TEMP=50 TIMER=60')
+        self.paused = True
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 0., 0.])
+        self.paused = False
+        self.hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        self.assertEqual(self._targets(), [45., 0., 0., 0.])
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 50., 0., 0.])
+        self.hh.reactor.advance(2 * ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 50., 0., 0.])
+
+    def test_finished_gate_is_still_raw_control_while_paused(self):
+        # Gates 0 and 1 finish after two minutes and gate 2 starts, the cycle keeps running
+        self.unit.p.heater_pause_temp = 0.
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1,2 TEMP=50 TIMER=2')
+        self.hh.reactor.advance(5 * ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 50., 0.])
+        self.paused = True
+        self.hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        self.assertEqual(self._targets()[0], 45.)
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 0., 0., 0.])
+        self.paused = False
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 0., 50., 0.])
 
 
 if __name__ == '__main__':
