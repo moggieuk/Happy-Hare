@@ -7,10 +7,12 @@
     uart_pin, uart_address, run_current, hold_current, interpolate,
     sense_resistor, stealthchop_threshold, diag_pin, driver_SGTHRS
 #]
+[# Dual-DIAG chips: the template writes diag1_pin. diag_pin stays managed so a
+   rejected leftover is dropped, diag0_pin is not so a hand-set one is kept #]
 [# @managed-options tmc2130, tmc5160:
     cs_pin, spi_bus, spi_software_sclk_pin, spi_software_mosi_pin, spi_software_miso_pin,
     run_current, hold_current, interpolate, sense_resistor, stealthchop_threshold,
-    diag_pin, driver_SGT
+    diag_pin, diag1_pin, driver_SGT
 #]
 [# @managed-options tmc2660:
     cs_pin, spi_bus, spi_software_sclk_pin, spi_software_mosi_pin, spi_software_miso_pin,
@@ -19,5 +21,5 @@
 [# @managed-options tmc2240:
     cs_pin, spi_bus, spi_software_sclk_pin, spi_software_mosi_pin, spi_software_miso_pin,
     uart_pin, uart_address, run_current, hold_current, interpolate, rref,
-    stealthchop_threshold, diag_pin, driver_SG4_THRS
+    stealthchop_threshold, diag_pin, diag1_pin, driver_SG4_THRS
 #]

@@ -33,6 +33,7 @@
 #   BOOL_*_TMC_HAS_HOLD_CURRENT BOOL_*_TMC_HAS_STEALTHCHOP
 #   BOOL_*_TMC_HAS_RREF BOOL_*_TMC_SPI_SOFTWARE
 #   BOOL_*_TMC_HAS_STALLGUARD PARAM_*_TMC_STALLGUARD_FIELD
+#   PARAM_*_TMC_DIAG_PIN_FIELD
 #   PARAM_*_STALLGUARD_THRESHOLD
 
 config PIN_$(prefix)_UART
@@ -133,6 +134,16 @@ config PARAM_$(prefix)_TMC_STALLGUARD_FIELD
   default "SGTHRS"   if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226
   default "SG4_THRS" if CHOICE_$(prefix)_TMC2240_SPI || CHOICE_$(prefix)_TMC2240_UART
   default "SGT"      if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC5160
+  default ""
+
+# Which option carries the diag pin. Chips with two DIAG outputs reject
+# diag_pin and take diag0_pin or diag1_pin; plug-in driver modules bring out
+# DIAG1. Those outputs are active low, so the pin usually needs "^!", not "^".
+config PARAM_$(prefix)_TMC_DIAG_PIN_FIELD
+  string
+  default "diag_pin"  if CHOICE_$(prefix)_TMC2209 || CHOICE_$(prefix)_TMC2226
+  default "diag1_pin" if CHOICE_$(prefix)_TMC2130 || CHOICE_$(prefix)_TMC5160 || \
+      CHOICE_$(prefix)_TMC2240_SPI || CHOICE_$(prefix)_TMC2240_UART
   default ""
 
 # $(stallguard) is this stepper's tuned SGTHRS value. The other families get
