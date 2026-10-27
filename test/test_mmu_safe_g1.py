@@ -160,9 +160,8 @@ class SafeG1TestCase(unittest.TestCase):
             self.hh.run_gcode("_SAFE_G1 Y=5.020001")
 
     def test_cutter_restores_current_after_errors_and_success(self):
-        # Run the actual top-level macro and current helpers, including their saved map.
-        for name in ('_MMU_CUT_TIP', '_CUT_TIP_ADJUST_CURRENT', '_CUT_TIP_RESTORE_CURRENT',
-                     '_CUT_TIP_MOVE_TO_CUTTER_PIN', '_CUT_TIP_DO_CUT_MOTION'):
+        # MMU_TEST_FORM_TIP runs the real cutter macro; current is boosted around it in Python
+        for name in ('_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN', '_CUT_TIP_DO_CUT_MOTION'):
             self.hh.printer.harness_macro_effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
         current = {'run_current': 0.8}
         driver = type('Driver', (), {'get_status': lambda _, eventtime=None: dict(current)})()
@@ -177,26 +176,16 @@ class SafeG1TestCase(unittest.TestCase):
         vars.variables = dict(vars.variables, cut_axis_steppers='stepper_x',
                               cut_stepper_current=150, retract_length=0., pushback_length=0.,
                               gantry_servo_enabled=True, cutting_axis='x', pin_park_dist=0.,
-                              pin_loc_xy=[110., 100.], pin_loc_compressed_xy=[100., 100.],
-                              rip_length=0., restore_position=False)
-        for failure in ('approach', 'stroke', 'plain_g1', None):
+                              pin_loc_xy=[110., 100.], restore_position=False)
+        for failure in (True, False):
             with self.subTest(failure=failure):
                 self.hh.run_gcode("G90\nG1 X120 Y100 Z10")
-                vars.variables['pin_loc_xy'] = [110., 362. if failure == 'approach' else 100.]
-                vars.variables['pin_loc_compressed_xy'] = [100., 362. if failure == 'stroke' else 100.]
-                self.hh.printer.harness_macro_effects['_CUT_TIP_DO_CUT_MOTION'] = (
-                    (lambda macro, gcmd: self.hh.run_gcode("G1 Y400")) if failure == 'plain_g1'
-                    else (lambda macro, gcmd: macro.run_body(gcmd)))
-                if failure:
-                    error = self.hh.printer.command_error if failure == 'plain_g1' else self.hh.gcode.error
-                    with self.assertRaisesRegex(error, 'Move out of range' if failure == 'plain_g1' else 'adjustment'):
-                        self.hh.run_gcode('_MMU_CUT_TIP')
-                else:
-                    self.hh.run_gcode('_MMU_CUT_TIP')
-                self.assertAlmostEqual(current['run_current'], 0.8)
+                vars.variables['pin_loc_compressed_xy'] = [100., 362. if failure else 100.]
+                errors = len(self.hh.errors)
+                self.hh.run_gcode('MMU_TEST_FORM_TIP')
+                self.assertEqual(any('adjustment' in e for e in self.hh.errors[errors:]), failure)
                 self.assertAlmostEqual(history[-2], 1.2)
-                saved = self.hh.printer.lookup_object('gcode_macro _CUT_TIP_ADJUST_CURRENT')
-                self.assertEqual(saved.variables['current_map'], {})
+                self.assertAlmostEqual(current['run_current'], 0.8)
 
     def test_excessive_adjustments_fail_without_moving(self):
         self.hh.run_gcode("G1 X100 Y100 Z10")

@@ -3211,12 +3211,15 @@ class MmuFilamentMovement:
 
                 self.log_info("Forming tip...")
 
-                self.wrap_gcode_command(
-                    f"{self.p.form_tip_macro} "
-                    f"{'FINAL_EJECT=1' if test else ''}",
-                    exception=True,
-                    wait=True,
-                )
+                gcode_vars = self.printer.lookup_object(f"gcode_macro {macro_name}_VARS", gcode_macro).variables
+                cut_steppers = [s.strip() for s in str(gcode_vars.get('cut_axis_steppers', '')).split(',') if s.strip()]
+                with self.wrap_cut_axis_current(cut_steppers, gcode_vars.get('cut_stepper_current', 100)):
+                    self.wrap_gcode_command(
+                        f"{self.p.form_tip_macro} "
+                        f"{'FINAL_EJECT=1' if test else ''}",
+                        exception=True,
+                        wait=True,
+                    )
 
             final_mcu_pos = extruder_stepper.get_mcu_position()
 
@@ -4386,6 +4389,39 @@ class MmuFilamentMovement:
             None. Delegates to _adjust_extruder_current in restore mode.
         """
         self._adjust_extruder_current(percent=percent, restore=True)
+
+
+    @contextlib.contextmanager
+    def wrap_cut_axis_current(self, steppers, percent=100):
+        """
+        Temporarily scale the run current of toolhead axis steppers for a cutting block,
+        restoring the original currents even if the block raises.
+
+        Args:
+            steppers: Stepper names (e.g. "stepper_x"). Ones without a TMC section are skipped.
+            percent:  Percentage of each stepper's current run current to apply (100 to disable).
+
+        Yields:
+            self while the temporary current override is active.
+        """
+        saved = {}
+        try:
+            percent = float(percent)
+            if percent > 0 and percent != 100:
+                eventtime = self.reactor.monotonic()
+                for stepper in steppers:
+                    for chip in TMC_CHIPS:
+                        tmc = self.printer.lookup_object("%s %s" % (chip, stepper), None)
+                        if tmc is not None:
+                            run_current = tmc.get_status(eventtime)['run_current']
+                            saved[stepper] = run_current
+                            self._set_tmc_current(stepper, run_current * percent / 100.,
+                                                  "Modifying %s run current to %d%% ({}A) for cutting" % (stepper, percent))
+                            break
+            yield self
+        finally:
+            for stepper, run_current in saved.items():
+                self._set_tmc_current(stepper, run_current, "Restoring %s run current to {}A" % stepper)
 
 
     def _set_tmc_current(self, stepper, run_current, msg):
