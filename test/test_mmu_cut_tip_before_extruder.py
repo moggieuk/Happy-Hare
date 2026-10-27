@@ -108,8 +108,8 @@ class BeforeExtruderCutCase(unittest.TestCase):
         # A load stops residual_filament + toolchange_retract short of the nozzle
         self.nozzle = (self.fil.tip[0] + self.unit.toolhead_wrapper.p.toolhead_residual_filament
                        + self.mmu.toolchange_retract)
-        # The fragment is worked out assuming the toolchange retract was done before the cut. MMU_UNLOAD
-        # doesn't do one, so it reads toolchange_retract short, as for a cut after the extruder gears
+        # The fragment is worked out assuming the tip sat toolchange_retract back before the cut. Here the
+        # load left it there and MMU_UNLOAD does no park retract, so the formula is exact
         self.fragment = self.BLADE_POS - self.RETRACT_LENGTH - self.mmu.toolchange_retract
         for sensor in self.DISABLE_SENSORS:
             self.hh.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=0' % sensor)
