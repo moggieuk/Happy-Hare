@@ -54,5 +54,25 @@ class TestServoSelectorGateAngleDefaults(unittest.TestCase):
         self.assertEqual(self.kconfig.syms["PARAM_SELECTOR_RELEASE_GATES"].str_value, "1, 2, 3, 0")
 
 
+class TestPicoMmuSyncDefaults(unittest.TestCase):
+
+    SYNC_SYMS = ("PARAM_SYNC_TO_EXTRUDER", "PARAM_SYNC_FORM_TIP", "PARAM_SYNC_PURGE")
+
+    def kconfig(self, name, syms):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            return cfg._kconfig(name, {"MMU_TYPE_PICO_MMU_1_0": True, **syms})
+
+    def test_sync_follows_filament_always_gripped(self):
+        gripped = self.kconfig("pico_mmu_gripped", {})
+        self.assertEqual(gripped.get("PARAM_FILAMENT_ALWAYS_GRIPPED"), "1")
+        for sym in self.SYNC_SYMS:
+            self.assertEqual(gripped.get(sym), "1", sym)
+
+        released = self.kconfig("pico_mmu_released", {"PARAM_FILAMENT_ALWAYS_GRIPPED": False})
+        for sym in self.SYNC_SYMS:
+            self.assertEqual(released.get(sym), "0", sym)
+            self.assertGreater(released.syms[sym].visibility, 0, sym)
+
+
 if __name__ == "__main__":
     unittest.main()

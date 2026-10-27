@@ -6,9 +6,6 @@ config MMU_TYPE_PICO_MMU_1_0
     simple compact design but is limited to about 4 gates.
   select SERVO_SELECTOR
   imply  PARAM_FILAMENT_ALWAYS_GRIPPED
-  select PARAM_SYNC_TO_EXTRUDER
-  select PARAM_SYNC_FORM_TIP
-  select PARAM_SYNC_PURGE
   imply BOOL_ENABLE_LEDS
 
 if MMU_TYPE_PICO_MMU_1_0

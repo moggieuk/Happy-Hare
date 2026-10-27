@@ -677,7 +677,7 @@ class TestServoSelectorReset(SelectorTestCase):
 
     PROFILE = PROFILES['pico_mmu'].derive(
         'pico_mmu_release_reset',
-        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False})
+        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False, 'PARAM_SYNC_TO_EXTRUDER': True})
     HOME_UNITS = ()
 
     def test_release_after_reset_does_not_crash(self):
