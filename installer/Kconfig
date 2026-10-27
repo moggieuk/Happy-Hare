@@ -47,9 +47,6 @@
 #   generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
 #
 # 2. Added float type
-#    HH_STRING_TO_FLOAT_SYMBOLS in kconfiglib.py preserves quoted numeric values
-#    when an existing string symbol changes to float without a rename. The loader
-#    keeps explicit values and #~DEFAULT~# semantics; the next save drops the quotes.
 # 3. Option 'forceshow' to force symbols or menus to display even if their dependency isn't met.
 #    'forceshow if <expr>' does so only while <expr> holds
 #    A forced row whose prompt condition is false is read-only: neither space nor 'r' changes it,

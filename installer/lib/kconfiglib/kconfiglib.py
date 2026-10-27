@@ -638,23 +638,6 @@ HH_RENAMED_SYMBOLS = {
     "PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE":   "PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE",
 }
 
-# Saved string assignments for these symbols predate their FLOAT type.
-# Keep this allowlist when changing a type without renaming its symbol: old
-# .mmu_config files quote the number, but FLOAT normally rejects quotes.
-# Only load_config unquotes it; normal numeric validation and default-token
-# handling still apply. The next save uses the native unquoted float format.
-HH_STRING_TO_FLOAT_SYMBOLS = frozenset({
-    "PARAM_HEATER_MAX_TEMP",
-    "PARAM_HEATER_DEFAULT_DRY_TEMP",
-    "PARAM_HEATER_DEFAULT_DRY_TIME",
-    "PARAM_HEATER_DEFAULT_DRY_HUMIDITY",
-    "PARAM_HEATER_PAUSE_TEMP",
-    "PARAM_HEATER_ROTATE_INTERVAL",
-    "PARAM_HEATER_VENT_INTERVAL",
-    "PARAM_TD1_CAPTURE_TIMEOUT",
-    "PARAM_SLICER_TIP_PARK_POS",
-})
-
 # v4.1 - pins follow the PIN_ convention: i2c pins are named by the
 # shared i2c bus component (components/Kconfig.i2c_bus), and the NFC reader's
 # other pins lose their PARAM_/_PIN wrapping. The environment sensor's
@@ -1456,13 +1439,6 @@ class Kconfig(object):
                             continue
 
                         val = unescape(match.group(1))
-
-                    elif sym.orig_type is FLOAT and name in HH_STRING_TO_FLOAT_SYMBOLS:
-                        # An explicit old string value is still the user's value.
-                        # Leave malformed/nonnumeric input to set_value's warning.
-                        match = _conf_string_match(val)
-                        if match:
-                            val = unescape(match.group(1))
 
                 else:
                     match = unset_match(line)
