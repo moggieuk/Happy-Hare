@@ -217,10 +217,21 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         self.hh.run_gcode('MMU_TEST_FORM_TIP')
         self.assertAlmostEqual(self.extruder.filament_remaining, self.fragment, places=1)
 
-    def test_blade_position_calibration_is_refused(self):
+    def test_blade_position_calibration_warns(self):
         self.unload()
-        with self.assertRaisesRegex(self.hh.gcode.error, 'measure it by hand'):
+        # Carries on to the measurement, which 3ms can't do without a toolhead sensor
+        with self.assertRaisesRegex(self.hh.gcode.error, 'requires a toolhead sensor'):
             self.hh.run_gcode('MMU_CALIBRATE_TOOLHEAD CUT=1')
+        self.assertTrue(any('measure blade_pos by hand' in w for w in self.warnings))
+
+    def test_showconfig_describes_the_cut_not_the_skipped_unload_test(self):
+        self.mmu.p.toolhead_unload_test = 2
+        del self.hh.console[:]
+        self.hh.run_gcode('MMU_STATUS SHOWCONFIG=1')
+        shown = '\n'.join(str(msg) for msg in self.hh.console)
+        self.assertIn('cut BEFORE the extruder', shown)
+        self.assertIn('verified with the EXTRUDER sensor', shown)
+        self.assertNotIn('Unload is tested', shown)
 
     def test_custom_cut_macro_without_blade_pos_is_after_the_extruder(self):
         vars = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS')

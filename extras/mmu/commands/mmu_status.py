@@ -410,7 +410,7 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             unload_test = mmu.p.toolhead_unload_test
-            if unload_test != TOOLHEAD_UNLOAD_TEST_DEFAULT:
+            if unload_test != TOOLHEAD_UNLOAD_TEST_DEFAULT and not before_extruder_cut:
                 if mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY) or mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
                     method = "the distance to clear the sensor compared with the tip park position"
                 elif mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
