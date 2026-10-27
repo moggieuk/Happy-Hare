@@ -36,7 +36,7 @@ _PREVIOUS_MEMBER = re.compile(r'_PREVIOUS(_\d+)?$')
 def main():
     kconf = kconfiglib.standard_kconfig(__doc__)
     filename = kconfiglib.standard_config_filename()
-    from installer.kconfig_upgrades import upgrade
+    from kconfig_upgrades import upgrade
     upgrade(filename)
     before = read_values(kconf, filename)
     print(kconf.load_config())

@@ -767,7 +767,7 @@ def _load_config():
     # Returns True if .config is missing or outdated. We always prompt for
     # saving the configuration in that case.
 
-    from installer.kconfig_upgrades import upgrade
+    from kconfig_upgrades import upgrade
     upgrade(_conf_filename)
     print(_kconf.load_config())
     if not os.path.exists(_conf_filename):
@@ -2889,9 +2889,8 @@ def _try_load(filename):
     #   Configuration file to load
 
     try:
-        from installer.kconfig_upgrades import upgrade
-        upgrade(filename)
-        _kconf.load_config(filename)
+        from kconfig_upgrades import load_legacy_config
+        load_legacy_config(_kconf, filename)
         return True
     except EnvironmentError as e:
         _error("Error loading '{}'\n\n{} (errno: {})"

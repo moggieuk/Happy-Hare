@@ -1,13 +1,19 @@
 """Legacy numeric settings survive the one-time saved-config upgrade."""
 import contextlib
+from concurrent.futures import ThreadPoolExecutor
 import io
 import os
 from pathlib import Path
 import tempfile
+import threading
 import unittest
+from unittest import mock
+
+import menuconfig
 
 import kconfiglib
-from installer.kconfig_upgrades import upgrade
+import kconfig_upgrades
+from kconfig_upgrades import upgrade
 from installer import build
 from test.hh import cfg
 
@@ -28,7 +34,7 @@ class TestNumericOptions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._new_kconfig('numeric_options')
             kc.warn_to_stderr = False
-            # Both single-unit and per-unit files use the same upgrade target.
+            # Both single-unit and per-unit files use the same migration helper.
             for filename in ('.mmu_config', '.mmu_config_unit0'):
                 for marker in ('', ' #~DEFAULT~#'):
                     with self.subTest(filename=filename, marker=marker):
@@ -83,6 +89,48 @@ class TestNumericOptions(unittest.TestCase):
                 loaded.load_unit(str(path))
             self.assertEqual(loaded.syms['PARAM_HEATER_PAUSE_TEMP'].user_value, '32')
             self.assertEqual(Path(str(path) + '.pre-numeric-upgrade').read_text(), restored)
+            # Force every worker to see the legacy file before any can replace
+            # it: exactly one may migrate/report, and the backup must be legacy.
+            concurrent = Path(tmp) / 'concurrent'
+            original = b'CONFIG_PARAM_HEATER_PAUSE_TEMP=" 30 "\n'
+            concurrent.write_bytes(original)
+            barrier = threading.Barrier(8, timeout=10)
+            first_read = threading.local()
+            convert = kconfig_upgrades._convert
+
+            def synchronized_convert(data):
+                if not getattr(first_read, 'done', False):
+                    first_read.done = True
+                    barrier.wait()
+                return convert(data)
+
+            report = io.StringIO()
+            with mock.patch.object(kconfig_upgrades, '_convert', synchronized_convert), \
+                 contextlib.redirect_stderr(report), ThreadPoolExecutor(max_workers=8) as workers:
+                counts = list(workers.map(upgrade, [concurrent] * 8))
+            self.assertEqual(sorted(counts), [0] * 7 + [1])
+            self.assertEqual(report.getvalue().count('Upgraded'), 1)
+            self.assertEqual(Path(str(concurrent) + '.pre-numeric-upgrade').read_bytes(), original)
+            # Loading a legacy file in the curses dialog is read-only and quiet.
+            directory = Path(tmp) / 'read-only'
+            directory.mkdir()
+            source = directory / 'legacy'
+            source.write_text('CONFIG_PARAM_HEATER_PAUSE_TEMP=" 30 "\n')
+            original = source.read_bytes()
+            source.chmod(0o444)
+            directory.chmod(0o555)
+            report = io.StringIO()
+            try:
+                with mock.patch.object(menuconfig, '_kconf', kc, create=True), \
+                     contextlib.redirect_stderr(report):
+                    self.assertTrue(menuconfig._try_load(str(source)))
+                self.assertEqual(kc.syms['PARAM_HEATER_PAUSE_TEMP'].user_value, '30')
+                self.assertEqual(source.read_bytes(), original)
+                self.assertEqual(list(directory.iterdir()), [source])
+                self.assertEqual(report.getvalue(), '')
+            finally:
+                directory.chmod(0o755)
+                source.chmod(0o644)
             untouched = Path(tmp) / 'invalid'
             original = (b'CONFIG_PARAM_HEATER_MAX_TEMP="invalid"\n'
                         b'CONFIG_PARAM_HEATER_PAUSE_TEMP="nan"\n'

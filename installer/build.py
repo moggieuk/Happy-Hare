@@ -29,7 +29,7 @@ from pathlib import Path
 import kconfiglib
 from .parser   import ConfigBuilder, WhitespaceNode, PARSE_ERROR_MARKER
 from .upgrades import Upgrades
-from .kconfig_upgrades import upgrade as upgrade_kconfig
+from kconfig_upgrades import upgrade as upgrade_kconfig
 
 # Check for python 3.x
 if sys.version_info[0] < 3:
