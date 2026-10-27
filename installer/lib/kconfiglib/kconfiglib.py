@@ -1429,6 +1429,13 @@ class Kconfig(object):
                             # Set the choice's mode
                             sym.choice.set_value(val)
 
+                    elif sym.orig_type is FLOAT and val.startswith('"'):
+                        # Accept legacy string values; normal float validation
+                        # still rejects empty, invalid, and non-finite numbers.
+                        match = _conf_string_match(val)
+                        if match:
+                            val = unescape(match.group(1)).strip()
+
                     elif sym.orig_type is STRING:
                         match = _conf_string_match(val)
                         if not match:

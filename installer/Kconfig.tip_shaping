@@ -226,8 +226,8 @@ menu "Tip Forming / Cutting"
       See "Turning off slicer tip forming" in the Slicer Setup doc:
       https://moggieuk.github.io/Happy-Hare-Doc/Slicer-Setup/
   config PARAM_SLICER_TIP_PARK_POS
-    string
-    default "0"
+    float
+    default 0
   config PARAM_SLICER_TIP_PARK_POS
     prompt "Slicer tip park pos"
     depends on !PARAM_FORCE_FORM_TIP_STANDALONE

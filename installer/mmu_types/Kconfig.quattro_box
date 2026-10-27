@@ -180,7 +180,7 @@ if MMU_FAMILY_QUATTRO_BOX
 
     # Exhaust vent: opens for 240s every 20 minutes while drying
     config PARAM_HEATER_VENT_INTERVAL
-      default "20"
+      default 20
     config PARAM_HEATER_VENT_OPEN_ANGLE
       default 150
     config PARAM_HEATER_VENT_DURATION

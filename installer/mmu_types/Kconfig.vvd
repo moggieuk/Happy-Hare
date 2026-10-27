@@ -112,7 +112,7 @@ if MMU_TYPE_VVD_1_0
   config PARAM_FILAMENT_HEATER
     default "$(UNIT_NAME)_heater"
   config PARAM_HEATER_MAX_TEMP
-    default "75"
+    default 75
 
   config PARAM_NFC_READER_0
     default "$(UNIT_NAME)_nfc01"
