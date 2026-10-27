@@ -73,6 +73,14 @@ class MmuHeaterCommand(BaseCommand):
             per_unit=True,
         )
 
+    def _pause_heat_status(self, ds):
+        pause_temp = ds.get('pause_temp')
+        if pause_temp is None:
+            return ""
+        if pause_temp == 0:
+            return "\nPaused: drying heater off until resume"
+        return "\nPaused: drying heater limited to %.1f°C until resume" % pause_temp
+
     def _format_minutes(self, minutes):
         hours, mins = divmod(int(minutes), 60)
         parts = []
@@ -284,6 +292,7 @@ class MmuHeaterCommand(BaseCommand):
                     ds.get('temp'),
                     cur_temp,
                 )
+                msg += self._pause_heat_status(ds)
 
             else:
                 # Per-gate status report
@@ -291,6 +300,7 @@ class MmuHeaterCommand(BaseCommand):
                     mmu_unit.max_concurrent_heaters,
                     ds.get('humidity_target'),
                 )
+                msg += self._pause_heat_status(ds)
                 for gd in ds.get('gate_drying', []):
                     gate = gd.get('gate')
                     state = gd.get('state', DRYING_STATE_NONE)

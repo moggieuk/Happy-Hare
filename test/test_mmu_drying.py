@@ -8,7 +8,8 @@ import sys
 import unittest
 from unittest import mock
 
-from test.hh import session
+from test.hh import profiles, session
+from test.hh.bootstrap import PRINTER_STUB
 
 ENV_CHECK_INTERVAL = 30
 
@@ -441,6 +442,240 @@ class TestDryingEnclosureLimit(unittest.TestCase):
         self.hh.run_gcode('MMU_HEATER TEMP=60')
         self.assertFalse(self.manager.is_drying())
         self.assertEqual(self.heater.target_temp, 60.)
+
+
+class TestDryingDuringPause(unittest.TestCase):
+    """heater_pause_temp turns the drying heater off or lowers it while the print is paused."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.manager = self.unit.environment_manager
+        heater_name = self.unit.filament_heater.split()[-1]
+        self.heater = self.hh.printer.lookup_object('heaters').heaters[heater_name]
+        for gate in range(4):
+            self.hh.run_gcode('MMU_GATE_MAP GATE=%d AVAILABLE=0 QUIET=1' % gate)
+        self.paused = False
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(type(self.hh.mmu), 'is_paused', side_effect=lambda: self.paused).start()
+
+    def _dry(self, temp=60, timer=60):
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 TEMP=%d TIMER=%d' % (temp, timer))
+
+    def _pause(self, paused=True):
+        at = len(self.hh.console)
+        self.paused = paused
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        return '\n'.join(self.hh.console[at:])
+
+    def test_drying_continues_through_a_pause_by_default(self):
+        self.assertEqual(self.unit.p.heater_pause_temp, -1.)
+        self._dry()
+        output = self._pause()
+        self.assertEqual(self.heater.target_temp, 60.)
+        self.assertNotIn('Print paused', output)
+
+    def test_heater_off_while_paused_and_back_on_resume(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry()
+        output = self._pause()
+        self.assertEqual(self.heater.target_temp, 0.)
+        self.assertIn('Print paused: drying heater turned off until resume', output)
+        self.assertTrue(self.manager.is_drying())
+        output = self._pause(False)
+        self.assertEqual(self.heater.target_temp, 60.)
+        self.assertIn('Print resumed: drying heater restored', output)
+
+    def test_heater_lowered_while_paused(self):
+        self.unit.p.heater_pause_temp = 30.
+        self._dry()
+        output = self._pause()
+        self.assertEqual(self.heater.target_temp, 30.)
+        self.assertIn('limited to 30.0°C until resume', output)
+        self._pause(False)
+        self.assertEqual(self.heater.target_temp, 60.)
+
+    def test_pause_temperature_never_raises_the_heater(self):
+        self.unit.p.heater_pause_temp = 55.
+        self._dry(temp=50)
+        self._pause()
+        self.assertEqual(self.heater.target_temp, 50.)
+
+    def test_drying_started_while_paused_starts_lowered(self):
+        self.unit.p.heater_pause_temp = 0.
+        self.paused = True
+        self._dry()
+        self.assertEqual(self.heater.target_temp, 0.)
+        self._pause(False)
+        self.assertEqual(self.heater.target_temp, 60.)
+
+    def test_manual_temperature_while_paused_is_used_on_resume(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry()
+        self._pause()
+        self.hh.run_gcode('MMU_HEATER TEMP=50')
+        self.assertEqual(self.heater.target_temp, 0.)
+        self._pause(False)
+        self.assertEqual(self.heater.target_temp, 50.)
+
+    def test_filament_loaded_while_paused_limits_the_restored_temperature(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry()
+        self._pause()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 MATERIAL=PLA AVAILABLE=1 QUIET=1')
+        self._pause(False)
+        self.assertEqual(self.heater.target_temp, 45.)
+
+    def test_the_drying_timer_keeps_running_while_paused(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry(timer=1)
+        self._pause()
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL + 1)
+        self.assertFalse(self.manager.is_drying())
+        self.assertEqual(self.heater.target_temp, 0.)
+        # Nothing comes back on resume once the cycle is over
+        self._pause(False)
+        self.assertEqual(self.heater.target_temp, 0.)
+
+    def test_raw_heater_control_outside_a_cycle_is_unchanged(self):
+        self.unit.p.heater_pause_temp = 0.
+        self.paused = True
+        self.hh.run_gcode('MMU_HEATER TEMP=50')
+        self.assertEqual(self.heater.target_temp, 50.)
+
+    def test_manual_temperature_before_the_pause_is_noticed_is_restored(self):
+        # The command applies the pause before the 30 s check sees it
+        self.unit.p.heater_pause_temp = 0.
+        self._dry()
+        self.paused = True
+        self.hh.run_gcode('MMU_HEATER TEMP=50')
+        self.assertEqual(self.heater.target_temp, 0.)
+        self._pause(False)
+        self.assertEqual(self.heater.target_temp, 50.)
+
+    def test_disabling_the_option_while_paused_says_why(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry()
+        self._pause()
+        self.unit.p.heater_pause_temp = -1.
+        at = len(self.hh.console)
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        output = '\n'.join(self.hh.console[at:])
+        self.assertEqual(self.heater.target_temp, 60.)
+        self.assertIn('heater_pause_temp disabled: drying heater restored', output)
+        self.assertNotIn('Print resumed', output)
+
+    def test_status_shows_the_pause(self):
+        self.unit.p.heater_pause_temp = 30.
+        self._dry()
+        self._pause()
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER')
+        output = '\n'.join(self.hh.console[at:])
+        self.assertIn('Paused: drying heater limited to 30.0°C until resume', output)
+        self._pause(False)
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_HEATER')
+        self.assertNotIn('Paused:', '\n'.join(self.hh.console[at:]))
+
+    def test_resume_on_the_last_check_does_not_heat_again(self):
+        self.unit.p.heater_pause_temp = 0.
+        self._dry(timer=1)
+        self._pause()
+        with mock.patch.object(self.manager, '_heater_on', wraps=self.manager._heater_on) as heater_on:
+            self._pause(False)
+            self.assertFalse(self.manager.is_drying())
+        heater_on.assert_not_called()
+        self.assertEqual(self.heater.target_temp, 0.)
+
+
+# The EMU's per-gate heaters are the user's own [heater_generic] sections
+EMU_HEATERS_STUB = PRINTER_STUB + ''.join('''
+[heater_generic unit0_heater%d]
+heater_pin: unit0_gate%d:PA1
+sensor_type: Generic 3950
+sensor_pin: unit0_gate%d:PA2
+control: watermark
+min_temp: 0
+max_temp: 100
+''' % (g, g, g) for g in range(5))
+
+
+class TestDryingDuringPausePerGate(unittest.TestCase):
+    """With a heater per gate (EMU) every active gate heater follows heater_pause_temp."""
+
+    def setUp(self):
+        profile = profiles.get('emu').derive('emu_heaters', syms={
+            'MMU_HAS_HEATER': True, 'PARAM_MAX_CONCURRENT_HEATERS': 2})
+        self.hh = session(profile, printer_stub=EMU_HEATERS_STUB)
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.manager = self.unit.environment_manager
+        heaters = self.hh.printer.lookup_object('heaters').heaters
+        self.heaters = [heaters['unit0_heater%d' % g] for g in range(4)]
+        self.paused = False
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(type(self.hh.mmu), 'is_paused', side_effect=lambda: self.paused).start()
+
+    def _targets(self):
+        return [h.target_temp for h in self.heaters]
+
+    def test_active_gate_heaters_follow_the_pause(self):
+        self.assertTrue(self.manager.has_per_gate_heaters())
+        self.unit.p.heater_pause_temp = 30.
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=1,2 TEMP=50 TIMER=60')
+        self.assertEqual(self._targets(), [0., 50., 50., 0.])
+        self.paused = True
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 30., 30., 0.])
+        self.paused = False
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 50., 50., 0.])
+
+    def test_command_on_one_gate_while_paused_others_still_follow(self):
+        # Setting one gate before the check must not stop the other gate following the pause
+        self.unit.p.heater_pause_temp = 0.
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1 TEMP=50 TIMER=60')
+        self.assertEqual(self._targets(), [50., 50., 0., 0.])
+        self.paused = True
+        self.hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        self.assertEqual(self._targets(), [0., 50., 0., 0.])
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 0., 0.])
+        self.hh.reactor.advance(2 * ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 0., 0.])
+
+    def test_command_on_one_gate_before_resume_others_still_restored(self):
+        self.unit.p.heater_pause_temp = 0.
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1 TEMP=50 TIMER=60')
+        self.paused = True
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 0., 0.])
+        self.paused = False
+        self.hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        self.assertEqual(self._targets(), [45., 0., 0., 0.])
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 50., 0., 0.])
+        self.hh.reactor.advance(2 * ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 50., 0., 0.])
+
+    def test_finished_gate_is_still_raw_control_while_paused(self):
+        # Gates 0 and 1 finish after two minutes and gate 2 starts, the cycle keeps running
+        self.unit.p.heater_pause_temp = 0.
+        self.hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1,2 TEMP=50 TIMER=2')
+        self.hh.reactor.advance(5 * ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [0., 0., 50., 0.])
+        self.paused = True
+        self.hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        self.assertEqual(self._targets()[0], 45.)
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 0., 0., 0.])
+        self.paused = False
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL)
+        self.assertEqual(self._targets(), [45., 0., 50., 0.])
 
 
 if __name__ == '__main__':
