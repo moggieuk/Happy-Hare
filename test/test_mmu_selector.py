@@ -220,6 +220,15 @@ class TestLinearSelector(SelectorTestCase):
         self.load_and_unload(5)
         self.assertAlmostEqual(axis.carriage, before, places=3)
 
+    def test_sync_gear_motor_is_not_sticky_when_the_selector_is_not_homed(self):
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_MOTORS_OFF')
+        self.assertFalse(self.selector('unit0').is_homed)
+
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertFalse(self.hh.mmu._standalone_sync)
+
 
 class TestTestMoveGrip(SelectorTestCase):
     """
@@ -269,6 +278,28 @@ class TestTestMoveGripAlwaysGripped(TestTestMoveGrip):
         self.hh.run_gcode('MMU_TEST_MOVE MOVE=100')
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.grip_state(), FILAMENT_DRIVE_STATE)
+
+
+class TestLinearServoSelectorSync(SelectorTestCase):
+    """tradrack with sync_to_extruder: the servo must be down before the gear syncs."""
+
+    PROFILE = PROFILES['tradrack'].derive(
+        'tradrack_sync_to_extruder', syms={'PARAM_SYNC_TO_EXTRUDER': True})
+
+    def test_print_start_grips_before_syncing(self):
+        selector = self.selector('unit0')
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(selector.get_filament_grip_state(), FILAMENT_RELEASE_STATE)
+
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.hh.settle(1.0)
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertEqual(selector.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestLinearMultiGearSelector(SelectorTestCase):
@@ -621,6 +652,103 @@ class TestServoSelectorCalibrationSummary(SelectorTestCase):
         self.assertIn('Bypass angle: 130', console)
 
 
+class TestServoSelectorReleaseGates(SelectorTestCase):
+    """With no fixed release angle, releasing moves the servo to the release gate's angle."""
+
+    PROFILE = PROFILES['mmx'].derive(
+        'mmx_release_gates',
+        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False, 'PARAM_SYNC_TO_EXTRUDER': True})
+    HOME_UNITS = ()
+
+    def load_gate_0(self):
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+
+    def test_release_moves_to_the_release_gates_angle(self):
+        selector = self.selector('unit0')
+        self.assertEqual(selector.servo_release_angle, -1)
+        self.assertEqual(list(selector.p.selector_release_gates), [1, 2, 3, 0])
+        for gate, release_gate in enumerate(selector.p.selector_release_gates):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.hh.run_gcode('MMU_RELEASE')
+                self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+                self.assertEqual(selector.servo_angle, selector.servo_gate_angles[release_gate])
+                self.assertEqual(self.hh.errors, [])
+
+    def test_release_unsyncs_the_gear_before_gripping_the_release_gate(self):
+        self.load_gate_0()
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+
+        self.hh.run_gcode('MMU_RELEASE')
+        self.assertEqual(self.selector('unit0').grip_state, FILAMENT_RELEASE_STATE)
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertFalse(self.hh.mmu._standalone_sync)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_print_start_grips_the_gate_before_syncing(self):
+        selector = self.selector('unit0')
+        self.load_gate_0()
+        self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.hh.settle(1.0)
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertEqual(selector.grip_state, FILAMENT_DRIVE_STATE)
+        self.assertEqual(selector.servo_angle, selector.servo_gate_angles[0])
+        self.assertEqual(self.hh.errors, [])
+
+
+class TestServoSelectorReset(SelectorTestCase):
+    """RESET=1 with no configured gate angles leaves a usable, uncalibrated selector."""
+
+    PROFILE = PROFILES['pico_mmu'].derive(
+        'pico_mmu_release_reset',
+        syms={'PARAM_FILAMENT_ALWAYS_GRIPPED': False, 'PARAM_SYNC_TO_EXTRUDER': True})
+    HOME_UNITS = ()
+
+    def test_release_after_reset_does_not_crash(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR ANGLE=10')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR LGATE=0 SPACING=25')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR RESET=1')
+
+        self.hh.run_gcode('MMU_RELEASE')
+        self.assertEqual(selector.servo_gate_angles, [-1, -1, -1, -1])
+
+    def test_sync_gear_motor_does_not_claim_sync_when_the_grip_fails(self):
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR ANGLE=10')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR LGATE=0 SPACING=25')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR RESET=1')
+
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertFalse(self.hh.mmu._standalone_sync)
+
+    def test_print_start_does_not_sync_when_the_grip_fails(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR ANGLE=10')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR LGATE=0 SPACING=25')
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR RESET=1')
+
+        self.hh.printer.lookup_object('print_stats').set_state('printing')
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.hh.settle(1.0)
+        self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+
+
 class TestMacroSelector(SelectorTestCase):
     """The generated zero-switch config is direct mode and preserves the v3 GATE contract."""
 
@@ -768,6 +896,19 @@ class TestRotarySelector(SelectorTestCase):
         loaded, unloaded = self.load_and_unload(1)
         self.assertEqual(loaded, FILAMENT_POS_LOADED)
         self.assertEqual(unloaded, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_release_unsyncs_the_gear_before_gripping_the_release_gate(self):
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_LOAD')
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.assertTrue(self.hh.mmu.drive().is_synced_to_extruder())
+
+        self.hh.run_gcode('MMU_RELEASE')
+        self.assertEqual(self.selector('unit0').grip_state, FILAMENT_RELEASE_STATE)
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
         self.assertEqual(self.hh.errors, [])
 
 

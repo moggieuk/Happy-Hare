@@ -16,6 +16,7 @@
 #
 #   PARAM_SERVO_GATE_ANGLES
 #   PARAM_SERVO_RELEASE_ANGLE
+#   PARAM_SELECTOR_RELEASE_GATES
 #   PARAM_SERVO_BYPASS_ANGLE
 #   PARAM_SERVO_MIN_ANGLE
 #   PARAM_SERVO_MAX_ANGLE
@@ -160,8 +161,19 @@ menu "Selector servo"
         default -1
         help
           Optional specific servo position to allow release of filament
-          Leave at '-1' for default behavior of selecting angle half way between gates
+          Leave at '-1' to release by moving to the gate in 'Servo release gates'
           Can be overridden by calibrated value saved in 'mmu_vars.cfg'
+
+      config PARAM_SELECTOR_RELEASE_GATES
+        string "Servo release gates  "
+        array_editor "," PARAM_NUM_GATES
+        generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
+        help
+          An array with entry for each gate representing which gate to move the servo
+          to in order to release the filament in the designated gate. Only used if the
+          release angle is '-1' and 'filament_always_gripped: 0'.
+          E.g. "2, 3, 0, 1" to release gate 0, move to gate 2, etc.
+          The length should match the number of gates
 
       config PARAM_SERVO_BYPASS_ANGLE
         int "Servo bypass angle   "

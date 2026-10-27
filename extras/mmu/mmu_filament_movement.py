@@ -4178,6 +4178,13 @@ class MmuFilamentMovement:
                 self.selector().filament_drive()
             else:
                 self.selector().filament_release()
+        elif (sync and self.gate_selected >= 0 and self.selector().is_homed
+              and self.selector().get_filament_grip_state() != FILAMENT_DRIVE_STATE):
+            self.selector().filament_drive() # Never sync without gripping the selected gate
+
+        # A failed grip (e.g. uncalibrated gate) can leave the selector on another gate's grip position
+        if sync and self.selector().get_filament_grip_state() != FILAMENT_DRIVE_STATE:
+            sync = False
 
         # Adjust current drive sync state and stepper current
         self._sync_gear_to_extruder(sync)
