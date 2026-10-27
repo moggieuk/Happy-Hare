@@ -220,6 +220,15 @@ class TestLinearSelector(SelectorTestCase):
         self.load_and_unload(5)
         self.assertAlmostEqual(axis.carriage, before, places=3)
 
+    def test_sync_gear_motor_is_not_sticky_when_the_selector_is_not_homed(self):
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_MOTORS_OFF')
+        self.assertFalse(self.selector('unit0').is_homed)
+
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertFalse(self.hh.mmu._standalone_sync)
+
 
 class TestTestMoveGrip(SelectorTestCase):
     """

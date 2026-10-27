@@ -70,9 +70,12 @@ class MmuSyncGearMotorCommand(BaseCommand):
                 "Use 'MMU_RECOVER' to correct the filament position."
             )
 
-        synced = mmu.reset_sync_gear_to_extruder(sync, force_grip=True, skip_extruder_check=True)
-        if sync and not synced:
-            mmu.log_warning("MMU gear stepper not synced with extruder because filament could not be gripped")
+        gripped = mmu.reset_sync_gear_to_extruder(sync, force_grip=True, skip_extruder_check=True)
+        if sync and not mmu.drive().is_synced_to_extruder():
+            if not mmu.is_in_print():
+                mmu._standalone_sync = False
+            reason = " because filament could not be gripped" if not gripped else ""
+            mmu.log_warning("MMU gear stepper could not be synced with extruder%s" % reason)
             return
 
         # Sticky standalone sync when not in print
