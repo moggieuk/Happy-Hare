@@ -2221,6 +2221,13 @@ esac
                          values['PARAM_MMU_SERIAL_DEVICE'])
 
 
+class TestVividAlwaysGripped(unittest.TestCase):
+
+    def test_vvd_renders_filament_always_gripped(self):
+        rendered = cfg.render(profiles.get('ercf_vvd'))['config/base/mmu_hardware_unit1.cfg']
+        self.assertRegex(rendered, r'(?m)^filament_always_gripped\s*: 1\s')
+
+
 # ---------------------------------------------------------------------------
 # LED chain-name resolution - a render-level guard, because it must also cover
 # machine types the harness does not boot.

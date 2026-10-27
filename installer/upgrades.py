@@ -113,6 +113,26 @@ class Upgrades:
                     logging.warning("HTLF unit '%s': removing %s (now set by the cam angle)", unit, option)
                     cfg.remove_option(params, option)
 
+    def upgrade_4_1_to_4_2(self, cfg):
+        self._upgrade_vvd_always_gripped(cfg)
+
+    def _upgrade_vvd_always_gripped(self, cfg):
+        """
+        ViViD has no filament release, but 4.0/4.1 rendered filament_always_gripped: 0 and a
+        refresh keeps the installed value, so force it on.
+        """
+        for section in cfg.sections():
+            if not section.startswith("mmu_unit "):
+                continue
+            if (cfg.get(section, "vendor") or "").strip().lower() != "vvd":
+                continue
+            if (cfg.get(section, "filament_always_gripped") or "").strip() == "1":
+                continue
+
+            logging.warning("VVD unit '%s': filament_always_gripped changed to 1 (ViViD cannot release filament)",
+                            section[len("mmu_unit "):])
+            cfg.set(section, "filament_always_gripped", "1")
+
 # Upgrade from v3 is possible but difficult and requires a lot of testing. Therefore for
 # now I'm going to assume at least a v4.0.0 starting point for sanity. In case I ever
 # add upgrade from previous versions, the logic is mostly here:
