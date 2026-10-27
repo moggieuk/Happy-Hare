@@ -64,6 +64,17 @@ class MmuSyncGearMotorCommand(BaseCommand):
         if not sync and self.check_if_always_gripped():
             return
 
+        if sync and mmu.filament_pos < FILAMENT_POS_EXTRUDER_ENTRY:
+            mmu.log_warning(
+                "Will temporarily sync, but state does not indicate filament in extruder!\n"
+                "Use 'MMU_RECOVER' to correct the filament position."
+            )
+
+        synced = mmu.reset_sync_gear_to_extruder(sync, force_grip=True, skip_extruder_check=True)
+        if sync and not synced:
+            mmu.log_warning("MMU gear stepper not synced with extruder because filament could not be gripped")
+            return
+
         # Sticky standalone sync when not in print
         if not mmu.is_in_print() and mmu._standalone_sync != sync:
             mmu._standalone_sync = sync
@@ -75,11 +86,3 @@ class MmuSyncGearMotorCommand(BaseCommand):
                 mmu.log_info(
                     "MMU gear stepper is unsynced from extruder"
                 )
-
-        if sync and mmu.filament_pos < FILAMENT_POS_EXTRUDER_ENTRY:
-            mmu.log_warning(
-                "Will temporarily sync, but state does not indicate filament in extruder!\n"
-                "Use 'MMU_RECOVER' to correct the filament position."
-            )
-
-        mmu.reset_sync_gear_to_extruder(sync, force_grip=True, skip_extruder_check=True)

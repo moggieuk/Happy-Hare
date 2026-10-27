@@ -690,6 +690,16 @@ class TestServoSelectorReset(SelectorTestCase):
         self.hh.run_gcode('MMU_RELEASE')
         self.assertEqual(selector.servo_gate_angles, [-1, -1, -1, -1])
 
+    def test_sync_gear_motor_does_not_claim_sync_when_the_grip_fails(self):
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR ANGLE=10')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR LGATE=0 SPACING=25')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR RESET=1')
+
+        self.hh.run_gcode('MMU_SYNC_GEAR_MOTOR SYNC=1')
+        self.assertFalse(self.hh.mmu.drive().is_synced_to_extruder())
+        self.assertFalse(self.hh.mmu._standalone_sync)
+
     def test_print_start_does_not_sync_when_the_grip_fails(self):
         selector = self.selector('unit0')
         self.hh.run_gcode('MMU_CALIBRATE_SERVO_SELECTOR ANGLE=10')
