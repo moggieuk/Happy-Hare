@@ -270,6 +270,9 @@ class Analysis(object):
         self.total_gates = total_gates(kconfig_path, values)
         self.env = build._jinja_env(REPO_ROOT)
 
+        self.discovered_pins = []
+        self._discover_pins(hhcfg)
+        values = self.kconf.as_dict()
         rendered = self._render(values)
         self.live = self._options(rendered)
         theirs_by_key = {(section, option): value for section, options in hhcfg.values() for option, value in options}
@@ -315,8 +318,56 @@ class Analysis(object):
                 continue
             self._consider(Candidate(sym_name, literal, locations, ours.strip(), theirs.strip()))
 
+        self.candidates.extend(self.discovered_pins)
         self._drop_conflicts()
         self._check_together()
+
+    def _discover_pins(self, installed):
+        """Expose installed fans/buttons hidden only by an empty, editable pin.
+
+        These are ordinary reported imports, not changes to the saved config. Do
+        not enable capabilities, guess object names, or read user-owned sections.
+        """
+        included = set(installed.sections(scope="included"))
+        unit = self.kconf.get("UNIT_NAME")
+        for name, sym in self.kconf.syms.items():
+            match = re.fullmatch(r"PIN_(FAN|EJECT_BUTTON)(_[0-9]+)?", name)
+            if not match or sym.str_value:
+                continue
+            kind, suffix = match.groups()
+            suffix = suffix or ""
+            if kind == "FAN":
+                section = "fan_generic " + self.kconf.get("PARAM_FAN_NAME" + suffix)
+            elif suffix:
+                section = "gcode_button %s_eject%s" % (unit, suffix[1:])
+            else:
+                continue
+            if section not in included or not installed.has_option(section, "pin"):
+                continue
+            pin = installed.get(section, "pin").strip()
+            # A multi_pin reference is not a physical pin assignment; reconstructing
+            # its helper section is outside this deliberately narrow import.
+            if not pin or "multi_pin:" in pin or why_not_settable(sym, pin) is not None:
+                continue
+            before = self._render(self.kconf.as_dict())
+            if before.has_section(section):
+                continue
+            sym.set_value(pin)
+            after = self._render(self.kconf.as_dict())
+            valid = saved_as(sym, pin) and after.has_option(section, "pin") and \
+                build.same_value(after.get(section, "pin"), pin)
+            if valid:
+                candidate = Candidate(name, False, [(section, "pin")], "", pin)
+                candidate.set_name = candidate.set_key = name
+                candidate.kconfig_value = pin
+                self.discovered_pins.append(candidate)
+            else:
+                self._reset_trial()
+
+    def _reset_trial(self):
+        self.kconf.load_config(self.kconfig_path, filter_defaults=True)
+        for candidate in self.discovered_pins:
+            self.kconf.syms[candidate.set_name].set_value(candidate.kconfig_value)
 
     def _params(self, values):
         params = dict(values)
@@ -403,7 +454,7 @@ class Analysis(object):
             return None
         honoured = saved_as(set_sym, value)
         after = self._options(self._render(self.kconf.as_dict()))
-        self.kconf.load_config(self.kconfig_path, filter_defaults=True)
+        self._reset_trial()
         if not honoured:
             return False
 
