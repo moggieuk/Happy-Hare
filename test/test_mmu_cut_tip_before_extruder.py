@@ -214,8 +214,10 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
 
     def test_test_form_tip_records_the_fragment(self):
+        self.mmu.gate_color[self.mmu.gate_selected] = 'ff0000'
         self.hh.run_gcode('MMU_TEST_FORM_TIP')
         self.assertAlmostEqual(self.extruder.filament_remaining, self.fragment, places=1)
+        self.assertEqual(self.extruder.filament_remaining_color, 'ff0000')
 
     def test_blade_position_calibration_warns(self):
         self.unload()
