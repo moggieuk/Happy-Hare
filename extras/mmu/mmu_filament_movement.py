@@ -4409,7 +4409,7 @@ class MmuFilamentMovement:
             percent = float(percent)
             if percent > 0 and percent != 100:
                 eventtime = self.reactor.monotonic()
-                for stepper in steppers:
+                for stepper in dict.fromkeys(steppers): # A repeated name must not compound the boost
                     for chip in TMC_CHIPS:
                         tmc = self.printer.lookup_object("%s %s" % (chip, stepper), None)
                         if tmc is not None:

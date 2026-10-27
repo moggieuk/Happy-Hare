@@ -173,7 +173,8 @@ class SafeG1TestCase(unittest.TestCase):
         self.hh.gcode.register_command('SET_TMC_CURRENT', None)
         self.hh.gcode.register_command('SET_TMC_CURRENT', set_current)
         vars = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS')
-        vars.variables = dict(vars.variables, cut_axis_steppers='stepper_x',
+        # stepper_x is listed twice and must still be scaled (and restored) once
+        vars.variables = dict(vars.variables, cut_axis_steppers='stepper_x, stepper_x',
                               cut_stepper_current=150, retract_length=0., pushback_length=0.,
                               gantry_servo_enabled=True, cutting_axis='x', pin_park_dist=0.,
                               pin_loc_xy=[110., 100.], restore_position=False)
