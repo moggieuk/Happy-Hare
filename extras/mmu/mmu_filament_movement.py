@@ -3281,7 +3281,7 @@ class MmuFilamentMovement:
         Run the configured tip-forming macro and derive park position information from it.
 
         Args:
-            test: Whether the tip-forming macro should run in test or final-eject mode.
+            test: Whether the result is logged to the console for tuning.
 
         Returns:
             tuple[float, float, bool]: Park position, remaining filament estimate,
@@ -3326,8 +3326,7 @@ class MmuFilamentMovement:
                 cut_steppers = [s.strip() for s in str(gcode_vars.get('cut_axis_steppers', '')).split(',') if s.strip()]
                 with self.wrap_cut_axis_current(cut_steppers, gcode_vars.get('cut_stepper_current', 100)):
                     self.wrap_gcode_command(
-                        f"{self.p.form_tip_macro} "
-                        f"{'FINAL_EJECT=1' if test else ''}",
+                        self.p.form_tip_macro,
                         exception=True,
                         wait=True,
                     )
@@ -3424,7 +3423,7 @@ class MmuFilamentMovement:
                     )
                 self.log_info(f"Cut fragment of {filament_remaining:.1f}mm left in toolhead (purged on next load)")
 
-            elif not test:
+            else:
                 # Important sanity checks to spot misconfiguration
                 if park_pos > u.toolhead_wrapper.p.toolhead_extruder_to_nozzle:
                     self.log_warning(

@@ -219,6 +219,7 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         self.hh.run_gcode('MMU_TEST_FORM_TIP')
         self.assertAlmostEqual(self.extruder.filament_remaining, self.fragment, places=1)
         self.assertEqual(self.extruder.filament_remaining_color, 'ff0000')
+        self.assertIn(('Ejecting filament for inspection', -80.0, 'gear'), self.moves)
 
     def test_blade_position_calibration_is_refused(self):
         self.unload()

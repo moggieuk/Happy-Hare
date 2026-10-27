@@ -18,6 +18,8 @@ from ..mmu_constants   import *
 from ..mmu_utils       import MmuError
 from .mmu_base_command import *
 
+TEST_EJECT_LENGTH = 80. # Pulls the tip clear of the toolhead for inspection
+
 
 class MmuTestFormTipCommand(BaseCommand):
     """
@@ -100,7 +102,7 @@ class MmuTestFormTipCommand(BaseCommand):
             elif param not in ["reset", "show", "run"]:
                 mmu.log_error("Variable '%s' is not defined for '%s' macro" % (param, mmu.p.form_tip_macro))
 
-        # Actually run the macro in test mode (will final_eject) unless strangely run from a print job
+        # Actually run the macro in test mode (then eject) unless strangely run from a print job
         msg = "Running macro '%s' with the following variable settings:" % mmu.p.form_tip_macro
         for k, v in gcode_vars.variables.items():
             msg += "\nvariable_%s: %s" % (k, v)
@@ -114,12 +116,22 @@ class MmuTestFormTipCommand(BaseCommand):
                 with mmu.wrap_action(ACTION_CUTTING_TIP if mmu.has_toolhead_cutter else ACTION_FORMING_TIP):
                     mmu._ensure_safe_extruder_temperature(wait=True)
                     before_extruder = mmu.cutter_before_extruder()
-                    mmu.reset_sync_gear_to_extruder(not extruder_only and (before_extruder or mmu.mmu_unit().p.sync_form_tip), force_grip=True)
-                    _,remaining,_ = mmu._do_form_tip(test=not mmu.is_in_print())
-                    if before_extruder:
-                        # The fragment stays in the toolhead for the next load to push through
-                        color = mmu.gate_color[mmu.gate_selected] if mmu.gate_selected >= 0 else UNKNOWN_FILAMENT_COLOR
-                        mmu.mmu_unit().extruder_wrapper.set_filament_remaining(remaining, color)
+                    synced = mmu.reset_sync_gear_to_extruder(not extruder_only and (before_extruder or mmu.mmu_unit().p.sync_form_tip), force_grip=True)
+                    test = not mmu.is_in_print()
+                    _,remaining,_ = mmu._do_form_tip(test=test)
+
+                    # Any cut fragment stays in the toolhead for the next load to push through
+                    color = mmu.gate_color[mmu.gate_selected] if mmu.gate_selected >= 0 else UNKNOWN_FILAMENT_COLOR
+                    mmu.mmu_unit().extruder_wrapper.set_filament_remaining(remaining, color)
+
+                    # Eject only after the macro's movement has been measured
+                    if test:
+                        if not before_extruder:
+                            mmu.move_filament("Ejecting filament for inspection", -TEST_EJECT_LENGTH, motor="gear+extruder" if synced else "extruder")
+                        elif synced:
+                            mmu.move_filament("Ejecting filament for inspection", -TEST_EJECT_LENGTH, motor="gear") # Extruder no longer grips the end
+                        else:
+                            mmu.log_always("Filament end is before the extruder, remove it by hand for inspection")
                     mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
