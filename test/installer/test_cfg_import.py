@@ -727,7 +727,7 @@ class TestMissingHardwarePins(_Pipeline, _Install):
         path = self.path("mmu_hardware_unit0.cfg")
         with open(path) as f:
             text = f.read()
-        fragment = ("[fan_generic _unit0_fan]\npin: %s\nmax_power: 0.6\n"
+        fragment = ("[fan_generic _unit0_fan]\npin: %s\nmax_power: 0.6\nkick_start_time: 0.25\n"
                     "cycle_time: 0.02\n\n[gcode_button unit0_eject0]\n"
                     "pin: ^unit0:PA9\npress_gcode: MMU_EJECT UNIT=unit0 LGATE=0\n\n") % pin
         marker = "# EXCLUDE FROM CONFIG BUILDER"
@@ -743,6 +743,7 @@ class TestMissingHardwarePins(_Pipeline, _Install):
         self.assertEqual(candidates["PIN_FAN"].cfg_value, "unit0:PA8")
         self.assertEqual(candidates["PIN_EJECT_BUTTON_0"].cfg_value, "^unit0:PA9")
         self.assertEqual(candidates["PARAM_FAN_MAX_POWER"].cfg_value, "0.6")
+        self.assertEqual(candidates["PARAM_FAN_KICK_START_TIME"].cfg_value, "0.25")
         self.assertEqual(self.saved(), before)
         self.assertEqual(analysis.kconf.get("PIN_FAN"), "")
 
@@ -755,6 +756,7 @@ class TestMissingHardwarePins(_Pipeline, _Install):
         hardware.read_buf(built["mmu_hardware_unit0.cfg"])
         self.assertEqual(hardware.get("fan_generic _unit0_fan", "pin"), "unit0:PA8")
         self.assertEqual(hardware.get("fan_generic _unit0_fan", "max_power"), "0.6")
+        self.assertEqual(hardware.get("fan_generic _unit0_fan", "kick_start_time"), "0.25")
         self.assertEqual(hardware.get("fan_generic _unit0_fan", "cycle_time"), "0.02")
         self.assertEqual(hardware.get("gcode_button unit0_eject0", "pin"), "^unit0:PA9")
         self.menuconfig(self.kconfig, self.env, PIN_FAN="", PIN_EJECT_BUTTON_0="")
