@@ -352,9 +352,40 @@ class MmuStatusCommand(BaseCommand):
                 else:
                     lines.append("\n- Tip is formed by slicer only when printing")
 
+            before_extruder_cut = mmu.cutter_before_extruder()
+            if before_extruder_cut:
+                cut_vars = mmu.cut_tip_vars()
+                blade_pos = self.blade_pos = float(cut_vars['blade_pos']) # Temp scalar for _f_calc() use
+                tetn = mmu_unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle
+                lines.append(
+                    f"\n- Filament is cut BEFORE the extruder, {blade_pos:.1f}mm from the nozzle "
+                    f"({blade_pos - tetn:.1f}mm before the extruder gears). The cut fragment is pushed back past "
+                    "the gears and purged by the next load"
+                )
+                error = mmu.cut_pushback_error()
+                if error:
+                    lines.append(f". {{5}}{error}{{6}}")
+
             # Extruder unloading -------------------------------------------------
 
-            if mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
+            if before_extruder_cut:
+                lines.append(
+                    "\n- Filament end is left before the extruder so no extruder unload is needed and the bowden "
+                    f"unload is {self._f_calc('blade_pos - toolhead_extruder_to_nozzle')} shorter"
+                )
+                if mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
+                    method = "the EXTRUDER sensor"
+                elif mmu.can_use_encoder():
+                    method = "a short gear-only pull measured by the encoder"
+                elif mmu.sensor_manager.has_sensor(SENSOR_TENSION):
+                    method = "a short gear-only pull watched by the sync-feedback buffer"
+                else:
+                    method = None
+                lines.append(
+                    f". The cut is verified with {method} and a missed cut will pause" if method
+                    else ". The cut can't be verified (no extruder sensor, encoder or sync-feedback buffer)"
+                )
+            elif mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
                 lines.append(
                     "\n- Extruder (synced) unloads by reverse homing a maximum of "
                     f"{self._f_calc('toolhead_entry_to_extruder + toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin')} "

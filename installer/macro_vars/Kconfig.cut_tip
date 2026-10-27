@@ -25,6 +25,9 @@ menu "Toolhead tip cutting     (_MMU_CUT_TIP)"
     help
       Distance in mm from internal nozzle tip to cutting blade.
 
+      Greater than the "Extruder entrance to nozzle" toolhead dimension means
+      the cutter is before the extruder (see the Toolhead Tip Cutting doc).
+
   config VAR_CUT_TIP_RETRACT_LENGTH
     float "Retract length               "
     default 32.5
@@ -116,6 +119,13 @@ menu "Toolhead tip cutting     (_MMU_CUT_TIP)"
     default 3
     help
       Rip movement speed in mm/s.
+
+  config VAR_CUT_TIP_TENSION_LENGTH
+    float "Tension length               "
+    default 10.0
+    help
+      Cutter before the extruder only: gear retract that pulls the filament
+      taut across the blade before the cut. 0 disables.
 
   config VAR_CUT_TIP_PUSHBACK_LENGTH
     float "Pushback length              "

@@ -2948,10 +2948,15 @@ class MmuFilamentMovement:
                 and not extruder_only
             )
 
+            # A cut before the extruder leaves the filament end already past the extruder gears
+            tetn = u.toolhead_wrapper.p.toolhead_extruder_to_nozzle
+            cut_overshoot = park_pos - tetn if start_filament_pos == FILAMENT_POS_END_BOWDEN and park_pos > tetn else 0.
+
             if self.p.gcode_unload_sequence and calibrated:
                 self.log_debug("Calling external user defined unloading sequence macro")
                 self.unload_cut_fragment = cut_fragment
                 self._reset_step_unload_handoff()
+                self.step_unload_overshoot = cut_overshoot
                 try:
                     self.wrap_gcode_command(
                         "%s FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f CUT_FRAGMENT=%.2f" % (
@@ -2973,6 +2978,8 @@ class MmuFilamentMovement:
                     synced_extruder_unload,_,_ = self._unload_extruder(
                         extruder_only=True, validate=do_form_tip == FORM_TIP_STANDALONE, cut_fragment=cut_fragment
                     )
+                elif cut_overshoot > 0:
+                    self.log_info("Filament was cut before the extruder. Remove the free filament end by hand")
                 else:
                     raise MmuError("Cannot unload extruder because filament not detected in extruder! (state: %s)" % start_filament_pos)
 
@@ -2980,7 +2987,7 @@ class MmuFilamentMovement:
                 raise MmuError("Cannot unload because already unloaded!")
 
             else:
-                ext_unload_overshoot = 0.
+                ext_unload_overshoot = cut_overshoot
                 extruder_entry_datum_established = False
                 if start_filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY:
                     # Exit extruder, fast unload of bowden, then slow unload to gate
@@ -3127,7 +3134,10 @@ class MmuFilamentMovement:
 
         with self.wrap_action(ACTION_CUTTING_TIP if self.has_toolhead_cutter else ACTION_FORMING_TIP):
             self._ensure_safe_extruder_temperature(wait=True)
-            sync = self.reset_sync_gear_to_extruder(False if extruder_only else u.p.sync_form_tip, force_grip=True)
+            # A cut before the extruder relies on the gear following the extruder's retract and pushback
+            before_extruder = self.cutter_before_extruder()
+            sync_intention = False if extruder_only else (True if before_extruder else u.p.sync_form_tip)
+            sync = self.reset_sync_gear_to_extruder(sync_intention, force_grip=True)
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
@@ -3169,7 +3179,10 @@ class MmuFilamentMovement:
             self.drive().set_filament_position(-park_pos)
             self.set_encoder_distance(initial_encoder_position + park_pos)
 
-            if detected or extruder_only:
+            if before_extruder and reported:
+                # The pushback returned the filament end to the blade, before the extruder
+                self._verify_cut_before_extruder(park_pos)
+            elif detected or extruder_only:
                 # Definitely in extruder
                 self.set_filament_pos_state(FILAMENT_POS_IN_EXTRUDER)
             else:
@@ -3179,6 +3192,88 @@ class MmuFilamentMovement:
             cut_fragment = remaining if reported else 0.
             self.log_trace_exit(f"form_tip_standalone() => (detected={detected}, cut_fragment={cut_fragment})")
             return detected, cut_fragment
+
+
+    def _verify_cut_before_extruder(self, park_pos):
+        """
+        Check that a cut before the extruder severed the filament. A missed cut leaves it continuous and gripped by
+        the extruder, so the extruder entry sensor stays covered or a gear-only pull can't move it. On success the
+        filament end is left out of the extruder, else MmuError is raised with it still in the extruder
+
+        Args:
+            park_pos: Distance of the upstream filament end from the nozzle reported by the cut.
+        """
+        u = self.mmu_unit()
+        tw = u.toolhead_wrapper.p
+        entry_pos = tw.toolhead_extruder_to_nozzle + tw.toolhead_entry_to_extruder
+        sm = self.sensor_manager
+        method = None
+        cut = True
+        homed_entry = False
+
+        def lock_extruder():
+            stepper_enable = self.printer.lookup_object('stepper_enable')
+            extruder_stepper = self.toolhead.get_extruder().extruder_stepper.stepper
+            stepper_enable.lookup_enable(extruder_stepper.get_name()).motor_enable(self.toolhead.get_last_move_time())
+
+        if sm.has_sensor(SENSOR_EXTRUDER_ENTRY) and park_pos >= entry_pos:
+            # Blade before the entry sensor so the sensor must already be clear
+            method = "extruder sensor"
+            cut = not sm.check_sensor(SENSOR_EXTRUDER_ENTRY)
+
+        elif sm.check_sensor(SENSOR_EXTRUDER_ENTRY):
+            # Blade between the entry sensor and the gears so the filament end must pull clear of the sensor
+            method = "extruder sensor"
+            lock_extruder()
+            hlength = entry_pos - park_pos + u.p.toolhead_unload_safety_margin
+            _, homed_entry, _, _ = self.move_filament(
+                "Verifying cut off extruder sensor",
+                -hlength,
+                motor="gear",
+                homing_move=-1,
+                endstop_name=SENSOR_EXTRUDER_ENTRY,
+            )
+            cut = homed_entry
+
+        elif self.can_use_encoder():
+            method = "encoder"
+            lock_extruder()
+            _, _, measured, _ = self.move_filament("Verifying cut with encoder", -u.p.encoder_move_step_size, motor="gear")
+            cut = measured >= self.encoder().movement_min()
+
+        elif sm.has_sensor(SENSOR_TENSION):
+            # The gear can't pull a gripped filament so the buffer goes into tension
+            method = "sync-feedback buffer"
+            if sm.check_sensor(SENSOR_TENSION):
+                cut = False
+            else:
+                lock_extruder()
+                _, tensioned, _, _ = self.move_filament(
+                    "Verifying cut with sync-feedback buffer",
+                    -u.buffer.buffer_maxrange,
+                    motor="gear",
+                    homing_move=1,
+                    endstop_name=SENSOR_TENSION,
+                )
+                cut = not tensioned
+
+        if not cut:
+            self.set_filament_pos_state(FILAMENT_POS_IN_EXTRUDER)
+            raise MmuError(
+                f"Tip may not have been cut. The {method} shows the filament from {self.gate_name()} is still held by the extruder",
+                hint="Check the cutter blade and that 'blade_pos' is correct, " + HINT_RELOAD
+            )
+
+        if homed_entry:
+            self.set_filament_pos_state(FILAMENT_POS_HOMED_ENTRY)
+            self.drive().set_filament_position(-entry_pos)
+        else:
+            self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
+
+        if method:
+            self.log_debug(f"Cut before the extruder verified with the {method}")
+        else:
+            self.log_debug("Cut before the extruder can't be verified (no extruder sensor, encoder or sync-feedback buffer)")
 
 
     def _do_form_tip(self, test=False):
@@ -3209,7 +3304,19 @@ class MmuFilamentMovement:
                 if gcode_macro is None:
                     raise MmuError("Filament tip forming macro '%s' not found" % self.p.form_tip_macro)
 
-                self.log_info("Forming tip...")
+                before_extruder = self.cutter_before_extruder()
+                cut_vars = self.cut_tip_vars()
+                tetn = u.toolhead_wrapper.p.toolhead_extruder_to_nozzle
+                if cut_vars is None:
+                    self.log_info("Forming tip...")
+                elif before_extruder:
+                    blade_pos = float(cut_vars['blade_pos'])
+                    self.log_info(
+                        f"Cutting tip: blade before extruder at {blade_pos:.1f}mm from nozzle "
+                        f"({blade_pos - tetn:.1f}mm before extruder gears)..."
+                    )
+                else:
+                    self.log_info(f"Cutting tip: blade after extruder gears at {float(cut_vars['blade_pos']):.1f}mm from nozzle...")
 
                 gcode_vars = self.printer.lookup_object(f"gcode_macro {macro_name}_VARS", gcode_macro).variables
                 cut_steppers = [s.strip() for s in str(gcode_vars.get('cut_axis_steppers', '')).split(',') if s.strip()]
@@ -3286,8 +3393,12 @@ class MmuFilamentMovement:
                     - self.toolchange_retract
                 )
 
+                # Before the extruder the rip extrudes the fragment, not the filament park_pos describes
+                if before_extruder:
+                    filament_remaining -= float(cut_vars.get('rip_length', 0))
+
                 msg = (
-                    f"After tip cutting, park_pos reported as "
+                    f"After tip cutting {'before' if before_extruder else 'after'} the extruder gears, park_pos reported as "
                     f"{park_pos:.1f}mm with calculated "
                     f"{filament_remaining:.1f}mm filament remaining in "
                     f"extruder (extruder moved: {stepper_movement:.1f}mm, "
@@ -3299,7 +3410,17 @@ class MmuFilamentMovement:
                 else:
                     self.log_trace(msg)
 
-            if not test:
+            if before_extruder and reported:
+                # The upstream end is meant to be left before the extruder
+                if park_pos <= tetn:
+                    self.log_warning(
+                        f"Warning: park_pos ({park_pos:.1f}mm) after cutting before the extruder should be "
+                        f"greater than 'toolhead_extruder_to_nozzle' distance of {tetn:.1f}mm! "
+                        f"Check 'blade_pos'"
+                    )
+                self.log_info(f"Cut fragment of {filament_remaining:.1f}mm left in toolhead (purged on next load)")
+
+            elif not test:
                 # Important sanity checks to spot misconfiguration
                 if park_pos > u.toolhead_wrapper.p.toolhead_extruder_to_nozzle:
                     self.log_warning(

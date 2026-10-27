@@ -522,6 +522,12 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
             check_gates=[gate]
         ): return
 
+        if gcmd.get_int('CUT', 0, minval=0, maxval=1) and mmu.cutter_before_extruder():
+            raise gcmd.error(
+                "Blade position can only be measured for a cutter inside the extruder (below the toolhead sensor). "
+                "blade_pos is greater than toolhead_extruder_to_nozzle so measure it by hand from the nozzle"
+            )
+
         if not sensor_manager.has_sensor(SENSOR_TOOLHEAD):
             raise gcmd.error("Sorry this feature requires a toolhead sensor")
 

@@ -113,8 +113,12 @@ class MmuTestFormTipCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_action(ACTION_CUTTING_TIP if mmu.has_toolhead_cutter else ACTION_FORMING_TIP):
                     mmu._ensure_safe_extruder_temperature(wait=True)
-                    mmu.reset_sync_gear_to_extruder(not extruder_only and mmu.mmu_unit().p.sync_form_tip, force_grip=True)
-                    _,_,_ = mmu._do_form_tip(test=not mmu.is_in_print())
+                    before_extruder = mmu.cutter_before_extruder()
+                    mmu.reset_sync_gear_to_extruder(not extruder_only and (before_extruder or mmu.mmu_unit().p.sync_form_tip), force_grip=True)
+                    _,remaining,reported = mmu._do_form_tip(test=not mmu.is_in_print())
+                    if before_extruder and reported:
+                        # The fragment stays in the toolhead for the next load to push through
+                        mmu.mmu_unit().extruder_wrapper.set_filament_remaining(remaining)
                     mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:

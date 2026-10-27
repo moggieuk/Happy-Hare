@@ -376,6 +376,7 @@ class TestConditionalMacroDefaults(unittest.TestCase):
             'VAR_CLIENT_UNLOAD_TOOL_ON_CANCEL': 'False',
             'VAR_CUT_TIP_RESTORE_POSITION': 'False',
             'VAR_CUT_TIP_BLADE_POS': '37.5',
+            'VAR_CUT_TIP_TENSION_LENGTH': '10.0',
             'VAR_BLOBIFIER_PURGE_SPD': '400',
             'VAR_SERVO_CUTTER_SERVO_DURATION': '1.5',
         }
