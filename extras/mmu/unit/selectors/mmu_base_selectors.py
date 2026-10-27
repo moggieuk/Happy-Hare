@@ -59,7 +59,6 @@ class BaseSelector:
 
         self.is_homed = False                   # Whether selector is home and knows current position
         self.requires_homing = True             # Whether selector requires homing
-        self.grip_before_sync = False           # Whether release doesn't drive the selected gate so must grip before syncing
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)

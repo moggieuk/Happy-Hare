@@ -82,7 +82,6 @@ class LinearServoSelector(LinearSelector):
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
 
-        self.grip_before_sync = True
         self.servo = LinearSelectorServo(config, mmu_unit, self)
 
 

@@ -107,7 +107,6 @@ class ServoSelector(PhysicalSelector):
 
         self.is_homed = True # No homing necessary
         self.requires_homing = False
-        self.grip_before_sync = True
 
         # Load selector servo hardware
         servo_name = mmu_unit.config.get('selector_servo', self.mmu_unit.name)
