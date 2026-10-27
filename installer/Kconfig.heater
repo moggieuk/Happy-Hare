@@ -134,34 +134,34 @@ if MMU_HAS_HEATER
     # -------------------------------------
 
     config PARAM_HEATER_MAX_TEMP
-      string "Maximum heater temperature"
-      default "65"
+      float "Maximum heater temperature"
+      default 65
       help
         This set the absolute limit for heater operation and is designed
         to protect the MMU construction. Individual filament temps are
         defined in 'drying_data' in mmu.cfg
 
     config PARAM_HEATER_DEFAULT_DRY_TEMP
-      string "Default drying temperature"
-      default "45"
+      float "Default drying temperature"
+      default 45
       help
         Default drying temperature if filament type is not matched in drying_data
 
     config PARAM_HEATER_DEFAULT_DRY_TIME
-      string "Default drying time       "
-      default "300"
+      float "Default drying time       "
+      default 300
       help
         Default drying cycle time in minutes
 
     config PARAM_HEATER_DEFAULT_DRY_HUMIDITY
-      string "Default drying humidity   "
-      default "25"
+      float "Default drying humidity   "
+      default 25
       help
         Default humidity % goal. Drying will terminate if this value is reached
 
     config PARAM_HEATER_PAUSE_TEMP
-      string "Temperature while paused  "
-      default "-1"
+      float "Temperature while paused  "
+      default -1
       help
         Drying heater target while the print is paused. -1 keeps drying as
         usual, 0 turns the heater off, any other value lowers it to that
@@ -169,8 +169,8 @@ if MMU_HAS_HEATER
         timer keeps running during the pause.
 
     config PARAM_HEATER_ROTATE_INTERVAL
-      string "Rotate interval           "
-      default "5"
+      float "Rotate interval           "
+      default 5
       depends on MMU_HAS_ESPOOLER || MMU_GEAR_ROTATES_SPOOL
       help
         Interval in minutes to rotate filament (requires the filament end attached to spool)
@@ -178,7 +178,7 @@ if MMU_HAS_HEATER
     config PARAM_HEATER_ROTATE_IN_PRINT
       boolint "EXPERIMENTAL: Rotate while printing?"
       default 0
-      depends on MMU_GEAR_ROTATES_SPOOL && MULTIGEAR && PARAM_HEATER_ROTATE_INTERVAL != "" && PARAM_HEATER_ROTATE_INTERVAL != "0"
+      depends on MMU_GEAR_ROTATES_SPOOL && MULTIGEAR && PARAM_HEATER_ROTATE_INTERVAL > 0
       help
         EXPERIMENTAL. Keep rotating spools with idle gear motors during a
         print. Can cause short print pauses if Klipper flushes its motion
@@ -189,8 +189,8 @@ if MMU_HAS_HEATER
     comment "_"
 
     config PARAM_HEATER_VENT_INTERVAL
-      string "Vent interval             "
-      default "0"
+      float "Vent interval             "
+      default 0
       help
         Interval in minutes between vent openings during a drying cycle, 0=disable venting
 
@@ -204,6 +204,7 @@ if MMU_HAS_HEATER
     config PARAM_HEATER_VENT_OPEN_ANGLE
       float "Vent servo open angle     "
       default 90
+      range 0 360
       depends on MMU_HAS_VENT_SERVO
       help
         Vent servo angle with the vent open.
@@ -211,6 +212,7 @@ if MMU_HAS_HEATER
     config PARAM_HEATER_VENT_CLOSE_ANGLE
       float "Vent servo closed angle   "
       default 0
+      range 0 360
       depends on MMU_HAS_VENT_SERVO
       help
         Vent servo angle with the vent closed.

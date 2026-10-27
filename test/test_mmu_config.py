@@ -465,7 +465,8 @@ class TestHeaterRotateInPrint(unittest.TestCase):
     def test_shown_only_with_a_rotate_interval(self):
         sym = 'PARAM_HEATER_ROTATE_IN_PRINT'
         self.assertGreater(self._kconfig('rotate_interval_set').syms[sym].visibility, 0)
-        for interval in ('', '0'):
+        # Empty input is now rejected by the float editor.
+        for interval in ('0', '0.0', '-1'):
             with self.subTest(interval=interval):
                 kc = self._kconfig('rotate_interval_unset', PARAM_HEATER_ROTATE_INTERVAL=interval,
                                    PARAM_HEATER_ROTATE_IN_PRINT=1)
