@@ -8,6 +8,7 @@ import unittest
 
 import kconfiglib
 from installer.kconfig_upgrades import upgrade
+from installer import build
 from test.hh import cfg
 
 
@@ -62,6 +63,26 @@ class TestNumericOptions(unittest.TestCase):
                         self.assertEqual(report.getvalue(), '')
                         self.assertEqual(snapshot, (path.read_bytes(), path.stat().st_mtime_ns,
                                                    backup.read_bytes(), backup.stat().st_mtime_ns))
+            # The builder/importer path must migrate before loading too, without
+            # relying on a make prerequisite or an earlier interactive install.
+            path = Path(tmp) / 'builder'
+            original = ('CONFIG_PARAM_HEATER_PAUSE_TEMP=" 30 "\n'
+                        'CONFIG_PARAM_HEATER_MAX_TEMP="7.25e1"\n'
+                        'CONFIG_PARAM_HEATER_ROTATE_INTERVAL=""\n')
+            path.write_text(original)
+            with contextlib.redirect_stderr(io.StringIO()):
+                loaded = build.KConfig(str(path))
+            self.assertEqual(loaded.syms['PARAM_HEATER_PAUSE_TEMP'].user_value, '30')
+            self.assertEqual(loaded.syms['PARAM_HEATER_MAX_TEMP'].user_value, '7.25e1')
+            self.assertIsNone(loaded.syms['PARAM_HEATER_ROTATE_INTERVAL'].user_value)
+            self.assertEqual(loaded.warnings, [])
+            # Restoring another legacy config must refresh the advertised backup.
+            restored = 'CONFIG_PARAM_HEATER_PAUSE_TEMP=" 32 "\n'
+            path.write_text(restored)
+            with contextlib.redirect_stderr(io.StringIO()):
+                loaded.load_unit(str(path))
+            self.assertEqual(loaded.syms['PARAM_HEATER_PAUSE_TEMP'].user_value, '32')
+            self.assertEqual(Path(str(path) + '.pre-numeric-upgrade').read_text(), restored)
             untouched = Path(tmp) / 'invalid'
             original = (b'CONFIG_PARAM_HEATER_MAX_TEMP="invalid"\n'
                         b'CONFIG_PARAM_HEATER_PAUSE_TEMP="nan"\n'

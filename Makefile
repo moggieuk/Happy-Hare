@@ -187,7 +187,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links kconfig_needs_update olddefconfig kconfig_import kconfig_baseline_clean kconfig_upgrade verify_pickle
+.PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links kconfig_needs_update olddefconfig kconfig_import kconfig_baseline_clean verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -481,7 +481,7 @@ uninstall: clean | python_deps
 	@# Restart services if needed
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)rm -f $(KCONFIG_CONFIG) $(KCONFIG_CONFIG).old $(KCONFIG_CONFIG)_* $(KCONFIG_CONFIG).*.changes $(KCONFIG_CONFIG).unit_migration
+	$(Q)rm -f $(KCONFIG_CONFIG) $(KCONFIG_CONFIG).old $(KCONFIG_CONFIG).pre-numeric-upgrade $(KCONFIG_CONFIG)_* $(KCONFIG_CONFIG).*.changes $(KCONFIG_CONFIG).unit_migration
 	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
 
 fix_links:
@@ -744,17 +744,12 @@ ifeq ($(F_MULTI_UNIT_ENTRY_POINT),y)
   MENUCONFIG_STYLE := aquatic
 endif
 
-menuconfig: $(SRC)/installer/Kconfig | python_deps kconfig_upgrade
+menuconfig: $(SRC)/installer/Kconfig | python_deps
 	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" KLIPPER_HOME=$(KLIPPER_HOME) $(PY) -m menuconfig Kconfig
 
 ##################################
 ##### Upgrade helper targets #####
 ##################################
-
-# Upgrade saved syntax before any loader can discard legacy assignments. The
-# installer invokes these targets for the top-level config and each active unit.
-kconfig_upgrade: | python_deps
-	$(Q)$(PY) -m installer.kconfig_upgrades "$(KCONFIG_CONFIG)"
 
 # KCONFIG_PARENT is the top-level config a per-unit config inherits printer-level
 # values from, so saving the top level also marks every unit stale. A unit sharing
@@ -774,14 +769,14 @@ kconfig_needs_update:
 		echo n; \
 	fi
 
-olddefconfig: | python_deps kconfig_upgrade
+olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"
 
 # Interactive Refresh: report .cfg values menuconfig doesn't show to HH_IMPORT_REPORT and
 # save the menuconfig baseline, or with HH_IMPORT_APPLY import those reported. A unit's
 # config has no paths, so install.sh passes the top level's in HH_CONFIG_HOME
-kconfig_import: | python_deps kconfig_upgrade
+kconfig_import: | python_deps
 	-$(Q)$(PY) -m installer.cfg_import $(V) --kconfig "$(KCONFIG_CONFIG)" \
 		--config-home "$(or $(HH_CONFIG_HOME),$(KLIPPER_CONFIG_HOME))" \
 		$(if $(HH_IMPORT_APPLY),--apply,--report) "$(HH_IMPORT_REPORT)" --baseline "$(MENUCONFIG_BASE)"

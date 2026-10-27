@@ -3,9 +3,7 @@ import math
 import os
 from pathlib import Path
 import re
-import shutil
 import sys
-import tempfile
 
 
 # These options used to be strings. Do not reinterpret other string settings.
@@ -20,10 +18,11 @@ NUMERIC_OPTIONS = {
     "PARAM_TD1_CAPTURE_TIMEOUT",
     "PARAM_SLICER_TIP_PARK_POS",
 }
-_NUMBER = r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+_QUOTED_PREFIXES = tuple(("CONFIG_" + name + '="').encode("ascii")
+                         for name in NUMERIC_OPTIONS)
 _ASSIGNMENT = re.compile(
-    r'^(CONFIG_(' + '|'.join(sorted(NUMERIC_OPTIONS)) + r')=)"('
-    + _NUMBER + r')"([ \t]*(?:#[^\r\n]*)?)(?=\r?$)', re.MULTILINE)
+    r'^(CONFIG_(' + '|'.join(sorted(NUMERIC_OPTIONS)) + r')=)"([^"\\\r\n]*)"'
+    r'([ \t]*(?:#[^\r\n]*)?)(?=\r?$)', re.MULTILINE)
 
 
 def upgrade(path):
@@ -36,23 +35,38 @@ def upgrade(path):
     if not path.exists():
         return 0
     before = path.read_bytes()
+    # Normal configurations need no decoding, regex scan, or migration imports.
+    if not any(prefix in before for prefix in _QUOTED_PREFIXES):
+        return 0
     text = before.decode("utf-8")
     count = 0
+    empty = 0
 
     def unquote(match):
-        nonlocal count
-        if not math.isfinite(float(match[3])):
+        nonlocal count, empty
+        value = match[3].strip()
+        if not value:
+            count += 1
+            empty += 1
+            return "# %s: empty legacy value; using default" % match[2]
+        try:
+            if not math.isfinite(float(value)):
+                return match[0]
+        except ValueError:
             return match[0]
         count += 1
-        return match[1] + match[3] + match[4]
+        return match[1] + value + match[4]
 
     updated = _ASSIGNMENT.sub(unquote, text)
     if not count:
         return 0
 
+    # Keep the normal load path light; these imports are only needed on migration.
+    import shutil
+    import tempfile
+
     backup = Path(str(path) + ".pre-numeric-upgrade")
-    if not backup.exists():
-        shutil.copy2(path, backup)
+    shutil.copy2(path, backup)
     # Replace atomically so interruption cannot leave a partially written config.
     fd, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
     try:
@@ -63,8 +77,9 @@ def upgrade(path):
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-    print("Upgraded %d numeric Kconfig settings in '%s'; values preserved "
-          "(backup: %s)" % (count, path, backup), file=sys.stderr)
+    detail = "; %d empty settings reset to defaults" % empty if empty else ""
+    print("Upgraded %d numeric Kconfig settings in '%s'; numeric values preserved%s "
+          "(backup: %s)" % (count, path, detail, backup), file=sys.stderr)
     return count
 
 
