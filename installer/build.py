@@ -29,7 +29,6 @@ from pathlib import Path
 import kconfiglib
 from .parser   import ConfigBuilder, WhitespaceNode, PARSE_ERROR_MARKER
 from .upgrades import Upgrades
-from kconfig_upgrades import upgrade as upgrade_kconfig
 
 # Check for python 3.x
 if sys.version_info[0] < 3:
@@ -182,10 +181,6 @@ class KConfig(kconfiglib.Kconfig):
         super(KConfig, self).__init__("Kconfig")
         self.load_config(config_file, filter_defaults=False)
         self.config_file = config_file
-
-    def load_config(self, filename=None, replace=True, verbose=None, filter_defaults=True):
-        upgrade_kconfig(filename or kconfiglib.standard_config_filename())
-        return super(KConfig, self).load_config(filename, replace, verbose, filter_defaults)
 
     def load_unit(self, unit_config_file):
         self.load_config(unit_config_file, filter_defaults=False)

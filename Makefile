@@ -481,7 +481,7 @@ uninstall: clean | python_deps
 	@# Restart services if needed
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)rm -f $(KCONFIG_CONFIG) $(KCONFIG_CONFIG).old $(KCONFIG_CONFIG).pre-numeric-upgrade $(KCONFIG_CONFIG)_* $(KCONFIG_CONFIG).*.changes $(KCONFIG_CONFIG).unit_migration
+	$(Q)rm -f $(KCONFIG_CONFIG) $(KCONFIG_CONFIG).old $(KCONFIG_CONFIG)_* $(KCONFIG_CONFIG).*.changes $(KCONFIG_CONFIG).unit_migration
 	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
 
 fix_links:
