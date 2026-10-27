@@ -14,7 +14,7 @@ config MMU_TYPE_VVD_1_0
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
 
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable
-  select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
 
   imply OPTION_VVD_BUFFER                 # Suggest
 

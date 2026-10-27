@@ -483,7 +483,7 @@ THREE_MS = Profile(
 #
 # filament_always_gripped renders 0 (no vendor override, and DEF_PROFILE's default is False in
 # mmu_unit.py:97), which is what puts the lazy-grip release path in play at all. That is not
-# unique - tradrack and both ercf_vvd units render 0 too - but on those it means a servo lift.
+# unique - tradrack and ercf_vvd's ERCF unit render 0 too - but on those it means a servo lift.
 CHAMELEON = Profile(
     'chameleon',
     syms={'MMU_TYPE_3D_CHAMELEON_1_0': True,
