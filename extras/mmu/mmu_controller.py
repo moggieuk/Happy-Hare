@@ -464,14 +464,18 @@ class MmuController(MmuFilamentMovement):
             self.reset_sync_gear_to_extruder(force_grip=True)
             self.movequeue_wait()
 
-            # Explain the inferred cutter position and validate its pushback
+            # Validate the position and pushback of a cutter before the extruder
             if self.cutter_before_extruder():
-                cut_vars = self.cut_tip_vars()
-                self.log_info(
-                    "Cutter blade_pos %.1fmm > toolhead_extruder_to_nozzle %.1fmm: "
-                    "cutter treated as before the extruder" % (
-                        float(cut_vars['blade_pos']), self.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle)
-                )
+                blade_pos = float(self.cut_tip_vars()['blade_pos'])
+                tetn = self.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle
+                if blade_pos <= tetn:
+                    self.log_error(
+                        "Cutter is set as before the extruder but blade_pos %.1fmm isn't greater than "
+                        "toolhead_extruder_to_nozzle %.1fmm. Check 'blade_pos' and 'cutter_before_extruder' "
+                        "in _MMU_CUT_TIP_VARS" % (blade_pos, tetn)
+                    )
+                else:
+                    self.log_info("Cutter before the extruder: blade_pos %.1fmm (%.1fmm before the extruder gears)" % (blade_pos, blade_pos - tetn))
                 error = self.cut_pushback_error()
                 if error:
                     self.log_error(error)
@@ -535,16 +539,11 @@ class MmuController(MmuFilamentMovement):
 
     def cutter_before_extruder(self):
         """
-        True when the tip cutting blade is before the extruder (blade_pos > toolhead_extruder_to_nozzle).
+        True when '<macro>_VARS' sets cutter_before_extruder, the tip cutting blade being before the extruder.
         The fragment is then pushed past the gears after the cut, leaving the filament end before the extruder
         """
         cut_vars = self.cut_tip_vars()
-        if cut_vars is None:
-            return False
-        try:
-            return float(cut_vars['blade_pos']) > self.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle
-        except (TypeError, ValueError):
-            return False
+        return cut_vars is not None and str(cut_vars.get('cutter_before_extruder', False)).lower() == 'true'
 
 
     def cut_pushback_error(self):

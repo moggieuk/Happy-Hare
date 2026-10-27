@@ -522,13 +522,10 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
             check_gates=[gate]
         ): return
 
-        # Only a warning because blade_pos is the value being measured and may be wrong
         if gcmd.get_int('CUT', 0, minval=0, maxval=1) and mmu.cutter_before_extruder():
-            mmu.log_warning(
-                "blade_pos (%.1f) is greater than toolhead_extruder_to_nozzle (%.1f), meaning a cutter before the extruder. "
-                "This measurement needs the blade below the toolhead sensor. With a cutter before the extruder homing "
-                "will fail, so measure blade_pos by hand from the nozzle"
-                % (float(mmu.cut_tip_vars()['blade_pos']), mmu_unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
+            raise gcmd.error(
+                "Blade position can only be measured for a cutter inside the extruder (below the toolhead sensor). "
+                "'cutter_before_extruder' is set in _MMU_CUT_TIP_VARS, so measure blade_pos by hand from the nozzle"
             )
 
         if not sensor_manager.has_sensor(SENSOR_TOOLHEAD):

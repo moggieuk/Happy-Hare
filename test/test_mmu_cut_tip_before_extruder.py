@@ -1,6 +1,6 @@
 # Happy Hare test harness - cutter blade before the extruder.
 #
-# blade_pos > toolhead_extruder_to_nozzle puts the blade before the extruder gears. The real
+# cutter_before_extruder in _MMU_CUT_TIP_VARS puts the blade before the extruder gears. The real
 # _MMU_CUT_TIP then tensions the filament with the gear, rips by extruding the fragment off the
 # blade with the gear unsynced and pushes the fragment past the gears. The pushback returns the
 # filament end to the blade, so it has already left the extruder and only the bowden unload
@@ -58,6 +58,7 @@ class BeforeExtruderCutCase(unittest.TestCase):
     def setUp(self):
         self.hh = session(profiles.get(self.PROFILE).derive(self.PROFILE + '_cutter_before_extruder', syms={
             'MMU_HAS_TOOLHEAD_CUTTER': True,
+            'BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER': True,
             'VAR_CUT_TIP_BLADE_POS': self.BLADE_POS,
             'VAR_CUT_TIP_RETRACT_LENGTH': self.RETRACT_LENGTH,
             'VAR_CUT_TIP_PUSHBACK_LENGTH': self.PUSHBACK_LENGTH,
@@ -219,12 +220,10 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         self.assertAlmostEqual(self.extruder.filament_remaining, self.fragment, places=1)
         self.assertEqual(self.extruder.filament_remaining_color, 'ff0000')
 
-    def test_blade_position_calibration_warns(self):
+    def test_blade_position_calibration_is_refused(self):
         self.unload()
-        # Carries on to the measurement, which 3ms can't do without a toolhead sensor
-        with self.assertRaisesRegex(self.hh.gcode.error, 'requires a toolhead sensor'):
+        with self.assertRaisesRegex(self.hh.gcode.error, 'measure blade_pos by hand'):
             self.hh.run_gcode('MMU_CALIBRATE_TOOLHEAD CUT=1')
-        self.assertTrue(any('measure blade_pos by hand' in w for w in self.warnings))
 
     def test_showconfig_describes_the_cut_not_the_skipped_unload_test(self):
         self.mmu.p.toolhead_unload_test = 2
@@ -235,9 +234,10 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         self.assertIn('verified with the EXTRUDER sensor', shown)
         self.assertNotIn('Unload is tested', shown)
 
-    def test_custom_cut_macro_without_blade_pos_is_after_the_extruder(self):
+    def test_without_the_variable_a_blade_past_the_gears_is_after_the_extruder(self):
         vars = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS')
-        vars.variables = {k: v for k, v in vars.variables.items() if k != 'blade_pos'}
+        self.assertTrue(self.mmu.cutter_before_extruder())
+        vars.variables = {k: v for k, v in vars.variables.items() if k != 'cutter_before_extruder'}
         self.assertFalse(self.mmu.cutter_before_extruder())
 
 
@@ -272,6 +272,14 @@ class TestCutPushbackTooShort(BeforeExtruderCutCase):
         self.assertFalse(any(line.startswith('_CUT_TIP_DO_CUT_MOTION') for line in executed))
         self.assertFalse(any(line.startswith('_MMU_STEP_MOVE') for line in executed))
         self.assertEqual(self.extruder.filament_remaining, 0.)
+
+
+class TestCutterSetBeforeExtruderWithBladeAfterGears(BeforeExtruderCutCase):
+    BLADE_POS = 60.0                # Gears at 72
+
+    def test_reported_at_bootup(self):
+        self.assertTrue(any("blade_pos 60.0mm isn't greater than toolhead_extruder_to_nozzle 72.0mm" in e
+                            for e in self.boot_errors), self.boot_errors)
 
 
 class TestCutRetractTooShort(BeforeExtruderCutCase):

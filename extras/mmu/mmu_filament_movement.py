@@ -3315,6 +3315,10 @@ class MmuFilamentMovement:
                         f"Cutting tip: blade before extruder at {blade_pos:.1f}mm from nozzle "
                         f"({blade_pos - tetn:.1f}mm before extruder gears)..."
                     )
+                    # Refuse before any blade motion, else the fragment stub would block homing of the next filament
+                    error = self.cut_pushback_error()
+                    if error:
+                        raise MmuError(error)
                 else:
                     self.log_info(f"Cutting tip: blade after extruder gears at {float(cut_vars['blade_pos']):.1f}mm from nozzle...")
 

@@ -25,8 +25,18 @@ menu "Toolhead tip cutting     (_MMU_CUT_TIP)"
     help
       Distance in mm from internal nozzle tip to cutting blade.
 
-      Greater than the "Extruder entrance to nozzle" toolhead dimension means
-      the cutter is before the extruder (see the Toolhead Tip Cutting doc).
+  config BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER
+    bool "Cutter is before the extruder"
+    default n
+    help
+      The blade sits before the extruder gears (e.g. Qidi Plus4, Biqu H2,
+      Smart Orbiter 3). The cut fragment is pushed past the gears and purged
+      by the next load (see the Toolhead Tip Cutting doc).
+
+  config VAR_CUT_TIP_CUTTER_BEFORE_EXTRUDER
+    string
+    default "True" if BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER
+    default "False"
 
   config VAR_CUT_TIP_RETRACT_LENGTH
     float "Retract length               "
