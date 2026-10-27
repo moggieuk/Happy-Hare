@@ -36,9 +36,12 @@ class TestNumericOptions(unittest.TestCase):
             kc.warn_to_stderr = False
             # Both single-unit and per-unit files use the same migration helper.
             for filename in ('.mmu_config', '.mmu_config_unit0'):
-                for marker in ('', ' #~DEFAULT~#'):
+                for index, marker in enumerate(('', ' #~DEFAULT~#', ' # custom value',
+                                                ' # custom value #~DEFAULT~#',
+                                                ' #~DEFAULT~# # custom value')):
                     with self.subTest(filename=filename, marker=marker):
-                        path = Path(tmp) / (filename + ('_defaults' if marker else ''))
+                        path = Path(tmp) / (filename + str(index))
+                        default = ' #~DEFAULT~#' if marker.rstrip().endswith(' #~DEFAULT~#') else ''
                         original = ''.join('CONFIG_%s="%s"%s\r\n' % (name, value, marker)
                                            for name, value in values.items()).encode()
                         path.write_bytes(original)
@@ -48,7 +51,9 @@ class TestNumericOptions(unittest.TestCase):
                         self.assertIn('values preserved', report.getvalue())
                         backup = Path(str(path) + '.pre-numeric-upgrade')
                         self.assertEqual(backup.read_bytes(), original)
-                        self.assertEqual(path.read_bytes(), original.replace(b'"', b''))
+                        expected = ''.join('CONFIG_%s=%s%s\r\n' % (name, value, default)
+                                           for name, value in values.items()).encode()
+                        self.assertEqual(path.read_bytes(), expected)
                         kc.load_config(str(path), filter_defaults=False)
                         self.assertEqual(kc.warnings, [])
                         for name, value in values.items():
@@ -56,7 +61,7 @@ class TestNumericOptions(unittest.TestCase):
                             self.assertEqual(kc.syms[name].user_value, value)
                         # Default markers must still mean defaults on an editor load.
                         kc.load_config(str(path), filter_defaults=True)
-                        if marker:
+                        if default:
                             for name in values:
                                 self.assertIsNone(kc.syms[name].user_value)
                         # A rerun must neither write nor report an upgrade.

@@ -39,14 +39,18 @@ def _convert(before):
         if not value:
             count += 1
             empty += 1
-            return "# %s: empty legacy value; using default" % match[2]
+            return ""
         try:
             if not math.isfinite(float(value)):
                 return match[0]
         except ValueError:
             return match[0]
         count += 1
-        return match[1] + value + match[4]
+        # Only the exact trailing default marker has meaning to the loader.
+        # Ordinary inline comments were accepted after strings, but would become
+        # part of a float value and cause the customization to be discarded.
+        default = " #~DEFAULT~#" if match[4].rstrip().endswith(" #~DEFAULT~#") else ""
+        return match[1] + value + default
 
     updated = _ASSIGNMENT.sub(unquote, text)
     return updated.encode("utf-8"), count, empty
