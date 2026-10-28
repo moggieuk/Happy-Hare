@@ -525,6 +525,16 @@ class MmuController(MmuFilamentMovement):
         return command.split()[0] if command else ""
 
 
+    def park_retracted_length(self):
+        """
+        Retraction _MMU_PARK has made that restoring the toolhead position will undo (0 if none)
+        """
+        park_macro = self.printer.lookup_object("gcode_macro %s" % self.p.park_macro, None)
+        if park_macro is None:
+            return 0.
+        return float(park_macro.variables.get('retracted_length', 0) or 0)
+
+
     def cut_tip_vars(self):
         """
         Variables of the tip cutting macro's '<macro>_VARS', or None if it isn't a cutting macro with a blade_pos
@@ -562,9 +572,8 @@ class MmuController(MmuFilamentMovement):
         blade_pos = float(cut_vars['blade_pos'])
         # As _MMU_CUT_TIP limits it: to the retract left after what is already retracted
         if live:
-            park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None)
-            retracted = float(park_macro.variables.get('retracted_length', 0) or 0) if park_macro else 0.
-            retracted += u.extruder_wrapper.filament_remaining + toolhead.toolhead_residual_filament
+            retracted = (self.park_retracted_length() + u.extruder_wrapper.filament_remaining
+                         + toolhead.toolhead_residual_filament)
         else:
             retracted = toolhead.toolhead_residual_filament + self.toolchange_retract
         effective_retract = float(cut_vars.get('retract_length', 0)) - retracted

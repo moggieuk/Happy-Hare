@@ -6,8 +6,8 @@
 # can't change it. 3ms reverse-homes off its extruder entry sensor; ercf_vvd (entry sensor
 # disabled, see test_mmu_toolhead_unload_test) uses its toolhead sensor.
 #
-# The fake gcode_move ignores E, so the extruder doesn't move during the macro and
-# filament_remaining is park_pos - residual - toolchange_retract.
+# The fake gcode_move ignores E, so the extruder doesn't move during the macro, and _MMU_PARK
+# doesn't run, so nothing is retracted: filament_remaining is park_pos - residual.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_cut_tip_after_extruder
 #
@@ -113,7 +113,7 @@ class AfterExtruderGoldenCase(unittest.TestCase):
         extruder = self.mmu.mmu_unit(0).extruder_wrapper
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertAlmostEqual(self.mmu.drive().get_filament_position(), self.UNLOAD_DRIVE_POS, places=2)
-        self.assertAlmostEqual(extruder.filament_remaining, 34.5)
+        self.assertAlmostEqual(extruder.filament_remaining, 36.5)
 
         self.moves.clear()
         self.hh.run_gcode('MMU_LOAD')
@@ -127,7 +127,7 @@ class TestAfterExtruderEntrySensor(AfterExtruderGoldenCase):
     PROFILE = '3ms'
     TIP_AT_GATE = -40.0
     UNLOAD_MOVES = [
-        ('Reverse homing off extruder sensor', -86.0, 'gear+extruder', 'extruder'),
+        ('Reverse homing off extruder sensor', -88.0, 'gear+extruder', 'extruder'),
         ('Final parking', -250.0, None, None),
     ]
     UNLOAD_DRIVE_POS = -330.0
@@ -144,7 +144,7 @@ class TestAfterExtruderToolheadSensor(AfterExtruderGoldenCase):
     TIP_AT_GATE = -100.0
     DISABLE_SENSORS = ('extruder',)
     UNLOAD_MOVES = [
-        ('Reverse homing off toolhead sensor', -81.8, 'extruder', 'toolhead'),
+        ('Reverse homing off toolhead sensor', -83.8, 'extruder', 'toolhead'),
         ('Unloading extruder', -19.3, 'extruder', None),
         ('Fast unloading move through bowden', -660.0, None, None),
         ('Unloading step #1 from encoder', -15.0, None, None),
