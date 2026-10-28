@@ -325,6 +325,11 @@ class TestCutVerifiedByEncoder(BeforeExtruderCutCase):
         self.unload()
         self.assert_paused_in_extruder()
 
+    def test_extruder_only_unload_doesnt_pull_with_the_gear(self):
+        self.hh.run_gcode('MMU_UNLOAD EXTRUDER_ONLY=1')
+        self.assertFalse([m for m in self.moves if m[0].startswith('Verifying cut')], self.moves)
+        self.assertTrue(any("couldn't follow the pushback" in w for w in self.warnings), self.warnings)
+
 
 class TestCutVerifiedByBuffer(BeforeExtruderCutCase):
     PROFILE = 'boxturtle_test'

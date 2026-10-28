@@ -3173,7 +3173,7 @@ class MmuFilamentMovement:
 
             if before_extruder and reported:
                 # The pushback returned the filament end to the blade, before the extruder
-                self._verify_cut_before_extruder(park_pos)
+                self._verify_cut_before_extruder(park_pos, extruder_only=extruder_only)
             elif detected or extruder_only:
                 # Definitely in extruder
                 self.set_filament_pos_state(FILAMENT_POS_IN_EXTRUDER)
@@ -3194,7 +3194,7 @@ class MmuFilamentMovement:
             return detected, cut_fragment
 
 
-    def _verify_cut_before_extruder(self, park_pos):
+    def _verify_cut_before_extruder(self, park_pos, extruder_only=False):
         """
         Check that a cut before the extruder severed the filament. A missed cut leaves it continuous and gripped by
         the extruder, so the extruder entry sensor stays covered or a gear-only pull can't move it. On success the
@@ -3202,6 +3202,7 @@ class MmuFilamentMovement:
 
         Args:
             park_pos: Distance of the upstream filament end from the nozzle reported by the cut.
+            extruder_only: The gear may not move, so only a check that needs no move is possible.
         """
         u = self.mmu_unit()
         tw = u.toolhead_wrapper.p
@@ -3220,6 +3221,12 @@ class MmuFilamentMovement:
             # Blade before the entry sensor so the sensor must already be clear
             method = "extruder sensor"
             cut = not sm.check_sensor(SENSOR_EXTRUDER_ENTRY)
+
+        elif extruder_only:
+            self.log_warning(
+                "Warning: The MMU gear couldn't follow the pushback, so the cut fragment may be left in the "
+                "extruder gears. Clear it before the next load"
+            )
 
         elif sm.check_sensor(SENSOR_EXTRUDER_ENTRY):
             # Blade between the entry sensor and the gears so the filament end must pull clear of the sensor
