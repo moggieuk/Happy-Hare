@@ -57,6 +57,18 @@ _UPGRADE_OWNED = {("mmu_machine", "happy_hare_version"), ("mmu_machine", "state_
 _UNSAVEABLE = re.compile(r"[\n\r$`]")
 
 
+# Pin pattern, section format, optional symbol supplying the object name.
+# Group 1 is the gate suffix (or absent for shared hardware). Trial rendering
+# checks capabilities, per-gate toggles, heater names and any other guards.
+_PIN_SECTIONS = (
+    (r"PIN_FAN(_[0-9]+)?", "fan_generic {name}", "PARAM_FAN_NAME"),
+    (r"PIN_HEATER_FAN(_[0-9]+)?", "heater_fan {name}", "PARAM_HEATER_FAN_NAME"),
+    (r"PIN_CONTROLLER_FAN(_[0-9]+)?", "controller_fan {name}", "PARAM_CONTROLLER_FAN_NAME"),
+    (r"PIN_VENT_SERVO(_[0-9]+)?", "mmu_servo {unit}_vent_servo{gate}", None),
+    (r"PIN_EJECT_BUTTON(_[0-9]+)", "gcode_button {unit}_eject{gate}", None),
+)
+
+
 class Candidate(object):
     def __init__(self, sym_name, literal, locations, menuconfig_value, cfg_value):
         self.sym_name = sym_name
@@ -323,7 +335,7 @@ class Analysis(object):
         self._check_together()
 
     def _discover_pins(self, installed):
-        """Expose installed fans/buttons hidden only by an empty, editable pin.
+        """Expose installed hardware hidden only by an empty, editable pin.
 
         These are ordinary reported imports, not changes to the saved config. Do
         not enable capabilities, guess object names, or read user-owned sections.
@@ -331,15 +343,16 @@ class Analysis(object):
         included = set(installed.sections(scope="included"))
         unit = self.kconf.get("UNIT_NAME")
         for name, sym in self.kconf.syms.items():
-            match = re.fullmatch(r"PIN_(FAN|EJECT_BUTTON)(_[0-9]+)?", name)
-            if not match or sym.str_value:
+            if sym.str_value:
                 continue
-            kind, suffix = match.groups()
-            suffix = suffix or ""
-            if kind == "FAN":
-                section = "fan_generic " + self.kconf.get("PARAM_FAN_NAME" + suffix)
-            elif suffix:
-                section = "gcode_button %s_eject%s" % (unit, suffix[1:])
+            for pattern, section_format, name_symbol in _PIN_SECTIONS:
+                match = re.fullmatch(pattern, name)
+                if match:
+                    suffix = match.group(1) or ""
+                    section = section_format.format(
+                        name=self.kconf.get(name_symbol + suffix) if name_symbol else "",
+                        unit=unit, gate=suffix[1:])
+                    break
             else:
                 continue
             if section not in included or not installed.has_option(section, "pin"):
