@@ -159,6 +159,7 @@ class BeforeExtruderCutCase(unittest.TestCase):
     def assert_paused_in_extruder(self):
         self.assertTrue(any(NOT_CUT in e for e in self.hh.errors), self.hh.errors)
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_IN_EXTRUDER)
+        self.assertEqual(self.extruder.filament_remaining, 0.) # Still continuous, so no fragment
         self.assertNotIn('Fast unloading move through bowden', self.traces())
         self.assertNotIn('Final parking', self.traces())
 

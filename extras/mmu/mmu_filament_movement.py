@@ -3144,14 +3144,6 @@ class MmuFilamentMovement:
             park_pos, remaining, reported = self._do_form_tip()
             measured = self.get_encoder_distance(dwell=None) - initial_encoder_position
 
-            # Update filament model in extruder
-            color = (
-                self.gate_color[self.gate_selected]
-                if self.gate_selected >= 0
-                else UNKNOWN_FILAMENT_COLOR
-            )
-            u.extruder_wrapper.set_filament_remaining(remaining, color)
-
             # Encoder based validation test
             detected = True # Start with assumption that filament was present
             if self.can_use_encoder() and not reported:
@@ -3188,6 +3180,14 @@ class MmuFilamentMovement:
             else:
                 # No detection. Best to assume we are somewhere in bowden for defensive unload
                 self.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
+
+            # Update filament model in extruder, only once a cut before the extruder is verified
+            color = (
+                self.gate_color[self.gate_selected]
+                if self.gate_selected >= 0
+                else UNKNOWN_FILAMENT_COLOR
+            )
+            u.extruder_wrapper.set_filament_remaining(remaining, color)
 
             cut_fragment = remaining if reported else 0.
             self.log_trace_exit(f"form_tip_standalone() => (detected={detected}, cut_fragment={cut_fragment})")
