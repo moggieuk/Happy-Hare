@@ -326,9 +326,21 @@ class TestCutVerifiedByEncoder(BeforeExtruderCutCase):
         self.assert_paused_in_extruder()
 
     def test_extruder_only_unload_doesnt_pull_with_the_gear(self):
+        start = len(self.hh.gcode.executed)
         self.hh.run_gcode('MMU_UNLOAD EXTRUDER_ONLY=1')
         self.assertFalse([m for m in self.moves if m[0].startswith('Verifying cut')], self.moves)
         self.assertTrue(any("couldn't follow the pushback" in w for w in self.warnings), self.warnings)
+        # A step move would re-sync the gear for the rest of the macro
+        executed = self.hh.gcode.executed[start:]
+        self.assertFalse([line for line in executed if line.startswith('_MMU_STEP_MOVE')], executed)
+        self.assertIn('G1 E1.0 F180.0', [line.split('#')[0].strip() for line in executed])
+
+    def test_extruder_only_cut_on_runout_pauses_for_the_fragment(self):
+        self.mmu.is_handling_runout = True
+        self.addCleanup(setattr, self.mmu, 'is_handling_runout', False)
+        self.hh.run_gcode('MMU_UNLOAD EXTRUDER_ONLY=1')
+        self.assertTrue(any("cut fragment may be left in the extruder gears" in e for e in self.hh.errors), self.hh.errors)
+        self.assertNotIn('Fast unloading move through bowden', self.traces())
 
 
 class TestCutVerifiedByBuffer(BeforeExtruderCutCase):

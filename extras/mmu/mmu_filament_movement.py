@@ -3223,10 +3223,12 @@ class MmuFilamentMovement:
             cut = not sm.check_sensor(SENSOR_EXTRUDER_ENTRY)
 
         elif extruder_only:
-            self.log_warning(
-                "Warning: The MMU gear couldn't follow the pushback, so the cut fragment may be left in the "
-                "extruder gears. Clear it before the next load"
-            )
+            msg = "The MMU gear couldn't follow the pushback, so the cut fragment may be left in the extruder gears"
+            if self.is_handling_runout:
+                # The replacement filament would otherwise be loaded straight into the fragment
+                self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
+                raise MmuError(msg, hint="Clear the cut fragment from the extruder gears, " + HINT_RELOAD)
+            self.log_warning(f"Warning: {msg}. Clear it before the next load")
 
         elif sm.check_sensor(SENSOR_EXTRUDER_ENTRY):
             # Blade between the entry sensor and the gears so the filament end must pull clear of the sensor
