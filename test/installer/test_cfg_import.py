@@ -713,6 +713,165 @@ class TestRefreshPipeline(_Pipeline, _Install):
         self.assertEqual(changed, ["mmu_parameters_unit0.cfg"])
 
 
+class TestMissingHardwarePins(_Pipeline, _Install):
+    SYMS = {"MMU_HAS_FANS": True, "PIN_FAN": "",
+            "MMU_HAS_EJECT_BUTTONS": True, "PIN_EJECT_BUTTON_0": ""}
+
+    def targets(self):
+        return [(self.kconfig, template, name.format(unit="unit0")) for template, name in SINGLE_UNIT_FILES.items()]
+
+    def files(self):
+        return [(self.kconfig, self.env)]
+
+    def add_hardware(self, excluded=False, pin="unit0:PA8"):
+        path = self.path("mmu_hardware_unit0.cfg")
+        with open(path) as f:
+            text = f.read()
+        fragment = ("[fan_generic _unit0_fan]\npin: %s\nmax_power: 0.6\nkick_start_time: 0.25\n"
+                    "cycle_time: 0.02\n\n[gcode_button unit0_eject0]\n"
+                    "pin: ^unit0:PA9\npress_gcode: MMU_EJECT UNIT=unit0 LGATE=0\n\n") % pin
+        marker = "# EXCLUDE FROM CONFIG BUILDER"
+        self.assertIn(marker, text)
+        with open(path, "w") as f:
+            f.write(text + fragment if excluded else text.replace(marker, fragment + marker, 1))
+
+    def test_missing_pins_and_fan_settings_are_reported_without_mutating_config(self):
+        self.add_hardware()
+        before = self.saved()
+        analysis = self.analyse()
+        candidates = self.by_symbol(analysis)
+        self.assertEqual(candidates["PIN_FAN"].cfg_value, "unit0:PA8")
+        self.assertEqual(candidates["PIN_EJECT_BUTTON_0"].cfg_value, "^unit0:PA9")
+        self.assertEqual(candidates["PARAM_FAN_MAX_POWER"].cfg_value, "0.6")
+        self.assertEqual(candidates["PARAM_FAN_KICK_START_TIME"].cfg_value, "0.25")
+        self.assertEqual(self.saved(), before)
+        self.assertEqual(analysis.kconf.get("PIN_FAN"), "")
+
+    def test_accepted_import_preserves_hardware_and_explicit_removal_still_works(self):
+        self.add_hardware()
+        self.import_pass(self.files(), apply=True)
+        self.menuconfig(self.kconfig, self.env)
+        built = self.build_all(self.targets(), self.env, baseline=True)
+        hardware = ConfigBuilder()
+        hardware.read_buf(built["mmu_hardware_unit0.cfg"])
+        self.assertEqual(hardware.get("fan_generic _unit0_fan", "pin"), "unit0:PA8")
+        self.assertEqual(hardware.get("fan_generic _unit0_fan", "max_power"), "0.6")
+        self.assertEqual(hardware.get("fan_generic _unit0_fan", "kick_start_time"), "0.25")
+        self.assertEqual(hardware.get("fan_generic _unit0_fan", "cycle_time"), "0.02")
+        self.assertEqual(hardware.get("mmu_unit unit0", "fan"), "")
+        self.assertEqual(hardware.get("gcode_button unit0_eject0", "pin"), "^unit0:PA9")
+        self.menuconfig(self.kconfig, self.env, PIN_FAN="", PIN_EJECT_BUTTON_0="")
+        removed = self.build_all(self.targets(), self.env, baseline=True)
+        hardware = ConfigBuilder()
+        hardware.read_buf(removed["mmu_hardware_unit0.cfg"])
+        self.assertFalse(hardware.has_section("fan_generic _unit0_fan"))
+        self.assertFalse(hardware.has_section("gcode_button unit0_eject0"))
+
+    def test_declined_import_keeps_empty_pin_in_baseline(self):
+        self.add_hardware()
+        self.import_pass(self.files(), apply=False)
+        with cfg._env(self.env), cfg._chdir(cfg.INSTALLER):
+            baseline = build.KConfig(os.path.join(self.baselines(), ".mmu_config"))
+        self.assertEqual(baseline.get("PIN_FAN"), "")
+        self.assertEqual(baseline.get("PIN_EJECT_BUTTON_0"), "")
+
+    def test_user_owned_sections_are_not_imported(self):
+        self.add_hardware(excluded=True)
+        self.assertNotIn("PIN_FAN", self.by_symbol(self.analyse()))
+
+    def test_invalid_or_multi_pin_is_not_imported(self):
+        self.add_hardware(pin="multi_pin:custom_fans")
+        self.assertNotIn("PIN_FAN", self.by_symbol(self.analyse()))
+        self.edit("mmu_hardware_unit0.cfg", "pin", "foo bar", "fan_generic _unit0_fan")
+        self.assertNotIn("PIN_FAN", self.by_symbol(self.analyse()))
+
+
+class TestMissingPerGateFanPin(_Pipeline, _Install):
+    PROFILE = "emu"
+    SYMS = {"PIN_FAN_0": ""}
+
+    def test_only_matching_gate_is_imported_and_disabled_gate_stays_disabled(self):
+        path = self.path("mmu_hardware_unit0.cfg")
+        with open(path) as f:
+            text = f.read()
+        fragment = "[fan_generic _unit0_fan0]\npin: unit0:PA8\nmax_power: 0.6\n\n"
+        with open(path, "w") as f:
+            f.write(text.replace("# EXCLUDE FROM CONFIG BUILDER",
+                                 fragment + "# EXCLUDE FROM CONFIG BUILDER", 1))
+        candidates = self.by_symbol(self.analyse())
+        self.assertEqual(candidates["PIN_FAN_0"].cfg_value, "unit0:PA8")
+        self.assertEqual(candidates["PARAM_FAN_MAX_POWER_0"].cfg_value, "0.6")
+        self.assertNotIn("PIN_FAN_1", candidates)
+        self.menuconfig(self.kconfig, self.env, PARAM_FAN_GATE_0="n")
+        self.assertNotIn("PIN_FAN_0", self.by_symbol(self.analyse()))
+
+
+class TestAdditionalHardwarePins(_Pipeline, _Install):
+    SYMS = {"MMU_HAS_HEATER": True, "MMU_HAS_HEATER_FANS": True,
+            "PARAM_FILAMENT_HEATER": "unit0_heater",
+            "MMU_HAS_CONTROLLER_FAN": True, "MMU_HAS_VENT_SERVO": True,
+            "PIN_HEATER_FAN": "unit0:PA8", "PIN_CONTROLLER_FAN": "unit0:PA9",
+            "PIN_VENT_SERVO": "unit0:PA10"}
+    SUFFIX = ""
+
+    def setUp(self):
+        super().setUp()
+        self.devices = []
+        hardware = ConfigBuilder(self.path("mmu_hardware_unit0.cfg"))
+        for kind, section_type, option, value in (
+                ("HEATER_FAN", "heater_fan", "max_power", "0.6"),
+                ("CONTROLLER_FAN", "controller_fan", "idle_timeout", "75"),
+                ("VENT_SERVO", "mmu_servo", "maximum_servo_angle", "160")):
+            symbol = "PIN_" + kind + self.SUFFIX
+            pin = self.SYMS[symbol]
+            sections = [section for section in hardware.sections(scope="included")
+                        if section.startswith(section_type + " ") and
+                        hardware.get(section, "pin") == pin]
+            self.assertEqual(len(sections), 1, symbol)
+            section = sections[0]
+            self.edit("mmu_hardware_unit0.cfg", option, value, section)
+            self.devices.append((symbol, section, pin, option, value))
+        self.menuconfig(self.kconfig, self.env, **{d[0]: "" for d in self.devices})
+
+    def test_import_and_deliberate_removal(self):
+        analysis = self.analyse()
+        candidates = self.by_symbol(analysis)
+        for symbol, section, pin, option, value in self.devices:
+            self.assertEqual(candidates[symbol].locations, [(section, "pin")])
+            self.assertEqual(candidates[symbol].cfg_value, pin)
+        self.import_pass([(self.kconfig, self.env)], apply=True)
+        targets = [(self.kconfig, "config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")]
+        result = self.build_all(targets, self.env, baseline=True)
+        hardware = ConfigBuilder()
+        hardware.read_buf(result["mmu_hardware_unit0.cfg"])
+        for symbol, section, pin, option, value in self.devices:
+            self.assertEqual(hardware.get(section, "pin"), pin)
+            self.assertEqual(hardware.get(section, option), value)
+        self.menuconfig(self.kconfig, self.env, **{d[0]: "" for d in self.devices})
+        result = self.build_all(targets, self.env, baseline=True)
+        hardware = ConfigBuilder()
+        hardware.read_buf(result["mmu_hardware_unit0.cfg"])
+        for _, section, _, _, _ in self.devices:
+            self.assertFalse(hardware.has_section(section))
+
+    def test_missing_heater_name_rejects_fan_without_leaking_trial_pin(self):
+        self.menuconfig(self.kconfig, self.env, **{"PARAM_FILAMENT_HEATER" + self.SUFFIX: ""})
+        analysis = self.analyse()
+        self.assertNotIn("PIN_HEATER_FAN" + self.SUFFIX, self.by_symbol(analysis))
+        self.assertEqual(analysis.kconf.get("PIN_HEATER_FAN" + self.SUFFIX), "")
+        # A rejected trial must not prevent later hardware from being discovered.
+        for kind in ("CONTROLLER_FAN", "VENT_SERVO"):
+            self.assertIn("PIN_" + kind + self.SUFFIX, self.by_symbol(analysis))
+
+
+class TestAdditionalPerGateHardwarePins(TestAdditionalHardwarePins):
+    PROFILE = "emu"
+    SUFFIX = "_0"
+    SYMS = {"MMU_HAS_HEATER": True, "MMU_HAS_CONTROLLER_FAN": True,
+            "MMU_HAS_VENT_SERVO": True, "PIN_HEATER_FAN_0": "unit0:PA8",
+            "PIN_CONTROLLER_FAN_0": "unit0:PA9", "PIN_VENT_SERVO_0": "unit0:PA10"}
+
+
 class _MultiUnitInstall(_Install):
     """Two BoxTurtles, installed in Replace mode"""
 

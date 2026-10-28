@@ -260,6 +260,57 @@ class _HardwareRefresh(unittest.TestCase):
             f.write(text.replace(old, new))
 
 
+class TestHandConfiguredHardwareRefresh(_HardwareRefresh):
+    """Installed hardware can exist without matching saved menuconfig settings."""
+
+    def check_preserved(self, syms, section, options):
+        installed = self.build("boxturtle", syms, "replace", [])
+        existing = ConfigBuilder(installed)
+        self.assertFalse(existing.has_section(section))
+        with open(installed) as f:
+            text = f.read()
+        fragment = "[{}]\n{}\n\n".format(
+            section, "\n".join("{}: {}".format(k, v) for k, v in options.items()))
+        # Insert in the managed area, not after the trailing exclusion marker.
+        marker = "# EXCLUDE FROM CONFIG BUILDER"
+        self.assertIn(marker, text)
+        with open(installed, "w") as f:
+            f.write(text.replace(marker, fragment + marker, 1))
+        # Menuconfig was unchanged: this is not an explicit hardware removal.
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            baseline = cfg._kconfig("hand-configured-before",
+                                   dict(profiles.get("boxturtle").syms, **syms))
+        results = [ConfigBuilder(self.build("boxturtle", syms, mode, [installed], baseline))
+                   for mode in ("refresh", "merge")]
+        for built in results:
+            self.assertTrue(built.has_section(section), section)
+            for option, value in options.items():
+                self.assertEqual(built.get(section, option), value)
+
+    @unittest.expectedFailure
+    def test_hand_configured_fan_with_empty_menuconfig_pin(self):
+        # Bug: copy-back only visits rendered sections; an empty pin omits the fan.
+        self.check_preserved(
+            {"MMU_HAS_FANS": True, "PIN_FAN": ""},
+            "fan_generic _unit0_fan", {"pin": "unit0:PA8", "max_power": "0.6"})
+
+    @unittest.expectedFailure
+    def test_hand_configured_environment_sensor(self):
+        # Bug: a sensor absent from the template is discarded even without a menu edit.
+        self.check_preserved(
+            {"MMU_HAS_ENVIRONMENT_SENSOR": False},
+            "temperature_sensor unit0_Env",
+            {"sensor_type": "BME280", "i2c_address": "118", "i2c_mcu": "unit0"})
+
+    @unittest.expectedFailure
+    def test_hand_configured_eject_button_with_empty_menuconfig_pin(self):
+        # Bug: the pin guard omits the section, so installed button settings are lost.
+        self.check_preserved(
+            {"MMU_HAS_EJECT_BUTTONS": True, "PIN_EJECT_BUTTON_0": ""},
+            "gcode_button unit0_eject0",
+            {"pin": "^unit0:PA9", "press_gcode": "MMU_EJECT UNIT=unit0 LGATE=0"})
+
+
 class TestFanVisibilityRefresh(_HardwareRefresh):
     """Toggling a fan's UI visibility renames it; [mmu_unit] must follow in every mode."""
 
