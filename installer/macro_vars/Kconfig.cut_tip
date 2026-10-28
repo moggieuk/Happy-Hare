@@ -25,6 +25,19 @@ menu "Toolhead tip cutting     (_MMU_CUT_TIP)"
     help
       Distance in mm from internal nozzle tip to cutting blade.
 
+  config BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER
+    bool "Cutter is before the extruder"
+    default n
+    help
+      The blade sits before the extruder gears (e.g. Qidi Plus4, Biqu H2,
+      Smart Orbiter 3). The cut fragment is pushed past the gears and purged
+      by the next load (see the Toolhead Tip Cutting doc).
+
+  config VAR_CUT_TIP_CUTTER_BEFORE_EXTRUDER
+    string
+    default "True" if BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER
+    default "False"
+
   config VAR_CUT_TIP_RETRACT_LENGTH
     float "Retract length               "
     default 32.5
@@ -116,6 +129,13 @@ menu "Toolhead tip cutting     (_MMU_CUT_TIP)"
     default 3
     help
       Rip movement speed in mm/s.
+
+  config VAR_CUT_TIP_TENSION_LENGTH
+    float "Tension length               "
+    default 10.0
+    help
+      Cutter before the extruder only: gear retract that pulls the filament
+      taut across the blade before the cut. 0 disables.
 
   config VAR_CUT_TIP_PUSHBACK_LENGTH
     float "Pushback length              "

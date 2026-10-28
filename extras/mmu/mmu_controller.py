@@ -464,6 +464,22 @@ class MmuController(MmuFilamentMovement):
             self.reset_sync_gear_to_extruder(force_grip=True)
             self.movequeue_wait()
 
+            # Validate the position and pushback of a cutter before the extruder
+            if self.cutter_before_extruder():
+                blade_pos = float(self.cut_tip_vars()['blade_pos'])
+                tetn = self.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle
+                if blade_pos <= tetn:
+                    self.log_error(
+                        "Cutter is set as before the extruder but blade_pos %.1fmm isn't greater than "
+                        "toolhead_extruder_to_nozzle %.1fmm. Check 'blade_pos' and 'cutter_before_extruder' "
+                        "in _MMU_CUT_TIP_VARS" % (blade_pos, tetn)
+                    )
+                else:
+                    self.log_info("Cutter before the extruder: blade_pos %.1fmm (%.1fmm before the extruder gears)" % (blade_pos, blade_pos - tetn))
+                error = self.cut_pushback_error()
+                if error:
+                    self.log_error(error)
+
             # Status to console...
             if self.p.log_startup_status:
                 self.log_always(self._mmu_visual_to_string(), color=True)
@@ -507,6 +523,61 @@ class MmuController(MmuFilamentMovement):
         """
         command = (command or "").replace("''", "").strip()
         return command.split()[0] if command else ""
+
+
+    def cut_tip_vars(self):
+        """
+        Variables of the tip cutting macro's '<macro>_VARS', or None if it isn't a cutting macro with a blade_pos
+        """
+        if not self.has_toolhead_cutter:
+            return None
+        gcode_vars = self.printer.lookup_object("gcode_macro %s_VARS" % self._macro_name(self.p.form_tip_macro), None)
+        if gcode_vars is None or 'blade_pos' not in gcode_vars.variables:
+            return None
+        return gcode_vars.variables
+
+
+    def cutter_before_extruder(self):
+        """
+        True when '<macro>_VARS' sets cutter_before_extruder, the tip cutting blade being before the extruder.
+        The fragment is then pushed past the gears after the cut, leaving the filament end before the extruder
+        """
+        cut_vars = self.cut_tip_vars()
+        return cut_vars is not None and str(cut_vars.get('cutter_before_extruder', False)).lower() == 'true'
+
+
+    def cut_pushback_error(self, live=False):
+        """
+        With the blade before the extruder the pushback must carry the cut fragment past the gears,
+        else it blocks homing of the next filament. Returns the error message if it can't, else None
+
+        Args:
+            live: Use the recorded fragment and actual park retraction, as _MMU_CUT_TIP is about to,
+                  rather than the configured residual and toolchange retract.
+        """
+        cut_vars = self.cut_tip_vars()
+        u = self.mmu_unit()
+        toolhead = u.toolhead_wrapper.p
+        tetn = toolhead.toolhead_extruder_to_nozzle
+        blade_pos = float(cut_vars['blade_pos'])
+        # As _MMU_CUT_TIP limits it: to the retract left after what is already retracted
+        if live:
+            park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None)
+            retracted = float(park_macro.variables.get('retracted_length', 0) or 0) if park_macro else 0.
+            retracted += u.extruder_wrapper.filament_remaining + toolhead.toolhead_residual_filament
+        else:
+            retracted = toolhead.toolhead_residual_filament + self.toolchange_retract
+        effective_retract = float(cut_vars.get('retract_length', 0)) - retracted
+        pushback = min(float(cut_vars.get('pushback_length', 0)), effective_retract)
+        required = blade_pos - tetn + CUT_PUSHBACK_CLEARANCE
+        if pushback < required:
+            return (
+                "Cut fragment pushback %.1fmm can't clear the extruder: need >= %.1fmm "
+                "(blade_pos %.1f - toolhead_extruder_to_nozzle %.1f + %.1f). "
+                "Increase both 'pushback_length' and 'retract_length' in _MMU_CUT_TIP_VARS" % (
+                    pushback, required, blade_pos, tetn, CUT_PUSHBACK_CLEARANCE)
+            )
+        return None
 
 
     def call_macro_if_defined(self, macro_name, params="", **kwargs):

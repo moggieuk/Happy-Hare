@@ -128,6 +128,7 @@ TOOLHEAD_UNLOAD_TEST_DEFAULT = 0  # Existing extruder unload warnings only
 TOOLHEAD_UNLOAD_TEST_WARN = 1     # Also check unload homing distance, warn on failure
 TOOLHEAD_UNLOAD_TEST_PAUSE = 2    # Also check unload homing distance, pause on failure
 UNLOAD_MIN_CUT_FRAGMENT = 2.0     # Smallest cut fragment (mm) whose absence the homing distance can resolve
+CUT_PUSHBACK_CLEARANCE = 3.0      # Distance (mm) a fragment cut before the extruder must be pushed past the gears (also in _MMU_CUT_TIP)
 
 ACTION_IDLE = 0
 ACTION_LOADING = 1
