@@ -546,17 +546,28 @@ class MmuController(MmuFilamentMovement):
         return cut_vars is not None and str(cut_vars.get('cutter_before_extruder', False)).lower() == 'true'
 
 
-    def cut_pushback_error(self):
+    def cut_pushback_error(self, live=False):
         """
         With the blade before the extruder the pushback must carry the cut fragment past the gears,
         else it blocks homing of the next filament. Returns the error message if it can't, else None
+
+        Args:
+            live: Use the recorded fragment and actual park retraction, as _MMU_CUT_TIP is about to,
+                  rather than the configured residual and toolchange retract.
         """
         cut_vars = self.cut_tip_vars()
-        toolhead = self.mmu_unit().toolhead_wrapper.p
+        u = self.mmu_unit()
+        toolhead = u.toolhead_wrapper.p
         tetn = toolhead.toolhead_extruder_to_nozzle
         blade_pos = float(cut_vars['blade_pos'])
-        # As _MMU_CUT_TIP limits it on a loaded extruder: to the retract left after residual and park retraction
-        effective_retract = float(cut_vars.get('retract_length', 0)) - toolhead.toolhead_residual_filament - self.toolchange_retract
+        # As _MMU_CUT_TIP limits it: to the retract left after what is already retracted
+        if live:
+            park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None)
+            retracted = float(park_macro.variables.get('retracted_length', 0) or 0) if park_macro else 0.
+            retracted += u.extruder_wrapper.filament_remaining + toolhead.toolhead_residual_filament
+        else:
+            retracted = toolhead.toolhead_residual_filament + self.toolchange_retract
+        effective_retract = float(cut_vars.get('retract_length', 0)) - retracted
         pushback = min(float(cut_vars.get('pushback_length', 0)), effective_retract)
         required = blade_pos - tetn + CUT_PUSHBACK_CLEARANCE
         if pushback < required:

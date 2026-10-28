@@ -283,6 +283,19 @@ class TestCutterSetBeforeExtruderWithBladeAfterGears(BeforeExtruderCutCase):
                             for e in self.boot_errors), self.boot_errors)
 
 
+class TestCutPushbackShortenedByRecordedFragment(BeforeExtruderCutCase):
+    BLADE_POS = 85.0
+    RETRACT_LENGTH = 40.0           # 36mm after residual (2) and park retraction (2), needs >= 16
+
+    def test_cut_is_refused_before_any_blade_motion(self):
+        self.assertEqual(self.boot_errors, [])
+        # The macro retracts only what the fragment doesn't already cover: 40 - (34 + 2) = 4
+        self.extruder.set_filament_remaining(34.)
+        executed = self.unload()
+        self.assertTrue(any("pushback 4.0mm can't clear the extruder" in e for e in self.hh.errors), self.hh.errors)
+        self.assertFalse(any(line.startswith('_CUT_TIP_DO_CUT_MOTION') for line in executed))
+
+
 class TestCutRetractTooShort(BeforeExtruderCutCase):
     BLADE_POS = 85.0
     RETRACT_LENGTH = 18.0           # Only 14mm after residual (2) and park retraction (2), needs >= 16

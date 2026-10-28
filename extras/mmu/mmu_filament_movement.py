@@ -3316,7 +3316,7 @@ class MmuFilamentMovement:
                         f"({blade_pos - tetn:.1f}mm before extruder gears)..."
                     )
                     # Refuse before any blade motion, else the fragment stub would block homing of the next filament
-                    error = self.cut_pushback_error()
+                    error = self.cut_pushback_error(live=True)
                     if error:
                         raise MmuError(error)
                 else:
