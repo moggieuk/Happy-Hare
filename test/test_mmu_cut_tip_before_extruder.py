@@ -259,6 +259,14 @@ class TestCutBeforeEntrySensor(BeforeExtruderCutCase):
         self.unload()
         self.assert_paused_in_extruder()
 
+    def test_extruder_only_cut_on_runout_pauses_though_the_sensor_is_clear(self):
+        # The clear sensor proves the cut, not that the fragment cleared the gears
+        self.mmu.is_handling_runout = True
+        self.addCleanup(setattr, self.mmu, 'is_handling_runout', False)
+        self.hh.run_gcode('MMU_UNLOAD EXTRUDER_ONLY=1')
+        self.assertTrue(any("cut fragment may be left in the extruder gears" in e for e in self.hh.errors), self.hh.errors)
+        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_END_BOWDEN)
+
 
 class TestCutPushbackTooShort(BeforeExtruderCutCase):
     BLADE_POS = 85.0

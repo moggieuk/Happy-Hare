@@ -3223,12 +3223,7 @@ class MmuFilamentMovement:
             cut = not sm.check_sensor(SENSOR_EXTRUDER_ENTRY)
 
         elif extruder_only:
-            msg = "The MMU gear couldn't follow the pushback, so the cut fragment may be left in the extruder gears"
-            if self.is_handling_runout:
-                # The replacement filament would otherwise be loaded straight into the fragment
-                self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
-                raise MmuError(msg, hint="Clear the cut fragment from the extruder gears, " + HINT_RELOAD)
-            self.log_warning(f"Warning: {msg}. Clear it before the next load")
+            pass # The gear may not move, so no other check is possible
 
         elif sm.check_sensor(SENSOR_EXTRUDER_ENTRY):
             # Blade between the entry sensor and the gears so the filament end must pull clear of the sensor
@@ -3283,6 +3278,14 @@ class MmuFilamentMovement:
             self.log_debug(f"Cut before the extruder verified with the {method}")
         else:
             self.log_debug("Cut before the extruder can't be verified (no extruder sensor, encoder or sync-feedback buffer)")
+
+        # However the cut was verified, without the gear behind it the pushback can't clear the gears
+        if extruder_only:
+            msg = "The MMU gear couldn't follow the pushback, so the cut fragment may be left in the extruder gears"
+            if self.is_handling_runout:
+                # The replacement filament would otherwise be loaded straight into the fragment
+                raise MmuError(msg, hint="Clear the cut fragment from the extruder gears, " + HINT_RELOAD)
+            self.log_warning(f"Warning: {msg}. Clear it before the next load")
 
 
     def _do_form_tip(self, test=False):
