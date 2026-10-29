@@ -189,6 +189,26 @@ class TestParkRetraction(ParkRetractionTestCase):
         self.assertEqual(purged, [0.])
         self.assert_load_retracted()
 
+    def post_load_retract(self, length):
+        self.hh.printer.harness_macro_effects['_MMU_POST_LOAD'] = lambda macro, gcmd: macro.run_body(gcmd)
+        seq = self.hh.printer.lookup_object('gcode_macro _MMU_SEQUENCE_VARS')
+        seq.variables = dict(seq.variables, user_post_load_extension='_MMU_RETRACT LENGTH=%s' % length)
+
+    def test_standalone_load_tops_up_a_post_load_retraction(self):
+        # The final retraction is a total, not on top of what the post-load extension retracted
+        self.post_load_retract(1)
+        self.gcode('MMU_LOAD')
+        self.assert_load_retracted()
+        self.gcode('MMU_UNLOAD')
+        self.assert_fragment_exact()
+
+    def test_standalone_load_undoes_a_post_load_retraction_beyond_the_configured_one(self):
+        self.post_load_retract(3)
+        self.gcode('MMU_LOAD')
+        self.assert_load_retracted()
+        self.gcode('MMU_UNLOAD')
+        self.assert_fragment_exact()
+
     def test_standalone_toolchange_ends_retracted(self):
         self.gcode('MMU_LOAD')
         self.gcode('MMU_CHANGE_TOOL TOOL=1')

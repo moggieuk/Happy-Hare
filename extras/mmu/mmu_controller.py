@@ -568,21 +568,24 @@ class MmuController(MmuFilamentMovement):
 
     def _retract_after_standalone_load(self):
         """
-        Outside a print a load ends with the configured toolchange retraction, left in place to reduce ooze
+        Outside a print a load ends with the configured toolchange retraction, left in place to reduce ooze.
+        It is the final total, so any retraction the purge or post-load macro left is topped up or undone
         """
-        length = self.toolchange_retract
-        if length <= 0 or not self.toolhead.get_extruder().get_heater().can_extrude:
+        retract = self.toolchange_retract
+        length = retract - self.park_retracted_length()
+        if abs(length) < 0.01 or not self.toolhead.get_extruder().get_heater().can_extrude:
             return
         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-        speed = float(sequence_vars.variables.get('retract_speed', 30)) if sequence_vars else 30.
-        self.log_info("Retracting %.1fmm to reduce ooze" % length)
+        speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
+        speed = float(sequence_vars.variables.get(speed_var, 30)) if sequence_vars else 30.
+        self.log_info("%s %.1fmm to leave %.1fmm retracted" % ("Retracting" if length > 0 else "Un-retracting", abs(length), retract))
         self.gcode.run_script_from_command(
             "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
             "M83\n"
-            "G1 E-%.2f F%d\n"
-            "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (length, speed * 60)
+            "G1 E%.2f F%d\n"
+            "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
         )
-        self._set_park_retracted_length(length)
+        self._set_park_retracted_length(retract)
         self._persist_park_retraction()
 
 
