@@ -1972,6 +1972,7 @@ class MmuFilamentMovement:
             u.extruder_wrapper.set_filament_remaining(0., color)
             if not self.saved_toolhead_operation:
                 self._set_park_retracted_length(0.)
+                self._persist_park_retraction()
 
             # Encoder based validation test to validate the filament was picked up by extruder.
             # This runs if we are short of deterministic sensors and test makes sense. If the buffer

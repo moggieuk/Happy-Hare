@@ -528,11 +528,23 @@ class MmuController(MmuFilamentMovement):
         return command.split()[0] if command else ""
 
 
+    def _park_state_macro(self):
+        """
+        The parking macro holding retracted_length: park_macro when it replaces _MMU_PARK, else _MMU_PARK,
+        including under a park_macro wrapper that delegates to it
+        """
+        for name in (self.p.park_macro, "_MMU_PARK"):
+            park_macro = self.printer.lookup_object("gcode_macro %s" % name, None)
+            if park_macro is not None and 'retracted_length' in park_macro.variables:
+                return park_macro
+        return None
+
+
     def park_retracted_length(self):
         """
-        Retraction _MMU_PARK has made that restoring the toolhead position will undo (0 if none)
+        Retraction the parking macro has made that restoring the toolhead position will undo (0 if none)
         """
-        park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None) # Owns the state, even under a park_macro wrapper
+        park_macro = self._park_state_macro()
         if park_macro is None:
             return 0.
         return float(park_macro.variables.get('retracted_length', 0) or 0)
@@ -542,7 +554,7 @@ class MmuController(MmuFilamentMovement):
         """
         Set the working copy of the active toolhead's retraction used by the macros
         """
-        park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None) # Owns the state, even under a park_macro wrapper
+        park_macro = self._park_state_macro()
         if park_macro is not None:
             park_macro.variables = dict(park_macro.variables, retracted_length=length)
 

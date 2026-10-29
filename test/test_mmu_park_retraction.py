@@ -15,6 +15,7 @@
 
 import logging
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -35,6 +36,23 @@ gcode:
     _MMU_PARK {rawparams}
 """
 
+# A replacement for the shipped park macros that holds its own retraction: renamed copies of them
+REPLACED = ('_MMU_PARK', '_MMU_SAVE_POSITION', '_MMU_RESTORE_POSITION', '_MMU_RETRACT', '_MMU_UNRETRACT',
+            '_MMU_CLEAR_POSITION')
+
+
+def replacement_park_macros():
+    with open(os.path.join(os.path.dirname(__file__), '..', 'config', 'macros', 'mmu_sequence.cfg')) as f:
+        text = f.read()
+    blocks = [m.group(0) for m in re.finditer(r'^\[gcode_macro (\w+)\]\n.*?(?=^\[|^#{5,}|\Z)', text, flags=re.M | re.S)
+              if m.group(1) in REPLACED]
+    assert len(blocks) == len(REPLACED)
+    out = '\n'.join(blocks)
+    for name in REPLACED:
+        out = re.sub(r'\b%s\b' % name, 'MY' + name, out)
+    return '\n' + out
+
+
 MACROS = ('_MMU_PARK', '_MMU_SAVE_POSITION', '_MMU_RESTORE_POSITION', '_MMU_RETRACT',
           '_MMU_UNRETRACT', '_MMU_CLEAR_POSITION', '_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
           '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP')
@@ -53,7 +71,7 @@ class ParkRetractionTestCase(unittest.TestCase):
 
     def start(self, vars_file=None):
         self.hh = session(profiles.get('3ms').derive('3ms_park_retraction', syms={'MMU_HAS_TOOLHEAD_CUTTER': True}),
-                          printer_stub=PRINTER_STUB + PARK_WRAPPER)
+                          printer_stub=PRINTER_STUB + PARK_WRAPPER + replacement_park_macros())
         if vars_file is not None:
             self.hh._mmu_vars_copy = lambda: vars_file
         self.hh.build()
@@ -77,7 +95,7 @@ class ParkRetractionTestCase(unittest.TestCase):
         self.hh.gcode.register_command('G1', extrude)
 
         effects = self.hh.printer.harness_macro_effects
-        for name in MACROS + ('MY_PARK',):
+        for name in MACROS + ('MY_PARK',) + tuple('MY' + name for name in REPLACED):
             effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
 
         def cut(macro, gcmd):
@@ -127,8 +145,11 @@ class ParkRetractionTestCase(unittest.TestCase):
         self.hh.run_gcode(command)
         self.assertEqual(self.hh.errors, [], command)
 
+    def assert_shortfall(self, shortfall):
+        self.assertAlmostEqual(self.shortfall, shortfall, delta=0.05)
+
     def assert_nozzle_full(self):
-        self.assertAlmostEqual(self.shortfall, 0., delta=0.05)
+        self.assert_shortfall(0.)
         self.assertEqual(self.retracted(), 0)
 
     def assert_fragment_exact(self):
@@ -202,6 +223,28 @@ class TestParkRetraction(ParkRetractionTestCase):
         self.assertEqual(self.cut_retracted, self.mmu.toolchange_retract)
         self.assert_fragment_exact()
         self.assert_nozzle_full()
+
+    def test_replacement_park_macros_toolchange_is_exact(self):
+        for param, name in (('park_macro', '_MMU_PARK'), ('save_position_macro', '_MMU_SAVE_POSITION'),
+                            ('restore_position_macro', '_MMU_RESTORE_POSITION'),
+                            ('clear_position_macro', '_MMU_CLEAR_POSITION')):
+            setattr(self.mmu.p, param, 'MY' + name)
+        self.gcode('MMU_LOAD')
+        self.mmu.psm.set_print_state('printing', call_macro=False)
+        self.gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertEqual(self.retracted(), 0) # The shipped macro is unused
+        self.assert_fragment_exact()
+        self.assert_shortfall(0.)
+
+    def test_extruder_only_load_records_the_retraction_it_takes_up(self):
+        # No park or restore, so the load fills the nozzle
+        self.gcode('MMU_LOAD')
+        self.gcode('MMU_UNLOAD')
+        self.assertGreater(self.retracted(), 0)
+        self.hh.place_filament(0, position=self.hh.filament().layout['extruder_entry'] - 5.)
+        self.gcode('MMU_LOAD EXTRUDER_ONLY=1')
+        self.assert_nozzle_full()
+        self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
 
     def test_print_toolchange_is_exact(self):
         self.gcode('MMU_LOAD')
