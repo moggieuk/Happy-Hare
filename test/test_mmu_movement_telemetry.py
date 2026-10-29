@@ -55,17 +55,36 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual(events[0]['drive'], drive.name)
         self.assertIsNone(events[0]['move_id'])
 
-    def test_espooler_pin_submission_has_print_time(self):
+    def test_espooler_operation_changes_are_semantic_and_deduplicated(self):
+        from extras.mmu.mmu_constants import ESPOOLER_ASSIST, ESPOOLER_OFF, ESPOOLER_REWIND
         espooler = self.hh.mmu.espooler()
-        pin = mock.Mock()
-        espooler.motor_mcu_pins['assist_0'] = pin
-        espooler._set_pin(123., ('assist_0', .5))
-        espooler._set_pin(124., ('assist_0', .5))
-        events = [r for r in self.records if r['event'] == 'espooler_pin_submitted']
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]['print_time'], 123.)
-        self.assertEqual(events[0]['value'], .5)
-        self.assertEqual(events[0]['pin'], 'assist_0')
+        espooler.assist_gates = sorted(set(espooler.assist_gates + [0]))
+        espooler.respool_gates = sorted(set(espooler.respool_gates + [0]))
+        for op, power in [(ESPOOLER_ASSIST, .5), (ESPOOLER_ASSIST, .5),
+                          (ESPOOLER_ASSIST, .8), (ESPOOLER_REWIND, .8), (ESPOOLER_OFF, 0)]:
+            espooler.set_operation(0, power, op)
+        events = [r for r in self.records if r['event'].startswith('espooler_')]
+        self.assertEqual([r['event'] for r in events], ['espooler_operation_changed'] * 4)
+        self.assertEqual([r['operation'] for r in events], ['assist', 'assist', 'rewind', 'off'])
+        self.assertEqual(events[-1]['direction'], 'stopped')
+        self.assertEqual(events[-1]['output_power'], 0)
+        self.assertEqual(events[0]['requested_power'], .5)
+
+    def test_espooler_print_assist_burst_and_reset(self):
+        from extras.mmu.mmu_constants import ESPOOLER_ASSIST
+        espooler = self.hh.mmu.espooler()
+        espooler.assist_gates = sorted(set(espooler.assist_gates + [0]))
+        espooler.set_print_assist_mode(0)
+        espooler._handle_espooler_burst(0, .5, 1., ESPOOLER_ASSIST)
+        espooler._stop_espooler_burst(0)
+        espooler.reset_print_assist_mode()
+        events = [r for r in self.records if r['event'].startswith('espooler_')]
+        changes = [r for r in events if r['event'] == 'espooler_operation_changed']
+        self.assertEqual([r['operation'] for r in changes], ['print', 'assist', 'print', 'off'])
+        self.assertTrue(changes[2]['print_assist_armed'])
+        self.assertFalse(changes[3]['print_assist_armed'])
+        self.assertEqual(len([r for r in events if r['event'] == 'espooler_burst_started']), 1)
+        self.assertEqual(len([r for r in events if r['event'] == 'espooler_burst_ended']), 1)
 
     def test_resolved_speed_matches_stepper_log_after_override(self):
         self.hh.mmu.gate_speed_override[0] = 50
