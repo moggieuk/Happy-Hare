@@ -31,14 +31,45 @@ class TestLiveViewer(unittest.TestCase):
         self.hh.place_filament(0, 300)
         self.hh.mmu.move_filament('viewer test', 12, motor='gear+extruder')
         events = self.viewer.read()['events']
-        motors = [e for e in events if e['kind']=='stepper']
-        self.assertTrue(any('gear' in e['motor'] for e in motors), motors)
-        self.assertTrue(any('extruder' in e['motor'] for e in motors), motors)
-        self.assertEqual(len(motors), 2)
-        self.assertEqual([e['distance'] for e in motors], [12, 12])
-        self.assertTrue(any(e['kind']=='filament' for e in events))
+        moves = [e for e in events if e['kind']=='movement']
+        self.assertEqual(len(moves), 1)
+        move = moves[0]
+        self.assertEqual(move['distance'], 12)
+        self.assertEqual(move['before']['tips'][0], 300)
+        self.assertEqual(move['state']['tips'][0], 312)
+        self.assertEqual(sorted(move['motors'].values()), [12, 12])
+        self.assertEqual({e['kind'] for e in events}, {'session', 'movement'})
         self.assertNotEqual(before['state']['tips'][0], events[-1]['state']['tips'][0])
         json.dumps(self.viewer.read(), allow_nan=False)
+
+    def test_default_speed_is_resolved_from_executed_move(self):
+        self.hh.place_filament(0, 200)
+        self.hh.mmu.move_filament('Default speed', 12, motor='gear')
+        event = self.viewer.read()['events'][-1]
+        self.assertGreater(event['speed'], 0)
+
+    def test_paced_move_is_one_record(self):
+        self.hh.set_pacing(0.5, wall=False)
+        self.hh.place_filament(0, 200)
+        self.hh.mmu.move_filament('Bowden move', 300, speed=100, motor='gear')
+        moves = [e for e in self.viewer.read()['events'] if e['kind']=='movement']
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(moves[0]['distance'], 300)
+        self.assertEqual(moves[0]['speed'], 100)
+        self.assertGreater(moves[0]['duration'], 0)
+
+    def test_homing_record_preserves_search_limit_and_actual_stop(self):
+        name = self.hh.mmu.mmu_unit().name + ':mmu_shared_exit'
+        position = self.hh.filament().position(name)
+        self.hh.place_filament(0, position-20)
+        self.hh.mmu.move_filament('Home to exit', 100, homing_move=1, endstop_name=name)
+        event = self.viewer.read()['events'][-1]
+        self.assertEqual(event['kind'], 'movement')
+        self.assertEqual(event['requested'], 100)
+        self.assertAlmostEqual(event['distance'], 20)
+        self.assertTrue(event['homed'])
+        self.assertFalse(event['before']['sensors'][name]['state'])
+        self.assertTrue(event['state']['sensors'][name]['state'])
 
     def test_bounded_capture_and_after_cursor(self):
         for i in range(self.viewer.LIMIT+3): self.viewer.capture('test', str(i))

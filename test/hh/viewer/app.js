@@ -1,3 +1,4 @@
+import { interpolate, duration } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 let socket,
@@ -161,19 +162,21 @@ $("files").onchange = () =>
     await refresh();
     message("Uploaded profile started.");
   });
+let displayed = null, playing = null, played = 0;
 function draw() {
   if (!events.length) return;
   cursor = Math.max(0, Math.min(cursor, events.length - 1));
-  const e = events[live ? events.length - 1 : cursor],
-    s = e.state,
+  const e = live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
+  const
+    s = live && displayed ? displayed : e.state,
     gate = s.gate >= 0 ? s.gate : 0,
     tip = s.tips[gate] ?? -1000;
   const entry = s.layout.extruder_entry ?? 700,
     end = (s.layout.toolhead ?? 760) + 30;
-  $("mode").textContent = live ? "Live" : `Replay · event ${e.seq}`;
+  $("mode").textContent = live ? (played < events.at(-1).seq ? "Live · catching up" : "Live") : `Replay · event ${e.seq}`;
   $("position").textContent = `Gate ${gate} · tip ${tip.toFixed(2)} mm`;
   $("timeline").max = events.length - 1;
-  $("timeline").value = live ? events.length - 1 : cursor;
+  $("timeline").value = live ? events.indexOf(e) : cursor;
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
   const path =
     "M620 415 L620 170 Q620 75 525 75 L355 75 Q260 75 260 170 L260 435";
@@ -193,7 +196,12 @@ function draw() {
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
-  for (const [name, d] of Object.entries(s.sensors)) {
+  const unitSensors = Object.entries(s.sensors).filter(([name]) =>
+    s.unit_sensors ? s.unit_sensors.includes(name) : !s.units.includes(name.split(':')[0]) || name.split(':')[0] === s.unit);
+  const isBufferSensor = name => /(?:^|:)filament_(compression|tension)$/.test(name);
+  const sensorFill = state => state === true ? '#399b64' : state === false ? '#fff' : '#9ba5ae';
+  for (const [name, d] of unitSensors) {
+    if (isBufferSensor(name)) continue;
     if (s.units.includes(name.split(':')[0]) && name.split(':')[0] !== s.unit) continue;
     const suffix = name.match(/_(\d+)$/);
     if (suffix && Number(suffix[1]) !== gate) continue;
@@ -222,7 +230,13 @@ function draw() {
     }
     if (name.endsWith(":buffer")) {
       const fraction = Math.max(0, Math.min(1, ((d.value ?? 0) + 1) / 2));
-      svg += `<rect x="35" y="30" width="180" height="60" rx="7" fill="#e7eff5" stroke="#93acbf"/><text x="45" y="50" font-size="12">Sync-feedback buffer</text><path d="M50 70 H200" stroke="#a1b7c7" stroke-width="5"/><circle cx="${50 + 150 * fraction}" cy="70" r="7" fill="#539eaa"/>`;
+      svg += `<rect x="35" y="30" width="180" height="92" rx="7" fill="#e7eff5" stroke="#93acbf"/><text x="45" y="50" font-size="12">Sync-feedback buffer</text><path d="M50 70 H200" stroke="#a1b7c7" stroke-width="5"/><circle cx="${50 + 150 * fraction}" cy="70" r="7" fill="#539eaa"/>`;
+      const bufferSensors = unitSensors.filter(([sensor]) => isBufferSensor(sensor));
+      bufferSensors.forEach(([sensor, data], index) => {
+        const x = 47 + index * 85;
+        const label = sensor.endsWith('tension') ? 'Tension' : 'Compression';
+        svg += `<circle cx="${x}" cy="101" r="4" fill="${sensorFill(data.state)}" stroke="#698394"/><text x="${x+8}" y="104" font-size="9" fill="#456078">${label}</text>`;
+      });
     }
   }
   // Keep the measured filament stroke when appending markers and gears.
@@ -230,13 +244,11 @@ function draw() {
   $("scene").innerHTML = svg;
   $("filament").setAttribute("stroke-dasharray", measured);
   $("sensors").replaceChildren(
-    ...Object.entries(s.sensors).map(([name, d]) => {
+    ...unitSensors.map(([name, d]) => {
       const el = document.createElement("span");
-      el.className = "chip" + (d.state === true ? " on" : "");
-      el.textContent =
-        name +
-        " · " +
-        (d.state === null ? "disabled" : d.state ? "present" : "clear");
+      el.className = "chip sensor-chip" + (d.state === true ? " on" : d.state === null ? " disabled" : " off");
+      el.textContent = name.split(':').at(-1);
+      el.setAttribute('aria-label', `${name}: ${d.state === null ? 'disabled' : d.state ? 'present' : 'clear'}`);
       return el;
     }),
   );
@@ -255,7 +267,12 @@ function renderTrace() {
   view.replaceChildren(
     ...events.map((e, i) => {
       const b = document.createElement("button");
-      b.textContent = `${e.seq} · ${e.time.toFixed(3)}s · ${e.kind} · ${e.label}${e.distance === undefined ? "" : ` · ${e.distance.toFixed(3)} mm`}`;
+      b.textContent = `${e.seq} · ${e.time.toFixed(3)}s · ${e.kind} · ${e.label}${e.distance == null ? "" : ` · ${e.distance.toFixed(3)} mm`}`;
+      if (e.kind === 'movement') {
+        if (e.speed > 0) b.textContent += ` · ${e.speed.toFixed(1)} mm/s`;
+        if (e.fast_bowden) b.textContent += ' · compressed Bowden playback';
+        b.textContent += `${e.requested == null ? '' : ` · requested ${e.requested.toFixed(3)} mm`}${e.homing ? ` · ${e.endstop || 'endstop'} ${e.homed === true ? 'reached' : e.homed === false ? 'not reached' : ''}` : ''}${e.error ? ` · ${e.error}` : ''}`;
+      }
       b.classList.toggle("selected", i === (live ? events.length - 1 : cursor));
       b.onclick = () => {
         live = false;
@@ -282,6 +299,9 @@ $("next").onclick = () => {
 };
 $("live").onclick = () => {
   live = true;
+  playing = null;
+  played = events.at(-1)?.seq || 0;
+  displayed = events.at(-1)?.state;
   draw();
   renderTrace();
 };
@@ -292,7 +312,7 @@ $("timeline").oninput = () => {
 };
 $("save").onclick = () => {
   const url = URL.createObjectURL(
-    new Blob([JSON.stringify({ version: 1, session, events }, null, 2)], {
+    new Blob([JSON.stringify({ version: 2, session, events }, null, 2)], {
       type: "application/json",
     }),
   );
@@ -314,6 +334,9 @@ async function poll() {
       live = true;
       const full = (await (await fetch("/sim/viewer/events")).json()).result;
       events = full.events;
+      playing = null;
+      played = events.at(-1)?.seq || 0;
+      displayed = events.at(-1)?.state;
     } else if (data.events.length) {
       const seq = events[cursor]?.seq;
       events.push(...data.events);
@@ -333,5 +356,23 @@ async function poll() {
   }
   setTimeout(poll, 150);
 }
+function animate(now) {
+  if (live && events.length) {
+    if (!playing) {
+      const event = events.find(e=>e.seq>played);
+      if (event) playing={event,start:now};
+    }
+    if (playing) {
+      const ms=duration(playing.event), f=ms?Math.min(1,(now-playing.start)/ms):1;
+      displayed=interpolate(playing.event,f);
+      if (f===1) {played=playing.event.seq;playing=null;}
+      draw();
+    }
+  } else if (playing) {
+    playing.start=now;
+  }
+  requestAnimationFrame(animate);
+}
 connect();
 poll();
+requestAnimationFrame(animate);

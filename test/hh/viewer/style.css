@@ -170,3 +170,8 @@ aside, main > section { min-width: 0; }
 select, input { max-width: 100%; }
 .chip, #trace button { overflow-wrap: anywhere; max-width: 100%; }
 .heading { flex-wrap: wrap; gap: 8px; }
+
+#sensors { gap: 4px; margin-top: 8px; }
+.sensor-chip { padding: 2px 5px; font-size: 10px; border-radius: 3px; }
+.sensor-chip.off { background: #fff; }
+.sensor-chip.disabled { background: #e7eaed; border-color: #d3d8dd; color: #8a939c; }
