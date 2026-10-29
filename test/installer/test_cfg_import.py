@@ -410,6 +410,38 @@ class TestPins(_Install):
         self.assertTrue(reason.startswith("would also change [mmu_stepper unit0_gear] extra_endstops"), reason)
 
 
+class TestEnvironmentSensors(_Install):
+    """Per-gate [temperature_sensor] options, including those a blank value leaves out"""
+
+    PROFILE = "emu"
+
+    def add(self, section, option, value):
+        installed = ConfigBuilder(self.path("mmu_hardware_unit0.cfg"))
+        self.assertFalse(installed.has_option(section, option))
+        installed.set(section, option, value)
+        with open(self.path("mmu_hardware_unit0.cfg"), "w") as f:
+            f.write(installed.write())
+
+    def test_blank_temperature_limits_are_imported(self):
+        # Copy-back drops managed options the template omits, so only an import keeps them
+        self.add("temperature_sensor unit0_Env0", "min_temp", "0")
+        self.add("temperature_sensor unit0_Env0", "max_temp", "100")
+        analysis = self.analyse()
+        candidates = self.by_symbol(analysis)
+        self.assertEqual(candidates["PARAM_ENVIRONMENT_SENSOR_MIN_TEMP_0"].kconfig_value, "0")
+        self.assertEqual(candidates["PARAM_ENVIRONMENT_SENSOR_MAX_TEMP_0"].kconfig_value, "100")
+        analysis.apply(analysis.candidates)
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg", mode="refresh")
+        self.assertEqual(hardware.get("temperature_sensor unit0_Env0", "min_temp").strip(), "0")
+        self.assertEqual(hardware.get("temperature_sensor unit0_Env0", "max_temp").strip(), "100")
+
+    def test_per_gate_report_time_is_imported(self):
+        # [[ (PARAM_SENSOR_REPORT_TIME_PARAM_|d)[i] ]]: the option name is itself indexed
+        self.edit("mmu_hardware_unit0.cfg", "aht10_report_time", "10", section="temperature_sensor unit0_Env1")
+        candidate = self.by_symbol(self.analyse())["PARAM_ENVIRONMENT_SENSOR_REPORT_TIME_1"]
+        self.assertEqual(candidate.locations, [("temperature_sensor unit0_Env1", "aht10_report_time")])
+
+
 class TestGearOverrides(_Install):
     """A gear whose override is on renders its values from its own per-gate symbols"""
 

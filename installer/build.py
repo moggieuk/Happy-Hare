@@ -623,14 +623,14 @@ def _jinja_env(template_root):
     return env
 
 
-def template_managed_options(template_file):
+def template_managed_options(template_file, root=None):
     """Read opt-in copy-back declarations from source, including hidden branches.
 
     Comma-separated selectors share a policy, including in static includes.
     A selector is a section type or an exact, literal section name. Exact names
     override type declarations. These Jinja comments never reach installed cfgs.
     """
-    env = jinja_env()
+    env = _jinja_env(root) if root else jinja_env()
     policies = {}
     visited = set()
 
@@ -663,7 +663,7 @@ def template_managed_options(template_file):
             if isinstance(include.template, nodes.Const) and isinstance(include.template.value, str):
                 read(include.template.value)
 
-    read(os.path.relpath(template_file))
+    read(os.path.relpath(template_file, root))
     return policies
 
 

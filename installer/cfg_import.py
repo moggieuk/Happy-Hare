@@ -40,12 +40,14 @@ EXIT_SHOWN = 10
 # "option: [[SYMBOL|klipper_string_literal]]" or a per-gate "option_[[i]]: [[ (SYMBOL_|d)[i] ]]".
 # The option name may itself be templated, e.g. [[ ("driver_" ~ FIELD).ljust(25) ]]
 _SYMBOL = r"(?:PARAM|VAR|PIN)_[A-Z0-9_]+"
+# A [[ ... ]] expression, which may itself index with [...]
+_EXPR = r"\[\[(?:[^\]]|\](?!\]))*\]\]"
 _PLAIN_REF = re.compile(
-    r"^(?P<head>(?:[A-Za-z_][A-Za-z0-9_]*|\[\[[^\]]*\]\])(?:[A-Za-z0-9_]|\[\[[^\]]*\]\])*\s*[:=]\s*)"
+    r"^(?P<head>(?:[A-Za-z_][A-Za-z0-9_]*|%s)(?:[A-Za-z0-9_]|%s)*\s*[:=]\s*)"
     r"(?P<value>\[\[\s*(?:"
     r"(?P<sym>%s)\s*(?P<literal>\|\s*klipper_string_literal\s*)?"
     r"|\(\s*(?P<array>%s_)\s*\|\s*d\s*\)\s*\[(?P<index>[^\]]+)\]\s*"
-    r")\]\])(?P<tail>.*)$" % (_SYMBOL, _SYMBOL))
+    r")\]\])(?P<tail>.*)$" % (_EXPR, _EXPR, _SYMBOL, _SYMBOL))
 _MARKER = re.compile(r"@@HHSYM (\S+) ([01])@@")
 _SECTION = re.compile(r"^\[([^\]]+)\]")
 _OPTION = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*[:=]")
@@ -330,6 +332,7 @@ class Analysis(object):
                 continue
             self._consider(Candidate(sym_name, literal, locations, ours.strip(), theirs.strip()))
 
+        self._discover_managed(hhcfg)
         self.candidates.extend(self.discovered_pins)
         self._drop_conflicts()
         self._check_together()
@@ -376,6 +379,62 @@ class Analysis(object):
                 self.discovered_pins.append(candidate)
             else:
                 self._reset_trial()
+
+    def _discover_managed(self, installed):
+        """Offer managed options the render omits only because their menuconfig value is blank.
+
+        Copy-back never restores a managed option the template omits, so without an import
+        it is lost. Each is traced to a blank symbol by trial, then judged as any other edit
+        """
+        policies, refs = {}, {}
+        for template in self.templates:
+            path = os.path.join(REPO_ROOT, template)
+            policies.update(build.template_managed_options(path, REPO_ROOT))
+            with open(path, encoding="utf-8") as f:
+                for line in f.read().split("\n"):
+                    m, option = _PLAIN_REF.match(line), _OPTION.match(line)
+                    if m and option:
+                        refs.setdefault(option.group(1), set()).add(
+                            (m.group("sym") or m.group("array"), bool(m.group("literal"))))
+
+        handled = set()
+        for section in installed.sections(scope="included"):
+            managed = policies.get(section, policies.get(section.split(" ", 1)[0]))
+            if managed is None or (section, None) not in self.live:
+                continue
+            for option in installed.options(section):
+                key = (section, option)
+                if option not in managed or key in self.live or key in handled:
+                    continue
+                value = (installed.get(section, option) or "").strip()
+                for name, literal in self._blank_symbols(refs.get(option, ())):
+                    sym = self.kconf.syms[name]
+                    trial = kconfig_value(sym, value, literal)
+                    if why_not_settable(sym, trial) is not None or not sym.set_value(trial):
+                        continue
+                    after = self._options(self._render(self.kconf.as_dict()))
+                    self._reset_trial()
+                    locations = [k for k in after if k[1] == option and k not in self.live]
+                    if key not in locations:
+                        continue
+                    handled.update(locations)
+                    cfg_values = {(installed.get(*k) if installed.has_option(*k) else "").strip() for k in locations}
+                    if len(cfg_values) > 1:
+                        for k in locations:
+                            if installed.has_option(*k):
+                                self.kept.append((k, installed.get(*k), "%s is set differently elsewhere" % name))
+                    else:
+                        self._consider(Candidate(name, literal, locations, "", value))
+                    break
+
+    def _blank_symbols(self, refs):
+        """(symbol, literal) for each blank symbol of these template references, per-gate ones expanded"""
+        for ref, literal in sorted(refs):
+            names = [ref] if not ref.endswith("_") else \
+                sorted(n for n in self.kconf.syms if re.fullmatch(re.escape(ref) + r"[0-9]+", n))
+            for name in names:
+                if name in self.kconf.syms and not self.kconf.syms[name].str_value:
+                    yield name, literal
 
     def _reset_trial(self):
         self.kconf.load_config(self.kconfig_path, filter_defaults=True)
