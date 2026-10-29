@@ -432,7 +432,8 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
-    def update_builder(self, builder, kconfig_keys=(), origin=None, managed_options=None):
+    def update_builder(self, builder, kconfig_keys=(), origin=None, managed_options=None,
+                       optional_options=None):
         """
         Update the builder config selectively from the existing config HH data.
         'kconfig_keys' are the (section, option)s where the rendered Kconfig value wins
@@ -440,8 +441,10 @@ class HHConfig(ConfigBuilder):
         """
 
         # A declaration opts a section type (or exact section name) into copy-back.
-        # Managed options stay absent when the template deliberately omits them.
+        # Managed options stay absent when the template deliberately omits them,
+        # except optional ones it omits only because their menuconfig value is blank.
         managed_options = managed_options or {}
+        optional_options = optional_options or {}
 
         # Copy over included options
         for section in sorted(builder.sections(scope="included")):
@@ -474,6 +477,7 @@ class HHConfig(ConfigBuilder):
                     self.used_options.add((section, option))
 
             managed = managed_options.get(section, managed_options.get(section_type))
+            optional = optional_options.get(section, optional_options.get(section_type, frozenset()))
             if managed is not None and not sensor_type_changed and self.has_section(section):
                 # Additional gears inherit omitted tuning options; keep hand-added
                 # overrides unless menuconfig explicitly removed them this run.
@@ -481,7 +485,8 @@ class HHConfig(ConfigBuilder):
                 inherited_gear = re.fullmatch(r"tmc[0-9]+ mmu_stepper .+_gear_[0-9]+", section)
                 for option in self.options(section):
                     inherited_override = inherited_gear and option not in TMC_TRANSPORT_OPTIONS
-                    if (option not in managed or inherited_override) and (section, option) not in kconfig_keys and \
+                    if (option not in managed or option in optional or inherited_override) and \
+                            (section, option) not in kconfig_keys and \
                             not builder.has_option(section, option):
                         builder.copy_option(self, section, option, before_section_tail=True)
                         self.used_options.add((section, option))
@@ -623,15 +628,23 @@ def _jinja_env(template_root):
     return env
 
 
-def template_managed_options(template_file):
+def template_managed_options(template_file, root=None):
     """Read opt-in copy-back declarations from source, including hidden branches.
 
     Comma-separated selectors share a policy, including in static includes.
     A selector is a section type or an exact, literal section name. Exact names
     override type declarations. These Jinja comments never reach installed cfgs.
     """
-    env = jinja_env()
-    policies = {}
+    return template_policies(template_file, root)[0]
+
+
+def template_policies(template_file, root=None):
+    """
+    ({selector: managed options}, {selector: optional options}). An option marked "?" is
+    managed but omitted only while its menuconfig value is blank, so copy-back keeps it
+    """
+    env = _jinja_env(root) if root else jinja_env()
+    policies, optional = {}, {}
     visited = set()
 
     def read(path):
@@ -652,19 +665,20 @@ def template_managed_options(template_file):
                    for selector in selectors):
                 raise ValueError("Invalid @managed-options selector in " + path)
             options = [option.strip() for option in raw_options.split(",") if option.strip()]
-            if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*", option) for option in options):
+            if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*\??", option) for option in options):
                 raise ValueError("Invalid managed option in " + path)
             for selector in selectors:
                 if selector in policies:
                     raise ValueError("Duplicate @managed-options selector: " + selector)
-                policies[selector] = frozenset(options)
+                policies[selector] = frozenset(option.rstrip("?") for option in options)
+                optional[selector] = frozenset(option[:-1] for option in options if option.endswith("?"))
         # Shared policy components use literal includes, even in hidden branches.
         for include in env.parse(source).find_all(nodes.Include):
             if isinstance(include.template, nodes.Const) and isinstance(include.template.value, str):
                 read(include.template.value)
 
-    read(os.path.relpath(template_file))
-    return policies
+    read(os.path.relpath(template_file, root))
+    return policies, optional
 
 
 def validate_managed_options(builder, policies):
@@ -830,7 +844,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder.read_buf(buffer)
     report_parse_errors(builder, cfg_file_basename)
     rendered = rendered_options(buffer)
-    managed_options = template_managed_options(cfg_file_basename)
+    managed_options, optional_options = template_policies(cfg_file_basename)
     validate_managed_options(builder, managed_options)
 
     # 5.Special case cfg files that contains parameters so we can add back any optional,
@@ -864,7 +878,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         #   user edits are preserved, except where a setting was changed in menuconfig this run
         changed, before = menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered, hhcfg)
         hhcfg.update_builder(builder, changed, origin=os.path.basename(dest_file),
-                             managed_options=managed_options)
+                             managed_options=managed_options, optional_options=optional_options)
         report_replaced_edits(dest_file_basename, hhcfg, changed, before, rendered)
 
         # 8.Report on deprecated/unused options
