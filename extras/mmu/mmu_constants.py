@@ -305,6 +305,7 @@ VARS_MMU_FILAMENT_REMAINING          = "mmu_state_filament_remaining"
 VARS_MMU_FILAMENT_REMAINING_COLOR    = "mmu_state_filament_remaining_color"
 VARS_MMU_FILAMENT_REMAINING_MATERIAL = "mmu_state_filament_remaining_material"
 VARS_MMU_FILAMENT_REMAINING_TEMP     = "mmu_state_filament_remaining_temp"
+VARS_MMU_RETRACTED_LENGTH            = "mmu_state_retracted_length"
 VARS_MMU_SWAP_STATISTICS             = "mmu_statistics_swaps"
 VARS_MMU_COUNTERS                    = "mmu_statistics_counters"
 

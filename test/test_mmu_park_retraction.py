@@ -14,6 +14,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
+import os
+import shutil
+import tempfile
 import unittest
 
 from test.hh import profiles, session
@@ -28,12 +31,23 @@ MACROS = ('_MMU_PARK', '_MMU_SAVE_POSITION', '_MMU_RESTORE_POSITION', '_MMU_RETR
 class ParkRetractionTestCase(unittest.TestCase):
 
     def setUp(self):
+        self.shortfall = 0.
+        self.start()
+        for gate in (0, 1):
+            self.hh.place_filament(gate, position=-40.)
+            self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+        self.hh.heat_extruder(220)
+        self.mmu.select_gate(0)
+
+    def start(self, vars_file=None):
         self.hh = session(profiles.get('3ms').derive('3ms_park_retraction', syms={'MMU_HAS_TOOLHEAD_CUTTER': True}))
+        if vars_file is not None:
+            self.hh._mmu_vars_copy = lambda: vars_file
+        self.hh.build()
         self.hh.boot(calibrate=True)
         self.addCleanup(self.hh.close)
         self.mmu = self.hh.mmu
         self.toolhead = self.mmu.mmu_unit(0).toolhead_wrapper.p
-        self.shortfall = 0.
         self.cut_shortfall = None
         self.recorded = None
 
@@ -83,11 +97,12 @@ class ParkRetractionTestCase(unittest.TestCase):
 
         self.mmu._do_form_tip = record_fragment
 
-        for gate in (0, 1):
-            self.hh.place_filament(gate, position=-40.)
-            self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
-        self.hh.heat_extruder(220)
-        self.mmu.select_gate(0)
+    def restart(self):
+        self.hh.reactor.advance(1.) # Flush mmu_vars
+        vars_file = os.path.join(tempfile.mkdtemp(), 'mmu_vars.cfg')
+        shutil.copy(self.hh.save_variables.filename, vars_file)
+        self.hh.close()
+        self.start(vars_file)
 
     def retracted(self):
         return self.hh.printer.lookup_object('gcode_macro _MMU_PARK').variables['retracted_length']
@@ -129,6 +144,32 @@ class TestParkRetraction(ParkRetractionTestCase):
         self.gcode('MMU_TEST_FORM_TIP')
         self.assert_fragment_exact()
 
+    def test_print_end_retraction_is_kept_for_the_next_cut(self):
+        self.gcode('MMU_LOAD')
+        self.gcode('MMU_PRINT_START')
+        self.gcode('MMU_PRINT_END')
+        self.assertGreater(self.retracted(), 0)
+        self.gcode('MMU_UNLOAD')
+        self.assert_fragment_exact()
+
+    def test_retraction_survives_a_restart(self):
+        self.gcode('MMU_LOAD')
+        self.gcode('MMU_PRINT_START')
+        self.gcode('MMU_PRINT_END')
+        retracted = self.retracted()
+        self.restart()
+        self.assertEqual(self.retracted(), retracted)
+        self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, retracted)
+
+    def test_print_start_resets_the_retraction(self):
+        # The start gcode is assumed to prime the nozzle
+        self.gcode('MMU_LOAD')
+        self.gcode('MMU_PRINT_START')
+        self.gcode('MMU_PRINT_END')
+        self.gcode('MMU_PRINT_START')
+        self.assertEqual(self.retracted(), 0)
+        self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
+
     def test_print_toolchange_is_exact(self):
         self.gcode('MMU_LOAD')
         self.mmu.psm.set_print_state('printing', call_macro=False)
@@ -137,6 +178,27 @@ class TestParkRetraction(ParkRetractionTestCase):
             self.assertEqual(self.cut_retracted, self.mmu.toolchange_retract)
             self.assert_fragment_exact()
             self.assert_nozzle_full()
+
+
+class TestRetractionPerExtruder(unittest.TestCase):
+
+    def setUp(self):
+        from test.hh.bootstrap import PRINTER_STUB
+        from test.hh.profiles import EXTRA_EXTRUDER_STUB
+        self.hh = session('ercf_vvd_dual_extruder', printer_stub=PRINTER_STUB + EXTRA_EXTRUDER_STUB)
+        self.hh.boot(calibrate=True)
+        self.addCleanup(self.hh.close)
+        self.mmu = self.hh.mmu
+        self.park = self.hh.printer.lookup_object('gcode_macro _MMU_PARK')
+
+    def test_each_extruder_keeps_its_own_retraction(self):
+        self.mmu.select_gate(0)
+        self.hh.run_gcode('SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=3')
+        self.mmu.select_gate(9) # unit1, on extruder1
+        self.assertEqual(self.park.variables['retracted_length'], 0)
+        self.mmu.select_gate(1)
+        self.assertEqual(self.park.variables['retracted_length'], 3)
+        self.assertEqual(self.hh.errors, [])
 
 
 if __name__ == '__main__':

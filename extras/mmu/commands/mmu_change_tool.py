@@ -290,6 +290,7 @@ class MmuChangeToolCommand(BaseCommand):
                         if retract_fallback or mmu.park_retracted_length():
                             mmu.gcode.run_script_from_command("G1 E-%.2f F%d " % (slicer_retract_len, slicer_retract_speed * 60))
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
+                            mmu._persist_park_retraction()
                             mmu.log_info("Retracting %.1fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
 
                     toolchange_succeeded = True
