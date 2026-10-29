@@ -957,6 +957,9 @@ class Session:
         if stepper is None or getattr(stepper, 'manual_trapq', None) is not trapq:
             return
         model.advance(gate, distance, 'move')
+        observer = getattr(self.printer, 'harness_drive_observer', None)
+        if observer is not None:
+            observer(distance)
 
     def _config_rotation_distances(self, unit):
         """
@@ -998,6 +1001,9 @@ class Session:
 
     def _on_toolhead_move(self, distance):
         """Advance filament when the gear is following a toolhead extrusion move."""
+        observer = getattr(self.printer, 'harness_drive_observer', None)
+        if observer is not None:
+            observer(distance, 'toolhead')
         model = getattr(self.printer, 'harness_filament', None)
         gate = self.mmu.gate_selected
         if model is None or gate is None or gate < 0:
