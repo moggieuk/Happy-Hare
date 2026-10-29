@@ -255,12 +255,13 @@ class WebUiBridge:
             handler.end_headers()
             handler.wfile.write(data)
             return
-        if parsed.path == '/sim/viewer/events':
+        if parsed.path in ('/sim/viewer/events', '/sim/viewer/telemetry'):
             try:
                 after = int(params.get('after', 0))
             except (TypeError, ValueError):
                 after = 0
-            data = json.dumps({'result': self.viewer.read(after)}, allow_nan=False).encode()
+            reader = self.viewer.read_telemetry if parsed.path.endswith('/telemetry') else self.viewer.read
+            data = json.dumps({'result': reader(after)}, allow_nan=False).encode()
             handler.send_response(200)
             handler.send_header('Content-Type', 'application/json')
             handler.send_header('Cache-Control', 'no-store')

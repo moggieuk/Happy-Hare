@@ -269,8 +269,9 @@ function renderTrace() {
       const b = document.createElement("button");
       b.textContent = `${e.seq} · ${e.time.toFixed(3)}s · ${e.kind} · ${e.label}${e.distance == null ? "" : ` · ${e.distance.toFixed(3)} mm`}`;
       if (e.kind === 'movement') {
+        b.textContent += e.origin === 'happy_hare.motion' ? ' · source telemetry' : ' · harness fallback';
         if (e.speed > 0) b.textContent += ` · ${e.speed.toFixed(1)} mm/s`;
-        if (e.fast_bowden) b.textContent += ' · compressed Bowden playback';
+        if (e.fast_bowden && $('compress-bowden').checked) b.textContent += ' · compressed Bowden playback';
         b.textContent += `${e.requested == null ? '' : ` · requested ${e.requested.toFixed(3)} mm`}${e.homing ? ` · ${e.endstop || 'endstop'} ${e.homed === true ? 'reached' : e.homed === false ? 'not reached' : ''}` : ''}${e.error ? ` · ${e.error}` : ''}`;
       }
       b.classList.toggle("selected", i === (live ? events.length - 1 : cursor));
@@ -322,6 +323,18 @@ $("save").onclick = () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
+$("compress-bowden").onchange = () => renderTrace();
+$("save-motion").onclick = async () => {
+  try {
+    const response = await fetch('/sim/viewer/telemetry');
+    const { result } = await response.json();
+    const text = result.records.map(r=>JSON.stringify(r)).join('\n') + '\n';
+    const url = URL.createObjectURL(new Blob([text], {type:'application/x-ndjson'}));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'happy-hare-motion.jsonl'; link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  } catch (error) { message(error.message, true); }
+};
 async function poll() {
   try {
     const after = events.at(-1)?.seq || 0;
@@ -363,7 +376,7 @@ function animate(now) {
       if (event) playing={event,start:now};
     }
     if (playing) {
-      const ms=duration(playing.event), f=ms?Math.min(1,(now-playing.start)/ms):1;
+      const ms=duration(playing.event, $("compress-bowden").checked), f=ms?Math.min(1,(now-playing.start)/ms):1;
       displayed=interpolate(playing.event,f);
       if (f===1) {played=playing.event.seq;playing=null;}
       draw();

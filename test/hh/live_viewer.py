@@ -40,7 +40,9 @@ class LiveViewer:
         self.model.observers.append(self.on_filament)
         session.printer.harness_stepper_observer = self.on_stepper
         session.printer.harness_drive_observer = self.on_drive
-        self.wrap(session.mmu, 'move_filament', True)
+        self.pending_moves = {}
+        self.telemetry_records = collections.deque(maxlen=self.LIMIT*2)
+        self.unsubscribe = session.mmu.movement_telemetry.subscribe(self.on_telemetry)
         self.wrap(session.printer.lookup_object('toolhead'), 'move')
         effects = getattr(session.printer, 'harness_macro_effects', {})
         for name, effect in list(effects.items()):
@@ -51,6 +53,40 @@ class LiveViewer:
                 for method in ('do_move', 'do_homing_move', 'do_background_move'):
                     self.wrap(obj, method)
         self.capture('session', 'Simulator ready')
+
+    def on_telemetry(self, record):
+        with self.lock:
+            self.telemetry_records.append(record)
+        if record['event'] not in ('movement_start', 'movement_outcome'):
+            return
+        key = record['move_id']
+        if record['event'] == 'movement_start':
+            self.pending_moves[key] = (record, self.snapshot())
+            self.depth += 1
+            return
+        pending = self.pending_moves.pop(key, None)
+        if pending is None:
+            return
+        self.depth -= 1
+        start, before = pending
+        after = self.snapshot()
+        motors = {name: value-before['motors'].get(name, 0.)
+                  for name, value in after['motors'].items()
+                  if value != before['motors'].get(name, 0.)}
+        self.capture('movement', start['label'], before=before,
+            origin='happy_hare.motion', telemetry={'start': start, 'outcome': record},
+            duration=record['elapsed_s'], requested=start['requested_mm'],
+            distance=record['actual_mm'], speed=start['speed_mm_s'],
+            acceleration=start['acceleration_mm_s2'], motors=motors,
+            homing=start['homing'], endstop=start['endstop'], homed=record['homed'],
+            error=record['error'], outcome=record['status'],
+            fast_bowden=start['label'] in ('Fast loading move through bowden', 'Fast unloading move through bowden'))
+
+    def read_telemetry(self, after=0):
+        with self.lock:
+            return {'schema': 'happy_hare.motion', 'version': 1,
+                    'session_id': self.hh.mmu.movement_telemetry.session_id,
+                    'records': [r for r in self.telemetry_records if r['sequence'] > after]}
 
     def wrap(self, owner, method, filament=False):
         original = owner.get(method) if isinstance(owner, dict) else getattr(owner, method, None)
@@ -84,7 +120,7 @@ class LiveViewer:
                           for name, value in after['motors'].items()
                           if value != before['motors'].get(name, 0.)}
                 actual = result[0] if filament and result is not None else None
-                self.capture('movement', label, before=before,
+                self.capture('movement', label, before=before, origin='harness_fallback',
                     duration=max(0., self.hh.reactor.monotonic()-start),
                     requested=values.get('dist'), distance=actual,
                     speed=self.resolved_speed, motors=motors,
@@ -100,6 +136,7 @@ class LiveViewer:
             setattr(owner, method, movement)
 
     def close(self):
+        self.unsubscribe()
         for owner, method, original in reversed(self.wrapped):
             if isinstance(owner, dict):
                 owner[method] = original
