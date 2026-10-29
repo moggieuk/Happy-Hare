@@ -34,6 +34,9 @@ class TestLiveViewer(unittest.TestCase):
         moves = [e for e in events if e['kind']=='movement']
         self.assertEqual(len(moves), 1)
         move = moves[0]
+        self.assertEqual(move['origin'], 'happy_hare.motion')
+        self.assertEqual(move['telemetry']['start']['move_id'], move['telemetry']['outcome']['move_id'])
+        self.assertEqual(move['speed'], move['telemetry']['start']['speed_mm_s'])
         self.assertEqual(move['distance'], 12)
         self.assertEqual(move['before']['tips'][0], 300)
         self.assertEqual(move['state']['tips'][0], 312)

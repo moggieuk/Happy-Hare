@@ -22,6 +22,7 @@ from itertools                  import repeat
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
+from .mmu_movement_telemetry    import MovementTelemetry
 from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -60,6 +61,7 @@ class MmuController(MmuFilamentMovement):
         self.mmu_machine = mmu_machine
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.movement_telemetry = MovementTelemetry(self.reactor)
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
@@ -3494,7 +3496,7 @@ class MmuController(MmuFilamentMovement):
             return
 
         drive.mmu_gear_stepper.do_enable(False)
-        self.log_stepper("Type-B idle gear stepper for gate %d disabled" % gate)
+        self.log_trace("Type-B idle gear stepper for gate %d disabled" % gate)
 
 
     def disable_all_idle_gear_steppers(self):
@@ -3507,7 +3509,7 @@ class MmuController(MmuFilamentMovement):
                     drive.mmu_gear_stepper.do_enable(False)
                     disabled_any = True
         if disabled_any:
-            self.log_stepper("All type-B idle gear steppers de-energized")
+            self.log_trace("All type-B idle gear steppers de-energized")
 
 
     def _random_failure(self):

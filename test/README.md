@@ -595,11 +595,12 @@ next refresh, but their events remain available for replay.
 
 **Previous**, **Next** and the timeline inspect captured state without rewinding
 Happy Hare itself. **Jump to latest** skips the animation backlog and resumes live playback.
-Playback uses resolved movement speed independently of console pacing. Fast
-Bowden transfers shorten their playback time in proportion to the compressed
-path drawing; homing and extruder moves retain distance/speed timing. The trace
-shows actual speed and marks compressed transfers. Very short moves have a
-120 ms visibility minimum. Acceleration is not reproduced by the linear playback.
+Playback uses the resolved feed speed in the source telemetry, independently of
+console pacing. Bowden time compression is off by default: the path is drawn
+shorter but takes distance/speed time. The optional compression checkbox shortens
+fast transfers in proportion to the drawing. The trace shows feed speed and marks
+compressed transfers. Very short moves have a 120 ms visibility minimum.
+Acceleration is recorded but is not reproduced by the linear playback.
 
 Ordinary presence sensors switch as the interpolated filament crosses their
 location. Recorded states are authoritative at movement endpoints; disabled or
@@ -628,6 +629,80 @@ suites. Browser verification should exercise a runtime edit, paced loading,
 inspection while new events arrive, returning to live, profile restart and config
 upload. The web API remains a local development tool, not a public service.
 
+### Structured movement telemetry
+
+Happy Hare emits structured records directly in `move_filament()`, beside the
+existing STEPPER messages, after resolving speed/acceleration and gate overrides.
+The stream is independent of the selected log level and works without the viewer.
+The text STEPPER log remains enabled as before for comparison.
+
+Capture a JSON object per line while running the console:
+
+```bash
+make console ARGS='--profile boxturtle --telemetry /tmp/hh-motion.jsonl'
+```
+
+The file is append-only across profile restarts; each boot has a distinct session
+ID. `--no-serve` and `--no-log` do not disable this explicitly requested capture.
+The optional local file sink writes on the console thread. Future live-server
+consumers should subscribe through `mmu.movement_telemetry.subscribe(callback)`
+and enqueue data without blocking the printer thread. The returned function
+unsubscribes. A failing subscriber is detached and logged without aborting motion.
+
+Every record has `schema: happy_hare.motion`, `version: 1`, `session_id`,
+`sequence`, `move_id`, `event` and a reactor-monotonic `timestamp` in seconds.
+Pair records by session and move ID, not by adjacent lines:
+
+- `movement_start`: source/label, unit/gate, motor mode and stepper names,
+  signed requested distance (`requested_mm`), resolved feed speed (`speed_mm_s`),
+  acceleration (`acceleration_mm_s2`, null for toolhead-managed acceleration),
+  drive position/reference, homing endstop/trigger state, wait flag and sensor
+  observations. Speed is a commanded setpoint, not instantaneous measured speed.
+- `movement_outcome`: controller-reported `actual_mm`, end drive position,
+  `homed`, encoder-measured travel and discrepancy, sensor observations,
+  `elapsed_s`, error and status. Status distinguishes `submitted` from
+  `completed` (homing or drained queue), `not_homed`, `error` and `incomplete`.
+  Exceptional exits always close an emitted start; unavailable results are null.
+  Rejected requests that never reach movement dispatch do not emit a start.
+
+State records share the same versioned stream and sequence numbers:
+
+- `drive_sync_requested` and `drive_sync_decision` report synchronization intent
+  and the resolved policy decision. `drive_sync_changed` reports a successful
+  drive mode change, with previous/new numeric modes and names and drive identity.
+  Repeating the current mode does not emit another change.
+- `espooler_pwm_requested` reports the operation and normalized/scaled PWM or
+  digital value. `espooler_pin_scheduled` records pin requests and estimated
+  print time; `espooler_pin_submitted` records actual pin API submissions with
+  their scheduled print time. Submission is not confirmation from the hardware.
+  Unchanged pin values do not produce another submission record.
+
+State records carry the active `move_id` when emitted inside a started movement,
+otherwise null. They do not open or close movement pairs. The viewer retains them
+in its raw telemetry export without creating extra animation steps. Idle gear
+stepper disable messages use TRACE rather than STEPPER.
+
+`elapsed_s` measures time between source callbacks, including waits and simulator
+pacing; it is not a physical motion-duration measurement. Drive travel is not proof
+of physical filament movement, and a submitted move is not proof of completion.
+Encoder travel is reported separately for that reason. Origin changes are not
+filament travel; before/after drive positions share the stated reference.
+
+The viewer consumes these pairs and adds its own simulated geometry snapshots.
+It no longer intercepts `move_filament()` or infers its speed from nested calls.
+**Save motion telemetry** downloads the bounded source records as JSONL;
+`/sim/viewer/telemetry?after=<sequence>` exposes the same stream. **Save trace**
+also includes the pairs alongside simulated geometry. These are separate formats.
+
+Coverage currently includes moves dispatched through `move_filament()`. Direct
+selector, G-code/toolhead and modeled macro moves still use explicitly labeled
+harness fallbacks in the viewer; those are not included in the source JSONL stream.
+Audit selector movement and any remaining STEPPER categories before removing
+the STEPPER log level. Importing
+real-server captures into the viewer remains future work.
+
+Tests: `make test UT=test_mmu_movement_telemetry.py` and
+`node --test test/hh/viewer/playback.test.mjs`, plus the viewer and movement suites.
 
 ### Driving a real Mainsail or Fluidd — the web API
 
