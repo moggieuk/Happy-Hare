@@ -587,15 +587,25 @@ existing geometry and material model; this is not a physical melt simulation.
 Most macro bodies retain the harness's recorded-only behavior described below.
 
 The trace records simulated gear/extruder and selector travel, filament movement,
-state changes and browser parameter edits. Motion events are captured during
-execution; HTTP polling reads immutable snapshots without waiting for the command
+state changes and browser parameter edits. Logical movement records are published when each move completes, with start/end
+states, actual travel and homing outcome. The viewer queues and interpolates them; HTTP polling reads immutable snapshots without waiting for the command
 to return or entering the reactor from a server thread. Pacing (`--pace`) makes
 long moves easier to follow. Instant operations can finish before the browser's
 next refresh, but their events remain available for replay.
 
 **Previous**, **Next** and the timeline inspect captured state without rewinding
-Happy Hare itself. **Return to live** resumes following execution. Capture is
-bounded to the latest 3,000 events. **Save trace** exports version-1 JSON with a
+Happy Hare itself. **Jump to latest** skips the animation backlog and resumes live playback.
+Playback uses resolved movement speed independently of console pacing. Fast
+Bowden transfers shorten their playback time in proportion to the compressed
+path drawing; homing and extruder moves retain distance/speed timing. The trace
+shows actual speed and marks compressed transfers. Very short moves have a
+120 ms visibility minimum. Acceleration is not reproduced by the linear playback.
+
+Ordinary presence sensors switch as the interpolated filament crosses their
+location. Recorded states are authoritative at movement endpoints; disabled or
+overridden sensors are not inferred from geometry. Buffer switches use captured
+buffer travel, and encoder values interpolate measured readings. Capture is
+bounded to the latest 3,000 events. **Save trace** exports version-2 JSON with a
 session identifier, sequence numbers, virtual timestamps and state snapshots.
 It is a first simulator telemetry format, not yet a real-printer log importer.
 

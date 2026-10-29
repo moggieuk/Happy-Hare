@@ -246,11 +246,11 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
-        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/app.js', '/sim/viewer/style.css'):
-            filename = {'/sim/viewer/app.js': 'app.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
+        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js'):
+            filename = {'/sim/viewer/app.js': 'app.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
             data = (pathlib.Path(__file__).parent / 'viewer' / filename).read_bytes()
             handler.send_response(200)
-            handler.send_header('Content-Type', {'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
+            handler.send_header('Content-Type', {'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
             handler.send_header('Content-Length', str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)

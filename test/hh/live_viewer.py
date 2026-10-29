@@ -7,6 +7,8 @@ console is inside a command. They never execute commands or enter the reactor.
 """
 import collections
 import math
+import inspect
+import functools
 import threading
 import uuid
 
@@ -33,12 +35,77 @@ class LiveViewer:
         self.sequence = 0
         self.latest = None
         self.motors = {}
+        self.depth = 0
+        self.wrapped = []
         self.model.observers.append(self.on_filament)
         session.printer.harness_stepper_observer = self.on_stepper
         session.printer.harness_drive_observer = self.on_drive
+        self.wrap(session.mmu, 'move_filament', True)
+        self.wrap(session.printer.lookup_object('toolhead'), 'move')
+        effects = getattr(session.printer, 'harness_macro_effects', {})
+        for name, effect in list(effects.items()):
+            if getattr(effect, '__name__', '') == '_effect_form_tip':
+                self.wrap(effects, name)
+        for name, obj in session.printer.objects.items():
+            if name.startswith('mmu_stepper '):
+                for method in ('do_move', 'do_homing_move', 'do_background_move'):
+                    self.wrap(obj, method)
         self.capture('session', 'Simulator ready')
 
+    def wrap(self, owner, method, filament=False):
+        original = owner.get(method) if isinstance(owner, dict) else getattr(owner, method, None)
+        if original is None:
+            return
+        signature = inspect.signature(original)
+        @functools.wraps(original)
+        def movement(*args, **kwargs):
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+            values = bound.arguments
+            if self.depth:
+                if values.get('speed') is not None and values['speed'] > 0:
+                    self.resolved_speed = values['speed']
+                return original(*args, **kwargs)
+            self.resolved_speed = values.get('speed')
+            before, start = self.snapshot(), self.hh.reactor.monotonic()
+            label = values.get('trace_str', method.replace('_', ' '))
+            result, error = None, None
+            self.depth += 1
+            try:
+                result = original(*args, **kwargs)
+                return result
+            except Exception as exc:
+                error = str(exc)
+                raise
+            finally:
+                self.depth -= 1
+                after = self.snapshot()
+                motors = {name: value-before['motors'].get(name, 0.)
+                          for name, value in after['motors'].items()
+                          if value != before['motors'].get(name, 0.)}
+                actual = result[0] if filament and result is not None else None
+                self.capture('movement', label, before=before,
+                    duration=max(0., self.hh.reactor.monotonic()-start),
+                    requested=values.get('dist'), distance=actual,
+                    speed=self.resolved_speed, motors=motors,
+                    fast_bowden=label in ('Fast loading move through bowden', 'Fast unloading move through bowden'),
+                    homing=values.get('homing_move', method == 'do_homing_move'),
+                    endstop=values.get('endstop_name'),
+                    homed=bool(result[1]) if filament and result is not None else None,
+                    error=error)
+        self.wrapped.append((owner, method, original))
+        if isinstance(owner, dict):
+            owner[method] = movement
+        else:
+            setattr(owner, method, movement)
+
     def close(self):
+        for owner, method, original in reversed(self.wrapped):
+            if isinstance(owner, dict):
+                owner[method] = original
+            else:
+                setattr(owner, method, original)
+        self.wrapped.clear()
         if self.on_filament in self.model.observers:
             self.model.observers.remove(self.on_filament)
         self.hh.printer.harness_stepper_observer = None
@@ -47,6 +114,9 @@ class LiveViewer:
     def snapshot(self):
         hh, model = self.hh, self.model
         sensors = hh.mmu.sensor_manager.get_sensor_states(all_sensors=True)
+        selected_sensors = hh.mmu.sensor_manager.get_sensor_states(unit=hh.mmu.mmu_unit().unit_index)
+        selected_objects = {id(sensor) for _, sensor in selected_sensors.values()}
+        unit_sensor_names = [name for name, (_, sensor) in sensors.items() if id(sensor) in selected_objects]
         devices = {}
         for name, obj in hh.printer.objects.items():
             if ('encoder' in name or 'buffer' in name) and hasattr(obj, 'get_status'):
@@ -69,18 +139,20 @@ class LiveViewer:
                         else:
                             status = dict(value=None, spring=obj.buffer_spring_state)
                     devices[unit.name + ':' + kind] = status
-        return plain(dict(unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
+        return plain(dict(unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=model.layout.copy(), motors=self.motors.copy(),
             sensors={name: {'state': state[0], 'position': model.position(name)}
                      for name, state in sensors.items()}, devices=devices))
 
     def capture(self, kind, label, **details):
+        if self.depth:
+            return
         state = self.snapshot()
         with self.lock:
             if kind == 'state' and state == self.latest:
                 return
             self.sequence += 1
-            event = dict(version=1, session=self.session_id, seq=self.sequence,
+            event = dict(version=2, session=self.session_id, seq=self.sequence,
                          time=self.hh.reactor.monotonic(), kind=kind, label=label,
                          state=state, **plain(details))
             self.events.append(event)
@@ -118,7 +190,7 @@ class LiveViewer:
 
     def read(self, after=0):
         with self.lock:
-            return {'version': 1, 'session': self.session_id, 'latest': self.latest,
+            return {'version': 2, 'session': self.session_id, 'latest': self.latest,
                     'first': self.events[0]['seq'] if self.events else 0,
                     'events': [e for e in self.events if e['seq'] > after]}
 
