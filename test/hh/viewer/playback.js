@@ -31,12 +31,12 @@ export function interpolate(event, fraction) {
   }
   return s;
 }
-export function duration(event) {
+export function duration(event, compressBowden = false) {
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
   // Use resolved feed speed, not console pacing or time spent waiting for sensors.
   let seconds = event.speed > 0 && travel > 0 ? travel/event.speed : event.duration || travel/100;
-  if (event.fast_bowden && !event.homing && event.before && travel > 0) {
+  if (compressBowden && event.fast_bowden && !event.homing && event.before && travel > 0) {
     const a=event.before, b=event.state, entry=a.layout.extruder_entry ?? 700;
     const extruderSpan=(a.layout.toolhead ?? 760)+30-entry;
     // Match the diagram's 56% transport / 27% extruder path proportions.

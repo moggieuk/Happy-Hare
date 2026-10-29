@@ -134,6 +134,10 @@ class MmuDrive():
             self._driving_stepper = self.mmu_extruder_stepper
 
         self._sync_mode = mode
+        self.mmu.movement_telemetry.state('drive_sync_changed',
+            unit=self.mmu_unit.name, drive=self.name,
+            previous_mode=prev_mode, previous_mode_name=DRIVE_MODE_NAMES[prev_mode],
+            mode=mode, mode_name=DRIVE_MODE_NAMES[mode])
 
         # Send correct sync event
         if mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
