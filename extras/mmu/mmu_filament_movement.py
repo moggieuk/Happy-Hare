@@ -1909,10 +1909,11 @@ class MmuFilamentMovement:
                     )
 
             # Length may be reduced by previous unload in filament cutting use
-            # case. Ensure reduction is used only one time. Stops short by the park
-            # retraction only if restoring the toolhead position will undo it, else
-            # the load takes it up
-            retracted = self.park_retracted_length() if self.saved_toolhead_operation else 0.
+            # case. Ensure reduction is used only one time. In a print, stops short by
+            # the park retraction that restoring the toolhead position will undo, else
+            # fills the nozzle and takes it up
+            unretract_on_restore = self.saved_toolhead_operation and self._in_print()
+            retracted = self.park_retracted_length() if unretract_on_restore else 0.
             d = (
                 u.toolhead_wrapper.p.toolhead_sensor_to_nozzle
                 if has_toolhead
@@ -1970,7 +1971,7 @@ class MmuFilamentMovement:
                 else UNKNOWN_FILAMENT_COLOR
             )
             u.extruder_wrapper.set_filament_remaining(0., color)
-            if not self.saved_toolhead_operation:
+            if not unretract_on_restore:
                 self._set_park_retracted_length(0.)
                 self._persist_park_retraction()
 
@@ -2765,6 +2766,10 @@ class MmuFilamentMovement:
                                 self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
+
+            # Outside a print the load ends retracted to reduce ooze
+            if not skip_extruder and not self._in_print():
+                self._retract_after_standalone_load()
 
             # After purging, including any purge in the post-load macro
             if not skip_extruder:

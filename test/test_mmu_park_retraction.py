@@ -1,8 +1,10 @@
 # Happy Hare test harness - the park retraction is tracked through load, restore and cut.
 #
-# A load stops short by the retraction _MMU_PARK made, which restoring the toolhead position then
-# undoes, so the nozzle is full after any load. The cut fragment is worked out from the same
-# retraction, so it is exact however the nozzle was left before the cut.
+# In a print a load stops short by the retraction _MMU_PARK made, which restoring the toolhead
+# position then undoes, so printing resumes with a full nozzle. Outside a print a load fills the
+# nozzle, purges, then retracts the configured toolchange retraction and leaves it in place to
+# reduce ooze. The cut fragment is worked out from the recorded retraction, so it is exact however
+# the nozzle was left before the cut.
 #
 # The park, retract, restore and cut macros run for real. The fake gcode_move ignores E, so a
 # ledger moves the extruder stepper by each G1 E and tracks how far the filament is short of a
@@ -152,6 +154,17 @@ class ParkRetractionTestCase(unittest.TestCase):
         self.assert_shortfall(0.)
         self.assertEqual(self.retracted(), 0)
 
+    def assert_load_retracted(self):
+        # The standalone load's final retraction, recorded and saved
+        retract = self.mmu.toolchange_retract
+        self.assert_shortfall(retract)
+        self.assertEqual(self.retracted(), retract)
+        self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, retract)
+
+    def print_start(self):
+        self.gcode('MMU_PRINT_START')
+        self.gcode('G1 E10') # The start gcode's prime line
+
     def assert_fragment_exact(self):
         blade_pos = float(self.mmu.cut_tip_vars()['blade_pos'])
         true = blade_pos - self.toolhead.toolhead_residual_filament - self.cut_shortfall
@@ -160,35 +173,58 @@ class ParkRetractionTestCase(unittest.TestCase):
 
 class TestParkRetraction(ParkRetractionTestCase):
 
-    def test_standalone_load_fills_the_nozzle(self):
+    def test_standalone_load_ends_retracted(self):
+        # Restoring the toolhead position leaves the retraction in place
         self.no_purge()
         self.gcode('MMU_LOAD')
-        self.assert_nozzle_full()
+        self.assert_load_retracted()
+
+    def test_standalone_purged_load_ends_retracted_once(self):
+        # The purge runs on a full nozzle, and only the final retraction is left
+        purged = []
+        effects = self.hh.printer.harness_macro_effects
+        purge = effects[self.mmu.p.purge_macro]
+        effects[self.mmu.p.purge_macro] = lambda macro, gcmd: (purged.append(self.shortfall), purge(macro, gcmd))
+        self.gcode('MMU_LOAD')
+        self.assertEqual(purged, [0.])
+        self.assert_load_retracted()
+
+    def test_standalone_toolchange_ends_retracted(self):
+        self.gcode('MMU_LOAD')
+        self.gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assert_fragment_exact()
+        self.assert_load_retracted()
 
     def test_unload_after_standalone_load_records_the_true_fragment(self):
-        # The park retract before the cut is on top of whatever the load left
+        # The park doesn't retract again on top of the load's final retraction
         self.no_purge()
         self.gcode('MMU_LOAD')
         self.gcode('MMU_UNLOAD')
+        self.assertEqual(self.cut_retracted, self.mmu.toolchange_retract)
         self.assert_fragment_exact()
 
     def test_test_form_tip_after_purged_load_records_the_true_fragment(self):
-        # Nothing is retracted before MMU_TEST_FORM_TIP
         self.gcode('MMU_LOAD')
         self.gcode('MMU_TEST_FORM_TIP')
         self.assert_fragment_exact()
 
     def test_print_end_retraction_is_kept_for_the_next_cut(self):
         self.gcode('MMU_LOAD')
-        self.gcode('MMU_PRINT_START')
+        self.print_start()
         self.gcode('MMU_PRINT_END')
         self.assertGreater(self.retracted(), 0)
         self.gcode('MMU_UNLOAD')
         self.assert_fragment_exact()
 
-    def test_retraction_survives_a_restart(self):
+    def test_standalone_load_retraction_survives_a_restart(self):
         self.gcode('MMU_LOAD')
-        self.gcode('MMU_PRINT_START')
+        self.restart()
+        self.assertEqual(self.retracted(), self.mmu.toolchange_retract)
+        self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, self.mmu.toolchange_retract)
+
+    def test_print_end_retraction_survives_a_restart(self):
+        self.gcode('MMU_LOAD')
+        self.print_start()
         self.gcode('MMU_PRINT_END')
         retracted = self.retracted()
         self.restart()
@@ -199,21 +235,18 @@ class TestParkRetraction(ParkRetractionTestCase):
         # The start gcode is assumed to prime the nozzle
         self.gcode('MMU_LOAD')
         self.gcode('MMU_PRINT_START')
-        self.gcode('MMU_PRINT_END')
-        self.gcode('MMU_PRINT_START')
         self.assertEqual(self.retracted(), 0)
         self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
 
-    def test_load_without_a_saved_position_fills_the_nozzle(self):
-        # Nothing parks or restores while XYZ isn't homed, so nothing would un-retract
+    def test_load_without_a_saved_position_ends_retracted(self):
+        # Nothing parks or restores while XYZ isn't homed
         self.gcode('MMU_LOAD')
         self.gcode('MMU_UNLOAD')
-        self.assertGreater(self.retracted(), 0)
         get_status = self.mmu.toolhead.get_status
         with mock.patch.object(self.mmu.toolhead, 'get_status',
                                side_effect=lambda *a: dict(get_status(*a), homed_axes='')):
             self.gcode('MMU_LOAD')
-        self.assert_nozzle_full()
+        self.assert_load_retracted()
 
     def test_park_macro_wrapper_toolchange_is_exact(self):
         self.mmu.p.park_macro = 'MY_PARK'
@@ -236,15 +269,13 @@ class TestParkRetraction(ParkRetractionTestCase):
         self.assert_fragment_exact()
         self.assert_shortfall(0.)
 
-    def test_extruder_only_load_records_the_retraction_it_takes_up(self):
-        # No park or restore, so the load fills the nozzle
+    def test_extruder_only_load_ends_retracted(self):
+        # No park or restore
         self.gcode('MMU_LOAD')
         self.gcode('MMU_UNLOAD')
-        self.assertGreater(self.retracted(), 0)
         self.hh.place_filament(0, position=self.hh.filament().layout['extruder_entry'] - 5.)
         self.gcode('MMU_LOAD EXTRUDER_ONLY=1')
-        self.assert_nozzle_full()
-        self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
+        self.assert_load_retracted()
 
     def test_print_toolchange_is_exact(self):
         self.gcode('MMU_LOAD')

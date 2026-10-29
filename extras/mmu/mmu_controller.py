@@ -559,6 +559,33 @@ class MmuController(MmuFilamentMovement):
             park_macro.variables = dict(park_macro.variables, retracted_length=length)
 
 
+    def _in_print(self):
+        """
+        Starting, printing or paused, when a load must end with a full nozzle
+        """
+        return self.is_printing() or self.is_in_print()
+
+
+    def _retract_after_standalone_load(self):
+        """
+        Outside a print a load ends with the configured toolchange retraction, left in place to reduce ooze
+        """
+        length = self.toolchange_retract
+        if length <= 0 or not self.toolhead.get_extruder().get_heater().can_extrude:
+            return
+        sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+        speed = float(sequence_vars.variables.get('retract_speed', 30)) if sequence_vars else 30.
+        self.log_info("Retracting %.1fmm to reduce ooze" % length)
+        self.gcode.run_script_from_command(
+            "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
+            "M83\n"
+            "G1 E-%.2f F%d\n"
+            "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (length, speed * 60)
+        )
+        self._set_park_retracted_length(length)
+        self._persist_park_retraction()
+
+
     def _persist_park_retraction(self):
         """
         Record the retraction the macros left with the active toolhead
@@ -2853,7 +2880,8 @@ class MmuController(MmuFilamentMovement):
             # Note: if user calls BASE_RESUME, print will restart but from incorrect position that could be restored later!
             if not self.is_paused() or operation == "resume":
                 # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final unload and perhaps initial load)
-                restore_macro = "%s RESTORE=%d" % (self.p.restore_position_macro, int(restore))
+                # Outside a print the retraction a load ends with is left in place
+                restore_macro = "%s RESTORE=%d UNRETRACT=%d" % (self.p.restore_position_macro, int(restore), int(self._in_print()))
                 # Restore macro position and clear saved
                 self.wrap_gcode_command(restore_macro) # Restore macro position and clear saved
 
