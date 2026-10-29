@@ -26,6 +26,11 @@ import hashlib
 import http.server
 import json
 import queue
+import pathlib
+import tempfile
+import re
+
+from test.hh.live_viewer import LiveViewer
 import socket
 import struct
 import sys
@@ -151,6 +156,10 @@ class WebUiBridge:
         self.started = time.time()
         self._next_status = 0.0
         self._server = None
+        self.viewer = LiveViewer(session)
+        self.restart_profile = None
+        self.profile_name = ""
+        self.uploads = tempfile.TemporaryDirectory(prefix="hh-viewer-")
 
     # -- lifecycle -------------------------------------------------------------
     def start(self):
@@ -183,12 +192,19 @@ class WebUiBridge:
                 self.send_header('Access-Control-Allow-Headers', '*')
                 self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
 
-        self._server = _Server((self.host, self.port), Handler)
+        try:
+            self._server = _Server((self.host, self.port), Handler)
+        except OSError:
+            self.viewer.close()
+            self.uploads.cleanup()
+            raise
         self.port = self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         return self
 
     def close(self):
+        self.viewer.close()
+        self.uploads.cleanup()
         for conn in list(self.clients):
             conn.close()
         if self._server is not None:
@@ -230,6 +246,28 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
+        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/app.js', '/sim/viewer/style.css'):
+            filename = {'/sim/viewer/app.js': 'app.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
+            data = (pathlib.Path(__file__).parent / 'viewer' / filename).read_bytes()
+            handler.send_response(200)
+            handler.send_header('Content-Type', {'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
+            handler.send_header('Content-Length', str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
+            return
+        if parsed.path == '/sim/viewer/events':
+            try:
+                after = int(params.get('after', 0))
+            except (TypeError, ValueError):
+                after = 0
+            data = json.dumps({'result': self.viewer.read(after)}, allow_nan=False).encode()
+            handler.send_response(200)
+            handler.send_header('Content-Type', 'application/json')
+            handler.send_header('Cache-Control', 'no-store')
+            handler.send_header('Content-Length', str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
+            return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':
             method = 'server.database.get_item' if body is None else 'server.database.post_item'
@@ -269,6 +307,7 @@ class WebUiBridge:
             except queue.Empty:
                 break
             self._handle(conn, text, waiter)
+        self.viewer.capture('state', 'State changed')
         now = time.monotonic()
         if self.clients and now >= self._next_status:
             self._next_status = now + STATUS_PERIOD
@@ -488,3 +527,64 @@ class WebUiBridge:
         raise RpcError('Not available in the simulator')
 
     rpc_printer_restart = rpc_printer_emergency_stop = rpc_printer_firmware_restart
+
+    def rpc_sim_viewer_setup(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        units = self.session.mmu.mmu_machine.units
+        index = int(params.get('unit', 0))
+        if not 0 <= index < len(units):
+            raise RpcError('Unknown MMU unit')
+        return dict(profile=self.profile_name,
+                    profiles=[dict(name=p.name, description=p.description) for p in CONSOLE_PROFILES],
+                    units=[u.name for u in units], parameters=self.viewer.parameters(index))
+
+    def rpc_sim_viewer_configure(self, conn, params):
+        index = int(params.get('unit', 0))
+        available = {p['name'] for p in self.rpc_sim_viewer_setup(conn, {'unit':index})['parameters']}
+        name, value = params.get('name'), str(params.get('value', ''))
+        if name not in available:
+            raise RpcError('Parameter is not available through MMU_TEST_CONFIG')
+        if any(c in value for c in '\r\n;'):
+            raise RpcError('Enter one parameter value')
+        # JSON string quoting prevents a value from becoming another command or option.
+        command = 'MMU_TEST_CONFIG UNIT=%d %s=%s' % (index, name.upper(), json.dumps(value))
+        errors_before = len(self.session.errors)
+        self.run_gcode(command)
+        if len(self.session.errors) > errors_before:
+            raise RpcError('; '.join(self.session.errors[errors_before:]))
+        self.viewer.capture('config', command)
+        return self.rpc_sim_viewer_setup(conn, {'unit':index})
+
+    def rpc_sim_viewer_restart(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        if self.restart_profile is None:
+            raise RpcError('Profile restart requires the interactive console')
+        profile = params.get('profile')
+        if 'files' in params:
+            files = params['files']
+            if not isinstance(files, list) or not files or len(files) > 500:
+                raise RpcError('Supply a configuration directory with at most 500 files')
+            root = pathlib.Path(tempfile.mkdtemp(dir=self.uploads.name))
+            total = 0
+            for item in files:
+                name, text = item['name'], item['text']
+                path = pathlib.PurePosixPath(name)
+                if path.is_absolute() or '..' in path.parts or not name.endswith('.cfg'):
+                    raise RpcError('Supply relative .cfg filenames')
+                total += len(text.encode())
+                if total > 5_000_000:
+                    raise RpcError('Configuration upload exceeds 5 MB')
+                for inc in re.findall(r'(?im)^\s*\[include\s+([^]]+)\]', text):
+                    if pathlib.PurePosixPath(inc).is_absolute() or '..' in pathlib.PurePosixPath(inc).parts:
+                        raise RpcError('Includes must stay within the uploaded configuration')
+                target = root / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text)
+            roots = list(root.rglob('printer.cfg'))
+            if len(roots) != 1:
+                raise RpcError('Upload a directory containing one printer.cfg and its mmu directory')
+            profile = str(roots[0].parent)
+        elif profile not in {p.name for p in CONSOLE_PROFILES}:
+            raise RpcError('Choose an available simulator profile')
+        self.restart_profile(profile)
+        return {'profile': self.profile_name}

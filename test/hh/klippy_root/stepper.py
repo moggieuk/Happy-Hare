@@ -151,6 +151,10 @@ class MCU_stepper:
         make everything that reads get_commanded_position() disagree with Happy Hare.
         """
         self._mcu_position_offset += distance
+        printer = self._mcu.get_printer() if self._mcu is not None else None
+        observer = getattr(printer, 'harness_stepper_observer', None)
+        if observer is not None:
+            observer(self._name, distance)
 
     def get_commanded_position(self):
         return self._commanded_pos
