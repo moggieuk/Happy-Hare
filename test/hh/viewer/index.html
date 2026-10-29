@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Happy Hare · Live simulator</title>
+    <link rel="stylesheet" href="/sim/viewer/style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <small>HAPPY HARE / CONSOLE</small>
+        <h1>Live simulator</h1>
+      </div>
+      <span id="connection">Connecting…</span>
+    </header>
+    <main>
+      <aside>
+        <h2>Simulator setup</h2>
+        <label>Profile<select id="profiles"></select></label
+        ><button id="restart">Restart with profile</button
+        ><label
+          >Or load a configuration directory<input
+            id="files"
+            type="file"
+            webkitdirectory
+            multiple
+        /></label>
+        <p class="note">
+          A profile change starts a fresh session. Hardware comes from the
+          profile. Uploaded files are copied to temporary storage; your
+          originals stay unchanged.
+        </p>
+        <p id="profile"></p>
+        <h2>Runtime parameters</h2>
+        <label>MMU unit<select id="unit"></select></label
+        ><input
+          id="filter"
+          placeholder="Find a parameter"
+          aria-label="Find a parameter"
+        /><label>Parameter<select id="parameter"></select></label
+        ><label>Value<input id="value" /></label
+        ><button id="apply">Apply MMU_TEST_CONFIG</button>
+        <p class="note">
+          Uses the command’s own validation and runtime guards. Changes are
+          temporary.
+        </p>
+        <hr />
+        <label>Console command<input id="command" value="MMU_LOAD" /></label
+        ><button id="send">Run command</button>
+        <p id="message" role="status"></p>
+      </aside>
+      <section>
+        <div class="card">
+          <div class="heading">
+            <h2 id="mode">Live</h2>
+            <span id="position"></span>
+          </div>
+          <svg
+            id="scene"
+            viewBox="0 0 800 520"
+            role="img"
+            aria-label="Filament path from MMU through Bowden to extruder"
+          ></svg>
+          <p class="note">
+            Schematic path; distances and device states come from the harness.
+            Macro bodies retain the console’s existing execution support.
+          </p>
+          <div id="sensors"></div>
+          <div id="devices"></div>
+        </div>
+        <div class="controls">
+          <button id="previous">Previous</button><button id="next">Next</button
+          ><button id="live">Return to live</button
+          ><button id="save">Save trace</button
+          ><input
+            id="timeline"
+            aria-label="Trace position"
+            type="range"
+            min="0"
+            max="0"
+            value="0"
+          />
+        </div>
+        <div class="card">
+          <h2>Movement trace</h2>
+          <p class="note">
+            Replay inspects history without rewinding the running simulator. The
+            latest 3,000 events are retained; a restart begins a new capture.
+          </p>
+          <div id="trace" role="log"></div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/sim/viewer/app.js"></script>
+  </body>
+</html>

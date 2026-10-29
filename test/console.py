@@ -655,6 +655,32 @@ class Console:
         if self.bridge is None:
             return
         self.bridge_error = None
+        self.bridge.restart_profile = self._restart_for_viewer
+        self.bridge.profile_name = str(self.args.profile)
+
+    def _restart_for_viewer(self, profile):
+        bridge, previous = self.bridge, self.args.profile
+        no_serve = self.args.no_serve
+        bridge.viewer.close()
+        self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
+        self.args.no_serve = True
+        self.args.profile = profile
+        try:
+            try:
+                self._meta_reset([])
+            except Exception:
+                self.args.profile = previous
+                self._meta_reset([])
+                raise
+        finally:
+            self.args.no_serve = no_serve
+            self.bridge = bridge
+            bridge.session = self.hh
+            from test.hh.live_viewer import LiveViewer
+            bridge.viewer = LiveViewer(self.hh)
+            bridge.profile_name = str(self.args.profile)
+            bridge.last_sent.clear()
+            self._install_pace_observer()
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""
@@ -663,6 +689,7 @@ class Console:
         port = self.bridge.port
         return ['Web API (for Mainsail/Fluidd): host 127.0.0.1  port %d  (http://127.0.0.1:%d)'
                 % (port, port),
+                'Live viewer: http://127.0.0.1:%d/sim/viewer/' % port,
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):

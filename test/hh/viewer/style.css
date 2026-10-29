@@ -1,0 +1,172 @@
+/* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
+:root {
+  font-family: system-ui, sans-serif;
+  color: #25364a;
+  background: #f1f4f7;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header {
+  max-width: 1400px;
+  margin: auto;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+header small {
+  letter-spacing: 2px;
+  color: #9b436f;
+}
+h1 {
+  margin: 6px 0;
+}
+h2 {
+  font-size: 18px;
+}
+main {
+  max-width: 1400px;
+  margin: auto;
+  padding: 0 24px 30px;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 24px;
+}
+aside,
+.card {
+  background: white;
+  border: 1px solid #dae2e9;
+  border-radius: 12px;
+  padding: 22px;
+}
+aside {
+  align-self: start;
+}
+label {
+  display: block;
+  font-size: 13px;
+  margin: 16px 0 8px;
+}
+input,
+select {
+  width: 100%;
+  padding: 9px;
+  border: 1px solid #bac9d7;
+  border-radius: 5px;
+  color: inherit;
+  background: white;
+  margin-top: 6px;
+}
+button {
+  background: #293f59;
+  color: white;
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  margin: 8px 0;
+  font-weight: 600;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+.note {
+  font-size: 12px;
+  color: #67788b;
+  line-height: 1.5;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+#position {
+  font-size: 13px;
+}
+svg {
+  width: 100%;
+  max-height: 540px;
+}
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+.controls input {
+  width: 100%;
+  accent-color: #63778a;
+}
+#trace {
+  height: 300px;
+  overflow: auto;
+}
+#trace button {
+  display: block;
+  text-align: left;
+  background: #f1f5f8;
+  color: #263a50;
+  width: 100%;
+  font-weight: 400;
+  margin: 2px 0;
+  font-size: 12px;
+}
+#trace button.selected {
+  background: #d5e8ec;
+}
+#sensors,
+#devices {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.chip {
+  font-size: 11px;
+  border: 1px solid #cad5df;
+  border-radius: 5px;
+  padding: 6px;
+}
+.on {
+  background: #e3f4e8;
+  border-color: #60a87c;
+}
+.error {
+  color: #b0294b;
+}
+#message {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+#profile {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid #cc5690;
+  outline-offset: 2px;
+}
+@media (max-width: 800px) {
+  main {
+    grid-template-columns: 1fr;
+    padding: 0 12px 24px;
+  }
+  header {
+    padding: 18px;
+  }
+  aside {
+    padding: 18px;
+  }
+}
+/* Allow long profile and parameter names to fit narrow screens. */
+aside, main > section { min-width: 0; }
+select, input { max-width: 100%; }
+.chip, #trace button { overflow-wrap: anywhere; max-width: 100%; }
+.heading { flex-wrap: wrap; gap: 8px; }

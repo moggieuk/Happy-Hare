@@ -502,6 +502,7 @@ Unit : ------------- unit0 -------------
 `#` and not `!`: `!! …` is already a command that raised and `?? …` one that does not
 exist, so a lone `!` would read as a quieter error rather than as a note.
 
+
 ### Playing a print job — `/print job`
 
 `/print job` plays a print from start to finish: Happy Hare's standard start sequence, the
@@ -571,6 +572,52 @@ reproducible run:
 echo '/print job' > /tmp/job.txt
 make console ARGS='--profile boxturtle --script /tmp/job.txt'
 ```
+
+### Integrated live viewer
+
+`make console` also serves a live visual viewer on the same local web API. Open
+`http://127.0.0.1:7125/sim/viewer/`, or use the address printed in the console
+banner if another port was selected. No separate server or JavaScript build is
+required. `--no-serve` disables both the viewer and the existing API.
+
+The diagram follows the console session, including commands typed at the terminal
+or sent from the browser. It shows the MMU and extruder gears, a compressed Bowden
+path, configured switches and encoder/buffer state. Positions follow the harness's
+existing geometry and material model; this is not a physical melt simulation.
+Most macro bodies retain the harness's recorded-only behavior described below.
+
+The trace records simulated gear/extruder and selector travel, filament movement,
+state changes and browser parameter edits. Motion events are captured during
+execution; HTTP polling reads immutable snapshots without waiting for the command
+to return or entering the reactor from a server thread. Pacing (`--pace`) makes
+long moves easier to follow. Instant operations can finish before the browser's
+next refresh, but their events remain available for replay.
+
+**Previous**, **Next** and the timeline inspect captured state without rewinding
+Happy Hare itself. **Return to live** resumes following execution. Capture is
+bounded to the latest 3,000 events. **Save trace** exports version-1 JSON with a
+session identifier, sequence numbers, virtual timestamps and state snapshots.
+It is a first simulator telemetry format, not yet a real-printer log importer.
+
+Runtime parameter choices come from the same parameter specifications and guards
+as `MMU_TEST_CONFIG`, including unit and calibration parameters where available.
+Edits are dispatched through that command, so its validation and change callbacks
+still apply. Hardware is not editable in this panel.
+
+Choose a built-in console profile and select **Restart with profile** to boot a
+fresh session. Alternatively, upload the installed configuration directory with
+one `printer.cfg` and its `mmu/` tree. This uses the existing installed-profile
+loader and its include ordering; it is not a new config interpreter. Files are
+copied to temporary storage, and the original files are never modified. As with
+`--profile`, saved variables are not imported. A failed boot attempts to restore
+the preceding profile to its initial state. Restart clears the capture and any
+runtime adjustments, so export the trace first if it is needed.
+
+Tests: `make test UT=test_mmu_live_viewer.py`, plus the console, web API and motion
+suites. Browser verification should exercise a runtime edit, paced loading,
+inspection while new events arrive, returning to live, profile restart and config
+upload. The web API remains a local development tool, not a public service.
+
 
 ### Driving a real Mainsail or Fluidd — the web API
 
