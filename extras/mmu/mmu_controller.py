@@ -290,6 +290,9 @@ class MmuController(MmuFilamentMovement):
     def _load_persisted_state(self):
         self.log_debug("Loading persisted MMU state")
 
+        # Retraction of the toolhead active before the selected gate is restored
+        self._set_park_retracted_length(self.mmu_unit().extruder_wrapper.retracted_length)
+
         # Load last tool
         self._last_tool = self.var_manager.get(VARS_MMU_LAST_TOOL, self._last_tool)
 
@@ -525,6 +528,75 @@ class MmuController(MmuFilamentMovement):
         return command.split()[0] if command else ""
 
 
+    def _park_state_macro(self):
+        """
+        The parking macro holding retracted_length: park_macro when it replaces _MMU_PARK, else _MMU_PARK,
+        including under a park_macro wrapper that delegates to it
+        """
+        for name in (self.p.park_macro, "_MMU_PARK"):
+            park_macro = self.printer.lookup_object("gcode_macro %s" % name, None)
+            if park_macro is not None and 'retracted_length' in park_macro.variables:
+                return park_macro
+        return None
+
+
+    def park_retracted_length(self):
+        """
+        Retraction the parking macro has made that restoring the toolhead position will undo (0 if none)
+        """
+        park_macro = self._park_state_macro()
+        if park_macro is None:
+            return 0.
+        return float(park_macro.variables.get('retracted_length', 0) or 0)
+
+
+    def _set_park_retracted_length(self, length):
+        """
+        Set the working copy of the active toolhead's retraction used by the macros
+        """
+        park_macro = self._park_state_macro()
+        if park_macro is not None:
+            park_macro.variables = dict(park_macro.variables, retracted_length=length)
+
+
+    def _in_print(self):
+        """
+        Starting, printing or paused, when a load must end with a full nozzle
+        """
+        return self.is_printing() or self.is_in_print()
+
+
+    def _retract_after_standalone_load(self):
+        """
+        Outside a print a load ends with the configured toolchange retraction, left in place to reduce ooze.
+        It is the final total, so any retraction the purge or post-load macro left is topped up or undone
+        """
+        retract = self.toolchange_retract
+        length = retract - self.park_retracted_length()
+        if abs(length) < 0.01 or not self.toolhead.get_extruder().get_heater().can_extrude:
+            self._persist_park_retraction() # Not every load restores the toolhead position afterwards
+            return
+        sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+        speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
+        speed = float(sequence_vars.variables.get(speed_var, 30)) if sequence_vars else 30.
+        self.log_info("%s %.1fmm to leave %.1fmm retracted" % ("Retracting" if length > 0 else "Un-retracting", abs(length), retract))
+        self.gcode.run_script_from_command(
+            "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
+            "M83\n"
+            "G1 E%.2f F%d\n"
+            "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
+        )
+        self._set_park_retracted_length(retract)
+        self._persist_park_retraction()
+
+
+    def _persist_park_retraction(self):
+        """
+        Record the retraction the macros left with the active toolhead
+        """
+        self.mmu_unit().extruder_wrapper.set_retracted_length(self.park_retracted_length())
+
+
     def cut_tip_vars(self):
         """
         Variables of the tip cutting macro's '<macro>_VARS', or None if it isn't a cutting macro with a blade_pos
@@ -562,9 +634,8 @@ class MmuController(MmuFilamentMovement):
         blade_pos = float(cut_vars['blade_pos'])
         # As _MMU_CUT_TIP limits it: to the retract left after what is already retracted
         if live:
-            park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None)
-            retracted = float(park_macro.variables.get('retracted_length', 0) or 0) if park_macro else 0.
-            retracted += u.extruder_wrapper.filament_remaining + toolhead.toolhead_residual_filament
+            retracted = (self.park_retracted_length() + u.extruder_wrapper.filament_remaining
+                         + toolhead.toolhead_residual_filament)
         else:
             retracted = toolhead.toolhead_residual_filament + self.toolchange_retract
         effective_retract = float(cut_vars.get('retract_length', 0)) - retracted
@@ -2738,6 +2809,7 @@ class MmuController(MmuFilamentMovement):
     def _clear_macro_state(self, reset=False):
         if self.printer.lookup_object('gcode_macro %s' % self.p.clear_position_macro, None) is not None:
             self.wrap_gcode_command("%s%s" % (self.p.clear_position_macro, " RESET=1" if reset else ""))
+        self._persist_park_retraction()
 
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
@@ -2796,6 +2868,7 @@ class MmuController(MmuFilamentMovement):
                 self.wrap_gcode_command(self.p.park_macro)
         else:
             self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
+        self._persist_park_retraction()
 
 
     def _restore_toolhead_position(self, operation, restore=True):
@@ -2811,7 +2884,8 @@ class MmuController(MmuFilamentMovement):
             # Note: if user calls BASE_RESUME, print will restart but from incorrect position that could be restored later!
             if not self.is_paused() or operation == "resume":
                 # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final unload and perhaps initial load)
-                restore_macro = "%s RESTORE=%d" % (self.p.restore_position_macro, int(restore))
+                # Outside a print the retraction a load ends with is left in place
+                restore_macro = "%s RESTORE=%d UNRETRACT=%d" % (self.p.restore_position_macro, int(restore), int(self._in_print()))
                 # Restore macro position and clear saved
                 self.wrap_gcode_command(restore_macro) # Restore macro position and clear saved
 
@@ -2844,6 +2918,7 @@ class MmuController(MmuFilamentMovement):
             # Ensure all saved state is cleared
             self._clear_macro_state()
             self._clear_saved_toolhead_position()
+        self._persist_park_retraction()
 
 
     def _clear_saved_toolhead_position(self):
@@ -3780,6 +3855,7 @@ class MmuController(MmuFilamentMovement):
         prev_gate = self.gate_selected
         if gate == prev_gate:
             return
+        prev_extruder = self.mmu_unit().extruder_wrapper
 
         # IMPORTANT: ---------------------------------------------------------
         # That this is the only block outside reinit() where gate_selected
@@ -3794,6 +3870,12 @@ class MmuController(MmuFilamentMovement):
 
         new_unit_index = self.mmu_unit(gate).unit_index
         self._set_unit_selected(new_unit_index)
+
+        # Each toolhead keeps its own retraction
+        extruder = self.mmu_unit(gate).extruder_wrapper
+        if extruder is not prev_extruder:
+            prev_extruder.set_retracted_length(self.park_retracted_length())
+            self._set_park_retracted_length(extruder.retracted_length)
 
         self.printer.send_event("mmu:gate_selected", self.gate_selected, prev_gate)
         self.mmu_unit(gate).calibrator.restore_gear_rd()

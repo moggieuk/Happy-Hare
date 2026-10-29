@@ -104,7 +104,7 @@ class GripCheckCases:
             syms={
                 "PARAM_BUFFER_MAXRANGE": 6,
                 "PARAM_BUFFER_RANGE": 4,
-                "PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE": 18,
+                "PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE": 16,
             },
         )
         self.start_session(profile)

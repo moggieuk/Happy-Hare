@@ -84,8 +84,8 @@ class TestCutterAfterExtruderGears(TestFormTipCase):
 
     def test_records_the_fragment(self):
         extruder = self.run_test_form_tip()
-        # blade_pos 37.5 - retract_length 32.5 - toolchange_retract 2, as a toolchange unload works it out
-        self.assertAlmostEqual(extruder.filament_remaining, 3.0, places=1)
+        # blade_pos 37.5 - retract_length 32.5: the load filled the nozzle and nothing is retracted
+        self.assertAlmostEqual(extruder.filament_remaining, 5.0, places=1)
 
 
 del TestFormTipCase

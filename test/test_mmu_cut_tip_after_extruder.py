@@ -6,8 +6,9 @@
 # can't change it. 3ms reverse-homes off its extruder entry sensor; ercf_vvd (entry sensor
 # disabled, see test_mmu_toolhead_unload_test) uses its toolhead sensor.
 #
-# The fake gcode_move ignores E, so the extruder doesn't move during the macro and
-# filament_remaining is park_pos - residual - toolchange_retract.
+# The fake gcode_move ignores E, so the extruder doesn't move during the macro. _MMU_PARK doesn't
+# run, so the only retraction is the 2mm toolchange retraction the standalone load ends with: the
+# macro retracts 2mm less and filament_remaining is park_pos - residual - 2.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_cut_tip_after_extruder
 #
@@ -32,10 +33,10 @@ CUT_GCODE = [
     'G90',
     'M83',
     'G92 E0',
-    'MMU_LOG MSG="Retracting filament 30.5mm prior to cut"',
-    'G1 E-30.5 F1500.0',
-    'G1 E15.25 F1500.0',
-    'G1 E-15.25 F1500.0',
+    'MMU_LOG MSG="Retracting filament 28.5mm prior to cut"',
+    'G1 E-28.5 F1500.0',
+    'G1 E14.25 F1500.0',
+    'G1 E-14.25 F1500.0',
     '_CUT_TIP_MOVE_TO_CUTTER_PIN PIN_PARK_X_LOC=19.0 PIN_PARK_Y_LOC=250.0',
     '_SAFE_G1 X=19.0 Y=250.0 F=9000.0',
     'G1 X19.0 Y250.0 F9000.0',
@@ -135,7 +136,7 @@ class TestAfterExtruderEntrySensor(AfterExtruderGoldenCase):
         ('Initial homing to default:extruder sensor', 500.0, 'gear', 'default:extruder'),
         ('Homing filament to extruder endstop', 100.0, 'gear', 'extruder'),
         ('Aligning filament to extruder gear', 8.0, 'gear', None),
-        ('Loading filament to nozzle', 33.5, 'gear+extruder', None),
+        ('Loading filament to nozzle', 35.5, 'gear+extruder', None),
     ]
 
 
@@ -157,7 +158,7 @@ class TestAfterExtruderToolheadSensor(AfterExtruderGoldenCase):
         ('Initial load into encoder', 100.0, None, None),
         ('Fast loading move through bowden', 602.66, None, None),
         ('Homing to toolhead sensor', 60.0, 'gear+extruder', 'toolhead'),
-        ('Loading filament to nozzle', 37.3, 'gear+extruder', None),
+        ('Loading filament to nozzle', 39.3, 'gear+extruder', None),
     ]
 
 

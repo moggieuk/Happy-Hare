@@ -1909,7 +1909,11 @@ class MmuFilamentMovement:
                     )
 
             # Length may be reduced by previous unload in filament cutting use
-            # case. Ensure reduction is used only one time.
+            # case. Ensure reduction is used only one time. In a print, stops short by
+            # the park retraction that restoring the toolhead position will undo, else
+            # fills the nozzle and takes it up
+            unretract_on_restore = self.saved_toolhead_operation and self._in_print()
+            retracted = self.park_retracted_length() if unretract_on_restore else 0.
             d = (
                 u.toolhead_wrapper.p.toolhead_sensor_to_nozzle
                 if has_toolhead
@@ -1921,7 +1925,7 @@ class MmuFilamentMovement:
                 - u.extruder_wrapper.filament_remaining
                 - u.toolhead_wrapper.p.toolhead_residual_filament
                 - u.toolhead_wrapper.p.toolhead_ooze_reduction
-                - self.toolchange_retract,
+                - retracted,
                 0,
             )
 
@@ -1967,6 +1971,9 @@ class MmuFilamentMovement:
                 else UNKNOWN_FILAMENT_COLOR
             )
             u.extruder_wrapper.set_filament_remaining(0., color)
+            if not unretract_on_restore:
+                self._set_park_retracted_length(0.)
+                self._persist_park_retraction()
 
             # Encoder based validation test to validate the filament was picked up by extruder.
             # This runs if we are short of deterministic sensors and test makes sense. If the buffer
@@ -2232,7 +2239,7 @@ class MmuFilamentMovement:
                         + u.p.toolhead_unload_safety_margin
                         - u.toolhead_wrapper.p.toolhead_residual_filament
                         - u.toolhead_wrapper.p.toolhead_ooze_reduction
-                        - self.toolchange_retract
+                        - self.park_retracted_length()
                     )
                     self.log_debug("Reverse homing up to %.1fmm off extruder sensor (synced) to exit extruder" % hlength)
                     actual, fhomed, _, _ = self.move_filament(
@@ -2293,7 +2300,7 @@ class MmuFilamentMovement:
                             + u.p.toolhead_unload_safety_margin
                             - u.toolhead_wrapper.p.toolhead_residual_filament
                             - u.toolhead_wrapper.p.toolhead_ooze_reduction
-                            - self.toolchange_retract
+                            - self.park_retracted_length()
                         )
                         self.log_debug(f"Reverse homing up to {hlength:.1f}mm off toolhead sensor{' (synced)' if synced else ''}")
                         actual, fhomed, _, _ = self.move_filament(
@@ -2759,6 +2766,10 @@ class MmuFilamentMovement:
                                 self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
+
+            # Outside a print the load ends retracted to reduce ooze
+            if not skip_extruder and not self._in_print():
+                self._retract_after_standalone_load()
 
             # After purging, including any purge in the post-load macro
             if not skip_extruder:
@@ -3309,6 +3320,7 @@ class MmuFilamentMovement:
             extruder_stepper = self.toolhead.get_extruder().extruder_stepper.stepper
             initial_mcu_pos = extruder_stepper.get_mcu_position()
             initial_encoder_position = self.get_encoder_distance()
+            retracted = self.park_retracted_length() # How far back from a full nozzle the macro starts
 
             with self._wrap_pressure_advance(0.0, "for tip forming"):
                 macro_name = self._macro_name(self.p.form_tip_macro)
@@ -3375,7 +3387,7 @@ class MmuFilamentMovement:
                 park_pos = (
                     stepper_movement
                     + u.toolhead_wrapper.p.toolhead_residual_filament
-                    + self.toolchange_retract
+                    + retracted
                 )
 
                 msg = (
@@ -3405,7 +3417,7 @@ class MmuFilamentMovement:
                     park_pos
                     - stepper_movement
                     - u.toolhead_wrapper.p.toolhead_residual_filament
-                    - self.toolchange_retract
+                    - retracted
                 )
 
                 # Before the extruder the rip extrudes the fragment, not the filament park_pos describes

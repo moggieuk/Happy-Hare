@@ -614,7 +614,7 @@ class Session:
 
         WHAT MATTERS IS CONSISTENCY, not matching any particular printer. HH derives park_pos
         from the extruder movement it observes (park_pos = stepper_movement +
-        residual_filament + toolchange_retract), exactly as it would on real hardware - so as
+        residual_filament + retracted_length), exactly as it would on real hardware - so as
         long as the extruder and the filament model move by the SAME amount, HH's conclusion is
         self-consistent with the machine the harness is presenting.
 

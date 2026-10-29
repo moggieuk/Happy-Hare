@@ -56,6 +56,10 @@ class MmuPrintStartCommand(BaseCommand):
             mmu.on_print_start()
             mmu._clear_macro_state(reset=True)
 
+            # The start gcode primes the active nozzle, undoing any retraction left by the last print
+            mmu._set_park_retracted_length(0.)
+            mmu._persist_park_retraction()
+
 
 class MmuPrintEndCommand(BaseCommand):
 

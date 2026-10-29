@@ -105,12 +105,10 @@ class BeforeExtruderCutCase(unittest.TestCase):
         self.mmu.select_gate(0)
         self.hh.run_gcode('MMU_LOAD')
         self.assertEqual(self.hh.errors, [], 'load was not clean')
-        # A load stops residual_filament + toolchange_retract short of the nozzle
-        self.nozzle = (self.fil.tip[0] + self.unit.toolhead_wrapper.p.toolhead_residual_filament
-                       + self.mmu.toolchange_retract)
-        # The fragment is worked out assuming the tip sat toolchange_retract back before the cut. Here the
-        # load left it there and MMU_UNLOAD does no park retract, so the formula is exact
-        self.fragment = self.BLADE_POS - self.RETRACT_LENGTH - self.mmu.toolchange_retract
+        # _MMU_PARK doesn't run, so nothing is retracted and a load stops residual_filament short of the nozzle
+        self.nozzle = self.fil.tip[0] + self.unit.toolhead_wrapper.p.toolhead_residual_filament
+        # The macro retracts the end to retract_length from the nozzle before the cut
+        self.fragment = self.BLADE_POS - self.RETRACT_LENGTH
         for sensor in self.DISABLE_SENSORS:
             self.hh.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=0' % sensor)
         self.moves = []
@@ -210,8 +208,8 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         self.moves.clear()
         self.hh.run_gcode('MMU_LOAD')
         self.assertEqual(self.hh.errors, [])
-        # toolhead_extruder_to_nozzle - fragment - residual - ooze - toolchange_retract
-        self.assertAlmostEqual(self.load_length()[0], 72. - self.fragment - 2. - 0. - 2., places=1)
+        # toolhead_extruder_to_nozzle - fragment - residual - ooze - retracted_length
+        self.assertAlmostEqual(self.load_length()[0], 72. - self.fragment - 2. - 0. - 0., places=1)
         self.assertEqual(self.extruder.filament_remaining, 0.)
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
 
@@ -298,10 +296,11 @@ class TestCutPushbackShortenedByRecordedFragment(BeforeExtruderCutCase):
 
     def test_cut_is_refused_before_any_blade_motion(self):
         self.assertEqual(self.boot_errors, [])
-        # The macro retracts only what the fragment doesn't already cover: 40 - (34 + 2) = 4
+        # The macro retracts only what the fragment, residual and the load's final retraction don't
+        # already cover: 40 - (34 + 2 + 2) = 2
         self.extruder.set_filament_remaining(34.)
         executed = self.unload()
-        self.assertTrue(any("pushback 4.0mm can't clear the extruder" in e for e in self.hh.errors), self.hh.errors)
+        self.assertTrue(any("pushback 2.0mm can't clear the extruder" in e for e in self.hh.errors), self.hh.errors)
         self.assertFalse(any(line.startswith('_CUT_TIP_DO_CUT_MOTION') for line in executed))
 
 
@@ -424,8 +423,8 @@ class TestCutClearOfToolheadSensor(BeforeExtruderCutCase):
         self.hh.run_gcode('MMU_LOAD')
         self.assertEqual(self.hh.errors, [])
         self.assertIn('Homing to toolhead sensor', self.traces())
-        # toolhead_sensor_to_nozzle - fragment - residual - ooze - toolchange_retract
-        self.assertAlmostEqual(self.load_length()[0], 75.8 - self.fragment - 2. - 0. - 2., places=1)
+        # toolhead_sensor_to_nozzle - fragment - residual - ooze - retracted_length
+        self.assertAlmostEqual(self.load_length()[0], 75.8 - self.fragment - 2. - 0. - 0., places=1)
 
 
 class TestCutAlwaysGripped(BeforeExtruderCutCase):

@@ -88,7 +88,7 @@ class UnloadTestCase(unittest.TestCase):
             retracted = before - self.fil.tip[gate]
             if fragment:
                 park_pos = (retracted + toolhead.toolhead_residual_filament
-                            + self.hh.mmu.toolchange_retract + fragment)
+                            + self.hh.mmu.park_retracted_length() + fragment)
                 macro.variables = dict(macro.variables, output_park_pos=park_pos)
                 if not missed:
                     self.fil.advance(gate, -fragment, 'cut')
