@@ -279,6 +279,9 @@ class MmuESpooler:
             # Take per-gate lock and start rewind motor
             self.set_operation(gate, value, operation)
             self.burst_gates[gate] = (operation, timer)
+            self.mmu.movement_telemetry.state('espooler_burst_started',
+                unit=self.mmu_unit.name, gate=gate, operation=operation,
+                requested_power=value, duration_s=duration)
         else:
             msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
             self.mmu.log_trace(msg)
@@ -319,7 +322,10 @@ class MmuESpooler:
                 self.reactor.unregister_timer(timer)
             except Exception as e:
                 self.mmu.log_debug("Error cancelling burst callback: Exception: %s" % str(e))
+            operation = self.burst_gates[gate][0]
             del self.burst_gates[gate]
+            self.mmu.movement_telemetry.state('espooler_burst_ended',
+                unit=self.mmu_unit.name, gate=gate, operation=operation)
 
             # Notify listeners
             self.printer.send_event("mmu:espooler_burst_done", gate)
@@ -357,7 +363,7 @@ class MmuESpooler:
             self.print_assist_gate = None
             self.mmu.log_trace("ESPOOLER: Cancelling in-print assist for gate %d" % pg)
             self._update_pwm(pg, 0, ESPOOLER_OFF)
-            self.operation[pg] = (ESPOOLER_OFF, 0)
+            self._record_operation(pg, ESPOOLER_OFF, 0)
 
             # Disable all triggers
             if self.mmu_unit.p.espooler_assist_burst_trigger:
@@ -402,9 +408,9 @@ class MmuESpooler:
                 self._update_pwm(g, 0, ESPOOLER_OFF)
 
                 if g != self.print_assist_gate:
-                    self.operation[g] = (ESPOOLER_OFF, 0)
+                    self._record_operation(g, ESPOOLER_OFF, 0)
                 else:
-                    self.operation[g] = (ESPOOLER_PRINT, 0)
+                    self._record_operation(g, ESPOOLER_PRINT, 0)
 
                 if cur_op != ESPOOLER_OFF:
                     self.mmu.log_debug("Espooler for gate %d turned off" % g)
@@ -421,7 +427,7 @@ class MmuESpooler:
                 conf_gates = self.assist_gates if operation == ESPOOLER_ASSIST else self.respool_gates
                 if g in conf_gates:
                     self._update_pwm(g, value, operation)
-                    self.operation[g] = (operation, value)
+                    self._record_operation(g, operation, value)
                     self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (g, operation, value))
                 else:
                     self.mmu.log_debug("Espooler for gate %d not configured to perform %s operation" % (g, operation))
@@ -443,7 +449,7 @@ class MmuESpooler:
                     self.print_assist_gate = g
 
                     self._update_pwm(g, 0, operation)
-                    self.operation[g] = (operation, 0)
+                    self._record_operation(g, operation, 0)
 
                     # Enable appropriate triggers
                     if self.mmu_unit.p.espooler_assist_burst_trigger:
@@ -455,6 +461,24 @@ class MmuESpooler:
 
                     # Ensure any existing burst is canceled
                     self._dequeue_espooler_burst(g)
+
+
+    def _record_operation(self, gate, operation, value):
+        previous_operation, previous_power = self.get_operation(gate)
+        self.operation[gate] = (operation, value)
+        if (previous_operation, previous_power) == (operation, value):
+            return
+        output = max(0, min(1, value)) / self.scale
+        if operation in (ESPOOLER_OFF, ESPOOLER_PRINT):
+            output = 0
+        if not self.is_pwm:
+            output = 1 if output > 0 else 0
+        self.mmu.movement_telemetry.state('espooler_operation_changed',
+            unit=self.mmu_unit.name, gate=gate,
+            previous_operation=previous_operation, previous_requested_power=previous_power,
+            operation=operation, requested_power=value, output_power=output,
+            direction=operation if output else 'stopped',
+            print_assist_armed=gate == self.print_assist_gate, pwm=self.is_pwm)
 
 
     def get_operation(self, gate):
@@ -482,9 +506,7 @@ class MmuESpooler:
                 if self.mmu.log_enabled(LOG_STEPPER):
                     self.mmu.log_stepper("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
                 self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
-                self.mmu.movement_telemetry.state('espooler_pin_scheduled',
-                    unit=self.mmu_unit.name, gate=gate, pin=name, value=value,
-                    estimated_print_time=estimated_print_time)
+
 
         # Sanity check
         if operation == ESPOOLER_OFF:
@@ -495,9 +517,7 @@ class MmuESpooler:
         if not self.is_pwm:
             value = 1 if value > 0 else 0
 
-        self.mmu.movement_telemetry.state('espooler_pwm_requested',
-            unit=self.mmu_unit.name, gate=gate, operation=operation,
-            value=value, pwm=self.is_pwm)
+
 
         # Update PWM signal
         if self.get_operation(gate) != (operation, value):
@@ -527,9 +547,7 @@ class MmuESpooler:
             else:
                 mcu_pin.set_digital(print_time, value)
             self.last_value[name] = value
-            self.mmu.movement_telemetry.state('espooler_pin_submitted',
-                unit=self.mmu_unit.name, pin=name, value=value,
-                print_time=print_time, pwm=self.is_pwm and not name.startswith('enable_'))
+
 
 
     # -------------------------------------------------------------------------------------------------------------------

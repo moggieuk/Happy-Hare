@@ -671,11 +671,16 @@ State records share the same versioned stream and sequence numbers:
   and the resolved policy decision. `drive_sync_changed` reports a successful
   drive mode change, with previous/new numeric modes and names and drive identity.
   Repeating the current mode does not emit another change.
-- `espooler_pwm_requested` reports the operation and normalized/scaled PWM or
-  digital value. `espooler_pin_scheduled` records pin requests and estimated
-  print time; `espooler_pin_submitted` records actual pin API submissions with
-  their scheduled print time. Submission is not confirmation from the hardware.
-  Unchanged pin values do not produce another submission record.
+- `espooler_operation_changed` reports accepted operation/power changes per unit
+  and gate: previous/new operation and requested power, scaled output power,
+  direction (or stopped), PWM/digital mode and whether print assist is armed.
+  Power values are fractions, not percentages. Repeated unchanged operations
+  and rejected requests do not emit a change. These are controller commands,
+  not measurements of spool rotation or confirmation from the hardware.
+- `espooler_burst_started` includes operation, requested power and planned
+  duration in seconds. `espooler_burst_ended` marks timer completion or early
+  cancellation; it does not imply that the planned duration elapsed.
+  Low-level pin scheduling/submission events are no longer exported.
 
 State records carry the active `move_id` when emitted inside a started movement,
 otherwise null. They do not open or close movement pairs. The viewer retains them
