@@ -35,8 +35,9 @@ test('only fast Bowden travel receives geometric time compression, in either dir
  const after={...before,tips:[1000]};
  const e={kind:'movement',distance:1000,speed:200,fast_bowden:true,before,state:after};
  const expected=5000*(.56/1000)/(.27/90);
- assert.ok(Math.abs(duration(e)-expected)<1e-9);
- assert.ok(Math.abs(duration({...e,distance:-1000,before:after,state:before})-expected)<1e-9);
- assert.equal(duration({...e,homing:1}),5000);
+ assert.ok(Math.abs(duration(e,true)-expected)<1e-9);
+ assert.ok(Math.abs(duration({...e,distance:-1000,before:after,state:before},true)-expected)<1e-9);
+ assert.equal(duration(e),5000);
+ assert.equal(duration({...e,homing:1},true),5000);
  assert.equal(duration({...e,fast_bowden:false}),5000);
 });

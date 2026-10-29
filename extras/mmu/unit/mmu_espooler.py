@@ -482,6 +482,9 @@ class MmuESpooler:
                 if self.mmu.log_enabled(LOG_STEPPER):
                     self.mmu.log_stepper("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
                 self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
+                self.mmu.movement_telemetry.state('espooler_pin_scheduled',
+                    unit=self.mmu_unit.name, gate=gate, pin=name, value=value,
+                    estimated_print_time=estimated_print_time)
 
         # Sanity check
         if operation == ESPOOLER_OFF:
@@ -491,6 +494,10 @@ class MmuESpooler:
         value = max(0, min(1, value)) / self.scale
         if not self.is_pwm:
             value = 1 if value > 0 else 0
+
+        self.mmu.movement_telemetry.state('espooler_pwm_requested',
+            unit=self.mmu_unit.name, gate=gate, operation=operation,
+            value=value, pwm=self.is_pwm)
 
         # Update PWM signal
         if self.get_operation(gate) != (operation, value):
@@ -520,6 +527,9 @@ class MmuESpooler:
             else:
                 mcu_pin.set_digital(print_time, value)
             self.last_value[name] = value
+            self.mmu.movement_telemetry.state('espooler_pin_submitted',
+                unit=self.mmu_unit.name, pin=name, value=value,
+                print_time=print_time, pwm=self.is_pwm and not name.startswith('enable_'))
 
 
     # -------------------------------------------------------------------------------------------------------------------
