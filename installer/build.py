@@ -635,25 +635,16 @@ def template_managed_options(template_file, root=None):
     A selector is a section type or an exact, literal section name. Exact names
     override type declarations. These Jinja comments never reach installed cfgs.
     """
-    return _template_declarations("@managed-options", template_file, root)
+    return template_policies(template_file, root)[0]
 
 
-def template_optional_options(template_file, root=None):
-    """Managed options a template omits only while their menuconfig value is blank.
-
-    Copy-back restores them unless menuconfig changed them this run.
+def template_policies(template_file, root=None):
     """
-    managed = template_managed_options(template_file, root)
-    optional = _template_declarations("@optional-options", template_file, root)
-    for selector, options in optional.items():
-        if not options <= managed.get(selector, frozenset()):
-            raise ValueError("@optional-options for %s must also be managed" % selector)
-    return optional
-
-
-def _template_declarations(tag, template_file, root):
+    ({selector: managed options}, {selector: optional options}). An option marked "?" is
+    managed but omitted only while its menuconfig value is blank, so copy-back keeps it
+    """
     env = _jinja_env(root) if root else jinja_env()
-    policies = {}
+    policies, optional = {}, {}
     visited = set()
 
     def read(path):
@@ -662,31 +653,32 @@ def _template_declarations(tag, template_file, root):
         visited.add(path)
         source, _, _ = env.loader.get_source(env, path)
         for comment in re.findall(r"\[#(.*?)#\]", source, re.DOTALL):
-            if not comment.strip().startswith(tag):
+            if not comment.strip().startswith("@managed-options"):
                 continue
-            match = re.fullmatch(r"\s*%s\s+([^:]+):(.*?)\s*" % re.escape(tag),
+            match = re.fullmatch(r"\s*@managed-options\s+([^:]+):(.*?)\s*",
                                  comment, re.DOTALL)
             if not match:
-                raise ValueError("Invalid %s declaration in %s" % (tag, path))
+                raise ValueError("Invalid @managed-options declaration in " + path)
             raw_selectors, raw_options = match.groups()
             selectors = [selector.strip() for selector in raw_selectors.split(",")]
             if any(not re.fullmatch(r"[\w.-]+(?: +[\w.-]+)*", selector)
                    for selector in selectors):
-                raise ValueError("Invalid %s selector in %s" % (tag, path))
+                raise ValueError("Invalid @managed-options selector in " + path)
             options = [option.strip() for option in raw_options.split(",") if option.strip()]
-            if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*", option) for option in options):
-                raise ValueError("Invalid %s option in %s" % (tag, path))
+            if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*\??", option) for option in options):
+                raise ValueError("Invalid managed option in " + path)
             for selector in selectors:
                 if selector in policies:
-                    raise ValueError("Duplicate %s selector: %s" % (tag, selector))
-                policies[selector] = frozenset(options)
+                    raise ValueError("Duplicate @managed-options selector: " + selector)
+                policies[selector] = frozenset(option.rstrip("?") for option in options)
+                optional[selector] = frozenset(option[:-1] for option in options if option.endswith("?"))
         # Shared policy components use literal includes, even in hidden branches.
         for include in env.parse(source).find_all(nodes.Include):
             if isinstance(include.template, nodes.Const) and isinstance(include.template.value, str):
                 read(include.template.value)
 
     read(os.path.relpath(template_file, root))
-    return policies
+    return policies, optional
 
 
 def validate_managed_options(builder, policies):
@@ -852,8 +844,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder.read_buf(buffer)
     report_parse_errors(builder, cfg_file_basename)
     rendered = rendered_options(buffer)
-    managed_options = template_managed_options(cfg_file_basename)
-    optional_options = template_optional_options(cfg_file_basename)
+    managed_options, optional_options = template_policies(cfg_file_basename)
     validate_managed_options(builder, managed_options)
 
     # 5.Special case cfg files that contains parameters so we can add back any optional,
