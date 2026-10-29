@@ -1910,7 +1910,9 @@ class MmuFilamentMovement:
 
             # Length may be reduced by previous unload in filament cutting use
             # case. Ensure reduction is used only one time. Stops short by the park
-            # retraction that restoring the toolhead position will undo
+            # retraction only if restoring the toolhead position will undo it, else
+            # the load takes it up
+            retracted = self.park_retracted_length() if self.saved_toolhead_operation else 0.
             d = (
                 u.toolhead_wrapper.p.toolhead_sensor_to_nozzle
                 if has_toolhead
@@ -1922,7 +1924,7 @@ class MmuFilamentMovement:
                 - u.extruder_wrapper.filament_remaining
                 - u.toolhead_wrapper.p.toolhead_residual_filament
                 - u.toolhead_wrapper.p.toolhead_ooze_reduction
-                - self.park_retracted_length(),
+                - retracted,
                 0,
             )
 
@@ -1968,6 +1970,8 @@ class MmuFilamentMovement:
                 else UNKNOWN_FILAMENT_COLOR
             )
             u.extruder_wrapper.set_filament_remaining(0., color)
+            if not self.saved_toolhead_operation:
+                self._set_park_retracted_length(0.)
 
             # Encoder based validation test to validate the filament was picked up by extruder.
             # This runs if we are short of deterministic sensors and test makes sense. If the buffer

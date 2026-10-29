@@ -532,7 +532,7 @@ class MmuController(MmuFilamentMovement):
         """
         Retraction _MMU_PARK has made that restoring the toolhead position will undo (0 if none)
         """
-        park_macro = self.printer.lookup_object("gcode_macro %s" % self.p.park_macro, None)
+        park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None) # Owns the state, even under a park_macro wrapper
         if park_macro is None:
             return 0.
         return float(park_macro.variables.get('retracted_length', 0) or 0)
@@ -542,7 +542,7 @@ class MmuController(MmuFilamentMovement):
         """
         Set the working copy of the active toolhead's retraction used by the macros
         """
-        park_macro = self.printer.lookup_object("gcode_macro %s" % self.p.park_macro, None)
+        park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None) # Owns the state, even under a park_macro wrapper
         if park_macro is not None:
             park_macro.variables = dict(park_macro.variables, retracted_length=length)
 

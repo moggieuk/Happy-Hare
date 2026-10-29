@@ -18,10 +18,22 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from test.hh import profiles, session
+from test.hh.bootstrap import PRINTER_STUB
 
 logging.getLogger().setLevel(logging.CRITICAL)
+
+# A custom park_macro wrapping the shipped one, which still holds the retraction. HH already sets
+# next_pos and next_xy on park_macro, so a wrapper has to define them
+PARK_WRAPPER = """
+[gcode_macro MY_PARK]
+variable_next_pos: False
+variable_next_xy: 0, 0
+gcode:
+    _MMU_PARK {rawparams}
+"""
 
 MACROS = ('_MMU_PARK', '_MMU_SAVE_POSITION', '_MMU_RESTORE_POSITION', '_MMU_RETRACT',
           '_MMU_UNRETRACT', '_MMU_CLEAR_POSITION', '_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
@@ -40,7 +52,8 @@ class ParkRetractionTestCase(unittest.TestCase):
         self.mmu.select_gate(0)
 
     def start(self, vars_file=None):
-        self.hh = session(profiles.get('3ms').derive('3ms_park_retraction', syms={'MMU_HAS_TOOLHEAD_CUTTER': True}))
+        self.hh = session(profiles.get('3ms').derive('3ms_park_retraction', syms={'MMU_HAS_TOOLHEAD_CUTTER': True}),
+                          printer_stub=PRINTER_STUB + PARK_WRAPPER)
         if vars_file is not None:
             self.hh._mmu_vars_copy = lambda: vars_file
         self.hh.build()
@@ -64,7 +77,7 @@ class ParkRetractionTestCase(unittest.TestCase):
         self.hh.gcode.register_command('G1', extrude)
 
         effects = self.hh.printer.harness_macro_effects
-        for name in MACROS:
+        for name in MACROS + ('MY_PARK',):
             effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
 
         def cut(macro, gcmd):
@@ -170,6 +183,26 @@ class TestParkRetraction(ParkRetractionTestCase):
         self.assertEqual(self.retracted(), 0)
         self.assertEqual(self.mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
 
+    def test_load_without_a_saved_position_fills_the_nozzle(self):
+        # Nothing parks or restores while XYZ isn't homed, so nothing would un-retract
+        self.gcode('MMU_LOAD')
+        self.gcode('MMU_UNLOAD')
+        self.assertGreater(self.retracted(), 0)
+        get_status = self.mmu.toolhead.get_status
+        with mock.patch.object(self.mmu.toolhead, 'get_status',
+                               side_effect=lambda *a: dict(get_status(*a), homed_axes='')):
+            self.gcode('MMU_LOAD')
+        self.assert_nozzle_full()
+
+    def test_park_macro_wrapper_toolchange_is_exact(self):
+        self.mmu.p.park_macro = 'MY_PARK'
+        self.gcode('MMU_LOAD')
+        self.mmu.psm.set_print_state('printing', call_macro=False)
+        self.gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertEqual(self.cut_retracted, self.mmu.toolchange_retract)
+        self.assert_fragment_exact()
+        self.assert_nozzle_full()
+
     def test_print_toolchange_is_exact(self):
         self.gcode('MMU_LOAD')
         self.mmu.psm.set_print_state('printing', call_macro=False)
@@ -197,6 +230,17 @@ class TestRetractionPerExtruder(unittest.TestCase):
         self.mmu.select_gate(9) # unit1, on extruder1
         self.assertEqual(self.park.variables['retracted_length'], 0)
         self.mmu.select_gate(1)
+        self.assertEqual(self.park.variables['retracted_length'], 3)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_print_start_keeps_inactive_extruder_retraction(self):
+        # Only the active extruder is primed by the start gcode
+        self.mmu.select_gate(9)
+        self.hh.run_gcode('SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=3')
+        self.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_PRINT_START')
+        self.assertEqual(self.park.variables['retracted_length'], 0)
+        self.mmu.select_gate(9)
         self.assertEqual(self.park.variables['retracted_length'], 3)
         self.assertEqual(self.hh.errors, [])
 
