@@ -435,6 +435,19 @@ class TestEnvironmentSensors(_Install):
         self.assertEqual(hardware.get("temperature_sensor unit0_Env0", "min_temp").strip(), "0")
         self.assertEqual(hardware.get("temperature_sensor unit0_Env0", "max_temp").strip(), "100")
 
+    def test_limits_that_differ_by_sensor_stay_in_the_cfg(self):
+        # One symbol sets every MCU sensor's limit, so these can't be imported but must be kept
+        self.add("temperature_sensor unit0_mcu0", "max_temp", "80")
+        self.add("temperature_sensor unit0_mcu1", "max_temp", "90")
+        analysis = self.analyse()
+        self.assertNotIn("PARAM_MCU_ENVIRONMENT_SENSOR_MAX_TEMP", self.by_symbol(analysis))
+        self.assertEqual(self.reasons(analysis)[("temperature_sensor unit0_mcu1", "max_temp")],
+                         "PARAM_MCU_ENVIRONMENT_SENSOR_MAX_TEMP is set differently elsewhere")
+        analysis.apply(analysis.candidates)
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg", mode="refresh")
+        self.assertEqual(hardware.get("temperature_sensor unit0_mcu0", "max_temp").strip(), "80")
+        self.assertEqual(hardware.get("temperature_sensor unit0_mcu1", "max_temp").strip(), "90")
+
     def test_per_gate_report_time_is_imported(self):
         # [[ (PARAM_SENSOR_REPORT_TIME_PARAM_|d)[i] ]]: the option name is itself indexed
         self.edit("mmu_hardware_unit0.cfg", "aht10_report_time", "10", section="temperature_sensor unit0_Env1")

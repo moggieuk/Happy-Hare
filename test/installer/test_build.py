@@ -540,6 +540,22 @@ class TestTemperatureSensorRefresh(_HardwareRefresh):
         replaced = ConfigBuilder(self.build("emu", {}, "replace", [installed]))
         self.assertFalse(replaced.has_option(self.SENSOR, "custom_driver_option"))
 
+    def test_blank_limits_keep_installed_values(self):
+        # A plain install has no baseline; a declined import has an unchanged one
+        installed = self.build("emu", {}, "replace", [])
+        existing = ConfigBuilder(installed)
+        existing.set(self.SENSOR, "min_temp", "0")
+        existing.set(self.SENSOR, "max_temp", "100")
+        with open(installed, "w") as f:
+            f.write(existing.write())
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            unchanged = cfg._kconfig("limits-unchanged", profiles.get("emu").syms)
+        for baseline in (None, unchanged):
+            with self.subTest(baseline=baseline is not None):
+                built = ConfigBuilder(self.build("emu", {}, "refresh", [installed], baseline))
+                self.assertEqual(built.get(self.SENSOR, "min_temp"), "0")
+                self.assertEqual(built.get(self.SENSOR, "max_temp"), "100")
+
     def test_temperature_limits_render_merge_and_reset(self):
         for profile, symbols, sensor in (
                 ("emu", {"PARAM_ENVIRONMENT_SENSOR_MIN_TEMP_0": "-5.5",

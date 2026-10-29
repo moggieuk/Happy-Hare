@@ -432,7 +432,8 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
-    def update_builder(self, builder, kconfig_keys=(), origin=None, managed_options=None):
+    def update_builder(self, builder, kconfig_keys=(), origin=None, managed_options=None,
+                       optional_options=None):
         """
         Update the builder config selectively from the existing config HH data.
         'kconfig_keys' are the (section, option)s where the rendered Kconfig value wins
@@ -440,8 +441,10 @@ class HHConfig(ConfigBuilder):
         """
 
         # A declaration opts a section type (or exact section name) into copy-back.
-        # Managed options stay absent when the template deliberately omits them.
+        # Managed options stay absent when the template deliberately omits them,
+        # except optional ones it omits only because their menuconfig value is blank.
         managed_options = managed_options or {}
+        optional_options = optional_options or {}
 
         # Copy over included options
         for section in sorted(builder.sections(scope="included")):
@@ -474,6 +477,7 @@ class HHConfig(ConfigBuilder):
                     self.used_options.add((section, option))
 
             managed = managed_options.get(section, managed_options.get(section_type))
+            optional = optional_options.get(section, optional_options.get(section_type, frozenset()))
             if managed is not None and not sensor_type_changed and self.has_section(section):
                 # Additional gears inherit omitted tuning options; keep hand-added
                 # overrides unless menuconfig explicitly removed them this run.
@@ -481,7 +485,8 @@ class HHConfig(ConfigBuilder):
                 inherited_gear = re.fullmatch(r"tmc[0-9]+ mmu_stepper .+_gear_[0-9]+", section)
                 for option in self.options(section):
                     inherited_override = inherited_gear and option not in TMC_TRANSPORT_OPTIONS
-                    if (option not in managed or inherited_override) and (section, option) not in kconfig_keys and \
+                    if (option not in managed or option in optional or inherited_override) and \
+                            (section, option) not in kconfig_keys and \
                             not builder.has_option(section, option):
                         builder.copy_option(self, section, option, before_section_tail=True)
                         self.used_options.add((section, option))
@@ -630,6 +635,23 @@ def template_managed_options(template_file, root=None):
     A selector is a section type or an exact, literal section name. Exact names
     override type declarations. These Jinja comments never reach installed cfgs.
     """
+    return _template_declarations("@managed-options", template_file, root)
+
+
+def template_optional_options(template_file, root=None):
+    """Managed options a template omits only while their menuconfig value is blank.
+
+    Copy-back restores them unless menuconfig changed them this run.
+    """
+    managed = template_managed_options(template_file, root)
+    optional = _template_declarations("@optional-options", template_file, root)
+    for selector, options in optional.items():
+        if not options <= managed.get(selector, frozenset()):
+            raise ValueError("@optional-options for %s must also be managed" % selector)
+    return optional
+
+
+def _template_declarations(tag, template_file, root):
     env = _jinja_env(root) if root else jinja_env()
     policies = {}
     visited = set()
@@ -640,23 +662,23 @@ def template_managed_options(template_file, root=None):
         visited.add(path)
         source, _, _ = env.loader.get_source(env, path)
         for comment in re.findall(r"\[#(.*?)#\]", source, re.DOTALL):
-            if not comment.strip().startswith("@managed-options"):
+            if not comment.strip().startswith(tag):
                 continue
-            match = re.fullmatch(r"\s*@managed-options\s+([^:]+):(.*?)\s*",
+            match = re.fullmatch(r"\s*%s\s+([^:]+):(.*?)\s*" % re.escape(tag),
                                  comment, re.DOTALL)
             if not match:
-                raise ValueError("Invalid @managed-options declaration in " + path)
+                raise ValueError("Invalid %s declaration in %s" % (tag, path))
             raw_selectors, raw_options = match.groups()
             selectors = [selector.strip() for selector in raw_selectors.split(",")]
             if any(not re.fullmatch(r"[\w.-]+(?: +[\w.-]+)*", selector)
                    for selector in selectors):
-                raise ValueError("Invalid @managed-options selector in " + path)
+                raise ValueError("Invalid %s selector in %s" % (tag, path))
             options = [option.strip() for option in raw_options.split(",") if option.strip()]
             if any(not re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*", option) for option in options):
-                raise ValueError("Invalid managed option in " + path)
+                raise ValueError("Invalid %s option in %s" % (tag, path))
             for selector in selectors:
                 if selector in policies:
-                    raise ValueError("Duplicate @managed-options selector: " + selector)
+                    raise ValueError("Duplicate %s selector: %s" % (tag, selector))
                 policies[selector] = frozenset(options)
         # Shared policy components use literal includes, even in hidden branches.
         for include in env.parse(source).find_all(nodes.Include):
@@ -831,6 +853,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     report_parse_errors(builder, cfg_file_basename)
     rendered = rendered_options(buffer)
     managed_options = template_managed_options(cfg_file_basename)
+    optional_options = template_optional_options(cfg_file_basename)
     validate_managed_options(builder, managed_options)
 
     # 5.Special case cfg files that contains parameters so we can add back any optional,
@@ -864,7 +887,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         #   user edits are preserved, except where a setting was changed in menuconfig this run
         changed, before = menuconfig_changes(cfg_file_basename, kcfg, extra_params, rendered, hhcfg)
         hhcfg.update_builder(builder, changed, origin=os.path.basename(dest_file),
-                             managed_options=managed_options)
+                             managed_options=managed_options, optional_options=optional_options)
         report_replaced_edits(dest_file_basename, hhcfg, changed, before, rendered)
 
         # 8.Report on deprecated/unused options
