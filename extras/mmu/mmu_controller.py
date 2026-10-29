@@ -574,6 +574,7 @@ class MmuController(MmuFilamentMovement):
         retract = self.toolchange_retract
         length = retract - self.park_retracted_length()
         if abs(length) < 0.01 or not self.toolhead.get_extruder().get_heater().can_extrude:
+            self._persist_park_retraction() # Not every load restores the toolhead position afterwards
             return
         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'

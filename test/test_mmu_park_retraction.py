@@ -289,6 +289,24 @@ class TestParkRetraction(ParkRetractionTestCase):
         self.assert_fragment_exact()
         self.assert_shortfall(0.)
 
+    def test_extruder_only_load_saves_a_purge_retraction_that_needs_no_adjustment(self):
+        # Nothing restores the toolhead position afterwards to save it
+        effects = self.hh.printer.harness_macro_effects
+        purge = effects[self.mmu.p.purge_macro]
+
+        def purge_then_retract(macro, gcmd):
+            purge(macro, gcmd)
+            self.mmu.gcode.run_script_from_command('_MMU_RETRACT LENGTH=%s' % self.mmu.toolchange_retract)
+
+        effects[self.mmu.p.purge_macro] = purge_then_retract
+        self.gcode('MMU_LOAD')
+        self.gcode('MMU_UNLOAD')
+        self.hh.place_filament(0, position=self.hh.filament().layout['extruder_entry'] - 5.)
+        self.gcode('MMU_LOAD EXTRUDER_ONLY=1')
+        self.assert_load_retracted()
+        self.restart()
+        self.assertEqual(self.retracted(), self.mmu.toolchange_retract)
+
     def test_extruder_only_load_ends_retracted(self):
         # No park or restore
         self.gcode('MMU_LOAD')
