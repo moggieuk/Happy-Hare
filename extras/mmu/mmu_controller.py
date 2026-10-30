@@ -575,8 +575,12 @@ class MmuController(MmuFilamentMovement):
         """
         retract = self.toolchange_retract
         length = retract - self.park_retracted_length()
-        if abs(length) < 0.01 or not self.toolhead.get_extruder().get_heater().can_extrude:
-            self._persist_park_retraction() # Not every load restores the toolhead position afterwards
+        if not self.toolhead.get_extruder().get_heater().can_extrude:
+            self._persist_park_retraction()
+            return
+        if abs(length) < 0.01:
+            self._persist_park_retraction()
+            self._report_standalone_load_retraction(0.)
             return
         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
@@ -590,6 +594,15 @@ class MmuController(MmuFilamentMovement):
         )
         self._set_park_retracted_length(retract)
         self._persist_park_retraction()
+        self._report_standalone_load_retraction(-length)
+
+
+    def _report_standalone_load_retraction(self, adjustment):
+        self.movement_telemetry.state('standalone_load_retraction',
+            unit=self.mmu_unit().name, gate=self.gate_selected,
+            extruder=self.mmu_unit().extruder_wrapper.name,
+            retracted_length=self.park_retracted_length(), adjustment_mm=adjustment,
+            status='recorded')
 
 
     def _persist_park_retraction(self):
