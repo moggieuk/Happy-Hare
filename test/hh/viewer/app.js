@@ -1,4 +1,4 @@
-import { interpolate, duration } from './playback.js';
+import { interpolate, duration, purgePath } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 let socket,
@@ -172,15 +172,15 @@ function draw() {
     gate = s.gate >= 0 ? s.gate : 0,
     tip = s.tips[gate] ?? -1000;
   const entry = s.layout.extruder_entry ?? 700,
-    end = (s.layout.toolhead ?? 760) + 30;
+    end = s.layout.nozzle ?? (s.layout.toolhead ?? 760) + 30;
   $("mode").textContent = live ? (played < events.at(-1).seq ? "Live · catching up" : "Live") : `Replay · event ${e.seq}`;
-  $("position").textContent = `Gate ${gate} · tip ${tip.toFixed(2)} mm`;
+  $("position").textContent = `Gate ${gate} · ${s.filament_pos_name || "Unknown state"} · tip ${tip.toFixed(2)} mm`;
   $("timeline").max = events.length - 1;
   $("timeline").value = live ? events.indexOf(e) : cursor;
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
   const path =
     "M620 415 L620 170 Q620 75 525 75 L355 75 Q260 75 260 170 L260 435";
-  let svg = `<rect x="540" y="275" width="170" height="170" rx="12" fill="#edf2f6" stroke="#96abba"/><text x="558" y="302" fill="#304c65">MMU</text><rect x="222" y="205" width="76" height="230" rx="8" fill="#edf2f6" stroke="#96abba"/><rect x="213" y="375" width="94" height="60" rx="5" fill="#c4d3df"/><path d="M242 435 L260 455 L278 435" fill="#9cafbe"/><path id="tube" d="${path}" fill="none" stroke="#b1c4d2" stroke-width="20"/><path d="${path}" fill="none" stroke="#edf4f8" stroke-width="14"/><path id="filament" d="${path}" fill="none" stroke="#d84a83" stroke-width="7"/><text x="370" y="45" fill="#6e8190" font-size="13">Bowden · compressed scale</text>`;
+  let svg = `<rect x="540" y="275" width="170" height="170" rx="12" fill="#edf2f6" stroke="#96abba"/><text x="558" y="302" fill="#304c65">MMU</text><rect x="222" y="205" width="76" height="230" rx="8" fill="#edf2f6" stroke="#96abba"/><rect x="213" y="375" width="94" height="60" rx="5" fill="#c4d3df"/><path d="M242 435 L260 455 L278 435" fill="#9cafbe"/><path id="tube" d="${path}" fill="none" stroke="#b1c4d2" stroke-width="20"/><path d="${path}" fill="none" stroke="#edf4f8" stroke-width="14"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/><text x="370" y="45" fill="#6e8190" font-size="13">Bowden · compressed scale</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -211,14 +211,14 @@ function draw() {
   }
   for (const [x, y, type] of [
     [620, 355, "gear"],
-    [260, 265, "extruder"],
+    [260, tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y, "extruder"],
   ]) {
     const angle =
       Object.entries(s.motors)
         .filter(([n]) => n.includes(type))
         .reduce((sum, [, v]) => sum + v, 0) * 3;
     for (const side of [-1, 1])
-      svg += `<g transform="translate(${x + side * 23} ${y}) rotate(${side * angle})"><circle r="19" fill="#d8e4ed" stroke="#6d899f"/><path d="M-14 0 H14 M0 -14 V14" stroke="#526f86"/></g>`;
+      svg += `<g transform="translate(${x + side * 23} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle})"><circle r="19" fill="#d8e4ed" stroke="#6d899f"/><path d="M-14 0 H14 M0 -14 V14" stroke="#526f86"/></g>`;
   }
   for (const [name, d] of Object.entries(s.devices)) {
     if (name.includes(':') && name.split(':')[0] !== s.unit) continue;
@@ -238,6 +238,21 @@ function draw() {
         svg += `<circle cx="${x}" cy="101" r="4" fill="${sensorFill(data.state)}" stroke="#698394"/><text x="${x+8}" y="104" font-size="9" fill="#456078">${label}</text>`;
       });
     }
+  }
+  const retained = (s.filament?.residual_mm || 0) + (s.filament?.fragment_mm || 0);
+  if (retained > 0) {
+    const y = tube.getPointAtLength(progress(end-retained)*length).y;
+    svg += `<path id="residual-filament" d="M260 ${y} L260 435 L260 455" fill="none" stroke="#${s.nozzle_color || s.filament.retained_color}" stroke-width="5"/><text x="210" y="422" text-anchor="end" font-size="9" fill="#6e8190">Residual ${s.filament.residual_mm} mm</text>`;
+  }
+  const coilAmount = Math.max(0, (s.extruded_mm || 0)-(s.purge_base_mm || 0)) % 36;
+  const drop = s.purge_drop ?? Math.max(0,(coilAmount-30)/6);
+  const purge = purgePath(Math.min(30,coilAmount));
+  if (purge) {
+    const turns = Math.min(10, coilAmount / 3);
+    const x = 260 + 22 * Math.min(1, turns / .5) * (1 - .065 * turns) * Math.sin(turns * Math.PI * 2);
+    const y = 498 - turns * 2.6 + 2 * Math.cos(turns * Math.PI * 2);
+    const strand = !drop && tip >= end - .01 ? `M260 435 L260 455 Q260 ${y - 8} ${x} ${y}` : '';
+    svg += `<defs><linearGradient id="purge-color" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#${s.purge_color_start || s.nozzle_color || '808182'}"/><stop offset="1" stop-color="#${s.nozzle_color || '808182'}"/></linearGradient><clipPath id="purge-screen"><rect x="210" y="435" width="150" height="70"/></clipPath></defs><g clip-path="url(#purge-screen)"><g id="purge-pile" transform="translate(0,${drop*75})" aria-label="Extruded filament"><path d="${strand} ${purge}" fill="none" stroke="#333" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="${strand} ${purge}" fill="none" stroke="url(#purge-color)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><path d="${purge}" transform="translate(0,-.7)" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width=".8"/><text x="303" y="491" font-size="10" fill="#6e8190">${s.extruded_mm.toFixed(1)} mm extruded</text></g></g>`;
   }
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");

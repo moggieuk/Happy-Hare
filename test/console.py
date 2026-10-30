@@ -573,6 +573,13 @@ class Console:
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
                      prime=not a.no_prime, seed=a.seed,
                      pre_bootup=self._home_before_bootup)
+        from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
+        from extras.mmu.mmu_movement_telemetry import filament_context
+        self.hh.mmu.movement_telemetry.state('filament_pos_snapshot',
+            filament=filament_context(self.hh.mmu),
+            unit=self.hh.mmu.mmu_unit().name, gate=self.hh.mmu.gate_selected,
+            filament_pos=self.hh.mmu.filament_pos,
+            filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.hh.mmu.filament_pos, 'UNKNOWN'))
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         self._clear_sink()
 

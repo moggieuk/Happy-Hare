@@ -118,3 +118,17 @@ class JsonlTelemetrySink:
 
     def close(self):
         self.file.close()
+
+
+def filament_context(mmu):
+    """Loaded config/persisted hotend state; lengths are input-filament millimetres."""
+    from .mmu_utils import MmuColorUtils
+    unit = mmu.mmu_unit()
+    extruder = unit.extruder_wrapper
+    gate = mmu.gate_selected
+    color = mmu.gate_color[gate] if gate >= 0 else ''
+    return dict(extruder=extruder.name,
+                residual_mm=unit.toolhead_wrapper.p.toolhead_residual_filament,
+                fragment_mm=extruder.filament_remaining,
+                retained_color=MmuColorUtils.color_to_rgb_hex(extruder.filament_remaining_color, '808182')[:6],
+                incoming_color=MmuColorUtils.color_to_rgb_hex(color, '808182')[:6])
