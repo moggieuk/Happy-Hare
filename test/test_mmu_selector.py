@@ -636,6 +636,35 @@ class TestServoSelector(SelectorTestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+class TestServoSelectorSeededCalibration(SelectorTestCase):
+    """pico_mmu ships no gate angles, so the harness seeds them as a user's calibration would."""
+
+    PROFILE = 'pico_mmu'
+    HOME_UNITS = ()
+
+    def test_seeded_angles_are_evenly_spaced_within_the_servo_range(self):
+        selector = self.selector('unit0')
+        angles = selector.servo_gate_angles
+        self.assertEqual(self.seeded['unit0']['selector_angles'], angles)
+        self.assertEqual(angles[0], selector.p.servo_min_angle)
+        self.assertEqual(angles[-1], selector.p.servo_max_angle)
+        steps = [b - a for a, b in zip(angles, angles[1:])]
+        self.assertLessEqual(max(steps) - min(steps), 1)     # whole degrees, so rounding
+
+    def test_full_load_and_unload(self):
+        loaded, unloaded = self.load_and_unload(2)
+        self.assertEqual(loaded, FILAMENT_POS_LOADED)
+        self.assertEqual(unloaded, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_seeding_before_bootup_leaves_it_calibrated(self):
+        hh = session('pico_mmu')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        self.assertEqual(hh.errors, [])
+        self.assertNotIn(-1, hh.mmu.mmu_unit(0).selector.servo_gate_angles)
+
+
 class TestServoSelectorCalibrationSummary(SelectorTestCase):
     """MMU_CALIBRATE_SERVO_SELECTOR with no args reports a fixed release and bypass angle."""
 
