@@ -163,6 +163,8 @@ class LiveViewer:
         hh, model = self.hh, self.model
         sensors = hh.mmu.sensor_manager.get_sensor_states(all_sensors=True)
         selected_sensors = hh.mmu.sensor_manager.get_sensor_states(unit=hh.mmu.mmu_unit().unit_index)
+        active_objects = {id(sensor) for _, sensor in hh.mmu.sensor_manager.get_sensor_states().values()}
+        active_sensor_names = [name for name, (_, sensor) in sensors.items() if id(sensor) in active_objects]
         selected_objects = {id(sensor) for _, sensor in selected_sensors.values()}
         unit_sensor_names = [name for name, (_, sensor) in sensors.items() if id(sensor) in selected_objects]
         devices = {}
@@ -192,8 +194,19 @@ class LiveViewer:
         params = hh.mmu.mmu_unit().toolhead_wrapper.p
         layout['extruder_gears'] = layout['extruder_entry'] + params.toolhead_entry_to_extruder
         layout['nozzle'] = layout['extruder_gears'] + params.toolhead_extruder_to_nozzle
+        cutters = []
+        cut_vars = hh.mmu.cut_tip_vars()
+        if cut_vars is not None:
+            cutters.append(dict(kind='toolhead', position=layout['nozzle']-float(cut_vars['blade_pos']),
+                before_extruder=hh.mmu.cutter_before_extruder()))
+        sequence = hh.printer.lookup_object('gcode_macro _MMU_SEQUENCE_VARS', None)
+        extension = str(sequence.variables.get('user_post_unload_extension', '')) if sequence else ''
+        post_macro = hh.mmu._macro_name(hh.mmu.p.post_unload_macro).upper()
+        if post_macro == 'SERVO_CUTTER_ACTION' or (post_macro == '_MMU_POST_UNLOAD' and
+                any(line.strip().split(' ', 1)[0].upper() == 'SERVO_CUTTER_ACTION' for line in extension.splitlines())):
+            cutters.append(dict(kind='mmu', position=layout.get('mmu_exit', 0.)+10))
         from extras.mmu.mmu_movement_telemetry import filament_context
-        return plain(dict(filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
+        return plain(dict(active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
             filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=layout, motors=self.motors.copy(),
             sensors={name: {'state': state[0], 'position': model.position(name)}
@@ -237,7 +250,7 @@ class LiveViewer:
             if gate >= 0:
                 tail = state['tails'][gate]
                 for name, sensor in state['sensors'].items():
-                    if name not in state['unit_sensors'] or sensor['state'] is not False:
+                    if name not in state.get('active_sensors', state['unit_sensors']) or sensor['state'] is not False:
                         continue
                     if 'filament_compression' in name or 'filament_tension' in name or 'encoder' in name:
                         continue

@@ -62,6 +62,7 @@ class TestLiveViewer(unittest.TestCase):
         snapshot = self.viewer.snapshot()
         snapshot['tips'][0] = 200
         snapshot['unit_sensors'] = ['unit0:mmu_shared_exit']
+        snapshot['active_sensors'] = ['unit0:mmu_shared_exit']
         snapshot['sensors'] = {'unit0:mmu_shared_exit': {'state': False, 'position': 10}}
         with mock.patch.object(self.viewer, 'snapshot', return_value=snapshot):
             self.viewer.capture('test', 'Contradictory sensor')
@@ -118,6 +119,34 @@ class TestLiveViewer(unittest.TestCase):
         color = self.viewer.read()['events'][-1]['state']['nozzle_color']
         self.assertNotEqual(color, 'ff00ff')
         self.assertNotEqual(color, '00ffff')
+
+    def test_cutter_configuration_and_sync_are_reported(self):
+        from extras.mmu.mmu_constants import DRIVE_EXTRUDER_SYNCED_TO_GEAR
+        self.assertEqual(self.viewer.snapshot()['cutters'], [])
+        with mock.patch.object(self.hh.mmu, 'cut_tip_vars', return_value={'blade_pos': 20}), mock.patch.object(self.hh.mmu, 'cutter_before_extruder', return_value=False):
+            state = self.viewer.snapshot()
+            self.assertEqual(state['cutters'][0]['position'], state['layout']['nozzle']-20)
+            self.assertFalse(state['cutters'][0]['before_extruder'])
+        with mock.patch.object(self.hh.mmu, 'cut_tip_vars', return_value={'blade_pos': 100}), mock.patch.object(self.hh.mmu, 'cutter_before_extruder', return_value=True):
+            self.assertTrue(self.viewer.snapshot()['cutters'][0]['before_extruder'])
+        self.hh.mmu.p.post_unload_macro = 'SERVO_CUTTER_ACTION'
+        self.assertEqual(self.viewer.snapshot()['cutters'][0]['kind'], 'mmu')
+        self.hh.mmu.drive().sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
+        self.assertTrue(self.viewer.snapshot()['synced'])
+
+    def test_active_sensor_list_excludes_other_gates_and_retains_disabled_sensors(self):
+        state = self.viewer.snapshot()
+        self.assertIn('mmu_entry_0', state['active_sensors'])
+        self.assertNotIn('mmu_entry_1', state['active_sensors'])
+        sensor = self.hh.mmu.sensor_manager.all_sensors_map['mmu_entry_0']
+        sensor.runout_helper.sensor_enabled = False
+        state = self.viewer.snapshot()
+        self.assertIn('mmu_entry_0', state['active_sensors'])
+        self.assertIsNone(state['sensors']['mmu_entry_0']['state'])
+        self.hh.mmu._set_gate_selected(1)
+        state = self.viewer.snapshot()
+        self.assertIn('mmu_entry_1', state['active_sensors'])
+        self.assertNotIn('mmu_entry_0', state['active_sensors'])
 
     def test_default_speed_is_resolved_from_executed_move(self):
         self.hh.place_filament(0, 200)
