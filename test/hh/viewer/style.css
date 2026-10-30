@@ -248,7 +248,7 @@ select, input { max-width: 100%; }
 .sensor-marker.sensor-disabled { opacity: .5; }
 
 h2[data-tooltip] { position: relative; width: fit-content; cursor: help; }
-h2[data-tooltip]::after {
+[data-tooltip]::after {
   content: attr(data-tooltip);
   display: none;
   position: absolute;
@@ -267,5 +267,61 @@ h2[data-tooltip]::after {
   white-space: normal;
   pointer-events: none;
 }
-h2[data-tooltip]:hover::after, h2[data-tooltip]:focus-visible::after { display: block; }
-[data-theme="dark"] h2[data-tooltip]::after { background: #dce5ef; color: #172431; }
+[data-tooltip]:hover::after, [data-tooltip]:focus-visible::after { display: block; }
+[data-theme="dark"] [data-tooltip]::after { background: #dce5ef; color: #172431; }
+
+#theme-toggle { padding: 8px; line-height: 0; }
+#theme-toggle svg { width: 24px; height: 24px; fill: currentColor; }
+
+:root { --sensor-clear-pulse: #8194a3; }
+[data-theme="dark"] { --sensor-clear-pulse: #eef4fa; }
+.controls button[aria-label] {
+  min-width: 2.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.transport-icon { width: 22px; height: 22px; fill: currentColor; }
+
+/* Type labels stay readable independently of the selected-row background. */
+.trace-type {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: baseline;
+  color: #40516a;
+  background: #dfe7ef;
+}
+.trace-type[data-type="session"] { color: #643b8d; background: #eee1fb; }
+.trace-type[data-type="move"] { color: #17558a; background: #d8ecff; }
+.trace-type[data-type="homing move"] { color: #89500c; background: #ffebc2; }
+.trace-type[data-type="state"] { color: #216342; background: #d8f2e2; }
+.trace-type[data-type="filament"] { color: #8b3264; background: #f9dfee; }
+.trace-type[data-type="purge_release"] { color: #8d4330; background: #ffe2d8; }
+.trace-type[data-type="stepper"] { color: #22656a; background: #d5eff0; }
+[data-theme="dark"] .trace-type { color: #dce5ef; background: #40516a; }
+[data-theme="dark"] .trace-type[data-type="session"] { color: #eddaff; background: #583b76; }
+[data-theme="dark"] .trace-type[data-type="move"] { color: #d8edff; background: #24557d; }
+[data-theme="dark"] .trace-type[data-type="homing move"] { color: #ffe7bb; background: #785119; }
+[data-theme="dark"] .trace-type[data-type="state"] { color: #d6f6e2; background: #2a6247; }
+[data-theme="dark"] .trace-type[data-type="filament"] { color: #ffe0f1; background: #753653; }
+[data-theme="dark"] .trace-type[data-type="purge_release"] { color: #ffe4da; background: #7b4333; }
+[data-theme="dark"] .trace-type[data-type="stepper"] { color: #d6f6f6; background: #286066; }
+
+.trace-type[data-type="cut"] { color: #8b3264; background: #f9dfee; }
+[data-theme="dark"] .trace-type[data-type="cut"] { color: #ffe0f1; background: #753653; }
+
+.controls button[data-tooltip] { position: relative; }
+.controls button[data-tooltip]::after {
+  width: max-content;
+  max-width: 70vw;
+}
+
+.trace-type[data-type="config"] { color: #643b8d; background: #eee1fb; }
+[data-theme="dark"] .trace-type[data-type="config"] { color: #eddaff; background: #583b76; }
+button.sensor-chip { cursor: pointer; font: inherit; }
+button.sensor-chip:disabled { cursor: default; }

@@ -42,7 +42,7 @@
         ><label>Value<input id="value" /></label
         ><button id="apply">Apply MMU_TEST_CONFIG</button>
         <p class="note">
-          Uses the command’s own validation and runtime guards. Changes are
+          Runtime settings and macro variables apply to the live simulator. Macro values use Python literals. Changes are
           temporary.
         </p>
         <p id="message" role="status"></p>
@@ -74,8 +74,12 @@
           </form>
         </div>
         <div class="controls">
-          <button id="previous">Previous</button><button id="next">Next</button
-          ><button id="live">Jump to latest</button
+          <button id="beginning" data-tooltip="Beginning" aria-label="Beginning"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5h3v14H5z M19 5v14L9 12z"/></svg></button>
+          <button id="previous" data-tooltip="Previous step" aria-label="Previous step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5v14L2 12z M22 5v14l-9-7z"/></svg></button>
+          <button id="replay" data-tooltip="Play" aria-label="Play" disabled><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg></button>
+          <button id="pause" data-tooltip="Pause" aria-label="Pause"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 4h4v16H6z M14 4h4v16h-4z"/></svg></button>
+          <button id="next" data-tooltip="Next step" aria-label="Next step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l9-7z M13 5v14l9-7z"/></svg></button>
+          <button id="live" data-tooltip="End — follow live" aria-label="End — follow live"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h3v14h-3z M5 5v14l10-7z"/></svg></button
           ><button id="save">Save trace</button
           ><button id="save-motion">Save motion telemetry</button>
           <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>

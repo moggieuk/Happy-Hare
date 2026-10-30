@@ -677,6 +677,10 @@ class Session:
             # Whole steps, as a G1 moves, so HH's measured travel and thus the fragment it
             # derives do not depend on the stepper's starting phase
             retract = round(retract / stepper.get_step_dist()) * stepper.get_step_dist()
+        # The harness models severing here, before the subsequent rip/retract.
+        # This is a simulator observation, not a physical cut confirmation.
+        self.mmu.movement_telemetry.state('filament_cut', cutter='toolhead',
+            unit=self.mmu.mmu_unit().name, gate=gate, origin='harness_cut_tip')
         total = max(retract, severed)
         for amount in self._spend_macro_time(movement=-total):
             if total:
