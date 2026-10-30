@@ -55,6 +55,7 @@ export function interpolate(event, fraction) {
   return s;
 }
 export function duration(event, compressBowden = false) {
+  if (event.kind === 'purge_release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
   // Use resolved feed speed, not console pacing or time spent waiting for sensors.

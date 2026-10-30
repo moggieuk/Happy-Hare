@@ -90,11 +90,17 @@ class TestLiveViewer(unittest.TestCase):
         self.assertAlmostEqual(state['tips'][0], nozzle)
         self.hh.mmu.move_filament('Retract', -2, motor='extruder')
         self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 10)
-        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 10)
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 0)
         self.hh.mmu.move_filament('Recover', 2, motor='extruder')
         self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 10)
         self.hh.mmu.move_filament('More purge', 3, motor='extruder')
         self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 13)
+        self.hh.mmu._set_park_retracted_length(2)
+        self.hh.mmu._report_standalone_load_retraction(-2)
+        event = self.viewer.read()['events'][-1]
+        self.assertEqual(event['kind'], 'purge_release')
+        self.assertEqual(event['state']['purge_base_mm'], 13)
+        self.assertEqual(event['before']['purge_base_mm'], 0)
 
     def test_retained_color_and_lengths_seed_the_viewer(self):
         unit = self.hh.mmu.mmu_unit()
