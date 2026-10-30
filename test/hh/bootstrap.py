@@ -556,6 +556,7 @@ class Session:
         if effects is None:
             effects = self.printer.harness_macro_effects = {}
         effects.setdefault('_MMU_FORM_TIP', self._effect_form_tip)
+        effects.setdefault('_MMU_CUT_TIP', self._effect_cut_tip)
         # Purge moves a lot of filament through the nozzle, none of which this harness models -
         # but it TAKES TIME on a real machine, and a paced session that skips it in an instant
         # reads as if the operation were over when it is not. Time only; no movement.
@@ -621,9 +622,7 @@ class Session:
         Both halves are done explicitly because the harness macro body does not emit either a
         manual trapq move or a toolhead extrusion for the motion observers to see.
         """
-        vars_macro = self.printer.lookup_object('gcode_macro %s_VARS' % macro.alias, None)
-        variables = dict(getattr(macro, 'variables', {}) or {})
-        variables.update(getattr(vars_macro, 'variables', {}) or {})
+        variables = self._macro_vars(macro)
         distance = (float(variables.get('cooling_tube_position', 0.0) or 0.0)
                     + float(variables.get('cooling_tube_length', 0.0) or 0.0))
         if distance <= 0:
@@ -631,13 +630,7 @@ class Session:
                           macro.alias)
             return
 
-        toolhead = self.printer.lookup_object('toolhead', None)
-        extruder = toolhead.get_extruder() if toolhead is not None else None
-        stepper = getattr(getattr(extruder, 'extruder_stepper', None), 'stepper', None)
-        model = getattr(self.printer, 'harness_filament', None)
-        gate = self.mmu.gate_selected
-        if gate is None or gate < 0:
-            model = None
+        stepper, model, gate = self._extruder_and_filament()
 
         # HOW LONG it takes, so a paced session does not do the whole retract in one instant -
         # it is the first thing an unload does, and it was the last step still finishing
@@ -649,14 +642,73 @@ class Session:
         # (unloading_speed_start put the whole thing at 0.5s). A flat few seconds is the honest
         # answer for a body that does not run.
         for amount in self._spend_macro_time(movement=-distance):
-            if stepper is not None:
-                # Retract: HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
-                # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position
-                # alone is not enough - it is mcu-preserving, by design (klippy_root/stepper.py)
-                stepper.set_position([stepper.get_commanded_position() + amount, 0., 0., 0.])
-                stepper.harness_note_motion(amount)
+            self._move_extruder(stepper, amount)
             if model is not None:
                 model.advance(gate, amount, 'tip forming')
+
+    def _effect_cut_tip(self, macro, gcmd):
+        """
+        Cut the filament as the shipped _MMU_CUT_TIP would, and report where it was cut.
+
+        The extruder and the filament no longer move by the same amount, which is what a cut
+        is. The extruder retracts retract_length then rip_length (the pushback nets to zero);
+        the filament's tip ends up blade_pos + rip_length behind the nozzle, the fragment in
+        front of the blade staying in the hotend. Both start from the retraction already in
+        place, as the macro's effective_retract_length does.
+
+        HH takes the cut position from output_park_pos and refuses a 0 there, so the effect
+        sets it as the macro's SET_GCODE_VARIABLE would.
+        """
+        variables = self._macro_vars(macro)
+        blade_pos = float(variables.get('blade_pos', 0.) or 0.)
+        rip_length = float(variables.get('rip_length', 0.) or 0.)
+        retract_length = float(variables.get('retract_length', 0.) or 0.)
+        park = self.printer.lookup_object('gcode_macro _MMU_PARK', None)
+        already_retracted = (
+            float(self.mmu.mmu_unit().extruder_wrapper.get_status(0)['extruder_filament_remaining'])
+            + float((getattr(park, 'variables', {}) or {}).get('retracted_length', 0.) or 0.))
+        retract = max(retract_length - already_retracted, 0.) + rip_length
+        severed = max(blade_pos - already_retracted, 0.) + rip_length
+        macro.variables = dict(macro.variables, output_park_pos=blade_pos + rip_length)
+
+        stepper, model, gate = self._extruder_and_filament()
+        if stepper is not None:
+            # Whole steps, as a G1 moves, so HH's measured travel and thus the fragment it
+            # derives do not depend on the stepper's starting phase
+            retract = round(retract / stepper.get_step_dist()) * stepper.get_step_dist()
+        total = max(retract, severed)
+        for amount in self._spend_macro_time(movement=-total):
+            if total:
+                self._move_extruder(stepper, amount * retract / total)
+                if model is not None:
+                    model.advance(gate, amount * severed / total, 'tip cutting')
+
+    def _macro_vars(self, macro):
+        # The variables live on <macro>_VARS, with a fallback to the calling macro
+        vars_macro = self.printer.lookup_object('gcode_macro %s_VARS' % macro.alias, None)
+        variables = dict(getattr(macro, 'variables', {}) or {})
+        variables.update(getattr(vars_macro, 'variables', {}) or {})
+        return variables
+
+    def _extruder_and_filament(self):
+        toolhead = self.printer.lookup_object('toolhead', None)
+        extruder = toolhead.get_extruder() if toolhead is not None else None
+        stepper = getattr(getattr(extruder, 'extruder_stepper', None), 'stepper', None)
+        model = getattr(self.printer, 'harness_filament', None)
+        gate = self.mmu.gate_selected
+        if gate is None or gate < 0:
+            model = None
+        return stepper, model, gate
+
+    @staticmethod
+    def _move_extruder(stepper, amount):
+        if stepper is None:
+            return
+        # HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
+        # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position
+        # alone is not enough - it is mcu-preserving, by design (klippy_root/stepper.py)
+        stepper.set_position([stepper.get_commanded_position() + amount, 0., 0., 0.])
+        stepper.harness_note_motion(amount)
 
     def calibrate(self):
         """

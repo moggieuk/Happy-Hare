@@ -744,9 +744,9 @@ class TestBootupOutput(unittest.TestCase):
         the time the prompt appears, and that banner is the last thing on screen. boot() now
         seeds it (Session.seed_loaded_gates) exactly as a real printer's mmu_vars.cfg would.
 
-        The default profile is ercf_vvd, which is what makes this worth asserting: ERCF has no
-        per-gate switches and takes the persisted map, while ViViD re-derives its gates from
-        mmu_entry_9..12 at bootup. Seeding the map alone left ViViD's four reading EMPTY.
+        The default profile is ercf_vvd, which is what makes this worth asserting: both units
+        re-derive their gates from the mmu_entry switches at bootup. Seeding the map alone left
+        ViViD's four reading EMPTY.
         """
         console = console_mod.Console(console_mod.parse_args(['--no-log', '--plain']))
         self.addCleanup(console.close)
@@ -763,9 +763,12 @@ class TestBootupOutput(unittest.TestCase):
         self.assertEqual(console.hh.errors, [], 'seeding made bootup dirty')
 
     def test_no_preload_still_boots_an_unknown_machine(self):
-        """The seeding is tied to the preload, not to booting - --no-preload is a cold start."""
+        """
+        The seeding is tied to the preload, not to booting - --no-preload is a cold start.
+        Tradrack has no entry switches, so nothing can tell its gates' state at bootup.
+        """
         console = console_mod.Console(console_mod.parse_args(
-            ['--no-preload', '--no-log', '--plain']))
+            ['--profile', 'tradrack', '--no-preload', '--no-log', '--plain']))
         self.addCleanup(console.close)
         console.boot()
         self.assertIn('?', self._avail_row(console))
@@ -2583,10 +2586,15 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertEqual(hh.errors, [])
 
     def test_pacing_does_not_change_where_the_filament_ends_up(self):
-        """Slicing a move must be exact - the totals cannot drift from the unpaced answer."""
+        """
+        Slicing a move must be exact - the totals cannot drift from the unpaced answer.
+        Both loads follow an unload, so a tip cut's fragment shortens them alike.
+        """
         hh = self.console.hh
         gate = hh.mmu.num_gates - 1
         self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+        self.console._dispatch('MMU_LOAD')
+        self.console._dispatch('MMU_UNLOAD')
         self.console._dispatch('MMU_LOAD')
         unpaced = round(self.console.fil.tip[gate], 4)
         self.console._dispatch('MMU_UNLOAD')
