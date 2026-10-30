@@ -6,6 +6,29 @@ export function interpolate(event, fraction) {
   const mix = (x,y) => typeof x === 'number' && typeof y === 'number' ? x+(y-x)*fraction : x;
   const s = structuredClone(a);
   for (const key of ['tips','tails']) s[key] = a[key].map((x,i)=>mix(x,b[key][i]));
+  if (event.raw_before && event.raw_state) {
+    // Reach a physical stop at commanded pace, then hold while gears keep feeding.
+    s.tips = a.tips.map((tip, i) => {
+      const delta = event.raw_state.tips[i] - event.raw_before.tips[i];
+      const candidate = tip + delta * fraction;
+      return delta >= 0 ? Math.min(candidate, b.tips[i]) : Math.max(candidate, b.tips[i]);
+    });
+  }
+  s.extruded_mm = a.extruded_mm || 0;
+  const emitted = (b.extruded_mm || 0) - s.extruded_mm;
+  if (emitted > 0) {
+    const gate = b.gate;
+    const approach = Math.max(0, (b.layout?.nozzle ?? a.tips[gate]) - a.tips[gate]);
+    s.extruded_mm += Math.max(0, Math.min(emitted, (approach + emitted) * fraction - approach));
+  }
+  s.purge_base_mm = b.purge_base_mm ?? 0;
+  if ((b.purge_base_mm || 0) > (a.purge_base_mm || 0)) {
+    s.purge_base_mm = a.purge_base_mm || 0;
+    s.purge_drop = fraction;
+  }
+  if (a.nozzle_color && b.nozzle_color) {
+    s.nozzle_color = [0,2,4].map(i=>Math.round(mix(parseInt(a.nozzle_color.slice(i,i+2),16),parseInt(b.nozzle_color.slice(i,i+2),16))).toString(16).padStart(2,'0')).join('');
+  }
   for (const [name,value] of Object.entries(b.motors)) s.motors[name]=mix(a.motors[name]||0,value);
   for (const [name,device] of Object.entries(a.devices)) {
     for (const [key,value] of Object.entries(device)) s.devices[name][key]=mix(value,b.devices[name]?.[key]);
@@ -49,4 +72,18 @@ export function duration(event, compressBowden = false) {
     }
   }
   return Math.max(0.12,seconds)*1000;
+}
+
+// A bounded schematic coil; long purges continue accumulating without leaving the scene.
+export function purgePath(amount) {
+  if (!(amount > 0)) return '';
+  const turns = Math.min(12, amount / 3);
+  const points = [];
+  const count = Math.max(1, Math.ceil(turns * 32));
+  for (let i = 0; i <= count; i++) {
+    const t = turns * i / count;
+    const radius = 22 * Math.min(1, t / .5) * (1 - .065 * t);
+    points.push(`${(260 + radius * Math.sin(t * Math.PI * 2)).toFixed(2)} ${(498 - t * 2.6 + 2 * Math.cos(t * Math.PI * 2)).toFixed(2)}`);
+  }
+  return 'M' + points.join(' L');
 }

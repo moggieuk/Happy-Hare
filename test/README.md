@@ -665,6 +665,39 @@ Pair records by session and move ID, not by adjacent lines:
   Exceptional exits always close an emitted start; unavailable results are null.
   Rejected requests that never reach movement dispatch do not emit a start.
 
+The console emits a `filament_pos_snapshot` after boot. Movement starts/outcomes
+also include `filament_pos` and its readable name, so recording mid-session still
+establishes the logical starting state. `filament_pos_changed` records previous
+and new states (including silent changes), unit and gate; repeated assignments
+are suppressed. This is Happy Hare's discrete progress state, not a millimetre
+coordinate. The viewer displays it alongside the tip position.
+
+Sensor observations are full name-to-state maps at movement start and outcome:
+true means triggered, false means clear, null means disabled. Absent sensors are
+not listed. These are controller observations, not timestamped transitions inside
+a move. The viewer estimates intervening crossings from geometry and preserves
+recorded endpoint states.
+
+Viewer snapshots retain `raw_state`/`raw_before` separately from displayed states.
+A forward move with stationary extruder motors stops the displayed tip at the
+configured gear position, while motor travel continues. The gear position is the
+harness entry coordinate plus `toolhead_entry_to_extruder`. Clear enabled presence
+sensors bound occupied filament; buffer and encoder sensors are excluded. Finite
+filament tails may pass a clear sensor once they no longer cover it. These are
+visual constraints: they do not change simulator physics, homing results or source
+telemetry. Extruder-fed travel beyond the configured nozzle accumulates as
+`extruded_mm` and grows a shaded purge coil. Retraction leaves deposited filament
+in place and recovering that retraction does not count as new extrusion. The
+amount is input-filament length, not the length of the thinner extruded strand.
+Coil size and blending are schematic, not a melt-flow model. A full coil falls
+behind the lower screen and the next coil starts growing. A nozzle-level retract
+after extrusion also releases the coil; telemetry does not identify a special
+"final retract", so this rule applies to any such retract. Extrusion totals remain
+cumulative across releases. Startup snapshots include `filament` context with the
+configured residual, persisted per-extruder fragment length and retained color,
+and the selected gate color. Missing colors are neutral gray. Retained material
+is drawn at the nozzle and blends toward incoming color as material is extruded. Missing sensors supply no positional evidence.
+
 State records share the same versioned stream and sequence numbers:
 
 - `drive_sync_requested` and `drive_sync_decision` report synchronization intent

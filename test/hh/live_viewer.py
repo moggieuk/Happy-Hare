@@ -5,6 +5,7 @@
 HTTP readers consume immutable snapshots under a lock, including while the
 console is inside a command. They never execute commands or enter the reactor.
 """
+import copy
 import collections
 import math
 import inspect
@@ -34,6 +35,11 @@ class LiveViewer:
         self.lock = threading.Lock()
         self.sequence = 0
         self.latest = None
+        self.latest_raw = None
+        self.extruded_mm = 0.
+        self.purge_base_mm = 0.
+        self.nozzle_color = None
+        self.purge_color_start = None
         self.motors = {}
         self.depth = 0
         self.wrapped = []
@@ -57,6 +63,8 @@ class LiveViewer:
     def on_telemetry(self, record):
         with self.lock:
             self.telemetry_records.append(record)
+        if record['event'] == 'filament_pos_changed':
+            self.capture('state', record['filament_pos_name'], telemetry=record)
         if record['event'] not in ('movement_start', 'movement_outcome'):
             return
         key = record['move_id']
@@ -176,8 +184,15 @@ class LiveViewer:
                         else:
                             status = dict(value=None, spring=obj.buffer_spring_state)
                     devices[unit.name + ':' + kind] = status
-        return plain(dict(unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
-            layout=model.layout.copy(), motors=self.motors.copy(),
+        from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
+        layout = model.layout.copy()
+        params = hh.mmu.mmu_unit().toolhead_wrapper.p
+        layout['extruder_gears'] = layout['extruder_entry'] + params.toolhead_entry_to_extruder
+        layout['nozzle'] = layout['extruder_gears'] + params.toolhead_extruder_to_nozzle
+        from extras.mmu.mmu_movement_telemetry import filament_context
+        return plain(dict(filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
+            filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
+            layout=layout, motors=self.motors.copy(),
             sensors={name: {'state': state[0], 'position': model.position(name)}
                      for name, state in sensors.items()}, devices=devices))
 
@@ -186,12 +201,74 @@ class LiveViewer:
             return
         state = self.snapshot()
         with self.lock:
-            if kind == 'state' and state == self.latest:
+            if kind == 'state' and state == self.latest_raw:
                 return
+            raw_before = details.get('before')
+            if raw_before is not None:
+                details['raw_before'] = copy.deepcopy(raw_before)
+            if raw_before is not None and self.latest_raw is not None and raw_before['tips'] != self.latest_raw['tips']:
+                # Explicit harness placement/recovery between captured movements.
+                self.latest = copy.deepcopy(raw_before)
+                self.latest_raw = copy.deepcopy(raw_before)
+            raw_state = copy.deepcopy(state)
+            if self.nozzle_color is None:
+                self.nozzle_color = state['filament']['retained_color']
+                self.purge_color_start = self.nozzle_color
+            extruder_moves = False
+            if self.latest is not None and self.latest_raw is not None:
+                for gate, tip in enumerate(state['tips']):
+                    delta = tip - self.latest_raw['tips'][gate]
+                    state['tips'][gate] = self.latest['tips'][gate] + delta
+                if 'before' in details:
+                    details['before'] = copy.deepcopy(self.latest)
+                gate = state['gate']
+                if gate >= 0:
+                    extruder_moves = any('extruder' in name and
+                        abs(value-self.latest_raw['motors'].get(name, 0)) > 1e-9
+                        for name, value in state['motors'].items())
+                    before_tip = self.latest['tips'][gate]
+                    if not extruder_moves and state['tips'][gate] > before_tip:
+                        state['tips'][gate] = min(state['tips'][gate],
+                            max(before_tip, state['layout']['extruder_gears']))
+            gate = state['gate']
+            if gate >= 0:
+                tail = state['tails'][gate]
+                for name, sensor in state['sensors'].items():
+                    if name not in state['unit_sensors'] or sensor['state'] is not False:
+                        continue
+                    if 'filament_compression' in name or 'filament_tension' in name or 'encoder' in name:
+                        continue
+                    short = name.split(':')[-1]
+                    if short.startswith('mmu_') and short.rsplit('_', 1)[-1].isdigit() and int(short.rsplit('_', 1)[-1]) != gate:
+                        continue
+                    position = sensor['position']
+                    if position is not None and (tail is None or tail <= position):
+                        state['tips'][gate] = min(state['tips'][gate], position-0.001)
+            if gate >= 0 and extruder_moves:
+                nozzle = state['layout']['nozzle']
+                amount = max(0., state['tips'][gate] - nozzle)
+                if state['tips'][gate] < self.latest['tips'][gate] and self.latest['tips'][gate] >= nozzle-.01:
+                    self.purge_base_mm = self.extruded_mm
+                if amount:
+                    if int((self.extruded_mm-self.purge_base_mm)/36) != int((self.extruded_mm+amount-self.purge_base_mm)/36) or self.extruded_mm == self.purge_base_mm:
+                        self.purge_color_start = self.nozzle_color
+                    incoming = state['filament']['incoming_color']
+                    length = max(3., state['filament']['residual_mm'] + state['filament']['fragment_mm'])
+                    fraction = 1-math.exp(-amount/length)
+                    self.nozzle_color = ''.join(f'{round(int(self.nozzle_color[i:i+2],16)*(1-fraction)+int(incoming[i:i+2],16)*fraction):02x}' for i in (0,2,4))
+                self.extruded_mm += amount
+                state['tips'][gate] = min(state['tips'][gate], nozzle)
+            state['extruded_mm'] = self.extruded_mm
+            state['purge_base_mm'] = self.purge_base_mm
+            state['nozzle_color'] = self.nozzle_color
+            state['purge_color_start'] = self.purge_color_start
+            if 'before' in details:
+                details['before'].setdefault('extruded_mm', self.latest.get('extruded_mm', 0.))
+            self.latest_raw = raw_state
             self.sequence += 1
             event = dict(version=2, session=self.session_id, seq=self.sequence,
                          time=self.hh.reactor.monotonic(), kind=kind, label=label,
-                         state=state, **plain(details))
+                         state=state, raw_state=raw_state, **plain(details))
             self.events.append(event)
             self.latest = state
 

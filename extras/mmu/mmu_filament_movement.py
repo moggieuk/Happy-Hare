@@ -3787,6 +3787,8 @@ class MmuFilamentMovement:
                     motors = sorted({stepper.get_name() for owner in owners
                                      for stepper in owner.get_steppers()})
                     motion.start(source='move_filament', label=trace_str,
+                        filament_pos=self.filament_pos,
+                        filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.filament_pos, 'UNKNOWN'),
                         unit=u.name, gate=self.gate_selected, motor_mode=motor,
                         motors=motors, requested_mm=dist, speed_mm_s=speed,
                         acceleration_mm_s2=accel if motor != 'synced' else None,
@@ -3857,6 +3859,8 @@ class MmuFilamentMovement:
         self.movement_telemetry.current.finish(
             status='not_homed' if homing_move and not homed else 'completed' if wait or homing_move else 'submitted',
             actual_mm=actual, position_mm=drive.get_filament_position(),
+            filament_pos=self.filament_pos,
+            filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.filament_pos, 'UNKNOWN'),
             homed=bool(homed) if homing_move else None,
             encoder_mm=measured, encoder_delta_mm=delta,
             sensors={name: value[0] for name, value in

@@ -3133,7 +3133,12 @@ class MmuController(MmuFilamentMovement):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
             self.td1.release()
         if self.filament_pos != state:
+            previous = self.filament_pos
             self.filament_pos = state
+            self.movement_telemetry.state('filament_pos_changed',
+                unit=self.mmu_unit().name, gate=self.gate_selected,
+                previous=previous, filament_pos=state,
+                filament_pos_name=FILAMENT_POS_NAME_MAP.get(state, 'UNKNOWN'))
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
                 if not silent:
                     self._display_visual_state()
