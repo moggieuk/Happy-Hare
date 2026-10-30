@@ -18,7 +18,7 @@
 # CANCEL_PRINT (extras/mmu/mmu_controller.py:245-252).
 #
 # Unknown commands are recorded and ignored by default (HH legitimately issues
-# M104/M117/M220/... owned by Klipper modules we do not fake), with
+# M117/... owned by Klipper modules we do not fake), with
 # strict=True to turn them into errors for targeted tests. `unhandled` is asserted on
 # in one test so the set stays visible and changes get reviewed.
 #
@@ -35,8 +35,11 @@ class CommandError(Exception):
     pass
 
 
-# KEY=VALUE, allowing quoted values and bare flags
-_PARAM_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s]*)')
+# KEY=VALUE, allowing quoted values and bare flags. The '=' is attached to the key, as in
+# Klipper's shlex split, so 'PURGE_VOLUMES= NEXT=1' is an empty value, not 'NEXT=1'
+_PARAM_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|\'[^\']*\'|[^\s]*)')
+# An unquoted ';' or '#' starts a comment (Klipper's shlex commenters)
+_COMMENT_RE = re.compile(r'''^((?:"[^"]*"|'[^']*'|[^;#"'])*)''')
 # Traditional gcode (G1 X10 Y20): a letter+number command word with letter+value params
 _TRAD_CMD_RE = re.compile(r'^[GM]\d+(\.\d+)?$')
 _TRAD_PARAM_RE = re.compile(r'([A-Za-z])\s*([-+]?[0-9.]+)')
@@ -241,10 +244,10 @@ class GCodeDispatch:
         rest = parts[1] if len(parts) > 1 else ''
         params = {}
         if _TRAD_CMD_RE.match(command):
-            for m in _TRAD_PARAM_RE.finditer(rest):
+            for m in _TRAD_PARAM_RE.finditer(rest.split(';', 1)[0]):
                 params[m.group(1).upper()] = m.group(2)
             return command, params, line
-        for m in _PARAM_RE.finditer(rest):
+        for m in _PARAM_RE.finditer(_COMMENT_RE.match(rest).group(1)):
             key, val = m.group(1).upper(), m.group(2)
             if len(val) >= 2 and val[0] in '"\'' and val[-1] == val[0]:
                 val = val[1:-1]

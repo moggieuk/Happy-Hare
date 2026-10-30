@@ -100,6 +100,9 @@ class ToolHead:
         # (klippy/toolhead.py:292). `homing` in particular is looked up rather than
         # loaded by HH (extras/mmu_stepper.py:883), so it has to exist by now. The
         # ones the harness does not fake are loaded with a None default and skipped.
+        gcode = self.printer.lookup_object('gcode')
+        gcode.register_command('G4', self.cmd_G4)
+        gcode.register_command('M400', self.cmd_M400)
         for module_name in ('gcode_move', 'homing', 'idle_timeout', 'statistics',
                             'manual_probe', 'tuning_tower', 'garbage_collection'):
             self.printer.load_object(config, module_name, None)
@@ -160,6 +163,14 @@ class ToolHead:
 
     def wait_moves(self):
         self.waits += 1
+
+    def cmd_G4(self, gcmd):
+        # Recorded, not waited: the virtual clock only moves when the harness advances it
+        delay = gcmd.get_float('P', 0., minval=0.) / 1000.
+        self.dwell(delay)
+
+    def cmd_M400(self, gcmd):
+        self.wait_moves()
 
     def drip_move(self, newpos, speed, drip_completion):
         self.move(newpos, speed)

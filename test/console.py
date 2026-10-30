@@ -33,7 +33,9 @@ import logging
 import os
 import re
 import select
+import shutil
 import sys
+import tempfile
 import time
 
 # The fakes log at debug/warning through the root logger and every test file quiets it at
@@ -45,6 +47,7 @@ if __package__ in (None, ''):                       # allow `python test/console
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from test.hh import session as hh_session           # noqa: E402
+from test.hh import print_job                       # noqa: E402
 from test.hh.webui_bridge import WebUiBridge        # noqa: E402
 
 # -- optional readline, mirroring utils/sync_feedback_sim.py -------------------------
@@ -509,6 +512,7 @@ class Console:
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
         # leave --script exiting 0.
         self.failures = 0
+        self.job = None                             # a /print job, while one is held
 
     # -- lifecycle ------------------------------------------------------------
     def boot(self):
@@ -891,7 +895,7 @@ class Console:
         """
         self.hh.gcode.run_script(line)
 
-    def run_command(self, line):
+    def run_command(self, line, warn_unknown=True):
         mark = len(self.sink)
         unhandled_mark = len(self.hh.gcode.unhandled)
         gate_status_before = None
@@ -929,8 +933,9 @@ class Console:
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
-        self._warn_unhandled(line, unhandled_mark)
-        self._warn_silent_macro(line, mark)
+        if warn_unknown:
+            self._warn_unhandled(line, unhandled_mark)
+            self._warn_silent_macro(line, mark)
 
     def _sync_filament_to_gate_map(self, before):
         """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""
@@ -1098,6 +1103,10 @@ class Console:
         if bowden >= 0:
             extra.append('bowden=%d%%' % bowden)
         extra.append('t=%+.2fs' % (self.hh.reactor.monotonic() - 1000.))
+        extruder = self.hh.printer.lookup_object('extruder', None)
+        if extruder is not None:
+            temp, target = extruder.get_heater().get_temp()
+            extra.append('nozzle=%.0f/%.0fC' % (temp, target))
         extra.extend(self._current_cells(gate))
         # Only when pacing is ON. 0 is the default and means "moves are instant", which is
         # the absence of a mode rather than a mode - and a permanent 'realtime=0%' would just
@@ -1466,6 +1475,8 @@ class Console:
         ('/heat [TEMP]', 'set the extruder temperature'),
         ('/web', 'where the web API is and how to point Mainsail or Fluidd at it'),
         ('/print [start|end]', 'act as a print in progress (or finished), so an error pauses it'),
+        ('/print job [FILE]', 'play a G-code print job: the built-in test job, or FILE as '
+                              'written. A pause holds it; /print resume or /print cancel'),
         ('/pace [FACTOR]', 'how much of each move\'s real duration to spend: 0=instant '
                            '(default), 0.5=twice as fast as real, 1=real time '
                            '(alias /realtime)'),
@@ -1561,6 +1572,7 @@ class Console:
         self.startup_output = []
         self.clock_epoch = None
         self.failures = 0
+        self.job = None                             # a /print job, while one is held
         self._clear_sink()
         if self.scrollback is not None:
             self.scrollback.clear()
@@ -1832,17 +1844,190 @@ class Console:
         """
         Make the machine look like it is mid-print. Outside a print an MMU error just fails
         the command; in one it pauses and, with a web UI attached, pops the pause dialog.
+
+        `job`, `resume` and `cancel` play a whole G-code print job instead - see _job_play().
         """
         mode = args[0].lower() if args else 'start'
+        if mode == 'job':
+            if len(args) > 2:
+                raise ValueError('usage: /print job [FILE]')
+            self._job_start(args[1] if len(args) > 1 else None)
+            return
+        if mode == 'resume':
+            self._job_resume()
+            return
+        if mode == 'cancel':
+            self._job_cancel()
+            return
         if mode not in ('start', 'end'):
-            raise ValueError('usage: /print [start|end]')
+            raise ValueError('usage: /print [start|end|job [FILE]|resume|cancel]')
         stats = self.hh.printer.lookup_object('print_stats')
         if mode == 'start':
             stats.set_state('printing')
             self.run_command('MMU_PRINT_START')
         else:
+            self.job = None
             self.run_command('MMU_PRINT_END')
             stats.set_state('complete')
+
+    ######################
+    ##### Print jobs #####
+    ######################
+
+    # Macros whose bodies run while a job plays. Everywhere else the harness only records a
+    # macro call (klippy_root/extras/gcode_macro.py), which is why T1 at the prompt is silent.
+    # Park, cut and purge stay recorded no-ops even in a job: their motion is not modelled.
+    JOB_MACROS = ('MMU_START_SETUP', 'MMU_START_CHECK', 'MMU_START_LOAD_INITIAL_TOOL',
+                  'MMU_END')
+    # Played straight through the dispatcher with no per-line settle: a sliced file is almost
+    # entirely these, and settling every one would make a real print take minutes
+    JOB_MOTION = re.compile(r'^(G0|G1|G2|G3|G4|G90|G91|G92|M82|M83)$')
+    # Virtual time owed by moves is paid in slices this long, so timers fire across a print
+    JOB_TICK = 0.5
+
+    def _job_start(self, path):
+        if self.job is not None:
+            raise ValueError('a job is held at line %d - /print resume or /print cancel'
+                             % self.job.line_no)
+        builtin = path is None
+        path = print_job.BUILTIN_JOB if builtin else os.path.expanduser(path)
+        workdir = tempfile.mkdtemp(prefix='hh-job-')
+        try:
+            lines, note = print_job.prepare(path, self.hh.mmu, workdir, builtin=builtin)
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+        name = os.path.basename(path)
+        self.job = _Job(name=name, lines=lines)
+        self.info('Print job %s: %d lines, %s' % (name, len(lines), note))
+
+        stats = self.hh.printer.lookup_object('print_stats')
+        stats.filename = name
+        stats.total_duration = stats.print_duration = 0.
+        self.job.started = self.hh.reactor.monotonic()
+        self._job_set_state('printing')
+        self._job_play()
+
+    def _job_resume(self):
+        if self.job is None:
+            raise ValueError('no job is held - /print job [FILE] starts one')
+        if self.hh.mmu.is_paused():
+            raise ValueError('the machine is still paused - fix it, RESUME, then /print resume')
+        self.info('Resuming %s at line %d' % (self.job.name, self.job.next + 1))
+        self._job_set_state('printing')
+        self._job_play()
+
+    def _job_cancel(self):
+        if self.job is None:
+            raise ValueError('no job is held')
+        job, self.job = self.job, None
+        self.run_command('CANCEL_PRINT')
+        self._job_set_state('cancelled')
+        self.info('Print job %s cancelled at line %d' % (job.name, job.line_no))
+
+    def _job_set_state(self, state):
+        """Move print_stats and idle_timeout as virtual_sdcard would, so HH sees it happen."""
+        stats = self.hh.printer.lookup_object('print_stats')
+        idle = self.hh.printer.lookup_object('idle_timeout')
+        mark = len(self.sink)
+        stats.set_state(state)
+        if state in ('printing', 'complete', 'cancelled'):
+            idle.set_state('Printing' if state == 'printing' else 'Ready')
+        self.hh.reactor.advance(0.)
+        self._drain(mark)
+
+    def _job_play(self):
+        """
+        Feed the held job from where it stopped until it ends or the machine pauses.
+
+        What runs for real: the macros in JOB_MACROS and T<n> (their bodies, only for the
+        duration), every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
+        filament model) and the extruder heater (M104/M109). Time passes as the moves would
+        take it, plus G4 dwells. Anything else the harness does not know - bed heaters,
+        EXCLUDE_OBJECT_*, the user's own PRINT_START - is ignored and listed at the end.
+        """
+        job = self.job
+        stats = self.hh.printer.lookup_object('print_stats')
+        gcode_move = self.hh.printer.lookup_object('gcode_move')
+        toolhead = self.hh.printer.lookup_object('toolhead')
+        effects = self.hh.printer.harness_macro_effects
+        names = list(self.JOB_MACROS) + ['T%d' % t for t in range(self.hh.mmu.num_gates)]
+        saved = {n: effects.get(n) for n in names}
+        for n in names:
+            effects[n] = self._run_macro_body
+        owed = 0.
+        try:
+            while job.next < len(job.lines):
+                line = job.lines[job.next].strip()
+                job.next += 1
+                word = line.split(None, 1)[0].upper() if line else ''
+                if not word or word.startswith(';'):
+                    continue
+                job.line_no = job.next
+                job.played += 1
+                if self.JOB_MOTION.match(word):
+                    dwells = len(toolhead.dwells)
+                    before = gcode_move.last_position[:4]
+                    try:
+                        self.hh.gcode.run_script(line)
+                    except Exception as exc:        # noqa: BLE001
+                        print(paint('!! %s' % exc, '1;31', self.color))
+                        self.failures += 1
+                    after = gcode_move.last_position[:4]
+                    de = after[3] - before[3]
+                    job.extruded += de
+                    xyz = sum((a - b) ** 2 for a, b in zip(after[:3], before[:3])) ** .5
+                    if gcode_move.speed > 0:
+                        owed += max(xyz, abs(de)) / gcode_move.speed
+                    owed += sum(toolhead.dwells[dwells:])
+                else:
+                    owed = self._job_pay(owed, 0.)
+                    unhandled_mark = len(self.hh.gcode.unhandled)
+                    self.run_command(line, warn_unknown=False)
+                    for raw in self.hh.gcode.unhandled[unhandled_mark:]:
+                        if raw.split(None, 1)[0].upper() == word:
+                            job.ignored[word] += 1
+                owed = self._job_pay(owed, self.JOB_TICK)
+                stats.total_duration = stats.print_duration = (
+                    self.hh.reactor.monotonic() - job.started)
+                if self.hh.mmu.is_paused():
+                    self._job_hold('the machine paused')
+                    return
+            self._job_pay(owed, 0.)
+        except KeyboardInterrupt:
+            self._job_hold('interrupted')
+            return
+        finally:
+            for n, effect in saved.items():
+                if effect is None:
+                    effects.pop(n, None)
+                else:
+                    effects[n] = effect
+        self.job = None
+        self._job_set_state('complete')
+        summary = ('Print job %s complete: %d lines, %.1fmm extruded, %d toolchanges, %s'
+                   % (job.name, job.played, job.extruded, self.hh.mmu.num_toolchanges,
+                      _duration(self.hh.reactor.monotonic() - job.started)))
+        if job.ignored:
+            summary += '\nIgnored (not simulated): %s' % ', '.join(
+                '%s x%d' % (w, n) for w, n in sorted(job.ignored.items()))
+        self.info(summary)
+
+    def _job_pay(self, owed, threshold):
+        """Spend the virtual time the moves played so far would have taken, once it adds up."""
+        if owed > 0. and owed >= threshold:
+            mark = len(self.sink)
+            self.advance(owed)
+            self._drain(mark)
+            return 0.
+        return owed
+
+    def _job_hold(self, why):
+        job = self.job
+        self.hh.printer.lookup_object('print_stats').set_state('paused')
+        self.info('Print job %s held at line %d (%s): %s\n'
+                  'Fix it, RESUME (or MMU_UNLOCK then RESUME), then /print resume - '
+                  'or /print cancel' % (job.name, job.line_no, why,
+                                        job.lines[job.line_no - 1].strip()))
 
     def _meta_pace(self, args):
         """
@@ -2508,6 +2693,25 @@ class Console:
                 self.draw_header()
             if not self.running:
                 break
+
+
+class _Job:
+    """A /print job: its prepared lines and how far it has got."""
+
+    def __init__(self, name, lines):
+        self.name = name
+        self.lines = lines
+        self.next = 0                               # index of the next line to play
+        self.line_no = 0                            # 1-based number of the last line played
+        self.played = 0
+        self.extruded = 0.
+        self.started = 0.
+        self.ignored = collections.Counter()
+
+
+def _duration(seconds):
+    minutes, seconds = divmod(int(round(seconds)), 60)
+    return '%dm%02ds' % (minutes, seconds) if minutes else '%ds' % seconds
 
 
 class PinnedHeader:

@@ -26,7 +26,7 @@ class IdleTimeout:
     def set_state(self, state):
         assert state in ('Idle', 'Ready', 'Printing')
         self.state = state
-        self.printer.send_event('idle_timeout:%s' % state.lower())
+        self.printer.send_event('idle_timeout:%s' % state.lower(), self.reactor.monotonic())
 
 
 def load_config(config):

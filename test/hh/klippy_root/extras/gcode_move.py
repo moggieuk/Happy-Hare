@@ -29,13 +29,17 @@ class GCodeMove:
         self.move_transform = None
         gcode = self.printer.lookup_object('gcode')
         for cmd in ('SAVE_GCODE_STATE', 'RESTORE_GCODE_STATE', 'SET_GCODE_OFFSET',
-                    'GET_POSITION', 'G0', 'G1', 'G90', 'G91'):
+                    'GET_POSITION', 'G0', 'G1', 'G2', 'G3', 'G90', 'G91', 'G92',
+                    'M82', 'M83', 'M220', 'M221'):
             gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
 
     # -- moves ---------------------------------------------------------------
-    # XYZ only: E is ignored so Python-issued `G1 E..` stays a no-op, as it was when
-    # G1 was unhandled. Moves go through the transform chain (skew_correction) to the
-    # toolhead, which is what lets a test see the final kinematic position.
+    # Ported from klippy/extras/gcode_move.py. Moves go through the transform chain
+    # (skew_correction) to the toolhead, which is what lets a test see the final kinematic
+    # position. E is applied as a DELTA to the toolhead's own extruder position: Happy Hare
+    # moves the extruder outside gcode_move, and real Klipper resyncs last_position on those
+    # moves (toolhead:manual_move) rather than replaying the gap. The toolhead reports the
+    # delta to the filament model (test/hh/bootstrap.py:_on_toolhead_move).
     def set_move_transform(self, transform, force=False):
         if self.move_transform is not None and not force:
             raise self.printer.config_error("G-Code move transform already specified")
@@ -43,40 +47,83 @@ class GCodeMove:
         self.move_transform = transform
         return old
 
-    def _move_with_transform(self, speed):
+    def _move_with_transform(self, speed, e_delta=0.):
         toolhead = self.printer.lookup_object('toolhead')
         target = self.move_transform or toolhead
-        target.move(list(self.last_position[:3]) + toolhead.get_position()[3:], speed)
+        extra = toolhead.get_position()[3:]
+        extra[0] += e_delta
+        target.move(list(self.last_position[:3]) + extra, speed)
 
     def cmd_G1(self, gcmd):
         params = gcmd.get_command_parameters()
         previous = list(self.last_position)
         moved = False
-        for pos, axis in enumerate('XYZ'):
-            if axis in params:
-                v = float(params[axis])
-                if self.absolute_coord:
-                    self.last_position[pos] = v + self.base_position[pos]
-                else:
-                    self.last_position[pos] += v
-                moved = True
-        if 'F' in params:
-            self.speed = float(params['F']) * self.speed_factor
+        try:
+            for pos, axis in enumerate('XYZE'):
+                if axis in params:
+                    v = float(params[axis])
+                    absolute_coord = self.absolute_coord
+                    if axis == 'E':
+                        v *= self.extrude_factor
+                        if not self.absolute_extrude:
+                            absolute_coord = False
+                    if absolute_coord:
+                        self.last_position[pos] = v + self.base_position[pos]
+                    else:
+                        self.last_position[pos] += v
+                    moved = True
+            if 'F' in params:
+                gcode_speed = float(params['F'])
+                if gcode_speed <= 0.:
+                    raise gcmd.error("Invalid speed in '%s'" % (gcmd.get_commandline(),))
+                self.speed = gcode_speed * self.speed_factor
+        except ValueError:
+            self.last_position = previous
+            raise gcmd.error("Unable to parse move '%s'" % (gcmd.get_commandline(),))
         if moved:
             try:
-                self._move_with_transform(self.speed)
+                self._move_with_transform(self.speed, self.last_position[3] - previous[3])
             except Exception:
                 # Klipper resets last_position on gcode:command_error
                 self.last_position = previous
                 raise
 
-    cmd_G0 = cmd_G1
+    # Arcs: the same endpoint and extrusion as a straight line, which is all that is modelled
+    cmd_G0 = cmd_G2 = cmd_G3 = cmd_G1
 
     def cmd_G90(self, gcmd):
         self.absolute_coord = True
 
     def cmd_G91(self, gcmd):
         self.absolute_coord = False
+
+    def cmd_M82(self, gcmd):
+        self.absolute_extrude = True
+
+    def cmd_M83(self, gcmd):
+        self.absolute_extrude = False
+
+    def cmd_G92(self, gcmd):
+        offsets = [gcmd.get_float(a, None) for a in 'XYZE']
+        for i, offset in enumerate(offsets):
+            if offset is not None:
+                if i == 3:
+                    offset *= self.extrude_factor
+                self.base_position[i] = self.last_position[i] - offset
+        if offsets == [None, None, None, None]:
+            self.base_position[:4] = self.last_position[:4]
+
+    def cmd_M220(self, gcmd):
+        value = gcmd.get_float('S', 100., above=0.) / (60. * 100.)
+        self.speed = self.speed / self.speed_factor * value
+        self.speed_factor = value
+
+    def cmd_M221(self, gcmd):
+        new_extrude_factor = gcmd.get_float('S', 100., above=0.) / 100.
+        last_e_pos = self.last_position[3]
+        e_value = (last_e_pos - self.base_position[3]) / self.extrude_factor
+        self.base_position[3] = last_e_pos - e_value * new_extrude_factor
+        self.extrude_factor = new_extrude_factor
 
     def cmd_SAVE_GCODE_STATE(self, gcmd):
         self.saved_states[gcmd.get('NAME', 'default')] = {
@@ -125,8 +172,12 @@ class GCodeMove:
 
     def get_status(self, eventtime=None):
         return {
-            'speed_factor': self.speed_factor,
-            'speed': self.speed,
+            # As Klipper reports them: the override as a multiplier and the speed in gcode
+            # units. HH turns the reported factor back into the internal one by dividing by
+            # 60 (extras/mmu/mmu_controller.py:2880), so reporting the raw 1/60 here made
+            # every in-print toolchange slow the print down 60x
+            'speed_factor': self.speed_factor * 60.,
+            'speed': self.speed / self.speed_factor,
             'extrude_factor': self.extrude_factor,
             'absolute_coordinates': self.absolute_coord,
             'absolute_extrude': self.absolute_extrude,

@@ -268,6 +268,9 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/reset` | rebuild the selected profile in the same state as a fresh simulator start |
 | `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
 | `/timestamp [on\|off]` | stamp MMU output with the virtual clock; **on by default** at a terminal |
+| `/print [start\|end]` | act as a print in progress (or finished), so an MMU error pauses it |
+| `/print job [FILE]` | play a whole G-code print job — the built-in test job, or FILE — see below |
+| `/print resume`, `/print cancel` | continue a job held by a pause, or abandon it |
 
 ### Multi-unit
 
@@ -499,6 +502,73 @@ Unit : ------------- unit0 -------------
 `#` and not `!`: `!! …` is already a command that raised and `?? …` one that does not
 exist, so a lone `!` would read as a quieter error rather than as a note.
 
+### Playing a print job — `/print job`
+
+`/print job` plays a print from start to finish: Happy Hare's standard start sequence, the
+toolchanges, and its standard end. It is the quickest way to see what a whole print does to
+the console and to `mmu.log`:
+
+```text
+> /print job
+# Print job print_job.gcode: 118 lines, molded to 13 gates, then processed by the Happy Hare preprocessor (PrusaSlicer)
+Happy Hare initialized ready for print (no filament preloaded)
+--------- Slicer MMU Tool Summary ---------
+...
+# Print job print_job.gcode complete: 86 lines, 43.0mm extruded, 3 toolchanges, 36s
+# Ignored (not simulated): G28 x1, M140 x2, M190 x1
+```
+
+With no FILE it plays the **built-in job**, [support/print_job.gcode](support/print_job.gcode):
+three short layers and three toolchanges, T0 → T1 → T2 → T0, between
+`MMU_START_SETUP`/`MMU_START_CHECK`/`MMU_START_LOAD_INITIAL_TOOL` and `MMU_END`. It is
+**molded to the loaded profile** before it plays — its tool numbers are folded onto the gates
+that exist and its slicer metadata comes from the gate map, exactly `num_gates` long — so it
+is an end-to-end test that should run clean on any profile. When it doesn't, the profile or
+the harness has a problem worth looking at.
+
+**Any other file plays as written.** It is prepared the way Moonraker prepares an upload:
+- a file carrying `; processed by HappyHare` plays unchanged;
+- anything else goes through Happy Hare's real preprocessor (`components/mmu_server.py`), which
+  fills the `!placeholders!` and turns `T<n>` into `MMU_CHANGE_TOOL … NEXT_POS`. Metadata the
+  slicer footer doesn't provide is filled from the gates the file's tools map to;
+- a file with no recognised slicer header is played unprocessed, as Moonraker would leave it.
+
+A file is never molded, so one that needs five tools on a four-gate MMU fails inside Happy
+Hare, as it would on a printer.
+
+What is simulated:
+
+- **The print lifecycle.** `print_stats` and `idle_timeout` move as `virtual_sdcard` would
+  move them, so Happy Hare's automatic job start/end detection runs for real.
+- **Macro bodies, for the duration of the job only.** `T<n>`, `MMU_START_SETUP`,
+  `MMU_START_CHECK`, `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` run their real Jinja. The
+  park, cut and purge macros stay recorded no-ops (§"Three things that will look like bugs"),
+  and at the prompt `T1` is silent again.
+- **Extrusion.** `G0`–`G3` E, in absolute (`M82`) or relative (`M83`, or anything after `G91`)
+  mode, with `G92` re-basing, go through the fake `gcode_move` to the toolhead and so into the
+  filament model and the encoder while the gate is synced. XYZ only costs time.
+- **The extruder heater.** `M104`/`M109` (and `SET_HEATER_TEMPERATURE`/`TEMPERATURE_WAIT`) set
+  the target, and a wait arrives at it. The `machine` header shows `nozzle=temp/target`.
+  Other heaters are ignored.
+- **Time.** Each move costs distance ÷ feedrate, `G4` costs its dwell, and the clock advances
+  in half-second slices as the job plays, so timers fire across the print. Nothing sleeps, so
+  even a long real print plays in seconds.
+
+Anything else the harness doesn't know — bed and chamber heaters, `G28`, `EXCLUDE_OBJECT_*`,
+`M73`, your own `PRINT_START` — is ignored and counted in the closing summary. If your slicer
+start G-code calls Happy Hare's start macros from inside your own `PRINT_START`, that macro
+doesn't exist here: call the `MMU_START_*` lines directly, as the built-in job does.
+
+**A pause holds the job.** When the machine pauses, the job stops at that line and says so. Fix
+what went wrong, `RESUME` (or `MMU_UNLOCK` then `RESUME`), and `/print resume` carries on from
+the next line; `/print cancel` abandons it. Ctrl-C holds a job the same way. `/print job` works
+in `--script` too, which makes a reproducible run:
+
+```bash
+echo '/print job' > /tmp/job.txt
+make console ARGS='--profile boxturtle --script /tmp/job.txt'
+```
+
 ### Driving a real Mainsail or Fluidd — the web API
 
 At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
@@ -699,7 +769,8 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
    renders the body, so `T1`, the print start/end and the park/cut/purge sequences produce
    **silence**. Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
    `MMU_COLD_PULL` is the deliberate exception: the console runs its body and simulates its
-   heater waits instantly so the complete maintenance workflow can be exercised.
+   heater waits instantly so the complete maintenance workflow can be exercised. `/print job`
+   is the other: while a job plays, `T<n>` and the print start/end macros run for real.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The
    console does that for you at startup (`boot(calibrate=True, pre_bootup=...)`);
    in a test, call `hh.boot(calibrate=True)`, or `hh.boot()` then `hh.calibrate()`, then
@@ -801,6 +872,7 @@ The test files, grouped by what they're about:
 | **Presentation** | | |
 | `test_mmu_leds.py` | 34 | LED effects, flashes, the pending overlay |
 | `test_mmu_console.py` | 211 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_print_job.py` | 10 | `/print job` end to end, molding the built-in job, and the fake G-code it needs: parsing, extrusion modes, the extruder heater |
 | `test_mmu_webui_bridge.py` | 8 | the Moonraker-compatible web API the console serves: handshake, status, gcode, and the pause dialog reaching a UI |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |
 
