@@ -127,7 +127,7 @@ def filament_context(mmu):
     extruder = unit.extruder_wrapper
     gate = mmu.gate_selected
     color = mmu.gate_color[gate] if gate >= 0 else ''
-    return dict(extruder=extruder.name,
+    return dict(extruder=extruder.name, retracted_length=extruder.retracted_length,
                 residual_mm=unit.toolhead_wrapper.p.toolhead_residual_filament,
                 fragment_mm=extruder.filament_remaining,
                 retained_color=MmuColorUtils.color_to_rgb_hex(extruder.filament_remaining_color, '808182')[:6],

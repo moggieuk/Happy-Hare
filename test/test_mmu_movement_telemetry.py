@@ -51,6 +51,18 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual(start['filament_pos'], FILAMENT_POS_IN_BOWDEN)
         self.assertEqual(end['filament_pos'], FILAMENT_POS_IN_BOWDEN)
 
+    def test_final_retraction_reports_recorded_target_even_when_already_satisfied(self):
+        mmu = self.hh.mmu
+        mmu._set_park_retracted_length(0)
+        mmu._retract_after_standalone_load()
+        mmu._retract_after_standalone_load()
+        events = [r for r in self.records if r['event'] == 'standalone_load_retraction']
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]['retracted_length'], mmu.toolchange_retract)
+        self.assertEqual(events[0]['adjustment_mm'], -mmu.toolchange_retract)
+        self.assertEqual(events[1]['adjustment_mm'], 0)
+        self.assertTrue(any(r['event'] == 'retracted_length_changed' for r in self.records))
+
     def test_idle_disable_uses_trace_not_stepper(self):
         with mock.patch.object(self.hh.mmu, 'log_stepper') as stepper, mock.patch.object(self.hh.mmu, 'log_trace') as trace:
             self.hh.mmu.disable_idle_gear_stepper(0)
