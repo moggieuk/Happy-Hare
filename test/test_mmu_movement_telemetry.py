@@ -37,6 +37,20 @@ class TestMovementTelemetry(unittest.TestCase):
         json.dumps(self.records, allow_nan=False)
         return start, end
 
+    def test_filament_state_changes_include_silent_changes_without_duplicates(self):
+        from extras.mmu.mmu_constants import FILAMENT_POS_IN_BOWDEN
+        previous = self.hh.mmu.filament_pos
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=True)
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=True)
+        records = [r for r in self.records if r['event'] == 'filament_pos_changed']
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]['previous'], previous)
+        self.assertEqual(records[0]['filament_pos'], FILAMENT_POS_IN_BOWDEN)
+        self.hh.mmu.move_filament('Move', 1)
+        start, end = self.pair()
+        self.assertEqual(start['filament_pos'], FILAMENT_POS_IN_BOWDEN)
+        self.assertEqual(end['filament_pos'], FILAMENT_POS_IN_BOWDEN)
+
     def test_idle_disable_uses_trace_not_stepper(self):
         with mock.patch.object(self.hh.mmu, 'log_stepper') as stepper, mock.patch.object(self.hh.mmu, 'log_trace') as trace:
             self.hh.mmu.disable_idle_gear_stepper(0)
@@ -163,6 +177,9 @@ class TestMovementTelemetry(unittest.TestCase):
                 finally:
                     console.close()
             records = [json.loads(line) for line in path.read_text().splitlines()]
+            snapshot = next(r for r in records if r['event'] == 'filament_pos_snapshot')
+            self.assertIn('retained_color', snapshot['filament'])
+            self.assertIn('residual_mm', snapshot['filament'])
             start = next(r for r in records if r.get('label') == 'file capture')
             ends = [r for r in records if r['move_id']==start['move_id'] and r['event']=='movement_outcome']
             self.assertEqual(len(ends), 1)
