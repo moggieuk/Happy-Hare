@@ -561,8 +561,10 @@ doesn't exist here: call the `MMU_START_*` lines directly, as the built-in job d
 
 **A pause holds the job.** When the machine pauses, the job stops at that line and says so. Fix
 what went wrong, `RESUME` (or `MMU_UNLOCK` then `RESUME`), and `/print resume` carries on from
-the next line; `/print cancel` abandons it. Ctrl-C holds a job the same way. `/print job` works
-in `--script` too, which makes a reproducible run:
+the next line; `/print cancel` abandons it. Ctrl-C holds a job the same way. As in a real SD
+print, a command that fails ends the job in `error`, and a `CANCEL_PRINT` in the file ends it
+`cancelled`; neither can be resumed. `/print job` works in `--script` too, which makes a
+reproducible run:
 
 ```bash
 echo '/print job' > /tmp/job.txt

@@ -17,6 +17,7 @@ class PauseResume:
         self.is_paused = False
         self.pause_calls = 0
         self.resume_calls = 0
+        self.cancel_calls = 0                       # a playing /print job stops on these
         gcode = self.printer.lookup_object('gcode')
         for cmd in ('PAUSE', 'RESUME', 'CLEAR_PAUSE', 'CANCEL_PRINT'):
             gcode.register_command(cmd, getattr(self, 'cmd_' + cmd),
@@ -42,6 +43,7 @@ class PauseResume:
 
     def cmd_CANCEL_PRINT(self, gcmd):
         self.is_paused = False
+        self.cancel_calls += 1
 
     def send_pause_command(self):
         self.is_paused = True

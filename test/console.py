@@ -1930,14 +1930,15 @@ class Console:
         idle = self.hh.printer.lookup_object('idle_timeout')
         mark = len(self.sink)
         stats.set_state(state)
-        if state in ('printing', 'complete', 'cancelled'):
+        if state in ('printing', 'complete', 'cancelled', 'error'):
             idle.set_state('Printing' if state == 'printing' else 'Ready')
         self.hh.reactor.advance(0.)
         self._drain(mark)
 
     def _job_play(self):
         """
-        Feed the held job from where it stopped until it ends or the machine pauses.
+        Feed the held job from where it stopped until it ends, the machine pauses, a command
+        fails (the print errors, as virtual_sdcard's would) or the job cancels itself.
 
         What runs for real: the macros in JOB_MACROS and T<n> (their bodies, only for the
         duration), every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
@@ -1949,12 +1950,14 @@ class Console:
         stats = self.hh.printer.lookup_object('print_stats')
         gcode_move = self.hh.printer.lookup_object('gcode_move')
         toolhead = self.hh.printer.lookup_object('toolhead')
+        pause_resume = self.hh.printer.lookup_object('pause_resume')
         effects = self.hh.printer.harness_macro_effects
         names = list(self.JOB_MACROS) + ['T%d' % t for t in range(self.hh.mmu.num_gates)]
         saved = {n: effects.get(n) for n in names}
         for n in names:
             effects[n] = self._run_macro_body
         owed = 0.
+        outcome = 'complete'
         try:
             while job.next < len(job.lines):
                 line = job.lines[job.next].strip()
@@ -1964,6 +1967,7 @@ class Console:
                     continue
                 job.line_no = job.next
                 job.played += 1
+                failures, cancels = self.failures, pause_resume.cancel_calls
                 if self.JOB_MOTION.match(word):
                     dwells = len(toolhead.dwells)
                     before = gcode_move.last_position[:4]
@@ -1989,6 +1993,12 @@ class Console:
                 owed = self._job_pay(owed, self.JOB_TICK)
                 stats.total_duration = stats.print_duration = (
                     self.hh.reactor.monotonic() - job.started)
+                if self.failures > failures:
+                    outcome = 'error'
+                    break
+                if pause_resume.cancel_calls > cancels:
+                    outcome = 'cancelled'
+                    break
                 if self.hh.mmu.is_paused():
                     self._job_hold('the machine paused')
                     return
@@ -2003,7 +2013,12 @@ class Console:
                 else:
                     effects[n] = effect
         self.job = None
-        self._job_set_state('complete')
+        self._job_set_state(outcome)
+        if outcome != 'complete':
+            self.info('Print job %s %s at line %d: %s' % (
+                job.name, 'failed' if outcome == 'error' else 'cancelled', job.line_no,
+                job.lines[job.line_no - 1].strip()))
+            return
         summary = ('Print job %s complete: %d lines, %.1fmm extruded, %d toolchanges, %s'
                    % (job.name, job.played, job.extruded, self.hh.mmu.num_toolchanges,
                       _duration(self.hh.reactor.monotonic() - job.started)))
