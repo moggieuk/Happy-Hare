@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -12,7 +12,7 @@
         <small>HAPPY HARE / CONSOLE</small>
         <h1>Live simulator</h1>
       </div>
-      <span id="connection">Connecting…</span>
+      <div class="header-actions"><span id="connection">Connecting…</span><button id="theme-toggle" type="button" aria-label="Switch to light mode">Light mode</button></div>
     </header>
     <main>
       <aside>
@@ -45,15 +45,12 @@
           Uses the command’s own validation and runtime guards. Changes are
           temporary.
         </p>
-        <hr />
-        <label>Console command<input id="command" value="MMU_LOAD" /></label
-        ><button id="send">Run command</button>
         <p id="message" role="status"></p>
       </aside>
       <section>
         <div class="card">
           <div class="heading">
-            <h2 id="mode">Live</h2>
+            <h2 id="mode" tabindex="0" data-tooltip="Schematic path; distances and device states come from the harness. Macro bodies retain the console’s existing execution support." aria-description="Schematic path; distances and device states come from the harness. Macro bodies retain the console’s existing execution support.">Live</h2>
             <span id="position"></span>
           </div>
           <svg
@@ -62,12 +59,19 @@
             role="img"
             aria-label="Filament path from MMU through Bowden to extruder"
           ></svg>
-          <p class="note">
-            Schematic path; distances and device states come from the harness.
-            Macro bodies retain the console’s existing execution support.
-          </p>
-          <div id="sensors"></div>
-          <div id="devices"></div>
+          <details id="sensor-readout">
+            <summary>Sensor and device readout <span class="expand-label">Expand</span><span class="collapse-label">Collapse</span></summary>
+            <div id="sensors"></div>
+            <div id="devices"></div>
+          </details>
+        </div>
+        <div class="card mini-console-card">
+          <div class="heading"><h2 tabindex="0" data-tooltip="Live commands and responses · latest 500 lines. Independent of trace replay." aria-description="Live commands and responses · latest 500 lines. Independent of trace replay.">Console</h2><button id="clear-console" type="button">Clear</button></div>
+          <div id="mini-console" role="log" aria-label="Simulator console" aria-live="polite"></div>
+          <form id="command-form" class="command-row">
+            <label for="command">Console command</label>
+            <div class="command-input"><input id="command" value="MMU_LOAD" autocomplete="off" spellcheck="false" /><button id="send" type="submit">Run</button></div>
+          </form>
         </div>
         <div class="controls">
           <button id="previous">Previous</button><button id="next">Next</button
@@ -85,13 +89,10 @@
           />
         </div>
         <div class="card">
-          <h2>Movement trace</h2>
-          <p class="note">
-            Replay inspects history without rewinding the running simulator. The
-            latest 3,000 events are retained; a restart begins a new capture.
-          </p>
+          <h2 tabindex="0" data-tooltip="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture." aria-description="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture.">Movement trace</h2>
           <div id="trace" role="log"></div>
         </div>
+
       </section>
     </main>
     <script type="module" src="/sim/viewer/app.js"></script>
