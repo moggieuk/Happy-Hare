@@ -455,6 +455,21 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(unit.p.gate_preload_endstop, 'none')
         self.assertEqual(hh.errors, [])
 
+    def test_qidi_toolchange_after_seeded_calibration(self):
+        """The seeded bowden length runs from the shared-exit gate endstop, not the gate."""
+        hh = session('qidi')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        self.assertEqual(hh.mmu.mmu_unit(0).calibrator._bowden_lengths[0], 750.)
+        hh.heat_extruder(220)
+        for gate in (0, 1):
+            hh.place_filament(gate, position=-40)
+            hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+        hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        hh.run_gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertEqual(hh.errors, [])
+        self.assertEqual(hh.mmu.tool_selected, 1)
+
     def test_qidi(self):
         """QIDI boots with its fixed board, THR sensor and normal dryer setup."""
         with self.assertNoLogs(level='WARNING'):

@@ -787,7 +787,13 @@ class Session:
                 done['selector_angles'] = list(angles)
 
             if getattr(unit, 'require_bowden_move', False):
-                length = model.layout['extruder_entry'] - model.layout.get('mmu_exit', 0.0)
+                # HH measures it from the gate homing endstop, which on a hub machine (QIDI's
+                # mmu_shared_exit) is well past the gate; one the model does not place falls
+                # back to mmu_exit
+                start = model.position(unit.p.gate_homing_endstop)
+                if start is None:
+                    start = model.layout.get('mmu_exit', 0.0)
+                length = model.layout['extruder_entry'] - start
                 # Pre-ready there is no _bowden_lengths to update yet, so write the variable
                 # and let MmuCalibrator.handle_ready load it (mmu_calibrator.py:70-95).
                 if getattr(unit.calibrator, '_bowden_lengths', None) is None:
