@@ -10,10 +10,11 @@
 # dimensions. ercf_vvd's layout matches its toolhead sensor dimensions but not its entry sensor
 # ones, so the toolhead-sensor branch is exercised there with the entry sensor disabled.
 #
-# A CUT is modelled by wrapping the harness tip-forming effect: after the extruder retracts, the
-# macro reports output_park_pos as a cut fragment further back than the retraction alone, and
-# (unless the cut is "missed") the filament end is moved back by that fragment without moving
-# the extruder - which is what the blade does.
+# A CUT is modelled by wrapping the harness tip-forming effect, in place of whichever tip macro
+# the profile configures: after the extruder retracts, the macro reports output_park_pos as a
+# cut fragment further back than the retraction alone, and (unless the cut is "missed") the
+# filament end is moved back by that fragment without moving the extruder - which is what the
+# blade does.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_toolhead_unload_test
 #
@@ -78,13 +79,16 @@ class UnloadTestCase(unittest.TestCase):
         forming whose filament lags the extruder by `slip` mm.
         """
         effects = self.hh.printer.harness_macro_effects
+        name = self.hh.mmu._macro_name(self.hh.mmu.p.form_tip_macro)
+        replaced = effects[name]
         form_tip = effects['_MMU_FORM_TIP']
+        form_tip_macro = self.hh.printer.lookup_object('gcode_macro _MMU_FORM_TIP')
         toolhead = self.unit.toolhead_wrapper.p
 
         def effect(macro, gcmd):
             gate = self.hh.mmu.gate_selected
             before = self.fil.tip[gate]
-            form_tip(macro, gcmd)
+            form_tip(form_tip_macro, gcmd)
             retracted = before - self.fil.tip[gate]
             if fragment:
                 park_pos = (retracted + toolhead.toolhead_residual_filament
@@ -95,8 +99,8 @@ class UnloadTestCase(unittest.TestCase):
             if slip:
                 self.fil.advance(gate, slip, 'slip')
 
-        self.addCleanup(effects.__setitem__, '_MMU_FORM_TIP', form_tip)
-        effects['_MMU_FORM_TIP'] = effect
+        self.addCleanup(effects.__setitem__, name, replaced)
+        effects[name] = effect
 
     def unload(self):
         self.hh.run_gcode('MMU_UNLOAD')

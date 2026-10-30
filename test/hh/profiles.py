@@ -703,6 +703,8 @@ ENCODER_SHARED = Profile(
 #   unit1  ViViD 1.0 on ViViD 1.0 4 gates  IndexedSelector      mmu_exit gate homing
 #
 # 13 gates in total, which is the point of PARAM_TOTAL_NUM_GATES being a cross-unit sum.
+# Beyond the real machine it has a toolhead cutter and entry sensors on every gate, so the
+# console's default exercises tip cutting and entry-sensor gate status on both units.
 #
 # What ONLY this profile covers:
 #   - two units at all: per-unit Kconfig parses, contiguous gate numbering (unit1 owns
@@ -751,6 +753,8 @@ ERCF_VVD = Profile(
         'PIN_TOOLHEAD_SENSOR': 'PG13',
         'PIN_EXTRUDER_SENSOR': 'PG14',
         'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
+        # Defaults the tip choice to cutting, so form_tip_macro renders _MMU_CUT_TIP
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
         'PARAM_ENDLESS_SPOOL_ENABLED': True,
         # Spoolman READONLY, with auto-create on. Readonly rather than off so a UID->spool
         # lookup is actually dispatched on an NFC read (mmu_controller.py:3284 gates that on
@@ -787,6 +791,8 @@ ERCF_VVD = Profile(
             # hardware rather than to whichever default currently wins.
             'CHOICE_ENCODER_TYPE_BINKY_12': True,
             'PARAM_HAS_BYPASS': True,
+            # ERCF 1.1 does not imply entry sensors; ERB v1 supplies the nine pins
+            'MMU_HAS_SENSOR_ENTRY': True,
             'SERVO_TYPE_SAVOX_SH0255MG': True,
             'PARAM_SERVO_MAX_ANGLE': 180,
             # ALL FOUR segments, so the console exercises every LED effect path.

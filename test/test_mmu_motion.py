@@ -81,6 +81,13 @@ class TestModelItself(MotionTestCase):
         self.assertTrue(self.fil.triggered('mmu_entry_0'))
         self.assertFalse(self.fil.triggered('mmu_exit_0'))
 
+    def test_stepper_rounds_negative_positions_to_nearest_step(self):
+        """As Klipper does - truncating toward zero miscounts a move that crosses it."""
+        stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
+        start = stepper.get_mcu_position()
+        stepper.harness_note_motion(-10.6 * stepper.get_step_dist())
+        self.assertEqual(stepper.get_mcu_position() - start, -11)
+
     def test_parked_state_is_coherent(self):
         """
         Parked at -100 the GATE switch is clear and the ENTRY switch is covered. Required,

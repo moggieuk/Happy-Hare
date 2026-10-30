@@ -158,7 +158,10 @@ class MCU_stepper:
     def get_mcu_position(self, cmd_pos=None):
         if cmd_pos is None:
             cmd_pos = self._commanded_pos
-        return int((cmd_pos + self._mcu_position_offset) / self._step_dist + 0.5)
+        mcu_pos = (cmd_pos + self._mcu_position_offset) / self._step_dist
+        if mcu_pos >= 0.:
+            return int(mcu_pos + 0.5)
+        return int(mcu_pos - 0.5)
 
     def get_past_mcu_position(self, print_time):
         return self.get_mcu_position()

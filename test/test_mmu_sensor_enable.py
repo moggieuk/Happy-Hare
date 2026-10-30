@@ -171,15 +171,14 @@ class SensorEnableMultiUnitTestCase(unittest.TestCase):
         self.assertTrue(sm.all_sensors_map['unit0:filament_tension'].runout_helper.sensor_enabled)
 
     def test_report_sorts_gate_numbers_naturally(self):
-        """unit1 (ViViD) is gates 9-12 - a plain string sort would list 10, 11, 12, 9."""
+        """Gates run 0-12 across both units - a plain string sort would list 0, 1, 10, 11, 12, 2."""
         hh = self.hh
         hh.gcode.console.clear()
         hh.run_gcode('MMU_SENSORS')
         report = hh.console[-1]
 
         entry_gates = [int(m.group(1)) for m in re.finditer(r'mmu_entry_(\d+)', report)]
-        self.assertEqual(entry_gates, sorted(entry_gates))
-        self.assertEqual(entry_gates[0], 9, 'gate 9 must list before gate 10')
+        self.assertEqual(entry_gates, list(range(hh.mmu.num_gates)))
 
         exit_gates = [int(m.group(1)) for m in re.finditer(r'mmu_exit_(\d+)', report)]
         self.assertEqual(exit_gates, sorted(exit_gates))

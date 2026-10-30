@@ -1356,7 +1356,7 @@ class TestMultiUnitSelectors(SelectorTestCase):
     def test_unit0_loads_and_unloads(self):
         """
         Gate 2 is unit0: LinearServoSelector WITH an encoder, so this is the path that needs
-        tip forming to actually move the extruder.
+        the tip macro to actually move the extruder.
         """
         loaded, unloaded = self.load_and_unload(2)
         self.assertEqual(loaded, FILAMENT_POS_LOADED)
