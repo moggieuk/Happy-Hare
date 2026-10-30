@@ -690,12 +690,15 @@ telemetry. Extruder-fed travel beyond the configured nozzle accumulates as
 in place and recovering that retraction does not count as new extrusion. The
 amount is input-filament length, not the length of the thinner extruded strand.
 Coil size and blending are schematic, not a melt-flow model. A full coil falls
-behind the lower screen and the next coil starts growing. A nozzle-level retract
-after extrusion also releases the coil; telemetry does not identify a special
-"final retract", so this rule applies to any such retract. Extrusion totals remain
+behind the lower screen and the next coil starts growing. The explicit
+`standalone_load_retraction` event releases a coil when its recorded
+`retracted_length` is positive. Ordinary retract/recover movements do not release
+it. This event is emitted after the final standalone-load adjustment (including
+an already-satisfied target); it confirms recorded state, not physical queue
+completion. `retracted_length_changed` records persisted per-extruder changes. Extrusion totals remain
 cumulative across releases. Startup snapshots include `filament` context with the
 configured residual, persisted per-extruder fragment length and retained color,
-and the selected gate color. Missing colors are neutral gray. Retained material
+the selected gate color and persisted `retracted_length`. Missing colors are neutral gray. Retained material
 is drawn at the nozzle and blends toward incoming color as material is extruded. Missing sensors supply no positional evidence.
 
 State records share the same versioned stream and sequence numbers:

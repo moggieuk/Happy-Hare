@@ -63,6 +63,9 @@ class LiveViewer:
     def on_telemetry(self, record):
         with self.lock:
             self.telemetry_records.append(record)
+        if record['event'] == 'standalone_load_retraction' and record['retracted_length'] > 0:
+            self.purge_base_mm = self.extruded_mm
+            self.capture('purge_release', 'Final load retraction', before=self.snapshot(), telemetry=record)
         if record['event'] == 'filament_pos_changed':
             self.capture('state', record['filament_pos_name'], telemetry=record)
         if record['event'] not in ('movement_start', 'movement_outcome'):
@@ -247,8 +250,6 @@ class LiveViewer:
             if gate >= 0 and extruder_moves:
                 nozzle = state['layout']['nozzle']
                 amount = max(0., state['tips'][gate] - nozzle)
-                if state['tips'][gate] < self.latest['tips'][gate] and self.latest['tips'][gate] >= nozzle-.01:
-                    self.purge_base_mm = self.extruded_mm
                 if amount:
                     if int((self.extruded_mm-self.purge_base_mm)/36) != int((self.extruded_mm+amount-self.purge_base_mm)/36) or self.extruded_mm == self.purge_base_mm:
                         self.purge_color_start = self.nozzle_color
