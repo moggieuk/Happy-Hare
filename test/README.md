@@ -748,7 +748,7 @@ Tests: `make test UT=test_mmu_movement_telemetry.py` and
 ### Driving a real Mainsail or Fluidd — the web API
 
 At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
-(the next free port if that is taken, so it can sit beside a real Moonraker), so an
+(if that port cannot be opened, a warning is printed and the console continues without the server), so an
 unmodified Mainsail (or Fluidd) can connect to the simulator: the MMU panel shows live state,
 the console shows everything Happy Hare says, and `RESUME`, `UNLOCK` and anything else typed
 or clicked in the UI runs in the session as if typed at the prompt. The banner says where it

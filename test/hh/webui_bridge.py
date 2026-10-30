@@ -512,6 +512,7 @@ class WebUiBridge:
     def rpc_printer_gcode_script(self, conn, params):
         script = params.get('script', '')
         self.gcode_store.append({'message': script, 'time': time.time(), 'type': 'command'})
+        self.notify('notify_gcode_command', [script])
         self.run_gcode(script)
         return 'ok'
 
@@ -535,7 +536,7 @@ class WebUiBridge:
         index = int(params.get('unit', 0))
         if not 0 <= index < len(units):
             raise RpcError('Unknown MMU unit')
-        return dict(profile=self.profile_name,
+        return dict(connection_kind='simulator', profile=self.profile_name,
                     profiles=[dict(name=p.name, description=p.description) for p in CONSOLE_PROFILES],
                     units=[u.name for u in units], parameters=self.viewer.parameters(index))
 

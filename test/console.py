@@ -78,8 +78,7 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
-API_PORT = 7125                                 # Moonraker's own port, so UIs find it unprompted
-API_PORT_TRIES = 10                             # next ports to try if the default is taken
+API_PORT = 7125                                 # Local simulator viewer/API
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -654,17 +653,12 @@ class Console:
         simulator (see test/hh/webui_bridge.py). Happy Hare's pause dialog arrives as
         '// action:prompt_*' output lines, which reach the UI with the rest of the output.
 
-        A port that is taken (a real Moonraker, or another console) is skipped for the next
-        free one unless the user named it, in which case that is reported and left alone.
+        If the port cannot be opened, warn in the startup banner and keep the console usable.
         """
-        printer = self.hh.printer
-        tries = 1 if explicit or port == 0 else API_PORT_TRIES
-        for candidate in range(port, port + tries):
-            try:
-                self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=candidate).start()
-                break
-            except OSError as exc:
-                self.bridge_error = 'Web API not started: port %d: %s' % (candidate, exc.strerror or exc)
+        try:
+            self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port).start()
+        except OSError as exc:
+            self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
         if self.bridge is None:
             return
         self.bridge_error = None
@@ -724,7 +718,7 @@ class Console:
         """A script sent from the web UI: shown and run as if typed at the prompt."""
         for line in script.split('\n'):
             if line.strip():
-                self.echo(self.prompt() + line)
+                print(self.prompt() + line)
                 self.run_command(line)
 
     def _service_bridge(self):
@@ -964,6 +958,8 @@ class Console:
             # gcode.error and responds (gcode.py:220), so without this the first bad
             # parameter would end the session.
             print(paint('!! %s' % exc, '1;31', self.color))
+            if self.bridge is not None:
+                self.bridge.host_output('!! %s' % exc)
             self.failures += 1
         physical_changed = False
         if gate_status_before is not None:
@@ -976,6 +972,8 @@ class Console:
             self.hh.reactor.advance(0.)
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
+            if self.bridge is not None:
+                self.bridge.host_output('!! reactor: %s' % exc)
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
@@ -1088,6 +1086,8 @@ class Console:
         for raw in self.hh.gcode.unhandled[mark:]:
             if raw.split(None, 1)[0].upper() == typed:
                 print(paint("?? no such command %r" % typed, '33', self.color))
+                if self.bridge is not None:
+                    self.bridge.host_output('Unknown command:"%s"' % typed)
                 if re.fullmatch(r'T\d+', typed):
                     print('   (the fake gcode_macro records macros but does not run '
                           'their bodies - use MMU_CHANGE_TOOL TOOL=%s)' % typed[1:])
