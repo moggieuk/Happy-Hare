@@ -45,6 +45,74 @@ class TestLiveViewer(unittest.TestCase):
         self.assertNotEqual(before['state']['tips'][0], events[-1]['state']['tips'][0])
         json.dumps(self.viewer.read(), allow_nan=False)
 
+    def test_gear_only_collision_stops_visual_tip_without_losing_raw_travel(self):
+        gears = self.viewer.snapshot()['layout']['extruder_gears']
+        self.hh.place_filament(0, gears-10)
+        self.hh.mmu.move_filament('Overshoot', 100, motor='gear')
+        event = self.viewer.read()['events'][-1]
+        self.assertAlmostEqual(event['state']['tips'][0], gears)
+        self.assertAlmostEqual(event['raw_state']['tips'][0], gears+90)
+        self.assertEqual(event['distance'], 100)
+        self.hh.mmu.move_filament('Push again', 10, motor='gear')
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['tips'][0], gears)
+        self.hh.mmu.move_filament('Engage extruder', 5, motor='gear+extruder')
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['tips'][0], gears+5)
+
+    def test_untriggered_sensor_bounds_visual_tip_and_disabled_sensor_does_not(self):
+        snapshot = self.viewer.snapshot()
+        snapshot['tips'][0] = 200
+        snapshot['unit_sensors'] = ['unit0:mmu_shared_exit']
+        snapshot['sensors'] = {'unit0:mmu_shared_exit': {'state': False, 'position': 10}}
+        with mock.patch.object(self.viewer, 'snapshot', return_value=snapshot):
+            self.viewer.capture('test', 'Contradictory sensor')
+        self.assertLess(self.viewer.read()['events'][-1]['state']['tips'][0], 10)
+        self.assertEqual(self.viewer.read()['events'][-1]['raw_state']['tips'][0], 200)
+        snapshot['tips'][0] = 200
+        snapshot['sensors']['unit0:mmu_shared_exit']['state'] = None
+        self.viewer.latest = self.viewer.latest_raw = None
+        with mock.patch.object(self.viewer, 'snapshot', return_value=snapshot):
+            self.viewer.capture('test', 'Disabled sensor')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['tips'][0], 200)
+
+    def test_filament_state_change_is_visible_without_a_move(self):
+        from extras.mmu.mmu_constants import FILAMENT_POS_IN_BOWDEN
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=True)
+        state = self.viewer.read()['events'][-1]['state']
+        self.assertEqual(state['filament_pos'], FILAMENT_POS_IN_BOWDEN)
+        self.assertEqual(state['filament_pos_name'], 'IN BOWDEN')
+
+    def test_purge_accumulates_only_after_nozzle_and_retract_does_not_remove_it(self):
+        nozzle = self.viewer.snapshot()['layout']['nozzle']
+        self.hh.place_filament(0, nozzle-5)
+        self.hh.mmu.move_filament('Purge', 15, motor='extruder')
+        state = self.viewer.read()['events'][-1]['state']
+        self.assertAlmostEqual(state['extruded_mm'], 10)
+        self.assertAlmostEqual(state['tips'][0], nozzle)
+        self.hh.mmu.move_filament('Retract', -2, motor='extruder')
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 10)
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 10)
+        self.hh.mmu.move_filament('Recover', 2, motor='extruder')
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 10)
+        self.hh.mmu.move_filament('More purge', 3, motor='extruder')
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 13)
+
+    def test_retained_color_and_lengths_seed_the_viewer(self):
+        unit = self.hh.mmu.mmu_unit()
+        unit.extruder_wrapper.filament_remaining = 7
+        unit.extruder_wrapper.filament_remaining_color = '#ff00ff'
+        unit.toolhead_wrapper.p.toolhead_residual_filament = 3
+        self.hh.mmu.gate_color[0] = '00ffff'
+        self.viewer.nozzle_color = None
+        state = self.viewer.snapshot()
+        self.assertEqual(state['filament']['fragment_mm'], 7)
+        self.assertEqual(state['filament']['residual_mm'], 3)
+        self.assertEqual(state['filament']['retained_color'], 'ff00ff')
+        self.hh.place_filament(0, state['layout']['nozzle'])
+        self.hh.mmu.move_filament('Mix', 10, motor='extruder')
+        color = self.viewer.read()['events'][-1]['state']['nozzle_color']
+        self.assertNotEqual(color, 'ff00ff')
+        self.assertNotEqual(color, '00ffff')
+
     def test_default_speed_is_resolved_from_executed_move(self):
         self.hh.place_filament(0, 200)
         self.hh.mmu.move_filament('Default speed', 12, motor='gear')
