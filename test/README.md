@@ -613,7 +613,25 @@ It is a first simulator telemetry format, not yet a real-printer log importer.
 Runtime parameter choices come from the same parameter specifications and guards
 as `MMU_TEST_CONFIG`, including unit and calibration parameters where available.
 Edits are dispatched through that command, so its validation and change callbacks
-still apply. Hardware is not editable in this panel.
+still apply. Hardware is not editable in this panel. Loaded macro tuning variables
+appear under separate macro-name headers and are applied with `SET_GCODE_VARIABLE`.
+Enter Python literals (for example `52`, `True`, or `[1, 2]`). Output variables,
+saved state, and variables assigned by macro bodies are excluded from the editor.
+The value type must stay compatible with the existing value.
+
+Expand **Sensor and device readout** and click a sensor to enable or disable it.
+Sensor toggles operate at the live end of the trace; use **End — follow live**
+first when inspecting history. These use `MMU_SENSORS`, including its persistence
+within the temporary simulator session.
+
+Each captured state includes its runtime settings, editable macro variables,
+sensor enablement, and drawing geometry. Changes appear as a **config** entry
+before the next activity, so playback applies the recorded blade position and
+sensor states before continuing. Returning to the beginning restores the initial
+illustration without changing the running simulator. Consecutive edits are grouped
+until another event occurs; changing a setting back to its original value removes
+it from the pending entry. Sensor off/on toggles behave the same way. Exported
+traces include these settings and configuration boundaries.
 
 Choose a built-in console profile and select **Restart with profile** to boot a
 fresh session. Alternatively, upload the installed configuration directory with

@@ -1,6 +1,6 @@
 # Copyright (C) 2022-2026 Paul Morgan
 # This file may be distributed under the terms of the GNU GPLv3 license.
-"""Bounded, versioned simulator telemetry. Only capture() touches the printer.
+"""Bounded, versioned simulator telemetry. Capture and edits run on the printer thread.
 
 HTTP readers consume immutable snapshots under a lock, including while the
 console is inside a command. They never execute commands or enter the reactor.
@@ -12,6 +12,7 @@ import inspect
 import functools
 import threading
 import uuid
+import re
 
 
 def plain(value):
@@ -46,6 +47,9 @@ class LiveViewer:
         self.model.observers.append(self.on_filament)
         session.printer.harness_stepper_observer = self.on_stepper
         session.printer.harness_drive_observer = self.on_drive
+        self.pending_config = None
+        self.config_revision = 0
+        self.macro_catalog = self._macro_catalog()
         self.pending_moves = {}
         self.telemetry_records = collections.deque(maxlen=self.LIMIT*2)
         self.unsubscribe = session.mmu.movement_telemetry.subscribe(self.on_telemetry)
@@ -66,12 +70,17 @@ class LiveViewer:
         if record['event'] == 'standalone_load_retraction' and record['retracted_length'] > 0:
             self.purge_base_mm = self.extruded_mm
             self.capture('purge_release', 'Final load retraction', before=self.snapshot(), telemetry=record)
+        if record['event'] == 'filament_cut':
+            self.capture('cut', 'Toolhead filament cut', before=self.snapshot(),
+                cutter=record['cutter'], origin=record.get('origin'), telemetry=record)
         if record['event'] == 'filament_pos_changed':
             self.capture('state', record['filament_pos_name'], telemetry=record)
         if record['event'] not in ('movement_start', 'movement_outcome'):
             return
         key = record['move_id']
         if record['event'] == 'movement_start':
+            self.observe_configuration()
+            self.flush_configuration()
             self.pending_moves[key] = (record, self.snapshot())
             self.depth += 1
             return
@@ -114,6 +123,8 @@ class LiveViewer:
                     self.resolved_speed = values['speed']
                 return original(*args, **kwargs)
             self.resolved_speed = values.get('speed')
+            self.observe_configuration()
+            self.flush_configuration()
             before, start = self.snapshot(), self.hh.reactor.monotonic()
             label = values.get('trace_str', method.replace('_', ' '))
             result, error = None, None
@@ -205,17 +216,25 @@ class LiveViewer:
         if post_macro == 'SERVO_CUTTER_ACTION' or (post_macro == '_MMU_POST_UNLOAD' and
                 any(line.strip().split(' ', 1)[0].upper() == 'SERVO_CUTTER_ACTION' for line in extension.splitlines())):
             cutters.append(dict(kind='mmu', position=layout.get('mmu_exit', 0.)+10))
+        drive = hh.mmu.drive()
+        drive_motors = {kind: [motor.get_name() for motor in owner.get_steppers()]
+                        for kind, owner in [('gear', drive.mmu_gear_stepper), ('extruder', drive.mmu_extruder_stepper)]}
         from extras.mmu.mmu_movement_telemetry import filament_context
-        return plain(dict(active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
+        return plain(dict(configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
             filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=layout, motors=self.motors.copy(),
-            sensors={name: {'state': state[0], 'position': model.position(name)}
+            sensors={name: {'state': state[0], 'position': model.position(name), 'enabled': bool(state[1].runout_helper.sensor_enabled)}
                      for name, state in sensors.items()}, devices=devices))
 
     def capture(self, kind, label, **details):
         if self.depth:
             return
         state = self.snapshot()
+        if kind in ('state', 'config'):
+            self.observe_configuration(state)
+            if kind == 'config' or (self.pending_config and state == self.pending_config['raw_state']):
+                return
+        self.flush_configuration()
         with self.lock:
             if kind == 'state' and state == self.latest_raw:
                 return
@@ -247,6 +266,20 @@ class LiveViewer:
                         state['tips'][gate] = min(state['tips'][gate],
                             max(before_tip, state['layout']['extruder_gears']))
             gate = state['gate']
+            if gate >= 0 and details.get('homing') and details.get('homed'):
+                target = details.get('endstop', '')
+                sensor = state['sensors'].get(target)
+                distance = details.get('distance') or details.get('requested') or 0
+                # Successful leading-edge sensor homing is a concrete coordinate,
+                # independent of accumulated schematic or raw travel offsets.
+                # Ignore buffer/encoder and trailing-edge homes: those do not
+                # locate the filament nose at a presence sensor.
+                if (sensor and distance and sensor['state'] is (distance > 0)
+                        and sensor['position'] is not None
+                        and target in state.get('active_sensors', state['unit_sensors'])
+                        and not any(kind in target for kind in ('compression', 'tension', 'encoder'))):
+                    state['tips'][gate] = sensor['position']
+                    details['homing_anchor'] = True
             if gate >= 0:
                 tail = state['tails'][gate]
                 for name, sensor in state['sensors'].items():
@@ -316,11 +349,106 @@ class LiveViewer:
         self.motors[name] = self.motors.get(name, 0.) + distance
         self.capture('stepper', name, motor=name, distance=distance)
 
+    def _macro_catalog(self):
+        macros = {name.split(' ', 1)[1]: obj for name, obj in self.hh.printer.objects.items()
+                  if name.startswith('gcode_macro ') and hasattr(obj, 'variables')}
+        assigned = set()
+        for obj in macros.values():
+            script = getattr(getattr(obj, 'template', None), 'script', '')
+            for line in script.splitlines():
+                if 'SET_GCODE_VARIABLE' not in line.upper():
+                    continue
+                macro = re.search(r'\bMACRO=([A-Za-z0-9_]+)', line, re.I)
+                variable = re.search(r'\bVARIABLE=([A-Za-z0-9_]+)', line, re.I)
+                if macro and variable:
+                    assigned.add((macro[1].upper(), variable[1]))
+        result = []
+        for macro, obj in sorted(macros.items()):
+            for name in sorted(obj.variables):
+                if (name.startswith(('_', 'output_', 'saved_')) or
+                        (macro.upper(), name) in assigned or
+                        not re.fullmatch(r'[a-z][a-z0-9_]*', name)):
+                    continue
+                result.append((macro, name))
+        return result
+
+    def macro_parameters(self):
+        result = []
+        for macro, name in self.macro_catalog:
+            obj = self.hh.printer.lookup_object('gcode_macro ' + macro)
+            value = obj.variables[name]
+            result.append(dict(id='macro:' + macro + ':' + name, name=name, macro=macro,
+                               value=plain(value), literal=repr(value), kind='macro',
+                               group=macro, section='Macro variables'))
+        return result
+
+    def configuration(self):
+        units = self.hh.mmu.mmu_machine.units
+        return plain(dict(parameters={str(i): {p['name']: p['value'] for p in self.parameters(i) if p['scope'] != 'other'}
+                                      for i in range(len(units))},
+                          calibration={unit.name: dict(
+                              bowden_lengths={str(g): unit.calibrator.get_bowden_length(g) for g in unit.gate_range()},
+                              rotation_distances={str(g): unit.calibrator.get_gear_rd(g) for g in unit.gate_range()},
+                              encoder_clog_length=unit.calibrator.get_clog_detection_length()) for unit in units},
+                          macros={p['id']: p['value'] for p in self.macro_parameters()},
+                          sensors={name: bool(sensor.runout_helper.sensor_enabled)
+                                   for name, (_, sensor) in self.hh.mmu.sensor_manager.get_sensor_states(all_sensors=True).items()}))
+
+    def observe_configuration(self, state=None):
+        if self.latest_raw is None:
+            return
+        state = self.snapshot() if state is None else state
+        baseline = self.latest_raw['configuration']
+        current = state['configuration']
+        with self.lock:
+            previous = self.pending_config['raw_state']['configuration'] if self.pending_config else baseline
+            if current == previous:
+                return
+            self.config_revision += 1
+            if current == baseline:
+                self.pending_config = None
+                return
+            changes = []
+            def compare(old, new, prefix=''):
+                for key in sorted(set(old) | set(new)):
+                    path = prefix + key
+                    if isinstance(old.get(key), dict) and isinstance(new.get(key), dict):
+                        compare(old[key], new[key], path + '.')
+                    elif old.get(key) != new.get(key):
+                        changes.append(dict(name=path, before=old.get(key), after=new.get(key)))
+            compare(baseline, current)
+            visual = copy.deepcopy(state)
+            # Preserve reconciled schematic endpoints; configuration changes do not move filament.
+            visual['tips'] = [tip + raw - previous for tip, raw, previous in
+                              zip(self.latest['tips'], state['tips'], self.latest_raw['tips'])]
+            for key in ('extruded_mm', 'purge_base_mm', 'nozzle_color', 'purge_color_start'):
+                if key in self.latest:
+                    visual[key] = copy.deepcopy(self.latest[key])
+            self.pending_config = dict(version=2, session=self.session_id, seq=self.sequence + 1,
+                time=self.hh.reactor.monotonic(), kind='config', label='Configuration changed',
+                changes=plain(changes), before=copy.deepcopy(self.latest), state=visual,
+                raw_state=copy.deepcopy(state), pending=True)
+
+    def flush_configuration(self):
+        with self.lock:
+            if not self.pending_config:
+                return
+            event = self.pending_config
+            event.pop('pending', None)
+            self.sequence = event['seq']
+            self.events.append(event)
+            self.latest = event['state']
+            self.latest_raw = event['raw_state']
+            self.pending_config = None
+            self.config_revision += 1
+
     def read(self, after=0):
         with self.lock:
-            return {'version': 2, 'session': self.session_id, 'latest': self.latest,
+            return copy.deepcopy({'version': 2, 'session': self.session_id,
+                    'config_revision': self.config_revision, 'pending_config': self.pending_config,
+                    'latest': self.pending_config['state'] if self.pending_config else self.latest,
                     'first': self.events[0]['seq'] if self.events else 0,
-                    'events': [e for e in self.events if e['seq'] > after]}
+                    'events': [e for e in self.events if e['seq'] > after]})
 
     def parameters(self, unit_index):
         # Exactly the parameter families used by MMU_TEST_CONFIG. Guards remain
@@ -331,11 +459,17 @@ class LiveViewer:
         if mmu.gate_selected >= 0:
             from extras.mmu.commands.mmu_test_config import MmuCalibrationParameters
             sets.append(MmuCalibrationParameters(mmu))
+        groups = ['Machine Wide', f'Unit {unit_index}', f'Unit {unit_index}',
+                  f"Toolhead '{unit.toolhead_wrapper.name}' · Unit {unit_index}"]
+        if mmu.gate_selected >= 0:
+            groups.append(f'Other · Calibration ({mmu.mmu_unit().name} / gate {mmu.gate_selected})')
         result = {}
-        for params in sets:
+        for index, params in enumerate(sets):
             for spec in params._SPECS:
                 if params._is_available(spec):
                     value = getattr(params, spec.name)
                     result[spec.name] = dict(name=spec.name, kind=spec.kind,
-                        value=plain(value), section=spec.section, choices=spec.choices)
+                        value=plain(value), section=spec.section, choices=spec.choices,
+                        scope='machine' if index == 0 else 'unit' if index < 4 else 'other',
+                        group=groups[index])
         return list(result.values())

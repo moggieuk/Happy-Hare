@@ -1,10 +1,12 @@
-import { interpolate, duration, purgePath } from './playback.js';
+import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
   const next = theme === 'dark' ? 'Light' : 'Dark';
-  $('theme-toggle').textContent = next + ' mode';
+  const icons = {"light": "<svg aria-hidden=\"true\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z\"/></svg>", "dark": "<svg aria-hidden=\"true\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z\"/></svg>"};
+  $('theme-toggle').innerHTML = icons[next.toLowerCase()];
+  $('theme-toggle').title = 'Switch to ' + next.toLowerCase() + ' mode';
   $('theme-toggle').setAttribute('aria-label', 'Switch to ' + next.toLowerCase() + ' mode');
 }
 let savedTheme;
@@ -15,6 +17,7 @@ $('theme-toggle').onclick = () => {
   setTheme(theme);
   try { localStorage.setItem('hh-viewer-theme', theme); } catch {}
 };
+let configRevision = null;
 let socket,
   serial = 0,
   pending = new Map(),
@@ -168,19 +171,38 @@ async function refresh() {
 function filter() {
   const previous = $("parameter").value,
     query = $("filter").value.toLowerCase();
-  options(
-    $("parameter"),
-    setup.parameters
-      .filter((p) => p.name.includes(query))
-      .map((p) => [p.name, p.name]),
-  );
+  const groups = new Map();
+  for (const p of [...setup.parameters, ...(setup.macro_parameters || [])]) {
+    if (!`${p.macro || ''} ${p.name}`.toLowerCase().includes(query)) continue;
+    // Older servers already expose MMU_TEST_CONFIG section names, even when
+    // owner metadata is unavailable. Never misclassify these as "Other".
+    const label = p.macro ? p.macro : p.group ? `${p.group} · ${p.section}` : (p.section || 'Parameters');
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(p);
+  }
+  $("parameter").replaceChildren(...[...groups].map(([label, matches]) => {
+    const group = document.createElement('optgroup');
+    group.label = `-- ${label} --`;
+    for (const p of matches) {
+      const option = document.createElement('option');
+      option.value = p.id || p.name;
+      option.textContent = p.name;
+      group.append(option);
+    }
+    return group;
+  }));
   if ([...$("parameter").options].some((o) => o.value === previous))
     $("parameter").value = previous;
   value();
 }
+function selectedParameter() {
+  return [...(setup?.parameters || []), ...(setup?.macro_parameters || [])]
+    .find(p => (p.id || p.name) === $("parameter").value);
+}
 function value() {
-  const p = setup?.parameters.find((p) => p.name === $("parameter").value);
-  $("value").value = p
+  const p = selectedParameter();
+  $("apply").textContent = p?.macro ? 'Apply macro variable' : 'Apply MMU_TEST_CONFIG';
+  $("value").value = p?.macro ? p.literal : p
     ? Array.isArray(p.value)
       ? p.value.join(",")
       : (p.value ?? "")
@@ -193,19 +215,32 @@ $("apply").onclick = () =>
   action(async () => {
     setup = await rpc("sim.viewer.configure", {
       unit: Number($("unit").value),
-      name: $("parameter").value,
+      name: selectedParameter()?.name,
+      macro: selectedParameter()?.macro,
       value: $("value").value,
     });
     filter();
     message("Runtime parameter applied.");
   });
+const commandHistory = new CommandHistory();
+$("command").addEventListener('keydown', event => {
+  if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  const input = event.currentTarget;
+  input.value = commandHistory.navigate(event.key === 'ArrowUp' ? -1 : 1, input.value);
+  input.setSelectionRange(input.value.length, input.value.length);
+});
 $("command-form").onsubmit = (event) => {
   event.preventDefault();
   const script = $("command").value.trim();
   if (busy || !script) return;
   action(async () => {
     const sent = rpc("printer.gcode.script", { script });
-    if (socket.readyState === WebSocket.OPEN) $("command").value = "";
+    if (socket.readyState === WebSocket.OPEN) {
+      commandHistory.add(script);
+      $("command").value = "";
+    }
     message("Command running…");
     await sent;
     message("Command finished. Inspect the trace and console output.");
@@ -235,10 +270,38 @@ $("files").onchange = () =>
     await refresh();
     message("Uploaded profile started.");
   });
-let displayed = null, playing = null, played = 0;
+let displayed = null, playing = null, played = 0, resumeAt = 0;
+let paused = false, pausedAt = 0, sensorPulse = null;
+function currentIndex() {
+  return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
+}
+function followTrace() {
+  const view = $("trace"), index = currentIndex();
+  for (const [i, row] of [...view.children].entries()) {
+    const selected = i === index;
+    row.classList.toggle('selected', selected);
+    if (selected) row.setAttribute('aria-current', 'step');
+    else row.removeAttribute('aria-current');
+  }
+  const row = view.children[index];
+  if (row) {
+    const box = row.getBoundingClientRect(), bounds = view.getBoundingClientRect();
+    if (box.top < bounds.top) view.scrollTop -= bounds.top - box.top;
+    else if (box.bottom > bounds.bottom) view.scrollTop += box.bottom - bounds.bottom;
+  }
+}
+function seek(index) {
+  cursor = Math.max(0, Math.min(index, events.length - 1));
+  live = false; paused = true; playing = null; sensorPulse = null;
+  draw(); followTrace();
+}
 function draw() {
   if (!events.length) return;
   cursor = Math.max(0, Math.min(cursor, events.length - 1));
+  $("replay").disabled = !events.length || (live && !paused);
+  $("pause").disabled = !live || paused;
+  $("beginning").disabled = $("previous").disabled = currentIndex() <= 0;
+  $("next").disabled = currentIndex() >= events.length - 1;
   const e = live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
   const
     s = live && displayed ? displayed : e.state,
@@ -246,14 +309,15 @@ function draw() {
     tip = s.tips[gate] ?? -1000;
   const entry = s.layout.extruder_entry ?? 700,
     end = s.layout.nozzle ?? (s.layout.toolhead ?? 760) + 30;
-  $("mode").textContent = live ? (played < events.at(-1).seq ? "Live · catching up" : "Live") : `Replay · event ${e.seq}`;
+  $("mode").textContent = live && paused ? `Paused · event ${e.seq}` : live ? (played < events.at(-1).seq ? "Live · catching up" : "Live") : `Replay · event ${e.seq}`;
   $("position").textContent = `Gate ${gate} · ${s.filament_pos_name || "Unknown state"} · tip ${tip.toFixed(2)} mm`;
   $("timeline").max = events.length - 1;
   $("timeline").value = live ? events.indexOf(e) : cursor;
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
   const path =
-    "M620 455 L620 170 Q620 75 525 75 L355 75 Q260 75 260 170 L260 435";
-  let svg = `<rect x="540" y="275" width="170" height="200" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="558" y="302" fill="var(--scene-text, #304c65)">MMU</text><rect x="240" y="205" width="40" height="230" rx="8" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="60" rx="5" fill="var(--scene-heater, #c4d3df)"/><path d="M242 435 L260 455 L278 435" fill="var(--scene-nozzle, #9cafbe)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${path}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text x="370" y="45" fill="var(--scene-muted, #6e8190)" font-size="13">Bowden · compressed scale</text>`;
+    "M620 455 L620 170 Q620 75 525 75 L355 75 Q260 75 260 170 L260 445";
+  const bowdenPath = path.replace("L260 445", "L260 435");
+  let svg = `<rect x="540" y="275" width="170" height="200" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="558" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H240 V435 H280 V205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="60" rx="5" fill="var(--scene-heater, #c4d3df)"/><path d="M242 435 L260 455 L278 435" fill="var(--scene-nozzle, #9cafbe)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text x="370" y="45" fill="var(--scene-muted, #6e8190)" font-size="13">Bowden · compressed scale</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -278,8 +342,11 @@ function draw() {
   for (const cutter of s.cutters || []) {
     const pt = tube.getPointAtLength(progress(cutter.position) * length);
     const right = cutter.kind === 'mmu';
-    const x = pt.x + (right ? 17 : -17), direction = right ? -1 : 1;
-    svg += `<g class="cutter-blade" aria-label="${right ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path d="M${x} ${pt.y-5} h${direction*19} l${direction*6} 5 l${-direction*6} 5 h${-direction*19} Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/><text x="${pt.x+(right?52:-52)}" y="${pt.y-8}" text-anchor="${right?'start':'end'}" font-size="10" fill="var(--scene-text, #304c65)">${right?'MMU cutter':'Blade position'}</text></g>`;
+    const direction = right ? -1 : 1;
+    const pressed = bladeStroke(live ? playing?.event : null, playing?.fraction || 0, cutter.kind);
+    // The triangle tip rests at the 20px tube's outer wall, then crosses it.
+    const x = pt.x - direction * 10 + direction * 20 * pressed;
+    svg += `<g class="cutter-blade" aria-label="${right ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path data-part="blade" data-pressed="${pressed}" d="M${x} ${pt.y} l${-direction*42} -5 v10 Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/><text x="${pt.x+(right?52:-52)}" y="${pt.y-8}" text-anchor="${right?'start':'end'}" font-size="10" fill="var(--scene-text, #304c65)">${right?'MMU cutter':'Blade position'}</text></g>`;
   }
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (s.active_sensors) return s.active_sensors.includes(name);
@@ -298,15 +365,24 @@ function draw() {
     const short = name.split(':').at(-1);
     const sensorLabel = /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short;
     svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${pt.y + 4}" text-anchor="${pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    if (sensorPulse?.sensor === name) {
+      const elapsed = (performance.now() - sensorPulse.start) / 650;
+      if (elapsed >= 0 && elapsed < 1) {
+        const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        svg += `<circle data-part="sensor-pulse" cx="${pt.x + 16}" cy="${pt.y}" r="${reduced ? 10 : 7 + elapsed * 15}" fill="none" stroke="${sensorPulse.reverse ? 'var(--sensor-clear-pulse)' : '#48c982'}" stroke-width="2.5" opacity="${1-elapsed}"/>`;
+      }
+    }
   }
   for (const [x, y, type] of [
     [620, 355, "gear"],
     [260, tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y, "extruder"],
   ]) {
-    const angle =
-      Object.entries(s.motors)
-        .filter(([n]) => n.includes(type))
-        .reduce((sum, [, v]) => sum + v, 0) * 3;
+    const names = s.drive_motors?.[type] || Object.keys(s.motors).filter(n => n.includes(type));
+    // Coupled motors share travel; do not add their distances or inactive gates.
+    const distance = names.length ? (s.motors[names[0]] || 0) : 0;
+    const pixelsPerMm = type === 'extruder' ? .27 * length / (end-entry)
+      : 200 / -Math.min(-100, (s.layout.mmu_entry ?? -150)-40);
+    const angle = gearAngle(distance, pixelsPerMm);
     for (const side of [-1, 1])
       svg += `<g transform="translate(${x + side * 23} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle})"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
   }
@@ -318,7 +394,9 @@ function draw() {
         return value.position !== null && (short === 'mmu_shared_exit' || short === 'mmu_exit' || short === `mmu_exit_${gate}`);
       }).map(([, value]) => progress(value.position)*length + 26);
       const pt = tube.getPointAtLength(Math.max(progress(s.layout.mmu_encoder ?? 40)*length, ...exitPositions));
-      svg += `<g id="encoder-marker"><circle cx="${pt.x}" cy="${pt.y}" r="11" fill="#faf4d9" stroke="#9d8e52"/><path d="M${pt.x - 7} ${pt.y} H${pt.x + 7}" stroke="#9d8e52"/><text x="${pt.x - 25}" y="${pt.y + 4}" text-anchor="end" font-size="11" fill="var(--scene-text, #304c65)">Encoder</text></g>`;
+      // Device positions are interpolated alongside each captured move.
+      const angle = gearAngle(d.encoder_pos || 0, 1, 11);
+      svg += `<g id="encoder-marker"><g transform="rotate(${angle} ${pt.x} ${pt.y})"><circle cx="${pt.x}" cy="${pt.y}" r="11" fill="#faf4d9" stroke="#9d8e52"/><path d="M${pt.x - 7} ${pt.y} H${pt.x + 7} M${pt.x} ${pt.y - 7} V${pt.y + 7}" stroke="#9d8e52"/><circle cx="${pt.x + 7}" cy="${pt.y}" r="2" fill="#9d8e52"/></g><text x="${pt.x - 25}" y="${pt.y + 4}" text-anchor="end" font-size="11" fill="var(--scene-text, #304c65)">Encoder</text></g>`;
     }
     if (name.endsWith(":buffer")) {
       const fraction = Math.max(0, Math.min(1, ((d.value ?? 0) + 1) / 2));
@@ -331,10 +409,19 @@ function draw() {
       });
     }
   }
-  const retained = (s.filament?.residual_mm || 0) + (s.filament?.fragment_mm || 0);
-  if (retained > 0) {
-    const y = tube.getPointAtLength(progress(end-retained)*length).y;
-    svg += `<path id="residual-filament" d="M260 ${y} L260 435 L260 455" fill="none" stroke="#${s.nozzle_color || s.filament.retained_color}" stroke-width="5"/><text x="210" y="422" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${s.filament.residual_mm} mm</text>`;
+  const residual = s.filament?.residual_mm || 0;
+  const fragment = s.filament?.fragment_mm || 0;
+  const retainedColor = s.nozzle_color || s.filament?.retained_color || '808182';
+  const residualTop = tube.getPointAtLength(progress(end-residual)*length).y;
+  if (fragment > 0) {
+    const top = tube.getPointAtLength(progress(end-residual-fragment)*length).y;
+    svg += `<path id="retained-fragment" d="M260 ${top} L260 ${residualTop}" fill="none" stroke="#${retainedColor}" stroke-width="7"/>`;
+  }
+  if (residual > 0) {
+    svg += `<path id="residual-filament" d="M260 ${residualTop} L260 445" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${residual}mm</text>`;
+  }
+  if (residual > 0 || tip >= end-.01) {
+    svg += `<path id="nozzle-funnel" d="M256.5 445 Q256.5 451 258.25 455 L261.75 455 Q263.5 451 263.5 445 Z" fill="#${retainedColor}"/>`;
   }
   const coilAmount = Math.max(0, (s.extruded_mm || 0)-(s.purge_base_mm || 0)) % 36;
   const drop = s.purge_drop ?? Math.max(0,(coilAmount-30)/6);
@@ -343,19 +430,37 @@ function draw() {
     const turns = Math.min(10, coilAmount / 3);
     const x = 260 + 22 * Math.min(1, turns / .5) * (1 - .065 * turns) * Math.sin(turns * Math.PI * 2);
     const y = 498 - turns * 2.6 + 2 * Math.cos(turns * Math.PI * 2);
-    const strand = !drop && tip >= end - .01 ? `M260 435 L260 455 Q260 ${y - 8} ${x} ${y}` : '';
-    svg += `<defs><linearGradient id="purge-color" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#${s.purge_color_start || s.nozzle_color || '808182'}"/><stop offset="1" stop-color="#${s.nozzle_color || '808182'}"/></linearGradient><clipPath id="purge-screen"><rect x="210" y="435" width="150" height="70"/></clipPath></defs><g clip-path="url(#purge-screen)"><g id="purge-pile" transform="translate(0,${drop*75})" aria-label="Extruded filament"><path d="${strand} ${purge}" fill="none" stroke="#333" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="${strand} ${purge}" fill="none" stroke="url(#purge-color)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><path d="${purge}" transform="translate(0,-.7)" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width=".8"/><text x="303" y="491" font-size="10" fill="var(--scene-muted, #6e8190)">${s.extruded_mm.toFixed(1)} mm extruded</text></g></g>`;
+    const strand = !drop && tip >= end - .01 ? `M260 455 Q260 ${y - 8} ${x} ${y}` : '';
+    const startColor = `#${s.purge_color_start || s.nozzle_color || '808182'}`;
+    const endColor = `#${s.nozzle_color || '808182'}`;
+    // Match the documentation: keep a broad material-colored center, with a
+    // tinted lower edge and a narrow highlight rather than black/white stripes.
+    const gradient = (id, shade) => `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="0" y1="500" x2="0" y2="${y}"><stop stop-color="${shade(startColor)}"/><stop offset="1" stop-color="${shade(endColor)}"/></linearGradient>`;
+    svg += `<defs>${gradient('purge-color', c => c)}${gradient('purge-shadow', c => `color-mix(in srgb, ${c}, black 28%)`)}${gradient('purge-highlight', c => `color-mix(in srgb, ${c}, white 38%)`)}<clipPath id="purge-screen"><rect x="210" y="435" width="150" height="70"/></clipPath></defs><g clip-path="url(#purge-screen)"><g id="purge-pile" transform="translate(0,${drop*75})" aria-label="Extruded filament"><path d="${strand} ${purge}" fill="none" stroke="url(#purge-shadow)" stroke-width="5.8" transform="translate(0,.5)" stroke-linecap="round" stroke-linejoin="round"/><path data-part="purge-material" d="${strand} ${purge}" fill="none" stroke="url(#purge-color)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="${purge}" transform="translate(0,-1.2)" fill="none" stroke="url(#purge-highlight)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><text x="303" y="491" font-size="10" fill="var(--scene-muted, #6e8190)">${s.extruded_mm.toFixed(1)} mm extruded</text></g></g>`;
   }
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
   $("scene").innerHTML = svg;
   $("filament").setAttribute("stroke-dasharray", measured);
+  const gearY = tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y;
+  const bodyTop = gearY - 19 - 2 * (.27 * length / (end-entry));
+  $("extruder-body").setAttribute('d', `M250 ${bodyTop} H240 V435 H280 V${bodyTop} H270`);
   $("sensors").replaceChildren(
     ...unitSensors.map(([name, d]) => {
-      const el = document.createElement("span");
+      const el = document.createElement("button");
+      el.type = "button";
       el.className = "chip sensor-chip" + (d.state === true ? " on" : d.state === null ? " disabled" : " off");
       el.textContent = name.split(':').at(-1);
-      el.setAttribute('aria-label', `${name}: ${d.state === null ? 'disabled' : d.state ? 'present' : 'clear'}`);
+      const enabled = d.enabled ?? d.state !== null;
+      const atLatest = live && !paused && !playing && played >= events.at(-1).seq;
+      el.disabled = !atLatest || busy;
+      el.setAttribute('aria-pressed', String(enabled));
+      el.setAttribute('aria-label', `${name}: ${enabled ? 'enabled' : 'disabled'}. Click to ${enabled ? 'disable' : 'enable'}`);
+      el.title = atLatest ? `${enabled ? 'Disable' : 'Enable'} ${name}` : 'Jump to live to change sensors';
+      el.onclick = () => action(async () => {
+        await rpc('sim.viewer.sensor', {name, enabled: !enabled});
+        message(`Sensor ${name} ${enabled ? 'disabled' : 'enabled'}.`);
+      });
       return el;
     }),
   );
@@ -376,50 +481,53 @@ function renderTrace() {
   view.replaceChildren(
     ...events.map((e, i) => {
       const b = document.createElement("button");
-      b.textContent = `${e.seq} · ${e.time.toFixed(3)}s · ${e.kind} · ${e.label}${e.distance == null ? "" : ` · ${e.distance.toFixed(3)} mm`}`;
-      if (e.kind === 'movement') {
-        b.textContent += e.origin === 'happy_hare.motion' ? ' · source telemetry' : ' · harness fallback';
-        if (e.speed > 0) b.textContent += ` · ${e.speed.toFixed(1)} mm/s`;
-        if (e.fast_bowden && $('compress-bowden').checked) b.textContent += ' · compressed Bowden playback';
-        b.textContent += `${e.requested == null ? '' : ` · requested ${e.requested.toFixed(3)} mm`}${e.homing ? ` · ${e.endstop || 'endstop'} ${e.homed === true ? 'reached' : e.homed === false ? 'not reached' : ''}` : ''}${e.error ? ` · ${e.error}` : ''}`;
-      }
-      b.classList.toggle("selected", i === (live ? events.length - 1 : cursor));
-      b.onclick = () => {
-        live = false;
-        cursor = i;
-        draw();
-        renderTrace();
-      };
+      const [sequence, time, type, ...detail] = traceText(e).split(' · ');
+      const pill = document.createElement('span');
+      pill.className = 'trace-type';
+      pill.dataset.type = type;
+      pill.textContent = type;
+      b.append(`${sequence} · ${time} · `, pill, ` · ${detail.join(' · ')}`);
+      // Keep diagnostic provenance available without crowding the movement summary.
+      b.title = [e.label, e.origin,
+        e.fast_bowden && $('compress-bowden').checked ? 'Compressed Bowden playback' : '',
+        ...(e.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`)]
+        .filter(Boolean).join(' · ');
+      b.classList.toggle("selected", i === currentIndex());
+      b.onclick = () => seek(i);
       return b;
     }),
   );
-  view.scrollTop = live ? view.scrollHeight : scroll;
+  view.scrollTop = scroll;
+  followTrace();
 }
-$("previous").onclick = () => {
-  cursor = Math.max(0, (live ? events.length - 1 : cursor) - 1);
-  live = false;
-  draw();
-  renderTrace();
+$("beginning").onclick = () => seek(0);
+$("previous").onclick = () => seek(currentIndex() - 1);
+$("next").onclick = () => seek(currentIndex() + 1);
+$("pause").onclick = () => {
+  paused = true; pausedAt = performance.now();
+  draw(); followTrace();
 };
-$("next").onclick = () => {
-  cursor = Math.min(events.length - 1, cursor + 1);
-  live = false;
-  draw();
-  renderTrace();
+$("replay").onclick = () => {
+  if (!events.length) return;
+  if (live && paused) {
+    const delay = performance.now() - pausedAt;
+    if (playing) playing.start += delay;
+    resumeAt += delay;
+  } else {
+    const event = events[cursor];
+    played = event.seq; displayed = event.state;
+    playing = null; resumeAt = 0;
+  }
+  paused = false; live = true;
+  draw(); followTrace();
 };
 $("live").onclick = () => {
-  live = true;
-  playing = null;
+  live = true; paused = false; playing = null; sensorPulse = null; resumeAt = 0;
   played = events.at(-1)?.seq || 0;
   displayed = events.at(-1)?.state;
-  draw();
-  renderTrace();
+  draw(); followTrace();
 };
-$("timeline").oninput = () => {
-  live = false;
-  cursor = Number($("timeline").value);
-  draw();
-};
+$("timeline").oninput = () => seek(Number($("timeline").value));
 $("save").onclick = () => {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify({ version: 2, session, events }, null, 2)], {
@@ -446,32 +554,34 @@ $("save-motion").onclick = async () => {
 };
 async function poll() {
   try {
-    const after = events.at(-1)?.seq || 0;
+    const after = events.filter(e => !e.pending).at(-1)?.seq || 0;
     const res = await fetch("/sim/viewer/events?after=" + after);
     const data = (await res.json()).result;
-    if (data.session !== session) {
-      session = data.session;
-      events = [];
-      cursor = 0;
-      live = true;
-      const full = (await (await fetch("/sim/viewer/events")).json()).result;
-      events = full.events;
-      playing = null;
-      played = events.at(-1)?.seq || 0;
-      displayed = events.at(-1)?.state;
+    const changed = data.config_revision !== configRevision;
+    const newSession = data.session !== session;
+    if (newSession || changed) {
+      const selectedSeq = events[currentIndex()]?.seq;
+      const full = (await (await fetch('/sim/viewer/events')).json()).result;
+      events = [...full.events, ...(full.pending_config ? [full.pending_config] : [])];
+      configRevision = full.config_revision;
+      if (newSession) {
+        session = full.session; cursor = 0; live = true; paused = false;
+        sensorPulse = null; playing = null; resumeAt = 0;
+        played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.state;
+      } else {
+        cursor = Math.max(0, events.findIndex(e => e.seq === selectedSeq));
+        if (live && !playing && played >= (events.at(-1)?.seq || 0)) {
+          played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.state;
+        }
+      }
     } else if (data.events.length) {
-      const seq = events[cursor]?.seq;
-      events.push(...data.events);
-      events = events.slice(-3000);
-      if (!live)
-        cursor = Math.max(
-          0,
-          events.findIndex((e) => e.seq === seq),
-        );
+      const selectedSeq = events[currentIndex()]?.seq;
+      events = [...events.filter(e => !e.pending && !data.events.some(n => n.seq === e.seq)),
+                ...data.events, ...(data.pending_config ? [data.pending_config] : [])].slice(-3000);
+      if (!live) cursor = Math.max(0, events.findIndex(e => e.seq === selectedSeq));
     }
-    if (data.events.length || !events.length) {
-      draw();
-      renderTrace();
+    if (newSession || changed || data.events.length || !events.length) {
+      draw(); renderTrace();
     }
   } catch (e) {
     $("connection").textContent = "Waiting for console…";
@@ -479,19 +589,28 @@ async function poll() {
   setTimeout(poll, 150);
 }
 function animate(now) {
-  if (live && events.length) {
-    if (!playing) {
+  if (live && !paused && events.length) {
+    if (!playing && now >= resumeAt) {
       const event = events.find(e=>e.seq>played);
-      if (event) playing={event,start:now};
+      if (event) { playing={event,start:now}; followTrace(); }
     }
     if (playing) {
       const ms=duration(playing.event, $("compress-bowden").checked), f=ms?Math.min(1,(now-playing.start)/ms):1;
+      playing.fraction = f;
       displayed=interpolate(playing.event,f);
-      if (f===1) {played=playing.event.seq;playing=null;}
+      if (f===1) {
+        const pulse = homingPulse(playing.event);
+        if (pulse) sensorPulse = {...pulse, start:now};
+        played=playing.event.seq;
+        if (playing.event.kind === 'movement') resumeAt=now+300;
+        playing=null;
+      }
       draw();
     }
-  } else if (playing) {
-    playing.start=now;
+  }
+  if (sensorPulse) {
+    if (now - sensorPulse.start >= 650) sensorPulse = null;
+    draw();
   }
   requestAnimationFrame(animate);
 }

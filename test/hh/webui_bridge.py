@@ -20,6 +20,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import ast
 import base64
 import collections
 import hashlib
@@ -538,24 +539,69 @@ class WebUiBridge:
             raise RpcError('Unknown MMU unit')
         return dict(connection_kind='simulator', profile=self.profile_name,
                     profiles=[dict(name=p.name, description=p.description) for p in CONSOLE_PROFILES],
-                    units=[u.name for u in units], parameters=self.viewer.parameters(index))
+                    units=[u.name for u in units], parameters=self.viewer.parameters(index),
+                    macro_parameters=self.viewer.macro_parameters())
 
     def rpc_sim_viewer_configure(self, conn, params):
         index = int(params.get('unit', 0))
-        available = {p['name'] for p in self.rpc_sim_viewer_setup(conn, {'unit':index})['parameters']}
+        setup = self.rpc_sim_viewer_setup(conn, {'unit':index})
         name, value = params.get('name'), str(params.get('value', ''))
-        if name not in available:
-            raise RpcError('Parameter is not available through MMU_TEST_CONFIG')
-        if any(c in value for c in '\r\n;'):
-            raise RpcError('Enter one parameter value')
-        # JSON string quoting prevents a value from becoming another command or option.
-        command = 'MMU_TEST_CONFIG UNIT=%d %s=%s' % (index, name.upper(), json.dumps(value))
+        macro = params.get('macro')
+        if macro:
+            item = next((p for p in setup['macro_parameters'] if p['macro'] == macro and p['name'] == name), None)
+            if item is None:
+                raise RpcError('Macro variable is internal or unavailable')
+            try:
+                literal = ast.literal_eval(value)
+            except (ValueError, SyntaxError):
+                if isinstance(item['value'], str):
+                    literal = value
+                else:
+                    raise RpcError('Enter a Python literal, for example 52, True, or [1, 2]')
+            old = item['value']
+            compatible = (isinstance(literal, bool) if isinstance(old, bool) else
+                          isinstance(literal, (int, float)) and not isinstance(literal, bool)
+                          if isinstance(old, (int, float)) else
+                          isinstance(literal, (list, tuple)) if isinstance(old, list) else
+                          isinstance(literal, type(old)))
+            if not compatible:
+                raise RpcError('Keep the existing value type for this macro variable')
+            # Encode strings so quoting and newlines cannot create extra G-code commands.
+            def encode(v):
+                if isinstance(v, str):
+                    return "'" + ''.join('\\U%08x' % ord(c) for c in v) + "'"
+                if isinstance(v, tuple):
+                    return '(' + ','.join(encode(x) for x in v) + ',)' if v else '()'
+                if isinstance(v, list):
+                    return '[' + ','.join(encode(x) for x in v) + ']'
+                if isinstance(v, dict):
+                    return '{' + ','.join(encode(k)+':'+encode(x) for k,x in v.items()) + '}'
+                if v is None or isinstance(v, (bool, int, float)):
+                    return repr(v)
+                raise RpcError('Unsupported macro value')
+            command = 'SET_GCODE_VARIABLE MACRO=%s VARIABLE=%s VALUE="%s"' % (macro, name, encode(literal))
+        else:
+            available = {p['name'] for p in setup['parameters']}
+            if name not in available:
+                raise RpcError('Parameter is not available through MMU_TEST_CONFIG')
+            if any(c in value for c in '\r\n;'):
+                raise RpcError('Enter one parameter value')
+            command = 'MMU_TEST_CONFIG UNIT=%d %s=%s' % (index, name.upper(), json.dumps(value))
         errors_before = len(self.session.errors)
         self.run_gcode(command)
         if len(self.session.errors) > errors_before:
             raise RpcError('; '.join(self.session.errors[errors_before:]))
-        self.viewer.capture('config', command)
+        self.viewer.observe_configuration()
         return self.rpc_sim_viewer_setup(conn, {'unit':index})
+
+    def rpc_sim_viewer_sensor(self, conn, params):
+        name = params.get('name')
+        sensors = self.session.mmu.sensor_manager.get_sensor_states(all_sensors=True)
+        if name not in sensors or not isinstance(params.get('enabled'), bool):
+            raise RpcError('Choose an available sensor and enabled state')
+        self.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=%d' % (name, params['enabled']))
+        self.viewer.observe_configuration()
+        return {'enabled': bool(sensors[name][1].runout_helper.sensor_enabled)}
 
     def rpc_sim_viewer_restart(self, conn, params):
         from test.hh.profiles import CONSOLE_PROFILES

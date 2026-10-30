@@ -26,6 +26,22 @@ class TestLiveViewer(unittest.TestCase):
         self.viewer.close()
         self.hh.close()
 
+    def test_simulated_cut_produces_a_dedicated_playback_event(self):
+        macro = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP')
+        self.hh._effect_cut_tip(macro, None)
+        cuts = [e for e in self.viewer.read()['events'] if e['kind'] == 'cut']
+        self.assertEqual(len(cuts), 1)
+        self.assertEqual(cuts[0]['cutter'], 'toolhead')
+        self.assertEqual(cuts[0]['telemetry']['event'], 'filament_cut')
+        self.assertEqual(cuts[0]['origin'], 'harness_cut_tip')
+
+    def test_configuration_calibration_is_not_selected_gate_dependent(self):
+        unit = self.hh.mmu.mmu_unit()
+        unit.calibrator.rotation_distances[1] = unit.calibrator.rotation_distances[0] + 1
+        original = self.viewer.configuration()
+        self.hh.mmu.gate_selected = 1
+        self.assertEqual(self.viewer.configuration(), original)
+
     def test_live_capture_has_motor_and_filament_and_immutable_history(self):
         before = self.viewer.read()['events'][0]
         self.hh.place_filament(0, 300)
@@ -148,6 +164,50 @@ class TestLiveViewer(unittest.TestCase):
         self.assertIn('mmu_entry_1', state['active_sensors'])
         self.assertNotIn('mmu_entry_0', state['active_sensors'])
 
+    def test_reverse_home_reanchors_visual_offset_at_sensor(self):
+        import copy
+        before = self.viewer.snapshot()
+        name = 'unit0:mmu_shared_exit'
+        position = before['sensors'][name]['position']
+        before['tips'][0] = position+30
+        for sensor in before['sensors'].values():
+            sensor['state'] = True
+        self.viewer.latest_raw = copy.deepcopy(before)
+        self.viewer.latest = copy.deepcopy(before)
+        self.viewer.latest['tips'][0] -= 12.1
+        after = copy.deepcopy(before)
+        after['tips'][0] = position-0.000001
+        after['sensors'][name]['state'] = False
+        with mock.patch.object(self.viewer, 'snapshot', return_value=after):
+            self.viewer.capture('movement', 'Reverse home', before=before,
+                homing=True, homed=True, requested=-100, distance=-30.000001, endstop=name)
+        event = self.viewer.read()['events'][-1]
+        self.assertAlmostEqual(event['state']['tips'][0], position, places=2)
+        self.assertAlmostEqual(event['raw_state']['tips'][0], position, places=2)
+        self.assertTrue(event['homing_anchor'])
+
+    def test_forward_home_reanchors_visual_offset_at_sensor(self):
+        import copy
+        before = self.viewer.snapshot()
+        name = 'unit0:mmu_shared_exit'
+        position = before['sensors'][name]['position']
+        before['tips'][0] = position-30
+        for sensor in before['sensors'].values():
+            sensor['state'] = True
+        before['sensors'][name]['state'] = False
+        self.viewer.latest_raw = copy.deepcopy(before)
+        self.viewer.latest = copy.deepcopy(before)
+        self.viewer.latest['tips'][0] -= 12.1
+        after = copy.deepcopy(before)
+        after['tips'][0] = position
+        after['sensors'][name]['state'] = True
+        with mock.patch.object(self.viewer, 'snapshot', return_value=after):
+            self.viewer.capture('movement', 'Forward home', before=before,
+                homing=True, homed=True, requested=100, distance=30, endstop=name)
+        event = self.viewer.read()['events'][-1]
+        self.assertAlmostEqual(event['state']['tips'][0], position)
+        self.assertTrue(event['homing_anchor'])
+
     def test_default_speed_is_resolved_from_executed_move(self):
         self.hh.place_filament(0, 200)
         self.hh.mmu.move_filament('Default speed', 12, motor='gear')
@@ -190,6 +250,13 @@ class TestLiveViewer(unittest.TestCase):
         self.assertNotIn(bridge.viewer.on_filament, self.hh.filament().observers)
         self.assertFalse(pathlib.Path(bridge.uploads.name).exists())
 
+    def test_parameter_groups_match_test_config_owners(self):
+        parameters = {p['name']: p for p in self.viewer.parameters(0)}
+        self.assertEqual(parameters['timeout_pause']['group'], 'Machine Wide')
+        self.assertEqual(parameters['gate_homing_max']['group'], 'Unit 0')
+        self.assertEqual(parameters['calibrated_bowden_length']['group'], 'Other · Calibration (unit0 / gate 0)')
+        self.assertTrue(all(p['section'] and p['group'] for p in parameters.values()))
+
     def test_parameters_use_runtime_guards(self):
         names={p['name'] for p in self.viewer.parameters(0)}
         self.assertIn('toolhead_ooze_reduction',names)
@@ -212,6 +279,82 @@ class TestViewerConsole(unittest.TestCase):
             self.assertIn('events',json.load(response)['result'])
         with urllib.request.urlopen(url.replace('/events','/'),timeout=2) as response:
             self.assertIn(b'Live simulator',response.read())
+
+    def configure_macro(self, macro, name, value):
+        with contextlib.redirect_stdout(self.out):
+            return self.bridge.rpc_sim_viewer_configure(None,
+                dict(unit=0, macro=macro, name=name, value=value))
+
+    def test_macro_geometry_is_recorded_and_reverts_without_activity(self):
+        with contextlib.redirect_stdout(self.out):
+            self.bridge.rpc_sim_viewer_restart(None, {'profile': 'ercf_vvd'})
+        viewer = self.bridge.viewer
+        initial = viewer.read()['events'][0]
+        macro = '_MMU_CUT_TIP_VARS'
+        item = next(p for p in viewer.macro_parameters() if p['macro'] == macro and p['name'] == 'blade_pos')
+        old = item['value']
+        with self.assertRaises(RpcError):
+            self.configure_macro(macro, 'blade_pos', "'not a number'")
+        self.configure_macro(macro, 'blade_pos', str(old + 5))
+        pending = viewer.read()['pending_config']
+        self.assertEqual(pending['kind'], 'config')
+        self.assertEqual(pending['state']['cutters'][0]['position'], initial['state']['cutters'][0]['position'] - 5)
+        self.assertEqual(initial['state']['configuration']['macros'][item['id']], old)
+        viewer.capture('state', 'State changed')
+        self.assertIsNotNone(viewer.read()['pending_config'])
+        self.configure_macro(macro, 'blade_pos', str(old))
+        viewer.capture('state', 'State changed')
+        self.assertIsNone(viewer.read()['pending_config'])
+        self.assertEqual(len(viewer.read()['events']), 1)
+
+    def test_grouped_configuration_precedes_move_with_historical_geometry(self):
+        with contextlib.redirect_stdout(self.out):
+            self.bridge.rpc_sim_viewer_restart(None, {'profile': 'ercf_vvd'})
+        viewer = self.bridge.viewer
+        macro = '_MMU_CUT_TIP_VARS'
+        old = next(p['value'] for p in viewer.macro_parameters() if p['macro'] == macro and p['name'] == 'blade_pos')
+        self.configure_macro(macro, 'blade_pos', str(old + 3))
+        with contextlib.redirect_stdout(self.out):
+            self.bridge.rpc_sim_viewer_configure(None,dict(unit=0,name='toolhead_ooze_reduction',value='1.5'))
+            self.console.hh.mmu.move_filament('after settings', 1, motor='gear')
+        events = viewer.read()['events']
+        configs = [e for e in events if e['kind'] == 'config']
+        self.assertEqual(len(configs), 1)
+        self.assertGreaterEqual(len(configs[0]['changes']), 2)
+        move = next(e for e in events if e['kind'] == 'movement')
+        self.assertLess(configs[0]['seq'], move['seq'])
+        self.assertEqual(move['before']['cutters'], configs[0]['state']['cutters'])
+        self.assertEqual(move['state']['configuration'], configs[0]['state']['configuration'])
+        self.assertNotEqual(events[0]['state']['cutters'], move['state']['cutters'])
+
+    def test_sensor_toggles_coalesce_but_survive_a_move(self):
+        viewer = self.bridge.viewer
+        name = next(n for n, sensor in viewer.snapshot()['sensors'].items() if sensor['enabled'])
+        def toggle(enabled):
+            with contextlib.redirect_stdout(self.out):
+                self.bridge.rpc_sim_viewer_sensor(None, dict(name=name, enabled=enabled))
+                viewer.capture('state', 'State changed')
+        toggle(False)
+        self.assertFalse(viewer.read()['pending_config']['state']['sensors'][name]['enabled'])
+        toggle(True)
+        self.assertIsNone(viewer.read()['pending_config'])
+        toggle(False)
+        with contextlib.redirect_stdout(self.out):
+            self.console.hh.mmu.move_filament('disabled sensor', 1, motor='gear')
+        toggle(True)
+        self.assertEqual(len([e for e in viewer.read()['events'] if e['kind']=='config']), 1)
+        self.assertIsNotNone(viewer.read()['pending_config'])
+        self.assertTrue(viewer.read()['events'][0]['state']['sensors'][name]['enabled'])
+
+    def test_internal_macro_variables_are_rejected_and_strings_are_quoted(self):
+        with self.assertRaises(RpcError):
+            self.configure_macro('_MMU_CUT_TIP', 'output_park_pos', '99')
+        viewer = self.bridge.viewer
+        item = next(p for p in viewer.macro_parameters() if isinstance(p['value'], str))
+        text = 'both \" and \' quotes; M112\nnext line'
+        self.configure_macro(item['macro'], item['name'], repr(text))
+        obj = self.console.hh.printer.lookup_object('gcode_macro ' + item['macro'])
+        self.assertEqual(obj.variables[item['name']], text)
 
     def test_apply_and_reject_hardware(self):
         with contextlib.redirect_stdout(self.out):

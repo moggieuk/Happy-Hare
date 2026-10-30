@@ -6,7 +6,7 @@ export function interpolate(event, fraction) {
   const mix = (x,y) => typeof x === 'number' && typeof y === 'number' ? x+(y-x)*fraction : x;
   const s = structuredClone(a);
   for (const key of ['tips','tails']) s[key] = a[key].map((x,i)=>mix(x,b[key][i]));
-  if (event.raw_before && event.raw_state) {
+  if (event.raw_before && event.raw_state && !event.homing_anchor) {
     // Reach a physical stop at commanded pace, then hold while gears keep feeding.
     s.tips = a.tips.map((tip, i) => {
       const delta = event.raw_state.tips[i] - event.raw_before.tips[i];
@@ -55,6 +55,7 @@ export function interpolate(event, fraction) {
   return s;
 }
 export function duration(event, compressBowden = false) {
+  if (event.kind === 'cut') return 650;
   if (event.kind === 'purge_release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
@@ -72,6 +73,9 @@ export function duration(event, compressBowden = false) {
       seconds *= (travel-Math.min(travel,overlap)*(1-ratio))/travel;
     }
   }
+  // Half-speed visual playback for moves that deposit filament at the nozzle.
+  // Recorded feed rates and the running simulator remain unchanged.
+  if ((event.state?.extruded_mm || 0) > (event.before?.extruded_mm || 0)) seconds *= 2;
   return Math.max(0.12,seconds)*1000;
 }
 
@@ -87,4 +91,79 @@ export function purgePath(amount) {
     points.push(`${(260 + radius * Math.sin(t * Math.PI * 2)).toFixed(2)} ${(498 - t * 2.6 + 2 * Math.cos(t * Math.PI * 2)).toFixed(2)}`);
   }
   return 'M' + points.join(' L');
+}
+
+export function gearAngle(distance, pixelsPerMm, radius = 19) {
+  return distance * pixelsPerMm / radius * 180 / Math.PI;
+}
+
+
+// Session-local command history preserves the unfinished input when returning to the end.
+export class CommandHistory {
+  constructor() { this.entries = []; this.index = 0; this.draft = ''; }
+  add(command) {
+    if (command && this.entries.at(-1) !== command) this.entries.push(command);
+    if (this.entries.length > 200) this.entries.shift();
+    this.index = this.entries.length;
+    this.draft = '';
+  }
+  navigate(direction, input) {
+    if (!this.entries.length) return input;
+    if (this.index === this.entries.length) this.draft = input;
+    this.index = Math.max(0, Math.min(this.entries.length, this.index + direction));
+    return this.index === this.entries.length ? this.draft : this.entries[this.index];
+  }
+}
+
+export function traceText(event) {
+  const prefix = `${event.seq} · ${event.time.toFixed(3)}s · ${event.kind === 'movement' ? (event.homing ? 'homing move' : 'move') : event.kind} · `;
+  if (event.kind === 'config') return prefix + (event.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.after)}`).join(' · ');
+  if (event.kind !== 'movement') return prefix + event.label;
+  const start = event.telemetry?.start;
+  let motor = start?.motor_mode || event.motor_mode;
+  if (!motor) {
+    const names = Object.keys(event.motors || {}).filter(n => event.motors[n] !== 0);
+    const gear = names.some(n => /gear/i.test(n));
+    const extruder = names.some(n => /extruder/i.test(n));
+    motor = gear && extruder ? 'gear+extruder' : gear ? 'gear' : extruder ? 'extruder' : 'move';
+  }
+  const name = motor === 'synced' ? 'SYNCED GEAR+EXTRUDER' : motor.toUpperCase();
+  const number = v => Number.isFinite(v) ? v.toFixed(1) : '?';
+  const distance = event.distance ?? event.requested;
+  let text;
+  if (event.homing) {
+    const result = event.homed === true ? 'Homed' : event.homed === false ? 'Did not home' : 'Homing result unknown';
+    text = `${name}: ${result} after ${number(event.distance)}mm`;
+    if (event.requested != null) text += ` | requested: dist=${number(event.requested)}`;
+  } else text = `${name}: dist=${number(distance)}mm`;
+  if (Number.isFinite(event.speed)) text += ` · speed=${number(event.speed)}`;
+  if (Number.isFinite(event.acceleration)) text += ` · accel=${number(event.acceleration)}`;
+  if (event.homing && event.endstop) text += ` · endstop=${event.endstop}`;
+  if (event.error) text += ` · error: ${event.error}`;
+  return prefix + text;
+}
+
+export function homingPulse(event) {
+  if (event.kind !== 'movement' || !event.homing || event.homed !== true) return null;
+  const sensors = event.state?.sensors || {};
+  const target = event.endstop;
+  const short = name => name.split(':').at(-1).replace(/^mmu_/, '');
+  const candidates = Object.keys(sensors).filter(name => target &&
+    (name === target || (!target.includes(':') && short(name) === short(target))) &&
+    (!event.state.active_sensors || event.state.active_sensors.includes(name)));
+  if (candidates.length !== 1 || sensors[candidates[0]].position == null) return null;
+  return {sensor:candidates[0], reverse:(event.requested ?? event.distance ?? 0) < 0};
+}
+
+export function bladeStroke(event, fraction, kind) {
+  if (event?.kind !== 'cut' || event.cutter !== kind) return 0;
+  const t = Math.max(0, Math.min(1, fraction));
+  return t < .4 ? t / .4 : t <= .6 ? 1 : (1 - t) / .4;
+}
+
+export function configurationLabel(name) {
+  if (name.startsWith('macros.macro:')) return name.slice(13).replace(':', '.');
+  if (name.startsWith('parameters.')) return name.replace(/^parameters\.(\d+)\./, 'Unit $1 · ');
+  if (name.startsWith('sensors.')) return name.slice(8) + ' enabled';
+  return name;
 }
