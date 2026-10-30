@@ -749,6 +749,7 @@ class Session:
                                               VARS_MMU_BOWDEN_LENGTHS,
                                               VARS_MMU_ENCODER_RESOLUTION,
                                               VARS_MMU_GEAR_ROTATION_DISTANCES,
+                                              VARS_MMU_SELECTOR_ANGLES,
                                               VARS_MMU_SELECTOR_OFFSETS)
 
         model = self.filament()
@@ -773,6 +774,17 @@ class Session:
                     axis.selector.selector_offsets = list(offsets)
                     axis.selector.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
                 done['selector_offsets'] = list(offsets)
+
+            angles = self._servo_gate_angles(unit)
+            if angles:
+                unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_ANGLES, angles,
+                                                namespace=unit.name)
+                # Pre-ready, ServoSelector.handle_ready merges the variable over its config and
+                # marks itself calibrated; afterwards it has to be applied here
+                if getattr(unit.calibrator, '_bowden_lengths', None) is not None:
+                    unit.selector.servo_gate_angles = list(angles)
+                    unit.selector._check_calibrated()
+                done['selector_angles'] = list(angles)
 
             if getattr(unit, 'require_bowden_move', False):
                 length = model.layout['extruder_entry'] - model.layout.get('mmu_exit', 0.0)
@@ -828,6 +840,28 @@ class Session:
             if done:
                 applied[unit.name] = done
         return applied
+
+    @staticmethod
+    def _servo_gate_angles(unit):
+        """
+        Gate angles for a ServoSelector that ships without a complete set (PicoMMU leaves them
+        blank on purpose: the cam build decides them), else None.
+
+        Spread evenly over the servo's configured range by HH's own generator - the one
+        MMU_CALIBRATE_SERVO_SELECTOR SPACING= uses - so nothing outside the configured limits
+        is invented. Configured angles (MMX's vendor set) are left alone.
+        """
+        selector = getattr(unit, 'selector', None)
+        generate = getattr(selector, '_generate_gate_angles', None)
+        if generate is None:
+            return None
+        configured = list(selector.servo_gate_angles)[:unit.num_gates]
+        if len(configured) == unit.num_gates and -1 not in configured:
+            return None
+        low, high = selector.p.servo_min_angle, selector.p.servo_max_angle
+        spacing = (high - low) / max(unit.num_gates - 1, 1)
+        angles = generate(low, 0, spacing)
+        return angles if isinstance(angles, list) else None
 
     def _encoders(self):
         """(MmuEncoder, MCU_counter) for every encoder on this machine."""
