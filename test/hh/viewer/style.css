@@ -325,3 +325,16 @@ h2[data-tooltip] { position: relative; width: fit-content; cursor: help; }
 [data-theme="dark"] .trace-type[data-type="config"] { color: #eddaff; background: #583b76; }
 button.sensor-chip { cursor: pointer; font: inherit; }
 button.sensor-chip:disabled { cursor: default; }
+
+/* Strong group headers, with ordinary weight retained for selectable values. */
+#parameter optgroup { font-weight: 700; color: #24455b; background: #dce7ee; }
+#parameter option { font-weight: 400; color: #172f40; background: #fff; }
+[data-theme="dark"] #parameter optgroup { color: #f1f6fa; background: #304859; }
+[data-theme="dark"] #parameter option { color: #e5edf3; background: #111c26; }
+/* Customizable native selects keep keyboard/accessibility behavior while letting
+   supporting browsers render the group backgrounds consistently. */
+@supports (appearance: base-select) {
+  #parameter, #parameter::picker(select) { appearance: base-select; }
+  #parameter::picker(select) { max-height: 440px; border: 1px solid #7890a0; }
+  #parameter option { padding: 6px 14px; }
+}

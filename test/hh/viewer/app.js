@@ -1,4 +1,4 @@
-import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel } from './playback.js';
+import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 function setTheme(theme) {
@@ -176,13 +176,16 @@ function filter() {
     if (!`${p.macro || ''} ${p.name}`.toLowerCase().includes(query)) continue;
     // Older servers already expose MMU_TEST_CONFIG section names, even when
     // owner metadata is unavailable. Never misclassify these as "Other".
-    const label = p.macro ? p.macro : p.group ? `${p.group} · ${p.section}` : (p.section || 'Parameters');
+    const label = p.macro ? `Macro · ${p.macro}`
+      : p.scope === 'machine' || p.group === 'Machine Wide' ? 'Machine wide'
+      : p.scope === 'other' || p.group?.startsWith('Other') ? 'Other calibration'
+      : p.group || p.section || 'Parameters';
     if (!groups.has(label)) groups.set(label, []);
     groups.get(label).push(p);
   }
   $("parameter").replaceChildren(...[...groups].map(([label, matches]) => {
     const group = document.createElement('optgroup');
-    group.label = `-- ${label} --`;
+    group.label = label;
     for (const p of matches) {
       const option = document.createElement('option');
       option.value = p.id || p.name;
@@ -317,7 +320,7 @@ function draw() {
   const path =
     "M620 455 L620 170 Q620 75 525 75 L355 75 Q260 75 260 170 L260 445";
   const bowdenPath = path.replace("L260 445", "L260 435");
-  let svg = `<rect x="540" y="275" width="170" height="200" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="558" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H240 V435 H280 V205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="60" rx="5" fill="var(--scene-heater, #c4d3df)"/><path d="M242 435 L260 455 L278 435" fill="var(--scene-nozzle, #9cafbe)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text x="370" y="45" fill="var(--scene-muted, #6e8190)" font-size="13">Bowden · compressed scale</text>`;
+  let svg = `<rect x="540" y="275" width="170" height="200" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="558" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H240 V435 H280 V205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="60" rx="5" fill="var(--scene-heater, #c4d3df)"/><path d="M242 435 L260 455 L278 435" fill="var(--scene-nozzle, #9cafbe)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text id="bowden-length" x="440" y="45" text-anchor="middle" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s)}</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -346,7 +349,25 @@ function draw() {
     const pressed = bladeStroke(live ? playing?.event : null, playing?.fraction || 0, cutter.kind);
     // The triangle tip rests at the 20px tube's outer wall, then crosses it.
     const x = pt.x - direction * 10 + direction * 20 * pressed;
-    svg += `<g class="cutter-blade" aria-label="${right ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path data-part="blade" data-pressed="${pressed}" d="M${x} ${pt.y} l${-direction*42} -5 v10 Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/><text x="${pt.x+(right?52:-52)}" y="${pt.y-8}" text-anchor="${right?'start':'end'}" font-size="10" fill="var(--scene-text, #304c65)">${right?'MMU cutter':'Blade position'}</text></g>`;
+    svg += `<g class="cutter-blade" aria-label="${right ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path data-part="blade" data-pressed="${pressed}" d="M${x} ${pt.y} l${-direction*42} -5 v10 Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/>${right ? `<text x="${pt.x+52}" y="${pt.y}" dominant-baseline="middle" font-size="10" fill="var(--scene-text, #304c65)">MMU cutter</text>` : ''}</g>`;
+  }
+  // Nozzle-relative reference guides, matching the documentation diagrams.
+  const references = toolheadReferences(s).map(ref => ({...ref,
+    y: tube.getPointAtLength(progress(ref.position) * length).y})).sort((a, b) => a.y - b.y);
+  let previousLabelY = -Infinity;
+  const mm = value => Number(value.toFixed(1));
+  for (const ref of references) {
+    const labelY = Math.max(ref.y, previousLabelY + 17);
+    previousLabelY = labelY + (ref.gap != null ? 13 : 0);
+    const extra = ref.gap != null ? `<tspan x="336" dy="13">(${mm(ref.gap)}mm to gears)</tspan>` : '';
+    svg += `<g class="toolhead-reference"><path d="M285 ${ref.y} H315 L330 ${labelY}" fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1"/><text x="336" y="${labelY}" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)">${ref.label} · ${mm(ref.distance)}mm${extra}</text></g>`;
+  }
+  const cooling = coolingTubeMeasurements(s);
+  if (cooling) {
+    const startY = tube.getPointAtLength(progress(cooling.start) * length).y;
+    const endY = tube.getPointAtLength(progress(cooling.end) * length).y;
+    const midY = (startY + endY) / 2;
+    svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY} V${endY} M312 ${endY+4} L315 ${endY} L318 ${endY+4}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="1.2"/><text x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text x="336" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
   }
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (s.active_sensors) return s.active_sensors.includes(name);
@@ -364,7 +385,7 @@ function draw() {
     const pt = tube.getPointAtLength(progress(d.position) * length);
     const short = name.split(':').at(-1);
     const sensorLabel = /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short;
-    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${pt.y + 4}" text-anchor="${pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${pt.y + 4}" text-anchor="${pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${short === 'extruder' ? '' : escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
     if (sensorPulse?.sensor === name) {
       const elapsed = (performance.now() - sensorPulse.start) / 650;
       if (elapsed >= 0 && elapsed < 1) {
@@ -396,7 +417,7 @@ function draw() {
       const pt = tube.getPointAtLength(Math.max(progress(s.layout.mmu_encoder ?? 40)*length, ...exitPositions));
       // Device positions are interpolated alongside each captured move.
       const angle = gearAngle(d.encoder_pos || 0, 1, 11);
-      svg += `<g id="encoder-marker"><g transform="rotate(${angle} ${pt.x} ${pt.y})"><circle cx="${pt.x}" cy="${pt.y}" r="11" fill="#faf4d9" stroke="#9d8e52"/><path d="M${pt.x - 7} ${pt.y} H${pt.x + 7} M${pt.x} ${pt.y - 7} V${pt.y + 7}" stroke="#9d8e52"/><circle cx="${pt.x + 7}" cy="${pt.y}" r="2" fill="#9d8e52"/></g><text x="${pt.x - 25}" y="${pt.y + 4}" text-anchor="end" font-size="11" fill="var(--scene-text, #304c65)">Encoder</text></g>`;
+      svg += `<g id="encoder-marker"><g transform="rotate(${angle} ${pt.x} ${pt.y})"><circle cx="${pt.x}" cy="${pt.y}" r="11" fill="#faf4d9" stroke="#9d8e52"/><path d="M${pt.x - 7} ${pt.y} H${pt.x + 7} M${pt.x} ${pt.y - 7} V${pt.y + 7}" stroke="#9d8e52"/><circle cx="${pt.x + 7}" cy="${pt.y}" r="2" fill="#9d8e52"/></g><text x="${pt.x - 25}" y="${pt.y + 4}" text-anchor="end" font-size="11" fill="var(--scene-text, #304c65)">Encoder</text>${Number.isFinite(e.telemetry?.outcome?.encoder_mm) ? `<text id="encoder-measurement" x="${pt.x+25}" y="${pt.y+4}" font-size="11" fill="var(--scene-text, #304c65)">${e.telemetry.outcome.encoder_mm.toFixed(1)}mm measured</text>` : ''}</g>`;
     }
     if (name.endsWith(":buffer")) {
       const fraction = Math.max(0, Math.min(1, ((d.value ?? 0) + 1) / 2));
