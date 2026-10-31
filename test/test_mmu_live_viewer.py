@@ -34,6 +34,22 @@ class TestLiveViewer(unittest.TestCase):
         self.assertEqual(cuts[0]['cutter'], 'toolhead')
         self.assertEqual(cuts[0]['telemetry']['event'], 'filament_cut')
         self.assertEqual(cuts[0]['origin'], 'harness_cut_tip')
+        self.assertFalse(any(e['kind'] in ('filament', 'stepper')
+                             for e in self.viewer.read()['events']))
+
+    def test_model_samples_update_state_without_creating_trace_entries(self):
+        self.hh.place_filament(0, 200)
+        before = self.viewer.snapshot()
+        events = self.viewer.read()['events']
+        records = self.viewer.read_telemetry()['records']
+        for _ in range(10):
+            self.viewer.model.advance(0, .1, 'tip cutting')
+            self.viewer.on_stepper('extruder', .1)
+        after = self.viewer.snapshot()
+        self.assertAlmostEqual(after['tips'][0] - before['tips'][0], 1)
+        self.assertAlmostEqual(after['motors']['extruder'] - before['motors'].get('extruder', 0), 1)
+        self.assertEqual(self.viewer.read()['events'], events)
+        self.assertEqual(self.viewer.read_telemetry()['records'], records)
 
     def test_configuration_calibration_is_not_selected_gate_dependent(self):
         unit = self.hh.mmu.mmu_unit()
@@ -247,7 +263,9 @@ class TestLiveViewer(unittest.TestCase):
         bridge = WebUiBridge(self.hh, self.hh.run_gcode, port=0)
         with mock.patch('test.hh.webui_bridge._Server', side_effect=OSError('busy')):
             with self.assertRaises(OSError): bridge.start()
-        self.assertNotIn(bridge.viewer.on_filament, self.hh.filament().observers)
+        self.assertNotIn(bridge.viewer.on_telemetry, self.hh.mmu.movement_telemetry.listeners)
+        self.assertIsNone(self.hh.printer.harness_stepper_observer)
+        self.assertIsNone(self.hh.printer.harness_drive_observer)
         self.assertFalse(pathlib.Path(bridge.uploads.name).exists())
 
     def test_parameter_groups_match_test_config_owners(self):
@@ -366,12 +384,15 @@ class TestViewerConsole(unittest.TestCase):
     def test_restart_preserves_server_and_replaces_session(self):
         old=self.bridge.viewer.session_id
         port=self.bridge.port
-        with contextlib.redirect_stdout(self.out):
+        with contextlib.redirect_stdout(self.out), mock.patch.object(self.console, 'clear_log') as clear_log:
             self.bridge.rpc_sim_viewer_restart(None,{'profile':'encoder'})
+        clear_log.assert_called_once_with()
         self.assertIs(self.console.bridge,self.bridge)
         self.assertEqual(self.bridge.port,port)
         self.assertNotEqual(self.bridge.viewer.session_id,old)
         self.assertEqual(self.console.args.profile,'encoder')
+        self.assertIn('Happy Hare console  profile=encoder', self.out.getvalue())
+        self.assertIn('Live viewer: http://127.0.0.1:%d/sim/viewer/' % port, self.out.getvalue())
 
     def test_uploaded_config_and_failure_recovery(self):
         with tempfile.TemporaryDirectory() as root:
