@@ -81,6 +81,19 @@ class TestGcodeTelemetry(unittest.TestCase):
                 self.run_gcode('M83\nG1 E1 F300')
         self.assertEqual(self.outcomes(), [])
 
+    def test_unsynced_g1_moves_filament_only_when_gripped_by_extruder(self):
+        from extras.mmu.mmu_constants import DRIVE_EXTRUDER_ONLY
+        self.hh.mmu.drive().sync_mode(DRIVE_EXTRUDER_ONLY)
+        model = self.hh.filament()
+        self.hh.place_filament(0, 750)
+        with self.scope('MMU_TEST'):
+            self.run_gcode('M83\nG1 E2 F300')
+        self.assertAlmostEqual(model.tip[0], 752)
+        self.hh.place_filament(0, 100)
+        with self.scope('MMU_TEST'):
+            self.run_gcode('G1 E2')
+        self.assertAlmostEqual(model.tip[0], 100)
+
     def test_error_restores_handler(self):
         original = self.handler()
         self.run_gcode('M83')

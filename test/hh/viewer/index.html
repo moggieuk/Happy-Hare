@@ -53,12 +53,20 @@
             <h2 id="mode" tabindex="0" data-tooltip="Schematic path; distances and device states come from the harness. Macro bodies retain the console’s existing execution support." aria-description="Schematic path; distances and device states come from the harness. Macro bodies retain the console’s existing execution support.">Live</h2>
             <span id="position"></span>
           </div>
+          <div class="scene-container">
+          <label class="nozzle-control" for="nozzle-diameter">Nozzle
+            <select id="nozzle-diameter" aria-label="Nozzle diameter">
+              <option value="0.1">0.1mm</option><option value="0.2">0.2mm</option>
+              <option value="0.4" selected>0.4mm</option><option value="0.6">0.6mm</option><option value="0.8">0.8mm</option>
+            </select>
+          </label>
           <svg
             id="scene"
             viewBox="0 0 800 520"
             role="img"
             aria-label="Filament path from MMU through Bowden to extruder"
           ></svg>
+          </div>
           <details id="sensor-readout">
             <summary>Sensor and device readout <span class="expand-label">Expand</span><span class="collapse-label">Collapse</span></summary>
             <div id="sensors"></div>
