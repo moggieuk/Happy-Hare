@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke } from './playback.js';
+import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -138,4 +138,50 @@ test('blade crosses and retracts only for its explicit cut event', () => {
  assert.equal(bladeStroke(e,1,'toolhead'),0);
  assert.equal(bladeStroke(e,.5,'mmu'),0);
  assert.equal(bladeStroke({kind:'movement'},.5,'toolhead'),0);
+});
+
+test('Bowden label follows recorded unit, gate and calibration', () => {
+  const s = {unit: 'unit0', gate: 0, configuration: {calibration: {
+    unit0: {bowden_lengths: {'0': 550, '1': 625.25}},
+    unit1: {bowden_lengths: {'2': 700}},
+  }}};
+  assert.equal(bowdenLengthLabel(s), 'Bowden · 550mm · compressed scale');
+  assert.equal(bowdenLengthLabel({...s, gate: 1}), 'Bowden · 625.3mm · compressed scale');
+  assert.equal(bowdenLengthLabel({...s, unit: 'unit1', gate: 2}), 'Bowden · 700mm · compressed scale');
+  const updated = structuredClone(s);
+  updated.configuration.calibration.unit0.bowden_lengths['0'] = 560;
+  assert.equal(bowdenLengthLabel(updated), 'Bowden · 560mm · compressed scale');
+  assert.equal(bowdenLengthLabel(s), 'Bowden · 550mm · compressed scale');
+  for (const length of [0, -1, null, undefined]) {
+    updated.configuration.calibration.unit0.bowden_lengths['0'] = length;
+    assert.equal(bowdenLengthLabel(updated), 'Bowden · Uncalibrated length');
+  }
+  assert.equal(bowdenLengthLabel({...s, gate: -1}), 'Bowden · Uncalibrated length');
+  assert.equal(bowdenLengthLabel({}), 'Bowden · Uncalibrated length');
+});
+
+test('toolhead measurements use nozzle zero and recorded geometry', () => {
+ const s = {layout:{nozzle:780, extruder_entry:700, extruder_gears:708},
+  cutters:[{kind:'toolhead',position:728},{kind:'mmu',position:10}],
+  active_sensors:['extruder','toolhead'],
+  sensors:{extruder:{position:700},toolhead:{position:718},'unit1:toolhead':{position:720}}};
+ const refs = toolheadReferences(s);
+ assert.deepEqual(refs.map(r=>[r.label,r.distance]), [
+  ['Nozzle',0],['Extruder entry',72],['Blade',52],['Extruder sensor',80],['Toolhead sensor',62]]);
+ assert.equal(refs.find(r=>r.label==='Extruder sensor').gap,8);
+ assert.deepEqual(toolheadReferences({}),[]);
+ const changed=structuredClone(s); changed.cutters[0].position=695;
+ assert.equal(toolheadReferences(changed).find(r=>r.label==='Blade').distance,85);
+ assert.equal(toolheadReferences(s).find(r=>r.label==='Blade').distance,52);
+});
+
+test('cooling tube length starts at the configured cooling position', () => {
+ const s={unit:'unit0',units:['unit0'],layout:{nozzle:780},configuration:{
+  parameters:{0:{form_tip_macro:'_MMU_FORM_TIP'}},macros:{
+   'macro:_MMU_FORM_TIP_VARS:cooling_tube_position':35,
+   'macro:_MMU_FORM_TIP_VARS:cooling_tube_length':15}}};
+ assert.deepEqual(coolingTubeMeasurements(s),{position:35,length:15,start:745,end:730});
+ s.configuration.parameters[0].form_tip_macro='_MMU_CUT_TIP';
+ assert.equal(coolingTubeMeasurements(s),null);
+ assert.equal(coolingTubeMeasurements({}),null);
 });

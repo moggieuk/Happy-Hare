@@ -167,3 +167,40 @@ export function configurationLabel(name) {
   if (name.startsWith('sensors.')) return name.slice(8) + ' enabled';
   return name;
 }
+
+export function bowdenLengthLabel(state) {
+  const length = state.configuration?.calibration?.[state.unit]?.bowden_lengths?.[state.gate];
+  return state.gate >= 0 && Number.isFinite(length) && length > 0
+    ? `Bowden · ${Number(length.toFixed(1))}mm · compressed scale` : 'Bowden · Uncalibrated length';
+}
+
+export function toolheadReferences(state) {
+  const {nozzle, extruder_gears: gears} = state.layout || {};
+  if (!Number.isFinite(nozzle)) return [];
+  const refs = [{label: 'Nozzle', position: nozzle}];
+  if (Number.isFinite(gears)) refs.push({label: 'Extruder entry', position: gears});
+  for (const cutter of state.cutters || []) {
+    if (cutter.kind === 'toolhead') refs.push({label: 'Blade', position: cutter.position});
+  }
+  for (const [name, sensor] of Object.entries(state.sensors || {})) {
+    if (state.active_sensors && !state.active_sensors.includes(name)) continue;
+    const short = name.split(':').at(-1);
+    if (!['extruder', 'toolhead'].includes(short)) continue;
+    if (Number.isFinite(sensor.position)) refs.push({
+      label: short === 'extruder' ? 'Extruder sensor' : 'Toolhead sensor', position: sensor.position,
+      gap: short === 'extruder' && Number.isFinite(gears) ? gears - sensor.position : null});
+  }
+  return refs.filter(r => Number.isFinite(r.position)).map(r => ({...r, distance: nozzle - r.position}));
+}
+
+export function coolingTubeMeasurements(state) {
+  const unit = state.units?.indexOf(state.unit) ?? 0;
+  const params = state.configuration?.parameters?.[unit];
+  const macro = params?.form_tip_macro?.trim().split(/\s+/)[0];
+  const vars = state.configuration?.macros || {};
+  if (!macro || !Number.isFinite(state.layout?.nozzle)) return null;
+  const get = name => vars[`macro:${macro}_VARS:${name}`] ?? vars[`macro:${macro}:${name}`];
+  const position = get('cooling_tube_position'), length = get('cooling_tube_length');
+  if (!Number.isFinite(position) || !Number.isFinite(length) || position < 0 || length <= 0) return null;
+  return {position, length, start: state.layout.nozzle-position, end: state.layout.nozzle-position-length};
+}
