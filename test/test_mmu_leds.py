@@ -104,13 +104,13 @@ class TestSetLedReachesTheChain(LedTestCase):
         LOOK right - the colors land either way - so assert the transmit count.
         """
         physical = self.hh.printer.lookup_object('neopixel _unit0_leds')
-        before = len(physical.updates)
+        before = physical.transmits
         for index in range(1, 4):
             self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=%d RED=1 TRANSMIT=0'
                               % index)
-        self.assertEqual(len(physical.updates), before, 'TRANSMIT=0 flushed anyway')
+        self.assertEqual(physical.transmits, before, 'TRANSMIT=0 flushed anyway')
         self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=4 RED=1 TRANSMIT=1')
-        self.assertEqual(len(physical.updates), before + 1)
+        self.assertEqual(physical.transmits, before + 1)
         self.assertEqual(self.chain().get_status()['color_data'],
                          [(1., 0., 0., 0.)] * 4)
 
@@ -122,11 +122,22 @@ class TestSetLedReachesTheChain(LedTestCase):
         """
         physical = self.hh.printer.lookup_object('neopixel _unit0_leds')
         self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=1 RED=1')
-        before = len(physical.updates)
+        before = physical.transmits
         physical.led_helper.led_state[0] = (0., 0., 0., 0.)     # something else clobbered it
         self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=1 RED=1')
-        self.assertEqual(len(physical.updates), before + 1)
+        self.assertEqual(physical.transmits, before + 1)
         self.assertEqual(self.chain().get_status()['color_data'][0], (1., 0., 0., 0.))
+
+    def test_a_long_run_does_not_keep_every_frame(self):
+        """
+        Effects animate at 24fps, so a console left on its live clock for hours kept GBs of
+        frames and took minutes to free them on /quit.
+        """
+        physical = self.hh.printer.lookup_object('neopixel _unit0_leds')
+        before = physical.transmits
+        self.hh.reactor.advance(60.)
+        self.assertGreater(physical.transmits - before, 1000, 'no effect was animating')
+        self.assertLessEqual(len(physical.updates), 100)
 
 
 class TestStopReleasesTheLedsImmediately(LedTestCase):
