@@ -1092,9 +1092,6 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     esac
 
     echo "${C_INFO}Launching menuconfig (${F_CFG_UPGRADE_MODE} mode)...${C_OFF}"
-    if [ -n "${F_PER_GATE_MCU:-}" ]; then
-        echo "${C_INFO}Per-gate MCU support enabled. Menuconfig startup will be slower.${C_OFF}"
-    fi
     echo
 fi
 
