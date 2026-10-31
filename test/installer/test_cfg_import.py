@@ -494,6 +494,96 @@ class TestGearOverrides(_Install):
                          "PARAM_GEAR_STALLGUARD_THRESHOLD is set differently elsewhere")
 
 
+class _Reinstalled(_Install):
+    """Installed again, so each MCU connection in PREVIOUS offers its saved value as the previous selection"""
+
+    PREVIOUS = ()
+
+    def setUp(self):
+        super().setUp()
+        with cfg._env(self.env), cfg._chdir(cfg.INSTALLER):
+            kc = build.KConfig(self.kconfig)
+        kc.load_config(self.kconfig, filter_defaults=True)
+        for name in self.PREVIOUS:
+            kc.syms[name].set_value("y")
+        kc.write_config(self.kconfig)
+        build_files(self.env, self.home, kc, SINGLE_UNIT_FILES, self.extra)
+
+    def imported(self, section, *options):
+        """Import every candidate, then what a Replace build renders for these options"""
+        analysis = self.analyse()
+        analysis.apply(analysis.candidates)
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        return [hardware.get(section, option).strip() for option in options]
+
+
+class TestMcuConnection(_Reinstalled):
+    """A single MCU over CANbus on a non-default interface"""
+
+    SYMS = {"CHOICE_MMU_CONNECTION_TYPE_CANBUS": True, "CHOICE_MMU_CANBUS_UUID_OTHER": True,
+            "MMU_CANBUS_UUID_OTHER": "aaaaaaaaaaaa", "MMU_CANBUS_INTERFACE_OTHER": "can1"}
+    PREVIOUS = ("CHOICE_MMU_CANBUS_UUID_PREVIOUS",)
+
+    def test_edited_uuid_keeps_the_interface(self):
+        self.edit("mmu_hardware_unit0.cfg", "canbus_uuid", "0123456789ab", section="mcu unit0")
+        self.assertEqual(self.imported("mcu unit0", "canbus_uuid", "canbus_interface"), ["0123456789ab", "can1"])
+        self.assertIn("\nCONFIG_CHOICE_MMU_CANBUS_UUID_OTHER=y\n", self.saved())
+
+    def test_edited_interface_keeps_the_uuid(self):
+        self.edit("mmu_hardware_unit0.cfg", "canbus_interface", "can2", section="mcu unit0")
+        self.assertEqual(self.imported("mcu unit0", "canbus_uuid", "canbus_interface"), ["aaaaaaaaaaaa", "can2"])
+
+
+class TestPerGateMcuConnection(_Reinstalled):
+    """A per-gate EMU over CANbus"""
+
+    PROFILE = "emu"
+    SYMS = dict({"CHOICE_MMU_CONNECTION_TYPE_CANBUS": True},
+                **{"CHOICE_MMU_CANBUS_UUID_OTHER_%d" % gate: True for gate in range(5)},
+                **{"MMU_CANBUS_UUID_OTHER_%d" % gate: "%012x" % gate for gate in range(5)})
+    PREVIOUS = tuple("CHOICE_MMU_CANBUS_UUID_PREVIOUS_%d" % gate for gate in range(5))
+
+    def test_edited_gate_uuid_is_imported_as_manually_entered(self):
+        self.edit("mmu_hardware_unit0.cfg", "canbus_uuid", "0123456789ab", section="mcu unit0_gate3")
+        analysis = self.analyse()
+        candidate = self.by_symbol(analysis)["PARAM_MMU_CANBUS_UUID_3"]
+        analysis.apply([candidate])
+        self.assertIn('\nCONFIG_CHOICE_MMU_CANBUS_UUID_OTHER_3=y\nCONFIG_MMU_CANBUS_UUID_OTHER_3="0123456789ab"\n',
+                      self.saved())
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        self.assertEqual(hardware.get("mcu unit0_gate3", "canbus_uuid").strip(), "0123456789ab")
+        self.assertEqual(hardware.get("mcu unit0_gate2", "canbus_uuid").strip(), "000000000002")
+
+    def test_uuid_and_interface_edited_together_are_both_imported(self):
+        self.edit("mmu_hardware_unit0.cfg", "canbus_uuid", "0123456789ab", section="mcu unit0_gate3")
+        self.edit("mmu_hardware_unit0.cfg", "canbus_interface", "can1", section="mcu unit0_gate3")
+        self.assertEqual(sorted(self.by_symbol(self.analyse())),
+                         ["PARAM_MMU_CANBUS_INTERFACE_3", "PARAM_MMU_CANBUS_UUID_3"])
+        self.assertEqual(self.imported("mcu unit0_gate3", "canbus_uuid", "canbus_interface"), ["0123456789ab", "can1"])
+
+
+class TestSerialMcuConnection(_Reinstalled):
+
+    SYMS = {"CHOICE_MMU_SERIAL_DEVICE_OTHER": True, "MMU_SERIAL_DEVICE_OTHER": "/dev/serial/by-id/old"}
+    PREVIOUS = ("CHOICE_MMU_SERIAL_DEVICE_PREVIOUS",)
+
+    def test_edited_serial_is_imported(self):
+        self.edit("mmu_hardware_unit0.cfg", "serial", "/dev/serial/by-id/new", section="mcu unit0")
+        self.assertEqual(self.imported("mcu unit0", "serial"), ["/dev/serial/by-id/new"])
+
+
+class TestBufferMcuConnection(_Reinstalled):
+
+    PROFILE = "kms"
+    SYMS = {"CHOICE_BUFFER_CONNECTION_TYPE_CANBUS": True, "CHOICE_BUFFER_CANBUS_UUID_OTHER": True,
+            "BUFFER_CANBUS_UUID_OTHER": "aaaaaaaaaaaa"}
+    PREVIOUS = ("CHOICE_BUFFER_CANBUS_UUID_PREVIOUS",)
+
+    def test_edited_buffer_uuid_is_imported(self):
+        self.edit("mmu_hardware_unit0.cfg", "canbus_uuid", "0123456789ab", section="mcu unit0_buffer")
+        self.assertEqual(self.imported("mcu unit0_buffer", "canbus_uuid"), ["0123456789ab"])
+
+
 class TestCli(_Install):
 
     def setUp(self):
