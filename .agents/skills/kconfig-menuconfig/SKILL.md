@@ -38,8 +38,7 @@ Load-bearing facts about the flow:
 - **Env is consumed at parse time, not load time.** kconfiglib expands
   `$(VAR)` and `$(shell, ...)` while `Kconfig()` is being constructed. The
   vars (`UNIT_NAME`, `MCU_NAME`, `UNIT_INDEX`, `F_MULTI_UNIT`,
-  `F_MULTI_UNIT_ENTRY_POINT`, `F_PER_GATE_MCU`, `HH_VERSION`,
-  `KLIPPER_HOME`, ...) must be in the environment *before* the parse — and in
+  `F_MULTI_UNIT_ENTRY_POINT`, `HH_VERSION`, `KLIPPER_HOME`, ...) must be in the environment *before* the parse — and in
   multi-unit they differ **per parse**, changing the tree's *shape* (whole
   symbol sets appear/disappear behind `if MULTI_UNIT_ENTRY_POINT`).
   `test/hh/cfg.py::_env()` is the reference implementation: assign (never

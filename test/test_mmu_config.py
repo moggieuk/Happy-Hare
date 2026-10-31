@@ -760,7 +760,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         return kc, sensor
 
     def _per_gate_sensors(self, name, syms):
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        env = dict(cfg._SINGLE_UNIT_ENV)
         with cfg._env(env):
             kc = cfg._kconfig(name, dict({
                 'MMU_TYPE_EMU_1_0': True,
@@ -856,7 +856,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
                     self.assertEqual(
                         kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME'].str_value, expected)
 
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        env = dict(cfg._SINGLE_UNIT_ENV)
         for gate, member in ((1, 'HTU21D'), (2, 'SHT3X'), (3, 'LM75')):
             for value, expected in cases[member]:
                 with self.subTest(gate=gate, member=member, value=value):
@@ -936,7 +936,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertNotIn('aht10_report_time', sensor)
 
     def test_htu21d_per_gate_sensor(self):
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        env = dict(cfg._SINGLE_UNIT_ENV)
         with cfg._env(env):
             kc = cfg._kconfig('environment_sensor_htu21d_per_gate', {
                 'MMU_TYPE_EMU_1_0': True,
@@ -952,7 +952,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertEqual(sensor['i2c_address'], '64')
 
     def test_mixed_per_gate_sensors_select_report_parameter_independently(self):
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
+        env = dict(cfg._SINGLE_UNIT_ENV)
         with cfg._env(env):
             kc = cfg._kconfig('environment_sensor_mixed_per_gate', {
                 'MMU_TYPE_EMU_1_0': True,
@@ -2117,7 +2117,6 @@ esac
 
         env = {
             'KCONFIG_CONFIG': self.config_path,
-            'F_PER_GATE_MCU': 'y',
             'UNIT_NAME': 'unit0',
             'MCU_NAME': 'unit0',
             'UNIT_INDEX': '0',
@@ -2162,7 +2161,6 @@ esac
         vvd = profiles.get('ercf_vvd').units[1]
         buffer_env = {
             'KCONFIG_CONFIG': self.config_path,
-            'F_PER_GATE_MCU': '',
             'UNIT_NAME': vvd.name,
             'MCU_NAME': vvd.mcu_name,
             'UNIT_INDEX': str(vvd.index),
@@ -2405,8 +2403,14 @@ class TestPerGateEffectsDefinedOnGates(unittest.TestCase):
                 self.assertEqual(self._not_on_gates(profile), [])
 
 
-class TestEmuSingleMcu(unittest.TestCase):
-    """An EMU driven by one board turns off its per-gate MCUs."""
+class TestEmuMcus(unittest.TestCase):
+    """EMU's MCU topology: one per gate by default, or one board for the unit."""
+
+    def test_every_gate_mcu_has_a_connection(self):
+        hw = cfg.render(profiles.get('emu'))[HARDWARE]
+        mcus = re.findall(r'^\[mcu (\S+)\]\n(?:serial|canbus_uuid) *: *(\S*)', hw, re.M)
+        self.assertEqual([name for name, _ in mcus], ['unit0_gate%d' % i for i in range(5)])
+        self.assertTrue(all(value for _, value in mcus), mcus)
 
     def test_one_mcu_and_cpu_sensor_with_per_gate_off(self):
         syms = dict(profiles.get('emu').syms, MMU_HAS_PER_GATE_MCU=False)

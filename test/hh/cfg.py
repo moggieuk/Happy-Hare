@@ -117,7 +117,6 @@ _BASE_ENV = {
     'CONFIG_KLIPPER_CONFIG_HOME': '/nonexistent/printer_data/config',
     'CONFIG_MOONRAKER_HOME': '/nonexistent/moonraker',
     'CONFIG_SERVICE_KLIPPER': 'klipper.service',
-    'F_PER_GATE_MCU': '',
     'F_MAX_GATES': '',
     # `make test` exports KCONFIG_CONFIG=.mmu_config; saved-config-value must not read a
     # developer's real one. A unit parse of a multi-unit render sets KCONFIG_PARENT itself.

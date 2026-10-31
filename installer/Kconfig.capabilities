@@ -207,12 +207,9 @@ menu "Design attributes"
 
   comment "_" if SHOW_HIDDEN || SHOW_PER_GATE_MCU
 
-  # Changing it re-parses, since the per-gate MCU connections are only in the
-  # tree when F_PER_GATE_MCU is set
   config MMU_HAS_PER_GATE_MCU
     def_bool n
     prompt "Per-gate MCUs?" if SHOW_HIDDEN || SHOW_PER_GATE_MCU
-    reparse_env "F_PER_GATE_MCU"
     help
       Each gate has its own MCU board, e.g. an SLB or EBB per gate.
       Turn off when a single board drives the whole unit. Happy Hare

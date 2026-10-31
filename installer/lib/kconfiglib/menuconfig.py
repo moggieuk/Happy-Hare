@@ -1086,9 +1086,6 @@ def _init():
     # Give windows their initial size
     _resize_main()
 
-    # The loaded configuration may need a tree the environment didn't build
-    _reparse_stale()
-
 
 def _resize_main():
     # Resizes the main display, with the list of symbols, etc., to fill the
@@ -1944,7 +1941,6 @@ def _reset_node(node):
     else:
         _update_menu()
 
-    _reparse_stale()
     return True
 
 
@@ -2165,7 +2161,9 @@ def _set_val(sc, val):
         # Changing the value of the symbol might have changed what items in the
         # current menu are visible. Recalculate the state.
         _update_menu()
-        _reparse_stale()
+
+        if getattr(sc, "reparse_env", None):
+            _reparse(sc)
 
 
 # A 'reparse_env' symbol mirrors environment variables the
@@ -2215,28 +2213,6 @@ def _show_busy(text):
     curses.doupdate()
 
 
-def _env_matches(sym, var):
-    if sym.orig_type in (BOOL, TRISTATE):
-        # Only turning the variable on needs a parse: what it adds sits behind
-        # the symbol too, so turning that off hides it. Unset, blank and n are
-        # all off, as '@if' reads them
-        on = (os.environ.get(var) or "").lower() in ("y", "yes", "1", "true")
-        return on or sym.str_value != "y"
-    return os.environ.get(var) == sym.str_value
-
-
-def _reparse_stale():
-    # Any change can move a 'reparse_env' symbol, e.g. a machine type that
-    # implies it, so check them all rather than only the one changed. One
-    # outside this tree's branch (UNIT_NAME at the multi-unit top level) is n
-    # or blank whatever the environment says
-    for sym in _kconf.unique_defined_syms:
-        if getattr(sym, "reparse_env", None) and expr_value(sym.direct_dep) and \
-                not all(_env_matches(sym, var) for var in sym.reparse_env):
-            _reparse(sym)
-            return
-
-
 def _reparse(sym):
     global _kconf
     global _cur_menu
@@ -2245,13 +2221,10 @@ def _reparse(sym):
     global _menu_scroll
 
     value = sym.str_value
-    if all(_env_matches(sym, var) for var in sym.reparse_env):
+    if all(os.environ.get(var) == value for var in sym.reparse_env):
         return
 
-    if sym.orig_type in (BOOL, TRISTATE):
-        _show_busy("Updating configuration...")
-    else:
-        _show_busy("Updating configuration for '{}'...".format(value))
+    _show_busy("Updating configuration for '{}'...".format(value))
 
     menu_key = _node_key(_cur_menu)
     sel_key = _node_key(_shown[_sel_node_i])
@@ -2282,13 +2255,7 @@ def _reparse(sym):
     del _link_return[:] # Its nodes belong to the old tree
     _cfg_locations_changed()
 
-    # A file sourced more than once (Kconfig.capabilities, once per MMU type)
-    # repeats its keys, so prefer the copy whose dependencies hold
-    nodes = {}
-    for node in kconf.node_iter():
-        key = _node_key(node)
-        if key not in nodes or not expr_value(nodes[key].dep):
-            nodes[key] = node
+    nodes = {_node_key(node): node for node in kconf.node_iter()}
     nodes[("top",)] = kconf.top_node
     _cur_menu = nodes.get(menu_key, kconf.top_node)
     _shown = _shown_nodes(_cur_menu)

@@ -267,25 +267,6 @@ max_gates_changed() {
     [ -n "${F_MAX_GATES:-}" ] && [ "$(saved_max_gates "$1")" != "${F_MAX_GATES}" ]
 }
 
-# True if the saved config or one of its units has per-gate MCUs
-per_gate_mcu_saved() {
-    (
-        unset CONFIG_MULTI_UNIT CONFIG_MMU_UNITS
-        [ -r "${KCONFIG_CONFIG}" ] || exit 1
-        grep -q '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}" && exit 0
-        . "${KCONFIG_CONFIG}"
-        [ -n "${CONFIG_MULTI_UNIT:-}" ] || exit 1
-        IFS=,
-        set -f
-        for name in ${CONFIG_MMU_UNITS:-}; do
-            name=$(trim "$name")
-            [ -n "$name" ] || continue
-            grep -qs '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}_${name}" && exit 0
-        done
-        exit 1
-    )
-}
-
 single_unit_name() {
     (
         unset CONFIG_MULTI_UNIT CONFIG_UNIT_NAME
@@ -1035,13 +1016,7 @@ fi
 ##### Menuconfig / Refresh #####
 ################################
 
-# Per-gate MCU connections are only parsed with F_PER_GATE_MCU set, so a config
-# that has them keeps them
-if per_gate_mcu_saved; then
-    export F_PER_GATE_MCU=y
-fi
-
-# Likewise keep the gate limit an earlier -g saved, for every unit's parse
+# Keep the gate limit an earlier -g saved, for every unit's parse
 if [ -z "${F_MAX_GATES:-}" ]; then
     F_MAX_GATES=$(saved_max_gates "${KCONFIG_CONFIG}")
     [ -n "${F_MAX_GATES}" ] && export F_MAX_GATES
@@ -1244,12 +1219,6 @@ else
     review_unit_changes || exit 1
     single_unit_renamed && F_UNIT_RENAMED=y
     unit_migration_step kconfig || exit 1
-fi
-
-# Menuconfig re-parses itself when per-gate MCUs are turned on, so the
-# refresh and build below need the same tree
-if per_gate_mcu_saved; then
-    export F_PER_GATE_MCU=y
 fi
 
 # Always refresh stale configs after any optional menuconfig pass. Renamed or moved

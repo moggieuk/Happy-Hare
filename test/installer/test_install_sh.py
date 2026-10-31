@@ -809,18 +809,6 @@ class TestInstallSh(unittest.TestCase):
         for line in ("same", "lowered", "unsaved"):
             self.assertIn(line, result.stdout.split())
 
-    def test_per_gate_mcu_is_found_in_a_unit_config(self):
-        top = self.write(self.root / ".mmu_config",
-                         'CONFIG_MULTI_UNIT=y\nCONFIG_MMU_UNITS="box, emu"\n')
-        self.write(self.root / ".mmu_config_box", "CONFIG_MMU_TYPE_BOX_TURTLE_1_0=y\n")
-        emu = shlex.quote(str(self.root / ".mmu_config_emu"))
-        result = self.run_shell("\n".join((
-            "per_gate_mcu_saved && echo before",
-            "echo 'CONFIG_MMU_HAS_PER_GATE_MCU=y #~DEFAULT~#' > {}".format(emu),
-            "per_gate_mcu_saved && echo after",
-        )), env={"KCONFIG_CONFIG": top})
-        self.assertEqual(result.stdout.split(), ["after"])
-
     def test_single_unit_name(self):
         cases = {
             "no config": (None, "unit0"),
