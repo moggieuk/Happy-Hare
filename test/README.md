@@ -664,6 +664,9 @@ queue planning. XYZ is used only to estimate the extrusion rate for coordinated
 moves; XYZ positions are not included in these events. Existing MMU movement
 operations suppress duplicate G1 events.
 
+The viewer does not record individual filament or stepper samples. Model updates
+still maintain filament positions and motor totals for movement snapshots.
+
 Simulator macros that use simplified effects still produce modeled movement;
 individual G1 events require an executed macro body. This observer does not
 replace those effects with execution of the full production macros.

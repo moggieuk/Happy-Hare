@@ -44,7 +44,6 @@ class LiveViewer:
         self.motors = {}
         self.depth = 0
         self.wrapped = []
-        self.model.observers.append(self.on_filament)
         session.printer.harness_stepper_observer = self.on_stepper
         session.printer.harness_drive_observer = self.on_drive
         self.pending_config = None
@@ -175,8 +174,6 @@ class LiveViewer:
             else:
                 setattr(owner, method, original)
         self.wrapped.clear()
-        if self.on_filament in self.model.observers:
-            self.model.observers.remove(self.on_filament)
         self.hh.printer.harness_stepper_observer = None
         self.hh.printer.harness_drive_observer = None
 
@@ -329,9 +326,6 @@ class LiveViewer:
             self.events.append(event)
             self.latest = state
 
-    def on_filament(self, gate, delta, start_tip, start_tail):
-        self.capture('filament', 'Filament travel', gate=gate, distance=delta)
-
     def on_drive(self, distance, origin='manual'):
         if not distance or self.hh.mmu.gate_selected < 0:
             return
@@ -357,7 +351,6 @@ class LiveViewer:
 
     def on_stepper(self, name, distance):
         self.motors[name] = self.motors.get(name, 0.) + distance
-        self.capture('stepper', name, motor=name, distance=distance)
 
     def _macro_catalog(self):
         macros = {name.split(' ', 1)[1]: obj for name, obj in self.hh.printer.objects.items()

@@ -674,10 +674,10 @@ class Console:
         self.args.profile = profile
         try:
             try:
-                self._meta_reset([])
+                self._meta_reset([], show_banner=False)
             except Exception:
                 self.args.profile = previous
-                self._meta_reset([])
+                self._meta_reset([], show_banner=False)
                 raise
         finally:
             self.args.no_serve = no_serve
@@ -688,6 +688,7 @@ class Console:
             bridge.profile_name = str(self.args.profile)
             bridge.last_sent.clear()
             self._install_pace_observer()
+            self.banner()
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""
@@ -1609,7 +1610,7 @@ class Console:
             self.scrollback.clear()
         self.clear_log()
 
-    def _meta_reset(self, args):
+    def _meta_reset(self, args, show_banner=True):
         """Discard all simulated machine state and boot the selected profile afresh."""
         if args:
             raise ValueError('usage: /reset')
@@ -1623,7 +1624,11 @@ class Console:
         if self.scrollback is not None:
             self.scrollback.clear()
         self.boot()
-        self.info('simulator reset to %s startup state' % self.args.profile)
+        self.clear_log()
+        if hasattr(self, '_words'):
+            del self._words
+        if show_banner:
+            self.banner()
 
     def _meta_redraw(self, args):
         """Repaint everything, log included. /clear is the same thing minus the history."""
