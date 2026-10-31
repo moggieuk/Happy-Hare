@@ -286,6 +286,12 @@ class TestLoadAndUnload(EncoderTestCase):
         self.assertGreater(self.encoder.get_distance(),
                            self.fil.layout['extruder_entry'] / 2)
 
+    def test_small_extrusion_moves_add_up_on_the_encoder(self):
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        self.encoder.reset_counts()
+        self.hh.run_gcode('M83\n' + 'G1 E0.1 F300\n' * 100)
+        self.assertAlmostEqual(self.encoder.get_distance(), 10., delta=self.encoder.resolution)
+
     def test_the_gate_keeps_normal_buffered_availability_after_a_round_trip(self):
         self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
         self.hh.run_gcode('MMU_UNLOAD')

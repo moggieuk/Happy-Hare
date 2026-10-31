@@ -534,6 +534,7 @@ class Session:
         self.printer.harness_filament = model
         self._install_move_observer()
         if self._encoders():
+            self._encoder_residual = {}
             model.observers.append(self._on_encoder_travel)
         return model
 
@@ -902,7 +903,11 @@ class Session:
             return
         travel = model.travel_over(position, start_tip, start_tail, delta)
         for encoder, counter in self._encoders():
-            counter.pulse(int(round(travel / encoder.resolution)))
+            # Carry the part-pulse over, or a stream of small extrusion moves never pulses
+            pulses = self._encoder_residual.get(counter, 0.) + travel / encoder.resolution
+            whole = int(round(pulses))
+            self._encoder_residual[counter] = pulses - whole
+            counter.pulse(whole)
 
     def _on_manual_move(self, trapq, distance):
         """
