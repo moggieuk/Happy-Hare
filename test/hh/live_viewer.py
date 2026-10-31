@@ -53,7 +53,7 @@ class LiveViewer:
         self.pending_moves = {}
         self.telemetry_records = collections.deque(maxlen=self.LIMIT*2)
         self.unsubscribe = session.mmu.movement_telemetry.subscribe(self.on_telemetry)
-        self.wrap(session.printer.lookup_object('toolhead'), 'move')
+        self.wrap(session.printer.lookup_object('toolhead'), 'move', suppress_fallback=True)
         effects = getattr(session.printer, 'harness_macro_effects', {})
         for name, effect in list(effects.items()):
             if getattr(effect, '__name__', '') == '_effect_form_tip':
@@ -96,7 +96,9 @@ class LiveViewer:
         self.capture('movement', start['label'], before=before,
             origin='happy_hare.motion', telemetry={'start': start, 'outcome': record},
             duration=record['elapsed_s'], requested=start['requested_mm'],
-            distance=record['actual_mm'], speed=start['speed_mm_s'],
+            distance=record['actual_mm'], speed=record.get('extrusion_speed_mm_s', start['speed_mm_s']),
+            source=start.get('source'), extruder=start.get('extruder'),
+            context=start.get('context'), estimated_duration=record.get('estimated_duration_s'),
             acceleration=start['acceleration_mm_s2'], motors=motors,
             homing=start['homing'], endstop=start['endstop'], homed=record['homed'],
             error=record['error'], outcome=record['status'],
@@ -108,7 +110,7 @@ class LiveViewer:
                     'session_id': self.hh.mmu.movement_telemetry.session_id,
                     'records': [r for r in self.telemetry_records if r['sequence'] > after]}
 
-    def wrap(self, owner, method, filament=False):
+    def wrap(self, owner, method, filament=False, suppress_fallback=False):
         original = owner.get(method) if isinstance(owner, dict) else getattr(owner, method, None)
         if original is None:
             return
@@ -118,6 +120,14 @@ class LiveViewer:
             bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
             values = bound.arguments
+            if suppress_fallback:
+                # G1 source events own extrusion capture. Toolhead calls also
+                # include printing, G0 and arc segments: never infer events here.
+                self.depth += 1
+                try:
+                    return original(*args, **kwargs)
+                finally:
+                    self.depth -= 1
             if self.depth:
                 if values.get('speed') is not None and values['speed'] > 0:
                     self.resolved_speed = values['speed']
