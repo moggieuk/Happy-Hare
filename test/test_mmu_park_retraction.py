@@ -6,8 +6,8 @@
 # reduce ooze. The cut fragment is worked out from the recorded retraction, so it is exact however
 # the nozzle was left before the cut.
 #
-# The park, retract, restore and cut macros run for real. The fake gcode_move ignores E, so a
-# ledger moves the extruder stepper by each G1 E and tracks how far the filament is short of a
+# The park, retract, restore and cut macros run for real and the harness records motor steps.
+# An independent ledger tracks how far the filament is short of a
 # full nozzle: extruding past full oozes out, and a purge fills the nozzle before re-retracting
 # what it un-retracted. The true fragment is blade_pos - residual - shortfall when the blade closes.
 #
@@ -89,9 +89,6 @@ class ParkRetractionTestCase(unittest.TestCase):
         def extrude(gcmd):
             g1(gcmd)
             e = float(gcmd.get_command_parameters().get('E', 0))
-            stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
-            stepper.set_position([stepper.get_commanded_position() + e, 0., 0., 0.])
-            stepper.harness_note_motion(e)
             self.shortfall = max(self.shortfall - e, 0.) if e > 0 else self.shortfall - e
 
         self.hh.gcode.register_command('G1', extrude)

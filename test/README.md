@@ -664,6 +664,11 @@ queue planning. XYZ is used only to estimate the extrusion rate for coordinated
 moves; XYZ positions are not included in these events. Existing MMU movement
 operations suppress duplicate G1 events.
 
+The simulator records physical extruder and synced motor steps for G-code and
+MMU moves, independently of filament grip. Coordinate resets and saved-state
+restoration do not count as motion. This lets Happy Hare measure real macro
+retraction and calculate cut fragments without test-only step-count adjustments.
+
 The viewer does not record individual filament or stepper samples. Model updates
 still maintain filament positions and motor totals for movement snapshots.
 

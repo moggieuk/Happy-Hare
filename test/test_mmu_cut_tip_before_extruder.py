@@ -9,10 +9,9 @@
 # The cut is then verified: a missed cut leaves the filament gripped by the extruder, so the
 # extruder sensor stays covered or a gear-only pull can't move it, and the unload pauses.
 #
-# The fake gcode_move ignores E and manual moves don't reach the extruder's position, so a CUT is
-# modelled by an effect around the real macro body: afterwards the extruder stepper is moved by
-# the macro's net extruder movement, from which Happy Hare works out the fragment, and the
-# filament end is moved to where the blade leaves it (park_pos from the nozzle).
+# The harness accounts for G-code and manual motor travel. A CUT effect around the real macro
+# body separately moves the filament end to where the blade leaves it (park_pos from the nozzle).
+# Happy Hare measures physical extruder steps to calculate the retained fragment.
 # A MISSED cut skips that move, so the filament stays continuous. The model can't hold filament
 # against the gear either, so hold() makes the verification pull report that nothing moved, as a
 # gear slipping against a gripped filament would. The modelled buffer is always coupled to the
@@ -80,17 +79,7 @@ class BeforeExtruderCutCase(unittest.TestCase):
             effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
 
         def cut(macro, gcmd):
-            start = len(self.hh.gcode.executed)
             macro.run_body(gcmd)
-            extruded = 0.
-            for line in self.hh.gcode.executed[start:]:
-                if line.startswith('G1 E'):
-                    extruded += float(line.split()[1][1:])
-                elif line.startswith('_MMU_STEP_MOVE') and 'extruder' in line:
-                    extruded += float(line.split()[1].split('=')[1])
-            stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
-            stepper.set_position([stepper.get_commanded_position() + extruded, 0., 0., 0.])
-            stepper.harness_note_motion(extruded)
             self.cut_moves = len(self.moves)
             if not self.missed:
                 gate = self.mmu.gate_selected

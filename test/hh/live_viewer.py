@@ -360,7 +360,10 @@ class LiveViewer:
                 if blade is not None:
                     cut_position = nozzle - blade
                     if self.latest['tips'][gate] > cut_position + 1e-6:
-                        self.retained_segments[extruder] = dict(start=cut_position, end=self.latest['tips'][gate],
+                        fragment_end = self.latest['tips'][gate]
+                        if self.tip_shapes.get(gate) == 'cone':
+                            fragment_end -= material['residual_mm']
+                        self.retained_segments[extruder] = dict(start=cut_position, end=max(cut_position, fragment_end),
                             tip_shape=self.tip_shapes.get(gate, 'square'),
                             color=self.latest['filament']['incoming_color'])
                         self.tip_shapes[gate] = 'square'
