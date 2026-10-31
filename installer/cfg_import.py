@@ -81,12 +81,16 @@ class Candidate(object):
         self.set_name = None                    # The symbol menuconfig sets: this one, its toggle or choice member
         self.set_key = None                     # What can only take one value: set_name, or the choice
         self.kconfig_value = None
+        self.also = []                          # Values typed in under the choice member: [(name, value), ...]
 
     def note(self):
         """Verbose detail: the value it replaces and the symbol that holds it"""
         sym = self.sym_name if self.set_name in (None, self.sym_name) else \
             "%s, set by %s" % (self.sym_name, self.set_name)
         return "was %s; %s" % (self.menuconfig_value, sym)
+
+    def settings(self):
+        return [(self.set_name, self.kconfig_value)] + self.also
 
 
 def templates_for(values):
@@ -177,6 +181,13 @@ def symbol_locations(values, kconfig_path):
     return found
 
 
+def written_conditions(sym):
+    """The symbols a symbol's defaults are conditional on as written, in the definitions enabled now"""
+    return {s for node in sym.nodes if kconfiglib.expr_value(node.dep)
+            for _, cond in node.orig_defaults
+            for s in kconfiglib.expr_items(cond) if isinstance(s, kconfiglib.Symbol) and not s.is_constant}
+
+
 def choice_locations(kconf, locations):
     """
     {choice: [(installed file, section, option), ...]} for each named choice that alone sets
@@ -189,10 +200,7 @@ def choice_locations(kconf, locations):
         sym = kconf.syms.get(name)
         if sym is None or any(node.prompt for node in sym.nodes):
             continue
-        conds = [s for node in sym.nodes if kconfiglib.expr_value(node.dep)
-                 for _, cond in node.orig_defaults
-                 for s in kconfiglib.expr_items(cond) if isinstance(s, kconfiglib.Symbol) and not s.is_constant]
-        choices = {s.choice for s in conds}
+        choices = {s.choice for s in written_conditions(sym)}
         if len(choices) != 1:
             continue
         choice = choices.pop()
@@ -302,6 +310,9 @@ class Analysis(object):
         for key, ref in symbols.items():
             if ref and rendered.has_option(*key) and hhcfg.has_option(*key):
                 uses.setdefault(ref, []).append(key)
+        self.theirs = theirs_by_key
+        self.where = {ref[0]: keys for ref, keys in uses.items()}
+        self._entry_map = None
 
         edited = {}
         self.order = {}
@@ -439,7 +450,8 @@ class Analysis(object):
     def _reset_trial(self):
         self.kconf.load_config(self.kconfig_path, filter_defaults=True)
         for candidate in self.discovered_pins:
-            self.kconf.syms[candidate.set_name].set_value(candidate.kconfig_value)
+            for name, value in candidate.settings():
+                self.kconf.syms[name].set_value(value)
 
     def _params(self, values):
         params = dict(values)
@@ -466,7 +478,7 @@ class Analysis(object):
         """A toggle or choice can't take two values, so neither edit that needs it can be imported"""
         wanted = {}
         for candidate in self.candidates:
-            wanted.setdefault(candidate.set_key, set()).add((candidate.set_name, candidate.kconfig_value))
+            wanted.setdefault(candidate.set_key, set()).add(tuple(candidate.settings()))
         for candidate in [c for c in self.candidates if len(wanted[c.set_key]) > 1]:
             self.candidates.remove(candidate)
             for key in candidate.locations:
@@ -476,8 +488,10 @@ class Analysis(object):
         """Each import was checked alone, so drop any that doesn't reproduce once all are set"""
         while self.candidates:
             for candidate in self.candidates:
-                self.kconf.syms[candidate.set_name].set_value(candidate.kconfig_value)
-            unsaved = [c for c in self.candidates if not saved_as(self.kconf.syms[c.set_name], c.kconfig_value)]
+                for name, value in candidate.settings():
+                    self.kconf.syms[name].set_value(value)
+            unsaved = [c for c in self.candidates
+                       if not all(saved_as(self.kconf.syms[name], value) for name, value in c.settings())]
             after = self._options(self._render(self.kconf.as_dict()))
             self.kconf.load_config(self.kconfig_path, filter_defaults=True)
             failed = [c for c in self.candidates if c in unsaved
@@ -495,8 +509,8 @@ class Analysis(object):
         reason = why_not_settable(sym, value)
         setting = None
         if reason is None:
-            ok = self._reproduces(sym, value, candidate)
-            setting = (sym, value) if ok is True else None
+            ok = self._reproduces([(sym, value)], candidate)
+            setting = [(sym, value)] if ok is True else None
             reason = None if ok is True else {
                 False: "outside the range menuconfig allows",
                 None: "not a valid %s value" % kconfiglib.TYPE_TO_STR[sym.orig_type],
@@ -509,22 +523,27 @@ class Analysis(object):
                     break
 
         if reason is None:
-            candidate.set_name, candidate.kconfig_value = setting[0].name, setting[1]
-            candidate.set_key = setting[0].choice.name if setting[0].choice else setting[0].name
+            (set_sym, value), also = setting[0], setting[1:]
+            candidate.set_name, candidate.kconfig_value = set_sym.name, value
+            candidate.also = [(entry.name, text) for entry, text in also]
+            candidate.set_key = set_sym.choice.name if set_sym.choice else set_sym.name
             self.candidates.append(candidate)
         else:
             for key in candidate.locations:
                 self.kept.append((key, candidate.cfg_value, reason))
 
-    def _reproduces(self, set_sym, value, candidate):
+    def _reproduces(self, settings, candidate, may_match=()):
         """
-        True if setting set_sym to value renders the .cfg value and changes nothing else.
-        None if the value can't be set, False if it doesn't render, or the reason when it
-        would also change another option or section
+        True if making the settings, in order, renders the .cfg value and changes nothing else
+        but options in may_match, to what the .cfg holds. None if a value can't be set, False
+        if it doesn't render, or the reason when it would also change another option or section
         """
-        if not set_sym.set_value(value):
-            return None
-        honoured = saved_as(set_sym, value)
+        for i, (set_sym, value) in enumerate(settings):
+            # A typed-in value is only shown once its choice member is set
+            if (i and why_not_settable(set_sym, value) is not None) or not set_sym.set_value(value):
+                self._reset_trial()
+                return None
+        honoured = all(saved_as(set_sym, value) for set_sym, value in settings)
         after = self._options(self._render(self.kconf.as_dict()))
         self._reset_trial()
         if not honoured:
@@ -532,7 +551,8 @@ class Analysis(object):
 
         ok = all(build.same_value(after.get(key), candidate.cfg_value, candidate.literal) for key in candidate.locations)
         changed = [key for key in sorted(set(after) | set(self.live), key=str)
-                   if key not in candidate.locations and after.get(key) != self.live.get(key)]
+                   if key not in candidate.locations and after.get(key) != self.live.get(key)
+                   and not (key in may_match and build.same_value(after.get(key), self.theirs.get(key)))]
         if ok and changed:
             return "would also change %s" % ", ".join(
                 "[%s]" % s if o is None else "[%s] %s" % (s, o) for s, o in changed[:2])
@@ -543,12 +563,15 @@ class Analysis(object):
                 if isinstance(s, kconfiglib.Symbol)}
 
     def _through(self, candidate, trials, what):
-        """((symbol, value), None) for the first trial that gives the .cfg value, else (None, reason)"""
+        """
+        (settings, None) for the first trial that gives the .cfg value, else (None, reason).
+        Each trial is ([(symbol, value), ...], the options it may also set to the .cfg's value)
+        """
         side_effect = None
-        for set_sym, value in trials:
-            ok = self._reproduces(set_sym, value, candidate)
+        for settings, may_match in trials:
+            ok = self._reproduces(settings, candidate, may_match)
             if ok is True:
-                return (set_sym, value), None
+                return settings, None
             if isinstance(ok, str):
                 side_effect = side_effect or ok
         return None, side_effect or "no %s gives this value" % what
@@ -561,24 +584,55 @@ class Analysis(object):
                    and why_not_settable(s, "y") is None]
         if len(toggles) != 1:
             return None, None
-        return self._through(candidate, [(toggles[0], v) for v in ("y", "n")],
+        return self._through(candidate, [([(toggles[0], v)], ()) for v in ("y", "n")],
                              "setting of %s" % toggles[0].name)
 
     def _through_choice(self, sym, candidate):
         """For a hidden symbol whose defaults follow one menuconfig list; (None, None) if none do"""
-        choices = {s.choice for s in self._conditions(sym)
-                   if s.choice is not None and (s.choice.name or "").startswith("CHOICE_")}
-        if len(choices) != 1:
+        for conditions in (self._conditions(sym), written_conditions(sym)):
+            choices = {s.choice for s in conditions
+                       if s.choice is not None and (s.choice.name or "").startswith("CHOICE_")}
+            if len(choices) == 1:
+                break
+        else:
             return None, None
         choice = choices.pop()
         if not choice.visibility:
             return None, None
         # A *_PREVIOUS member only re-offers the saved value
         members = [m for m in choice.syms if m.visibility and not _PREVIOUS_MEMBER.search(m.name)]
-        return self._through(candidate, [(m, "y") for m in members], "%s option" % choice.name)
+        return self._through(candidate, [self._selecting(m) for m in members], "%s option" % choice.name)
+
+    def _selecting(self, member):
+        """
+        The trial that selects a choice member, typing in under it what the .cfg holds for each
+        symbol it sets that way, or the value it has now
+        """
+        settings, may_match = [(member, "y")], set()
+        for entry, target in self._entries(member):
+            keys = self.where.get(target.name, [])
+            values = {(self.theirs.get(key) or "").strip() for key in keys}
+            settings.append((entry, values.pop() if len(values) == 1 else target.str_value))
+            may_match.update(keys)
+        return settings, may_match
+
+    def _entries(self, member):
+        """(entry, symbol) for each promptless symbol set from a value typed in under the member"""
+        if self._entry_map is None:
+            self._entry_map = {}
+            for sym in self.kconf.unique_defined_syms:
+                if any(node.prompt for node in sym.nodes):
+                    continue
+                defaults = [d for node in sym.nodes if kconfiglib.expr_value(node.dep) for d in node.orig_defaults]
+                for value, cond in defaults:
+                    if isinstance(value, kconfiglib.Symbol) and not value.is_constant \
+                            and isinstance(cond, kconfiglib.Symbol) and cond.choice is not None \
+                            and any(n.prompt for n in value.nodes):
+                        self._entry_map.setdefault(cond.name, []).append((value, sym))
+        return self._entry_map.get(member.name, [])
 
     def apply(self, accepted):
-        apply_settings(self.kconfig_path, [[c.set_name, c.kconfig_value] for c in accepted], self.kconf)
+        apply_settings(self.kconfig_path, [s for c in accepted for s in c.settings()], self.kconf)
 
     def report(self):
         """The JSON-ready summary --show prints and the settings --apply makes"""
@@ -590,7 +644,7 @@ class Analysis(object):
             "imported": rows([(key, c.cfg_value, c.note()) for c in self.candidates for key in c.locations]),
             "kept": rows(self.kept),
             "replaced": rows([(key, value, "menuconfig sets %s" % ours) for key, value, ours in self.replaced]),
-            "settings": [[c.set_name, c.kconfig_value] for c in self.candidates],
+            "settings": [list(s) for c in self.candidates for s in c.settings()],
         }
 
 

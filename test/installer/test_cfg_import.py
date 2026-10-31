@@ -48,6 +48,7 @@ class _Install(unittest.TestCase):
 
     PROFILE = "boxturtle"
     SYMS = {}
+    ENV = {}
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -55,7 +56,7 @@ class _Install(unittest.TestCase):
         self.home = os.path.join(self.tmp.name, "config")
         os.makedirs(os.path.join(self.home, "mmu", "base"))
         self.kconfig = os.path.join(self.tmp.name, ".mmu_config")
-        self.env = dict(cfg._SINGLE_UNIT_ENV, HH_VERSION=cfg.hh_version(), KCONFIG_CONFIG=self.kconfig)
+        self.env = dict(cfg._SINGLE_UNIT_ENV, HH_VERSION=cfg.hh_version(), KCONFIG_CONFIG=self.kconfig, **self.ENV)
         with cfg._env(self.env):
             kc = cfg._kconfig("cfg-import", dict(profiles.get(self.PROFILE).syms, **self.SYMS))
         kc.write_config(self.kconfig)
@@ -492,6 +493,37 @@ class TestGearOverrides(_Install):
         self.assertEqual(analysis.candidates, [])
         self.assertEqual(self.reasons(analysis)[("tmc2209 mmu_stepper unit0_gear_2", "driver_SGTHRS")],
                          "PARAM_GEAR_STALLGUARD_THRESHOLD is set differently elsewhere")
+
+
+class TestMcuConnection(_Install):
+    """A per-gate EMU over CANbus, reinstalled so each gate offers its previous connection"""
+
+    PROFILE = "emu"
+    ENV = {"F_PER_GATE_MCU": "y"}
+    SYMS = dict({"CHOICE_MMU_CONNECTION_TYPE_CANBUS": True},
+                **{"CHOICE_MMU_CANBUS_UUID_OTHER_%d" % gate: True for gate in range(5)},
+                **{"MMU_CANBUS_UUID_OTHER_%d" % gate: "%012x" % gate for gate in range(5)})
+
+    def setUp(self):
+        super().setUp()
+        with cfg._env(self.env), cfg._chdir(cfg.INSTALLER):
+            kc = build.KConfig(self.kconfig)
+        kc.load_config(self.kconfig, filter_defaults=True)
+        for gate in range(5):
+            kc.syms["CHOICE_MMU_CANBUS_UUID_PREVIOUS_%d" % gate].set_value("y")
+        kc.write_config(self.kconfig)
+        build_files(self.env, self.home, kc, SINGLE_UNIT_FILES, self.extra)
+
+    def test_edited_gate_uuid_is_imported_as_manually_entered(self):
+        self.edit("mmu_hardware_unit0.cfg", "canbus_uuid", "0123456789ab", section="mcu unit0_gate3")
+        analysis = self.analyse()
+        candidate = self.by_symbol(analysis)["PARAM_MMU_CANBUS_UUID_3"]
+        analysis.apply([candidate])
+        self.assertIn('\nCONFIG_CHOICE_MMU_CANBUS_UUID_OTHER_3=y\nCONFIG_MMU_CANBUS_UUID_OTHER_3="0123456789ab"\n',
+                      self.saved())
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        self.assertEqual(hardware.get("mcu unit0_gate3", "canbus_uuid").strip(), "0123456789ab")
+        self.assertEqual(hardware.get("mcu unit0_gate2", "canbus_uuid").strip(), "000000000002")
 
 
 class TestCli(_Install):
