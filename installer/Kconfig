@@ -102,8 +102,11 @@
 #     recorded in a '<config>.<SYMBOL>.changes' sidecar on save. 'append_only_unless <expr>'
 #     limits it to appending while <expr> is n
 # 19. 'reparse_env "<VAR> [<VAR>...]"' on a symbol whose value the tree is built from via
-#     those env vars (UNIT_NAME): changing it in menuconfig re-parses with the new value
-#     so every default derived from them is recomputed in the same session
+#     those env vars (UNIT_NAME, F_PER_GATE_MCU): whenever its value and the env differ in
+#     menuconfig, however it changed and at start-up, it re-parses with the new value so
+#     every default derived from them is recomputed in the same session. A bool only
+#     re-parses to turn its variable on (unset, blank and n are off, as '@if' reads them):
+#     what that adds must sit behind the symbol too, so turning it off just hides it
 # 20. Shared components: 'owner-*' preprocessor functions (shared_components.py) let a unit
 #     parse read the OTHER units' saved configs via KCONFIG_PARENT: the names of the units'
 #     own encoders/buffers and an owner's capabilities, for a sharer naming it. Used through

@@ -564,6 +564,82 @@ endmenu
         self.assertIn("boom", error.call_args.args[0])
 
 
+class TestReparseEnvBool(unittest.TestCase):
+    """A bool 'reparse_env' symbol re-parses to turn its variable on, however it changes,
+    e.g. through an imply."""
+
+    KCONFIG = """
+config TYPE
+    bool "Type"
+    imply PER_GATE
+
+config PER_GATE
+    bool "Per gate" if TYPE
+    reparse_env "PER_GATE_ENV"
+
+@if PER_GATE_ENV@
+if PER_GATE
+config PARAM_GATE_UUID
+    string "Gate UUID"
+    default "x"
+endif
+@endif@
+
+config OFF
+    bool
+
+if OFF
+config NAME
+    string
+    default "$(NAME_ENV)"
+    reparse_env "NAME_ENV"
+endif
+"""
+
+    def setUp(self):
+        import os
+        import tempfile
+        import kconfiglib
+        self.os = os
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "Kconfig")
+        with open(path, "w") as f:
+            f.write(self.KCONFIG)
+        for var, value in (("PER_GATE_ENV", None), ("NAME_ENV", "box")):
+            self.addCleanup(lambda v=var, old=os.environ.get(var):
+                            os.environ.__setitem__(v, old) if old is not None else os.environ.pop(v, None))
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
+        self.kconf = kconfiglib.Kconfig(path, warn=False)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf, _show_all=False,
+                                 _show_name=False, _conf_changed=False, _menu_scroll=0,
+                                 _show_busy=lambda text: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        menuconfig._cur_menu = self.kconf.top_node
+        menuconfig._shown = menuconfig._shown_nodes(self.kconf.top_node)
+        menuconfig._sel_node_i = 0
+
+    def test_an_implied_change_reparses_and_unset_is_off(self):
+        # Neither unset (off) nor a symbol whose dependencies are off re-parses
+        menuconfig._reparse_stale()
+        self.assertIs(menuconfig._kconf, self.kconf)
+
+        menuconfig._set_val(self.kconf.syms["TYPE"], 2)
+        kconf = menuconfig._kconf
+        self.assertIsNot(kconf, self.kconf)
+        self.assertEqual(self.os.environ["PER_GATE_ENV"], "y")
+        self.assertIn("PARAM_GATE_UUID", kconf.syms)
+
+        # Turning it off only hides what it added
+        menuconfig._set_val(kconf.syms["PER_GATE"], 0)
+        self.assertIs(menuconfig._kconf, kconf)
+        self.assertEqual(kconf.syms["PARAM_GATE_UUID"].visibility, 0)
+
+
 class TestLink(unittest.TestCase):
     """A comment with 'link SYMBOL' jumps to SYMBOL; leaving that menu comes back."""
 

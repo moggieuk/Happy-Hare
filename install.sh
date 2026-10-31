@@ -67,7 +67,7 @@ usage() {
     # echo "  -R specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
     echo "  -r allow running ${SCRIPT_NAME} from a root login (not through sudo)"
-    echo "  -e, --emu Enables multi MCU support (e.g. for EMU design)"
+    echo "  -e, --emu Enables multi MCU support from the start (EMU turns it on when needed)"
     echo "  -g <gates> most gates one MMU unit can configure (12 or more, default 12, sticky; more is slower)"
     echo "  -o override compatibility checks (e.g. unknown MIPS layout)"
     echo "  -t  activate test mode - write config to /tmp/mmu_test instead of your real install"
@@ -266,6 +266,25 @@ saved_max_gates() {
 # True if -g asks for a different gate limit than config file $1 was saved with
 max_gates_changed() {
     [ -n "${F_MAX_GATES:-}" ] && [ "$(saved_max_gates "$1")" != "${F_MAX_GATES}" ]
+}
+
+# True if the saved config or one of its units has per-gate MCUs
+per_gate_mcu_saved() {
+    (
+        unset CONFIG_MULTI_UNIT CONFIG_MMU_UNITS
+        [ -r "${KCONFIG_CONFIG}" ] || exit 1
+        grep -q '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}" && exit 0
+        . "${KCONFIG_CONFIG}"
+        [ -n "${CONFIG_MULTI_UNIT:-}" ] || exit 1
+        IFS=,
+        set -f
+        for name in ${CONFIG_MMU_UNITS:-}; do
+            name=$(trim "$name")
+            [ -n "$name" ] || continue
+            grep -qs '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}_${name}" && exit 0
+        done
+        exit 1
+    )
 }
 
 single_unit_name() {
@@ -1019,9 +1038,9 @@ fi
 ##### Menuconfig / Refresh #####
 ################################
 
-# Force F_PER_GATE_MCU if existing config already enables per-gate MCU support.
-# This preserves the expanded menuconfig behavior on later runs without needing -e.
-if [ -r "${KCONFIG_CONFIG}" ] && grep -q '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}"; then
+# Per-gate MCU connections are only parsed with F_PER_GATE_MCU set, so a config
+# that has them keeps them without needing -e
+if per_gate_mcu_saved; then
     export F_PER_GATE_MCU=y
 fi
 
@@ -1231,6 +1250,12 @@ else
     review_unit_changes || exit 1
     single_unit_renamed && F_UNIT_RENAMED=y
     unit_migration_step kconfig || exit 1
+fi
+
+# Menuconfig re-parses itself when per-gate MCUs are turned on, so the
+# refresh and build below need the same tree
+if per_gate_mcu_saved; then
+    export F_PER_GATE_MCU=y
 fi
 
 # Always refresh stale configs after any optional menuconfig pass. Renamed or moved

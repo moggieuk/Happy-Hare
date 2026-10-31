@@ -2405,5 +2405,20 @@ class TestPerGateEffectsDefinedOnGates(unittest.TestCase):
                 self.assertEqual(self._not_on_gates(profile), [])
 
 
+class TestEmuSingleMcu(unittest.TestCase):
+    """An EMU driven by one board turns off its per-gate MCUs."""
+
+    def test_one_mcu_and_cpu_sensor_with_per_gate_off(self):
+        syms = dict(profiles.get('emu').syms, MMU_HAS_PER_GATE_MCU=False)
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('emu-one-mcu', syms)
+        self.assertEqual(kc.syms['MMU_HAS_PER_GATE_MCU'].visibility, 2)
+        self.assertEqual(kc.syms['BOARD_TYPE_MMB_2_0'].visibility, 2)
+
+        hw = cfg.render(profiles.get('emu').derive('emu_one_mcu', syms=syms))[HARDWARE]
+        self.assertEqual([s for s in cfg.sections(hw) if s.startswith('mcu ')], ['mcu unit0'])
+        self.assertEqual(re.findall(r'^sensor_mcu *: *(\S+)', hw, re.M), ['unit0'])
+
+
 if __name__ == '__main__':
     unittest.main()

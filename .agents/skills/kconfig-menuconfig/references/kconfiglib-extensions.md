@@ -613,8 +613,15 @@ config MMU_UNITS
 For a symbol whose value the tree is *built from* through environment
 variables, which are expanded at parse time (`UNIT_NAME` → `$(UNIT_NAME)` and
 `$(MCU_NAME)` in ~850 defaults: pins, LED chains, NFC readers, `[mcu …]`).
-Changing such a symbol in menuconfig can't update those defaults, so
-`_set_val` calls `_reparse`, which:
+Changing such a symbol in menuconfig can't update those defaults, so after
+every change (`_set_val`, `r` reset) and once at start-up, `_reparse_stale`
+looks for a `reparse_env` symbol whose value no longer matches its variables
+and calls `_reparse`. Checking all of them, not just the symbol edited, is
+what catches a symbol moved by an `imply` or `select`. A bool only re-parses
+to turn its variable on (unset, blank and `n` are off, as `@if` reads them).
+Whatever the variable adds must sit behind the symbol as well, so turning the
+symbol off just hides it, and passing the variable up front (`-e`) costs no
+extra parse. `_reparse`:
 
 1. writes the current values to a temporary config (`write_config`);
 2. sets each named variable to the new value;
@@ -633,6 +640,12 @@ an "Updating configuration…" box.
   prefix list, which is every unit-derived prompted symbol in this tree.
   An explicit value containing the old name stays as typed, and the installer
   rewrites it (`unit_migration._rename_single_unit`).
+- `MMU_HAS_PER_GATE_MCU` uses `reparse_env "F_PER_GATE_MCU"`. EMU implies
+  it, so picking EMU re-parses with the per-gate MCU connections (`@if
+  F_PER_GATE_MCU@` in `connection/Kconfig.mmu_mcu`), and `-e` is no longer
+  needed. menuconfig's environment dies with it, so install.sh works the flag
+  out again from the saved configs (`per_gate_mcu_saved`, unit files included)
+  before the refresh and build.
 - `UNIT_NAME` uses `reparse_env "UNIT_NAME MCU_NAME"`. After a re-parse the
   saved `MCU_NAME` already follows the rename, so install.sh records the name
   before menuconfig (`F_UNIT_NAME_BEFORE`) to know a rename happened.
