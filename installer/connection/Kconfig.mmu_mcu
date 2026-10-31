@@ -8,9 +8,7 @@
 #   PARAM_MMU_CANBUS_UUID
 #   PARAM_MMU_CANBUS_INTERFACE
 #
-# If F_PER_GATE_MCU (EMU design) the special inclusion macro
-# will include the extra Kconfig logic. This is relatively expensive
-# so it is not normally included. Additional params will be set:
+# With MMU_HAS_PER_GATE_MCU (e.g. EMU) these are set per gate instead:
 #   PARAM_MMU_SERIAL_DEVICE_<gate>
 #   PARAM_MMU_CANBUS_UUID_<gate>
 #   PARAM_MMU_CANBUS_INTERFACE_<gate>
@@ -131,13 +129,9 @@ if !MMU_HAS_PER_GATE_MCU
 endif
 
 # -------------------------------------
-# Pre-Gate MCU's
-# This section is ONLY pre-processed if
-# PER_GATE_MCU environment variable is
-# y/yes/1/true because it is expensive!
+# Per-gate MCUs
 # -------------------------------------
 
-@if F_PER_GATE_MCU@
 if MMU_HAS_PER_GATE_MCU
 
   @repeat var=gate min=0 max=$(max_gate)@
@@ -232,4 +226,3 @@ if MMU_HAS_PER_GATE_MCU
   @endrepeat@
 
 endif
-@endif@

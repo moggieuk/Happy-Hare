@@ -205,11 +205,16 @@ menu "Design attributes"
   # Per-gate capabilities
   # ------------------------------------
 
-  comment "_" if SHOW_HIDDEN
+  comment "_" if SHOW_HIDDEN || SHOW_PER_GATE_MCU
 
   config MMU_HAS_PER_GATE_MCU
     def_bool n
-    prompt "Per-gate MCUs?" if SHOW_HIDDEN
+    prompt "Per-gate MCUs?" if SHOW_HIDDEN || SHOW_PER_GATE_MCU
+    help
+      Each gate has its own MCU board, e.g. an SLB or EBB per gate.
+      Turn off when a single board drives the whole unit. Happy Hare
+      then defines one [mcu] and one CPU temperature sensor, and the
+      board list offers the regular MMU boards.
 
   config MMU_HAS_PER_GATE_CONFIG
     def_bool n

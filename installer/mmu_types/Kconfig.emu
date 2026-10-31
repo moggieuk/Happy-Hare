@@ -7,7 +7,8 @@ config MMU_TYPE_EMU_1_0
     sync-feedback buffer like PSF.
   select VIRTUAL_SELECTOR
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
-  imply  MMU_HAS_PER_GATE_MCU # Install must also be run with "-e" for PER_GATE_MCU support
+  imply  MMU_HAS_PER_GATE_MCU # Unless a single board drives the unit
+  select SHOW_PER_GATE_MCU     # So that can be chosen in "Design attributes"
   select MMU_HAS_PER_GATE_CONFIG
   imply  MMU_HAS_ENVIRONMENT_SENSOR
   select MMU_HAS_LEDS
