@@ -48,7 +48,6 @@ class _Install(unittest.TestCase):
 
     PROFILE = "boxturtle"
     SYMS = {}
-    ENV = {}
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -56,7 +55,7 @@ class _Install(unittest.TestCase):
         self.home = os.path.join(self.tmp.name, "config")
         os.makedirs(os.path.join(self.home, "mmu", "base"))
         self.kconfig = os.path.join(self.tmp.name, ".mmu_config")
-        self.env = dict(cfg._SINGLE_UNIT_ENV, HH_VERSION=cfg.hh_version(), KCONFIG_CONFIG=self.kconfig, **self.ENV)
+        self.env = dict(cfg._SINGLE_UNIT_ENV, HH_VERSION=cfg.hh_version(), KCONFIG_CONFIG=self.kconfig)
         with cfg._env(self.env):
             kc = cfg._kconfig("cfg-import", dict(profiles.get(self.PROFILE).syms, **self.SYMS))
         kc.write_config(self.kconfig)
@@ -539,7 +538,6 @@ class TestPerGateMcuConnection(_Reinstalled):
     """A per-gate EMU over CANbus"""
 
     PROFILE = "emu"
-    ENV = {"F_PER_GATE_MCU": "y"}
     SYMS = dict({"CHOICE_MMU_CONNECTION_TYPE_CANBUS": True},
                 **{"CHOICE_MMU_CANBUS_UUID_OTHER_%d" % gate: True for gate in range(5)},
                 **{"MMU_CANBUS_UUID_OTHER_%d" % gate: "%012x" % gate for gate in range(5)})
