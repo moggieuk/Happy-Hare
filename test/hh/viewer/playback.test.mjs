@@ -284,3 +284,11 @@ test('retained fragment starts purge only when its front reaches the residual',(
  assert.equal(interpolate({before:a,state:b},.75).extruded_mm,2);
  assert.equal(interpolate({before:a,state:b},1).extruded_mm,12);
 });
+
+test('stationary extruder holds the nozzle tip through both gear wiggle directions',()=>{
+ for (const delta of [.8,-.8]) {
+  const a=state(100,true), b=state(100,true);
+  const event={before:a,state:b,raw_before:state(110,true),raw_state:state(110+delta,true)};
+  for (const fraction of [0,.25,.5,.75,1]) assert.equal(interpolate(event,fraction).tips[0],100);
+ }
+});
