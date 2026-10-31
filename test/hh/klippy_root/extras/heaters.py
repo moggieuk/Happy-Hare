@@ -78,6 +78,10 @@ class PrinterHeaters:
 
     def set_temperature(self, heater, temp, wait=False):
         heater.set_temp(temp)
+        if wait and temp:
+            # No thermal time model (see TEMPERATURE_WAIT): a wait completes by arriving
+            heater.smoothed_temp = temp
+            heater.can_extrude = temp >= heater.min_extrude_temp
 
     def _cmd_TEMPERATURE_WAIT(self, gcmd):
         """Complete a thermal wait instantly while preserving its observable stages."""

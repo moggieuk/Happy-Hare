@@ -269,10 +269,6 @@ config PARAM_STATE_MIGRATION
   default "{}"
   keep_when_hidden
 
-config PER_GATE_MCU
-  bool
-  default "$(F_PER_GATE_MCU)"
-
 config MAX_GATES
   int
   default $(max_gates)
@@ -315,6 +311,10 @@ comment "$(pad,50,)"
 comment "_"
 
 config SHOW_HIDDEN
+  def_bool n
+
+# A type that lets the user choose its MCU topology selects this
+config SHOW_PER_GATE_MCU
   def_bool n
 
 # -------------------------------------

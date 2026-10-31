@@ -38,10 +38,10 @@ Load-bearing facts about the flow:
 - **Env is consumed at parse time, not load time.** kconfiglib expands
   `$(VAR)` and `$(shell, ...)` while `Kconfig()` is being constructed. The
   vars (`UNIT_NAME`, `MCU_NAME`, `UNIT_INDEX`, `F_MULTI_UNIT`,
-  `F_MULTI_UNIT_ENTRY_POINT`, `F_PER_GATE_MCU`, `HH_VERSION`,
-  `KLIPPER_HOME`, ...) must be in the environment *before* the parse — and in
-  multi-unit they differ **per parse**, changing the tree's *shape* (whole
-  symbol sets appear/disappear behind `if MULTI_UNIT_ENTRY_POINT`).
+  `F_MULTI_UNIT_ENTRY_POINT`, `HH_VERSION`, `KLIPPER_HOME`, ...) must be in
+  the environment *before* the parse — and in multi-unit they differ **per
+  parse**, changing the tree's *shape* (whole symbol sets appear/disappear
+  behind `if MULTI_UNIT_ENTRY_POINT`).
   `test/hh/cfg.py::_env()` is the reference implementation: assign (never
   `setdefault`) and restore around each parse.
 - **Multi-unit = one entry-point parse plus one per unit, driven by
@@ -442,7 +442,10 @@ in this repo:
   `boards/Kconfig` sources `boards/per_gate/` (EBB Gen1 / SLB) *instead of*
   the normal board set when `MMU_HAS_PER_GATE_MCU` is set — so
   `BOARD_TYPE_MMB_2_0` (and the other normal boards) cannot be selected in a
-  per-gate-MCU config. A board file's defaults only ever apply to devices on
+  per-gate-MCU config. EMU implies it and selects `SHOW_PER_GATE_MCU`, which
+  shows "Per-gate MCUs?" in Design attributes, so a unit driven by one board
+  turns it off and gets the normal boards, one `[mcu]` and one CPU
+  temperature sensor. A board file's defaults only ever apply to devices on
   *that board's* MCU: defaulting a per-gate device's bus from the main
   board's Kconfig is either dead code (per-gate-MCU configs) or a hardware
   collision (per-gate devices on one shared MCU can't share a fixed-address

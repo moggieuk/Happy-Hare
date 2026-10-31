@@ -760,8 +760,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         return kc, sensor
 
     def _per_gate_sensors(self, name, syms):
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
-        with cfg._env(env):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig(name, dict({
                 'MMU_TYPE_EMU_1_0': True,
                 'MMU_HAS_PER_GATE_MCU': True,
@@ -856,11 +855,10 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
                     self.assertEqual(
                         kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME'].str_value, expected)
 
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
         for gate, member in ((1, 'HTU21D'), (2, 'SHT3X'), (3, 'LM75')):
             for value, expected in cases[member]:
                 with self.subTest(gate=gate, member=member, value=value):
-                    with cfg._env(env):
+                    with cfg._env(cfg._SINGLE_UNIT_ENV):
                         kc = cfg._kconfig('environment_sensor_report_time_range_per_gate', {
                             'MMU_TYPE_EMU_1_0': True,
                             'MMU_HAS_PER_GATE_MCU': True,
@@ -936,8 +934,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertNotIn('aht10_report_time', sensor)
 
     def test_htu21d_per_gate_sensor(self):
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
-        with cfg._env(env):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig('environment_sensor_htu21d_per_gate', {
                 'MMU_TYPE_EMU_1_0': True,
                 'MMU_HAS_PER_GATE_MCU': True,
@@ -952,8 +949,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertEqual(sensor['i2c_address'], '64')
 
     def test_mixed_per_gate_sensors_select_report_parameter_independently(self):
-        env = dict(cfg._SINGLE_UNIT_ENV, F_PER_GATE_MCU='y')
-        with cfg._env(env):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig('environment_sensor_mixed_per_gate', {
                 'MMU_TYPE_EMU_1_0': True,
                 'MMU_HAS_PER_GATE_MCU': True,
@@ -2117,7 +2113,6 @@ esac
 
         env = {
             'KCONFIG_CONFIG': self.config_path,
-            'F_PER_GATE_MCU': 'y',
             'UNIT_NAME': 'unit0',
             'MCU_NAME': 'unit0',
             'UNIT_INDEX': '0',
@@ -2162,7 +2157,6 @@ esac
         vvd = profiles.get('ercf_vvd').units[1]
         buffer_env = {
             'KCONFIG_CONFIG': self.config_path,
-            'F_PER_GATE_MCU': '',
             'UNIT_NAME': vvd.name,
             'MCU_NAME': vvd.mcu_name,
             'UNIT_INDEX': str(vvd.index),
@@ -2403,6 +2397,27 @@ class TestPerGateEffectsDefinedOnGates(unittest.TestCase):
         for profile in profiles.CONSOLE_PROFILES:
             with self.subTest(profile=profile.name):
                 self.assertEqual(self._not_on_gates(profile), [])
+
+
+class TestEmuMcus(unittest.TestCase):
+    """EMU's MCU topology: one per gate by default, or one board for the unit."""
+
+    def test_every_gate_mcu_has_a_connection(self):
+        hw = cfg.render(profiles.get('emu'))[HARDWARE]
+        mcus = re.findall(r'^\[mcu (\S+)\]\n(?:serial|canbus_uuid) *: *(\S*)', hw, re.M)
+        self.assertEqual([name for name, _ in mcus], ['unit0_gate%d' % i for i in range(5)])
+        self.assertTrue(all(value for _, value in mcus), mcus)
+
+    def test_one_mcu_and_cpu_sensor_with_per_gate_off(self):
+        syms = dict(profiles.get('emu').syms, MMU_HAS_PER_GATE_MCU=False)
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('emu-one-mcu', syms)
+        self.assertEqual(kc.syms['MMU_HAS_PER_GATE_MCU'].visibility, 2)
+        self.assertEqual(kc.syms['BOARD_TYPE_MMB_2_0'].visibility, 2)
+
+        hw = cfg.render(profiles.get('emu').derive('emu_one_mcu', syms=syms))[HARDWARE]
+        self.assertEqual([s for s in cfg.sections(hw) if s.startswith('mcu ')], ['mcu unit0'])
+        self.assertEqual(re.findall(r'^sensor_mcu *: *(\S+)', hw, re.M), ['unit0'])
 
 
 if __name__ == '__main__':

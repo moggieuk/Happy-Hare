@@ -444,6 +444,8 @@ class VirtualReactor:
         finally:
             self._process = False
             self._g_dispatch = None
+            # finalize() only needs the parked ones
+            self._all_greenlets = [x for x in self._all_greenlets if not x.dead]
         if self._pending_error is not None:
             error, self._pending_error = self._pending_error, None
             raise error

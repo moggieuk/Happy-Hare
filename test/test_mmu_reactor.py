@@ -321,6 +321,22 @@ class TestVirtualReactor(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.reactor.drain_suspended(budget=0.3)
 
+    def test_finished_greenlets_are_not_kept(self):
+        """
+        The console's live clock calls advance() twice a second for as long as it is open,
+        so every finished dispatch greenlet kept for finalize() is unbounded growth. A
+        parked one must still be kept, or finalize() could not terminate it.
+        """
+        def sleeper(eventtime):
+            self.reactor.pause(self.reactor.NEVER)
+            return self.reactor.NEVER
+
+        self.reactor.register_timer(sleeper, self.reactor.monotonic())
+        for _ in range(100):
+            self.reactor.advance(0.5)
+        self.assertLess(len(self.reactor._all_greenlets), 5)
+        self.assertTrue(any(not g.dead for g in self.reactor._all_greenlets))
+
 
 if __name__ == '__main__':
     unittest.main()

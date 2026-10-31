@@ -4,6 +4,8 @@
 # (extras/mmu/unit/mmu_leds.py:41) for each configured chain and then reaches into
 # `chain.led_helper` (:52-62) to write led_state and force a transmit. The rendered
 # BoxTurtle config ships [neopixel _unit0_leds].
+import collections
+
 from . import led as led_mod
 
 # HH monkeypatches this constant as a Klipper workaround
@@ -11,6 +13,9 @@ from . import led as led_mod
 # error if the attribute is absent, so it must exist. Value from real Klipper
 # extras/neopixel.py:11.
 BIT_MAX_TIME = .000004
+
+# Effects transmit at 24fps, so an unbounded history grows for as long as the clock runs
+UPDATE_HISTORY = 100
 
 
 class PrinterNeoPixel:
@@ -21,9 +26,12 @@ class PrinterNeoPixel:
         color_order = config.get('color_order', 'GRB')
         self.color_order = color_order
         self.led_helper = led_mod.LEDHelper(config, self.update_leds, chain_count)
-        self.updates = []       # test assertion surface
+        # Test assertion surface: count transmits with `transmits`, not len(updates)
+        self.transmits = 0
+        self.updates = collections.deque(maxlen=UPDATE_HISTORY)
 
     def update_leds(self, led_state, print_time):
+        self.transmits += 1
         self.updates.append((print_time, list(led_state)))
 
     def get_status(self, eventtime=None):

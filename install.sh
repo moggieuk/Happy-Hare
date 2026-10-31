@@ -67,7 +67,6 @@ usage() {
     # echo "  -R specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
     echo "  -r allow running ${SCRIPT_NAME} from a root login (not through sudo)"
-    echo "  -e, --emu Enables multi MCU support (e.g. for EMU design)"
     echo "  -g <gates> most gates one MMU unit can configure (12 or more, default 12, sticky; more is slower)"
     echo "  -o override compatibility checks (e.g. unknown MIPS layout)"
     echo "  -t  activate test mode - write config to /tmp/mmu_test instead of your real install"
@@ -718,7 +717,6 @@ fi
 for arg in "$@"; do
     shift
     case "$arg" in
-        --emu) set -- "$@" -e ;;
         --help) set -- "$@" -h ;;
         --yes) set -- "$@" -y ;;
         --last) set -- "$@" -l ;;
@@ -727,7 +725,7 @@ for arg in "$@"; do
     esac
 done
 
-while getopts "rehfiudylpzsb:nk:c:m:a:g:toqv" arg; do
+while getopts "rhfiudylpzsb:nk:c:m:a:g:toqv" arg; do
     case $arg in
     f)
         FIX_LINKS=y
@@ -757,7 +755,6 @@ while getopts "rehfiudylpzsb:nk:c:m:a:g:toqv" arg; do
     o) export F_OVERRIDE_CHECKS=y ;;
     q) export Q= ;;   # Developer: Disable quiet mode in Makefile
     v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
-    e) export F_PER_GATE_MCU=y ;; # Allows multiple MCU selection but menuconfig startup time is increased
     g) export F_MAX_GATES="${OPTARG}" ;;
     h) usage ;;
     *) usage ;;
@@ -1019,13 +1016,7 @@ fi
 ##### Menuconfig / Refresh #####
 ################################
 
-# Force F_PER_GATE_MCU if existing config already enables per-gate MCU support.
-# This preserves the expanded menuconfig behavior on later runs without needing -e.
-if [ -r "${KCONFIG_CONFIG}" ] && grep -q '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}"; then
-    export F_PER_GATE_MCU=y
-fi
-
-# Likewise keep the gate limit an earlier -g saved, for every unit's parse
+# Keep the gate limit an earlier -g saved, for every unit's parse
 if [ -z "${F_MAX_GATES:-}" ]; then
     F_MAX_GATES=$(saved_max_gates "${KCONFIG_CONFIG}")
     [ -n "${F_MAX_GATES}" ] && export F_MAX_GATES
@@ -1076,9 +1067,6 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     esac
 
     echo "${C_INFO}Launching menuconfig (${F_CFG_UPGRADE_MODE} mode)...${C_OFF}"
-    if [ -n "${F_PER_GATE_MCU:-}" ]; then
-        echo "${C_INFO}Per-gate MCU support enabled. Menuconfig startup will be slower.${C_OFF}"
-    fi
     echo
 fi
 

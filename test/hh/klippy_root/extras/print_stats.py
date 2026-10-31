@@ -14,6 +14,21 @@ class PrintStats:
         self.filament_used = 0.
         self.message = ''
         self.info = {'total_layer': None, 'current_layer': None}
+        self.printer.lookup_object('gcode').register_command(
+            'SET_PRINT_STATS_INFO', self.cmd_SET_PRINT_STATS_INFO,
+            desc='Pass slicer info like layer act and total to klipper')
+
+    def cmd_SET_PRINT_STATS_INFO(self, gcmd):
+        # Ported from klippy/extras/print_stats.py
+        total_layer = gcmd.get_int('TOTAL_LAYER', self.info['total_layer'], minval=0)
+        current_layer = gcmd.get_int('CURRENT_LAYER', self.info['current_layer'], minval=0)
+        if total_layer == 0:
+            self.info = {'total_layer': None, 'current_layer': None}
+        elif total_layer != self.info['total_layer']:
+            self.info = {'total_layer': total_layer, 'current_layer': 0}
+        if (self.info['total_layer'] is not None and current_layer is not None
+                and current_layer != self.info['current_layer']):
+            self.info['current_layer'] = min(current_layer, self.info['total_layer'])
 
     def set_state(self, state):
         assert state in ('standby', 'printing', 'paused', 'complete',
