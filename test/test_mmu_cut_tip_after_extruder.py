@@ -6,7 +6,7 @@
 # can't change it. 3ms reverse-homes off its extruder entry sensor; ercf_vvd (entry sensor
 # disabled, see test_mmu_toolhead_unload_test) uses its toolhead sensor.
 #
-# The fake gcode_move ignores E, so the extruder doesn't move during the macro. _MMU_PARK doesn't
+# G1 E moves transport filament while the extruder grips it, even with the gear unsynced. _MMU_PARK doesn't
 # run, so the only retraction is the 2mm toolchange retraction the standalone load ends with: the
 # macro retracts 2mm less and filament_remaining is park_pos - residual - 2.
 #
@@ -50,10 +50,12 @@ CUT_GCODE = [
     'G1 X0.5 Y250.0 F1920.0',
     '_SAFE_G1 X=0.5 Y=250.0 F=480.0',
     'G1 X0.5 Y250.0 F480.0',
+    '_MMU_TELEMETRY EVENT="cut"',
     'G4 P50.0',
     'G1 E-1.0 F180.0',
     '_SAFE_G1 X=19.0 Y=250.0 F=9000.0',
     'G1 X19.0 Y250.0 F9000.0',
+    '_MMU_TELEMETRY EVENT="release"',
     '_SAFE_G1 X=49.0 F=9000.0',
     'G1 X49.0 F9000.0',
     '_CUT_TIP_GANTRY_SERVO_UP',
@@ -156,7 +158,8 @@ class TestAfterExtruderToolheadSensor(AfterExtruderGoldenCase):
     UNLOAD_DRIVE_POS = -808.87
     LOAD_MOVES = [
         ('Initial load into encoder', 100.0, None, None),
-        ('Fast loading move through bowden', 602.66, None, None),
+        # The real 1mm unsynced rip now contributes one 0.98mm encoder pulse.
+        ('Fast loading move through bowden', 603.64, None, None),
         ('Homing to toolhead sensor', 60.0, 'gear+extruder', 'toolhead'),
         ('Loading filament to nozzle', 39.3, 'gear+extruder', None),
     ]

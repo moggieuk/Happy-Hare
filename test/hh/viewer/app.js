@@ -1,4 +1,4 @@
-import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements } from './playback.js';
+import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 function setTheme(theme) {
@@ -124,6 +124,7 @@ function connect() {
       pending.delete(data.id);
       data.error ? p.reject(Error(data.error.message)) : p.resolve(data.result);
     } else if (data.method === "notify_gcode_command") {
+      followLive();
       consoleLine(data.params[0], "command");
     } else if (data.method === "notify_gcode_response") {
       const line = data.params[0];
@@ -211,6 +212,31 @@ function value() {
       : (p.value ?? "")
     : "";
 }
+async function selectDimension(event) {
+  const target = event.target.closest('[data-parameter]');
+  if (!target) return;
+  if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
+  event.preventDefault();
+  try {
+    if (Number(target.dataset.unit) >= 0) $('unit').value = target.dataset.unit;
+    await refresh();
+    $('filter').value = '';
+    filter();
+    const id = target.dataset.parameter;
+    if (![...$('parameter').options].some(option => option.value === id)) {
+      message('This dimension has no editable parameter in the current configuration.', true);
+      return;
+    }
+    $('parameter').value = id;
+    value();
+    $('value').focus();
+    $('value').select();
+    $('parameter').scrollIntoView({block: 'nearest'});
+    message('Parameter selected. Apply to update the live configuration.');
+  } catch (error) { message(error.message, true); }
+}
+$('scene').addEventListener('click', selectDimension);
+$('scene').addEventListener('keydown', selectDimension);
 $("filter").oninput = filter;
 $("parameter").onchange = value;
 $("unit").onchange = () => refresh().catch((e) => message(e.message, true));
@@ -319,8 +345,12 @@ function draw() {
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
   const path =
     "M620 455 L620 170 Q620 75 525 75 L355 75 Q260 75 260 170 L260 445";
+  const dimensionLink = label => {
+    const id = dimensionParameter(s, label);
+    return id ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
+  };
   const bowdenPath = path.replace("L260 445", "L260 435");
-  let svg = `<rect x="540" y="275" width="170" height="200" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="558" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H240 V435 H280 V205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="60" rx="5" fill="var(--scene-heater, #c4d3df)"/><path d="M242 435 L260 455 L278 435" fill="var(--scene-nozzle, #9cafbe)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text id="bowden-length" x="440" y="45" text-anchor="middle" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s)}</text>`;
+  let svg = `<rect x="540" y="275" width="170" height="200" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="558" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H240 V435 H280 V205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="60" rx="5" fill="var(--scene-heater, #c4d3df)"/><path d="M242 435 L260 455 L278 435" fill="var(--scene-nozzle, #9cafbe)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="440" y="45" text-anchor="middle" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s)}</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -332,11 +362,18 @@ function draw() {
         ? mmuExitFraction + ((0.73-mmuExitFraction) * p) / entry
         : Math.min(1, 0.73 + (0.27 * (p - entry)) / (end - entry));
   const start = s.tails[gate] === null ? 0 : progress(s.tails[gate]) * length,
-    stop = progress(tip) * length;
+    stop = progress(s.tip_shapes?.[gate] === 'cone' ? tip-2 : tip) * length;
   $("filament").setAttribute(
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
+  const shapedTip = (position, color, part) => {
+    const point = p => tube.getPointAtLength(progress(Math.min(p,end-residual))*length);
+    const base = point(position-2), nose = point(position);
+    const angle = Math.atan2(nose.y-base.y,nose.x-base.x), dx = -Math.sin(angle)*3.5, dy = Math.cos(angle)*3.5;
+    const hair = Array.from({length:11},(_,i)=>point(position+i));
+    return `<g data-part="${part}"><path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/><path d="${hair.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')}" stroke="#${color}" stroke-width=".8" fill="none"/></g>`;
+  };
   const fadeY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150) * length).y;
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="455"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,455-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
   if (s.synced) {
@@ -346,7 +383,10 @@ function draw() {
     const pt = tube.getPointAtLength(progress(cutter.position) * length);
     const right = cutter.kind === 'mmu';
     const direction = right ? -1 : 1;
-    const pressed = bladeStroke(live ? playing?.event : null, playing?.fraction || 0, cutter.kind);
+    const bladeEvent = live ? playing?.event : null;
+    const pressed = bladeEvent && ['cut','release'].includes(bladeEvent.kind)
+      ? bladeStroke(bladeEvent, playing?.fraction || 0, cutter.kind)
+      : cutter.kind === 'toolhead' && s.cutter_pressed ? 1 : 0;
     // The triangle tip rests at the 20px tube's outer wall, then crosses it.
     const x = pt.x - direction * 10 + direction * 20 * pressed;
     svg += `<g class="cutter-blade" aria-label="${right ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path data-part="blade" data-pressed="${pressed}" d="M${x} ${pt.y} l${-direction*42} -5 v10 Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/>${right ? `<text x="${pt.x+52}" y="${pt.y}" dominant-baseline="middle" font-size="10" fill="var(--scene-text, #304c65)">MMU cutter</text>` : ''}</g>`;
@@ -360,14 +400,14 @@ function draw() {
     const labelY = Math.max(ref.y, previousLabelY + 17);
     previousLabelY = labelY + (ref.gap != null ? 13 : 0);
     const extra = ref.gap != null ? `<tspan x="336" dy="13">(${mm(ref.gap)}mm to gears)</tspan>` : '';
-    svg += `<g class="toolhead-reference"><path d="M285 ${ref.y} H315 L330 ${labelY}" fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1"/><text x="336" y="${labelY}" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)">${ref.label} · ${mm(ref.distance)}mm${extra}</text></g>`;
+    svg += `<g class="toolhead-reference"><path d="M285 ${ref.y} H315 L330 ${labelY}" fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1"/><text ${dimensionLink(ref.label)} x="336" y="${labelY}" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)">${ref.label} · ${mm(ref.distance)}mm${extra}</text></g>`;
   }
   const cooling = coolingTubeMeasurements(s);
   if (cooling) {
     const startY = tube.getPointAtLength(progress(cooling.start) * length).y;
     const endY = tube.getPointAtLength(progress(cooling.end) * length).y;
     const midY = (startY + endY) / 2;
-    svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY} V${endY} M312 ${endY+4} L315 ${endY} L318 ${endY+4}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="1.2"/><text x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text x="336" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
+    svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY-2} V${endY+2} M312 ${endY+6} L315 ${endY+2} L318 ${endY+6}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="1.2"/><text ${dimensionLink('Cooling tube position')} x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text ${dimensionLink('Cooling tube length')} x="323" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
   }
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (s.active_sensors) return s.active_sensors.includes(name);
@@ -417,7 +457,8 @@ function draw() {
       const pt = tube.getPointAtLength(Math.max(progress(s.layout.mmu_encoder ?? 40)*length, ...exitPositions));
       // Device positions are interpolated alongside each captured move.
       const angle = gearAngle(d.encoder_pos || 0, 1, 11);
-      svg += `<g id="encoder-marker"><g transform="rotate(${angle} ${pt.x} ${pt.y})"><circle cx="${pt.x}" cy="${pt.y}" r="11" fill="#faf4d9" stroke="#9d8e52"/><path d="M${pt.x - 7} ${pt.y} H${pt.x + 7} M${pt.x} ${pt.y - 7} V${pt.y + 7}" stroke="#9d8e52"/><circle cx="${pt.x + 7}" cy="${pt.y}" r="2" fill="#9d8e52"/></g><text x="${pt.x - 25}" y="${pt.y + 4}" text-anchor="end" font-size="11" fill="var(--scene-text, #304c65)">Encoder</text>${Number.isFinite(e.telemetry?.outcome?.encoder_mm) ? `<text id="encoder-measurement" x="${pt.x+25}" y="${pt.y+4}" font-size="11" fill="var(--scene-text, #304c65)">${e.telemetry.outcome.encoder_mm.toFixed(1)}mm measured</text>` : ''}</g>`;
+      const encoderReading = lastEncoderReading(events, live && playing ? events.find(event => event.seq === played) : e, s.unit);
+      svg += `<g id="encoder-marker"><g transform="rotate(${angle} ${pt.x} ${pt.y})"><circle cx="${pt.x}" cy="${pt.y}" r="11" fill="#faf4d9" stroke="#9d8e52"/><path d="M${pt.x - 7} ${pt.y} H${pt.x + 7} M${pt.x} ${pt.y - 7} V${pt.y + 7}" stroke="#9d8e52"/><circle cx="${pt.x + 7}" cy="${pt.y}" r="2" fill="#9d8e52"/></g><text x="${pt.x - 25}" y="${pt.y + 4}" text-anchor="end" font-size="11" fill="var(--scene-text, #304c65)">Encoder</text>${Number.isFinite(encoderReading) ? `<text id="encoder-measurement" x="${pt.x+25}" y="${pt.y+4}" font-size="11" fill="var(--scene-text, #304c65)">${encoderReading.toFixed(1)}mm</text>` : ''}</g>`;
     }
     if (name.endsWith(":buffer")) {
       const fraction = Math.max(0, Math.min(1, ((d.value ?? 0) + 1) / 2));
@@ -434,30 +475,39 @@ function draw() {
   const fragment = s.filament?.fragment_mm || 0;
   const retainedColor = s.nozzle_color || s.filament?.retained_color || '808182';
   const residualTop = tube.getPointAtLength(progress(end-residual)*length).y;
-  if (fragment > 0) {
+  const nozzleZero = tube.getPointAtLength(progress(end)*length).y;
+  if (s.retained_segment && !s.retained_segment.residual_only) {
+    const segment = s.retained_segment;
+    const top = tube.getPointAtLength(progress(segment.start)*length).y;
+    const bottom = tube.getPointAtLength(progress(Math.max(segment.start,segment.end-(segment.tip_shape === 'cone' ? 2 : 0)))*length).y;
+    const cutLength = Math.max(0, segment.end-segment.start);
+    svg += `<path id="retained-fragment" d="M260 ${top} L260 ${bottom}" fill="none" stroke="#${segment.color}" stroke-width="7"/>${cutLength > .01 ? `<text id="cut-fragment-length" x="192" y="${(top+bottom)/2}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="var(--scene-muted, #6e8190)">Cut fragment ${cutLength.toFixed(1)}mm</text>` : ''}`;
+    if (segment.tip_shape === 'cone') svg += shapedTip(segment.end,segment.color,'fragment-tip');
+  } else if (fragment > 0 && !Object.hasOwn(s, 'retained_segment')) {
     const top = tube.getPointAtLength(progress(end-residual-fragment)*length).y;
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${residualTop}" fill="none" stroke="#${retainedColor}" stroke-width="7"/>`;
   }
+  if (s.tip_shapes?.[gate] === 'cone') svg += shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip');
   if (residual > 0) {
-    svg += `<path id="residual-filament" d="M260 ${residualTop} L260 445" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${residual}mm</text>`;
+    svg += `<path id="residual-filament" d="M260 ${residualTop} L260 ${nozzleZero}" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text ${dimensionLink('Residual')} x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${residual}mm</text>`;
   }
   if (residual > 0 || tip >= end-.01) {
     svg += `<path id="nozzle-funnel" d="M256.5 445 Q256.5 451 258.25 455 L261.75 455 Q263.5 451 263.5 445 Z" fill="#${retainedColor}"/>`;
   }
-  const coilAmount = Math.max(0, (s.extruded_mm || 0)-(s.purge_base_mm || 0)) % 36;
-  const drop = s.purge_drop ?? Math.max(0,(coilAmount-30)/6);
-  const purge = purgePath(Math.min(30,coilAmount));
-  if (purge) {
-    const turns = Math.min(10, coilAmount / 3);
-    const x = 260 + 22 * Math.min(1, turns / .5) * (1 - .065 * turns) * Math.sin(turns * Math.PI * 2);
-    const y = 498 - turns * 2.6 + 2 * Math.cos(turns * Math.PI * 2);
-    const strand = !drop && tip >= end - .01 ? `M260 455 Q260 ${y - 8} ${x} ${y}` : '';
-    const startColor = `#${s.purge_color_start || s.nozzle_color || '808182'}`;
-    const endColor = `#${s.nozzle_color || '808182'}`;
-    // Match the documentation: keep a broad material-colored center, with a
-    // tinted lower edge and a narrow highlight rather than black/white stripes.
-    const gradient = (id, shade) => `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="0" y1="500" x2="0" y2="${y}"><stop stop-color="${shade(startColor)}"/><stop offset="1" stop-color="${shade(endColor)}"/></linearGradient>`;
-    svg += `<defs>${gradient('purge-color', c => c)}${gradient('purge-shadow', c => `color-mix(in srgb, ${c}, black 28%)`)}${gradient('purge-highlight', c => `color-mix(in srgb, ${c}, white 38%)`)}<clipPath id="purge-screen"><rect x="210" y="435" width="150" height="70"/></clipPath></defs><g clip-path="url(#purge-screen)"><g id="purge-pile" transform="translate(0,${drop*75})" aria-label="Extruded filament"><path d="${strand} ${purge}" fill="none" stroke="url(#purge-shadow)" stroke-width="5.8" transform="translate(0,.5)" stroke-linecap="round" stroke-linejoin="round"/><path data-part="purge-material" d="${strand} ${purge}" fill="none" stroke="url(#purge-color)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="${purge}" transform="translate(0,-1.2)" fill="none" stroke="url(#purge-highlight)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><text x="303" y="491" font-size="10" fill="var(--scene-muted, #6e8190)">${s.extruded_mm.toFixed(1)} mm extruded</text></g></g>`;
+  const nozzleDiameter = Number($("nozzle-diameter").value);
+  const {amount:coilAmount, layers, coils, drop} = purgeCoils(s, nozzleDiameter);
+  if (coilAmount > 0) {
+    let waste = '';
+    for (const coil of coils) {
+      const reveal = `fill="none" stroke-linecap="round" pathLength="100" stroke-dasharray="${coil.fraction*100} 100"`;
+      waste += `<path d="${coil.path}" ${reveal} stroke="color-mix(in srgb, #${coil.color}, black 28%)" stroke-width="5.8" transform="translate(0,.5)"/><path data-part="purge-material" d="${coil.path}" ${reveal} stroke="#${coil.color}" stroke-width="4.6"/><path d="${coil.path}" ${reveal} stroke="color-mix(in srgb, #${coil.color}, white 38%)" stroke-width="1.1" transform="translate(0,-1.2)"/>`;
+    }
+    const landing = 498-Math.max(0,layers-1)*3.2;
+    const strandTip = 455+(landing-455)*Math.min(1,coilAmount/1.2);
+    const stem = Math.min(strandTip,463);
+    const strand = `M260 455 V${stem}` + (strandTip>stem ? ` C257 ${stem+(strandTip-stem)/3} 264 ${stem+(strandTip-stem)*2/3} 260 ${strandTip}` : '');
+    waste += `<path data-part="purge-stream" d="${strand}" fill="none" stroke="#${purgeColor(s,s.extruded_mm)}" stroke-width="3"/>`;
+    svg += `<defs><clipPath id="purge-screen"><rect x="210" y="435" width="150" height="70"/></clipPath></defs><g clip-path="url(#purge-screen)"><g id="purge-pile" transform="translate(0,${drop*75})" aria-label="Extruded filament">${waste}</g></g><text x="303" y="491" font-size="10" fill="var(--scene-muted, #6e8190)">${purgeStrandLength(s.extruded_mm, nozzleDiameter).toFixed(1)} mm strand</text>`;
   }
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
@@ -542,12 +592,13 @@ $("replay").onclick = () => {
   paused = false; live = true;
   draw(); followTrace();
 };
-$("live").onclick = () => {
+function followLive() {
   live = true; paused = false; playing = null; sensorPulse = null; resumeAt = 0;
   played = events.at(-1)?.seq || 0;
   displayed = events.at(-1)?.state;
   draw(); followTrace();
-};
+}
+$("live").onclick = followLive;
 $("timeline").oninput = () => seek(Number($("timeline").value));
 $("save").onclick = () => {
   const url = URL.createObjectURL(
@@ -562,6 +613,7 @@ $("save").onclick = () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 $("compress-bowden").onchange = () => renderTrace();
+$("nozzle-diameter").onchange = () => draw();
 $("save-motion").onclick = async () => {
   try {
     const response = await fetch('/sim/viewer/telemetry');

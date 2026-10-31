@@ -51,6 +51,139 @@ class TestLiveViewer(unittest.TestCase):
         self.assertEqual(self.viewer.read()['events'], events)
         self.assertEqual(self.viewer.read_telemetry()['records'], records)
 
+    def test_cut_fragment_stays_until_new_end_pushes_it(self):
+        mmu = self.hh.mmu
+        mmu.p.form_tip_macro = '_MMU_CUT_TIP'
+        macro = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP')
+        variables = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS', macro)
+        variables.variables.update(blade_pos=52., rip_length=2., retract_length=10., pushback_length=0.)
+        nozzle = self.viewer.snapshot()['layout']['nozzle']
+        self.hh.place_filament(0, nozzle)
+        self.viewer.latest = self.viewer.latest_raw = None
+        self.viewer.capture('state', 'Loaded')
+        self.hh._effect_cut_tip(macro, None)
+        events = self.viewer.read()['events']
+        cut = next(e for e in events if e['kind'] == 'cut')
+        segment = cut['state']['retained_segment']
+        self.assertEqual(segment['start'], nozzle-52)
+        self.assertAlmostEqual(segment['end'], cut['before']['tips'][0])
+        self.assertEqual(segment['end'], nozzle)
+        self.assertEqual(segment['tip_shape'], 'square')
+        self.assertEqual(cut['state']['tip_shapes'][0], 'square')
+        self.assertEqual(cut['state']['tips'][0], nozzle-52)
+        self.assertEqual(events[-1]['state']['retained_segment'], segment)
+        self.assertAlmostEqual(events[-1]['state']['tips'][0], nozzle-54)
+        mmu.move_filament('Retract away from fragment', -10, motor='extruder')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['retained_segment'], segment)
+        mmu.move_filament('New end pushes fragment', 15, motor='extruder')
+        state = self.viewer.read()['events'][-1]['state']
+        self.assertAlmostEqual(state['retained_segment']['start'], segment['start']+3)
+        self.assertAlmostEqual(state['extruded_mm'], 3)
+
+    def test_console_runs_real_cut_and_form_macros(self):
+        for profile in ('ercf_vvd', 'encoder'):
+            with self.subTest(profile=profile):
+                console = Console(parse_args(['--profile',profile,'--no-serve','--no-log','--plain']))
+                self.addCleanup(console.close)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    console.boot()
+                    viewer = LiveViewer(console.hh)
+                    self.addCleanup(viewer.close)
+                    console.run_command('MMU_LOAD')
+                    if profile == 'ercf_vvd':
+                        console.run_command('SET_GCODE_VARIABLE MACRO=_MMU_CUT_TIP_VARS VARIABLE=cut_iterations VALUE=2')
+                    start = viewer.sequence
+                    console.run_command('MMU_UNLOAD')
+                self.assertEqual(console.hh.errors, [])
+                events = [e for e in viewer.read()['events'] if e['seq'] > start]
+                moves = [e for e in events if e.get('source') == 'mmu_gcode']
+                self.assertGreater(len(moves), 5)
+                self.assertTrue(all(e.get('source') != 'harness_cut_tip' for e in events))
+                if profile == 'ercf_vvd':
+                    cuts = [e for e in events if e['kind'] == 'cut']
+                    releases = [e for e in events if e['kind'] == 'release']
+                    self.assertEqual(len(cuts), 2)
+                    self.assertEqual(len(releases), 2)
+                    cut, release = cuts[-1], releases[-1]
+                    self.assertEqual(cut['telemetry']['event'], 'cut')
+                    self.assertEqual(release['telemetry']['event'], 'release')
+                    self.assertEqual(cut['telemetry']['origin'], 'macro')
+                    self.assertEqual(cuts[0]['state']['retained_segment'], cut['state']['retained_segment'])
+                    self.assertEqual(cut['state']['tip_shapes'][0], 'square')
+                    self.assertEqual(cut['state']['retained_segment']['tip_shape'], 'cone')
+                    self.assertLess(moves[0]['seq'], cut['seq'])
+                    for name, device in cut['before']['devices'].items():
+                        if 'encoder_pos' in device:
+                            self.assertEqual(device['encoder_pos'],cut['state']['devices'][name]['encoder_pos'])
+                    rip = next(e for e in moves if cut['seq'] < e['seq'] < release['seq'])
+                    self.assertLess(rip['distance'], 0)
+                    self.assertTrue(rip['state']['cutter_pressed'])
+                    self.assertFalse(release['state']['cutter_pressed'])
+                    after = [e for e in moves if e['seq'] > release['seq']]
+                    self.assertGreater(after[0]['distance'], 0)
+                    self.assertLess(after[1]['distance'], 0)
+                    self.assertEqual(after[0]['state']['retained_segment'],after[1]['state']['retained_segment'])
+                    fragment = after[1]['state']['retained_segment']
+                    remaining = [e for e in events if e['seq'] > after[1]['seq']]
+                    self.assertTrue(any(e['label'] == 'IN EXTRUDER' for e in remaining))
+                    self.assertTrue(any(e['kind'] == 'movement' for e in remaining))
+                    for event in remaining:
+                        self.assertEqual(event['state']['retained_segment'], fragment)
+                        self.assertLess(event['state']['tips'][0], fragment['start'])
+                    reload_start = viewer.sequence
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        console.run_command('MMU_LOAD')
+                    self.assertEqual(console.hh.errors, [])
+                    reload = [e for e in viewer.read()['events'] if e['seq'] > reload_start]
+                    contact = next(e for e in reload if e['state']['retained_segment'] != fragment)
+                    for event in reload:
+                        if event['seq'] < contact['seq']:
+                            self.assertEqual(event['state']['retained_segment'], fragment)
+                    self.assertEqual(contact['kind'], 'movement')
+                    self.assertGreater(contact['distance'], 0)
+                    self.assertIsNone(reload[-1]['state']['retained_segment'])
+
+                else:
+                    self.assertFalse(any(e['kind'] == 'cut' for e in events))
+                    self.assertEqual(moves[-1]['state']['tip_shapes'][0], 'cone')
+
+    def test_console_purge_executes_atomic_g1_moves_and_reaches_nozzle(self):
+        console = Console(parse_args(['--profile','boxturtle','--no-serve','--no-log','--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        viewer = LiveViewer(console.hh)
+        self.addCleanup(viewer.close)
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_LOAD')
+        self.assertEqual(console.hh.errors, [])
+        moves = [e for e in viewer.read()['events'] if e.get('source') == 'mmu_gcode']
+        self.assertTrue(moves)
+        for event in moves:
+            commanded = float(event['label'].split()[1][1:])
+            self.assertAlmostEqual(event['distance'], commanded, places=6)
+        self.assertGreater(max(e['state']['extruded_mm'] for e in moves), 1)
+        self.assertEqual(max(e['state']['tips'][0] for e in moves), moves[-1]['state']['layout']['nozzle'])
+        self.assertFalse(any(e['kind'] in ('filament','stepper') for e in viewer.read()['events']))
+
+    def test_toolhead_sensor_drawing_uses_configured_nozzle_distance(self):
+        console = Console(parse_args(['--profile','ercf_vvd','--no-serve','--no-log','--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        viewer = LiveViewer(console.hh)
+        self.addCleanup(viewer.close)
+        snapshot = viewer.snapshot()
+        params = console.hh.mmu.mmu_unit().toolhead_wrapper.p
+        for name, sensor in snapshot['sensors'].items():
+            if name.split(':')[-1] == 'toolhead':
+                self.assertAlmostEqual(snapshot['layout']['nozzle']-sensor['position'],
+                                       params.toolhead_sensor_to_nozzle)
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_LOAD')
+        self.assertEqual(console.hh.errors, [])
+        load = next(e for e in viewer.read()['events'] if e['label'] == 'Loading filament to nozzle')
+        self.assertAlmostEqual(load['state']['extruded_mm'], 0)
+        self.assertAlmostEqual(load['state']['tips'][0], snapshot['layout']['nozzle']-params.toolhead_residual_filament)
+
     def test_configuration_calibration_is_not_selected_gate_dependent(self):
         unit = self.hh.mmu.mmu_unit()
         unit.calibrator.rotation_distances[1] = unit.calibrator.rotation_distances[0] + 1
@@ -147,10 +280,51 @@ class TestLiveViewer(unittest.TestCase):
         self.assertEqual(state['filament']['residual_mm'], 3)
         self.assertEqual(state['filament']['retained_color'], 'ff00ff')
         self.hh.place_filament(0, state['layout']['nozzle'])
-        self.hh.mmu.move_filament('Mix', 10, motor='extruder')
+        self.hh.mmu.move_filament('Mix', 7, motor='extruder')
+        color = self.viewer.read()['events'][-1]['state']['nozzle_color']
+        self.assertEqual(color, 'ff00ff')
+        self.hh.mmu.move_filament('Mix transition', 1.5, motor='extruder')
         color = self.viewer.read()['events'][-1]['state']['nozzle_color']
         self.assertNotEqual(color, 'ff00ff')
         self.assertNotEqual(color, '00ffff')
+        self.hh.mmu.move_filament('Complete transition', 1.5, motor='extruder')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['nozzle_color'], '00ffff')
+
+    def test_real_gate_change_purge_replaces_old_residual_without_extra_purge(self):
+        console = Console(parse_args(['--profile','ercf_vvd','--no-serve','--no-log','--plain']))
+        self.addCleanup(console.close)
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.boot()
+            viewer = LiveViewer(console.hh)
+            self.addCleanup(viewer.close)
+            console.run_command('MMU_LOAD')
+            console.run_command('MMU_UNLOAD')
+            previous = viewer.latest['nozzle_color']
+            console.run_command('MMU_SELECT GATE=1')
+            start = viewer.sequence
+            console.run_command('MMU_LOAD')
+        self.assertEqual(console.hh.errors, [])
+        events = [e for e in viewer.read()['events'] if e['seq'] > start]
+        final = events[-1]['state']
+        self.assertNotEqual(previous, final['filament']['incoming_color'])
+        self.assertEqual(final['nozzle_color'], final['filament']['incoming_color'])
+        self.assertIsNone(final['retained_segment'])
+        plan = final['purge_transition']
+        self.assertGreaterEqual(final['extruded_mm']-plan['start_mm'],plan['retained_mm']-.01)
+
+    def test_residual_is_replaced_by_one_residual_volume_of_purge(self):
+        unit = self.hh.mmu.mmu_unit()
+        unit.extruder_wrapper.filament_remaining = 0
+        unit.extruder_wrapper.filament_remaining_color = '00ff00'
+        unit.toolhead_wrapper.p.toolhead_residual_filament = 2
+        self.hh.mmu.gate_color[0] = 'ff0000'
+        self.hh.place_filament(0, self.viewer.snapshot()['layout']['nozzle'])
+        self.hh.mmu.move_filament('Replace half residual', 1, motor='extruder')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['nozzle_color'], '808000')
+        self.hh.mmu.move_filament('Replace remaining residual', 1, motor='extruder')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['nozzle_color'], 'ff0000')
+        self.hh.mmu.move_filament('Retract', -2, motor='extruder')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['nozzle_color'], 'ff0000')
 
     def test_cutter_configuration_and_sync_are_reported(self):
         from extras.mmu.mmu_constants import DRIVE_EXTRUDER_SYNCED_TO_GEAR
