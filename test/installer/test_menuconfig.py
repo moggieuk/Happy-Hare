@@ -640,6 +640,69 @@ endif
         self.assertEqual(kconf.syms["PARAM_GATE_UUID"].visibility, 0)
 
 
+class TestReparseSourcedTwice(unittest.TestCase):
+    """A re-parse inside a menu from a file sourced twice stays in the live copy."""
+
+    KCONFIG = """
+config NAME
+    string "Name"
+    default "$(NAME)"
+    reparse_env "NAME"
+
+config A
+    bool "A"
+    default y
+
+if A
+rsource "Kconfig.sub"
+endif
+if !A
+rsource "Kconfig.sub"
+endif
+"""
+
+    SUB = """
+menu "Sub"
+config PARAM_INNER
+    string "Inner"
+    default "$(NAME)_inner"
+endmenu
+"""
+
+    def setUp(self):
+        import os
+        import tempfile
+        import kconfiglib
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for name, text in (("Kconfig", self.KCONFIG), ("Kconfig.sub", self.SUB)):
+            with open(os.path.join(tmp.name, name), "w") as f:
+                f.write(text)
+        self.addCleanup(lambda old=os.environ.get("NAME"):
+                        os.environ.__setitem__("NAME", old) if old is not None else os.environ.pop("NAME", None))
+        os.environ["NAME"] = "unit0"
+        self.kconf = kconfiglib.Kconfig(os.path.join(tmp.name, "Kconfig"), warn=False)
+        patcher = patch.multiple(menuconfig, create=True, _kconf=self.kconf, _show_all=False,
+                                 _show_name=False, _conf_changed=False, _menu_scroll=0,
+                                 _show_busy=lambda text: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_menu_stays_on_the_copy_that_is_shown(self):
+        from kconfiglib import expr_value
+        sub = [n for n in self.kconf.node_iter()
+               if n.item is menuconfig.MENU and expr_value(n.dep)][0]
+        menuconfig._cur_menu = sub
+        menuconfig._shown = menuconfig._shown_nodes(sub)
+        menuconfig._sel_node_i = 0
+        self.kconf.syms["NAME"].set_value("box")
+        menuconfig._reparse(self.kconf.syms["NAME"])
+        self.assertIsNot(menuconfig._kconf, self.kconf)
+        self.assertEqual(menuconfig._cur_menu.prompt[0], "Sub")
+        self.assertTrue(expr_value(menuconfig._cur_menu.dep))
+        self.assertEqual(menuconfig._shown[menuconfig._sel_node_i].item.name, "PARAM_INNER")
+
+
 class TestLink(unittest.TestCase):
     """A comment with 'link SYMBOL' jumps to SYMBOL; leaving that menu comes back."""
 

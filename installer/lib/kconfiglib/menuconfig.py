@@ -2282,7 +2282,13 @@ def _reparse(sym):
     del _link_return[:] # Its nodes belong to the old tree
     _cfg_locations_changed()
 
-    nodes = {_node_key(node): node for node in kconf.node_iter()}
+    # A file sourced more than once (Kconfig.capabilities, once per MMU type)
+    # repeats its keys, so prefer the copy whose dependencies hold
+    nodes = {}
+    for node in kconf.node_iter():
+        key = _node_key(node)
+        if key not in nodes or not expr_value(nodes[key].dep):
+            nodes[key] = node
     nodes[("top",)] = kconf.top_node
     _cur_menu = nodes.get(menu_key, kconf.top_node)
     _shown = _shown_nodes(_cur_menu)

@@ -320,6 +320,10 @@ comment "_"
 config SHOW_HIDDEN
   def_bool n
 
+# A type that lets the user choose its MCU topology selects this
+config SHOW_PER_GATE_MCU
+  def_bool n
+
 # -------------------------------------
 # Initial menuconfig for multi-unit
 # -------------------------------------

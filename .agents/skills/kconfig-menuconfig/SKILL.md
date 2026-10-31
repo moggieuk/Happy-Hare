@@ -442,9 +442,10 @@ in this repo:
   `boards/Kconfig` sources `boards/per_gate/` (EBB Gen1 / SLB) *instead of*
   the normal board set when `MMU_HAS_PER_GATE_MCU` is set — so
   `BOARD_TYPE_MMB_2_0` (and the other normal boards) cannot be selected in a
-  per-gate-MCU config. EMU implies it but shows it as "One MCU per gate"
-  (`boards/Kconfig`), so a unit driven by one board turns it off and gets the
-  normal boards, one `[mcu]` and one CPU temperature sensor. A board file's defaults only ever apply to devices on
+  per-gate-MCU config. EMU implies it and selects `SHOW_PER_GATE_MCU`, which
+  shows "Per-gate MCUs?" in Design attributes, so a unit driven by one board
+  turns it off and gets the normal boards, one `[mcu]` and one CPU
+  temperature sensor. A board file's defaults only ever apply to devices on
   *that board's* MCU: defaulting a per-gate device's bus from the main
   board's Kconfig is either dead code (per-gate-MCU configs) or a hardware
   collision (per-gate devices on one shared MCU can't share a fixed-address

@@ -10,17 +10,6 @@
 config PARAM_BOARD_TYPE
   string
 
-# Implied by the EMU type. Changing it re-parses, since the per-gate MCU
-# connections are only in the tree when F_PER_GATE_MCU is set
-config MMU_HAS_PER_GATE_MCU
-  bool "One MCU per gate" if MMU_TYPE_EMU_1_0
-  reparse_env "F_PER_GATE_MCU"
-  help
-    Each gate has its own MCU board, e.g. an SLB or EBB per gate.
-    Turn off when a single board drives the whole unit. Happy Hare
-    then defines one [mcu] and one CPU temperature sensor, and the
-    board list offers the regular MMU boards.
-
 choice BOARD_TYPE
   prompt "Board type"
   default BOARD_TYPE_OTHER

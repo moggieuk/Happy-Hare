@@ -620,8 +620,8 @@ and calls `_reparse`. Checking all of them, not just the symbol edited, is
 what catches a symbol moved by an `imply` or `select`. A bool only re-parses
 to turn its variable on (unset, blank and `n` are off, as `@if` reads them).
 Whatever the variable adds must sit behind the symbol as well, so turning the
-symbol off just hides it, and passing the variable up front (`-e`) costs no
-extra parse. `_reparse`:
+symbol off just hides it, and a variable already set when menuconfig starts
+costs no extra parse. `_reparse`:
 
 1. writes the current values to a temporary config (`write_config`);
 2. sets each named variable to the new value;
@@ -632,7 +632,9 @@ extra parse. `_reparse`:
 5. swaps `_kconf` and re-points `_cur_menu`/`_shown`/`_sel_node_i`.
 
 Nodes are matched by `_node_key` (file, line, item, prompt), which a re-parse
-of unchanged Kconfig files doesn't change. A failed parse restores the
+of unchanged Kconfig files doesn't change. A file sourced more than once
+(`Kconfig.capabilities`, once per MMU type) repeats its keys, so the copy
+whose dependencies hold wins. A failed parse restores the
 environment and keeps the old tree. It costs one menuconfig start-up and shows
 an "Updating configuration…" box.
 
@@ -642,10 +644,10 @@ an "Updating configuration…" box.
   rewrites it (`unit_migration._rename_single_unit`).
 - `MMU_HAS_PER_GATE_MCU` uses `reparse_env "F_PER_GATE_MCU"`. EMU implies
   it, so picking EMU re-parses with the per-gate MCU connections (`@if
-  F_PER_GATE_MCU@` in `connection/Kconfig.mmu_mcu`), and `-e` is no longer
-  needed. menuconfig's environment dies with it, so install.sh works the flag
-  out again from the saved configs (`per_gate_mcu_saved`, unit files included)
-  before the refresh and build.
+  F_PER_GATE_MCU@` in `connection/Kconfig.mmu_mcu`), which is why install.sh
+  no longer has a `-e` option. menuconfig's environment dies with it, so
+  install.sh works the flag out from the saved configs (`per_gate_mcu_saved`,
+  unit files included) before menuconfig and again before the refresh and build.
 - `UNIT_NAME` uses `reparse_env "UNIT_NAME MCU_NAME"`. After a re-parse the
   saved `MCU_NAME` already follows the rename, so install.sh records the name
   before menuconfig (`F_UNIT_NAME_BEFORE`) to know a rename happened.
