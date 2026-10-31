@@ -502,6 +502,7 @@ Unit : ------------- unit0 -------------
 `#` and not `!`: `!! …` is already a command that raised and `?? …` one that does not
 exist, so a lone `!` would read as a quieter error rather than as a note.
 
+
 ### Playing a print job — `/print job`
 
 `/print job` plays a print from start to finish: Happy Hare's standard start sequence, the
@@ -542,7 +543,7 @@ What is simulated:
   move them, so Happy Hare's automatic job start/end detection runs for real.
 - **Macro bodies, for the duration of the job only.** `T<n>`, `MMU_START_SETUP`,
   `MMU_START_CHECK`, `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` run their real Jinja. The
-  park, cut and purge macros stay recorded no-ops (§"Three things that will look like bugs"),
+  park macros retain their modeled effects; cut and tip-forming macros run their real bodies,
   and at the prompt `T1` is silent again.
 - **Extrusion.** `G0`–`G3` E, in absolute (`M82`) or relative (`M83`, or anything after `G91`)
   mode, with `G92` re-basing, go through the fake `gcode_move` to the toolhead and so into the
@@ -572,10 +573,248 @@ echo '/print job' > /tmp/job.txt
 make console ARGS='--profile boxturtle --script /tmp/job.txt'
 ```
 
+### Integrated live viewer
+
+`make console` also serves a live visual viewer on the same local web API. Open
+`http://127.0.0.1:7125/sim/viewer/`, or use the address printed in the console
+banner if another port was selected. No separate server or JavaScript build is
+required. `--no-serve` disables both the viewer and the existing API.
+
+The diagram follows the console session, including commands typed at the terminal
+or sent from the browser. It shows the MMU and extruder gears, a compressed Bowden
+path, configured switches and encoder/buffer state. Positions follow the harness's
+existing geometry and material model; this is not a physical melt simulation.
+Most macro bodies retain the harness's recorded-only behavior described below.
+
+The trace records simulated gear/extruder and selector travel, filament movement,
+state changes and browser parameter edits. Logical movement records are published when each move completes, with start/end
+states, actual travel and homing outcome. The viewer queues and interpolates them; HTTP polling reads immutable snapshots without waiting for the command
+to return or entering the reactor from a server thread. Pacing (`--pace`) makes
+long moves easier to follow. Instant operations can finish before the browser's
+next refresh, but their events remain available for replay.
+
+**Previous**, **Next** and the timeline inspect captured state without rewinding
+Happy Hare itself. **Jump to latest** skips the animation backlog and resumes live playback.
+Playback uses the resolved feed speed in the source telemetry, independently of
+console pacing. Bowden time compression is off by default: the path is drawn
+shorter but takes distance/speed time. The optional compression checkbox shortens
+fast transfers in proportion to the drawing. The trace shows feed speed and marks
+compressed transfers. Very short moves have a 120 ms visibility minimum.
+Acceleration is recorded but is not reproduced by the linear playback.
+
+Ordinary presence sensors switch as the interpolated filament crosses their
+location. Recorded states are authoritative at movement endpoints; disabled or
+overridden sensors are not inferred from geometry. Buffer switches use captured
+buffer travel, and encoder values interpolate measured readings. Capture is
+bounded to the latest 3,000 events. **Save trace** exports version-2 JSON with a
+session identifier, sequence numbers, virtual timestamps and state snapshots.
+It is a first simulator telemetry format, not yet a real-printer log importer.
+
+Runtime parameter choices come from the same parameter specifications and guards
+as `MMU_TEST_CONFIG`, including unit and calibration parameters where available.
+Edits are dispatched through that command, so its validation and change callbacks
+still apply. Hardware is not editable in this panel. Loaded macro tuning variables
+appear under separate macro-name headers and are applied with `SET_GCODE_VARIABLE`.
+Enter Python literals (for example `52`, `True`, or `[1, 2]`). Output variables,
+saved state, and variables assigned by macro bodies are excluded from the editor.
+The value type must stay compatible with the existing value.
+
+Expand **Sensor and device readout** and click a sensor to enable or disable it.
+Sensor toggles operate at the live end of the trace; use **End — follow live**
+first when inspecting history. These use `MMU_SENSORS`, including its persistence
+within the temporary simulator session.
+
+Each captured state includes its runtime settings, editable macro variables,
+sensor enablement, and drawing geometry. Changes appear as a **config** entry
+before the next activity, so playback applies the recorded blade position and
+sensor states before continuing. Returning to the beginning restores the initial
+illustration without changing the running simulator. Consecutive edits are grouped
+until another event occurs; changing a setting back to its original value removes
+it from the pending entry. Sensor off/on toggles behave the same way. Exported
+traces include these settings and configuration boundaries.
+
+Choose a built-in console profile and select **Restart with profile** to boot a
+fresh session. Alternatively, upload the installed configuration directory with
+one `printer.cfg` and its `mmu/` tree. This uses the existing installed-profile
+loader and its include ordering; it is not a new config interpreter. Files are
+copied to temporary storage, and the original files are never modified. As with
+`--profile`, saved variables are not imported. A failed boot attempts to restore
+the preceding profile to its initial state. Restart clears the capture and any
+runtime adjustments, so export the trace first if it is needed.
+
+Tests: `make test UT=test_mmu_live_viewer.py`, plus the console, web API and motion
+suites. Browser verification should exercise a runtime edit, paced loading,
+inspection while new events arrive, returning to live, profile restart and config
+upload. The web API remains a local development tool, not a public service.
+
+### Structured movement telemetry
+
+MMU commands and macros invoked through `wrap_gcode_command` temporarily observe
+`G1` commands with nonzero extrusion. Each produces one movement pair with
+`source=mmu_gcode`, resolved E distance, extruder name and calling context.
+Absolute/relative extrusion, coordinate resets and flow overrides are respected.
+Only the owning execution context is observed; ordinary print moves, `G0`, and
+arc-generated segments are excluded. The exact previous G1 handler is restored
+on completion or error, so printing outside an MMU scope has no G1 telemetry
+wrapper overhead. With no subscribers, the wrapper is never installed.
+
+These outcomes have `status=submitted`: positions describe accepted commands,
+not measured physical completion. Estimated duration excludes acceleration and
+queue planning. XYZ is used only to estimate the extrusion rate for coordinated
+moves; XYZ positions are not included in these events. Existing MMU movement
+operations suppress duplicate G1 events.
+
+The simulator records physical extruder and synced motor steps for G-code and
+MMU moves, independently of filament grip. Coordinate resets and saved-state
+restoration do not count as motion. This lets Happy Hare measure real macro
+retraction and calculate cut fragments without test-only step-count adjustments.
+
+The viewer does not record individual filament or stepper samples. Model updates
+still maintain filament positions and motor totals for movement snapshots.
+
+Simulator macros that use simplified effects still produce modeled movement;
+individual G1 events require an executed macro body. The console executes the
+reference purge, `_MMU_CUT_TIP`, and `_MMU_FORM_TIP` bodies and their helpers, so
+extrusion, retraction, push-back, and cooling moves are recorded individually with
+G1 trace pills. The real cut motion helper emits `_MMU_TELEMETRY EVENT="cut"`
+after blade contact and `_MMU_TELEMETRY EVENT="release"` after withdrawing the
+blade. These commands only add ordered telemetry annotations: no motion, waits,
+or MMU state changes. Without subscribers they return without emitting a record.
+The existing `_MMU_EVENT EVENT="filament_cut"` still handles operational counting.
+
+Both a printer and the simulator emit the same `cut` and `release` records with
+unit, gate, cutter identity, and configured blade position. The simulator consumes
+CUT to shorten its modeled filament; the viewer holds the blade through the rip
+until RELEASE. It no longer identifies cutter contact from coordinates or speed. The
+post-unload cutter is not covered by these hooks. The general unit-test harness
+retains its simplified macro effects.
+
+The viewer holds the severed fragment until an advancing filament end pushes it.
+A withdrawn nozzle tip has a schematic cone and approximately 10mm hair; cutting
+transfers that shape to the fragment and leaves the attached end square. Residual
+melt stays at the nozzle. These shapes are illustrations, not measured tip geometry.
+
+
+Happy Hare emits structured records directly in `move_filament()`, beside the
+existing STEPPER messages, after resolving speed/acceleration and gate overrides.
+The stream is independent of the selected log level and works without the viewer.
+The text STEPPER log remains enabled as before for comparison.
+
+Capture a JSON object per line while running the console:
+
+```bash
+make console ARGS='--profile boxturtle --telemetry /tmp/hh-motion.jsonl'
+```
+
+The file is append-only across profile restarts; each boot has a distinct session
+ID. `--no-serve` and `--no-log` do not disable this explicitly requested capture.
+The optional local file sink writes on the console thread. Future live-server
+consumers should subscribe through `mmu.movement_telemetry.subscribe(callback)`
+and enqueue data without blocking the printer thread. The returned function
+unsubscribes. A failing subscriber is detached and logged without aborting motion.
+
+Every record has `schema: happy_hare.motion`, `version: 1`, `session_id`,
+`sequence`, `move_id`, `event` and a reactor-monotonic `timestamp` in seconds.
+Pair records by session and move ID, not by adjacent lines:
+
+- `movement_start`: source/label, unit/gate, motor mode and stepper names,
+  signed requested distance (`requested_mm`), resolved feed speed (`speed_mm_s`),
+  acceleration (`acceleration_mm_s2`, null for toolhead-managed acceleration),
+  drive position/reference, homing endstop/trigger state, wait flag and sensor
+  observations. Speed is a commanded setpoint, not instantaneous measured speed.
+- `movement_outcome`: controller-reported `actual_mm`, end drive position,
+  `homed`, encoder-measured travel and discrepancy, sensor observations,
+  `elapsed_s`, error and status. Status distinguishes `submitted` from
+  `completed` (homing or drained queue), `not_homed`, `error` and `incomplete`.
+  Exceptional exits always close an emitted start; unavailable results are null.
+  Rejected requests that never reach movement dispatch do not emit a start.
+
+The console emits a `filament_pos_snapshot` after boot. Movement starts/outcomes
+also include `filament_pos` and its readable name, so recording mid-session still
+establishes the logical starting state. `filament_pos_changed` records previous
+and new states (including silent changes), unit and gate; repeated assignments
+are suppressed. This is Happy Hare's discrete progress state, not a millimetre
+coordinate. The viewer displays it alongside the tip position.
+
+Sensor observations are full name-to-state maps at movement start and outcome:
+true means triggered, false means clear, null means disabled. Absent sensors are
+not listed. These are controller observations, not timestamped transitions inside
+a move. The viewer estimates intervening crossings from geometry and preserves
+recorded endpoint states.
+
+Viewer snapshots retain `raw_state`/`raw_before` separately from displayed states.
+A forward move with stationary extruder motors stops the displayed tip at the
+configured gear position, while motor travel continues. The gear position is the
+harness entry coordinate plus `toolhead_entry_to_extruder`. Clear enabled presence
+sensors bound occupied filament; buffer and encoder sensors are excluded. Finite
+filament tails may pass a clear sensor once they no longer cover it. These are
+visual constraints: they do not change simulator physics, homing results or source
+telemetry. Extruder-fed travel beyond the configured nozzle accumulates as
+`extruded_mm` and grows a shaded purge coil. Retraction leaves deposited filament
+in place and recovering that retraction does not count as new extrusion. The
+recorded amount is input-filament length. The nozzle selector converts it to an
+equivalent round strand using `length * (1.75 / nozzle_diameter)^2`, defaulting to
+0.4mm, for the purge animation and strand-length label.
+Coil size and blending are schematic, not a melt-flow model. A full coil falls
+behind the lower screen and the next coil starts growing. The explicit
+`standalone_load_retraction` event releases a coil when its recorded
+`retracted_length` is positive. Ordinary retract/recover movements do not release
+it. This event is emitted after the final standalone-load adjustment (including
+an already-satisfied target); it confirms recorded state, not physical queue
+completion. `retracted_length_changed` records persisted per-extruder changes. Extrusion totals remain
+cumulative across releases. Startup snapshots include `filament` context with the
+configured residual, persisted per-extruder fragment length and retained color,
+the selected gate color and persisted `retracted_length`. Missing colors are neutral gray. Retained material
+is drawn at the nozzle and blends toward incoming color as material is extruded. Missing sensors supply no positional evidence.
+
+State records share the same versioned stream and sequence numbers:
+
+- `drive_sync_requested` and `drive_sync_decision` report synchronization intent
+  and the resolved policy decision. `drive_sync_changed` reports a successful
+  drive mode change, with previous/new numeric modes and names and drive identity.
+  Repeating the current mode does not emit another change.
+- `espooler_operation_changed` reports accepted operation/power changes per unit
+  and gate: previous/new operation and requested power, scaled output power,
+  direction (or stopped), PWM/digital mode and whether print assist is armed.
+  Power values are fractions, not percentages. Repeated unchanged operations
+  and rejected requests do not emit a change. These are controller commands,
+  not measurements of spool rotation or confirmation from the hardware.
+- `espooler_burst_started` includes operation, requested power and planned
+  duration in seconds. `espooler_burst_ended` marks timer completion or early
+  cancellation; it does not imply that the planned duration elapsed.
+  Low-level pin scheduling/submission events are no longer exported.
+
+State records carry the active `move_id` when emitted inside a started movement,
+otherwise null. They do not open or close movement pairs. The viewer retains them
+in its raw telemetry export without creating extra animation steps. Idle gear
+stepper disable messages use TRACE rather than STEPPER.
+
+`elapsed_s` measures time between source callbacks, including waits and simulator
+pacing; it is not a physical motion-duration measurement. Drive travel is not proof
+of physical filament movement, and a submitted move is not proof of completion.
+Encoder travel is reported separately for that reason. Origin changes are not
+filament travel; before/after drive positions share the stated reference.
+
+The viewer consumes these pairs and adds its own simulated geometry snapshots.
+It no longer intercepts `move_filament()` or infers its speed from nested calls.
+**Save motion telemetry** downloads the bounded source records as JSONL;
+`/sim/viewer/telemetry?after=<sequence>` exposes the same stream. **Save trace**
+also includes the pairs alongside simulated geometry. These are separate formats.
+
+Coverage currently includes moves dispatched through `move_filament()`. Direct
+selector, G-code/toolhead and modeled macro moves still use explicitly labeled
+harness fallbacks in the viewer; those are not included in the source JSONL stream.
+Audit selector movement and any remaining STEPPER categories before removing
+the STEPPER log level. Importing
+real-server captures into the viewer remains future work.
+
+Tests: `make test UT=test_mmu_movement_telemetry.py` and
+`node --test test/hh/viewer/playback.test.mjs`, plus the viewer and movement suites.
+
 ### Driving a real Mainsail or Fluidd — the web API
 
 At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
-(the next free port if that is taken, so it can sit beside a real Moonraker), so an
+(if that port cannot be opened, a warning is printed and the console continues without the server), so an
 unmodified Mainsail (or Fluidd) can connect to the simulator: the MMU panel shows live state,
 the console shows everything Happy Hare says, and `RESUME`, `UNLOCK` and anything else typed
 or clicked in the UI runs in the session as if typed at the prompt. The banner says where it
@@ -769,9 +1008,10 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
 ### Three things that will look like bugs
 
 1. **Most macro bodies do not run.** The fake `gcode_macro` records a call and normally never
-   renders the body, so `T1`, the print start/end and the park/cut/purge sequences produce
+   renders the body, so `T1`, the print start/end and the park/cut sequences produce
    **silence**. Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
-   `MMU_COLD_PULL` is the deliberate exception: the console runs its body and simulates its
+   The console executes the reference purge macros as individual G1 moves.
+   `MMU_COLD_PULL` is another exception: the console runs its body and simulates its
    heater waits instantly so the complete maintenance workflow can be exercised. `/print job`
    is the other: while a job plays, `T<n>` and the print start/end macros run for real.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The

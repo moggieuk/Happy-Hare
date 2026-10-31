@@ -22,6 +22,8 @@ from itertools                  import repeat
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
+from .mmu_movement_telemetry    import MovementTelemetry
+from .mmu_gcode_telemetry       import GcodeExtrusionTelemetry
 from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -60,6 +62,8 @@ class MmuController(MmuFilamentMovement):
         self.mmu_machine = mmu_machine
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.movement_telemetry = MovementTelemetry(self.reactor)
+        self.gcode_telemetry = GcodeExtrusionTelemetry(self)
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
@@ -573,8 +577,12 @@ class MmuController(MmuFilamentMovement):
         """
         retract = self.toolchange_retract
         length = retract - self.park_retracted_length()
-        if abs(length) < 0.01 or not self.toolhead.get_extruder().get_heater().can_extrude:
-            self._persist_park_retraction() # Not every load restores the toolhead position afterwards
+        if not self.toolhead.get_extruder().get_heater().can_extrude:
+            self._persist_park_retraction()
+            return
+        if abs(length) < 0.01:
+            self._persist_park_retraction()
+            self._report_standalone_load_retraction(0.)
             return
         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
@@ -588,6 +596,15 @@ class MmuController(MmuFilamentMovement):
         )
         self._set_park_retracted_length(retract)
         self._persist_park_retraction()
+        self._report_standalone_load_retraction(-length)
+
+
+    def _report_standalone_load_retraction(self, adjustment):
+        self.movement_telemetry.state('standalone_load_retraction',
+            unit=self.mmu_unit().name, gate=self.gate_selected,
+            extruder=self.mmu_unit().extruder_wrapper.name,
+            retracted_length=self.park_retracted_length(), adjustment_mm=adjustment,
+            status='recorded')
 
 
     def _persist_park_retraction(self):
@@ -704,7 +721,8 @@ class MmuController(MmuFilamentMovement):
 
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables else ""))
 
-            self.gcode.run_script_from_command(command)
+            with self.gcode_telemetry.scope(macro):
+                self.gcode.run_script_from_command(command)
             if wait:
                 self.movequeue_wait()
 
@@ -3131,7 +3149,12 @@ class MmuController(MmuFilamentMovement):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
             self.td1.release()
         if self.filament_pos != state:
+            previous = self.filament_pos
             self.filament_pos = state
+            self.movement_telemetry.state('filament_pos_changed',
+                unit=self.mmu_unit().name, gate=self.gate_selected,
+                previous=previous, filament_pos=state,
+                filament_pos_name=FILAMENT_POS_NAME_MAP.get(state, 'UNKNOWN'))
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
                 if not silent:
                     self._display_visual_state()
@@ -3494,7 +3517,7 @@ class MmuController(MmuFilamentMovement):
             return
 
         drive.mmu_gear_stepper.do_enable(False)
-        self.log_stepper("Type-B idle gear stepper for gate %d disabled" % gate)
+        self.log_trace("Type-B idle gear stepper for gate %d disabled" % gate)
 
 
     def disable_all_idle_gear_steppers(self):
@@ -3507,7 +3530,7 @@ class MmuController(MmuFilamentMovement):
                     drive.mmu_gear_stepper.do_enable(False)
                     disabled_any = True
         if disabled_any:
-            self.log_stepper("All type-B idle gear steppers de-energized")
+            self.log_trace("All type-B idle gear steppers de-energized")
 
 
     def _random_failure(self):

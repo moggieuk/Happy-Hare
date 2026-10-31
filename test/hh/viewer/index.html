@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Happy Hare · Live simulator</title>
+    <link rel="stylesheet" href="/sim/viewer/style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <small>HAPPY HARE / CONSOLE</small>
+        <h1>Live simulator</h1>
+      </div>
+      <div class="header-actions"><span id="connection">Connecting…</span><button id="theme-toggle" type="button" aria-label="Switch to light mode">Light mode</button></div>
+    </header>
+    <main>
+      <aside>
+        <h2>Simulator setup</h2>
+        <label>Profile<select id="profiles"></select></label
+        ><button id="restart">Restart with profile</button
+        ><label
+          >Or load a configuration directory<input
+            id="files"
+            type="file"
+            webkitdirectory
+            multiple
+        /></label>
+        <p class="note">
+          A profile change starts a fresh session. Hardware comes from the
+          profile. Uploaded files are copied to temporary storage; your
+          originals stay unchanged.
+        </p>
+        <p id="profile"></p>
+        <h2>Runtime parameters</h2>
+        <label>MMU unit<select id="unit"></select></label
+        ><input
+          id="filter"
+          placeholder="Find a parameter"
+          aria-label="Find a parameter"
+        /><label>Parameter<select id="parameter"></select></label
+        ><label>Value<input id="value" /></label
+        ><button id="apply">Apply MMU_TEST_CONFIG</button>
+        <p class="note">
+          Runtime settings and macro variables apply to the live simulator. Macro values use Python literals. Changes are
+          temporary.
+        </p>
+        <p id="message" role="status"></p>
+      </aside>
+      <section>
+        <div class="card">
+          <div class="heading">
+            <h2 id="mode" tabindex="0" data-tooltip="Schematic path; distances and device states come from the harness. Macro bodies retain the console’s existing execution support." aria-description="Schematic path; distances and device states come from the harness. Macro bodies retain the console’s existing execution support.">Live</h2>
+            <span id="position"></span>
+          </div>
+          <div class="scene-container">
+          <label class="nozzle-control" for="nozzle-diameter">Nozzle
+            <select id="nozzle-diameter" aria-label="Nozzle diameter">
+              <option value="0.1">0.1mm</option><option value="0.2">0.2mm</option>
+              <option value="0.4" selected>0.4mm</option><option value="0.6">0.6mm</option><option value="0.8">0.8mm</option>
+            </select>
+          </label>
+          <svg
+            id="scene"
+            viewBox="0 0 800 520"
+            role="img"
+            aria-label="Filament path from MMU through Bowden to extruder"
+          ></svg>
+          </div>
+          <details id="sensor-readout">
+            <summary>Sensor and device readout <span class="expand-label">Expand</span><span class="collapse-label">Collapse</span></summary>
+            <div id="sensors"></div>
+            <div id="devices"></div>
+          </details>
+        </div>
+        <div class="card mini-console-card">
+          <div class="heading"><h2 tabindex="0" data-tooltip="Live commands and responses · latest 500 lines. Independent of trace replay." aria-description="Live commands and responses · latest 500 lines. Independent of trace replay.">Console</h2><button id="clear-console" type="button">Clear</button></div>
+          <div id="mini-console" role="log" aria-label="Simulator console" aria-live="polite"></div>
+          <form id="command-form" class="command-row">
+            <label for="command">Console command</label>
+            <div class="command-input"><input id="command" value="MMU_LOAD" autocomplete="off" spellcheck="false" /><button id="send" type="submit">Run</button></div>
+          </form>
+        </div>
+        <div class="controls">
+          <button id="beginning" data-tooltip="Beginning" aria-label="Beginning"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5h3v14H5z M19 5v14L9 12z"/></svg></button>
+          <button id="previous" data-tooltip="Previous step" aria-label="Previous step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5v14L2 12z M22 5v14l-9-7z"/></svg></button>
+          <button id="replay" data-tooltip="Play" aria-label="Play" disabled><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg></button>
+          <button id="pause" data-tooltip="Pause" aria-label="Pause"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 4h4v16H6z M14 4h4v16h-4z"/></svg></button>
+          <button id="next" data-tooltip="Next step" aria-label="Next step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l9-7z M13 5v14l9-7z"/></svg></button>
+          <button id="live" data-tooltip="End — follow live" aria-label="End — follow live"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h3v14h-3z M5 5v14l10-7z"/></svg></button
+          ><button id="save">Save trace</button
+          ><button id="save-motion">Save motion telemetry</button>
+          <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>
+          <input
+            id="timeline"
+            aria-label="Trace position"
+            type="range"
+            min="0"
+            max="0"
+            value="0"
+          />
+        </div>
+        <div class="card">
+          <h2 tabindex="0" data-tooltip="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture." aria-description="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture.">Movement trace</h2>
+          <div id="trace" role="log"></div>
+        </div>
+
+      </section>
+    </main>
+    <script type="module" src="/sim/viewer/app.js"></script>
+  </body>
+</html>

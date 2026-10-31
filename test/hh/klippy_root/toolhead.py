@@ -145,6 +145,14 @@ class ToolHead:
         old_extruder_pos = self.commanded_pos[3]
         self.commanded_pos = list(newpos)
         distance = self.commanded_pos[3] - old_extruder_pos
+        extruder_stepper = getattr(self.extruder, 'extruder_stepper', None)
+        if distance and extruder_stepper is not None:
+            stepper = extruder_stepper.stepper
+            stepper.set_commanded_position(stepper.get_commanded_position()+distance)
+            # Viewer motor totals come from the drive observer, once per move.
+            stepper.harness_note_motion(distance, notify=False)
+        if hasattr(self.extruder, 'last_position'):
+            self.extruder.last_position = self.commanded_pos[3]
         mq = self.printer.lookup_object('motion_queuing', None)
         if mq is not None:
             note_move = getattr(mq, 'note_toolhead_move', None)

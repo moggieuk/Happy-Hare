@@ -289,6 +289,8 @@ class Session:
         # ~/printer_data/config/mmu/mmu_vars.cfg path.
         self.fileconfig.set('save_variables', 'filename', self._mmu_vars_copy())
         pconfig = configfile.PrinterConfig(printer)
+        pconfig.status_raw_config = {section: dict(self.fileconfig.items(section))
+                                     for section in self.fileconfig.sections()}
         printer.add_object('configfile', pconfig)
         self.config = configfile.ConfigWrapper(printer, self.fileconfig, {}, '')
 
@@ -677,12 +679,27 @@ class Session:
             # Whole steps, as a G1 moves, so HH's measured travel and thus the fragment it
             # derives do not depend on the stepper's starting phase
             retract = round(retract / stepper.get_step_dist()) * stepper.get_step_dist()
-        total = max(retract, severed)
-        for amount in self._spend_macro_time(movement=-total):
-            if total:
-                self._move_extruder(stepper, amount * retract / total)
-                if model is not None:
-                    model.advance(gate, amount * severed / total, 'tip cutting')
+        # Record the cut before the modeled net motion. The attached filament
+        # has only the rip left to travel after shortening at the blade.
+        telemetry = self.mmu.movement_telemetry
+        telemetry.state('filament_cut', cutter='toolhead', blade_pos=blade_pos,
+            unit=self.mmu.mmu_unit().name, gate=gate, origin='harness_cut_tip')
+        with telemetry.operation() as operation:
+            operation.start(source='harness_cut_tip', label='Post-cut retraction',
+                unit=self.mmu.mmu_unit().name, gate=gate, motor_mode='extruder',
+                requested_mm=-retract, filament_travel_mm=-rip_length,
+                speed_mm_s=retract / self.MACRO_DURATION,
+                acceleration_mm_s2=None, homing=False, endstop=None)
+            total = max(retract, severed)
+            for amount in self._spend_macro_time(movement=-total):
+                if total:
+                    self._move_extruder(stepper, amount * retract / total)
+                    observer = getattr(self.printer, 'harness_drive_observer', None)
+                    if observer is not None:
+                        observer(amount * retract / total, 'toolhead')
+                    if model is not None:
+                        model.advance(gate, amount * severed / total, 'tip cutting')
+            operation.finish(status='completed', actual_mm=-retract)
 
     def _macro_vars(self, macro):
         # The variables live on <macro>_VARS, with a fallback to the calling macro
@@ -956,7 +973,11 @@ class Session:
         stepper = self._driving_stepper(gate)
         if stepper is None or getattr(stepper, 'manual_trapq', None) is not trapq:
             return
+        self._note_drive_motion(gate, distance)
         model.advance(gate, distance, 'move')
+        observer = getattr(self.printer, 'harness_drive_observer', None)
+        if observer is not None:
+            observer(distance)
 
     def _config_rotation_distances(self, unit):
         """
@@ -996,16 +1017,42 @@ class Session:
             self.printer.harness_pre_mq_move_observer = self._on_manual_move
         return self
 
+    def _note_drive_motion(self, gate, distance, toolhead=False):
+        """Account for physical motor travel without duplicating viewer drive totals."""
+        from extras.mmu.mmu_constants import (DRIVE_EXTRUDER_ONLY,
+            DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        drive = self.mmu.drive(gate)
+        mode = drive.get_sync_mode()
+        if toolhead:
+            # ToolHead.move already accounts for the primary extruder stepper.
+            owners = [drive.mmu_gear_stepper] if mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else []
+        elif mode in (DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER):
+            owners = [drive.mmu_gear_stepper, drive.mmu_extruder_stepper]
+        else:
+            owners = [drive.mmu_extruder_stepper if mode == DRIVE_EXTRUDER_ONLY else drive.mmu_gear_stepper]
+        seen = set()
+        for owner in owners:
+            for stepper in owner.get_steppers():
+                if id(stepper) not in seen:
+                    seen.add(id(stepper))
+                    stepper.harness_note_motion(distance, notify=False)
+
     def _on_toolhead_move(self, distance):
-        """Advance filament when the gear is following a toolhead extrusion move."""
+        """Advance filament with a synced gear or an engaged extruder."""
+        observer = getattr(self.printer, 'harness_drive_observer', None)
+        if observer is not None:
+            observer(distance, 'toolhead')
         model = getattr(self.printer, 'harness_filament', None)
         gate = self.mmu.gate_selected
         if model is None or gate is None or gate < 0:
             return
 
+        self._note_drive_motion(gate, distance, toolhead=True)
         from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
         if self.mmu.drive(gate).get_sync_mode() != DRIVE_GEAR_SYNCED_TO_EXTRUDER:
-            return
+            gears = model.layout['extruder_entry'] + self.mmu.mmu_unit().toolhead_wrapper.p.toolhead_entry_to_extruder
+            if not (model.tail[gate] <= gears <= model.tip[gate]):
+                return
         model.advance(gate, distance, 'toolhead extrusion')
 
     def _driving_stepper(self, gate):

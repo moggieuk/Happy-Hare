@@ -719,7 +719,17 @@ class TestBootupOutput(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             console.meta('/remove 0')
             console.meta('/sensor mmu_entry_0 disable')
-            console.meta('/reset')
+            output = io.StringIO()
+            with mock.patch.object(console, 'clear_log') as clear_log, contextlib.redirect_stdout(output):
+                console.meta('/reset')
+            expected = io.StringIO()
+            with contextlib.redirect_stdout(expected):
+                console.banner()
+            self.assertEqual(output.getvalue(), expected.getvalue())
+            self.assertTrue(console.startup_output)
+            self.assertIn('Happy Hare console', output.getvalue())
+            self.assertIn('/help for meta-commands', output.getvalue())
+            clear_log.assert_called_once_with()
 
         self.assertIsNot(console.hh, original_session)
         self.assertEqual(console.hh.mmu.gate_status[0], 1)
@@ -2155,19 +2165,46 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('host 127.0.0.1  port %d' % port, out)
         self.assertIn('--no-serve', out)
         self.assertIn('VUE_APP_PORT=%d' % port, out)
+        self.assertIn('http://127.0.0.1:%d/sim/viewer/' % port, out)
 
-    def test_a_taken_default_port_moves_on_but_a_named_one_is_reported(self):
+    def test_web_command_is_printed_to_terminal_and_executed(self):
+        console = self._make_console(['--no-log', '--no-serve', '--header', 'off'])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), mock.patch.object(console, 'run_command') as run:
+            console._run_for_bridge('MMU_STATUS\n\nMMU_HELP')
+        self.assertIn('MMU_STATUS', output.getvalue())
+        self.assertIn('MMU_HELP', output.getvalue())
+        self.assertEqual([call.args[0] for call in run.call_args_list], ['MMU_STATUS', 'MMU_HELP'])
+
+    def test_command_parse_errors_are_forwarded_to_web_console(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve', '0'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            console._run_for_bridge('MMU_TEST_MOVE MOVE=banana')
+        self.assertTrue(any(e['message'].startswith('!!') and 'banana' in e['message'] for e in console.bridge.gcode_store))
+
+    def test_unknown_command_is_reported_to_web_console(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve', '0'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            console._run_for_bridge('mmu_sensor')
+        messages = [e['message'] for e in console.bridge.gcode_store]
+        self.assertEqual(messages.count('Unknown command:"MMU_SENSOR"'), 1)
+
+    def test_default_viewer_port_is_7125(self):
+        from test.console import API_PORT, parse_args
+        self.assertEqual(API_PORT, 7125)
+        self.assertEqual(parse_args(['--serve']).serve, 7125)
+        self.assertEqual(parse_args(['--serve', '8771']).serve, 8771)
+
+    def test_a_taken_port_warns_without_stopping_console_or_trying_another(self):
         taken = socket.socket()
         self.addCleanup(taken.close)
         taken.bind(('127.0.0.1', 0))
         taken.listen(1)
         port = taken.getsockname()[1]
         console = self._make_console(['--no-log', '--header', 'off'])
-        console._start_bridge(port)                  # the default: next free port
-        self.assertIsNotNone(console.bridge)
-        self.assertNotEqual(console.bridge.port, port)
-        console.bridge.close()
-        console.bridge = None
+        console._start_bridge(port)
+        self.assertIsNone(console.bridge)
+        self.assertIn('Console remains available', console.web_api_lines()[0])
         console._start_bridge(port, explicit=True)   # named: left alone, and said so
         self.assertIsNone(console.bridge)
         self.assertIn('Web API not started: port %d' % port, console.web_api_lines()[0])
