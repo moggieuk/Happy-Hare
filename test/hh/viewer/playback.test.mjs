@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements } from './playback.js';
+import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -68,7 +68,7 @@ test('nozzle retract releases coil while preserving deposited amount',()=>{
  assert.equal(mid.purge_drop,.5);
  assert.equal(mid.extruded_mm,10);
  assert.equal(mid.purge_base_mm,0);
- assert.equal(mid.nozzle_color,'8080ff');
+ assert.equal(mid.nozzle_color,'ff00ff');
 });
 
 test('reverse homing reconciles schematic offset without passing the sensor',()=>{
@@ -184,4 +184,103 @@ test('cooling tube length starts at the configured cooling position', () => {
  s.configuration.parameters[0].form_tip_macro='_MMU_CUT_TIP';
  assert.equal(coolingTubeMeasurements(s),null);
  assert.equal(coolingTubeMeasurements({}),null);
+});
+
+test('dimension shortcuts select the parameter or configured macro variable', () => {
+ const s={unit:'unit0',units:['unit0'],configuration:{parameters:{0:{form_tip_macro:'_MMU_FORM_TIP'}},
+  macros:{'macro:_MMU_FORM_TIP_VARS:cooling_tube_length':10}}};
+ assert.equal(dimensionParameter(s,'Cooling tube length'),'macro:_MMU_FORM_TIP_VARS:cooling_tube_length');
+ assert.equal(dimensionParameter(s,'Extruder sensor'),'toolhead_entry_to_extruder');
+ assert.equal(dimensionParameter(s,'Bowden'),'calibrated_bowden_length');
+ assert.equal(dimensionParameter(s,'Nozzle'),null);
+ s.configuration.parameters[0].form_tip_macro='_MMU_CUT_TIP';
+ s.configuration.macros['macro:_MMU_CUT_TIP:blade_pos']=52;
+ assert.equal(dimensionParameter(s,'Blade'),'macro:_MMU_CUT_TIP:blade_pos');
+ assert.equal(dimensionParameter(s,'Cooling tube length'),null);
+});
+
+test('encoder reading persists through states and respects replay and unit',()=>{
+ const events=[{state:{unit:'unit0',devices:{'unit0:encoder':{encoder_pos:12.3}}},telemetry:{outcome:{encoder_mm:2}}},
+  {state:{unit:'unit0'}},{state:{unit:'unit0',devices:{'unit0:encoder':{encoder_pos:15.3}}},telemetry:{outcome:{encoder_mm:3}}}];
+ assert.equal(lastEncoderReading(events,events[1],'unit0'),12.3);
+ assert.equal(lastEncoderReading(events,events[2],'unit0'),15.3);
+ assert.equal(lastEncoderReading(events,events[0],'unit1'),null);
+});
+test('cut fragment stays on retraction and moves only after contact',()=>{
+ const a={...state(60,false),layout:{nozzle:100},retained_segment:{start:70,end:100,color:'ff0000'}};
+ const b={...a,tips:[40]};
+ assert.deepEqual(interpolate({before:a,state:b},.5).retained_segment,a.retained_segment);
+ const c={...a,tips:[80],retained_segment:{start:80,end:100,color:'ff0000'}};
+ assert.equal(interpolate({before:a,state:c},.25).retained_segment.start,70);
+ assert.equal(interpolate({before:a,state:c},.75).retained_segment.start,75);
+});
+
+test('cut shortening happens at the blade stroke rather than sliding the fragment out',()=>{
+ const before=state(100,false), after={...state(60,false),retained_segment:{start:60,end:100}};
+ const event={kind:'cut',before,state:after};
+ assert.strictEqual(interpolate(event,.2),before);
+ assert.strictEqual(interpolate(event,.5),after);
+});
+
+test('purge blends through the final retained volume and deposited coils retain their colors',()=>{
+ const s={purge_transition:{start_mm:0,retained_mm:7,mix_mm:2,old_color:'ff0000',new_color:'0000ff'},extruded_mm:8};
+ assert.equal(purgeColor(s,5),'ff0000');
+ assert.equal(purgeColor(s,6),'800080');
+ assert.equal(purgeColor(s,7),'0000ff');
+ const before=purgeCoils(s,1.75), after=purgeCoils({...s,extruded_mm:20},1.75);
+ assert.equal(before.coils[0].color,after.coils[0].color);
+ assert.equal(after.coils.at(-1).color,'0000ff');
+ assert.equal(purgeCoils({...s,extruded_mm:.6},1.75).coils.length,0);
+});
+
+test('nozzle diameter converts feed length by volume without moving color boundaries',()=>{
+ assert.equal(purgeStrandLength(4),76.5625);
+ assert.equal(purgeStrandLength(4,.8),19.140625);
+ assert.equal(purgeStrandLength(4,.1),1225);
+ const s={extruded_mm:4,purge_transition:{start_mm:0,retained_mm:7,mix_mm:2,old_color:'ff0000',new_color:'0000ff'}};
+ for (const diameter of [.1,.2,.4,.6,.8]) {
+   assert.ok(purgeCoils(s,diameter).coils.every(coil=>coil.color==='ff0000'));
+ }
+ assert.notEqual(purgeCoils(s,.4).layers,purgeCoils(s,.8).layers);
+});
+
+test('G1 extrusions have their own trace type while MMU moves retain move',()=>{
+ const event={seq:1,time:0,kind:'movement',distance:2,speed:5};
+ assert.match(traceText({...event,source:'mmu_gcode'}), / · G1 · /);
+ assert.match(traceText(event), / · move · /);
+});
+test('tip shape follows retraction and cut switches ownership at blade contact',()=>{
+ const a={...state(100,false),tip_shapes:['square']};
+ const b={...state(90,false),tip_shapes:['cone']};
+ assert.deepEqual(interpolate({before:a,state:b},.5).tip_shapes,['cone']);
+ const cut={kind:'cut',before:b,state:{...b,tip_shapes:['square'],retained_segment:{tip_shape:'cone'}}};
+ assert.deepEqual(interpolate(cut,.3).tip_shapes,['cone']);
+ assert.deepEqual(interpolate(cut,.5).tip_shapes,['square']);
+ assert.equal(interpolate(cut,.5).retained_segment.tip_shape,'cone');
+});
+
+test('explicit CUT holds the blade until RELEASE',()=>{
+ assert.equal(bladeStroke({kind:'cut',cutter:'toolhead',state:{cutter_pressed:true}},1,'toolhead'),1);
+ assert.equal(bladeStroke({kind:'release',cutter:'toolhead'},.5,'toolhead'),.5);
+ assert.equal(bladeStroke({kind:'release',cutter:'toolhead'},1,'toolhead'),0);
+ assert.equal(duration({kind:'release'}),650);
+});
+
+test('residual finishes changing color when its volume is replaced, including replay',()=>{
+ const plan={start_mm:10,retained_mm:2,mix_mm:2,old_color:'00ff00',new_color:'ff0000'};
+ const a={...state(100,true),layout:{nozzle:100},extruded_mm:10,purge_transition:plan};
+ const b={...a,extruded_mm:12,nozzle_color:'ff0000'};
+ assert.equal(purgeColor(a,10),'00ff00');
+ assert.equal(interpolate({before:a,state:b},.5).nozzle_color,'808000');
+ assert.equal(purgeColor(b,12),'ff0000');
+ assert.equal(purgeColor({...b,purge_transition:{...plan,retained_mm:0,mix_mm:0}},10),'ff0000');
+});
+
+test('retained fragment starts purge only when its front reaches the residual',()=>{
+ const a={...state(10,false),layout:{nozzle:50},filament:{residual_mm:2},extruded_mm:0,
+  retained_segment:{start:20,end:30,color:'ff0000'}};
+ const b={...a,tips:[50],extruded_mm:12,retained_segment:null};
+ assert.equal(interpolate({before:a,state:b},.5).extruded_mm,0);
+ assert.equal(interpolate({before:a,state:b},.75).extruded_mm,2);
+ assert.equal(interpolate({before:a,state:b},1).extruded_mm,12);
 });
