@@ -8,7 +8,7 @@
 #
 # G1 E moves transport filament while the extruder grips it, even with the gear unsynced. _MMU_PARK doesn't
 # run, so the only retraction is the 2mm toolchange retraction the standalone load ends with: the
-# macro retracts 2mm less and filament_remaining is park_pos - residual - 2.
+# macro retracts 2mm less; filament_remaining subtracts measured motor retraction, residual, and 2.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_cut_tip_after_extruder
 #
@@ -116,7 +116,7 @@ class AfterExtruderGoldenCase(unittest.TestCase):
         extruder = self.mmu.mmu_unit(0).extruder_wrapper
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertAlmostEqual(self.mmu.drive().get_filament_position(), self.UNLOAD_DRIVE_POS, places=2)
-        self.assertAlmostEqual(extruder.filament_remaining, 34.5)
+        self.assertAlmostEqual(extruder.filament_remaining, 5., places=2)
 
         self.moves.clear()
         self.hh.run_gcode('MMU_LOAD')
@@ -138,7 +138,7 @@ class TestAfterExtruderEntrySensor(AfterExtruderGoldenCase):
         ('Initial homing to default:extruder sensor', 500.0, 'gear', 'default:extruder'),
         ('Homing filament to extruder endstop', 100.0, 'gear', 'extruder'),
         ('Aligning filament to extruder gear', 8.0, 'gear', None),
-        ('Loading filament to nozzle', 35.5, 'gear+extruder', None),
+        ('Loading filament to nozzle', 65.0, 'gear+extruder', None),
     ]
 
 
@@ -161,7 +161,7 @@ class TestAfterExtruderToolheadSensor(AfterExtruderGoldenCase):
         # The real 1mm unsynced rip now contributes one 0.98mm encoder pulse.
         ('Fast loading move through bowden', 603.64, None, None),
         ('Homing to toolhead sensor', 60.0, 'gear+extruder', 'toolhead'),
-        ('Loading filament to nozzle', 39.3, 'gear+extruder', None),
+        ('Loading filament to nozzle', 68.8, 'gear+extruder', None),
     ]
 
 

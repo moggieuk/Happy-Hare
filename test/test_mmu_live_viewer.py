@@ -306,6 +306,12 @@ class TestLiveViewer(unittest.TestCase):
         self.assertEqual(console.hh.errors, [])
         events = [e for e in viewer.read()['events'] if e['seq'] > start]
         final = events[-1]['state']
+        load = next(e for e in events if e['label'] == 'Loading filament to nozzle')
+        self.assertAlmostEqual(load['distance'], 68.8, places=2)
+        self.assertAlmostEqual(load['before']['filament']['fragment_mm'], 5., places=2)
+        segment = load['before']['retained_segment']
+        self.assertAlmostEqual(segment['end']-segment['start'], 5., places=2)
+        self.assertAlmostEqual(load['state']['extruded_mm'], load['before']['extruded_mm'], places=2)
         self.assertNotEqual(previous, final['filament']['incoming_color'])
         self.assertEqual(final['nozzle_color'], final['filament']['incoming_color'])
         self.assertIsNone(final['retained_segment'])

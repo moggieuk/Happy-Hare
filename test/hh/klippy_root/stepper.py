@@ -137,14 +137,13 @@ class MCU_stepper:
         self._mcu_position_offset += self._commanded_pos - pos
         self._commanded_pos = pos
 
-    def harness_note_motion(self, distance):
+    def harness_note_motion(self, distance, notify=True):
         """
         Register `distance` mm of REAL travel. The counterpart to set_position.
 
         The fake has no step generation, so nothing else advances the mcu position. The
-        harness drives this from the two places motion actually happens: the fake
-        HomingMove (klippy_root/extras/homing.py) and the plain-move observer
-        (test/hh/bootstrap.py:_on_manual_move).
+        harness calls this for homing, manual MMU moves, and toolhead extrusion.
+        notify=False is used when the drive observer already updates viewer motor totals.
 
         Adjusts the OFFSET rather than _commanded_pos on purpose: the commanded position is
         owned by set_position and mirrors MmuStepper.commanded_pos, so moving it here would
@@ -153,7 +152,7 @@ class MCU_stepper:
         self._mcu_position_offset += distance
         printer = self._mcu.get_printer() if self._mcu is not None else None
         observer = getattr(printer, 'harness_stepper_observer', None)
-        if observer is not None:
+        if notify and observer is not None:
             observer(self._name, distance)
 
     def get_commanded_position(self):

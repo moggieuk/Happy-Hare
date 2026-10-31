@@ -362,7 +362,7 @@ function draw() {
         ? mmuExitFraction + ((0.73-mmuExitFraction) * p) / entry
         : Math.min(1, 0.73 + (0.27 * (p - entry)) / (end - entry));
   const start = s.tails[gate] === null ? 0 : progress(s.tails[gate]) * length,
-    stop = progress(s.tip_shapes?.[gate] === 'cone' ? tip-2 : tip) * length;
+    stop = progress(s.tip_shapes?.[gate] === 'cone' ? tip-(s.filament?.residual_mm || 0)-2 : tip) * length;
   $("filament").setAttribute(
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
@@ -487,7 +487,7 @@ function draw() {
     const top = tube.getPointAtLength(progress(end-residual-fragment)*length).y;
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${residualTop}" fill="none" stroke="#${retainedColor}" stroke-width="7"/>`;
   }
-  if (s.tip_shapes?.[gate] === 'cone') svg += shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip');
+  if (s.tip_shapes?.[gate] === 'cone') svg += shapedTip(tip-residual,s.filament?.incoming_color || '808182','attached-tip');
   if (residual > 0) {
     svg += `<path id="residual-filament" d="M260 ${residualTop} L260 ${nozzleZero}" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text ${dimensionLink('Residual')} x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${residual}mm</text>`;
   }
