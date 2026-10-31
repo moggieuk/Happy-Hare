@@ -143,6 +143,27 @@ class TestPrintJob(unittest.TestCase):
         self.assertGreater(hh.reactor.monotonic() - started, 30.)
         self.assertEqual(hh.printer.harness_macro_effects.get('T1'), None)
 
+    def test_builtin_job_with_viewer_keeps_print_extrusion_out_of_trace(self):
+        from test.hh.live_viewer import LiveViewer
+        console = self.console()
+        viewer = LiveViewer(console.hh)
+        self.addCleanup(viewer.close)
+        gcode = console.hh.gcode
+        original = gcode.register_command('G1', None)
+        gcode.register_command('G1', original)
+        out = self.meta(console, '/print job')
+        self.assertEqual(console.hh.errors, [], out[-3000:])
+        self.assertEqual(console.hh.mmu.psm.print_state, 'complete')
+        self.assertEqual(console.hh.mmu.num_toolchanges, 4)
+        current = gcode.register_command('G1', None)
+        gcode.register_command('G1', current)
+        self.assertIs(current, original)
+        events = viewer.read()['events']
+        self.assertTrue(any(e['kind'] == 'movement' for e in events))
+        self.assertFalse(any(e['kind'] in ('filament', 'stepper') for e in events))
+        # The built-in job's ordinary printing G1s are outside MMU scopes.
+        self.assertFalse(any(e.get('source') == 'mmu_gcode' for e in events))
+
     def job_file(self, text):
         fd, path = tempfile.mkstemp(suffix='.gcode')
         with os.fdopen(fd, 'w') as fh:
