@@ -110,8 +110,13 @@ class BaseCommand:
             "per_unit": per_unit,
         }
 
+        # Restore the original G1 handler as soon as this command returns.
+        def owned(gcmd):
+            with self.mmu.gcode_telemetry.scope(name):
+                return wrapped(gcmd)
+
         # Register command with klipper
-        self.mmu.gcode.register_command(name, wrapped, desc=help_brief)
+        self.mmu.gcode.register_command(name, owned, desc=help_brief)
 
         # Record metadata in the category (global registry)
         # This checks for duplicates and replaces in case of duplicate registration
