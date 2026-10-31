@@ -184,6 +184,15 @@ class TestPrintJob(unittest.TestCase):
         self.assertIsNone(console.job)
         self.assertEqual(console.hh.printer.lookup_object('print_stats').state, 'error')
 
+    def test_an_unprocessed_job_using_a_tool_the_mmu_lacks_fails(self):
+        console = self.console()
+        out = self.meta(console, '/print job %s' % self.job_file(
+            'G90\nG1 X10 F600\nT4\nG1 X20 F600\n'))
+        self.assertIn('T4: no such tool, this MMU has 4 gates', out)
+        self.assertIn('failed at line 3', out)
+        self.assertEqual(console.hh.printer.lookup_object('print_stats').state, 'error')
+        self.assertEqual(console.hh.printer.lookup_object('toolhead').get_position()[0], 10.)
+
     def test_a_job_the_mmu_pauses_is_held_until_cancelled(self):
         console = self.console()
         out = self.meta(console, '/print job %s' % self.job_file(

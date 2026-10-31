@@ -1988,7 +1988,15 @@ class Console:
                     unhandled_mark = len(self.hh.gcode.unhandled)
                     self.run_command(line, warn_unknown=False)
                     for raw in self.hh.gcode.unhandled[unhandled_mark:]:
-                        if raw.split(None, 1)[0].upper() == word:
+                        if raw.split(None, 1)[0].upper() != word:
+                            continue
+                        if re.match(r'^T\d+$', word):
+                            # Klipper would only say "Unknown command" and print on with
+                            # the wrong filament: a job wanting a tool the MMU lacks fails
+                            print(paint('!! %s: no such tool, this MMU has %d gates'
+                                        % (word, self.hh.mmu.num_gates), '1;31', self.color))
+                            self.failures += 1
+                        else:
                             job.ignored[word] += 1
                 owed = self._job_pay(owed, self.JOB_TICK)
                 stats.total_duration = stats.print_duration = (
