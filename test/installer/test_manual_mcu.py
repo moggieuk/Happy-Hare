@@ -105,7 +105,6 @@ class TestManualMcu(unittest.TestCase):
         self.assertEqual(mcus, ["mcu unit1", "mcu unit1_buffer"])
 
     def test_per_gate_connection_fields_are_hidden(self):
-        # The installer enables these expensive fields on its second parse.
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig("manual_gate_mcus", {
                 "MMU_TYPE_EMU_1_0": True,

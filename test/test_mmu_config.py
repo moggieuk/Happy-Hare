@@ -760,8 +760,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         return kc, sensor
 
     def _per_gate_sensors(self, name, syms):
-        env = dict(cfg._SINGLE_UNIT_ENV)
-        with cfg._env(env):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig(name, dict({
                 'MMU_TYPE_EMU_1_0': True,
                 'MMU_HAS_PER_GATE_MCU': True,
@@ -856,11 +855,10 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
                     self.assertEqual(
                         kc.syms['PARAM_ENVIRONMENT_SENSOR_REPORT_TIME'].str_value, expected)
 
-        env = dict(cfg._SINGLE_UNIT_ENV)
         for gate, member in ((1, 'HTU21D'), (2, 'SHT3X'), (3, 'LM75')):
             for value, expected in cases[member]:
                 with self.subTest(gate=gate, member=member, value=value):
-                    with cfg._env(env):
+                    with cfg._env(cfg._SINGLE_UNIT_ENV):
                         kc = cfg._kconfig('environment_sensor_report_time_range_per_gate', {
                             'MMU_TYPE_EMU_1_0': True,
                             'MMU_HAS_PER_GATE_MCU': True,
@@ -936,8 +934,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertNotIn('aht10_report_time', sensor)
 
     def test_htu21d_per_gate_sensor(self):
-        env = dict(cfg._SINGLE_UNIT_ENV)
-        with cfg._env(env):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig('environment_sensor_htu21d_per_gate', {
                 'MMU_TYPE_EMU_1_0': True,
                 'MMU_HAS_PER_GATE_MCU': True,
@@ -952,8 +949,7 @@ class TestEnvironmentSensorReportTime(unittest.TestCase):
         self.assertEqual(sensor['i2c_address'], '64')
 
     def test_mixed_per_gate_sensors_select_report_parameter_independently(self):
-        env = dict(cfg._SINGLE_UNIT_ENV)
-        with cfg._env(env):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
             kc = cfg._kconfig('environment_sensor_mixed_per_gate', {
                 'MMU_TYPE_EMU_1_0': True,
                 'MMU_HAS_PER_GATE_MCU': True,
