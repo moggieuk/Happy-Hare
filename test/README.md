@@ -649,6 +649,26 @@ upload. The web API remains a local development tool, not a public service.
 
 ### Structured movement telemetry
 
+MMU commands and macros invoked through `wrap_gcode_command` temporarily observe
+`G1` commands with nonzero extrusion. Each produces one movement pair with
+`source=mmu_gcode`, resolved E distance, extruder name and calling context.
+Absolute/relative extrusion, coordinate resets and flow overrides are respected.
+Only the owning execution context is observed; ordinary print moves, `G0`, and
+arc-generated segments are excluded. The exact previous G1 handler is restored
+on completion or error, so printing outside an MMU scope has no G1 telemetry
+wrapper overhead. With no subscribers, the wrapper is never installed.
+
+These outcomes have `status=submitted`: positions describe accepted commands,
+not measured physical completion. Estimated duration excludes acceleration and
+queue planning. XYZ is used only to estimate the extrusion rate for coordinated
+moves; XYZ positions are not included in these events. Existing MMU movement
+operations suppress duplicate G1 events.
+
+Simulator macros that use simplified effects still produce modeled movement;
+individual G1 events require an executed macro body. This observer does not
+replace those effects with execution of the full production macros.
+
+
 Happy Hare emits structured records directly in `move_filament()`, beside the
 existing STEPPER messages, after resolving speed/acceleration and gate overrides.
 The stream is independent of the selected log level and works without the viewer.

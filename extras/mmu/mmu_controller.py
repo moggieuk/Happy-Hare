@@ -23,6 +23,7 @@ from itertools                  import repeat
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
 from .mmu_movement_telemetry    import MovementTelemetry
+from .mmu_gcode_telemetry       import GcodeExtrusionTelemetry
 from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -62,6 +63,7 @@ class MmuController(MmuFilamentMovement):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.movement_telemetry = MovementTelemetry(self.reactor)
+        self.gcode_telemetry = GcodeExtrusionTelemetry(self)
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
@@ -719,7 +721,8 @@ class MmuController(MmuFilamentMovement):
 
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables else ""))
 
-            self.gcode.run_script_from_command(command)
+            with self.gcode_telemetry.scope(macro):
+                self.gcode.run_script_from_command(command)
             if wait:
                 self.movequeue_wait()
 
