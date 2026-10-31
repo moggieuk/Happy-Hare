@@ -303,9 +303,16 @@ class LiveViewer:
                         abs(value-self.latest_raw['motors'].get(name, 0)) > 1e-9
                         for name, value in state['motors'].items())
                     before_tip = self.latest['tips'][gate]
-                    if not extruder_moves and state['tips'][gate] > before_tip:
-                        state['tips'][gate] = min(state['tips'][gate],
-                            max(before_tip, state['layout']['extruder_gears']))
+                    gears = state['layout']['extruder_gears']
+                    tail = self.latest['tails'][gate]
+                    gripped = before_tip >= gears and (tail is None or tail <= gears)
+                    if not extruder_moves and gripped:
+                        # Gear-only grip/tension wiggles cannot retract or advance
+                        # filament held by the stationary extruder. Treat both
+                        # directions equally rather than ratcheting the visual tip.
+                        state['tips'][gate] = before_tip
+                    elif not extruder_moves and state['tips'][gate] > before_tip:
+                        state['tips'][gate] = min(state['tips'][gate], max(before_tip, gears))
             gate = state['gate']
             if gate >= 0 and details.get('homing') and details.get('homed'):
                 target = details.get('endstop', '')

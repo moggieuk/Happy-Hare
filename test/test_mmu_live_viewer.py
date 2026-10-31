@@ -210,6 +210,28 @@ class TestLiveViewer(unittest.TestCase):
         self.assertNotEqual(before['state']['tips'][0], events[-1]['state']['tips'][0])
         json.dumps(self.viewer.read(), allow_nan=False)
 
+    def test_sync_gear_wiggles_leave_loaded_nozzle_tip_stationary(self):
+        console = Console(parse_args(['--profile','ercf_vvd','--no-serve','--no-log','--plain']))
+        self.addCleanup(console.close)
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.boot()
+            viewer = LiveViewer(console.hh)
+            self.addCleanup(viewer.close)
+            console.run_command('MMU_LOAD')
+            initial = viewer.latest
+            start = viewer.sequence
+            console.run_command('MMU_SYNC_GEAR_MOTOR')
+        self.assertEqual(console.hh.errors, [])
+        moves = [e for e in viewer.read()['events'] if e['seq'] > start and e['kind'] == 'movement']
+        self.assertEqual([round(e['distance'], 1) for e in moves], [.8,-.8,.8,-.8,.8,-.8])
+        for move in moves:
+            self.assertEqual(move['state']['tips'][0], initial['tips'][0])
+            self.assertEqual(move['before']['tips'][0], initial['tips'][0])
+            self.assertEqual(move['state']['extruded_mm'], initial['extruded_mm'])
+            self.assertEqual(move['state']['tip_shapes'], initial['tip_shapes'])
+            self.assertTrue(any(abs(distance) > 0 for distance in move['motors'].values()))
+        self.assertAlmostEqual(moves[-1]['raw_state']['tips'][0], moves[0]['raw_before']['tips'][0])
+
     def test_gear_only_collision_stops_visual_tip_without_losing_raw_travel(self):
         gears = self.viewer.snapshot()['layout']['extruder_gears']
         self.hh.place_filament(0, gears-10)
