@@ -565,6 +565,7 @@ async function poll() {
       events = [...full.events, ...(full.pending_config ? [full.pending_config] : [])];
       configRevision = full.config_revision;
       if (newSession) {
+        if (session !== null) $('mini-console').replaceChildren();
         session = full.session; cursor = 0; live = true; paused = false;
         sensorPulse = null; playing = null; resumeAt = 0;
         played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.state;

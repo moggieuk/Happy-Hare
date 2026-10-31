@@ -719,7 +719,17 @@ class TestBootupOutput(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             console.meta('/remove 0')
             console.meta('/sensor mmu_entry_0 disable')
-            console.meta('/reset')
+            output = io.StringIO()
+            with mock.patch.object(console, 'clear_log') as clear_log, contextlib.redirect_stdout(output):
+                console.meta('/reset')
+            expected = io.StringIO()
+            with contextlib.redirect_stdout(expected):
+                console.banner()
+            self.assertEqual(output.getvalue(), expected.getvalue())
+            self.assertTrue(console.startup_output)
+            self.assertIn('Happy Hare console', output.getvalue())
+            self.assertIn('/help for meta-commands', output.getvalue())
+            clear_log.assert_called_once_with()
 
         self.assertIsNot(console.hh, original_session)
         self.assertEqual(console.hh.mmu.gate_status[0], 1)

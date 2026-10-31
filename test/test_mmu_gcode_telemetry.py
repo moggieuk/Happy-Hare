@@ -124,7 +124,10 @@ class TestGcodeTelemetry(unittest.TestCase):
             events = viewer.read()['events']
             moves = [e for e in events if e['kind'] == 'movement']
             self.assertEqual([e['distance'] for e in moves], [2, -1])
-            self.assertFalse(any(e['kind'] == 'filament' for e in events))
+            self.assertFalse(any(e['kind'] in ('filament', 'stepper') for e in events))
+            records = viewer.read_telemetry()['records']
+            self.assertEqual(sum(r['event'] == 'movement_start' for r in records), 2)
+            self.assertEqual(sum(r['event'] == 'movement_outcome' for r in records), 2)
         finally:
             viewer.close()
 
