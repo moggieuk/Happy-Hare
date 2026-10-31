@@ -973,6 +973,7 @@ class Session:
         stepper = self._driving_stepper(gate)
         if stepper is None or getattr(stepper, 'manual_trapq', None) is not trapq:
             return
+        self._note_drive_motion(gate, distance)
         model.advance(gate, distance, 'move')
         observer = getattr(self.printer, 'harness_drive_observer', None)
         if observer is not None:
@@ -1016,6 +1017,26 @@ class Session:
             self.printer.harness_pre_mq_move_observer = self._on_manual_move
         return self
 
+    def _note_drive_motion(self, gate, distance, toolhead=False):
+        """Account for physical motor travel without duplicating viewer drive totals."""
+        from extras.mmu.mmu_constants import (DRIVE_EXTRUDER_ONLY,
+            DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        drive = self.mmu.drive(gate)
+        mode = drive.get_sync_mode()
+        if toolhead:
+            # ToolHead.move already accounts for the primary extruder stepper.
+            owners = [drive.mmu_gear_stepper] if mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else []
+        elif mode in (DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER):
+            owners = [drive.mmu_gear_stepper, drive.mmu_extruder_stepper]
+        else:
+            owners = [drive.mmu_extruder_stepper if mode == DRIVE_EXTRUDER_ONLY else drive.mmu_gear_stepper]
+        seen = set()
+        for owner in owners:
+            for stepper in owner.get_steppers():
+                if id(stepper) not in seen:
+                    seen.add(id(stepper))
+                    stepper.harness_note_motion(distance, notify=False)
+
     def _on_toolhead_move(self, distance):
         """Advance filament with a synced gear or an engaged extruder."""
         observer = getattr(self.printer, 'harness_drive_observer', None)
@@ -1026,6 +1047,7 @@ class Session:
         if model is None or gate is None or gate < 0:
             return
 
+        self._note_drive_motion(gate, distance, toolhead=True)
         from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
         if self.mmu.drive(gate).get_sync_mode() != DRIVE_GEAR_SYNCED_TO_EXTRUDER:
             gears = model.layout['extruder_entry'] + self.mmu.mmu_unit().toolhead_wrapper.p.toolhead_entry_to_extruder

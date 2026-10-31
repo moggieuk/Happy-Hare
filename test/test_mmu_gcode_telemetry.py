@@ -30,6 +30,55 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.hh.gcode.register_command('G1', original)
         return original
 
+    def test_real_g1_extrusion_updates_physical_step_count(self):
+        # _do_form_tip must measure actual G1 travel when calculating fragments.
+        stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
+        before = stepper.get_mcu_position()
+        self.run_gcode('M83\nG1 E-29.5 F1500')
+        measured = (before-stepper.get_mcu_position())*stepper.get_step_dist()
+        self.assertAlmostEqual(measured, 29.5, places=2)
+
+    def test_restore_keeps_extrusion_and_preserves_absolute_e_origin(self):
+        stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
+        before = stepper.get_mcu_position()
+        self.run_gcode('G90\nM82\nG92 E0\nG1 E10 F300\nSAVE_GCODE_STATE NAME=a\nM83\nG1 E-4\nRESTORE_GCODE_STATE NAME=a\nG1 E12')
+        measured = (stepper.get_mcu_position()-before)*stepper.get_step_dist()
+        self.assertAlmostEqual(measured, 8, places=2)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_coordinate_resets_and_restore_do_not_create_physical_extrusion(self):
+        stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
+        self.run_gcode('M83\nG1 E3 F300')
+        before = stepper.get_mcu_position()
+        self.run_gcode('G92 E200\nSAVE_GCODE_STATE NAME=a\nG92 E0\nRESTORE_GCODE_STATE NAME=a MOVE=1')
+        self.assertEqual(stepper.get_mcu_position(), before)
+
+    def test_manual_and_synced_moves_update_each_motor_once(self):
+        drive = self.hh.mmu.drive()
+        gear = drive.mmu_gear_stepper.get_steppers()[0]
+        extruder = drive.mmu_extruder_stepper.get_steppers()[0]
+        for motor, expected in [('gear', (4,0)), ('extruder', (0,4)), ('gear+extruder', (4,4))]:
+            with self.subTest(motor=motor):
+                before = [s.get_mcu_position() for s in (gear,extruder)]
+                self.hh.mmu.move_filament('Accounting audit',4,motor=motor)
+                for stepper, start, distance in zip((gear,extruder),before,expected):
+                    self.assertAlmostEqual((stepper.get_mcu_position()-start)*stepper.get_step_dist(),distance,places=2)
+
+    def test_synced_g1_updates_motor_counts_without_doubling_viewer_totals(self):
+        from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
+        drive = self.hh.mmu.drive()
+        drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        motors = [drive.mmu_gear_stepper.get_steppers()[0],drive.mmu_extruder_stepper.get_steppers()[0]]
+        before = [s.get_mcu_position() for s in motors]
+        viewer = LiveViewer(self.hh)
+        self.addCleanup(viewer.close)
+        with self.scope('MMU_TEST'):
+            self.run_gcode('M83\nG1 E3 F300')
+        for stepper, start in zip(motors,before):
+            self.assertAlmostEqual((stepper.get_mcu_position()-start)*stepper.get_step_dist(),3,places=2)
+        event = viewer.read()['events'][-1]
+        self.assertEqual(sorted(event['motors'].values()), [3,3])
+
     def test_scope_restores_exact_handler_and_excludes_print_moves(self):
         original = self.handler()
         self.run_gcode('M83\nG1 E1 F300')
