@@ -3,8 +3,8 @@
 # The macro is run without FINAL_EJECT and Happy Hare ejects afterwards, so the extruder movement
 # it measures, and the fragment it records, are the macro's alone.
 #
-# The fake gcode_move ignores E, so the cut effect moves the extruder stepper by the macro's net
-# G1 E movement. The harness's own _MMU_FORM_TIP effect already moves it.
+# Real G1 moves update physical extruder steps. The harness's simplified _MMU_FORM_TIP
+# effect also reports physical travel when its macro body is not executed.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_test_form_tip
 #
@@ -34,16 +34,6 @@ class TestFormTipCase(unittest.TestCase):
         for name in CUT_MACROS:
             effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
 
-        def cut(macro, gcmd):
-            start = len(self.hh.gcode.executed)
-            macro.run_body(gcmd)
-            extruded = sum(float(line.split()[1][1:]) for line in self.hh.gcode.executed[start:]
-                           if line.startswith('G1 E'))
-            stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
-            stepper.set_position([stepper.get_commanded_position() + extruded, 0., 0., 0.])
-            stepper.harness_note_motion(extruded)
-
-        effects['_MMU_CUT_TIP'] = cut
         self.hh.place_filament(0, position=-40.)
         self.hh.run_gcode('MMU_PRELOAD GATE=0')
         self.hh.heat_extruder(220)
