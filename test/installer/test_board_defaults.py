@@ -30,10 +30,11 @@ from test.hh import cfg
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Board files are only selectable under a machine type that permits them:
-# boards/Kconfig gates the generic set on !KMS && !VVD && !QIDI && !PER_GATE_MCU,
-# the three custom boards on their own machine, and per_gate/ on
-# MMU_HAS_PER_GATE_MCU (which only EMU implies). OwlFC-Mini additionally carries
-# `depends on PARAM_NUM_GATES <= 2`, so it needs NightOwl's 2-gate default.
+# boards/Kconfig gates the generic set on !KMS && !VVD && !QIDI &&
+# !MMU_HAS_PER_GATE_MCU, the three custom boards on their own machine, and
+# per_gate/ on MMU_HAS_PER_GATE_MCU (which only EMU implies, by default).
+# OwlFC-Mini additionally carries `depends on PARAM_NUM_GATES <= 2`, so it
+# needs NightOwl's 2-gate default.
 _TRADRACK = 'MMU_TYPE_TRADRACK_1_0'
 
 BOARD_MACHINE = {
