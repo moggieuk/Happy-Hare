@@ -508,6 +508,7 @@ class Console:
         self.bridge_error = None                    # why it did not start, if it was asked to
         self.telemetry_sink = None
         self.telemetry_unsubscribe = None
+        self.cutter_telemetry_unsubscribe = None
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
@@ -541,15 +542,25 @@ class Console:
             self.telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self.telemetry_sink)
         self.hh.gcode.register_output_handler(self._on_output)
 
-        # Macro bodies are no-ops in the general-purpose harness. Cold pull is deliberately
-        # executable in this interactive simulator: it is a self-contained maintenance
-        # workflow whose temperature checkpoints and extruder moves are useful to exercise.
+        # Execute maintenance and filament-processing macros in the interactive simulator.
+        # The general-purpose unit-test harness keeps its simplified effects.
         # Keep the exception local so print-start/toolchange macros retain the established
         # recorded-only behavior relied on by the unit tests.
         effects = getattr(self.hh.printer, 'harness_macro_effects', None)
         if effects is None:
             effects = self.hh.printer.harness_macro_effects = {}
         effects['MMU_COLD_PULL'] = self._run_macro_body
+        # Execute reference purge segments so G1 telemetry and filament transport
+        # reflect real macro commands instead of the harness's time-only effect.
+        effects['_MMU_PURGE'] = self._run_macro_body
+        effects['__MMU_PURGE_SEGMENT'] = self._run_macro_body
+        for name in ('_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
+                     '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP',
+                     '_MMU_FORM_TIP', '_WAIT_FOR_TEMP'):
+            effects[name] = self._run_macro_body
+        effects['_CUT_TIP_DO_CUT_MOTION'] = self._run_macro_body
+        self.cutter_telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self._on_cutter_telemetry)
+
 
         if a.trace:
             self.hh.mmu.p.log_level = a.trace
@@ -735,6 +746,22 @@ class Console:
     def _run_macro_body(macro, gcmd):
         macro.run_body(gcmd)
 
+    def _on_cutter_telemetry(self, record):
+        # Only the simulator changes geometry. The real command merely emits an
+        # ordered annotation and never waits for or modifies printer movement.
+        if record['event'] != 'cut' or record.get('cutter') != 'toolhead':
+            return
+        blade = record.get('blade_pos')
+        gate = record['gate']
+        if blade is None or gate < 0:
+            return
+        model = self.hh.printer.harness_filament
+        params = self.hh.mmu.mmu_unit().toolhead_wrapper.p
+        nozzle = model.layout['extruder_entry'] + params.toolhead_entry_to_extruder + params.toolhead_extruder_to_nozzle
+        # Severing changes only the attached endpoint, not encoder/buffer travel.
+        model.tip[gate] = min(model.tip[gate], nozzle-blade)
+        model.sync(gate)
+
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
         # The preload walks every gate and would otherwise leave the LAST one selected, which
@@ -769,6 +796,9 @@ class Console:
         self.startup_output = refreshed
 
     def close(self):
+        if self.cutter_telemetry_unsubscribe is not None:
+            self.cutter_telemetry_unsubscribe()
+            self.cutter_telemetry_unsubscribe = None
         if self.telemetry_unsubscribe is not None:
             self.telemetry_unsubscribe()
             self.telemetry_unsubscribe = None

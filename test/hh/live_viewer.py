@@ -40,7 +40,11 @@ class LiveViewer:
         self.extruded_mm = 0.
         self.purge_base_mm = 0.
         self.nozzle_color = None
+        self.retained_segments = {}
+        self.tip_shapes = {}
+        self.cutter_pressed = False
         self.purge_color_start = None
+        self.purge_transition = None
         self.motors = {}
         self.depth = 0
         self.wrapped = []
@@ -69,8 +73,13 @@ class LiveViewer:
         if record['event'] == 'standalone_load_retraction' and record['retracted_length'] > 0:
             self.purge_base_mm = self.extruded_mm
             self.capture('purge_release', 'Final load retraction', before=self.snapshot(), telemetry=record)
-        if record['event'] == 'filament_cut':
-            self.capture('cut', 'Toolhead filament cut', before=self.snapshot(),
+        if record['event'] in ('release', 'cutter_release'):
+            self.cutter_pressed = False
+            self.capture('release', 'Toolhead cutter release', before=copy.deepcopy(self.latest_raw or self.snapshot()),
+                cutter=record['cutter'], telemetry=record)
+        if record['event'] in ('cut', 'filament_cut'):
+            self.cutter_pressed = record.get('phase') == 'CUT'
+            self.capture('cut', 'Toolhead filament cut', before=copy.deepcopy(self.latest_raw or self.snapshot()),
                 cutter=record['cutter'], origin=record.get('origin'), telemetry=record)
         if record['event'] == 'filament_pos_changed':
             self.capture('state', record['filament_pos_name'], telemetry=record)
@@ -97,6 +106,7 @@ class LiveViewer:
             duration=record['elapsed_s'], requested=start['requested_mm'],
             distance=record['actual_mm'], speed=record.get('extrusion_speed_mm_s', start['speed_mm_s']),
             source=start.get('source'), extruder=start.get('extruder'),
+            filament_travel_mm=start.get('filament_travel_mm'),
             context=start.get('context'), estimated_duration=record.get('estimated_duration_s'),
             acceleration=start['acceleration_mm_s2'], motors=motors,
             homing=start['homing'], endstop=start['endstop'], homed=record['homed'],
@@ -212,6 +222,13 @@ class LiveViewer:
         params = hh.mmu.mmu_unit().toolhead_wrapper.p
         layout['extruder_gears'] = layout['extruder_entry'] + params.toolhead_entry_to_extruder
         layout['nozzle'] = layout['extruder_gears'] + params.toolhead_extruder_to_nozzle
+        def sensor_position(name):
+            short = name.split(':')[-1]
+            if short == 'extruder':
+                return layout['extruder_gears'] - params.toolhead_entry_to_extruder
+            if short == 'toolhead' and params.toolhead_sensor_to_nozzle > 0:
+                return layout['nozzle'] - params.toolhead_sensor_to_nozzle
+            return model.position(name)
         cutters = []
         cut_vars = hh.mmu.cut_tip_vars()
         if cut_vars is not None:
@@ -230,7 +247,7 @@ class LiveViewer:
         return plain(dict(configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
             filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=layout, motors=self.motors.copy(),
-            sensors={name: {'state': state[0], 'position': model.position(name), 'enabled': bool(state[1].runout_helper.sensor_enabled)}
+            sensors={name: {'state': state[0], 'position': sensor_position(name), 'enabled': bool(state[1].runout_helper.sensor_enabled)}
                      for name, state in sensors.items()}, devices=devices))
 
     def capture(self, kind, label, **details):
@@ -256,10 +273,27 @@ class LiveViewer:
             if self.nozzle_color is None:
                 self.nozzle_color = state['filament']['retained_color']
                 self.purge_color_start = self.nozzle_color
+            material = state['filament']
+            previous_material = (self.latest or {}).get('filament', {})
+            new_fragment = (material['fragment_mm'] > 0 and
+                            material['fragment_mm'] != previous_material.get('fragment_mm'))
+            if (self.purge_transition is None or new_fragment or
+                    self.purge_transition['new_color'] != material['incoming_color']):
+                tracked = self.retained_segments.get(material['extruder'])
+                retained = (tracked['end']-tracked['start'] if tracked and not tracked.get('residual_only')
+                            else material['fragment_mm'])
+                self.purge_transition = dict(start_mm=self.extruded_mm,
+                    retained_mm=material['residual_mm']+retained,
+                    old_color=material['retained_color'], new_color=material['incoming_color'],
+                    mix_mm=min(material['residual_mm']+retained, max(1., material['residual_mm'])))
+                self.nozzle_color = material['retained_color']
+
             extruder_moves = False
             if self.latest is not None and self.latest_raw is not None:
                 for gate, tip in enumerate(state['tips']):
                     delta = tip - self.latest_raw['tips'][gate]
+                    if gate == state['gate'] and details.get('filament_travel_mm') is not None:
+                        delta = details['filament_travel_mm']
                     state['tips'][gate] = self.latest['tips'][gate] + delta
                 if 'before' in details:
                     details['before'] = copy.deepcopy(self.latest)
@@ -281,11 +315,16 @@ class LiveViewer:
                 # independent of accumulated schematic or raw travel offsets.
                 # Ignore buffer/encoder and trailing-edge homes: those do not
                 # locate the filament nose at a presence sensor.
-                if (sensor and distance and sensor['state'] is (distance > 0)
+                raw_sensor_position = self.model.position(target)
+                at_trigger = (distance > 0 and raw_sensor_position is not None
+                              and abs(raw_state['tips'][gate]-raw_sensor_position) < 1e-5)
+                if (sensor and distance and (sensor['state'] is (distance > 0) or at_trigger)
                         and sensor['position'] is not None
                         and target in state.get('active_sensors', state['unit_sensors'])
                         and not any(kind in target for kind in ('compression', 'tension', 'encoder'))):
                     state['tips'][gate] = sensor['position']
+                    if at_trigger:
+                        sensor['state'] = True
                     details['homing_anchor'] = True
             if gate >= 0:
                 tail = state['tails'][gate]
@@ -294,28 +333,90 @@ class LiveViewer:
                         continue
                     if 'filament_compression' in name or 'filament_tension' in name or 'encoder' in name:
                         continue
+                    raw_position = self.model.position(name)
+                    previous_sensor = (self.latest or {}).get('sensors', {}).get(name, {})
+                    if (previous_sensor.get('state') is True and raw_position is not None
+                            and abs(raw_state['tips'][gate]-raw_position) < 1e-5):
+                        sensor['state'] = True
+                        continue
                     short = name.split(':')[-1]
                     if short.startswith('mmu_') and short.rsplit('_', 1)[-1].isdigit() and int(short.rsplit('_', 1)[-1]) != gate:
                         continue
                     position = sensor['position']
                     if position is not None and (tail is None or tail <= position):
                         state['tips'][gate] = min(state['tips'][gate], position-0.001)
+            extruder = state['filament']['extruder']
+            nozzle = state['layout']['nozzle']
+            if gate >= 0 and self.latest is not None and kind != 'cut':
+                previous_tip = self.latest['tips'][gate]
+                if extruder_moves and state['tips'][gate] < previous_tip and previous_tip >= nozzle-material['residual_mm']-.01:
+                    self.tip_shapes[gate] = 'cone'
+                    # Melt left in the nozzle is not attached to the withdrawn tip.
+                    state['tips'][gate] = min(state['tips'][gate], nozzle-material['residual_mm'])
+                elif state['tips'][gate] >= nozzle-.01:
+                    self.tip_shapes[gate] = 'square'
+            if gate >= 0 and kind == 'cut' and self.latest is not None:
+                blade = details.get('telemetry', {}).get('blade_pos')
+                if blade is not None:
+                    cut_position = nozzle - blade
+                    if self.latest['tips'][gate] > cut_position + 1e-6:
+                        self.retained_segments[extruder] = dict(start=cut_position, end=self.latest['tips'][gate],
+                            tip_shape=self.tip_shapes.get(gate, 'square'),
+                            color=self.latest['filament']['incoming_color'])
+                        self.tip_shapes[gate] = 'square'
+                        state['tips'][gate] = cut_position
+            if (((kind == 'state' and state.get('filament_pos_name') == 'LOADED IN NOZZLE')
+                    or (kind == 'session' and state['filament']['fragment_mm'] > 0))
+                    and extruder not in self.retained_segments and self.extruded_mm == 0):
+                remaining = material['residual_mm'] + material['fragment_mm']
+                if remaining > 0:
+                    self.retained_segments[extruder] = dict(start=nozzle-remaining, end=nozzle,
+                        residual_only=not material['fragment_mm'],
+                        tip_shape='cone' if material['fragment_mm'] else 'square',
+                        color=state['filament']['retained_color'])
+            if new_fragment and extruder not in self.retained_segments:
+                # Persisted metadata can seed a missing fragment, but cannot resize
+                # one whose cut and subsequent pushback we have already observed.
+                total = material['fragment_mm']
+                self.retained_segments[extruder] = dict(start=nozzle-material['residual_mm']-total, end=nozzle-material['residual_mm'],
+                    tip_shape='cone', color=material['retained_color'])
             if gate >= 0 and extruder_moves:
-                nozzle = state['layout']['nozzle']
                 amount = max(0., state['tips'][gate] - nozzle)
+                segment = self.retained_segments.get(extruder)
+                if segment and self.latest is not None:
+                    push = max(0., state['tips'][gate] - max(self.latest['tips'][gate], segment['start']))
+                    if push:
+                        # Only the new attached end can push the severed segment.
+                        # Entering the melt zone first expels the residual already
+                        # there, before the cut fragment itself reaches nozzle zero.
+                        if not segment.get('residual_only'):
+                            residual = material['residual_mm']
+                            melt_start = nozzle-residual
+                            occupied_before = min(residual, max(0., segment['end']-melt_start))
+                            occupied_after = min(residual, max(0., segment['end']+push-melt_start))
+                            amount += occupied_after-occupied_before
+                        amount += min(segment['end']-segment['start'],
+                                      max(0., segment['end']+push-nozzle))
+                        segment['start'] = min(nozzle, segment['start']+push)
+                        segment['end'] = min(nozzle, segment['end']+push)
+                        if segment['start'] >= segment['end']:
+                            del self.retained_segments[extruder]
                 if amount:
-                    if int((self.extruded_mm-self.purge_base_mm)/36) != int((self.extruded_mm+amount-self.purge_base_mm)/36) or self.extruded_mm == self.purge_base_mm:
-                        self.purge_color_start = self.nozzle_color
-                    incoming = state['filament']['incoming_color']
-                    length = max(3., state['filament']['residual_mm'] + state['filament']['fragment_mm'])
-                    fraction = 1-math.exp(-amount/length)
-                    self.nozzle_color = ''.join(f'{round(int(self.nozzle_color[i:i+2],16)*(1-fraction)+int(incoming[i:i+2],16)*fraction):02x}' for i in (0,2,4))
+                    plan = self.purge_transition
+                    cleared = self.extruded_mm+amount-plan['start_mm']-plan['retained_mm']+plan['mix_mm']
+                    fraction = max(0., min(1., cleared/plan['mix_mm'])) if plan['mix_mm'] else 1.
+                    fraction = fraction*fraction*(3-2*fraction)
+                    self.nozzle_color = ''.join(f'{round(int(plan["old_color"][i:i+2],16)*(1-fraction)+int(plan["new_color"][i:i+2],16)*fraction):02x}' for i in (0,2,4))
                 self.extruded_mm += amount
                 state['tips'][gate] = min(state['tips'][gate], nozzle)
+            state['cutter_pressed'] = self.cutter_pressed
+            state['tip_shapes'] = [self.tip_shapes.get(i, 'square') for i in range(len(state['tips']))]
+            state['retained_segment'] = copy.deepcopy(self.retained_segments.get(extruder))
             state['extruded_mm'] = self.extruded_mm
             state['purge_base_mm'] = self.purge_base_mm
             state['nozzle_color'] = self.nozzle_color
             state['purge_color_start'] = self.purge_color_start
+            state['purge_transition'] = copy.deepcopy(self.purge_transition)
             if 'before' in details:
                 details['before'].setdefault('extruded_mm', self.latest.get('extruded_mm', 0.))
             self.latest_raw = raw_state
@@ -424,7 +525,8 @@ class LiveViewer:
             # Preserve reconciled schematic endpoints; configuration changes do not move filament.
             visual['tips'] = [tip + raw - previous for tip, raw, previous in
                               zip(self.latest['tips'], state['tips'], self.latest_raw['tips'])]
-            for key in ('extruded_mm', 'purge_base_mm', 'nozzle_color', 'purge_color_start'):
+            for key in ('extruded_mm', 'purge_base_mm', 'nozzle_color', 'purge_color_start',
+                        'purge_transition', 'retained_segment', 'tip_shapes', 'cutter_pressed'):
                 if key in self.latest:
                     visual[key] = copy.deepcopy(self.latest[key])
             self.pending_config = dict(version=2, session=self.session_id, seq=self.sequence + 1,

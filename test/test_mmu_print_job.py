@@ -161,8 +161,11 @@ class TestPrintJob(unittest.TestCase):
         events = viewer.read()['events']
         self.assertTrue(any(e['kind'] == 'movement' for e in events))
         self.assertFalse(any(e['kind'] in ('filament', 'stepper') for e in events))
-        # The built-in job's ordinary printing G1s are outside MMU scopes.
-        self.assertFalse(any(e.get('source') == 'mmu_gcode' for e in events))
+        # Only MMU-owned purge/retraction commands are captured, not the job's
+        # coordinated XYZ/E printing moves.
+        g1_moves = [e for e in events if e.get('source') == 'mmu_gcode']
+        self.assertTrue(g1_moves)
+        self.assertTrue(all(e['context'] and e['label'].startswith('G1 E') for e in g1_moves))
 
     def job_file(self, text):
         fd, path = tempfile.mkstemp(suffix='.gcode')

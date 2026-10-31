@@ -543,7 +543,7 @@ What is simulated:
   move them, so Happy Hare's automatic job start/end detection runs for real.
 - **Macro bodies, for the duration of the job only.** `T<n>`, `MMU_START_SETUP`,
   `MMU_START_CHECK`, `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` run their real Jinja. The
-  park, cut and purge macros stay recorded no-ops (§"Three things that will look like bugs"),
+  park macros retain their modeled effects; cut and tip-forming macros run their real bodies,
   and at the prompt `T1` is silent again.
 - **Extrusion.** `G0`–`G3` E, in absolute (`M82`) or relative (`M83`, or anything after `G91`)
   mode, with `G92` re-basing, go through the fake `gcode_move` to the toolhead and so into the
@@ -668,8 +668,26 @@ The viewer does not record individual filament or stepper samples. Model updates
 still maintain filament positions and motor totals for movement snapshots.
 
 Simulator macros that use simplified effects still produce modeled movement;
-individual G1 events require an executed macro body. This observer does not
-replace those effects with execution of the full production macros.
+individual G1 events require an executed macro body. The console executes the
+reference purge, `_MMU_CUT_TIP`, and `_MMU_FORM_TIP` bodies and their helpers, so
+extrusion, retraction, push-back, and cooling moves are recorded individually with
+G1 trace pills. The real cut motion helper emits `_MMU_TELEMETRY EVENT="cut"`
+after blade contact and `_MMU_TELEMETRY EVENT="release"` after withdrawing the
+blade. These commands only add ordered telemetry annotations: no motion, waits,
+or MMU state changes. Without subscribers they return without emitting a record.
+The existing `_MMU_EVENT EVENT="filament_cut"` still handles operational counting.
+
+Both a printer and the simulator emit the same `cut` and `release` records with
+unit, gate, cutter identity, and configured blade position. The simulator consumes
+CUT to shorten its modeled filament; the viewer holds the blade through the rip
+until RELEASE. It no longer identifies cutter contact from coordinates or speed. The
+post-unload cutter is not covered by these hooks. The general unit-test harness
+retains its simplified macro effects.
+
+The viewer holds the severed fragment until an advancing filament end pushes it.
+A withdrawn nozzle tip has a schematic cone and approximately 10mm hair; cutting
+transfers that shape to the fragment and leaves the attached end square. Residual
+melt stays at the nozzle. These shapes are illustrations, not measured tip geometry.
 
 
 Happy Hare emits structured records directly in `move_filament()`, beside the
@@ -729,7 +747,9 @@ visual constraints: they do not change simulator physics, homing results or sour
 telemetry. Extruder-fed travel beyond the configured nozzle accumulates as
 `extruded_mm` and grows a shaded purge coil. Retraction leaves deposited filament
 in place and recovering that retraction does not count as new extrusion. The
-amount is input-filament length, not the length of the thinner extruded strand.
+recorded amount is input-filament length. The nozzle selector converts it to an
+equivalent round strand using `length * (1.75 / nozzle_diameter)^2`, defaulting to
+0.4mm, for the purge animation and strand-length label.
 Coil size and blending are schematic, not a melt-flow model. A full coil falls
 behind the lower screen and the next coil starts growing. The explicit
 `standalone_load_retraction` event releases a coil when its recorded
@@ -983,9 +1003,10 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
 ### Three things that will look like bugs
 
 1. **Most macro bodies do not run.** The fake `gcode_macro` records a call and normally never
-   renders the body, so `T1`, the print start/end and the park/cut/purge sequences produce
+   renders the body, so `T1`, the print start/end and the park/cut sequences produce
    **silence**. Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
-   `MMU_COLD_PULL` is the deliberate exception: the console runs its body and simulates its
+   The console executes the reference purge macros as individual G1 moves.
+   `MMU_COLD_PULL` is another exception: the console runs its body and simulates its
    heater waits instantly so the complete maintenance workflow can be exercised. `/print job`
    is the other: while a job plays, `T<n>` and the print start/end macros run for real.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The

@@ -37,6 +37,27 @@ class TestMovementTelemetry(unittest.TestCase):
         json.dumps(self.records, allow_nan=False)
         return start, end
 
+    def test_macro_hooks_are_ordered_annotations_without_motion_or_state_changes(self):
+        mmu = self.hh.mmu
+        before = (mmu.filament_pos, mmu.gate_selected, self.hh.filament().tip[:])
+        with mock.patch.object(self.hh.printer.lookup_object('toolhead'), 'wait_moves') as wait:
+            self.hh.run_gcode('_MMU_TELEMETRY EVENT="cut"')
+            self.hh.run_gcode('_MMU_TELEMETRY EVENT="release"')
+        wait.assert_not_called()
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual([r['event'] for r in self.records], ['cut', 'release'])
+        self.assertEqual([r['phase'] for r in self.records], ['CUT', 'RELEASE'])
+        self.assertEqual(before, (mmu.filament_pos, mmu.gate_selected, self.hh.filament().tip[:]))
+        self.assertLess(self.records[0]['sequence'], self.records[1]['sequence'])
+
+    def test_macro_hook_with_no_subscribers_does_nothing(self):
+        self.unsubscribe()
+        telemetry = self.hh.mmu.movement_telemetry
+        with mock.patch.object(telemetry, 'state') as emit:
+            self.hh.run_gcode('_MMU_TELEMETRY EVENT="cut"')
+        emit.assert_not_called()
+        self.assertEqual(self.hh.errors, [])
+
     def test_filament_state_changes_include_silent_changes_without_duplicates(self):
         from extras.mmu.mmu_constants import FILAMENT_POS_IN_BOWDEN
         previous = self.hh.mmu.filament_pos
