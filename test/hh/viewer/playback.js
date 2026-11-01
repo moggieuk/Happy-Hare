@@ -47,6 +47,14 @@ export function interpolate(event, fraction) {
   for (const [name,device] of Object.entries(a.devices)) {
     for (const [key,value] of Object.entries(device)) s.devices[name][key]=mix(value,b.devices[name]?.[key]);
   }
+  s.bowden_unabsorbed_mm = mix(a.bowden_unabsorbed_mm || 0,b.bowden_unabsorbed_mm || 0);
+  for (const [name, device] of Object.entries(s.devices)) {
+    if (!name.endsWith(':buffer') || !Number.isFinite(device.displacement) || !(device.maximum > 0)) continue;
+    device.travel = Math.max(0,Math.min(device.maximum,device.displacement));
+    device.excess = device.displacement-device.travel;
+    if (!device.proportional) device.value = Math.max(-1,Math.min(1,(2*device.travel-device.maximum)/(device.range || device.maximum)));
+    if (name === `${s.unit}:buffer`) s.bowden_unabsorbed_mm = device.excess;
+  }
   const occupancy = (state, name, position) => {
     const suffix=name.match(/_(\d+)$/), gate=suffix?Number(suffix[1]):state.gate;
     return gate>=0 && state.tips[gate]>=position && (state.tails[gate]===null || state.tails[gate]<=position);
@@ -58,8 +66,8 @@ export function interpolate(event, fraction) {
       const geometry=Object.values(a.buffers).find(g=>g.gates.includes(a.gate));
       const next=Object.values(b.buffers).find(g=>g.gates.includes(a.gate));
       if (geometry && next) {
-        const travel=mix(geometry.travel[a.gate],next.travel[a.gate]);
-        const threshold=name.endsWith('tension')?v=>v<=0:v=>v>=geometry.compression_travel;
+        const travel=Math.max(0,Math.min(geometry.maxrange,mix(geometry.travel[a.gate]+(geometry.excess?.[a.gate] || 0),next.travel[a.gate]+(next.excess?.[a.gate] || 0))));
+        const threshold=name.endsWith('tension')?v=>v<=(geometry.tension_travel || 0):v=>v>=geometry.compression_travel;
         if (threshold(geometry.travel[a.gate])===sensor.state && threshold(next.travel[a.gate])===end.state) sensor.state=threshold(travel);
       }
     } else if (!name.includes('encoder') && occupancy(a,name,sensor.position)===sensor.state && occupancy(b,name,end.position)===end.state) {
@@ -278,4 +286,25 @@ export function purgeCoils(state, nozzleDiameter = .4) {
       fraction: Math.min(1,layers-layer), color:purgeColor(state,base+(1.2+layer*2.88)/ratio)});
   }
   return {amount, layers, coils, drop:state.purge_drop ?? Math.max(0,(amount-30)/6)};
+}
+
+// Sensor readings constrain the illustration; modeled displacement supplies overtravel.
+export function bufferPiston(device, tension=false, compression=false) {
+  const maximum=Math.max(0,device.maximum || 0), range=Math.min(maximum,Math.max(0,device.range ?? maximum));
+  const center=maximum/2, low=center-range/2, high=center+range/2;
+  let position=device.travel ?? device.rest ?? center;
+  if (device.occupied === false) position=device.rest ?? center;
+  else if (device.proportional) {
+    const reading=Math.max(-1,Math.min(1,device.value || 0));
+    position=center+reading*range/2;
+    if (device.displacement < low) position=device.displacement;
+    if (device.displacement > high) position=device.displacement;
+  } else {
+    if (tension) position=Math.min(position,low);
+    if (compression) position=Math.max(position,high);
+  }
+  const bounded=Math.max(0,Math.min(maximum,position));
+  const total=device.occupied === false ? bounded : device.displacement ?? position;
+  return {fraction:maximum ? bounded/maximum : .5,position:bounded,low,high,maximum,
+    excess:total-Math.max(0,Math.min(maximum,total))};
 }

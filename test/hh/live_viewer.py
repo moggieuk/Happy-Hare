@@ -211,7 +211,14 @@ class LiveViewer:
                             gate = hh.mmu.gate_selected
                             travel = geometry['travel'].get(gate)
                             status = dict(travel=travel, maximum=geometry['maxrange'],
-                                          value=None if travel is None else 2*travel/geometry['maxrange']-1)
+                                          range=geometry['range'], rest=geometry['rest'],
+                                          proportional=geometry['proportional'],
+                                          occupied=gate >= 0 and model.tip[gate] >= model.layout['mmu_exit'],
+                                          excess=geometry['excess'].get(gate, 0.),
+                                          displacement=None if travel is None else travel+geometry['excess'].get(gate, 0.),
+                                          value=None if travel is None else max(-1., min(1., (2*travel-geometry['maxrange']) / max(geometry['range'], 1e-9))))
+                            if obj.proportional_sensor is not None:
+                                status['value'] = obj.proportional_sensor.get_status(hh.reactor.monotonic())['value']
                         elif obj.proportional_sensor is not None:
                             status = obj.proportional_sensor.get_status(hh.reactor.monotonic())
                         else:
@@ -247,6 +254,7 @@ class LiveViewer:
         return plain(dict(configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
             filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=layout, motors=self.motors.copy(),
+            bowden_unabsorbed_mm=model.unabsorbed[hh.mmu.gate_selected] if hh.mmu.gate_selected >= 0 else 0.,
             sensors={name: {'state': state[0], 'position': sensor_position(name), 'enabled': bool(state[1].runout_helper.sensor_enabled)}
                      for name, state in sensors.items()}, devices=devices))
 

@@ -8,7 +8,7 @@
 #
 #  - filament_compression is modelled after the extruder entry. BoxTurtle's
 #    extruder_homing_endstop is filament_compression: the MMU pushes filament until it
-#    meets the stationary extruder gears, then expands the buffer through 70% of its
+#    meets the stationary extruder gears, then expands the buffer to the compression switch within its
 #    configured max range. Without that sensor in the layout a load dies with "Failed to
 #    reach extruder 'filament_compression' endstop".
 #  - the shipped config/macros/*.cfg are loaded verbatim. An unload refuses to run without
@@ -18,7 +18,7 @@
 #    (mmu_controller.py:2456), which lands in the error sentinel.
 #
 # GEOMETRY. park -100, entry -150, gate 0, extruder entry +700, BoxTurtle compression
-# +708.4 (70% of its 12mm max range), nozzle +740.
+# +710 (12mm maximum travel, 8mm centered sensor range), nozzle +740.
 # A loaded filament sits at +768 - past the nozzle by toolhead_extruder_to_nozzle.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_toolchange
@@ -88,14 +88,14 @@ class TestLoad(ToolchangeTestCase):
                         'never homed to the extruder compression sensor')
 
     def test_compression_home_includes_buffer_travel(self):
-        """Compression trips after the tip reaches the extruder plus 70% of maxrange."""
+        """Compression trips after the tip reaches the extruder plus the centered compression threshold."""
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_LOAD')
         moves = [d for _g, d, reason in self.fil.history
                  if 'homing -> unit0:filament_compression' in reason]
         buffer = self.hh.mmu.mmu_machine.units[0].buffer
         expected = (self.fil.layout['extruder_entry']
-                    + buffer.buffer_maxrange * 0.7
+                    + (buffer.buffer_maxrange + buffer.buffer_range) / 2
                     - self.fil.layout['mmu_shared_exit'])
         self.assertTrue(moves)
         # Loading immediately reverse-homes off compression with the extruder; that

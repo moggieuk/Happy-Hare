@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { bufferPiston, interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -291,4 +291,27 @@ test('stationary extruder holds the nozzle tip through both gear wiggle directio
   const event={before:a,state:b,raw_before:state(110,true),raw_state:state(110+delta,true)};
   for (const fraction of [0,.25,.5,.75,1]) assert.equal(interpolate(event,fraction).tips[0],100);
  }
+});
+
+test('buffer consumes overtravel before leaving its stop',()=>{
+ const snapshot=(total)=>({...state(800,false),unit:'unit0',bowden_unabsorbed_mm:Math.max(0,total-12),devices:{'unit0:buffer':{displacement:total,travel:Math.min(12,total),maximum:12,excess:Math.max(0,total-12),value:1}}});
+ const e={before:snapshot(15),state:snapshot(9)};
+ assert.equal(interpolate(e,.25).devices['unit0:buffer'].travel,12);
+ assert.equal(interpolate(e,.25).bowden_unabsorbed_mm,1.5);
+ assert.equal(interpolate(e,.5).devices['unit0:buffer'].travel,12);
+ assert.equal(interpolate(e,.75).devices['unit0:buffer'].travel,10.5);
+ assert.equal(interpolate(e,.75).bowden_unabsorbed_mm,0);
+});
+
+test('buffer piston honors centered switches, spring rest, analog readings and stops',()=>{
+ const d={maximum:12,range:8,rest:0,travel:6,displacement:6,occupied:true};
+ assert.equal(bufferPiston(d,true,false).position,2);
+ assert.equal(bufferPiston(d,false,true).position,10);
+ for (const rest of [0,6,12]) assert.equal(bufferPiston({...d,occupied:false,rest}).position,rest);
+ assert.equal(bufferPiston({...d,proportional:true,value:.5}).position,8);
+ assert.equal(bufferPiston({...d,proportional:true,value:-1}).position,2);
+ assert.equal(bufferPiston({...d,proportional:true,value:1,displacement:11}).position,11);
+ const beyond=bufferPiston({...d,travel:12,displacement:15});
+ assert.equal(beyond.position,12); assert.equal(beyond.excess,3);
+ assert.equal(bufferPiston({...d,proportional:true,value:-1,displacement:-3}).position,0);
 });
