@@ -1,6 +1,9 @@
 # Copyright (C) 2022-2026 Paul Morgan
 # This file may be distributed under the terms of the GNU GPLv3 license.
-"""Bounded, versioned simulator telemetry. Capture and edits run on the printer thread.
+"""Source-backed viewer controls and legacy simulator diagnostics.
+
+SourceViewer serves the browser. LiveViewer retains harness-only observations
+for regression comparisons. Capture and edits run on the printer thread.
 
 HTTP readers consume immutable snapshots under a lock, including while the
 console is inside a command. They never execute commands or enter the reactor.
@@ -54,7 +57,8 @@ class LiveViewer:
         self.config_revision = 0
         self.macro_catalog = self._macro_catalog()
         self.pending_moves = {}
-        self.telemetry_records = collections.deque(maxlen=self.LIMIT*2)
+        from extras.mmu.mmu_telemetry_capture import TelemetryCapture
+        self.telemetry_capture = TelemetryCapture(session.mmu, limit=self.LIMIT*2)
         self.unsubscribe = session.mmu.movement_telemetry.subscribe(self.on_telemetry)
         self.wrap(session.printer.lookup_object('toolhead'), 'move', suppress_fallback=True)
         effects = getattr(session.printer, 'harness_macro_effects', {})
@@ -68,8 +72,6 @@ class LiveViewer:
         self.capture('session', 'Simulator ready')
 
     def on_telemetry(self, record):
-        with self.lock:
-            self.telemetry_records.append(record)
         if record['event'] == 'toolchange':
             self.capture('toolchange', record['label'], telemetry=record)
         if record['event'] == 'release':
@@ -119,11 +121,8 @@ class LiveViewer:
             error=record['error'], outcome=record['status'],
             fast_bowden=start['label'] in ('Fast loading move through bowden', 'Fast unloading move through bowden'))
 
-    def read_telemetry(self, after=0):
-        with self.lock:
-            return {'schema': 'happy_hare.motion', 'version': 1,
-                    'session_id': self.hh.mmu.movement_telemetry.session_id,
-                    'records': copy.deepcopy([r for r in self.telemetry_records if r['sequence'] > after])}
+    def read_telemetry(self, after=None):
+        return self.telemetry_capture.read(after)
 
     def wrap(self, owner, method, suppress_fallback=False):
         original = owner.get(method) if isinstance(owner, dict) else getattr(owner, method, None)
@@ -182,6 +181,7 @@ class LiveViewer:
             setattr(owner, method, movement)
 
     def close(self):
+        self.telemetry_capture.close()
         self.unsubscribe()
         for owner, method, original in reversed(self.wrapped):
             if isinstance(owner, dict):
@@ -597,6 +597,7 @@ class LiveViewer:
                                    for name, (_, sensor) in self.hh.mmu.sensor_manager.get_sensor_states(all_sensors=True).items()}))
 
     def observe_configuration(self, state=None):
+        self.telemetry_capture.observe()
         if self.latest_raw is None:
             return
         state = self.snapshot() if state is None else state
@@ -676,3 +677,26 @@ class LiveViewer:
                         scope='machine' if index == 0 else 'unit' if index < 4 else 'other',
                         group=groups[index])
         return list(result.values())
+
+
+class SourceViewer:
+    """Console controls and source capture; no simulator animation observations."""
+    parameters = LiveViewer.parameters
+    macro_parameters = LiveViewer.macro_parameters
+    _macro_catalog = LiveViewer._macro_catalog
+
+    def __init__(self, session):
+        from extras.mmu.mmu_telemetry_capture import TelemetryCapture
+        self.hh = session
+        self.macro_catalog = self._macro_catalog()
+        self.telemetry_capture = TelemetryCapture(session.mmu)
+        self.session_id = session.mmu.movement_telemetry.session_id
+
+    def read_telemetry(self, after=None):
+        return self.telemetry_capture.read(after)
+
+    def observe_configuration(self):
+        self.telemetry_capture.observe()
+
+    def close(self):
+        self.telemetry_capture.close()

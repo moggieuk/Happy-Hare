@@ -694,8 +694,8 @@ class Console:
             self.args.no_serve = no_serve
             self.bridge = bridge
             bridge.session = self.hh
-            from test.hh.live_viewer import LiveViewer
-            bridge.viewer = LiveViewer(self.hh)
+            from test.hh.live_viewer import SourceViewer
+            bridge.viewer = SourceViewer(self.hh)
             bridge.profile_name = str(self.args.profile)
             bridge.last_sent.clear()
             self._install_pace_observer()
@@ -1008,6 +1008,8 @@ class Console:
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
+        if self.bridge is not None and re.match(r'^\s*(?:_?MMU_\w+|SET_GCODE_VARIABLE|SET_FILAMENT_SENSOR)(?:\s|$)', line, re.I):
+            self.bridge.viewer.observe_configuration()
         if warn_unknown:
             self._warn_unhandled(line, unhandled_mark)
             self._warn_silent_macro(line, mark)

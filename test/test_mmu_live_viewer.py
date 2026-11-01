@@ -68,10 +68,10 @@ class TestLiveViewer(unittest.TestCase):
 
     def test_raw_telemetry_reads_do_not_expose_mutable_capture_records(self):
         self.hh.mmu.move_filament('Original label', 1)
-        record = self.viewer.read_telemetry()['records'][0]
+        record = next(r for r in self.viewer.read_telemetry()['records'] if r['event'] == 'movement_start')
         record['label'] = 'Changed by reader'
         record['sensors'].clear()
-        reread = self.viewer.read_telemetry()['records'][0]
+        reread = next(r for r in self.viewer.read_telemetry()['records'] if r['event'] == 'movement_start')
         self.assertEqual(reread['label'], 'Original label')
         self.assertTrue(reread['sensors'])
 
@@ -637,9 +637,9 @@ class TestLiveViewer(unittest.TestCase):
         bridge = WebUiBridge(self.hh, self.hh.run_gcode, port=0)
         with mock.patch('test.hh.webui_bridge._Server', side_effect=OSError('busy')):
             with self.assertRaises(OSError): bridge.start()
-        self.assertNotIn(bridge.viewer.on_telemetry, self.hh.mmu.movement_telemetry.listeners)
-        self.assertIsNone(self.hh.printer.harness_stepper_observer)
-        self.assertIsNone(self.hh.printer.harness_drive_observer)
+        self.assertNotIn(bridge.viewer.telemetry_capture.on_event, self.hh.mmu.movement_telemetry.listeners)
+        self.assertEqual(self.hh.printer.harness_stepper_observer, self.viewer.on_stepper)
+        self.assertEqual(self.hh.printer.harness_drive_observer, self.viewer.on_drive)
         self.assertFalse(pathlib.Path(bridge.uploads.name).exists())
 
     def test_parameter_groups_match_test_config_owners(self):
@@ -666,10 +666,10 @@ class TestViewerConsole(unittest.TestCase):
         self.console.close()
 
     def test_http_capture_does_not_need_console_service(self):
-        url='http://127.0.0.1:%d/sim/viewer/events'%self.bridge.port
+        url='http://127.0.0.1:%d/sim/viewer/telemetry'%self.bridge.port
         with urllib.request.urlopen(url,timeout=2) as response:
-            self.assertIn('events',json.load(response)['result'])
-        with urllib.request.urlopen(url.replace('/events','/'),timeout=2) as response:
+            self.assertEqual(json.load(response)['result']['records'][0]['event'], 'session')
+        with urllib.request.urlopen(url.replace('/telemetry','/'),timeout=2) as response:
             self.assertIn(b'Live simulator',response.read())
 
     def configure_macro(self, macro, name, value):
@@ -681,23 +681,17 @@ class TestViewerConsole(unittest.TestCase):
         with contextlib.redirect_stdout(self.out):
             self.bridge.rpc_sim_viewer_restart(None, {'profile': 'ercf_vvd'})
         viewer = self.bridge.viewer
-        initial = viewer.read()['events'][0]
+        initial = viewer.read_telemetry()['records'][0]
         macro = '_MMU_CUT_TIP_VARS'
-        item = next(p for p in viewer.macro_parameters() if p['macro'] == macro and p['name'] == 'blade_pos')
-        old = item['value']
+        old = initial['state']['macros'][macro]['blade_pos']
         with self.assertRaises(RpcError):
             self.configure_macro(macro, 'blade_pos', "'not a number'")
         self.configure_macro(macro, 'blade_pos', str(old + 5))
-        pending = viewer.read()['pending_config']
-        self.assertEqual(pending['kind'], 'config')
-        self.assertEqual(pending['state']['cutters'][0]['position'], initial['state']['cutters'][0]['position'] - 5)
-        self.assertEqual(initial['state']['configuration']['macros'][item['id']], old)
-        viewer.capture('state', 'State changed')
-        self.assertIsNotNone(viewer.read()['pending_config'])
+        pending = viewer.read_telemetry()['records'][-1]
+        self.assertTrue(pending['pending'])
+        self.assertIn(dict(path=['macros', macro, 'blade_pos'], value=old+5), pending['changes'])
         self.configure_macro(macro, 'blade_pos', str(old))
-        viewer.capture('state', 'State changed')
-        self.assertIsNone(viewer.read()['pending_config'])
-        self.assertEqual(len(viewer.read()['events']), 1)
+        self.assertEqual(viewer.read_telemetry()['records'], [initial])
 
     def test_grouped_configuration_precedes_move_with_historical_geometry(self):
         with contextlib.redirect_stdout(self.out):
@@ -709,34 +703,39 @@ class TestViewerConsole(unittest.TestCase):
         with contextlib.redirect_stdout(self.out):
             self.bridge.rpc_sim_viewer_configure(None,dict(unit=0,name='toolhead_ooze_reduction',value='1.5'))
             self.console.hh.mmu.move_filament('after settings', 1, motor='gear')
-        events = viewer.read()['events']
-        configs = [e for e in events if e['kind'] == 'config']
-        self.assertEqual(len(configs), 1)
-        self.assertGreaterEqual(len(configs[0]['changes']), 2)
-        move = next(e for e in events if e['kind'] == 'movement')
-        self.assertLess(configs[0]['seq'], move['seq'])
-        self.assertEqual(move['before']['cutters'], configs[0]['state']['cutters'])
-        self.assertEqual(move['state']['configuration'], configs[0]['state']['configuration'])
-        self.assertNotEqual(events[0]['state']['cutters'], move['state']['cutters'])
+        records = viewer.read_telemetry()['records']
+        config = next(r for r in records if r['event'] == 'state_delta')
+        self.assertGreaterEqual(len(config['changes']), 2)
+        self.assertLess(config['sequence'], next(r['sequence'] for r in records if r['event'] == 'movement_start'))
+        self.assertEqual(records[0]['state']['macros'][macro]['blade_pos'], old)
+        self.assertFalse(any(r.get('pending') for r in records))
 
     def test_sensor_toggles_coalesce_but_survive_a_move(self):
         viewer = self.bridge.viewer
-        name = next(n for n, sensor in viewer.snapshot()['sensors'].items() if sensor['enabled'])
+        initial = viewer.read_telemetry()['records'][0]
+        name = next(n for n, sensor in initial['state']['printer']['mmu']['sensors'].items() if sensor['enabled'])
         def toggle(enabled):
             with contextlib.redirect_stdout(self.out):
                 self.bridge.rpc_sim_viewer_sensor(None, dict(name=name, enabled=enabled))
-                viewer.capture('state', 'State changed')
         toggle(False)
-        self.assertFalse(viewer.read()['pending_config']['state']['sensors'][name]['enabled'])
+        self.assertTrue(viewer.read_telemetry()['records'][-1]['pending'])
         toggle(True)
-        self.assertIsNone(viewer.read()['pending_config'])
+        self.assertEqual(viewer.read_telemetry()['records'], [initial])
         toggle(False)
         with contextlib.redirect_stdout(self.out):
             self.console.hh.mmu.move_filament('disabled sensor', 1, motor='gear')
         toggle(True)
-        self.assertEqual(len([e for e in viewer.read()['events'] if e['kind']=='config']), 1)
-        self.assertIsNotNone(viewer.read()['pending_config'])
-        self.assertTrue(viewer.read()['events'][0]['state']['sensors'][name]['enabled'])
+        records = viewer.read_telemetry()['records']
+        self.assertTrue(records[-1]['pending'])
+        self.assertTrue(any(r['event']=='state_delta' and not r.get('pending') for r in records))
+        self.assertTrue(initial['state']['printer']['mmu']['sensors'][name]['enabled'])
+
+    def test_running_bridge_does_not_observe_simulator_geometry(self):
+        with mock.patch.object(self.console.hh, 'filament', side_effect=AssertionError('simulator geometry')):
+            self.bridge.viewer.observe_configuration()
+            self.bridge.viewer.read_telemetry()
+        self.assertIsNone(getattr(self.console.hh.printer, 'harness_stepper_observer', None))
+        self.assertIsNone(getattr(self.console.hh.printer, 'harness_drive_observer', None))
 
     def test_internal_macro_variables_are_rejected_and_strings_are_quoted(self):
         with self.assertRaises(RpcError):
