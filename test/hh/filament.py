@@ -93,7 +93,7 @@ DEFAULT_LAYOUT = {
     'extruder': 700.0,
     'toolhead': 740.0,
     # Fallback for machines without the dynamically modelled, tension-sprung switch
-    # buffer. configure_buffers() moves this landmark forward by 70% of buffer_maxrange
+    # buffer. configure_buffers() moves this landmark to the centered compression switch
     # for the common two-switch design.
     'filament_compression': 700.0,
 }
@@ -108,10 +108,6 @@ DEFAULT_TAG_OFFSET = 0.0
 # Half-width of the NFC read zone: a tag is detectable within +/- this of the reader.
 DEFAULT_TAG_WINDOW = 15.0
 
-# A switch-style buffer normally reaches its compression switch before the physical
-# end stop. There is no more precise geometry in mmu_hardware.cfg, so keep the model's
-# deliberately approximate switch point in one named place.
-BUFFER_COMPRESSION_FRACTION = 0.7
 
 
 class Tag:
@@ -152,23 +148,23 @@ class FilamentPath:
         # the Session to turn filament travel into encoder pulses; a switch cannot
         # express that, because an encoder reports MOTION rather than presence.
         self.observers = []
-        # Unit-qualified switch-buffer geometry, populated from the real MmuBuffer
-        # objects by Session.filament(). Only tension-sprung, two-switch buffers are
-        # modelled dynamically; other buffer types retain their configured resting state.
+        # Unit-qualified physical buffer geometry from the real MmuBuffer objects.
+        # Switch and proportional buffers share travel and spring-rest positions.
         self.buffers = {}
         self._selected_gate = None
         self._drive_mode = None
+        self._set_buffer_value = None
+        self._gripped = lambda gate: False
+        self.unabsorbed = [0.] * num_gates
 
-    def configure_buffers(self, units, selected_gate=None, drive_mode=None):
+    def configure_buffers(self, units, selected_gate=None, drive_mode=None, gripped=None):
         """Import the physical buffer travel configured for each MMU unit."""
         self._selected_gate = selected_gate
         self._drive_mode = drive_mode
+        self._gripped = gripped or (lambda gate: False)
         for unit in units:
             buffer = getattr(unit, 'buffer', None)
-            if (buffer is None
-                    or getattr(buffer, 'buffer_spring_state', 'none') != 'tension'
-                    or getattr(buffer, 'compression_sensor', None) is None
-                    or getattr(buffer, 'tension_sensor', None) is None):
+            if buffer is None:
                 continue
             maxrange = float(getattr(buffer, 'buffer_maxrange', 0.))
             if maxrange <= 0.:
@@ -183,20 +179,31 @@ class FilamentPath:
                                   connected.first_gate + connected.num_gates)
             )
             entry = self.layout['extruder_entry']
+            sensor_range = min(maxrange, max(0., float(getattr(buffer, 'buffer_range', maxrange))))
+            spring = getattr(buffer, 'buffer_spring_state', 'none')
+            spring_value = {'tension': -1, 'neutral': 0, 'compression': 1, 'compressed': 1}.get(spring, spring if isinstance(spring, (int, float)) else 0)
+            rest = maxrange * (spring_value + 1) / 2
             self.buffers[prefix] = {
                 'gates': gates,
                 'entry': entry,
-                'compression': entry + maxrange * BUFFER_COMPRESSION_FRACTION,
-                'compression_travel': maxrange * BUFFER_COMPRESSION_FRACTION,
+                'compression': entry + (maxrange + sensor_range) / 2 - rest,
+                'compression_travel': (maxrange + sensor_range) / 2,
+                'tension_travel': (maxrange - sensor_range) / 2,
+                'range': sensor_range,
+                'rest': rest,
+                'spring': spring,
+                'proportional': getattr(buffer, 'proportional_sensor', None) is not None,
                 'maxrange': maxrange,
-                'travel': {gate: 0. for gate in gates},
+                'travel': {gate: rest for gate in gates},
                 'contact': {gate: False for gate in gates},
+                'excess': {gate: 0. for gate in gates},
             }
 
         # The console's path legend reads the unqualified layout. A shared path can
         # only draw one landmark, so use the first configured buffer as its representative.
-        if self.buffers:
-            first = next(iter(self.buffers.values()))
+        switch_buffers = list(self.buffers.values())
+        if switch_buffers:
+            first = switch_buffers[0]
             self.layout['filament_compression'] = first['compression']
         return self
 
@@ -204,12 +211,14 @@ class FilamentPath:
     def place(self, gate, position, sync=True):
         """Put a gate's filament tip at an absolute path position."""
         self.tip[gate] = float(position)
+        self.unabsorbed[gate] = 0.
         for geometry in self.buffers.values():
             if gate in geometry['travel']:
                 # Absolute placement says where the filament is along the path, not
-                # whether it is pushing against the extruder. Only a compression-home
+                # whether it is pushing against the extruder. A compression-home or confirmed extruder grip
                 # establishes that contact and stores subsequent relative motion.
-                geometry['travel'][gate] = 0.
+                geometry['travel'][gate] = geometry['rest']
+                geometry['excess'][gate] = 0.
                 geometry['contact'][gate] = False
         if sync:
             self.sync(gate)
@@ -308,7 +317,7 @@ class FilamentPath:
         tip = self.tip[gate]
         travel = geometry['travel'][gate]
         if name.split(':')[-1] == 'filament_tension':
-            return tip < geometry['entry'] and travel <= 0.
+            return (self._gripped(gate) or tip < geometry['entry'] or geometry['contact'][gate]) and travel <= geometry['tension_travel'] + 1e-9
         return travel + 1e-9 >= geometry['compression_travel']
 
     def gate_of(self, name):
@@ -421,12 +430,22 @@ class FilamentPath:
         return best
 
     def _buffer_trip_distance(self, gate, delta, name, sought):
-        """Distance to a switch transition in a tension-sprung buffer."""
+        """Distance to a switch transition in a buffer."""
         current = self._buffer_triggered(name, gate)
         if current == bool(sought):
             return 0.
         geometry = self._buffer_geometry(name)
         start = self.tip[gate]
+        if self._gripped(gate):
+            mode = self._drive_mode(gate) if self._drive_mode else 'gear'
+            relative = delta if mode == 'gear' else -delta if mode == 'extruder' else 0.
+            if not relative:
+                return None
+            tension = name.endswith('filament_tension')
+            target = (geometry['tension_travel'] if sought else geometry['tension_travel']+1e-6) if tension else (geometry['compression_travel'] if sought else geometry['compression_travel']-1e-6)
+            total = geometry['travel'][gate]+geometry['excess'][gate]
+            distance = (target-total)*(1 if relative > 0 else -1)
+            return distance if 0 <= distance <= abs(delta) else None
         forward = delta > 0.
         bare = name.split(':')[-1]
         epsilon = 1e-6
@@ -502,8 +521,11 @@ class FilamentPath:
         if not delta:
             return self.tip[gate]
         start_tip, start_tail = self.tip[gate], self.tail[gate]
+        mode = self._motion_mode(gate, reason)
+        held = (self._gripped(gate) and mode == 'gear'
+                and any(gate in geometry['travel'] for geometry in self.buffers.values()))
         self._advance_buffer(gate, delta, start_tip, reason)
-        self.tip[gate] += delta
+        self.tip[gate] += 0. if held else delta
         self.tail[gate] += delta        # filament moves as one piece
         self.history.append((gate, delta, reason))
         logging.debug('filament: gate %d %+.2f -> %.2f (%s)',
@@ -513,8 +535,30 @@ class FilamentPath:
             observe(gate, delta, start_tip, start_tail)
         return self.tip[gate]
 
+    def _motion_mode(self, gate, reason):
+        mode = self._drive_mode(gate) if self._drive_mode else 'gear'
+        # Unsynced G1 extrusion still drives the extruder, not the MMU gear.
+        return 'extruder' if reason == 'toolhead extrusion' and mode == 'gear' else mode
+
     def _advance_buffer(self, gate, delta, start_tip, reason):
-        """Store relative gear/extruder travel in a tension-sprung buffer."""
+        """Store relative gear/extruder travel in a buffer."""
+        if self._gripped(gate):
+            mode = self._motion_mode(gate, reason)
+            relative = delta if mode == 'gear' else -delta if mode == 'extruder' else 0.
+            geometry = next((g for g in self.buffers.values() if gate in g['travel']), None)
+            if geometry is None:
+                # No spring simulation: report commanded mismatch, not force.
+                self.unabsorbed[gate] += relative
+            else:
+                total = geometry['travel'][gate]+geometry['excess'][gate]+relative
+                travel = min(geometry['maxrange'], max(0., total))
+                geometry['travel'][gate] = travel
+                geometry['excess'][gate] = total-travel
+                geometry['contact'][gate] = True
+                self.unabsorbed[gate] = total-travel
+            return
+        if self.tip[gate] < self.layout['extruder_entry']:
+            self.unabsorbed[gate] = 0.
         for geometry in self.buffers.values():
             if gate not in geometry['travel']:
                 continue
@@ -539,8 +583,11 @@ class FilamentPath:
                 travel -= delta
             # Equal gear/extruder motion transports filament without changing the buffer.
             geometry['travel'][gate] = min(geometry['maxrange'], max(0., travel))
-            if start_tip + delta < geometry['entry'] and geometry['travel'][gate] <= 0.:
+            if start_tip + delta < geometry['entry']:
                 contact = False
+                geometry['travel'][gate] = geometry['rest']
+                geometry['excess'][gate] = 0.
+                self.unabsorbed[gate] = 0.
             geometry['contact'][gate] = contact
 
     # -- pushing state into Happy Hare -------------------------------------
@@ -549,10 +596,20 @@ class FilamentPath:
         Drive every sensor whose modelled state differs from what HH believes, through
         HH's real button callbacks (never by poking filament_present).
         """
+        if self._set_buffer_value is not None:
+            for name, geometry in self.buffers.items():
+                if not geometry['proportional']:
+                    continue
+                active = self._buffer_gate(geometry, gate)
+                value = (2*geometry['travel'][active]-geometry['maxrange']) / max(geometry['range'], 1e-9)
+                self._set_buffer_value(name, max(-1., min(1., value)))
         if self._set_sensor is None:
             return
         gates = range(self.num_gates) if gate is None else [gate]
         for name in self.sensor_names():
+            geometry = self._buffer_geometry(name)
+            if geometry is not None and geometry['proportional']:
+                continue  # ADC callback owns its virtual switches.
             owner = self.gate_of(name)
             if owner is not None and owner not in gates:
                 continue
