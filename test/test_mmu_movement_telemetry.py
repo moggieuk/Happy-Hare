@@ -25,6 +25,21 @@ class TestMovementTelemetry(unittest.TestCase):
         self.unsubscribe()
         self.hh.close()
 
+    def test_gripping_moves_have_source_annotations(self):
+        with session('ercf_vvd') as hh:
+            hh.boot(calibrate=True, selected_gate=0)
+            records = []
+            unsubscribe = hh.mmu.movement_telemetry.subscribe(records.append)
+            try:
+                hh.mmu.selector().filament_release()
+                hh.mmu.selector().filament_drive()
+            finally:
+                unsubscribe()
+            moves = [r for r in records if r['event'] == 'movement_start']
+            self.assertTrue(moves)
+            self.assertTrue(all(r['label'] == 'Engaging mmu gear' for r in moves))
+            self.assertEqual({r['requested_mm'] for r in moves}, {0.8, -0.8})
+
     def pair(self):
         moves = [r for r in self.records if r['event'].startswith('movement_')]
         self.assertEqual(len(moves), 2)

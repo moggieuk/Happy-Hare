@@ -456,7 +456,7 @@ class MmuFilamentMovement:
                         # Don't reset if filament is buffered
                         self.gate_maps.set_gate_status(
                             gate, max(self.gate_status[gate], GATE_AVAILABLE))
-                        self.set_filament_pos_state(FILAMENT_POS_START_BOWDEN)
+                        self.set_filament_pos_state(FILAMENT_POS_START_BOWDEN, homing_overshoot_mm=measured)
                         self.log_trace_exit(f"_home_to_gate() => (overshoot={measured})")
                         return measured, False
 

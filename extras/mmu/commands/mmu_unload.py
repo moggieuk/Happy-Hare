@@ -54,6 +54,7 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
 
         if self.check_if_disabled(): return
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
+        mmu._toolchange_event(gcmd)
         mmu.fix_started_state()
 
         if mmu.filament_pos == FILAMENT_POS_UNLOADED:
