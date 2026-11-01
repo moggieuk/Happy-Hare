@@ -582,21 +582,29 @@ required. `--no-serve` disables both the viewer and the existing API.
 
 The diagram follows the console session, including commands typed at the terminal
 or sent from the browser. It shows the MMU and extruder gears, a compressed Bowden
-path, configured switches and encoder/buffer state. Positions follow the harness's
-existing geometry and material model; this is not a physical melt simulation.
+path, configured switches and encoder/buffer state. Animation is reconstructed
+from Happy Hare source telemetry in `viewer/telemetry.js`; it never reads the
+simulator's filament coordinates or stepper-observer hooks. This is a schematic
+interpretation of commanded motion and sensor observations, not a melt simulation.
 Most macro bodies retain the harness's recorded-only behavior described below.
 
-The trace records simulated gear/extruder and selector travel, filament movement,
-state changes and browser parameter edits. Logical movement records are published when each move completes, with start/end
+The trace records MMU gear/extruder moves, MMU-owned G1 extrusion, cutter hooks,
+toolchange markers, filament state changes and relevant configuration edits.
+Selector motion and simulator-only macro fallbacks do not create animation steps. Logical movement records are published when each move completes, with start/end
 states, actual travel and homing outcome. The viewer queues and interpolates them; HTTP polling reads immutable snapshots without waiting for the command
 to return or entering the reactor from a server thread. Pacing (`--pace`) makes
 long moves easier to follow. Instant operations can finish before the browser's
 next refresh, but their events remain available for replay.
 
 **Previous**, **Next** and the timeline inspect captured state without rewinding
-Happy Hare itself and stop automatic playback. **Play one step** animates the next
-entry; **Play continuously** animates the backlog and then follows live events.
-**Go live** skips the backlog.
+Happy Hare itself and stop automatic playback. **Play** animates the backlog and
+then follows live events. While playing, that button becomes **Pause**, which
+finishes the current step before stopping. **End, go live** skips the backlog.
+**Show internal updates** reveals expandable diagnostic rows in Movement trace.
+These retain their source sequence numbers but are skipped by playback, the
+previous/next buttons and the timeline. Updates observed during a move are shown
+for inspection without applying them to the preceding step.
+
 Playback uses the resolved feed speed in the source telemetry, independently of
 console pacing. Bowden time compression is off by default: the path is drawn
 shorter but takes distance/speed time. The optional compression checkbox shortens
@@ -615,11 +623,22 @@ a **!** with sensor details. Disabled sensors provide no constraint.
 
 Ordinary presence sensors switch as the interpolated filament crosses their
 location. Recorded states are authoritative at movement endpoints; disabled or
-overridden sensors are not inferred from geometry. Buffer switches use captured
-buffer travel, and encoder values interpolate measured readings. Capture is
-bounded to the latest 3,000 events. **Save trace** exports version-2 JSON with a
-session identifier, sequence numbers, virtual timestamps and state snapshots.
-It is a first simulator telemetry format, not yet a real-printer log importer.
+overridden sensors are not inferred from geometry. Buffer travel is inferred from
+motor differences, constrained by its configured spring, travel limits and sensor
+readings. Proportional readings and successful buffer homing establish its position;
+equal synced travel preserves that position. Encoder labels update at move endpoints.
+
+**Save telemetry** exports the bounded source recording as JSONL. **Load telemetry**
+opens that JSONL (or a JSON array/envelope of records) with the same replay reducer
+used live. Loading starts paused at the beginning. Printer controls are disabled,
+live updates cannot overwrite the file, and playback stops at its end. The viewer
+continues working if the simulator disconnects after the page has loaded.
+**Return to live** reconnects to the current capture. Files require a v2 session
+snapshot; older motion-only JSONL and diagnostic trace files cannot be loaded.
+
+**Save trace**, available in the temporary local Test panel, exports the browser's
+derived animation snapshots for diagnostics.
+It is larger than the source recording and is not the replay input format.
 
 Runtime parameter choices come from the same parameter specifications and guards
 as `MMU_TEST_CONFIG`, including unit and calibration parameters where available.
@@ -667,9 +686,11 @@ MMU commands and macros invoked through `wrap_gcode_command` temporarily observe
 the original G1 text. Unannotated moves use that text as their label.
 Absolute/relative extrusion, coordinate resets and flow overrides are respected.
 Only the owning execution context is observed; ordinary print moves, `G0`, and
-arc-generated segments are excluded. The exact previous G1 handler is restored
-on completion or error, so printing outside an MMU scope has no G1 telemetry
-wrapper overhead. With no subscribers, the wrapper is never installed.
+arc-generated segments are excluded. A permanent G1 wrapper is installed once at
+Klipper readiness, retaining the previous handler for delegation. Outside an MMU
+scope it checks for an active scope and immediately calls that handler. Scopes
+never change command registration, and errors always clear their ownership state.
+With no subscribers, scopes do not activate telemetry collection.
 
 These outcomes have `status=submitted`: positions describe accepted commands,
 not measured physical completion. Estimated duration excludes acceleration and
@@ -758,9 +779,10 @@ recorded endpoint states.
 Viewer snapshots retain `raw_state`/`raw_before` separately from displayed states.
 A forward move with stationary extruder motors stops the displayed tip at the
 configured gear position, while motor travel continues. The gear position is the
-harness entry coordinate plus `toolhead_entry_to_extruder`. Clear enabled presence
-sensors bound occupied filament; buffer and encoder sensors are excluded. Finite
-filament tails may pass a clear sensor once they no longer cover it. These are
+schematic Bowden endpoint plus `toolhead_entry_to_extruder`. Clear enabled presence
+sensors bound occupied filament; buffer and encoder sensors are excluded. The
+source does not report a continuous physical tail coordinate, so runout-tail
+geometry is not reconstructed. These are
 visual constraints: they do not change simulator physics, homing results or source
 telemetry. Extruder-fed travel beyond the configured nozzle accumulates as
 `extruded_mm` and grows a shaded purge coil. Retraction leaves deposited filament
@@ -816,20 +838,48 @@ of physical filament movement, and a submitted move is not proof of completion.
 Encoder travel is reported separately for that reason. Origin changes are not
 filament travel; before/after drive positions share the stated reference.
 
-The viewer consumes these pairs and adds its own simulated geometry snapshots.
-It no longer intercepts `move_filament()` or infers its speed from nested calls.
-**Save motion telemetry** downloads the bounded source records as JSONL;
-`/sim/viewer/telemetry?after=<sequence>` exposes the same stream. **Save trace**
-also includes the pairs alongside simulated geometry. These are separate formats.
+The browser consumes these pairs and derives animation snapshots locally. The
+console bridge captures source records without wrapping movement methods or
+observing simulator geometry. The older `LiveViewer` harness adapter remains only
+for diagnostic regression tests; the running bridge uses `SourceViewer`.
+**Save motion telemetry** now downloads the compact v2 capture as JSONL.
+`/sim/viewer/telemetry?after=<sequence>` exposes the same stream. Its first
+`session` record contains the schema, session identity and a baseline of relevant
+MMU/machine state, calibration, sensors and toolhead macro dimensions. Later
+`state_delta` records contain changed leaves only and precede the source event
+that observed them. Paths are arrays of keys; `remove: true` deletes a value,
+whereas `value: null` explicitly stores an unknown value. Edits that cancel before
+the next event are omitted. Idle UI edits and completed configuration commands
+produce a replaceable pending delta, allowing an immediate preview without
+retaining edits that are subsequently undone. There is no periodic printer-wide
+status scan. Omitting `after` requests a session baseline; `after=0` requests only
+records after the initial baseline. A new session or expired cursor requires a reset.
+
+`extras/mmu/mmu_telemetry_capture.py` owns this capture independently of the
+simulator. Create `TelemetryCapture(mmu)` on the printer thread after readiness;
+call `close()` when capture ends. Reads return detached copies and can run from
+an HTTP reader thread. Source subscribers still receive the existing v1 callback
+records. The recorder removes their repeated schema/session fields on export.
+
+History is bounded. When an incremental cursor expires, `reset: true` accompanies
+a replacement session baseline with `checkpoint: true`. That baseline restores
+printer facts, but discarded movements cannot restore previously inferred purge
+or fragment geometry; a consumer must restart its inference at that checkpoint.
+Live and offline replay use only these captured facts and events. Neither loads
+current printer settings to interpret old movement.
 
 Coverage includes `move_filament()`, MMU-owned G1 extrusion, and explicit cutter
-hooks. Direct selector and simplified modeled macro moves use labeled harness
-fallbacks in the viewer; those are not source JSONL movement pairs. Audit remaining
-STEPPER categories before removing that log level. Importing real-server captures
-into the viewer remains future work.
+hooks. Direct selector motion and simplified modeled macro effects without source
+events are not animation inputs. Audit remaining STEPPER categories before removing
+that log level. A real-printer transport must supply this same capture format; the
+simulator HTTP endpoint is not installed as a Klipper/Moonraker endpoint.
 
 Tests: `make test UT=test_mmu_movement_telemetry.py` and
-`node --test test/hh/viewer/playback.test.mjs`, plus the viewer and movement suites.
+`node --test test/hh/viewer/*.test.mjs`, plus the capture and viewer suites.
+The replay fixtures under `test/hh/viewer/fixtures/` were captured with `ercf_vvd`
+and `emu` console profiles using `MMU_LOAD`, `MMU_UNLOAD`, then `MMU_LOAD`.
+They contain source records only. Tests compare batched live reduction with JSONL
+loading and exercise every interpolated movement endpoint.
 
 ### Driving a real Mainsail or Fluidd — the web API
 
