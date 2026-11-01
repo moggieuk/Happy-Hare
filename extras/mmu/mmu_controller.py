@@ -588,12 +588,13 @@ class MmuController(MmuFilamentMovement):
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
         speed = float(sequence_vars.variables.get(speed_var, 30)) if sequence_vars else 30.
         self.log_info("%s %.1fmm to leave %.1fmm retracted" % ("Retracting" if length > 0 else "Un-retracting", abs(length), retract))
-        self.gcode.run_script_from_command(
-            "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
-            "M83\n"
-            "G1 E%.2f F%d\n"
-            "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
-        )
+        with self.gcode_telemetry.scope('standalone_load_retraction', label='Final load retraction'):
+            self.gcode.run_script_from_command(
+                "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
+                "M83\n"
+                "G1 E%.2f F%d\n"
+                "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
+            )
         self._set_park_retracted_length(retract)
         self._persist_park_retraction()
         self._report_standalone_load_retraction(-length)
@@ -3908,6 +3909,9 @@ class MmuController(MmuFilamentMovement):
         self.led_manager.gate_map_changed(gate)
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
+        self.movement_telemetry.state('gate_changed', previous_gate=prev_gate,
+                                     gate=gate, unit=self.mmu_unit(gate).name)
+
 
         # A real gate in use means the bypass filament is gone
         if gate >= 0 and self.bypass_filament:

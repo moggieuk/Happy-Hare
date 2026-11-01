@@ -3,6 +3,15 @@ export function interpolate(event, fraction) {
   const a = event.before, b = event.state;
   if (!a || fraction >= 1) return b;
   if (fraction <= 0) return a;
+  if (event.kind === 'gate_changed') {
+    const eased = fraction*fraction*(3-2*fraction);
+    const state = structuredClone(fraction < .5 ? a : b);
+    const from = a.gate >= 0 ? a.gate : b.gate;
+    const to = b.gate >= 0 ? b.gate : a.gate;
+    state.gate_focus = from+(to-from)*eased;
+    state.gate_path_opacity = Math.abs(2*fraction-1);
+    return state;
+  }
   if (event.kind === 'cut') return fraction < .4 ? a : b;
   const mix = (x,y) => typeof x === 'number' && typeof y === 'number' ? x+(y-x)*fraction : x;
   const s = structuredClone(a);
@@ -77,8 +86,8 @@ export function interpolate(event, fraction) {
   return s;
 }
 export function duration(event, compressBowden = false) {
+  if (event.kind === 'gate_changed') return 800;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
-  if (event.kind === 'purge_release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
   // Use resolved feed speed, not console pacing or time spent waiting for sensors.
@@ -138,7 +147,7 @@ export class CommandHistory {
 }
 
 export function traceText(event) {
-  const prefix = `${event.seq} · ${event.time.toFixed(3)}s · ${event.kind === 'movement' ? (event.homing ? 'homing move' : (event.source || event.telemetry?.start?.source) === 'mmu_gcode' ? 'G1' : 'move') : event.kind} · `;
+  const prefix = `${event.seq} · ${event.time.toFixed(3)}s · ${event.kind === 'movement' ? (event.homing ? 'homing move' : (event.source || event.telemetry?.start?.source) === 'mmu_gcode' ? 'G1' : 'move') : event.kind === 'state' ? 'state changed' : event.kind === 'gate_changed' ? 'gate changed' : event.kind} · `;
   if (event.kind === 'config') return prefix + (event.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.after)}`).join(' · ');
   if (event.kind !== 'movement') return prefix + event.label;
   const start = event.telemetry?.start;
@@ -278,14 +287,18 @@ export function purgeCoils(state, nozzleDiameter = .4) {
   const total = purgeStrandLength((state.extruded_mm || 0)-(state.purge_base_mm || 0), nozzleDiameter);
   const amount = total % 36;
   const base = (state.purge_base_mm || 0) + (total-amount)/ratio;
-  const layers = Math.max(0, (Math.min(30,amount)-1.2)/28.8*10);
+  // The drawing uses 7px for 1.75mm filament; leave a small gap between strands.
+  const pitch = (7 * nozzleDiameter / 1.75) * 1.15;
+  const capacity = 32 / pitch;
+  const layers = Math.max(0, (Math.min(30,amount)-1.2)/28.8*capacity);
   const coils = [];
   for (let layer=0; layer<Math.ceil(layers); layer++) {
-    const y=498-layer*3.2, radius=23-layer*1.75;
-    coils.push({path:`M260,${y} C${260-radius},${y-5} ${260-radius},${y+5} 260,${y+2} S${260+radius*1.6},${y-3} 260,${y-3}`,
-      fraction: Math.min(1,layers-layer), color:purgeColor(state,base+(1.2+layer*2.88)/ratio)});
+    const height=layer*pitch, y=498-height, radius=23-height*1.75/3.2;
+    const bend=pitch/3.2;
+    coils.push({path:`M260,${y} C${260-radius},${y-5*bend} ${260-radius},${y+5*bend} 260,${y+2*bend} S${260+radius*1.6},${y-3*bend} 260,${y-3*bend}`,
+      fraction: Math.min(1,layers-layer), color:purgeColor(state,base+(1.2+layer*28.8/capacity)/ratio)});
   }
-  return {amount, layers, coils, drop:state.purge_drop ?? Math.max(0,(amount-30)/6)};
+  return {amount, layers, pitch, coils, drop:state.purge_drop ?? Math.max(0,(amount-30)/6)};
 }
 
 // Sensor readings constrain the illustration; modeled displacement supplies overtravel.

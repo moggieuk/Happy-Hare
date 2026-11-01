@@ -15,7 +15,7 @@ class GcodeExtrusionTelemetry:
         self.handling = set()
 
     @contextlib.contextmanager
-    def scope(self, name):
+    def scope(self, name, label=None):
         telemetry = self.mmu.movement_telemetry
         if not telemetry.listeners:
             yield
@@ -35,7 +35,7 @@ class GcodeExtrusionTelemetry:
                 self.original = None
                 raise
         stack = self.owners.setdefault(owner, [])
-        stack.append(name)
+        stack.append((name, label))
         try:
             yield
         finally:
@@ -79,8 +79,10 @@ class GcodeExtrusionTelemetry:
         self.handling.add(owner)
         try:
             with telemetry.operation() as operation:
-                operation.start(source='mmu_gcode', label=gcmd.get_commandline(),
-                    command='G1', context=list(self.owners[owner]),
+                operation.start(source='mmu_gcode',
+                    label=next((label for _, label in reversed(self.owners[owner]) if label), gcmd.get_commandline()),
+                    command='G1', commandline=gcmd.get_commandline(),
+                    context=[name for name, _ in self.owners[owner]],
                     unit=mmu.mmu_unit().name, gate=mmu.gate_selected,
                     motor_mode='extruder', extruder=extruder_name, motors=[extruder_name],
                     requested_mm=requested_e, speed_mm_s=speed if math.isfinite(speed) else None,

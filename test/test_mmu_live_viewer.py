@@ -26,6 +26,18 @@ class TestLiveViewer(unittest.TestCase):
         self.viewer.close()
         self.hh.close()
 
+    def test_gate_selection_emits_raw_event_and_animated_snapshot_once(self):
+        self.hh.mmu._set_gate_selected(1)
+        event = self.viewer.read()['events'][-1]
+        self.assertEqual(event['kind'], 'gate_changed')
+        self.assertEqual(event['before']['gate'], 0)
+        self.assertEqual(event['state']['gate'], 1)
+        self.assertEqual(event['telemetry']['previous_gate'], 0)
+        self.assertEqual(len(event['state']['gate_colors']), len(event['state']['tips']))
+        count = len(self.viewer.read()['events'])
+        self.hh.mmu._set_gate_selected(1)
+        self.assertEqual(len(self.viewer.read()['events']), count)
+
     def test_simulated_cut_produces_a_dedicated_playback_event(self):
         macro = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP')
         self.hh._effect_cut_tip(macro, None)
@@ -159,7 +171,7 @@ class TestLiveViewer(unittest.TestCase):
         moves = [e for e in viewer.read()['events'] if e.get('source') == 'mmu_gcode']
         self.assertTrue(moves)
         for event in moves:
-            commanded = float(event['label'].split()[1][1:])
+            commanded = float(event['telemetry']['start']['commandline'].split()[1][1:])
             self.assertAlmostEqual(event['distance'], commanded, places=6)
         self.assertGreater(max(e['state']['extruded_mm'] for e in moves), 1)
         self.assertEqual(max(e['state']['tips'][0] for e in moves), moves[-1]['state']['layout']['nozzle'])
@@ -278,17 +290,45 @@ class TestLiveViewer(unittest.TestCase):
         self.assertAlmostEqual(state['tips'][0], nozzle)
         self.hh.mmu.move_filament('Retract', -2, motor='extruder')
         self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 10)
-        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 0)
+        self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 10)
         self.hh.mmu.move_filament('Recover', 2, motor='extruder')
         self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 10)
         self.hh.mmu.move_filament('More purge', 3, motor='extruder')
         self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 13)
+        count = len(self.viewer.read()['events'])
         self.hh.mmu._set_park_retracted_length(2)
-        self.hh.mmu._report_standalone_load_retraction(-2)
-        event = self.viewer.read()['events'][-1]
-        self.assertEqual(event['kind'], 'purge_release')
-        self.assertEqual(event['state']['purge_base_mm'], 13)
+        self.hh.mmu._report_standalone_load_retraction(0)
+        self.assertEqual(len(self.viewer.read()['events']), count)
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 10)
+
+    def test_final_retraction_is_labeled_in_raw_g1_without_extra_viewer_step(self):
+        nozzle = self.viewer.snapshot()['layout']['nozzle']
+        self.hh.place_filament(0, nozzle)
+        self.hh.mmu.move_filament('Purge', 5, motor='extruder')
+        self.hh.mmu.toolchange_retract = 2
+        self.hh.mmu._set_park_retracted_length(0)
+        count = len(self.viewer.read()['events'])
+        self.hh.mmu._retract_after_standalone_load()
+        events = self.viewer.read()['events']
+        self.assertEqual(len(events), count + 1)
+        event = events[-1]
+        self.assertEqual(event['kind'], 'movement')
+        self.assertEqual(event['source'], 'mmu_gcode')
+        self.assertEqual(event['telemetry']['start']['label'], 'Final load retraction')
+        self.assertIn('G1 E-2', event['telemetry']['start']['commandline'])
         self.assertEqual(event['before']['purge_base_mm'], 0)
+        self.assertEqual(event['state']['purge_base_mm'], 5)
+        self.assertEqual(self.viewer.read_telemetry()['records'][-1]['event'], 'standalone_load_retraction')
+
+    def test_gear_retraction_does_not_detach_purge(self):
+        nozzle = self.viewer.snapshot()['layout']['nozzle']
+        self.hh.place_filament(0, nozzle)
+        self.hh.mmu.move_filament('Purge', 5, motor='extruder')
+        self.hh.mmu.move_filament('Gear retract', -2, motor='gear')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 0)
+        with self.hh.mmu.gcode_telemetry.scope('test'):
+            self.hh.gcode.run_script_from_command('M83\nG1 E-2 F1800')
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 5)
 
     def test_retained_color_and_lengths_seed_the_viewer(self):
         unit = self.hh.mmu.mmu_unit()
