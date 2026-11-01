@@ -1,4 +1,4 @@
-import { toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay gives HTML and SVG tooltips the same delay and avoids clipping.
@@ -64,6 +64,7 @@ let socket,
   serial = 0,
   pending = new Map(),
   events = [],
+  rawEvents = [],
   session = null,
   live = true,
   cursor = 0,
@@ -229,15 +230,31 @@ function filter() {
   $("parameter").replaceChildren(...[...groups].map(([label, matches]) => {
     const group = document.createElement('optgroup');
     group.label = label;
+    const sections = new Map();
     for (const p of matches) {
-      const option = document.createElement('option');
-      option.value = p.id || p.name;
-      option.textContent = p.name;
-      group.append(option);
+      const section = p.section || '';
+      if (!sections.has(section)) sections.set(section, []);
+      sections.get(section).push(p);
+    }
+    for (const [section, parameters] of sections) {
+      if (section) {
+        const heading = document.createElement('option');
+        heading.disabled = true;
+        heading.value = '';
+        heading.className = 'parameter-section';
+        heading.textContent = section;
+        group.append(heading);
+      }
+      for (const p of parameters) {
+        const option = document.createElement('option');
+        option.value = p.id || p.name;
+        option.textContent = p.name;
+        group.append(option);
+      }
     }
     return group;
   }));
-  if ([...$("parameter").options].some((o) => o.value === previous))
+  if ([...$("parameter").options].some((o) => !o.disabled && o.value === previous))
     $("parameter").value = previous;
   value();
 }
@@ -347,7 +364,7 @@ $("files").onchange = () =>
     message("Uploaded profile started.");
   });
 let displayed = null, playing = null, played = 0, resumeAt = 0;
-let paused = false, stopAfterStep = false, replayingHistory = false, sensorPulse = null;
+let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null;
 function currentIndex() {
   return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
 }
@@ -367,9 +384,10 @@ function followTrace() {
   }
 }
 function seek(index) {
+  pauseAfterStep = false;
   cursor = Math.max(0, Math.min(index, events.length - 1));
+  if (cursor === events.length - 1) { followLive(); return; }
   live = false; paused = true; replayingHistory = true; playing = null; sensorPulse = null;
-  stopAfterStep = false;
   draw(); followTrace();
 }
 // Buffer drawing is isolated from the toolhead and filament layers.
@@ -427,21 +445,25 @@ function draw() {
   if (!events.length) return;
   cursor = Math.max(0, Math.min(cursor, events.length - 1));
   const running = live && !paused && (playing || played < events.at(-1).seq);
-  $("replay").disabled = !!running || currentIndex() >= events.length - 1;
-  $("play-end").disabled = live && !paused && !stopAfterStep;
+  $("replay").disabled = pauseAfterStep || (!running && currentIndex() >= events.length - 1);
+  const playLabel = running ? 'Pause after current step' : 'Play continuously — follow live when caught up';
+  $("replay").setAttribute('aria-label', playLabel);
+  $("replay").dataset.tooltip = playLabel;
+  $("replay").querySelector('path').setAttribute('d', running
+    ? 'M6 4h4v16H6z M14 4h4v16h-4z' : 'M7 4v16l13-8z');
   $("beginning").disabled = $("previous").disabled = currentIndex() <= 0;
   $("next").disabled = currentIndex() >= events.length - 1;
   $("previous-toolchange").disabled = toolchangeIndex(events, currentIndex(), -1) < 0;
   $("next-toolchange").disabled = toolchangeIndex(events, currentIndex(), 1) < 0;
   const e = live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
   const
-    s = live && displayed ? displayed : e.state,
+    s = live && displayed ? displayed : (e.settled_state || e.state),
     gate = s.gate >= 0 ? s.gate : 0;
   let tip = s.tips[gate] ?? -1000;
   const entry = s.layout.extruder_entry ?? 700,
     end = s.layout.nozzle ?? (s.layout.toolhead ?? 760) + 30;
   const eventsBehind = events.length - 1 - events.indexOf(e);
-  if (live && !paused && !stopAfterStep && !playing && eventsBehind === 0) replayingHistory = false;
+  if (live && !paused && !playing && eventsBehind === 0) replayingHistory = false;
   const modeLabel = paused || !live ? 'Paused' : replayingHistory ? 'Replay' : eventsBehind >= 3 ? 'Live · catching up' : 'Live';
   // Bookkeeping events must not clear the last animated movement's annotation.
   const annotatedEvent = annotatedStep(events, e, !live || paused);
@@ -461,7 +483,7 @@ function draw() {
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
   const nozzleFunnel = `M256.5 445 L${260-nozzleWidth/2} 455 H${260+nozzleWidth/2} L263.5 445 Z`;
   const bowdenPath = path.replace("L260 445", "L260 435");
-  let svg = `<rect x="530" y="275" width="180" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="542" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="M242 435 L${259-nozzleWidth/2} 455 H${261+nozzleWidth/2} L278 435 Z" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="640" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="640">Bowden</tspan><tspan x="640" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  let svg = `<rect x="530" y="275" width="180" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="542" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="M242 435 L${259-nozzleWidth/2} 455 H${261+nozzleWidth/2} L278 435 Z" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -500,7 +522,7 @@ function draw() {
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
   if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(470-305);
   // Park against the drawn endstop, including schematic sensor/encoder offsets.
-  if (s.gate >= 0 && ([0,1].includes(s.filament_pos) || (s.filament_pos === 2 && s.encoder_reference?.endstop === 'encoder')) && e.kind !== 'movement') {
+  if (s.gate >= 0 && ([0,1].includes(s.filament_pos) || (s.filament_pos === 2 && s.encoder_reference?.endstop === 'encoder'))) {
     const unit = s.units?.indexOf(s.unit) ?? 0;
     const params = s.configuration?.parameters?.[unit] || {};
     const endstop = (s.encoder_reference?.endstop ?? params.gate_homing_endstop ?? '').split(':').at(-1);
@@ -512,7 +534,12 @@ function draw() {
       const offset = s.filament_pos === 0 ? Math.sign(parking)*8
         : endstop === 'encoder' ? Math.max(0,s.encoder_reference?.overshoot || 0) : 0;
       const distance = endstop === 'encoder' && s.filament_pos === 0 ? 470-anchor.y-18 : 470-anchor.y+offset;
-      tip = tipAtPathDistance(distance);
+      const anchorEvent = events.findLast(event => event.seq <= e.seq
+        && event.kind !== 'movement' && event.state?.gate === s.gate
+        && event.state?.filament_pos === s.filament_pos);
+      const anchorTip = anchorEvent?.state?.tips[gate] ?? e.before?.tips[gate] ?? tip;
+      const travel = (progress(tip)-progress(anchorTip))*length;
+      tip = tipAtPathDistance(distance + travel);
     }
   }
   const coneOffset = s.tip_shapes?.[gate] === 'cone' ? (s.filament?.residual_mm || 0)+2 : 0;
@@ -530,10 +557,10 @@ function draw() {
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
   tip = tipAtPathDistance(constrained.tip);
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = constrained.tip;
-  if (constrained.warnings.length) {
-    const warning = 'Filament position conflicts with sensor readings: '+constrained.warnings.join('; ');
-    svg += `<g id="filament-warning" role="img" aria-label="${escape(warning)}" data-tooltip="${escape(warning)}" tabindex="0"><circle cx="757" cy="30" r="11" fill="#e6a23c"/><text x="757" y="30" text-anchor="middle" dominant-baseline="central" fill="#172431" font-size="17" font-weight="700">!</text></g>`;
-  }
+  const warningBox = $('filament-warning');
+  warningBox.hidden = !constrained.warnings.length;
+  $('filament-warning-message').textContent = constrained.warnings.length
+    ? 'Filament position conflicts with sensor readings: '+constrained.warnings.join('; ') : '';
   $("filament").setAttribute(
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
@@ -550,10 +577,10 @@ function draw() {
     // Extra clearance beside the active lane; ordinary spacing beyond it.
     const clearance = Math.min(1,Math.abs(offset));
     const x = 620+offset*14+Math.sign(offset)*8*clearance*clearance*(3-2*clearance);
-    const y = Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-40;
+    const y = Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-20;
     const opacity = focus < 0 ? .35 : Math.max(.2,Math.exp(-Math.abs(offset)*.45));
     const color = s.gate_colors?.[index] || '808182';
-    svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" fill="var(--scene-text, #304c65)">${index}</text></g>`;
+    svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" font-weight="700" fill="var(--scene-text, #304c65)">${index}</text></g>`;
   }
   svg += '</g>';
   const shapedTip = (position, color, part) => {
@@ -747,17 +774,23 @@ function draw() {
     }),
   );
   $("devices").replaceChildren(
-    ...Object.entries(s.devices).map(([name, d]) => {
+    ...Object.entries(s.object_status || {}).map(([name, d]) => {
       const el = document.createElement("span");
       el.className = "chip";
-      el.textContent = name + " · " + JSON.stringify(d, (key, value) =>
+      el.textContent = name + " · " + (d === null ? "No status exposed" : JSON.stringify(d, (key, value) =>
         name.includes('encoder') && typeof value === 'number' && Number.isFinite(value)
-          ? Number(value.toFixed(1)) : value);
+          ? Number(value.toFixed(1)) : value));
       return el;
     }),
   );
 }
 function renderTrace() {
+  $('toolchange-ticks').replaceChildren(...events.flatMap((event, index) => {
+    if (event.kind !== 'toolchange') return [];
+    const tick = document.createElement('span');
+    tick.style.left = `${events.length > 1 ? 100*index/(events.length-1) : 0}%`;
+    return [tick];
+  }));
   const view = $("trace"),
     scroll = view.scrollTop;
   view.replaceChildren(
@@ -800,33 +833,37 @@ for (const [id, direction] of [['previous-toolchange', -1], ['next-toolchange', 
   };
 }
 $("next").onclick = () => seek(currentIndex() + 1);
-function startPlayback(singleStep) {
+function startPlayback() {
+  pauseAfterStep = false;
   if (!events.length) return;
   if (!live) {
     const event = events[cursor];
-    played = event.seq; displayed = event.state;
+    played = event.seq; displayed = event.settled_state || event.state;
     playing = null; resumeAt = 0;
   }
-  replayingHistory = singleStep || replayingHistory;
-  stopAfterStep = singleStep;
   paused = false; live = true;
   draw(); followTrace();
 }
-$("replay").onclick = () => startPlayback(true);
-$("play-end").onclick = () => startPlayback(false);
+$("replay").onclick = () => {
+  if (live && !paused) {
+    if (playing) pauseAfterStep = true;
+    else paused = true;
+    draw();
+  } else startPlayback();
+};
 function followLive() {
+  pauseAfterStep = false;
   replayingHistory = false;
-  stopAfterStep = false;
   live = true; paused = false; playing = null; sensorPulse = null; resumeAt = 0;
   played = events.at(-1)?.seq || 0;
-  displayed = events.at(-1)?.state;
+  displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
   draw(); followTrace();
 }
 $("live").onclick = followLive;
 $("timeline").oninput = () => seek(Number($("timeline").value));
 $("save").onclick = () => {
   const url = URL.createObjectURL(
-    new Blob([JSON.stringify({ version: 2, session, events }, null, 2)], {
+    new Blob([JSON.stringify({ version: 2, session, events: rawEvents }, null, 2)], {
       type: "application/json",
     }),
   );
@@ -852,7 +889,7 @@ $("save-motion").onclick = async () => {
 let parameterGate = null;
 async function poll() {
   try {
-    const after = events.filter(e => !e.pending).at(-1)?.seq || 0;
+    const after = rawEvents.filter(e => !e.pending).at(-1)?.seq || 0;
     const res = await fetch("/sim/viewer/events?after=" + after);
     const data = (await res.json()).result;
     const changed = data.config_revision !== configRevision;
@@ -860,31 +897,38 @@ async function poll() {
     if (newSession || changed) {
       const selectedSeq = events[currentIndex()]?.seq;
       const full = (await (await fetch('/sim/viewer/events')).json()).result;
-      events = [...full.events, ...(full.pending_config ? [full.pending_config] : [])];
+      rawEvents = [...full.events, ...(full.pending_config ? [full.pending_config] : [])];
+      events = visibleSteps(rawEvents);
       configRevision = full.config_revision;
       if (playing) playing.event = events.find(e => e.seq === playing.event.seq) || playing.event;
       if (newSession) {
         if (session !== null) $('mini-console').replaceChildren();
+        pauseAfterStep = false;
         session = full.session; cursor = 0; live = true; paused = false; replayingHistory = false;
-        stopAfterStep = false;
-        sensorPulse = null; playing = null; resumeAt = 0;
-        played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.state;
+              sensorPulse = null; playing = null; resumeAt = 0;
+        played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
       } else {
         cursor = Math.max(0, events.findIndex(e => e.seq === selectedSeq));
         if (live && !playing && played >= (events.at(-1)?.seq || 0)) {
-          played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.state;
+          played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
         }
       }
     } else if (data.events.length) {
       const selectedSeq = events[currentIndex()]?.seq;
-      events = [...events.filter(e => !e.pending && !data.events.some(n => n.seq === e.seq)),
+      rawEvents = [...rawEvents.filter(e => !e.pending && !data.events.some(n => n.seq === e.seq)),
                 ...data.events, ...(data.pending_config ? [data.pending_config] : [])].slice(-3000);
+      events = visibleSteps(rawEvents);
+      if (playing) playing.event = events.find(e => e.seq === playing.event.seq) || playing.event;
+      else if (live) {
+        const current = events.find(e => e.seq === played);
+        if (current) displayed = current.settled_state || current.state;
+      }
       if (!live) cursor = Math.max(0, events.findIndex(e => e.seq === selectedSeq));
     }
     if (newSession || changed || data.events.length || !events.length) {
       draw(); renderTrace();
     }
-    const latest = events.at(-1)?.state;
+    const latest = rawEvents.at(-1)?.state;
     const selectedGate = latest ? `${session}:${latest.unit}:${latest.gate}` : null;
     if (latest && selectedGate !== parameterGate) {
       parameterGate = selectedGate;
@@ -915,7 +959,7 @@ function animate(now) {
         played=playing.event.seq;
         if (playing.event.kind === 'movement') resumeAt=now+300;
         playing=null;
-        if (stopAfterStep) paused = true;
+        if (pauseAfterStep) { paused = true; pauseAfterStep = false; }
         followTrace();
       }
       draw();

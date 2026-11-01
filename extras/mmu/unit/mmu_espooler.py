@@ -294,9 +294,6 @@ class MmuESpooler:
             # Take per-gate lock and start rewind motor
             self.set_operation(gate, value, operation)
             self.burst_gates[gate] = (operation, timer)
-            self.mmu.movement_telemetry.state('espooler_burst_started',
-                unit=self.mmu_unit.name, gate=gate, operation=operation,
-                requested_power=value, duration_s=duration)
         else:
             msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
             self.mmu.log_trace(msg)
@@ -337,10 +334,7 @@ class MmuESpooler:
                 self.reactor.unregister_timer(timer)
             except Exception as e:
                 self.mmu.log_debug("Error cancelling burst callback: Exception: %s" % str(e))
-            operation = self.burst_gates[gate][0]
             del self.burst_gates[gate]
-            self.mmu.movement_telemetry.state('espooler_burst_ended',
-                unit=self.mmu_unit.name, gate=gate, operation=operation)
 
             # Notify listeners
             self.printer.send_event("mmu:espooler_burst_done", gate)
@@ -488,12 +482,15 @@ class MmuESpooler:
             output = 0
         if not self.is_pwm:
             output = 1 if output > 0 else 0
-        self.mmu.movement_telemetry.state('espooler_operation_changed',
+        was_running = previous_operation in (ESPOOLER_ASSIST, ESPOOLER_REWIND) and previous_power > 0
+        if not output and not was_running:
+            return
+        # A start while running replaces the previous direction/power setting.
+        self.mmu.movement_telemetry.state('espooler_started' if output else 'espooler_stopped',
             unit=self.mmu_unit.name, gate=gate,
-            previous_operation=previous_operation, previous_requested_power=previous_power,
-            operation=operation, requested_power=value, output_power=output,
             direction=operation if output else 'stopped',
-            print_assist_armed=gate == self.print_assist_gate, pwm=self.is_pwm)
+            requested_power=value if output else 0., output_power=output, pwm=self.is_pwm)
+
 
 
     def get_operation(self, gate):

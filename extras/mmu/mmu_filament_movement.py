@@ -4271,8 +4271,6 @@ class MmuFilamentMovement:
 
         u = self.mmu_unit()
         self.log_stepper(f"_sync_gear_to_extruder(sync={sync})")
-        self.movement_telemetry.state('drive_sync_requested',
-            unit=u.name, gate=self.gate_selected, sync=sync)
 
         # Protect cases where we should not sync (note type-B always has a homed selector).
         bypass_or_unknown_gate = self.gate_selected < 0
@@ -4366,11 +4364,6 @@ class MmuFilamentMovement:
             f"--> sync={sync}"
         )
 
-        self.movement_telemetry.state('drive_sync_decision',
-            unit=u.name, gate=self.gate_selected, sync_intention=sync_intention,
-            force_grip=force_grip, skip_extruder_check=skip_extruder_check,
-            force_in_print=force_in_print, must_sync=must_sync,
-            out_of_print_sync=out_of_print_sync, sync=sync)
 
         # Filament grip handling. This is always lazy to spare unnecessary movement.
         # Do this before resetting sync state because servo down can undo (buzz movement)!

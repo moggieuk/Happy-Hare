@@ -1,8 +1,11 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 export function interpolate(event, fraction) {
   const a = event.before, b = event.state;
-  if (!a || fraction >= 1) return b;
-  if (fraction <= 0) return a;
+  if (!a || fraction >= 1) return event.settled_state || b;
+  const motorMode = event.telemetry?.start?.motor_mode || event.motor_mode;
+  const synced = ['gear+extruder', 'extruder+gear', 'synced'].includes(motorMode);
+  const hasMotorMode = event.kind === 'movement' && Boolean(motorMode);
+  if (fraction <= 0) return hasMotorMode ? {...a, synced} : a;
   if (event.kind === 'gate_changed') {
     const eased = fraction*fraction*(3-2*fraction);
     const state = structuredClone(fraction < .5 ? a : b);
@@ -15,8 +18,12 @@ export function interpolate(event, fraction) {
   if (event.kind === 'cut') return fraction < .4 ? a : b;
   const mix = (x,y) => typeof x === 'number' && typeof y === 'number' ? x+(y-x)*fraction : x;
   const s = structuredClone(a);
+  if (hasMotorMode) s.synced = synced;
   s.tip_shapes = b.tip_shapes || a.tip_shapes;
-  s.sensor_conflicts = b.sensor_conflicts || [];
+  // Older captures flagged the successful reverse-home endpoint as a clear-sensor conflict.
+  const reverseHome = event.homing && event.homed && (event.distance ?? event.requested) < 0;
+  s.sensor_conflicts = (b.sensor_conflicts || []).filter(warning =>
+    !reverseHome || warning !== `${event.endstop}: movement past a clear sensor`);
   for (const key of ['tips','tails']) s[key] = a[key].map((x,i)=>mix(x,b[key][i]));
   if (event.raw_before && event.raw_state && !event.homing_anchor) {
     // Reach a physical stop at commanded pace, then hold while gears keep feeding.
@@ -104,12 +111,12 @@ export function constrainFilament(tip, previousTip, tail, sensors, fragments = [
   }
   if (lower > upper) warnings.push('Presence sensors disagree');
   const bounded = value => Math.max(0,Math.min(upper,Math.max(lower,value)));
-  const result = warnings.length && Number.isFinite(previousTip) ? bounded(previousTip) : bounded(tip);
+  const result = warnings.length && Number.isFinite(previousTip) && tip < previousTip ? bounded(previousTip) : bounded(tip);
   return {tip:result, warnings:[...new Set(warnings)]};
 }
 
 export function duration(event, compressBowden = false) {
-  if (event.kind === 'gate_changed') return 800;
+  if (event.kind === 'gate_changed') return 1200;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
@@ -398,4 +405,19 @@ export function annotatedStep(events, event, navigating) {
   if (navigating) return event;
   const animated = item => ['movement', 'gate_changed', 'toolchange'].includes(item.kind);
   return animated(event) ? event : events.findLast(item => item.seq <= event.seq && animated(item)) || event;
+}
+
+// Fold bookkeeping into the preceding step without changing its movement endpoint.
+export function visibleSteps(records) {
+  const steps = [];
+  for (const record of records) {
+    const internal = record.internal || (record.kind === 'state'
+      && record.label === 'State changed' && !record.telemetry);
+    if (internal) {
+      if (steps.length) steps.at(-1).settled_state = record.state;
+    } else {
+      steps.push({...record});
+    }
+  }
+  return steps;
 }

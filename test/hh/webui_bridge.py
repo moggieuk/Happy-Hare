@@ -309,7 +309,7 @@ class WebUiBridge:
             except queue.Empty:
                 break
             self._handle(conn, text, waiter)
-        self.viewer.capture('state', 'State changed')
+        self.viewer.capture('state', 'State changed', internal=True)
         now = time.monotonic()
         if self.clients and now >= self._next_status:
             self._next_status = now + STATUS_PERIOD
