@@ -117,7 +117,7 @@ test('trace formats synced, extruder, fallback and state events', () => {
  const e = {seq:31,time:1444.705,kind:'movement',telemetry:{start:{motor_mode:'synced'}},distance:25,speed:80,acceleration:400};
  assert.equal(traceText(e), '31 · 1444.705s · move · SYNCED GEAR+EXTRUDER: dist=25.0mm · speed=80.0 · accel=400.0');
  assert.equal(traceText({...e,telemetry:null,motors:{extruder:2.5},distance:2.5,speed:5,acceleration:null}), '31 · 1444.705s · move · EXTRUDER: dist=2.5mm · speed=5.0');
- assert.equal(traceText({seq:33,time:1445.105,kind:'state',label:'IN BOWDEN'}), '33 · 1445.105s · state · IN BOWDEN');
+ assert.equal(traceText({seq:33,time:1445.105,kind:'state',label:'IN BOWDEN'}), '33 · 1445.105s · state changed · IN BOWDEN');
 });
 
 test('sensor pulses only successful homes and distinguishes reverse travel', () => {
@@ -324,4 +324,29 @@ test('spring coils keep attached endpoints and finite geometry at either travel 
   assert.equal((path.match(/ C/g)||[]).length,10);
   assert.ok(!/NaN|Infinity/.test(path));
  }
+});
+
+ test('purge coil spacing scales with strand diameter while pile height stays bounded',()=>{
+   let previousCount=Infinity;
+   for(const diameter of [.1,.2,.4,.6,.8]) {
+     // Compare the same point in the pile cycle for each nozzle.
+     const feed=25/purgeStrandLength(1,diameter);
+     const pile=purgeCoils({extruded_mm:feed},diameter);
+     assert.ok(pile.coils.length<previousCount);
+     assert.ok(Math.abs(pile.pitch-4*diameter*1.15)<1e-9);
+     assert.ok(pile.layers*pile.pitch<=32);
+     previousCount=pile.coils.length;
+   }
+ });
+
+test('gate selection eases between lanes without interpolating physical filament travel',()=>{
+ const before={gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
+ const state={...before,gate:1};
+ const event={kind:'gate_changed',before,state};
+ assert.equal(duration(event),800);
+ assert.equal(interpolate(event,0),before);
+ assert.equal(interpolate(event,1),state);
+ assert.equal(interpolate(event,.5).gate_focus,.5);
+ assert.deepEqual(interpolate(event,.5).tips,before.tips);
+ assert.equal(interpolate(event,.5).gate_path_opacity,0);
 });

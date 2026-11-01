@@ -70,9 +70,6 @@ class LiveViewer:
     def on_telemetry(self, record):
         with self.lock:
             self.telemetry_records.append(record)
-        if record['event'] == 'standalone_load_retraction' and record['retracted_length'] > 0:
-            self.purge_base_mm = self.extruded_mm
-            self.capture('purge_release', 'Final load retraction', before=self.snapshot(), telemetry=record)
         if record['event'] in ('release', 'cutter_release'):
             self.cutter_pressed = False
             self.capture('release', 'Toolhead cutter release', before=copy.deepcopy(self.latest_raw or self.snapshot()),
@@ -81,6 +78,9 @@ class LiveViewer:
             self.cutter_pressed = record.get('phase') == 'CUT'
             self.capture('cut', 'Toolhead filament cut', before=copy.deepcopy(self.latest_raw or self.snapshot()),
                 cutter=record['cutter'], origin=record.get('origin'), telemetry=record)
+        if record['event'] == 'gate_changed':
+            self.capture('gate_changed', 'Gate %s → %s' % (record['previous_gate'], record['gate']),
+                         before=copy.deepcopy(self.latest_raw or self.snapshot()), telemetry=record)
         if record['event'] == 'filament_pos_changed':
             self.capture('state', record['filament_pos_name'], telemetry=record)
         if record['event'] not in ('movement_start', 'movement_outcome'):
@@ -251,7 +251,8 @@ class LiveViewer:
         drive_motors = {kind: [motor.get_name() for motor in owner.get_steppers()]
                         for kind, owner in [('gear', drive.mmu_gear_stepper), ('extruder', drive.mmu_extruder_stepper)]}
         from extras.mmu.mmu_movement_telemetry import filament_context
-        return plain(dict(configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
+        from extras.mmu.mmu_utils import MmuColorUtils
+        return plain(dict(gate_colors=[MmuColorUtils.color_to_rgb_hex(color, '808182')[:6] for color in hh.mmu.gate_color], configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
             filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=layout, motors=self.motors.copy(),
             bowden_unabsorbed_mm=model.unabsorbed[hh.mmu.gate_selected] if hh.mmu.gate_selected >= 0 else 0.,
@@ -427,6 +428,14 @@ class LiveViewer:
                     self.nozzle_color = ''.join(f'{round(int(plan["old_color"][i:i+2],16)*(1-fraction)+int(plan["new_color"][i:i+2],16)*fraction):02x}' for i in (0,2,4))
                 self.extruded_mm += amount
                 state['tips'][gate] = min(state['tips'][gate], nozzle)
+            # A real extruder retraction detaches any accumulated purge. This is
+            # part of the movement animation, not a synthetic telemetry step.
+            if (kind == 'movement' and self.latest_raw is not None
+                    and self.extruded_mm > self.purge_base_mm
+                    and any('extruder' in name and
+                            value < self.latest_raw['motors'].get(name, value) - 1e-9
+                            for name, value in raw_state['motors'].items())):
+                self.purge_base_mm = self.extruded_mm
             state['cutter_pressed'] = self.cutter_pressed
             state['tip_shapes'] = [self.tip_shapes.get(i, 'square') for i in range(len(state['tips']))]
             state['retained_segment'] = copy.deepcopy(self.retained_segments.get(extruder))
