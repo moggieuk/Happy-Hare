@@ -95,7 +95,7 @@ class UnloadTestCase(unittest.TestCase):
                             + self.hh.mmu.park_retracted_length() + fragment)
                 macro.variables = dict(macro.variables, output_park_pos=park_pos)
                 if not missed:
-                    self.fil.advance(gate, -fragment, 'cut')
+                    self.fil.place(gate, self.fil.tip[gate] - fragment)
             if slip:
                 self.fil.advance(gate, slip, 'slip')
 

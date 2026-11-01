@@ -155,6 +155,7 @@ class FilamentPath:
         self._drive_mode = None
         self._set_buffer_value = None
         self._gripped = lambda gate: False
+        self._extruder_position = lambda gate: self.layout['extruder_entry']
         self.unabsorbed = [0.] * num_gates
 
     def configure_buffers(self, units, selected_gate=None, drive_mode=None, gripped=None):
@@ -518,16 +519,21 @@ class FilamentPath:
         overlap = min(hi, max(0.0, delta)) - max(lo, min(0.0, delta))
         return max(0.0, overlap)
 
-    def advance(self, gate, delta, reason=''):
+    def advance(self, gate, delta, reason='', motor_mode=None):
         """Move a gate's filament and push any resulting sensor changes into HH."""
         if not delta:
             return self.tip[gate]
         start_tip, start_tail = self.tip[gate], self.tail[gate]
-        mode = self._motion_mode(gate, reason)
-        held = (self._gripped(gate) and mode == 'gear'
-                and any(gate in geometry['travel'] for geometry in self.buffers.values()))
-        self._advance_buffer(gate, delta, start_tip, reason)
-        self.tip[gate] += 0. if held else delta
+        mode = motor_mode or self._motion_mode(gate, reason)
+        buffered = any(gate in geometry['travel'] for geometry in self.buffers.values())
+        held = self._gripped(gate) and mode == 'gear'
+        if not buffered:
+            self.tip[gate] += self._advance_unbuffered(gate, delta, mode)
+            if self.tip[gate] < self._extruder_position(gate):
+                self.unabsorbed[gate] = 0.
+        else:
+            self._advance_buffer(gate, delta, start_tip, reason, mode)
+            self.tip[gate] += 0. if held else delta
         self.tail[gate] += delta        # filament moves as one piece
         self.history.append((gate, delta, reason))
         logging.debug('filament: gate %d %+.2f -> %.2f (%s)',
@@ -549,26 +555,39 @@ class FilamentPath:
         geometry['excess'][gate] = displacement-travel
         self.unabsorbed[gate] = displacement-travel
 
-    def _advance_buffer(self, gate, delta, start_tip, reason):
+    def _advance_unbuffered(self, gate, delta, mode):
+        """Only filament constrained by the extruder can store relative feed."""
+        if self._gripped(gate):
+            relative = delta if mode == 'gear' else -delta if mode == 'extruder' else 0.
+            self.unabsorbed[gate] += relative
+            return 0. if mode == 'gear' else delta
+        entry = self._extruder_position(gate)
+        if mode == 'gear' and self.tail[gate] <= entry and self.tip[gate] <= entry:
+            # Compression against stationary gears is released before withdrawing.
+            stored = max(0., self.unabsorbed[gate]) if self.tip[gate] >= entry else 0.
+            available = delta + stored
+            if self.tip[gate] + available >= entry:
+                self.unabsorbed[gate] = self.tip[gate] + available - entry
+                return entry - self.tip[gate]
+            self.unabsorbed[gate] = 0.
+            return available
+        self.unabsorbed[gate] = 0.
+        return delta
+
+    def _advance_buffer(self, gate, delta, start_tip, reason, mode):
         """Store relative gear/extruder travel in a buffer."""
         if self._gripped(gate):
-            mode = self._motion_mode(gate, reason)
             relative = delta if mode == 'gear' else -delta if mode == 'extruder' else 0.
-            geometry = next((g for g in self.buffers.values() if gate in g['travel']), None)
-            if geometry is None:
-                # No spring simulation: report commanded mismatch, not force.
-                self.unabsorbed[gate] += relative
-            else:
-                total = geometry['travel'][gate]+geometry['excess'][gate]+relative
-                self._set_buffer_travel(geometry, gate, total)
-                geometry['contact'][gate] = True
+            geometry = next(g for g in self.buffers.values() if gate in g['travel'])
+            total = geometry['travel'][gate]+geometry['excess'][gate]+relative
+            self._set_buffer_travel(geometry, gate, total)
+            geometry['contact'][gate] = True
             return
         if self.tip[gate] < self.layout['extruder_entry']:
             self.unabsorbed[gate] = 0.
         for geometry in self.buffers.values():
             if gate not in geometry['travel']:
                 continue
-            mode = self._motion_mode(gate, reason)
             travel = geometry['travel'][gate] + geometry['excess'][gate]
             contact = geometry['contact'][gate]
             compression_home = ('homing' in reason
@@ -587,6 +606,8 @@ class FilamentPath:
                     travel += delta
             elif mode == 'extruder' and contact:
                 travel -= delta
+            if not contact:
+                travel = geometry['rest']
             # Equal gear/extruder motion transports filament without changing the buffer.
             self._set_buffer_travel(geometry, gate, travel)
             if start_tip + delta < geometry['entry']:

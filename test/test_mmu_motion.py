@@ -219,6 +219,23 @@ class TestModelItself(MotionTestCase):
         model.sync(0)
         self.assertEqual(readings, [('unit0',0.)])
 
+    def test_free_filament_clears_excess_and_contact_only_counts_overrun(self):
+        self.fil._set_sensor = None
+        self.fil.buffers.clear()
+        self.fil._gripped = lambda gate: False
+        self.fil._extruder_position = lambda gate: 800.
+        self.fil._drive_mode = lambda gate: 'gear'
+        self.fil.place(0, 780.)
+        self.fil.unabsorbed[0] = -5.
+        self.fil.advance(0, 10.)
+        self.assertEqual(self.fil.unabsorbed[0], 0.)
+        self.fil.advance(0, 15.)
+        self.assertEqual(self.fil.tip[0], 800.)
+        self.assertEqual(self.fil.unabsorbed[0], 5.)
+        self.fil.advance(0, -8.)
+        self.assertEqual(self.fil.tip[0], 797.)
+        self.assertEqual(self.fil.unabsorbed[0], 0.)
+
     def test_without_buffer_reports_reversible_mismatch(self):
         self.fil._set_sensor = None
         self.fil.buffers.clear()
@@ -227,8 +244,13 @@ class TestModelItself(MotionTestCase):
         self.fil._drive_mode = lambda gate: 'gear'
         self.fil.advance(0, 3.)
         self.assertEqual(self.fil.unabsorbed[0], 3.)
-        self.assertEqual(self.fil.tip[0], 803.)
+        self.assertEqual(self.fil.tip[0], 800.)
         self.fil.advance(0, -3.)
+        self.assertEqual(self.fil.unabsorbed[0], 0.)
+        self.fil.advance(0, -2.)
+        self.assertEqual(self.fil.tip[0], 800.)
+        self.assertEqual(self.fil.unabsorbed[0], -2.)
+        self.fil.advance(0, 2.)
         self.assertEqual(self.fil.unabsorbed[0], 0.)
 
     def test_tension_sprung_buffer_uses_configured_travel(self):

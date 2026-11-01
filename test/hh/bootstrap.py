@@ -518,6 +518,8 @@ class Session:
         model_layout = dict(getattr(self.profile, 'filament_layout', {}) or {})
         model_layout.update(layout or {})
         model = FilamentPath(self.mmu.num_gates, layout=model_layout)
+        model._extruder_position = lambda gate: (model.layout['extruder_entry']
+            + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_entry_to_extruder)
         model.configure_buffers(
             self.mmu.mmu_machine.units,
             selected_gate=lambda: self.mmu.gate_selected,
@@ -662,7 +664,7 @@ class Session:
         for amount in self._spend_macro_time(movement=-distance):
             self._move_extruder(stepper, amount)
             if model is not None:
-                model.advance(gate, amount, 'tip forming')
+                model.advance(gate, amount, 'tip forming', motor_mode='extruder')
 
     def _effect_cut_tip(self, macro, gcmd):
         """
@@ -713,7 +715,7 @@ class Session:
                     if observer is not None:
                         observer(amount * retract / total, 'toolhead')
                     if model is not None:
-                        model.advance(gate, amount * severed / total, 'tip cutting')
+                        model.advance(gate, amount * severed / total, 'tip cutting', motor_mode='extruder')
             operation.finish(status='completed', actual_mm=-retract)
 
     def _macro_vars(self, macro):

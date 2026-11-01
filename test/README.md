@@ -601,8 +601,17 @@ Playback uses the resolved feed speed in the source telemetry, independently of
 console pacing. Bowden time compression is off by default: the path is drawn
 shorter but takes distance/speed time. The optional compression checkbox shortens
 fast transfers in proportion to the drawing. The trace shows feed speed and marks
-compressed transfers. Very short moves have a 120 ms visibility minimum.
+compressed transfers. Very short moves have a 120 ms visibility minimum;
+retractions that release purge have a 650 ms minimum so the drop remains visible.
 Acceleration is recorded but is not reproduced by the linear playback.
+
+Parking is schematic: the sign of `gate_parking_distance` selects a small fixed
+gap before or after the drawn exit endstop. Encoder-homed gates park a small
+fixed distance before the encoder; encoder homing records `homing_overshoot_mm` for the displayed overshoot.
+Final visual positioning obeys active presence sensors: clear sensors limit
+forward travel, and triggered sensors limit withdrawal unless a detached fragment
+explains the reading. Contradictory moves hold at the last safe position and show
+a **!** with sensor details. Disabled sensors provide no constraint.
 
 Ordinary presence sensors switch as the interpolated filament crosses their
 location. Recorded states are authoritative at movement endpoints; disabled or
@@ -791,6 +800,13 @@ State records share the same versioned stream and sequence numbers:
   duration in seconds. `espooler_burst_ended` marks timer completion or early
   cancellation; it does not imply that the planned duration elapsed.
   Low-level pin scheduling/submission events are no longer exported.
+
+`toolchange` marks the start of `MMU_CHANGE_TOOL`, `MMU_LOAD`, and
+`MMU_UNLOAD`, including the initiating command line and current tool/gate.
+The same boundary calls `_MMU_EVENT EVENT=toolchange COMMAND=<command>`.
+The viewer’s previous/next toolchange buttons navigate these markers; the
+previous button returns to the current operation’s start before moving to an
+earlier operation. Older recordings without markers disable these buttons.
 
 State records carry the active `move_id` when emitted inside a started movement,
 otherwise null. They do not open or close movement pairs. The viewer retains them

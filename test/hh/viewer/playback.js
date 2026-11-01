@@ -16,6 +16,7 @@ export function interpolate(event, fraction) {
   const mix = (x,y) => typeof x === 'number' && typeof y === 'number' ? x+(y-x)*fraction : x;
   const s = structuredClone(a);
   s.tip_shapes = b.tip_shapes || a.tip_shapes;
+  s.sensor_conflicts = b.sensor_conflicts || [];
   for (const key of ['tips','tails']) s[key] = a[key].map((x,i)=>mix(x,b[key][i]));
   if (event.raw_before && event.raw_state && !event.homing_anchor) {
     // Reach a physical stop at commanded pace, then hold while gears keep feeding.
@@ -85,6 +86,28 @@ export function interpolate(event, fraction) {
   }
   return s;
 }
+// All positions use the same drawing-path coordinates. Sensor readings win last.
+export function constrainFilament(tip, previousTip, tail, sensors, fragments = [], reported = []) {
+  let lower = 0, upper = Infinity;
+  const warnings = [...reported];
+  for (const sensor of sensors) {
+    const {position,state,name} = sensor;
+    if (!Number.isFinite(position) || sensor.enabled === false || typeof state !== 'boolean') continue;
+    const fragment = fragments.some(part => part.start <= position && part.end >= position);
+    if (!state && (tail === null || tail <= position)) {
+      upper = Math.min(upper, position-1);
+      if (tip >= position || fragment) warnings.push(`${name}: filament present while sensor is clear`);
+    } else if (state && !fragment && (tail === null || tail <= position)) {
+      lower = Math.max(lower,position);
+      if (tip < position) warnings.push(`${name}: filament withdrawn while sensor is triggered`);
+    }
+  }
+  if (lower > upper) warnings.push('Presence sensors disagree');
+  const bounded = value => Math.max(0,Math.min(upper,Math.max(lower,value)));
+  const result = warnings.length && Number.isFinite(previousTip) ? bounded(previousTip) : bounded(tip);
+  return {tip:result, warnings:[...new Set(warnings)]};
+}
+
 export function duration(event, compressBowden = false) {
   if (event.kind === 'gate_changed') return 800;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
@@ -107,7 +130,9 @@ export function duration(event, compressBowden = false) {
   // Half-speed visual playback for moves that deposit filament at the nozzle.
   // Recorded feed rates and the running simulator remain unchanged.
   if ((event.state?.extruded_mm || 0) > (event.before?.extruded_mm || 0)) seconds *= 2;
-  return Math.max(0.12,seconds)*1000;
+  // Let the detached purge fall visibly even when the releasing retract is brief.
+  const releasingPurge = (event.state?.purge_base_mm || 0) > (event.before?.purge_base_mm || 0);
+  return Math.max(releasingPurge ? 0.65 : 0.12,seconds)*1000;
 }
 
 export function gearAngle(distance, pixelsPerMm, radius = 19) {
@@ -357,4 +382,20 @@ export function bufferSpringPath(wall, edge, centerY = 52.5) {
     path += ` C${x+1.3*pitch} ${centerY+amplitude} ${x+.2*pitch} ${centerY+amplitude} ${x+pitch} ${centerY}`;
   }
   return path + ` H${edge}`;
+}
+
+export function excessFilamentLabel(excess) {
+  return `${excess > 0 ? 'compression' : 'tension'} · ${excess > 0 ? '+' : ''}${excess.toFixed(1)}mm`;
+}
+
+export function toolchangeIndex(events, index, direction) {
+  for (let i=index+direction; i>=0 && i<events.length; i+=direction)
+    if (events[i].kind === 'toolchange') return i;
+  return -1;
+}
+
+export function annotatedStep(events, event, navigating) {
+  if (navigating) return event;
+  const animated = item => ['movement', 'gate_changed', 'toolchange'].includes(item.kind);
+  return animated(event) ? event : events.findLast(item => item.seq <= event.seq && animated(item)) || event;
 }

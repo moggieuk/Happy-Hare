@@ -1,4 +1,4 @@
-import { bufferSpringPath, bufferPiston, interpolate, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay gives HTML and SVG tooltips the same delay and avoids clipping.
@@ -431,6 +431,8 @@ function draw() {
   $("play-end").disabled = live && !paused && !stopAfterStep;
   $("beginning").disabled = $("previous").disabled = currentIndex() <= 0;
   $("next").disabled = currentIndex() >= events.length - 1;
+  $("previous-toolchange").disabled = toolchangeIndex(events, currentIndex(), -1) < 0;
+  $("next-toolchange").disabled = toolchangeIndex(events, currentIndex(), 1) < 0;
   const e = live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
   const
     s = live && displayed ? displayed : e.state,
@@ -440,9 +442,9 @@ function draw() {
     end = s.layout.nozzle ?? (s.layout.toolhead ?? 760) + 30;
   const eventsBehind = events.length - 1 - events.indexOf(e);
   if (live && !paused && !stopAfterStep && !playing && eventsBehind === 0) replayingHistory = false;
-  const modeLabel = replayingHistory || !live ? (paused && live ? 'Replay · paused' : 'Replay') : paused ? 'Paused' : eventsBehind >= 3 ? 'Live · catching up' : 'Live';
+  const modeLabel = paused || !live ? 'Paused' : replayingHistory ? 'Replay' : eventsBehind >= 3 ? 'Live · catching up' : 'Live';
   // Bookkeeping events must not clear the last animated movement's annotation.
-  const annotatedEvent = ['movement', 'gate_changed'].includes(e.kind) ? e : events.findLast(event => event.seq <= e.seq && ['movement', 'gate_changed'].includes(event.kind)) || e;
+  const annotatedEvent = annotatedStep(events, e, !live || paused);
   const moveReason = annotatedEvent.label || annotatedEvent.telemetry?.start?.label;
   $("mode").textContent = `${modeLabel} · event ${annotatedEvent.seq}` + (moveReason ? ` · ${moveReason}` : '');
   $("position").textContent = `Gate ${gate} · ${s.filament_pos_name || "Unknown state"} · tip ${tip.toFixed(2)} mm`;
@@ -459,7 +461,7 @@ function draw() {
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
   const nozzleFunnel = `M256.5 445 L${260-nozzleWidth/2} 455 H${260+nozzleWidth/2} L263.5 445 Z`;
   const bowdenPath = path.replace("L260 445", "L260 435");
-  let svg = `<rect x="540" y="275" width="170" height="200" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="558" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="M242 435 L${259-nozzleWidth/2} 455 H${261+nozzleWidth/2} L278 435 Z" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="640" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="640">Bowden</tspan><tspan x="640" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  let svg = `<rect x="530" y="275" width="180" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="542" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="M242 435 L${259-nozzleWidth/2} 455 H${261+nozzleWidth/2} L278 435 Z" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="640" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="640">Bowden</tspan><tspan x="640" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -498,7 +500,7 @@ function draw() {
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
   if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(470-305);
   // Park against the drawn endstop, including schematic sensor/encoder offsets.
-  if (s.gate >= 0 && [0,1].includes(s.filament_pos) && e.kind !== 'movement') {
+  if (s.gate >= 0 && ([0,1].includes(s.filament_pos) || (s.filament_pos === 2 && s.encoder_reference?.endstop === 'encoder')) && e.kind !== 'movement') {
     const unit = s.units?.indexOf(s.unit) ?? 0;
     const params = s.configuration?.parameters?.[unit] || {};
     const endstop = (s.encoder_reference?.endstop ?? params.gate_homing_endstop ?? '').split(':').at(-1);
@@ -507,13 +509,31 @@ function draw() {
     const anchor = endstop === 'encoder' ? encoderPoint() : sensor ? sensorPoint(...sensor) : null;
     if (anchor) {
       const parking = s.encoder_reference?.parking ?? params.gate_parking_distance ?? 0;
-      const offset = s.filament_pos === 1 ? 0 : endstop === 'encoder' ? -6
-        : parking*200/-Math.min(-100,(s.layout.mmu_entry ?? -150)-40);
-      tip = tipAtPathDistance(470-anchor.y+offset);
+      const offset = s.filament_pos === 0 ? Math.sign(parking)*8
+        : endstop === 'encoder' ? Math.max(0,s.encoder_reference?.overshoot || 0) : 0;
+      const distance = endstop === 'encoder' && s.filament_pos === 0 ? 470-anchor.y-18 : 470-anchor.y+offset;
+      tip = tipAtPathDistance(distance);
     }
   }
-  const start = s.tails[gate] === null ? 0 : progress(s.tails[gate]) * length,
-    stop = progress(s.tip_shapes?.[gate] === 'cone' ? tip-(s.filament?.residual_mm || 0)-2 : tip) * length;
+  const coneOffset = s.tip_shapes?.[gate] === 'cone' ? (s.filament?.residual_mm || 0)+2 : 0;
+  const pathDistance = position => progress(position)*length;
+  const presenceSensors = unitSensors.filter(([name,d]) => !isBufferSensor(name) &&
+    !name.includes('encoder') && d.position !== null).map(([name,d]) => {
+      const short=name.split(':').at(-1);
+      const position = /^mmu_(?:entry|exit)(?:_\d+)?$/.test(short) || short === 'mmu_shared_exit'
+        ? 470-sensorPoint(name,d).y : pathDistance(d.position);
+      return {...d,name,position};
+    });
+  const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
+  const previousTip = e.kind === 'movement' && e.before ? pathDistance(e.before.tips[gate]) : null;
+  const constrained = constrainFilament(pathDistance(tip-coneOffset), previousTip,
+    s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
+  tip = tipAtPathDistance(constrained.tip);
+  const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = constrained.tip;
+  if (constrained.warnings.length) {
+    const warning = 'Filament position conflicts with sensor readings: '+constrained.warnings.join('; ');
+    svg += `<g id="filament-warning" role="img" aria-label="${escape(warning)}" data-tooltip="${escape(warning)}" tabindex="0"><circle cx="757" cy="30" r="11" fill="#e6a23c"/><text x="757" y="30" text-anchor="middle" dominant-baseline="central" fill="#172431" font-size="17" font-weight="700">!</text></g>`;
+  }
   $("filament").setAttribute(
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
@@ -527,9 +547,11 @@ function draw() {
     .filter(lane => lane.index !== s.gate && Math.abs(lane.offset) < 6)
     .sort((a,b) => Math.abs(b.offset)-Math.abs(a.offset));
   for (const {index,offset} of lanes) {
-    const x = 620+offset*16;
+    // Extra clearance beside the active lane; ordinary spacing beyond it.
+    const clearance = Math.min(1,Math.abs(offset));
+    const x = 620+offset*14+Math.sign(offset)*8*clearance*clearance*(3-2*clearance);
     const y = Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-40;
-    const opacity = focus < 0 ? .2 : Math.max(.08,Math.exp(-Math.abs(offset)*.75));
+    const opacity = focus < 0 ? .35 : Math.max(.2,Math.exp(-Math.abs(offset)*.45));
     const color = s.gate_colors?.[index] || '808182';
     svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" fill="var(--scene-text, #304c65)">${index}</text></g>`;
   }
@@ -553,7 +575,7 @@ function draw() {
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
   svg += `<defs><linearGradient id="bowden-tube-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY-17}" y2="450"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-tube-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY-17}" width="40" height="${Math.max(0,520-fadeY+17)}" fill="url(#bowden-tube-gradient)"/></mask></defs>`;
   if (s.synced) {
-    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(674 295) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="674" y="316" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
+    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(684 295) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="684" y="316" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
   }
   // Nozzle-relative reference guides, matching the documentation diagrams.
   const references = toolheadReferences(s).map(ref => ({...ref,
@@ -573,6 +595,7 @@ function draw() {
     const midY = (startY + endY) / 2;
     svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY-2} V${endY+2} M312 ${endY+6} L315 ${endY+2} L318 ${endY+6} M312 ${startY-6} L315 ${startY-2} L318 ${startY-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Cooling tube position')} x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text ${dimensionLink('Cooling tube length')} x="323" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
   }
+  svg += `<text id="current-gate" x="620" y="486" dominant-baseline="central" text-anchor="middle" font-size="10" fill="var(--scene-text, #456078)">${s.gate >= 0 ? `${s.tool >= 0 ? `T${s.tool} ` : ''}(gate ${s.gate})` : s.gate === -2 ? 'Bypass' : 'Unknown'}</text>`;
   for (const [name, d] of unitSensors) {
     if (isBufferSensor(name)) continue;
     const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
@@ -597,8 +620,8 @@ function draw() {
     const names = s.drive_motors?.[type] || Object.keys(s.motors).filter(n => n.includes(type));
     // Coupled motors share travel; do not add their distances or inactive gates.
     const distance = names.length ? (s.motors[names[0]] || 0) : 0;
-    const pixelsPerMm = type === 'extruder' ? .27 * length / (end-entry)
-      : 200 / -Math.min(-100, (s.layout.mmu_entry ?? -150)-40);
+    // Both gear pairs use the toolhead scale so equal travel gives equal rotation.
+    const pixelsPerMm = .27 * length / (end-entry);
     const angle = gearAngle(distance, pixelsPerMm);
     for (const side of [-1, 1])
       svg += `<g transform="translate(${x + side * 23} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle})"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
@@ -626,7 +649,7 @@ function draw() {
     }
   }
   const excess = s.bowden_unabsorbed_mm || 0;
-  if (Math.abs(excess) >= .05) svg += `<text id="bowden-excess" x="640" y="${bowdenLengthLabel(s).includes('Uncalibrated') ? 134 : 118}" font-size="10" fill="var(--scene-text, #304c65)"><tspan x="640">Excess filament</tspan><tspan x="640" dy="14">${excess > 0 ? 'compression' : 'tension'} · ${Math.abs(excess).toFixed(1)}mm</tspan></text>`;
+  if (Math.abs(excess) >= .05) svg += `<text id="bowden-excess" x="640" y="${bowdenLengthLabel(s).includes('Uncalibrated') ? 134 : 118}" font-size="10" fill="var(--scene-text, #304c65)"><tspan x="640">Excess filament</tspan><tspan x="640" dy="14">${excessFilamentLabel(excess)}</tspan></text>`;
   const residual = s.filament?.residual_mm || 0;
   const fragment = s.filament?.fragment_mm || 0;
   const retainedColor = s.nozzle_color || s.filament?.retained_color || '808182';
@@ -646,6 +669,14 @@ function draw() {
   if (s.tip_shapes?.[gate] === 'cone') svg += shapedTip(tip-residual,s.filament?.incoming_color || '808182','attached-tip');
   if (residual > 0) {
     svg += `<path id="residual-filament" d="M260 ${residualTop} L260 ${nozzleZero}" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text ${dimensionLink('Residual')} x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${residual}mm</text>`;
+  }
+  // A cosmetic seam keeps touching cut pieces distinct until the joint reaches the nozzle.
+  const cutJoint = s.retained_segment;
+  if (cutJoint && !cutJoint.residual_only && cutJoint.start < end-.01
+      && tip >= cutJoint.start-.01) {
+    const jointY = tube.getPointAtLength(progress(cutJoint.start)*length).y;
+    const jointOpacity = Math.max(0, Math.min(1, (end-cutJoint.start)/5));
+    svg += `<path id="cut-joint-gap" d="M256.5 ${jointY} H263.5" stroke="var(--scene-tube, #edf4f8)" stroke-width="0.75" opacity="${jointOpacity}"/>`;
   }
   if (residual > 0 || tip >= end-.01) {
     svg += `<path id="nozzle-funnel" d="${nozzleFunnel}" fill="#${retainedColor}"/>`;
@@ -680,6 +711,13 @@ function draw() {
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
   $("scene").innerHTML = svg;
+  const excessLabel = $("bowden-excess");
+  if (excessLabel) {
+    const bounds = $("bowden-length").getBBox();
+    excessLabel.setAttribute('text-anchor', 'middle');
+    for (const line of excessLabel.querySelectorAll('tspan'))
+      line.setAttribute('x', bounds.x + bounds.width/2);
+  }
   $("filament").setAttribute("stroke-dasharray", measured);
   $("filament").setAttribute("opacity", s.gate_path_opacity ?? 1);
   for (const gap of $("scene").querySelectorAll('.reference-gap')) {
@@ -755,6 +793,12 @@ function renderTrace() {
 }
 $("beginning").onclick = () => seek(0);
 $("previous").onclick = () => seek(currentIndex() - 1);
+for (const [id, direction] of [['previous-toolchange', -1], ['next-toolchange', 1]]) {
+  $(id).onclick = () => {
+    const index = toolchangeIndex(events, currentIndex(), direction);
+    if (index >= 0) seek(index);
+  };
+}
 $("next").onclick = () => seek(currentIndex() + 1);
 function startPlayback(singleStep) {
   if (!events.length) return;
@@ -805,6 +849,7 @@ $("save-motion").onclick = async () => {
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   } catch (error) { message(error.message, true); }
 };
+let parameterGate = null;
 async function poll() {
   try {
     const after = events.filter(e => !e.pending).at(-1)?.seq || 0;
@@ -838,6 +883,16 @@ async function poll() {
     }
     if (newSession || changed || data.events.length || !events.length) {
       draw(); renderTrace();
+    }
+    const latest = events.at(-1)?.state;
+    const selectedGate = latest ? `${session}:${latest.unit}:${latest.gate}` : null;
+    if (latest && selectedGate !== parameterGate) {
+      parameterGate = selectedGate;
+      const unit = latest.units?.indexOf(latest.unit) ?? -1;
+      if (unit >= 0 && $('unit').value !== String(unit)) {
+        $('unit').value = String(unit);
+        await refresh();
+      }
     }
   } catch (e) {
     $("connection").textContent = "Waiting for console…";
