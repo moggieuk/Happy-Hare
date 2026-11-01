@@ -48,9 +48,9 @@ export function interpolate(event, fraction) {
   if (emitted > 0) {
     const gate = b.gate;
     const segment = a.retained_segment;
-    const approach = segment
+    const approach = event.purge_approach_mm ?? (segment
       ? Math.max(0,segment.start-a.tips[gate]) + Math.max(0,(b.layout.nozzle-(b.filament?.residual_mm || 0))-segment.end)
-      : Math.max(0,(b.layout?.nozzle ?? a.tips[gate])-a.tips[gate]);
+      : Math.max(0,(b.layout?.nozzle ?? a.tips[gate])-a.tips[gate]));
     s.extruded_mm += Math.max(0, Math.min(emitted, (approach + emitted) * fraction - approach));
   }
   s.purge_base_mm = b.purge_base_mm ?? 0;
@@ -142,6 +142,14 @@ export function duration(event, compressBowden = false) {
   return Math.max(releasingPurge ? 0.65 : 0.12,seconds)*1000;
 }
 
+// A selected movement describes its motor mode; idle live view describes now.
+export function syncForDisplay(event, state, inspectingMovement = false) {
+  const mode = event?.telemetry?.start?.motor_mode || event?.motor_mode;
+  if (inspectingMovement && event?.kind === 'movement' && mode)
+    return ['gear+extruder', 'extruder+gear', 'synced'].includes(mode);
+  return Boolean(state.synced);
+}
+
 export function gearAngle(distance, pixelsPerMm, radius = 19) {
   return distance * pixelsPerMm / radius * 180 / Math.PI;
 }
@@ -170,7 +178,7 @@ export function traceText(event) {
     const source = event.source || event.telemetry?.start?.source;
     type = event.homing ? 'homing move' : source === 'mmu_gcode' ? 'G1' : 'move';
   }
-  const prefix = `${event.seq} · ${event.time.toFixed(3)}s · ${type} · `;
+  const prefix = `${event.seq} · ${event.time.toFixed(2)}s · ${type} · `;
   if (event.kind === 'config') return prefix + (event.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.after)}`).join(' · ');
   if (event.kind !== 'movement') return prefix + event.label;
   const start = event.telemetry?.start;
@@ -277,6 +285,32 @@ export function dimensionParameter(state, label) {
   const vars = state.configuration?.macros || {};
   return [`macro:${macro}_VARS:${variable}`, `macro:${macro}:${variable}`]
     .find(key => Object.hasOwn(vars, key)) || null;
+}
+
+// Keep the encoder parking reference through bookkeeping state changes. Fade
+// its schematic offset along the Bowden so the toolhead landmarks stay exact.
+export function encoderFilamentDistance(events, event, state, tip, pathDistance, encoderDistance) {
+  let anchor = null;
+  for (const item of events) {
+    if (item.seq > event.seq) break;
+    const value = item.state;
+    if (value?.gate !== state.gate || value.unit !== state.unit || item.kind === 'movement') continue;
+    const pos = value.filament_pos;
+    const manual = item.telemetry?.source === '_MMU_TEST';
+    if (manual || item.kind === 'session' || item.kind === 'gate_changed' || (!anchor && [0,1].includes(pos))) {
+      anchor = [0,1,2].includes(pos) ? value : null;
+    } else if (!anchor && pos === 2) anchor = value;
+  }
+  if (!anchor) return pathDistance(tip);
+  const anchorTip = anchor.tips[state.gate];
+  const encoder = state.layout.mmu_encoder ?? 20;
+  const overshoot = Math.max(0, anchor.encoder_reference?.overshoot || 0);
+  const origin = encoderDistance + (anchor.filament_pos === 0 ? -18
+    : pathDistance(encoder + overshoot) - pathDistance(encoder));
+  const start = pathDistance(anchorTip), end = pathDistance(state.layout.extruder_entry);
+  const position = pathDistance(tip);
+  const remaining = end > start ? Math.max(0, Math.min(1, (end-position)/(end-start))) : 0;
+  return position + (origin-start)*remaining;
 }
 
 // Resolve the recorded endstop, never an arbitrary nearby exit sensor.
@@ -407,14 +441,18 @@ export function annotatedStep(events, event, navigating) {
   return animated(event) ? event : events.findLast(item => item.seq <= event.seq && animated(item)) || event;
 }
 
-// Fold bookkeeping into the preceding step without changing its movement endpoint.
+export function isInternalUpdate(record) {
+  return Boolean(record.internal || (record.kind === 'state'
+    && record.label === 'State changed' && !record.telemetry));
+}
+
+// Fold idle bookkeeping into the preceding step; in-move updates belong to its outcome.
 export function visibleSteps(records) {
   const steps = [];
   for (const record of records) {
-    const internal = record.internal || (record.kind === 'state'
-      && record.label === 'State changed' && !record.telemetry);
+    const internal = isInternalUpdate(record);
     if (internal) {
-      if (steps.length) steps.at(-1).settled_state = record.state;
+      if (steps.length && !record.during_move) steps.at(-1).settled_state = record.state;
     } else {
       steps.push({...record});
     }

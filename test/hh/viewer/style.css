@@ -379,3 +379,12 @@ button.sensor-chip:disabled { cursor: default; }
 #filament-warning[hidden] { display: none; }
 .warning-bang { position: absolute; top: -11px; left: -11px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e6a23c; color: #172431; font-size: 17px; font-weight: 700; }
 [data-theme="dark"] #filament-warning { background: #30291c; color: #f2ce8b; }
+
+.trace-heading { margin-bottom: 10px; }
+.trace-options { margin: 0 0 0 auto; display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.trace-options input { width: auto; margin: 0; }
+#trace .trace-internal { padding: 8px 10px; border: 1px dashed var(--scene-border, #dae2e9); border-radius: 6px; margin-bottom: 6px; font-size: 12px; }
+.trace-internal summary { cursor: pointer; }
+.trace-internal pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font-size: 11px; }
+.trace-type[data-type="internal"] { color: #4c525a; background: #e3e5e8; }
+[data-theme="dark"] .trace-type[data-type="internal"] { color: #e4e6e9; background: #4b515a; }

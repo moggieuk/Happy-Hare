@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 # Copyright (C) 2022-2026 Paul Morgan. GPLv3.
-"""Scoped observation of MMU-owned G1 extrusion. No idle G1 wrapper."""
+"""Permanent G1 delegation with scoped observation of MMU-owned extrusion."""
 import contextlib
 import math
 import greenlet
@@ -13,6 +13,22 @@ class GcodeExtrusionTelemetry:
         self.original = None
         self.handler = self._handle_g1
         self.handling = set()
+        mmu.printer.register_event_handler('klippy:ready', self.install)
+
+    def install(self):
+        """Chain once after command registration; scopes never replace handlers."""
+        if self.original is not None:
+            return
+        gcode = self.mmu.gcode
+        original = gcode.register_command('G1', None)
+        if original is None:
+            return
+        try:
+            gcode.register_command('G1', self.handler)
+        except BaseException:
+            gcode.register_command('G1', original)
+            raise
+        self.original = original
 
     @contextlib.contextmanager
     def scope(self, name, label=None):
@@ -22,19 +38,6 @@ class GcodeExtrusionTelemetry:
             yield
             return
         owner = greenlet.getcurrent()
-        outer = not self.owners
-        if outer:
-            original = self.mmu.gcode.register_command('G1', None)
-            if original is None:
-                yield
-                return
-            self.original = original
-            try:
-                self.mmu.gcode.register_command('G1', self.handler)
-            except BaseException:
-                self.mmu.gcode.register_command('G1', original)
-                self.original = None
-                raise
         stack = self.owners.setdefault(owner, [])
         stack.append((name, label))
         try:
@@ -43,17 +46,15 @@ class GcodeExtrusionTelemetry:
             stack.pop()
             if not stack:
                 del self.owners[owner]
-            if not self.owners:
-                current = self.mmu.gcode.register_command('G1', None)
-                # Do not overwrite a replacement installed by another extension.
-                self.mmu.gcode.register_command('G1', self.original if current == self.handler else current)
-                self.original = None
 
     def _handle_g1(self, gcmd):
+        # Ordinary printing needs only this check and the original handler call.
+        if not self.owners:
+            return self.original(gcmd)
         mmu = self.mmu
         owner = greenlet.getcurrent()
         telemetry = mmu.movement_telemetry
-        if (owner not in self.owners or owner in self.handling or
+        if (not telemetry.listeners or owner not in self.owners or owner in self.handling or
                 'E' not in gcmd.get_command_parameters() or telemetry.operations):
             return self.original(gcmd)
         move = mmu.printer.lookup_object('gcode_move')

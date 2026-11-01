@@ -31,7 +31,7 @@ import pathlib
 import tempfile
 import re
 
-from test.hh.live_viewer import LiveViewer
+from test.hh.live_viewer import SourceViewer
 import socket
 import struct
 import sys
@@ -157,7 +157,7 @@ class WebUiBridge:
         self.started = time.time()
         self._next_status = 0.0
         self._server = None
-        self.viewer = LiveViewer(session)
+        self.viewer = SourceViewer(session)
         self.restart_profile = None
         self.profile_name = ""
         self.uploads = tempfile.TemporaryDirectory(prefix="hh-viewer-")
@@ -247,21 +247,21 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
-        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js'):
-            filename = {'/sim/viewer/app.js': 'app.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
+        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js', '/sim/viewer/telemetry.js'):
+            filename = {'/sim/viewer/app.js': 'app.js', '/sim/viewer/telemetry.js': 'telemetry.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
             data = (pathlib.Path(__file__).parent / 'viewer' / filename).read_bytes()
             handler.send_response(200)
-            handler.send_header('Content-Type', {'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
+            handler.send_header('Content-Type', {'telemetry.js':'text/javascript', 'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
             handler.send_header('Content-Length', str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)
             return
-        if parsed.path in ('/sim/viewer/events', '/sim/viewer/telemetry'):
+        if parsed.path == '/sim/viewer/telemetry':
             try:
-                after = int(params.get('after', 0))
+                after = int(params['after']) if 'after' in params else None
             except (TypeError, ValueError):
-                after = 0
-            reader = self.viewer.read_telemetry if parsed.path.endswith('/telemetry') else self.viewer.read
+                after = None
+            reader = self.viewer.read_telemetry
             data = json.dumps({'result': reader(after)}, allow_nan=False).encode()
             handler.send_response(200)
             handler.send_header('Content-Type', 'application/json')
@@ -309,7 +309,6 @@ class WebUiBridge:
             except queue.Empty:
                 break
             self._handle(conn, text, waiter)
-        self.viewer.capture('state', 'State changed', internal=True)
         now = time.monotonic()
         if self.clients and now >= self._next_status:
             self._next_status = now + STATUS_PERIOD
@@ -593,6 +592,7 @@ class WebUiBridge:
             raise RpcError('; '.join(self.session.errors[errors_before:]))
         self.viewer.observe_configuration()
         return self.rpc_sim_viewer_setup(conn, {'unit':index})
+
 
     def rpc_sim_viewer_sensor(self, conn, params):
         name = params.get('name')

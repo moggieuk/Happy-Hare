@@ -1,6 +1,7 @@
 # Copyright (C) 2022-2026 Paul Morgan. GPLv3.
 """MMU-owned extrusion commands, independent of physical queue completion."""
 import unittest
+from unittest import mock
 import greenlet
 from test.hh import session
 from test.hh.live_viewer import LiveViewer
@@ -79,13 +80,13 @@ class TestGcodeTelemetry(unittest.TestCase):
         event = viewer.read()['events'][-1]
         self.assertEqual(sorted(event['motors'].values()), [3,3])
 
-    def test_scope_restores_exact_handler_and_excludes_print_moves(self):
+    def test_permanent_handler_excludes_print_moves(self):
         original = self.handler()
         self.run_gcode('M83\nG1 E1 F300')
         with self.scope('MMU_TEST'):
             with self.scope('NESTED_MACRO'):
                 self.run_gcode('G1 E2 F300\nG1 E-1')
-            self.assertNotEqual(self.handler(), original)
+            self.assertIs(self.handler(), original)
         self.assertIs(self.handler(), original)
         self.run_gcode('G1 E1')
         self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2, -1])
@@ -110,7 +111,7 @@ class TestGcodeTelemetry(unittest.TestCase):
             self.run_gcode('G0 E1\nG1 X1\nG1 E0')
         self.assertEqual(self.outcomes(), [])
 
-    def test_existing_extension_handler_is_called_and_restored(self):
+    def test_later_extension_handler_is_called_and_preserved(self):
         original = self.hh.gcode.register_command('G1', None)
         calls = []
         def extension(gcmd):
@@ -122,6 +123,53 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertIs(self.handler(), extension)
         self.assertEqual(len(calls), 1)
         self.assertEqual(len(self.outcomes()), 1)
+
+    def test_install_preserves_an_existing_extension(self):
+        from extras.mmu.mmu_gcode_telemetry import GcodeExtrusionTelemetry
+        previous = self.hh.gcode.register_command('G1', None)
+        calls = []
+        def extension(gcmd):
+            calls.append(gcmd.get_commandline())
+            return previous(gcmd)
+        self.hh.gcode.register_command('G1', extension)
+        wrapper = GcodeExtrusionTelemetry(self.hh.mmu)
+        wrapper.install()
+        self.assertIs(wrapper.original, extension)
+        self.run_gcode('M83\nG1 E1 F300')
+        with wrapper.scope('MMU_TEST'):
+            self.run_gcode('G1 E2')
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2])
+
+    def test_extension_installed_during_scope_remains_safe_after_scope(self):
+        calls = []
+        with self.scope('MMU_TEST'):
+            original = self.hh.gcode.register_command('G1', None)
+            def extension(gcmd):
+                calls.append(gcmd.get_commandline())
+                return original(gcmd)
+            self.hh.gcode.register_command('G1', extension)
+            self.run_gcode('M83\nG1 E2 F300')
+        self.run_gcode('G1 E1')
+        with self.scope('NEXT_MMU_TEST'):
+            self.run_gcode('G1 E3')
+        self.assertIs(self.handler(), extension)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2, 3])
+
+    def test_scopes_and_repeated_ready_do_not_modify_command_registration(self):
+        wrapper = self.hh.mmu.gcode_telemetry
+        with mock.patch.object(self.hh.gcode, 'register_command', side_effect=AssertionError('handler mutation')):
+            wrapper.install()
+            with self.scope('MMU_TEST'):
+                with self.scope('NESTED'):
+                    self.run_gcode('M83\nG1 E1 F300')
+        self.assertEqual(len(self.outcomes()), 1)
+
+    def test_idle_path_does_not_query_greenlet_or_telemetry(self):
+        with mock.patch.object(greenlet, 'getcurrent', side_effect=AssertionError('idle ownership lookup')):
+            self.run_gcode('M83\nG1 E1 F300')
+        self.assertEqual(self.outcomes(), [])
 
     def test_existing_movement_operation_prevents_duplicate_g1_events(self):
         telemetry = self.hh.mmu.movement_telemetry
@@ -143,7 +191,7 @@ class TestGcodeTelemetry(unittest.TestCase):
             self.run_gcode('G1 E2')
         self.assertAlmostEqual(model.tip[0], 100)
 
-    def test_error_restores_handler(self):
+    def test_error_cleans_scope_without_replacing_handler(self):
         original = self.handler()
         self.run_gcode('M83')
         with self.assertRaises(Exception):
@@ -151,6 +199,10 @@ class TestGcodeTelemetry(unittest.TestCase):
                 self.run_gcode('G1 E1 F0')
         self.assertIs(self.handler(), original)
         self.assertEqual(self.outcomes()[0]['status'], 'error')
+        self.assertEqual(self.hh.mmu.gcode_telemetry.owners, {})
+        self.assertEqual(self.hh.mmu.gcode_telemetry.handling, set())
+        self.run_gcode('G1 E1 F300')
+        self.assertEqual(len(self.outcomes()), 1)
 
     def test_feed_override_reports_multiplier_and_resolves_command_speed(self):
         with self.scope('MMU_TEST'):
@@ -165,6 +217,9 @@ class TestGcodeTelemetry(unittest.TestCase):
         original = self.handler()
         with self.scope('MMU_TEST'):
             self.assertIs(self.handler(), original)
+            self.assertEqual(self.hh.mmu.gcode_telemetry.owners, {})
+            self.run_gcode('M83\nG1 E1 F300')
+        self.assertEqual(self.outcomes(), [])
 
     def test_coordinated_move_uses_path_feed_rate(self):
         with self.scope('MMU_TEST'):

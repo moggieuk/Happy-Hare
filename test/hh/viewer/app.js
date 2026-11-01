@@ -1,4 +1,5 @@
-import { visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import {TelemetryReplay, parseTelemetry} from './telemetry.js';
+import { syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay gives HTML and SVG tooltips the same delay and avoids clipping.
@@ -59,7 +60,17 @@ $('theme-toggle').onclick = () => {
   setTheme(theme);
   try { localStorage.setItem('hh-viewer-theme', theme); } catch {}
 };
-let configRevision = null;
+let offline = false, sourceGeneration = 0, sourceRecords = [], sourceReplay = new TelemetryReplay();
+let pendingSource = null, pendingFingerprint = '';
+function sourceMode() {
+  $('return-live').hidden = !offline;
+  $('recording-name').hidden = !offline;
+  document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, #test-panel input, #test-panel select, #test-panel button:not(#save)')
+    .forEach(node=>node.disabled=offline);
+  $('live').dataset.tooltip = offline ? 'End of recording' : 'End, go live';
+  $('live').setAttribute('aria-label', $('live').dataset.tooltip);
+}
+
 let socket,
   serial = 0,
   pending = new Map(),
@@ -130,7 +141,8 @@ function message(text, error = false) {
 }
 function rpc(method, params = {}) {
   return new Promise((resolve, reject) => {
-    if (socket.readyState !== 1) return reject(Error("Console disconnected"));
+    if (offline) return reject(Error("Return to live before changing the printer"));
+    if (socket?.readyState !== 1) return reject(Error("Console disconnected"));
     const id = ++serial;
     pending.set(id, { resolve, reject });
     socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
@@ -150,6 +162,7 @@ async function action(fn) {
     document
       .querySelectorAll("aside button, #send")
       .forEach((b) => (b.disabled = false));
+    if (offline) sourceMode();
   }
 }
 function connect() {
@@ -157,10 +170,12 @@ function connect() {
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/websocket`,
   );
   socket.onopen = () => {
+    if (offline) return;
     $("connection").textContent = "Connected · identifying source…";
     refresh().catch((e) => message(e.message, true));
   };
   socket.onmessage = (e) => {
+    if (offline) return;
     const data = JSON.parse(e.data);
     if (pending.has(data.id)) {
       const p = pending.get(data.id);
@@ -176,7 +191,7 @@ function connect() {
     }
   };
   socket.onclose = () => {
-    $("connection").textContent = "Disconnected · retrying";
+    if (!offline) $("connection").textContent = "Disconnected · retrying";
     pending.forEach((p) => p.reject(Error("Console disconnected")));
     pending.clear();
     setTimeout(connect, 1500);
@@ -193,7 +208,9 @@ function options(node, items) {
   );
 }
 async function refresh() {
+  if (offline) return;
   setup = await rpc("sim.viewer.setup", { unit: Number($("unit").value || 0) });
+  if (offline) return;
   const kind = setup.connection_kind || 'simulator'; // Older sim.viewer.setup responses are simulator-only.
   $("connection").textContent = kind === 'simulator' ? 'Connected to the simulator'
     : kind === 'live_machine' ? 'Connected to a live machine' : 'Connected · unknown source';
@@ -370,13 +387,14 @@ function currentIndex() {
 }
 function followTrace() {
   const view = $("trace"), index = currentIndex();
-  for (const [i, row] of [...view.children].entries()) {
-    const selected = i === index;
+  const sequence = events[index]?.seq;
+  for (const row of view.children) {
+    const selected = Number(row.dataset.seq) === sequence;
     row.classList.toggle('selected', selected);
     if (selected) row.setAttribute('aria-current', 'step');
     else row.removeAttribute('aria-current');
   }
-  const row = view.children[index];
+  const row = [...view.children].find(row => Number(row.dataset.seq) === sequence);
   if (row) {
     const box = row.getBoundingClientRect(), bounds = view.getBoundingClientRect();
     if (box.top < bounds.top) view.scrollTop -= bounds.top - box.top;
@@ -386,7 +404,6 @@ function followTrace() {
 function seek(index) {
   pauseAfterStep = false;
   cursor = Math.max(0, Math.min(index, events.length - 1));
-  if (cursor === events.length - 1) { followLive(); return; }
   live = false; paused = true; replayingHistory = true; playing = null; sensorPulse = null;
   draw(); followTrace();
 }
@@ -446,7 +463,7 @@ function draw() {
   cursor = Math.max(0, Math.min(cursor, events.length - 1));
   const running = live && !paused && (playing || played < events.at(-1).seq);
   $("replay").disabled = pauseAfterStep || (!running && currentIndex() >= events.length - 1);
-  const playLabel = running ? 'Pause after current step' : 'Play continuously — follow live when caught up';
+  const playLabel = running ? 'Pause after current step' : offline ? 'Play recording' : 'Play continuously — follow live when caught up';
   $("replay").setAttribute('aria-label', playLabel);
   $("replay").dataset.tooltip = playLabel;
   $("replay").querySelector('path').setAttribute('d', running
@@ -464,7 +481,7 @@ function draw() {
     end = s.layout.nozzle ?? (s.layout.toolhead ?? 760) + 30;
   const eventsBehind = events.length - 1 - events.indexOf(e);
   if (live && !paused && !playing && eventsBehind === 0) replayingHistory = false;
-  const modeLabel = paused || !live ? 'Paused' : replayingHistory ? 'Replay' : eventsBehind >= 3 ? 'Live · catching up' : 'Live';
+  const modeLabel = paused || !live ? 'Paused' : offline ? 'Replay' : replayingHistory ? 'Replay' : eventsBehind >= 3 ? 'Live · catching up' : 'Live';
   // Bookkeeping events must not clear the last animated movement's annotation.
   const annotatedEvent = annotatedStep(events, e, !live || paused);
   const moveReason = annotatedEvent.label || annotatedEvent.telemetry?.start?.label;
@@ -477,7 +494,7 @@ function draw() {
     "M620 470 L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 445";
   const dimensionLink = label => {
     const id = dimensionParameter(s, label);
-    return id ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
+    return id && !offline ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
   };
   const nozzleDiameter = Number($("nozzle-diameter").value);
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
@@ -521,8 +538,10 @@ function draw() {
   };
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
   if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(470-305);
-  // Park against the drawn endstop, including schematic sensor/encoder offsets.
-  if (s.gate >= 0 && ([0,1].includes(s.filament_pos) || (s.filament_pos === 2 && s.encoder_reference?.endstop === 'encoder'))) {
+  // Encoder loading keeps one reference across START OF BOWDEN bookkeeping.
+  if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry && s.encoder_reference?.endstop === 'encoder') {
+    tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,p=>progress(p)*length,470-encoderPoint().y));
+  } else if (s.gate >= 0 && [0,1].includes(s.filament_pos)) {
     const unit = s.units?.indexOf(s.unit) ?? 0;
     const params = s.configuration?.parameters?.[unit] || {};
     const endstop = (s.encoder_reference?.endstop ?? params.gate_homing_endstop ?? '').split(':').at(-1);
@@ -601,7 +620,7 @@ function draw() {
   const fadeY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150) * length).y;
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
   svg += `<defs><linearGradient id="bowden-tube-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY-17}" y2="450"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-tube-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY-17}" width="40" height="${Math.max(0,520-fadeY+17)}" fill="url(#bowden-tube-gradient)"/></mask></defs>`;
-  if (s.synced) {
+  if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
     svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(684 295) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="684" y="316" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
   }
   // Nozzle-relative reference guides, matching the documentation diagrams.
@@ -650,8 +669,10 @@ function draw() {
     // Both gear pairs use the toolhead scale so equal travel gives equal rotation.
     const pixelsPerMm = .27 * length / (end-entry);
     const angle = gearAngle(distance, pixelsPerMm);
+    const gripState = e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
+    const spacing = type === 'gear' && gripState?.mmu_gripped === false ? 31 : 23;
     for (const side of [-1, 1])
-      svg += `<g transform="translate(${x + side * 23} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle})"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
+      svg += `<g data-part="${type}-wheel" transform="translate(${x + side * spacing} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle})"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
   }
   for (const [name, d] of Object.entries(s.devices)) {
     if (name.includes(':') && name.split(':')[0] !== s.unit) continue;
@@ -762,10 +783,10 @@ function draw() {
       el.textContent = name.split(':').at(-1);
       const enabled = d.enabled ?? d.state !== null;
       const atLatest = live && !paused && !playing && played >= events.at(-1).seq;
-      el.disabled = !atLatest || busy;
+      el.disabled = offline || !atLatest || busy;
       el.setAttribute('aria-pressed', String(enabled));
       el.setAttribute('aria-label', `${name}: ${enabled ? 'enabled' : 'disabled'}. Click to ${enabled ? 'disable' : 'enable'}`);
-      el.dataset.tooltip = atLatest ? `${enabled ? 'Disable' : 'Enable'} ${name}` : 'Jump to live to change sensors';
+      el.dataset.tooltip = offline ? 'Recorded sensor state' : atLatest ? `${enabled ? 'Disable' : 'Enable'} ${name}` : 'Jump to live to change sensors';
       el.onclick = () => action(async () => {
         await rpc('sim.viewer.sensor', {name, enabled: !enabled});
         message(`Sensor ${name} ${enabled ? 'disabled' : 'enabled'}.`);
@@ -793,14 +814,19 @@ function renderTrace() {
   }));
   const view = $("trace"),
     scroll = view.scrollTop;
+  const expanded = new Set([...view.querySelectorAll('details[open]')].map(row=>row.dataset.seq));
   view.replaceChildren(
-    ...events.map((e, i) => {
-      const b = document.createElement("button");
+    ...($('show-internal').checked ? rawEvents : events).map(e => {
+      const internal = isInternalUpdate(e);
+      const row = document.createElement(internal ? 'details' : 'button');
+      row.dataset.seq = e.seq;
+      const b = internal ? document.createElement('summary') : row;
+      if (internal) { row.className = 'trace-internal'; row.open = expanded.has(String(e.seq)); }
       const [sequence, time, type, ...detail] = traceText(e).split(' · ');
       const pill = document.createElement('span');
       pill.className = 'trace-type';
-      pill.dataset.type = type;
-      pill.textContent = type;
+      pill.dataset.type = internal ? 'internal' : type;
+      pill.textContent = internal ? 'internal' : type;
       b.append(`${sequence} · ${time} · `, pill);
       const reason = e.label || e.telemetry?.start?.label;
       if (e.kind === 'movement' && reason) {
@@ -810,20 +836,26 @@ function renderTrace() {
         details.className = 'trace-details';
         details.textContent = detail.join(' · ');
         b.append(' · ', heading, details);
+      } else if (internal) {
+        const name = e.telemetry?.event;
+        b.append(' · ' + (name && name !== 'state_delta' ? name.replaceAll('_',' ') : 'State update'));
+        const details = document.createElement('pre');
+        details.textContent = JSON.stringify(e.telemetry?.changes || e.telemetry || e.state, null, 2);
+        row.append(b, details);
       } else b.append(` · ${detail.join(' · ')}`);
       // Detailed provenance stays in the tooltip.
       b.dataset.tooltip = [e.origin,
         e.fast_bowden && $('compress-bowden').checked ? 'Compressed Bowden playback' : '',
         ...(e.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`)]
         .filter(Boolean).join(' · ');
-      b.classList.toggle("selected", i === currentIndex());
-      b.onclick = () => seek(i);
-      return b;
+      if (!internal) b.onclick = () => seek(events.findIndex(item => item.seq === e.seq));
+      return row;
     }),
   );
   view.scrollTop = scroll;
   followTrace();
 }
+$("show-internal").onchange = renderTrace;
 $("beginning").onclick = () => seek(0);
 $("previous").onclick = () => seek(currentIndex() - 1);
 for (const [id, direction] of [['previous-toolchange', -1], ['next-toolchange', 1]]) {
@@ -854,94 +886,112 @@ $("replay").onclick = () => {
 function followLive() {
   pauseAfterStep = false;
   replayingHistory = false;
-  live = true; paused = false; playing = null; sensorPulse = null; resumeAt = 0;
+  live = true; paused = offline; playing = null; sensorPulse = null; resumeAt = 0;
   played = events.at(-1)?.seq || 0;
   displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
   draw(); followTrace();
 }
 $("live").onclick = followLive;
 $("timeline").oninput = () => seek(Number($("timeline").value));
-$("save").onclick = () => {
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify({ version: 2, session, events: rawEvents }, null, 2)], {
-      type: "application/json",
-    }),
-  );
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "happy-hare-telemetry.json";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
 $("compress-bowden").onchange = () => renderTrace();
 $("nozzle-diameter").onchange = () => draw();
-$("save-motion").onclick = async () => {
+function downloadTelemetry() {
+  const records = [...sourceRecords, ...(pendingSource ? [pendingSource] : [])];
+  if (!records.length) return message('No telemetry captured yet', true);
+  const text = records.map(r=>JSON.stringify(r)).join('\n')+'\n';
+  const url = URL.createObjectURL(new Blob([text],{type:'application/x-ndjson'}));
+  const link = document.createElement('a');
+  link.href=url; link.download='happy-hare-motion.jsonl'; link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$('save-motion').onclick = downloadTelemetry;
+$('load-telemetry').onclick = () => $('telemetry-file').click();
+$('telemetry-file').onchange = async () => {
+  const file = $('telemetry-file').files[0];
+  if (!file) return;
   try {
-    const response = await fetch('/sim/viewer/telemetry');
-    const { result } = await response.json();
-    const text = result.records.map(r=>JSON.stringify(r)).join('\n') + '\n';
-    const url = URL.createObjectURL(new Blob([text], {type:'application/x-ndjson'}));
-    const link = document.createElement('a');
-    link.href = url; link.download = 'happy-hare-motion.jsonl'; link.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-  } catch (error) { message(error.message, true); }
+    if (file.size > 32*1024*1024) throw Error('Telemetry file exceeds 32 MB');
+    const records = parseTelemetry(await file.text());
+    const replay = new TelemetryReplay();
+    replay.accept(records); // Validate completely before replacing the current view.
+    sourceGeneration++;
+    offline=true;
+    pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
+    sourceReplay=replay; sourceRecords=records; pendingSource=null; pendingFingerprint='';
+    rawEvents=replay.events; events=visibleSteps(rawEvents); session=replay.session;
+    live=false; paused=true; cursor=0; playing=null; sensorPulse=null; pauseAfterStep=false; displayed=null;
+    $('recording-name').textContent=file.name;
+    $('connection').textContent='Offline recording';
+    sourceMode(); draw(); renderTrace();
+    message(replay.checkpoint ? 'Loaded checkpoint: earlier motion and inferred geometry are unavailable.' : 'Recording loaded. Use Play or step through the trace.');
+  } catch(error) { message(error.message,true); }
+  finally { $('telemetry-file').value=''; }
+};
+$('return-live').onclick = () => {
+  sourceGeneration++; offline=false; sourceReplay=new TelemetryReplay(); sourceRecords=[]; pendingSource=null; pendingFingerprint='';
+  sourceMode(); refresh().catch(error=>message(error.message,true));
+  message('Returning to live telemetry…');
 };
 let parameterGate = null;
-async function poll() {
-  try {
-    const after = rawEvents.filter(e => !e.pending).at(-1)?.seq || 0;
-    const res = await fetch("/sim/viewer/events?after=" + after);
-    const data = (await res.json()).result;
-    const changed = data.config_revision !== configRevision;
-    const newSession = data.session !== session;
-    if (newSession || changed) {
-      const selectedSeq = events[currentIndex()]?.seq;
-      const full = (await (await fetch('/sim/viewer/events')).json()).result;
-      rawEvents = [...full.events, ...(full.pending_config ? [full.pending_config] : [])];
-      events = visibleSteps(rawEvents);
-      configRevision = full.config_revision;
-      if (playing) playing.event = events.find(e => e.seq === playing.event.seq) || playing.event;
-      if (newSession) {
-        if (session !== null) $('mini-console').replaceChildren();
-        pauseAfterStep = false;
-        session = full.session; cursor = 0; live = true; paused = false; replayingHistory = false;
-              sensorPulse = null; playing = null; resumeAt = 0;
-        played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
-      } else {
-        cursor = Math.max(0, events.findIndex(e => e.seq === selectedSeq));
-        if (live && !playing && played >= (events.at(-1)?.seq || 0)) {
-          played = events.at(-1)?.seq || 0; displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
-        }
-      }
-    } else if (data.events.length) {
-      const selectedSeq = events[currentIndex()]?.seq;
-      rawEvents = [...rawEvents.filter(e => !e.pending && !data.events.some(n => n.seq === e.seq)),
-                ...data.events, ...(data.pending_config ? [data.pending_config] : [])].slice(-3000);
-      events = visibleSteps(rawEvents);
-      if (playing) playing.event = events.find(e => e.seq === playing.event.seq) || playing.event;
-      else if (live) {
-        const current = events.find(e => e.seq === played);
-        if (current) displayed = current.settled_state || current.state;
-      }
-      if (!live) cursor = Math.max(0, events.findIndex(e => e.seq === selectedSeq));
+function updateSource(records, reset=false) {
+  const selectedSeq=events[currentIndex()]?.seq;
+  const newSession=reset || records.some(r=>r.event === 'session');
+  const committed=records.filter(r=>!r.pending);
+  const preview=records.find(r=>r.pending) || null;
+  const fingerprint=JSON.stringify(preview?.changes || []);
+  if (newSession) { sourceReplay=new TelemetryReplay(); sourceRecords=[]; }
+  sourceReplay.accept(committed);
+  sourceRecords.push(...committed);
+  pendingSource=preview;
+  if (!committed.length && fingerprint === pendingFingerprint) return;
+  pendingFingerprint=fingerprint;
+  let replay=sourceReplay;
+  if (preview) { replay=new TelemetryReplay(); replay.accept([...sourceRecords,preview]); }
+  rawEvents=replay.events; events=visibleSteps(rawEvents);
+  if (newSession) {
+    if (session !== replay.session) $('mini-console').replaceChildren();
+    session=replay.session; live=true; paused=false; replayingHistory=false; pauseAfterStep=false;
+    cursor=0; playing=null; sensorPulse=null; resumeAt=0;
+    played=events.at(-1)?.seq || 0; displayed=events.at(-1)?.settled_state || events.at(-1)?.state;
+  } else {
+    cursor=Math.max(0,events.findIndex(e=>e.seq === selectedSeq));
+    if (playing) playing.event=events.find(e=>e.seq === playing.event.seq) || playing.event;
+    else if (live) {
+      const current=events.find(e=>e.seq === played);
+      if (current) displayed=current.settled_state || current.state;
+      else if (played > (events.at(-1)?.seq ?? 0)) followLive();
     }
-    if (newSession || changed || data.events.length || !events.length) {
-      draw(); renderTrace();
-    }
-    const latest = rawEvents.at(-1)?.state;
-    const selectedGate = latest ? `${session}:${latest.unit}:${latest.gate}` : null;
-    if (latest && selectedGate !== parameterGate) {
-      parameterGate = selectedGate;
-      const unit = latest.units?.indexOf(latest.unit) ?? -1;
-      if (unit >= 0 && $('unit').value !== String(unit)) {
-        $('unit').value = String(unit);
-        await refresh();
-      }
-    }
-  } catch (e) {
-    $("connection").textContent = "Waiting for console…";
   }
-  setTimeout(poll, 150);
+  draw(); renderTrace();
+}
+async function poll() {
+  const generation=sourceGeneration;
+  try {
+    if (offline) return;
+    // Bound browser history with a new source checkpoint as well as the server ring.
+    const query=sourceRecords.length > 6000 || !sourceReplay.session ? '' : '?after='+sourceReplay.sequence;
+    const res=await fetch('/sim/viewer/telemetry'+query);
+    if (!res.ok) throw Error('Telemetry connection unavailable');
+    let data=(await res.json()).result;
+    if (sourceReplay.session && data.session_id !== sourceReplay.session && !data.reset)
+      data=(await (await fetch('/sim/viewer/telemetry')).json()).result;
+    if (offline || generation !== sourceGeneration) return;
+    updateSource(data.records,data.reset);
+    const latest=rawEvents.at(-1)?.state;
+    const selectedGate=latest ? `${session}:${latest.unit}:${latest.gate}` : null;
+    if (latest && selectedGate !== parameterGate) {
+      parameterGate=selectedGate;
+      const unit=latest.units?.indexOf(latest.unit) ?? -1;
+      if (unit>=0 && $('unit').value !== String(unit) && socket?.readyState === 1) {
+        $('unit').value=String(unit); await refresh();
+      }
+    }
+  } catch(error) {
+    if (!offline && generation === sourceGeneration) {
+      $('connection').textContent='Telemetry unavailable';
+      message(error.message,true);
+    }
+  } finally { setTimeout(poll,150); }
 }
 function animate(now) {
   if (live && !paused && events.length) {
@@ -959,7 +1009,7 @@ function animate(now) {
         played=playing.event.seq;
         if (playing.event.kind === 'movement') resumeAt=now+300;
         playing=null;
-        if (pauseAfterStep) { paused = true; pauseAfterStep = false; }
+        if (pauseAfterStep || (offline && played >= events.at(-1).seq)) { paused = true; pauseAfterStep = false; }
         followTrace();
       }
       draw();

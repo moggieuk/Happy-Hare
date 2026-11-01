@@ -1,0 +1,375 @@
+/* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
+import {purgeColor} from './playback.js';
+
+const copy = value => structuredClone(value);
+const finite = value => typeof value === 'number' && Number.isFinite(value);
+const number = (value, fallback=0) => finite(value) ? value : fallback;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const short = name => name.split(':').at(-1);
+const color = value => /^[0-9a-f]{6}$/i.test(String(value)) ? String(value) : '808182';
+const positions = ['UNLOADED', 'HOMED TO GATE', 'START BOWDEN', 'IN BOWDEN', 'END BOWDEN',
+  'HOMED TO EXTRUDER', 'EXTRUDER ENTRY', 'IN EXTRUDER', 'HOMED TO TOOLHEAD', 'IN TOOLHEAD', 'LOADED IN NOZZLE'];
+const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
+
+function validateFacts(facts) {
+  const machine=facts?.printer?.mmu_machine, mmu=facts?.printer?.mmu;
+  if (!machine?.units || !mmu || !Number.isInteger(machine.num_gates) || machine.num_gates < 1 || machine.num_gates > 1000 ||
+      !Object.hasOwn(machine.units,mmu.unit) || !Number.isInteger(mmu.gate) || mmu.gate < -2 || mmu.gate >= machine.num_gates ||
+      !Array.isArray(mmu.gate_color) || !Array.isArray(mmu.active_sensors) || !mmu.sensors ||
+      !Array.isArray(mmu.drive_motors?.gear) || !Array.isArray(mmu.drive_motors?.extruder))
+    throw Error('Telemetry is missing valid MMU/machine configuration');
+  for (const unit of Object.values(machine.units)) {
+    if (!Array.isArray(unit.gates) || !Array.isArray(unit.sensors) || !unit.parameters ||
+        !unit.toolhead?.parameters || !unit.extruder || !unit.bowden_lengths)
+      throw Error('Telemetry is missing unit configuration');
+  }
+  for (const name of mmu.active_sensors) if (!mmu.sensors[name]) throw Error('Telemetry is missing an active sensor');
+}
+
+export function applyDelta(state, changes) {
+  if (!Array.isArray(changes)) throw Error('Invalid telemetry state delta');
+  for (const change of changes) {
+    const path = change.path;
+    if (!Array.isArray(path) || !path.length || path.some(k => typeof k !== 'string' || forbidden.has(k)))
+      throw Error('Invalid telemetry state path');
+    let target = state;
+    for (const key of path.slice(0,-1)) {
+      if (!Object.hasOwn(target,key)) target[key] = {};
+      target = target[key];
+      if (!target || typeof target !== 'object' || Array.isArray(target)) throw Error('Invalid telemetry state path');
+    }
+    const key = path.at(-1);
+    if (change.remove === true) delete target[key];
+    else target[key] = copy(change.value);
+  }
+}
+
+export function parseTelemetry(text) {
+  if (text.length > 32*1024*1024) throw Error('Telemetry file exceeds 32 MB');
+  let records;
+  try {
+    const value = JSON.parse(text);
+    records = Array.isArray(value) ? value : value?.records || value?.result?.records || (value?.event ? [value] : null);
+  } catch {
+    records = text.split(/\r?\n/).filter(line=>line.trim()).map((line,i)=>{
+      try { return JSON.parse(line); } catch { throw Error(`Invalid JSON on line ${i+1}`); }
+    });
+  }
+  if (!Array.isArray(records) || !records.length || records.length > 100000)
+    throw Error('Expected a telemetry JSONL file or an array of telemetry records');
+  if (records[0]?.event !== 'session') throw Error('This recording has no session snapshot. Save a new telemetry capture.');
+  if (records.slice(1).some(r=>r.event === 'session')) throw Error('Load one telemetry session at a time');
+  return records;
+}
+
+// This reducer has no printer connection or simulator imports. All durable input
+// is the session baseline, state deltas and ordered Happy Hare source records.
+export class TelemetryReplay {
+  constructor() {
+    this.session = null;
+    this.sequence = -1;
+    this.facts = null;
+    this.events = [];
+    this.pending = new Map();
+    this.tips = []; this.shapes = []; this.motors = {};
+    this.fragments = {}; this.hotends = {}; this.bufferPositions = {};
+    this.excess = {}; this.overshoot = {};
+    this.cutter = false;
+    this.selectionBefore = null;
+  }
+
+  accept(records) { for (const record of records) this.feed(record); return this.events; }
+
+  feed(record) {
+    if (!record || !Number.isSafeInteger(record.sequence) || record.sequence < 0 || !finite(record.timestamp))
+      throw Error('Invalid telemetry sequence or timestamp');
+    if (record.event === 'session') {
+      if (record.schema !== 'happy_hare.motion' || record.version !== 2 || typeof record.session_id !== 'string' || !record.session_id)
+        throw Error('Unsupported telemetry format; expected happy_hare.motion version 2');
+      const f = record.state, machine = f?.printer?.mmu_machine, mmu = f?.printer?.mmu;
+      validateFacts(f);
+      Object.assign(this, new TelemetryReplay());
+      this.session = record.session_id;
+      this.sequence = record.sequence;
+      this.checkpoint = Boolean(record.checkpoint);
+      this.facts = copy(f);
+      this.tips = Array(machine.num_gates).fill(-20);
+      this.shapes = Array(machine.num_gates).fill(machine.form_tip_macro?.toLowerCase().includes('cut') ? 'square' : 'cone');
+      const state = this.snapshot();
+      if (mmu.gate >= 0) this.tips[mmu.gate] = this.logicalTip(state, mmu.filament_pos, true);
+      this.emit(record, 'session', this.checkpoint ? 'Recording checkpoint · earlier motion unavailable' : 'Session ready');
+      return;
+    }
+    if (!this.facts) throw Error('Telemetry must begin with a session snapshot');
+    if (record.sequence !== this.sequence+1) throw Error('Telemetry has a sequence gap; reload a complete capture');
+    this.sequence = record.sequence;
+    if (record.event === 'state_delta') {
+      const before = this.snapshot();
+      if (record.changes.some(c=>c.path.join('.') === 'printer.mmu.gate')) this.selectionBefore=before;
+      applyDelta(this.facts, record.changes);
+      validateFacts(this.facts);
+      const configuration = record.changes.filter(({path}) => path[0] === 'macros' ||
+        path.includes('parameters') || path.includes('bowden_lengths') || path.includes('form_tip_macro') ||
+        path.at(-1) === 'enabled' || /^(buffer_range|buffer_maxrange|buffer_spring_state)$/.test(path.at(-1)));
+      // Motion outcomes carry their sensor changes; don't insert a step between a pair.
+      if (configuration.length) this.emit(record, 'config', 'Configuration changed', {before,
+        changes:configuration.map(c=>({name:c.path.join('.'),after:c.remove ? null : c.value}))});
+      else this.emit(record, 'state', 'State changed', {internal:true, during_move:this.pending.size > 0, telemetry:record});
+      return;
+    }
+    if (record.event === 'movement_start') {
+      this.pending.set(record.move_id, {start:copy(record), before:this.snapshot()});
+      return;
+    }
+    if (record.event === 'movement_outcome') {
+      const pair = this.pending.get(record.move_id);
+      if (!pair) {
+        if (this.checkpoint) return; // A rolling capture may begin inside a move.
+        throw Error(`Movement ${record.move_id} has no start record`);
+      }
+      this.pending.delete(record.move_id);
+      this.move(record, pair);
+      return;
+    }
+    const before = this.snapshot(), mmu = this.facts.printer.mmu;
+    if (record.event === 'filament_pos_changed') {
+      mmu.filament_pos = record.filament_pos;
+      if (finite(record.homing_overshoot_mm)) this.overshoot[mmu.gate] = record.homing_overshoot_mm;
+      else if (record.filament_pos === 0) delete this.overshoot[mmu.gate];
+      const state = this.snapshot();
+      if (mmu.gate >= 0 && (!this.fragments[state.filament.extruder] || record.source === '_MMU_TEST'))
+        this.tips[mmu.gate] = this.logicalTip(state, record.filament_pos, record.source === '_MMU_TEST');
+      this.emit(record, 'state', record.filament_pos_name || positions[record.filament_pos] || 'UNKNOWN', {before,telemetry:record});
+    } else if (record.event === 'gate_changed') {
+      // The delta precedes this event, so recover the old selection for animation.
+      Object.assign(before,this.selectionBefore || {});
+      this.selectionBefore=null;
+      before.gate = record.previous_gate;
+      mmu.gate = record.gate;
+      if (record.unit) mmu.unit = record.unit;
+      this.emit(record, 'gate_changed', `Gate ${record.previous_gate} → ${record.gate}`, {before,telemetry:record});
+    } else if (record.event === 'toolchange') {
+      this.emit(record, 'toolchange', record.label || record.command, {telemetry:record});
+    } else if (record.event === 'cut' || record.event === 'filament_cut') {
+      const gate = mmu.gate, nozzle = before.layout.nozzle;
+      const blade = finite(record.blade_pos) ? nozzle-record.blade_pos : before.cutters.find(c=>c.kind === 'toolhead')?.position;
+      this.cutter = record.phase === 'CUT';
+      if (gate >= 0 && finite(blade) && this.tips[gate] > blade) {
+        this.fragments[before.filament.extruder] = {start:blade,end:this.tips[gate],
+          tip_shape:this.shapes[gate],color:before.filament.incoming_color};
+        this.tips[gate] = blade;
+        this.shapes[gate] = 'square';
+      }
+      this.emit(record,'cut','Toolhead filament cut',{before,cutter:record.cutter || 'toolhead',telemetry:record});
+    } else if (record.event === 'release') {
+      this.cutter = false;
+      this.emit(record,'release','Toolhead cutter release',{before,cutter:record.cutter || 'toolhead',telemetry:record});
+    } else {
+      // Retain diagnostics without folding in-move observations into the prior step.
+      this.emit(record,'state','State changed',{internal:true,during_move:this.pending.size > 0,telemetry:record});
+    }
+  }
+
+  logicalTip(s, pos, manual=false) {
+    const {extruder_entry:entry,extruder_gears:gears,nozzle} = s.layout;
+    const sensor = name => s.active_sensors.map(n=>[n,s.sensors[n]])
+      .find(([n])=>short(n) === name || short(n) === `${name}_${s.gate}`)?.[1]?.position;
+    const home = s.encoder_reference.endstop === 'encoder' ? s.layout.mmu_encoder
+      : sensor(s.encoder_reference.endstop) ?? 0;
+    const toolhead = sensor('toolhead') ?? (gears+nozzle)/2;
+    // Keep physical distances here; schematic parking gaps belong to drawing.
+    const exact = {1:home,5:sensor('extruder') ?? entry,6:gears,8:toolhead};
+    if (manual) Object.assign(exact, {'-1':-20,0:home+s.encoder_reference.parking,2:home,3:(home+entry)/2,4:entry,7:(gears+toolhead)/2,9:(toolhead+nozzle)/2,10:nozzle});
+    return exact[pos] ?? this.tips[s.gate] ?? -20;
+  }
+
+  snapshot() {
+    const f=this.facts, m=f.printer.mmu, machine=f.printer.mmu_machine;
+    const units=Object.keys(machine.units), unit=machine.units[m.unit];
+    if (!unit) throw Error('Unknown MMU unit in telemetry');
+    // Unknown/legacy grip data cannot establish a constrained Bowden segment.
+    const mmuGripped=unit.filament_always_gripped === true || [1,2].includes(m.filament_grip_state);
+    if (!mmuGripped) {
+      this.excess[m.gate]=0;
+      delete this.bufferPositions[m.gate];
+    }
+    const p=unit.toolhead.parameters, up=unit.parameters;
+    const bowden=unit.bowden_lengths[m.gate];
+    const entry=finite(bowden) && bowden > 0 ? bowden : 700;
+    const gears=entry+number(p.toolhead_entry_to_extruder), nozzle=gears+number(p.toolhead_extruder_to_nozzle,50);
+    const layout={mmu_entry:-150, mmu_exit:0, mmu_shared_exit:10, mmu_encoder:20,
+      extruder_entry:entry,extruder_gears:gears,nozzle,toolhead:nozzle-number(p.toolhead_sensor_to_nozzle,20)};
+    const sensors={};
+    for (const [name,value] of Object.entries(m.sensors)) {
+      const key=short(name).replace(/_\d+$/,'');
+      const pos=key === 'extruder' ? entry : key === 'toolhead' ? layout.toolhead
+        : key === 'mmu_pre_gate' ? -150 : ['filament_compression','filament_tension'].includes(key) ? entry : layout[key];
+      sensors[name]={state:value.triggered,enabled:value.enabled,position:finite(pos)?pos:null};
+    }
+    const macros={};
+    for (const [name,values] of Object.entries(f.macros || {})) for (const [key,value] of Object.entries(values)) macros[`macro:${name}:${key}`]=value;
+    const configuration={parameters:{},calibration:{},macros,sensors:Object.fromEntries(Object.entries(sensors).map(([n,v])=>[n,v.enabled]))};
+    units.forEach((name,i)=>{
+      const u=machine.units[name];
+      configuration.parameters[i]={...u.parameters,...u.toolhead.parameters,form_tip_macro:machine.form_tip_macro};
+      configuration.calibration[name]={bowden_lengths:u.bowden_lengths};
+    });
+    const extruder=unit.extruder, residual=number(p.toolhead_residual_filament);
+    const filament={extruder:extruder.name,retracted_length:extruder.retracted_length,residual_mm:residual,
+      fragment_mm:number(extruder.filament_remaining),retained_color:color(extruder.filament_remaining_color),incoming_color:color(m.gate_color[m.gate])};
+    if (!this.hotends[extruder.name]) {
+      this.hotends[extruder.name]={extruded:0,base:0,front:nozzle-residual,plan:null,nozzle:filament.retained_color};
+      if (filament.fragment_mm > 0) this.fragments[extruder.name]={start:nozzle-residual-filament.fragment_mm,end:nozzle-residual,
+        tip_shape:'cone',color:filament.retained_color};
+    }
+    const hotend=this.hotends[extruder.name];
+    if (!hotend.plan || hotend.plan.new_color !== filament.incoming_color) {
+      const fragment=this.fragments[extruder.name];
+      hotend.plan={start_mm:hotend.extruded,retained_mm:residual+(fragment ? fragment.end-fragment.start : 0),
+        old_color:hotend.nozzle,new_color:filament.incoming_color,mix_mm:Math.max(0,residual)};
+    }
+    const devices={}, buffers={}, object_status={};
+    for (const name of units) {
+      const u=machine.units[name];
+      if (u.encoder) { devices[`${name}:encoder`]={encoder_pos:u.encoder.distance}; object_status[`mmu_encoder ${u.encoder.name}`]=u.encoder.status || {encoder_pos:u.encoder.distance}; }
+      if (u.buffer) {
+        const b=u.buffer, maximum=Math.max(0,number(b.buffer_maxrange)), range=clamp(number(b.buffer_range),0,maximum);
+        const rest=b.buffer_spring_state === 'tension' ? 0 : b.buffer_spring_state === 'compression' ? maximum : maximum/2;
+        const occupied=u.gates.includes(m.gate) && this.tips[m.gate] >= 0;
+        let displacement=this.bufferPositions[m.gate] ?? rest;
+        if (!occupied) displacement=rest;
+        else if (b.proportional && finite(b.value)) {
+          // Preserve modeled overtravel only outside the switch interval.
+          const low=(maximum-range)/2,high=(maximum+range)/2;
+          if (!(displacement < low && b.value <= -1) && !(displacement > high && b.value >= 1))
+            displacement=maximum/2+clamp(b.value,-1,1)*range/2;
+        } else {
+          if (u.sensors.some(n=>short(n)==='filament_tension' && sensors[n]?.state === true)) displacement=Math.min(displacement,(maximum-range)/2);
+          if (u.sensors.some(n=>short(n)==='filament_compression' && sensors[n]?.state === true)) displacement=Math.max(displacement,(maximum+range)/2);
+        }
+        if (occupied) this.bufferPositions[m.gate]=displacement;
+        const travel=clamp(displacement,0,maximum);
+        devices[`${name}:buffer`]={maximum,range,rest,spring:b.buffer_spring_state,occupied,proportional:b.proportional,
+          value:b.value,travel,displacement,excess:displacement-travel};
+        buffers[b.name]={gates:u.gates,maxrange:maximum,range,spring:b.buffer_spring_state,travel:{[m.gate]:travel},excess:{[m.gate]:displacement-travel},tension_travel:(maximum-range)/2,compression_travel:(maximum+range)/2};
+        object_status[`mmu_buffer ${b.name}`]=null;
+      }
+      object_status[`mmu_toolhead ${u.toolhead.name}`]=null;
+    }
+    const vars=f.macros?.[machine.form_tip_macro+'_VARS'] || f.macros?.[machine.form_tip_macro] || {};
+    const cutters=finite(vars.blade_pos) ? [{kind:'toolhead',position:nozzle-vars.blade_pos,before_extruder:vars.cutter_before_extruder}] : [];
+    return copy({unit:m.unit,units,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
+      tips:this.tips,tails:this.tips.map(()=>null),tip_shapes:this.shapes,gate_colors:m.gate_color.map(color),layout,sensors,active_sensors:m.active_sensors,
+      unit_sensors:unit.sensors,devices,buffers,object_status,configuration,filament,cutters,cutter_pressed:this.cutter,
+      mmu_gripped:mmuGripped,synced:[1,3].includes(m.sync_mode),drive_motors:m.drive_motors,motors:this.motors,
+      encoder_reference:{endstop:up.gate_homing_endstop,offset:up.gate_endstop_to_encoder,parking:number(up.gate_parking_distance),overshoot:this.overshoot[m.gate] || 0},
+      retained_segment:this.fragments[extruder.name] || null,extruded_mm:hotend.extruded,purge_base_mm:hotend.base,purge_transition:hotend.plan,
+      nozzle_color:hotend.nozzle,bowden_unabsorbed_mm:this.excess[m.gate] || 0,sensor_conflicts:[]});
+  }
+
+  move(outcome,{start,before}) {
+    const state=this.snapshot(), gate=start.gate, d=number(outcome.actual_mm), conflicts=[];
+    for (const [name,value] of Object.entries(outcome.sensors || {})) if (state.sensors[name]) state.sensors[name].state=value;
+    const mode=start.motor_mode || 'gear';
+    const extruding=mode.includes('extruder') || mode === 'synced';
+    const gearing=mode.includes('gear') || mode === 'synced' || (start.source === 'mmu_gcode' && before.synced);
+    const motors=new Set(start.motors || []);
+    if (gearing) for (const name of before.drive_motors.gear) motors.add(name);
+    if (extruding) for (const name of before.drive_motors.extruder) motors.add(name);
+    for (const name of motors) this.motors[name]=number(this.motors[name])+d;
+    const details={before,telemetry:{start:{...start,motor_mode:start.source === 'mmu_gcode' && before.synced ? 'synced' : mode},outcome},source:start.source,requested:start.requested_mm,distance:outcome.actual_mm,
+      duration:outcome.elapsed_s,speed:outcome.extrusion_speed_mm_s ?? start.speed_mm_s,acceleration:start.acceleration_mm_s2,
+      homing:start.homing,endstop:start.endstop,homed:outcome.homed,error:outcome.error,outcome:outcome.status,
+      motors:Object.fromEntries([...motors].map(n=>[n,d])),fast_bowden:/Fast (loading|unloading) move through bowden/.test(start.label)};
+    if (gate >= 0 && gate < this.tips.length) {
+      const tip=this.tips[gate], gears=state.layout.extruder_gears,nozzle=state.layout.nozzle;
+      const gripped=tip >= gears-.001;
+      let travel=extruding ? (gripped || gearing ? d : 0) : gearing ? d : 0;
+      if (gearing && !extruding) {
+        if (gripped) travel=0;
+        else if (d > 0) travel=Math.min(d,Math.max(0,gears-tip));
+      }
+      const differential=(gearing ? d : 0)-(extruding && gripped ? d : 0);
+      const buffered=state.devices[`${state.unit}:buffer`];
+      if (before.mmu_gripped && buffered && (gripped || tip+travel >= gears)) {
+        this.bufferPositions[gate]=buffered.displacement+(gripped ? differential : Math.max(0,d-travel));
+      } else if (before.mmu_gripped && !buffered) {
+        this.excess[gate]=gripped ? number(this.excess[gate])+differential : Math.max(0,d-travel);
+        if (tip+travel < gears) this.excess[gate]=0;
+      }
+      let next=tip+travel;
+      const target=state.active_sensors.find(n=>n === start.endstop || short(n) === short(start.endstop || '') || short(n) === `${start.endstop}_${gate}`);
+      if (start.homing && outcome.homed && target) {
+        const sensor=state.sensors[target];
+        const forward=start.trigger_state ?? (number(start.requested_mm,d)>0);
+        if (!/filament_(compression|tension)|encoder/.test(target) && finite(sensor.position)) {
+          next=sensor.position-(forward ? 0 : .001);
+          details.homing_anchor=true;
+        } else if (buffered) {
+          const low=(buffered.maximum-buffered.range)/2,high=(buffered.maximum+buffered.range)/2;
+          this.bufferPositions[gate]=target.endsWith('compression') ? high : low;
+          const buffer=this.facts.printer.mmu_machine.units[state.unit].buffer;
+          if (buffer.proportional) buffer.value=target.endsWith('compression') ? 1 : -1;
+        }
+        // A homing result is more precise than the last asynchronous status sample.
+        this.facts.printer.mmu.sensors[target].triggered=forward;
+        sensor.state=forward;
+      }
+      const hotend=this.hotends[state.filament.extruder], segment=this.fragments[state.filament.extruder];
+      for (const name of state.active_sensors) {
+        const sensor=state.sensors[name];
+        if (!sensor?.enabled || !finite(sensor.position) || /filament_(compression|tension)|encoder/.test(name)) continue;
+        if (sensor.state === false && next > sensor.position) {
+          conflicts.push(`${name}: movement past a clear sensor`);
+          next=Math.min(next,sensor.position-.001);
+        } else if (sensor.state === true && next < tip && next < sensor.position &&
+            !(segment && segment.start <= sensor.position && segment.end >= sensor.position)) {
+          conflicts.push(`${name}: retraction past a triggered sensor`);
+          next=tip;
+        }
+      }
+
+      if (extruding && gripped && travel < 0) {
+        // Returning a retract restores the melt front before extrusion resumes.
+        if (tip >= nozzle-state.filament.residual_mm) hotend.front=Math.min(nozzle,tip);
+        if (next < gears) hotend.front=nozzle-state.filament.residual_mm;
+        if (tip >= nozzle-state.filament.residual_mm-.01) {
+          this.shapes[gate]='cone';
+          next=Math.min(next,nozzle-state.filament.residual_mm);
+        }
+        if (hotend.extruded > hotend.base) hotend.base=hotend.extruded;
+      }
+      if (extruding && travel > 0) {
+        let amount=segment ? Math.max(0,next-nozzle)
+          : Math.max(0,next-Math.max(tip,hotend.front));
+        if (segment) {
+          const push=Math.max(0,next-Math.max(tip,segment.start));
+          const melt=nozzle-state.filament.residual_mm;
+          amount+=Math.max(0,Math.min(nozzle,segment.end+push)-Math.max(melt,segment.end));
+          amount+=Math.min(segment.end-segment.start,Math.max(0,segment.end+push-nozzle));
+          segment.start=Math.min(nozzle,segment.start+push); segment.end=Math.min(nozzle,segment.end+push);
+          if (segment.start>=segment.end) delete this.fragments[state.filament.extruder];
+        }
+        details.purge_approach_mm=Math.max(0,travel-amount);
+        hotend.extruded+=amount;
+        hotend.nozzle=purgeColor({...state,purge_transition:hotend.plan},hotend.extruded);
+        next=Math.min(next,nozzle);
+        if (next >= nozzle-.001) this.shapes[gate]='square';
+      }
+      this.tips[gate]=next;
+      const rawBefore=copy(before), rawState=copy(state);
+      rawState.tips[gate]=tip+travel;
+      details.raw_before=rawBefore; details.raw_state=rawState;
+    }
+    const after=this.snapshot();
+    after.sensor_conflicts=conflicts;
+    // Outcome readings belong at the end of the animation, never its start.
+    for (const [name,value] of Object.entries(outcome.sensors || {})) if (after.sensors[name] && !(start.homing && outcome.homed && name === start.endstop)) after.sensors[name].state=value;
+    if (finite(outcome.encoder_mm) && after.devices[`${after.unit}:encoder`]) after.devices[`${after.unit}:encoder`].encoder_pos=outcome.encoder_mm;
+    this.emit(outcome,'movement',start.label || start.commandline || 'Movement',details,after);
+  }
+
+  emit(record,kind,label,details={},state=this.snapshot()) {
+    this.events.push({version:2,session:this.session,seq:record.sequence,time:record.timestamp,kind,label,state,...details});
+  }
+}

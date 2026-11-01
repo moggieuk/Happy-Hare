@@ -1,0 +1,168 @@
+# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
+"""Replay capture must remain independent of simulator geometry and the viewer."""
+import copy
+import json
+import unittest
+from unittest import mock
+from test.hh import session
+
+
+class TestTelemetryCapture(unittest.TestCase):
+    def setUp(self):
+        self.hh = session('ercf_vvd_buffers')
+        self.hh.boot(calibrate=True, selected_gate=0)
+        from extras.mmu.mmu_telemetry_capture import TelemetryCapture, ReplayState, apply_changes
+        self.Capture, self.State, self.apply = TelemetryCapture, ReplayState, apply_changes
+        self.captures = []
+
+    def tearDown(self):
+        for capture in self.captures:
+            capture.close()
+        self.hh.close()
+
+    def capture(self, **kwargs):
+        capture = self.Capture(self.hh.mmu, **kwargs)
+        self.captures.append(capture)
+        return capture
+
+    def emit(self):
+        self.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
+
+    def test_baseline_uses_printer_facts_without_simulator_coordinates(self):
+        with mock.patch.object(self.hh.mmu, 'get_status', side_effect=AssertionError('broad scan')):
+            capture = self.capture()
+            self.emit()
+        records = capture.read()['records']
+        baseline = records[0]
+        self.assertEqual(baseline['event'], 'session')
+        self.assertEqual(baseline['version'], 2)
+        state = baseline['state']
+        self.assertEqual(set(state['printer']), {'mmu', 'mmu_machine'})
+        self.assertEqual(state['printer']['mmu']['gate'], 0)
+        unit = state['printer']['mmu_machine']['units']['unit0']
+        self.assertIn('buffer_maxrange', unit['buffer'])
+        self.assertIn('0', unit['bowden_lengths'])
+        self.assertNotIn('tips', state)
+        self.assertNotIn('layout', state)
+        for record in records[1:]:
+            self.assertNotIn('schema', record)
+            self.assertNotIn('session_id', record)
+            self.assertNotIn('state', record)
+        json.dumps(records, allow_nan=False)
+
+    def test_grip_state_and_always_gripped_are_captured(self):
+        selector = self.hh.mmu.selector()
+        unit = self.hh.mmu.mmu_unit()
+        with mock.patch.object(selector, 'get_filament_grip_state', return_value=1):
+            capture = self.capture()
+        baseline = capture.read()['records'][0]['state']['printer']
+        self.assertEqual(baseline['mmu']['filament_grip_state'], 1)
+        self.assertEqual(baseline['mmu_machine']['units'][unit.name]['filament_always_gripped'],
+                         unit.filament_always_gripped)
+        with mock.patch.object(selector, 'get_filament_grip_state', return_value=0):
+            self.emit()
+        delta = capture.read()['records'][1]
+        self.assertIn(dict(path=['printer', 'mmu', 'filament_grip_state'], value=0), delta['changes'])
+
+    def test_only_changed_leaves_are_saved_before_the_next_event(self):
+        capture = self.capture()
+        old = capture.read()['records'][0]['state']
+        unit = self.hh.mmu.mmu_unit()
+        unit.buffer.buffer_range += 1
+        self.emit()
+        records = capture.read()['records']
+        self.assertEqual([r['event'] for r in records], ['session', 'state_delta', 'cut'])
+        delta = records[1]['changes']
+        self.assertEqual(len(delta), 1)
+        self.assertEqual(delta[0]['path'][-1], 'buffer_range')
+        self.apply(old, delta)
+        self.assertEqual(old, self.State(self.hh.mmu)())
+        self.emit()
+        self.assertEqual(len(capture.read()['records']), 4)
+
+    def test_cancelled_edits_are_not_saved(self):
+        capture = self.capture()
+        buffer = self.hh.mmu.mmu_unit().buffer
+        initial = buffer.buffer_range
+        buffer.buffer_range += 3
+        buffer.buffer_range = initial
+        self.emit()
+        self.assertEqual([r['event'] for r in capture.read()['records']], ['session', 'cut'])
+
+    def test_bounded_history_rolls_forward_its_baseline(self):
+        current = {'printer': {'mmu': {'gate': 0}}}
+        capture = self.capture(limit=3, state_provider=lambda: copy.deepcopy(current))
+        for gate in range(1, 10):
+            current['printer']['mmu']['gate'] = gate
+            self.emit()
+        result = capture.read()
+        records = result['records']
+        self.assertEqual(len(records), 4)
+        self.assertTrue(records[0]['checkpoint'])
+        restored = records[0]['state']
+        for record in records[1:]:
+            if record['event'] == 'state_delta':
+                self.apply(restored, record['changes'])
+        self.assertEqual(restored, current)
+        self.assertTrue(capture.read(after=1)['reset'])
+        self.assertEqual(capture.read(after=records[-1]['sequence'])['records'], [])
+
+    def test_sensor_enablement_and_macro_dimensions_are_recorded(self):
+        mmu = self.hh.mmu
+        mmu.p.form_tip_macro = '_MMU_CUT_TIP'
+        macro = self.hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS')
+        capture = self.capture()
+        name, (_, sensor) = next(iter(mmu.sensor_manager.get_sensor_states(all_sensors=True).items()))
+        sensor.runout_helper.sensor_enabled = not sensor.runout_helper.sensor_enabled
+        macro.variables['blade_pos'] += 1
+        self.emit()
+        delta = capture.read()['records'][1]
+        self.assertEqual(delta['event'], 'state_delta')
+        paths = [change['path'] for change in delta['changes']]
+        self.assertIn(['printer', 'mmu', 'sensors', name, 'enabled'], paths)
+        self.assertIn(['macros', '_MMU_CUT_TIP_VARS', 'blade_pos'], paths)
+
+    def test_idle_preview_does_not_advance_cursor_and_reverts_cleanly(self):
+        capture = self.capture()
+        self.assertEqual(capture.read(after=0)['records'], [])
+        buffer = self.hh.mmu.mmu_unit().buffer
+        old = buffer.buffer_range
+        buffer.buffer_range += 1
+        capture.observe()
+        pending = capture.read(after=0)['records'][0]
+        self.assertTrue(pending['pending'])
+        self.assertEqual(capture.sequence, 0)
+        buffer.buffer_range = old
+        capture.observe()
+        self.assertEqual(capture.read(after=0)['records'], [])
+        self.assertEqual(capture.sequence, 0)
+
+    def test_removals_are_distinct_from_null(self):
+        from extras.mmu.mmu_telemetry_capture import changes
+        old, new = {'a': 1, 'b': 2}, {'b': None}
+        self.apply(old, changes(old, new))
+        self.assertEqual(old, new)
+
+    def test_readers_cannot_mutate_recording(self):
+        capture = self.capture()
+        self.emit()
+        result = capture.read()
+        result['records'][0]['state'].clear()
+        result['records'][1]['event'] = 'changed'
+        self.assertTrue(capture.read()['records'][0]['state'])
+        self.assertEqual(capture.read()['records'][1]['event'], 'cut')
+
+    def test_closing_capture_removes_all_state_collection_work(self):
+        provider = mock.Mock(return_value={})
+        capture = self.capture(state_provider=provider)
+        capture.close()
+        provider.reset_mock()
+        self.emit()
+        provider.assert_not_called()
+        self.assertNotIn(capture.on_event, self.hh.mmu.movement_telemetry.listeners)
+
+    def test_status_capture_does_not_reinstall_g1_wrapper(self):
+        gcode = self.hh.printer.lookup_object('gcode')
+        before = dict(gcode.ready_gcode_handlers)
+        self.capture()
+        self.assertEqual(gcode.ready_gcode_handlers['G1'], before['G1'])

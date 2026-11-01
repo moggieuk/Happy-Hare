@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -106,15 +106,15 @@ test('command history traverses commands and restores the unfinished draft', () 
 });
 test('trace describes homing results and requested motion without losing the endstop', () => {
  const e = {seq:29,time:1444.505,kind:'movement',telemetry:{start:{motor_mode:'gear'}},homing:1,homed:true,distance:14.5,requested:25,speed:80,acceleration:400,endstop:'extruder'};
- assert.equal(traceText(e), '29 · 1444.505s · homing move · GEAR: Homed after 14.5mm | requested: dist=25.0 · speed=80.0 · accel=400.0 · endstop=extruder');
+ assert.equal(traceText(e), '29 · 1444.51s · homing move · GEAR: Homed after 14.5mm | requested: dist=25.0 · speed=80.0 · accel=400.0 · endstop=extruder');
  assert.match(traceText({...e,homed:false,distance:25}), /Did not home after 25.0mm/);
  assert.match(traceText({...e,homed:null}), /result unknown/);
 });
 test('trace formats synced, extruder, fallback and state events', () => {
  const e = {seq:31,time:1444.705,kind:'movement',telemetry:{start:{motor_mode:'synced'}},distance:25,speed:80,acceleration:400};
- assert.equal(traceText(e), '31 · 1444.705s · move · SYNCED GEAR+EXTRUDER: dist=25.0mm · speed=80.0 · accel=400.0');
- assert.equal(traceText({...e,telemetry:null,motors:{extruder:2.5},distance:2.5,speed:5,acceleration:null}), '31 · 1444.705s · move · EXTRUDER: dist=2.5mm · speed=5.0');
- assert.equal(traceText({seq:33,time:1445.105,kind:'state',label:'IN BOWDEN'}), '33 · 1445.105s · state changed · IN BOWDEN');
+ assert.equal(traceText(e), '31 · 1444.70s · move · SYNCED GEAR+EXTRUDER: dist=25.0mm · speed=80.0 · accel=400.0');
+ assert.equal(traceText({...e,telemetry:null,motors:{extruder:2.5},distance:2.5,speed:5,acceleration:null}), '31 · 1444.70s · move · EXTRUDER: dist=2.5mm · speed=5.0');
+ assert.equal(traceText({seq:33,time:1445.105,kind:'state',label:'IN BOWDEN'}), '33 · 1445.11s · state changed · IN BOWDEN');
 });
 
 test('sensor pulses only successful homes and distinguishes reverse travel', () => {
@@ -445,4 +445,52 @@ test('successful reverse homing ignores the old false endpoint warning during an
   assert.equal(interpolate(e,.5).tips[0],5);
   assert.deepEqual(interpolate(e,.5).sensor_conflicts,[]);
   assert.equal(interpolate({...e,homed:false},.5).sensor_conflicts.length,1);
+});
+
+test('encoder load keeps its endpoint when START OF BOWDEN reports overshoot',()=>{
+ // Reduced from the reported trace: 100mm load, unchanged tip=112,
+ // followed by an encoder overshoot observation of 77.341mm.
+ const state=(tip,pos,overshoot=0)=>({gate:0,unit:'unit0',tips:[tip],filament_pos:pos,
+   layout:{mmu_encoder:20,extruder_entry:700},encoder_reference:{endstop:'encoder',overshoot}});
+ const parked={seq:0,kind:'session',state:state(12,0)};
+ const move={seq:17,kind:'movement',before:parked.state,state:state(112,0),settled_state:state(112,2)};
+ const start={seq:19,kind:'state',state:state(112,2,77.341)};
+ const fast={seq:22,kind:'movement',before:start.state,state:state(699.999,2,77.341)};
+ const end={seq:24,kind:'state',state:state(699.999,4,77.341)};
+ const events=[parked,move,start,fast,end], scale=p=>200+p*.8177374;
+ const at=(event,s)=>encoderFilamentDistance(events,event,s,s.tips[0],scale,210);
+ assert.equal(at(parked,parked.state),192);
+ assert.equal(at(move,move.state),at(move,move.settled_state));
+ assert.equal(at(move,move.settled_state),at(start,start.state));
+ assert.equal(at(start,start.state),at(fast,fast.before));
+ assert.equal(at(fast,fast.state),at(end,end.state));
+ assert.ok(at(start,start.state)>at(parked,parked.state));
+ assert.equal(encoderFilamentDistance(events,fast,fast.state,700,scale,210),scale(700));
+});
+
+test('encoder overshoot in a mid-session baseline uses the Bowden scale',()=>{
+ const s={gate:0,unit:'unit0',tips:[112],filament_pos:2,layout:{mmu_encoder:20,extruder_entry:700},encoder_reference:{overshoot:77.341}};
+ const e={seq:0,kind:'session',state:s},scale=p=>200+p*.5;
+ assert.equal(encoderFilamentDistance([e],e,s,112,scale,210),210+77.341*.5);
+});
+
+test('selected homing move shows its motor mode after temporary sync is restored',()=>{
+ const event={kind:'movement',homing:true,telemetry:{start:{motor_mode:'gear+extruder'}}};
+ const restored={synced:false};
+ assert.equal(syncForDisplay(event,restored,true),true);
+ assert.equal(syncForDisplay(event,restored,false),false);
+ event.telemetry.start.motor_mode='gear';
+ assert.equal(syncForDisplay(event,{synced:true},true),false);
+ assert.equal(syncForDisplay({kind:'state'},restored,true),false);
+});
+
+test('parked state notification does not re-anchor the last encoder parking move',()=>{
+ const state=(tip,pos)=>({gate:0,unit:'unit0',tips:[tip],filament_pos:pos,
+   layout:{mmu_encoder:20,extruder_entry:700},encoder_reference:{endstop:'encoder'}});
+ const initial={seq:0,kind:'session',state:state(-3,0)};
+ const parking={seq:117,kind:'movement',state:state(-2.896,1)};
+ const parked={seq:119,kind:'state',state:state(-2.896,0)};
+ const events=[initial,parking,parked],scale=p=>200+p*.8;
+ const at=e=>encoderFilamentDistance(events,e,e.state,e.state.tips[0],scale,210);
+ assert.equal(at(parking),at(parked));
 });
