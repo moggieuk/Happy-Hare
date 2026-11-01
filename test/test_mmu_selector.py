@@ -202,6 +202,25 @@ class TestLinearSelector(SelectorTestCase):
                                        places=3)
                 self.assertEqual(self.hh.errors, [])
 
+    def test_touch_blockage_recovery_pushes_filament_forward(self):
+        """A touch move blocked by unseen filament pushes it forward past the park retraction."""
+        from unittest import mock
+        from extras.mmu.mmu_utils import MmuError
+        selector, mmu = self.selector('unit0'), self.hh.mmu
+        moves = []
+        def move_filament(msg, dist, *args, **kwargs):
+            moves.append(dist)
+            raise MmuError('stop')
+        with mock.patch.object(selector, 'use_touch_move', return_value=True), \
+             mock.patch.object(selector, 'homing_move', side_effect=lambda *a, **k: (selector.selector_stepper.commanded_pos, True)), \
+             mock.patch.object(mmu, 'check_filament_in_gate', return_value=False), \
+             mock.patch.object(mmu, 'move_filament', side_effect=move_filament):
+            with self.assertRaises(MmuError):
+                selector._select_position(selector.selector_offsets[4])
+        unit = mmu.mmu_unit()
+        self.assertLess(unit.p.gate_parking_distance, 0)
+        self.assertEqual(moves, [-unit.p.gate_parking_distance + 10.])
+
     def test_full_load_and_unload(self):
         """The milestone: filament movement on a physical selector."""
         loaded, unloaded = self.load_and_unload(3)
