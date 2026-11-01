@@ -697,5 +697,26 @@ class TestCalibrateGateSpeed(unittest.TestCase):
         self.assertEqual(set(loads), {(self.unit.p.gear_load_speed, self.unit.p.gear_load_accel)})
         self.assertEqual(set(unloads), {(self.unit.p.gear_unload_speed, self.unit.p.gear_unload_accel)})
 
+
+class TestEncoderOffsetIsTunable(unittest.TestCase):
+    """
+    QuattroBox v2 homes to mmu_shared_exit with the encoder past it: exactly the setup whose
+    unseen distance get_encoder_dead_space() takes from gate_endstop_to_encoder.
+    """
+
+    def setUp(self):
+        self.hh = session('quattrobox_v2', virtual_nfc=True)
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [])
+
+    def test_mmu_test_config_sets_the_offset_with_shared_exit_homing(self):
+        unit = self.hh.mmu.mmu_unit(0)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.hh.run_gcode('MMU_TEST_CONFIG gate_endstop_to_encoder=12')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(unit.p.gate_endstop_to_encoder, 12.0)
+
+
 if __name__ == '__main__':
     unittest.main()

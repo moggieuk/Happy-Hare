@@ -75,9 +75,6 @@ class MmuUnitParameters(TunableParametersBase):
     def _guard_sync_tunable(self):
         return not self._mmu_unit.filament_always_gripped
 
-    def _guard_encoder_offset(self):
-        return not (self.gate_homing_endstop in [SENSOR_SHARED_EXIT] and self._mmu_unit.has_encoder())
-
     def _guard_has_sensor(sensor):
         return lambda self: self._mmu_unit.mmu.sensor_manager.has_sensor(sensor)
 
@@ -327,7 +324,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
 
-        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
+        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_has_encoder),
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
 
         # NFC / RFID reading
