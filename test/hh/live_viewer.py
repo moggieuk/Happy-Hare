@@ -211,7 +211,7 @@ class LiveViewer:
                             gate = hh.mmu.gate_selected
                             travel = geometry['travel'].get(gate)
                             status = dict(travel=travel, maximum=geometry['maxrange'],
-                                          range=geometry['range'], rest=geometry['rest'],
+                                          range=geometry['range'], rest=geometry['rest'], spring=geometry['spring'],
                                           proportional=geometry['proportional'],
                                           occupied=gate >= 0 and model.tip[gate] >= model.layout['mmu_exit'],
                                           excess=geometry['excess'].get(gate, 0.),

@@ -201,9 +201,9 @@ class FilamentPath:
 
         # The console's path legend reads the unqualified layout. A shared path can
         # only draw one landmark, so use the first configured buffer as its representative.
-        switch_buffers = list(self.buffers.values())
-        if switch_buffers:
-            first = switch_buffers[0]
+        configured_buffers = list(self.buffers.values())
+        if configured_buffers:
+            first = configured_buffers[0]
             self.layout['filament_compression'] = first['compression']
         return self
 
@@ -436,13 +436,15 @@ class FilamentPath:
             return 0.
         geometry = self._buffer_geometry(name)
         start = self.tip[gate]
-        if self._gripped(gate):
+        if self._gripped(gate) or geometry['contact'][gate]:
             mode = self._drive_mode(gate) if self._drive_mode else 'gear'
             relative = delta if mode == 'gear' else -delta if mode == 'extruder' else 0.
             if not relative:
                 return None
             tension = name.endswith('filament_tension')
-            target = (geometry['tension_travel'] if sought else geometry['tension_travel']+1e-6) if tension else (geometry['compression_travel'] if sought else geometry['compression_travel']-1e-6)
+            target = geometry['tension_travel' if tension else 'compression_travel']
+            if not sought:
+                target += 1e-6 if tension else -1e-6
             total = geometry['travel'][gate]+geometry['excess'][gate]
             distance = (target-total)*(1 if relative > 0 else -1)
             return distance if 0 <= distance <= abs(delta) else None
@@ -540,6 +542,13 @@ class FilamentPath:
         # Unsynced G1 extrusion still drives the extruder, not the MMU gear.
         return 'extruder' if reason == 'toolhead extrusion' and mode == 'gear' else mode
 
+    def _set_buffer_travel(self, geometry, gate, displacement):
+        """Clamp physical travel without losing displacement beyond either stop."""
+        travel = min(geometry['maxrange'], max(0., displacement))
+        geometry['travel'][gate] = travel
+        geometry['excess'][gate] = displacement-travel
+        self.unabsorbed[gate] = displacement-travel
+
     def _advance_buffer(self, gate, delta, start_tip, reason):
         """Store relative gear/extruder travel in a buffer."""
         if self._gripped(gate):
@@ -551,19 +560,16 @@ class FilamentPath:
                 self.unabsorbed[gate] += relative
             else:
                 total = geometry['travel'][gate]+geometry['excess'][gate]+relative
-                travel = min(geometry['maxrange'], max(0., total))
-                geometry['travel'][gate] = travel
-                geometry['excess'][gate] = total-travel
+                self._set_buffer_travel(geometry, gate, total)
                 geometry['contact'][gate] = True
-                self.unabsorbed[gate] = total-travel
             return
         if self.tip[gate] < self.layout['extruder_entry']:
             self.unabsorbed[gate] = 0.
         for geometry in self.buffers.values():
             if gate not in geometry['travel']:
                 continue
-            mode = self._drive_mode(gate) if self._drive_mode is not None else 'gear'
-            travel = geometry['travel'][gate]
+            mode = self._motion_mode(gate, reason)
+            travel = geometry['travel'][gate] + geometry['excess'][gate]
             contact = geometry['contact'][gate]
             compression_home = ('homing' in reason
                                 and 'filament_compression' in reason)
@@ -582,7 +588,7 @@ class FilamentPath:
             elif mode == 'extruder' and contact:
                 travel -= delta
             # Equal gear/extruder motion transports filament without changing the buffer.
-            geometry['travel'][gate] = min(geometry['maxrange'], max(0., travel))
+            self._set_buffer_travel(geometry, gate, travel)
             if start_tip + delta < geometry['entry']:
                 contact = False
                 geometry['travel'][gate] = geometry['rest']
@@ -598,7 +604,7 @@ class FilamentPath:
         """
         if self._set_buffer_value is not None:
             for name, geometry in self.buffers.items():
-                if not geometry['proportional']:
+                if not geometry['proportional'] or (gate is not None and gate not in geometry['gates']):
                     continue
                 active = self._buffer_gate(geometry, gate)
                 value = (2*geometry['travel'][active]-geometry['maxrange']) / max(geometry['range'], 1e-9)

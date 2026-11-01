@@ -174,9 +174,9 @@ select, input { max-width: 100%; }
 .heading { flex-wrap: wrap; gap: 8px; }
 
 #sensors { gap: 4px; margin-top: 8px; }
-.sensor-chip { padding: 2px 5px; font-size: 10px; border-radius: 3px; }
+.sensor-chip { color: #304c65; padding: 2px 5px; font-size: 10px; border-radius: 3px; }
 .sensor-chip.off { background: #fff; }
-.sensor-chip.disabled { background: #e7eaed; border-color: #d3d8dd; color: #8a939c; }
+.sensor-chip.disabled { background: #e7eaed; border-color: #d3d8dd; color: #596673; }
 
 .playback-option { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .playback-option input { width: auto; margin: 0; }
@@ -207,6 +207,7 @@ select, input { max-width: 100%; }
 [data-theme="dark"] #trace button.selected { background: #365b6a; }
 [data-theme="dark"] .chip { border-color: #526779; }
 [data-theme="dark"] .on { background: #214332; border-color: #60a87c; }
+[data-theme="dark"] .sensor-chip { color: #dce5ef; }
 [data-theme="dark"] .sensor-chip.off { background: #1a2530; }
 [data-theme="dark"] .sensor-chip.disabled { background: #2b343e; border-color: #45515e; color: #91a0ae; }
 [data-theme="dark"] .error { color: #ff92ac; }

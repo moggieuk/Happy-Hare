@@ -195,7 +195,7 @@ export function configurationLabel(name) {
 export function bowdenLengthLabel(state) {
   const length = state.configuration?.calibration?.[state.unit]?.bowden_lengths?.[state.gate];
   return state.gate >= 0 && Number.isFinite(length) && length > 0
-    ? `Bowden · ${Number(length.toFixed(1))}mm · compressed scale` : 'Bowden · Uncalibrated length';
+    ? `Bowden · ${Number(length.toFixed(1))}mm` : 'Bowden · Uncalibrated length';
 }
 
 export function toolheadReferences(state) {
@@ -307,4 +307,19 @@ export function bufferPiston(device, tension=false, compression=false) {
   const total=device.occupied === false ? bounded : device.displacement ?? position;
   return {fraction:maximum ? bounded/maximum : .5,position:bounded,low,high,maximum,
     excess:total-Math.max(0,Math.min(maximum,total))};
+}
+
+// Five rounded turns with straight ends; fixed height, variable pitch.
+export function bufferSpringPath(wall, edge, centerY = 52.5) {
+  const direction = Math.sign(edge - wall);
+  const lead = Math.min(4, Math.abs(edge - wall) / 4);
+  const start = wall + direction * lead, finish = edge - direction * lead;
+  const turns = 5, pitch = (finish - start) / turns, amplitude = 3.7 * 4 / 3;
+  let path = `M${wall} ${centerY} H${start}`;
+  for (let turn = 0; turn < turns; turn++) {
+    const x = start + turn * pitch;
+    path += ` C${x+.8*pitch} ${centerY-amplitude} ${x-.3*pitch} ${centerY-amplitude} ${x+.5*pitch} ${centerY}`;
+    path += ` C${x+1.3*pitch} ${centerY+amplitude} ${x+.2*pitch} ${centerY+amplitude} ${x+pitch} ${centerY}`;
+  }
+  return path + ` H${edge}`;
 }
