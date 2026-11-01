@@ -110,20 +110,6 @@ export function duration(event, compressBowden = false) {
   return Math.max(0.12,seconds)*1000;
 }
 
-// A bounded schematic coil; long purges continue accumulating without leaving the scene.
-export function purgePath(amount) {
-  if (!(amount > 0)) return '';
-  const turns = Math.min(12, amount / 3);
-  const points = [];
-  const count = Math.max(1, Math.ceil(turns * 32));
-  for (let i = 0; i <= count; i++) {
-    const t = turns * i / count;
-    const radius = 22 * Math.min(1, t / .5) * (1 - .065 * t);
-    points.push(`${(260 + radius * Math.sin(t * Math.PI * 2)).toFixed(2)} ${(498 - t * 2.6 + 2 * Math.cos(t * Math.PI * 2)).toFixed(2)}`);
-  }
-  return 'M' + points.join(' L');
-}
-
 export function gearAngle(distance, pixelsPerMm, radius = 19) {
   return distance * pixelsPerMm / radius * 180 / Math.PI;
 }
@@ -147,7 +133,12 @@ export class CommandHistory {
 }
 
 export function traceText(event) {
-  const prefix = `${event.seq} · ${event.time.toFixed(3)}s · ${event.kind === 'movement' ? (event.homing ? 'homing move' : (event.source || event.telemetry?.start?.source) === 'mmu_gcode' ? 'G1' : 'move') : event.kind === 'state' ? 'state changed' : event.kind === 'gate_changed' ? 'gate changed' : event.kind} · `;
+  let type = {state:'state changed', gate_changed:'gate changed'}[event.kind] || event.kind;
+  if (event.kind === 'movement') {
+    const source = event.source || event.telemetry?.start?.source;
+    type = event.homing ? 'homing move' : source === 'mmu_gcode' ? 'G1' : 'move';
+  }
+  const prefix = `${event.seq} · ${event.time.toFixed(3)}s · ${type} · `;
   if (event.kind === 'config') return prefix + (event.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.after)}`).join(' · ');
   if (event.kind !== 'movement') return prefix + event.label;
   const start = event.telemetry?.start;
@@ -243,6 +234,7 @@ export function dimensionParameter(state, label) {
     'Extruder entry': 'toolhead_extruder_to_nozzle',
     'Extruder sensor': 'toolhead_entry_to_extruder',
     'Toolhead sensor': 'toolhead_sensor_to_nozzle',
+    'Encoder offset': 'gate_endstop_to_encoder',
     'Residual': 'toolhead_residual_filament'};
   if (parameters[label]) return parameters[label];
   const variable = {'Blade':'blade_pos', 'Cooling tube position':'cooling_tube_position',
@@ -253,6 +245,36 @@ export function dimensionParameter(state, label) {
   const vars = state.configuration?.macros || {};
   return [`macro:${macro}_VARS:${variable}`, `macro:${macro}:${variable}`]
     .find(key => Object.hasOwn(vars, key)) || null;
+}
+
+// Resolve the recorded endstop, never an arbitrary nearby exit sensor.
+export function encoderReference(state, sensors) {
+  const unit = state.units?.indexOf(state.unit) ?? 0;
+  const params = state.configuration?.parameters?.[unit] || {};
+  const endstop = state.encoder_reference?.endstop ?? params.gate_homing_endstop;
+  const offset = state.encoder_reference?.offset ?? params.gate_endstop_to_encoder ?? 0;
+  const short = name => name.split(':').at(-1).replace(/^mmu_/, '');
+  const target = short(endstop || '');
+  if (!['exit', 'shared_exit', `exit_${state.gate}`].includes(target)) return null;
+  const sensor = sensors.find(([name, value]) => Number.isFinite(value.position) &&
+    (short(name) === target || (target === 'exit' && short(name) === `exit_${state.gate}`)));
+  return sensor && Number.isFinite(offset) ? {name:sensor[0], offset} : null;
+}
+
+// Compact configured devices in filament-travel order, starting above the MMU.
+export function gateDevicePositions(state, sensors) {
+  const short = name => name.split(':').at(-1);
+  const hasExit = sensors.some(([name,d]) => Number.isFinite(d.position) &&
+    ['mmu_exit',`mmu_exit_${state.gate}`].includes(short(name)));
+  const hasShared = sensors.some(([name,d]) => Number.isFinite(d.position) && short(name) === 'mmu_shared_exit');
+  const devices = [...(hasExit ? ['exit'] : []), ...(hasShared ? ['sharedExit'] : [])];
+  if (state.devices?.[`${state.unit}:encoder`]) {
+    const reference = encoderReference(state,sensors);
+    const target = reference?.name.split(':').at(-1) === 'mmu_shared_exit' ? 'sharedExit' : 'exit';
+    const index = reference ? devices.indexOf(target)+(reference.offset < 0 ? 0 : 1) : 0;
+    devices.splice(index,0,'encoder');
+  }
+  return Object.fromEntries(devices.map((device,index) => [device,260-index*32]));
 }
 
 export function lastEncoderReading(events, current, unit) {

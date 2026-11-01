@@ -26,6 +26,42 @@ class TestLiveViewer(unittest.TestCase):
         self.viewer.close()
         self.hh.close()
 
+    def test_raw_telemetry_reads_do_not_expose_mutable_capture_records(self):
+        self.hh.mmu.move_filament('Original label', 1)
+        record = self.viewer.read_telemetry()['records'][0]
+        record['label'] = 'Changed by reader'
+        record['sensors'].clear()
+        reread = self.viewer.read_telemetry()['records'][0]
+        self.assertEqual(reread['label'], 'Original label')
+        self.assertTrue(reread['sensors'])
+
+    def test_explicit_filament_positions_anchor_the_viewer_without_moving_model(self):
+        for position in range(-1, 11):
+            with self.subTest(position=position):
+                raw = self.hh.filament().tip[:]
+                self.hh.mmu.set_filament_pos_state(position, source='_MMU_TEST')
+                state = self.viewer.read()['events'][-1]['state']
+                self.assertEqual(state['filament_pos'], position)
+                self.assertEqual(self.hh.filament().tip, raw)
+                if position >= 0:
+                    self.assertAlmostEqual(state['tips'][0], self.viewer._logical_tip(state, True))
+        self.hh.run_gcode('_MMU_TEST FILAMENT_POS=6')
+        events = self.viewer.read()['events']
+        state = next(e['state'] for e in reversed(events) if e.get('telemetry', {}).get('source') == '_MMU_TEST')
+        self.assertEqual(state['tips'][0], state['layout']['extruder_gears'])
+        self.assertEqual(self.hh.errors, [])
+
+    def test_parking_anchor_uses_endstop_and_signed_distance(self):
+        state = self.viewer.snapshot()
+        state['filament_pos'] = 0
+        for endstop in ['mmu_exit', 'mmu_shared_exit', 'encoder']:
+            for parking in [-20, 20]:
+                state['encoder_reference'].update(endstop=endstop, parking=parking)
+                state['filament_pos'] = 1
+                home = self.viewer._logical_tip(state)
+                state['filament_pos'] = 0
+                self.assertEqual(self.viewer._logical_tip(state), home+parking)
+
     def test_gate_selection_emits_raw_event_and_animated_snapshot_once(self):
         self.hh.mmu._set_gate_selected(1)
         event = self.viewer.read()['events'][-1]

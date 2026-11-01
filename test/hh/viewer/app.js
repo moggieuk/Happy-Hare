@@ -1,4 +1,4 @@
-import { bufferSpringPath, bufferPiston, interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { bufferSpringPath, bufferPiston, interpolate, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay gives HTML and SVG tooltips the same delay and avoids clipping.
@@ -213,10 +213,10 @@ async function refresh() {
 }
 function filter() {
   const previous = $("parameter").value,
-    query = $("filter").value.toLowerCase();
+    query = $("filter").value.trim().toLowerCase();
   const groups = new Map();
   for (const p of [...setup.parameters, ...(setup.macro_parameters || [])]) {
-    if (!`${p.macro || ''} ${p.name}`.toLowerCase().includes(query)) continue;
+    if (!p.name.toLowerCase().includes(query)) continue;
     // Older servers already expose MMU_TEST_CONFIG section names, even when
     // owner metadata is unavailable. Never misclassify these as "Other".
     const label = p.macro ? `Macro · ${p.macro}`
@@ -280,6 +280,11 @@ async function selectDimension(event) {
 $('scene').addEventListener('click', selectDimension);
 $('scene').addEventListener('keydown', selectDimension);
 $("filter").oninput = filter;
+$("clear-filter").onclick = () => {
+  $("filter").value = '';
+  if (setup) filter();
+  $("filter").focus();
+};
 $("parameter").onchange = value;
 $("unit").onchange = () => refresh().catch((e) => message(e.message, true));
 $("apply").onclick = () =>
@@ -373,8 +378,7 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
   const tension=bufferSensors.find(([n])=>n.endsWith('tension'))?.[1]?.state;
   const compression=bufferSensors.find(([n])=>n.endsWith('compression'))?.[1]?.state;
   const piston=bufferPiston(d,tension,compression);
-  // Keep the housing fixed on the flat Bowden section.
-  // Keep the travel scale fixed while narrowing the housing around it.
+  // Fixed housing; the inner piston tracks buffer travel.
   const tick=(travel)=>498.8-57.6*(piston.maximum ? travel/piston.maximum : .5);
   const edge=tick(piston.position);
   // Retain protrusion even at the maximum-tension stop.
@@ -430,8 +434,8 @@ function draw() {
   const e = live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
   const
     s = live && displayed ? displayed : e.state,
-    gate = s.gate >= 0 ? s.gate : 0,
-    tip = s.tips[gate] ?? -1000;
+    gate = s.gate >= 0 ? s.gate : 0;
+  let tip = s.tips[gate] ?? -1000;
   const entry = s.layout.extruder_entry ?? 700,
     end = s.layout.nozzle ?? (s.layout.toolhead ?? 760) + 30;
   const eventsBehind = events.length - 1 - events.indexOf(e);
@@ -446,7 +450,7 @@ function draw() {
   $("timeline").value = live ? events.indexOf(e) : cursor;
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
   const path =
-    "M620 470 L620 170 Q620 75 525 75 L355 75 Q260 75 260 170 L260 445";
+    "M620 470 L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 445";
   const dimensionLink = label => {
     const id = dimensionParameter(s, label);
     return id ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
@@ -466,6 +470,48 @@ function draw() {
       : p < entry
         ? mmuExitFraction + ((0.73-mmuExitFraction) * p) / entry
         : Math.min(1, 0.73 + (0.27 * (p - entry)) / (end - entry));
+  const unitSensors = Object.entries(s.sensors).filter(([name]) => {
+    if (s.active_sensors) return s.active_sensors.includes(name);
+    if (s.unit_sensors && !s.unit_sensors.includes(name)) return false;
+    const gateSuffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
+    return !gateSuffix || Number(gateSuffix[1]) === s.gate;
+  });
+  const encoderAnchor = encoderReference(s, unitSensors);
+  const gateSlots = gateDevicePositions(s, unitSensors);
+  const sensorPoint = (name, device) => {
+    const point = tube.getPointAtLength(progress(device.position)*length);
+    const short = name.split(':').at(-1);
+    if (/^mmu_entry(?:_\d+)?$/.test(short)) point.y -= 53;
+    if (/^mmu_exit(?:_\d+)?$/.test(short)) { point.x = 620; point.y = gateSlots.exit; }
+    if (short === 'mmu_shared_exit') { point.x = 620; point.y = gateSlots.sharedExit; }
+    return point;
+  };
+  const isBufferSensor = name => /(?:^|:)filament_(compression|tension)$/.test(name);
+  const sensorFill = state => state === true ? '#399b64' : state === false ? '#fff' : '#9ba5ae';
+  const encoderPoint = () => ({x:620, y:gateSlots.encoder ?? 260});
+  const tipAtPathDistance = distance => {
+    const target = Math.max(0,distance)/length;
+    let low = Math.min(-100,(s.layout.mmu_entry ?? -150)-40), high = end;
+    for (let i=0;i<32;i++) { const mid=(low+high)/2; if(progress(mid)<target) low=mid; else high=mid; }
+    return (low+high)/2 + (s.tip_shapes?.[gate] === 'cone' ? (s.filament?.residual_mm || 0)+2 : 0);
+  };
+  // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
+  if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(470-305);
+  // Park against the drawn endstop, including schematic sensor/encoder offsets.
+  if (s.gate >= 0 && [0,1].includes(s.filament_pos) && e.kind !== 'movement') {
+    const unit = s.units?.indexOf(s.unit) ?? 0;
+    const params = s.configuration?.parameters?.[unit] || {};
+    const endstop = (s.encoder_reference?.endstop ?? params.gate_homing_endstop ?? '').split(':').at(-1);
+    const sensor = unitSensors.find(([name,d]) => d.position !== null &&
+      [endstop,`${endstop}_${gate}`].includes(name.split(':').at(-1)));
+    const anchor = endstop === 'encoder' ? encoderPoint() : sensor ? sensorPoint(...sensor) : null;
+    if (anchor) {
+      const parking = s.encoder_reference?.parking ?? params.gate_parking_distance ?? 0;
+      const offset = s.filament_pos === 1 ? 0 : endstop === 'encoder' ? -6
+        : parking*200/-Math.min(-100,(s.layout.mmu_entry ?? -150)-40);
+      tip = tipAtPathDistance(470-anchor.y+offset);
+    }
+  }
   const start = s.tails[gate] === null ? 0 : progress(s.tails[gate]) * length,
     stop = progress(s.tip_shapes?.[gate] === 'cone' ? tip-(s.filament?.residual_mm || 0)-2 : tip) * length;
   $("filament").setAttribute(
@@ -477,12 +523,12 @@ function draw() {
   const focus = s.gate_focus ?? s.gate;
   const entrySensorY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150)*length).y;
   svg += `<defs><linearGradient id="gate-end-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${entrySensorY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="gate-end-fade" maskUnits="userSpaceOnUse" x="550" y="316" width="150" height="159"><rect x="550" y="316" width="150" height="159" fill="url(#gate-end-gradient)"/></mask></defs><g id="gate-filaments" mask="url(#gate-end-fade)">`;
-  const lanes = s.tips.map((position, index) => ({position,index,offset:index-focus}))
+  const lanes = s.tips.map((_, index) => ({index,offset:index-focus}))
     .filter(lane => lane.index !== s.gate && Math.abs(lane.offset) < 6)
     .sort((a,b) => Math.abs(b.offset)-Math.abs(a.offset));
-  for (const {position,index,offset} of lanes) {
+  for (const {index,offset} of lanes) {
     const x = 620+offset*16;
-    const y = Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-20;
+    const y = Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-40;
     const opacity = focus < 0 ? .2 : Math.max(.08,Math.exp(-Math.abs(offset)*.75));
     const color = s.gate_colors?.[index] || '808182';
     svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" fill="var(--scene-text, #304c65)">${index}</text></g>`;
@@ -525,26 +571,16 @@ function draw() {
     const startY = tube.getPointAtLength(progress(cooling.start) * length).y;
     const endY = tube.getPointAtLength(progress(cooling.end) * length).y;
     const midY = (startY + endY) / 2;
-    svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY-2} V${endY+2} M312 ${endY+6} L315 ${endY+2} L318 ${endY+6}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="1.2"/><text ${dimensionLink('Cooling tube position')} x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text ${dimensionLink('Cooling tube length')} x="323" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
+    svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY-2} V${endY+2} M312 ${endY+6} L315 ${endY+2} L318 ${endY+6} M312 ${startY-6} L315 ${startY-2} L318 ${startY-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Cooling tube position')} x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text ${dimensionLink('Cooling tube length')} x="323" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
   }
-  const unitSensors = Object.entries(s.sensors).filter(([name]) => {
-    if (s.active_sensors) return s.active_sensors.includes(name);
-    if (s.unit_sensors && !s.unit_sensors.includes(name)) return false;
-    const gateSuffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
-    return !gateSuffix || Number(gateSuffix[1]) === s.gate;
-  });
-  const isBufferSensor = name => /(?:^|:)filament_(compression|tension)$/.test(name);
-  const sensorFill = state => state === true ? '#399b64' : state === false ? '#fff' : '#9ba5ae';
   for (const [name, d] of unitSensors) {
     if (isBufferSensor(name)) continue;
     const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
     if (suffix && Number(suffix[1]) !== gate) continue;
     if (d.position === null) continue;
-    const pt = tube.getPointAtLength(progress(d.position) * length);
+    const pt = sensorPoint(name, d);
     const short = name.split(':').at(-1);
-    if (/^mmu_entry(?:_\d+)?$/.test(short)) pt.y -= 33;
-    if (/^mmu_exit(?:_\d+)?$/.test(short)) pt.y -= 5;
-    const sensorLabel = /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short;
+    const sensorLabel = /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
     svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${short === 'extruder' ? '' : escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
     if (sensorPulse?.sensor === name) {
       const elapsed = (performance.now() - sensorPulse.start) / 650;
@@ -570,11 +606,16 @@ function draw() {
   for (const [name, d] of Object.entries(s.devices)) {
     if (name.includes(':') && name.split(':')[0] !== s.unit) continue;
     if (name.endsWith(":encoder")) {
-      const exitPositions = unitSensors.filter(([sensor, value]) => {
-        const short = sensor.split(':').at(-1);
-        return value.position !== null && (short === 'mmu_shared_exit' || short === 'mmu_exit' || short === `mmu_exit_${gate}`);
-      }).map(([, value]) => progress(value.position)*length + 26);
-      const pt = tube.getPointAtLength(Math.max(progress(s.layout.mmu_encoder ?? 40)*length, ...exitPositions));
+      const pt = encoderPoint();
+      if (encoderAnchor) {
+        const sensor = unitSensors.find(([name]) => name === encoderAnchor.name);
+        const anchor = sensorPoint(...sensor);
+        const top = Math.min(pt.y,anchor.y), bottom = Math.max(pt.y,anchor.y);
+        const value = `${encoderAnchor.offset > 0 ? '+' : ''}${mm(encoderAnchor.offset)}mm`;
+        const unitIndex = s.units?.indexOf(s.unit) ?? 0;
+        if (Object.hasOwn(s.configuration?.parameters?.[unitIndex] || {}, 'gate_endstop_to_encoder'))
+        svg += `<g id="encoder-offset" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M714 ${anchor.y} H726 M714 ${pt.y} H726 M720 ${top+2} V${bottom-2} M717 ${top+6} L720 ${top+2} L723 ${top+6} M717 ${bottom-6} L720 ${bottom-2} L723 ${bottom-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Encoder offset')} x="728" y="${(top+bottom)/2}" text-anchor="start" dominant-baseline="middle">${value}</text></g>`;
+      }
       // Device positions are interpolated alongside each captured move.
       const angle = gearAngle(d.encoder_pos || 0, 1, 11);
       const encoderReading = lastEncoderReading(events, live && playing ? events.find(event => event.seq === played) : e, s.unit);
@@ -699,7 +740,7 @@ function renderTrace() {
         details.textContent = detail.join(' · ');
         b.append(' · ', heading, details);
       } else b.append(` · ${detail.join(' · ')}`);
-      // Keep diagnostic provenance available without crowding the movement summary.
+      // Detailed provenance stays in the tooltip.
       b.dataset.tooltip = [e.origin,
         e.fast_bowden && $('compress-bowden').checked ? 'Compressed Bowden playback' : '',
         ...(e.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`)]

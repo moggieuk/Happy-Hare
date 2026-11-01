@@ -22,8 +22,8 @@ from itertools                  import repeat
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
-from .mmu_movement_telemetry    import MovementTelemetry
-from .mmu_gcode_telemetry       import GcodeExtrusionTelemetry
+from .mmu_movement_telemetry     import MovementTelemetry
+from .mmu_gcode_telemetry        import GcodeExtrusionTelemetry
 from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -3130,15 +3130,15 @@ class MmuController(MmuFilamentMovement):
         self.filament_direction = direction
 
 
-    def set_filament_pos_state(self, state, silent=False):
+    def set_filament_pos_state(self, state, silent=False, source=None):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
             self.td1.release()
-        if self.filament_pos != state:
+        if self.filament_pos != state or source is not None:
             previous = self.filament_pos
             self.filament_pos = state
             self.movement_telemetry.state('filament_pos_changed',
                 unit=self.mmu_unit().name, gate=self.gate_selected,
-                previous=previous, filament_pos=state,
+                previous=previous, filament_pos=state, source=source,
                 filament_pos_name=FILAMENT_POS_NAME_MAP.get(state, 'UNKNOWN'))
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
                 if not silent:
@@ -3895,7 +3895,6 @@ class MmuController(MmuFilamentMovement):
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self.movement_telemetry.state('gate_changed', previous_gate=prev_gate,
                                      gate=gate, unit=self.mmu_unit(gate).name)
-
 
         # A real gate in use means the bypass filament is gone
         if gate >= 0 and self.bypass_filament:

@@ -43,7 +43,6 @@ class LiveViewer:
         self.retained_segments = {}
         self.tip_shapes = {}
         self.cutter_pressed = False
-        self.purge_color_start = None
         self.purge_transition = None
         self.motors = {}
         self.depth = 0
@@ -70,7 +69,7 @@ class LiveViewer:
     def on_telemetry(self, record):
         with self.lock:
             self.telemetry_records.append(record)
-        if record['event'] in ('release', 'cutter_release'):
+        if record['event'] == 'release':
             self.cutter_pressed = False
             self.capture('release', 'Toolhead cutter release', before=copy.deepcopy(self.latest_raw or self.snapshot()),
                 cutter=record['cutter'], telemetry=record)
@@ -117,9 +116,9 @@ class LiveViewer:
         with self.lock:
             return {'schema': 'happy_hare.motion', 'version': 1,
                     'session_id': self.hh.mmu.movement_telemetry.session_id,
-                    'records': [r for r in self.telemetry_records if r['sequence'] > after]}
+                    'records': copy.deepcopy([r for r in self.telemetry_records if r['sequence'] > after])}
 
-    def wrap(self, owner, method, filament=False, suppress_fallback=False):
+    def wrap(self, owner, method, suppress_fallback=False):
         original = owner.get(method) if isinstance(owner, dict) else getattr(owner, method, None)
         if original is None:
             return
@@ -160,15 +159,14 @@ class LiveViewer:
                 motors = {name: value-before['motors'].get(name, 0.)
                           for name, value in after['motors'].items()
                           if value != before['motors'].get(name, 0.)}
-                actual = result[0] if filament and result is not None else None
                 self.capture('movement', label, before=before, origin='harness_fallback',
                     duration=max(0., self.hh.reactor.monotonic()-start),
-                    requested=values.get('dist'), distance=actual,
+                    requested=values.get('dist'), distance=None,
                     speed=self.resolved_speed, motors=motors,
                     fast_bowden=label in ('Fast loading move through bowden', 'Fast unloading move through bowden'),
                     homing=values.get('homing_move', method == 'do_homing_move'),
                     endstop=values.get('endstop_name'),
-                    homed=bool(result[1]) if filament and result is not None else None,
+                    homed=None,
                     error=error)
         self.wrapped.append((owner, method, original))
         if isinstance(owner, dict):
@@ -252,12 +250,39 @@ class LiveViewer:
                         for kind, owner in [('gear', drive.mmu_gear_stepper), ('extruder', drive.mmu_extruder_stepper)]}
         from extras.mmu.mmu_movement_telemetry import filament_context
         from extras.mmu.mmu_utils import MmuColorUtils
-        return plain(dict(gate_colors=[MmuColorUtils.color_to_rgb_hex(color, '808182')[:6] for color in hh.mmu.gate_color], configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
+        return plain(dict(encoder_reference=dict(endstop=hh.mmu.mmu_unit().p.gate_homing_endstop,
+                                               offset=hh.mmu.mmu_unit().p.gate_endstop_to_encoder,
+                                               parking=hh.mmu.mmu_unit().p.gate_parking_distance), gate_colors=[MmuColorUtils.color_to_rgb_hex(color, '808182')[:6] for color in hh.mmu.gate_color], configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
             filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=layout, motors=self.motors.copy(),
             bowden_unabsorbed_mm=model.unabsorbed[hh.mmu.gate_selected] if hh.mmu.gate_selected >= 0 else 0.,
             sensors={name: {'state': state[0], 'position': sensor_position(name), 'enabled': bool(state[1].runout_helper.sensor_enabled)}
                      for name, state in sensors.items()}, devices=devices))
+
+    def _logical_tip(self, state, manual=False):
+        """Exact landmarks for reported states; broad states retain observed travel."""
+        pos, layout = state['filament_pos'], state['layout']
+        reference = state['encoder_reference']
+        endstop = reference['endstop'].split(':')[-1]
+        def sensor_position(short, fallback):
+            for name in state['active_sensors']:
+                sensor = state['sensors'][name]
+                if name.split(':')[-1] in (short, '%s_%s' % (short, state['gate'])):
+                    if sensor['position'] is not None:
+                        return sensor['position']
+            return fallback
+        home = (layout.get('mmu_encoder', 20.) if endstop == 'encoder' else
+                sensor_position(endstop, layout.get(endstop)))
+        if pos in (0, 1) and home is not None:
+            return home if pos == 1 else home + reference['parking']
+        entry, gears, nozzle = layout['extruder_entry'], layout['extruder_gears'], layout['nozzle']
+        toolhead = sensor_position('toolhead', (gears+nozzle)/2)
+        exact = {5: sensor_position('extruder', entry), 6: gears, 8: toolhead}
+        if manual:
+            exact.update({2: home if home is not None else 0.,
+                          3: ((home or 0.)+entry)/2, 4: entry,
+                          7: (gears+toolhead)/2, 9: (toolhead+nozzle)/2, 10: nozzle})
+        return exact.get(pos)
 
     def capture(self, kind, label, **details):
         if self.depth:
@@ -281,7 +306,6 @@ class LiveViewer:
             raw_state = copy.deepcopy(state)
             if self.nozzle_color is None:
                 self.nozzle_color = state['filament']['retained_color']
-                self.purge_color_start = self.nozzle_color
             material = state['filament']
             previous_material = (self.latest or {}).get('filament', {})
             new_fragment = (material['fragment_mm'] > 0 and
@@ -436,13 +460,23 @@ class LiveViewer:
                             value < self.latest_raw['motors'].get(name, value) - 1e-9
                             for name, value in raw_state['motors'].items())):
                 self.purge_base_mm = self.extruded_mm
+            record = details.get('telemetry', {})
+            if gate >= 0 and record.get('event') == 'filament_pos_changed':
+                manual = record.get('source') == '_MMU_TEST'
+                anchor = self._logical_tip(state, manual)
+                if anchor is not None and (manual or not self.retained_segments.get(extruder)):
+                    state['tips'][gate] = anchor
+                    if manual:
+                        state['tails'][gate] = None
+            # Preserve travel accounting; the browser gives UNKNOWN a schematic endpoint.
+            if gate >= 0 and record.get('event') == 'filament_pos_changed' and state['filament_pos'] == -1 and self.latest:
+                state['tips'][gate] = self.latest['tips'][gate]
             state['cutter_pressed'] = self.cutter_pressed
             state['tip_shapes'] = [self.tip_shapes.get(i, 'square') for i in range(len(state['tips']))]
             state['retained_segment'] = copy.deepcopy(self.retained_segments.get(extruder))
             state['extruded_mm'] = self.extruded_mm
             state['purge_base_mm'] = self.purge_base_mm
             state['nozzle_color'] = self.nozzle_color
-            state['purge_color_start'] = self.purge_color_start
             state['purge_transition'] = copy.deepcopy(self.purge_transition)
             if 'before' in details:
                 details['before'].setdefault('extruded_mm', self.latest.get('extruded_mm', 0.))
@@ -552,7 +586,7 @@ class LiveViewer:
             # Preserve reconciled schematic endpoints; configuration changes do not move filament.
             visual['tips'] = [tip + raw - previous for tip, raw, previous in
                               zip(self.latest['tips'], state['tips'], self.latest_raw['tips'])]
-            for key in ('extruded_mm', 'purge_base_mm', 'nozzle_color', 'purge_color_start',
+            for key in ('extruded_mm', 'purge_base_mm', 'nozzle_color',
                         'purge_transition', 'retained_segment', 'tip_shapes', 'cutter_pressed'):
                 if key in self.latest:
                     visual[key] = copy.deepcopy(self.latest[key])
