@@ -42,6 +42,7 @@ class LiveViewer:
         self.nozzle_color = None
         self.retained_segments = {}
         self.tip_shapes = {}
+        self.encoder_homing_overshoot = {}
         self.cutter_pressed = False
         self.purge_transition = None
         self.motors = {}
@@ -69,6 +70,8 @@ class LiveViewer:
     def on_telemetry(self, record):
         with self.lock:
             self.telemetry_records.append(record)
+        if record['event'] == 'toolchange':
+            self.capture('toolchange', record['label'], telemetry=record)
         if record['event'] == 'release':
             self.cutter_pressed = False
             self.capture('release', 'Toolhead cutter release', before=copy.deepcopy(self.latest_raw or self.snapshot()),
@@ -81,6 +84,10 @@ class LiveViewer:
             self.capture('gate_changed', 'Gate %s → %s' % (record['previous_gate'], record['gate']),
                          before=copy.deepcopy(self.latest_raw or self.snapshot()), telemetry=record)
         if record['event'] == 'filament_pos_changed':
+            if record.get('homing_overshoot_mm') is not None:
+                self.encoder_homing_overshoot[record['gate']] = record['homing_overshoot_mm']
+            elif record['filament_pos'] == 0:
+                self.encoder_homing_overshoot.pop(record['gate'], None)
             self.capture('state', record['filament_pos_name'], telemetry=record)
         if record['event'] not in ('movement_start', 'movement_outcome'):
             return
@@ -159,15 +166,15 @@ class LiveViewer:
                 motors = {name: value-before['motors'].get(name, 0.)
                           for name, value in after['motors'].items()
                           if value != before['motors'].get(name, 0.)}
-                self.capture('movement', label, before=before, origin='harness_fallback',
-                    duration=max(0., self.hh.reactor.monotonic()-start),
-                    requested=values.get('dist'), distance=None,
-                    speed=self.resolved_speed, motors=motors,
-                    fast_bowden=label in ('Fast loading move through bowden', 'Fast unloading move through bowden'),
-                    homing=values.get('homing_move', method == 'do_homing_move'),
-                    endstop=values.get('endstop_name'),
-                    homed=None,
-                    error=error)
+                if error or motors or after['tips'] != before['tips'] or after['tails'] != before['tails']:
+                    self.capture('movement', label, before=before, origin='harness_fallback',
+                        duration=max(0., self.hh.reactor.monotonic()-start),
+                        requested=values.get('dist'), distance=None,
+                        speed=self.resolved_speed, motors=motors,
+                        homing=values.get('homing_move', method == 'do_homing_move'),
+                        endstop=values.get('endstop_name'),
+                        homed=None,
+                        error=error)
         self.wrapped.append((owner, method, original))
         if isinstance(owner, dict):
             owner[method] = movement
@@ -252,8 +259,9 @@ class LiveViewer:
         from extras.mmu.mmu_utils import MmuColorUtils
         return plain(dict(encoder_reference=dict(endstop=hh.mmu.mmu_unit().p.gate_homing_endstop,
                                                offset=hh.mmu.mmu_unit().p.gate_endstop_to_encoder,
-                                               parking=hh.mmu.mmu_unit().p.gate_parking_distance), gate_colors=[MmuColorUtils.color_to_rgb_hex(color, '808182')[:6] for color in hh.mmu.gate_color], configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
-            filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
+                                               parking=hh.mmu.mmu_unit().p.gate_parking_distance,
+                                               overshoot=self.encoder_homing_overshoot.get(hh.mmu.gate_selected, 0.)), gate_colors=[MmuColorUtils.color_to_rgb_hex(color, '808182')[:6] for color in hh.mmu.gate_color], configuration=self.configuration(), drive_motors=drive_motors, active_sensors=active_sensor_names, cutters=cutters, synced=hh.mmu.drive().get_sync_mode() in (1, 3), filament=filament_context(hh.mmu), filament_pos=hh.mmu.filament_pos,
+            filament_pos_name=FILAMENT_POS_NAME_MAP.get(hh.mmu.filament_pos, 'UNKNOWN'), unit_sensors=unit_sensor_names, unit=hh.mmu.mmu_unit().name, units=[u.name for u in hh.mmu.mmu_machine.units], buffers=model.buffers, tool=hh.mmu.tool_selected, gate=hh.mmu.gate_selected, tips=model.tip[:], tails=model.tail[:],
             layout=layout, motors=self.motors.copy(),
             bowden_unabsorbed_mm=model.unabsorbed[hh.mmu.gate_selected] if hh.mmu.gate_selected >= 0 else 0.,
             sensors={name: {'state': state[0], 'position': sensor_position(name), 'enabled': bool(state[1].runout_helper.sensor_enabled)}
@@ -304,6 +312,7 @@ class LiveViewer:
                 self.latest = copy.deepcopy(raw_before)
                 self.latest_raw = copy.deepcopy(raw_before)
             raw_state = copy.deepcopy(state)
+            state['sensor_conflicts'] = []
             if self.nozzle_color is None:
                 self.nozzle_color = state['filament']['retained_color']
             material = state['filament']
@@ -375,7 +384,10 @@ class LiveViewer:
                         continue
                     raw_position = self.model.position(name)
                     previous_sensor = (self.latest or {}).get('sensors', {}).get(name, {})
-                    if (previous_sensor.get('state') is True and raw_position is not None
+                    previous_raw_sensor = (self.latest_raw or {}).get('sensors', {}).get(name, {})
+                    # Retain a forward-home boundary correction, never a real clearing edge.
+                    if (previous_sensor.get('state') is True and previous_raw_sensor.get('state') is False
+                            and raw_position is not None
                             and abs(raw_state['tips'][gate]-raw_position) < 1e-5):
                         sensor['state'] = True
                         continue
@@ -384,6 +396,8 @@ class LiveViewer:
                         continue
                     position = sensor['position']
                     if position is not None and (tail is None or tail <= position):
+                        if state['tips'][gate] >= position:
+                            state['sensor_conflicts'].append(name + ': movement past a clear sensor')
                         state['tips'][gate] = min(state['tips'][gate], position-0.001)
             extruder = state['filament']['extruder']
             nozzle = state['layout']['nozzle']
@@ -471,6 +485,20 @@ class LiveViewer:
             # Preserve travel accounting; the browser gives UNKNOWN a schematic endpoint.
             if gate >= 0 and record.get('event') == 'filament_pos_changed' and state['filament_pos'] == -1 and self.latest:
                 state['tips'][gate] = self.latest['tips'][gate]
+            if kind == 'movement' and gate >= 0:
+                fragment = self.retained_segments.get(extruder)
+                for name in state['active_sensors']:
+                    sensor = state['sensors'][name]
+                    position = sensor['position']
+                    if sensor['state'] is not True or position is None:
+                        continue
+                    if any(word in name for word in ('encoder', 'compression', 'tension')):
+                        continue
+                    if fragment and fragment['start'] <= position <= fragment['end']:
+                        continue
+                    tail = state['tails'][gate]
+                    if state['tips'][gate] < position and (tail is None or tail <= position):
+                        state['sensor_conflicts'].append(name + ': retraction past a triggered sensor')
             state['cutter_pressed'] = self.cutter_pressed
             state['tip_shapes'] = [self.tip_shapes.get(i, 'square') for i in range(len(state['tips']))]
             state['retained_segment'] = copy.deepcopy(self.retained_segments.get(extruder))
@@ -491,6 +519,12 @@ class LiveViewer:
     def on_drive(self, distance, origin='manual'):
         if not distance or self.hh.mmu.gate_selected < 0:
             return
+        # Homing owns its motor set even if sensor callbacks change the sync mode.
+        for start, _ in reversed(list(self.pending_moves.values())):
+            if start.get('homing') and origin == 'manual':
+                for name in set(start['motors']):
+                    self.on_stepper(name, distance)
+                return
         from extras.mmu.mmu_constants import (DRIVE_EXTRUDER_ONLY,
             DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
         drive = self.hh.mmu.drive()

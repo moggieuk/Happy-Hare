@@ -26,6 +26,25 @@ class TestLiveViewer(unittest.TestCase):
         self.viewer.close()
         self.hh.close()
 
+    def test_operation_markers_precede_load_unload_and_toolchange(self):
+        from unittest import mock
+        for command in ('MMU_LOAD', 'MMU_UNLOAD', 'MMU_CHANGE_TOOL TOOL=0'):
+            start = self.viewer.sequence
+            with mock.patch.object(self.hh.mmu, 'mmu_macro_event') as macro:
+                self.hh.run_gcode(command)
+            markers = [event for event in self.viewer.read()['events']
+                       if event['seq'] > start and event['kind'] == 'toolchange']
+            self.assertEqual(len(markers), 1, command)
+            self.assertEqual(markers[0]['label'], command)
+            self.assertEqual(markers[0]['telemetry']['command'], command.split()[0])
+            macro.assert_any_call('toolchange', 'COMMAND=%s' % command.split()[0])
+
+    def test_noop_manual_move_does_not_create_fallback_event(self):
+        stepper = self.hh.mmu.drive().mmu_gear_stepper
+        before = self.viewer.sequence
+        stepper.do_move(stepper.get_position()[0], 25., 400.)
+        self.assertEqual(self.viewer.sequence, before)
+
     def test_raw_telemetry_reads_do_not_expose_mutable_capture_records(self):
         self.hh.mmu.move_filament('Original label', 1)
         record = self.viewer.read_telemetry()['records'][0]
@@ -61,6 +80,30 @@ class TestLiveViewer(unittest.TestCase):
                 home = self.viewer._logical_tip(state)
                 state['filament_pos'] = 0
                 self.assertEqual(self.viewer._logical_tip(state), home+parking)
+
+    def test_encoder_homing_overshoot_is_recorded_and_cleared_on_parking(self):
+        self.hh.mmu.set_filament_pos_state(2, homing_overshoot_mm=7.5)
+        state = self.viewer.read()['events'][-1]['state']
+        self.assertEqual(state['encoder_reference']['overshoot'], 7.5)
+        self.hh.mmu.set_filament_pos_state(0)
+        self.assertEqual(self.viewer.read()['events'][-1]['state']['encoder_reference']['overshoot'], 0)
+
+    def test_retraction_past_triggered_sensor_records_conflict(self):
+        snapshot = self.viewer.snapshot()
+        position = snapshot['layout']['extruder_gears'] + 10
+        snapshot['tips'][0] = position + 5
+        snapshot['sensors'] = {'toolhead': {'state': True, 'position': position, 'enabled': True}}
+        snapshot['active_sensors'] = snapshot['unit_sensors'] = ['toolhead']
+        self.viewer.latest = self.viewer.latest_raw = None
+        with mock.patch.object(self.viewer, 'snapshot', return_value=snapshot):
+            self.viewer.capture('test', 'Initial')
+        snapshot = json.loads(json.dumps(snapshot))
+        snapshot['tips'][0] = position - 5
+        snapshot['motors']['extruder'] = -10
+        with mock.patch.object(self.viewer, 'snapshot', return_value=snapshot):
+            self.viewer.capture('movement', 'Retract', before=self.viewer.latest_raw)
+        self.assertTrue(any('triggered sensor' in message for message in
+                            self.viewer.read()['events'][-1]['state']['sensor_conflicts']))
 
     def test_gate_selection_emits_raw_event_and_animated_snapshot_once(self):
         self.hh.mmu._set_gate_selected(1)
@@ -517,6 +560,37 @@ class TestLiveViewer(unittest.TestCase):
         self.assertEqual(moves[0]['distance'], 300)
         self.assertEqual(moves[0]['speed'], 100)
         self.assertGreater(moves[0]['duration'], 0)
+
+    def test_combined_homing_during_load_records_both_motors(self):
+        with session('ercf_vvd') as hh:
+            hh.boot(calibrate=True, selected_gate=0)
+            hh.heat_extruder(220)
+            hh.filament().park(0)
+            hh.mmu.gate_status[0] = 1
+            viewer = LiveViewer(hh)
+            try:
+                hh.run_gcode('MMU_LOAD')
+                moves = [e for e in viewer.read()['events'] if e.get('homing')
+                         and e['telemetry']['start']['motor_mode'] == 'gear+extruder']
+                self.assertTrue(moves)
+                for event in moves:
+                    for motor in event['telemetry']['start']['motors']:
+                        self.assertAlmostEqual(event['motors'].get(motor, 0), event['distance'])
+            finally:
+                viewer.close()
+
+    def test_reverse_homing_sensor_stays_clear_at_boundary(self):
+        name = self.hh.mmu.mmu_unit().name + ':mmu_shared_exit'
+        position = self.hh.filament().position(name)
+        self.hh.place_filament(0, position+20)
+        self.viewer.capture('state', 'Before reverse homing')
+        self.hh.mmu.move_filament('Reverse home', -100, homing_move=-1, endstop_name=name)
+        event = self.viewer.read()['events'][-1]
+        self.assertTrue(event['homed'])
+        self.assertFalse(event['raw_state']['sensors'][name]['state'])
+        self.assertFalse(event['state']['sensors'][name]['state'])
+        self.viewer.capture('state', 'After reverse homing')
+        self.assertFalse(self.viewer.read()['events'][-1]['state']['sensors'][name]['state'])
 
     def test_homing_record_preserves_search_limit_and_actual_stop(self):
         name = self.hh.mmu.mmu_unit().name + ':mmu_shared_exit'

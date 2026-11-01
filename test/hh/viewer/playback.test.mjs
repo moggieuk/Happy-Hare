@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bufferSpringPath, bufferPiston, interpolate, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -371,4 +371,45 @@ test('device stack collapses absent sensors and keeps signed encoder ordering',(
  state.devices={};
  assert.deepEqual(gateDevicePositions(state,sensors),{exit:260,sharedExit:228});
  assert.deepEqual(gateDevicePositions(state,[]),{});
+});
+
+test('presence constraints hold conflicting moves and ignore disabled sensors and detached fragments',()=>{
+ const sensor={name:'exit',position:20,state:false};
+ assert.equal(constrainFilament(30,10,null,[sensor]).tip,10);
+ assert.ok(constrainFilament(30,10,null,[sensor]).warnings.length);
+ assert.equal(constrainFilament(30,null,null,[sensor]).tip,19);
+ assert.equal(constrainFilament(10,30,null,[{...sensor,state:true}]).tip,30);
+ assert.equal(constrainFilament(10,null,null,[{...sensor,state:true}]).tip,20);
+ assert.equal(constrainFilament(30,10,null,[{...sensor,enabled:false}]).tip,30);
+ assert.equal(constrainFilament(30,10,null,[{...sensor,state:null}]).tip,30);
+ assert.equal(constrainFilament(10,30,null,[{...sensor,state:true}],[{start:15,end:25}]).tip,10);
+ assert.equal(constrainFilament(30,10,25,[sensor]).tip,30);
+ assert.equal(constrainFilament(19,10,null,[sensor],[],['exit mismatch']).tip,10);
+});
+
+test('excess filament distinguishes signed tension and compression', () => {
+  assert.equal(excessFilamentLabel(-2), 'tension · -2.0mm');
+  assert.equal(excessFilamentLabel(2), 'compression · +2.0mm');
+});
+
+test('toolchange navigation skips steps and uses strict adjacent markers', () => {
+  const events = ['session','toolchange','movement','state','toolchange','movement'].map(kind=>({kind}));
+  assert.equal(toolchangeIndex(events,3,-1),1);
+  assert.equal(toolchangeIndex(events,4,-1),1);
+  assert.equal(toolchangeIndex(events,1,1),4);
+  assert.equal(toolchangeIndex(events,0,-1),-1);
+  assert.equal(toolchangeIndex(events,4,1),-1);
+});
+test('manual navigation retains the selected step annotation', () => {
+  const events = [{seq:1,kind:'movement',label:'Load'}, {seq:2,kind:'state',label:'IN EXTRUDER'}];
+  assert.equal(annotatedStep(events,events[1],true),events[1]);
+  assert.equal(annotatedStep(events,events[0],true),events[0]);
+  assert.equal(annotatedStep(events,events[1],false),events[0]);
+});
+
+test('purge release has time to fall without shortening slower retractions', () => {
+  const event = {kind:'movement',distance:-2,speed:20,before:{purge_base_mm:0},state:{purge_base_mm:4}};
+  assert.equal(duration(event),650);
+  assert.equal(duration({...event,speed:1}),2000);
+  assert.equal(duration({...event,state:{purge_base_mm:0}}),120);
 });

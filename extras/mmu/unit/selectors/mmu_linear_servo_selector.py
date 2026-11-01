@@ -243,8 +243,8 @@ class LinearSelectorServo:
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.p.servo_buzz_gear_on_down > 0:
             # Very important that suppress_grip_change=True to avoid infinite recursion and burn out servo
             for _ in range(self.p.servo_buzz_gear_on_down):
-                self.mmu.move_filament(None, 0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False, suppress_grip_change=True)
-                self.mmu.move_filament(None, -0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False, suppress_grip_change=True)
+                self.mmu.move_filament("Engaging mmu gear", 0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False, suppress_grip_change=True)
+                self.mmu.move_filament("Engaging mmu gear", -0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False, suppress_grip_change=True)
             self.mmu.movequeue_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
 
         self.servo_angle = self.servo_angles['down']

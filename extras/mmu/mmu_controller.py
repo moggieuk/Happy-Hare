@@ -740,6 +740,15 @@ class MmuController(MmuFilamentMovement):
                 raise
 
 
+    def _toolchange_event(self, gcmd):
+        """Mark the start of a load, unload, or toolchange for replay navigation."""
+        command = gcmd.get_command()
+        self.movement_telemetry.state('toolchange', command=command,
+            label=gcmd.get_commandline(), tool=self.tool_selected,
+            gate=self.gate_selected, unit=self.mmu_unit().name)
+        self.mmu_macro_event('toolchange', 'COMMAND=%s' % command)
+
+
     def mmu_macro_event(self, event_name, params=""):
         self.call_macro_if_defined(self.p.mmu_event_macro, "EVENT=%s %s" % (event_name, params))
 
@@ -3146,15 +3155,16 @@ class MmuController(MmuFilamentMovement):
         self.filament_direction = direction
 
 
-    def set_filament_pos_state(self, state, silent=False, source=None):
+    def set_filament_pos_state(self, state, silent=False, source=None, homing_overshoot_mm=None):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
             self.td1.release()
-        if self.filament_pos != state or source is not None:
+        if self.filament_pos != state or source is not None or homing_overshoot_mm is not None:
             previous = self.filament_pos
             self.filament_pos = state
             self.movement_telemetry.state('filament_pos_changed',
                 unit=self.mmu_unit().name, gate=self.gate_selected,
                 previous=previous, filament_pos=state, source=source,
+                homing_overshoot_mm=homing_overshoot_mm,
                 filament_pos_name=FILAMENT_POS_NAME_MAP.get(state, 'UNKNOWN'))
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
                 if not silent:

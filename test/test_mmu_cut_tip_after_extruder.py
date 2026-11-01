@@ -99,7 +99,7 @@ class AfterExtruderGoldenCase(unittest.TestCase):
 
         def record(trace, dist, *args, **kwargs):
             result = move_filament(trace, dist, *args, **kwargs)
-            if trace:
+            if trace and not kwargs.get('suppress_grip_change'):
                 self.moves.append((trace, round(dist, 2), kwargs.get('motor'), kwargs.get('endstop_name')))
             return result
 
