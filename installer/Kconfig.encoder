@@ -161,6 +161,7 @@ if MMU_HAS_ENCODER
         seen by the encoder. If this is not set the encoder will always measure
         less that the actual movement. Set on every unit, including one that
         shares another unit's encoder, because each unit has its own gate endstop.
+        Use a negative value if the encoder is before the gate endstop.
 
     config PARAM_ENCODER_MOVE_STEP_SIZE
       float "$(pad,36,Encoder small move step size)"

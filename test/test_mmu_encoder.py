@@ -697,5 +697,20 @@ class TestCalibrateGateSpeed(unittest.TestCase):
         self.assertEqual(set(loads), {(self.unit.p.gear_load_speed, self.unit.p.gear_load_accel)})
         self.assertEqual(set(unloads), {(self.unit.p.gear_unload_speed, self.unit.p.gear_unload_accel)})
 
+
+class TestNegativeGateEndstopToEncoder(unittest.TestCase):
+    """A negative gate_endstop_to_encoder means the encoder is before the gate endstop."""
+
+    def test_encoder_before_shared_exit_has_no_dead_space(self):
+        hh = session('quattrobox_v2')
+        hh.boot()
+        self.addCleanup(hh.close)
+        mmu = hh.mmu
+        hh.run_gcode('MMU_TEST_CONFIG gate_endstop_to_encoder=-10')
+        self.assertEqual(mmu.mmu_unit().p.gate_endstop_to_encoder, -10.0)
+        self.assertEqual(mmu.get_encoder_dead_space(), 0.0)
+        self.assertEqual(mmu.get_encoder_dead_space(park=-30.0), 20.0)
+
+
 if __name__ == '__main__':
     unittest.main()

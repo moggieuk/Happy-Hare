@@ -2734,7 +2734,7 @@ class MmuFilamentMovement:
             msg = "Load of %.1fmm filament successful" % self.drive().get_filament_position()
             if self.can_use_encoder():
                 final_encoder_pos = self.get_encoder_distance(dwell=None)
-                not_seen = -(u.p.gate_parking_distance) + self.get_encoder_dead_space()
+                not_seen = self.get_encoder_dead_space(park=u.p.gate_parking_distance)
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
@@ -3066,7 +3066,7 @@ class MmuFilamentMovement:
             msg = "Unload of %.1fmm filament successful" % self.drive().get_filament_position()
             if self.can_use_encoder():
                 final_encoder_pos = self.get_encoder_distance(dwell=None)
-                not_seen = -(u.p.gate_parking_distance) + self.get_encoder_dead_space() + (u.p.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)
+                not_seen = self.get_encoder_dead_space(park=u.p.gate_parking_distance) + (u.p.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
@@ -3869,14 +3869,17 @@ class MmuFilamentMovement:
 # GENERAL FILAMENT RECOVERY AND MOVE HELPERS
 # -----------------------------------------------------------------------------------------------------------
 
-    def get_encoder_dead_space(self):
+    def get_encoder_dead_space(self, park=None):
         """
-        If loading filament from the gate, return the "unseen" portion of the move
+        If loading filament from the gate, return the "unseen" portion of the move. That is
+        from the gate endstop, or from the parked position if 'park' (<=0) is given. A negative
+        gate_endstop_to_encoder means the encoder is before the endstop
         """
         if self.has_encoder() and self.mmu_unit().p.gate_homing_endstop in [SENSOR_SHARED_EXIT, SENSOR_EXIT_PREFIX]:
-            return self.mmu_unit().p.gate_endstop_to_encoder
+            offset = self.mmu_unit().p.gate_endstop_to_encoder
         else:
-            return 0.
+            offset = 0.
+        return max(0., offset - (park or 0.))
 
 
     def report_necessary_recovery(self, use_autotune=True):
