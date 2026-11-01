@@ -493,9 +493,8 @@ class Session:
         The 1-D filament path model for this machine, created on first use and
         published as printer.harness_filament so the fake HomingMove can find it.
 
-        Sensors it does not own are left alone. Unsupported buffer types remain at the
-        state established by apply_initial_sensor_states; a tension-sprung two-switch
-        buffer is explicitly claimed by the filament model so its state can change.
+        Sensors it does not own are left alone. Configured buffers track physical travel;
+        proportional buffers feed the ADC callback so it owns the virtual switches.
         """
         existing = getattr(self.printer, 'harness_filament', None)
         if existing is not None and layout is None:
@@ -503,7 +502,7 @@ class Session:
 
         from .filament import FilamentPath
         from extras.mmu.mmu_constants import (
-            DRIVE_UNSYNCED, DRIVE_EXTRUDER_ONLY,
+            DRIVE_UNSYNCED, DRIVE_EXTRUDER_ONLY, FILAMENT_POS_EXTRUDER_ENTRY,
         )
 
         def drive_mode(gate):
@@ -523,6 +522,12 @@ class Session:
             self.mmu.mmu_machine.units,
             selected_gate=lambda: self.mmu.gate_selected,
             drive_mode=drive_mode,
+            gripped=lambda gate: (
+                self.mmu.gate_selected == gate
+                and self.mmu.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY
+                and model.tail[gate] <= (model.layout['extruder_entry']
+                    + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_entry_to_extruder)
+                <= model.tip[gate]),
         )
         owned = [name for name in self.sensors()
                  if (name not in getattr(self, '_spring_at_rest', set())
@@ -532,6 +537,16 @@ class Session:
         # unit's filament - see FilamentPath.gates_visible_to.
         model.units = {u.name: (u.first_gate, u.num_gates)
                        for u in self.mmu.mmu_machine.units}
+        def set_buffer_value(name, value):
+            buffer = next(u.buffer for u in self.mmu.mmu_machine.units
+                          if u.buffer is not None and u.buffer.name == name)
+            sensor = buffer.proportional_sensor
+            shaped = abs(value) ** (1. / sensor._gamma)
+            delta = shaped * (sensor._d_pos if value >= 0 else -sensor._d_neg)
+            raw = sensor._neutral_point + (-delta if sensor._reversed else delta)
+            sensor.mcu_adc.feed(raw)
+
+        model._set_buffer_value = set_buffer_value
         model.bind(owned, self._set_sensor_state)
         self.printer.harness_filament = model
         self._install_move_observer()

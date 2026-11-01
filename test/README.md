@@ -1191,13 +1191,26 @@ The encoder is not a switch: it reports *motion*, so what matters is how much of
 happened while filament covered the wheel. That is `fil.travel_over()`, and the harness
 turns it into real pulses so Happy Hare's own counter callback does the accumulating.
 
-A tension-sprung, two-switch sync-feedback buffer also has travel. It starts squeezed with
-tension triggered. Reaching the extruder opens tension, but passing the nominal coordinate
+Sync-feedback buffers also have physical travel. Tension-sprung buffers rest squeezed,
+compression-sprung buffers rest expanded, and neutral buffers rest at the midpoint. Reaching the extruder opens tension, but
+passing the nominal coordinate
 during an ordinary Bowden move does not prove contact and cannot build compression. A
-`filament_compression` homing move establishes contact; another 70% of the configured
-`buffer_maxrange` then triggers compression. Gear-only and extruder-only moves change that
+`filament_compression` homing move establishes contact. The compression switch lies at
+`(buffer_maxrange + buffer_range) / 2` of physical travel, and tension at
+`(buffer_maxrange - buffer_range) / 2`. Gear-only and extruder-only moves change that
 stored travel in opposite directions, so a paced console load visibly passes through tension,
-neutral and compression.
+neutral and compression. Once filament is gripped by the extruder, gear-only moves
+keep its downstream tip stationary and change buffer travel instead. Travel is bounded by
+`buffer_maxrange`; additional displacement is retained as unabsorbed compression or tension,
+so reversal takes up that excess before the buffer leaves its stop. Equal gear/extruder
+movement leaves the buffer unchanged. The viewer shows travel and any unabsorbed displacement
+in millimetres, not force. Without a modeled buffer, relative displacement is reported but
+no Bowden spring is simulated. The inline piston rests at the configured spring position
+when empty. Switch readings
+constrain its displayed position, while proportional buffers use the actual analog reading
+within the sensor range and modeled displacement beyond it. Analog sensor injection remains
+available through the existing simulator controls. Both rectangles are transparent so the
+filament remains visible.
 
 **The fake Moonraker** provides a working in-memory Spoolman — not a mock. When Happy Hare
 auto-creates a spool, a spool really is created, and the next scan of that tag really
