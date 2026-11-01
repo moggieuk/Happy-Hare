@@ -201,9 +201,12 @@ class LiveViewer:
         selected_objects = {id(sensor) for _, sensor in selected_sensors.values()}
         unit_sensor_names = [name for name, (_, sensor) in sensors.items() if id(sensor) in selected_objects]
         devices = {}
+        object_status = {}
+        readout_types = {'mmu_encoder', 'mmu_buffer', 'mmu_toolhead', 'mmu_espooler'}
         for name, obj in hh.printer.objects.items():
-            if ('encoder' in name or 'buffer' in name) and hasattr(obj, 'get_status'):
-                devices[name] = obj.get_status(hh.reactor.monotonic())
+            if name.split()[0] in readout_types:
+                getter = getattr(obj, 'get_status', None)
+                object_status[name] = getter(hh.reactor.monotonic()) if getter else None
         for unit in hh.mmu.mmu_machine.units:
             for kind in ('encoder', 'buffer'):
                 obj = getattr(unit, kind, None)
@@ -265,7 +268,7 @@ class LiveViewer:
             layout=layout, motors=self.motors.copy(),
             bowden_unabsorbed_mm=model.unabsorbed[hh.mmu.gate_selected] if hh.mmu.gate_selected >= 0 else 0.,
             sensors={name: {'state': state[0], 'position': sensor_position(name), 'enabled': bool(state[1].runout_helper.sensor_enabled)}
-                     for name, state in sensors.items()}, devices=devices))
+                     for name, state in sensors.items()}, devices=devices, object_status=object_status))
 
     def _logical_tip(self, state, manual=False):
         """Exact landmarks for reported states; broad states retain observed travel."""
@@ -371,7 +374,7 @@ class LiveViewer:
                         and sensor['position'] is not None
                         and target in state.get('active_sensors', state['unit_sensors'])
                         and not any(kind in target for kind in ('compression', 'tension', 'encoder'))):
-                    state['tips'][gate] = sensor['position']
+                    state['tips'][gate] = sensor['position'] - (0.001 if distance < 0 else 0.)
                     if at_trigger:
                         sensor['state'] = True
                     details['homing_anchor'] = True

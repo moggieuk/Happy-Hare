@@ -87,17 +87,26 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual(start['filament_pos'], FILAMENT_POS_IN_BOWDEN)
         self.assertEqual(end['filament_pos'], FILAMENT_POS_IN_BOWDEN)
 
-    def test_final_retraction_reports_recorded_target_even_when_already_satisfied(self):
+    def test_final_retraction_has_one_annotated_move_and_no_extra_notification(self):
         mmu = self.hh.mmu
         mmu._set_park_retracted_length(0)
         mmu._retract_after_standalone_load()
+        count = len(self.records)
         mmu._retract_after_standalone_load()
-        events = [r for r in self.records if r['event'] == 'standalone_load_retraction']
-        self.assertEqual(len(events), 2)
-        self.assertEqual(events[0]['retracted_length'], mmu.toolchange_retract)
-        self.assertEqual(events[0]['adjustment_mm'], -mmu.toolchange_retract)
-        self.assertEqual(events[1]['adjustment_mm'], 0)
+        self.assertEqual(len(self.records), count)
+        self.assertFalse(any(r['event'] == 'standalone_load_retraction' for r in self.records))
+        starts = [r for r in self.records if r['event'] == 'movement_start']
+        self.assertEqual(len(starts), 1)
+        self.assertEqual(starts[0]['label'], 'Final load retraction')
         self.assertTrue(any(r['event'] == 'retracted_length_changed' for r in self.records))
+
+    def test_sync_telemetry_reports_changes_without_policy_diagnostics(self):
+        self.hh.mmu._sync_gear_to_extruder(True)
+        self.hh.mmu._sync_gear_to_extruder(False)
+        names = {r['event'] for r in self.records}
+        self.assertIn('drive_sync_changed', names)
+        self.assertNotIn('drive_sync_requested', names)
+        self.assertNotIn('drive_sync_decision', names)
 
     def test_idle_disable_uses_trace_not_stepper(self):
         with mock.patch.object(self.hh.mmu, 'log_stepper') as stepper, mock.patch.object(self.hh.mmu, 'log_trace') as trace:
@@ -126,8 +135,8 @@ class TestMovementTelemetry(unittest.TestCase):
                           (ESPOOLER_ASSIST, .8), (ESPOOLER_REWIND, .8), (ESPOOLER_OFF, 0)]:
             espooler.set_operation(0, power, op)
         events = [r for r in self.records if r['event'].startswith('espooler_')]
-        self.assertEqual([r['event'] for r in events], ['espooler_operation_changed'] * 4)
-        self.assertEqual([r['operation'] for r in events], ['assist', 'assist', 'rewind', 'off'])
+        self.assertEqual([r['event'] for r in events], ['espooler_started'] * 3 + ['espooler_stopped'])
+        self.assertEqual([r['direction'] for r in events], ['assist', 'assist', 'rewind', 'stopped'])
         self.assertEqual(events[-1]['direction'], 'stopped')
         self.assertEqual(events[-1]['output_power'], 0)
         self.assertEqual(events[0]['requested_power'], .5)
@@ -141,12 +150,20 @@ class TestMovementTelemetry(unittest.TestCase):
         espooler._stop_espooler_burst(0)
         espooler.reset_print_assist_mode()
         events = [r for r in self.records if r['event'].startswith('espooler_')]
-        changes = [r for r in events if r['event'] == 'espooler_operation_changed']
-        self.assertEqual([r['operation'] for r in changes], ['print', 'assist', 'print', 'off'])
-        self.assertTrue(changes[2]['print_assist_armed'])
-        self.assertFalse(changes[3]['print_assist_armed'])
-        self.assertEqual(len([r for r in events if r['event'] == 'espooler_burst_started']), 1)
-        self.assertEqual(len([r for r in events if r['event'] == 'espooler_burst_ended']), 1)
+        self.assertEqual([r['event'] for r in events], ['espooler_started', 'espooler_stopped'])
+        self.assertEqual(events[0]['direction'], 'assist')
+        self.assertEqual(events[-1]['output_power'], 0)
+
+    def test_espooler_burst_cancellation_emits_one_stop(self):
+        from extras.mmu.mmu_constants import ESPOOLER_REWIND, ESPOOLER_OFF
+        espooler = self.hh.mmu.espooler()
+        espooler.respool_gates = sorted(set(espooler.respool_gates + [0]))
+        espooler._handle_espooler_burst(0, .5, 10., ESPOOLER_REWIND)
+        espooler.set_operation(0, 0, ESPOOLER_OFF)
+        espooler._stop_espooler_burst(0)
+        events = [r['event'] for r in self.records if r['event'].startswith('espooler_')]
+        self.assertEqual(events, ['espooler_started', 'espooler_stopped'])
+
 
     def test_resolved_speed_matches_stepper_log_after_override(self):
         self.hh.mmu.gate_speed_override[0] = 50

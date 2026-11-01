@@ -15,6 +15,7 @@
       <div class="header-actions"><span id="connection">Connecting…</span><button id="theme-toggle" type="button" aria-label="Switch to light mode">Light mode</button></div>
     </header>
     <main>
+      <div class="left-column">
       <aside>
         <h2>Simulator setup</h2>
         <label>Profile<select id="profiles"></select></label
@@ -47,6 +48,14 @@
         </p>
         <p id="message" role="status"></p>
       </aside>
+      <section class="card" id="sidebar-playback" aria-label="Playback controls">
+        <h2>Playback</h2>
+        <div class="playback-row"><button id="beginning" data-tooltip="Beginning" aria-label="Beginning"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5h2v14H2z M13 5v14L5 12z M22 5v14l-8-7z"/></svg></button><button id="previous-toolchange" data-tooltip="Previous toolchange" aria-label="Previous toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5h3v14H5z M19 5v14L9 12z"/></svg></button><button id="replay" data-tooltip="Play continuously — follow live when caught up" aria-label="Play continuously — follow live when caught up" disabled><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg></button><button id="next-toolchange" data-tooltip="Next toolchange" aria-label="Next toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h3v14h-3z M5 5v14l10-7z"/></svg></button><button id="live" data-tooltip="End, go live" aria-label="End, go live"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 5h2v14h-2z M2 5v14l8-7z M11 5v14l8-7z"/></svg></button></div>
+        <div class="playback-row"><button id="previous" data-tooltip="Previous step" aria-label="Previous step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5v14L2 12z M22 5v14l-9-7z"/></svg></button><button id="next" data-tooltip="Next step" aria-label="Next step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l9-7z M13 5v14l9-7z"/></svg></button></div>
+        <div class="playback-row"><button id="save">Save trace</button><button id="save-motion">Save telemetry</button></div>
+        <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>
+      </section>
+      </div>
       <section>
         <div class="card">
           <div class="heading">
@@ -54,6 +63,10 @@
             <span id="position"></span>
           </div>
           <div class="scene-container">
+          <div id="filament-warning" role="status" hidden>
+            <span class="warning-bang" aria-hidden="true">!</span>
+            <span id="filament-warning-message"></span>
+          </div>
           <label class="nozzle-control" for="nozzle-diameter">Nozzle
             <select id="nozzle-diameter" aria-label="Nozzle diameter">
               <option value="0.1">0.1mm</option><option value="0.2">0.2mm</option>
@@ -81,26 +94,10 @@
             <div class="command-input"><input id="command" value="MMU_LOAD" autocomplete="off" spellcheck="false" /><button id="send" type="submit">Run</button></div>
           </form>
         </div>
-        <div class="controls">
-          <div class="transport-group" role="group" aria-label="Navigate backward">
-          <button id="beginning" data-tooltip="Beginning" aria-label="Beginning"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5h2v14H2z M13 5v14L5 12z M22 5v14l-8-7z"/></svg></button>
-          <button id="previous-toolchange" data-tooltip="Previous toolchange" aria-label="Previous toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5h3v14H5z M19 5v14L9 12z"/></svg></button>
-          <button id="previous" data-tooltip="Previous step" aria-label="Previous step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5v14L2 12z M22 5v14l-9-7z"/></svg></button>
-          </div>
-          <div class="transport-group" role="group" aria-label="Animate playback">
-          <button id="replay" data-tooltip="Play one step" aria-label="Play one step" disabled><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg></button>
-          <button id="play-end" data-tooltip="Play continuously — follow live when caught up" aria-label="Play continuously — follow live when caught up" disabled><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l6-7z M9 5v14l6-7z M16 5v14l6-7z"/></svg></button>
-          </div>
-          <div class="transport-group" role="group" aria-label="Navigate forward">
-          <button id="next" data-tooltip="Next step" aria-label="Next step"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l9-7z M13 5v14l9-7z"/></svg></button>
-          <button id="next-toolchange" data-tooltip="Next toolchange" aria-label="Next toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h3v14h-3z M5 5v14l10-7z"/></svg></button>
-          <button id="live" data-tooltip="End, go live" aria-label="End, go live"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 5h2v14h-2z M2 5v14l8-7z M11 5v14l8-7z"/></svg></button>
-          </div>
-          <div class="transport-group" role="group" aria-label="Save recordings">
-          <button id="save">Save trace</button>
-          <button id="save-motion">Save motion telemetry</button>
-          </div>
-          <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>
+        <div class="card">
+          <h2 tabindex="0" data-tooltip="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture." aria-description="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture.">Movement trace</h2>
+          <div id="trace" role="log"></div>
+        <div class="controls timeline-control">
           <input
             id="timeline"
             aria-label="Trace position"
@@ -109,10 +106,8 @@
             max="0"
             value="0"
           />
+          <div id="toolchange-ticks" aria-hidden="true"></div>
         </div>
-        <div class="card">
-          <h2 tabindex="0" data-tooltip="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture." aria-description="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture.">Movement trace</h2>
-          <div id="trace" role="log"></div>
         </div>
 
       </section>
