@@ -324,7 +324,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
 
-        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_has_encoder),
+        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING",                                    guard=_guard_has_encoder),
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
 
         # NFC / RFID reading
