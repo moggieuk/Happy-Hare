@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bufferPiston, interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { bufferSpringPath, bufferPiston, interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -145,13 +145,13 @@ test('Bowden label follows recorded unit, gate and calibration', () => {
     unit0: {bowden_lengths: {'0': 550, '1': 625.25}},
     unit1: {bowden_lengths: {'2': 700}},
   }}};
-  assert.equal(bowdenLengthLabel(s), 'Bowden · 550mm · compressed scale');
-  assert.equal(bowdenLengthLabel({...s, gate: 1}), 'Bowden · 625.3mm · compressed scale');
-  assert.equal(bowdenLengthLabel({...s, unit: 'unit1', gate: 2}), 'Bowden · 700mm · compressed scale');
+  assert.equal(bowdenLengthLabel(s), 'Bowden · 550mm');
+  assert.equal(bowdenLengthLabel({...s, gate: 1}), 'Bowden · 625.3mm');
+  assert.equal(bowdenLengthLabel({...s, unit: 'unit1', gate: 2}), 'Bowden · 700mm');
   const updated = structuredClone(s);
   updated.configuration.calibration.unit0.bowden_lengths['0'] = 560;
-  assert.equal(bowdenLengthLabel(updated), 'Bowden · 560mm · compressed scale');
-  assert.equal(bowdenLengthLabel(s), 'Bowden · 550mm · compressed scale');
+  assert.equal(bowdenLengthLabel(updated), 'Bowden · 560mm');
+  assert.equal(bowdenLengthLabel(s), 'Bowden · 550mm');
   for (const length of [0, -1, null, undefined]) {
     updated.configuration.calibration.unit0.bowden_lengths['0'] = length;
     assert.equal(bowdenLengthLabel(updated), 'Bowden · Uncalibrated length');
@@ -314,4 +314,14 @@ test('buffer piston honors centered switches, spring rest, analog readings and s
  const beyond=bufferPiston({...d,travel:12,displacement:15});
  assert.equal(beyond.position,12); assert.equal(beyond.excess,3);
  assert.equal(bufferPiston({...d,proportional:true,value:-1,displacement:-3}).position,0);
+});
+
+test('spring coils keep attached endpoints and finite geometry at either travel limit',()=>{
+ for(const [wall,edge] of [[428,441.2],[428,498.8],[512,441.2],[512,498.8],[428,429],[428,428]]) {
+  const path=bufferSpringPath(wall,edge);
+  assert.ok(path.startsWith(`M${wall} 52.5 H`));
+  assert.ok(path.endsWith(` H${edge}`));
+  assert.equal((path.match(/ C/g)||[]).length,10);
+  assert.ok(!/NaN|Infinity/.test(path));
+ }
 });

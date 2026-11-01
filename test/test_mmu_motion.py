@@ -168,6 +168,25 @@ class TestModelItself(MotionTestCase):
         self.assertEqual(geometry['travel'][0], 0.)
         self.assertEqual(geometry['excess'][0], 0.)
 
+    def test_buffer_contact_preserves_excess_before_grip_confirmation(self):
+        self.fil._set_sensor = None
+        self.fil._gripped = lambda gate: False
+        self.fil._drive_mode = lambda gate: 'gear'
+        geometry = next(iter(self.fil.buffers.values()))
+        self.fil.place(0, geometry['entry'])
+        self.fil.advance(0, 15., 'homing -> unit0:filament_compression')
+        self.assertEqual(geometry['travel'][0], 12.)
+        self.assertEqual(geometry['excess'][0], 3.)
+        self.assertEqual(self.fil.unabsorbed[0], 3.)
+        trip = self.fil.trip_distance(0, -20., ['filament_tension'])
+        self.assertAlmostEqual(trip[1], 13.)
+        self.fil.advance(0, 1., 'toolhead extrusion')
+        self.assertEqual(geometry['travel'][0], 12.)
+        self.assertEqual(geometry['excess'][0], 2.)
+        self.fil.advance(0, -2.)
+        self.assertEqual(geometry['travel'][0], 12.)
+        self.assertEqual(geometry['excess'][0], 0.)
+
     def test_buffer_spring_defaults_and_centered_thresholds(self):
         from types import SimpleNamespace
         from test.hh.filament import FilamentPath
@@ -184,6 +203,21 @@ class TestModelItself(MotionTestCase):
             model.place(0,-100.)
             self.assertEqual(geometry['travel'][0],rest)
             self.assertEqual(geometry['excess'][0],0.)
+
+    def test_sync_does_not_feed_another_units_proportional_buffer(self):
+        from types import SimpleNamespace
+        from test.hh.filament import FilamentPath
+        units = []
+        for gate in range(2):
+            name = 'unit%d' % gate
+            buffer = SimpleNamespace(name=name, buffer_spring_state='neutral',
+                buffer_range=8., buffer_maxrange=12., proportional_sensor=object())
+            units.append(SimpleNamespace(name=name, first_gate=gate, num_gates=1, buffer=buffer))
+        model = FilamentPath(2).configure_buffers(units, selected_gate=lambda: 0)
+        readings = []
+        model._set_buffer_value = lambda name, value: readings.append((name,value))
+        model.sync(0)
+        self.assertEqual(readings, [('unit0',0.)])
 
     def test_without_buffer_reports_reversible_mismatch(self):
         self.fil._set_sensor = None
