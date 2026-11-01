@@ -67,7 +67,7 @@ class MovementTelemetry:
             operation.finish(status='error', error=str(exc))
             raise
         finally:
-            # Covers an early return after a start without inventing an outcome.
+            # Mark an unfinished start explicitly on early return.
             operation.finish(status='incomplete', error='No movement outcome reported')
             self.operations.pop()
 

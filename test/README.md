@@ -594,7 +594,9 @@ long moves easier to follow. Instant operations can finish before the browser's
 next refresh, but their events remain available for replay.
 
 **Previous**, **Next** and the timeline inspect captured state without rewinding
-Happy Hare itself. **Jump to latest** skips the animation backlog and resumes live playback.
+Happy Hare itself and stop automatic playback. **Play one step** animates the next
+entry; **Play continuously** animates the backlog and then follows live events.
+**Go live** skips the backlog.
 Playback uses the resolved feed speed in the source telemetry, independently of
 console pacing. Bowden time compression is off by default: the path is drawn
 shorter but takes distance/speed time. The optional compression checkbox shortens
@@ -652,6 +654,8 @@ upload. The web API remains a local development tool, not a public service.
 MMU commands and macros invoked through `wrap_gcode_command` temporarily observe
 `G1` commands with nonzero extrusion. Each produces one movement pair with
 `source=mmu_gcode`, resolved E distance, extruder name and calling context.
+`label` describes known moves such as final-load retraction; `commandline` retains
+the original G1 text. Unannotated moves use that text as their label.
 Absolute/relative extrusion, coordinate resets and flow overrides are respected.
 Only the owning execution context is observed; ordinary print moves, `G0`, and
 arc-generated segments are excluded. The exact previous G1 handler is restored
@@ -690,7 +694,7 @@ post-unload cutter is not covered by these hooks. The general unit-test harness
 retains its simplified macro effects.
 
 The viewer holds the severed fragment until an advancing filament end pushes it.
-A withdrawn nozzle tip has a schematic cone and approximately 10mm hair; cutting
+A withdrawn nozzle tip has a schematic cone and approximately 15mm hair; cutting
 transfers that shape to the fragment and leaves the attached end square. Residual
 melt stays at the nozzle. These shapes are illustrations, not measured tip geometry.
 
@@ -756,19 +760,23 @@ recorded amount is input-filament length. The nozzle selector converts it to an
 equivalent round strand using `length * (1.75 / nozzle_diameter)^2`, defaulting to
 0.4mm, for the purge animation and strand-length label.
 Coil size and blending are schematic, not a melt-flow model. A full coil falls
-behind the lower screen and the next coil starts growing. The explicit
-`standalone_load_retraction` event releases a coil when its recorded
-`retracted_length` is positive. Ordinary retract/recover movements do not release
-it. This event is emitted after the final standalone-load adjustment (including
-an already-satisfied target); it confirms recorded state, not physical queue
-completion. `retracted_length_changed` records persisted per-extruder changes. Extrusion totals remain
-cumulative across releases. Startup snapshots include `filament` context with the
+behind the lower screen and the next coil starts growing. Any actual extruder
+retraction detaches accumulated purge within that movement's animation; gear-only
+retraction does not. There is no separate purge-release animation event.
+`standalone_load_retraction` remains a raw state record confirming the final
+retracted amount, including an already-satisfied target. It does not confirm
+physical queue completion. `retracted_length_changed` records persisted
+per-extruder changes. Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
 configured residual, persisted per-extruder fragment length and retained color,
 the selected gate color and persisted `retracted_length`. Missing colors are neutral gray. Retained material
 is drawn at the nozzle and blends toward incoming color as material is extruded. Missing sensors supply no positional evidence.
 
 State records share the same versioned stream and sequence numbers:
 
+- `gate_changed` records previous/new gates and the selected unit, once per
+  change. The viewer animates selection using captured per-gate colors.
+- `filament_pos_changed` records the previous/new logical filament state and its
+  name; the viewer displays these with a **state changed** pill.
 - `drive_sync_requested` and `drive_sync_decision` report synchronization intent
   and the resolved policy decision. `drive_sync_changed` reports a successful
   drive mode change, with previous/new numeric modes and names and drive identity.
@@ -786,8 +794,9 @@ State records share the same versioned stream and sequence numbers:
 
 State records carry the active `move_id` when emitted inside a started movement,
 otherwise null. They do not open or close movement pairs. The viewer retains them
-in its raw telemetry export without creating extra animation steps. Idle gear
-stepper disable messages use TRACE rather than STEPPER.
+in its raw telemetry export. Gate and filament-position changes also appear in
+the movement trace; diagnostic sync and espooler records do not add animation
+steps. Idle gear stepper disable messages use TRACE rather than STEPPER.
 
 `elapsed_s` measures time between source callbacks, including waits and simulator
 pacing; it is not a physical motion-duration measurement. Drive travel is not proof
@@ -801,12 +810,11 @@ It no longer intercepts `move_filament()` or infers its speed from nested calls.
 `/sim/viewer/telemetry?after=<sequence>` exposes the same stream. **Save trace**
 also includes the pairs alongside simulated geometry. These are separate formats.
 
-Coverage currently includes moves dispatched through `move_filament()`. Direct
-selector, G-code/toolhead and modeled macro moves still use explicitly labeled
-harness fallbacks in the viewer; those are not included in the source JSONL stream.
-Audit selector movement and any remaining STEPPER categories before removing
-the STEPPER log level. Importing
-real-server captures into the viewer remains future work.
+Coverage includes `move_filament()`, MMU-owned G1 extrusion, and explicit cutter
+hooks. Direct selector and simplified modeled macro moves use labeled harness
+fallbacks in the viewer; those are not source JSONL movement pairs. Audit remaining
+STEPPER categories before removing that log level. Importing real-server captures
+into the viewer remains future work.
 
 Tests: `make test UT=test_mmu_movement_telemetry.py` and
 `node --test test/hh/viewer/playback.test.mjs`, plus the viewer and movement suites.

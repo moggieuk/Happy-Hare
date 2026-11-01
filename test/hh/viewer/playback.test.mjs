@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bufferSpringPath, bufferPiston, interpolate, duration, purgePath, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { bufferSpringPath, bufferPiston, interpolate, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -52,13 +52,10 @@ test('collision reaches hard stop at travel pace and holds while motors continue
  assert.equal(interpolate(e,.5).sensors.toolhead.state,false);
 });
 
-test('purge starts after nozzle contact and coil geometry stays bounded',()=>{
+test('purge starts after nozzle contact',()=>{
  const e={before:{...state(0,false),extruded_mm:0},state:{...state(5,false),layout:{nozzle:5},extruded_mm:10}};
  assert.equal(interpolate(e,.2).extruded_mm,0);
  assert.equal(interpolate(e,.5).extruded_mm,2.5);
- assert.equal(purgePath(0),'');
- assert.ok(purgePath(10).startsWith('M'));
- assert.equal(purgePath(100000),purgePath(36));
 });
 
 test('nozzle retract releases coil while preserving deposited amount',()=>{
@@ -349,4 +346,29 @@ test('gate selection eases between lanes without interpolating physical filament
  assert.equal(interpolate(event,.5).gate_focus,.5);
  assert.deepEqual(interpolate(event,.5).tips,before.tips);
  assert.equal(interpolate(event,.5).gate_path_opacity,0);
+});
+
+test('encoder reference follows configured endstop and signed offset',()=>{
+ const sensors=[['unit0:mmu_shared_exit',{position:0}],['unit0:mmu_exit_2',{position:-20}]];
+ const state={gate:2,encoder_reference:{endstop:'mmu_shared_exit',offset:15}};
+ assert.deepEqual(encoderReference(state,sensors),{name:'unit0:mmu_shared_exit',offset:15});
+ state.encoder_reference={endstop:'mmu_exit',offset:-12};
+ assert.deepEqual(encoderReference(state,sensors),{name:'unit0:mmu_exit_2',offset:-12});
+ assert.equal(encoderReference(state,sensors.slice(0,1)),null);
+ state.encoder_reference.endstop='encoder';
+ assert.equal(encoderReference(state,sensors),null);
+ assert.equal(dimensionParameter(state,'Encoder offset'),'gate_endstop_to_encoder');
+});
+
+test('device stack collapses absent sensors and keeps signed encoder ordering',()=>{
+ const sensors=[['mmu_exit_0',{position:0}],['unit0:mmu_shared_exit',{position:150}]];
+ const state={gate:0,unit:'unit0',devices:{'unit0:encoder':{}},encoder_reference:{endstop:'mmu_shared_exit',offset:10}};
+ assert.deepEqual(gateDevicePositions(state,sensors),{exit:260,sharedExit:228,encoder:196});
+ assert.deepEqual(gateDevicePositions(state,sensors.slice(1)),{sharedExit:260,encoder:228});
+ state.encoder_reference.offset=-10;
+ assert.deepEqual(gateDevicePositions(state,sensors.slice(1)),{encoder:260,sharedExit:228});
+ assert.deepEqual(gateDevicePositions(state,[]),{encoder:260});
+ state.devices={};
+ assert.deepEqual(gateDevicePositions(state,sensors),{exit:260,sharedExit:228});
+ assert.deepEqual(gateDevicePositions(state,[]),{});
 });

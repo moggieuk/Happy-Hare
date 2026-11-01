@@ -34,11 +34,11 @@
         <p id="profile"></p>
         <h2>Runtime parameters</h2>
         <label>MMU unit<select id="unit"></select></label
-        ><input
+        ><div class="parameter-filter"><input
           id="filter"
-          placeholder="Find a parameter"
-          aria-label="Find a parameter"
-        /><label>Parameter<select id="parameter"></select></label
+          placeholder="Filter parameters and variables"
+          aria-label="Filter parameter and macro variable names"
+        /><button id="clear-filter" type="button" aria-label="Clear filter" data-tooltip="Clear filter">×</button></div><label>Parameter<select id="parameter"></select></label
         ><label>Value<input id="value" /></label
         ><button id="apply">Apply MMU_TEST_CONFIG</button>
         <p class="note">

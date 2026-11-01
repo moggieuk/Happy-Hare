@@ -16,6 +16,7 @@ class GcodeExtrusionTelemetry:
 
     @contextlib.contextmanager
     def scope(self, name, label=None):
+        """Observe this command owner; nested labels describe known G1 purposes."""
         telemetry = self.mmu.movement_telemetry
         if not telemetry.listeners:
             yield
