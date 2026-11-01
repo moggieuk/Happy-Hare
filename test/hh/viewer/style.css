@@ -350,3 +350,7 @@ button.sensor-chip:disabled { cursor: default; }
 
 .trace-type[data-type="gate changed"] { color: #216342; background: #d8f2e2; }
 [data-theme="dark"] .trace-type[data-type="gate changed"] { color: #d6f6e2; background: #2a6247; }
+
+.parameter-filter { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
+.parameter-filter input { min-width: 0; flex: 1; }
+#clear-filter { margin: 4px 0 0; padding: 8px 10px; font-size: 16px; line-height: 1; }

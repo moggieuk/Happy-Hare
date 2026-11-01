@@ -507,7 +507,6 @@ class MmuESpooler:
                     self.mmu.log_stepper("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
                 self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
 
-
         # Sanity check
         if operation == ESPOOLER_OFF:
             value = 0
@@ -516,7 +515,6 @@ class MmuESpooler:
         value = max(0, min(1, value)) / self.scale
         if not self.is_pwm:
             value = 1 if value > 0 else 0
-
 
 
         # Update PWM signal
@@ -547,7 +545,6 @@ class MmuESpooler:
             else:
                 mcu_pin.set_digital(print_time, value)
             self.last_value[name] = value
-
 
 
     # -------------------------------------------------------------------------------------------------------------------
