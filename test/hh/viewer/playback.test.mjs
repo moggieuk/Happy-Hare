@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -340,7 +340,7 @@ test('gate selection eases between lanes without interpolating physical filament
  const before={gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
  const state={...before,gate:1};
  const event={kind:'gate_changed',before,state};
- assert.equal(duration(event),800);
+ assert.equal(duration(event),1200);
  assert.equal(interpolate(event,0),before);
  assert.equal(interpolate(event,1),state);
  assert.equal(interpolate(event,.5).gate_focus,.5);
@@ -373,9 +373,9 @@ test('device stack collapses absent sensors and keeps signed encoder ordering',(
  assert.deepEqual(gateDevicePositions(state,[]),{});
 });
 
-test('presence constraints hold conflicting moves and ignore disabled sensors and detached fragments',()=>{
+test('presence constraints stop forward travel at clear sensors and hold conflicting retractions',()=>{
  const sensor={name:'exit',position:20,state:false};
- assert.equal(constrainFilament(30,10,null,[sensor]).tip,10);
+ assert.equal(constrainFilament(30,10,null,[sensor]).tip,19);
  assert.ok(constrainFilament(30,10,null,[sensor]).warnings.length);
  assert.equal(constrainFilament(30,null,null,[sensor]).tip,19);
  assert.equal(constrainFilament(10,30,null,[{...sensor,state:true}]).tip,30);
@@ -384,7 +384,7 @@ test('presence constraints hold conflicting moves and ignore disabled sensors an
  assert.equal(constrainFilament(30,10,null,[{...sensor,state:null}]).tip,30);
  assert.equal(constrainFilament(10,30,null,[{...sensor,state:true}],[{start:15,end:25}]).tip,10);
  assert.equal(constrainFilament(30,10,25,[sensor]).tip,30);
- assert.equal(constrainFilament(19,10,null,[sensor],[],['exit mismatch']).tip,10);
+ assert.equal(constrainFilament(19,10,null,[sensor],[],['exit mismatch']).tip,19);
 });
 
 test('excess filament distinguishes signed tension and compression', () => {
@@ -412,4 +412,37 @@ test('purge release has time to fall without shortening slower retractions', () 
   assert.equal(duration(event),650);
   assert.equal(duration({...event,speed:1}),2000);
   assert.equal(duration({...event,state:{purge_base_mm:0}}),120);
+});
+
+test('movement sync indication follows commanded motors from the first frame', () => {
+  for (const mode of ['gear+extruder','synced','gear','extruder']) {
+    const synced = ['gear+extruder','synced'].includes(mode);
+    const e = {kind:'movement',before:{...state(0,false),synced:!synced},
+      state:{...state(10,true),synced},telemetry:{start:{motor_mode:mode}}};
+    for (const fraction of [0,.01,.5,.99,1])
+      assert.equal(interpolate(e,fraction).synced,synced,`${mode} at ${fraction}`);
+    assert.equal(e.before.synced,!synced);
+  }
+});
+
+test('internal snapshots settle visible steps without changing animated travel', () => {
+  const move = {seq:1,kind:'movement',label:'Load',before:state(0,false),state:state(10,true)};
+  const hidden = {seq:2,kind:'state',label:'State changed',state:{...state(10,true),synced:false}};
+  const next = {seq:3,kind:'state',label:'IN EXTRUDER',telemetry:{event:'filament_pos_changed'},state:state(10,true)};
+  const steps = visibleSteps([move,hidden,next]);
+  assert.deepEqual(steps.map(e=>e.seq),[1,3]);
+  assert.equal(steps[0].state,move.state);
+  assert.equal(interpolate(steps[0],.5).tips[0],5);
+  assert.equal(interpolate(steps[0],1),hidden.state);
+  assert.equal(steps[0].settled_state,hidden.state);
+  assert.equal(move.settled_state,undefined);
+  assert.equal(visibleSteps([move,{...hidden,seq:4,internal:true}])[0].settled_state,hidden.state);
+});
+
+test('successful reverse homing ignores the old false endpoint warning during animation', () => {
+  const e = {kind:'movement',homing:true,homed:true,distance:-10,endstop:'toolhead',
+    before:state(10,true),state:{...state(0,false),sensor_conflicts:['toolhead: movement past a clear sensor']}};
+  assert.equal(interpolate(e,.5).tips[0],5);
+  assert.deepEqual(interpolate(e,.5).sensor_conflicts,[]);
+  assert.equal(interpolate({...e,homed:false},.5).sensor_conflicts.length,1);
 });

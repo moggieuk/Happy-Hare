@@ -45,6 +45,27 @@ class TestLiveViewer(unittest.TestCase):
         stepper.do_move(stepper.get_position()[0], 25., 400.)
         self.assertEqual(self.viewer.sequence, before)
 
+    def test_device_readout_uses_real_object_names_and_status(self):
+        with session('ercf_vvd') as hh:
+            hh.boot(calibrate=True, selected_gate=0)
+            viewer = LiveViewer(hh)
+            try:
+                snapshot = viewer.snapshot()
+                status = snapshot['object_status']
+                self.assertIn('mmu_encoder unit0', status)
+                self.assertTrue(all(name.split()[0] in
+                    {'mmu_encoder', 'mmu_buffer', 'mmu_toolhead', 'mmu_espooler'} for name in status))
+                self.assertNotIn('unit0:encoder', status)
+                self.assertIn('unit0:encoder', snapshot['devices'])
+                for unit in hh.mmu.mmu_machine.units:
+                    self.assertIsNone(status['mmu_toolhead ' + unit.toolhead_wrapper.name])
+                for name, data in status.items():
+                    obj = hh.printer.lookup_object(name)
+                    getter = getattr(obj, 'get_status', None)
+                    self.assertEqual(data, getter(hh.reactor.monotonic()) if getter else None)
+            finally:
+                viewer.close()
+
     def test_raw_telemetry_reads_do_not_expose_mutable_capture_records(self):
         self.hh.mmu.move_filament('Original label', 1)
         record = self.viewer.read_telemetry()['records'][0]
@@ -376,7 +397,6 @@ class TestLiveViewer(unittest.TestCase):
         self.assertAlmostEqual(self.viewer.read()['events'][-1]['state']['extruded_mm'], 13)
         count = len(self.viewer.read()['events'])
         self.hh.mmu._set_park_retracted_length(2)
-        self.hh.mmu._report_standalone_load_retraction(0)
         self.assertEqual(len(self.viewer.read()['events']), count)
         self.assertEqual(self.viewer.read()['events'][-1]['state']['purge_base_mm'], 10)
 
@@ -397,7 +417,8 @@ class TestLiveViewer(unittest.TestCase):
         self.assertIn('G1 E-2', event['telemetry']['start']['commandline'])
         self.assertEqual(event['before']['purge_base_mm'], 0)
         self.assertEqual(event['state']['purge_base_mm'], 5)
-        self.assertEqual(self.viewer.read_telemetry()['records'][-1]['event'], 'standalone_load_retraction')
+        self.assertFalse(any(r['event'] == 'standalone_load_retraction'
+                             for r in self.viewer.read_telemetry()['records']))
 
     def test_gear_retraction_does_not_detach_purge(self):
         nozzle = self.viewer.snapshot()['layout']['nozzle']
@@ -589,6 +610,7 @@ class TestLiveViewer(unittest.TestCase):
         self.assertTrue(event['homed'])
         self.assertFalse(event['raw_state']['sensors'][name]['state'])
         self.assertFalse(event['state']['sensors'][name]['state'])
+        self.assertEqual(event['state']['sensor_conflicts'], [])
         self.viewer.capture('state', 'After reverse homing')
         self.assertFalse(self.viewer.read()['events'][-1]['state']['sensors'][name]['state'])
 

@@ -772,9 +772,8 @@ Coil size and blending are schematic, not a melt-flow model. A full coil falls
 behind the lower screen and the next coil starts growing. Any actual extruder
 retraction detaches accumulated purge within that movement's animation; gear-only
 retraction does not. There is no separate purge-release animation event.
-`standalone_load_retraction` remains a raw state record confirming the final
-retracted amount, including an already-satisfied target. It does not confirm
-physical queue completion. `retracted_length_changed` records persisted
+The final standalone-load G1 is annotated **Final load retraction**, without a
+separate notification. `retracted_length_changed` records persisted
 per-extruder changes. Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
 configured residual, persisted per-extruder fragment length and retained color,
 the selected gate color and persisted `retracted_length`. Missing colors are neutral gray. Retained material
@@ -786,20 +785,17 @@ State records share the same versioned stream and sequence numbers:
   change. The viewer animates selection using captured per-gate colors.
 - `filament_pos_changed` records the previous/new logical filament state and its
   name; the viewer displays these with a **state changed** pill.
-- `drive_sync_requested` and `drive_sync_decision` report synchronization intent
-  and the resolved policy decision. `drive_sync_changed` reports a successful
+- `drive_sync_changed` reports a successful
   drive mode change, with previous/new numeric modes and names and drive identity.
   Repeating the current mode does not emit another change.
-- `espooler_operation_changed` reports accepted operation/power changes per unit
-  and gate: previous/new operation and requested power, scaled output power,
-  direction (or stopped), PWM/digital mode and whether print assist is armed.
-  Power values are fractions, not percentages. Repeated unchanged operations
-  and rejected requests do not emit a change. These are controller commands,
-  not measurements of spool rotation or confirmation from the hardware.
-- `espooler_burst_started` includes operation, requested power and planned
-  duration in seconds. `espooler_burst_ended` marks timer completion or early
-  cancellation; it does not imply that the planned duration elapsed.
-  Low-level pin scheduling/submission events are no longer exported.
+- `espooler_started` covers continuous operation and bursts, with unit, gate,
+  direction, requested/scaled output power and PWM/digital mode. A start while
+  running replaces the previous direction/power setting.
+- `espooler_stopped` marks the return to zero output, including burst completion
+  or cancellation. Arming print assist without motor activity emits neither event.
+  Repeated unchanged operations and rejected requests do not emit events.
+  Power values are fractions, not percentages. These records describe accepted
+  controller commands, not measured spool rotation or physical queue completion.
 
 `toolchange` marks the start of `MMU_CHANGE_TOOL`, `MMU_LOAD`, and
 `MMU_UNLOAD`, including the initiating command line and current tool/gate.
