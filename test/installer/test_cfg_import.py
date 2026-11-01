@@ -514,7 +514,19 @@ class _Reinstalled(_Install):
         analysis = self.analyse()
         analysis.apply(analysis.candidates)
         hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
-        return [hardware.get(section, option).strip() for option in options]
+        return [hardware.get(section, option).strip() if hardware.has_option(section, option) else None
+                for option in options]
+
+    def switch(self, section, **options):
+        """Replace a [mcu] section's connection options by hand"""
+        installed = ConfigBuilder(self.path("mmu_hardware_unit0.cfg"))
+        for option in ("serial", "canbus_uuid", "canbus_interface"):
+            if installed.has_option(section, option):
+                installed.remove_option(section, option)
+        for option, value in options.items():
+            installed.set(section, option, value)
+        with open(self.path("mmu_hardware_unit0.cfg"), "w") as f:
+            f.write(installed.write())
 
 
 class TestMcuConnection(_Reinstalled):
@@ -561,6 +573,16 @@ class TestPerGateMcuConnection(_Reinstalled):
                          ["PARAM_MMU_CANBUS_INTERFACE_3", "PARAM_MMU_CANBUS_UUID_3"])
         self.assertEqual(self.imported("mcu unit0_gate3", "canbus_uuid", "canbus_interface"), ["0123456789ab", "can1"])
 
+    def test_one_gate_switched_to_serial_is_imported_for_that_gate(self):
+        self.switch("mcu unit0_gate3", serial="/dev/serial/by-id/gate3")
+        analysis = self.analyse()
+        analysis.apply(analysis.candidates)
+        self.assertIn("\nCONFIG_CHOICE_MMU_CONNECTION_TYPE_SERIAL_3=y\n", self.saved())
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        self.assertEqual(hardware.options("mcu unit0_gate3"), ["serial"])
+        self.assertEqual(hardware.get("mcu unit0_gate3", "serial").strip(), "/dev/serial/by-id/gate3")
+        self.assertEqual(hardware.get("mcu unit0_gate2", "canbus_uuid").strip(), "000000000002")
+
 
 class TestSerialMcuConnection(_Reinstalled):
 
@@ -570,6 +592,13 @@ class TestSerialMcuConnection(_Reinstalled):
     def test_edited_serial_is_imported(self):
         self.edit("mmu_hardware_unit0.cfg", "serial", "/dev/serial/by-id/new", section="mcu unit0")
         self.assertEqual(self.imported("mcu unit0", "serial"), ["/dev/serial/by-id/new"])
+
+    def test_switch_to_canbus_is_imported(self):
+        self.switch("mcu unit0", canbus_uuid="0123456789ab")
+        self.assertEqual({row[0] for row in self.analyse().report()["imported"]}, {"mmu_hardware_unit0.cfg"})
+        self.assertEqual(self.imported("mcu unit0", "canbus_uuid", "canbus_interface", "serial"),
+                         ["0123456789ab", "can0", None])
+        self.assertIn("\nCONFIG_CHOICE_MMU_CONNECTION_TYPE_CANBUS=y\n", self.saved())
 
 
 class TestBufferMcuConnection(_Reinstalled):
