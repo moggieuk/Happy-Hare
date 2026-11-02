@@ -61,12 +61,20 @@ export function interpolate(event, fraction) {
   s.purge_transition = b.purge_transition || a.purge_transition;
   s.nozzle_color = purgeColor(s, s.extruded_mm);
   for (const [name,value] of Object.entries(b.motors)) s.motors[name]=mix(a.motors[name]||0,value);
+  const contact=event.buffer_contact_fraction;
+  const bufferFraction=contact == null ? fraction : Math.max(0,Math.min(1,(fraction-contact)/Math.max(1e-9,1-contact)));
+  const bufferMix=(x,y)=>typeof x === 'number' && typeof y === 'number' ? x+(y-x)*bufferFraction : x;
   for (const [name,device] of Object.entries(a.devices)) {
-    for (const [key,value] of Object.entries(device)) s.devices[name][key]=mix(value,b.devices[name]?.[key]);
+    for (const [key,value] of Object.entries(device)) s.devices[name][key]=(name.endsWith(':buffer') ? bufferMix : mix)(value,b.devices[name]?.[key]);
   }
   s.bowden_unabsorbed_mm = mix(a.bowden_unabsorbed_mm || 0,b.bowden_unabsorbed_mm || 0);
   for (const [name, device] of Object.entries(s.devices)) {
     if (!name.endsWith(':buffer') || !Number.isFinite(device.displacement) || !(device.maximum > 0)) continue;
+    if (event.buffer_release && name === `${s.unit}:buffer`) {
+      const {approach_mm,travel_mm,from,to}=event.buffer_release;
+      const released=Math.max(0,travel_mm*fraction-approach_mm);
+      device.displacement=from+Math.sign(to-from)*Math.min(Math.abs(to-from),released);
+    }
     device.travel = Math.max(0,Math.min(device.maximum,device.displacement));
     device.excess = device.displacement-device.travel;
     if (!device.proportional) device.value = Math.max(-1,Math.min(1,(2*device.travel-device.maximum)/(device.range || device.maximum)));
@@ -83,13 +91,24 @@ export function interpolate(event, fraction) {
       const geometry=Object.values(a.buffers).find(g=>g.gates.includes(a.gate));
       const next=Object.values(b.buffers).find(g=>g.gates.includes(a.gate));
       if (geometry && next) {
-        const travel=Math.max(0,Math.min(geometry.maxrange,mix(geometry.travel[a.gate]+(geometry.excess?.[a.gate] || 0),next.travel[a.gate]+(next.excess?.[a.gate] || 0))));
+        const travel=s.devices[`${s.unit}:buffer`]?.travel ?? Math.max(0,Math.min(geometry.maxrange,bufferMix(geometry.travel[a.gate]+(geometry.excess?.[a.gate] || 0),next.travel[a.gate]+(next.excess?.[a.gate] || 0))));
         const threshold=name.endsWith('tension')?v=>v<=(geometry.tension_travel || 0):v=>v>=geometry.compression_travel;
-        if (threshold(geometry.travel[a.gate])===sensor.state && threshold(next.travel[a.gate])===end.state) sensor.state=threshold(travel);
+        if (sensor.state !== end.state && threshold(geometry.travel[a.gate])===sensor.state && threshold(next.travel[a.gate])===end.state) sensor.state=threshold(travel);
       }
     } else if (!name.includes('encoder') && occupancy(a,name,sensor.position)===sensor.state && occupancy(b,name,end.position)===end.state) {
       sensor.state=occupancy(s,name,sensor.position);
     }
+  }
+  // Recorded buffer sensors bound inferred relaxation, including between frames.
+  for (const [name,device] of Object.entries(s.devices)) {
+    if (!name.endsWith(':buffer')) continue;
+    const unit=name.slice(0,-7);
+    const triggered=suffix=>Object.entries(s.sensors).some(([n,v])=>
+      n.startsWith(unit+':') && n.endsWith(suffix) && v.enabled !== false && v.state === true);
+    const piston=bufferPiston(device,triggered('filament_tension'),triggered('filament_compression'));
+    device.travel=piston.position;
+    device.displacement=piston.position+piston.excess;
+    device.excess=piston.excess;
   }
   return s;
 }
@@ -313,6 +332,18 @@ export function encoderFilamentDistance(events, event, state, tip, pathDistance,
   return position + (origin-start)*remaining;
 }
 
+// Keep schematic parking and switch homing on the same continuous path.
+export function switchFilamentDistance(tip, home, parking, entry, sensorDistance, pathDistance) {
+  const knots = [[home,sensorDistance],[entry,pathDistance(entry)]];
+  if (parking && home+parking < entry) knots.push([home+parking,sensorDistance+Math.sign(parking)*8]);
+  knots.sort((a,b)=>a[0]-b[0]);
+  if (tip >= entry) return pathDistance(tip);
+  let index=knots.findIndex(([position])=>position>=tip);
+  if (index <= 0) index=1;
+  const [a,b]=[knots[index-1],knots[index]];
+  return a[1]+(b[1]-a[1])*(pathDistance(tip)-pathDistance(a[0]))/(pathDistance(b[0])-pathDistance(a[0]));
+}
+
 // Resolve the recorded endstop, never an arbitrary nearby exit sensor.
 export function encoderReference(state, sensors) {
   const unit = state.units?.indexOf(state.unit) ?? 0;
@@ -395,7 +426,7 @@ export function bufferPiston(device, tension=false, compression=false) {
   const center=maximum/2, low=center-range/2, high=center+range/2;
   let position=device.travel ?? device.rest ?? center;
   if (device.occupied === false) position=device.rest ?? center;
-  else if (device.proportional) {
+  if (device.proportional) {
     const reading=Math.max(-1,Math.min(1,device.value || 0));
     position=center+reading*range/2;
     if (device.displacement < low) position=device.displacement;

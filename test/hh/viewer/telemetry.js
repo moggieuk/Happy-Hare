@@ -178,8 +178,8 @@ export class TelemetryReplay {
       : sensor(s.encoder_reference.endstop) ?? 0;
     const toolhead = sensor('toolhead') ?? (gears+nozzle)/2;
     // Keep physical distances here; schematic parking gaps belong to drawing.
-    const exact = {1:home,5:sensor('extruder') ?? entry,6:gears,8:toolhead};
-    if (manual) Object.assign(exact, {'-1':-20,0:home+s.encoder_reference.parking,2:home,3:(home+entry)/2,4:entry,7:(gears+toolhead)/2,9:(toolhead+nozzle)/2,10:nozzle});
+    const exact = {5:sensor('extruder') ?? entry,6:gears,8:toolhead};
+    if (manual) Object.assign(exact, {'-1':-20,0:home+s.encoder_reference.parking,1:home,2:home,3:(home+entry)/2,4:entry,7:(gears+toolhead)/2,9:(toolhead+nozzle)/2,10:nozzle});
     return exact[pos] ?? this.tips[s.gate] ?? -20;
   }
 
@@ -238,10 +238,10 @@ export class TelemetryReplay {
         const occupied=u.gates.includes(m.gate) && this.tips[m.gate] >= 0;
         let displacement=this.bufferPositions[m.gate] ?? rest;
         if (!occupied) displacement=rest;
-        else if (b.proportional && finite(b.value)) {
+        if (b.proportional && finite(b.value)) {
           // Preserve modeled overtravel only outside the switch interval.
           const low=(maximum-range)/2,high=(maximum+range)/2;
-          if (!(displacement < low && b.value <= -1) && !(displacement > high && b.value >= 1))
+          if (displacement >= low && displacement <= high)
             displacement=maximum/2+clamp(b.value,-1,1)*range/2;
         } else {
           if (u.sensors.some(n=>short(n)==='filament_tension' && sensors[n]?.state === true)) displacement=Math.min(displacement,(maximum-range)/2);
@@ -308,6 +308,10 @@ export class TelemetryReplay {
         } else if (buffered) {
           const low=(buffered.maximum-buffered.range)/2,high=(buffered.maximum+buffered.range)/2;
           this.bufferPositions[gate]=target.endsWith('compression') ? high : low;
+          if (target.endsWith('compression') && forward && gearing && !extruding && d > 0) {
+            details.buffer_contact_fraction=Math.min(1,Math.max(0,gears-tip)/d);
+            details.filament_travel_mm=d;
+          }
           const buffer=this.facts.printer.mmu_machine.units[state.unit].buffer;
           if (buffer.proportional) buffer.value=target.endsWith('compression') ? 1 : -1;
         }
@@ -319,6 +323,8 @@ export class TelemetryReplay {
       for (const name of state.active_sensors) {
         const sensor=state.sensors[name];
         if (!sensor?.enabled || !finite(sensor.position) || /filament_(compression|tension)|encoder/.test(name)) continue;
+        // MMU sensor spacing is schematic; enforce these bounds in drawing coordinates.
+        if (/^mmu_(entry|exit|shared_exit)(?:_\d+)?$/.test(short(name))) continue;
         if (sensor.state === false && next > sensor.position) {
           conflicts.push(`${name}: movement past a clear sensor`);
           next=Math.min(next,sensor.position-.001);
@@ -355,6 +361,14 @@ export class TelemetryReplay {
         hotend.nozzle=purgeColor({...state,purge_transition:hotend.plan},hotend.extruded);
         next=Math.min(next,nozzle);
         if (next >= nozzle-.001) this.shapes[gate]='square';
+      }
+      if (buffered && d < 0 && next < gears) {
+        const initial=before.devices[`${state.unit}:buffer`] || buffered;
+        const approach=Math.max(0,tip-gears);
+        const released=Math.max(0,Math.abs(d)-approach);
+        const from=initial.displacement, to=initial.rest;
+        this.bufferPositions[gate]=from+Math.sign(to-from)*Math.min(Math.abs(to-from),released);
+        details.buffer_release={approach_mm:approach,travel_mm:Math.abs(d),from,to};
       }
       this.tips[gate]=next;
       const rawBefore=copy(before), rawState=copy(state);

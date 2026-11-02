@@ -367,7 +367,7 @@ button.sensor-chip:disabled { cursor: default; }
 #sidebar-playback button[aria-label] { width: 44px; height: 38px; padding: 7px; }
 #sidebar-playback .playback-option { margin-bottom: 0; font-size: 11px; }
 
-#sidebar-playback #previous, #sidebar-playback #next { width: 132px; }
+#sidebar-playback #previous, #sidebar-playback #play-previous, #sidebar-playback #play-step, #sidebar-playback #next { flex: 1; min-width: 0; }
 #sidebar-playback #replay { flex: 1; }
 
 .timeline-control { position: relative; }

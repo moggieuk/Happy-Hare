@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -493,4 +493,29 @@ test('parked state notification does not re-anchor the last encoder parking move
  const events=[initial,parking,parked],scale=p=>200+p*.8;
  const at=e=>encoderFilamentDistance(events,e,e.state,e.state.tips[0],scale,210);
  assert.equal(at(parking),at(parked));
+});
+
+test('shared-exit parking, successful home and Bowden travel share one mapping',()=>{
+ const scale=p=>200+p*.8;
+ const at=tip=>switchFilamentDistance(tip,10,-100,550,180,scale);
+ assert.equal(at(-90),172);
+ assert.equal(at(10),180);
+ assert.ok(at(9.99)<180);
+ assert.ok(at(10.01)>180);
+ assert.equal(at(550),scale(550));
+ assert.equal(switchFilamentDistance(40,10,30,550,180,scale),188);
+});
+
+test('proportional reading controls the sensor range but allows outer modeled travel',()=>{
+ for(const displacement of [3,6,9]) {
+  const p=bufferPiston({maximum:12,range:8,travel:6,displacement,proportional:true,value:.5,occupied:true});
+  assert.equal(p.position,8);assert.equal(p.excess,0);
+ }
+ for(const [displacement,position,excess] of [[-5,0,-5],[1,1,0],[11,11,0],[17,12,5]]) {
+  const p=bufferPiston({maximum:12,range:8,displacement,proportional:true,value:.5,occupied:true});
+  assert.equal(p.position,position);assert.equal(p.excess,excess);
+ }
+ assert.equal(bufferPiston({maximum:12,range:8,displacement:11,proportional:true,value:1}).position,11);
+ assert.equal(bufferPiston({maximum:12,range:8,travel:0,displacement:0},false,true).position,10);
+ assert.equal(bufferPiston({maximum:12,range:8,travel:6,displacement:6},true,false).position,2);
 });
