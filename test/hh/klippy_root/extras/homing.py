@@ -342,9 +342,6 @@ class HomingMove:
     def _advance_filament(self, model, gate, total, speed, reason):
         for amount in self._pace_slices(total, speed):
             model.advance(gate, amount, reason, motor_mode=self.filament_motor_mode)
-            observer = getattr(self.printer, 'harness_drive_observer', None)
-            if observer is not None:
-                observer(amount)
 
     def _move_selector(self, axis, delta, speed=None):
         """

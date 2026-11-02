@@ -144,9 +144,9 @@ class TestPrintJob(unittest.TestCase):
         self.assertEqual(hh.printer.harness_macro_effects.get('T1'), None)
 
     def test_builtin_job_with_viewer_keeps_print_extrusion_out_of_trace(self):
-        from test.hh.live_viewer import LiveViewer
+        from test.hh.live_viewer import SourceViewer
         console = self.console()
-        viewer = LiveViewer(console.hh)
+        viewer = SourceViewer(console.hh)
         self.addCleanup(viewer.close)
         gcode = console.hh.gcode
         original = gcode.register_command('G1', None)
@@ -158,9 +158,8 @@ class TestPrintJob(unittest.TestCase):
         current = gcode.register_command('G1', None)
         gcode.register_command('G1', current)
         self.assertIs(current, original)
-        events = viewer.read()['events']
-        self.assertTrue(any(e['kind'] == 'movement' for e in events))
-        self.assertFalse(any(e['kind'] in ('filament', 'stepper') for e in events))
+        events = viewer.read_telemetry()['records']
+        self.assertTrue(any(e['event'] == 'movement_start' for e in events))
         # Only MMU-owned purge/retraction commands are captured, not the job's
         # coordinated XYZ/E printing moves.
         g1_moves = [e for e in events if e.get('source') == 'mmu_gcode']

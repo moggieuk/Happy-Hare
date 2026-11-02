@@ -115,7 +115,7 @@ class BaseCommand:
             "per_unit": per_unit,
         }
 
-        # Restore the original G1 handler as soon as this command returns.
+        # Attribute nested extrusion to this MMU command until it returns.
         def owned(gcmd):
             with self.mmu.gcode_telemetry.scope(name):
                 return wrapped(gcmd)

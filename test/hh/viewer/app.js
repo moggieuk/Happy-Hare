@@ -65,7 +65,7 @@ let pendingSource = null, pendingFingerprint = '';
 function sourceMode() {
   $('return-live').hidden = !offline;
   $('recording-name').hidden = !offline;
-  document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, #test-panel input, #test-panel select, #test-panel button:not(#save)')
+  document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, #test-panel input, #test-panel select, #test-panel button')
     .forEach(node=>node.disabled=offline);
   $('live').dataset.tooltip = offline ? 'End of recording' : 'End, go live';
   $('live').setAttribute('aria-label', $('live').dataset.tooltip);

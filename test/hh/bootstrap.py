@@ -711,9 +711,6 @@ class Session:
             for amount in self._spend_macro_time(movement=-total):
                 if total:
                     self._move_extruder(stepper, amount * retract / total)
-                    observer = getattr(self.printer, 'harness_drive_observer', None)
-                    if observer is not None:
-                        observer(amount * retract / total, 'toolhead')
                     if model is not None:
                         model.advance(gate, amount * severed / total, 'tip cutting', motor_mode='extruder')
             operation.finish(status='completed', actual_mm=-retract)
@@ -992,9 +989,6 @@ class Session:
             return
         self._note_drive_motion(gate, distance)
         model.advance(gate, distance, 'move')
-        observer = getattr(self.printer, 'harness_drive_observer', None)
-        if observer is not None:
-            observer(distance)
 
     def _config_rotation_distances(self, unit):
         """
@@ -1052,13 +1046,10 @@ class Session:
             for stepper in owner.get_steppers():
                 if id(stepper) not in seen:
                     seen.add(id(stepper))
-                    stepper.harness_note_motion(distance, notify=False)
+                    stepper.harness_note_motion(distance)
 
     def _on_toolhead_move(self, distance):
         """Advance filament with a synced gear or an engaged extruder."""
-        observer = getattr(self.printer, 'harness_drive_observer', None)
-        if observer is not None:
-            observer(distance, 'toolhead')
         model = getattr(self.printer, 'harness_filament', None)
         gate = self.mmu.gate_selected
         if model is None or gate is None or gate < 0:
