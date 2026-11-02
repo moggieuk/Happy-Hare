@@ -4,7 +4,7 @@ import unittest
 from unittest import mock
 import greenlet
 from test.hh import session
-from test.hh.live_viewer import LiveViewer
+from test.hh.live_viewer import SourceViewer
 
 
 class TestGcodeTelemetry(unittest.TestCase):
@@ -65,20 +65,20 @@ class TestGcodeTelemetry(unittest.TestCase):
                 for stepper, start, distance in zip((gear,extruder),before,expected):
                     self.assertAlmostEqual((stepper.get_mcu_position()-start)*stepper.get_step_dist(),distance,places=2)
 
-    def test_synced_g1_updates_motor_counts_without_doubling_viewer_totals(self):
+    def test_synced_g1_updates_both_motors_with_one_source_outcome(self):
         from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
         drive = self.hh.mmu.drive()
         drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
         motors = [drive.mmu_gear_stepper.get_steppers()[0],drive.mmu_extruder_stepper.get_steppers()[0]]
         before = [s.get_mcu_position() for s in motors]
-        viewer = LiveViewer(self.hh)
+        viewer = SourceViewer(self.hh)
         self.addCleanup(viewer.close)
         with self.scope('MMU_TEST'):
             self.run_gcode('M83\nG1 E3 F300')
         for stepper, start in zip(motors,before):
             self.assertAlmostEqual((stepper.get_mcu_position()-start)*stepper.get_step_dist(),3,places=2)
-        event = viewer.read()['events'][-1]
-        self.assertEqual(sorted(event['motors'].values()), [3,3])
+        records = viewer.read_telemetry()['records']
+        self.assertEqual([e['actual_mm'] for e in records if e['event']=='movement_outcome'], [3])
 
     def test_permanent_handler_excludes_print_moves(self):
         original = self.handler()
@@ -229,8 +229,8 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertEqual(outcome['estimated_duration_s'], 1)
         self.assertEqual(outcome['extrusion_speed_mm_s'], 10)
 
-    def test_macro_scope_and_viewer_emit_one_row_per_command(self):
-        viewer = LiveViewer(self.hh)
+    def test_macro_scope_emits_one_source_pair_per_extrusion_command(self):
+        viewer = SourceViewer(self.hh)
         try:
             self.hh.gcode.register_command('TEST_EXTRUSION_MACRO',
                 lambda gcmd: self.run_gcode('M83\nG1 E2 F300\nG1 E-1'))
@@ -238,11 +238,8 @@ class TestGcodeTelemetry(unittest.TestCase):
             self.run_gcode('G1 E4')
             with self.scope('MMU_TEST'):
                 self.run_gcode('G0 E1\nG1 X1')
-            events = viewer.read()['events']
-            moves = [e for e in events if e['kind'] == 'movement']
-            self.assertEqual([e['distance'] for e in moves], [2, -1])
-            self.assertFalse(any(e['kind'] in ('filament', 'stepper') for e in events))
             records = viewer.read_telemetry()['records']
+            self.assertEqual([r['actual_mm'] for r in records if r['event']=='movement_outcome'], [2,-1])
             self.assertEqual(sum(r['event'] == 'movement_start' for r in records), 2)
             self.assertEqual(sum(r['event'] == 'movement_outcome' for r in records), 2)
         finally:

@@ -720,7 +720,6 @@ class MmuController(MmuFilamentMovement):
         self.movement_telemetry.state('toolchange', command=command,
             label=gcmd.get_commandline(), tool=self.tool_selected,
             gate=self.gate_selected, unit=self.mmu_unit().name)
-        self.mmu_macro_event('toolchange', 'COMMAND=%s' % command)
 
 
     def mmu_macro_event(self, event_name, params=""):

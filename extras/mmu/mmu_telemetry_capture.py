@@ -182,10 +182,13 @@ A rolling baseline keeps bounded exports usable after older records expire.
             records = [dict(schema='happy_hare.motion', version=2, event='session',
                             session_id=self.telemetry.session_id,
                             sequence=self.baseline_sequence, timestamp=self.baseline_time,
-                            checkpoint=self.baseline_sequence > 0, state=self.baseline)] if reset else []
+                            checkpoint=self.baseline_sequence > 0, state=copy.deepcopy(self.baseline))] if reset else []
             records.extend(record for record in self.records if reset or record['sequence'] > after)
             if self.pending:
                 records.append(self.pending)
-            return copy.deepcopy(dict(schema='happy_hare.motion', version=2,
-                                      session_id=self.telemetry.session_id,
-                                      reset=reset, records=records))
+            response = dict(schema='happy_hare.motion', version=2,
+                            session_id=self.telemetry.session_id,
+                            reset=reset, records=records)
+        # Committed records and pending deltas are replaced, never mutated.
+        # Only the rolling baseline needs copying while the producer is locked.
+        return copy.deepcopy(response)
