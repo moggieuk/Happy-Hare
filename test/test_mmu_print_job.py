@@ -141,7 +141,7 @@ class TestPrintJob(unittest.TestCase):
         self.assertIn('Checking gate 2...', out)            # the gate check really ran
         self.assertIn('Print job print_job.gcode complete', out)
         self.assertGreater(hh.reactor.monotonic() - started, 30.)
-        self.assertEqual(hh.printer.harness_macro_effects.get('T1'), None)
+        self.assertEqual(hh.printer.harness_macro_effects.get('T1'), console._run_macro_body)
 
     def test_builtin_job_with_viewer_keeps_print_extrusion_out_of_trace(self):
         from test.hh.live_viewer import SourceViewer

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {TelemetryReplay,parseTelemetry,applyDelta} from './telemetry.js';
-import {visibleSteps,interpolate} from './playback.js';
+import {visibleSteps,interpolate,playbackFrame,purgeOutletColor,constrainFilament} from './playback.js';
 const fixture=name=>JSON.parse(fs.readFileSync(new URL(`./fixtures/${name}.json`,import.meta.url)));
 const header=()=>structuredClone(fixture('ercf-vvd')[0]);
 function stream(pos=10) {
@@ -62,7 +62,7 @@ test('G1 purge changes residual from old to new colour without a release event',
  assert.equal(retract.state.purge_base_mm,retract.state.extruded_mm);
  const before=retract.state.extruded_mm;
  move(r,2,{source:'mmu_gcode'});
- assert.equal(r.events.at(-1).state.extruded_mm,before);
+ assert.equal(r.events.at(-1).state.extruded_mm,before+2);
 });
 test('free gear motion cannot create excess bowden compression',()=>{
  const r=stream(3);move(r,5,{motor_mode:'gear',motors:['gear']});
@@ -85,11 +85,11 @@ test('successful reverse homing clears the sensor and moves both motors',()=>{
  assert.ok(Object.keys(e.motors).length>=2);
  assert.equal(interpolate(e,.5).synced,true);
 });
-test('encoder readings update at the move endpoint',()=>{
+test('per-move encoder measurement never overwrites absolute encoder status',()=>{
  const r=stream();const key=`${r.facts.printer.mmu.unit}:encoder`;
  const e=move(r,1,{outcome:{encoder_mm:123}});
  assert.notEqual(e.before.devices[key].encoder_pos,123);
- assert.equal(e.state.devices[key].encoder_pos,123);
+ assert.equal(e.state.devices[key].encoder_pos,e.before.devices[key].encoder_pos);
 });
 test('configuration changes affect subsequent steps, never earlier snapshots',()=>{
  const r=stream();const initial=structuredClone(r.events[0]);
@@ -135,19 +135,27 @@ test('proportional compression home persists through equal gear/extruder travel'
  assert.equal(next.state.devices[key].value,1);
 });
 
-test('clear presence sensors limit forward travel and triggered sensors hold retraction',()=>{
- const r=stream(3),s=r.snapshot();
- const target=s.active_sensors.find(n=>n.endsWith(':extruder'));
- r.tips[0]=s.sensors[target].position-2;
- const forward=move(r,100,{motor_mode:'gear'});
- assert.ok(forward.state.tips[0]<s.sensors[target].position);
- assert.ok(forward.state.sensor_conflicts.length);
- r.facts.printer.mmu.sensors[target].triggered=true;
- r.tips[0]=s.layout.extruder_gears;
- const reverse=move(r,-100,{motor_mode:'gear+extruder'});
- assert.equal(reverse.state.tips[0],s.layout.extruder_gears);
- assert.ok(reverse.state.sensor_conflicts.length);
-});
+for(const suffix of [':extruder',':toolhead']) for(const direction of [1,-1]) {
+ test(`${suffix} preserves modeled travel while constraining display (${direction})`,()=>{
+  const r=stream(),s=r.snapshot();
+  const target=s.active_sensors.find(n=>n.endsWith(suffix));
+  assert.ok(target);
+  const position=s.sensors[target].position;
+  r.tips[0]=position-direction*2;
+  r.facts.printer.mmu.sensors[target].triggered=direction<0;
+  const e=move(r,direction*7,{motor_mode:'gear+extruder'});
+  const expected=position+direction*5;
+  assert.ok(Math.abs(e.state.tips[0]-expected)<1e-8);
+  const display=state=>constrainFilament(state.tips[0],null,null,[{...state.sensors[target],name:target}]);
+  const blocked=display(e.state);
+  assert.ok(blocked.warnings.length);
+  assert.ok(direction>0 ? blocked.tip<position : blocked.tip>=position);
+  event(r,'state_delta',{changes:[{path:['printer','mmu','sensors',target,'triggered'],value:direction>0}]});
+  const corrected=r.snapshot();
+  assert.equal(corrected.tips[0],e.state.tips[0]);
+  assert.deepEqual(display(corrected),{tip:expected,warnings:[]});
+ });
+}
 
 test('a header-only JSONL capture can be loaded before any motion occurs',()=>{
  const records=parseTelemetry(JSON.stringify(header())+'\n');
@@ -188,14 +196,14 @@ test('in-move bookkeeping cannot attach future sensor readings to the preceding 
  assert.equal(r.events.at(-1).state.sensors[name].state,true);
 });
 
- test('purge starts at the residual melt front and a retract return adds no purge',()=>{
+ test('returning a retract purges only after reaching the retained residual',()=>{
   const r=stream();const s=r.snapshot();
   r.tips[0]=s.layout.nozzle-s.filament.residual_mm;
   const e=move(r,2,{source:'mmu_gcode'});
   assert.ok(Math.abs(e.state.extruded_mm-2)<1e-8);
   assert.ok(interpolate(e,.5).extruded_mm>.9);
   move(r,-5,{source:'mmu_gcode'});move(r,5,{source:'mmu_gcode'});
-  assert.ok(Math.abs(r.snapshot().extruded_mm-2)<1e-8);
+  assert.ok(Math.abs(r.snapshot().extruded_mm-4)<1e-8);
  });
  test('parked notification preserves the measured final parking endpoint',()=>{
   const r=stream(0);r.tips[0]=-2.896;
@@ -302,4 +310,160 @@ test('symbolic MMU sensor spacing cannot block a valid final parking retract',()
  const e=move(r,-100,{motor_mode:'gear'});
  assert.ok(Math.abs(e.state.tips[0]+90.001)<1e-8);
  assert.deepEqual(e.state.sensor_conflicts,[]);
+});
+
+test('purging a formed tip keeps its cone while advancing into the residual',()=>{
+ const r=stream();r.tips[0]=r.snapshot().layout.nozzle-2;r.shapes[0]='cone';
+ const e=move(r,2,{source:'mmu_gcode'});
+ const frames=[.1,.5,.9].map(f=>interpolate(e,f));
+ assert.ok(frames.every(s=>s.cone_opacity === undefined));
+ assert.ok(frames[0].tips[0]<frames[1].tips[0]);
+ assert.ok(frames[1].tips[0]<frames[2].tips[0]);
+ assert.ok(frames.every(s=>s.tip_shapes[0]==='cone'));
+ assert.equal(e.before.tip_shapes[0],'cone');assert.equal(e.state.tip_shapes[0],'square');
+ assert.equal(interpolate(e,1),e.state);
+ assert.ok(Math.abs(e.state.extruded_mm-2)<1e-8);
+ assert.equal(e.state.tips[0],e.state.layout.nozzle);
+});
+
+
+test('buffer excess survives the settled snapshot and small nonzero values',()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const u=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(u.buffer,{buffer_maxrange:12,buffer_range:8,proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);r.tips[0]=r.snapshot().layout.extruder_gears+5;matchPresence(r);
+ for(const [n,s] of Object.entries(r.facts.printer.mmu.sensors))if(n.includes('filament_'))s.triggered=false;
+ for(const excess of [-2,-.01,.01,2]) {
+  r.bufferPositions[0]=excess<0 ? excess : 12+excess;
+  const a=r.snapshot();
+  assert.ok(Math.abs(a.bowden_unabsorbed_mm-excess)<1e-9);
+  const e=move(r,1,{motor_mode:'gear+extruder'});
+  for(const f of [0,.5,1]) assert.ok(Math.abs(interpolate(e,f).bowden_unabsorbed_mm-excess)<1e-9);
+ }
+});
+
+
+test('purge finishes with a color-only transition before retraction',()=>{
+ const r=stream();r.tips[0]=r.snapshot().layout.nozzle-2;r.shapes[0]='cone';
+ const unit=r.facts.printer.mmu_machine.units[r.facts.printer.mmu.unit];
+ unit.extruder.filament_remaining_color='ff0000';
+ const purge=move(r,2,{source:'mmu_gcode'});
+ assert.equal(purge.state.nozzle_outlet_color,'ff0000');
+ assert.equal(playbackFrame(purge,100,100).state.nozzle_outlet_color,'0000ff');
+ assert.equal(playbackFrame(purge,275,100).state.nozzle_outlet_color,'800080');
+ assert.equal(playbackFrame(purge,100,100).state.cone_edge_opacity,1);
+ assert.equal(playbackFrame(purge,275,100).state.cone_edge_opacity,.5);
+ assert.equal(playbackFrame(purge,450,100).state.cone_edge_opacity,0);
+ assert.equal(playbackFrame(purge,450,100).state.nozzle_outlet_color,'ff0000');
+ for(const elapsed of [100,275,450]) assert.equal(playbackFrame(purge,elapsed,100).state.tips[0],purge.state.tips[0]);
+ const retract=move(r,-2,{source:'mmu_gcode'});
+ assert.equal(retract.state.nozzle_outlet_color,'ff0000');
+ assert.equal(interpolate(retract,.5).nozzle_outlet_color,'ff0000');
+ assert.equal(interpolate(retract,.25).cone_edge_opacity,.25);
+ assert.equal(interpolate(retract,.75).cone_edge_opacity,.75);
+ assert.deepEqual(retract.state.purge_transition,purge.state.purge_transition);
+ assert.equal(retract.state.extruded_mm,purge.state.extruded_mm);
+});
+
+
+test('mid-move buffer switch update does not count gear travel twice',()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const u=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(u.buffer,{buffer_maxrange:12,buffer_range:8,proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);r.tips[0]=r.snapshot().layout.nozzle;matchPresence(r);
+ for(const [n,s] of Object.entries(r.facts.printer.mmu.sensors))if(n.includes('filament_'))s.triggered=false;
+ r.bufferPositions[0]=6;
+ const tension=Object.keys(r.facts.printer.mmu.sensors).find(n=>n.endsWith('filament_tension'));
+ event(r,'movement_start',{move_id:99,source:'move_filament',unit:r.facts.printer.mmu.unit,gate:0,
+  motor_mode:'gear',motors:['gear'],requested_mm:-4,speed_mm_s:80,homing:false});
+ event(r,'state_delta',{changes:[{path:['printer','mmu','sensors',tension,'triggered'],value:true}]});
+ assert.equal(r.snapshot().devices[`${r.facts.printer.mmu.unit}:buffer`].travel,2);
+ event(r,'movement_outcome',{move_id:99,actual_mm:-4,elapsed_s:.1,status:'completed'});
+ const e=r.events.at(-1),key=`${e.state.unit}:buffer`;
+ assert.equal(e.before.devices[key].displacement,6);
+ assert.equal(e.state.devices[key].displacement,2);
+ assert.equal(e.state.bowden_unabsorbed_mm,0);
+ for(const f of [0,.25,.5,.75,1]) assert.equal(interpolate(e,f).bowden_unabsorbed_mm,0);
+});
+
+
+test('cone edge starts dissolving on nozzle arrival inside a longer purge move',()=>{
+ const r=stream();r.tips[0]=r.snapshot().layout.nozzle-2;r.shapes[0]='cone';
+ const e=move(r,4,{source:'mmu_gcode'});
+ assert.equal(playbackFrame(e,400,1000).state.cone_edge_opacity,1);
+ assert.ok(Math.abs(playbackFrame(e,675,1000).state.cone_edge_opacity-.5)<1e-6);
+ assert.equal(playbackFrame(e,900,1000).state.cone_edge_opacity,0);
+});
+
+
+test('manual extrusion after completed purge contacts residual and emits the settled color',()=>{
+ const r=stream();r.tips[0]=r.snapshot().layout.nozzle-2;
+ r.facts.printer.mmu_machine.units[r.facts.printer.mmu.unit].extruder.filament_remaining_color='ff0000';
+ const first=move(r,2,{source:'mmu_gcode'});
+ move(r,-2,{source:'mmu_gcode'});
+ const next=move(r,1,{source:'mmu_gcode'});
+ assert.equal(next.purge_approach_mm,0);
+ assert.equal(next.state.extruded_mm-first.state.extruded_mm,1);
+ assert.ok(next.state.tips[0]<next.state.layout.nozzle);
+ assert.equal(purgeOutletColor(next.state,2.5),'ff0000');
+ assert.equal(purgeOutletColor(next.state,1),'0000ff');
+ assert.equal(first.state.purge_transition.settled_mm,2);
+});
+
+
+test('Bowden calibration ends at gears; entry offset only moves the entry sensor',()=>{
+ for(const [endstop,origin] of [['mmu_exit',0],['mmu_shared_exit',10],['encoder',20]]) {
+  for(const offset of [0,8.9,16.6]) {
+   const h=header(),m=h.state.printer.mmu,u=h.state.printer.mmu_machine.units[m.unit];
+   u.parameters.gate_homing_endstop=endstop;
+   u.bowden_lengths[m.gate]=700;
+   u.toolhead.parameters.toolhead_entry_to_extruder=offset;
+   m.sensors.extruder={triggered:false,enabled:true};
+   const r=new TelemetryReplay();r.feed(h);const s=r.snapshot();
+   assert.equal(s.layout.extruder_gears,origin+700);
+   assert.equal(s.sensors.extruder.position,origin+700-offset);
+   assert.ok(Math.abs(s.layout.nozzle-s.layout.extruder_gears-u.toolhead.parameters.toolhead_extruder_to_nozzle)<1e-9);
+  }
+ }
+});
+
+
+test('free Bowden retraction consumes buffer return before tip travel on one acceleration curve',()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const u=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(u.buffer,{buffer_maxrange:13,buffer_range:8,buffer_spring_state:'tension',proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);r.tips[0]=r.snapshot().layout.extruder_gears-8;matchPresence(r);
+ for(const [n,s] of Object.entries(r.facts.printer.mmu.sensors))if(n.includes('filament_'))s.triggered=false;
+ r.bufferPositions[0]=2.5;
+ const e=move(r,-20,{motor_mode:'gear',speed_mm_s:80,acceleration_mm_s2:100});
+ assert.equal(e.buffer_takeup_mm,2.5);
+ assert.equal(e.state.tips[0],e.before.tips[0]-17.5);
+ const held=interpolate(e,.1),moving=interpolate(e,.2);
+ assert.equal(held.tips[0],e.before.tips[0]);
+ assert.equal(held.devices[`${e.state.unit}:buffer`].travel,.5);
+ assert.equal(moving.tips[0],e.before.tips[0]-1.5);
+ assert.equal(moving.devices[`${e.state.unit}:buffer`].travel,0);
+});
+
+
+test('contact is not grip, and a delayed tension update cannot erase buffer travel',()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const u=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(u.buffer,{buffer_maxrange:13,buffer_range:8,buffer_spring_state:'tension',proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);const gears=r.snapshot().layout.extruder_gears;
+ r.tips[0]=gears;matchPresence(r);r.bufferPositions[0]=0;
+ const tension=Object.keys(r.facts.printer.mmu.sensors).find(n=>n.endsWith('filament_tension'));
+ r.facts.printer.mmu.sensors[tension].triggered=true;
+ const pushed=move(r,10,{motor_mode:'gear'}),key=`${pushed.state.unit}:buffer`;
+ assert.equal(pushed.state.tips[0],gears);
+ assert.equal(pushed.state.devices[key].modeled_displacement,10);
+ assert.equal(pushed.state.devices[key].travel,2.5);
+ event(r,'state_delta',{changes:[{path:['printer','mmu','sensors',tension,'triggered'],value:false}]});
+ assert.equal(r.snapshot().devices[key].travel,10);
+ const partial=move(r,-4,{motor_mode:'gear'});
+ assert.equal(partial.state.tips[0],gears);
+ assert.equal(partial.state.devices[key].modeled_displacement,6);
+ const withdrawn=move(r,-16,{motor_mode:'gear'});
+ assert.equal(withdrawn.state.tips[0],gears-10);
+ assert.equal(withdrawn.state.bowden_unabsorbed_mm,0);
 });

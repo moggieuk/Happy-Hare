@@ -502,7 +502,7 @@ class Session:
 
         from .filament import FilamentPath
         from extras.mmu.mmu_constants import (
-            DRIVE_UNSYNCED, DRIVE_EXTRUDER_ONLY, FILAMENT_POS_EXTRUDER_ENTRY,
+            DRIVE_UNSYNCED, DRIVE_EXTRUDER_ONLY,
         )
 
         def drive_mode(gate):
@@ -518,18 +518,22 @@ class Session:
         model_layout = dict(getattr(self.profile, 'filament_layout', {}) or {})
         model_layout.update(layout or {})
         model = FilamentPath(self.mmu.num_gates, layout=model_layout)
-        model._extruder_position = lambda gate: (model.layout['extruder_entry']
-            + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_entry_to_extruder)
+        model._extruder_position = lambda gate: model.layout['extruder_entry']
+        model._nozzle_position = lambda gate: (model._extruder_position(gate)
+            + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_extruder_to_nozzle)
+        toolhead_params = self.mmu.mmu_unit(0).toolhead_wrapper.p
+        if 'extruder' not in model_layout:
+            model.layout['extruder'] = model._extruder_position(0) - toolhead_params.toolhead_entry_to_extruder
+        if 'toolhead' not in model_layout:
+            model.layout['toolhead'] = model._nozzle_position(0) - toolhead_params.toolhead_sensor_to_nozzle
         model.configure_buffers(
             self.mmu.mmu_machine.units,
             selected_gate=lambda: self.mmu.gate_selected,
             drive_mode=drive_mode,
             gripped=lambda gate: (
                 self.mmu.gate_selected == gate
-                and self.mmu.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY
-                and model.tail[gate] <= (model.layout['extruder_entry']
-                    + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_entry_to_extruder)
-                <= model.tip[gate]),
+                and model.tail[gate] <= model._extruder_position(gate)
+                and model.tip[gate] > model._extruder_position(gate)+1e-6),
         )
         owned = [name for name in self.sensors()
                  if (name not in getattr(self, '_spring_at_rest', set())
@@ -768,7 +772,7 @@ class Session:
         shared gear); a BoxTurtle-style unit is marked calibrated automatically
         (mmu_calibrator.py:91-93), which is why no existing test needed this. The length comes
         from the HARNESS'S OWN filament geometry rather than from config: the model places the
-        gate at 0 and the extruder entry at layout['extruder_entry'], so that distance IS the
+        gate at 0 and the extruder gears at layout['extruder_entry'], so that distance IS the
         bowden length here, and seeding anything else would leave HH's idea of the machine
         disagreeing with the machine.
 
@@ -1058,7 +1062,7 @@ class Session:
         self._note_drive_motion(gate, distance, toolhead=True)
         from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
         if self.mmu.drive(gate).get_sync_mode() != DRIVE_GEAR_SYNCED_TO_EXTRUDER:
-            gears = model.layout['extruder_entry'] + self.mmu.mmu_unit().toolhead_wrapper.p.toolhead_entry_to_extruder
+            gears = model._extruder_position(gate)
             if not (model.tail[gate] <= gears <= model.tip[gate]):
                 return
         model.advance(gate, distance, 'toolhead extrusion')

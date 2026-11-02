@@ -83,7 +83,7 @@ class BeforeExtruderCutCase(unittest.TestCase):
             self.cut_moves = len(self.moves)
             if not self.missed:
                 gate = self.mmu.gate_selected
-                self.fil.advance(gate, self.nozzle - macro.variables['output_park_pos'] - self.fil.tip[gate], 'cut')
+                self.fil.place(gate, self.nozzle - macro.variables['output_park_pos'])
             if self.freed:
                 self.hh.sensor('filament_tension').set(False) # The cut releases the tension step
 

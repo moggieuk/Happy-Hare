@@ -1,5 +1,5 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
-import {purgeColor} from './playback.js';
+import {purgeColor, purgeOutletColor} from './playback.js';
 
 const copy = value => structuredClone(value);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -195,14 +195,17 @@ export class TelemetryReplay {
     }
     const p=unit.toolhead.parameters, up=unit.parameters;
     const bowden=unit.bowden_lengths[m.gate];
-    const entry=finite(bowden) && bowden > 0 ? bowden : 700;
-    const gears=entry+number(p.toolhead_entry_to_extruder), nozzle=gears+number(p.toolhead_extruder_to_nozzle,50);
+    const gateEndstop=short(up.gate_homing_endstop || '').replace(/_\d+$/,'');
+    const gateHome=gateEndstop === 'mmu_shared_exit' ? 10 : gateEndstop === 'encoder' ? 20 : 0;
+    const gears=gateHome+(finite(bowden) && bowden > 0 ? bowden : 700);
+    const entry=gears, entrySensor=gears-number(p.toolhead_entry_to_extruder);
+    const nozzle=gears+number(p.toolhead_extruder_to_nozzle,50);
     const layout={mmu_entry:-150, mmu_exit:0, mmu_shared_exit:10, mmu_encoder:20,
       extruder_entry:entry,extruder_gears:gears,nozzle,toolhead:nozzle-number(p.toolhead_sensor_to_nozzle,20)};
     const sensors={};
     for (const [name,value] of Object.entries(m.sensors)) {
       const key=short(name).replace(/_\d+$/,'');
-      const pos=key === 'extruder' ? entry : key === 'toolhead' ? layout.toolhead
+      const pos=key === 'extruder' ? entrySensor : key === 'toolhead' ? layout.toolhead
         : key === 'mmu_pre_gate' ? -150 : ['filament_compression','filament_tension'].includes(key) ? entry : layout[key];
       sensors[name]={state:value.triggered,enabled:value.enabled,position:finite(pos)?pos:null};
     }
@@ -225,6 +228,7 @@ export class TelemetryReplay {
     const hotend=this.hotends[extruder.name];
     if (!hotend.plan || hotend.plan.new_color !== filament.incoming_color) {
       const fragment=this.fragments[extruder.name];
+      hotend.outlet=null;
       hotend.plan={start_mm:hotend.extruded,retained_mm:residual+(fragment ? fragment.end-fragment.start : 0),
         old_color:hotend.nozzle,new_color:filament.incoming_color,mix_mm:Math.max(0,residual)};
     }
@@ -247,10 +251,11 @@ export class TelemetryReplay {
           if (u.sensors.some(n=>short(n)==='filament_tension' && sensors[n]?.state === true)) displacement=Math.min(displacement,(maximum-range)/2);
           if (u.sensors.some(n=>short(n)==='filament_compression' && sensors[n]?.state === true)) displacement=Math.max(displacement,(maximum+range)/2);
         }
-        if (occupied) this.bufferPositions[m.gate]=displacement;
+        if (occupied && this.bufferPositions[m.gate] == null) this.bufferPositions[m.gate]=displacement;
+        const modeled=occupied ? this.bufferPositions[m.gate] : rest;
         const travel=clamp(displacement,0,maximum);
         devices[`${name}:buffer`]={maximum,range,rest,spring:b.buffer_spring_state,occupied,proportional:b.proportional,
-          value:b.value,travel,displacement,excess:displacement-travel};
+          value:b.value,travel,displacement,modeled_displacement:modeled,excess:modeled-clamp(modeled,0,maximum)};
         buffers[b.name]={gates:u.gates,maxrange:maximum,range,spring:b.buffer_spring_state,travel:{[m.gate]:travel},excess:{[m.gate]:displacement-travel},tension_travel:(maximum-range)/2,compression_travel:(maximum+range)/2};
         object_status[`mmu_buffer ${b.name}`]=null;
       }
@@ -264,11 +269,11 @@ export class TelemetryReplay {
       mmu_gripped:mmuGripped,synced:[1,3].includes(m.sync_mode),drive_motors:m.drive_motors,motors:this.motors,
       encoder_reference:{endstop:up.gate_homing_endstop,offset:up.gate_endstop_to_encoder,parking:number(up.gate_parking_distance),overshoot:this.overshoot[m.gate] || 0},
       retained_segment:this.fragments[extruder.name] || null,extruded_mm:hotend.extruded,purge_base_mm:hotend.base,purge_transition:hotend.plan,
-      nozzle_color:hotend.nozzle,bowden_unabsorbed_mm:this.excess[m.gate] || 0,sensor_conflicts:[]});
+      nozzle_color:hotend.nozzle,nozzle_outlet_color:hotend.outlet ?? purgeOutletColor({purge_transition:hotend.plan},hotend.extruded),bowden_unabsorbed_mm:devices[`${m.unit}:buffer`]?.excess ?? (this.excess[m.gate] || 0),sensor_conflicts:[]});
   }
 
   move(outcome,{start,before}) {
-    const state=this.snapshot(), gate=start.gate, d=number(outcome.actual_mm), conflicts=[];
+    const state=this.snapshot(), gate=start.gate, d=number(outcome.actual_mm);
     for (const [name,value] of Object.entries(outcome.sensors || {})) if (state.sensors[name]) state.sensors[name].state=value;
     const mode=start.motor_mode || 'gear';
     const extruding=mode.includes('extruder') || mode === 'synced';
@@ -283,16 +288,26 @@ export class TelemetryReplay {
       motors:Object.fromEntries([...motors].map(n=>[n,d])),fast_bowden:/Fast (loading|unloading) move through bowden/.test(start.label)};
     if (gate >= 0 && gate < this.tips.length) {
       const tip=this.tips[gate], gears=state.layout.extruder_gears,nozzle=state.layout.nozzle;
-      const gripped=tip >= gears-.001;
-      let travel=extruding ? (gripped || gearing ? d : 0) : gearing ? d : 0;
+      const gripped=tip > gears+.001;
+      const engaging=extruding && d > 0 && tip >= gears-.001;
+      let travel=extruding ? (gripped || engaging || gearing ? d : 0) : gearing ? d : 0;
       if (gearing && !extruding) {
         if (gripped) travel=0;
         else if (d > 0) travel=Math.min(d,Math.max(0,gears-tip));
       }
-      const differential=(gearing ? d : 0)-(extruding && gripped ? d : 0);
+      const differential=(gearing ? d : 0)-(extruding && (gripped || engaging) ? d : 0);
       const buffered=state.devices[`${state.unit}:buffer`];
+      if (before.mmu_gripped && buffered && gearing && !extruding && !gripped && d < 0) {
+        const initial=before.devices[`${state.unit}:buffer`] || buffered;
+        details.buffer_takeup_mm=Math.min(-d,Math.max(0,(initial.modeled_displacement ?? initial.displacement)-initial.rest));
+        details.filament_travel_mm=d;
+        travel+=details.buffer_takeup_mm;
+      }
       if (before.mmu_gripped && buffered && (gripped || tip+travel >= gears)) {
-        this.bufferPositions[gate]=buffered.displacement+(gripped ? differential : Math.max(0,d-travel));
+        // Mid-move sensor updates may already constrain the current snapshot.
+        // Apply travel once, from the position captured when the move began.
+        const initial=before.devices[`${state.unit}:buffer`] || buffered;
+        this.bufferPositions[gate]=(initial.modeled_displacement ?? initial.displacement)+(gripped ? differential : Math.max(0,d-travel));
       } else if (before.mmu_gripped && !buffered) {
         this.excess[gate]=gripped ? number(this.excess[gate])+differential : Math.max(0,d-travel);
         if (tip+travel < gears) this.excess[gate]=0;
@@ -320,25 +335,12 @@ export class TelemetryReplay {
         sensor.state=forward;
       }
       const hotend=this.hotends[state.filament.extruder], segment=this.fragments[state.filament.extruder];
-      for (const name of state.active_sensors) {
-        const sensor=state.sensors[name];
-        if (!sensor?.enabled || !finite(sensor.position) || /filament_(compression|tension)|encoder/.test(name)) continue;
-        // MMU sensor spacing is schematic; enforce these bounds in drawing coordinates.
-        if (/^mmu_(entry|exit|shared_exit)(?:_\d+)?$/.test(short(name))) continue;
-        if (sensor.state === false && next > sensor.position) {
-          conflicts.push(`${name}: movement past a clear sensor`);
-          next=Math.min(next,sensor.position-.001);
-        } else if (sensor.state === true && next < tip && next < sensor.position &&
-            !(segment && segment.start <= sensor.position && segment.end >= sensor.position)) {
-          conflicts.push(`${name}: retraction past a triggered sensor`);
-          next=tip;
-        }
-      }
+      // Presence sensors constrain drawing, never discard recorded tip travel.
 
       if (extruding && gripped && travel < 0) {
-        // Returning a retract restores the melt front before extrusion resumes.
-        if (tip >= nozzle-state.filament.residual_mm) hotend.front=Math.min(nozzle,tip);
-        if (next < gears) hotend.front=nozzle-state.filament.residual_mm;
+        // Retraction leaves calibrated residual melt behind; returning filament
+        // displaces it as soon as contact resumes, not only upon reaching zero.
+        hotend.front=nozzle-state.filament.residual_mm;
         if (tip >= nozzle-state.filament.residual_mm-.01) {
           this.shapes[gate]='cone';
           next=Math.min(next,nozzle-state.filament.residual_mm);
@@ -359,14 +361,21 @@ export class TelemetryReplay {
         details.purge_approach_mm=Math.max(0,travel-amount);
         hotend.extruded+=amount;
         hotend.nozzle=purgeColor({...state,purge_transition:hotend.plan},hotend.extruded);
+        if (hotend.outlet !== state.filament.retained_color && next >= nozzle
+            && hotend.plan && hotend.extruded >= hotend.plan.start_mm+hotend.plan.retained_mm
+            && state.filament.retained_color === state.filament.incoming_color) {
+          details.purge_settle={from:purgeOutletColor({...state,purge_transition:hotend.plan},hotend.extruded),to:state.filament.retained_color};
+          hotend.outlet=state.filament.retained_color;
+          hotend.plan.settled_mm=hotend.extruded;
+        }
         next=Math.min(next,nozzle);
         if (next >= nozzle-.001) this.shapes[gate]='square';
       }
-      if (buffered && d < 0 && next < gears) {
+      if (buffered && d < 0 && (next < gears || (!gripped && next <= gears+.001))) {
         const initial=before.devices[`${state.unit}:buffer`] || buffered;
         const approach=Math.max(0,tip-gears);
         const released=Math.max(0,Math.abs(d)-approach);
-        const from=initial.displacement, to=initial.rest;
+        const from=initial.modeled_displacement ?? initial.displacement, to=initial.rest;
         this.bufferPositions[gate]=from+Math.sign(to-from)*Math.min(Math.abs(to-from),released);
         details.buffer_release={approach_mm:approach,travel_mm:Math.abs(d),from,to};
       }
@@ -376,10 +385,8 @@ export class TelemetryReplay {
       details.raw_before=rawBefore; details.raw_state=rawState;
     }
     const after=this.snapshot();
-    after.sensor_conflicts=conflicts;
     // Outcome readings belong at the end of the animation, never its start.
     for (const [name,value] of Object.entries(outcome.sensors || {})) if (after.sensors[name] && !(start.homing && outcome.homed && name === start.endstop)) after.sensors[name].state=value;
-    if (finite(outcome.encoder_mm) && after.devices[`${after.unit}:encoder`]) after.devices[`${after.unit}:encoder`].encoder_pos=outcome.encoder_mm;
     this.emit(outcome,'movement',start.label || start.commandline || 'Movement',details,after);
   }
 

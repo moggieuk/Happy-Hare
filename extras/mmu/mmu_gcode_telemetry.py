@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 # Copyright (C) 2022-2026 Paul Morgan. GPLv3.
-"""Permanent G1 delegation with scoped observation of MMU-owned extrusion."""
+"""Observe G1 extrusion outside active printing, plus scoped MMU extrusion."""
 import contextlib
 import math
 import greenlet
@@ -48,13 +48,14 @@ class GcodeExtrusionTelemetry:
                 del self.owners[owner]
 
     def _handle_g1(self, gcmd):
-        # Ordinary printing needs only this check and the original handler call.
-        if not self.owners:
-            return self.original(gcmd)
         mmu = self.mmu
-        owner = greenlet.getcurrent()
         telemetry = mmu.movement_telemetry
-        if (not telemetry.listeners or owner not in self.owners or owner in self.handling or
+        # Printing and disconnected viewers avoid coordinate and ownership work.
+        if not telemetry.listeners or (not self.owners and mmu.is_printing()):
+            return self.original(gcmd)
+        owner = greenlet.getcurrent()
+        stack = self.owners.get(owner, ())
+        if ((not stack and mmu.is_printing()) or owner in self.handling or
                 'E' not in gcmd.get_command_parameters() or telemetry.operations):
             return self.original(gcmd)
         move = mmu.printer.lookup_object('gcode_move')
@@ -82,9 +83,9 @@ class GcodeExtrusionTelemetry:
         try:
             with telemetry.operation() as operation:
                 operation.start(source='mmu_gcode',
-                    label=next((label for _, label in reversed(self.owners[owner]) if label), gcmd.get_commandline()),
+                    label=next((label for _, label in reversed(stack) if label), gcmd.get_commandline()),
                     command='G1', commandline=gcmd.get_commandline(),
-                    context=[name for name, _ in self.owners[owner]],
+                    context=[name for name, _ in stack],
                     unit=mmu.mmu_unit().name, gate=mmu.gate_selected,
                     motor_mode='extruder', extruder=extruder_name, motors=[extruder_name],
                     requested_mm=requested_e, speed_mm_s=speed if math.isfinite(speed) else None,
