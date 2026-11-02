@@ -1882,12 +1882,13 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('Happy Hare', out)             # the next command still ran
         self.assertEqual(rc, 1, 'a session that reported !! should exit non-zero')
 
-    def test_a_bare_T_command_explains_that_macro_bodies_do_not_run(self):
-        """T1 is registered, so it is not 'unknown' - it just silently does nothing."""
+    def test_a_bare_T_command_runs_the_shipped_toolchange_macro(self):
         rc, out = self._run(['T1'], ['--header', 'off'])
         self.assertEqual(rc, 0, out)
-        self.assertIn('does not run macro bodies', out)
-        self.assertIn('MMU_CHANGE_TOOL TOOL=1', out)
+        self.assertIn('Tool T1 enabled', out)
+        self.assertIn('Load of', out)
+        self.assertNotIn('does not run macro bodies', out)
+        self.assertNotIn('!!', out)
 
     def test_mmu_cold_pull_runs_its_macro_body(self):
         rc, out = self._run(

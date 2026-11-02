@@ -103,6 +103,13 @@ class TestViewerConsole(unittest.TestCase):
     def tearDown(self):
         self.console.close()
 
+    def test_viewer_console_runs_tool_selection_macro(self):
+        with contextlib.redirect_stdout(self.out):
+            self.bridge.rpc_printer_gcode_script(None, {'script':'T1'})
+        self.assertEqual(self.console.hh.errors,[])
+        self.assertEqual(self.console.hh.mmu.tool_selected,1)
+        self.assertEqual(self.console.hh.mmu.filament_pos,10)
+
     def test_http_capture_does_not_need_console_service(self):
         url='http://127.0.0.1:%d/sim/viewer/telemetry'%self.bridge.port
         with urllib.request.urlopen(url,timeout=2) as response:

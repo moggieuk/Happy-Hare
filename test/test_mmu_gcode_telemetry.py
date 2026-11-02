@@ -81,6 +81,7 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertEqual([e['actual_mm'] for e in records if e['event']=='movement_outcome'], [3])
 
     def test_permanent_handler_excludes_print_moves(self):
+        self.hh.mmu.psm.print_state = "printing"
         original = self.handler()
         self.run_gcode('M83\nG1 E1 F300')
         with self.scope('MMU_TEST'):
@@ -105,6 +106,7 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2, -1, 6])
 
     def test_unowned_greenlet_and_non_extrusion_commands_are_excluded(self):
+        self.hh.mmu.psm.print_state = "printing"
         self.run_gcode('M83')
         with self.scope('MMU_TEST'):
             greenlet.greenlet(lambda: self.run_gcode('G1 E1 F300')).switch()
@@ -139,7 +141,7 @@ class TestGcodeTelemetry(unittest.TestCase):
         with wrapper.scope('MMU_TEST'):
             self.run_gcode('G1 E2')
         self.assertEqual(len(calls), 2)
-        self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2])
+        self.assertEqual([r['actual_mm'] for r in self.outcomes()], [1, 2])
 
     def test_extension_installed_during_scope_remains_safe_after_scope(self):
         calls = []
@@ -155,7 +157,7 @@ class TestGcodeTelemetry(unittest.TestCase):
             self.run_gcode('G1 E3')
         self.assertIs(self.handler(), extension)
         self.assertEqual(len(calls), 3)
-        self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2, 3])
+        self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2, 1, 3])
 
     def test_scopes_and_repeated_ready_do_not_modify_command_registration(self):
         wrapper = self.hh.mmu.gcode_telemetry
@@ -166,7 +168,8 @@ class TestGcodeTelemetry(unittest.TestCase):
                     self.run_gcode('M83\nG1 E1 F300')
         self.assertEqual(len(self.outcomes()), 1)
 
-    def test_idle_path_does_not_query_greenlet_or_telemetry(self):
+    def test_printing_path_does_not_query_greenlet_or_coordinates(self):
+        self.hh.mmu.psm.print_state = "printing"
         with mock.patch.object(greenlet, 'getcurrent', side_effect=AssertionError('idle ownership lookup')):
             self.run_gcode('M83\nG1 E1 F300')
         self.assertEqual(self.outcomes(), [])
@@ -202,7 +205,7 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertEqual(self.hh.mmu.gcode_telemetry.owners, {})
         self.assertEqual(self.hh.mmu.gcode_telemetry.handling, set())
         self.run_gcode('G1 E1 F300')
-        self.assertEqual(len(self.outcomes()), 1)
+        self.assertEqual(len(self.outcomes()), 2)
 
     def test_feed_override_reports_multiplier_and_resolves_command_speed(self):
         with self.scope('MMU_TEST'):
@@ -239,11 +242,25 @@ class TestGcodeTelemetry(unittest.TestCase):
             with self.scope('MMU_TEST'):
                 self.run_gcode('G0 E1\nG1 X1')
             records = viewer.read_telemetry()['records']
-            self.assertEqual([r['actual_mm'] for r in records if r['event']=='movement_outcome'], [2,-1])
-            self.assertEqual(sum(r['event'] == 'movement_start' for r in records), 2)
-            self.assertEqual(sum(r['event'] == 'movement_outcome' for r in records), 2)
+            self.assertEqual([r['actual_mm'] for r in records if r['event']=='movement_outcome'], [2,-1,4])
+            self.assertEqual(sum(r['event'] == 'movement_start' for r in records), 3)
+            self.assertEqual(sum(r['event'] == 'movement_outcome' for r in records), 3)
         finally:
             viewer.close()
+
+
+    def test_idle_and_paused_g1_are_captured_but_resumed_printing_is_not(self):
+        self.run_gcode('M83')
+        for state in ['ready', 'printing', 'paused', 'pause_locked', 'printing', 'complete']:
+            self.hh.mmu.psm.print_state = state
+            self.run_gcode('G1 E2 F300')
+        self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2, 2, 2, 2])
+        starts = [r for r in self.records if r['event'] == 'movement_start']
+        self.assertTrue(all(r['context'] == [] for r in starts))
+
+    def test_unscoped_non_extrusion_commands_are_not_captured(self):
+        self.run_gcode('M83\nG0 E1\nG1 X1\nG1 E0')
+        self.assertEqual(self.outcomes(), [])
 
 
 if __name__ == '__main__':

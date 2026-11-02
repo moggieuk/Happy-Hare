@@ -64,6 +64,47 @@ class ToolchangeTestCase(unittest.TestCase):
         return self.fil.layout['toolhead'] + 28.0
 
 
+class TestKmsGeometry(ToolchangeTestCase):
+    PROFILE = 'kms'
+
+    def test_manual_contact_compresses_then_withdraws_without_extruder_grip(self):
+        self.hh.mmu.select_gate(0)
+        self.hh.place_filament(0,-20.)
+        geometry = self.fil.buffers['unit0']
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=720')
+        self.assertAlmostEqual(self.fil.tip[0],700.)
+        self.assertAlmostEqual(geometry['travel'][0],0.)
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=10')
+        self.assertAlmostEqual(self.fil.tip[0],700.)
+        self.assertAlmostEqual(geometry['travel'][0],10.)
+        self.assertFalse(self.hh.sensor('filament_tension').present)
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=-20')
+        self.assertAlmostEqual(self.fil.tip[0],690.)
+        self.assertAlmostEqual(geometry['travel'][0],0.)
+        self.assertAlmostEqual(geometry['excess'][0],0.)
+        self.assertTrue(self.hh.sensor('filament_tension').present)
+        self.assertEqual(self.hh.errors,[])
+
+    def test_compression_home_uses_calibrated_gears_not_entry_sensor_offset(self):
+        self.hh.calibrate()
+        params = self.hh.mmu.mmu_unit(0).toolhead_wrapper.p
+        self.assertAlmostEqual(params.toolhead_entry_to_extruder,8.9)
+        gears = self.fil.layout['extruder_entry']
+        self.assertEqual(self.fil._extruder_position(0),gears)
+        self.assertAlmostEqual(self.fil.position('extruder'),gears-8.9)
+        self.assertAlmostEqual(self.fil.layout['toolhead'],
+            gears+params.toolhead_extruder_to_nozzle-params.toolhead_sensor_to_nozzle)
+        records = []
+        unsubscribe = self.hh.mmu.movement_telemetry.subscribe(records.append)
+        self.addCleanup(unsubscribe)
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.errors,[])
+        start = next(r for r in records if r['event']=='movement_start'
+                     and r.get('label')=='Homing filament to extruder endstop')
+        end = next(r for r in records if r['event']=='movement_outcome' and r['move_id']==start['move_id'])
+        self.assertAlmostEqual(end['actual_mm'],30.5)
+
+
 class TestLoad(ToolchangeTestCase):
 
     def test_load_reaches_the_nozzle(self):
@@ -87,6 +128,42 @@ class TestLoad(ToolchangeTestCase):
         self.assertTrue(any('filament_compression' in r for r in reasons),
                         'never homed to the extruder compression sensor')
 
+    def test_compression_reverse_home_records_two_mm_release(self):
+        records = []
+        unsubscribe = self.hh.mmu.movement_telemetry.subscribe(records.append)
+        self.addCleanup(unsubscribe)
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.errors, [])
+        start = next(r for r in records if r['event']=='movement_start'
+                     and r['label']=='Reverse homing off compression sensor')
+        end = next(r for r in records if r['event']=='movement_outcome' and r['move_id']==start['move_id'])
+        self.assertTrue(start['sensors'][start['endstop']])
+        self.assertFalse(end['sensors'][start['endstop']])
+        self.assertTrue(end['homed'])
+        self.assertAlmostEqual(end['actual_mm'], 2., places=6)
+
+    def test_buffer_switches_latch_until_two_mm_return_travel(self):
+        geometry = next(iter(self.fil.buffers.values()))
+        geometry['contact'][0] = True
+        self.fil._drive_mode = lambda gate: 'gear'
+        for suffix, threshold, direction in [('filament_compression',geometry['compression_travel'],-1),
+                                              ('filament_tension',geometry['tension_travel'],1)]:
+            name = next(n for n in self.fil.sensor_names() if n.endswith(suffix))
+            geometry['travel'][0] = threshold
+            geometry['switch_state'][0].clear()
+            self.assertTrue(self.fil._buffer_triggered(name,0))
+            self.assertEqual(self.fil.trip_distance(0, direction*5,[name],sought=True),(name,0.))
+            self.assertEqual(self.fil.trip_distance(0, direction*5,[name],sought=False),(name,2.))
+            geometry['travel'][0] = threshold+direction
+            self.assertTrue(self.fil._buffer_triggered(name,0))
+            geometry['travel'][0] = threshold+direction*2
+            self.assertFalse(self.fil._buffer_triggered(name,0))
+            self.assertFalse(self.fil._buffer_triggered(name,0))
+            geometry['travel'][0] = threshold+direction
+            self.assertFalse(self.fil._buffer_triggered(name,0))
+            geometry['travel'][0] = threshold
+            self.assertTrue(self.fil._buffer_triggered(name,0))
+
     def test_compression_home_includes_buffer_travel(self):
         """Compression trips after the tip reaches the extruder plus the centered compression threshold."""
         self.hh.mmu.select_gate(0)
@@ -94,12 +171,12 @@ class TestLoad(ToolchangeTestCase):
         moves = [d for _g, d, reason in self.fil.history
                  if 'homing -> unit0:filament_compression' in reason]
         buffer = self.hh.mmu.mmu_machine.units[0].buffer
-        expected = (self.fil.layout['extruder_entry']
+        expected = (self.fil._extruder_position(0)
                     + (buffer.buffer_maxrange + buffer.buffer_range) / 2
                     - self.fil.layout['mmu_shared_exit'])
         self.assertTrue(moves)
         # Loading immediately reverse-homes off compression with the extruder; that
-        # second transition is only a microscopic release move.
+        # second transition includes the simulated switch release hysteresis.
         self.assertAlmostEqual(max(moves), expected, places=3)
 
     def test_paced_load_shows_all_three_buffer_states(self):

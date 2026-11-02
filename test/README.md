@@ -541,10 +541,10 @@ What is simulated:
 
 - **The print lifecycle.** `print_stats` and `idle_timeout` move as `virtual_sdcard` would
   move them, so Happy Hare's automatic job start/end detection runs for real.
-- **Macro bodies, for the duration of the job only.** `T<n>`, `MMU_START_SETUP`,
-  `MMU_START_CHECK`, `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` run their real Jinja. The
-  park macros retain their modeled effects; cut and tip-forming macros run their real bodies,
-  and at the prompt `T1` is silent again.
+- **Macro bodies.** Configured `T<n>` macros run their real Jinja in both consoles
+  and during jobs, delegating to `MMU_CHANGE_TOOL`. `MMU_START_SETUP`, `MMU_START_CHECK`,
+  `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` are additionally enabled during jobs.
+  Park macros retain their modeled effects; cut and tip-forming macros run their real bodies.
 - **Extrusion.** `G0`–`G3` E, in absolute (`M82`) or relative (`M83`, or anything after `G91`)
   mode, with `G92` re-basing, go through the fake `gcode_move` to the toolhead and so into the
   filament model and the encoder while the gate is synced. XYZ only costs time.
@@ -673,20 +673,26 @@ suites. Browser verification should exercise a runtime edit, paced loading,
 inspection while new events arrive, returning to live, profile restart and config
 upload. The web API remains a local development tool, not a public service.
 
+The simulator's `extruder_entry` geometry coordinate denotes the extruder gears.
+Calibrated Bowden length runs from the gate homing point to those gears.
+`toolhead_entry_to_extruder` places the optional entry sensor upstream of the gears;
+it does not extend the Bowden or move the buffer's compression contact point.
+
 ### Structured movement telemetry
 
-MMU commands and macros invoked through `wrap_gcode_command` temporarily observe
-`G1` commands with nonzero extrusion. Each produces one movement pair with
+MMU commands and macros invoked through `wrap_gcode_command` observe
+`G1` commands with nonzero extrusion. Outside active printing, console and other
+unscoped G1 extrusion is also observed, including while paused. Each produces one movement pair with
 `source=mmu_gcode`, resolved E distance, extruder name and calling context.
 `label` describes known moves such as final-load retraction; `commandline` retains
 the original G1 text. Unannotated moves use that text as their label.
 Absolute/relative extrusion, coordinate resets and flow overrides are respected.
-Only the owning execution context is observed; ordinary print moves, `G0`, and
-arc-generated segments are excluded. A permanent G1 wrapper is installed once at
-Klipper readiness, retaining the previous handler for delegation. Outside an MMU
-scope it checks for an active scope and immediately calls that handler. Scopes
-never change command registration, and errors always clear their ownership state.
-With no subscribers, scopes do not activate telemetry collection.
+During active printing, only the owning MMU execution context is observed;
+ordinary print moves, `G0`, and arc-generated segments are excluded. A permanent
+G1 wrapper is installed once at Klipper readiness, retaining the previous handler.
+Unscoped printing moves and calls without subscribers immediately delegate without
+reading coordinates. Scopes never change command registration, and errors always
+clear their ownership state. Unscoped console events have an empty `context`.
 
 These outcomes have `status=submitted`: positions describe accepted commands,
 not measured physical completion. Estimated duration excludes acceleration and
@@ -1257,10 +1263,10 @@ happened while filament covered the wheel. That is `fil.travel_over()`, and the 
 turns it into real pulses so Happy Hare's own counter callback does the accumulating.
 
 Sync-feedback buffers also have physical travel. Tension-sprung buffers rest squeezed,
-compression-sprung buffers rest expanded, and neutral buffers rest at the midpoint. Reaching the extruder opens tension, but
-passing the nominal coordinate
-during an ordinary Bowden move does not prove contact and cannot build compression. A
-`filament_compression` homing move establishes contact. The compression switch lies at
+compression-sprung buffers rest expanded, and neutral buffers rest at the midpoint.
+Filament advances freely until it contacts the stationary extruder gears. Further gear
+feed expands the buffer; contact alone does not mean the extruder has gripped the filament.
+Reversing takes up stored compression before withdrawing the tip. The compression switch lies at
 `(buffer_maxrange + buffer_range) / 2` of physical travel, and tension at
 `(buffer_maxrange - buffer_range) / 2`. Gear-only and extruder-only moves change that
 stored travel in opposite directions, so a paced console load visibly passes through tension,
@@ -1268,7 +1274,8 @@ neutral and compression. Once filament is gripped by the extruder, gear-only mov
 keep its downstream tip stationary and change buffer travel instead. Travel is bounded by
 `buffer_maxrange`; additional displacement is retained as unabsorbed compression or tension,
 so reversal takes up that excess before the buffer leaves its stop. Equal gear/extruder
-movement leaves the buffer unchanged. The viewer shows travel and any unabsorbed displacement
+movement leaves the buffer unchanged. Simulated physical buffer switches have 2mm of release hysteresis;
+proportional buffers retain their configured virtual-switch thresholds. The viewer shows travel and any unabsorbed displacement
 in millimetres, not force. Without a modeled buffer, relative displacement is reported but
 no Bowden spring is simulated. The inline piston rests at the configured spring position
 when empty. Switch readings

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -346,6 +346,12 @@ test('gate selection eases between lanes without interpolating physical filament
  assert.equal(interpolate(event,.5).gate_focus,.5);
  assert.deepEqual(interpolate(event,.5).tips,before.tips);
  assert.equal(interpolate(event,.5).gate_path_opacity,0);
+ assert.equal(interpolate(event,.125).gate_focus,0);
+ assert.equal(interpolate(event,.125).gate_retraction,.5);
+ assert.equal(interpolate(event,.5).gate_retraction,1);
+ assert.equal(interpolate(event,.875).gate_focus,1);
+ assert.equal(interpolate(event,.875).gate_retraction,.5);
+ assert.deepEqual(interpolate(event,.875).tips,state.tips);
 });
 
 test('encoder reference follows configured endstop and signed offset',()=>{
@@ -498,12 +504,12 @@ test('parked state notification does not re-anchor the last encoder parking move
 test('shared-exit parking, successful home and Bowden travel share one mapping',()=>{
  const scale=p=>200+p*.8;
  const at=tip=>switchFilamentDistance(tip,10,-100,550,180,scale);
- assert.equal(at(-90),172);
+ assert.equal(at(-90),148);
  assert.equal(at(10),180);
  assert.ok(at(9.99)<180);
  assert.ok(at(10.01)>180);
  assert.equal(at(550),scale(550));
- assert.equal(switchFilamentDistance(40,10,30,550,180,scale),188);
+ assert.equal(switchFilamentDistance(40,10,30,550,180,scale),189.6);
 });
 
 test('proportional reading controls the sensor range but allows outer modeled travel',()=>{
@@ -518,4 +524,106 @@ test('proportional reading controls the sensor range but allows outer modeled tr
  assert.equal(bufferPiston({maximum:12,range:8,displacement:11,proportional:true,value:1}).position,11);
  assert.equal(bufferPiston({maximum:12,range:8,travel:0,displacement:0},false,true).position,10);
  assert.equal(bufferPiston({maximum:12,range:8,travel:6,displacement:6},true,false).position,2);
+});
+
+test('acceleration timing uses triangular, trapezoidal and sensor-stop profiles',()=>{
+ const move={kind:'movement',distance:30,speed:50,acceleration:100};
+ assert.ok(Math.abs(duration({...move,homing:true,homed:true})-850)<1e-8);
+ assert.ok(Math.abs(duration(move)-1100)<1e-8);
+ assert.ok(Math.abs(duration({...move,distance:10})-2*Math.sqrt(.1)*1000)<1e-8);
+ assert.ok(Math.abs(duration({...move,distance:10,homing:true,homed:true})-Math.sqrt(.2)*1000)<1e-8);
+ assert.ok(motionFraction(move,.1)<.1);
+ assert.ok(Math.abs(motionFraction(move,.5)-.5)<1e-8);
+ assert.equal(duration({...move,acceleration:null}),600);
+ assert.equal(motionFraction({...move,acceleration:0},.3),.3);
+});
+test('acceleration changes only pacing, with exact signed movement endpoints',()=>{
+ for(const distance of [-100,-10,10,100]) for(const homed of [false,true]) {
+  const event={kind:'movement',distance,speed:50,acceleration:100,homing:true,homed};
+  let previous=0;
+  for(let i=0;i<=100;i++) {
+   const f=motionFraction(event,i/100);
+   assert.ok(f>=previous && f<=1);previous=f;
+   assert.equal(motionFraction({...event,distance:-distance},i/100),f);
+  }
+  assert.equal(motionFraction(event,0)*distance,0*distance);
+  assert.equal(motionFraction(event,1)*distance,distance);
+  assert.equal(motionFraction(event,-.1),0);
+  assert.equal(motionFraction(event,1.1),1);
+ }
+});
+
+
+test('long gate offsets expand the stack proportionally within the straight Bowden',()=>{
+ const sensors=[['mmu_exit_0',{position:0}],['unit0:mmu_shared_exit',{position:150}]];
+ const state={gate:0,unit:'unit0',devices:{'unit0:encoder':{}},encoder_reference:{endstop:'mmu_shared_exit',offset:25,parking:-25}};
+ const compact=gateDevicePositions(state,sensors);
+ state.encoder_reference.parking=-62.5;
+ const midway=gateDevicePositions(state,sensors);
+ state.encoder_reference.parking=-100;
+ const wide=gateDevicePositions(state,sensors);
+ assert.equal(compact.sharedExit-midway.sharedExit,18);
+ assert.equal(compact.sharedExit-wide.sharedExit,36);
+ for (const offset of [-100,100]) {
+  state.encoder_reference.offset=offset;
+  const bounded=gateDevicePositions(state,sensors);
+  assert.ok(Object.values(bounded).every(y=>y>=160 && y<=260));
+  assert.ok(offset<0 ? bounded.encoder>bounded.sharedExit : bounded.encoder<bounded.sharedExit);
+  state.encoder_reference.offset=offset*5;state.encoder_reference.parking=-500;
+  assert.deepEqual(gateDevicePositions(state,sensors),bounded);
+  state.encoder_reference.parking=-100;
+ }
+});
+
+test('parked filament respects the encoder landmark on either side of its home sensor',()=>{
+ const scale=p=>200+p*.8;
+ for (const offset of [-80,80]) {
+  const encoder={position:150+offset,distance:250+Math.sign(offset)*50};
+  for (const parking of [-100,-40,40,100]) {
+   const parked=150+parking;
+   const at=tip=>switchFilamentDistance(tip,150,parking,550,250,scale,encoder);
+   assert.equal(at(150),250);
+   assert.equal(at(encoder.position),encoder.distance);
+   assert.equal(Math.sign(at(parked)-encoder.distance),Math.sign(parked-encoder.position));
+   let previous=at(0);
+   for(let tip=1;tip<=550;tip++) { assert.ok(at(tip)>=previous);previous=at(tip); }
+  }
+ }
+});
+
+
+test('nozzle outlet and expelled material transition only after the residual is displaced',()=>{
+ const s={purge_transition:{start_mm:0,retained_mm:2,mix_mm:2,old_color:'808182',new_color:'14ba5e'}};
+ assert.equal(purgeOutletColor(s,0),'808182');
+ assert.equal(purgeOutletColor(s,2),'808182');
+ assert.notEqual(purgeOutletColor(s,3),'808182');
+ assert.notEqual(purgeOutletColor(s,3),'14ba5e');
+ assert.equal(purgeOutletColor(s,4),'14ba5e');
+ assert.ok(purgeCoils({...s,extruded_mm:2}).coils.every(c=>c.color==='808182'));
+ assert.equal(purgeColor(s,2),'14ba5e');
+});
+
+
+test('stepping uses the settled absolute encoder status, including resets',()=>{
+ const e={seq:1,state:{unit:'unit0',devices:{'unit0:encoder':{encoder_pos:30.3}}},
+  settled_state:{unit:'unit0',devices:{'unit0:encoder':{encoder_pos:690.2}}}};
+ assert.equal(lastEncoderReading([e],e,'unit0'),690.2);
+ e.settled_state.devices['unit0:encoder'].encoder_pos=0;
+ assert.equal(lastEncoderReading([e],e,'unit0'),0);
+});
+
+
+test('piston and filament share acceleration and exact movement endpoints',()=>{
+ const snapshot=(tip,travel)=>({...state(tip,false),unit:'unit0',layout:{nozzle:1000},sensors:{},
+  devices:{'unit0:buffer':{maximum:12,range:8,travel,displacement:travel,excess:0,occupied:true}}});
+ const e={kind:'movement',distance:4,speed:80,acceleration:100,before:snapshot(800,2),state:snapshot(804,6)};
+ const ms=duration(e);
+ for(const t of [.1,.25,.5,.75,.9]) {
+  const frame=playbackFrame(e,t*ms,ms).state;
+  const moved=motionFraction(e,t)*4;
+  assert.ok(Math.abs(frame.tips[0]-800-moved)<1e-9);
+  assert.ok(Math.abs(frame.devices['unit0:buffer'].travel-2-moved)<1e-9);
+ }
+ assert.ok(playbackFrame(e,ms/4,ms).state.devices['unit0:buffer'].travel<3);
+ assert.equal(playbackFrame(e,ms,ms).state.devices['unit0:buffer'].travel,6);
 });

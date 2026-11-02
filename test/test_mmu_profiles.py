@@ -319,6 +319,9 @@ class TestEveryBootableProfile(unittest.TestCase):
             fallback_homed_states.append(hh.mmu.filament_pos)
             return result
 
+        # Isolate datum recovery from mechanical grip: this fixture simulates
+        # an extruder that has already released despite stale position state.
+        model._gripped = lambda gate: False
         hh.mmu.sensor_manager.check_sensor = report_extruder_clear
         hh.mmu._park_at_gate = record_direct_park
         hh.mmu._unload_gate = record_fallback_home

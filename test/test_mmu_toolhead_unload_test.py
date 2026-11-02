@@ -6,9 +6,8 @@
 # sensor. Without such a sensor the existing encoder (or sync-feedback buffer) check is
 # used, and the same parameter decides whether a failure warns or pauses.
 #
-# GEOMETRY. 3ms homes off the extruder entry sensor and its layout matches its toolhead
-# dimensions. ercf_vvd's layout matches its toolhead sensor dimensions but not its entry sensor
-# ones, so the toolhead-sensor branch is exercised there with the entry sensor disabled.
+# GEOMETRY. Sensors use the configured distances from the gears and nozzle. 3ms exercises
+# the extruder-entry sensor; ercf_vvd disables it here to exercise the toolhead-sensor branch.
 #
 # A CUT is modelled by wrapping the harness tip-forming effect, in place of whichever tip macro
 # the profile configures: after the extruder retracts, the macro reports output_park_pos as a

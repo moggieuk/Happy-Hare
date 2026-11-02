@@ -446,11 +446,10 @@ THREE_MS = Profile(
     # The console presents filament at -40 mm and 3MS parks 250 mm behind its
     # extruder-entry datum. Put that datum at +210 mm so preload/load can reach it
     # within gate_homing_max and unload returns to the exact presented position.
-    # Preserve the generic 40 mm extruder-to-toolhead spacing.
+    # The gears are 8 mm downstream of that sensor.
     filament_layout={
-        'extruder_entry': 210.0,
+        'extruder_entry': 218.0,
         'extruder': 210.0,
-        'toolhead': 250.0,
         'filament_compression': 210.0,
     })
 

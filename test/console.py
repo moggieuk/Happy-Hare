@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import collections
 import contextlib
-import datetime
 import logging
 import os
 import re
@@ -544,11 +543,14 @@ class Console:
 
         # Execute maintenance and filament-processing macros in the interactive simulator.
         # The general-purpose unit-test harness keeps its simplified effects.
-        # Keep the exception local so print-start/toolchange macros retain the established
-        # recorded-only behavior relied on by the unit tests.
+        # Keep these opt-ins local to the interactive simulator.
         effects = getattr(self.hh.printer, 'harness_macro_effects', None)
         if effects is None:
             effects = self.hh.printer.harness_macro_effects = {}
+        for section in self.hh.fileconfig.sections():
+            name = section.removeprefix('gcode_macro ').upper()
+            if section.startswith('gcode_macro ') and re.fullmatch(r'T\d+', name):
+                effects[name] = self._run_macro_body
         effects['MMU_COLD_PULL'] = self._run_macro_body
         # Execute reference purge segments so G1 telemetry and filament transport
         # reflect real macro commands instead of the harness's time-only effect.
@@ -1012,7 +1014,6 @@ class Console:
             self.bridge.viewer.observe_configuration()
         if warn_unknown:
             self._warn_unhandled(line, unhandled_mark)
-            self._warn_silent_macro(line, mark)
 
     def _sync_filament_to_gate_map(self, before):
         """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""
@@ -1093,21 +1094,6 @@ class Console:
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! moonraker: %s' % exc, '1;31', self.color))
 
-    def _warn_silent_macro(self, line, mark):
-        """
-        With the explicit MMU_COLD_PULL exception installed in boot(), the fake gcode_macro
-        otherwise records a macro call but never renders or runs its BODY (pinned by
-        test_mmu_toolchange.py). So T1, print start/end and the park/cut/purge sequences are
-        REGISTERED - they do not show up as unknown commands - and simply do nothing. Silence
-        is the whole symptom, so key off "produced no output at all".
-        """
-        if len(self.sink) > mark:
-            return
-        word = line.strip().split(None, 1)[0].upper() if line.strip() else ''
-        if re.fullmatch(r'T\d+', word):
-            print(paint('   (%s is a macro, and the harness does not run macro bodies - '
-                        'use MMU_CHANGE_TOOL TOOL=%s)' % (word, word[1:]), '33', self.color))
-
     def _warn_unhandled(self, line, mark):
         """
         Unknown commands are recorded and ignored (gcode.py:230), so a typo produces no
@@ -1122,8 +1108,7 @@ class Console:
                 if self.bridge is not None:
                     self.bridge.host_output('Unknown command:"%s"' % typed)
                 if re.fullmatch(r'T\d+', typed):
-                    print('   (the fake gcode_macro records macros but does not run '
-                          'their bodies - use MMU_CHANGE_TOOL TOOL=%s)' % typed[1:])
+                    print('   (no %s macro is configured for this profile)' % typed)
                 return
 
     ##################
@@ -1957,9 +1942,8 @@ class Console:
     ##### Print jobs #####
     ######################
 
-    # Macros whose bodies run while a job plays. Everywhere else the harness only records a
-    # macro call (klippy_root/extras/gcode_macro.py), which is why T1 at the prompt is silent.
-    # Park, cut and purge stay recorded no-ops even in a job: their motion is not modelled.
+    # Additional lifecycle macros enabled while a job plays. Tool-selection and
+    # filament-processing macros are already enabled for interactive commands.
     JOB_MACROS = ('MMU_START_SETUP', 'MMU_START_CHECK', 'MMU_START_LOAD_INITIAL_TOOL',
                   'MMU_END')
     # Played straight through the dispatcher with no per-line settle: a sliced file is almost
@@ -2023,8 +2007,8 @@ class Console:
         Feed the held job from where it stopped until it ends, the machine pauses, a command
         fails (the print errors, as virtual_sdcard's would) or the job cancels itself.
 
-        What runs for real: the macros in JOB_MACROS and T<n> (their bodies, only for the
-        duration), every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
+        What runs for real: configured tool macros, lifecycle macros in JOB_MACROS,
+        every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
         filament model) and the extruder heater (M104/M109). Time passes as the moves would
         take it, plus G4 dwells. Anything else the harness does not know - bed heaters,
         EXCLUDE_OBJECT_*, the user's own PRINT_START - is ignored and listed at the end.
@@ -2035,7 +2019,7 @@ class Console:
         toolhead = self.hh.printer.lookup_object('toolhead')
         pause_resume = self.hh.printer.lookup_object('pause_resume')
         effects = self.hh.printer.harness_macro_effects
-        names = list(self.JOB_MACROS) + ['T%d' % t for t in range(self.hh.mmu.num_gates)]
+        names = self.JOB_MACROS
         saved = {n: effects.get(n) for n in names}
         for n in names:
             effects[n] = self._run_macro_body
