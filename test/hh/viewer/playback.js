@@ -187,7 +187,7 @@ export function motionFraction(event, timeFraction) {
 }
 
 export function duration(event, compressBowden = false) {
-  if (event.kind === 'gate_changed') return 1200;
+  if (event.kind === 'gate_changed') return 2200;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
@@ -580,7 +580,10 @@ export function visibleSteps(records) {
   for (const record of records) {
     const internal = isInternalUpdate(record);
     if (internal) {
-      if (steps.length && !record.during_move) steps.at(-1).settled_state = record.state;
+      const previous=steps.at(-1);
+      // Gate deltas belong to the following selection animation, not the prior step.
+      if (previous && !record.during_move && record.state.gate === previous.state.gate)
+        previous.settled_state = record.state;
     } else {
       steps.push({...record});
     }
@@ -590,9 +593,15 @@ export function visibleSteps(records) {
 
 
 // Finish color mixing after motion stops, without adding filament travel.
-export function playbackFrame(event, elapsed, movementMs) {
-  const fraction=motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
+export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.before?.mmu_gripped) {
+  const fraction=event.kind === 'gate_changed'
+    ? Math.max(0,Math.min(1,(elapsed-500)/(movementMs-1000)))
+    : motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
   let state=interpolate(event,fraction);
+  if (event.kind === 'gate_changed') {
+    // Release before retreat and restore the starting grip after advance, in either direction.
+    state={...state,mmu_gripped:elapsed >= 250 && elapsed < movementMs-250 ? false : selectionGrip};
+  }
   if (event.purge_settle && elapsed >= movementMs) {
     const blend=Math.max(0,Math.min(1,(elapsed-movementMs)/350));
     const color=purgeColor({purge_transition:{start_mm:0,retained_mm:1,mix_mm:1,
