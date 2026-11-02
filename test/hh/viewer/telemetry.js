@@ -109,6 +109,14 @@ export class TelemetryReplay {
       if (record.changes.some(c=>c.path.join('.') === 'printer.mmu.gate')) this.selectionBefore=before;
       applyDelta(this.facts, record.changes);
       validateFacts(this.facts);
+      // Positive reports refine the cut length; zero during loading does not erase an unpurged fragment.
+      for (const {path,value} of record.changes) {
+        if (path.length !== 6 || path.slice(0,3).join('.') !== 'printer.mmu_machine.units' ||
+            path[4] !== 'extruder' || path[5] !== 'filament_remaining' || !finite(value) || value <= 0) continue;
+        const extruder=this.facts.printer.mmu_machine.units[path[3]]?.extruder;
+        const fragment=this.fragments[extruder?.name];
+        if (fragment) fragment.end=fragment.start+value;
+      }
       const configuration = record.changes.filter(({path}) => path[0] === 'macros' ||
         path.includes('parameters') || path.includes('bowden_lengths') || path.includes('form_tip_macro') || path.includes('purge_macro') ||
         path.at(-1) === 'enabled' || /^(buffer_range|buffer_maxrange|buffer_spring_state)$/.test(path.at(-1)));
@@ -346,7 +354,8 @@ export class TelemetryReplay {
         if (tip >= nozzle-state.filament.residual_mm-.01) {
           if (this.shapes[gate] !== 'cone') this.hairLengths[gate]=15;
           this.shapes[gate]='cone';
-          next=Math.min(next,nozzle-state.filament.residual_mm);
+          next=Math.min(next,nozzle-state.filament.residual_mm+travel);
+          details.filament_travel_mm=next-tip;
         }
         if (hotend.extruded > hotend.base) hotend.base=hotend.extruded;
       }

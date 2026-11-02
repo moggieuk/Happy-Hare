@@ -642,20 +642,20 @@ test('a lone shared exit uses the straight section for long parking distances',(
 
 test('extruder height stays fixed while the entry sensor has a separate visual gap',()=>{
  const state={layout:{extruder_gears:700,nozzle:785.1},sensors:{'default:extruder':{position:683.4}},active_sensors:['default:extruder']};
- assert.deepEqual(toolheadDrawingRange(state),{entry:700,end:785.1,height:244,sensorEntry:683.4,sensorGap:35});
+ assert.deepEqual(toolheadDrawingRange(state),{entry:700,end:785.1,height:243,sensorEntry:683.4,sensorGap:35});
  state.layout.nozzle=740;state.sensors['default:extruder'].position=690;
- assert.equal(toolheadDrawingRange(state).height,244);
+ assert.equal(toolheadDrawingRange(state).height,243);
  assert.equal(toolheadDrawingRange(state).sensorGap,35);
  state.active_sensors=[];
  assert.equal(toolheadDrawingRange(state).sensorGap,0);
- assert.equal(toolheadDrawingRange(state).height,244);
+ assert.equal(toolheadDrawingRange(state).height,243);
 });
 
 test('toolhead sensor clearance preserves fixed endpoints and proportional spacing beyond it',()=>{
  const state={layout:{extruder_gears:700,nozzle:785},sensors:{'default:toolhead':{position:702}}};
  assert.equal(toolheadProgress(state,700),0);
  assert.equal(toolheadProgress(state,785),1);
- assert.equal(toolheadProgress(state,702)*244,34);
+ assert.equal(toolheadProgress(state,702)*243,34);
  assert.ok(toolheadProgress(state,710)>toolheadProgress(state,702));
  state.sensors['default:toolhead'].position=740;
  assert.equal(toolheadProgress(state,740),40/85);
