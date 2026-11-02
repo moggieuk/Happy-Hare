@@ -115,7 +115,8 @@ class ReplayState:
                               for name, (value, sensor) in sensors.items()},
                      drive_motors={kind: [motor.get_name() for motor in owner.get_steppers()]
                                    for kind, owner in (('gear', drive.mmu_gear_stepper), ('extruder', drive.mmu_extruder_stepper))}),
-            mmu_machine=dict(num_gates=mmu.num_gates, units=units, form_tip_macro=macro_name)),
+            mmu_machine=dict(num_gates=mmu.num_gates, units=units, form_tip_macro=macro_name,
+                             purge_macro=mmu._macro_name(mmu.p.purge_macro))),
             macros=macros))
 
 
