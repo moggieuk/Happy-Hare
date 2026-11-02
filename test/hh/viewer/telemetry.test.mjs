@@ -146,10 +146,10 @@ for(const suffix of [':extruder',':toolhead']) for(const direction of [1,-1]) {
   const e=move(r,direction*7,{motor_mode:'gear+extruder'});
   const expected=position+direction*5;
   assert.ok(Math.abs(e.state.tips[0]-expected)<1e-8);
-  const display=state=>constrainFilament(state.tips[0],null,null,[{...state.sensors[target],name:target}]);
+  const display=state=>constrainFilament(state.tips[0],null,[{...state.sensors[target],name:target}]);
   const blocked=display(e.state);
-  assert.ok(blocked.warnings.length);
-  assert.ok(direction>0 ? blocked.tip<position : blocked.tip>=position);
+  assert.equal(blocked.warnings.length,direction>0 ? 1 : 0);
+  assert.ok(direction>0 ? blocked.tip<=position : blocked.tip>=position);
   event(r,'state_delta',{changes:[{path:['printer','mmu','sensors',target,'triggered'],value:direction>0}]});
   const corrected=r.snapshot();
   assert.equal(corrected.tips[0],e.state.tips[0]);
@@ -205,11 +205,28 @@ test('in-move bookkeeping cannot attach future sensor readings to the preceding 
   move(r,-5,{source:'mmu_gcode'});move(r,5,{source:'mmu_gcode'});
   assert.ok(Math.abs(r.snapshot().extruded_mm-4)<1e-8);
  });
- test('parked notification preserves the measured final parking endpoint',()=>{
-  const r=stream(0);r.tips[0]=-2.896;
-  event(r,'filament_pos_changed',{filament_pos:0,filament_pos_name:'UNLOADED AND PARKED'});
-  assert.equal(r.snapshot().tips[0],-2.896);
- });
+for (const fragment of [false,true]) test(`UNLOADED resets the tip without hiding sensor contradictions (fragment: ${fragment})`,()=>{
+ const r=stream(6),m=r.facts.printer.mmu,u=r.facts.printer.mmu_machine.units[m.unit];
+ u.parameters.gate_homing_endstop='mmu_shared_exit';u.parameters.gate_parking_distance=-30;
+ const name=`${m.unit}:mmu_shared_exit`;
+ m.sensors[name]={triggered:false,enabled:true};m.active_sensors.push(name);
+ const old=r.snapshot(),part={start:old.layout.nozzle-20,end:old.layout.nozzle,tip_shape:'cone',color:'0000ff'};
+ if(fragment) r.fragments[old.filament.extruder]=part;
+ r.overshoot[0]=12;
+ const warnings=s=>constrainFilament(s.tips[0],null,
+   [{name,position:s.sensors[name].position,state:s.sensors[name].state}]).warnings;
+ assert.ok(warnings(r.snapshot()).length);
+ // A status delta can precede the semantic event; neither names the command.
+ event(r,'state_delta',{changes:[{path:['printer','mmu','filament_pos'],value:0}]});
+ event(r,'filament_pos_changed',{previous:6,filament_pos:0,source:null,filament_pos_name:'UNLOADED AND PARKED'});
+ const s=r.snapshot();
+ assert.equal(s.tips[0],s.sensors[name].position-30);
+ assert.equal(r.overshoot[0],undefined);
+ assert.deepEqual(warnings(s),[]);
+ if(fragment) assert.deepEqual(s.retained_segment,part);
+ m.sensors[name].triggered=true;
+ assert.deepEqual(warnings(r.snapshot()),[],'a triggered sensor silently advances the visual tip');
+});
 
 for (const always of [false,true]) test(`extruder-only motion respects MMU grip (always gripped: ${always})`,()=>{
  const r=stream();const m=r.facts.printer.mmu;
@@ -466,4 +483,45 @@ test('contact is not grip, and a delayed tension update cannot erase buffer trav
  const withdrawn=move(r,-16,{motor_mode:'gear'});
  assert.equal(withdrawn.state.tips[0],gears-10);
  assert.equal(withdrawn.state.bowden_unabsorbed_mm,0);
+});
+
+test('macro names follow recorded configuration changes',()=>{
+ const r=stream();
+ event(r,'state_delta',{changes:[{path:['printer','mmu_machine','purge_macro'],value:'MY_PURGE'}]});
+ assert.equal(r.events.at(-1).kind,'config');
+ assert.equal(r.snapshot().configuration.parameters[0].purge_macro,'MY_PURGE');
+ event(r,'state_delta',{changes:[{path:['printer','mmu_machine','purge_macro'],value:''}]});
+ assert.equal(r.snapshot().configuration.parameters[0].purge_macro,'');
+});
+
+test('residual contact shortens hair permanently to a 5mm minimum',()=>{
+ const r=stream(),top=r.snapshot().layout.nozzle-r.snapshot().filament.residual_mm;
+ r.shapes[0]='cone';r.tips[0]=top-26;
+ const e=move(r,15,{source:'mmu_gcode'});
+ assert.equal(interpolate(e,.5).hair_lengths[0],15);
+ assert.equal(e.state.hair_lengths[0],10);
+ move(r,-7,{source:'mmu_gcode'});
+ assert.equal(r.snapshot().hair_lengths[0],10);
+ move(r,7,{source:'mmu_gcode'});
+ assert.equal(r.snapshot().hair_lengths[0],10,'returning to the same depth must not shorten twice');
+ move(r,8,{source:'mmu_gcode'});
+ assert.equal(r.snapshot().hair_lengths[0],5);
+ move(r,-20,{source:'mmu_gcode'});
+ assert.equal(r.snapshot().hair_lengths[0],5,'withdrawal preserves the shortened hair');
+ event(r,'cut',{phase:'CUT',blade_pos:r.snapshot().layout.nozzle-r.tips[0]+2});
+ assert.equal(r.snapshot().retained_segment.hair_length,5);
+});
+
+test('move outcome sensor correction is animated without changing modeled travel',()=>{
+ const r=stream(3),s=r.snapshot(),name='default:extruder';
+ const position=s.sensors[name].position;
+ r.tips[0]=position-100;r.facts.printer.mmu.sensors[name].triggered=false;
+ const e=move(r,96,{motor_mode:'gear',outcome:{sensors:{[name]:true}}});
+ e.acceleration=100;
+ const frames=[0,250,500,750,1000].map(t=>playbackFrame(e,t,1000));
+ assert.equal(frames[0].state.visual_tips[0],position-100);
+ assert.equal(frames.at(-1).state.visual_tips[0],position);
+ assert.equal(e.state.tips[0],position-4);
+ for(let i=1;i<frames.length;i++) assert.ok(frames[i].state.visual_tips[0]>frames[i-1].state.visual_tips[0]);
+ assert.ok(Math.abs(playbackFrame(e,999.99,1000).state.visual_tips[0]-position)<.01);
 });

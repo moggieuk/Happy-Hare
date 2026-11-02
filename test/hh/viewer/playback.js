@@ -1,3 +1,8 @@
+// Residual contact melts only the immersed hair; retain at least 5mm.
+export function shortenedHair(length, tip, residualTop) {
+  return Math.max(5,Math.min(length,residualTop-tip-1));
+}
+
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 export function interpolate(event, fraction) {
   const a = event.before, b = event.state;
@@ -46,6 +51,9 @@ export function interpolate(event, fraction) {
     s.tip_shapes=[...s.tip_shapes];
     s.tip_shapes[gate]='cone';
   }
+  s.hair_lengths=(b.hair_lengths || a.hair_lengths || []).map((length,i)=>
+    a.tip_shapes?.[i] === 'cone' && s.tips[i] > a.tips[i] && s.tips[i] >= s.layout.extruder_gears
+      ? shortenedHair(a.hair_lengths?.[i] ?? 15,s.tips[i],s.layout.nozzle-s.filament.residual_mm) : length);
   if (a.retained_segment) {
     const segment = a.retained_segment;
     const gate = b.gate;
@@ -53,6 +61,8 @@ export function interpolate(event, fraction) {
     const nozzle = b.layout.nozzle;
     s.retained_segment = {...segment, start: Math.min(nozzle, segment.start+push),
       end: Math.min(nozzle, segment.end+push)};
+    if (push > 0 && segment.tip_shape === 'cone')
+      s.retained_segment.hair_length=shortenedHair(segment.hair_length ?? 15,segment.end+push,nozzle-s.filament.residual_mm);
     if (s.retained_segment.start >= s.retained_segment.end) s.retained_segment = null;
   }
   s.extruded_mm = a.extruded_mm || 0;
@@ -130,7 +140,7 @@ export function interpolate(event, fraction) {
   return s;
 }
 // All positions use the same drawing-path coordinates. Sensor readings win last.
-export function constrainFilament(tip, previousTip, tail, sensors, fragments = [], reported = []) {
+export function constrainFilament(tip, tail, sensors, fragments = [], reported = []) {
   let lower = 0, upper = Infinity;
   const warnings = [...reported];
   for (const sensor of sensors) {
@@ -138,17 +148,15 @@ export function constrainFilament(tip, previousTip, tail, sensors, fragments = [
     if (!Number.isFinite(position) || sensor.enabled === false || typeof state !== 'boolean') continue;
     const fragment = fragments.some(part => part.start <= position && part.end >= position);
     if (!state && (tail === null || tail <= position)) {
-      upper = Math.min(upper, position-1);
-      if (tip >= position || fragment) warnings.push(`${name}: filament present while sensor is clear`);
+      upper = Math.min(upper, position);
+      if (tip > position || fragment) warnings.push(`${name}: estimated tip is beyond a clear sensor`);
     } else if (state && !fragment && (tail === null || tail <= position)) {
       lower = Math.max(lower,position);
-      if (tip < position) warnings.push(`${name}: filament withdrawn while sensor is triggered`);
     }
   }
   if (lower > upper) warnings.push('Presence sensors disagree');
   const bounded = value => Math.max(0,Math.min(upper,Math.max(lower,value)));
-  const result = warnings.length && Number.isFinite(previousTip) && tip < previousTip ? bounded(previousTip) : bounded(tip);
-  return {tip:result, warnings:[...new Set(warnings)]};
+  return {tip:bounded(tip), warnings:[...new Set(warnings)]};
 }
 
 // Approximate each discrete move from rest; recorded distances remain authoritative.
@@ -432,19 +440,21 @@ export function gateDevicePositions(state, sensors) {
     const index = reference ? devices.indexOf(target)+(reference.offset < 0 ? 0 : 1) : 0;
     devices.splice(index,0,'encoder');
   }
+  // Allocate the unused straight section, rather than a fixed expansion per gap.
+  const available=100-Math.max(0,devices.length-1)*32;
   const extra=devices.map(()=>0);
   const reference=encoderReference(state,sensors);
   const params=state.configuration?.parameters?.[state.units?.indexOf(state.unit) ?? 0] || {};
   const endstop=state.encoder_reference?.endstop ?? params.gate_homing_endstop ?? '';
   const target=endstop.includes('shared_exit') ? 'sharedExit' : endstop.includes('exit') ? 'exit' : 'encoder';
   const homeIndex=devices.indexOf(target);
-  if (homeIndex >= 0) extra[homeIndex]+=36*gateSpacingScale(state.encoder_reference?.parking ?? params.gate_parking_distance);
+  if (homeIndex >= 0) extra[homeIndex]+=available*gateSpacingScale(state.encoder_reference?.parking ?? params.gate_parking_distance);
   if (reference && devices.includes('encoder')) {
     const refDevice=reference.name.includes('shared_exit') ? 'sharedExit' : 'exit';
-    extra[Math.max(devices.indexOf(refDevice),devices.indexOf('encoder'))]+=36*gateSpacingScale(reference.offset);
+    extra[Math.max(devices.indexOf(refDevice),devices.indexOf('encoder'))]+=available*gateSpacingScale(reference.offset);
   }
   const total=extra.reduce((sum,value)=>sum+value,0);
-  const scale=total ? Math.min(1,(100-Math.max(0,devices.length-1)*32)/total) : 1;
+  const scale=total ? Math.min(1,available/total) : 1;
   let y=260;
   return Object.fromEntries(devices.map((device,index)=>{
     y-=(index ? 32 : 0)+extra[index]*scale;
@@ -603,5 +613,51 @@ export function playbackFrame(event, elapsed, movementMs) {
     const fade=Math.max(0,Math.min(1,(elapsed-high*movementMs)/350));
     state={...state,cone_edge_opacity:1-fade};
   }
+  if (event.kind === 'movement' && event.before) {
+    const visualEndpoint=s=>{
+      const tip=s.tips[gate];
+      let result=tip;
+      for (const [name,sensor] of Object.entries(s.sensors || {})) {
+        if (s.active_sensors && !s.active_sensors.includes(name)) continue;
+        if (!['extruder','toolhead'].includes(name.split(':').at(-1)) || sensor.enabled === false || !Number.isFinite(sensor.position)) continue;
+        const fragment=s.retained_segment;
+        if (fragment && fragment.start<=sensor.position && fragment.end>=sensor.position) continue;
+        if (sensor.state === true) result=Math.max(result,sensor.position);
+        else if (sensor.state === false) result=Math.min(result,sensor.position);
+      }
+      return result;
+    };
+    // Blend display corrections over the same accelerated travel as the move.
+    // Recorded/model positions remain untouched for subsequent accounting.
+    const before=event.before, after=event.settled_state || event.state;
+    const from=visualEndpoint(before)-before.tips[gate];
+    const to=visualEndpoint(after)-after.tips[gate];
+    const tips=[...state.tips];
+    tips[gate]+=from+(to-from)*fraction;
+    state={...state,visual_tips:tips};
+  }
   return {state,fraction};
+}
+
+// Keep the housing and gear-to-nozzle span fixed; the entry sensor has its own gap.
+export function toolheadDrawingRange(state) {
+  const entry=state.layout.extruder_gears ?? state.layout.extruder_entry ?? 700;
+  const sensor=Object.entries(state.sensors || {}).find(([name,sensor])=>
+    (!state.active_sensors || state.active_sensors.includes(name)) &&
+    name.split(':').at(-1) === 'extruder' && Number.isFinite(sensor.position) && sensor.position < entry);
+  return {entry,end:state.layout.nozzle ?? (state.layout.toolhead ?? 760)+30,
+    height:244,sensorEntry:sensor?.[1].position ?? entry,sensorGap:sensor ? 35 : 0};
+}
+
+// Reserve a 10-unit visible gap between the 19-unit gear and 5-unit sensor.
+export function toolheadProgress(state, position, range=toolheadDrawingRange(state)) {
+  const fraction=(position-range.entry)/(range.end-range.entry);
+  const sensor=Object.entries(state.sensors || {}).find(([name,sensor])=>
+    (!state.active_sensors || state.active_sensors.includes(name)) &&
+    name.split(':').at(-1) === 'toolhead' && Number.isFinite(sensor.position));
+  const pivot=sensor ? (sensor[1].position-range.entry)/(range.end-range.entry) : 0;
+  if (pivot <= 0 || pivot >= 1) return fraction;
+  const drawn=Math.max(pivot,34/range.height);
+  return fraction <= pivot ? fraction*drawn/pivot
+    : drawn+(fraction-pivot)*(1-drawn)/(1-pivot);
 }

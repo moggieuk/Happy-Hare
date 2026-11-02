@@ -1,5 +1,5 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
-import {purgeColor, purgeOutletColor} from './playback.js';
+import {purgeColor, purgeOutletColor, shortenedHair} from './playback.js';
 
 const copy = value => structuredClone(value);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -71,7 +71,7 @@ export class TelemetryReplay {
     this.facts = null;
     this.events = [];
     this.pending = new Map();
-    this.tips = []; this.shapes = []; this.motors = {};
+    this.tips = []; this.shapes = []; this.hairLengths = []; this.motors = {};
     this.fragments = {}; this.hotends = {}; this.bufferPositions = {};
     this.excess = {}; this.overshoot = {};
     this.cutter = false;
@@ -94,6 +94,7 @@ export class TelemetryReplay {
       this.checkpoint = Boolean(record.checkpoint);
       this.facts = copy(f);
       this.tips = Array(machine.num_gates).fill(-20);
+      this.hairLengths = Array(machine.num_gates).fill(15);
       this.shapes = Array(machine.num_gates).fill(machine.form_tip_macro?.toLowerCase().includes('cut') ? 'square' : 'cone');
       const state = this.snapshot();
       if (mmu.gate >= 0) this.tips[mmu.gate] = this.logicalTip(state, mmu.filament_pos, true);
@@ -109,7 +110,7 @@ export class TelemetryReplay {
       applyDelta(this.facts, record.changes);
       validateFacts(this.facts);
       const configuration = record.changes.filter(({path}) => path[0] === 'macros' ||
-        path.includes('parameters') || path.includes('bowden_lengths') || path.includes('form_tip_macro') ||
+        path.includes('parameters') || path.includes('bowden_lengths') || path.includes('form_tip_macro') || path.includes('purge_macro') ||
         path.at(-1) === 'enabled' || /^(buffer_range|buffer_maxrange|buffer_spring_state)$/.test(path.at(-1)));
       // Motion outcomes carry their sensor changes; don't insert a step between a pair.
       if (configuration.length) this.emit(record, 'config', 'Configuration changed', {before,
@@ -137,7 +138,7 @@ export class TelemetryReplay {
       if (finite(record.homing_overshoot_mm)) this.overshoot[mmu.gate] = record.homing_overshoot_mm;
       else if (record.filament_pos === 0) delete this.overshoot[mmu.gate];
       const state = this.snapshot();
-      if (mmu.gate >= 0 && (!this.fragments[state.filament.extruder] || record.source === '_MMU_TEST'))
+      if (mmu.gate >= 0 && (record.filament_pos === 0 || !this.fragments[state.filament.extruder] || record.source === '_MMU_TEST'))
         this.tips[mmu.gate] = this.logicalTip(state, record.filament_pos, record.source === '_MMU_TEST');
       this.emit(record, 'state', record.filament_pos_name || positions[record.filament_pos] || 'UNKNOWN', {before,telemetry:record});
     } else if (record.event === 'gate_changed') {
@@ -156,7 +157,7 @@ export class TelemetryReplay {
       this.cutter = record.phase === 'CUT';
       if (gate >= 0 && finite(blade) && this.tips[gate] > blade) {
         this.fragments[before.filament.extruder] = {start:blade,end:this.tips[gate],
-          tip_shape:this.shapes[gate],color:before.filament.incoming_color};
+          tip_shape:this.shapes[gate],hair_length:this.hairLengths[gate],color:before.filament.incoming_color};
         this.tips[gate] = blade;
         this.shapes[gate] = 'square';
       }
@@ -178,8 +179,9 @@ export class TelemetryReplay {
       : sensor(s.encoder_reference.endstop) ?? 0;
     const toolhead = sensor('toolhead') ?? (gears+nozzle)/2;
     // Keep physical distances here; schematic parking gaps belong to drawing.
-    const exact = {5:sensor('extruder') ?? entry,6:gears,8:toolhead};
-    if (manual) Object.assign(exact, {'-1':-20,0:home+s.encoder_reference.parking,1:home,2:home,3:(home+entry)/2,4:entry,7:(gears+toolhead)/2,9:(toolhead+nozzle)/2,10:nozzle});
+    // UNLOADED is an authoritative parked location, including after recovery.
+    const exact = {0:home+s.encoder_reference.parking,5:sensor('extruder') ?? entry,6:gears,8:toolhead};
+    if (manual) Object.assign(exact, {'-1':-20,1:home,2:home,3:(home+entry)/2,4:entry,7:(gears+toolhead)/2,9:(toolhead+nozzle)/2,10:nozzle});
     return exact[pos] ?? this.tips[s.gate] ?? -20;
   }
 
@@ -214,7 +216,7 @@ export class TelemetryReplay {
     const configuration={parameters:{},calibration:{},macros,sensors:Object.fromEntries(Object.entries(sensors).map(([n,v])=>[n,v.enabled]))};
     units.forEach((name,i)=>{
       const u=machine.units[name];
-      configuration.parameters[i]={...u.parameters,...u.toolhead.parameters,form_tip_macro:machine.form_tip_macro};
+      configuration.parameters[i]={...u.parameters,...u.toolhead.parameters,form_tip_macro:machine.form_tip_macro,purge_macro:machine.purge_macro};
       configuration.calibration[name]={bowden_lengths:u.bowden_lengths};
     });
     const extruder=unit.extruder, residual=number(p.toolhead_residual_filament);
@@ -264,7 +266,7 @@ export class TelemetryReplay {
     const vars=f.macros?.[machine.form_tip_macro+'_VARS'] || f.macros?.[machine.form_tip_macro] || {};
     const cutters=finite(vars.blade_pos) ? [{kind:'toolhead',position:nozzle-vars.blade_pos,before_extruder:vars.cutter_before_extruder}] : [];
     return copy({unit:m.unit,units,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
-      tips:this.tips,tails:this.tips.map(()=>null),tip_shapes:this.shapes,gate_colors:m.gate_color.map(color),layout,sensors,active_sensors:m.active_sensors,
+      tips:this.tips,tails:this.tips.map(()=>null),tip_shapes:this.shapes,hair_lengths:this.hairLengths,gate_colors:m.gate_color.map(color),layout,sensors,active_sensors:m.active_sensors,
       unit_sensors:unit.sensors,devices,buffers,object_status,configuration,filament,cutters,cutter_pressed:this.cutter,
       mmu_gripped:mmuGripped,synced:[1,3].includes(m.sync_mode),drive_motors:m.drive_motors,motors:this.motors,
       encoder_reference:{endstop:up.gate_homing_endstop,offset:up.gate_endstop_to_encoder,parking:number(up.gate_parking_distance),overshoot:this.overshoot[m.gate] || 0},
@@ -342,11 +344,14 @@ export class TelemetryReplay {
         // displaces it as soon as contact resumes, not only upon reaching zero.
         hotend.front=nozzle-state.filament.residual_mm;
         if (tip >= nozzle-state.filament.residual_mm-.01) {
+          if (this.shapes[gate] !== 'cone') this.hairLengths[gate]=15;
           this.shapes[gate]='cone';
           next=Math.min(next,nozzle-state.filament.residual_mm);
         }
         if (hotend.extruded > hotend.base) hotend.base=hotend.extruded;
       }
+      if (travel > 0 && next >= gears && this.shapes[gate] === 'cone')
+        this.hairLengths[gate]=shortenedHair(this.hairLengths[gate],next,nozzle-state.filament.residual_mm);
       if (extruding && travel > 0) {
         let amount=segment ? Math.max(0,next-nozzle)
           : Math.max(0,next-Math.max(tip,hotend.front));
@@ -355,6 +360,7 @@ export class TelemetryReplay {
           const melt=nozzle-state.filament.residual_mm;
           amount+=Math.max(0,Math.min(nozzle,segment.end+push)-Math.max(melt,segment.end));
           amount+=Math.min(segment.end-segment.start,Math.max(0,segment.end+push-nozzle));
+          if (segment.tip_shape === 'cone') segment.hair_length=shortenedHair(segment.hair_length ?? 15,segment.end+push,melt);
           segment.start=Math.min(nozzle,segment.start+push); segment.end=Math.min(nozzle,segment.end+push);
           if (segment.start>=segment.end) delete this.fragments[state.filament.extruder];
         }
