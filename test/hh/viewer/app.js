@@ -1,8 +1,8 @@
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import { playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
-// A shared overlay gives HTML and SVG tooltips the same delay and avoids clipping.
+// A shared overlay styles HTML and SVG tooltips consistently and avoids clipping.
 const tooltip = document.createElement('div');
 tooltip.id = 'viewer-tooltip';
 tooltip.setAttribute('role', 'tooltip');
@@ -33,7 +33,7 @@ function showTooltipLater(target) {
     tooltip.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - box.width - 8))}px`;
     tooltip.style.top = `${Math.max(8, rect.bottom + box.height + 6 <= innerHeight ? rect.bottom + 6 : rect.top - box.height - 6)}px`;
     target.setAttribute('aria-describedby', [target.getAttribute('aria-describedby'), tooltip.id].filter(Boolean).join(' '));
-  }, 500);
+  }, target.closest('#sidebar-playback') ? 1000 : 500);
 }
 document.addEventListener('pointerover', e => showTooltipLater(e.target.closest('[data-tooltip]')));
 document.addEventListener('pointerout', e => {
@@ -300,7 +300,7 @@ async function selectDimension(event) {
     filter();
     const id = target.dataset.parameter;
     if (![...$('parameter').options].some(option => option.value === id)) {
-      message('This dimension has no editable parameter in the current configuration.', true);
+      message('This item has no editable parameter in the current configuration.', true);
       return;
     }
     $('parameter').value = id;
@@ -313,6 +313,8 @@ async function selectDimension(event) {
 }
 $('scene').addEventListener('click', selectDimension);
 $('scene').addEventListener('keydown', selectDimension);
+$('scene-macros').addEventListener('click', selectDimension);
+$('scene-macros').addEventListener('keydown', selectDimension);
 $("filter").oninput = filter;
 $("clear-filter").onclick = () => {
   $("filter").value = '';
@@ -478,9 +480,8 @@ function draw() {
   const
     s = live && displayed ? displayed : (e.settled_state || e.state),
     gate = s.gate >= 0 ? s.gate : 0;
-  let tip = s.tips[gate] ?? -1000;
-  const entry = s.layout.extruder_entry ?? 700,
-    end = s.layout.nozzle ?? (s.layout.toolhead ?? 760) + 30;
+  let tip = s.visual_tips?.[gate] ?? s.tips[gate] ?? -1000;
+  const {entry,end,height:toolheadHeight,sensorEntry,sensorGap} = toolheadDrawingRange(s);
   const eventsBehind = events.length - 1 - events.indexOf(e);
   if (live && !paused && !playing && eventsBehind === 0) replayingHistory = false;
   const modeLabel = paused || !live ? 'Paused' : offline ? 'Replay' : replayingHistory ? 'Replay' : eventsBehind >= 3 ? 'Live · catching up' : 'Live';
@@ -501,9 +502,7 @@ function draw() {
   const nozzleDiameter = Number($("nozzle-diameter").value);
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
   // Match the 2mm tip cone, truncated at the selected outlet diameter.
-  const pathMeasure=document.createElementNS('http://www.w3.org/2000/svg','path');
-  pathMeasure.setAttribute('d',path);
-  const funnelShoulder=450+2*.27*pathMeasure.getTotalLength()/(end-entry)*(1-nozzleWidth/7);
+  const funnelShoulder=450+2*toolheadHeight/(end-entry)*(1-nozzleWidth/7);
   const nozzleExit=Math.max(455,funnelShoulder+1);
   const nozzleFunnel = `M256.5 450 L${260-nozzleWidth/2} ${funnelShoulder} V${nozzleExit} H${260+nozzleWidth/2} V${funnelShoulder} L263.5 450 Z`;
   const bowdenPath = path.replace("L260 450", "L260 435");
@@ -512,12 +511,15 @@ function draw() {
   const tube = $("tube"),
     length = tube.getTotalLength();
   const mmuExitFraction = 200 / length; // Exit sits 20px above the MMU box.
+  const toolheadFraction=(length-toolheadHeight)/length;
   const progress = (p) =>
     p < 0
       ? Math.max(0, ((p - Math.min(-100, (s.layout.mmu_entry ?? -150)-40)) / -Math.min(-100, (s.layout.mmu_entry ?? -150)-40)) * mmuExitFraction)
-      : p < entry
-        ? mmuExitFraction + ((0.73-mmuExitFraction) * p) / entry
-        : Math.min(1, 0.73 + (0.27 * (p - entry)) / (end - entry));
+      : p < sensorEntry
+        ? mmuExitFraction + ((toolheadFraction-sensorGap/length-mmuExitFraction) * p) / sensorEntry
+        : p < entry
+          ? toolheadFraction-sensorGap/length+(sensorGap/length)*(p-sensorEntry)/(entry-sensorEntry)
+        : Math.min(1, toolheadFraction + (1-toolheadFraction) * toolheadProgress(s,p));
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (s.active_sensors) return s.active_sensors.includes(name);
     if (s.unit_sensors && !s.unit_sensors.includes(name)) return false;
@@ -563,7 +565,7 @@ function draw() {
       tip = tipAtPathDistance(schematicTip);
     }
   }
-  const tipScale = .27*length/(end-entry);
+  const tipScale = toolheadHeight/(end-entry);
   const coneOffset = s.tip_shapes?.[gate] === 'cone' ? tipScale : 0;
   const pathDistance = position => progress(position)*length;
   const presenceSensors = unitSensors.filter(([name,d]) => !isBufferSensor(name) &&
@@ -574,17 +576,23 @@ function draw() {
       return {...d,name,position};
     });
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
-  const previousTip = e.kind === 'movement' && e.before ? schematicDistance(e.before.tips[gate]) : null;
-  const constrained = constrainFilament(schematicTip ?? pathDistance(tip), previousTip,
+  const constrained = constrainFilament(schematicTip ?? pathDistance(tip),
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
   // Selection choreography stays above the MMU gears and never changes telemetry positions.
   const selectedTip=constrained.tip+(Math.min(constrained.tip,470-305)-constrained.tip)*(s.gate_retraction || 0);
   tip = tipAtPathDistance(selectedTip);
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);
+  const macroUnit=s.units?.indexOf(s.unit) ?? 0;
+  const macroParams=s.configuration?.parameters?.[macroUnit] || {};
+  $('scene-macros').innerHTML=[['purge_macro','Purge macro'],['form_tip_macro','Tip-forming macro']].map(([key,label])=>{
+    const name=macroParams[key];
+    const link=offline ? '' : `role="button" tabindex="0" data-parameter="${key}" data-unit="${macroUnit}" aria-label="Edit ${label}"`;
+    return `<div class="macro-label">${label}</div><span class="macro-name" ${link}>${escape(name === undefined ? 'Not recorded' : name || 'None')}</span>`;
+  }).join('');
   const warningBox = $('filament-warning');
   warningBox.hidden = !constrained.warnings.length;
   $('filament-warning-message').textContent = constrained.warnings.length
-    ? 'Filament position conflicts with sensor readings: '+constrained.warnings.join('; ') : '';
+    ? 'Displayed tip adjusted to sensor readings: '+constrained.warnings.join('; ') : '';
   $("filament").setAttribute(
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
@@ -607,7 +615,7 @@ function draw() {
     svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" font-weight="700" fill="var(--scene-text, #304c65)">${index}</text></g>`;
   }
   svg += '</g>';
-  const shapedTip = (position, color, part) => {
+  const shapedTip = (position, color, part, hairLength=s.hair_lengths?.[gate] ?? 15) => {
     const hairScale = tipScale;
     const along = distance => distance <= length ? tube.getPointAtLength(distance)
       : {x:260,y:Math.min(nozzleExit,450+distance-length)};
@@ -615,10 +623,10 @@ function draw() {
     const center=progress(position)*length;
     const base = along(Math.max(0,center-tipScale)), nose = along(center+tipScale);
     const angle = Math.atan2(nose.y-base.y,nose.x-base.x), dx = -Math.sin(angle)*3.5, dy = Math.cos(angle)*3.5;
-    // Overlap the cone slightly to avoid a visible seam, then taper over 15mm.
+    // Overlap the cone slightly, then taper the surviving hair.
     const hairStart = center+tipScale;
     const hairLimit=progress(end-(s.filament?.residual_mm || 0))*length;
-    const hair = Array.from({length:32},(_,i)=>along(Math.min(hairLimit,hairStart+(-.4+15.4*i/31)*hairScale)));
+    const hair = Array.from({length:32},(_,i)=>along(Math.min(hairLimit,hairStart+(-.4+(hairLength+.4)*i/31)*hairScale)));
     const sides = [1,-1].map(side=>hair.map((p,i)=>{
       const before=hair[Math.max(0,i-1)], after=hair[Math.min(hair.length-1,i+1)];
       const tangent=Math.atan2(after.y-before.y,after.x-before.x);
@@ -661,7 +669,7 @@ function draw() {
     const pt = sensorPoint(name, d);
     const short = name.split(':').at(-1);
     const sensorLabel = /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
-    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${short === 'extruder' ? '' : escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
     if (sensorPulse?.sensor === name) {
       const elapsed = (performance.now() - sensorPulse.start) / 650;
       if (elapsed >= 0 && elapsed < 1) {
@@ -721,7 +729,7 @@ function draw() {
     const bottom = tube.getPointAtLength(Math.max(progress(segment.start)*length,progress(segment.end)*length-(segment.tip_shape === 'cone' ? tipScale : 0))).y;
     const cutLength = Math.max(0, segment.end-segment.start);
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${bottom}" fill="none" stroke="#${segment.color}" stroke-width="7"/>${cutLength > .01 ? `<text id="cut-fragment-length" x="192" y="${(top+bottom)/2}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="var(--scene-muted, #6e8190)">Cut fragment ${cutLength.toFixed(1)}mm</text>` : ''}`;
-    if (segment.tip_shape === 'cone') svg += shapedTip(coneTip,segment.color,'fragment-tip');
+    if (segment.tip_shape === 'cone') svg += shapedTip(coneTip,segment.color,'fragment-tip',segment.hair_length ?? 15);
   } else if (fragment > 0 && !Object.hasOwn(s, 'retained_segment')) {
     const top = tube.getPointAtLength(progress(end-residual-fragment)*length).y;
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${residualTop}" fill="none" stroke="#${retainedColor}" stroke-width="7"/>`;
@@ -795,8 +803,7 @@ function draw() {
     const title=gap.parentNode.querySelector('.reference-title');
     gap.setAttribute('x',336+title.getComputedTextLength()/2);
   }
-  const gearY = tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y;
-  const bodyTop = gearY - 19 - 2 * (.27 * length / (end-entry));
+  const bodyTop = 181; // Fixed 254-unit housing, ending at y=435.
   $("extruder-body").setAttribute('d', `M250 ${bodyTop} H242 Q240 ${bodyTop} 240 ${bodyTop+2} V435 H280 V${bodyTop+2} Q280 ${bodyTop} 278 ${bodyTop} H270`);
   $("sensors").replaceChildren(
     ...unitSensors.map(([name, d]) => {

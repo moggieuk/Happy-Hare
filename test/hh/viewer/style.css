@@ -281,6 +281,7 @@ h2[data-tooltip] { position: relative; width: fit-content; cursor: help; }
   justify-content: center;
 }
 .transport-icon { width: 22px; height: 22px; fill: currentColor; }
+.transport-outline path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
 
 /* Type labels stay readable independently of the selected-row background. */
 .trace-type {
@@ -375,7 +376,13 @@ button.sensor-chip:disabled { cursor: default; }
 #toolchange-ticks span { position: absolute; width: 2px; height: 10px; background: #63778a; transform: translateX(-50%); }
 [data-theme="dark"] #toolchange-ticks span { background: #9bafbf; }
 
-#filament-warning { position: absolute; z-index: 2; top: 34px; left: 14px; width: 220px; max-width: 32%; box-sizing: border-box; padding: 12px 12px 10px 16px; border: 1px solid #c48b27; border-radius: 6px; background: #fff4d9; color: #65430e; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.scene-annotations { position: absolute; z-index: 2; top: 34px; left: 14px; width: 220px; max-width: 27%; display: grid; gap: 14px; }
+#scene-macros { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#scene-macros .macro-label { opacity: .65; }
+#scene-macros .macro-name { display: block; margin-bottom: 10px; }
+#scene-macros [data-parameter] { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+#scene-macros [data-parameter]:hover { text-decoration-style: solid; }
+#filament-warning { position: relative; box-sizing: border-box; padding: 12px 12px 10px 16px; border: 1px solid #c48b27; border-radius: 6px; background: #fff4d9; color: #65430e; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 #filament-warning[hidden] { display: none; }
 .warning-bang { position: absolute; top: -11px; left: -11px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e6a23c; color: #172431; font-size: 17px; font-weight: 700; }
 [data-theme="dark"] #filament-warning { background: #30291c; color: #f2ce8b; }

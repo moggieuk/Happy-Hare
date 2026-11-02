@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -379,18 +379,18 @@ test('device stack collapses absent sensors and keeps signed encoder ordering',(
  assert.deepEqual(gateDevicePositions(state,[]),{});
 });
 
-test('presence constraints stop forward travel at clear sensors and hold conflicting retractions',()=>{
+test('presence constraints use sensor boundaries without freezing at the previous tip',()=>{
  const sensor={name:'exit',position:20,state:false};
- assert.equal(constrainFilament(30,10,null,[sensor]).tip,19);
- assert.ok(constrainFilament(30,10,null,[sensor]).warnings.length);
- assert.equal(constrainFilament(30,null,null,[sensor]).tip,19);
- assert.equal(constrainFilament(10,30,null,[{...sensor,state:true}]).tip,30);
- assert.equal(constrainFilament(10,null,null,[{...sensor,state:true}]).tip,20);
- assert.equal(constrainFilament(30,10,null,[{...sensor,enabled:false}]).tip,30);
- assert.equal(constrainFilament(30,10,null,[{...sensor,state:null}]).tip,30);
- assert.equal(constrainFilament(10,30,null,[{...sensor,state:true}],[{start:15,end:25}]).tip,10);
- assert.equal(constrainFilament(30,10,25,[sensor]).tip,30);
- assert.equal(constrainFilament(19,10,null,[sensor],[],['exit mismatch']).tip,19);
+ assert.equal(constrainFilament(30,null,[sensor]).tip,20);
+ assert.ok(constrainFilament(30,null,[sensor]).warnings.length);
+ assert.equal(constrainFilament(30,null,[sensor]).tip,20);
+ assert.equal(constrainFilament(10,null,[{...sensor,state:true}]).tip,20);
+ assert.equal(constrainFilament(10,null,[{...sensor,state:true}]).tip,20);
+ assert.equal(constrainFilament(30,null,[{...sensor,enabled:false}]).tip,30);
+ assert.equal(constrainFilament(30,null,[{...sensor,state:null}]).tip,30);
+ assert.equal(constrainFilament(10,null,[{...sensor,state:true}],[{start:15,end:25}]).tip,10);
+ assert.equal(constrainFilament(30,25,[sensor]).tip,30);
+ assert.equal(constrainFilament(19,null,[sensor],[],['exit mismatch']).tip,19);
 });
 
 test('excess filament distinguishes signed tension and compression', () => {
@@ -626,4 +626,43 @@ test('piston and filament share acceleration and exact movement endpoints',()=>{
  }
  assert.ok(playbackFrame(e,ms/4,ms).state.devices['unit0:buffer'].travel<3);
  assert.equal(playbackFrame(e,ms,ms).state.devices['unit0:buffer'].travel,6);
+});
+
+test('a lone shared exit uses the straight section for long parking distances',()=>{
+ const sensors=[['unit0:mmu_shared_exit',{position:10}]];
+ const state={gate:0,unit:'unit0',devices:{},encoder_reference:{endstop:'mmu_shared_exit',parking:-25}};
+ assert.deepEqual(gateDevicePositions(state,sensors),{sharedExit:260});
+ state.encoder_reference.parking=-62.5;
+ assert.deepEqual(gateDevicePositions(state,sensors),{sharedExit:210});
+ state.encoder_reference.parking=-250;
+ assert.deepEqual(gateDevicePositions(state,sensors),{sharedExit:160});
+ state.devices['unit0:encoder']={};state.encoder_reference.offset=20;
+ assert.deepEqual(gateDevicePositions(state,sensors),{sharedExit:192,encoder:160});
+});
+
+test('extruder height stays fixed while the entry sensor has a separate visual gap',()=>{
+ const state={layout:{extruder_gears:700,nozzle:785.1},sensors:{'default:extruder':{position:683.4}},active_sensors:['default:extruder']};
+ assert.deepEqual(toolheadDrawingRange(state),{entry:700,end:785.1,height:244,sensorEntry:683.4,sensorGap:35});
+ state.layout.nozzle=740;state.sensors['default:extruder'].position=690;
+ assert.equal(toolheadDrawingRange(state).height,244);
+ assert.equal(toolheadDrawingRange(state).sensorGap,35);
+ state.active_sensors=[];
+ assert.equal(toolheadDrawingRange(state).sensorGap,0);
+ assert.equal(toolheadDrawingRange(state).height,244);
+});
+
+test('toolhead sensor clearance preserves fixed endpoints and proportional spacing beyond it',()=>{
+ const state={layout:{extruder_gears:700,nozzle:785},sensors:{'default:toolhead':{position:702}}};
+ assert.equal(toolheadProgress(state,700),0);
+ assert.equal(toolheadProgress(state,785),1);
+ assert.equal(toolheadProgress(state,702)*244,34);
+ assert.ok(toolheadProgress(state,710)>toolheadProgress(state,702));
+ state.sensors['default:toolhead'].position=740;
+ assert.equal(toolheadProgress(state,740),40/85);
+});
+
+test('triggered sensors silently advance the visual tip but conflicting sensors still warn',()=>{
+ const triggered={name:'extruder',position:20,state:true};
+ assert.deepEqual(constrainFilament(10,null,[triggered]),{tip:20,warnings:[]});
+ assert.ok(constrainFilament(10,null,[triggered,{name:'exit',position:15,state:false}]).warnings.includes('Presence sensors disagree'));
 });
