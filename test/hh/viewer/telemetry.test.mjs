@@ -62,7 +62,7 @@ test('G1 purge changes residual from old to new colour without a release event',
  assert.equal(retract.state.purge_base_mm,retract.state.extruded_mm);
  const before=retract.state.extruded_mm;
  move(r,2,{source:'mmu_gcode'});
- assert.equal(r.events.at(-1).state.extruded_mm,before+2);
+ assert.equal(r.events.at(-1).state.extruded_mm,before);
 });
 test('free gear motion cannot create excess bowden compression',()=>{
  const r=stream(3);move(r,5,{motor_mode:'gear',motors:['gear']});
@@ -203,7 +203,7 @@ test('in-move bookkeeping cannot attach future sensor readings to the preceding 
   assert.ok(Math.abs(e.state.extruded_mm-2)<1e-8);
   assert.ok(interpolate(e,.5).extruded_mm>.9);
   move(r,-5,{source:'mmu_gcode'});move(r,5,{source:'mmu_gcode'});
-  assert.ok(Math.abs(r.snapshot().extruded_mm-4)<1e-8);
+  assert.ok(Math.abs(r.snapshot().extruded_mm-2)<1e-8);
  });
 for (const fragment of [false,true]) test(`UNLOADED resets the tip without hiding sensor contradictions (fragment: ${fragment})`,()=>{
  const r=stream(6),m=r.facts.printer.mmu,u=r.facts.printer.mmu_machine.units[m.unit];
@@ -419,8 +419,12 @@ test('manual extrusion after completed purge contacts residual and emits the set
  const first=move(r,2,{source:'mmu_gcode'});
  move(r,-2,{source:'mmu_gcode'});
  const next=move(r,1,{source:'mmu_gcode'});
- assert.equal(next.purge_approach_mm,0);
- assert.equal(next.state.extruded_mm-first.state.extruded_mm,1);
+ assert.equal(next.purge_approach_mm,1);
+ assert.equal(next.state.extruded_mm,first.state.extruded_mm);
+ move(r,1,{source:'mmu_gcode'});
+ const resumed=move(r,1,{source:'mmu_gcode'});
+ assert.equal(resumed.purge_approach_mm,0);
+ assert.equal(resumed.state.extruded_mm-first.state.extruded_mm,1);
  assert.ok(next.state.tips[0]<next.state.layout.nozzle);
  assert.equal(purgeOutletColor(next.state,2.5),'ff0000');
  assert.equal(purgeOutletColor(next.state,1),'0000ff');
@@ -524,4 +528,22 @@ test('move outcome sensor correction is animated without changing modeled travel
  assert.equal(e.state.tips[0],position-4);
  for(let i=1;i<frames.length;i++) assert.ok(frames[i].state.visual_tips[0]>frames[i-1].state.visual_tips[0]);
  assert.ok(Math.abs(playbackFrame(e,999.99,1000).state.visual_tips[0]-position)<.01);
+});
+
+
+test('cut accounting includes residual and prior retract, then reconciles reported fragment length',()=>{
+ const r=stream(),nozzle=r.snapshot().layout.nozzle;
+ r.tips[0]=nozzle;
+ move(r,-2,{source:'mmu_gcode'});
+ assert.equal(r.tips[0],nozzle-4);
+ move(r,-28.5,{source:'mmu_gcode'});
+ event(r,'cut',{blade_pos:37.5});
+ const fragment=r.snapshot().retained_segment;
+ assert.equal(fragment.end-fragment.start,5);
+ const unit=r.facts.printer.mmu.unit;
+ event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder','filament_remaining'],value:4.999375}]});
+ const reconciled=r.snapshot().retained_segment;
+ assert.ok(Math.abs(reconciled.end-reconciled.start-4.999375)<1e-8);
+ event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder','filament_remaining'],value:0}]});
+ assert.deepEqual(r.snapshot().retained_segment,reconciled);
 });

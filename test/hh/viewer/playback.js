@@ -646,7 +646,7 @@ export function toolheadDrawingRange(state) {
     (!state.active_sensors || state.active_sensors.includes(name)) &&
     name.split(':').at(-1) === 'extruder' && Number.isFinite(sensor.position) && sensor.position < entry);
   return {entry,end:state.layout.nozzle ?? (state.layout.toolhead ?? 760)+30,
-    height:244,sensorEntry:sensor?.[1].position ?? entry,sensorGap:sensor ? 35 : 0};
+    height:243,sensorEntry:sensor?.[1].position ?? entry,sensorGap:sensor ? 35 : 0};
 }
 
 // Reserve a 10-unit visible gap between the 19-unit gear and 5-unit sensor.
