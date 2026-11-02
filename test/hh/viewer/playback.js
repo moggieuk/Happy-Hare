@@ -7,12 +7,15 @@ export function interpolate(event, fraction) {
   const hasMotorMode = event.kind === 'movement' && Boolean(motorMode);
   if (fraction <= 0) return hasMotorMode ? {...a, synced} : a;
   if (event.kind === 'gate_changed') {
-    const eased = fraction*fraction*(3-2*fraction);
+    const selection=Math.max(0,Math.min(1,(fraction-.25)/.5));
+    const eased = selection*selection*(3-2*selection);
     const state = structuredClone(fraction < .5 ? a : b);
     const from = a.gate >= 0 ? a.gate : b.gate;
     const to = b.gate >= 0 ? b.gate : a.gate;
     state.gate_focus = from+(to-from)*eased;
-    state.gate_path_opacity = Math.abs(2*fraction-1);
+    state.gate_path_opacity = Math.abs(2*selection-1);
+    const retract=fraction < .25 ? fraction/.25 : fraction > .75 ? (1-fraction)/.25 : 1;
+    state.gate_retraction=retract*retract*(3-2*retract);
     return state;
   }
   if (event.kind === 'cut') return fraction < .4 ? a : b;
@@ -20,6 +23,8 @@ export function interpolate(event, fraction) {
   const s = structuredClone(a);
   if (hasMotorMode) s.synced = synced;
   s.tip_shapes = b.tip_shapes || a.tip_shapes;
+  if (a.tip_shapes?.[b.gate] === 'square' && b.tip_shapes?.[b.gate] === 'cone'
+      && b.tips[b.gate] < a.tips[b.gate]) s.cone_edge_opacity=fraction;
   // Older captures flagged the successful reverse-home endpoint as a clear-sensor conflict.
   const reverseHome = event.homing && event.homed && (event.distance ?? event.requested) < 0;
   s.sensor_conflicts = (b.sensor_conflicts || []).filter(warning =>
@@ -30,9 +35,16 @@ export function interpolate(event, fraction) {
     s.tips = a.tips.map((tip, i) => {
       const delta = i === b.gate && event.filament_travel_mm != null ? event.filament_travel_mm
         : event.raw_state.tips[i] - event.raw_before.tips[i];
-      const candidate = tip + delta * fraction;
+      const takeup=i === b.gate ? event.buffer_takeup_mm || 0 : 0;
+      const candidate = tip + (takeup && delta < 0 ? Math.min(0,delta*fraction+takeup) : delta*fraction);
       return delta >= 0 ? Math.min(candidate, b.tips[i]) : Math.max(candidate, b.tips[i]);
     });
+  }
+  const gate=b.gate;
+  if (a.tip_shapes?.[gate] === 'cone' && b.tip_shapes?.[gate] === 'square'
+      && b.tips[gate] >= b.layout.nozzle-.001) {
+    s.tip_shapes=[...s.tip_shapes];
+    s.tip_shapes[gate]='cone';
   }
   if (a.retained_segment) {
     const segment = a.retained_segment;
@@ -60,6 +72,11 @@ export function interpolate(event, fraction) {
   }
   s.purge_transition = b.purge_transition || a.purge_transition;
   s.nozzle_color = purgeColor(s, s.extruded_mm);
+  s.nozzle_outlet_color = purgeOutletColor(s,s.extruded_mm);
+  if ((emitted <= 0 || a.nozzle_outlet_color === b.nozzle_outlet_color) && a.nozzle_outlet_color && b.nozzle_outlet_color) {
+    s.nozzle_outlet_color=purgeColor({purge_transition:{start_mm:0,retained_mm:1,mix_mm:1,
+      old_color:a.nozzle_outlet_color,new_color:b.nozzle_outlet_color}},fraction);
+  }
   for (const [name,value] of Object.entries(b.motors)) s.motors[name]=mix(a.motors[name]||0,value);
   const contact=event.buffer_contact_fraction;
   const bufferFraction=contact == null ? fraction : Math.max(0,Math.min(1,(fraction-contact)/Math.max(1e-9,1-contact)));
@@ -134,13 +151,41 @@ export function constrainFilament(tip, previousTip, tail, sensors, fragments = [
   return {tip:result, warnings:[...new Set(warnings)]};
 }
 
+// Approximate each discrete move from rest; recorded distances remain authoritative.
+function motionProfile(event) {
+  const distance=Math.abs(event.distance ?? 0), speed=event.speed, acceleration=event.acceleration;
+  if (event.kind !== 'movement' || !Number.isFinite(distance) || distance <= 0
+      || !Number.isFinite(speed) || speed <= 0 || !Number.isFinite(acceleration) || acceleration <= 0) return null;
+  const stopAtSensor=Boolean(event.homing && event.homed);
+  const ramps=stopAtSensor ? 1 : 2;
+  const peak=Math.min(speed,Math.sqrt(2*acceleration*distance/ramps));
+  const rampTime=peak/acceleration, rampDistance=peak*rampTime/2;
+  const cruiseTime=Math.max(0,(distance-ramps*rampDistance)/peak);
+  return {distance,acceleration,peak,rampTime,rampDistance,cruiseTime,
+    seconds:ramps*rampTime+cruiseTime};
+}
+
+export function motionFraction(event, timeFraction) {
+  if (timeFraction <= 0) return 0;
+  if (timeFraction >= 1) return 1;
+  const profile=motionProfile(event);
+  if (!profile) return timeFraction;
+  const {distance,acceleration,peak,rampTime,rampDistance,cruiseTime,seconds}=profile;
+  const time=timeFraction*seconds;
+  const travelled=time < rampTime ? acceleration*time*time/2
+    : time < rampTime+cruiseTime ? rampDistance+peak*(time-rampTime)
+    : distance-acceleration*(seconds-time)**2/2;
+  return Math.max(0,Math.min(1,travelled/distance));
+}
+
 export function duration(event, compressBowden = false) {
   if (event.kind === 'gate_changed') return 1200;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
   // Use resolved feed speed, not console pacing or time spent waiting for sensors.
-  let seconds = event.speed > 0 && travel > 0 ? travel/event.speed : event.duration || travel/100;
+  let seconds = motionProfile(event)?.seconds
+    ?? (event.speed > 0 && travel > 0 ? travel/event.speed : event.duration || travel/100);
   if (compressBowden && event.fast_bowden && !event.homing && event.before && travel > 0) {
     const a=event.before, b=event.state, entry=a.layout.extruder_entry ?? 700;
     const extruderSpan=(a.layout.toolhead ?? 760)+30-entry;
@@ -333,9 +378,21 @@ export function encoderFilamentDistance(events, event, state, tip, pathDistance,
 }
 
 // Keep schematic parking and switch homing on the same continuous path.
-export function switchFilamentDistance(tip, home, parking, entry, sensorDistance, pathDistance) {
+export function switchFilamentDistance(tip, home, parking, entry, sensorDistance, pathDistance, encoder = null) {
   const knots = [[home,sensorDistance],[entry,pathDistance(entry)]];
-  if (parking && home+parking < entry) knots.push([home+parking,sensorDistance+Math.sign(parking)*8]);
+  if (encoder && encoder.position !== home && encoder.position < entry) knots.push([encoder.position,encoder.distance]);
+  if (parking && home+parking < entry) {
+    const parked=home+parking;
+    let distance=sensorDistance+Math.sign(parking)*(8+24*gateSpacingScale(parking));
+    for (const [position, landmark] of knots) {
+      if (parked < position) distance=Math.min(distance,landmark-8);
+      else if (parked > position) distance=Math.max(distance,landmark+8);
+      else distance=landmark;
+    }
+    knots.push([parked,distance]);
+  }
+  // A parked tip can coincide with the encoder.
+  for (let i=knots.length-1;i>0;i--) if (knots.slice(0,i).some(k=>k[0]===knots[i][0])) knots.splice(i,1);
   knots.sort((a,b)=>a[0]-b[0]);
   if (tip >= entry) return pathDistance(tip);
   let index=knots.findIndex(([position])=>position>=tip);
@@ -358,7 +415,11 @@ export function encoderReference(state, sensors) {
   return sensor && Number.isFinite(offset) ? {name:sensor[0], offset} : null;
 }
 
-// Compact configured devices in filament-travel order, starting above the MMU.
+function gateSpacingScale(distance) {
+  return Number.isFinite(distance) ? Math.max(0,Math.min(1,(Math.abs(distance)-25)/75)) : 0;
+}
+
+// Expand the ordered stack for long offsets, keeping every device below the curve.
 export function gateDevicePositions(state, sensors) {
   const short = name => name.split(':').at(-1);
   const hasExit = sensors.some(([name,d]) => Number.isFinite(d.position) &&
@@ -371,15 +432,33 @@ export function gateDevicePositions(state, sensors) {
     const index = reference ? devices.indexOf(target)+(reference.offset < 0 ? 0 : 1) : 0;
     devices.splice(index,0,'encoder');
   }
-  return Object.fromEntries(devices.map((device,index) => [device,260-index*32]));
+  const extra=devices.map(()=>0);
+  const reference=encoderReference(state,sensors);
+  const params=state.configuration?.parameters?.[state.units?.indexOf(state.unit) ?? 0] || {};
+  const endstop=state.encoder_reference?.endstop ?? params.gate_homing_endstop ?? '';
+  const target=endstop.includes('shared_exit') ? 'sharedExit' : endstop.includes('exit') ? 'exit' : 'encoder';
+  const homeIndex=devices.indexOf(target);
+  if (homeIndex >= 0) extra[homeIndex]+=36*gateSpacingScale(state.encoder_reference?.parking ?? params.gate_parking_distance);
+  if (reference && devices.includes('encoder')) {
+    const refDevice=reference.name.includes('shared_exit') ? 'sharedExit' : 'exit';
+    extra[Math.max(devices.indexOf(refDevice),devices.indexOf('encoder'))]+=36*gateSpacingScale(reference.offset);
+  }
+  const total=extra.reduce((sum,value)=>sum+value,0);
+  const scale=total ? Math.min(1,(100-Math.max(0,devices.length-1)*32)/total) : 1;
+  let y=260;
+  return Object.fromEntries(devices.map((device,index)=>{
+    y-=(index ? 32 : 0)+extra[index]*scale;
+    return [device,y];
+  }));
 }
 
 export function lastEncoderReading(events, current, unit) {
   const index = events.findIndex(event => event === current || (current?.seq != null && event.seq === current.seq));
   for (let i = index; i >= 0; --i) {
     const event = events[i];
-    const value = event.state?.devices?.[`${unit}:encoder`]?.encoder_pos;
-    if (event.state?.unit === unit && Number.isFinite(value)) return value;
+    const state = event.settled_state || event.state;
+    const value = state?.devices?.[`${unit}:encoder`]?.encoder_pos;
+    if (state?.unit === unit && Number.isFinite(value)) return value;
   }
   return null;
 }
@@ -394,6 +473,14 @@ export function purgeColor(state, deposited) {
   fraction = fraction*fraction*(3-2*fraction);
   return [0,2,4].map(i=>Math.round(parseInt(plan.old_color.slice(i,i+2),16)*(1-fraction)
     +parseInt(plan.new_color.slice(i,i+2),16)*fraction).toString(16).padStart(2,'0')).join('');
+}
+
+// The material below the zero reference changes only after the new front arrives.
+export function purgeOutletColor(state, deposited) {
+  const plan=state.purge_transition;
+  if (!plan) return purgeColor(state,deposited);
+  if (Number.isFinite(plan.settled_mm) && deposited > plan.settled_mm) return plan.new_color;
+  return purgeColor({...state,purge_transition:{...plan,retained_mm:plan.retained_mm+plan.mix_mm}},deposited);
 }
 
 // Equal volume of round 1.75mm feedstock and a round nozzle-sized strand.
@@ -415,7 +502,7 @@ export function purgeCoils(state, nozzleDiameter = .4) {
     const height=layer*pitch, y=498-height, radius=23-height*1.75/3.2;
     const bend=pitch/3.2;
     coils.push({path:`M260,${y} C${260-radius},${y-5*bend} ${260-radius},${y+5*bend} 260,${y+2*bend} S${260+radius*1.6},${y-3*bend} 260,${y-3*bend}`,
-      fraction: Math.min(1,layers-layer), color:purgeColor(state,base+(1.2+layer*28.8/capacity)/ratio)});
+      fraction: Math.min(1,layers-layer), color:purgeOutletColor(state,base+(1.2+layer*28.8/capacity)/ratio)});
   }
   return {amount, layers, pitch, coils, drop:state.purge_drop ?? Math.max(0,(amount-30)/6)};
 }
@@ -489,4 +576,32 @@ export function visibleSteps(records) {
     }
   }
   return steps;
+}
+
+
+// Finish color mixing after motion stops, without adding filament travel.
+export function playbackFrame(event, elapsed, movementMs) {
+  const fraction=motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
+  let state=interpolate(event,fraction);
+  if (event.purge_settle && elapsed >= movementMs) {
+    const blend=Math.max(0,Math.min(1,(elapsed-movementMs)/350));
+    const color=purgeColor({purge_transition:{start_mm:0,retained_mm:1,mix_mm:1,
+      old_color:event.purge_settle.from,new_color:event.purge_settle.to}},blend);
+    state={...state,nozzle_outlet_color:color};
+  }
+  const gate=event.state.gate, start=event.before?.tips[gate], nozzle=event.state.layout?.nozzle;
+  if (event.before?.tip_shapes?.[gate] === 'cone' && start < nozzle && event.state.tips[gate] >= nozzle-.001) {
+    const travel=event.raw_before && event.raw_state && !event.homing_anchor
+      ? event.filament_travel_mm ?? event.raw_state.tips[gate]-event.raw_before.tips[gate]
+      : event.state.tips[gate]-start;
+    const arrival=Math.min(1,(nozzle-start)/travel);
+    let low=0,high=1;
+    for(let i=0;i<24;i++) {
+      const mid=(low+high)/2;
+      if(motionFraction(event,mid)<arrival) low=mid; else high=mid;
+    }
+    const fade=Math.max(0,Math.min(1,(elapsed-high*movementMs)/350));
+    state={...state,cone_edge_opacity:1-fade};
+  }
+  return {state,fraction};
 }

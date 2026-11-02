@@ -151,15 +151,13 @@ class TestAfterExtruderToolheadSensor(AfterExtruderGoldenCase):
         ('Unloading extruder', -19.3, 'extruder', None),
         ('Fast unloading move through bowden', -660.0, None, None),
         ('Unloading step #1 from encoder', -15.0, None, None),
-        ('Unloading step #2 from encoder', -15.0, None, None),
-        ('Unloading step #3 from encoder', -15.0, None, None),
-        ('Final parking', -18.77, None, None),
+        ('Final parking', -17.79, None, None),
     ]
-    UNLOAD_DRIVE_POS = -808.87
+    UNLOAD_DRIVE_POS = -777.89
     LOAD_MOVES = [
         ('Initial load into encoder', 100.0, None, None),
         # The real 1mm unsynced rip now contributes one 0.98mm encoder pulse.
-        ('Fast loading move through bowden', 603.64, None, None),
+        ('Fast loading move through bowden', 602.66, None, None),
         ('Homing to toolhead sensor', 60.0, 'gear+extruder', 'toolhead'),
         ('Loading filament to nozzle', 68.8, 'gear+extruder', None),
     ]

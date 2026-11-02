@@ -1,5 +1,5 @@
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import { switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay gives HTML and SVG tooltips the same delay and avoids clipping.
@@ -493,16 +493,21 @@ function draw() {
   $("timeline").value = live ? events.indexOf(e) : cursor;
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
   const path =
-    "M620 470 L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 445";
+    "M620 470 L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 450";
   const dimensionLink = label => {
     const id = dimensionParameter(s, label);
     return id && !offline ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
   };
   const nozzleDiameter = Number($("nozzle-diameter").value);
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
-  const nozzleFunnel = `M256.5 445 L${260-nozzleWidth/2} 455 H${260+nozzleWidth/2} L263.5 445 Z`;
-  const bowdenPath = path.replace("L260 445", "L260 435");
-  let svg = `<rect x="530" y="275" width="180" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="542" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="M242 435 L${259-nozzleWidth/2} 455 H${261+nozzleWidth/2} L278 435 Z" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path d="M260 435 V445" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  // Match the 2mm tip cone, truncated at the selected outlet diameter.
+  const pathMeasure=document.createElementNS('http://www.w3.org/2000/svg','path');
+  pathMeasure.setAttribute('d',path);
+  const funnelShoulder=450+2*.27*pathMeasure.getTotalLength()/(end-entry)*(1-nozzleWidth/7);
+  const nozzleExit=Math.max(455,funnelShoulder+1);
+  const nozzleFunnel = `M256.5 450 L${260-nozzleWidth/2} ${funnelShoulder} V${nozzleExit} H${260+nozzleWidth/2} V${funnelShoulder} L263.5 450 Z`;
+  const bowdenPath = path.replace("L260 450", "L260 435");
+  let svg = `<rect x="530" y="275" width="180" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="542" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="M242 435 L${259-nozzleWidth/2} ${nozzleExit} H${261+nozzleWidth/2} L278 435 Z" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path d="M260 435 V450" stroke="var(--scene-tube, #edf4f8)" stroke-width="7"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -551,12 +556,15 @@ function draw() {
       [endstop,`${endstop}_${gate}`].includes(name.split(':').at(-1)));
     if (sensor) {
       schematicDistance = position => switchFilamentDistance(position,sensor[1].position,
-        s.encoder_reference?.parking || 0,entry,470-sensorPoint(...sensor).y,p=>progress(p)*length);
+        s.encoder_reference?.parking || 0,entry,470-sensorPoint(...sensor).y,p=>progress(p)*length,
+        encoderAnchor?.name === sensor[0] && s.devices?.[`${s.unit}:encoder`]
+          ? {position:sensor[1].position+encoderAnchor.offset,distance:470-encoderPoint().y} : null);
       schematicTip = schematicDistance(tip);
       tip = tipAtPathDistance(schematicTip);
     }
   }
-  const coneOffset = s.tip_shapes?.[gate] === 'cone' ? 2 : 0;
+  const tipScale = .27*length/(end-entry);
+  const coneOffset = s.tip_shapes?.[gate] === 'cone' ? tipScale : 0;
   const pathDistance = position => progress(position)*length;
   const presenceSensors = unitSensors.filter(([name,d]) => !isBufferSensor(name) &&
     !name.includes('encoder') && d.position !== null).map(([name,d]) => {
@@ -569,8 +577,10 @@ function draw() {
   const previousTip = e.kind === 'movement' && e.before ? schematicDistance(e.before.tips[gate]) : null;
   const constrained = constrainFilament(schematicTip ?? pathDistance(tip), previousTip,
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
-  tip = tipAtPathDistance(constrained.tip);
-  const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = coneOffset ? pathDistance(tip-coneOffset) : constrained.tip;
+  // Selection choreography stays above the MMU gears and never changes telemetry positions.
+  const selectedTip=constrained.tip+(Math.min(constrained.tip,470-305)-constrained.tip)*(s.gate_retraction || 0);
+  tip = tipAtPathDistance(selectedTip);
+  const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);
   const warningBox = $('filament-warning');
   warningBox.hidden = !constrained.warnings.length;
   $('filament-warning-message').textContent = constrained.warnings.length
@@ -598,14 +608,17 @@ function draw() {
   }
   svg += '</g>';
   const shapedTip = (position, color, part) => {
-    const point = p => tube.getPointAtLength(progress(Math.min(p,end))*length);
-    const base = point(position-2), nose = point(position+1);
+    const hairScale = tipScale;
+    const along = distance => distance <= length ? tube.getPointAtLength(distance)
+      : {x:260,y:Math.min(nozzleExit,450+distance-length)};
+    // Keep the cone at toolhead scale even along the compressed Bowden.
+    const center=progress(position)*length;
+    const base = along(Math.max(0,center-tipScale)), nose = along(center+tipScale);
     const angle = Math.atan2(nose.y-base.y,nose.x-base.x), dx = -Math.sin(angle)*3.5, dy = Math.cos(angle)*3.5;
     // Overlap the cone slightly to avoid a visible seam, then taper over 15mm.
-    const hairScale = .27*length/(end-entry);
-    const hairStart = progress(Math.min(position+1,end))*length;
-    const hair = Array.from({length:32},(_,i)=>tube.getPointAtLength(
-      Math.min(length,hairStart+(-.4+15.4*i/31)*hairScale)));
+    const hairStart = center+tipScale;
+    const hairLimit=progress(end-(s.filament?.residual_mm || 0))*length;
+    const hair = Array.from({length:32},(_,i)=>along(Math.min(hairLimit,hairStart+(-.4+15.4*i/31)*hairScale)));
     const sides = [1,-1].map(side=>hair.map((p,i)=>{
       const before=hair[Math.max(0,i-1)], after=hair[Math.min(hair.length-1,i+1)];
       const tangent=Math.atan2(after.y-before.y,after.x-before.x);
@@ -613,7 +626,7 @@ function draw() {
       return {x:p.x-side*Math.sin(tangent)*radius,y:p.y+side*Math.cos(tangent)*radius};
     }));
     const outline=[...sides[0],...sides[1].reverse()];
-    return `<g data-part="${part}" opacity="${part === 'attached-tip' ? s.gate_path_opacity ?? 1 : 1}"><path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/><path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/></g>`;
+    return `<g data-part="${part}" opacity="${part === 'attached-tip' ? (s.gate_path_opacity ?? 1) : 1}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${position+1 >= end-(s.filament?.residual_mm || 0) ? `<path data-part="cone-edge" opacity="${s.cone_edge_opacity ?? (s.tip_shapes?.[gate] === 'cone' || part === 'fragment-tip' ? 1 : 0)}" d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy}" fill="none" stroke="color-mix(in srgb, #${color}, black 40%)" stroke-width="0.6"/>` : ''}</g>`;
   };
   const fadeY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150) * length).y;
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
@@ -695,17 +708,17 @@ function draw() {
     }
   }
   const excess = s.bowden_unabsorbed_mm || 0;
-  if (Math.abs(excess) >= .05) svg += `<text id="bowden-excess" x="640" y="${bowdenLengthLabel(s).includes('Uncalibrated') ? 134 : 118}" font-size="10" fill="var(--scene-text, #304c65)"><tspan x="640">Excess filament</tspan><tspan x="640" dy="14">${excessFilamentLabel(excess)}</tspan></text>`;
+  if (Number.isFinite(excess) && excess !== 0) svg += `<text id="bowden-excess" x="640" y="${bowdenLengthLabel(s).includes('Uncalibrated') ? 134 : 118}" font-size="10" fill="var(--scene-text, #304c65)"><tspan x="640">Excess filament</tspan><tspan x="640" dy="14">${excessFilamentLabel(excess)}</tspan></text>`;
   const residual = s.filament?.residual_mm || 0;
   const fragment = s.filament?.fragment_mm || 0;
-  const retainedColor = s.nozzle_color || s.filament?.retained_color || '808182';
+  const retainedColor = s.nozzle_outlet_color || s.filament?.retained_color || '808182';
   const residualTop = tube.getPointAtLength(progress(end-residual)*length).y;
   const nozzleZero = tube.getPointAtLength(progress(end)*length).y;
   if (s.retained_segment && !s.retained_segment.residual_only) {
     const segment = s.retained_segment;
     const top = tube.getPointAtLength(progress(segment.start)*length).y;
     const coneTip = segment.end;
-    const bottom = tube.getPointAtLength(progress(Math.max(segment.start,segment.tip_shape === 'cone' ? coneTip-2 : segment.end))*length).y;
+    const bottom = tube.getPointAtLength(Math.max(progress(segment.start)*length,progress(segment.end)*length-(segment.tip_shape === 'cone' ? tipScale : 0))).y;
     const cutLength = Math.max(0, segment.end-segment.start);
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${bottom}" fill="none" stroke="#${segment.color}" stroke-width="7"/>${cutLength > .01 ? `<text id="cut-fragment-length" x="192" y="${(top+bottom)/2}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="var(--scene-muted, #6e8190)">Cut fragment ${cutLength.toFixed(1)}mm</text>` : ''}`;
     if (segment.tip_shape === 'cone') svg += shapedTip(coneTip,segment.color,'fragment-tip');
@@ -713,9 +726,13 @@ function draw() {
     const top = tube.getPointAtLength(progress(end-residual-fragment)*length).y;
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${residualTop}" fill="none" stroke="#${retainedColor}" stroke-width="7"/>`;
   }
-  if (s.tip_shapes?.[gate] === 'cone') svg += shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip');
   if (residual > 0) {
     svg += `<path id="residual-filament" d="M260 ${residualTop} L260 ${nozzleZero}" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text ${dimensionLink('Residual')} x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${residual}mm</text>`;
+  }
+  // Show the incoming front inside the residual instead of hiding it under a uniform color.
+  if (residual > 0 && tip > end-residual && !s.retained_segment) {
+    const frontY=tube.getPointAtLength(Math.max(progress(end-residual)*length,progress(tip)*length-coneOffset)).y;
+    svg += `<path id="residual-incoming" d="M260 ${residualTop} L260 ${frontY}" fill="none" stroke="#${s.filament?.incoming_color || '808182'}" stroke-width="7"/>`;
   }
   // A cosmetic seam keeps touching cut pieces distinct until the joint reaches the nozzle.
   const cutJoint = s.retained_segment;
@@ -726,7 +743,12 @@ function draw() {
     svg += `<path id="cut-joint-gap" d="M256.5 ${jointY} H263.5" stroke="var(--scene-tube, #edf4f8)" stroke-width="0.75" opacity="${jointOpacity}"/>`;
   }
   if (residual > 0 || tip >= end-.01) {
-    svg += `<path id="nozzle-funnel" d="${nozzleFunnel}" fill="#${retainedColor}"/>`;
+    svg += `<path id="nozzle-funnel" d="${nozzleFunnel}" fill="#${s.nozzle_outlet_color || purgeOutletColor(s,s.extruded_mm || 0)}"/>`;
+  }
+  const plan=s.purge_transition;
+  const meltingTip=tip >= end-.001 && plan && s.extruded_mm < plan.start_mm+plan.retained_mm+plan.mix_mm;
+  if ((s.tip_shapes?.[gate] === 'cone' || meltingTip)) {
+    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="800" height="${nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
   }
   const {amount:coilAmount, layers, pitch, coils, drop} = purgeCoils(s, nozzleDiameter);
   if (coilAmount > 0) {
@@ -736,10 +758,10 @@ function draw() {
       waste += `<path d="${coil.path}" ${reveal} stroke="color-mix(in srgb, #${coil.color}, black 28%)" stroke-width="${nozzleWidth}" transform="translate(0,${nozzleWidth*.1})"/><path data-part="purge-material" d="${coil.path}" ${reveal} stroke="#${coil.color}" stroke-width="${nozzleWidth}"/><path d="${coil.path}" ${reveal} stroke="color-mix(in srgb, #${coil.color}, white 38%)" stroke-width="${nozzleWidth*.2}" transform="translate(0,${-nozzleWidth*.26})"/>`;
     }
     const landing = 498-Math.max(0,layers-1)*pitch;
-    const strandTip = 455+(landing-455)*Math.min(1,coilAmount/1.2);
+    const strandTip = nozzleExit+(landing-nozzleExit)*Math.min(1,coilAmount/1.2);
     const stem = Math.min(strandTip,463);
-    const strand = `M260 455 V${stem}` + (strandTip>stem ? ` C257 ${stem+(strandTip-stem)/3} 264 ${stem+(strandTip-stem)*2/3} 260 ${strandTip}` : '');
-    waste += `<path data-part="purge-stream" d="${strand}" fill="none" stroke="#${purgeColor(s,s.extruded_mm)}" stroke-width="${nozzleWidth}"/>`;
+    const strand = `M260 ${nozzleExit} V${stem}` + (strandTip>stem ? ` C257 ${stem+(strandTip-stem)/3} 264 ${stem+(strandTip-stem)*2/3} 260 ${strandTip}` : '');
+    waste += `<path data-part="purge-stream" d="${strand}" fill="none" stroke="#${purgeOutletColor(s,s.extruded_mm)}" stroke-width="${nozzleWidth}"/>`;
     svg += `<defs><clipPath id="purge-screen"><rect x="210" y="435" width="150" height="70"/></clipPath></defs><g clip-path="url(#purge-screen)"><g id="purge-pile" transform="translate(0,${drop*75})" aria-label="Extruded filament">${waste}</g></g><text x="303" y="491" font-size="10" fill="var(--scene-muted, #6e8190)">${purgeStrandLength(s.extruded_mm, nozzleDiameter).toFixed(1)} mm strand</text>`;
   }
   // Paint cutters last so they remain above attached and retained filament.
@@ -758,6 +780,8 @@ function draw() {
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
   $("scene").innerHTML = svg;
+  const encoderMarker=$("encoder-marker");
+  if (encoderMarker) $("scene").append(encoderMarker);
   const excessLabel = $("bowden-excess");
   if (excessLabel) {
     const bounds = $("bowden-length").getBBox();
@@ -1028,16 +1052,19 @@ function animate(now) {
       if (event) { playing={event,start:now}; followTrace(); }
     }
     if (playing) {
-      const ms=duration(playing.event, $("compress-bowden").checked), f=ms?Math.min(1,(now-playing.start)/ms):1;
-      playing.fraction = playing.reverse ? 1-f : f;
-      displayed=interpolate(playing.event,playing.fraction);
+      const ms=duration(playing.event, $("compress-bowden").checked);
+      const total=ms+(playing.event.purge_settle ? 350 : 0), elapsed=Math.min(total,now-playing.start);
+      const f=total ? elapsed/total : 1;
+      const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms);
+      playing.fraction=frame.fraction;
+      displayed=frame.state;
       if (f===1 && playing.reverse) {
         seek(events.findIndex(e=>e.seq === playing.targetSeq));
       } else if (f===1) {
         const pulse = homingPulse(playing.event);
         if (pulse) sensorPulse = {...pulse, start:now};
         played=playing.event.seq;
-        if (playing.event.kind === 'movement') resumeAt=now+300;
+        if (playing.event.kind === 'movement' && playing.event.source !== 'mmu_gcode') resumeAt=now+300;
         playing=null;
         if (pauseAfterStep || (offline && played >= events.at(-1).seq)) { paused = true; pauseAfterStep = false; }
         followTrace();
