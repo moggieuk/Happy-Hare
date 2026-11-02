@@ -223,3 +223,83 @@ test('legacy recordings do not invent excess without grip evidence',()=>{
  move(r,-28.5,{source:'mmu_gcode'});
  assert.equal(r.snapshot().bowden_unabsorbed_mm,0);
 });
+
+test('compression homing reaches the gears before expanding the buffer',()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const unit=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(unit.buffer,{buffer_maxrange:12,buffer_range:8,buffer_spring_state:'tension',proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);
+ r.tips[0]=r.snapshot().layout.extruder_gears-18;
+ matchPresence(r);
+ for(const [name,s] of Object.entries(r.facts.printer.mmu.sensors)) {
+  if(name.endsWith('filament_compression'))s.triggered=false;
+  if(name.endsWith('filament_tension'))s.triggered=true;
+ }
+ const target=r.facts.printer.mmu.active_sensors.find(n=>n.endsWith(':filament_compression'));
+ const e=move(r,30,{motor_mode:'gear',homing:true,trigger_state:true,endstop:target,outcome:{homed:true,sensors:{[target]:true}}});
+ const key=`${e.state.unit}:buffer`;
+ assert.equal(interpolate(e,.3).devices[key].travel,0);
+ assert.equal(interpolate(e,.6).tips[0],e.state.layout.extruder_gears);
+ assert.equal(interpolate(e,.6).devices[key].travel,0);
+ assert.ok(interpolate(e,.8).devices[key].travel>0);
+ assert.equal(interpolate(e,.8).tips[0],e.state.layout.extruder_gears);
+ assert.equal(e.state.devices[key].travel,10);
+ assert.equal(interpolate(e,.8).sensors[target].state,false);
+ assert.equal(e.state.sensors[target].state,true);
+});
+
+for (const spring of ['tension','none']) test(`free buffer relaxes at filament speed toward ${spring} rest`,()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const u=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(u.buffer,{buffer_maxrange:12,buffer_range:8,buffer_spring_state:spring,proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);const gears=r.snapshot().layout.extruder_gears;
+ r.tips[0]=gears+5;r.bufferPositions[0]=10;matchPresence(r);
+ for(const [n,s] of Object.entries(r.facts.printer.mmu.sensors))if(n.includes('filament_'))s.triggered=false;
+ r.bufferPositions[0]=10;
+ const e=move(r,-8,{motor_mode:'gear+extruder'});const key=`${e.state.unit}:buffer`;
+ assert.equal(interpolate(e,.5).devices[key].travel,10);
+ assert.equal(interpolate(e,.75).devices[key].travel,9);
+ assert.equal(e.state.devices[key].travel,7);
+ const next=move(r,-30,{motor_mode:'gear'});
+ assert.equal(interpolate(next,.5).devices[key].travel,spring==='tension'?0:6);
+ assert.equal(next.state.devices[key].travel,spring==='tension'?0:6);
+});
+
+test('gate-homed notification preserves the clear side of a reverse-home endpoint',()=>{
+ const r=stream(3),m=r.facts.printer.mmu,u=r.facts.printer.mmu_machine.units[m.unit];
+ u.parameters.gate_homing_endstop='mmu_shared_exit';
+ const target=`${m.unit}:mmu_shared_exit`;
+ m.sensors[target]={triggered:true,enabled:true};m.active_sensors.push(target);u.sensors.push(target);
+ r.tips[0]=50;matchPresence(r);
+ const homed=move(r,-40,{motor_mode:'gear',homing:true,trigger_state:false,endstop:target,outcome:{homed:true}});
+ assert.equal(homed.state.tips[0],9.999);
+ event(r,'filament_pos_changed',{filament_pos:1,filament_pos_name:'HOMED AT GATE'});
+ assert.equal(r.events.at(-1).state.tips[0],9.999);
+ assert.equal(r.events.at(-1).state.sensors[target].state,false);
+});
+
+test('triggered compression sensor holds a freed buffer against spring return',()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const u=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(u.buffer,{buffer_maxrange:12,buffer_range:8,buffer_spring_state:'tension',proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);r.tips[0]=r.snapshot().layout.extruder_gears-5;matchPresence(r);
+ const target=r.facts.printer.mmu.active_sensors.find(n=>n.endsWith(':filament_compression'));
+ for(const [n,s] of Object.entries(r.facts.printer.mmu.sensors))if(n.includes('filament_'))s.triggered=n===target;
+ r.bufferPositions[0]=10;
+ const e=move(r,-30,{motor_mode:'gear'}),key=`${e.state.unit}:buffer`;
+ for(const f of [0,.1,.5,1]) {
+  const s=interpolate(e,f);assert.equal(s.devices[key].travel,10);assert.equal(s.sensors[target].state,true);
+ }
+});
+
+test('symbolic MMU sensor spacing cannot block a valid final parking retract',()=>{
+ const r=stream(3),m=r.facts.printer.mmu,u=r.facts.printer.mmu_machine.units[m.unit];
+ u.parameters.gate_homing_endstop='mmu_shared_exit';u.parameters.gate_parking_distance=-100;
+ for(const [n,triggered] of [[`${m.unit}:mmu_shared_exit`,false],['mmu_exit_0',true]]) {
+  m.sensors[n]={triggered,enabled:true};if(!m.active_sensors.includes(n))m.active_sensors.push(n);
+ }
+ r.tips[0]=9.999;
+ const e=move(r,-100,{motor_mode:'gear'});
+ assert.ok(Math.abs(e.state.tips[0]+90.001)<1e-8);
+ assert.deepEqual(e.state.sensor_conflicts,[]);
+});

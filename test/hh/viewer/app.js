@@ -1,5 +1,5 @@
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import { syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay gives HTML and SVG tooltips the same delay and avoids clipping.
@@ -334,7 +334,7 @@ $("apply").onclick = () =>
   });
 const commandHistory = new CommandHistory();
 $("command").addEventListener('keydown', event => {
-  if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
   event.preventDefault();
   const input = event.currentTarget;
@@ -470,6 +470,8 @@ function draw() {
     ? 'M6 4h4v16H6z M14 4h4v16h-4z' : 'M7 4v16l13-8z');
   $("beginning").disabled = $("previous").disabled = currentIndex() <= 0;
   $("next").disabled = currentIndex() >= events.length - 1;
+  $("play-step").disabled = Boolean(running) || $("next").disabled;
+  $("play-previous").disabled = Boolean(running) || $("previous").disabled;
   $("previous-toolchange").disabled = toolchangeIndex(events, currentIndex(), -1) < 0;
   $("next-toolchange").disabled = toolchangeIndex(events, currentIndex(), 1) < 0;
   const e = live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
@@ -534,34 +536,27 @@ function draw() {
     const target = Math.max(0,distance)/length;
     let low = Math.min(-100,(s.layout.mmu_entry ?? -150)-40), high = end;
     for (let i=0;i<32;i++) { const mid=(low+high)/2; if(progress(mid)<target) low=mid; else high=mid; }
-    return (low+high)/2 + (s.tip_shapes?.[gate] === 'cone' ? (s.filament?.residual_mm || 0)+2 : 0);
+    return (low+high)/2;
   };
+  let schematicDistance = position => progress(position)*length;
+  let schematicTip = null;
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
   if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(470-305);
   // Encoder loading keeps one reference across START OF BOWDEN bookkeeping.
   if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry && s.encoder_reference?.endstop === 'encoder') {
     tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,p=>progress(p)*length,470-encoderPoint().y));
-  } else if (s.gate >= 0 && [0,1].includes(s.filament_pos)) {
-    const unit = s.units?.indexOf(s.unit) ?? 0;
-    const params = s.configuration?.parameters?.[unit] || {};
-    const endstop = (s.encoder_reference?.endstop ?? params.gate_homing_endstop ?? '').split(':').at(-1);
-    const sensor = unitSensors.find(([name,d]) => d.position !== null &&
+  } else if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry) {
+    const endstop = s.encoder_reference?.endstop?.split(':').at(-1);
+    const sensor = unitSensors.find(([name,d]) => Number.isFinite(d.position) &&
       [endstop,`${endstop}_${gate}`].includes(name.split(':').at(-1)));
-    const anchor = endstop === 'encoder' ? encoderPoint() : sensor ? sensorPoint(...sensor) : null;
-    if (anchor) {
-      const parking = s.encoder_reference?.parking ?? params.gate_parking_distance ?? 0;
-      const offset = s.filament_pos === 0 ? Math.sign(parking)*8
-        : endstop === 'encoder' ? Math.max(0,s.encoder_reference?.overshoot || 0) : 0;
-      const distance = endstop === 'encoder' && s.filament_pos === 0 ? 470-anchor.y-18 : 470-anchor.y+offset;
-      const anchorEvent = events.findLast(event => event.seq <= e.seq
-        && event.kind !== 'movement' && event.state?.gate === s.gate
-        && event.state?.filament_pos === s.filament_pos);
-      const anchorTip = anchorEvent?.state?.tips[gate] ?? e.before?.tips[gate] ?? tip;
-      const travel = (progress(tip)-progress(anchorTip))*length;
-      tip = tipAtPathDistance(distance + travel);
+    if (sensor) {
+      schematicDistance = position => switchFilamentDistance(position,sensor[1].position,
+        s.encoder_reference?.parking || 0,entry,470-sensorPoint(...sensor).y,p=>progress(p)*length);
+      schematicTip = schematicDistance(tip);
+      tip = tipAtPathDistance(schematicTip);
     }
   }
-  const coneOffset = s.tip_shapes?.[gate] === 'cone' ? (s.filament?.residual_mm || 0)+2 : 0;
+  const coneOffset = s.tip_shapes?.[gate] === 'cone' ? 2 : 0;
   const pathDistance = position => progress(position)*length;
   const presenceSensors = unitSensors.filter(([name,d]) => !isBufferSensor(name) &&
     !name.includes('encoder') && d.position !== null).map(([name,d]) => {
@@ -571,11 +566,11 @@ function draw() {
       return {...d,name,position};
     });
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
-  const previousTip = e.kind === 'movement' && e.before ? pathDistance(e.before.tips[gate]) : null;
-  const constrained = constrainFilament(pathDistance(tip-coneOffset), previousTip,
+  const previousTip = e.kind === 'movement' && e.before ? schematicDistance(e.before.tips[gate]) : null;
+  const constrained = constrainFilament(schematicTip ?? pathDistance(tip), previousTip,
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
   tip = tipAtPathDistance(constrained.tip);
-  const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = constrained.tip;
+  const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = coneOffset ? pathDistance(tip-coneOffset) : constrained.tip;
   const warningBox = $('filament-warning');
   warningBox.hidden = !constrained.warnings.length;
   $('filament-warning-message').textContent = constrained.warnings.length
@@ -603,11 +598,14 @@ function draw() {
   }
   svg += '</g>';
   const shapedTip = (position, color, part) => {
-    const point = p => tube.getPointAtLength(progress(Math.min(p,end-residual))*length);
-    const base = point(position-2), nose = point(position);
+    const point = p => tube.getPointAtLength(progress(Math.min(p,end))*length);
+    const base = point(position-2), nose = point(position+1);
     const angle = Math.atan2(nose.y-base.y,nose.x-base.x), dx = -Math.sin(angle)*3.5, dy = Math.cos(angle)*3.5;
     // Overlap the cone slightly to avoid a visible seam, then taper over 15mm.
-    const hair = Array.from({length:32},(_,i)=>point(position-.4+15.4*i/31));
+    const hairScale = .27*length/(end-entry);
+    const hairStart = progress(Math.min(position+1,end))*length;
+    const hair = Array.from({length:32},(_,i)=>tube.getPointAtLength(
+      Math.min(length,hairStart+(-.4+15.4*i/31)*hairScale)));
     const sides = [1,-1].map(side=>hair.map((p,i)=>{
       const before=hair[Math.max(0,i-1)], after=hair[Math.min(hair.length-1,i+1)];
       const tangent=Math.atan2(after.y-before.y,after.x-before.x);
@@ -615,7 +613,7 @@ function draw() {
       return {x:p.x-side*Math.sin(tangent)*radius,y:p.y+side*Math.cos(tangent)*radius};
     }));
     const outline=[...sides[0],...sides[1].reverse()];
-    return `<g data-part="${part}"><path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/><path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/></g>`;
+    return `<g data-part="${part}" opacity="${part === 'attached-tip' ? s.gate_path_opacity ?? 1 : 1}"><path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/><path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/></g>`;
   };
   const fadeY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150) * length).y;
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
@@ -670,7 +668,7 @@ function draw() {
     const pixelsPerMm = .27 * length / (end-entry);
     const angle = gearAngle(distance, pixelsPerMm);
     const gripState = e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
-    const spacing = type === 'gear' && gripState?.mmu_gripped === false ? 31 : 23;
+    const spacing = type === 'gear' && gripState?.mmu_gripped === false ? 31 : 22;
     for (const side of [-1, 1])
       svg += `<g data-part="${type}-wheel" transform="translate(${x + side * spacing} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle})"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
   }
@@ -706,15 +704,16 @@ function draw() {
   if (s.retained_segment && !s.retained_segment.residual_only) {
     const segment = s.retained_segment;
     const top = tube.getPointAtLength(progress(segment.start)*length).y;
-    const bottom = tube.getPointAtLength(progress(Math.max(segment.start,segment.end-(segment.tip_shape === 'cone' ? 2 : 0)))*length).y;
+    const coneTip = segment.end;
+    const bottom = tube.getPointAtLength(progress(Math.max(segment.start,segment.tip_shape === 'cone' ? coneTip-2 : segment.end))*length).y;
     const cutLength = Math.max(0, segment.end-segment.start);
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${bottom}" fill="none" stroke="#${segment.color}" stroke-width="7"/>${cutLength > .01 ? `<text id="cut-fragment-length" x="192" y="${(top+bottom)/2}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="var(--scene-muted, #6e8190)">Cut fragment ${cutLength.toFixed(1)}mm</text>` : ''}`;
-    if (segment.tip_shape === 'cone') svg += shapedTip(segment.end,segment.color,'fragment-tip');
+    if (segment.tip_shape === 'cone') svg += shapedTip(coneTip,segment.color,'fragment-tip');
   } else if (fragment > 0 && !Object.hasOwn(s, 'retained_segment')) {
     const top = tube.getPointAtLength(progress(end-residual-fragment)*length).y;
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${residualTop}" fill="none" stroke="#${retainedColor}" stroke-width="7"/>`;
   }
-  if (s.tip_shapes?.[gate] === 'cone') svg += shapedTip(tip-residual,s.filament?.incoming_color || '808182','attached-tip');
+  if (s.tip_shapes?.[gate] === 'cone') svg += shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip');
   if (residual > 0) {
     svg += `<path id="residual-filament" d="M260 ${residualTop} L260 ${nozzleZero}" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text ${dimensionLink('Residual')} x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual ${residual}mm</text>`;
   }
@@ -865,6 +864,18 @@ for (const [id, direction] of [['previous-toolchange', -1], ['next-toolchange', 
   };
 }
 $("next").onclick = () => seek(currentIndex() + 1);
+document.addEventListener('keydown', event => {
+  if ((!paused && live) || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
+      || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  if (event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"]')) return;
+  const button = $(event.shiftKey
+    ? (event.key === 'ArrowLeft' ? 'play-previous' : 'play-step')
+    : (event.key === 'ArrowLeft' ? 'previous' : 'next'));
+  if (!button.disabled) {
+    event.preventDefault();
+    button.click();
+  }
+});
 function startPlayback() {
   pauseAfterStep = false;
   if (!events.length) return;
@@ -876,6 +887,23 @@ function startPlayback() {
   paused = false; live = true;
   draw(); followTrace();
 }
+$("play-previous").onclick = () => {
+  if ($("play-previous").disabled) return;
+  const index = currentIndex();
+  playing = {event:events[index], start:performance.now(), reverse:true,
+    targetSeq:events[index-1].seq, fraction:1};
+  displayed = interpolate(playing.event,1);
+  live = true; paused = false; pauseAfterStep = true; replayingHistory = true;
+  sensorPulse = null;
+  draw(); followTrace();
+};
+$("play-step").onclick = () => {
+  if ($("play-step").disabled) return;
+  startPlayback();
+  pauseAfterStep = true;
+  resumeAt = 0;
+  draw();
+};
 $("replay").onclick = () => {
   if (live && !paused) {
     if (playing) pauseAfterStep = true;
@@ -1001,9 +1029,11 @@ function animate(now) {
     }
     if (playing) {
       const ms=duration(playing.event, $("compress-bowden").checked), f=ms?Math.min(1,(now-playing.start)/ms):1;
-      playing.fraction = f;
-      displayed=interpolate(playing.event,f);
-      if (f===1) {
+      playing.fraction = playing.reverse ? 1-f : f;
+      displayed=interpolate(playing.event,playing.fraction);
+      if (f===1 && playing.reverse) {
+        seek(events.findIndex(e=>e.seq === playing.targetSeq));
+      } else if (f===1) {
         const pulse = homingPulse(playing.event);
         if (pulse) sensorPulse = {...pulse, start:now};
         played=playing.event.seq;
