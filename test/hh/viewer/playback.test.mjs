@@ -340,7 +340,10 @@ test('gate selection eases between lanes without interpolating physical filament
  const before={gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
  const state={...before,gate:1};
  const event={kind:'gate_changed',before,state};
- assert.equal(duration(event),1200);
+ assert.equal(duration(event),2200);
+ assert.deepEqual(playbackFrame(event,499,duration(event)).state,{...before,mmu_gripped:false});
+ assert.deepEqual(playbackFrame(event,1700,duration(event)).state,{...state,mmu_gripped:false});
+ assert.deepEqual(playbackFrame(event,2199,duration(event)).state,{...state,mmu_gripped:undefined});
  assert.equal(interpolate(event,0),before);
  assert.equal(interpolate(event,1),state);
  assert.equal(interpolate(event,.5).gate_focus,.5);
@@ -665,4 +668,17 @@ test('triggered sensors silently advance the visual tip but conflicting sensors 
  const triggered={name:'extruder',position:20,state:true};
  assert.deepEqual(constrainFilament(10,null,[triggered]),{tip:20,warnings:[]});
  assert.ok(constrainFilament(10,null,[triggered,{name:'exit',position:15,state:false}]).warnings.includes('Presence sensors disagree'));
+});
+
+
+test('gate swap restores its starting grip in either playback direction',()=>{
+ for (const grip of [false,true]) for (const reverse of [false,true]) {
+  const before={gate:0,tips:[-20,-30],mmu_gripped:!grip};
+  const state={...before,gate:1,mmu_gripped:!grip};
+  const event={kind:'gate_changed',before,state};
+  for (const elapsed of [0,100,300,550,1100,1650,1900,2100,2200]) {
+   const frame=playbackFrame(event,reverse ? 2200-elapsed : elapsed,2200,grip);
+   assert.equal(frame.state.mmu_gripped,elapsed>=250 && elapsed<1950 ? false : grip);
+  }
+ }
 });

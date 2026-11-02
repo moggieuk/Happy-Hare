@@ -305,7 +305,12 @@ export class TelemetryReplay {
         if (gripped) travel=0;
         else if (d > 0) travel=Math.min(d,Math.max(0,gears-tip));
       }
-      const differential=(gearing ? d : 0)-(extruding && (gripped || engaging) ? d : 0);
+      // Extruder-only retraction loses traction at the gears; discard further rotation.
+      if (extruding && !gearing && d < 0) {
+        travel=Math.max(travel,Math.min(0,gears-tip));
+        details.filament_travel_mm=d;
+      }
+      const differential=(gearing ? d : 0)-(extruding && (gripped || engaging) ? travel : 0);
       const buffered=state.devices[`${state.unit}:buffer`];
       if (before.mmu_gripped && buffered && gearing && !extruding && !gripped && d < 0) {
         const initial=before.devices[`${state.unit}:buffer`] || buffered;
@@ -394,6 +399,7 @@ export class TelemetryReplay {
         this.bufferPositions[gate]=from+Math.sign(to-from)*Math.min(Math.abs(to-from),released);
         details.buffer_release={approach_mm:approach,travel_mm:Math.abs(d),from,to};
       }
+      if (extruding && !gearing && d < 0 && !details.homing_anchor) next=Math.max(next,Math.min(tip,gears));
       this.tips[gate]=next;
       const rawBefore=copy(before), rawState=copy(state);
       rawState.tips[gate]=tip+travel;

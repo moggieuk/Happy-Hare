@@ -547,3 +547,37 @@ test('cut accounting includes residual and prior retract, then reconciles report
  event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder','filament_remaining'],value:0}]});
  assert.deepEqual(r.snapshot().retained_segment,reconciled);
 });
+
+
+test('extruder-only unloading stops at the gears and discards ungripped rotation',()=>{
+ const r=stream(),gears=r.snapshot().layout.extruder_gears;
+ r.tips[0]=gears+10;
+ const e=move(r,-30);
+ assert.equal(r.tips[0],gears);
+ assert.equal(interpolate(e,.5).tips[0],gears);
+ move(r,-5);
+ assert.equal(r.tips[0],gears);
+ event(r,'filament_pos_changed',{filament_pos:6});
+ assert.equal(r.tips[0],gears);
+ move(r,3);
+ assert.equal(r.tips[0],gears+3);
+});
+test('synced unloading can continue past the extruder gears',()=>{
+ const r=stream(),gears=r.snapshot().layout.extruder_gears;
+ r.tips[0]=gears+10;
+ move(r,-30,{motor_mode:'gear+extruder'});
+ assert.equal(r.tips[0],gears-20);
+});
+
+
+test('hidden gate delta does not swap filament before the selection animation',()=>{
+ const r=stream(0);
+ event(r,'filament_pos_changed',{filament_pos:0});
+ event(r,'state_delta',{changes:[{path:['printer','mmu','gate'],value:2}]});
+ event(r,'gate_changed',{previous_gate:0,gate:2,unit:r.facts.printer.mmu.unit});
+ const steps=visibleSteps(r.events),selection=steps.at(-1),previous=steps.at(-2);
+ assert.equal((previous.settled_state || previous.state).gate,0);
+ assert.equal(playbackFrame(selection,250,2200).state.gate,0);
+ assert.equal(playbackFrame(selection,1100,2200).state.gate_focus,1);
+ assert.equal(playbackFrame(selection,1950,2200).state.gate,2);
+});
