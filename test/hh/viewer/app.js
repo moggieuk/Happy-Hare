@@ -589,8 +589,10 @@ function draw() {
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
   const constrained = constrainFilament(schematicTip ?? pathDistance(tip),
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
-  // Selection choreography stays above the MMU gears and never changes telemetry positions.
-  const selectedTip=constrained.tip+(Math.min(constrained.tip,470-305)-constrained.tip)*(s.gate_retraction || 0);
+  const entrySensorY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150)*length).y;
+  const rackTipY = offset => Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-20;
+  // Return the selected end to rack height before sliding; telemetry positions stay unchanged.
+  const selectedTip=constrained.tip+(Math.min(constrained.tip,470-rackTipY(0))-constrained.tip)*(s.gate_retraction || 0);
   tip = tipAtPathDistance(selectedTip);
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);
   const macroUnit=s.units?.indexOf(s.unit) ?? 0;
@@ -611,7 +613,6 @@ function draw() {
   // Fan parked ends around the selected gate, bringing its strand into focus.
   // The central strand lines up with the existing MMU filament path.
   const focus = s.gate_focus ?? s.gate;
-  const entrySensorY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150)*length).y;
   svg += `<defs><linearGradient id="gate-end-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${entrySensorY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="gate-end-fade" maskUnits="userSpaceOnUse" x="550" y="316" width="150" height="159"><rect x="550" y="316" width="150" height="159" fill="url(#gate-end-gradient)"/></mask></defs><g id="gate-filaments" mask="url(#gate-end-fade)">`;
   const lanes = s.tips.map((_, index) => ({index,offset:index-focus}))
     .filter(lane => lane.index !== s.gate && Math.abs(lane.offset) < 6)
@@ -620,7 +621,7 @@ function draw() {
     // Extra clearance beside the active lane; ordinary spacing beyond it.
     const clearance = Math.min(1,Math.abs(offset));
     const x = 620+offset*14+Math.sign(offset)*8*clearance*clearance*(3-2*clearance);
-    const y = Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-20;
+    const y = rackTipY(offset);
     const opacity = focus < 0 ? .35 : Math.max(.2,Math.exp(-Math.abs(offset)*.45));
     const color = s.gate_colors?.[index] || '808182';
     svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" font-weight="700" fill="var(--scene-text, #304c65)">${index}</text></g>`;
@@ -945,7 +946,8 @@ $("play-previous").onclick = () => {
   if ($("play-previous").disabled) return;
   const index = currentIndex();
   playing = {event:events[index], start:performance.now(), reverse:true,
-    targetSeq:events[index-1].seq, fraction:1};
+    targetSeq:events[index-1].seq, fraction:1,
+    selectionGrip:(live && displayed ? displayed : events[index].settled_state || events[index].state).mmu_gripped};
   displayed = interpolate(playing.event,1);
   live = true; paused = false; pauseAfterStep = true; replayingHistory = true;
   sensorPulse = null;
@@ -1079,17 +1081,23 @@ function animate(now) {
   if (live && !paused && events.length) {
     if (!playing && now >= resumeAt) {
       const event = events.find(e=>e.seq>played);
-      if (event) { playing={event,start:now}; followTrace(); }
+      if (event) { playing={event,start:now,selectionGrip:displayed?.mmu_gripped ?? event.before?.mmu_gripped}; followTrace(); }
     }
     if (playing) {
       const ms=duration(playing.event, $("compress-bowden").checked);
       const total=ms+(playing.event.purge_settle ? 350 : 0), elapsed=Math.min(total,now-playing.start);
       const f=total ? elapsed/total : 1;
-      const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms);
+      const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms,playing.selectionGrip);
       playing.fraction=frame.fraction;
       displayed=frame.state;
       if (f===1 && playing.reverse) {
+        const selection=playing.event.kind === 'gate_changed', grip=playing.selectionGrip;
         seek(events.findIndex(e=>e.seq === playing.targetSeq));
+        if (selection) {
+          played=events[cursor].seq;
+          displayed={...(events[cursor].settled_state || events[cursor].state),mmu_gripped:grip};
+          live=true;
+        }
       } else if (f===1) {
         const pulse = homingPulse(playing.event);
         if (pulse) sensorPulse = {...pulse, start:now};
