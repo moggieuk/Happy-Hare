@@ -137,23 +137,18 @@ class MCU_stepper:
         self._mcu_position_offset += self._commanded_pos - pos
         self._commanded_pos = pos
 
-    def harness_note_motion(self, distance, notify=True):
+    def harness_note_motion(self, distance):
         """
         Register `distance` mm of REAL travel. The counterpart to set_position.
 
         The fake has no step generation, so nothing else advances the mcu position. The
         harness calls this for homing, manual MMU moves, and toolhead extrusion.
-        notify=False is used when the drive observer already updates viewer motor totals.
 
         Adjusts the OFFSET rather than _commanded_pos on purpose: the commanded position is
         owned by set_position and mirrors MmuStepper.commanded_pos, so moving it here would
         make everything that reads get_commanded_position() disagree with Happy Hare.
         """
         self._mcu_position_offset += distance
-        printer = self._mcu.get_printer() if self._mcu is not None else None
-        observer = getattr(printer, 'harness_stepper_observer', None)
-        if notify and observer is not None:
-            observer(self._name, distance)
 
     def get_commanded_position(self):
         return self._commanded_pos

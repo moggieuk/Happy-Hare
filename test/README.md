@@ -636,10 +636,6 @@ continues working if the simulator disconnects after the page has loaded.
 **Return to live** reconnects to the current capture. Files require a v2 session
 snapshot; older motion-only JSONL and diagnostic trace files cannot be loaded.
 
-**Save trace**, available in the temporary local Test panel, exports the browser's
-derived animation snapshots for diagnostics.
-It is larger than the source recording and is not the replay input format.
-
 Runtime parameter choices come from the same parameter specifications and guards
 as `MMU_TEST_CONFIG`, including unit and calibration parameters where available.
 Edits are dispatched through that command, so its validation and change callbacks
@@ -821,7 +817,6 @@ State records share the same versioned stream and sequence numbers:
 
 `toolchange` marks the start of `MMU_CHANGE_TOOL`, `MMU_LOAD`, and
 `MMU_UNLOAD`, including the initiating command line and current tool/gate.
-The same boundary calls `_MMU_EVENT EVENT=toolchange COMMAND=<command>`.
 The viewer’s previous/next toolchange buttons navigate these markers; the
 previous button returns to the current operation’s start before moving to an
 earlier operation. Older recordings without markers disable these buttons.
@@ -840,8 +835,8 @@ filament travel; before/after drive positions share the stated reference.
 
 The browser consumes these pairs and derives animation snapshots locally. The
 console bridge captures source records without wrapping movement methods or
-observing simulator geometry. The older `LiveViewer` harness adapter remains only
-for diagnostic regression tests; the running bridge uses `SourceViewer`.
+observing simulator geometry. `SourceViewer` owns capture and parameter controls;
+the JavaScript replay tests cover derived animation behavior.
 **Save motion telemetry** now downloads the compact v2 capture as JSONL.
 `/sim/viewer/telemetry?after=<sequence>` exposes the same stream. Its first
 `session` record contains the schema, session identity and a baseline of relevant
