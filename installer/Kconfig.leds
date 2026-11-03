@@ -148,7 +148,7 @@ if MMU_HAS_LEDS
       config PARAM_CHAIN_COUNT
         int "Chain count     "
         default 4 if BOOL_EMU_SLB_HACK
-        default 1 if MMU_HAS_PER_GATE_MCU
+        default 1 if MMU_HAS_PER_GATE_MCU || BOARD_TYPE_EMB_C
         default PARAM_NUM_GATES
         help
           Set the number of physical LEDs in each generated Neopixel chain. The
@@ -167,7 +167,7 @@ if MMU_HAS_LEDS
 
       config PARAM_EXIT_LEDS
         prompt "Exit leds       "
-        generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
+        generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU || BOARD_TYPE_EMB_C
         generated_default "neopixel:_$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
         help
           Assign the LEDs mounted at the filament exit for each gate. Use a
@@ -223,17 +223,17 @@ if MMU_HAS_LEDS
 
 
       config PIN_NEOPIXEL
-        prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU
+        prompt "Neopixel pin    " if !MMU_HAS_PER_GATE_MCU && !BOARD_TYPE_EMB_C
         validator "$(pin_validator)"
         help
           Set the MCU pin connected to the data input of the generated Neopixel
           chain for this unit.
 
-      menu "Neopixel per-gate pins" 
-        depends on MMU_HAS_PER_GATE_MCU
+      menu "Neopixel per-gate pins"
+        depends on MMU_HAS_PER_GATE_MCU || BOARD_TYPE_EMB_C
         help
-          Set the Neopixel data pin on each gate MCU. Each configured gate gets
-          its own generated LED chain.
+          Set the Neopixel data pin for each gate. Each configured gate gets its
+          own generated LED chain.
 
         @repeat var=i min=0 max=$(max_gate)@
           config PIN_NEOPIXEL_$(i)
@@ -241,7 +241,7 @@ if MMU_HAS_LEDS
             prompt "Neopixel gate $(i) pin" if PARAM_NUM_GATES > $(i)
             validator "$(pin_validator)"
             help
-              Set the data pin for the Neopixel chain connected to gate $(i)'s MCU.
+              Set the data pin for the Neopixel chain connected to gate $(i).
         @endrepeat@
       endmenu
 

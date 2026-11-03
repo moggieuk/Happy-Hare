@@ -73,6 +73,7 @@ BOOTABLE = {
     'quattrobox_v2': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
     'emu_ebb': (5, 'VirtualSelector'),
+    'emu_emb_c': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
     # its own assertions in TestMultiUnitMachine below.
@@ -640,6 +641,54 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(leds['exit_leds'], 'neopixel:_unit0_gate0_leds (1-5)')
         self.assertEqual(
             len(hh.mmu.mmu_unit(0).leds.virtual_chains['exit'].leds), 5)
+
+    def test_emu_emb_c(self):
+        self._check('emu_emb_c')
+
+        from test.hh import cfg, profiles
+        pins = (
+            ('PC4', 'PA7', '!PA6', '!PC5', 0),
+            ('PA4', 'PA3', '!PA2', '!PA5', 0),
+            ('PA0', 'PC3', '!PC2', '!PA1', 0),
+            ('PC0', 'PC15', '!PC14', '!PC1', 0),
+            ('PC0', 'PC11', '!PC10', '!PC13', 1),
+        )
+        led_pins = ('PA15', 'PC8', 'PC9', 'PD0', 'PD1')
+        for lanes in range(2, 6):
+            with self.subTest(lanes=lanes):
+                profile = profiles.EMU_EMB_C.derive(
+                    'emu_emb_c_%d_lanes' % lanes, syms={'PARAM_NUM_GATES': lanes})
+                parser = cfg.assemble(cfg.render(profile))
+                self.assertEqual(
+                    [section for section in parser.sections() if section.startswith('mcu ')],
+                    ['mcu unit0'])
+                sensors = dict(parser.items('mmu_sensors unit0'))
+                leds = dict(parser.items('mmu_leds unit0'))
+                self.assertEqual(leds['entry_leds'].splitlines(), [
+                    'neopixel:_unit0_gate%d_leds (5)' % gate for gate in range(lanes)])
+                self.assertEqual(leds['exit_leds'].splitlines(), [
+                    'neopixel:_unit0_gate%d_leds (1,2,3,4)' % gate
+                    for gate in range(lanes)])
+                for gate in range(lanes):
+                    suffix = '' if gate == 0 else '_%d' % gate
+                    uart, step, direction, enable, address = pins[gate]
+                    tmc = dict(parser.items('tmc2209 mmu_stepper unit0_gear%s' % suffix))
+                    gear = dict(parser.items('mmu_stepper unit0_gear%s' % suffix))
+                    chain = dict(parser.items('neopixel _unit0_gate%d_leds' % gate))
+                    button = dict(parser.items('gcode_button unit0_eject%d' % gate))
+                    self.assertEqual(tmc['uart_pin'], 'unit0:%s' % uart)
+                    self.assertEqual(tmc['uart_address'], str(address))
+                    self.assertEqual(gear['step_pin'], 'unit0:%s' % step)
+                    self.assertEqual(gear['dir_pin'], '!unit0:%s' % direction[1:])
+                    self.assertEqual(gear['enable_pin'], '!unit0:%s' % enable[1:])
+                    self.assertEqual(chain['pin'], 'unit0:%s' % led_pins[gate])
+                    self.assertEqual(chain['chain_count'], '5')
+                    self.assertEqual(button['pin'], ('^!unit0:%s' % (
+                        ('PA10', 'PD9', 'PD8', 'PC7', 'PC6')[gate])))
+                    self.assertIn('mmu_entry_switch_pin_%d' % gate, sensors)
+                    self.assertIn('mmu_exit_switch_pin_%d' % gate, sensors)
+                self.assertNotIn('mmu_stepper unit0_gear_%d' % lanes,
+                                 parser.sections())
 
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""

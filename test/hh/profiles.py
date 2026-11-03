@@ -614,6 +614,19 @@ EMU_EBB = EMU.derive(
     },
     description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, exit LEDs on gate 0')
 
+# EMB-C is a single CAN MCU with up to five independently driven EMU gates.
+# Unlike SLB and EBB, it shares one MCU while retaining one five-pixel LED
+# chain and one Front Button PCB eject input for each configured gate.
+EMU_EMB_C = EMU.derive(
+    'emu_emb_c',
+    syms={
+        'MMU_HAS_PER_GATE_MCU': False,
+        'BOARD_TYPE_EMB_C': True,
+        'MMU_HAS_ENVIRONMENT_SENSOR': False,
+        'MMU_HAS_FANS': False,
+    },
+    description='EMU 1.0 - 2-5 lanes on one EMB-C CAN MCU')
+
 # BoxTurtle plus an encoder, homing to it instead of to the gate switch. KMS also ships an
 # encoder, but its exit sensors win the default homing choice, so _home_to_gate's encoder branch
 # (extras/mmu/mmu_filament_movement.py:206-231) is a completely different algorithm from
@@ -942,7 +955,7 @@ BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
 CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
-                    QUATTROBOX_V2, EMU, EMU_EBB, ENCODER,
+                    QUATTROBOX_V2, EMU, EMU_EBB, EMU_EMB_C, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
