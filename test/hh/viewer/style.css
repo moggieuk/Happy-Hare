@@ -410,4 +410,4 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 .viewer-readout-controls { position: relative; }
 .dimensions-option { position: absolute; right: 0; top: 0; margin: 0; }
 .viewer-readout-controls summary { padding-right: 140px; }
-#scene.hide-dimensions :is(.toolhead-reference, .cooling-measurements, #encoder-offset, #bowden-length, #residual-dimension, #cut-fragment-label) { visibility: hidden; }
+#scene.hide-dimensions :is(.toolhead-reference, .cooling-measurements, #encoder-offset, #residual-dimension, #cut-fragment-label) { visibility: hidden; }
