@@ -52,6 +52,19 @@ class TestTelemetryCapture(unittest.TestCase):
             self.assertNotIn('state', record)
         json.dumps(records, allow_nan=False)
 
+    def test_extruder_target_temperature_baseline_and_delta(self):
+        heater = self.hh.mmu.printer.lookup_object('extruder').get_heater()
+        heater.set_temp(200)
+        capture = self.capture()
+        baseline = capture.read()['records'][0]['state']
+        path = ['printer', 'mmu_machine', 'units', 'unit0', 'extruder', 'target_temperature']
+        self.assertEqual(baseline['printer']['mmu_machine']['units']['unit0']['extruder']['target_temperature'], 200)
+        heater.set_temp(220)
+        capture.observe()
+        changes = [change for record in capture.read()['records'] if record['event'] == 'state_delta'
+                   for change in record['changes']]
+        self.assertIn(dict(path=path, value=220), changes)
+
     def test_grip_state_and_always_gripped_are_captured(self):
         selector = self.hh.mmu.selector()
         unit = self.hh.mmu.mmu_unit()

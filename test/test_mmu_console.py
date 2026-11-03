@@ -2190,8 +2190,23 @@ class TestConsoleScript(unittest.TestCase):
         messages = [e['message'] for e in console.bridge.gcode_store]
         self.assertEqual(messages.count('Unknown command:"MMU_SENSOR"'), 1)
 
+    def test_serve_host_is_forwarded_and_advertised(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve-host', '192.168.0.157'])
+        with mock.patch('test.console.WebUiBridge') as bridge_type:
+            bridge = bridge_type.return_value.start.return_value
+            bridge.host, bridge.port = '192.168.0.157', 7125
+            console._start_bridge(7125)
+            self.assertEqual(bridge_type.call_args.kwargs['host'], '192.168.0.157')
+            self.assertIn('http://192.168.0.157:7125/sim/viewer/', console.web_api_lines()[1])
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                console._meta_web([])
+            self.assertIn('VUE_APP_HOSTNAME=192.168.0.157', out.getvalue())
+        console.bridge = None
+
     def test_default_viewer_port_is_7125(self):
         from test.console import API_PORT, parse_args
+        self.assertEqual(parse_args([]).serve_host, '127.0.0.1')
         self.assertEqual(API_PORT, 7125)
         self.assertEqual(parse_args(['--serve']).serve, 7125)
         self.assertEqual(parse_args(['--serve', '8771']).serve, 8771)
