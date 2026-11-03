@@ -329,6 +329,7 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
   select, select::picker(select) { appearance: base-select; }
   select::picker(select) { max-height: 440px; border: 1px solid #7890a0; background: #fff; color: #172f40; }
   [data-theme="dark"] select::picker(select) { background: #111c26; color: #e5edf3; }
+  #parameter::picker(select) { box-sizing: border-box; padding-bottom: var(--macro-picker-padding, 0px); }
   #parameter optgroup { padding-top: 4px; }
   #parameter optgroup > :first-child { margin-top: 4px; }
   select option { padding: 6px 14px; }
@@ -405,3 +406,8 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 [data-theme="dark"] #trace .trace-event { background: #223240; }
 [data-theme="dark"] #trace .trace-event.selected { background: #365b6a; }
 #trace .trace-event > .trace-telemetry { margin-bottom: 0; }
+
+.viewer-readout-controls { position: relative; }
+.dimensions-option { position: absolute; right: 0; top: 0; margin: 0; }
+.viewer-readout-controls summary { padding-right: 140px; }
+#scene.hide-dimensions :is(.toolhead-reference, .cooling-measurements, #encoder-offset, #bowden-length, #residual-dimension, #cut-fragment-label) { visibility: hidden; }

@@ -84,11 +84,14 @@
             aria-label="Filament path from MMU through Bowden to extruder"
           ></svg>
           </div>
+          <div class="viewer-readout-controls">
+          <label class="playback-option dimensions-option"><input id="show-dimensions" type="checkbox" checked>Show dimensions</label>
           <details id="sensor-readout">
             <summary>Sensor and device readout <span class="expand-label">Expand</span><span class="collapse-label">Collapse</span></summary>
             <div id="sensors"></div>
             <div id="devices"></div>
           </details>
+          </div>
         </div>
         <div class="card mini-console-card">
           <div class="heading"><h2 tabindex="0" data-tooltip="Live commands and responses · latest 500 lines. Independent of trace replay." aria-description="Live commands and responses · latest 500 lines. Independent of trace replay.">Console</h2><button id="clear-console" type="button">Clear</button></div>

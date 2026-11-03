@@ -51,7 +51,7 @@ def apply_changes(state, delta):
 
 class ReplayState:
     """Read a small allowlist directly, avoiding the broad mmu.get_status scan."""
-    UNIT_PARAMETERS = ('gate_homing_endstop', 'gate_endstop_to_encoder',
+    UNIT_PARAMETERS = ('gate_homing_endstop', 'extruder_homing_endstop', 'gate_endstop_to_encoder',
                        'gate_parking_distance', 'gate_endstop_to_extruder')
     TOOLHEAD_PARAMETERS = ('toolhead_entry_to_extruder', 'toolhead_extruder_to_nozzle',
                            'toolhead_sensor_to_nozzle', 'toolhead_residual_filament',

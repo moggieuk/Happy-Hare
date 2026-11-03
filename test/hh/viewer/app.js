@@ -1,5 +1,5 @@
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import { nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay styles HTML and SVG tooltips consistently and avoids clipping.
@@ -256,6 +256,7 @@ function filter() {
   $("parameter").replaceChildren(...[...groups].map(([label, matches]) => {
     const group = document.createElement('optgroup');
     group.label = label;
+    if (matches[0]?.macro) group.dataset.macro=matches[0].macro;
     const sections = new Map();
     for (const p of matches) {
       const section = p.section || '';
@@ -303,6 +304,21 @@ async function selectDimension(event) {
   if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
   event.preventDefault();
   try {
+    if (target.dataset.macro) {
+      $('filter').value='';
+      filter();
+      const menu=$('parameter');
+      const name=target.dataset.macro.trim().split(/\s+/)[0].toUpperCase();
+      const groups=[...menu.querySelectorAll('optgroup')];
+      const group=[name+'_VARS',name].map(candidate=>groups.find(item=>item.dataset.macro?.toUpperCase()===candidate)).find(Boolean);
+      if (!group) { message('This macro has no editable variables in the current configuration.',true); return; }
+      menu.scrollIntoView({block:'nearest'});
+      menu.focus();
+      menu.style.setProperty('--macro-picker-padding','400px');
+      menu.showPicker();
+      requestAnimationFrame(()=>group.scrollIntoView({block:'start',inline:'nearest'}));
+      return;
+    }
     if (Number(target.dataset.unit) >= 0) $('unit').value = target.dataset.unit;
     await refresh();
     $('filter').value = '';
@@ -322,6 +338,8 @@ async function selectDimension(event) {
 }
 $('scene').addEventListener('click', selectDimension);
 $('scene').addEventListener('keydown', selectDimension);
+$('parameter').addEventListener('pointerdown',()=> $('parameter').style.removeProperty('--macro-picker-padding'));
+$('parameter').addEventListener('change',()=> $('parameter').style.removeProperty('--macro-picker-padding'));
 $('scene-macros').addEventListener('click', selectDimension);
 $('scene-macros').addEventListener('keydown', selectDimension);
 $("filter").oninput = filter;
@@ -418,6 +436,17 @@ function seek(index) {
   live = false; paused = true; replayingHistory = true; playing = null; sensorPulse = null;
   draw(); followTrace();
 }
+// An inward ring marks active homing; the outward ring marks completion.
+function homingRing(name,x,y) {
+  if (!playing || homingTarget(playing.event) !== name) return '';
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const phase=((performance.now()-playing.start)%600)/600;
+  const reverse=(playing.event.requested ?? playing.event.distance ?? 0) < 0;
+  const color=reverse ? '#48c982' : 'var(--sensor-clear-pulse)';
+  const radius=reduced ? 9 : 13-9*phase;
+  const opacity=reduced ? .55 : .6*Math.min(1,phase*8)*(1-.35*phase);
+  return `<circle data-part="homing-sensor-ring" cx="${x}" cy="${y}" r="${radius}" fill="none" stroke="${color}" stroke-width="2" opacity="${opacity}" pointer-events="none"/>`;
+}
 // Buffer drawing is isolated from the toolhead and filament layers.
 function renderBuffer(s, d, bufferSensors, sensorFill) {
   let markup = '';
@@ -444,7 +473,7 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
       markup += `<path data-part="buffer-spring" data-side="${side}" stroke="url(#buffer-coil-shading)" d="${coil}"/>`;
       anchors += `<circle data-part="buffer-spring-wall-anchor" cx="${wall}" cy="52.5" r="1.5" fill="var(--scene-border, #96abba)" stroke="none"/>`;
     }
-    markup += anchors+`<path data-part="buffer-spring-piston-tick" d="M${edge} 48.5 V56.5" opacity="0.5"/>`+'</g>';
+    markup += anchors+`<path data-part="buffer-spring-piston-tick" d="M${edge} 48.5 V56.5" stroke-width="1.8" opacity="0.9"/>`+'</g>';
   }
   for (const travel of [0,piston.maximum]) {
     markup += `<path data-part="buffer-maxrange-tick" opacity="0.4" d="M${tick(travel)} 93.88 V101.88" stroke="var(--scene-border, #96abba)" stroke-width="1.5" data-tooltip="Physical travel limit · ${travel.toFixed(1)}mm"/>`;
@@ -456,6 +485,7 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
     }
     const sensorName=bufferSensors.find(([n])=>n.endsWith(label.toLowerCase()))?.[0];
     markup += `<g class="sensor-marker${on === null ? ' sensor-disabled' : ''}" data-sensor="${escape(sensorName || '')}"><circle cx="${x}" cy="97.88" r="5" fill="${sensorFill(on)}" stroke="#698394"/><text x="${x}" y="116.88" text-anchor="${label === 'compression' ? 'end' : 'start'}" font-size="9" fill="var(--scene-text, #304c65)">${label}</text></g>`;
+    if (sensorName) markup += homingRing(sensorName,x,97.88);
     if (sensorName && sensorPulse?.sensor === sensorName) {
       const elapsed=(performance.now()-sensorPulse.start)/650;
       if (elapsed >= 0 && elapsed < 1) {
@@ -535,14 +565,17 @@ function draw() {
           ? toolheadFraction-sensorGap/length+(sensorGap/length)*(p-sensorEntry)/(entry-sensorEntry)
         : Math.min(1, toolheadFraction + (1-toolheadFraction) * toolheadProgress(s,p));
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
+    if (name === `${s.unit}:mmu_gear_touch`) return true;
     if (s.active_sensors) return s.active_sensors.includes(name);
     if (s.unit_sensors && !s.unit_sensors.includes(name)) return false;
     const gateSuffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
     return !gateSuffix || Number(gateSuffix[1]) === s.gate;
   });
+  const isTouchSensor=name=>/(?:^|:)mmu_gear_touch(?:_\d+)?$/.test(name);
   const encoderAnchor = encoderReference(s, unitSensors);
   const gateSlots = gateDevicePositions(s, unitSensors);
   const sensorPoint = (name, device) => {
+    if (isTouchSensor(name)) return {x:260,y:420};
     const point = tube.getPointAtLength(progress(device.position)*length);
     const short = name.split(':').at(-1);
     if (/^mmu_entry(?:_\d+)?$/.test(short)) point.y -= 53;
@@ -593,7 +626,7 @@ function draw() {
     return [name,device];
   });
   const presenceSensors = displayedSensors.filter(([name,d]) => !isBufferSensor(name) &&
-    !name.includes('encoder') && d.position !== null).map(([name,d]) => {
+    !name.includes('encoder') && !isTouchSensor(name) && d.position !== null).map(([name,d]) => {
       const short=name.split(':').at(-1);
       const position = /^mmu_(?:entry|exit)(?:_\d+)?$/.test(short) || short === 'mmu_shared_exit'
         ? 470-sensorPoint(name,d).y : pathDistance(d.position);
@@ -612,7 +645,7 @@ function draw() {
   const macroParams=s.configuration?.parameters?.[macroUnit] || {};
   $('scene-macros').innerHTML=[['purge_macro','Purge macro'],['form_tip_macro','Tip-forming macro']].map(([key,label])=>{
     const name=macroParams[key];
-    const link=offline ? '' : `role="button" tabindex="0" data-parameter="${key}" data-unit="${macroUnit}" aria-label="Edit ${label}"`;
+    const link=offline ? '' : `role="button" tabindex="0" data-parameter="${key}" data-macro="${escape(name || '')}" data-unit="${macroUnit}" aria-label="Browse ${label} variables"`;
     return `<div class="macro-label">${label}</div><span class="macro-name" ${link}>${escape(name === undefined ? 'Not recorded' : name || 'None')}</span>`;
   }).join('');
   const warningBox = $('filament-warning');
@@ -676,10 +709,15 @@ function draw() {
   let previousLabelY = -Infinity;
   const mm = value => Number(value.toFixed(1));
   for (const ref of references) {
+    if (ref.label === 'Extruder sensor' && ref.gap != null) {
+      const gearY=references.find(item=>item.label === 'Extruder entry').y;
+      const top=Math.min(ref.y,gearY)+2, bottom=Math.max(ref.y,gearY)-2;
+      svg += `<g class="toolhead-reference"><path d="M285 ${ref.y} H330 M315 ${top} V${bottom} M312 ${top+4} L315 ${top} L318 ${top+4} M312 ${bottom-4} L315 ${bottom} L318 ${bottom-4}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Extruder to entry')} x="323" y="${(ref.y+gearY)/2}" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)">Extruder to entry · ${mm(ref.gap)}mm</text></g>`;
+      continue;
+    }
     const labelY = Math.max(ref.y, previousLabelY + 17);
-    previousLabelY = labelY + (ref.gap != null ? 13 : 0);
-    const extra = ref.gap != null ? `<tspan class="reference-gap" x="336" dy="13" text-anchor="middle">(${mm(ref.gap)}mm to entry)</tspan>` : '';
-    svg += `<g class="toolhead-reference"><path d="M${ref.label === 'Extruder entry' ? 306 : 285} ${ref.y} H315 L330 ${labelY}" fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1"/><text ${dimensionLink(ref.label)} x="336" y="${labelY}" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)"><tspan class="reference-title">${ref.label} · ${mm(ref.distance)}mm</tspan>${extra}</text></g>`;
+    previousLabelY = labelY;
+    svg += `<g class="toolhead-reference"><path d="M${ref.label === 'Extruder entry' ? 306 : 285} ${ref.y} H315 L330 ${labelY}" fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1"/><text ${dimensionLink(ref.label)} x="336" y="${labelY}" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)"><tspan class="reference-title">${ref.label} · ${mm(ref.distance)}mm</tspan></text></g>`;
   }
   const cooling = coolingTubeMeasurements(s);
   if (cooling) {
@@ -693,11 +731,12 @@ function draw() {
     if (isBufferSensor(name)) continue;
     const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
     if (suffix && Number(suffix[1]) !== gate) continue;
-    if (d.position === null) continue;
+    if (d.position === null && !isTouchSensor(name)) continue;
     const pt = sensorPoint(name, d);
     const short = name.split(':').at(-1);
-    const sensorLabel = /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
-    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    const sensorLabel = isTouchSensor(name) ? 'touch' : /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
+    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    svg += homingRing(name,pt.x+16,pt.y);
     if (sensorPulse?.sensor === name) {
       const elapsed = (performance.now() - sensorPulse.start) / 650;
       if (elapsed >= 0 && elapsed < 1) {
@@ -732,7 +771,7 @@ function draw() {
         const value = `${encoderAnchor.offset > 0 ? '+' : ''}${mm(encoderAnchor.offset)}mm`;
         const unitIndex = s.units?.indexOf(s.unit) ?? 0;
         if (Object.hasOwn(s.configuration?.parameters?.[unitIndex] || {}, 'gate_endstop_to_encoder'))
-        svg += `<g id="encoder-offset" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M714 ${anchor.y} H726 M714 ${pt.y} H726 M720 ${top+2} V${bottom-2} M717 ${top+6} L720 ${top+2} L723 ${top+6} M717 ${bottom-6} L720 ${bottom-2} L723 ${bottom-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Encoder offset')} x="728" y="${(top+bottom)/2}" text-anchor="start" dominant-baseline="middle">${value}</text></g>`;
+        svg += `<g id="encoder-offset" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M714 ${anchor.y} H726 M714 ${pt.y} H726 M720 ${top+2} V${bottom-2} M717 ${top+6} L720 ${top+2} L723 ${top+6} M717 ${bottom-6} L720 ${bottom-2} L723 ${bottom-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Encoder offset')} x="728" y="${(top+bottom)/2-6.5}" text-anchor="start" dominant-baseline="middle"><tspan class="encoder-offset-title">Gate endstop to</tspan><tspan class="encoder-offset-value" x="728" dy="13" text-anchor="middle">encoder · ${value}</tspan></text></g>`;
       }
       // Device positions are interpolated alongside each captured move.
       const angle = gearAngle(d.encoder_pos || 0, 1, 11);
@@ -747,7 +786,7 @@ function draw() {
   if (Number.isFinite(excess) && excess !== 0) svg += `<text id="bowden-excess" x="640" y="${bowdenLengthLabel(s).includes('Uncalibrated') ? 134 : 118}" font-size="10" fill="var(--scene-text, #304c65)"><tspan x="640">Excess filament</tspan><tspan x="640" dy="14">${excessFilamentLabel(excess)}</tspan></text>`;
   const residual = s.filament?.residual_mm || 0;
   const fragment = s.filament?.fragment_mm || 0;
-  const retainedColor = s.nozzle_outlet_color || s.filament?.retained_color || '808182';
+  const retainedColor = s.nozzle_color || s.filament?.retained_color || '808182';
   const residualTop = tube.getPointAtLength(progress(end-residual)*length).y;
   const nozzleZero = tube.getPointAtLength(progress(end)*length).y;
   if (s.retained_segment && !s.retained_segment.residual_only) {
@@ -773,7 +812,7 @@ function draw() {
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${residualTop}" fill="none" stroke="#${retainedColor}" stroke-width="7"/>`;
   }
   if (residual > 0) {
-    svg += `<path id="residual-filament" d="M260 ${residualTop} L260 ${nozzleZero}" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text ${dimensionLink('Residual')} x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual · ${residual}mm</text>`;
+    svg += `<path id="residual-filament" d="M260 ${residualTop} L260 ${nozzleZero}" fill="none" stroke="#${retainedColor}" stroke-width="7"/><text id="residual-dimension" ${dimensionLink('Residual')} x="241" y="452" text-anchor="end" font-size="9" fill="var(--scene-muted, #6e8190)">Residual · ${residual}mm</text>`;
   }
   // Show the incoming front inside the residual instead of hiding it under a uniform color.
   if (residual > 0 && tip > end-residual) {
@@ -850,10 +889,9 @@ function draw() {
   }
   $("filament").setAttribute("stroke-dasharray", measured);
   $("filament").setAttribute("opacity", s.gate_path_opacity ?? 1);
-  for (const gap of $("scene").querySelectorAll('.reference-gap')) {
-    const title=gap.parentNode.querySelector('.reference-title');
-    gap.setAttribute('x',336+title.getComputedTextLength()/2);
-  }
+  const encoderTitle = $("scene").querySelector('.encoder-offset-title');
+  if (encoderTitle) $("scene").querySelector('.encoder-offset-value')
+    .setAttribute('x',728+encoderTitle.getComputedTextLength()/2);
   const bodyTop = 181; // Fixed 254-unit housing, ending at y=435.
   $("extruder-body").setAttribute('d', `M250 ${bodyTop} H242 Q240 ${bodyTop} 240 ${bodyTop+2} V435 H280 V${bodyTop+2} Q280 ${bodyTop} 278 ${bodyTop} H270`);
   $("sensors").replaceChildren(
@@ -1023,6 +1061,9 @@ $("live").onclick = followLive;
 $("timeline").oninput = () => seek(Number($("timeline").value));
 $("compress-bowden").onchange = () => renderTrace();
 $("show-filament-shape").onchange = draw;
+$("show-dimensions").onchange = () => {
+  $("scene").classList.toggle('hide-dimensions', !$("show-dimensions").checked);
+};
 $("nozzle-diameter").onchange = () => draw();
 function downloadTelemetry() {
   const records = [...sourceRecords, ...(pendingSource ? [pendingSource] : [])];
