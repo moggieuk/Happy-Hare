@@ -36,17 +36,18 @@ class MmuEspoolerCommand(BaseCommand):
         + "OPERATION = [assist|off|print|rewind] Set espooler operation mode\n"
         + "POWER     = [0-100] Override default % power to apply to espooler motor\n"
         + "QUIET     = [0|1] Used to suppress console/log output\n"
-        + "RESET     = [0|1] Turn of in-print assist\n"
+        + "RESET     = [0|1] Turn off in-print assist\n"
         + "TIGHTEN   = [0|1] Quick way to tighten filament on spool\n"
         + "(no parameters for status report)"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD}                         ...Report espooler status\n"
-        + f"{CMD} GATE=2 TIGHTEN=1        ...Tighten filament on the spool at gate 2\n"
-        + f"{CMD} GATE=2 BURST=1 POWER=50 ...Jog espooler on gate 2 in the current operation direction at 50% power\n"
-        + f"{CMD} GATE=2 OPERATION=rewind ...Set gate 2 espooler to rewind (in-print) mode\n"
-        + f"{CMD} ALLOFF=1                ...Turn all espoolers off\n"
+        + f"{CMD}                                          ...Report espooler status\n"
+        + f"{CMD} GATE=2 TIGHTEN=1                         ...Tighten filament on the spool at gate 2\n"
+        + f"{CMD} GATE=2 OPERATION=assist BURST=1 POWER=50 ...Burst espooler on gate 2 in assist direction at 50% power\n"
+        + f"{CMD} GATE=2 OPERATION=rewind                  ...Run gate 2 espooler continuously in rewind direction\n"
+        + f"{CMD} GATE=2 OPERATION=off                     ...Turn gate 2 espooler off\n"
+        + f"{CMD} ALLOFF=1                                 ...Turn all espoolers off\n"
     )
 
     def __init__(self, mmu):
@@ -148,6 +149,9 @@ class MmuEspoolerCommand(BaseCommand):
                     mmu_unit.espooler.set_operation(gate, power / 100, operation)
                 else:
                     mmu_unit.espooler.set_operation(gate, 0, ESPOOLER_OFF)
+
+            elif burst:
+                raise gcmd.error("Must specify OPERATION=assist or OPERATION=rewind for burst")
 
         if not quiet:
             msg = ""
