@@ -93,11 +93,14 @@ class MmuEspoolerCommand(BaseCommand):
                 # With gate specified = similar to filament tension trigger
                 mmu_unit.espooler.advance(gate)
 
-            if alloff:
-                for gate in range(mmu.num_gates):
-                    mmu_unit.espooler.set_operation(gate, 0, ESPOOLER_OFF)
+        if alloff:
+            # Every unit, not just the one inferred from GATE/UNIT
+            for g in range(mmu.num_gates):
+                if mmu.has_espooler(g):
+                    mmu.espooler(g).set_operation(g, 0, ESPOOLER_OFF)
 
-            elif tighten or loosen:
+        elif mmu_unit.espooler is not None:
+            if tighten or loosen:
                 if gate is None:
                     gate = mmu.gate_selected
                 if gate < 0:
