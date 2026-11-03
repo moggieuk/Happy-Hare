@@ -140,7 +140,7 @@ if MMU_HAS_ESPOOLER
         This burst configuration is used to control the small rotation in the ASSIST direction
         optionally used when 'print' operation is enabled, 'espooler_printing_power: 0' and is
         triggered (tension switch or extruder movement). It can also be used to loosen filament with
-        'MMU_ESPOOLER COMMAND=assist BURST=1'.
+        'MMU_ESPOOLER OPERATION=assist BURST=1'.
 
         Distance (mm) extruder needs to move between each assist burst
 
@@ -185,7 +185,7 @@ if MMU_HAS_ESPOOLER
         This burst configuration is used to control the small rotation in the REWIND direction
         optionally used when running the filament drying cycle. The goal is to rotate the spool
         60-90 degrees. It can also be used to tighten the filament with
-        'MMU_ESPOOLER COMMAND=rewind BURST=1'.
+        'MMU_ESPOOLER OPERATION=rewind BURST=1'.
 
         The % power of the rewind burst move
 
