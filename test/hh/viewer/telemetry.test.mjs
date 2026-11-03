@@ -633,3 +633,78 @@ test('manual purge and retract never add residual length to tip travel',()=>{
  assert.equal(returned.state.tips[0],nozzle);
  assert.equal(returned.state.extruded_mm,back.state.extruded_mm);
 });
+
+
+test('a new load purges residual instead of inheriting the previous retract contact point',()=>{
+ const r=stream(),s=r.snapshot(),nozzle=s.layout.nozzle,gears=s.layout.extruder_gears;
+ r.tips[0]=nozzle;
+ move(r,-2,{source:'mmu_gcode'});
+ move(r,-(nozzle-gears),{source:'mmu_gcode'});
+ assert.equal(r.tips[0],gears);
+ r.facts.printer.mmu.gate_color[0]='00ff00';
+ r.facts.printer.mmu_machine.units[r.facts.printer.mmu.unit].extruder.filament_remaining_color='00ff00';
+ move(r,nozzle-gears-2);
+ const before=r.snapshot().extruded_mm;
+ const purge=move(r,2,{source:'mmu_gcode'});
+ assert.equal(purge.state.extruded_mm-before,2);
+ const retract=move(r,-2,{source:'mmu_gcode'});
+ assert.equal(retract.state.nozzle_color,'00ff00');
+ assert.equal(interpolate(retract,.5).nozzle_color,'00ff00');
+ assert.notEqual(purgeOutletColor(retract.state,retract.state.extruded_mm),'00ff00');
+});
+
+
+test('unloaded gate selections use the configured parking position for new and revisited gates',()=>{
+ for(const parking of [-100,-30,20]) {
+  const r=stream(0),m=r.facts.printer.mmu,u=r.facts.printer.mmu_machine.units[m.unit];
+  u.parameters.gate_homing_endstop='mmu_shared_exit';
+  u.parameters.gate_parking_distance=parking;
+  const sensor=m.unit+':mmu_shared_exit';
+  m.sensors[sensor]={triggered:parking>=0,enabled:true};
+  m.active_sensors.push(sensor);
+  event(r,'filament_pos_changed',{filament_pos:0});
+  const parked=r.tips[0];
+  for(const gate of [2,0]) {
+   const previous=m.gate;
+   event(r,'state_delta',{changes:[{path:['printer','mmu','gate'],value:gate}]});
+   event(r,'gate_changed',{previous_gate:previous,gate,unit:m.unit});
+   assert.equal(r.tips[gate],parked);
+   assert.equal(interpolate(r.events.at(-1),1).tips[gate],parked);
+  }
+ }
+});
+
+
+test('synced unload reaches the gears before spending travel on sprung buffer recovery',()=>{
+ const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
+ const u=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ Object.assign(u.buffer,{buffer_maxrange:13,buffer_range:8,buffer_spring_state:'tension',proportional:false,value:null});
+ const r=new TelemetryReplay();r.feed(h);const gears=r.snapshot().layout.extruder_gears;
+ r.tips[0]=gears+29;matchPresence(r);
+ for(const [n,s] of Object.entries(r.facts.printer.mmu.sensors))if(n.includes('filament_'))s.triggered=false;
+ r.bufferPositions[0]=10;
+ const e=move(r,-37,{motor_mode:'gear+extruder',motors:['gear','extruder']}),key=`${e.state.unit}:buffer`;
+ assert.equal(e.buffer_takeup_after_mm,29);
+ assert.equal(e.buffer_takeup_mm,8);
+ assert.equal(e.state.tips[0],gears);
+ assert.equal(e.state.devices[key].modeled_displacement,2);
+ const approaching=interpolate(e,.5),recovering=interpolate(e,33/37);
+ assert.equal(approaching.tips[0],gears+10.5);
+ assert.equal(approaching.devices[key].travel,10);
+ assert.equal(recovering.tips[0],gears);
+ assert.equal(recovering.devices[key].travel,6);
+ const bowden=move(r,-20,{motor_mode:'gear',motors:['gear']});
+ assert.equal(bowden.buffer_takeup_mm,2);
+ assert.equal(interpolate(bowden,.05).tips[0],gears);
+ assert.equal(bowden.state.tips[0],gears-18);
+ assert.equal(bowden.state.devices[key].travel,0);
+});
+
+
+test('configured gear touch is display-only, not a filament-presence constraint',()=>{
+ const h=header(),m=h.state.printer.mmu;
+ h.state.printer.mmu_machine.units[m.unit].parameters.extruder_homing_endstop='mmu_gear_touch';
+ const r=new TelemetryReplay();r.feed(h);const s=r.snapshot(),name=`${m.unit}:mmu_gear_touch`;
+ assert.deepEqual(s.sensors[name],{state:null,enabled:true,position:null});
+ assert.ok(!s.active_sensors.includes(name));
+});

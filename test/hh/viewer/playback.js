@@ -41,7 +41,9 @@ export function interpolate(event, fraction) {
       const delta = i === b.gate && event.filament_travel_mm != null ? event.filament_travel_mm
         : event.raw_state.tips[i] - event.raw_before.tips[i];
       const takeup=i === b.gate ? event.buffer_takeup_mm || 0 : 0;
-      const candidate = tip + (takeup && delta < 0 ? Math.min(0,delta*fraction+takeup) : delta*fraction);
+      const approach=event.buffer_takeup_after_mm || 0;
+      const recovered=takeup && delta < 0 ? Math.min(takeup,Math.max(0,-delta*fraction-approach)) : 0;
+      const candidate = tip + delta*fraction+recovered;
       return delta >= 0 ? Math.min(candidate, b.tips[i]) : Math.max(candidate, b.tips[i]);
     });
   }
@@ -277,16 +279,22 @@ export function traceText(event) {
   return prefix + text;
 }
 
-export function homingPulse(event) {
-  if (event.kind !== 'movement' || !event.homing || event.homed !== true) return null;
+export function homingTarget(event) {
+  if (event?.kind !== 'movement' || !event.homing) return null;
   const sensors = event.state?.sensors || {};
   const target = event.endstop;
-  const short = name => name.split(':').at(-1).replace(/^mmu_/, '');
+  const short = name => name.split(':').at(-1).replace(/^mmu_/, '').replace(/_\d+$/, '');
   const candidates = Object.keys(sensors).filter(name => target &&
     (name === target || (!target.includes(':') && short(name) === short(target))) &&
-    (!event.state.active_sensors || event.state.active_sensors.includes(name)));
-  if (candidates.length !== 1 || sensors[candidates[0]].position == null) return null;
-  return {sensor:candidates[0], reverse:(event.requested ?? event.distance ?? 0) < 0};
+    (!event.state.active_sensors || event.state.active_sensors.includes(name) || name === `${event.state.unit}:mmu_gear_touch`));
+  if (candidates.length !== 1) return null;
+  if (sensors[candidates[0]].position == null && short(candidates[0]) !== 'gear_touch') return null;
+  return candidates[0];
+}
+
+export function homingPulse(event) {
+  const sensor=event.homed === true ? homingTarget(event) : null;
+  return sensor ? {sensor, reverse:(event.requested ?? event.distance ?? 0) < 0} : null;
 }
 
 export function bladeStroke(event, fraction, kind) {
@@ -345,6 +353,7 @@ export function dimensionParameter(state, label) {
   const parameters = {'Bowden': 'calibrated_bowden_length',
     'Extruder entry': 'toolhead_extruder_to_nozzle',
     'Extruder sensor': 'toolhead_entry_to_extruder',
+    'Extruder to entry': 'toolhead_entry_to_extruder',
     'Toolhead sensor': 'toolhead_sensor_to_nozzle',
     'Encoder offset': 'gate_endstop_to_encoder',
     'Residual': 'toolhead_residual_filament'};
