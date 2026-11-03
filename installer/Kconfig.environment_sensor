@@ -61,13 +61,40 @@ if !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
 endif
 comment "$(misc_hardware_hint)" if MMU_HAS_ENVIRONMENT_SENSOR && CUSTOM_ENVIRONMENT_SENSOR_SETUP
   dim
+comment "Defined in external printer configuration" if MMU_HAS_ENVIRONMENT_SENSOR && EXTERNAL_ENVIRONMENT_SENSOR_SETUP
+  dim
+
+if MMU_TYPE_EMU_1_0 && (BOARD_TYPE_EMB_C || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL) && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
+  config OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
+    bool "Use externally configured per-gate environment sensors"
+    default n
+    select MMU_HAS_ENVIRONMENT_SENSOR
+    select EXTERNAL_ENVIRONMENT_SENSOR_SETUP
+    help
+      Associate one externally configured temperature/humidity sensor with
+      each gate. Happy Hare will not generate sensor sections or I2C settings.
+
+      Define [temperature_sensor $(UNIT_NAME)_EnvN] sections in printer.cfg.
+      For TCA9548A multiplexers, see:
+      https://github.com/jacksky6/TCA9548A-klipper-addon
+
+  if OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
+    # Match Happy Hare's standard per-gate naming without managing the
+    # external driver, mux, bus, or sensor configuration.
+    @repeat var=i min=0 max=$(max_gate)@
+      config PARAM_ENVIRONMENT_SENSOR_$(i)
+        string
+        default "$(UNIT_NAME)_Env$(i)"
+    @endrepeat@
+  endif
+endif
 
 
 # -------------------------------------
 # Environment/temperature sensor config
 # -------------------------------------
 
-if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PER_GATE_CONFIG
+if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !EXTERNAL_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PER_GATE_CONFIG
   menu "Environment sensor h/w config"
     help
       Configure the shared enclosure temperature and humidity sensor.
@@ -85,7 +112,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !MMU_HAS_PE
   endmenu
 endif
 
-if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER_GATE_CONFIG
+if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP && !EXTERNAL_ENVIRONMENT_SENSOR_SETUP && MMU_HAS_PER_GATE_CONFIG
   menu "Environment sensor h/w config"
     help
       Configure the temperature and humidity sensor of each gate.

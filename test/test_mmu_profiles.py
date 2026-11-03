@@ -702,6 +702,52 @@ class TestEveryBootableProfile(unittest.TestCase):
                 self.assertFalse(any(section.startswith('controller_fan ')
                                      for section in parser.sections()))
 
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconfig = cfg._kconfig(profile.name, profile.syms)
+                self.assertTrue(kconfig.is_enabled('MMU_HAS_ENVIRONMENT_SENSOR'))
+                self.assertTrue(kconfig.is_enabled('EXTERNAL_ENVIRONMENT_SENSOR_SETUP'))
+                self.assertEqual(kconfig.syms['PARAM_ENVIRONMENT_SENSOR_GATE_0'].visibility,
+                                 0)
+
+                rendered = cfg.render(profile)
+                self.assertIn('https://github.com/jacksky6/TCA9548A-klipper-addon',
+                              '\n'.join(rendered.values()))
+                parser = cfg.assemble(rendered)
+                unit = dict(parser.items('mmu_unit unit0'))
+                self.assertEqual(unit['environment_sensors'].split(', '), [
+                    'unit0_Env%d' % gate for gate in range(lanes)])
+                self.assertFalse(any(section.startswith('temperature_sensor unit0_Env')
+                                     for section in parser.sections()))
+
+    def test_external_per_gate_environment_sensors_are_hidden_for_ebb(self):
+        from test.hh import cfg, profiles
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(profiles.EMU_EBB.name, profiles.EMU_EBB.syms)
+        self.assertEqual(kconfig.syms[
+            'OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS'].visibility, 0)
+        self.assertFalse(kconfig.is_enabled('EXTERNAL_ENVIRONMENT_SENSOR_SETUP'))
+
+    def test_external_per_gate_environment_sensors_are_opt_in_for_other_board(self):
+        from test.hh import cfg, profiles
+        profile = profiles.EMU.derive(
+            'emu_other_external_environment',
+            syms={'MMU_HAS_PER_GATE_MCU': False, 'BOARD_TYPE_OTHER': True})
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(profile.name, profile.syms)
+        self.assertNotEqual(kconfig.syms[
+            'OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS'].visibility, 0)
+        self.assertFalse(kconfig.is_enabled('EXTERNAL_ENVIRONMENT_SENSOR_SETUP'))
+
+        external = profile.derive(
+            'emu_other_external_environment_enabled',
+            syms={'OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS': True})
+        parser = cfg.assemble(cfg.render(external))
+        unit = dict(parser.items('mmu_unit unit0'))
+        self.assertEqual(unit['environment_sensors'].split(', '), [
+            'unit0_Env%d' % gate for gate in range(5)])
+        self.assertFalse(any(section.startswith('temperature_sensor unit0_Env')
+                             for section in parser.sections()))
+
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
         self._check('ercf_vvd')

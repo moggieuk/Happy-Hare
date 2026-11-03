@@ -115,6 +115,11 @@ config CUSTOM_LED_SETUP
 config CUSTOM_ENVIRONMENT_SENSOR_SETUP
   bool
 
+# External sensor sections are supplied by the user's printer configuration,
+# while Happy Hare still owns their association with MMU gates.
+config EXTERNAL_ENVIRONMENT_SENSOR_SETUP
+  bool
+
 config CUSTOM_HEATER_SETUP
   bool
 
