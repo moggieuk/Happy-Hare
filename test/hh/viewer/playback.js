@@ -592,35 +592,46 @@ export function visibleSteps(records) {
 }
 
 
+// Time when the true incoming end reaches zero, including acceleration.
+export function nozzleArrivalTime(event, movementMs) {
+  const gate=event.state.gate, start=event.before?.tips[gate], nozzle=event.state.layout?.nozzle;
+  if (event.kind !== 'movement' || !(start < nozzle) || !(event.state.tips[gate] >= nozzle-.001)) return null;
+  const travel=event.raw_before && event.raw_state && !event.homing_anchor
+    ? event.filament_travel_mm ?? event.raw_state.tips[gate]-event.raw_before.tips[gate]
+    : event.state.tips[gate]-start;
+  const arrival=Math.min(1,(nozzle-start)/travel);
+  let low=0,high=1;
+  for(let i=0;i<24;i++) {
+    const mid=(low+high)/2;
+    if(motionFraction(event,mid)<arrival) low=mid; else high=mid;
+  }
+  return high*movementMs;
+}
+
 // Finish color mixing after motion stops, without adding filament travel.
 export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.before?.mmu_gripped) {
   const fraction=event.kind === 'gate_changed'
     ? Math.max(0,Math.min(1,(elapsed-500)/(movementMs-1000)))
     : motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
   let state=interpolate(event,fraction);
-  if (event.kind === 'gate_changed') {
+  if (event.kind === 'gate_changed' && elapsed < movementMs) {
     // Release before retreat and restore the starting grip after advance, in either direction.
     state={...state,mmu_gripped:elapsed >= 250 && elapsed < movementMs-250 ? false : selectionGrip};
   }
   if (event.purge_settle && elapsed >= movementMs) {
-    const blend=Math.max(0,Math.min(1,(elapsed-movementMs)/350));
+    const blend=Math.max(0,Math.min(1,(elapsed-movementMs)/700));
     const color=purgeColor({purge_transition:{start_mm:0,retained_mm:1,mix_mm:1,
       old_color:event.purge_settle.from,new_color:event.purge_settle.to}},blend);
     state={...state,nozzle_outlet_color:color};
   }
-  const gate=event.state.gate, start=event.before?.tips[gate], nozzle=event.state.layout?.nozzle;
-  if (event.before?.tip_shapes?.[gate] === 'cone' && start < nozzle && event.state.tips[gate] >= nozzle-.001) {
-    const travel=event.raw_before && event.raw_state && !event.homing_anchor
-      ? event.filament_travel_mm ?? event.raw_state.tips[gate]-event.raw_before.tips[gate]
-      : event.state.tips[gate]-start;
-    const arrival=Math.min(1,(nozzle-start)/travel);
-    let low=0,high=1;
-    for(let i=0;i<24;i++) {
-      const mid=(low+high)/2;
-      if(motionFraction(event,mid)<arrival) low=mid; else high=mid;
-    }
-    const fade=Math.max(0,Math.min(1,(elapsed-high*movementMs)/350));
-    state={...state,cone_edge_opacity:1-fade};
+  const gate=event.state.gate;
+  const arrivalTime=nozzleArrivalTime(event,movementMs);
+  if (arrivalTime !== null) {
+    const flood=Math.max(0,Math.min(1,(elapsed-arrivalTime)/500));
+    state={...state,nozzle_fill_fraction:flood,
+      nozzle_fill_from:event.before.filament?.residual_mm > 0
+        ? event.before.nozzle_outlet_color || event.before.filament.retained_color : null};
+    if (event.before?.tip_shapes?.[gate] === 'cone') state.cone_edge_opacity=1-flood;
   }
   if (event.kind === 'movement' && event.before) {
     const visualEndpoint=s=>{
