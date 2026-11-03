@@ -285,6 +285,7 @@ export class TelemetryReplay {
     return copy({unit:m.unit,units,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
       tips:this.tips,tails:this.tips.map(()=>null),tip_shapes:this.shapes,hair_lengths:this.hairLengths,gate_colors:m.gate_color.map(color),layout,sensors,active_sensors:m.active_sensors,
       unit_sensors:unit.sensors,devices,buffers,object_status,configuration,filament,cutters,cutter_pressed:this.cutter,
+      extruder_target_temperature:finite(extruder.target_temperature) ? extruder.target_temperature : null,
       mmu_gripped:mmuGripped,synced:[1,3].includes(m.sync_mode),drive_motors:m.drive_motors,motors:this.motors,
       encoder_reference:{endstop:up.gate_homing_endstop,offset:up.gate_endstop_to_encoder,parking:number(up.gate_parking_distance),overshoot:this.overshoot[m.gate] || 0},
       retained_segment:this.fragments[extruder.name] || null,extruded_mm:hotend.extruded,purge_base_mm:hotend.base,purge_transition:hotend.plan,

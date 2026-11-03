@@ -382,6 +382,7 @@ Useful flags — `make console ARGS='...'`:
 --seed N                       # seed for the primed gate map (default 0, reproducible)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
 --serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
+--serve-host ADDRESS          # listening address (default 127.0.0.1)
 --no-serve                     # don't serve the web API for Mainsail/Fluidd
 --pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
 --wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
@@ -923,6 +924,17 @@ VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=7125 npx vite serve
 
 or, for a built Mainsail or Fluidd, add a printer at `127.0.0.1:7125` in its connection
 dialog.
+
+For a browser on another machine on your LAN, bind to the simulator computer's LAN address:
+
+```bash
+make console ARGS='--serve-host 192.168.0.157'
+```
+
+Use that address and port 7125 in Mainsail. `--serve-host 0.0.0.0` listens on all IPv4
+interfaces; remote clients still use the simulator computer's LAN address. The default
+remains localhost only. The simulator API has no authentication, so use LAN access only
+on a trusted network. The live viewer and Mainsail can connect simultaneously.
 
 To see the pause dialog, pretend a print is running and make something fail:
 

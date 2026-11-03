@@ -669,7 +669,7 @@ class Console:
         If the port cannot be opened, warn in the startup banner and keep the console usable.
         """
         try:
-            self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port).start()
+            self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port, host=self.args.serve_host).start()
         except OSError as exc:
             self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
         if self.bridge is None:
@@ -708,9 +708,11 @@ class Console:
         if self.bridge is None:
             return [self.bridge_error] if self.bridge_error else []
         port = self.bridge.port
-        return ['Web API (for Mainsail/Fluidd): host 127.0.0.1  port %d  (http://127.0.0.1:%d)'
-                % (port, port),
-                'Live viewer: http://127.0.0.1:%d/sim/viewer/' % port,
+        host = self.bridge.host
+        address = '127.0.0.1' if host == '0.0.0.0' else host
+        return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
+                % (host, port, address, port),
+                'Live viewer: http://%s:%d/sim/viewer/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):
@@ -721,12 +723,15 @@ class Console:
         port = self.bridge.port
         for line in lines[:1]:
             self.info(line)
+        host = '127.0.0.1' if self.bridge.host == '0.0.0.0' else self.bridge.host
+        if self.bridge.host == '0.0.0.0':
+            self.info('Listening on all IPv4 interfaces. Remote clients use this computer’s LAN IP.')
         self.info('Mainsail dev server, from a Mainsail checkout:\n'
-                  '  VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=%d npx vite serve\n'
-                  'A built Mainsail or Fluidd: add a printer at 127.0.0.1:%d in its connection '
+                  '  VUE_APP_HOSTNAME=%s VUE_APP_PORT=%d npx vite serve\n'
+                  'A built Mainsail or Fluidd: add a printer at %s:%d in its connection '
                   'dialog.\n'
                   'Then /print start, /exhaust 1 and MMU_CHANGE_TOOL TOOL=1 make a pause '
-                  'dialog appear.' % (port, port))
+                  'dialog appear.' % (host, port, host, port))
 
     def _run_for_bridge(self, script):
         """A script sent from the web UI: shown and run as if typed at the prompt."""
@@ -3230,6 +3235,9 @@ def parse_args(argv=None):
                    help='serve the Moonraker-compatible web API on this port (default %d). It is '
                         'already on by default at a terminal, so this is for choosing the port or '
                         'turning it on when not at one' % API_PORT)
+    p.add_argument('--serve-host', default='127.0.0.1', metavar='ADDRESS',
+                   help='web API listening address (default %(default)s); use a LAN IPv4 address '
+                        'or 0.0.0.0 for remote access. The simulator API has no authentication')
     p.add_argument('--no-serve', '--no_serve', dest='no_serve', action='store_true',
                    help='do not serve the web API that lets Mainsail or Fluidd connect to the '
                         'simulator')
