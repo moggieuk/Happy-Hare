@@ -109,5 +109,20 @@ class TestEspoolerPinsOnLaterUnit(unittest.TestCase):
         self.assertEqual(hh.mmu.espooler(2).respool_gates, [2])
 
 
+class TestEspoolerAllOffMultiUnit(unittest.TestCase):
+    """ALLOFF=1 turns off espoolers on every unit, not just the one the command resolves to."""
+
+    def test_alloff_reaches_other_units(self):
+        hh = session(profiles.clone_across_units('two_boxes', profiles.BOXTURTLE, ('unit0', 'unit1')))
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertEqual(hh.errors, [])
+        hh.mmu._set_gate_selected(4)
+        hh.run_gcode('MMU_ESPOOLER GATE=1 OPERATION=rewind QUIET=1')
+        self.assertEqual(hh.mmu.espooler(1).get_operation(1)[0], 'rewind')
+        hh.run_gcode('MMU_ESPOOLER ALLOFF=1 QUIET=1')
+        self.assertEqual(hh.mmu.espooler(1).get_operation(1), ('off', 0))
+
+
 if __name__ == '__main__':
     unittest.main()
