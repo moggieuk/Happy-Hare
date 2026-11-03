@@ -727,7 +727,12 @@ class MmuStepper(ExtruderStepper):
                 toolhead.register_step_generator(self.stepper.generate_steps)
                 self._step_gen_registered = True
         elif self._step_gen_registered:
-            toolhead.unregister_step_generator(self.stepper.generate_steps)
+            handler = self.stepper.generate_steps
+            if hasattr(toolhead, 'unregister_step_generator'):
+                toolhead.unregister_step_generator(handler)
+            elif handler in toolhead.step_generators:
+                # Toolheads without unregister_step_generator (e.g. Kalico bleeding-edge-v2)
+                toolhead.step_generators.remove(handler)
             self._step_gen_registered = False
 
 

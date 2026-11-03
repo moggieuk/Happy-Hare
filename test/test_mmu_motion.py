@@ -1201,6 +1201,27 @@ class TestKalico(MotionTestCase):
         _assert_gcode_axis_step_generator_tracking(self)
 
 
+class TestKalicoBleedingEdgeV2(MotionTestCase):
+    """
+    Kalico bleeding-edge-v2: the pre-motion_queuing toolhead, but one that
+    predates unregister_step_generator - it has the step_generators list and
+    register_step_generator only. Taking a manual-mode stepper off the list at
+    klippy:connect crashed with "'ToolHead' object has no attribute
+    'unregister_step_generator'".
+    """
+    SESSION_KWARGS = {'kalico': True, 'unregister_step_generator': False}
+
+    def test_boot_without_unregister_step_generator(self):
+        toolhead = self.hh.printer.lookup_object('toolhead')
+        self.assertFalse(hasattr(toolhead, 'unregister_step_generator'),
+                         'this generation has no unregister_step_generator')
+        _assert_all_mmu_steppers_on_the_emulator(self)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_manual_mode_steppers_off_toolhead_step_generators(self):
+        _assert_step_generator_tracking(self)
+
+
 class TestOldKlipper(MotionTestCase):
     """
     Old mainline Klipper generation: no motion_queuing module, and no Kalico
