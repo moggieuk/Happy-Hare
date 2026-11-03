@@ -57,6 +57,8 @@ _PREVIOUS_MEMBER = re.compile(r"_PREVIOUS(_\d+)?$")
 _UPGRADE_OWNED = {("mmu_machine", "happy_hare_version"), ("mmu_machine", "state_migration")}
 # install.sh sources .mmu_config as shell and make includes it, so a value can't hold these
 _UNSAVEABLE = re.compile(r"[\n\r$`]")
+# What Klipper reads for an absent option, by section type, in a section holding the option it goes with
+_IMPLIED_DEFAULTS = (("mcu", "canbus_interface", "can0", "canbus_uuid"),)
 
 
 # Pin pattern, section format, optional symbol supplying the object name.
@@ -298,17 +300,18 @@ class Analysis(object):
         rendered = self._render(values)
         self.live = self._options(rendered)
         self.theirs = {(section, option): value for section, options in hhcfg.values() for option, value in options}
-        symbols = {}
-        for template in self.templates:
-            with open(os.path.join(REPO_ROOT, template), encoding="utf-8") as f:
-                marked = mark_template(f.read())
-            symbols.update(symbol_lines(self.env.from_string(marked).render(self._params(values))))
+        for section_type, option, default, with_option in _IMPLIED_DEFAULTS:
+            for section in {s for s, _ in self.theirs if s.split(" ", 1)[0] == section_type}:
+                if (section, with_option) in self.theirs:
+                    self.theirs.setdefault((section, option), default)
+                    self.origin.setdefault((section, option), self.origin.get((section, with_option)))
+        symbols = self._symbols(values)
 
         # Every (section, option) each symbol renders into, so an edit to one copy isn't
         # imported when the other copies say something else
         uses = {}
         for key, ref in symbols.items():
-            if ref and rendered.has_option(*key) and hhcfg.has_option(*key):
+            if ref and rendered.has_option(*key) and key in self.theirs:
                 uses.setdefault(ref, []).append(key)
         self.where = {}
         for ref, keys in uses.items():
@@ -344,7 +347,9 @@ class Analysis(object):
                 continue
             self._consider(Candidate(sym_name, literal, locations, ours.strip(), theirs.strip()))
 
-        self._discover_managed(hhcfg)
+        refs = self._template_refs()
+        self._discover_managed(hhcfg, refs)
+        self._discover_switched(refs)
         self.candidates.extend(self.discovered_pins)
         self._drop_conflicts()
         self._check_together()
@@ -392,22 +397,27 @@ class Analysis(object):
             else:
                 self._reset_trial()
 
-    def _discover_managed(self, installed):
-        """Offer managed options the render omits only because their menuconfig value is blank.
-
-        Copy-back never restores a managed option the template omits, so without an import
-        it is lost. Each is traced to a blank symbol by trial, then judged as any other edit
-        """
-        policies, refs = {}, {}
+    def _template_refs(self):
+        """{option: {(symbol or per-gate prefix, literal), ...}} for each template line one symbol sets"""
+        refs = {}
         for template in self.templates:
-            path = os.path.join(REPO_ROOT, template)
-            policies.update(build.template_managed_options(path, REPO_ROOT))
-            with open(path, encoding="utf-8") as f:
+            with open(os.path.join(REPO_ROOT, template), encoding="utf-8") as f:
                 for line in f.read().split("\n"):
                     m, option = _PLAIN_REF.match(line), _OPTION.match(line)
                     if m and option:
                         refs.setdefault(option.group(1), set()).add(
                             (m.group("sym") or m.group("array"), bool(m.group("literal"))))
+        return refs
+
+    def _discover_managed(self, installed, refs):
+        """Offer managed options the render omits only because their menuconfig value is blank.
+
+        Copy-back never restores a managed option the template omits, so without an import
+        it is lost. Each is traced to a blank symbol by trial, then judged as any other edit
+        """
+        policies = {}
+        for template in self.templates:
+            policies.update(build.template_managed_options(os.path.join(REPO_ROOT, template), REPO_ROOT))
 
         handled = set()
         for section in installed.sections(scope="included"):
@@ -439,14 +449,107 @@ class Analysis(object):
                         self._consider(Candidate(name, literal, locations, "", value))
                     break
 
-    def _blank_symbols(self, refs):
-        """(symbol, literal) for each blank symbol of these template references, per-gate ones expanded"""
+    def _discover_switched(self, refs):
+        """Offer options a hand edit switched to another branch of a menuconfig list.
+
+        E.g. an [mcu] section changed from serial to canbus_uuid. The symbol that renders
+        canbus_uuid is only defined, and its own list only shown, once the connection type
+        list is changed too. So that member is set first, then the trials are made under it
+        as for any value set through a list
+        """
+        handled = {key for c in self.candidates for key in c.locations} | {key for key, _, _ in self.kept}
+        switches = {}
+        for key in sorted(self.theirs, key=str):
+            section, option = key
+            if (section, None) not in self.live or key in self.live or key in handled or key in _UPGRADE_OWNED:
+                continue
+            for name, literal in self._referenced_symbols(refs.get(option, ())):
+                member = self._switching_member(self.kconf.syms[name])
+                if member is None:
+                    continue
+                if member not in switches:
+                    switches[member] = self._switched_state(member)
+                after, symbols, trials = switches[member]
+                locations = [k for k, ref in symbols.items()
+                             if ref and ref[0] == name and k in after and k not in self.live]
+                if key not in locations or trials.get(name) is None:
+                    continue
+                handled.update(locations)
+                cfg_values = {(self.theirs.get(k) or "").strip() for k in locations}
+                if len(cfg_values) > 1:
+                    for k in locations:
+                        if k in self.theirs:
+                            self.kept.append((k, self.theirs[k], "%s is set differently elsewhere" % name))
+                    break
+                candidate = Candidate(name, literal, locations, "", cfg_values.pop())
+                # Options of the other branch go, which only matches a .cfg that dropped them too
+                removed = {k for k in self.live if k[1] is not None and k not in after}
+                choice, choice_trials = trials[name]
+                setting, reason = self._through(
+                    candidate, [([(member, "y")] + settings, set(may_match) | removed)
+                                for settings, may_match in choice_trials], "%s option" % choice.name)
+                if setting:
+                    self._accept(candidate, setting)
+                else:
+                    for k in locations:
+                        self.kept.append((k, candidate.cfg_value, reason))
+                break
+
+    def _switching_member(self, sym):
+        """The one list member, now off, that a definition of this symbol is enclosed by"""
+        found = set()
+        for node in sym.nodes:
+            members = {s for s in kconfiglib.expr_items(node.dep)
+                       if isinstance(s, kconfiglib.Symbol) and s.choice is not None
+                       and (s.choice.name or "").startswith("CHOICE_") and not s.tri_value}
+            if len(members) == 1:
+                found |= members
+        if len(found) != 1:
+            return None
+        member = found.pop()
+        return member if member.visibility and member.choice.visibility else None
+
+    def _switched_state(self, member):
+        """
+        (rendered options, {(section, option): (symbol, literal)}, {symbol: trials}) with the
+        member selected. The trials are those for each hidden symbol set through a list,
+        made with the member selected, since that list and the definitions it sets are only
+        enabled then
+        """
+        member.set_value("y")
+        values = self.kconf.as_dict()
+        after = self._options(self._render(values))
+        symbols = self._symbols(values)
+        where = {}
+        for key, ref in symbols.items():
+            if ref and key in after and key in self.theirs:
+                where.setdefault(ref[0], []).append(key)
+        # Which typed-in values a member sets depends on the definitions enabled, so this
+        # state's are mapped apart from the others
+        self._entry_map = None
+        trials = {}
+        for name in {ref[0] for key, ref in symbols.items() if ref and key in after and key not in self.live}:
+            sym = self.kconf.syms.get(name)
+            if sym is not None and why_not_settable(sym, sym.str_value) == HIDDEN:
+                trials[name] = self._choice_trials(sym, where)
+        self._entry_map = None
+        self._reset_trial()
+        return after, symbols, trials
+
+    def _referenced_symbols(self, refs):
+        """(symbol, literal) for each symbol of these template references, per-gate ones expanded"""
         for ref, literal in sorted(refs):
             names = [ref] if not ref.endswith("_") else \
                 sorted(n for n in self.kconf.syms if re.fullmatch(re.escape(ref) + r"[0-9]+", n))
             for name in names:
-                if name in self.kconf.syms and not self.kconf.syms[name].str_value:
+                if name in self.kconf.syms:
                     yield name, literal
+
+    def _blank_symbols(self, refs):
+        """(symbol, literal) for each blank symbol of these template references, per-gate ones expanded"""
+        for name, literal in self._referenced_symbols(refs):
+            if not self.kconf.syms[name].str_value:
+                yield name, literal
 
     def _reset_trial(self):
         self.kconf.load_config(self.kconfig_path, filter_defaults=True)
@@ -458,6 +561,16 @@ class Analysis(object):
         params = dict(values)
         params["PARAM_TOTAL_NUM_GATES"] = self.total_gates
         return params
+
+    def _symbols(self, values):
+        """{(section, option): (symbol, literal)} for each line one symbol sets, as rendered with these values"""
+        symbols = {}
+        for template in self.templates:
+            if template not in _marked_templates:
+                with open(os.path.join(REPO_ROOT, template), encoding="utf-8") as f:
+                    _marked_templates[template] = self.env.from_string(mark_template(f.read()))
+            symbols.update(symbol_lines(_marked_templates[template].render(self._params(values))))
+        return symbols
 
     def _render(self, values):
         rendered = ConfigBuilder()
@@ -524,14 +637,17 @@ class Analysis(object):
                     break
 
         if reason is None:
-            (set_sym, value), also = setting[0], setting[1:]
-            candidate.set_name, candidate.kconfig_value = set_sym.name, value
-            candidate.also = [(entry.name, text) for entry, text in also]
-            candidate.set_key = set_sym.choice.name if set_sym.choice else set_sym.name
-            self.candidates.append(candidate)
+            self._accept(candidate, setting)
         else:
             for key in candidate.locations:
                 self.kept.append((key, candidate.cfg_value, reason))
+
+    def _accept(self, candidate, setting):
+        (set_sym, value), also = setting[0], setting[1:]
+        candidate.set_name, candidate.kconfig_value = set_sym.name, value
+        candidate.also = [(entry.name, text) for entry, text in also]
+        candidate.set_key = set_sym.choice.name if set_sym.choice else set_sym.name
+        self.candidates.append(candidate)
 
     def _reproduces(self, settings, candidate, may_match=()):
         """
@@ -540,8 +656,9 @@ class Analysis(object):
         if it doesn't render, or the reason when it would also change another option or section
         """
         for i, (set_sym, value) in enumerate(settings):
-            # A typed-in value is only shown once its choice member is set
-            if (i and why_not_settable(set_sym, value) is not None) or not set_sym.set_value(value):
+            # A typed-in value, or a list under another, is only shown once the member before it is set
+            if (i and set_sym.choice is None and why_not_settable(set_sym, value) is not None) \
+                    or not set_sym.set_value(value):
                 self._reset_trial()
                 return None
         honoured = all(saved_as(set_sym, value) for set_sym, value in settings)
@@ -590,28 +707,39 @@ class Analysis(object):
 
     def _through_choice(self, sym, candidate):
         """For a hidden symbol whose defaults follow one menuconfig list; (None, None) if none do"""
+        found = self._choice_trials(sym)
+        if found is None:
+            return None, None
+        choice, trials = found
+        return self._through(candidate, trials, "%s option" % choice.name)
+
+    def _choice_trials(self, sym, where=None):
+        """
+        (choice, a trial selecting each member) for the one shown list a hidden symbol's
+        defaults follow, else None
+        """
         for conditions in (self._conditions(sym), written_conditions(sym)):
             choices = {s.choice for s in conditions
                        if s.choice is not None and (s.choice.name or "").startswith("CHOICE_")}
             if len(choices) == 1:
                 break
         else:
-            return None, None
+            return None
         choice = choices.pop()
         if not choice.visibility:
-            return None, None
+            return None
         # A *_PREVIOUS member only re-offers the saved value
         members = [m for m in choice.syms if m.visibility and not _PREVIOUS_MEMBER.search(m.name)]
-        return self._through(candidate, [self._selecting(m) for m in members], "%s option" % choice.name)
+        return choice, [self._selecting(m, where) for m in members]
 
-    def _selecting(self, member):
+    def _selecting(self, member, where=None):
         """
         The trial that selects a choice member, typing in under it what the .cfg holds for each
         symbol it sets that way, or the value it has now
         """
         settings, may_match = [(member, "y")], set()
         for entry, target in self._entries(member):
-            keys = self.where.get(target.name, [])
+            keys = (self.where if where is None else where).get(target.name, [])
             values = {(self.theirs.get(key) or "").strip() for key in keys}
             settings.append((entry, values.pop() if len(values) == 1 else target.str_value))
             may_match.update(keys)
