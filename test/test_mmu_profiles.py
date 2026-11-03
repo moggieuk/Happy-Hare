@@ -724,7 +724,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig(profiles.EMU_EBB.name, profiles.EMU_EBB.syms)
         self.assertEqual(kconfig.syms[
-            'OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS'].visibility, 0)
+            'BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS'].visibility, 0)
         self.assertFalse(kconfig.is_enabled('EXTERNAL_ENVIRONMENT_SENSOR_SETUP'))
 
     def test_external_per_gate_environment_sensors_are_opt_in_for_other_board(self):
@@ -735,12 +735,12 @@ class TestEveryBootableProfile(unittest.TestCase):
         with cfg._env(cfg._SINGLE_UNIT_ENV):
             kconfig = cfg._kconfig(profile.name, profile.syms)
         self.assertNotEqual(kconfig.syms[
-            'OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS'].visibility, 0)
+            'BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS'].visibility, 0)
         self.assertFalse(kconfig.is_enabled('EXTERNAL_ENVIRONMENT_SENSOR_SETUP'))
 
         external = profile.derive(
             'emu_other_external_environment_enabled',
-            syms={'OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS': True})
+            syms={'BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS': True})
         parser = cfg.assemble(cfg.render(external))
         unit = dict(parser.items('mmu_unit unit0'))
         self.assertEqual(unit['environment_sensors'].split(', '), [

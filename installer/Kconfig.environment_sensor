@@ -65,7 +65,7 @@ comment "Defined in external printer configuration" if MMU_HAS_ENVIRONMENT_SENSO
   dim
 
 if MMU_TYPE_EMU_1_0 && (BOARD_TYPE_EMB_C || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL) && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
-  config OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
+  config BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
     bool "Use externally configured per-gate environment sensors"
     default n
     select MMU_HAS_ENVIRONMENT_SENSOR
@@ -78,7 +78,7 @@ if MMU_TYPE_EMU_1_0 && (BOARD_TYPE_EMB_C || BOARD_TYPE_OTHER || BOARD_TYPE_MANUA
       For TCA9548A multiplexers, see:
       https://github.com/jacksky6/TCA9548A-klipper-addon
 
-  if OPTION_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
+  if BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
     # Match Happy Hare's standard per-gate naming without managing the
     # external driver, mux, bus, or sensor configuration.
     @repeat var=i min=0 max=$(max_gate)@
