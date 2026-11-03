@@ -485,12 +485,12 @@ export function purgeColor(state, deposited) {
     +parseInt(plan.new_color.slice(i,i+2),16)*fraction).toString(16).padStart(2,'0')).join('');
 }
 
-// The material below the zero reference changes only after the new front arrives.
+// Deposited strand color depends only on extrusion, never the timed nozzle fill.
 export function purgeOutletColor(state, deposited) {
   const plan=state.purge_transition;
   if (!plan) return purgeColor(state,deposited);
-  if (Number.isFinite(plan.settled_mm) && deposited > plan.settled_mm) return plan.new_color;
-  return purgeColor({...state,purge_transition:{...plan,retained_mm:plan.retained_mm+plan.mix_mm}},deposited);
+  const arrival=plan.nozzle_arrival_mm ?? plan.start_mm+plan.retained_mm;
+  return purgeColor({...state,purge_transition:{...plan,start_mm:arrival,retained_mm:2,mix_mm:2}},deposited);
 }
 
 // Equal volume of round 1.75mm feedstock and a round nozzle-sized strand.
@@ -608,7 +608,7 @@ export function nozzleArrivalTime(event, movementMs) {
   return high*movementMs;
 }
 
-// Finish color mixing after motion stops, without adding filament travel.
+// Fill the schematic nozzle after arrival without adding filament travel.
 export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.before?.mmu_gripped) {
   const fraction=event.kind === 'gate_changed'
     ? Math.max(0,Math.min(1,(elapsed-500)/(movementMs-1000)))
@@ -617,12 +617,6 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
   if (event.kind === 'gate_changed' && elapsed < movementMs) {
     // Release before retreat and restore the starting grip after advance, in either direction.
     state={...state,mmu_gripped:elapsed >= 250 && elapsed < movementMs-250 ? false : selectionGrip};
-  }
-  if (event.purge_settle && elapsed >= movementMs) {
-    const blend=Math.max(0,Math.min(1,(elapsed-movementMs)/700));
-    const color=purgeColor({purge_transition:{start_mm:0,retained_mm:1,mix_mm:1,
-      old_color:event.purge_settle.from,new_color:event.purge_settle.to}},blend);
-    state={...state,nozzle_outlet_color:color};
   }
   const gate=event.state.gate;
   const arrivalTime=nozzleArrivalTime(event,movementMs);

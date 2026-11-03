@@ -90,7 +90,9 @@ class ReplayState:
                 extruder=dict(name=unit.extruder_wrapper.name,
                               retracted_length=unit.extruder_wrapper.retracted_length,
                               **unit.extruder_wrapper.get_status(now)),
-                encoder=None if encoder is None else dict(name=encoder.name, distance=encoder.get_distance(), status=encoder.get_status(now)),
+                encoder=None if encoder is None else dict(name=encoder.name, distance=encoder.get_distance(), status=encoder.get_status(now),
+                    parameters=self.select(encoder, ('resolution', 'desired_headroom',
+                        'average_samples', 'calibration_length', 'no_movement_samples', 'flowrate_samples'))),
                 buffer=None if buffer is None else dict(
                     name=buffer.name, **self.select(buffer, ('buffer_range', 'buffer_maxrange', 'buffer_spring_state')),
                     proportional=buffer.proportional_sensor is not None,
