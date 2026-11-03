@@ -344,10 +344,10 @@ test('gate selection eases between lanes without interpolating physical filament
  const before={gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
  const state={...before,gate:1};
  const event={kind:'gate_changed',before,state};
- assert.equal(duration(event),2200);
+ assert.equal(duration(event),2500);
  assert.deepEqual(playbackFrame(event,499,duration(event)).state,{...before,mmu_gripped:false});
- assert.deepEqual(playbackFrame(event,1700,duration(event)).state,{...state,mmu_gripped:false});
- assert.deepEqual(playbackFrame(event,2199,duration(event)).state,{...state,mmu_gripped:undefined});
+ assert.deepEqual(playbackFrame(event,2000,duration(event)).state,{...state,mmu_gripped:false});
+ assert.deepEqual(playbackFrame(event,2499,duration(event)).state,{...state,mmu_gripped:undefined});
  assert.equal(interpolate(event,0),before);
  assert.equal(interpolate(event,1),state);
  assert.equal(interpolate(event,.5).gate_focus,.5);

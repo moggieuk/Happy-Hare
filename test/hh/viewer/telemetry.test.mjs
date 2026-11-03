@@ -708,3 +708,17 @@ test('configured gear touch is display-only, not a filament-presence constraint'
  assert.deepEqual(s.sensors[name],{state:null,enabled:true,position:null});
  assert.ok(!s.active_sensors.includes(name));
 });
+
+
+test('espooler baseline and per-gate start, power and stop events survive replay',()=>{
+ const h=header(),unit=h.state.printer.mmu.unit;
+ h.state.printer.mmu_machine.units[unit].espooler={name:'test',operations:{0:{direction:'assist',output_power:.4}}};
+ const r=new TelemetryReplay();r.feed(h);
+ assert.equal(r.snapshot().espoolers[0].output_power,.4);
+ event(r,'espooler_started',{unit,gate:1,direction:'rewind',output_power:.6});
+ assert.deepEqual(r.snapshot().espoolers[1],{direction:'rewind',output_power:.6});
+ assert.equal(r.snapshot().espoolers[0].direction,'assist');
+ event(r,'espooler_stopped',{unit,gate:1,direction:'stopped',output_power:0});
+ assert.equal(r.snapshot().espoolers[1].output_power,0);
+ assert.equal(r.events.at(-1).before.espoolers[1].output_power,.6);
+});

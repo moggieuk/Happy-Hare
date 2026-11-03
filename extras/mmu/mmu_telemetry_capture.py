@@ -98,6 +98,18 @@ class ReplayState:
                     name=buffer.name, **self.select(buffer, ('buffer_range', 'buffer_maxrange', 'buffer_spring_state')),
                     proportional=buffer.proportional_sensor is not None,
                     value=None if buffer.proportional_sensor is None else buffer.proportional_sensor.get_status(now)['value']))
+        for unit in mmu.mmu_machine.units:
+            spooler = unit.espooler
+            if spooler is None:
+                continue
+            operations = {}
+            for gate in unit.gate_range():
+                direction, power = spooler.get_operation(gate)
+                output = max(0, min(1, power)) / spooler.scale if direction in ('assist', 'rewind') else 0
+                if not spooler.is_pwm:
+                    output = float(output > 0)
+                operations[str(gate)] = dict(direction=direction if output else 'stopped', output_power=output)
+            units[unit.name]['espooler'] = dict(name=spooler.name, operations=operations)
         for unit in units.values():
             extruder = unit['extruder']
             extruder['filament_remaining_color'] = MmuColorUtils.color_to_rgb_hex(extruder['filament_remaining_color'], '808182')[:6]
