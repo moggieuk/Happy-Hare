@@ -4,7 +4,7 @@
 
 import unittest
 
-from test.hh import session
+from test.hh import profiles, session
 
 
 class TestEspoolerSpoolWeight(unittest.TestCase):
@@ -69,6 +69,19 @@ class TestEspoolerSpoolWeight(unittest.TestCase):
         at = len(self.hh.console)
         self.hh.run_gcode('MMU_GATE_MAP DETAILS=1')
         self.assertIn('[WEIGHT: 400/1000g (40%)]', '\n'.join(self.hh.console[at:]))
+
+
+class TestEspoolerPinsOnLaterUnit(unittest.TestCase):
+    """Pin options are numbered per unit from 0, so a second unit's gates 4-7 read _0.._3."""
+
+    def test_second_unit_gets_its_motor_pins(self):
+        hh = session(profiles.clone_across_units('two_boxes', profiles.BOXTURTLE, ('unit0', 'unit1')))
+        self.addCleanup(hh.close)
+        hh.boot()
+        self.assertEqual(hh.errors, [])
+        espooler = hh.mmu.espooler(4)
+        self.assertEqual(espooler.respool_gates, [4, 5, 6, 7])
+        self.assertEqual(espooler.assist_gates, [4, 5, 6, 7])
 
 
 if __name__ == '__main__':

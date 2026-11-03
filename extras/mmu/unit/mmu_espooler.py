@@ -79,11 +79,18 @@ class MmuESpooler:
             self.shutdown_value = float(config.getfloat('shutdown_value', 0., minval=0.) > 0.)
             start_value = float(config.getfloat('value', 0., minval=0.) > 0.)
 
-        for gate in range(self.first_gate, self.first_gate + self.num_gates):
-            self.respool_motor_pin = config.get('respool_motor_pin_%d' % gate, None)
-            self.assist_motor_pin = config.get('assist_motor_pin_%d' % gate, None)
-            self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None)
-            self.assist_trigger_pin = config.get('assist_trigger_pin_%d' % gate, None)
+        # Pin options are numbered from 0 within the unit, but hand-written configs may use global gate
+        # numbers. An index beyond this unit's gate count can only be global
+        pin_options = ('respool_motor_pin_', 'assist_motor_pin_', 'enable_motor_pin_', 'assist_trigger_pin_')
+        indices = [o.rsplit('_', 1)[1] for o in config.get_prefix_options('') if o.startswith(pin_options)]
+        global_numbering = any(i.isdigit() and int(i) >= self.num_gates for i in indices)
+
+        for lgate, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
+            index = gate if global_numbering else lgate
+            self.respool_motor_pin = config.get('respool_motor_pin_%d' % index, None)
+            self.assist_motor_pin = config.get('assist_motor_pin_%d' % index, None)
+            self.enable_motor_pin = config.get('enable_motor_pin_%d' % index, None)
+            self.assist_trigger_pin = config.get('assist_trigger_pin_%d' % index, None)
 
             # Setup pins
             if self.respool_motor_pin and not self._is_empty_pin(self.respool_motor_pin):
