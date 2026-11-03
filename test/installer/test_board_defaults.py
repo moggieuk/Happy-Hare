@@ -90,7 +90,7 @@ EXPECTED_WINS = {
     'boards/Kconfig.mmb_2_0': 22,               'boards/Kconfig.owlfc_mini_1_0': 18,
     'boards/Kconfig.skr_pico_1': 15,            'boards/Kconfig.tzb_1_0': 32,
     'boards/Kconfig.wgb_3_0': 44,               'boards/custom/Kconfig.kms': 39,
-    'boards/Kconfig.emb_c': 45,
+    'boards/Kconfig.emb_c': 50,
     'boards/custom/Kconfig.qidi_box': 23,       'boards/custom/Kconfig.vvd': 24,
     'boards/per_gate/Kconfig.ebb_gen1': 59,     'boards/per_gate/Kconfig.slb': 64,
 }

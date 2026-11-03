@@ -117,6 +117,20 @@ if BOARD_TYPE_EMB_C
   config PIN_EJECT_BUTTON_4
     default "^!$(MCU_NAME):PC6"
 
+  # FAN1..5 are circulation fans. Happy Hare's per-gate managed-fan
+  # configuration uses the shared MCU temperature to start or stop them.
+  # EMB-C has no separate controller or heater fan outputs.
+  config PIN_FAN_0
+    default "$(MCU_NAME):PA13"
+  config PIN_FAN_1
+    default "$(MCU_NAME):PB15"
+  config PIN_FAN_2
+    default "$(MCU_NAME):PB14"
+  config PIN_FAN_3
+    default "$(MCU_NAME):PB13"
+  config PIN_FAN_4
+    default "$(MCU_NAME):PB1"
+
   if OPTION_PSF_BUFFER
     config PIN_BUFFER_ANALOG
       default "$(MCU_NAME):PB0"

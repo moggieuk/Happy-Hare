@@ -623,9 +623,8 @@ EMU_EMB_C = EMU.derive(
         'MMU_HAS_PER_GATE_MCU': False,
         'BOARD_TYPE_EMB_C': True,
         'MMU_HAS_ENVIRONMENT_SENSOR': False,
-        'MMU_HAS_FANS': False,
     },
-    description='EMU 1.0 - 2-5 lanes on one EMB-C CAN MCU')
+    description='EMU 1.0 - 2-5 lanes on one EMB-C CAN MCU with managed fans')
 
 # BoxTurtle plus an encoder, homing to it instead of to the gate switch. KMS also ships an
 # encoder, but its exit sensors win the default homing choice, so _home_to_gate's encoder branch

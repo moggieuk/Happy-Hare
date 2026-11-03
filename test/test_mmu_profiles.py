@@ -654,6 +654,7 @@ class TestEveryBootableProfile(unittest.TestCase):
             ('PC0', 'PC11', '!PC10', '!PC13', 1),
         )
         led_pins = ('PA15', 'PC8', 'PC9', 'PD0', 'PD1')
+        fan_pins = ('PA13', 'PB15', 'PB14', 'PB13', 'PB1')
         for lanes in range(2, 6):
             with self.subTest(lanes=lanes):
                 profile = profiles.EMU_EMB_C.derive(
@@ -664,6 +665,9 @@ class TestEveryBootableProfile(unittest.TestCase):
                     ['mcu unit0'])
                 sensors = dict(parser.items('mmu_sensors unit0'))
                 leds = dict(parser.items('mmu_leds unit0'))
+                unit = dict(parser.items('mmu_unit unit0'))
+                self.assertEqual(unit['fans'].split(', '), [
+                    '_unit0_fan%d' % gate for gate in range(lanes)])
                 self.assertEqual(leds['entry_leds'].splitlines(), [
                     'neopixel:_unit0_gate%d_leds (5)' % gate for gate in range(lanes)])
                 self.assertEqual(leds['exit_leds'].splitlines(), [
@@ -676,6 +680,7 @@ class TestEveryBootableProfile(unittest.TestCase):
                     gear = dict(parser.items('mmu_stepper unit0_gear%s' % suffix))
                     chain = dict(parser.items('neopixel _unit0_gate%d_leds' % gate))
                     button = dict(parser.items('gcode_button unit0_eject%d' % gate))
+                    fan = dict(parser.items('fan_generic _unit0_fan%d' % gate))
                     self.assertEqual(tmc['uart_pin'], 'unit0:%s' % uart)
                     self.assertEqual(tmc['uart_address'], str(address))
                     self.assertEqual(gear['step_pin'], 'unit0:%s' % step)
@@ -685,10 +690,13 @@ class TestEveryBootableProfile(unittest.TestCase):
                     self.assertEqual(chain['chain_count'], '5')
                     self.assertEqual(button['pin'], ('^!unit0:%s' % (
                         ('PA10', 'PD9', 'PD8', 'PC7', 'PC6')[gate])))
+                    self.assertEqual(fan['pin'], 'unit0:%s' % fan_pins[gate])
                     self.assertIn('mmu_entry_switch_pin_%d' % gate, sensors)
                     self.assertIn('mmu_exit_switch_pin_%d' % gate, sensors)
                 self.assertNotIn('mmu_stepper unit0_gear_%d' % lanes,
                                  parser.sections())
+                self.assertFalse(any(section.startswith('controller_fan ')
+                                     for section in parser.sections()))
 
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
