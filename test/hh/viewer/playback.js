@@ -189,7 +189,7 @@ export function motionFraction(event, timeFraction) {
 }
 
 export function duration(event, compressBowden = false) {
-  if (event.kind === 'gate_changed') return 2200;
+  if (event.kind === 'gate_changed') return 2500;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
@@ -619,8 +619,12 @@ export function nozzleArrivalTime(event, movementMs) {
 
 // Fill the schematic nozzle after arrival without adding filament travel.
 export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.before?.mmu_gripped) {
+  // Keep retreat/advance at 300ms each; the middle slide uses the remaining time.
+  const gateTime=elapsed-500, slideMs=Math.max(1,movementMs-1600);
   const fraction=event.kind === 'gate_changed'
-    ? Math.max(0,Math.min(1,(elapsed-500)/(movementMs-1000)))
+    ? Math.max(0,Math.min(1,gateTime<300 ? gateTime/1200
+      : gateTime<300+slideMs ? .25+.5*(gateTime-300)/slideMs
+      : .75+(gateTime-300-slideMs)/1200))
     : motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
   let state=interpolate(event,fraction);
   if (event.kind === 'gate_changed' && elapsed < movementMs) {

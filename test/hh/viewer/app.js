@@ -410,6 +410,10 @@ $("files").onchange = () =>
     message("Uploaded profile started.");
   });
 let displayed = null, playing = null, played = 0, resumeAt = 0;
+const spoolAngles=new Map(), spoolVisibility=new Map(), spoolDirections=new Map();
+let spoolLastFrame=null, spoolSession=null;
+// Keep the first neighboring lane clear of the selected spool; others stay evenly spaced.
+const gateLaneX=offset=>620+offset*14+Math.sign(offset)*16*Math.min(1,Math.abs(offset));
 let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null;
 function currentIndex() {
   return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
@@ -432,6 +436,7 @@ function followTrace() {
 }
 function seek(index) {
   pauseAfterStep = false;
+  spoolVisibility.clear();
   cursor = Math.max(0, Math.min(index, events.length - 1));
   live = false; paused = true; replayingHistory = true; playing = null; sensorPulse = null;
   draw(); followTrace();
@@ -550,7 +555,7 @@ function draw() {
   const nozzleBody=`M242 435 L257.2 ${nozzleExit} H262.8 L278 435 Z`;
   const nozzleEntrance='M254.5 435 Q256.5 435 256.5 437 V449 H263.5 V437 Q263.5 435 265.5 435 Z';
   const bowdenPath = path.replace("L260 449", "L260 435");
-  let svg = `<rect x="530" y="275" width="180" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="542" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  let svg = `<rect x="522" y="275" width="196" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="534" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -638,7 +643,8 @@ function draw() {
   const constrained = constrainFilament(schematicTip ?? pathDistance(tip),
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
   const entrySensorY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150)*length).y;
-  const rackTipY = offset => Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-20;
+  const laneOpacity = offset => focus < 0 ? .35 : Math.max(.2,Math.exp(-Math.abs(offset)*.45));
+  const rackTipY = offset => Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-28;
   // Return the selected end to rack height before sliding; telemetry positions stay unchanged.
   const selectedTip=constrained.tip+(Math.min(constrained.tip,470-rackTipY(0))-constrained.tip)*(s.gate_retraction || 0);
   tip = tipAtPathDistance(selectedTip);
@@ -661,20 +667,51 @@ function draw() {
   // Fan parked ends around the selected gate, bringing its strand into focus.
   // The central strand lines up with the existing MMU filament path.
   const focus = s.gate_focus ?? s.gate;
-  svg += `<defs><linearGradient id="gate-end-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${entrySensorY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="gate-end-fade" maskUnits="userSpaceOnUse" x="550" y="316" width="150" height="159"><rect x="550" y="316" width="150" height="159" fill="url(#gate-end-gradient)"/></mask></defs><g id="gate-filaments" mask="url(#gate-end-fade)">`;
+  const showMainSpool=s.gate>=0 && Object.keys(s.espoolers || {}).length>0;
+  let mainSpoolOpacity=s.gate_path_opacity ?? 1;
+  const arrivingGate=playing?.reverse ? playing.event.before?.gate : playing?.event.state.gate;
+  if (playing?.event.kind === 'gate_changed' && s.gate === arrivingGate) {
+    // Let the new filament finish advancing with the normal fade before lifting it.
+    const fadeStart=duration(playing.event)-500;
+    const fade=Math.max(0,Math.min(1,(performance.now()-playing.start-fadeStart)/1000));
+    mainSpoolOpacity=fade*fade*(3-2*fade);
+  }
+  const spoolFadeLift=showMainSpool ? mainSpoolOpacity : 0;
+  svg += `<defs><linearGradient id="gate-end-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${entrySensorY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="gate-end-fade" maskUnits="userSpaceOnUse" x="522" y="316" width="196" height="159"><rect x="522" y="316" width="196" height="159" fill="url(#gate-end-gradient)"/></mask></defs><g id="gate-filaments" mask="url(#gate-end-fade)">`;
   const lanes = s.tips.map((_, index) => ({index,offset:index-focus}))
     .filter(lane => lane.index !== s.gate && Math.abs(lane.offset) < 6)
     .sort((a,b) => Math.abs(b.offset)-Math.abs(a.offset));
   for (const {index,offset} of lanes) {
     // Extra clearance beside the active lane; ordinary spacing beyond it.
-    const clearance = Math.min(1,Math.abs(offset));
-    const x = 620+offset*14+Math.sign(offset)*8*clearance*clearance*(3-2*clearance);
+    const x = gateLaneX(offset);
     const y = rackTipY(offset);
-    const opacity = focus < 0 ? .35 : Math.max(.2,Math.exp(-Math.abs(offset)*.45));
+    const opacity = laneOpacity(offset);
     const color = s.gate_colors?.[index] || '808182';
     svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" font-weight="700" fill="var(--scene-text, #304c65)">${index}</text></g>`;
   }
   svg += '</g>';
+  if (Object.keys(s.espoolers || {}).length) {
+    svg += '<g id="espooler-indicators">';
+    const visible=[{index:s.gate,offset:s.gate-focus},...lanes].filter(lane=>lane.index>=0);
+    for (const {index,offset} of visible) {
+      const operation=s.espoolers[index];
+      const active=operation?.output_power>0 && ['assist','rewind'].includes(operation.direction);
+      const selected=index===s.gate;
+      const visibility=spoolVisibility.get(index) ?? (active ? 1 : 0);
+      const fade=visibility*visibility*(3-2*visibility);
+      if (!selected && fade<=0) continue;
+      const x=gateLaneX(offset), y=455+(selected ? 0 : rackTipY(offset)-rackTipY(0));
+      const angle=spoolAngles.get(index) || 0;
+      const color=s.gate_colors[index] || '808182';
+      const title=`Gate ${index} · ${active ? operation.direction+' · '+Math.round(operation.output_power*100)+'% output' : 'Stopped'}`;
+      svg += `<g data-part="espooler" data-gate="${index}" data-active="${active}" data-tooltip="${escape(title)}" transform="translate(${x} ${y}) scale(${selected ? 1.1 : 1})" opacity="${selected ? mainSpoolOpacity : laneOpacity(offset)*fade}">`;
+      svg += `<g transform="scale(${selected ? 1 : 6/17})"><circle r="17" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)" stroke-width="0.5"/><circle r="15" fill="#${color}"/><circle r="15.5" fill="none" stroke="var(--scene-body, #edf2f6)" stroke-width="2"/><g transform="rotate(${angle})" stroke="var(--scene-body, #edf2f6)" stroke-width="2"><path d="M0 -16.5 V16.5 M-14.29 -8.25 L14.29 8.25 M-14.29 8.25 L14.29 -8.25"/>${[0,60,120,180,240,300].map(rotation=>`<path transform="rotate(${rotation})" d="M-1 -11 Q-1.2 -14 -3.8 -16.06 A16.5 16.5 0 0 1 3.8 -16.06 Q1.2 -14 1 -11 Z" fill="var(--scene-body, #edf2f6)" stroke="none"/>`).join('')}</g><circle r="4" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/></g>`;
+      if (!selected) svg += `<g transform="rotate(${angle}) scale(${(active ? operation.direction : spoolDirections.get(index))==='rewind'?-1:1} 1)"><path d="M2.5 -6 L-2 -8 L-2 -4 Z" fill="#fff"/></g>`;
+      if (selected && fade>0) svg += `<g opacity="${fade}" transform="rotate(${angle}) scale(${(active ? operation.direction : spoolDirections.get(index))==='rewind'?-1:1} 1)"><path d="M-12.021 -12.021 A17 17 0 0 1 15.205 -7.603" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.7 -10.97 L15.205 -7.603 L15.2 -13.22 Z" fill="var(--scene-text, #304c65)"/></g>`;
+      svg += '</g>';
+    }
+    svg += '</g>';
+  }
   let attachedTipEdge='';
   const shapedTip = (position, color, part, hairLength=s.hair_lengths?.[gate] ?? 15) => {
     const hairScale = tipScale;
@@ -700,10 +737,10 @@ function draw() {
     return `<g data-part="${part}" opacity="${part === 'attached-tip' ? (s.gate_path_opacity ?? 1) : 1}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${part === 'attached-tip' ? '' : edge}</g>`;
   };
   const fadeY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150) * length).y;
-  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
-  svg += `<defs><linearGradient id="bowden-tube-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY-17}" y2="450"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-tube-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY-17}" width="40" height="${Math.max(0,520-fadeY+17)}" fill="url(#bowden-tube-gradient)"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="${470-29*spoolFadeLift}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-tube-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY-17}" y2="${458-20*spoolFadeLift}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-tube-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY-17}" width="40" height="${Math.max(0,520-fadeY+17)}" fill="url(#bowden-tube-gradient)"/></mask></defs>`;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
-    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(684 295) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="684" y="316" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
+    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(692 295) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="692" y="316" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
   }
   // Nozzle-relative reference guides, matching the documentation diagrams.
   const references = toolheadReferences(s).map(ref => ({...ref,
@@ -1166,6 +1203,28 @@ async function poll() {
   } finally { setTimeout(poll,150); }
 }
 function animate(now) {
+  const spoolRunning=Boolean(playing) || (live && !paused);
+  if (spoolSession !== session) { spoolAngles.clear(); spoolVisibility.clear(); spoolDirections.clear(); spoolSession=session; }
+  let spoolFading=false;
+  const fadeStep=spoolLastFrame === null ? 0 : Math.min(100,now-spoolLastFrame)/450;
+  for (const [gate,operation] of Object.entries(displayed?.espoolers || {})) {
+    const index=Number(gate), active=operation.output_power>0 && ['assist','rewind'].includes(operation.direction);
+    if (active) spoolDirections.set(index,operation.direction);
+    const target=active ? 1 : 0, previous=spoolVisibility.get(index) ?? (spoolRunning ? 0 : target);
+    const next=previous+Math.sign(target-previous)*Math.min(Math.abs(target-previous),fadeStep);
+    spoolVisibility.set(index,next);
+    spoolFading ||= next!==previous;
+  }
+  if (spoolRunning && spoolLastFrame !== null) {
+    const seconds=Math.min(100,now-spoolLastFrame)/1000;
+    for (const [gate,operation] of Object.entries(displayed?.espoolers || {})) {
+      if (!(operation.output_power>0) || !['assist','rewind'].includes(operation.direction)) continue;
+      const speed=(40+100*Math.min(1,operation.output_power))*(operation.direction==='rewind'?-1:1);
+      spoolAngles.set(Number(gate),((spoolAngles.get(Number(gate)) || 0)+seconds*speed)%360);
+    }
+  }
+  spoolLastFrame=now;
+  if (spoolFading || (spoolRunning && Object.values(displayed?.espoolers || {}).some(o=>o.output_power>0))) draw();
   if (live && !paused && events.length) {
     if (!playing && now >= resumeAt) {
       const event = events.find(e=>e.seq>played);
@@ -1174,7 +1233,7 @@ function animate(now) {
     if (playing) {
       const ms=duration(playing.event, $("compress-bowden").checked);
       const arrival=nozzleArrivalTime(playing.event,ms);
-      const total=Math.max(ms,arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
+      const total=Math.max(ms+(playing.event.kind === 'gate_changed' ? 500 : 0),arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
       const f=total ? elapsed/total : 1;
       const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms,playing.selectionGrip);
       playing.fraction=frame.fraction;
