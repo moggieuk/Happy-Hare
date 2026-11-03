@@ -156,6 +156,12 @@ export class TelemetryReplay {
       before.gate = record.previous_gate;
       mmu.gate = record.gate;
       if (record.unit) mmu.unit = record.unit;
+      // An unloaded selection uses this gate's configured home and parking distance,
+      // not the generic initial position of an unvisited filament.
+      if (mmu.gate >= 0 && mmu.filament_pos === 0) {
+        delete this.overshoot[mmu.gate];
+        this.tips[mmu.gate]=this.logicalTip(this.snapshot(),0);
+      }
       this.emit(record, 'gate_changed', `Gate ${record.previous_gate} → ${record.gate}`, {before,telemetry:record});
     } else if (record.event === 'toolchange') {
       this.emit(record, 'toolchange', record.label || record.command, {telemetry:record});
@@ -219,6 +225,9 @@ export class TelemetryReplay {
         : key === 'mmu_pre_gate' ? -150 : ['filament_compression','filament_tension'].includes(key) ? entry : layout[key];
       sensors[name]={state:value.triggered,enabled:value.enabled,position:finite(pos)?pos:null};
     }
+    // StallGuard has no persistent filament-presence reading.
+    if (up.extruder_homing_endstop === 'mmu_gear_touch')
+      sensors[`${m.unit}:mmu_gear_touch`]={state:null,enabled:true,position:null};
     const macros={};
     for (const [name,values] of Object.entries(f.macros || {})) for (const [key,value] of Object.entries(values)) macros[`macro:${name}:${key}`]=value;
     const configuration={parameters:{},calibration:{},macros,sensors:Object.fromEntries(Object.entries(sensors).map(([n,v])=>[n,v.enabled]))};
@@ -312,9 +321,11 @@ export class TelemetryReplay {
       }
       const differential=(gearing ? d : 0)-(extruding && (gripped || engaging) ? travel : 0);
       const buffered=state.devices[`${state.unit}:buffer`];
-      if (before.mmu_gripped && buffered && gearing && !extruding && !gripped && d < 0) {
+      if (before.mmu_gripped && buffered && gearing && (extruding || !gripped) && d < 0) {
         const initial=before.devices[`${state.unit}:buffer`] || buffered;
-        details.buffer_takeup_mm=Math.min(-d,Math.max(0,(initial.modeled_displacement ?? initial.displacement)-initial.rest));
+        const approach=Math.max(0,tip-gears);
+        details.buffer_takeup_mm=Math.min(Math.max(0,-d-approach),Math.max(0,(initial.modeled_displacement ?? initial.displacement)-initial.rest));
+        details.buffer_takeup_after_mm=approach;
         details.filament_travel_mm=d;
         travel+=details.buffer_takeup_mm;
       }
@@ -389,7 +400,7 @@ export class TelemetryReplay {
         next=Math.min(next,nozzle);
         if (next >= nozzle-.001) this.shapes[gate]='square';
       }
-      if (buffered && d < 0 && (next < gears || (!gripped && next <= gears+.001))) {
+      if (buffered && d < 0 && (details.buffer_takeup_mm > 0 || next < gears || (!gripped && next <= gears+.001))) {
         const initial=before.devices[`${state.unit}:buffer`] || buffered;
         const approach=Math.max(0,tip-gears);
         const released=Math.max(0,Math.abs(d)-approach);
@@ -398,6 +409,9 @@ export class TelemetryReplay {
         details.buffer_release={approach_mm:approach,travel_mm:Math.abs(d),from,to};
       }
       if (extruding && !gearing && d < 0 && !details.homing_anchor) next=Math.max(next,Math.min(tip,gears));
+      // Once unloaded from the extruder, the next load contacts the remaining melt,
+      // rather than inheriting the old filament's retraction recovery point.
+      if (tip > gears && next <= gears) hotend.front=nozzle-state.filament.residual_mm;
       this.tips[gate]=next;
       const rawBefore=copy(before), rawState=copy(state);
       rawState.tips[gate]=tip+travel;

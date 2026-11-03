@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -119,6 +119,10 @@ test('trace formats synced, extruder, fallback and state events', () => {
 
 test('sensor pulses only successful homes and distinguishes reverse travel', () => {
  const e = {kind:'movement',homing:1,homed:true,endstop:'extruder',requested:25,state:{sensors:{'unit0:mmu_extruder':{position:700}},active_sensors:['unit0:mmu_extruder']}};
+ assert.equal(homingTarget({...e,homed:null}), 'unit0:mmu_extruder');
+ assert.equal(homingTarget({...e,homed:false}), 'unit0:mmu_extruder');
+ assert.equal(homingTarget({...e,homing:0}), null);
+ assert.equal(homingTarget(null), null);
  assert.deepEqual(homingPulse(e), {sensor:'unit0:mmu_extruder',reverse:false});
  assert.equal(homingPulse({...e,requested:-25}).reverse, true);
  assert.equal(homingPulse({...e,homed:false}), null);
