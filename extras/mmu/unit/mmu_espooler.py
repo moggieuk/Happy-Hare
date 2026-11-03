@@ -80,10 +80,18 @@ class MmuESpooler:
             start_value = float(config.getfloat('value', 0., minval=0.) > 0.)
 
         # Pin options are numbered from 0 within the unit, but hand-written configs may use global gate
-        # numbers. An index beyond this unit's gate count can only be global
+        # numbers. Read them as local only when global numbering can't fit
         pin_options = ('respool_motor_pin_', 'assist_motor_pin_', 'enable_motor_pin_', 'assist_trigger_pin_')
-        indices = [o.rsplit('_', 1)[1] for o in config.get_prefix_options('') if o.startswith(pin_options)]
-        global_numbering = any(i.isdigit() and int(i) >= self.num_gates for i in indices)
+        suffixes = [o.rsplit('_', 1)[1] for o in config.get_prefix_options('') if o.startswith(pin_options)]
+        indices = [int(s) for s in suffixes if s.isdigit()]
+        fits_local = all(i < self.num_gates for i in indices)
+        fits_global = all(self.first_gate <= i < self.first_gate + self.num_gates for i in indices)
+        global_numbering = fits_global or not fits_local
+        if indices and fits_local and fits_global and self.first_gate > 0:
+            logging.warning(
+                "MMU: Pin numbering in [%s] fits both per-unit and global gate numbers; reading it as global "
+                "(gates %d-%d). For per-unit numbering list every gate's pins from _0 to _%d, leaving unused ones blank"
+                % (config.get_name(), self.first_gate, self.first_gate + self.num_gates - 1, self.num_gates - 1))
 
         for lgate, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
             index = gate if global_numbering else lgate

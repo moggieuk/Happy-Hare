@@ -3,8 +3,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import unittest
+from unittest import mock
 
-from test.hh import profiles, session
+from test.hh import cfg, profiles, session
 
 
 class TestEspoolerSpoolWeight(unittest.TestCase):
@@ -82,6 +83,30 @@ class TestEspoolerPinsOnLaterUnit(unittest.TestCase):
         espooler = hh.mmu.espooler(4)
         self.assertEqual(espooler.respool_gates, [4, 5, 6, 7])
         self.assertEqual(espooler.assist_gates, [4, 5, 6, 7])
+
+
+    def test_sparse_global_numbering_keeps_its_gate(self):
+        # unit1 owns gates 2-5; a lone respool_motor_pin_2 fits both numberings, so keep the global reading
+        profile = profiles.clone_across_units('sparse_global', profiles.BOXTURTLE, ('unit0', 'unit1'))
+        profile.units[0] = profile.units[0].derive(syms={'PARAM_NUM_GATES': 2})
+        assemble = cfg.assemble
+
+        def sparse_assemble(*args, **kwargs):
+            config = assemble(*args, **kwargs)
+            section = 'mmu_espooler unit1'
+            pin = config.get(section, 'respool_motor_pin_0')
+            for option in list(config.options(section)):
+                if option.startswith(('respool_motor_pin_', 'assist_motor_pin_', 'enable_motor_pin_', 'assist_trigger_pin_')):
+                    config.remove_option(section, option)
+            config.set(section, 'respool_motor_pin_2', pin)
+            return config
+
+        with mock.patch.object(cfg, 'assemble', sparse_assemble):
+            hh = session(profile)
+            self.addCleanup(hh.close)
+            hh.boot()
+        self.assertEqual(hh.errors, [])
+        self.assertEqual(hh.mmu.espooler(2).respool_gates, [2])
 
 
 if __name__ == '__main__':
