@@ -80,6 +80,17 @@ class TestTelemetryCapture(unittest.TestCase):
             capture.read()
         self.assertTrue(copied)
 
+    def test_encoder_runtime_parameters_are_captured_as_configuration_changes(self):
+        capture = self.capture()
+        encoder = self.hh.mmu.mmu_unit().encoder
+        baseline = capture.read()['records'][0]['state']
+        parameters = baseline['printer']['mmu_machine']['units']['unit0']['encoder']['parameters']
+        self.assertEqual(parameters['resolution'], encoder.get_resolution())
+        encoder.desired_headroom += 1
+        self.emit()
+        changes = capture.read()['records'][1]['changes']
+        self.assertTrue(any(change['path'][-3:] == ['encoder', 'parameters', 'desired_headroom'] for change in changes))
+
     def test_only_changed_leaves_are_saved_before_the_next_event(self):
         capture = self.capture()
         old = capture.read()['records'][0]['state']

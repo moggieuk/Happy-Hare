@@ -118,9 +118,6 @@ svg {
   margin: 2px 0;
   font-size: 12px;
 }
-#trace button.selected {
-  background: #d5e8ec;
-}
 #sensors,
 #devices {
   display: flex;
@@ -204,7 +201,6 @@ select, input { max-width: 100%; }
 [data-theme="dark"] .note { color: #a5b5c5; }
 [data-theme="dark"] header small { color: #ed91bc; }
 [data-theme="dark"] #trace button { background: #223240; color: #dce5ef; }
-[data-theme="dark"] #trace button.selected { background: #365b6a; }
 [data-theme="dark"] .chip { border-color: #526779; }
 [data-theme="dark"] .on { background: #214332; border-color: #60a87c; }
 [data-theme="dark"] .sensor-chip { color: #dce5ef; }
@@ -321,20 +317,21 @@ button.sensor-chip:disabled { cursor: default; }
 
 /* Strong group headers, with ordinary weight retained for selectable values. */
 #parameter optgroup { font-weight: 700; color: #24455b; background: #dce7ee; }
-#parameter option { font-weight: 400; color: #172f40; background: #fff; }
+select option { font-weight: 400; color: #172f40; background: #fff; }
 [data-theme="dark"] #parameter optgroup { color: #f1f6fa; background: #304859; }
-[data-theme="dark"] #parameter option { color: #e5edf3; background: #111c26; }
+[data-theme="dark"] select option { color: #e5edf3; background: #111c26; }
 #parameter option.parameter-section { color: #6e8190; font-size: 11px; font-weight: 500; }
 [data-theme="dark"] #parameter option.parameter-section { color: #8a9dab; }
 
 /* Customizable native selects keep keyboard/accessibility behavior while letting
    supporting browsers render the group backgrounds consistently. */
 @supports (appearance: base-select) {
-  #parameter, #parameter::picker(select) { appearance: base-select; }
-  #parameter::picker(select) { max-height: 440px; border: 1px solid #7890a0; }
+  select, select::picker(select) { appearance: base-select; }
+  select::picker(select) { max-height: 440px; border: 1px solid #7890a0; background: #fff; color: #172f40; }
+  [data-theme="dark"] select::picker(select) { background: #111c26; color: #e5edf3; }
   #parameter optgroup { padding-top: 4px; }
   #parameter optgroup > :first-child { margin-top: 4px; }
-  #parameter option { padding: 6px 14px; }
+  select option { padding: 6px 14px; }
   #parameter option.parameter-section { padding-inline-start: 7px; text-align: left; }
   #parameter option.parameter-section::checkmark { display: none; }
 }
@@ -344,7 +341,7 @@ button.sensor-chip:disabled { cursor: default; }
 
 .scene-container { position: relative; }
 .nozzle-control { position: absolute; left: 2%; bottom: 3%; margin: 0; font-size: 11px; }
-.nozzle-control select { display: block; width: 86px; padding: 4px; font-size: 12px; }
+.nozzle-control select { display: flex; align-items: center; justify-content: space-between; white-space: nowrap; width: 86px; padding: 4px; font-size: 12px; }
 
 .trace-type[data-type="config"] { color: #12655f; background: #d5f1ec; }
 [data-theme="dark"] .trace-type[data-type="config"] { color: #cef5ef; background: #245e59; }
@@ -397,3 +394,14 @@ button.sensor-chip:disabled { cursor: default; }
 .trace-internal pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font-size: 11px; }
 .trace-type[data-type="internal"] { color: #4c525a; background: #e3e5e8; }
 [data-theme="dark"] .trace-type[data-type="internal"] { color: #e4e6e9; background: #4b515a; }
+
+.trace-telemetry { margin: 0 0 6px; padding: 2px 13px 6px; font-size: 11px; }
+.trace-telemetry summary { cursor: pointer; }
+.trace-telemetry pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+
+#trace .trace-event { background: #f1f5f8; border-radius: 6px; margin: 2px 0; }
+#trace .trace-event > button { margin: 0; background: transparent; }
+#trace .trace-event.selected { background: #d5e8ec; }
+[data-theme="dark"] #trace .trace-event { background: #223240; }
+[data-theme="dark"] #trace .trace-event.selected { background: #365b6a; }
+#trace .trace-event > .trace-telemetry { margin-bottom: 0; }

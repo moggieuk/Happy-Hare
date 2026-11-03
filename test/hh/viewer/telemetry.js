@@ -353,14 +353,12 @@ export class TelemetryReplay {
       // Presence sensors constrain drawing, never discard recorded tip travel.
 
       if (extruding && gripped && travel < 0) {
-        // Retraction leaves calibrated residual melt behind; returning filament
-        // displaces it as soon as contact resumes, not only upon reaching zero.
-        hotend.front=nozzle-state.filament.residual_mm;
+        // Residual geometry does not add travel. Returning a retract must first
+        // recover the previous contact point before producing more purge.
+        hotend.front=Math.max(hotend.front,Math.min(nozzle,tip));
         if (tip >= nozzle-state.filament.residual_mm-.01) {
           if (this.shapes[gate] !== 'cone') this.hairLengths[gate]=15;
           this.shapes[gate]='cone';
-          next=Math.min(next,nozzle-state.filament.residual_mm+travel);
-          details.filament_travel_mm=next-tip;
         }
         if (hotend.extruded > hotend.base) hotend.base=hotend.extruded;
       }
@@ -380,13 +378,13 @@ export class TelemetryReplay {
         }
         details.purge_approach_mm=Math.max(0,travel-amount);
         hotend.extruded+=amount;
+        if (next >= nozzle && hotend.plan && hotend.plan.nozzle_arrival_mm == null)
+          hotend.plan.nozzle_arrival_mm=hotend.extruded-Math.max(0,next-nozzle);
         hotend.nozzle=purgeColor({...state,purge_transition:hotend.plan},hotend.extruded);
         if (hotend.outlet !== state.filament.retained_color && next >= nozzle
             && hotend.plan && hotend.extruded >= hotend.plan.start_mm+hotend.plan.retained_mm
             && state.filament.retained_color === state.filament.incoming_color) {
-          details.purge_settle={from:purgeOutletColor({...state,purge_transition:hotend.plan},hotend.extruded),to:state.filament.retained_color};
           hotend.outlet=state.filament.retained_color;
-          hotend.plan.settled_mm=hotend.extruded;
         }
         next=Math.min(next,nozzle);
         if (next >= nozzle-.001) this.shapes[gate]='square';

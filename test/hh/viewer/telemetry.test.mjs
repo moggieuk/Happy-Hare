@@ -360,14 +360,14 @@ test('buffer excess survives the settled snapshot and small nonzero values',()=>
 });
 
 
-test('purge finishes with a color-only transition before retraction',()=>{
+test('nozzle fill dissolves the tip edge without changing filament travel',()=>{
  const r=stream();r.tips[0]=r.snapshot().layout.nozzle-2;r.shapes[0]='cone';
  const unit=r.facts.printer.mmu_machine.units[r.facts.printer.mmu.unit];
  unit.extruder.filament_remaining_color='ff0000';
  const purge=move(r,2,{source:'mmu_gcode'});
  assert.equal(purge.state.nozzle_outlet_color,'ff0000');
- assert.equal(playbackFrame(purge,100,100).state.nozzle_outlet_color,'0000ff');
- assert.equal(playbackFrame(purge,450,100).state.nozzle_outlet_color,'800080');
+ assert.equal(playbackFrame(purge,100,100).state.nozzle_outlet_color,'ff0000');
+ assert.equal(playbackFrame(purge,450,100).state.nozzle_fill_fraction,.7);
  assert.equal(playbackFrame(purge,100,100).state.cone_edge_opacity,1);
  assert.equal(playbackFrame(purge,350,100).state.cone_edge_opacity,.5);
  assert.equal(playbackFrame(purge,800,100).state.cone_edge_opacity,0);
@@ -426,9 +426,9 @@ test('manual extrusion after completed purge contacts residual and emits the set
  assert.equal(resumed.purge_approach_mm,0);
  assert.equal(resumed.state.extruded_mm-first.state.extruded_mm,1);
  assert.ok(next.state.tips[0]<next.state.layout.nozzle);
- assert.equal(purgeOutletColor(next.state,2.5),'ff0000');
+ assert.equal(purgeOutletColor(next.state,2.5),'2800d7');
  assert.equal(purgeOutletColor(next.state,1),'0000ff');
- assert.equal(first.state.purge_transition.settled_mm,2);
+ assert.equal(first.state.purge_transition.nozzle_arrival_mm,2);
 });
 
 
@@ -531,15 +531,15 @@ test('move outcome sensor correction is animated without changing modeled travel
 });
 
 
-test('cut accounting includes residual and prior retract, then reconciles reported fragment length',()=>{
+test('cut length reconciles reported geometry without adding residual to retraction',()=>{
  const r=stream(),nozzle=r.snapshot().layout.nozzle;
  r.tips[0]=nozzle;
  move(r,-2,{source:'mmu_gcode'});
- assert.equal(r.tips[0],nozzle-4);
+ assert.equal(r.tips[0],nozzle-2);
  move(r,-28.5,{source:'mmu_gcode'});
  event(r,'cut',{blade_pos:37.5});
  const fragment=r.snapshot().retained_segment;
- assert.equal(fragment.end-fragment.start,5);
+ assert.equal(fragment.end-fragment.start,7);
  const unit=r.facts.printer.mmu.unit;
  event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder','filament_remaining'],value:4.999375}]});
  const reconciled=r.snapshot().retained_segment;
@@ -595,4 +595,41 @@ test('nozzle fills downward for half a second after true tip arrival with zero r
   assert.equal(s.nozzle_fill_from,null);
  }
  assert.equal(playbackFrame(e,600,100).state.tips[0],nozzle);
+});
+
+
+test('purge strand blends only over the two millimeters extruded beyond zero',()=>{
+ const r=stream();r.tips[0]=r.snapshot().layout.nozzle-2;
+ const arrival=move(r,2,{source:'mmu_gcode'});
+ const atZero=arrival.state.extruded_mm;
+ assert.equal(arrival.state.purge_transition.nozzle_arrival_mm,atZero);
+ for(const elapsed of [100,350,1000]) {
+  const s=playbackFrame(arrival,elapsed,100).state;
+  assert.equal(purgeOutletColor(s,s.extruded_mm),'0000ff');
+ }
+ const half=move(r,1,{source:'mmu_gcode'});
+ assert.equal(purgeOutletColor(half.state,half.state.extruded_mm),'800080');
+ const full=move(r,1,{source:'mmu_gcode'});
+ assert.equal(purgeOutletColor(full.state,full.state.extruded_mm),'ff0000');
+ assert.equal(purgeOutletColor(full.state,atZero),'0000ff');
+ const retract=move(r,-2,{source:'mmu_gcode'});
+ assert.equal(purgeOutletColor(interpolate(retract,.5),atZero),'0000ff');
+});
+
+
+test('manual purge and retract never add residual length to tip travel',()=>{
+ const r=stream(),nozzle=r.snapshot().layout.nozzle;
+ r.tips[0]=nozzle;
+ const retract=move(r,-2,{source:'mmu_gcode'});
+ assert.equal(retract.state.tips[0],nozzle-2);
+ const base=retract.state.extruded_mm;
+ for(let i=0;i<6;i++) move(r,1,{source:'mmu_gcode'});
+ assert.equal(r.tips[0],nozzle);
+ assert.equal(r.snapshot().extruded_mm-base,4);
+ const back=move(r,-6,{source:'mmu_gcode'});
+ assert.equal(back.state.tips[0],nozzle-6);
+ assert.equal(interpolate(back,.5).tips[0],nozzle-3);
+ const returned=move(r,6,{source:'mmu_gcode'});
+ assert.equal(returned.state.tips[0],nozzle);
+ assert.equal(returned.state.extruded_mm,back.state.extruded_mm);
 });
