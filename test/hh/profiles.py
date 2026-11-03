@@ -622,7 +622,6 @@ EMU_EMB_C = EMU.derive(
     syms={
         'MMU_HAS_PER_GATE_MCU': False,
         'BOARD_TYPE_EMB_C': True,
-        'MMU_HAS_ENVIRONMENT_SENSOR': False,
     },
     description='EMU 1.0 - 2-5 lanes on one EMB-C CAN MCU with managed fans')
 

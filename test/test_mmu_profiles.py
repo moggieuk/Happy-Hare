@@ -695,6 +695,10 @@ class TestEveryBootableProfile(unittest.TestCase):
                     self.assertIn('mmu_exit_switch_pin_%d' % gate, sensors)
                 self.assertNotIn('mmu_stepper unit0_gear_%d' % lanes,
                                  parser.sections())
+                self.assertNotIn('temperature_sensor unit0_Env0',
+                                 parser.sections())
+                self.assertIn('temperature_sensor _unit0_mcu',
+                              parser.sections())
                 self.assertFalse(any(section.startswith('controller_fan ')
                                      for section in parser.sections()))
 
