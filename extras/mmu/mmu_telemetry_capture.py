@@ -88,6 +88,7 @@ class ReplayState:
                 bowden_lengths={str(g): unit.calibrator.get_bowden_length(g) for g in unit.gate_range()},
                 sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in unit_sensors],
                 extruder=dict(name=unit.extruder_wrapper.name,
+                              target_temperature=mmu.printer.lookup_object(unit.extruder_wrapper.name).get_heater().get_temp(now)[1],
                               retracted_length=unit.extruder_wrapper.retracted_length,
                               **unit.extruder_wrapper.get_status(now)),
                 encoder=None if encoder is None else dict(name=encoder.name, distance=encoder.get_distance(), status=encoder.get_status(now),

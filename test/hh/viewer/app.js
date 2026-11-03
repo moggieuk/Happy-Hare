@@ -564,6 +564,8 @@ function draw() {
         : p < entry
           ? toolheadFraction-sensorGap/length+(sensorGap/length)*(p-sensorEntry)/(entry-sensorEntry)
         : Math.min(1, toolheadFraction + (1-toolheadFraction) * toolheadProgress(s,p));
+  if (Number.isFinite(s.extruder_target_temperature))
+    svg += `<text id="extruder-temperature" x="218" y="426" font-size="9" fill="var(--scene-text, #304c65)" data-tooltip="Extruder target temperature">${Number(s.extruder_target_temperature.toFixed(1))}°C</text>`;
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (name === `${s.unit}:mmu_gear_touch`) return true;
     if (s.active_sensors) return s.active_sensors.includes(name);
