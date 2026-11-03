@@ -3,7 +3,7 @@
 # five GRBW LEDs and a normally-open eject button on each lane.
 
 config BOARD_TYPE_EMB_C
-  bool "EMU EMB-C"
+  bool "EMB-C v1 / designed for EMU"
   depends on MMU_TYPE_EMU_1_0
   help
     Single-MCU CAN board for a 2-5 lane EMU. Requires the Front Button PCB.
