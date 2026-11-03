@@ -593,6 +593,132 @@ class WebUiBridge:
         self.viewer.observe_configuration()
         return self.rpc_sim_viewer_setup(conn, {'unit':index})
 
+    def rpc_sim_viewer_configure_buffer(self, conn, params):
+        import math
+        units = self.session.mmu.mmu_machine.units
+        index = int(params.get('unit', 0))
+        if not 0 <= index < len(units):
+            raise RpcError('Unknown MMU unit')
+        buffer = units[index].buffer
+        if buffer is None:
+            return {'available': False}
+        if 'values' in params:
+            values = params['values']
+            try:
+                maximum = float(values['buffer_maxrange'])
+                sensor_range = float(values['buffer_range'])
+                spring = values['buffer_spring_state']
+            except (KeyError, TypeError, ValueError):
+                raise RpcError('Supply numeric buffer ranges and a spring state')
+            if not all(math.isfinite(v) for v in (maximum, sensor_range)) or not 0 < sensor_range <= maximum:
+                raise RpcError('Use 0 < buffer_range <= buffer_maxrange')
+            if spring not in ('none', 'tension', 'neutral', 'compression'):
+                raise RpcError('Choose a spring state')
+            if (maximum, sensor_range, spring) == (buffer.buffer_maxrange,
+                    buffer.buffer_range, buffer.buffer_spring_state):
+                return self.rpc_sim_viewer_configure_buffer(conn, {'unit': index})
+            model = self.session.filament()
+            old_buffers = model.buffers.copy()
+            old = old_buffers.get(buffer.name)
+            buffer.buffer_maxrange = maximum
+            buffer.buffer_range = sensor_range
+            buffer.buffer_spring_state = spring
+            buffer.buffer_spring_state_num = {'none': None, 'tension': -1, 'neutral': 0, 'compression': 1}[spring]
+            model.buffers = {}
+            model.configure_buffers(units, model._selected_gate, model._drive_mode, model._gripped)
+            geometry = model.buffers[buffer.name]
+            for name, previous in old_buffers.items():
+                if name != buffer.name:
+                    model.buffers[name] = previous
+            for gate in geometry['gates']:
+                total = geometry['rest']
+                if old and (model._gripped(gate) or old['contact'][gate]):
+                    total += old['travel'][gate] + old['excess'][gate] - old['rest']
+                    geometry['contact'][gate] = old['contact'][gate]
+                travel = max(0., min(maximum, total))
+                geometry['travel'][gate] = travel
+                geometry['excess'][gate] = total-travel
+                model.unabsorbed[gate] = total-travel
+            for unit in units:
+                if unit.buffer is buffer:
+                    feedback = unit.sync_feedback
+                    if feedback.ctrl is not None:
+                        feedback.ctrl.close_log()
+                    feedback._init_controller()
+                    if feedback.active:
+                        feedback._reset_controller(self.session.reactor.monotonic())
+            model.sync()
+            self.viewer.observe_configuration()
+        return dict(available=True, buffer_maxrange=buffer.buffer_maxrange,
+                    buffer_range=buffer.buffer_range, buffer_spring_state=buffer.buffer_spring_state)
+
+    def rpc_sim_viewer_objects(self, conn, params):
+        """List distinct shared objects, or edit one supported runtime parameter."""
+        import math
+        kind = params.get('kind')
+        attributes = {'buffer': 'buffer', 'encoder': 'encoder', 'toolhead': 'toolhead_wrapper'}
+        if kind not in attributes:
+            raise RpcError('Unknown object type')
+        units = self.session.mmu.mmu_machine.units
+        objects = {}
+        for index, unit in enumerate(units):
+            obj = getattr(unit, attributes[kind], None)
+            if obj is not None:
+                item = objects.setdefault(obj.name, dict(obj=obj, units=[]))
+                item['units'].append(index)
+        encoder_fields = {
+            'encoder_resolution': ('resolution', 'float', 0, True),
+            'desired_headroom': ('desired_headroom', 'float', 0, True),
+            'detection_length': ('detection_length', 'float', 2, True),
+            'average_samples': ('average_samples', 'int', 1, False),
+            'calibration_length': ('calibration_length', 'float', 50, False),
+            'no_movement_samples': ('no_movement_samples', 'int', 1, False),
+            'flowrate_samples': ('flowrate_samples', 'int', 5, False),
+        }
+        if 'parameter' in params:
+            item = objects.get(params.get('name'))
+            if item is None:
+                raise RpcError('Object is not fitted')
+            obj, name = item['obj'], params['parameter']
+            if kind == 'toolhead':
+                allowed = {spec.name for spec in obj.p._SPECS if obj.p._is_available(spec)}
+                if name not in allowed:
+                    raise RpcError('Toolhead parameter is unavailable')
+                self.rpc_sim_viewer_configure(conn, dict(unit=item['units'][0], name=name, value=params.get('value')))
+            elif kind == 'encoder':
+                if name not in encoder_fields:
+                    raise RpcError('Encoder parameter is unavailable')
+                attr, value_kind, minimum, exclusive = encoder_fields[name]
+                try:
+                    value = float(params.get('value'))
+                except (TypeError, ValueError):
+                    raise RpcError('Enter a numeric value')
+                if not math.isfinite(value) or value < minimum or (exclusive and value == minimum) or (value_kind == 'int' and not value.is_integer()):
+                    raise RpcError('Invalid value for %s' % name)
+                if value_kind == 'int':
+                    value = int(value)
+                if name == 'encoder_resolution':
+                    distance = obj.get_distance()
+                    obj.set_resolution(value)
+                    obj.set_distance(distance)
+                else:
+                    setattr(obj, attr, value)
+                self.viewer.observe_configuration()
+            else:
+                raise RpcError('Use the buffer settings editor')
+        result = []
+        for name, item in objects.items():
+            obj = item['obj']
+            if kind == 'toolhead':
+                fields = [dict(name=spec.name, kind=spec.kind, value=getattr(obj.p, spec.name), choices=spec.choices)
+                          for spec in obj.p._SPECS if obj.p._is_available(spec)]
+            elif kind == 'encoder':
+                fields = [dict(name=key, kind=spec[1], value=getattr(obj, spec[0])) for key, spec in encoder_fields.items()]
+            else:
+                fields = []
+            result.append(dict(name=name, units=item['units'], parameters=fields))
+        return dict(objects=result)
+
 
     def rpc_sim_viewer_sensor(self, conn, params):
         name = params.get('name')

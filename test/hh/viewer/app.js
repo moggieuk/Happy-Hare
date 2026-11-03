@@ -63,11 +63,13 @@ $('theme-toggle').onclick = () => {
 let offline = false, sourceGeneration = 0, sourceRecords = [], sourceReplay = new TelemetryReplay();
 let pendingSource = null, pendingFingerprint = '';
 function sourceMode() {
-  const bufferPanel=$('test-panel');
-  if (bufferPanel) bufferPanel.hidden=offline || socket?.readyState !== 1 || !setup || (setup.connection_kind || 'simulator') !== 'simulator';
+  const simulatorConnected=!offline && socket?.readyState === 1 && setup && (setup.connection_kind || 'simulator') === 'simulator';
+  document.querySelectorAll('[data-simulator-config]').forEach(panel=>{
+    panel.hidden=!simulatorConnected || panel.dataset.available !== 'true';
+  });
   $('return-live').hidden = !offline;
   $('recording-name').hidden = !offline;
-  document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, #test-panel input, #test-panel select, #test-panel button')
+  document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
     .forEach(node=>node.disabled=offline);
   $('live').dataset.tooltip = offline ? 'End of recording' : 'End, go live';
   $('live').setAttribute('aria-label', $('live').dataset.tooltip);
@@ -233,6 +235,7 @@ async function refresh() {
   if (setup.profiles.some((p) => p.name === setup.profile))
     $("profiles").value = setup.profile;
   $("profile").textContent = "Running: " + setup.profile;
+  await refreshSimulatorObjects();
   filter();
 }
 function filter() {
@@ -637,6 +640,7 @@ function draw() {
     svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" font-weight="700" fill="var(--scene-text, #304c65)">${index}</text></g>`;
   }
   svg += '</g>';
+  let attachedTipEdge='';
   const shapedTip = (position, color, part, hairLength=s.hair_lengths?.[gate] ?? 15) => {
     const hairScale = tipScale;
     const along = distance => distance <= length ? tube.getPointAtLength(distance)
@@ -656,7 +660,9 @@ function draw() {
       return {x:p.x-side*Math.sin(tangent)*radius,y:p.y+side*Math.cos(tangent)*radius};
     }));
     const outline=[...sides[0],...sides[1].reverse()];
-    return `<g data-part="${part}" opacity="${part === 'attached-tip' ? (s.gate_path_opacity ?? 1) : 1}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${position+1 >= end-(s.filament?.residual_mm || 0) ? `<path data-part="cone-edge" opacity="${s.cone_edge_opacity ?? (s.tip_shapes?.[gate] === 'cone' || part === 'fragment-tip' ? 1 : 0)}" d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy}" fill="none" stroke="color-mix(in srgb, #${color}, black 40%)" stroke-width="0.6"/>` : ''}</g>`;
+    const edge=position+1 >= end-(s.filament?.residual_mm || 0) ? `<path data-part="cone-edge" opacity="${s.cone_edge_opacity ?? (s.tip_shapes?.[gate] === 'cone' || part === 'fragment-tip' ? 1 : 0)}" d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy}" fill="none" stroke="color-mix(in srgb, #${color}, black 40%)" stroke-width="0.6"/>` : '';
+    if (part === 'attached-tip') attachedTipEdge=edge;
+    return `<g data-part="${part}" opacity="${part === 'attached-tip' ? (s.gate_path_opacity ?? 1) : 1}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${part === 'attached-tip' ? '' : edge}</g>`;
   };
   const fadeY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150) * length).y;
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
@@ -782,7 +788,7 @@ function draw() {
     const jointOpacity = Math.max(0, Math.min(1, (end-cutJoint.start)/5));
     svg += `<path id="cut-joint-gap" d="M256.5 ${jointY} H263.5" stroke="var(--scene-tube, #edf4f8)" stroke-width="0.75" opacity="${jointOpacity}"/>`;
   }
-  const flooding=s.nozzle_fill_fraction != null && s.nozzle_fill_fraction < 1;
+  const flooding=s.nozzle_fill_fraction != null && s.nozzle_fill_fraction < 1 && tip >= end-.001;
   if (residual > 0 || tip >= end-.01) {
     // Once the incoming end reaches zero, do not leave an old-color rim around its cone.
     const funnelColor=tip >= end-.01 ? s.filament?.incoming_color || '808182'
@@ -791,13 +797,16 @@ function draw() {
   }
   const plan=s.purge_transition;
   const meltingTip=tip >= end-.001 && plan && s.extruded_mm < plan.start_mm+plan.retained_mm+plan.mix_mm;
-  if (renderCone && (s.tip_shapes?.[gate] === 'cone' || meltingTip)) {
+  if (renderCone && (s.tip_shapes?.[gate] === 'cone' || meltingTip || s.cone_edge_opacity > 0)) {
     svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="800" height="${nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
   }
-  if (flooding && tip >= end-.01) {
-    const fillHeight=(nozzleExit-nozzleZero)*s.nozzle_fill_fraction;
-    svg += `<defs><clipPath id="nozzle-fill-clip"><rect x="250" y="${nozzleZero}" width="20" height="${fillHeight}"/></clipPath></defs><path id="nozzle-fill-front" d="${nozzleFunnel}" fill="#${s.filament?.incoming_color || '808182'}" clip-path="url(#nozzle-fill-clip)"/>`;
+  if (tip >= end-.01 || Number.isFinite(s.purge_transition?.nozzle_arrival_mm)) {
+    const fillHeight=(nozzleExit-nozzleZero)*(s.nozzle_fill_fraction ?? 1);
+    const outletColor=purgeOutletColor(s,s.extruded_mm || 0);
+    svg += `<defs><linearGradient id="nozzle-fill-gradient" gradientUnits="userSpaceOnUse" x1="260" x2="260" y1="${nozzleZero}" y2="${nozzleZero+Math.max(.001,fillHeight)}"><stop stop-color="#${s.filament?.incoming_color || '808182'}"/><stop offset="1" stop-color="#${outletColor}"/></linearGradient><clipPath id="nozzle-fill-clip"><rect x="250" y="${nozzleZero}" width="20" height="${fillHeight}"/></clipPath></defs><path id="nozzle-fill-front" d="${nozzleFunnel}" fill="url(#nozzle-fill-gradient)" clip-path="url(#nozzle-fill-clip)"/>`;
   }
+  // Keep the dissolving tip edge above the flood, clipped to the complete nozzle bore.
+  if (attachedTipEdge) svg += `<defs><clipPath id="tip-edge-clip"><rect x="0" y="0" width="800" height="${nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g clip-path="url(#tip-edge-clip)" opacity="${s.gate_path_opacity ?? 1}">${attachedTipEdge}</g>`;
   svg += `<path id="nozzle-side-shadows" d="M254.5 435 Q256.5 435 256.5 437 V449 L${260-shadowEndX} ${shadowEndY} V${nozzleExit} M265.5 435 Q263.5 435 263.5 437 V449 L${260+shadowEndX} ${shadowEndY} V${nozzleExit}" fill="none" stroke="color-mix(in srgb, var(--scene-nozzle, #9cafbe), black 50%)" stroke-width="0.8" stroke-linecap="round"/>`;
   const {amount:coilAmount, layers, pitch, coils, drop} = purgeCoils(s, nozzleDiameter);
   if (coilAmount > 0) {
@@ -887,12 +896,15 @@ function renderTrace() {
   const view = $("trace"),
     scroll = view.scrollTop;
   const expanded = new Set([...view.querySelectorAll('details[open]')].map(row=>row.dataset.seq));
+  const showDetails=$('show-internal').checked;
+  const records=new Map(showDetails ? [...sourceRecords,...(pendingSource ? [pendingSource] : [])].map(record=>[record.sequence,record]) : []);
   view.replaceChildren(
     ...($('show-internal').checked ? rawEvents : events).map(e => {
       const internal = isInternalUpdate(e);
-      const row = document.createElement(internal ? 'details' : 'button');
+      const row = document.createElement(internal ? 'details' : 'div');
       row.dataset.seq = e.seq;
-      const b = internal ? document.createElement('summary') : row;
+      const b = document.createElement(internal ? 'summary' : 'button');
+      if (!internal) { row.className='trace-event'; row.append(b); }
       if (internal) { row.className = 'trace-internal'; row.open = expanded.has(String(e.seq)); }
       const [sequence, time, type, ...detail] = traceText(e).split(' · ');
       const pill = document.createElement('span');
@@ -920,7 +932,21 @@ function renderTrace() {
         e.fast_bowden && $('compress-bowden').checked ? 'Compressed Bowden playback' : '',
         ...(e.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`)]
         .filter(Boolean).join(' · ');
-      if (!internal) b.onclick = () => seek(events.findIndex(item => item.seq === e.seq));
+      if (!internal) {
+        b.onclick = () => seek(events.findIndex(item => item.seq === e.seq));
+        if (showDetails) {
+          const details=document.createElement('details'), summary=document.createElement('summary'), payload=document.createElement('pre');
+          details.className='trace-telemetry'; details.dataset.seq=e.seq;
+          details.open=expanded.has(String(e.seq));
+          summary.textContent='Telemetry details';
+          const telemetry=e.kind === 'movement' ? {
+            start:records.get(e.telemetry?.start?.sequence) || e.telemetry?.start,
+            outcome:records.get(e.seq) || e.telemetry?.outcome
+          } : records.get(e.seq) || e.telemetry || e.changes || {event:e.kind,label:e.label};
+          payload.textContent=JSON.stringify(telemetry,null,2);
+          details.append(summary,payload); row.append(details);
+        }
+      }
       return row;
     }),
   );
@@ -1105,7 +1131,7 @@ function animate(now) {
     if (playing) {
       const ms=duration(playing.event, $("compress-bowden").checked);
       const arrival=nozzleArrivalTime(playing.event,ms);
-      const total=Math.max(ms+(playing.event.purge_settle ? 700 : 0),arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
+      const total=Math.max(ms,arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
       const f=total ? elapsed/total : 1;
       const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms,playing.selectionGrip);
       playing.fraction=frame.fraction;
@@ -1130,6 +1156,104 @@ function animate(now) {
   }
   requestAnimationFrame(animate);
 }
+
+// Simulator-only editors for shared hardware objects.
+const configColumn=document.querySelector('.left-column');
+const bufferPanel=document.createElement('aside');
+bufferPanel.id='buffer-config';
+bufferPanel.hidden=true;
+bufferPanel.dataset.simulatorConfig='buffer';
+bufferPanel.innerHTML=`<h2>Buffer Config</h2><p class="note">Runtime simulator settings. Shared objects affect every listed unit. Restart restores defaults.</p>
+<label>Buffer object<select id="buffer-unit"></select></label>
+<label>Parameter<select id="buffer-parameter"><option>buffer_maxrange</option><option>buffer_range</option><option>buffer_spring_state</option></select></label>
+<label>Value<input id="buffer-value" type="number" min="0.1" step="0.1"><select id="buffer-spring" hidden><option value="none">Free moving (none)</option><option value="tension">Tension (−1)</option><option value="neutral">Neutral (0)</option><option value="compression">Compression (+1)</option></select></label>
+<button id="buffer-apply">Apply</button><p class="note" id="buffer-status" role="status"></p>`;
+configColumn.append(bufferPanel);
+function showBufferValues(values) {
+  bufferPanel.bufferValues=values;
+  const spring=$('buffer-parameter').value === 'buffer_spring_state';
+  $('buffer-value').hidden=spring;
+  $('buffer-spring').hidden=!spring;
+  for(const id of ['buffer-parameter','buffer-value','buffer-spring','buffer-apply']) $(id).disabled=!values.available;
+  if(values.available) {
+    $('buffer-value').value=spring ? '' : values[$('buffer-parameter').value];
+    $('buffer-spring').value=values.buffer_spring_state;
+  }
+  $('buffer-status').textContent=values.available ? '' : 'No buffer fitted to this unit.';
+}
+$('buffer-parameter').onchange=()=>showBufferValues(bufferPanel.bufferValues || {available:false});
+async function refreshSimulatorObjects() {
+  if (offline || socket?.readyState !== 1 || !setup || (setup.connection_kind || 'simulator') !== 'simulator') { sourceMode(); return; }
+  try {
+    const result=await rpc('sim.viewer.objects',{kind:'buffer'});
+    const available=result.objects;
+    bufferPanel.dataset.available=String(available.length>0);
+    const previous=$('buffer-unit').value;
+    options($('buffer-unit'),available.map(item=>[item.name,`${item.name} (${item.units.map(i=>setup.units[i]).join(', ')})`]));
+    const selected=available.find(item=>item.name===previous) || available[0];
+    bufferPanel.bufferObjects=available;
+    if(selected) {
+      $('buffer-unit').value=selected.name;
+      showBufferValues(await rpc('sim.viewer.configure_buffer',{unit:selected.units[0]}));
+    }
+  } catch(error) { bufferPanel.dataset.available='false'; message(error.message,true); }
+  await Promise.all(['encoder','toolhead'].map(refreshObjectPanel));
+  sourceMode();
+}
+$('buffer-unit').onchange=()=>refreshSimulatorObjects();
+$('buffer-apply').onclick=()=>action(async()=>{
+  const unit=bufferPanel.bufferObjects.find(item=>item.name===$('buffer-unit').value).units[0];
+  const current=await rpc('sim.viewer.configure_buffer',{unit});
+  const name=$('buffer-parameter').value;
+  const values={buffer_maxrange:current.buffer_maxrange,buffer_range:current.buffer_range,buffer_spring_state:current.buffer_spring_state};
+  values[name]=name === 'buffer_spring_state' ? $('buffer-spring').value : Number($('buffer-value').value);
+  const result=await rpc('sim.viewer.configure_buffer',{unit,values});
+  showBufferValues(result);
+  $('buffer-status').textContent='Applied. Restart restores profile defaults.';
+  followLive();
+});
+const objectPanels=new Map();
+for (const kind of ['encoder','toolhead']) {
+  const panel=document.createElement('aside');
+  panel.hidden=true; panel.dataset.simulatorConfig=kind;
+  panel.innerHTML=`<h2>${kind === 'encoder' ? 'Encoder' : 'Toolhead'} Config</h2><p class="note">Runtime simulator settings. Shared objects affect every listed unit. Restart restores defaults.</p><label>${kind === 'encoder' ? 'Encoder' : 'Toolhead'} object<select class="object-choice"></select></label><label>Parameter<select class="object-parameter"></select></label><label>Value<input class="object-value" type="number" step="any"></label><button class="object-apply">Apply</button><p class="note object-status" role="status"></p>`;
+  configColumn.append(panel); objectPanels.set(kind,panel);
+  panel.querySelector('.object-choice').onchange=()=>renderObjectParameters(panel);
+  panel.querySelector('.object-parameter').onchange=()=>showObjectValue(panel);
+  panel.querySelector('.object-apply').onclick=()=>action(async()=>{
+    const result=await rpc('sim.viewer.objects',{kind,name:panel.querySelector('.object-choice').value,
+      parameter:panel.querySelector('.object-parameter').value,value:panel.querySelector('.object-value').value});
+    panel.objects=result.objects; renderObjectParameters(panel);
+    panel.querySelector('.object-status').textContent='Applied. Restart restores profile defaults.';
+    await refresh(); followLive();
+  });
+}
+function renderObjectParameters(panel) {
+  const selected=panel.objects.find(item=>item.name===panel.querySelector('.object-choice').value);
+  const menu=panel.querySelector('.object-parameter'), previous=menu.value;
+  options(menu,(selected?.parameters || []).map(item=>[item.name,item.name]));
+  if(selected?.parameters.some(item=>item.name===previous)) menu.value=previous;
+  showObjectValue(panel);
+}
+function showObjectValue(panel) {
+  const selected=panel.objects.find(item=>item.name===panel.querySelector('.object-choice').value);
+  const parameter=selected?.parameters.find(item=>item.name===panel.querySelector('.object-parameter').value);
+  panel.querySelector('.object-value').value=parameter?.value ?? '';
+  panel.querySelector('.object-apply').disabled=!parameter;
+}
+async function refreshObjectPanel(kind) {
+  const panel=objectPanels.get(kind);
+  try {
+    const result=await rpc('sim.viewer.objects',{kind});
+    panel.objects=result.objects;
+    panel.dataset.available=String(result.objects.length>0);
+    const menu=panel.querySelector('.object-choice'), previous=menu.value;
+    options(menu,result.objects.map(item=>[item.name,`${item.name} (${item.units.map(i=>setup.units[i]).join(', ')})`]));
+    if(result.objects.some(item=>item.name===previous)) menu.value=previous;
+    renderObjectParameters(panel);
+  } catch(error) { panel.dataset.available='false'; message(error.message,true); }
+}
+
 connect();
 poll();
 requestAnimationFrame(animate);

@@ -772,6 +772,16 @@ and new states (including silent changes), unit and gate; repeated assignments
 are suppressed. This is Happy Hare's discrete progress state, not a millimetre
 coordinate. The viewer displays it alongside the tip position.
 
+The simulator-only **Buffer Config**, **Encoder Config**, and **Toolhead Config**
+panels appear only when that profile has fitted objects of the corresponding type.
+Shared objects appear once, with their connected units listed. Edits change the
+running simulator; restart restores profile defaults. Toolhead edits use
+`MMU_TEST_CONFIG` validation, buffer edits also update the physical model, and
+encoder edits expose runtime numeric settings rather than pins or MCU sampling.
+Configuration changes are included in telemetry. **Show internal updates** also
+adds expandable raw telemetry details to each trace entry; movements expose both
+the start and outcome messages without changing playback selection.
+
 Sensor observations are full name-to-state maps at movement start and outcome:
 true means triggered, false means clear, null means disabled. Absent sensors are
 not listed. These are controller observations, not timestamped transitions inside
@@ -780,8 +790,8 @@ recorded endpoint states.
 
 Viewer snapshots retain `raw_state`/`raw_before` separately from displayed states.
 A forward move with stationary extruder motors stops the displayed tip at the
-configured gear position, while motor travel continues. The gear position is the
-schematic Bowden endpoint plus `toolhead_entry_to_extruder`. Clear enabled presence
+configured gear position, while motor travel continues. The calibrated Bowden endpoint is the extruder gear position;
+`toolhead_entry_to_extruder` locates the entry sensor upstream of it. Clear enabled presence
 sensors bound occupied filament; buffer and encoder sensors are excluded. The
 source does not report a continuous physical tail coordinate, so runout-tail
 geometry is not reconstructed. These are
@@ -792,6 +802,10 @@ in place and recovering that retraction does not count as new extrusion. The
 recorded amount is input-filament length. The nozzle selector converts it to an
 equivalent round strand using `length * (1.75 / nozzle_diameter)^2`, defaulting to
 0.4mm, for the purge animation and strand-length label.
+The non-modeled nozzle exit fills downward over 0.5 seconds after the true tip
+reaches zero. Purged material blends to the incoming color over the next 2mm of
+extrusion; waiting or retracting does not recolor material already deposited.
+
 Coil size and blending are schematic, not a melt-flow model. A full coil falls
 behind the lower screen and the next coil starts growing. Any actual extruder
 retraction detaches accumulated purge within that movement's animation; gear-only
