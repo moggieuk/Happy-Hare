@@ -1,5 +1,5 @@
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import { toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 const $ = (id) => document.getElementById(id);
 // A shared overlay styles HTML and SVG tooltips consistently and avoids clipping.
@@ -63,6 +63,8 @@ $('theme-toggle').onclick = () => {
 let offline = false, sourceGeneration = 0, sourceRecords = [], sourceReplay = new TelemetryReplay();
 let pendingSource = null, pendingFingerprint = '';
 function sourceMode() {
+  const bufferPanel=$('test-panel');
+  if (bufferPanel) bufferPanel.hidden=offline || socket?.readyState !== 1 || !setup || (setup.connection_kind || 'simulator') !== 'simulator';
   $('return-live').hidden = !offline;
   $('recording-name').hidden = !offline;
   document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, #test-panel input, #test-panel select, #test-panel button')
@@ -170,6 +172,8 @@ function connect() {
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/websocket`,
   );
   socket.onopen = () => {
+    setup=null;
+    sourceMode();
     if (offline) return;
     $("connection").textContent = "Connected · identifying source…";
     refresh().catch((e) => message(e.message, true));
@@ -191,6 +195,7 @@ function connect() {
     }
   };
   socket.onclose = () => {
+    sourceMode();
     if (!offline) $("connection").textContent = "Disconnected · retrying";
     pending.forEach((p) => p.reject(Error("Console disconnected")));
     pending.clear();
@@ -211,6 +216,7 @@ async function refresh() {
   if (offline) return;
   setup = await rpc("sim.viewer.setup", { unit: Number($("unit").value || 0) });
   if (offline) return;
+  sourceMode();
   const kind = setup.connection_kind || 'simulator'; // Older sim.viewer.setup responses are simulator-only.
   $("connection").textContent = kind === 'simulator' ? 'Connected to the simulator'
     : kind === 'live_machine' ? 'Connected to a live machine' : 'Connected · unknown source';
@@ -503,9 +509,12 @@ function draw() {
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
   // Match the 2mm tip cone, truncated at the selected outlet diameter.
   const funnelShoulder=449+2*toolheadHeight/(end-entry)*(1-nozzleWidth/7);
-  const nozzleExit=Math.max(455,funnelShoulder+2);
+  const nozzleExit=Math.max(455,449+2*toolheadHeight/(end-entry)+2);
+  // Round shadow caps extend 0.4 units inward; stop early to preserve the outlet width.
+  const shadowEndX=nozzleWidth/2+.4;
+  const shadowEndY=449+(funnelShoulder-449)*(3.5-shadowEndX)/(3.5-nozzleWidth/2);
   const nozzleFunnel = `M256.5 449 L${260-nozzleWidth/2} ${funnelShoulder} V${nozzleExit} H${260+nozzleWidth/2} V${funnelShoulder} L263.5 449 Z`;
-  const nozzleBody=`M242 435 L${258-nozzleWidth/2} ${nozzleExit} H${262+nozzleWidth/2} L278 435 Z`;
+  const nozzleBody=`M242 435 L257.2 ${nozzleExit} H262.8 L278 435 Z`;
   const nozzleEntrance='M254.5 435 Q256.5 435 256.5 437 V449 H263.5 V437 Q263.5 435 265.5 435 Z';
   const bowdenPath = path.replace("L260 449", "L260 435");
   let svg = `<rect x="530" y="275" width="180" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="542" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
@@ -567,8 +576,9 @@ function draw() {
       tip = tipAtPathDistance(schematicTip);
     }
   }
+  const renderCone = $('show-filament-shape')?.checked ?? true;
   const tipScale = toolheadHeight/(end-entry);
-  const coneOffset = s.tip_shapes?.[gate] === 'cone' ? tipScale : 0;
+  const coneOffset = renderCone && s.tip_shapes?.[gate] === 'cone' ? tipScale : 0;
   const pathDistance = position => progress(position)*length;
   // Apply recorded transitions where the drawn tip crosses, after schematic Bowden scaling.
   const displayedSensors=unitSensors.map(([name,device])=>{
@@ -672,7 +682,7 @@ function draw() {
     const midY = (startY + endY) / 2;
     svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY-2} V${endY+2} M312 ${endY+6} L315 ${endY+2} L318 ${endY+6} M312 ${startY-6} L315 ${startY-2} L318 ${startY-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Cooling tube position')} x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text ${dimensionLink('Cooling tube length')} x="323" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
   }
-  svg += `<text id="current-gate" x="620" y="486" dominant-baseline="central" text-anchor="middle" font-size="10" fill="var(--scene-text, #456078)">${s.gate >= 0 ? `${s.tool >= 0 ? `T${s.tool} ` : ''}(gate ${s.gate})` : s.gate === -2 ? 'Bypass' : 'Unknown'}</text>`;
+  svg += `<text id="current-gate" x="620" y="486" dominant-baseline="central" text-anchor="middle" font-size="12" fill="var(--scene-text, #456078)">${s.gate >= 0 ? `${s.tool >= 0 ? `T${s.tool} ` : ''}(gate ${s.gate})` : s.gate === -2 ? 'Bypass' : 'Unknown'}</text>`;
   for (const [name, d] of displayedSensors) {
     if (isBufferSensor(name)) continue;
     const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
@@ -738,7 +748,7 @@ function draw() {
     const segment = s.retained_segment;
     const top = tube.getPointAtLength(progress(segment.start)*length).y;
     const coneTip = segment.end;
-    const bottom = tube.getPointAtLength(Math.max(progress(segment.start)*length,progress(segment.end)*length-(segment.tip_shape === 'cone' ? tipScale : 0))).y;
+    const bottom = tube.getPointAtLength(Math.max(progress(segment.start)*length,progress(segment.end)*length-(renderCone && segment.tip_shape === 'cone' ? tipScale : 0))).y;
     const cutLength = Math.max(0, segment.end-segment.start);
     svg += `<path id="retained-fragment" d="M260 ${top} L260 ${bottom}" fill="none" stroke="#${segment.color}" stroke-width="7"/>`;
     if (cutLength > .01) {
@@ -748,7 +758,7 @@ function draw() {
       const labelY=rows.reduce((best,y)=>Math.abs(y-centerY)<Math.abs(best-centerY) ? y : best,rows[0] ?? 470);
       svg += `<g id="cut-fragment-label"><text id="cut-fragment-length" x="196" y="${labelY}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="var(--scene-muted, #6e8190)">Cut fragment · ${mm(cutLength)}mm</text></g>`;
     }
-    if (segment.tip_shape === 'cone') {
+    if (renderCone && segment.tip_shape === 'cone') {
       // The shrinking fragment's cone must never cover the incoming filament behind it.
       svg += `<defs><clipPath id="fragment-tip-clip"><rect x="250" y="${top}" width="20" height="${Math.max(0,nozzleExit-top)}"/></clipPath></defs><g clip-path="url(#fragment-tip-clip)">${shapedTip(coneTip,segment.color,'fragment-tip',segment.hair_length ?? 15)}</g>`;
     }
@@ -772,15 +782,23 @@ function draw() {
     const jointOpacity = Math.max(0, Math.min(1, (end-cutJoint.start)/5));
     svg += `<path id="cut-joint-gap" d="M256.5 ${jointY} H263.5" stroke="var(--scene-tube, #edf4f8)" stroke-width="0.75" opacity="${jointOpacity}"/>`;
   }
+  const flooding=s.nozzle_fill_fraction != null && s.nozzle_fill_fraction < 1;
   if (residual > 0 || tip >= end-.01) {
-    svg += `<path id="nozzle-funnel" d="${nozzleFunnel}" fill="#${s.nozzle_outlet_color || purgeOutletColor(s,s.extruded_mm || 0)}"/>`;
+    // Once the incoming end reaches zero, do not leave an old-color rim around its cone.
+    const funnelColor=tip >= end-.01 ? s.filament?.incoming_color || '808182'
+      : s.nozzle_outlet_color || purgeOutletColor(s,s.extruded_mm || 0);
+    svg += `<path id="nozzle-funnel" d="${nozzleFunnel}" fill="${flooding ? (s.nozzle_fill_from ? `#${s.nozzle_fill_from}` : 'var(--scene-tube, #edf4f8)') : `#${funnelColor}`}"/>`;
   }
   const plan=s.purge_transition;
   const meltingTip=tip >= end-.001 && plan && s.extruded_mm < plan.start_mm+plan.retained_mm+plan.mix_mm;
-  if ((s.tip_shapes?.[gate] === 'cone' || meltingTip)) {
-    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="800" height="${nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
+  if (renderCone && (s.tip_shapes?.[gate] === 'cone' || meltingTip)) {
+    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="800" height="${nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
   }
-  svg += `<path id="nozzle-side-shadows" d="M254.5 435 Q256.5 435 256.5 437 V449 L${260-nozzleWidth/2} ${funnelShoulder} M265.5 435 Q263.5 435 263.5 437 V449 L${260+nozzleWidth/2} ${funnelShoulder}" fill="none" stroke="color-mix(in srgb, var(--scene-nozzle, #9cafbe), black 50%)" stroke-width="0.8" stroke-linecap="round"/>`;
+  if (flooding && tip >= end-.01) {
+    const fillHeight=(nozzleExit-nozzleZero)*s.nozzle_fill_fraction;
+    svg += `<defs><clipPath id="nozzle-fill-clip"><rect x="250" y="${nozzleZero}" width="20" height="${fillHeight}"/></clipPath></defs><path id="nozzle-fill-front" d="${nozzleFunnel}" fill="#${s.filament?.incoming_color || '808182'}" clip-path="url(#nozzle-fill-clip)"/>`;
+  }
+  svg += `<path id="nozzle-side-shadows" d="M254.5 435 Q256.5 435 256.5 437 V449 L${260-shadowEndX} ${shadowEndY} V${nozzleExit} M265.5 435 Q263.5 435 263.5 437 V449 L${260+shadowEndX} ${shadowEndY} V${nozzleExit}" fill="none" stroke="color-mix(in srgb, var(--scene-nozzle, #9cafbe), black 50%)" stroke-width="0.8" stroke-linecap="round"/>`;
   const {amount:coilAmount, layers, pitch, coils, drop} = purgeCoils(s, nozzleDiameter);
   if (coilAmount > 0) {
     const strandWidth = nozzleWidth * 1.5; // Visual emphasis only; volume uses the selected diameter.
@@ -978,6 +996,7 @@ function followLive() {
 $("live").onclick = followLive;
 $("timeline").oninput = () => seek(Number($("timeline").value));
 $("compress-bowden").onchange = () => renderTrace();
+$("show-filament-shape").onchange = draw;
 $("nozzle-diameter").onchange = () => draw();
 function downloadTelemetry() {
   const records = [...sourceRecords, ...(pendingSource ? [pendingSource] : [])];
@@ -1085,19 +1104,14 @@ function animate(now) {
     }
     if (playing) {
       const ms=duration(playing.event, $("compress-bowden").checked);
-      const total=ms+(playing.event.purge_settle ? 350 : 0), elapsed=Math.min(total,now-playing.start);
+      const arrival=nozzleArrivalTime(playing.event,ms);
+      const total=Math.max(ms+(playing.event.purge_settle ? 700 : 0),arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
       const f=total ? elapsed/total : 1;
       const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms,playing.selectionGrip);
       playing.fraction=frame.fraction;
       displayed=frame.state;
       if (f===1 && playing.reverse) {
-        const selection=playing.event.kind === 'gate_changed', grip=playing.selectionGrip;
         seek(events.findIndex(e=>e.seq === playing.targetSeq));
-        if (selection) {
-          played=events[cursor].seq;
-          displayed={...(events[cursor].settled_state || events[cursor].state),mmu_gripped:grip};
-          live=true;
-        }
       } else if (f===1) {
         const pulse = homingPulse(playing.event);
         if (pulse) sensorPulse = {...pulse, start:now};

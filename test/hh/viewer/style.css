@@ -212,7 +212,7 @@ select, input { max-width: 100%; }
 [data-theme="dark"] .sensor-chip.disabled { background: #2b343e; border-color: #45515e; color: #91a0ae; }
 [data-theme="dark"] .error { color: #ff92ac; }
 
-.mini-console-card { margin-top: 12px; }
+main > section { display: flex; flex-direction: column; gap: 16px; align-self: start; }
 #mini-console { height: 210px; overflow: auto; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .console-command { color: #27678a; font-weight: 600; }
 .console-error { color: #b0294b; font-weight: 600; }
@@ -332,6 +332,8 @@ button.sensor-chip:disabled { cursor: default; }
 @supports (appearance: base-select) {
   #parameter, #parameter::picker(select) { appearance: base-select; }
   #parameter::picker(select) { max-height: 440px; border: 1px solid #7890a0; }
+  #parameter optgroup { padding-top: 4px; }
+  #parameter optgroup > :first-child { margin-top: 4px; }
   #parameter option { padding: 6px 14px; }
   #parameter option.parameter-section { padding-inline-start: 7px; text-align: left; }
   #parameter option.parameter-section::checkmark { display: none; }

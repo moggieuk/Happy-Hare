@@ -678,7 +678,19 @@ test('gate swap restores its starting grip in either playback direction',()=>{
   const event={kind:'gate_changed',before,state};
   for (const elapsed of [0,100,300,550,1100,1650,1900,2100,2200]) {
    const frame=playbackFrame(event,reverse ? 2200-elapsed : elapsed,2200,grip);
-   assert.equal(frame.state.mmu_gripped,elapsed>=250 && elapsed<1950 ? false : grip);
+   const time=reverse ? 2200-elapsed : elapsed;
+   assert.equal(frame.state.mmu_gripped,time===2200 ? !grip : elapsed>=250 && elapsed<1950 ? false : grip);
   }
+ }
+});
+
+
+test('completed gate swap restores recorded grip including folded updates',()=>{
+ for(const starting of [false,true]) for(const recorded of [false,true]) {
+  const before={gate:0,tips:[0,0],mmu_gripped:starting};
+  const state={...before,gate:1,mmu_gripped:!recorded};
+  const settled_state={...state,mmu_gripped:recorded};
+  const event={kind:'gate_changed',before,state,settled_state};
+  assert.equal(playbackFrame(event,2200,2200,starting).state.mmu_gripped,recorded);
  }
 });

@@ -367,12 +367,12 @@ test('purge finishes with a color-only transition before retraction',()=>{
  const purge=move(r,2,{source:'mmu_gcode'});
  assert.equal(purge.state.nozzle_outlet_color,'ff0000');
  assert.equal(playbackFrame(purge,100,100).state.nozzle_outlet_color,'0000ff');
- assert.equal(playbackFrame(purge,275,100).state.nozzle_outlet_color,'800080');
+ assert.equal(playbackFrame(purge,450,100).state.nozzle_outlet_color,'800080');
  assert.equal(playbackFrame(purge,100,100).state.cone_edge_opacity,1);
- assert.equal(playbackFrame(purge,275,100).state.cone_edge_opacity,.5);
- assert.equal(playbackFrame(purge,450,100).state.cone_edge_opacity,0);
- assert.equal(playbackFrame(purge,450,100).state.nozzle_outlet_color,'ff0000');
- for(const elapsed of [100,275,450]) assert.equal(playbackFrame(purge,elapsed,100).state.tips[0],purge.state.tips[0]);
+ assert.equal(playbackFrame(purge,350,100).state.cone_edge_opacity,.5);
+ assert.equal(playbackFrame(purge,800,100).state.cone_edge_opacity,0);
+ assert.equal(playbackFrame(purge,800,100).state.nozzle_outlet_color,'ff0000');
+ for(const elapsed of [100,450,800]) assert.equal(playbackFrame(purge,elapsed,100).state.tips[0],purge.state.tips[0]);
  const retract=move(r,-2,{source:'mmu_gcode'});
  assert.equal(retract.state.nozzle_outlet_color,'ff0000');
  assert.equal(interpolate(retract,.5).nozzle_outlet_color,'ff0000');
@@ -408,8 +408,8 @@ test('cone edge starts dissolving on nozzle arrival inside a longer purge move',
  const r=stream();r.tips[0]=r.snapshot().layout.nozzle-2;r.shapes[0]='cone';
  const e=move(r,4,{source:'mmu_gcode'});
  assert.equal(playbackFrame(e,400,1000).state.cone_edge_opacity,1);
- assert.ok(Math.abs(playbackFrame(e,675,1000).state.cone_edge_opacity-.5)<1e-6);
- assert.equal(playbackFrame(e,900,1000).state.cone_edge_opacity,0);
+ assert.ok(Math.abs(playbackFrame(e,750,1000).state.cone_edge_opacity-.5)<1e-6);
+ assert.equal(playbackFrame(e,1200,1000).state.cone_edge_opacity,0);
 });
 
 
@@ -580,4 +580,19 @@ test('hidden gate delta does not swap filament before the selection animation',(
  assert.equal(playbackFrame(selection,250,2200).state.gate,0);
  assert.equal(playbackFrame(selection,1100,2200).state.gate_focus,1);
  assert.equal(playbackFrame(selection,1950,2200).state.gate,2);
+});
+
+
+test('nozzle fills downward for half a second after true tip arrival with zero residual',()=>{
+ const r=stream(),unit=r.facts.printer.mmu_machine.units[r.facts.printer.mmu.unit];
+ unit.toolhead.parameters.toolhead_residual_filament=0;
+ const nozzle=r.snapshot().layout.nozzle;
+ r.tips[0]=nozzle-2;
+ const e=move(r,2);
+ for(const [time,fill] of [[50,0],[100,0],[225,.25],[350,.5],[600,1]]) {
+  const s=playbackFrame(e,time,100).state;
+  assert.ok(Math.abs(s.nozzle_fill_fraction-fill)<1e-6);
+  assert.equal(s.nozzle_fill_from,null);
+ }
+ assert.equal(playbackFrame(e,600,100).state.tips[0],nozzle);
 });
