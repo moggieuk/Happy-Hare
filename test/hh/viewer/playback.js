@@ -1,3 +1,13 @@
+// Fixed rows belong to the active MMU unit; selection lifts a wave without shifting lanes.
+export function spoolGrid(gates, focus) {
+  const columns=Math.min(7,gates.length), rows=Math.ceil(gates.length/7);
+  return {columns,rows,lanes:gates.map((index,slot)=>({index,row:Math.floor(slot/7),
+    offset:slot%7-(columns-1)/2,lift:10*Math.max(0,1-Math.abs(index-focus))}))};
+}
+
+const gateTiming={hold:500,retract:300,fade:500,slide:900,advance:300};
+const gateDuration=2*gateTiming.hold+gateTiming.retract+2*gateTiming.fade+gateTiming.slide+gateTiming.advance;
+
 // Residual contact melts only the immersed hair; retain at least 5mm.
 export function shortenedHair(length, tip, residualTop) {
   return Math.max(5,Math.min(length,residualTop-tip-1));
@@ -18,7 +28,6 @@ export function interpolate(event, fraction) {
     const from = a.gate >= 0 ? a.gate : b.gate;
     const to = b.gate >= 0 ? b.gate : a.gate;
     state.gate_focus = from+(to-from)*eased;
-    state.gate_path_opacity = Math.abs(2*selection-1);
     const retract=fraction < .25 ? fraction/.25 : fraction > .75 ? (1-fraction)/.25 : 1;
     state.gate_retraction=retract*retract*(3-2*retract);
     return state;
@@ -189,7 +198,7 @@ export function motionFraction(event, timeFraction) {
 }
 
 export function duration(event, compressBowden = false) {
-  if (event.kind === 'gate_changed') return 2500;
+  if (event.kind === 'gate_changed') return gateDuration;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
@@ -619,17 +628,22 @@ export function nozzleArrivalTime(event, movementMs) {
 
 // Fill the schematic nozzle after arrival without adding filament travel.
 export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.before?.mmu_gripped) {
-  // Keep retreat/advance at 300ms each; the middle slide uses the remaining time.
-  const gateTime=elapsed-500, slideMs=Math.max(1,movementMs-1600);
-  const fraction=event.kind === 'gate_changed'
-    ? Math.max(0,Math.min(1,gateTime<300 ? gateTime/1200
-      : gateTime<300+slideMs ? .25+.5*(gateTime-300)/slideMs
-      : .75+(gateTime-300-slideMs)/1200))
-    : motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
+  let fraction, fullOpacity=1;
+  if (event.kind === 'gate_changed') {
+    const {hold,retract,fade,slide,advance}=gateTiming;
+    const t=elapsed-hold, slideStart=retract+fade, slideEnd=slideStart+slide;
+    if (t<retract) fraction=.25*t/retract;
+    else if (t<slideStart) { fraction=.25; fullOpacity=1-(t-retract)/fade; }
+    else if (t<slideEnd) { fraction=.25+.5*(t-slideStart)/slide; fullOpacity=0; }
+    else if (t<slideEnd+fade) { fraction=.75; fullOpacity=(t-slideEnd)/fade; }
+    else fraction=.75+.25*(t-slideEnd-fade)/advance;
+    fraction=Math.max(0,Math.min(1,fraction));
+  } else fraction=motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
   let state=interpolate(event,fraction);
   if (event.kind === 'gate_changed' && elapsed < movementMs) {
-    // Release before retreat and restore the starting grip after advance, in either direction.
-    state={...state,mmu_gripped:elapsed >= 250 && elapsed < movementMs-250 ? false : selectionGrip};
+    // Keep the gears released through retreat, both fades, the slide, and advance.
+    state={...state,gate_full_opacity:fullOpacity,
+      mmu_gripped:elapsed >= 250 && elapsed < movementMs-250 ? false : selectionGrip};
   }
   const gate=event.state.gate;
   const arrivalTime=nozzleArrivalTime(event,movementMs);

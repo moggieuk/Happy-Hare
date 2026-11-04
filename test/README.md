@@ -844,9 +844,10 @@ earlier operation. Older recordings without markers disable these buttons.
 
 State records carry the active `move_id` when emitted inside a started movement,
 otherwise null. They do not open or close movement pairs. The viewer retains them
-in its raw telemetry export. Gate and filament-position changes also appear in
-the movement trace; diagnostic sync and espooler records do not add animation
-steps. Idle gear stepper disable messages use TRACE rather than STEPPER.
+in its raw telemetry export. Gate, filament-position, and espooler changes also appear
+in the movement trace. Espooler records update spool direction and activity without
+adding a timed movement; diagnostic sync updates remain internal. Idle gear stepper
+disable messages use TRACE rather than STEPPER.
 
 `elapsed_s` measures time between source callbacks, including waits and simulator
 pacing; it is not a physical motion-duration measurement. Drive travel is not proof

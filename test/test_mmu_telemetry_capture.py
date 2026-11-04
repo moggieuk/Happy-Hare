@@ -39,6 +39,7 @@ class TestTelemetryCapture(unittest.TestCase):
         state = baseline['state']
         self.assertEqual(set(state['printer']), {'mmu', 'mmu_machine'})
         self.assertEqual(state['printer']['mmu']['gate'], 0)
+        self.assertEqual(state['printer']['mmu']['gate_status'], self.hh.mmu.gate_status)
         self.assertEqual(state['printer']['mmu_machine']['purge_macro'],
                          self.hh.mmu._macro_name(self.hh.mmu.p.purge_macro))
         unit = state['printer']['mmu_machine']['units']['unit0']
