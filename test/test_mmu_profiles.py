@@ -73,6 +73,7 @@ BOOTABLE = {
     'quattrobox_v2': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
     'emu_ebb': (5, 'VirtualSelector'),
+    'emu_emb_c': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
     # its own assertions in TestMultiUnitMachine below.
@@ -640,6 +641,172 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(leds['exit_leds'], 'neopixel:_unit0_gate0_leds (1-5)')
         self.assertEqual(
             len(hh.mmu.mmu_unit(0).leds.virtual_chains['exit'].leds), 5)
+
+    def test_emu_multi_led_button_pcb_layouts(self):
+        from test.hh import cfg, profiles
+        layouts = (
+            ('slb', profiles.EMU,
+             'neopixel:_unit0_gate%d_box (1)', 'neopixel:_unit0_gate%d_box (1)',
+             'neopixel:_unit0_gate%d_leds (1,2,3,4)',
+             'neopixel:_unit0_gate%d_leds (1)', 4, 1, '^unit0_gate0:PB2'),
+            ('ebb', profiles.EMU.derive(
+                'emu_ebb_led_defaults', syms={'BOARD_TYPE_EBB_GEN1': True}),
+             'neopixel:_unit0_gate%d_leds (5)', 'neopixel:_unit0_gate%d_leds (2)',
+             'neopixel:_unit0_gate%d_leds (1,2,3,4)',
+             'neopixel:_unit0_gate%d_leds (1)', 5, 2, '^unit0_gate0:PB6'),
+            ('emb_c', profiles.EMU_EMB_C,
+             'neopixel:_unit0_gate%d_leds (5)', 'neopixel:_unit0_gate%d_leds (2)',
+             'neopixel:_unit0_gate%d_leds (1,2,3,4)',
+             'neopixel:_unit0_gate%d_leds (1)', 5, 2, '^unit0:PA10'),
+        )
+        for (label, profile, multi_entry, standard_entry, multi_exit, standard_exit,
+             multi_count, standard_count, standard_button) in layouts:
+            with self.subTest(board=label):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconfig = cfg._kconfig(profile.name, profile.syms)
+                self.assertNotEqual(kconfig.syms[
+                    'BOOL_EMU_MULTI_LED_BUTTON_PCB'].visibility, 0)
+                self.assertTrue(kconfig.is_enabled('BOOL_EMU_MULTI_LED_BUTTON_PCB'))
+
+                default = cfg.assemble(cfg.render(profile))
+                default_leds = dict(default.items('mmu_leds unit0'))
+                self.assertEqual(default_leds['entry_leds'].splitlines(), [
+                    multi_entry % gate for gate in range(5)])
+                self.assertEqual(default_leds['exit_leds'].splitlines(), [
+                    multi_exit % gate for gate in range(5)])
+                self.assertEqual(dict(default.items(
+                    'neopixel _unit0_gate0_leds'))['chain_count'], str(multi_count))
+                self.assertEqual(dict(default.items(
+                    'gcode_button unit0_eject0'))['pin'], '^!' + standard_button[1:])
+
+                standard = profile.derive(
+                    'emu_%s_standard_button' % label,
+                    syms={'BOOL_EMU_MULTI_LED_BUTTON_PCB': False})
+                standard = cfg.assemble(cfg.render(standard))
+                standard_leds = dict(standard.items('mmu_leds unit0'))
+                self.assertEqual(standard_leds['entry_leds'].splitlines(), [
+                    standard_entry % gate for gate in range(5)])
+                self.assertEqual(standard_leds['exit_leds'].splitlines(), [
+                    standard_exit % gate for gate in range(5)])
+                self.assertEqual(dict(standard.items(
+                    'neopixel _unit0_gate0_leds'))['chain_count'], str(standard_count))
+                self.assertEqual(dict(standard.items(
+                    'gcode_button unit0_eject0'))['pin'], standard_button)
+
+        other = profiles.EMU.derive(
+            'emu_other_led_layout', syms={'BOARD_TYPE_OTHER': True})
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(other.name, other.syms)
+        self.assertEqual(kconfig.syms[
+            'BOOL_EMU_MULTI_LED_BUTTON_PCB'].visibility, 0)
+        self.assertFalse(kconfig.is_enabled('BOOL_EMU_MULTI_LED_BUTTON_PCB'))
+
+    def test_emu_emb_c(self):
+        self._check('emu_emb_c')
+
+        from test.hh import cfg, profiles
+        pins = (
+            ('PC4', 'PA7', '!PA6', '!PC5', 0),
+            ('PA4', 'PA3', '!PA2', '!PA5', 0),
+            ('PA0', 'PC3', '!PC2', '!PA1', 0),
+            ('PC0', 'PC15', '!PC14', '!PC1', 0),
+            ('PC0', 'PC11', '!PC10', '!PC13', 1),
+        )
+        led_pins = ('PA15', 'PC8', 'PC9', 'PD0', 'PD1')
+        fan_pins = ('PA13', 'PB15', 'PB14', 'PB13', 'PB1')
+        for lanes in range(2, 6):
+            with self.subTest(lanes=lanes):
+                profile = profiles.EMU_EMB_C.derive(
+                    'emu_emb_c_%d_lanes' % lanes, syms={'PARAM_NUM_GATES': lanes})
+                parser = cfg.assemble(cfg.render(profile))
+                self.assertEqual(
+                    [section for section in parser.sections() if section.startswith('mcu ')],
+                    ['mcu unit0'])
+                sensors = dict(parser.items('mmu_sensors unit0'))
+                leds = dict(parser.items('mmu_leds unit0'))
+                unit = dict(parser.items('mmu_unit unit0'))
+                self.assertEqual(unit['fans'].split(', '), [
+                    '_unit0_fan%d' % gate for gate in range(lanes)])
+                self.assertEqual(leds['entry_leds'].splitlines(), [
+                    'neopixel:_unit0_gate%d_leds (5)' % gate for gate in range(lanes)])
+                self.assertEqual(leds['exit_leds'].splitlines(), [
+                    'neopixel:_unit0_gate%d_leds (1,2,3,4)' % gate
+                    for gate in range(lanes)])
+                for gate in range(lanes):
+                    suffix = '' if gate == 0 else '_%d' % gate
+                    uart, step, direction, enable, address = pins[gate]
+                    tmc = dict(parser.items('tmc2209 mmu_stepper unit0_gear%s' % suffix))
+                    gear = dict(parser.items('mmu_stepper unit0_gear%s' % suffix))
+                    chain = dict(parser.items('neopixel _unit0_gate%d_leds' % gate))
+                    button = dict(parser.items('gcode_button unit0_eject%d' % gate))
+                    fan = dict(parser.items('fan_generic _unit0_fan%d' % gate))
+                    self.assertEqual(tmc['uart_pin'], 'unit0:%s' % uart)
+                    self.assertEqual(tmc['uart_address'], str(address))
+                    self.assertEqual(gear['step_pin'], 'unit0:%s' % step)
+                    self.assertEqual(gear['dir_pin'], '!unit0:%s' % direction[1:])
+                    self.assertEqual(gear['enable_pin'], '!unit0:%s' % enable[1:])
+                    self.assertEqual(chain['pin'], 'unit0:%s' % led_pins[gate])
+                    self.assertEqual(chain['chain_count'], '5')
+                    self.assertEqual(button['pin'], ('^!unit0:%s' % (
+                        ('PA10', 'PD9', 'PD8', 'PC7', 'PC6')[gate])))
+                    self.assertEqual(fan['pin'], 'unit0:%s' % fan_pins[gate])
+                    self.assertIn('mmu_entry_switch_pin_%d' % gate, sensors)
+                    self.assertIn('mmu_exit_switch_pin_%d' % gate, sensors)
+                self.assertNotIn('mmu_stepper unit0_gear_%d' % lanes,
+                                 parser.sections())
+                self.assertNotIn('temperature_sensor unit0_Env0',
+                                 parser.sections())
+                self.assertIn('temperature_sensor _unit0_mcu',
+                              parser.sections())
+                self.assertFalse(any(section.startswith('controller_fan ')
+                                     for section in parser.sections()))
+
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconfig = cfg._kconfig(profile.name, profile.syms)
+                self.assertTrue(kconfig.is_enabled('MMU_HAS_ENVIRONMENT_SENSOR'))
+                self.assertTrue(kconfig.is_enabled('EXTERNAL_ENVIRONMENT_SENSOR_SETUP'))
+                self.assertEqual(kconfig.syms['PARAM_ENVIRONMENT_SENSOR_GATE_0'].visibility,
+                                 0)
+
+                rendered = cfg.render(profile)
+                self.assertIn('https://github.com/jacksky6/TCA9548A-klipper-addon',
+                              '\n'.join(rendered.values()))
+                parser = cfg.assemble(rendered)
+                unit = dict(parser.items('mmu_unit unit0'))
+                self.assertEqual(unit['environment_sensors'].split(', '), [
+                    'unit0_Env%d' % gate for gate in range(lanes)])
+                self.assertFalse(any(section.startswith('temperature_sensor unit0_Env')
+                                     for section in parser.sections()))
+
+    def test_external_per_gate_environment_sensors_are_opt_in_for_emu_boards(self):
+        from test.hh import cfg, profiles
+        boards = (
+            ('slb', profiles.EMU),
+            ('ebb', profiles.EMU_EBB),
+            ('other', profiles.EMU.derive(
+                'emu_other_external_environment',
+                syms={'MMU_HAS_PER_GATE_MCU': False, 'BOARD_TYPE_OTHER': True})),
+            ('manual', profiles.EMU.derive(
+                'emu_manual_external_environment',
+                syms={'MMU_HAS_PER_GATE_MCU': False, 'BOARD_TYPE_MANUAL': True})),
+        )
+        for label, profile in boards:
+            with self.subTest(board=label):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconfig = cfg._kconfig(profile.name, profile.syms)
+                self.assertNotEqual(kconfig.syms[
+                    'BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS'].visibility, 0)
+                self.assertFalse(kconfig.is_enabled('EXTERNAL_ENVIRONMENT_SENSOR_SETUP'))
+
+                external = profile.derive(
+                    'emu_%s_external_environment' % label,
+                    syms={'BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS': True})
+                parser = cfg.assemble(cfg.render(external))
+                unit = dict(parser.items('mmu_unit unit0'))
+                self.assertEqual(unit['environment_sensors'].split(', '), [
+                    'unit0_Env%d' % gate for gate in range(5)])
+                self.assertFalse(any(section.startswith('temperature_sensor unit0_Env')
+                                     for section in parser.sections()))
 
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
