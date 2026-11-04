@@ -56,6 +56,13 @@
         <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>
         <label class="playback-option"><input id="show-filament-shape" type="checkbox" checked>Show filament cone and hair</label>
       </section>
+      <section class="card" id="viewer-settings" aria-label="Viewer settings">
+        <h2>Settings</h2>
+        <details class="spool-style-picker" id="spool-style-menu"><summary>Spool type <span id="spool-style-current"></span></summary><div id="spool-style-grid" role="group" aria-label="Spool type"></div></details>
+        <label class="viewer-setting-slider" for="spool-angle">Viewing angle <output id="spool-angle-value">80°</output><input id="spool-angle" type="range" min="0" max="90" value="80" step="1"></label>
+        <label class="viewer-setting-slider" for="spool-spacing">Spool spacing <output id="spool-spacing-value">54</output><input id="spool-spacing" type="range" min="30" max="80" value="54" step="1"></label>
+        <label class="playback-option"><input id="slow-animation" type="checkbox">Slow animation 10× (debug)</label>
+      </section>
       </div>
       <section>
         <div class="card">
@@ -79,7 +86,7 @@
           </label>
           <svg
             id="scene"
-            viewBox="0 0 800 520"
+            viewBox="0 0 850 710"
             role="img"
             aria-label="Filament path from MMU through Bowden to extruder"
           ></svg>
