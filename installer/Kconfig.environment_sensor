@@ -64,7 +64,7 @@ comment "$(misc_hardware_hint)" if MMU_HAS_ENVIRONMENT_SENSOR && CUSTOM_ENVIRONM
 comment "Defined in external printer configuration" if MMU_HAS_ENVIRONMENT_SENSOR && EXTERNAL_ENVIRONMENT_SENSOR_SETUP
   dim
 
-if MMU_TYPE_EMU_1_0 && (BOARD_TYPE_EMB_C || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL) && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
+if MMU_TYPE_EMU_1_0 && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
   config BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
     bool "Use externally configured per-gate environment sensors"
     default n
