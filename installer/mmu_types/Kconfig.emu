@@ -200,23 +200,31 @@ layers    : static 0 0 top (0.5$(comma)0.0$(comma)0.0)\n\
 )"
 
   if BOARD_TYPE_SLB_1_0
+    config PARAM_CHAIN_COUNT
+      default 4 if BOOL_EMU_MULTI_LED_BUTTON_PCB
+      default 1
+
     config PARAM_ENTRY_LEDS
       generated_default "neopixel:_$(UNIT_NAME)_gate%i_box (1)" "" "; " PARAM_NUM_GATES
 
     config PARAM_EXIT_LEDS
-      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES if BOOL_EMU_MULTI_LED_BUTTON_PCB
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1)" "" "; " PARAM_NUM_GATES
 
   endif
 
   if BOARD_TYPE_EBB_GEN1
     config PARAM_CHAIN_COUNT
-      default 5
+      default 5 if BOOL_EMU_MULTI_LED_BUTTON_PCB
+      default 2
 
     config PARAM_ENTRY_LEDS
-      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (5)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (5)" "" "; " PARAM_NUM_GATES if BOOL_EMU_MULTI_LED_BUTTON_PCB
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (2)" "" "; " PARAM_NUM_GATES
 
     config PARAM_EXIT_LEDS
-      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES if BOOL_EMU_MULTI_LED_BUTTON_PCB
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1)" "" "; " PARAM_NUM_GATES
     
   endif
 

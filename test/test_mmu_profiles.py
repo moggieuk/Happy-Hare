@@ -642,6 +642,65 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(
             len(hh.mmu.mmu_unit(0).leds.virtual_chains['exit'].leds), 5)
 
+    def test_emu_multi_led_button_pcb_layouts(self):
+        from test.hh import cfg, profiles
+        layouts = (
+            ('slb', profiles.EMU,
+             'neopixel:_unit0_gate%d_box (1)', 'neopixel:_unit0_gate%d_box (1)',
+             'neopixel:_unit0_gate%d_leds (1,2,3,4)',
+             'neopixel:_unit0_gate%d_leds (1)', 4, 1, '^unit0_gate0:PB2'),
+            ('ebb', profiles.EMU.derive(
+                'emu_ebb_led_defaults', syms={'BOARD_TYPE_EBB_GEN1': True}),
+             'neopixel:_unit0_gate%d_leds (5)', 'neopixel:_unit0_gate%d_leds (2)',
+             'neopixel:_unit0_gate%d_leds (1,2,3,4)',
+             'neopixel:_unit0_gate%d_leds (1)', 5, 2, '^unit0_gate0:PB6'),
+            ('emb_c', profiles.EMU_EMB_C,
+             'neopixel:_unit0_gate%d_leds (5)', 'neopixel:_unit0_gate%d_leds (2)',
+             'neopixel:_unit0_gate%d_leds (1,2,3,4)',
+             'neopixel:_unit0_gate%d_leds (1)', 5, 2, '^unit0:PA10'),
+        )
+        for (label, profile, multi_entry, standard_entry, multi_exit, standard_exit,
+             multi_count, standard_count, standard_button) in layouts:
+            with self.subTest(board=label):
+                with cfg._env(cfg._SINGLE_UNIT_ENV):
+                    kconfig = cfg._kconfig(profile.name, profile.syms)
+                self.assertNotEqual(kconfig.syms[
+                    'BOOL_EMU_MULTI_LED_BUTTON_PCB'].visibility, 0)
+                self.assertTrue(kconfig.is_enabled('BOOL_EMU_MULTI_LED_BUTTON_PCB'))
+
+                default = cfg.assemble(cfg.render(profile))
+                default_leds = dict(default.items('mmu_leds unit0'))
+                self.assertEqual(default_leds['entry_leds'].splitlines(), [
+                    multi_entry % gate for gate in range(5)])
+                self.assertEqual(default_leds['exit_leds'].splitlines(), [
+                    multi_exit % gate for gate in range(5)])
+                self.assertEqual(dict(default.items(
+                    'neopixel _unit0_gate0_leds'))['chain_count'], str(multi_count))
+                self.assertEqual(dict(default.items(
+                    'gcode_button unit0_eject0'))['pin'], '^!' + standard_button[1:])
+
+                standard = profile.derive(
+                    'emu_%s_standard_button' % label,
+                    syms={'BOOL_EMU_MULTI_LED_BUTTON_PCB': False})
+                standard = cfg.assemble(cfg.render(standard))
+                standard_leds = dict(standard.items('mmu_leds unit0'))
+                self.assertEqual(standard_leds['entry_leds'].splitlines(), [
+                    standard_entry % gate for gate in range(5)])
+                self.assertEqual(standard_leds['exit_leds'].splitlines(), [
+                    standard_exit % gate for gate in range(5)])
+                self.assertEqual(dict(standard.items(
+                    'neopixel _unit0_gate0_leds'))['chain_count'], str(standard_count))
+                self.assertEqual(dict(standard.items(
+                    'gcode_button unit0_eject0'))['pin'], standard_button)
+
+        other = profiles.EMU.derive(
+            'emu_other_led_layout', syms={'BOARD_TYPE_OTHER': True})
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig(other.name, other.syms)
+        self.assertEqual(kconfig.syms[
+            'BOOL_EMU_MULTI_LED_BUTTON_PCB'].visibility, 0)
+        self.assertFalse(kconfig.is_enabled('BOOL_EMU_MULTI_LED_BUTTON_PCB'))
+
     def test_emu_emb_c(self):
         self._check('emu_emb_c')
 

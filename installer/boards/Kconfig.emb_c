@@ -12,6 +12,9 @@ if BOARD_TYPE_EMB_C
   config PARAM_BOARD_TYPE
     default "EMU EMB-C"
 
+  config BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default y
+
   config BOOL_EXTERNAL_PER_GATE_ENVIRONMENT_SENSORS
     default y
 
@@ -108,17 +111,22 @@ if BOARD_TYPE_EMB_C
   config PIN_EXIT_SENSOR_4
     default "^$(MCU_NAME):PB5"
 
-  # The Front Button PCB is normally open; invert its pull-up inputs.
+  # The Multi LED Button PCB is normally open; invert its pull-up inputs.
   config PIN_EJECT_BUTTON_0
-    default "^!$(MCU_NAME):PA10"
+    default "^!$(MCU_NAME):PA10" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default "^$(MCU_NAME):PA10"
   config PIN_EJECT_BUTTON_1
-    default "^!$(MCU_NAME):PD9"
+    default "^!$(MCU_NAME):PD9" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default "^$(MCU_NAME):PD9"
   config PIN_EJECT_BUTTON_2
-    default "^!$(MCU_NAME):PD8"
+    default "^!$(MCU_NAME):PD8" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default "^$(MCU_NAME):PD8"
   config PIN_EJECT_BUTTON_3
-    default "^!$(MCU_NAME):PC7"
+    default "^!$(MCU_NAME):PC7" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default "^$(MCU_NAME):PC7"
   config PIN_EJECT_BUTTON_4
-    default "^!$(MCU_NAME):PC6"
+    default "^!$(MCU_NAME):PC6" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default "^$(MCU_NAME):PC6"
 
   # FAN1..5 are circulation fans. Happy Hare's per-gate managed-fan
   # configuration uses the shared MCU temperature to start or stop them.
@@ -139,8 +147,8 @@ if BOARD_TYPE_EMB_C
       default "$(MCU_NAME):PB0"
   endif
 
-  # One five-pixel GRBW chain per lane. The Front Button PCB places the
-  # exit LEDs at positions 1-4 and the entry LED at position 5.
+  # Each lane has one GRBW chain. The Multi LED Button PCB uses four exit
+  # LEDs and one entry LED; the standard layout uses one of each.
   config PIN_NEOPIXEL_0
     default "$(MCU_NAME):PA15"
   config PIN_NEOPIXEL_1
@@ -152,10 +160,13 @@ if BOARD_TYPE_EMB_C
   config PIN_NEOPIXEL_4
     default "$(MCU_NAME):PD1"
   config PARAM_CHAIN_COUNT
-    default 5
+    default 5 if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default 2
   config PARAM_ENTRY_LEDS
-    generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (5)" "" "; " PARAM_NUM_GATES
+    generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (5)" "" "; " PARAM_NUM_GATES if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (2)" "" "; " PARAM_NUM_GATES
   config PARAM_EXIT_LEDS
-    generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+    generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES if BOOL_EMU_MULTI_LED_BUTTON_PCB
+    generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1)" "" "; " PARAM_NUM_GATES
 
 endif
