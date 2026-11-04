@@ -1,6 +1,15 @@
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import { nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { spoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
+// Temporary preview values; explicit per-gate percentages can replace these later.
+const previewSpoolFill = new Map();
+function spoolFill(state, gate) {
+  const supplied = state.spool_percentages?.[gate];
+  if (Number.isFinite(supplied)) return Math.max(0, Math.min(100, supplied));
+  if (!previewSpoolFill.has(gate))
+    previewSpoolFill.set(gate, gate === 1 ? 0 : 10 + Math.floor(Math.random() * 91));
+  return previewSpoolFill.get(gate);
+}
 const $ = (id) => document.getElementById(id);
 // A shared overlay styles HTML and SVG tooltips consistently and avoids clipping.
 const tooltip = document.createElement('div');
@@ -409,11 +418,19 @@ $("files").onchange = () =>
     await refresh();
     message("Uploaded profile started.");
   });
+// Temporary visual-debug clock: telemetry and simulator execution keep their original timing.
+let animationRate=1, animationTime=0, animationRealTime=performance.now();
+function animationNow() {
+  const now=performance.now();
+  animationTime+=(now-animationRealTime)*animationRate;
+  animationRealTime=now;
+  return animationTime;
+}
 let displayed = null, playing = null, played = 0, resumeAt = 0;
-const spoolAngles=new Map(), spoolVisibility=new Map(), spoolDirections=new Map();
+const spoolAngles=new Map(), spoolArrowVisibility=new Map(), spoolDirections=new Map();
 let spoolLastFrame=null, spoolSession=null;
 // Keep the first neighboring lane clear of the selected spool; others stay evenly spaced.
-const gateLaneX=offset=>620+offset*14+Math.sign(offset)*16*Math.min(1,Math.abs(offset));
+const gateLaneX=offset=>620+offset*Number($('spool-spacing').value);
 let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null;
 function currentIndex() {
   return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
@@ -436,7 +453,7 @@ function followTrace() {
 }
 function seek(index) {
   pauseAfterStep = false;
-  spoolVisibility.clear();
+  spoolArrowVisibility.clear();
   cursor = Math.max(0, Math.min(index, events.length - 1));
   live = false; paused = true; replayingHistory = true; playing = null; sensorPulse = null;
   draw(); followTrace();
@@ -445,7 +462,7 @@ function seek(index) {
 function homingRing(name,x,y) {
   if (!playing || homingTarget(playing.event) !== name) return '';
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const phase=((performance.now()-playing.start)%600)/600;
+  const phase=((animationNow()-playing.start)%600)/600;
   const reverse=(playing.event.requested ?? playing.event.distance ?? 0) < 0;
   const color=reverse ? '#48c982' : 'var(--sensor-clear-pulse)';
   const radius=reduced ? 9 : 13-9*phase;
@@ -463,7 +480,7 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
   const edge=tick(piston.position);
   // Retain protrusion even at the maximum-tension stop.
   const pistonLeft=edge-80;
-  markup += `<defs><mask id="buffer-tube-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="${pistonLeft+4}" y="50" width="${508-pistonLeft-4}" height="50" fill="black"/></mask></defs><g id="sync-buffer"><path data-part="buffer-filament-guide" d="M${pistonLeft+4} 66.5 H508 M${pistonLeft+4} 83.5 H508" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="1.6" opacity="0.3"/><text x="470" y="38" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Sync-feedback buffer</text><g fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.5"><rect id="buffer-housing" x="428" y="46" width="84" height="51.88" rx="6.4"/><rect id="buffer-piston" x="${pistonLeft}" y="59" width="80" height="32" rx="5.6"/></g><g fill="var(--scene-tube-border, #b1c4d2)"><rect data-part="buffer-housing-port" x="509.6" y="62.2" width="4.8" height="25.6" rx="2.4"/><rect data-part="buffer-piston-port" x="${pistonLeft-2.4}" y="62.2" width="4.8" height="25.6" rx="2.4"/></g>`;
+  markup += `<defs><mask id="buffer-tube-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${pistonLeft+4}" y="50" width="${508-pistonLeft-4}" height="50" fill="black"/></mask></defs><g id="sync-buffer"><path data-part="buffer-filament-guide" d="M${pistonLeft+4} 66.5 H508 M${pistonLeft+4} 83.5 H508" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="1.6" opacity="0.3"/><text x="470" y="38" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Sync-feedback buffer</text><g fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.5"><rect id="buffer-housing" x="428" y="46" width="84" height="51.88" rx="6.4"/><rect id="buffer-piston" x="${pistonLeft}" y="59" width="80" height="32" rx="5.6"/></g><g fill="var(--scene-tube-border, #b1c4d2)"><rect data-part="buffer-housing-port" x="509.6" y="62.2" width="4.8" height="25.6" rx="2.4"/><rect data-part="buffer-piston-port" x="${pistonLeft-2.4}" y="62.2" width="4.8" height="25.6" rx="2.4"/></g>`;
   const geometry=Object.values(s.buffers || {}).find(buffer=>buffer.gates.includes(s.gate));
   const spring=geometry?.spring ?? d.spring ?? 'none';
   const springSides = spring === 'neutral' || spring === 0 ? ['left','right']
@@ -492,7 +509,7 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
     markup += `<g class="sensor-marker${on === null ? ' sensor-disabled' : ''}" data-sensor="${escape(sensorName || '')}"><circle cx="${x}" cy="97.88" r="5" fill="${sensorFill(on)}" stroke="#698394"/><text x="${x}" y="116.88" text-anchor="${label === 'compression' ? 'end' : 'start'}" font-size="9" fill="var(--scene-text, #304c65)">${label}</text></g>`;
     if (sensorName) markup += homingRing(sensorName,x,97.88);
     if (sensorName && sensorPulse?.sensor === sensorName) {
-      const elapsed=(performance.now()-sensorPulse.start)/650;
+      const elapsed=(animationNow()-sensorPulse.start)/650;
       if (elapsed >= 0 && elapsed < 1) {
         const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
         markup += `<circle data-part="sensor-pulse" cx="${x}" cy="97.88" r="${reduced ? 10 : 7+elapsed*15}" fill="none" stroke="${sensorPulse.reverse ? 'var(--sensor-clear-pulse)' : '#48c982'}" stroke-width="2.5" opacity="${1-elapsed}"/>`;
@@ -538,7 +555,7 @@ function draw() {
   $("timeline").value = live ? events.indexOf(e) : cursor;
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
   const path =
-    "M620 470 L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 449";
+    "M620 570 L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 449";
   const dimensionLink = label => {
     const id = dimensionParameter(s, label);
     return id && !offline ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
@@ -555,7 +572,7 @@ function draw() {
   const nozzleBody=`M242 435 L257.2 ${nozzleExit} H262.8 L278 435 Z`;
   const nozzleEntrance='M254.5 435 Q256.5 435 256.5 437 V449 H263.5 V437 Q263.5 435 265.5 435 Z';
   const bowdenPath = path.replace("L260 449", "L260 435");
-  let svg = `<rect x="522" y="275" width="196" height="225" rx="12" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><text x="534" y="302" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  let svg = `<text x="518" y="402" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
@@ -580,19 +597,19 @@ function draw() {
   });
   const isTouchSensor=name=>/(?:^|:)mmu_gear_touch(?:_\d+)?$/.test(name);
   const encoderAnchor = encoderReference(s, unitSensors);
-  const gateSlots = gateDevicePositions(s, unitSensors);
+  const gateSlots = Object.fromEntries(Object.entries(gateDevicePositions(s, unitSensors)).map(([key,value])=>[key,Number.isFinite(value) ? value+100 : value]));
   const sensorPoint = (name, device) => {
     if (isTouchSensor(name)) return {x:260,y:420};
     const point = tube.getPointAtLength(progress(device.position)*length);
     const short = name.split(':').at(-1);
-    if (/^mmu_entry(?:_\d+)?$/.test(short)) point.y -= 53;
+    if (/^mmu_entry(?:_\d+)?$/.test(short)) point.y -= 93;
     if (/^mmu_exit(?:_\d+)?$/.test(short)) { point.x = 620; point.y = gateSlots.exit; }
     if (short === 'mmu_shared_exit') { point.x = 620; point.y = gateSlots.sharedExit; }
     return point;
   };
   const isBufferSensor = name => /(?:^|:)filament_(compression|tension)$/.test(name);
   const sensorFill = state => state === true ? '#399b64' : state === false ? '#fff' : '#9ba5ae';
-  const encoderPoint = () => ({x:620, y:gateSlots.encoder ?? 260});
+  const encoderPoint = () => ({x:620, y:gateSlots.encoder ?? 360});
   const tipAtPathDistance = distance => {
     const target = Math.max(0,distance)/length;
     let low = Math.min(-100,(s.layout.mmu_entry ?? -150)-40), high = end;
@@ -602,19 +619,19 @@ function draw() {
   let schematicDistance = position => progress(position)*length;
   let schematicTip = null;
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
-  if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(470-305);
+  if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(570-405);
   // Encoder loading keeps one reference across START OF BOWDEN bookkeeping.
   if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry && s.encoder_reference?.endstop === 'encoder') {
-    tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,p=>progress(p)*length,470-encoderPoint().y));
+    tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,p=>progress(p)*length,570-encoderPoint().y));
   } else if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry) {
     const endstop = s.encoder_reference?.endstop?.split(':').at(-1);
     const sensor = unitSensors.find(([name,d]) => Number.isFinite(d.position) &&
       [endstop,`${endstop}_${gate}`].includes(name.split(':').at(-1)));
     if (sensor) {
       schematicDistance = position => switchFilamentDistance(position,sensor[1].position,
-        s.encoder_reference?.parking || 0,entry,470-sensorPoint(...sensor).y,p=>progress(p)*length,
+        s.encoder_reference?.parking || 0,entry,570-sensorPoint(...sensor).y,p=>progress(p)*length,
         encoderAnchor?.name === sensor[0] && s.devices?.[`${s.unit}:encoder`]
-          ? {position:sensor[1].position+encoderAnchor.offset,distance:470-encoderPoint().y} : null);
+          ? {position:sensor[1].position+encoderAnchor.offset,distance:570-encoderPoint().y} : null);
       schematicTip = schematicDistance(tip);
       tip = tipAtPathDistance(schematicTip);
     }
@@ -636,18 +653,20 @@ function draw() {
     !name.includes('encoder') && !isTouchSensor(name) && d.position !== null).map(([name,d]) => {
       const short=name.split(':').at(-1);
       const position = /^mmu_(?:entry|exit)(?:_\d+)?$/.test(short) || short === 'mmu_shared_exit'
-        ? 470-sensorPoint(name,d).y : pathDistance(d.position);
+        ? 570-sensorPoint(name,d).y : pathDistance(d.position);
       return {...d,name,position};
     });
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
   const constrained = constrainFilament(schematicTip ?? pathDistance(tip),
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
-  const entrySensorY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150)*length).y;
-  const laneOpacity = offset => focus < 0 ? .35 : Math.max(.2,Math.exp(-Math.abs(offset)*.45));
-  const rackTipY = offset => Math.min(440,entrySensorY+Math.min(18,Math.abs(offset)*5))-28;
-  // Return the selected end to rack height before sliding; telemetry positions stay unchanged.
-  const selectedTip=constrained.tip+(Math.min(constrained.tip,470-rackTipY(0))-constrained.tip)*(s.gate_retraction || 0);
+  const focus = s.gate_focus ?? s.gate;
+  // Start just inside the upper spool rim; the fixed fade hides the insertion point.
+  const fullTipOpacity=s.gate_full_opacity ?? 1;
+  const slidingRack=fullTipOpacity===0;
+  const spoolTip=570-504;
+  const selectedTip=constrained.tip+(Math.min(constrained.tip,spoolTip)-constrained.tip)*(s.gate_retraction || 0);
   tip = tipAtPathDistance(selectedTip);
+  const shapedTipOpacity=fullTipOpacity*Math.max(0,Math.min(1,(selectedTip-(570-502))/28));
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);
   const macroUnit=s.units?.indexOf(s.unit) ?? 0;
   const macroParams=s.configuration?.parameters?.[macroUnit] || {};
@@ -664,59 +683,88 @@ function draw() {
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
-  // Fan parked ends around the selected gate, bringing its strand into focus.
-  // The central strand lines up with the existing MMU filament path.
-  const focus = s.gate_focus ?? s.gate;
-  const showMainSpool=s.gate>=0 && Object.keys(s.espoolers || {}).length>0;
-  let mainSpoolOpacity=s.gate_path_opacity ?? 1;
-  const arrivingGate=playing?.reverse ? playing.event.before?.gate : playing?.event.state.gate;
-  if (playing?.event.kind === 'gate_changed' && s.gate === arrivingGate) {
-    // Let the new filament finish advancing with the normal fade before lifting it.
-    const fadeStart=duration(playing.event)-500;
-    const fade=Math.max(0,Math.min(1,(performance.now()-playing.start-fadeStart)/1000));
-    mainSpoolOpacity=fade*fade*(3-2*fade);
-  }
-  const spoolFadeLift=showMainSpool ? mainSpoolOpacity : 0;
-  svg += `<defs><linearGradient id="gate-end-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${entrySensorY+3}" y2="470"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="gate-end-fade" maskUnits="userSpaceOnUse" x="522" y="316" width="196" height="159"><rect x="522" y="316" width="196" height="159" fill="url(#gate-end-gradient)"/></mask></defs><g id="gate-filaments" mask="url(#gate-end-fade)">`;
-  const lanes = s.tips.map((_, index) => ({index,offset:index-focus}))
-    .filter(lane => lane.index !== s.gate && Math.abs(lane.offset) < 6)
-    .sort((a,b) => Math.abs(b.offset)-Math.abs(a.offset));
-  for (const {index,offset} of lanes) {
-    // Extra clearance beside the active lane; ordinary spacing beyond it.
-    const x = gateLaneX(offset);
-    const y = rackTipY(offset);
-    const opacity = laneOpacity(offset);
-    const color = s.gate_colors?.[index] || '808182';
-    svg += `<g data-gate="${index}" opacity="${opacity}"><path d="M${x} 470 V${y}" stroke="#${color}" stroke-width="7" fill="none"/><text x="${x}" y="${Math.min(464,y+14)}" text-anchor="middle" font-size="8" font-weight="700" fill="var(--scene-text, #304c65)">${index}</text></g>`;
-  }
-  svg += '</g>';
-  if (Object.keys(s.espoolers || {}).length) {
-    svg += '<g id="espooler-indicators">';
-    const visible=[{index:s.gate,offset:s.gate-focus},...lanes].filter(lane=>lane.index>=0);
-    for (const {index,offset} of visible) {
-      const operation=s.espoolers[index];
+  if (s.tips.length) {
+    const unitGates=s.unit_gates || s.tips.map((_,index)=>index);
+    const grid=spoolGrid(unitGates,s.gate>=0 ? focus : unitGates[0]);
+    const visible=[...grid.lanes].sort((a,b)=>a.row-b.row || b.offset-a.offset);
+    const spoolViewAngle=Number($('spool-angle').value)*Math.PI/180;
+    const edgePadding=17*3.3*Math.cos(spoolViewAngle)+(34/3)*3.3*Math.sin(spoolViewAngle)/2+16;
+    const enclosureLeft=gateLaneX(-(grid.columns-1)/2)+4-edgePadding;
+    const enclosureRight=gateLaneX((grid.columns-1)/2)+4+edgePadding;
+    const lastRowY=Math.max(0,grid.rows-1)*150;
+    const enclosureBottom=689+lastRowY;
+    $('scene').setAttribute('viewBox',`0 0 ${Math.max(850,enclosureRight+14)} ${enclosureBottom+21}`);
+    const coverPath=`M${enclosureLeft} ${585+lastRowY} V515 Q${enclosureLeft} 470 ${enclosureLeft+45} 470 H${enclosureRight-45} Q${enclosureRight} 470 ${enclosureRight} 515 V${585+lastRowY} Z`;
+    svg += `<defs><radialGradient id="spool-backlight" cx=".5" cy=".85" r=".65"><stop stop-color="#fff" stop-opacity="1"/><stop offset=".45" stop-color="#fff2b8" stop-opacity=".8"/><stop offset="1" stop-color="#fff2b8" stop-opacity="0"/></radialGradient><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".14"/><stop offset=".25" stop-color="white" stop-opacity=".025"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".13" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><clipPath id="spool-cover-clip"><path d="${coverPath}"/></clipPath></defs><path d="${coverPath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>`;
+    svg += '<defs><filter id="spool-separation-shadow" x="-30%" y="-20%" width="160%" height="145%"><feDropShadow dx="1.2" dy=".8" stdDeviation=".6" flood-color="#000" flood-opacity=".65"/></filter></defs><g id="espooler-indicators" clip-path="url(#spool-cover-clip)">';
+    const spoolStyle=document.querySelector('input[name=spool-style]:checked').value;
+    const solidSpool=spoolStyle.endsWith('-solid');
+    const spoolFaceScale=Math.max(.001,Math.cos(spoolViewAngle));
+    const spoolDepth=34/3, spoolHubRadius=6.4, spoolBoreRadius=5.8, spoolScale=3.3;
+    // Compensate for the face transform so axial depth projects with sin(view angle).
+    const spoolDepthOffset=spoolDepth*Math.sin(spoolViewAngle)/spoolFaceScale;
+
+    for (const {index,offset,row,lift} of visible) {
+      const operation=s.espoolers?.[index];
       const active=operation?.output_power>0 && ['assist','rewind'].includes(operation.direction);
-      const selected=index===s.gate;
-      const visibility=spoolVisibility.get(index) ?? (active ? 1 : 0);
+      const visibility=spoolArrowVisibility.get(index) ?? (active ? 1 : 0);
       const fade=visibility*visibility*(3-2*visibility);
-      if (!selected && fade<=0) continue;
-      const x=gateLaneX(offset), y=455+(selected ? 0 : rackTipY(offset)-rackTipY(0));
+      // Offset the winding slightly right of the filament lane.
+      const x=gateLaneX(offset)+4-spoolDepth*Math.sin(spoolViewAngle)*spoolScale/2;
+      const y=549.6+row*150-lift;
       const angle=spoolAngles.get(index) || 0;
       const color=s.gate_colors[index] || '808182';
-      const title=`Gate ${index} · ${active ? operation.direction+' · '+Math.round(operation.output_power*100)+'% output' : 'Stopped'}`;
-      svg += `<g data-part="espooler" data-gate="${index}" data-active="${active}" data-tooltip="${escape(title)}" transform="translate(${x} ${y}) scale(${selected ? 1.1 : 1})" opacity="${selected ? mainSpoolOpacity : laneOpacity(offset)*fade}">`;
-      const spoolViewAngle=65*Math.PI/180, spoolFaceScale=Math.cos(spoolViewAngle);
-      const spoolDepth=34/3;
-      // Compensate for the face transform so axial depth projects with sin(view angle).
-      const spoolDepthOffset=spoolDepth*Math.sin(spoolViewAngle)/spoolFaceScale;
-      if (selected) svg += `<g transform="scale(${spoolFaceScale} 1)"><circle cx="${spoolDepthOffset}" cy="0" r="17" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 25%)" stroke="var(--scene-border, #96abba)" stroke-width="0.5"/><defs><linearGradient id="spool-winding-shade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, #${color}, black 25%)"/><stop offset=".4" stop-color="#${color}"/><stop offset=".65" stop-color="color-mix(in srgb, #${color}, white 15%)"/><stop offset="1" stop-color="color-mix(in srgb, #${color}, black 35%)"/></linearGradient></defs><path d="M0 -14.5 H${spoolDepthOffset} A14.5 14.5 0 0 1 ${spoolDepthOffset} 14.5 H0 Z" fill="url(#spool-winding-shade)"/>${Array.from({length:5},(_,i)=>(i+1)*spoolDepthOffset/6).map(depth=>`<path d="M${depth} -14.5 A14.5 14.5 0 0 1 ${depth} 14.5" fill="none" stroke="color-mix(in srgb, #${color}, black 30%)" stroke-width=".4" opacity=".45"/>`).join('')}`;
-      if (selected) svg += `<g><circle r="17" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)" stroke-width="0.5"/><circle r="15" fill="#${color}"/><circle r="15.5" fill="none" stroke="var(--scene-body, #edf2f6)" stroke-width="2"/><g transform="rotate(${angle})" stroke="var(--scene-body, #edf2f6)" stroke-width="2"><path d="M0 -16.5 V16.5 M-14.29 -8.25 L14.29 8.25 M-14.29 8.25 L14.29 -8.25"/>${[0,60,120,180,240,300].map(rotation=>`<path transform="rotate(${rotation})" d="M-1 -11 Q-1.2 -14 -3.8 -16.06 A16.5 16.5 0 0 1 3.8 -16.06 Q1.2 -14 1 -11 Z" fill="var(--scene-body, #edf2f6)" stroke="none"/>`).join('')}</g><circle r="4" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/></g>`;
-      if (!selected) svg += `<g transform="rotate(${angle}) scale(${(active ? operation.direction : spoolDirections.get(index))==='rewind'?-1:1} 1)"><circle r="6" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)" stroke-width="1.2"/><path d="M2.5 -6 L-2 -8 L-2 -4 Z" fill="#fff"/></g>`;
-      if (selected && fade>0) svg += `<g opacity="${fade}" transform="rotate(${angle}) scale(${(active ? operation.direction : spoolDirections.get(index))==='rewind'?-1:1} 1)"><path d="M-12.021 -12.021 A17 17 0 0 1 15.205 -7.603" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.7 -10.97 L15.205 -7.603 L15.2 -13.22 Z" fill="var(--scene-text, #304c65)"/></g>`;
-      if (selected) svg += '</g>';
+      const percent=spoolFill(s,index);
+      // Scale winding area above the core, leaving a narrow clearance at the rim when full.
+      const fullWindingRadius=16;
+      const fillRadius=Math.sqrt(spoolHubRadius**2+(fullWindingRadius**2-spoolHubRadius**2)*percent/100);
+      const windingRadius=fillRadius;
+      const title=`Gate ${index} · ${percent}% filament · ${active ? operation.direction+' · '+Math.round(operation.output_power*100)+'% output' : 'Stopped'}`;
+      svg += `<g data-part="espooler" data-gate="${index}" data-active="${active}" data-fill-percent="${percent}" data-tooltip="${escape(title)}" transform="translate(${x} ${y}) scale(${spoolScale})" filter="url(#spool-separation-shadow)">`;
+      // Lighting stays fixed while the spokes turn underneath it.
+      const material=spoolStyle.startsWith('dark-') ? '#343638' : 'var(--spool-material, #b49164)';
+      // Annular windows flare outward; rounded joins soften each of the four corners.
+      const windowPoint=(radius,degrees)=>{
+        const radians=degrees*Math.PI/180;
+        return `${radius*Math.sin(radians)} ${-radius*Math.cos(radians)}`;
+      };
+      const inner=8, outer=14.4, corner=.55;
+      const windowPath=`M${windowPoint(inner+corner,-16)} L${windowPoint(outer-corner,-16)} Q${windowPoint(outer,-16)} ${windowPoint(outer,-13)} A${outer} ${outer} 0 0 1 ${windowPoint(outer,13)} Q${windowPoint(outer,16)} ${windowPoint(outer-corner,16)} L${windowPoint(inner+corner,16)} Q${windowPoint(inner,16)} ${windowPoint(inner,12)} A${inner} ${inner} 0 0 0 ${windowPoint(inner,-12)} Q${windowPoint(inner,-16)} ${windowPoint(inner+corner,-16)} Z`;
+      const spokes=`<circle r="17" fill="white"/><g transform="rotate(${angle})">${[30,90,150,210,270,330].map(rotation=>`<path transform="rotate(${rotation})" d="${windowPath}" fill="black"/>`).join('')}</g>`;
+      svg += `<defs><filter id="spool-cutout-shadow-${index}" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="1.1" dy=".8" stdDeviation=".25" flood-color="#000" flood-opacity=".65"/></filter><linearGradient id="spool-face-${index}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="color-mix(in srgb, ${material}, white 32%)"/><stop offset=".45" stop-color="${material}"/><stop offset="1" stop-color="color-mix(in srgb, ${material}, black 38%)"/></linearGradient><linearGradient id="spool-edge-${index}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="color-mix(in srgb, ${material}, white 60%)"/><stop offset=".4" stop-color="${material}"/><stop offset="1" stop-color="color-mix(in srgb, ${material}, black 65%)"/></linearGradient><linearGradient id="spool-bore-${index}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="color-mix(in srgb, ${material}, black 88%)"/><stop offset=".6" stop-color="color-mix(in srgb, ${material}, black 65%)"/><stop offset="1" stop-color="color-mix(in srgb, ${material}, black 35%)"/></linearGradient><mask id="spool-spokes-${index}" maskUnits="userSpaceOnUse" x="-18" y="-18" width="36" height="36">${spokes}</mask></defs>`;
+      // The dot lives on the front face, so its orbit and shape share the face projection.
+      const faceDot=solidSpool ? `<g data-part="spool-rotation-dot" transform="rotate(${angle})"><circle cx="-13.5" cy="0" r="2.3" fill="${spoolStyle.startsWith('dark-') ? '#f1f0e8' : '#842c2c'}" stroke="color-mix(in srgb, ${material}, black 35%)" stroke-width=".25"/></g>` : '';
+      svg += `<g transform="scale(${spoolFaceScale} 1)"><g data-part="spool-rear-face" transform="translate(${spoolDepthOffset} 0)"><circle r="17" fill="none" stroke="url(#spool-edge-${index})" stroke-width="1"/><g filter="url(#spool-cutout-shadow-${index})"><circle r="17" fill="url(#spool-face-${index})" ${solidSpool ? '' : `mask="url(#spool-spokes-${index})"`}/><circle r="${spoolHubRadius}" fill="${material}"/></g><circle r="${spoolBoreRadius}" fill="url(#spool-bore-${index})"/></g><defs><linearGradient id="spool-winding-shade-${index}" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, #${color}, black 25%)"/><stop offset=".4" stop-color="#${color}"/><stop offset=".65" stop-color="color-mix(in srgb, #${color}, white 15%)"/><stop offset="1" stop-color="color-mix(in srgb, #${color}, black 35%)"/></linearGradient></defs><path data-part="spool-core-tube" d="M0 -${spoolHubRadius} H${spoolDepthOffset} A${spoolHubRadius} ${spoolHubRadius} 0 0 1 ${spoolDepthOffset} ${spoolHubRadius} H0 Z" fill="${material}"/><defs><linearGradient id="spool-core-contact-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" y1="${-spoolHubRadius}" x2="0" y2="${spoolHubRadius}"><stop stop-color="black" stop-opacity="0"/><stop offset=".25" stop-color="black" stop-opacity=".55"/><stop offset=".75" stop-color="black" stop-opacity=".55"/><stop offset="1" stop-color="black" stop-opacity="0"/></linearGradient></defs><path data-part="spool-core-contact-shadow" d="M${spoolDepthOffset} -${spoolHubRadius} A${spoolHubRadius} ${spoolHubRadius} 0 0 1 ${spoolDepthOffset} ${spoolHubRadius}" fill="none" stroke="url(#spool-core-contact-fade-${index})" stroke-width="1.2"/><path d="M0 -${windingRadius} H${spoolDepthOffset} A${windingRadius} ${windingRadius} 0 0 1 ${spoolDepthOffset} ${windingRadius} H0 Z" fill="${percent ? `url(#spool-winding-shade-${index})` : 'none'}"/>${Array.from({length:percent ? 18 : 0},(_,i)=>(i+1)*spoolDepthOffset/19).map(depth=>`<path d="M${depth} -${windingRadius} A${windingRadius} ${windingRadius} 0 0 1 ${depth} ${windingRadius}" fill="none" stroke="color-mix(in srgb, #${color}, black 50%)" stroke-width=".06" opacity=".85"/><path d="M${depth+.18} -${windingRadius} A${windingRadius} ${windingRadius} 0 0 1 ${depth+.18} ${windingRadius}" fill="none" stroke="color-mix(in srgb, #${color}, white 55%)" stroke-width=".06" opacity=".75"/>`).join('')}`;
+      if (percent>0) {
+        // Contact shadow from the front flange, fading into the first winding turns.
+        svg += `<defs><linearGradient id="spool-contact-shadow-${index}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${spoolDepthOffset*.2}" y2="0"><stop stop-color="black" stop-opacity=".75"/><stop offset=".35" stop-color="black" stop-opacity=".4"/><stop offset="1" stop-color="black" stop-opacity="0"/></linearGradient><clipPath id="spool-contact-clip-${index}"><path d="M0 -${windingRadius} H${spoolDepthOffset} A${windingRadius} ${windingRadius} 0 0 1 ${spoolDepthOffset} ${windingRadius} H0 Z"/></clipPath></defs><rect data-part="spool-contact-shadow" x="0" y="${-windingRadius}" width="${spoolDepthOffset*.2}" height="${windingRadius*2}" fill="url(#spool-contact-shadow-${index})" clip-path="url(#spool-contact-clip-${index})"/>`;
+      }
+      svg += `<g><circle r="17" fill="none" stroke="url(#spool-edge-${index})" stroke-width="1"/>${percent ? `<circle r="${fillRadius}" fill="#${color}"/>` : ''}<g filter="url(#spool-cutout-shadow-${index})"><circle r="17" fill="url(#spool-face-${index})" ${solidSpool ? '' : `mask="url(#spool-spokes-${index})"`}/>${faceDot}<circle r="${spoolHubRadius}" fill="${material}"/></g><circle data-part="spool-core-bore" r="${spoolBoreRadius}" fill="url(#spool-bore-${index})"/></g>`;
+      svg += '</g>';
+      if (fade>0) {
+        const direction=active ? operation.direction : spoolDirections.get(index);
+        // Keep the arrow on the near side of the full winding, independent of spool rotation.
+        const arrowX=spoolDepth*Math.sin(spoolViewAngle)/2+(fullWindingRadius+.6)*Math.cos(spoolViewAngle)-.8;
+        svg += `<defs><linearGradient id="spool-arrow-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" y1="-16.6" x2="0" y2="-5"><stop stop-color="white" stop-opacity="0"/><stop offset=".4" stop-color="white" stop-opacity=".5"/><stop offset="1" stop-color="white"/></linearGradient><mask id="spool-arrow-mask-${index}" maskUnits="userSpaceOnUse" x="-6" y="-18" width="12" height="23"><rect x="-6" y="-18" width="12" height="23" fill="url(#spool-arrow-fade-${index})"/></mask></defs><g data-part="espooler-direction" data-direction="${direction}" opacity="${fade}" transform="translate(${arrowX} 0) scale(1 ${direction==='rewind' ? -1 : 1})" pointer-events="none"><path d="M-3.2 -16.6 C.8 -15.2 2.2 -11 2.1 -7 L3.7 -7 L1 -2.5 L-2.2 -6.8 L-.7 -6.8 C-.2 -10.3 -.8 -14.2 -3.2 -16.6 Z" fill="white" fill-opacity=".3" stroke="white" stroke-opacity=".7" stroke-width=".4" stroke-linejoin="round" mask="url(#spool-arrow-mask-${index})"/></g>`;
+      }
+      if (index===s.gate) {
+        const glow=Math.max(0,1-Math.abs(index-focus));
+        svg += `<ellipse data-part="selected-spool-backlight" cx="${spoolDepth*Math.sin(spoolViewAngle)/2+2}" cy="9" rx="7" ry="12" opacity="${glow}" fill="url(#spool-backlight)" pointer-events="none"/>`;
+      }
       svg += '</g>';
     }
     svg += '</g>';
+    svg += `<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8"/><rect data-part="spool-cabinet" x="${enclosureLeft}" y="${571+lastRowY}" width="${enclosureRight-enclosureLeft}" height="118" rx="9" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`;
+    for (let row=0; row<grid.rows-1; row++) {
+      svg += `<rect data-part="spool-row-shelf" x="${enclosureLeft}" y="${571+row*150}" width="${enclosureRight-enclosureLeft}" height="64" rx="5" fill="url(#spool-shelf-fade)"/>`;
+    }
+    for (const {index,offset,row} of visible) {
+      const status=s.gate_status?.[index];
+      const border=status===0 ? '#858b91' : status>0 ? '#208b35' : '#d58a30';
+      const selected=index===s.gate;
+      const x=gateLaneX(offset)+8;
+      svg += `<g data-part="gate-status-pill" data-gate="${index}" data-tooltip="Gate ${index} · ${status===0 ? 'Empty' : status>0 ? 'Available' : 'Unknown'}"><rect x="${x-16}" y="${583+row*150}" width="32" height="18" rx="9" fill="${selected ? '#36ca42' : 'color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)'}" stroke="${border}" stroke-width="2"/><text x="${x}" y="${592+row*150}" dominant-baseline="central" text-anchor="middle" font-size="11" font-weight="700" fill="${selected ? '#102514' : 'var(--scene-text, #304c65)'}">${index}</text></g>`;
+    }
   }
   let attachedTipEdge='';
   const shapedTip = (position, color, part, hairLength=s.hair_lengths?.[gate] ?? 15) => {
@@ -740,13 +788,12 @@ function draw() {
     const outline=[...sides[0],...sides[1].reverse()];
     const edge=position+1 >= end-(s.filament?.residual_mm || 0) ? `<path data-part="cone-edge" opacity="${s.cone_edge_opacity ?? (s.tip_shapes?.[gate] === 'cone' || part === 'fragment-tip' ? 1 : 0)}" d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy}" fill="none" stroke="color-mix(in srgb, #${color}, black 40%)" stroke-width="0.6"/>` : '';
     if (part === 'attached-tip') attachedTipEdge=edge;
-    return `<g data-part="${part}" opacity="${part === 'attached-tip' ? (s.gate_path_opacity ?? 1) : 1}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${part === 'attached-tip' ? '' : edge}</g>`;
+    return `<g data-part="${part}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${part === 'attached-tip' ? '' : edge}</g>`;
   };
-  const fadeY = tube.getPointAtLength(progress(s.layout.mmu_entry ?? -150) * length).y;
-  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY+3}" y2="${470-29*spoolFadeLift}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY+3}" width="40" height="${Math.max(0,470-fadeY-3)}" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
-  svg += `<defs><linearGradient id="bowden-tube-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${fadeY-17}" y2="${458-20*spoolFadeLift}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-tube-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="520"><rect width="800" height="520" fill="white"/><rect x="600" y="${fadeY-17}" width="40" height="${Math.max(0,520-fadeY+17)}" fill="url(#bowden-tube-gradient)"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="474" y2="502"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="600" y="474" width="40" height="226" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-tube-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="458" y2="490"><stop stop-color="white"/><stop offset=".65" stop-color="#777"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-tube-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="600" y="458" width="40" height="242" fill="url(#bowden-tube-gradient)"/></mask></defs>`;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
-    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(692 295) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="692" y="316" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
+    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(724 395) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="724" y="416" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
   }
   // Nozzle-relative reference guides, matching the documentation diagrams.
   const references = toolheadReferences(s).map(ref => ({...ref,
@@ -771,7 +818,6 @@ function draw() {
     const midY = (startY + endY) / 2;
     svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY-2} V${endY+2} M312 ${endY+6} L315 ${endY+2} L318 ${endY+6} M312 ${startY-6} L315 ${startY-2} L318 ${startY-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Cooling tube position')} x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text ${dimensionLink('Cooling tube length')} x="323" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
   }
-  svg += `<text id="current-gate" x="620" y="486" dominant-baseline="central" text-anchor="middle" font-size="12" fill="var(--scene-text, #456078)">${s.gate >= 0 ? `${s.tool >= 0 ? `T${s.tool} ` : ''}(gate ${s.gate})` : s.gate === -2 ? 'Bypass' : 'Unknown'}</text>`;
   for (const [name, d] of displayedSensors) {
     if (isBufferSensor(name)) continue;
     const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
@@ -783,7 +829,7 @@ function draw() {
     svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
     svg += homingRing(name,pt.x+16,pt.y);
     if (sensorPulse?.sensor === name) {
-      const elapsed = (performance.now() - sensorPulse.start) / 650;
+      const elapsed = (animationNow() - sensorPulse.start) / 650;
       if (elapsed >= 0 && elapsed < 1) {
         const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
         svg += `<circle data-part="sensor-pulse" cx="${pt.x + 16}" cy="${pt.y}" r="${reduced ? 10 : 7 + elapsed * 15}" fill="none" stroke="${sensorPulse.reverse ? 'var(--sensor-clear-pulse)' : '#48c982'}" stroke-width="2.5" opacity="${1-elapsed}"/>`;
@@ -791,7 +837,7 @@ function draw() {
     }
   }
   for (const [x, y, type] of [
-    [620, 335, "gear"],
+    [620, 395, "gear"],
     [260, tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y, "extruder"],
   ]) {
     const names = s.drive_motors?.[type] || Object.keys(s.motors).filter(n => n.includes(type));
@@ -799,11 +845,11 @@ function draw() {
     const distance = names.length ? (s.motors[names[0]] || 0) : 0;
     // Both gear pairs use the toolhead scale so equal travel gives equal rotation.
     const pixelsPerMm = .27 * length / (end-entry);
-    const angle = gearAngle(distance, pixelsPerMm);
+    const angle = gearAngle(distance, pixelsPerMm, 14.25);
     const gripState = e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
-    const spacing = type === 'gear' && gripState?.mmu_gripped === false ? 31 : 22;
+    const spacing = type === 'gear' && gripState?.mmu_gripped === false ? 26.25 : 17.25;
     for (const side of [-1, 1])
-      svg += `<g data-part="${type}-wheel" transform="translate(${x + side * spacing} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle})"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
+      svg += `<g data-part="${type}-wheel" transform="translate(${x + side * spacing} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle}) scale(.75)"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
   }
   for (const [name, d] of Object.entries(s.devices)) {
     if (name.includes(':') && name.split(':')[0] !== s.unit) continue;
@@ -881,8 +927,8 @@ function draw() {
   }
   const plan=s.purge_transition;
   const meltingTip=tip >= end-.001 && plan && s.extruded_mm < plan.start_mm+plan.retained_mm+plan.mix_mm;
-  if (renderCone && (s.tip_shapes?.[gate] === 'cone' || meltingTip || s.cone_edge_opacity > 0)) {
-    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="800" height="${nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
+  if (spoolFill(s,gate)>0 && renderCone && (s.tip_shapes?.[gate] === 'cone' || meltingTip || s.cone_edge_opacity > 0)) {
+    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="500" y="${nozzleZero}" width="350" height="${700-nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
   }
   if (tip >= end-.01 || Number.isFinite(s.purge_transition?.nozzle_arrival_mm)) {
     const fillHeight=(nozzleExit-nozzleZero)*(s.nozzle_fill_fraction ?? 1);
@@ -890,7 +936,7 @@ function draw() {
     svg += `<defs><linearGradient id="nozzle-fill-gradient" gradientUnits="userSpaceOnUse" x1="260" x2="260" y1="${nozzleZero}" y2="${nozzleZero+Math.max(.001,fillHeight)}"><stop stop-color="#${s.filament?.incoming_color || '808182'}"/><stop offset="1" stop-color="#${outletColor}"/></linearGradient><clipPath id="nozzle-fill-clip"><rect x="250" y="${nozzleZero}" width="20" height="${fillHeight}"/></clipPath></defs><path id="nozzle-fill-front" d="${nozzleFunnel}" fill="url(#nozzle-fill-gradient)" clip-path="url(#nozzle-fill-clip)"/>`;
   }
   // Keep the dissolving tip edge above the flood, clipped to the complete nozzle bore.
-  if (attachedTipEdge) svg += `<defs><clipPath id="tip-edge-clip"><rect x="0" y="0" width="800" height="${nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g clip-path="url(#tip-edge-clip)" opacity="${s.gate_path_opacity ?? 1}">${attachedTipEdge}</g>`;
+  if (attachedTipEdge) svg += `<defs><clipPath id="tip-edge-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="500" y="${nozzleZero}" width="350" height="${700-nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-edge-clip)">${attachedTipEdge}</g>`;
   svg += `<path id="nozzle-side-shadows" d="M254.5 435 Q256.5 435 256.5 437 V449 L${260-shadowEndX} ${shadowEndY} V${nozzleExit} M265.5 435 Q263.5 435 263.5 437 V449 L${260+shadowEndX} ${shadowEndY} V${nozzleExit}" fill="none" stroke="color-mix(in srgb, var(--scene-nozzle, #9cafbe), black 50%)" stroke-width="0.8" stroke-linecap="round"/>`;
   const {amount:coilAmount, layers, pitch, coils, drop} = purgeCoils(s, nozzleDiameter);
   if (coilAmount > 0) {
@@ -933,7 +979,8 @@ function draw() {
       line.setAttribute('x', bounds.x + bounds.width/2);
   }
   $("filament").setAttribute("stroke-dasharray", measured);
-  $("filament").setAttribute("opacity", s.gate_path_opacity ?? 1);
+  $("filament").setAttribute("opacity", fullTipOpacity);
+  $("filament").setAttribute("visibility", slidingRack || spoolFill(s,gate)===0 ? "hidden" : "visible");
   const encoderTitle = $("scene").querySelector('.encoder-offset-title');
   if (encoderTitle) $("scene").querySelector('.encoder-offset-value')
     .setAttribute('x',728+encoderTitle.getComputedTextLength()/2);
@@ -1072,7 +1119,7 @@ function startPlayback() {
 $("play-previous").onclick = () => {
   if ($("play-previous").disabled) return;
   const index = currentIndex();
-  playing = {event:events[index], start:performance.now(), reverse:true,
+  playing = {event:events[index], start:animationNow(), reverse:true,
     targetSeq:events[index-1].seq, fraction:1,
     selectionGrip:(live && displayed ? displayed : events[index].settled_state || events[index].state).mmu_gripped};
   displayed = interpolate(playing.event,1);
@@ -1106,6 +1153,33 @@ $("live").onclick = followLive;
 $("timeline").oninput = () => seek(Number($("timeline").value));
 $("compress-bowden").onchange = () => renderTrace();
 $("show-filament-shape").onchange = draw;
+for (const [value,name] of [['cardboard-windowed','Cardboard · windowed'],['dark-windowed','Dark grey · windowed'],['cardboard-solid','Cardboard · solid'],['dark-solid','Dark grey · solid']]) {
+  const dark=value.startsWith('dark'), solid=value.endsWith('solid');
+  const material=dark ? '#343638' : '#b49164', id=`spool-preview-${value}`;
+  // Match the scene: 75-degree face projection and depth of one-third diameter.
+  const face=x=>`<g transform="translate(${x} 22) scale(.258819 1)"><circle r="17" fill="${solid ? `url(#${id})` : 'none'}" stroke="${material}" stroke-width="4"/>${solid ? '' : `<path d="M0 -15 V15 M-13 -7.5 L13 7.5 M-13 7.5 L13 -7.5" stroke="${material}" stroke-width="4"/>`}<circle r="6.4" fill="${material}"/><circle r="5.8" fill="#202529"/></g>`;
+  const label=document.createElement('label');
+  label.className='spool-style-choice';
+  label.dataset.tooltip=name;
+  label.innerHTML=`<input type="radio" name="spool-style" value="${value}" aria-label="${name}" ${value==='cardboard-windowed' ? 'checked' : ''}><svg viewBox="0 0 40 44" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${dark ? '#66696c' : '#d4b88f'}"/><stop offset="1" stop-color="${material}"/></linearGradient><linearGradient id="${id}-filament" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#287e62"/><stop offset=".5" stop-color="#6ac49d"/><stop offset="1" stop-color="#245d4b"/></linearGradient></defs>${face(25)}<path d="M14 6 H25 A4.14 16 0 0 1 25 38 H14 Z" fill="url(#${id}-filament)"/><ellipse cx="14" cy="22" rx="4.14" ry="16" fill="url(#${id}-filament)"/>${face(14)}</svg>`;
+  label.querySelector('input').onchange=()=>{
+    $('spool-style-current').replaceChildren(label.querySelector('svg').cloneNode(true));
+    $('spool-style-menu').open=false;
+    draw();
+  };
+  if (value==='cardboard-windowed') $('spool-style-current').replaceChildren(label.querySelector('svg').cloneNode(true));
+  $('spool-style-grid').append(label);
+}
+for (const id of ['spool-angle','spool-spacing']) {
+  $(id).oninput=()=>{
+    $(`${id}-value`).value=$(id).value+(id==='spool-angle' ? '°' : '');
+    draw();
+  };
+}
+$("slow-animation").onchange = () => {
+  animationNow();
+  animationRate=$("slow-animation").checked ? .1 : 1;
+};
 $("show-dimensions").onchange = () => {
   $("scene").classList.toggle('hide-dimensions', !$("show-dimensions").checked);
 };
@@ -1208,29 +1282,32 @@ async function poll() {
     }
   } finally { setTimeout(poll,150); }
 }
-function animate(now) {
+function animate() {
+  const now=animationNow();
   const spoolRunning=Boolean(playing) || (live && !paused);
-  if (spoolSession !== session) { spoolAngles.clear(); spoolVisibility.clear(); spoolDirections.clear(); spoolSession=session; }
+  if (spoolSession !== session) { spoolAngles.clear(); spoolLastFrame=null; spoolArrowVisibility.clear(); spoolDirections.clear(); spoolSession=session; }
   let spoolFading=false;
   const fadeStep=spoolLastFrame === null ? 0 : Math.min(100,now-spoolLastFrame)/450;
   for (const [gate,operation] of Object.entries(displayed?.espoolers || {})) {
     const index=Number(gate), active=operation.output_power>0 && ['assist','rewind'].includes(operation.direction);
     if (active) spoolDirections.set(index,operation.direction);
-    const target=active ? 1 : 0, previous=spoolVisibility.get(index) ?? (spoolRunning ? 0 : target);
+    const target=active ? 1 : 0, previous=spoolArrowVisibility.get(index) ?? (spoolRunning ? 0 : target);
     const next=previous+Math.sign(target-previous)*Math.min(Math.abs(target-previous),fadeStep);
-    spoolVisibility.set(index,next);
+    spoolArrowVisibility.set(index,next);
     spoolFading ||= next!==previous;
   }
+  let spoolRotating=false;
   if (spoolRunning && spoolLastFrame !== null) {
     const seconds=Math.min(100,now-spoolLastFrame)/1000;
     for (const [gate,operation] of Object.entries(displayed?.espoolers || {})) {
       if (!(operation.output_power>0) || !['assist','rewind'].includes(operation.direction)) continue;
       const speed=(40+100*Math.min(1,operation.output_power))*(operation.direction==='rewind'?-1:1);
       spoolAngles.set(Number(gate),((spoolAngles.get(Number(gate)) || 0)+seconds*speed)%360);
+      spoolRotating=true;
     }
   }
   spoolLastFrame=now;
-  if (spoolFading || (spoolRunning && Object.values(displayed?.espoolers || {}).some(o=>o.output_power>0))) draw();
+  if (spoolFading || spoolRotating) draw();
   if (live && !paused && events.length) {
     if (!playing && now >= resumeAt) {
       const event = events.find(e=>e.seq>played);
@@ -1239,7 +1316,7 @@ function animate(now) {
     if (playing) {
       const ms=duration(playing.event, $("compress-bowden").checked);
       const arrival=nozzleArrivalTime(playing.event,ms);
-      const total=Math.max(ms+(playing.event.kind === 'gate_changed' ? 500 : 0),arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
+      const total=Math.max(ms,arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
       const f=total ? elapsed/total : 1;
       const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms,playing.selectionGrip);
       playing.fraction=frame.fraction;
@@ -1276,7 +1353,7 @@ bufferPanel.innerHTML=`<h2>Buffer Config</h2><p class="note">Runtime simulator s
 <label>Parameter<select id="buffer-parameter"><option>buffer_maxrange</option><option>buffer_range</option><option>buffer_spring_state</option></select></label>
 <label>Value<input id="buffer-value" type="number" min="0.1" step="0.1"><select id="buffer-spring" hidden><option value="none">Free moving (none)</option><option value="tension">Tension (−1)</option><option value="neutral">Neutral (0)</option><option value="compression">Compression (+1)</option></select></label>
 <button id="buffer-apply">Apply</button><p class="note" id="buffer-status" role="status"></p>`;
-configColumn.append(bufferPanel);
+configColumn.insertBefore(bufferPanel,$('viewer-settings'));
 function showBufferValues(values) {
   bufferPanel.bufferValues=values;
   const spring=$('buffer-parameter').value === 'buffer_spring_state';
@@ -1325,7 +1402,7 @@ for (const kind of ['encoder','toolhead']) {
   const panel=document.createElement('aside');
   panel.hidden=true; panel.dataset.simulatorConfig=kind;
   panel.innerHTML=`<h2>${kind === 'encoder' ? 'Encoder' : 'Toolhead'} Config</h2><p class="note">Runtime simulator settings. Shared objects affect every listed unit. Restart restores defaults.</p><label>${kind === 'encoder' ? 'Encoder' : 'Toolhead'} object<select class="object-choice"></select></label><label>Parameter<select class="object-parameter"></select></label><label>Value<input class="object-value" type="number" step="any"></label><button class="object-apply">Apply</button><p class="note object-status" role="status"></p>`;
-  configColumn.append(panel); objectPanels.set(kind,panel);
+  configColumn.insertBefore(panel,$('viewer-settings')); objectPanels.set(kind,panel);
   panel.querySelector('.object-choice').onchange=()=>renderObjectParameters(panel);
   panel.querySelector('.object-parameter').onchange=()=>showObjectValue(panel);
   panel.querySelector('.object-apply').onclick=()=>action(async()=>{

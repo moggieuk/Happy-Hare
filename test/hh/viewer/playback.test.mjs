@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { spoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -344,15 +344,24 @@ test('gate selection eases between lanes without interpolating physical filament
  const before={gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
  const state={...before,gate:1};
  const event={kind:'gate_changed',before,state};
- assert.equal(duration(event),2500);
- assert.deepEqual(playbackFrame(event,499,duration(event)).state,{...before,mmu_gripped:false});
- assert.deepEqual(playbackFrame(event,2000,duration(event)).state,{...state,mmu_gripped:false});
- assert.deepEqual(playbackFrame(event,2499,duration(event)).state,{...state,mmu_gripped:undefined});
+ assert.equal(duration(event),3500);
+ const frame=t=>playbackFrame(event,t,duration(event)).state;
+ assert.equal(frame(1050).gate_full_opacity,.5);
+ assert.equal(frame(1050).gate_focus,0);
+ assert.equal(frame(1750).gate_full_opacity,0);
+ assert.equal(frame(1750).gate_focus,.5);
+ assert.equal(frame(2450).gate_full_opacity,.5);
+ assert.equal(frame(2450).gate_focus,1);
+ assert.equal(frame(2450).gate_retraction,1);
+ assert.equal(frame(2850).gate_full_opacity,1);
+ assert.equal(frame(2850).gate_retraction,.5);
+ assert.deepEqual(playbackFrame(event,499,duration(event)).state,{...before,gate_full_opacity:1,mmu_gripped:false});
+ assert.deepEqual(playbackFrame(event,3000,duration(event)).state,{...state,gate_full_opacity:1,mmu_gripped:false});
+ assert.deepEqual(playbackFrame(event,3499,duration(event)).state,{...state,gate_full_opacity:1,mmu_gripped:undefined});
  assert.equal(interpolate(event,0),before);
  assert.equal(interpolate(event,1),state);
  assert.equal(interpolate(event,.5).gate_focus,.5);
  assert.deepEqual(interpolate(event,.5).tips,before.tips);
- assert.equal(interpolate(event,.5).gate_path_opacity,0);
  assert.equal(interpolate(event,.125).gate_focus,0);
  assert.equal(interpolate(event,.125).gate_retraction,.5);
  assert.equal(interpolate(event,.5).gate_retraction,1);
@@ -680,10 +689,10 @@ test('gate swap restores its starting grip in either playback direction',()=>{
   const before={gate:0,tips:[-20,-30],mmu_gripped:!grip};
   const state={...before,gate:1,mmu_gripped:!grip};
   const event={kind:'gate_changed',before,state};
-  for (const elapsed of [0,100,300,550,1100,1650,1900,2100,2200]) {
-   const frame=playbackFrame(event,reverse ? 2200-elapsed : elapsed,2200,grip);
-   const time=reverse ? 2200-elapsed : elapsed;
-   assert.equal(frame.state.mmu_gripped,time===2200 ? !grip : elapsed>=250 && elapsed<1950 ? false : grip);
+  for (const elapsed of [0,100,300,800,1050,1750,2450,3000,3300,3500]) {
+   const frame=playbackFrame(event,reverse ? duration(event)-elapsed : elapsed,duration(event),grip);
+   const time=reverse ? duration(event)-elapsed : elapsed;
+   assert.equal(frame.state.mmu_gripped,time===duration(event) ? !grip : elapsed>=250 && elapsed<duration(event)-250 ? false : grip);
   }
  }
 });
@@ -695,6 +704,21 @@ test('completed gate swap restores recorded grip including folded updates',()=>{
   const state={...before,gate:1,mmu_gripped:!recorded};
   const settled_state={...state,mmu_gripped:recorded};
   const event={kind:'gate_changed',before,state,settled_state};
-  assert.equal(playbackFrame(event,2200,2200,starting).state.mmu_gripped,recorded);
+  assert.equal(playbackFrame(event,duration(event),duration(event),starting).state.mmu_gripped,recorded);
  }
+});
+
+test('spool grid shows only the supplied unit gates in rows of seven',()=>{
+ const grid=spoolGrid(Array.from({length:13},(_,i)=>i+8),10);
+ assert.equal(grid.columns,7); assert.equal(grid.rows,2);
+ assert.deepEqual(grid.lanes.map(l=>l.index),Array.from({length:13},(_,i)=>i+8));
+ assert.equal(grid.lanes.filter(l=>l.row===0).length,7);
+ assert.equal(grid.lanes.filter(l=>l.row===1).length,6);
+});
+test('selection wave changes lift without moving spool lanes',()=>{
+ const gates=Array.from({length:10},(_,i)=>i);
+ const a=spoolGrid(gates,0), b=spoolGrid(gates,5);
+ assert.deepEqual(a.lanes.map(l=>[l.row,l.offset]),b.lanes.map(l=>[l.row,l.offset]));
+ assert.equal(a.lanes[0].lift,10); assert.equal(b.lanes[5].lift,10);
+ assert.equal(b.lanes[0].lift,0);
 });

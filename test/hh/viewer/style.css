@@ -1,5 +1,6 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 :root {
+  --spool-material: #b49164; /* Cardboard; shared by spool rims, spokes, and core. */
   font-family: system-ui, sans-serif;
   color: #25364a;
   background: #f1f4f7;
@@ -93,6 +94,11 @@ button:disabled {
 svg {
   width: 100%;
   max-height: 540px;
+}
+#scene {
+  display: block;
+  height: auto;
+  max-height: none;
 }
 .controls {
   display: flex;
@@ -411,3 +417,20 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 .dimensions-option { position: absolute; right: 0; top: 0; margin: 0; }
 .viewer-readout-controls summary { padding-right: 140px; }
 #scene.hide-dimensions :is(.toolhead-reference, .cooling-measurements, #encoder-offset, #residual-dimension, #cut-fragment-label) { visibility: hidden; }
+
+.spool-style-picker { position: relative; margin: 0 0 12px; padding: 0; }
+.spool-style-picker summary { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--scene-border, #96abba); border-radius: 6px; cursor: pointer; font-size: 12px; list-style: none; }
+.spool-style-picker summary::-webkit-details-marker { display: none; }
+.spool-style-picker summary::after { content: '▾'; margin-left: auto; }
+#spool-style-current svg { display: block; width: 32px; height: 36px; }
+.spool-style-picker[open] #spool-style-grid { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; padding: 8px; background: var(--scene-body, #edf2f6); border: 1px solid var(--scene-border, #96abba); border-radius: 6px; box-shadow: 0 4px 12px #0003; }
+#spool-style-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.spool-style-choice { position: relative; display: grid; place-items: center; margin: 0; padding: 4px; border: 1px solid var(--scene-border, #96abba); border-radius: 6px; cursor: pointer; }
+.spool-style-choice:has(input:checked) { border-color: #36ae55; background: #36ae5520; box-shadow: inset 0 0 0 1px #36ae55; }
+.spool-style-choice:has(input:focus-visible) { outline: 2px solid #549ddb; outline-offset: 2px; }
+.spool-style-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.spool-style-choice svg { width: 60px; height: 66px; }
+
+.viewer-setting-slider { display: grid; grid-template-columns: 1fr auto; gap: 4px; font-size: 12px; }
+.viewer-setting-slider input { grid-column: 1 / -1; width: 100%; padding: 0; }
+.viewer-setting-slider output { font-variant-numeric: tabular-nums; }
