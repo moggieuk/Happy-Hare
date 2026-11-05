@@ -469,6 +469,7 @@ class MmuEnvironmentManager:
                 'humidity_target': self._drying_humidity_target,
                 'start_time': self._drying_start_time,
                 'end_time': self._drying_end_time,
+                'rotate': self._rotate_enabled,
             }
         return {
             'drying_state': self._drying_state,
@@ -1237,7 +1238,9 @@ class MmuEnvironmentManager:
             prev_gate_selected = self.mmu.gate_selected
             for gate in gates:
                 self.mmu.select_gate(gate)
-                _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -100, motor="gear", wait=True)
+                # heater_rotate_speed 0 = the default gear speed
+                _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -self.mmu_unit.p.heater_rotate_distance,
+                                                 speed=self.mmu_unit.p.heater_rotate_speed or None, motor="gear", wait=True)
             self.mmu.select_gate(prev_gate_selected)
 
 
