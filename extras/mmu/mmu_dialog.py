@@ -97,19 +97,23 @@ class MmuErrorDialog(MmuDialog):
         self.mmu = mmu
         self.extra_lines = [] # Shown after the reason, replacing DIALOG_RESUME_HINT when there is no action
         self.show_abort = False
+        self.extra_buttons = [] # "Label|GCODE|style" shown before the standard buttons
 
-    def set(self, lines=None, show_abort=None):
+    def set(self, lines=None, show_abort=None, buttons=None):
         if lines is not None:
             self.extra_lines = [flatten(l) for l in lines if flatten(l)]
         if show_abort is not None:
             self.show_abort = show_abort
+        if buttons is not None:
+            self.extra_buttons = list(buttons)
 
     def reset(self):
         self.extra_lines = []
         self.show_abort = False
+        self.extra_buttons = []
 
     def buttons(self):
-        return ([ABORT_BUTTON] if self.show_abort else []) + [RESUME_BUTTON, UNLOCK_BUTTON]
+        return self.extra_buttons + ([ABORT_BUTTON] if self.show_abort else []) + [RESUME_BUTTON, UNLOCK_BUTTON]
 
     def show_error(self, headline, reason, hint=None, context=None, still_paused=False, unlock_first=False):
         """
