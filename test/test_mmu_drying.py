@@ -678,5 +678,39 @@ class TestDryingDuringPausePerGate(unittest.TestCase):
         self.assertEqual(self._targets(), [45., 0., 50., 0.])
 
 
+class TestDryingStatus(unittest.TestCase):
+    """printer.mmu.drying: the running cycle of each unit, or None."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        sensor_name = self.unit.environment_sensor.split()[-1]
+        self.hh.printer.add_object('aht10 %s' % sensor_name, _FakeHumidityChip(25., 60))
+
+    def _drying(self):
+        return self.hh.mmu.get_status(self.hh.reactor.monotonic())['drying']
+
+    def test_no_cycle_reports_none(self):
+        self.assertEqual(self._drying(), [None])
+
+    def test_running_cycle_is_reported_and_stays_fixed(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60 HUMIDITY=20')
+        self.hh.settle()
+        cycle = self._drying()[0]
+        self.assertEqual((cycle['temp'], cycle['humidity_target']), (45, 20))
+        self.assertGreater(cycle['end_time'], cycle['start_time'])
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL * 2)
+        self.assertEqual(self._drying()[0], cycle)
+
+    def test_stopped_cycle_reports_none_again(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60')
+        self.hh.settle()
+        self.hh.run_gcode('MMU_HEATER STOP=1')
+        self.hh.settle()
+        self.assertEqual(self._drying(), [None])
+
+
 if __name__ == '__main__':
     unittest.main()

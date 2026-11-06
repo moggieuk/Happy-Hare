@@ -458,8 +458,21 @@ class MmuEnvironmentManager:
         We don't duplicate temperature or humidity data here but expect the client to read configuration
         and look up appropriate heater and environment sensor objects directly
         """
+        # Times are reactor monotonic, the clock of the 'eventtime' clients get with each status:
+        # remaining = end_time - eventtime. They do not change while the cycle runs, so the
+        # status does not push an update every time it is read.
+        drying = None
+        if self.is_drying():
+            drying = {
+                'temp': self._drying_temp,
+                'time': self._drying_time,
+                'humidity_target': self._drying_humidity_target,
+                'start_time': self._drying_start_time,
+                'end_time': self._drying_end_time,
+            }
         return {
-            'drying_state': self._drying_state
+            'drying_state': self._drying_state,
+            'drying': drying,
         }
 
 
