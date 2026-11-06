@@ -360,6 +360,14 @@ class TestDialogConfiguration(ErrorDialogTestCase):
         self.assertEqual(self.footer_buttons(dialog)[0], ['ABORT', 'CANCEL_PRINT', 'error'])
         self.assertIn('Start-up help', self.texts(dialog))
 
+    def test_extra_buttons_come_first_and_reset_clears_them(self):
+        self.gcode('MMU_ERROR_DIALOG BUTTONS="Retry load|RETRY_MACRO|primary,Other|OTHER_MACRO|warning"')
+        labels = [button[0] for button in self.mmu.error_dialog.buttons()]
+        self.assertEqual(labels[:2], ['Retry load', 'Other'])
+        self.assertEqual(self.mmu.error_dialog.buttons()[0], ('Retry load', 'RETRY_MACRO', 'primary'))
+        self.gcode('MMU_ERROR_DIALOG RESET=1')
+        self.assertEqual(self.mmu.error_dialog.extra_buttons, [])
+
     def test_reset_command_restores_the_defaults(self):
         self.start_print()
         self.gcode('MMU_ERROR_DIALOG ABORT=1 MSG="Custom"')
