@@ -1376,3 +1376,33 @@ class TestSelectorMicrosteps(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestErcfQuattroBox(unittest.TestCase):
+    def test_shared_buffer_separate_encoders_and_all_filament_sensors(self):
+        hh = session('ercf_quattrobox')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True, selected_gate=0)
+        self.assertEqual(hh.errors, [])
+        ercf, quattro = hh.mmu.mmu_machine.units
+        self.assertEqual([(u.first_gate, u.num_gates) for u in (ercf, quattro)],
+                         [(0, 8), (8, 4)])
+        self.assertEqual(ercf.selector_type, 'LinearServoSelector')
+        self.assertEqual(quattro.selector_type, 'VirtualSelector')
+        self.assertIs(ercf.buffer, quattro.buffer)
+        self.assertIsNot(ercf.encoder, quattro.encoder)
+        sensors = hh.sensors()
+        for gate in range(12):
+            self.assertIn('mmu_entry_%d' % gate, sensors)
+            self.assertIn('mmu_exit_%d' % gate, sensors)
+        for name in ('unit0:mmu_shared_exit', 'unit1:mmu_shared_exit',
+                     'default:extruder', 'default:toolhead',
+                     'unit0:filament_compression', 'unit0:filament_tension'):
+            self.assertIn(name, sensors)
+        self.assertTrue(ercf.buffer.tension_sensor.runout_helper.filament_present)
+        model = hh.filament()
+        geometry = model.buffers['unit0']
+        geometry['travel'][0] = geometry['maxrange']
+        model.sync(0)
+        self.assertTrue(ercf.buffer.compression_sensor.runout_helper.filament_present)
+        self.assertFalse(ercf.buffer.tension_sensor.runout_helper.filament_present)

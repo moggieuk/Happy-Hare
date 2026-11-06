@@ -120,14 +120,18 @@ export class TelemetryReplay {
       const configuration = record.changes.filter(({path}) => path[0] === 'macros' ||
         path.includes('parameters') || path.includes('bowden_lengths') || path.includes('form_tip_macro') || path.includes('purge_macro') ||
         path.at(-1) === 'enabled' || /^(buffer_range|buffer_maxrange|buffer_spring_state)$/.test(path.at(-1)));
-      // Motion outcomes carry their sensor changes; don't insert a step between a pair.
+      // Explicit espooler callbacks own activity transitions, not preceding status deltas.
+      const state=this.snapshot();
+      state.espoolers=before.espoolers;
+      // Keep in-move bookkeeping separate from the preceding visible step.
       if (configuration.length) this.emit(record, 'config', 'Configuration changed', {before,
-        changes:configuration.map(c=>({name:c.path.join('.'),after:c.remove ? null : c.value}))});
-      else this.emit(record, 'state', 'State changed', {internal:true, during_move:this.pending.size > 0, telemetry:record});
+        changes:configuration.map(c=>({name:c.path.join('.'),after:c.remove ? null : c.value}))},state);
+      else this.emit(record, 'state', 'State changed', {internal:true, during_move:this.pending.size > 0, telemetry:record},state);
       return;
     }
     if (record.event === 'movement_start') {
       this.pending.set(record.move_id, {start:copy(record), before:this.snapshot()});
+      this.emit(record,'pending_move',record.label || 'Movement',{internal:true,telemetry:record});
       return;
     }
     if (record.event === 'movement_outcome') {
@@ -169,7 +173,14 @@ export class TelemetryReplay {
         unit.espooler ??= {operations:{}};
         unit.espooler.operations[String(record.gate)]={direction:record.direction,output_power:record.output_power};
       }
-      this.emit(record,'espooler',`Gate ${record.gate} · ${record.direction}`,{before,telemetry:record});
+      const pending=this.pending.get(record.move_id);
+      const state=this.snapshot();
+      // Mid-move espooler callbacks must not reveal the outcome's sensor readings early.
+      if (pending) {
+        state.sensors=copy(pending.before.sensors);
+        before.sensors=copy(pending.before.sensors);
+      }
+      this.emit(record,'espooler',`Gate ${record.gate} · ${record.direction}`,{before,telemetry:record,internal:Boolean(pending),during_move:Boolean(pending)},state);
 } else if (record.event === 'toolchange') {
       this.emit(record, 'toolchange', record.label || record.command, {telemetry:record});
     } else if (record.event === 'cut' || record.event === 'filament_cut') {
@@ -289,7 +300,7 @@ export class TelemetryReplay {
     }
     const vars=f.macros?.[machine.form_tip_macro+'_VARS'] || f.macros?.[machine.form_tip_macro] || {};
     const cutters=finite(vars.blade_pos) ? [{kind:'toolhead',position:nozzle-vars.blade_pos,before_extruder:vars.cutter_before_extruder}] : [];
-    return copy({unit:m.unit,units,unit_gates:unit.gates,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
+    return copy({unit:m.unit,units,unit_gates:unit.gates,selector_type:unit.selector_type || null,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
       tips:this.tips,tails:this.tips.map(()=>null),tip_shapes:this.shapes,hair_lengths:this.hairLengths,gate_colors:m.gate_color.map(color),gate_status:m.gate_status || [],layout,sensors,active_sensors:m.active_sensors,
       unit_sensors:unit.sensors,devices,buffers,object_status,configuration,filament,cutters,cutter_pressed:this.cutter,
       espoolers:Object.assign({},...Object.values(machine.units).map(u=>u.espooler?.operations || {})),

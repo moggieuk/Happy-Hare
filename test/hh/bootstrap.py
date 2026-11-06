@@ -463,7 +463,12 @@ class Session:
             # THIS buffer's own namespace: the loop below would otherwise call set(False)
             # on it, which for a proportional sensor means feeding neutral - overwriting
             # the resting value just fed.
-            derived |= {'%s:%s' % (prefix, SENSOR_TENSION), '%s:%s' % (prefix, SENSOR_COMPRESSION), name}
+            derived.add(name)
+            # Real switches alongside an analog sensor still need their initial state.
+            for suffix, attribute in ((SENSOR_TENSION, 'tension_vsensor'),
+                                      (SENSOR_COMPRESSION, 'compression_vsensor')):
+                if getattr(sensor, attribute, None) is not None:
+                    derived.add('%s:%s' % (prefix, suffix))
 
         for name, sensor in self.sensors().items():
             if name in derived:

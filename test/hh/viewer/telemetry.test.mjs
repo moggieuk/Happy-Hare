@@ -722,3 +722,52 @@ test('espooler baseline and per-gate start, power and stop events survive replay
  assert.equal(r.snapshot().espoolers[1].output_power,0);
  assert.equal(r.events.at(-1).before.espoolers[1].output_power,.6);
 });
+
+test('espooler stops inside a move do not reveal final sensor states before animation',()=>{
+ const r=stream(0), sensor=Object.keys(r.snapshot().sensors).find(n=>n.includes('toolhead'));
+ r.facts.printer.mmu.sensors[sensor].triggered=false;
+ event(r,'movement_start',{move_id:42,motor_mode:'gear',motors:['gear'],requested_mm:100,gate:0});
+ event(r,'state_delta',{changes:[{path:['printer','mmu','sensors',sensor,'triggered'],value:true}]});
+ event(r,'espooler_stopped',{move_id:42,unit:r.snapshot().unit,gate:0,direction:'stopped',output_power:0});
+ assert.equal(r.events.at(-1).state.sensors[sensor].state,false);
+ assert.equal(r.events.at(-1).internal,true);
+ assert.ok(!visibleSteps(r.events).some(e=>e.seq===r.events.at(-1).seq));
+ assert.equal(r.facts.printer.mmu.sensors[sensor].triggered,true);
+});
+
+test('espooler status delta does not reveal assist on the preceding toolchange',()=>{
+ const r=stream(0),unit=r.snapshot().unit;
+ r.facts.printer.mmu_machine.units[unit].espooler={operations:{0:{direction:'stopped',output_power:0}}};
+ event(r,'toolchange',{command:'MMU_LOAD',label:'MMU_LOAD'});
+ const command=r.events.at(-1).seq;
+ event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'espooler','operations','0'],value:{direction:'assist',output_power:.2}}]});
+ event(r,'espooler_started',{unit,gate:0,direction:'assist',output_power:.2});
+ const steps=visibleSteps(r.events),load=steps.find(e=>e.seq===command);
+ assert.equal(load.settled_state.espoolers[0].direction,'stopped');
+ assert.equal(steps.at(-1).state.espoolers[0].direction,'assist');
+});
+
+test('playback exposes start, motion, stop and outcome in raw order without moving twice',()=>{
+ const r=stream(0),unit=r.snapshot().unit;
+ event(r,'espooler_started',{unit,gate:0,direction:'assist',output_power:.5});
+ const assist=r.sequence;
+ event(r,'movement_start',{move_id:42,unit,gate:0,motor_mode:'gear',motors:['gear'],requested_mm:100,speed_mm_s:50});
+ const start=r.sequence;
+ event(r,'state_delta',{changes:[]});
+ event(r,'espooler_stopped',{move_id:42,unit,gate:0,direction:'stopped',output_power:0});
+ const stop=r.sequence;
+ assert.equal(visibleSteps(r.events).at(-1).seq,assist,'wait for actual distance before publishing the start or stop');
+ event(r,'movement_outcome',{move_id:42,actual_mm:100,elapsed_s:2,status:'completed'});
+ const steps=visibleSteps(r.events).slice(-4);
+ assert.deepEqual(steps.map(e=>e.seq),[assist,start,stop,r.sequence]);
+ assert.deepEqual(steps.map(e=>e.kind),['espooler','movement','espooler','move_completed']);
+ const motion=steps[1], stopped=steps[2], completed=steps[3];
+ assert.equal(interpolate(motion,.5).espoolers[0].direction,'assist');
+ assert.equal(interpolate(motion,1).espoolers[0].direction,'assist');
+ assert.equal(stopped.state.espoolers[0].direction,'stopped');
+ assert.equal(motion.state.tips[0],motion.before.tips[0]+100);
+ assert.deepEqual(stopped.state.tips,motion.state.tips);
+ assert.deepEqual(completed.state.tips,motion.state.tips);
+ assert.deepEqual(stopped.state.motors,motion.state.motors);
+ assert.deepEqual(completed.state.motors,motion.state.motors);
+});

@@ -918,6 +918,57 @@ def _per_gate_pins(gates, base, *pins, prefix='unit0:'):
             for k, pin in enumerate(pins) for gate in gates}
 
 
+# Mixed selectors with a shared downstream buffer and independent gate encoders.
+ERCF_QUATTROBOX = Profile(
+    'ercf_quattrobox',
+    syms={
+        'MMU_HAS_SENSOR_TOOLHEAD': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_TOOLHEAD_SENSOR': 'PG13',
+        'PIN_EXTRUDER_SENSOR': 'PG14',
+        'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+    },
+    units=[
+        UnitProfile('unit0', index=0, syms={
+            'MMU_FAMILY_ERCF': True,
+            'MMU_TYPE_ERCF_1_1': True,
+            'BOARD_TYPE_ERB_1': True,
+            'PARAM_NUM_GATES': 8,
+            'MMU_HAS_SENSOR_ENTRY': True,
+            'MMU_HAS_SENSOR_EXIT': True,
+            'MMU_HAS_SENSOR_SHARED_EXIT': True,
+            'PIN_SHARED_EXIT_SENSOR': '^unit0:gpio220',
+            **_per_gate_pins(range(8), 100, 'ENTRY_SENSOR', 'EXIT_SENSOR', prefix='^unit0:'),
+            'CHOICE_ENCODER_TYPE_BINKY_12': True,
+            'MMU_HAS_SYNC_FEEDBACK_BUFFER': True,
+            'MMU_HAS_SENSOR_BUFFER_COMPRESSION': True,
+            'MMU_HAS_SENSOR_BUFFER_TENSION': True,
+            'MMU_HAS_SENSOR_BUFFER_PROPORTIONAL': True,
+            'PIN_BUFFER_COMPRESSION': '^mcu:PF4',
+            'PIN_BUFFER_TENSION': '^mcu:PF5',
+            'PIN_BUFFER_ANALOG': 'mcu:PF6',
+            'CHOICE_BUFFER_SPRING_STATE_TENSION': True,
+            'PARAM_BUFFER_RANGE': 12,
+            'PARAM_BUFFER_MAXRANGE': 16,
+        }),
+        UnitProfile('unit1', index=1, syms={
+            'MMU_FAMILY_QUATTRO_BOX': True,
+            'MMU_TYPE_QUATTRO_BOX_2_0': True,
+            'PARAM_NUM_GATES': 4,
+            'MMU_HAS_SENSOR_ENTRY': True,
+            'MMU_HAS_SENSOR_EXIT': True,
+            'MMU_HAS_SENSOR_SHARED_EXIT': True,
+            'MMU_HAS_ENCODER': True,
+            'CHOICE_ENCODER_TYPE_BINKY_12': True,
+            'MMU_SHARED_SYNC_FEEDBACK_BUFFER': True,
+            'PARAM_SYNC_FEEDBACK_BUFFER_NAME': 'unit0',
+        }),
+    ],
+    filament_layout={'mmu_shared_exit': 150.0},
+    description='ERCF (8 gates) + QuattroBox v2 (4 gates), shared buffer, separate encoders, all filament sensors')
+
+
 TRADRACK_MAX_GATES = TRADRACK.derive(
     'tradrack_max_gates',
     syms=dict({'PARAM_NUM_GATES': MAX_GATES,
@@ -940,7 +991,7 @@ BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
                     QUATTROBOX_V2, EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,

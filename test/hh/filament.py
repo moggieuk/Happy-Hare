@@ -195,6 +195,12 @@ class FilamentPath:
                 'rest': rest,
                 'spring': spring,
                 'proportional': getattr(buffer, 'proportional_sensor', None) is not None,
+                'virtual_switches': {
+                    '%s:filament_%s' % (prefix, kind)
+                    for kind in ('tension', 'compression')
+                    if getattr(getattr(buffer, 'proportional_sensor', None),
+                               '%s_vsensor' % kind, None) is not None
+                },
                 'maxrange': maxrange,
                 'travel': {gate: rest for gate in gates},
                 'contact': {gate: False for gate in gates},
@@ -663,7 +669,7 @@ class FilamentPath:
         gates = range(self.num_gates) if gate is None else [gate]
         for name in self.sensor_names():
             geometry = self._buffer_geometry(name)
-            if geometry is not None and geometry['proportional']:
+            if geometry is not None and name in geometry['virtual_switches']:
                 continue  # ADC callback owns its virtual switches.
             owner = self.gate_of(name)
             if owner is not None and owner not in gates:

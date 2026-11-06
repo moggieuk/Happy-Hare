@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { virtualSelectorLayout, spoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -722,3 +722,42 @@ test('selection wave changes lift without moving spool lanes',()=>{
  assert.equal(a.lanes[0].lift,10); assert.equal(b.lanes[5].lift,10);
  assert.equal(b.lanes[0].lift,0);
 });
+
+test('VirtualSelector branches cover only the active row and keep tips outside the hub',()=>{
+ const state={selector_type:'VirtualSelector',unit_gates:Array.from({length:13},(_,i)=>i+4),gate:12};
+ const layout=virtualSelectorLayout(state);
+ assert.deepEqual(layout.branches.map(b=>b.gate),[10,11,12,13,14,15]);
+ assert.equal(layout.active.gate,12);
+ assert.ok(layout.parkDistance < layout.distanceAtY(layout.shoulder));
+ assert.ok(layout.distanceAtY(170)>layout.distanceAtY(layout.hub));
+ assert.equal(virtualSelectorLayout({...state,selector_type:'LinearSelector'}),null);
+});
+test('VirtualSelector shared hub stays fixed when selecting another gate',()=>{
+ const state={selector_type:'VirtualSelector',unit_gates:[0,1,2,3],gate:0};
+ const first=virtualSelectorLayout(state), last=virtualSelectorLayout({...state,gate:3});
+ assert.notEqual(first.active.x,last.active.x);
+ assert.equal(first.hub,last.hub);
+ assert.equal(first.path.slice(first.path.indexOf('L620')),last.path.slice(last.path.indexOf('L620')));
+});
+
+test('VirtualSelector parking interpolation advances continuously to the shared sensor',()=>{
+ const map=x=>switchFilamentDistance(x,10,-100,700,400,x=>x+200,null,168);
+ assert.equal(map(-90),168);
+ assert.equal(map(10),400);
+ assert.ok(map(-89)>168 && map(-89)<171);
+ assert.equal(map(-40),284);
+ // Existing non-virtual symbolic parking remains unchanged.
+ assert.notEqual(switchFilamentDistance(-90,10,-100,700,400,x=>x+200),168);
+});
+
+ test('eight-column spool layout expands left and wraps without resizing spacing',()=>{
+  const gates=Array.from({length:9},(_,i)=>i);
+  const eight=spoolGrid(gates.slice(0,8),0,8);
+  assert.equal(eight.rows,1);
+  assert.deepEqual(eight.lanes.map(l=>l.offset),[-4,-3,-2,-1,0,1,2,3]);
+  const wrapped=spoolGrid(gates,0,8);
+  assert.equal(wrapped.rows,2);
+  assert.equal(wrapped.lanes[8].row,1);
+  assert.equal(wrapped.lanes[8].offset,-4);
+  assert.equal(spoolGrid(gates.slice(0,8),0,7).rows,2);
+ });

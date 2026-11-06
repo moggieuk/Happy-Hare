@@ -1,5 +1,5 @@
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import { spoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { orderedSteps, virtualSelectorLayout, spoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 // Temporary preview values; explicit per-gate percentages can replace these later.
 const previewSpoolFill = new Map();
@@ -480,7 +480,7 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
   const edge=tick(piston.position);
   // Retain protrusion even at the maximum-tension stop.
   const pistonLeft=edge-80;
-  markup += `<defs><mask id="buffer-tube-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${pistonLeft+4}" y="50" width="${508-pistonLeft-4}" height="50" fill="black"/></mask></defs><g id="sync-buffer"><path data-part="buffer-filament-guide" d="M${pistonLeft+4} 66.5 H508 M${pistonLeft+4} 83.5 H508" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="1.6" opacity="0.3"/><text x="470" y="38" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Sync-feedback buffer</text><g fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.5"><rect id="buffer-housing" x="428" y="46" width="84" height="51.88" rx="6.4"/><rect id="buffer-piston" x="${pistonLeft}" y="59" width="80" height="32" rx="5.6"/></g><g fill="var(--scene-tube-border, #b1c4d2)"><rect data-part="buffer-housing-port" x="509.6" y="62.2" width="4.8" height="25.6" rx="2.4"/><rect data-part="buffer-piston-port" x="${pistonLeft-2.4}" y="62.2" width="4.8" height="25.6" rx="2.4"/></g>`;
+  markup += `<defs><mask id="buffer-tube-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${pistonLeft+4}" y="50" width="${508-pistonLeft-4}" height="50" fill="black"/></mask></defs><g id="sync-buffer"><path data-part="buffer-filament-guide" d="M${pistonLeft+4} 66.5 H508 M${pistonLeft+4} 83.5 H508" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="1.2" opacity="0.3"/><text x="470" y="38" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Sync-feedback buffer</text><g fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.5"><rect id="buffer-housing" x="428" y="46" width="84" height="51.88" rx="6.4"/><rect id="buffer-piston" x="${pistonLeft}" y="59" width="80" height="32" rx="5.6"/></g><g fill="var(--scene-tube-border, #b1c4d2)"><rect data-part="buffer-housing-port" x="509.6" y="62.2" width="4.8" height="25.6" rx="2.4"/><rect data-part="buffer-piston-port" x="${pistonLeft-2.4}" y="62.2" width="4.8" height="25.6" rx="2.4"/></g>`;
   const geometry=Object.values(s.buffers || {}).find(buffer=>buffer.gates.includes(s.gate));
   const spring=geometry?.spring ?? d.spring ?? 'none';
   const springSides = spring === 'neutral' || spring === 0 ? ['left','right']
@@ -554,7 +554,23 @@ function draw() {
   $("timeline").max = events.length - 1;
   $("timeline").value = live ? events.indexOf(e) : cursor;
   // Fixed path with a compressed Bowden section. Position maps monotonically to it.
-  const path =
+  const unitGates=s.unit_gates || s.tips.map((_,index)=>index);
+  const previewCount=Math.max(0,Math.min(42,Math.trunc(Number($('preview-gate-count').value) || 0)));
+  const displayGates=previewCount ? Array.from({length:previewCount},(_,i)=>unitGates[i] ?? s.tips.length+i-unitGates.length) : unitGates;
+  // Keep the real selected gate visible when previewing a smaller unit.
+  if (previewCount && s.gate>=0 && !displayGates.includes(s.gate)) displayGates[displayGates.length-1]=s.gate;
+  const virtual=virtualSelectorLayout({...s,unit_gates:displayGates},Number($('spool-spacing').value));
+  const mmuDistanceAtY=y=>{
+    if (!virtual) return 570-y;
+    // Resolve positions on the rounded branch rather than its sharp-corner approximation.
+    let low=0, high=virtual.distanceAtY(150)+20;
+    for (let i=0;i<24;i++) {
+      const middle=(low+high)/2;
+      if (tube.getPointAtLength(middle).y>y) low=middle; else high=middle;
+    }
+    return (low+high)/2;
+  };
+  const path = virtual?.path ||
     "M620 570 L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 449";
   const dimensionLink = label => {
     const id = dimensionParameter(s, label);
@@ -571,12 +587,29 @@ function draw() {
   const nozzleFunnel = `M256.5 449 L${260-nozzleWidth/2} ${funnelShoulder} V${nozzleExit} H${260+nozzleWidth/2} V${funnelShoulder} L263.5 449 Z`;
   const nozzleBody=`M242 435 L257.2 ${nozzleExit} H262.8 L278 435 Z`;
   const nozzleEntrance='M254.5 435 Q256.5 435 256.5 437 V449 H263.5 V437 Q263.5 435 265.5 435 Z';
-  const bowdenPath = path.replace("L260 449", "L260 435");
-  let svg = `<text x="518" y="402" fill="var(--scene-text, #304c65)">MMU</text><path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g mask="url(#bowden-end-fade)"><path id="tube" d="${path}" fill="none" stroke="none"/><g mask="url(#bowden-tube-fade)"><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="20"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  const bowdenPath = path.replace(/^M([^ ]+) 570/, "M$1 470").replace("L260 449", "L260 435");
+  const branchOpacity=virtual ? Math.max(0,1-Math.abs(s.gate-(s.gate_focus ?? s.gate))) : 1;
+  const branchShade=Math.round(branchOpacity*255);
+  const branchMask=virtual ? `<defs><mask id="virtual-selection-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="350" y="${virtual.hub}" width="500" height="${700-virtual.hub}" fill="rgb(${branchShade},${branchShade},${branchShade})"/></mask></defs>` : '';
+
+  let svg = `${branchMask}<path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g><g${virtual ? ' mask="url(#virtual-selection-fade)"' : ''}><path id="tube" d="${path}" fill="none" stroke="none"/><g><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" mask="url(#bowden-end-fade)" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  if (virtual) {
+    let branches='';
+    for (const branch of virtual.branches) {
+      const branchPath=virtual.branchPath(branch.x,470);
+      branches+='<g opacity=".4">';
+      branches+=`<path data-part="virtual-gate-tube" data-gate="${branch.gate}" d="${branchPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${branchPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/>`;
+      if (s.gate_status?.[branch.gate]!==0 && spoolFill(s,branch.gate)>0)
+        branches+=`<path data-part="virtual-parked-filament" data-gate="${branch.gate}" d="M${branch.x} 470 V${virtual.bottom-virtual.parkDistance}" fill="none" stroke="#${s.gate_colors[branch.gate] || '808182'}" stroke-width="7"/>`;
+      branches+='</g>';
+    }
+    // The active tube is painted last so inactive branches cannot close its visible bore.
+    svg=branches+svg;
+  }
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
-  const mmuExitFraction = 200 / length; // Exit sits 20px above the MMU box.
+  const mmuExitFraction = (virtual ? mmuDistanceAtY(400) : 200) / length; // Exit sits 20px above the MMU box.
   const toolheadFraction=(length-toolheadHeight)/length;
   const progress = (p) =>
     p < 0
@@ -590,18 +623,31 @@ function draw() {
     svg += `<text id="extruder-temperature" x="218" y="426" font-size="9" fill="var(--scene-text, #304c65)" data-tooltip="Extruder target temperature">${Number(s.extruder_target_temperature.toFixed(1))}°C</text>`;
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (name === `${s.unit}:mmu_gear_touch`) return true;
-    if (s.active_sensors) return s.active_sensors.includes(name);
+    if (s.active_sensors && !(virtual && /^mmu_(entry|exit)(?:_\d+)?$/.test(name.split(':').at(-1)))) return s.active_sensors.includes(name);
     if (s.unit_sensors && !s.unit_sensors.includes(name)) return false;
     const gateSuffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
-    return !gateSuffix || Number(gateSuffix[1]) === s.gate;
+    return !gateSuffix || (virtual ? virtual.branches.some(branch=>branch.gate===Number(gateSuffix[1])) : Number(gateSuffix[1]) === s.gate);
   });
   const isTouchSensor=name=>/(?:^|:)mmu_gear_touch(?:_\d+)?$/.test(name);
   const encoderAnchor = encoderReference(s, unitSensors);
   const gateSlots = Object.fromEntries(Object.entries(gateDevicePositions(s, unitSensors)).map(([key,value])=>[key,Number.isFinite(value) ? value+100 : value]));
+  if (virtual) {
+    const shared=unitSensors.some(([name])=>name.endsWith(':mmu_shared_exit'));
+    const encoder=Boolean(s.devices?.[`${s.unit}:encoder`]);
+    const encoderBefore=s.encoder_reference?.endstop==='mmu_shared_exit' && s.encoder_reference.offset<0;
+    gateSlots.sharedExit=shared && encoder ? (encoderBefore ? 158 : 177) : 170;
+    gateSlots.encoder=shared && encoder ? (encoderBefore ? 177 : 158) : 170;
+  }
   const sensorPoint = (name, device) => {
     if (isTouchSensor(name)) return {x:260,y:420};
     const point = tube.getPointAtLength(progress(device.position)*length);
     const short = name.split(':').at(-1);
+    const branchSensor=short.match(/^mmu_(entry|exit)(?:_(\d+))?$/);
+    if (virtual && branchSensor) {
+      const sensorGate=branchSensor[2]===undefined ? gate : Number(branchSensor[2]);
+      const branch=virtual.branches.find(item=>item.gate===sensorGate);
+      if (branch) return {x:branch.x,y:branchSensor[1]==='entry' ? 450 : 400};
+    }
     if (/^mmu_entry(?:_\d+)?$/.test(short)) point.y -= 93;
     if (/^mmu_exit(?:_\d+)?$/.test(short)) { point.x = 620; point.y = gateSlots.exit; }
     if (short === 'mmu_shared_exit') { point.x = 620; point.y = gateSlots.sharedExit; }
@@ -619,19 +665,26 @@ function draw() {
   let schematicDistance = position => progress(position)*length;
   let schematicTip = null;
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
-  if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(570-405);
+  if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(virtual ? virtual.parkDistance : 570-405);
   // Encoder loading keeps one reference across START OF BOWDEN bookkeeping.
   if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry && s.encoder_reference?.endstop === 'encoder') {
-    tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,p=>progress(p)*length,570-encoderPoint().y));
+    if (virtual) {
+      schematicDistance=position=>switchFilamentDistance(position,s.layout.mmu_encoder,
+        s.encoder_reference.parking,entry,mmuDistanceAtY(encoderPoint().y),p=>progress(p)*length,
+        null,s.encoder_reference.parking<0 ? virtual.parkDistance : null);
+      schematicTip=schematicDistance(tip);
+      tip=tipAtPathDistance(schematicTip);
+    } else tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,p=>progress(p)*length,mmuDistanceAtY(encoderPoint().y)));
   } else if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry) {
     const endstop = s.encoder_reference?.endstop?.split(':').at(-1);
     const sensor = unitSensors.find(([name,d]) => Number.isFinite(d.position) &&
       [endstop,`${endstop}_${gate}`].includes(name.split(':').at(-1)));
     if (sensor) {
       schematicDistance = position => switchFilamentDistance(position,sensor[1].position,
-        s.encoder_reference?.parking || 0,entry,570-sensorPoint(...sensor).y,p=>progress(p)*length,
+        s.encoder_reference?.parking || 0,entry,mmuDistanceAtY(sensorPoint(...sensor).y),p=>progress(p)*length,
         encoderAnchor?.name === sensor[0] && s.devices?.[`${s.unit}:encoder`]
-          ? {position:sensor[1].position+encoderAnchor.offset,distance:570-encoderPoint().y} : null);
+          ? {position:sensor[1].position+encoderAnchor.offset,distance:mmuDistanceAtY(encoderPoint().y)} : null,
+        virtual && endstop==='mmu_shared_exit' && s.encoder_reference.parking<0 ? virtual.parkDistance : null);
       schematicTip = schematicDistance(tip);
       tip = tipAtPathDistance(schematicTip);
     }
@@ -649,11 +702,12 @@ function draw() {
     }
     return [name,device];
   });
-  const presenceSensors = displayedSensors.filter(([name,d]) => !isBufferSensor(name) &&
+  const presenceSensors = displayedSensors.filter(([name,d]) =>
+    (!virtual || !/_\d+$/.test(name) || Number(name.match(/_(\d+)$/)[1])===gate) && !isBufferSensor(name) &&
     !name.includes('encoder') && !isTouchSensor(name) && d.position !== null).map(([name,d]) => {
       const short=name.split(':').at(-1);
       const position = /^mmu_(?:entry|exit)(?:_\d+)?$/.test(short) || short === 'mmu_shared_exit'
-        ? 570-sensorPoint(name,d).y : pathDistance(d.position);
+        ? mmuDistanceAtY(sensorPoint(name,d).y) : pathDistance(d.position);
       return {...d,name,position};
     });
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
@@ -661,12 +715,12 @@ function draw() {
     s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
   const focus = s.gate_focus ?? s.gate;
   // Start just inside the upper spool rim; the fixed fade hides the insertion point.
-  const fullTipOpacity=s.gate_full_opacity ?? 1;
+  const fullTipOpacity=virtual ? 1 : s.gate_full_opacity ?? 1;
   const slidingRack=fullTipOpacity===0;
   const spoolTip=570-504;
-  const selectedTip=constrained.tip+(Math.min(constrained.tip,spoolTip)-constrained.tip)*(s.gate_retraction || 0);
+  const selectedTip=constrained.tip+(Math.min(constrained.tip,spoolTip)-constrained.tip)*(virtual ? 0 : s.gate_retraction || 0);
   tip = tipAtPathDistance(selectedTip);
-  const shapedTipOpacity=fullTipOpacity*Math.max(0,Math.min(1,(selectedTip-(570-502))/28));
+  const shapedTipOpacity=fullTipOpacity*(virtual && selectedTip<virtual.distanceAtY(virtual.hub) ? branchOpacity : 1)*Math.max(0,Math.min(1,(selectedTip-(570-502))/28));
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);
   const macroUnit=s.units?.indexOf(s.unit) ?? 0;
   const macroParams=s.configuration?.parameters?.[macroUnit] || {};
@@ -684,13 +738,12 @@ function draw() {
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
   if (s.tips.length) {
-    const unitGates=s.unit_gates || s.tips.map((_,index)=>index);
-    const grid=spoolGrid(unitGates,s.gate>=0 ? focus : unitGates[0]);
+    const grid=spoolGrid(displayGates,s.gate>=0 ? focus : displayGates[0],virtual ? 6 : 8);
     const visible=[...grid.lanes].sort((a,b)=>a.row-b.row || b.offset-a.offset);
     const spoolViewAngle=Number($('spool-angle').value)*Math.PI/180;
     const edgePadding=17*3.3*Math.cos(spoolViewAngle)+(34/3)*3.3*Math.sin(spoolViewAngle)/2+16;
-    const enclosureLeft=gateLaneX(-(grid.columns-1)/2)+4-edgePadding;
-    const enclosureRight=gateLaneX((grid.columns-1)/2)+4+edgePadding;
+    const enclosureLeft=gateLaneX(Math.min(...grid.lanes.map(lane=>lane.offset)))+4-edgePadding;
+    const enclosureRight=gateLaneX(Math.max(...grid.lanes.map(lane=>lane.offset)))+4+edgePadding;
     const lastRowY=Math.max(0,grid.rows-1)*150;
     const enclosureBottom=693+lastRowY;
     $('scene').setAttribute('viewBox',`0 0 ${Math.max(850,enclosureRight+14)} ${enclosureBottom+21}`);
@@ -792,10 +845,18 @@ function draw() {
     if (part === 'attached-tip') attachedTipEdge=edge;
     return `<g data-part="${part}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${part === 'attached-tip' ? '' : edge}</g>`;
   };
-  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="474" y2="502"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="600" y="474" width="40" height="226" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
-  svg += `<defs><linearGradient id="bowden-tube-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="458" y2="490"><stop stop-color="white"/><stop offset=".65" stop-color="#777"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-tube-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="600" y="458" width="40" height="242" fill="url(#bowden-tube-gradient)"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="474" y2="502"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="474" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="226" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
-    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(724 395) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="724" y="416" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
+    const firstBranch=virtual?.branches[0];
+    const syncY=virtual ? 425 : 395;
+    const syncRight=virtual
+      ? firstBranch.x-(virtual.active.gate === firstBranch.gate ? 43 : 20)
+      : 570;
+    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(${syncRight-18} ${syncY}) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="${syncRight-18}" y="${syncY+21}" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
+  } else if (!virtual) {
+    const gripState=e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
+    if (gripState?.mmu_gripped === true)
+      svg += `<text id="grip-indicator" x="552" y="395" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Gripped</text>`;
   }
   // Nozzle-relative reference guides, matching the documentation diagrams.
   const references = toolheadReferences(s).map(ref => ({...ref,
@@ -823,23 +884,26 @@ function draw() {
   for (const [name, d] of displayedSensors) {
     if (isBufferSensor(name)) continue;
     const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
-    if (suffix && Number(suffix[1]) !== gate) continue;
+    if (suffix && Number(suffix[1]) !== gate && !virtual) continue;
     if (d.position === null && !isTouchSensor(name)) continue;
     const pt = sensorPoint(name, d);
     const short = name.split(':').at(-1);
     const sensorLabel = isTouchSensor(name) ? 'touch' : /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
-    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"><text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text><circle cx="${pt.x + 16}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
-    svg += homingRing(name,pt.x+16,pt.y);
+    // Leave a one-unit gap outside the tube and the five-unit sensor radius.
+    const sensorX=pt.x+16;
+    const showLabel=!virtual || !['entry','exit'].includes(sensorLabel) || pt.x===virtual.branches.at(-1).x;
+    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}">${showLabel ? `<text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text>` : ''}<circle cx="${sensorX}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    svg += homingRing(name,sensorX,pt.y);
     if (sensorPulse?.sensor === name) {
       const elapsed = (animationNow() - sensorPulse.start) / 650;
       if (elapsed >= 0 && elapsed < 1) {
         const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-        svg += `<circle data-part="sensor-pulse" cx="${pt.x + 16}" cy="${pt.y}" r="${reduced ? 10 : 7 + elapsed * 15}" fill="none" stroke="${sensorPulse.reverse ? 'var(--sensor-clear-pulse)' : '#48c982'}" stroke-width="2.5" opacity="${1-elapsed}"/>`;
+        svg += `<circle data-part="sensor-pulse" cx="${sensorX}" cy="${pt.y}" r="${reduced ? 10 : 7 + elapsed * 15}" fill="none" stroke="${sensorPulse.reverse ? 'var(--sensor-clear-pulse)' : '#48c982'}" stroke-width="2.5" opacity="${1-elapsed}"/>`;
       }
     }
   }
-  for (const [x, y, type] of [
-    [620, 395, "gear"],
+  for (const [x, y, type, gearGate] of [
+    ...(virtual ? [[virtual.active.x,425,"gear",gate]] : [[620,395,"gear",gate]]),
     [260, tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y, "extruder"],
   ]) {
     const names = s.drive_motors?.[type] || Object.keys(s.motors).filter(n => n.includes(type));
@@ -847,11 +911,11 @@ function draw() {
     const distance = names.length ? (s.motors[names[0]] || 0) : 0;
     // Both gear pairs use the toolhead scale so equal travel gives equal rotation.
     const pixelsPerMm = .27 * length / (end-entry);
-    const angle = gearAngle(distance, pixelsPerMm, 14.25);
+    const angle = gearAngle(virtual && type==='gear' && gearGate!==gate ? 0 : distance, pixelsPerMm, 14.25);
     const gripState = e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
-    const spacing = type === 'gear' && gripState?.mmu_gripped === false ? 26.25 : 17.25;
+    const spacing = type === 'gear' && !virtual && gripState?.mmu_gripped === false ? 26.25 : 17.25;
     for (const side of [-1, 1])
-      svg += `<g data-part="${type}-wheel" transform="translate(${x + side * spacing} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle}) scale(.75)"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
+      svg += `<g data-part="${type}-wheel" opacity="${virtual && type==='gear' ? branchOpacity : 1}" transform="translate(${x + side * spacing} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle}) scale(.75)"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
   }
   for (const [name, d] of Object.entries(s.devices)) {
     if (name.includes(':') && name.split(':')[0] !== s.unit) continue;
@@ -930,7 +994,7 @@ function draw() {
   const plan=s.purge_transition;
   const meltingTip=tip >= end-.001 && plan && s.extruded_mm < plan.start_mm+plan.retained_mm+plan.mix_mm;
   if (spoolFill(s,gate)>0 && renderCone && (s.tip_shapes?.[gate] === 'cone' || meltingTip || s.cone_edge_opacity > 0)) {
-    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="500" y="${nozzleZero}" width="350" height="${700-nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
+    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="${virtual ? virtual.branches[0].x-20 : 500}" y="${nozzleZero}" width="${virtual ? 850-virtual.branches[0].x+20 : 350}" height="${700-nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-nozzle-clip)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g>`;
   }
   if (tip >= end-.01 || Number.isFinite(s.purge_transition?.nozzle_arrival_mm)) {
     const fillHeight=(nozzleExit-nozzleZero)*(s.nozzle_fill_fraction ?? 1);
@@ -938,7 +1002,7 @@ function draw() {
     svg += `<defs><linearGradient id="nozzle-fill-gradient" gradientUnits="userSpaceOnUse" x1="260" x2="260" y1="${nozzleZero}" y2="${nozzleZero+Math.max(.001,fillHeight)}"><stop stop-color="#${s.filament?.incoming_color || '808182'}"/><stop offset="1" stop-color="#${outletColor}"/></linearGradient><clipPath id="nozzle-fill-clip"><rect x="250" y="${nozzleZero}" width="20" height="${fillHeight}"/></clipPath></defs><path id="nozzle-fill-front" d="${nozzleFunnel}" fill="url(#nozzle-fill-gradient)" clip-path="url(#nozzle-fill-clip)"/>`;
   }
   // Keep the dissolving tip edge above the flood, clipped to the complete nozzle bore.
-  if (attachedTipEdge) svg += `<defs><clipPath id="tip-edge-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="500" y="${nozzleZero}" width="350" height="${700-nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-edge-clip)">${attachedTipEdge}</g>`;
+  if (attachedTipEdge) svg += `<defs><clipPath id="tip-edge-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="${virtual ? virtual.branches[0].x-20 : 500}" y="${nozzleZero}" width="${virtual ? 850-virtual.branches[0].x+20 : 350}" height="${700-nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-edge-clip)">${attachedTipEdge}</g>`;
   svg += `<path id="nozzle-side-shadows" d="M254.5 435 Q256.5 435 256.5 437 V449 L${260-shadowEndX} ${shadowEndY} V${nozzleExit} M265.5 435 Q263.5 435 263.5 437 V449 L${260+shadowEndX} ${shadowEndY} V${nozzleExit}" fill="none" stroke="color-mix(in srgb, var(--scene-nozzle, #9cafbe), black 50%)" stroke-width="0.8" stroke-linecap="round"/>`;
   const {amount:coilAmount, layers, pitch, coils, drop} = purgeCoils(s, nozzleDiameter);
   if (coilAmount > 0) {
@@ -1031,7 +1095,7 @@ function renderTrace() {
   const showDetails=$('show-internal').checked;
   const records=new Map(showDetails ? [...sourceRecords,...(pendingSource ? [pendingSource] : [])].map(record=>[record.sequence,record]) : []);
   view.replaceChildren(
-    ...($('show-internal').checked ? rawEvents : events).map(e => {
+    ...($('show-internal').checked ? orderedSteps(rawEvents) : events).map(e => {
       const internal = isInternalUpdate(e);
       const row = document.createElement(internal ? 'details' : 'div');
       row.dataset.seq = e.seq;
@@ -1073,7 +1137,7 @@ function renderTrace() {
           summary.textContent='Telemetry details';
           const telemetry=e.kind === 'movement' ? {
             start:records.get(e.telemetry?.start?.sequence) || e.telemetry?.start,
-            outcome:records.get(e.seq) || e.telemetry?.outcome
+            outcome:records.get(e.telemetry?.outcome?.sequence) || e.telemetry?.outcome
           } : records.get(e.seq) || e.telemetry || e.changes || {event:e.kind,label:e.label};
           payload.textContent=JSON.stringify(telemetry,null,2);
           details.append(summary,payload); row.append(details);
@@ -1178,6 +1242,7 @@ for (const id of ['spool-angle','spool-spacing']) {
     draw();
   };
 }
+$('preview-gate-count').oninput=draw;
 $("slow-animation").onchange = () => {
   animationNow();
   animationRate=$("slow-animation").checked ? .1 : 1;
