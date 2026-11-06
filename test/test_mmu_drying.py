@@ -678,5 +678,79 @@ class TestDryingDuringPausePerGate(unittest.TestCase):
         self.assertEqual(self._targets(), [45., 0., 50., 0.])
 
 
+class TestDryingStatus(unittest.TestCase):
+    """printer.mmu.drying: the running cycle of each unit, or None."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        sensor_name = self.unit.environment_sensor.split()[-1]
+        self.hh.printer.add_object('aht10 %s' % sensor_name, _FakeHumidityChip(25., 60))
+
+    def _drying(self):
+        return self.hh.mmu.get_status(self.hh.reactor.monotonic())['drying']
+
+    def test_no_cycle_reports_none(self):
+        self.assertEqual(self._drying(), [None])
+
+    def test_running_cycle_is_reported_and_stays_fixed(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60 HUMIDITY=20')
+        self.hh.settle()
+        cycle = self._drying()[0]
+        self.assertEqual((cycle['temp'], cycle['humidity_target']), (45, 20))
+        self.assertGreater(cycle['end_time'], cycle['start_time'])
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL * 2)
+        self.assertEqual(self._drying()[0], cycle)
+
+    def test_stopped_cycle_reports_none_again(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60')
+        self.hh.settle()
+        self.hh.run_gcode('MMU_HEATER STOP=1')
+        self.hh.settle()
+        self.assertEqual(self._drying(), [None])
+
+
+class TestDryingRotation(unittest.TestCase):
+    """The QIDI Box turns a spool by retracting its gear (gear_rotates_spool)."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.moves = []
+        real_move = self.hh.mmu.move_filament
+
+        def record(trace_str, dist, speed=None, **kwargs):
+            if trace_str.startswith("Rotating spool"):
+                self.moves.append((self.hh.mmu.gate_selected, dist, speed))
+            return real_move(trace_str, dist, speed=speed, **kwargs)
+        self.hh.mmu.move_filament = record
+        # Gates 0 and 1 ejected (spool end secured), 2 and 3 still hold filament
+        self.hh.run_gcode('MMU_GATE_MAP GATES=0,1 AVAILABLE=0 QUIET=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATES=2,3 AVAILABLE=1 QUIET=1')
+
+    def _rotate_once(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60 ROTATE=1 GATES=0,1')
+        self.hh.settle()
+        self.hh.reactor.advance(self.unit.p.heater_rotate_interval * 60 + ENV_CHECK_INTERVAL)
+
+    def test_gates_with_filament_are_never_rotated(self):
+        self._rotate_once()
+        self.assertEqual(sorted({gate for gate, _, _ in self.moves}), [0, 1])
+
+    def test_default_rotation_retracts_100mm_at_gear_speed(self):
+        self._rotate_once()
+        self.assertEqual(self.moves, [(0, -100.0, None), (1, -100.0, None)])
+
+    def test_rotation_distance_and_speed_are_configurable(self):
+        self.unit.p.heater_rotate_distance = 50.0
+        self.unit.p.heater_rotate_speed = 80.0
+        self._rotate_once()
+        self.assertEqual(self.moves, [(0, -50.0, 80.0), (1, -50.0, 80.0)])
+
+
 if __name__ == '__main__':
     unittest.main()
