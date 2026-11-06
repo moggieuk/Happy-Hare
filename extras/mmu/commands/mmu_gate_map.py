@@ -131,6 +131,7 @@ class MmuGateMapCommand(BaseCommand):
                 mmu.set_pending_spool_id(next_spool_id)
                 if created:
                     mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag" % next_spool_id)
+                    mmu.mmu_macro_event(MACRO_EVENT_SPOOL_CREATED, "GATE=-1 SPOOLID=%d" % next_spool_id)
                 reread = False
             else:
                 mmu.log_error("Cannot use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
@@ -361,6 +362,7 @@ class MmuGateMapCommand(BaseCommand):
                     # complements the gate's LED feedback)
                     if created and spool_id and spool_id > 0:
                         mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag (gate %d)" % (spool_id, gate_idx))
+                        mmu.mmu_macro_event(MACRO_EVENT_SPOOL_CREATED, "GATE=%d SPOOLID=%d" % (gate_idx, spool_id))
 
                 else:
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman

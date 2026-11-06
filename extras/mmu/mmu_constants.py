@@ -148,6 +148,7 @@ ACTION_PRELOAD = 13             # Preloading filament into a gate (own action so
 MACRO_EVENT_RESTART          = "restart"          # Params: None
 MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all
 MACRO_EVENT_FILAMENT_GRIPPED = "filament_gripped" # Params: None
+MACRO_EVENT_SPOOL_CREATED    = "spool_created"    # Params: SPOOLID created from a tag, GATE or -1 if not yet known
 
 # Tip forming and purging macro names
 MACRO_BLOBIFIER = "BLOBIFIER"
