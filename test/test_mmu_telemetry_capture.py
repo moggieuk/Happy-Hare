@@ -43,6 +43,7 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertEqual(state['printer']['mmu_machine']['purge_macro'],
                          self.hh.mmu._macro_name(self.hh.mmu.p.purge_macro))
         unit = state['printer']['mmu_machine']['units']['unit0']
+        self.assertEqual(unit['selector_type'], self.hh.mmu.mmu_machine.units[0].selector_type)
         self.assertIn('buffer_maxrange', unit['buffer'])
         self.assertIn('0', unit['bowden_lengths'])
         self.assertNotIn('tips', state)

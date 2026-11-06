@@ -1,8 +1,29 @@
+export function virtualSelectorLayout(state, spacing=54) {
+  if (state.selector_type!=='VirtualSelector') return null;
+  const gates=state.unit_gates || state.tips.map((_,index)=>index);
+  const columns=Math.min(6,gates.length), selected=Math.max(0,gates.indexOf(state.gate));
+  const row=Math.floor(selected/6), rowGates=gates.slice(row*6,row*6+6);
+  const branches=rowGates.map((gate,column)=>({gate,x:620+(column-(columns-1)/2)*spacing}));
+  const active=branches.find(branch=>branch.gate===state.gate) || branches[0];
+  if (!active) return null;
+  const bottom=570, shoulder=390, hub=190;
+  const diagonal=Math.hypot(active.x-620,shoulder-hub);
+  const distanceAtY=y=>y>=shoulder ? bottom-y : y<=hub ? bottom-shoulder+diagonal+hub-y
+    : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);
+  const branchPath=(x,start=bottom)=>{
+    const bend=20, diagonalLength=Math.hypot(620-x,hub-shoulder);
+    const dx=(620-x)*bend/diagonalLength, dy=(hub-shoulder)*bend/diagonalLength;
+    return `M${x} ${start} V${shoulder+bend} Q${x} ${shoulder} ${x+dx} ${shoulder+dy} L${620-dx} ${hub-dy} Q620 ${hub} 620 ${hub-bend}`;
+  };
+  return {branches,active,row,bottom,shoulder,hub,distanceAtY,branchPath,parkDistance:bottom-shoulder-12,
+    path:`${branchPath(active.x)} L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 449`};
+}
+
 // Fixed rows belong to the active MMU unit; selection lifts a wave without shifting lanes.
-export function spoolGrid(gates, focus) {
-  const columns=Math.min(7,gates.length), rows=Math.ceil(gates.length/7);
-  return {columns,rows,lanes:gates.map((index,slot)=>({index,row:Math.floor(slot/7),
-    offset:slot%7-(columns-1)/2,lift:10*Math.max(0,1-Math.abs(index-focus))}))};
+export function spoolGrid(gates, focus, maxColumns=7) {
+  const columns=Math.min(maxColumns,gates.length), rows=Math.ceil(gates.length/columns);
+  return {columns,rows,lanes:gates.map((index,slot)=>({index,row:Math.floor(slot/columns),
+    offset:slot%columns-(columns-1)/2-Math.max(0,columns-7)/2,lift:10*Math.max(0,1-Math.abs(index-focus))}))};
 }
 
 const gateTiming={hold:500,retract:300,fade:500,slide:900,advance:300};
@@ -256,7 +277,7 @@ export class CommandHistory {
 }
 
 export function traceText(event) {
-  let type = {state:'state changed', gate_changed:'gate changed'}[event.kind] || event.kind;
+  let type = {state:'state changed', gate_changed:'gate changed',move_completed:'move completed'}[event.kind] || event.kind;
   if (event.kind === 'movement') {
     const source = event.source || event.telemetry?.start?.source;
     type = event.homing ? 'homing move' : source === 'mmu_gcode' ? 'G1' : 'move';
@@ -404,12 +425,12 @@ export function encoderFilamentDistance(events, event, state, tip, pathDistance,
 }
 
 // Keep schematic parking and switch homing on the same continuous path.
-export function switchFilamentDistance(tip, home, parking, entry, sensorDistance, pathDistance, encoder = null) {
+export function switchFilamentDistance(tip, home, parking, entry, sensorDistance, pathDistance, encoder = null, parkedDistance = null) {
   const knots = [[home,sensorDistance],[entry,pathDistance(entry)]];
   if (encoder && encoder.position !== home && encoder.position < entry) knots.push([encoder.position,encoder.distance]);
   if (parking && home+parking < entry) {
     const parked=home+parking;
-    let distance=sensorDistance+Math.sign(parking)*(8+24*gateSpacingScale(parking));
+    let distance=parkedDistance ?? sensorDistance+Math.sign(parking)*(8+24*gateSpacingScale(parking));
     for (const [position, landmark] of knots) {
       if (parked < position) distance=Math.min(distance,landmark-8);
       else if (parked > position) distance=Math.max(distance,landmark+8);
@@ -592,10 +613,36 @@ export function isInternalUpdate(record) {
     && record.label === 'State changed' && !record.telemetry));
 }
 
+// Resolve a move before exposing its start, so live playback cannot pass an unfinished pair.
+// The result supplies travel once; callbacks retain their original sequence and activity state.
+export function orderedSteps(records) {
+  const outcomes=new Map(records.filter(e=>e.kind === 'movement' && e.telemetry?.outcome)
+    .map(e=>[e.telemetry.start.sequence,e]));
+  const steps=[];
+  let motion=null;
+  for (const record of records) {
+    if (record.kind === 'pending_move') {
+      motion=outcomes.get(record.seq);
+      if (!motion) break;
+      steps.push({...motion,seq:record.seq,time:record.time,
+        state:{...motion.state,espoolers:motion.before.espoolers}});
+    } else if (motion && record.seq === motion.seq) {
+      steps.push({seq:record.seq,time:record.time,kind:'move_completed',
+        label:motion.homing ? (motion.homed ? 'Homing completed' : 'Homing did not trigger') : 'Move completed',
+        state:motion.state,telemetry:motion.telemetry.outcome});
+      motion=null;
+    } else if (motion) {
+      steps.push({...record,internal:record.kind === 'espooler' ? false : record.internal,
+        state:{...motion.state,espoolers:record.state.espoolers},before:undefined});
+    } else steps.push(record);
+  }
+  return steps;
+}
+
 // Fold idle bookkeeping into the preceding step; in-move updates belong to its outcome.
 export function visibleSteps(records) {
   const steps = [];
-  for (const record of records) {
+  for (const record of orderedSteps(records)) {
     const internal = isInternalUpdate(record);
     if (internal) {
       const previous=steps.at(-1);
