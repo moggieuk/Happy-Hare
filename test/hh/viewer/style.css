@@ -434,3 +434,8 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 .viewer-setting-slider { display: grid; grid-template-columns: 1fr auto; gap: 4px; font-size: 12px; }
 .viewer-setting-slider input { grid-column: 1 / -1; width: 100%; padding: 0; }
 .viewer-setting-slider output { font-variant-numeric: tabular-nums; }
+
+.gate-preview-control { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.gate-preview-control label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; }
+.gate-preview-control input { width: 64px; margin: 0; }
+.gate-preview-control .note { margin: 0; }
