@@ -22,6 +22,8 @@ from itertools                  import repeat
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
+from .mmu_movement_telemetry     import MovementTelemetry
+from .mmu_gcode_telemetry        import GcodeExtrusionTelemetry
 from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -60,6 +62,8 @@ class MmuController(MmuFilamentMovement):
         self.mmu_machine = mmu_machine
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.movement_telemetry = MovementTelemetry(self.reactor)
+        self.gcode_telemetry = GcodeExtrusionTelemetry(self)
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
@@ -573,21 +577,26 @@ class MmuController(MmuFilamentMovement):
         """
         retract = self.toolchange_retract
         length = retract - self.park_retracted_length()
-        if abs(length) < 0.01 or not self.toolhead.get_extruder().get_heater().can_extrude:
-            self._persist_park_retraction() # Not every load restores the toolhead position afterwards
+        if not self.toolhead.get_extruder().get_heater().can_extrude:
+            self._persist_park_retraction()
+            return
+        if abs(length) < 0.01:
+            self._persist_park_retraction()
             return
         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
         speed = float(sequence_vars.variables.get(speed_var, 30)) if sequence_vars else 30.
         self.log_info("%s %.1fmm to leave %.1fmm retracted" % ("Retracting" if length > 0 else "Un-retracting", abs(length), retract))
-        self.gcode.run_script_from_command(
-            "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
-            "M83\n"
-            "G1 E%.2f F%d\n"
-            "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
-        )
+        with self.gcode_telemetry.scope('standalone_load_retraction', label='Final load retraction'):
+            self.gcode.run_script_from_command(
+                "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
+                "M83\n"
+                "G1 E%.2f F%d\n"
+                "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
+            )
         self._set_park_retracted_length(retract)
         self._persist_park_retraction()
+
 
 
     def _persist_park_retraction(self):
@@ -704,7 +713,8 @@ class MmuController(MmuFilamentMovement):
 
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables else ""))
 
-            self.gcode.run_script_from_command(command)
+            with self.gcode_telemetry.scope(macro):
+                self.gcode.run_script_from_command(command)
             if wait:
                 self.movequeue_wait()
 
@@ -719,6 +729,14 @@ class MmuController(MmuFilamentMovement):
                     self.log_error("Error running %s: %s" % (macro, str(e)))
             else:
                 raise
+
+
+    def _toolchange_event(self, gcmd):
+        """Mark the start of a load, unload, or toolchange for replay navigation."""
+        command = gcmd.get_command()
+        self.movement_telemetry.state('toolchange', command=command,
+            label=gcmd.get_commandline(), tool=self.tool_selected,
+            gate=self.gate_selected, unit=self.mmu_unit().name)
 
 
     def mmu_macro_event(self, event_name, params=""):
@@ -3127,11 +3145,17 @@ class MmuController(MmuFilamentMovement):
         self.filament_direction = direction
 
 
-    def set_filament_pos_state(self, state, silent=False):
+    def set_filament_pos_state(self, state, silent=False, source=None, homing_overshoot_mm=None):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
             self.td1.release()
-        if self.filament_pos != state:
+        if self.filament_pos != state or source is not None or homing_overshoot_mm is not None:
+            previous = self.filament_pos
             self.filament_pos = state
+            self.movement_telemetry.state('filament_pos_changed',
+                unit=self.mmu_unit().name, gate=self.gate_selected,
+                previous=previous, filament_pos=state, source=source,
+                homing_overshoot_mm=homing_overshoot_mm,
+                filament_pos_name=FILAMENT_POS_NAME_MAP.get(state, 'UNKNOWN'))
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
                 if not silent:
                     self._display_visual_state()
@@ -3494,7 +3518,7 @@ class MmuController(MmuFilamentMovement):
             return
 
         drive.mmu_gear_stepper.do_enable(False)
-        self.log_stepper("Type-B idle gear stepper for gate %d disabled" % gate)
+        self.log_trace("Type-B idle gear stepper for gate %d disabled" % gate)
 
 
     def disable_all_idle_gear_steppers(self):
@@ -3507,7 +3531,7 @@ class MmuController(MmuFilamentMovement):
                     drive.mmu_gear_stepper.do_enable(False)
                     disabled_any = True
         if disabled_any:
-            self.log_stepper("All type-B idle gear steppers de-energized")
+            self.log_trace("All type-B idle gear steppers de-energized")
 
 
     def _random_failure(self):
@@ -3885,6 +3909,8 @@ class MmuController(MmuFilamentMovement):
         self.led_manager.gate_map_changed(gate)
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
+        self.movement_telemetry.state('gate_changed', previous_gate=prev_gate,
+                                     gate=gate, unit=self.mmu_unit(gate).name)
 
         # A real gate in use means the bypass filament is gone
         if gate >= 0 and self.bypass_filament:

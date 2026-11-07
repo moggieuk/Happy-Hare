@@ -289,6 +289,8 @@ class Session:
         # ~/printer_data/config/mmu/mmu_vars.cfg path.
         self.fileconfig.set('save_variables', 'filename', self._mmu_vars_copy())
         pconfig = configfile.PrinterConfig(printer)
+        pconfig.status_raw_config = {section: dict(self.fileconfig.items(section))
+                                     for section in self.fileconfig.sections()}
         printer.add_object('configfile', pconfig)
         self.config = configfile.ConfigWrapper(printer, self.fileconfig, {}, '')
 
@@ -461,7 +463,12 @@ class Session:
             # THIS buffer's own namespace: the loop below would otherwise call set(False)
             # on it, which for a proportional sensor means feeding neutral - overwriting
             # the resting value just fed.
-            derived |= {'%s:%s' % (prefix, SENSOR_TENSION), '%s:%s' % (prefix, SENSOR_COMPRESSION), name}
+            derived.add(name)
+            # Real switches alongside an analog sensor still need their initial state.
+            for suffix, attribute in ((SENSOR_TENSION, 'tension_vsensor'),
+                                      (SENSOR_COMPRESSION, 'compression_vsensor')):
+                if getattr(sensor, attribute, None) is not None:
+                    derived.add('%s:%s' % (prefix, suffix))
 
         for name, sensor in self.sensors().items():
             if name in derived:
@@ -491,9 +498,8 @@ class Session:
         The 1-D filament path model for this machine, created on first use and
         published as printer.harness_filament so the fake HomingMove can find it.
 
-        Sensors it does not own are left alone. Unsupported buffer types remain at the
-        state established by apply_initial_sensor_states; a tension-sprung two-switch
-        buffer is explicitly claimed by the filament model so its state can change.
+        Sensors it does not own are left alone. Configured buffers track physical travel;
+        proportional buffers feed the ADC callback so it owns the virtual switches.
         """
         existing = getattr(self.printer, 'harness_filament', None)
         if existing is not None and layout is None:
@@ -517,10 +523,22 @@ class Session:
         model_layout = dict(getattr(self.profile, 'filament_layout', {}) or {})
         model_layout.update(layout or {})
         model = FilamentPath(self.mmu.num_gates, layout=model_layout)
+        model._extruder_position = lambda gate: model.layout['extruder_entry']
+        model._nozzle_position = lambda gate: (model._extruder_position(gate)
+            + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_extruder_to_nozzle)
+        toolhead_params = self.mmu.mmu_unit(0).toolhead_wrapper.p
+        if 'extruder' not in model_layout:
+            model.layout['extruder'] = model._extruder_position(0) - toolhead_params.toolhead_entry_to_extruder
+        if 'toolhead' not in model_layout:
+            model.layout['toolhead'] = model._nozzle_position(0) - toolhead_params.toolhead_sensor_to_nozzle
         model.configure_buffers(
             self.mmu.mmu_machine.units,
             selected_gate=lambda: self.mmu.gate_selected,
             drive_mode=drive_mode,
+            gripped=lambda gate: (
+                self.mmu.gate_selected == gate
+                and model.tail[gate] <= model._extruder_position(gate)
+                and model.tip[gate] > model._extruder_position(gate)+1e-6),
         )
         owned = [name for name in self.sensors()
                  if (name not in getattr(self, '_spring_at_rest', set())
@@ -530,6 +548,16 @@ class Session:
         # unit's filament - see FilamentPath.gates_visible_to.
         model.units = {u.name: (u.first_gate, u.num_gates)
                        for u in self.mmu.mmu_machine.units}
+        def set_buffer_value(name, value):
+            buffer = next(u.buffer for u in self.mmu.mmu_machine.units
+                          if u.buffer is not None and u.buffer.name == name)
+            sensor = buffer.proportional_sensor
+            shaped = abs(value) ** (1. / sensor._gamma)
+            delta = shaped * (sensor._d_pos if value >= 0 else -sensor._d_neg)
+            raw = sensor._neutral_point + (-delta if sensor._reversed else delta)
+            sensor.mcu_adc.feed(raw)
+
+        model._set_buffer_value = set_buffer_value
         model.bind(owned, self._set_sensor_state)
         self.printer.harness_filament = model
         self._install_move_observer()
@@ -645,7 +673,7 @@ class Session:
         for amount in self._spend_macro_time(movement=-distance):
             self._move_extruder(stepper, amount)
             if model is not None:
-                model.advance(gate, amount, 'tip forming')
+                model.advance(gate, amount, 'tip forming', motor_mode='extruder')
 
     def _effect_cut_tip(self, macro, gcmd):
         """
@@ -677,12 +705,24 @@ class Session:
             # Whole steps, as a G1 moves, so HH's measured travel and thus the fragment it
             # derives do not depend on the stepper's starting phase
             retract = round(retract / stepper.get_step_dist()) * stepper.get_step_dist()
-        total = max(retract, severed)
-        for amount in self._spend_macro_time(movement=-total):
-            if total:
-                self._move_extruder(stepper, amount * retract / total)
-                if model is not None:
-                    model.advance(gate, amount * severed / total, 'tip cutting')
+        # Record the cut before the modeled net motion. The attached filament
+        # has only the rip left to travel after shortening at the blade.
+        telemetry = self.mmu.movement_telemetry
+        telemetry.state('filament_cut', cutter='toolhead', blade_pos=blade_pos,
+            unit=self.mmu.mmu_unit().name, gate=gate, origin='harness_cut_tip')
+        with telemetry.operation() as operation:
+            operation.start(source='harness_cut_tip', label='Post-cut retraction',
+                unit=self.mmu.mmu_unit().name, gate=gate, motor_mode='extruder',
+                requested_mm=-retract, filament_travel_mm=-rip_length,
+                speed_mm_s=retract / self.MACRO_DURATION,
+                acceleration_mm_s2=None, homing=False, endstop=None)
+            total = max(retract, severed)
+            for amount in self._spend_macro_time(movement=-total):
+                if total:
+                    self._move_extruder(stepper, amount * retract / total)
+                    if model is not None:
+                        model.advance(gate, amount * severed / total, 'tip cutting', motor_mode='extruder')
+            operation.finish(status='completed', actual_mm=-retract)
 
     def _macro_vars(self, macro):
         # The variables live on <macro>_VARS, with a fallback to the calling macro
@@ -737,7 +777,7 @@ class Session:
         shared gear); a BoxTurtle-style unit is marked calibrated automatically
         (mmu_calibrator.py:91-93), which is why no existing test needed this. The length comes
         from the HARNESS'S OWN filament geometry rather than from config: the model places the
-        gate at 0 and the extruder entry at layout['extruder_entry'], so that distance IS the
+        gate at 0 and the extruder gears at layout['extruder_entry'], so that distance IS the
         bowden length here, and seeding anything else would leave HH's idea of the machine
         disagreeing with the machine.
 
@@ -956,6 +996,7 @@ class Session:
         stepper = self._driving_stepper(gate)
         if stepper is None or getattr(stepper, 'manual_trapq', None) is not trapq:
             return
+        self._note_drive_motion(gate, distance)
         model.advance(gate, distance, 'move')
 
     def _config_rotation_distances(self, unit):
@@ -996,16 +1037,39 @@ class Session:
             self.printer.harness_pre_mq_move_observer = self._on_manual_move
         return self
 
+    def _note_drive_motion(self, gate, distance, toolhead=False):
+        """Account for physical motor travel without duplicating viewer drive totals."""
+        from extras.mmu.mmu_constants import (DRIVE_EXTRUDER_ONLY,
+            DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        drive = self.mmu.drive(gate)
+        mode = drive.get_sync_mode()
+        if toolhead:
+            # ToolHead.move already accounts for the primary extruder stepper.
+            owners = [drive.mmu_gear_stepper] if mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else []
+        elif mode in (DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER):
+            owners = [drive.mmu_gear_stepper, drive.mmu_extruder_stepper]
+        else:
+            owners = [drive.mmu_extruder_stepper if mode == DRIVE_EXTRUDER_ONLY else drive.mmu_gear_stepper]
+        seen = set()
+        for owner in owners:
+            for stepper in owner.get_steppers():
+                if id(stepper) not in seen:
+                    seen.add(id(stepper))
+                    stepper.harness_note_motion(distance)
+
     def _on_toolhead_move(self, distance):
-        """Advance filament when the gear is following a toolhead extrusion move."""
+        """Advance filament with a synced gear or an engaged extruder."""
         model = getattr(self.printer, 'harness_filament', None)
         gate = self.mmu.gate_selected
         if model is None or gate is None or gate < 0:
             return
 
+        self._note_drive_motion(gate, distance, toolhead=True)
         from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
         if self.mmu.drive(gate).get_sync_mode() != DRIVE_GEAR_SYNCED_TO_EXTRUDER:
-            return
+            gears = model._extruder_position(gate)
+            if not (model.tail[gate] <= gears <= model.tip[gate]):
+                return
         model.advance(gate, distance, 'toolhead extrusion')
 
     def _driving_stepper(self, gate):

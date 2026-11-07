@@ -190,8 +190,12 @@ class MmuExtruderWrapper():
     # Park retraction of the filament left in this toolhead
     def set_retracted_length(self, length):
         if length != self.retracted_length:
+            previous = self.retracted_length
             self.retracted_length = length
             self.var_manager.set(VARS_MMU_RETRACTED_LENGTH, length, self.name, write=True)
+            self.mmu_unit.mmu_machine.mmu_controller.movement_telemetry.state(
+                'retracted_length_changed', unit=self.mmu_unit.name,
+                extruder=self.name, previous=previous, retracted_length=length)
 
 
     # Only set once a load (and its purge) completes so a failed purge still counts as a material change

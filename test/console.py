@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import collections
 import contextlib
-import datetime
 import logging
 import os
 import re
@@ -78,8 +77,7 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
-API_PORT = 7125                                 # Moonraker's own port, so UIs find it unprompted
-API_PORT_TRIES = 10                             # next ports to try if the default is taken
+API_PORT = 7125                                 # Local simulator viewer/API
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -507,6 +505,9 @@ class Console:
         self.fil = None
         self.bridge = None                          # the web UI's Moonraker API
         self.bridge_error = None                    # why it did not start, if it was asked to
+        self.telemetry_sink = None
+        self.telemetry_unsubscribe = None
+        self.cutter_telemetry_unsubscribe = None
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
@@ -534,17 +535,34 @@ class Console:
         # a handler registered after boot() misses the entire startup, which is exactly what
         # it used to do. build() is what creates the gcode object to register on.
         self.hh.build()
+        if a.telemetry:
+            from extras.mmu.mmu_movement_telemetry import JsonlTelemetrySink
+            self.telemetry_sink = JsonlTelemetrySink(a.telemetry)
+            self.telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self.telemetry_sink)
         self.hh.gcode.register_output_handler(self._on_output)
 
-        # Macro bodies are no-ops in the general-purpose harness. Cold pull is deliberately
-        # executable in this interactive simulator: it is a self-contained maintenance
-        # workflow whose temperature checkpoints and extruder moves are useful to exercise.
-        # Keep the exception local so print-start/toolchange macros retain the established
-        # recorded-only behavior relied on by the unit tests.
+        # Execute maintenance and filament-processing macros in the interactive simulator.
+        # The general-purpose unit-test harness keeps its simplified effects.
+        # Keep these opt-ins local to the interactive simulator.
         effects = getattr(self.hh.printer, 'harness_macro_effects', None)
         if effects is None:
             effects = self.hh.printer.harness_macro_effects = {}
+        for section in self.hh.fileconfig.sections():
+            name = section.removeprefix('gcode_macro ').upper()
+            if section.startswith('gcode_macro ') and re.fullmatch(r'T\d+', name):
+                effects[name] = self._run_macro_body
         effects['MMU_COLD_PULL'] = self._run_macro_body
+        # Execute reference purge segments so G1 telemetry and filament transport
+        # reflect real macro commands instead of the harness's time-only effect.
+        effects['_MMU_PURGE'] = self._run_macro_body
+        effects['__MMU_PURGE_SEGMENT'] = self._run_macro_body
+        for name in ('_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
+                     '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP',
+                     '_MMU_FORM_TIP', '_WAIT_FOR_TEMP'):
+            effects[name] = self._run_macro_body
+        effects['_CUT_TIP_DO_CUT_MOTION'] = self._run_macro_body
+        self.cutter_telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self._on_cutter_telemetry)
+
 
         if a.trace:
             self.hh.mmu.p.log_level = a.trace
@@ -567,6 +585,13 @@ class Console:
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
                      prime=not a.no_prime, seed=a.seed,
                      pre_bootup=self._home_before_bootup)
+        from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
+        from extras.mmu.mmu_movement_telemetry import filament_context
+        self.hh.mmu.movement_telemetry.state('filament_pos_snapshot',
+            filament=filament_context(self.hh.mmu),
+            unit=self.hh.mmu.mmu_unit().name, gate=self.hh.mmu.gate_selected,
+            filament_pos=self.hh.mmu.filament_pos,
+            filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.hh.mmu.filament_pos, 'UNKNOWN'))
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         self._clear_sink()
 
@@ -641,28 +666,53 @@ class Console:
         simulator (see test/hh/webui_bridge.py). Happy Hare's pause dialog arrives as
         '// action:prompt_*' output lines, which reach the UI with the rest of the output.
 
-        A port that is taken (a real Moonraker, or another console) is skipped for the next
-        free one unless the user named it, in which case that is reported and left alone.
+        If the port cannot be opened, warn in the startup banner and keep the console usable.
         """
-        printer = self.hh.printer
-        tries = 1 if explicit or port == 0 else API_PORT_TRIES
-        for candidate in range(port, port + tries):
-            try:
-                self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=candidate).start()
-                break
-            except OSError as exc:
-                self.bridge_error = 'Web API not started: port %d: %s' % (candidate, exc.strerror or exc)
+        try:
+            self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port, host=self.args.serve_host).start()
+        except OSError as exc:
+            self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
         if self.bridge is None:
             return
         self.bridge_error = None
+        self.bridge.restart_profile = self._restart_for_viewer
+        self.bridge.profile_name = str(self.args.profile)
+
+    def _restart_for_viewer(self, profile):
+        bridge, previous = self.bridge, self.args.profile
+        no_serve = self.args.no_serve
+        bridge.viewer.close()
+        self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
+        self.args.no_serve = True
+        self.args.profile = profile
+        try:
+            try:
+                self._meta_reset([], show_banner=False)
+            except Exception:
+                self.args.profile = previous
+                self._meta_reset([], show_banner=False)
+                raise
+        finally:
+            self.args.no_serve = no_serve
+            self.bridge = bridge
+            bridge.session = self.hh
+            from test.hh.live_viewer import SourceViewer
+            bridge.viewer = SourceViewer(self.hh)
+            bridge.profile_name = str(self.args.profile)
+            bridge.last_sent.clear()
+            self._install_pace_observer()
+            self.banner()
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""
         if self.bridge is None:
             return [self.bridge_error] if self.bridge_error else []
         port = self.bridge.port
-        return ['Web API (for Mainsail/Fluidd): host 127.0.0.1  port %d  (http://127.0.0.1:%d)'
-                % (port, port),
+        host = self.bridge.host
+        address = '127.0.0.1' if host == '0.0.0.0' else host
+        return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
+                % (host, port, address, port),
+                'Live viewer: http://%s:%d/sim/viewer/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):
@@ -673,18 +723,21 @@ class Console:
         port = self.bridge.port
         for line in lines[:1]:
             self.info(line)
+        host = '127.0.0.1' if self.bridge.host == '0.0.0.0' else self.bridge.host
+        if self.bridge.host == '0.0.0.0':
+            self.info('Listening on all IPv4 interfaces. Remote clients use this computer’s LAN IP.')
         self.info('Mainsail dev server, from a Mainsail checkout:\n'
-                  '  VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=%d npx vite serve\n'
-                  'A built Mainsail or Fluidd: add a printer at 127.0.0.1:%d in its connection '
+                  '  VUE_APP_HOSTNAME=%s VUE_APP_PORT=%d npx vite serve\n'
+                  'A built Mainsail or Fluidd: add a printer at %s:%d in its connection '
                   'dialog.\n'
                   'Then /print start, /exhaust 1 and MMU_CHANGE_TOOL TOOL=1 make a pause '
-                  'dialog appear.' % (port, port))
+                  'dialog appear.' % (host, port, host, port))
 
     def _run_for_bridge(self, script):
         """A script sent from the web UI: shown and run as if typed at the prompt."""
         for line in script.split('\n'):
             if line.strip():
-                self.echo(self.prompt() + line)
+                print(self.prompt() + line)
                 self.run_command(line)
 
     def _service_bridge(self):
@@ -699,6 +752,22 @@ class Console:
     @staticmethod
     def _run_macro_body(macro, gcmd):
         macro.run_body(gcmd)
+
+    def _on_cutter_telemetry(self, record):
+        # Only the simulator changes geometry. The real command merely emits an
+        # ordered annotation and never waits for or modifies printer movement.
+        if record['event'] != 'cut' or record.get('cutter') != 'toolhead':
+            return
+        blade = record.get('blade_pos')
+        gate = record['gate']
+        if blade is None or gate < 0:
+            return
+        model = self.hh.printer.harness_filament
+        params = self.hh.mmu.mmu_unit().toolhead_wrapper.p
+        nozzle = model.layout['extruder_entry'] + params.toolhead_entry_to_extruder + params.toolhead_extruder_to_nozzle
+        # Severing changes only the attached endpoint, not encoder/buffer travel.
+        model.tip[gate] = min(model.tip[gate], nozzle-blade)
+        model.sync(gate)
 
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
@@ -734,6 +803,15 @@ class Console:
         self.startup_output = refreshed
 
     def close(self):
+        if self.cutter_telemetry_unsubscribe is not None:
+            self.cutter_telemetry_unsubscribe()
+            self.cutter_telemetry_unsubscribe = None
+        if self.telemetry_unsubscribe is not None:
+            self.telemetry_unsubscribe()
+            self.telemetry_unsubscribe = None
+        if self.telemetry_sink is not None:
+            self.telemetry_sink.close()
+            self.telemetry_sink = None
         if self.bridge is not None:
             self.bridge.close()
             self.bridge = None
@@ -918,6 +996,8 @@ class Console:
             # gcode.error and responds (gcode.py:220), so without this the first bad
             # parameter would end the session.
             print(paint('!! %s' % exc, '1;31', self.color))
+            if self.bridge is not None:
+                self.bridge.host_output('!! %s' % exc)
             self.failures += 1
         physical_changed = False
         if gate_status_before is not None:
@@ -930,12 +1010,15 @@ class Console:
             self.hh.reactor.advance(0.)
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
+            if self.bridge is not None:
+                self.bridge.host_output('!! reactor: %s' % exc)
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
+        if self.bridge is not None and re.match(r'^\s*(?:_?MMU_\w+|SET_GCODE_VARIABLE|SET_FILAMENT_SENSOR)(?:\s|$)', line, re.I):
+            self.bridge.viewer.observe_configuration()
         if warn_unknown:
             self._warn_unhandled(line, unhandled_mark)
-            self._warn_silent_macro(line, mark)
 
     def _sync_filament_to_gate_map(self, before):
         """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""
@@ -1016,21 +1099,6 @@ class Console:
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! moonraker: %s' % exc, '1;31', self.color))
 
-    def _warn_silent_macro(self, line, mark):
-        """
-        With the explicit MMU_COLD_PULL exception installed in boot(), the fake gcode_macro
-        otherwise records a macro call but never renders or runs its BODY (pinned by
-        test_mmu_toolchange.py). So T1, print start/end and the park/cut/purge sequences are
-        REGISTERED - they do not show up as unknown commands - and simply do nothing. Silence
-        is the whole symptom, so key off "produced no output at all".
-        """
-        if len(self.sink) > mark:
-            return
-        word = line.strip().split(None, 1)[0].upper() if line.strip() else ''
-        if re.fullmatch(r'T\d+', word):
-            print(paint('   (%s is a macro, and the harness does not run macro bodies - '
-                        'use MMU_CHANGE_TOOL TOOL=%s)' % (word, word[1:]), '33', self.color))
-
     def _warn_unhandled(self, line, mark):
         """
         Unknown commands are recorded and ignored (gcode.py:230), so a typo produces no
@@ -1042,9 +1110,10 @@ class Console:
         for raw in self.hh.gcode.unhandled[mark:]:
             if raw.split(None, 1)[0].upper() == typed:
                 print(paint("?? no such command %r" % typed, '33', self.color))
+                if self.bridge is not None:
+                    self.bridge.host_output('Unknown command:"%s"' % typed)
                 if re.fullmatch(r'T\d+', typed):
-                    print('   (the fake gcode_macro records macros but does not run '
-                          'their bodies - use MMU_CHANGE_TOOL TOOL=%s)' % typed[1:])
+                    print('   (no %s macro is configured for this profile)' % typed)
                 return
 
     ##################
@@ -1563,7 +1632,7 @@ class Console:
             self.scrollback.clear()
         self.clear_log()
 
-    def _meta_reset(self, args):
+    def _meta_reset(self, args, show_banner=True):
         """Discard all simulated machine state and boot the selected profile afresh."""
         if args:
             raise ValueError('usage: /reset')
@@ -1577,7 +1646,11 @@ class Console:
         if self.scrollback is not None:
             self.scrollback.clear()
         self.boot()
-        self.info('simulator reset to %s startup state' % self.args.profile)
+        self.clear_log()
+        if hasattr(self, '_words'):
+            del self._words
+        if show_banner:
+            self.banner()
 
     def _meta_redraw(self, args):
         """Repaint everything, log included. /clear is the same thing minus the history."""
@@ -1874,9 +1947,8 @@ class Console:
     ##### Print jobs #####
     ######################
 
-    # Macros whose bodies run while a job plays. Everywhere else the harness only records a
-    # macro call (klippy_root/extras/gcode_macro.py), which is why T1 at the prompt is silent.
-    # Park, cut and purge stay recorded no-ops even in a job: their motion is not modelled.
+    # Additional lifecycle macros enabled while a job plays. Tool-selection and
+    # filament-processing macros are already enabled for interactive commands.
     JOB_MACROS = ('MMU_START_SETUP', 'MMU_START_CHECK', 'MMU_START_LOAD_INITIAL_TOOL',
                   'MMU_END')
     # Played straight through the dispatcher with no per-line settle: a sliced file is almost
@@ -1940,8 +2012,8 @@ class Console:
         Feed the held job from where it stopped until it ends, the machine pauses, a command
         fails (the print errors, as virtual_sdcard's would) or the job cancels itself.
 
-        What runs for real: the macros in JOB_MACROS and T<n> (their bodies, only for the
-        duration), every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
+        What runs for real: configured tool macros, lifecycle macros in JOB_MACROS,
+        every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
         filament model) and the extruder heater (M104/M109). Time passes as the moves would
         take it, plus G4 dwells. Anything else the harness does not know - bed heaters,
         EXCLUDE_OBJECT_*, the user's own PRINT_START - is ignored and listed at the end.
@@ -1952,7 +2024,7 @@ class Console:
         toolhead = self.hh.printer.lookup_object('toolhead')
         pause_resume = self.hh.printer.lookup_object('pause_resume')
         effects = self.hh.printer.harness_macro_effects
-        names = list(self.JOB_MACROS) + ['T%d' % t for t in range(self.hh.mmu.num_gates)]
+        names = self.JOB_MACROS
         saved = {n: effects.get(n) for n in names}
         for n in names:
             effects[n] = self._run_macro_body
@@ -3163,6 +3235,9 @@ def parse_args(argv=None):
                    help='serve the Moonraker-compatible web API on this port (default %d). It is '
                         'already on by default at a terminal, so this is for choosing the port or '
                         'turning it on when not at one' % API_PORT)
+    p.add_argument('--serve-host', default='127.0.0.1', metavar='ADDRESS',
+                   help='web API listening address (default %(default)s); use a LAN IPv4 address '
+                        'or 0.0.0.0 for remote access. The simulator API has no authentication')
     p.add_argument('--no-serve', '--no_serve', dest='no_serve', action='store_true',
                    help='do not serve the web API that lets Mainsail or Fluidd connect to the '
                         'simulator')
@@ -3207,6 +3282,7 @@ def parse_args(argv=None):
     p.add_argument('--inline-header', action='store_true',
                    help='reprint the header above each prompt instead of pinning it to '
                         'the top of the terminal (automatic when not a TTY)')
+    p.add_argument('--telemetry', metavar='FILE', help='append structured movement start/outcome JSONL, independently of text logging')
     p.add_argument('--log-dir', default='/tmp', metavar='DIR',
                    help="where Happy Hare's mmu.log is written, replaced fresh each run. "
                         'The harness otherwise puts it in a temp dir it then deletes '

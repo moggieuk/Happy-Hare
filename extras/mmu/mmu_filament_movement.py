@@ -40,6 +40,7 @@ from ..homing             import HomingMove
 
 # Happy Hare imports
 from .mmu_constants       import *
+from .mmu_movement_telemetry import movement_operation
 from .mmu_utils           import MmuError, MmuGateHomingMiss
 from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 
@@ -455,7 +456,7 @@ class MmuFilamentMovement:
                         # Don't reset if filament is buffered
                         self.gate_maps.set_gate_status(
                             gate, max(self.gate_status[gate], GATE_AVAILABLE))
-                        self.set_filament_pos_state(FILAMENT_POS_START_BOWDEN)
+                        self.set_filament_pos_state(FILAMENT_POS_START_BOWDEN, homing_overshoot_mm=measured)
                         self.log_trace_exit(f"_home_to_gate() => (overshoot={measured})")
                         return measured, False
 
@@ -3664,6 +3665,7 @@ class MmuFilamentMovement:
                 self.espooler().set_operation(self.gate_selected, 0, ESPOOLER_OFF)
 
 
+    @movement_operation
     def move_filament(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0,
                       endstop_name="default", track=False, wait=False, encoder_dwell=False,
                       speed_override=True, suppress_grip_change=False, espooler=True):
@@ -3775,6 +3777,29 @@ class MmuFilamentMovement:
 
                 start_pos = drive.get_filament_position()
 
+                # The same resolved values as the STEPPER messages below, independent
+                # of log level. Reject unsupported synced homing without a motion start.
+                motion = self.movement_telemetry.current
+                if not (motor == "synced" and homing_move):
+                    owners = ([drive.mmu_gear_stepper] if motor == 'gear' else
+                              [drive.mmu_extruder_stepper] if motor == 'extruder' else
+                              [drive.mmu_gear_stepper, drive.mmu_extruder_stepper])
+                    motors = sorted({stepper.get_name() for owner in owners
+                                     for stepper in owner.get_steppers()})
+                    motion.start(source='move_filament', label=trace_str,
+                        filament_pos=self.filament_pos,
+                        filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.filament_pos, 'UNKNOWN'),
+                        unit=u.name, gate=self.gate_selected, motor_mode=motor,
+                        motors=motors, requested_mm=dist, speed_mm_s=speed,
+                        acceleration_mm_s2=accel if motor != 'synced' else None,
+                        position_mm=start_pos, position_reference='filament_drive',
+                        homing=bool(homing_move),
+                        trigger_state=(homing_move > 0) if homing_move else None,
+                        endstop=qual_endstop_name if homing_move else None,
+                        wait=bool(wait),
+                        sensors={name: value[0] for name, value in
+                                 self.sensor_manager.get_sensor_states(all_sensors=True).items()})
+
                 # Manual stepper move authority
                 if motor in ["gear", "gear+extruder", "extruder"]:
 
@@ -3817,6 +3842,7 @@ class MmuFilamentMovement:
 
         except self.printer.command_error as e:
             if homing_move != 0:
+                self.movement_telemetry.current.error = str(e)
                 self.log_stepper("Did not complete homing move: %s" % str(e))
                 try:
                     actual = drive.get_filament_position() - start_pos
@@ -3829,6 +3855,16 @@ class MmuFilamentMovement:
         encoder_end = self.get_encoder_distance(dwell=encoder_dwell)
         measured = encoder_end - encoder_start
         delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
+
+        self.movement_telemetry.current.finish(
+            status='not_homed' if homing_move and not homed else 'completed' if wait or homing_move else 'submitted',
+            actual_mm=actual, position_mm=drive.get_filament_position(),
+            filament_pos=self.filament_pos,
+            filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.filament_pos, 'UNKNOWN'),
+            homed=bool(homed) if homing_move else None,
+            encoder_mm=measured, encoder_delta_mm=delta,
+            sensors={name: value[0] for name, value in
+                     self.sensor_manager.get_sensor_states(all_sensors=True).items()})
 
         if trace_str:
             if homing_move != 0:
@@ -4324,6 +4360,7 @@ class MmuFilamentMovement:
             f"out_of_print_sync={out_of_print_sync} "
             f"--> sync={sync}"
         )
+
 
         # Filament grip handling. This is always lazy to spare unnecessary movement.
         # Do this before resetting sync state because servo down can undo (buzz movement)!

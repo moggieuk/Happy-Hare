@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Happy Hare · Live simulator</title>
+    <link rel="stylesheet" href="/sim/viewer/style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <small>HAPPY HARE / CONSOLE</small>
+        <h1>Live simulator</h1>
+      </div>
+      <div class="header-actions"><span id="connection">Connecting…</span><button id="theme-toggle" type="button" aria-label="Switch to light mode">Light mode</button></div>
+    </header>
+    <main>
+      <div class="left-column">
+      <aside id="simulator-controls">
+        <h2>Simulator setup</h2>
+        <label>Profile<select id="profiles"></select></label
+        ><button id="restart">Restart with profile</button
+        ><label
+          >Or load a configuration directory<input
+            id="files"
+            type="file"
+            webkitdirectory
+            multiple
+        /></label>
+        <p class="note">
+          A profile change starts a fresh session. Hardware comes from the profile.
+        </p>
+        <p id="profile"></p>
+        <h2>Runtime parameters</h2>
+        <label>MMU unit<select id="unit"></select></label
+        ><div class="parameter-filter"><input
+          id="filter"
+          placeholder="Filter parameters and variables"
+          aria-label="Filter parameter and macro variable names"
+        /><button id="clear-filter" type="button" aria-label="Clear filter" data-tooltip="Clear filter">×</button></div><label>Parameter<select id="parameter"></select></label
+        ><label>Value<input id="value" /></label
+        ><button id="apply">Apply MMU_TEST_CONFIG</button>
+        <p class="note">
+          Runtime settings and macro variables apply to the live simulator. Macro values use Python literals. Changes are
+          temporary.
+        </p>
+        <p id="message" role="status"></p>
+      </aside>
+      <section class="card" id="sidebar-playback" aria-label="Playback controls">
+        <h2>Playback</h2>
+        <div class="playback-row"><button id="beginning" data-tooltip="Beginning" aria-label="Beginning"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5h2v14H2z M13 5v14L5 12z M22 5v14l-8-7z"/></svg></button><button id="previous-toolchange" data-tooltip="Previous toolchange" aria-label="Previous toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5h3v14H5z M19 5v14L9 12z"/></svg></button><button id="replay" data-tooltip="Play continuously — follow live when caught up" aria-label="Play continuously — follow live when caught up" disabled><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg></button><button id="next-toolchange" data-tooltip="Next toolchange" aria-label="Next toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h3v14h-3z M5 5v14l10-7z"/></svg></button><button id="live" data-tooltip="End, go live" aria-label="End, go live"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 5h2v14h-2z M2 5v14l8-7z M11 5v14l8-7z"/></svg></button></div>
+        <div class="playback-row"><button id="previous" data-tooltip="Previous step (Left Arrow)" aria-label="Previous step (Left Arrow)"><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5v14L2 12z M22 5v14l-9-7z"/></svg></button><button id="play-previous" data-tooltip="Play previous step in reverse (Shift+Left)" aria-label="Play previous step in reverse" disabled><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M23 4v16L11 12z"/><text x="4" y="16" text-anchor="middle" font-size="12" font-family="sans-serif" font-weight="700" fill="currentColor">1</text></svg></button><button id="play-step" data-tooltip="Play one step (Shift+Right)" aria-label="Play one step" disabled><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M1 4v16l12-8z"/><text x="20" y="16" text-anchor="middle" font-size="12" font-family="sans-serif" font-weight="700" fill="currentColor">1</text></svg></button><button id="next" data-tooltip="Next step (Right Arrow)" aria-label="Next step (Right Arrow)"><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l9-7z M13 5v14l9-7z"/></svg></button></div>
+        <div class="playback-row"><button id="save-motion">Save telemetry</button><button id="load-telemetry">Load telemetry</button></div>
+        <button id="return-live" hidden>Return to live</button><input id="telemetry-file" type="file" accept=".jsonl,.ndjson,.json" hidden>
+        <p id="recording-name" class="note" hidden></p>
+        <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>
+        <label class="playback-option"><input id="show-filament-shape" type="checkbox" checked>Show filament cone and hair</label>
+      </section>
+      <section class="card" id="viewer-settings" aria-label="Viewer settings">
+        <h2>Settings</h2>
+        <details class="spool-style-picker" id="spool-style-menu"><summary>Spool type <span id="spool-style-current"></span></summary><div id="spool-style-grid" role="group" aria-label="Spool type"></div></details>
+        <label class="viewer-setting-slider" for="spool-angle">Viewing angle <output id="spool-angle-value">77°</output><input id="spool-angle" type="range" min="65" max="90" value="77" step="1"></label>
+        <label class="viewer-setting-slider" for="spool-spacing">Spool spacing <output id="spool-spacing-value">54</output><input id="spool-spacing" type="range" min="30" max="80" value="54" step="1"></label>
+        <label class="playback-option"><input id="slow-animation" type="checkbox">Slow animation 10× (debug)</label>
+      </section>
+      </div>
+      <section>
+        <div class="card">
+          <div class="heading">
+            <h2 id="mode" tabindex="0" data-tooltip="Schematic path inferred from Happy Hare source telemetry. Live updates and saved recordings use the same replay model." aria-description="Schematic path inferred from Happy Hare source telemetry. Live updates and saved recordings use the same replay model.">Live</h2>
+            <span id="position"></span>
+          </div>
+          <div class="gate-preview-control"><label for="preview-gate-count">Gate count (preview)<input id="preview-gate-count" type="number" min="0" max="42" step="1" value="0"></label><span class="note">0 = actual count · visual only</span></div>
+          <div class="scene-container">
+          <div class="scene-annotations">
+          <div id="filament-warning" role="status" hidden>
+            <span class="warning-bang" aria-hidden="true">!</span>
+            <span id="filament-warning-message"></span>
+          </div>
+          <div id="scene-macros"></div>
+          </div>
+          <label class="nozzle-control" for="nozzle-diameter">Nozzle
+            <select id="nozzle-diameter" aria-label="Nozzle diameter">
+              <option value="0.2">0.2mm</option>
+              <option value="0.4" selected>0.4mm</option><option value="0.6">0.6mm</option><option value="0.8">0.8mm</option>
+            </select>
+          </label>
+          <svg
+            id="scene"
+            viewBox="0 0 850 710"
+            role="img"
+            aria-label="Filament path from MMU through Bowden to extruder"
+          ></svg>
+          </div>
+          <div class="viewer-readout-controls">
+          <label class="playback-option dimensions-option"><input id="show-dimensions" type="checkbox" checked>Show dimensions</label>
+          <details id="sensor-readout">
+            <summary>Sensor and device readout <span class="expand-label">Expand</span><span class="collapse-label">Collapse</span></summary>
+            <div id="sensors"></div>
+            <div id="devices"></div>
+          </details>
+          </div>
+        </div>
+        <div class="card mini-console-card">
+          <div class="heading"><h2 tabindex="0" data-tooltip="Live commands and responses · latest 500 lines. Independent of trace replay." aria-description="Live commands and responses · latest 500 lines. Independent of trace replay.">Console</h2><button id="clear-console" type="button">Clear</button></div>
+          <div id="mini-console" role="log" aria-label="Simulator console" aria-live="polite"></div>
+          <form id="command-form" class="command-row">
+            <label for="command">Console command</label>
+            <div class="command-input"><input id="command" value="MMU_LOAD" autocomplete="off" spellcheck="false" /><button id="send" type="submit">Run</button></div>
+          </form>
+        </div>
+        <div class="card">
+          <div class="heading trace-heading">
+          <h2 tabindex="0" data-tooltip="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture." aria-description="Replay inspects history without rewinding the running simulator. The latest 3,000 events are retained; a restart begins a new capture.">Movement trace</h2>
+          <label class="trace-options"><input id="show-internal" type="checkbox" data-tooltip="Show diagnostic updates; playback skips these rows">Show internal updates</label>
+          </div>
+          <div id="trace" role="log"></div>
+        <div class="controls timeline-control">
+          <input
+            id="timeline"
+            aria-label="Trace position"
+            type="range"
+            min="0"
+            max="0"
+            value="0"
+          />
+          <div id="toolchange-ticks" aria-hidden="true"></div>
+        </div>
+        </div>
+
+      </section>
+    </main>
+    <script type="module" src="/sim/viewer/app.js"></script>
+  </body>
+</html>

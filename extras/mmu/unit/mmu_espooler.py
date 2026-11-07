@@ -372,7 +372,7 @@ class MmuESpooler:
             self.print_assist_gate = None
             self.mmu.log_trace("ESPOOLER: Cancelling in-print assist for gate %d" % pg)
             self._update_pwm(pg, 0, ESPOOLER_OFF)
-            self.operation[pg] = (ESPOOLER_OFF, 0)
+            self._record_operation(pg, ESPOOLER_OFF, 0)
 
             # Disable all triggers
             if self.mmu_unit.p.espooler_assist_burst_trigger:
@@ -417,9 +417,9 @@ class MmuESpooler:
                 self._update_pwm(g, 0, ESPOOLER_OFF)
 
                 if g != self.print_assist_gate:
-                    self.operation[g] = (ESPOOLER_OFF, 0)
+                    self._record_operation(g, ESPOOLER_OFF, 0)
                 else:
-                    self.operation[g] = (ESPOOLER_PRINT, 0)
+                    self._record_operation(g, ESPOOLER_PRINT, 0)
 
                 if cur_op != ESPOOLER_OFF:
                     self.mmu.log_debug("Espooler for gate %d turned off" % g)
@@ -436,7 +436,7 @@ class MmuESpooler:
                 conf_gates = self.assist_gates if operation == ESPOOLER_ASSIST else self.respool_gates
                 if g in conf_gates:
                     self._update_pwm(g, value, operation)
-                    self.operation[g] = (operation, value)
+                    self._record_operation(g, operation, value)
                     self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (g, operation, value))
                 else:
                     self.mmu.log_debug("Espooler for gate %d not configured to perform %s operation" % (g, operation))
@@ -458,7 +458,7 @@ class MmuESpooler:
                     self.print_assist_gate = g
 
                     self._update_pwm(g, 0, operation)
-                    self.operation[g] = (operation, 0)
+                    self._record_operation(g, operation, 0)
 
                     # Enable appropriate triggers
                     if self.mmu_unit.p.espooler_assist_burst_trigger:
@@ -470,6 +470,27 @@ class MmuESpooler:
 
                     # Ensure any existing burst is canceled
                     self._dequeue_espooler_burst(g)
+
+
+    def _record_operation(self, gate, operation, value):
+        previous_operation, previous_power = self.get_operation(gate)
+        self.operation[gate] = (operation, value)
+        if (previous_operation, previous_power) == (operation, value):
+            return
+        output = max(0, min(1, value)) / self.scale
+        if operation in (ESPOOLER_OFF, ESPOOLER_PRINT):
+            output = 0
+        if not self.is_pwm:
+            output = 1 if output > 0 else 0
+        was_running = previous_operation in (ESPOOLER_ASSIST, ESPOOLER_REWIND) and previous_power > 0
+        if not output and not was_running:
+            return
+        # A start while running replaces the previous direction/power setting.
+        self.mmu.movement_telemetry.state('espooler_started' if output else 'espooler_stopped',
+            unit=self.mmu_unit.name, gate=gate,
+            direction=operation if output else 'stopped',
+            requested_power=value if output else 0., output_power=output, pwm=self.is_pwm)
+
 
 
     def get_operation(self, gate):
@@ -506,6 +527,7 @@ class MmuESpooler:
         value = max(0, min(1, value)) / self.scale
         if not self.is_pwm:
             value = 1 if value > 0 else 0
+
 
         # Update PWM signal
         if self.get_operation(gate) != (operation, value):

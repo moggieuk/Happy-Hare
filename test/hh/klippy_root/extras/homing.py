@@ -169,6 +169,9 @@ class HomingMove:
         printer = self.printer
         reactor = printer.get_reactor()
         model = getattr(printer, 'harness_filament', None)
+        gate = self._gate()
+        # Sensor callbacks may alter sync while the homing move is in progress.
+        self.filament_motor_mode = model._motion_mode(gate, '') if model is not None and gate is not None else None
 
         # A SELECTOR homing move, or a filament one? MmuGenericRail.home() passes the
         # MmuStepper it is homing as our 'toolhead', so the selector axes published by the
@@ -338,7 +341,7 @@ class HomingMove:
 
     def _advance_filament(self, model, gate, total, speed, reason):
         for amount in self._pace_slices(total, speed):
-            model.advance(gate, amount, reason)
+            model.advance(gate, amount, reason, motor_mode=self.filament_motor_mode)
 
     def _move_selector(self, axis, delta, speed=None):
         """

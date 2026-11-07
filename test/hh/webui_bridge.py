@@ -20,12 +20,18 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import ast
 import base64
 import collections
 import hashlib
 import http.server
 import json
 import queue
+import pathlib
+import tempfile
+import re
+
+from test.hh.live_viewer import SourceViewer
 import socket
 import struct
 import sys
@@ -151,6 +157,10 @@ class WebUiBridge:
         self.started = time.time()
         self._next_status = 0.0
         self._server = None
+        self.viewer = SourceViewer(session)
+        self.restart_profile = None
+        self.profile_name = ""
+        self.uploads = tempfile.TemporaryDirectory(prefix="hh-viewer-")
 
     # -- lifecycle -------------------------------------------------------------
     def start(self):
@@ -183,12 +193,19 @@ class WebUiBridge:
                 self.send_header('Access-Control-Allow-Headers', '*')
                 self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
 
-        self._server = _Server((self.host, self.port), Handler)
+        try:
+            self._server = _Server((self.host, self.port), Handler)
+        except OSError:
+            self.viewer.close()
+            self.uploads.cleanup()
+            raise
         self.port = self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         return self
 
     def close(self):
+        self.viewer.close()
+        self.uploads.cleanup()
         for conn in list(self.clients):
             conn.close()
         if self._server is not None:
@@ -230,6 +247,29 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
+        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/spool.js', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js', '/sim/viewer/telemetry.js'):
+            filename = {'/sim/viewer/spool.js': 'spool.js', '/sim/viewer/app.js': 'app.js', '/sim/viewer/telemetry.js': 'telemetry.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
+            data = (pathlib.Path(__file__).parent / 'viewer' / filename).read_bytes()
+            handler.send_response(200)
+            handler.send_header('Content-Type', {'spool.js':'text/javascript', 'telemetry.js':'text/javascript', 'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
+            handler.send_header('Content-Length', str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
+            return
+        if parsed.path == '/sim/viewer/telemetry':
+            try:
+                after = int(params['after']) if 'after' in params else None
+            except (TypeError, ValueError):
+                after = None
+            reader = self.viewer.read_telemetry
+            data = json.dumps({'result': reader(after)}, allow_nan=False).encode()
+            handler.send_response(200)
+            handler.send_header('Content-Type', 'application/json')
+            handler.send_header('Cache-Control', 'no-store')
+            handler.send_header('Content-Length', str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
+            return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':
             method = 'server.database.get_item' if body is None else 'server.database.post_item'
@@ -472,6 +512,7 @@ class WebUiBridge:
     def rpc_printer_gcode_script(self, conn, params):
         script = params.get('script', '')
         self.gcode_store.append({'message': script, 'time': time.time(), 'type': 'command'})
+        self.notify('notify_gcode_command', [script])
         self.run_gcode(script)
         return 'ok'
 
@@ -488,3 +529,236 @@ class WebUiBridge:
         raise RpcError('Not available in the simulator')
 
     rpc_printer_restart = rpc_printer_emergency_stop = rpc_printer_firmware_restart
+
+    def rpc_sim_viewer_setup(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        units = self.session.mmu.mmu_machine.units
+        index = int(params.get('unit', 0))
+        if not 0 <= index < len(units):
+            raise RpcError('Unknown MMU unit')
+        return dict(connection_kind='simulator', profile=self.profile_name,
+                    profiles=[dict(name=p.name, description=p.description) for p in CONSOLE_PROFILES],
+                    units=[u.name for u in units], parameters=self.viewer.parameters(index),
+                    macro_parameters=self.viewer.macro_parameters())
+
+    def rpc_sim_viewer_configure(self, conn, params):
+        index = int(params.get('unit', 0))
+        setup = self.rpc_sim_viewer_setup(conn, {'unit':index})
+        name, value = params.get('name'), str(params.get('value', ''))
+        macro = params.get('macro')
+        if macro:
+            item = next((p for p in setup['macro_parameters'] if p['macro'] == macro and p['name'] == name), None)
+            if item is None:
+                raise RpcError('Macro variable is internal or unavailable')
+            try:
+                literal = ast.literal_eval(value)
+            except (ValueError, SyntaxError):
+                if isinstance(item['value'], str):
+                    literal = value
+                else:
+                    raise RpcError('Enter a Python literal, for example 52, True, or [1, 2]')
+            old = item['value']
+            compatible = (isinstance(literal, bool) if isinstance(old, bool) else
+                          isinstance(literal, (int, float)) and not isinstance(literal, bool)
+                          if isinstance(old, (int, float)) else
+                          isinstance(literal, (list, tuple)) if isinstance(old, list) else
+                          isinstance(literal, type(old)))
+            if not compatible:
+                raise RpcError('Keep the existing value type for this macro variable')
+            # Encode strings so quoting and newlines cannot create extra G-code commands.
+            def encode(v):
+                if isinstance(v, str):
+                    return "'" + ''.join('\\U%08x' % ord(c) for c in v) + "'"
+                if isinstance(v, tuple):
+                    return '(' + ','.join(encode(x) for x in v) + ',)' if v else '()'
+                if isinstance(v, list):
+                    return '[' + ','.join(encode(x) for x in v) + ']'
+                if isinstance(v, dict):
+                    return '{' + ','.join(encode(k)+':'+encode(x) for k,x in v.items()) + '}'
+                if v is None or isinstance(v, (bool, int, float)):
+                    return repr(v)
+                raise RpcError('Unsupported macro value')
+            command = 'SET_GCODE_VARIABLE MACRO=%s VARIABLE=%s VALUE="%s"' % (macro, name, encode(literal))
+        else:
+            available = {p['name'] for p in setup['parameters']}
+            if name not in available:
+                raise RpcError('Parameter is not available through MMU_TEST_CONFIG')
+            if any(c in value for c in '\r\n;'):
+                raise RpcError('Enter one parameter value')
+            command = 'MMU_TEST_CONFIG UNIT=%d %s=%s' % (index, name.upper(), json.dumps(value))
+        errors_before = len(self.session.errors)
+        self.run_gcode(command)
+        if len(self.session.errors) > errors_before:
+            raise RpcError('; '.join(self.session.errors[errors_before:]))
+        self.viewer.observe_configuration()
+        return self.rpc_sim_viewer_setup(conn, {'unit':index})
+
+    def rpc_sim_viewer_configure_buffer(self, conn, params):
+        import math
+        units = self.session.mmu.mmu_machine.units
+        index = int(params.get('unit', 0))
+        if not 0 <= index < len(units):
+            raise RpcError('Unknown MMU unit')
+        buffer = units[index].buffer
+        if buffer is None:
+            return {'available': False}
+        if 'values' in params:
+            values = params['values']
+            try:
+                maximum = float(values['buffer_maxrange'])
+                sensor_range = float(values['buffer_range'])
+                spring = values['buffer_spring_state']
+            except (KeyError, TypeError, ValueError):
+                raise RpcError('Supply numeric buffer ranges and a spring state')
+            if not all(math.isfinite(v) for v in (maximum, sensor_range)) or not 0 < sensor_range <= maximum:
+                raise RpcError('Use 0 < buffer_range <= buffer_maxrange')
+            if spring not in ('none', 'tension', 'neutral', 'compression'):
+                raise RpcError('Choose a spring state')
+            if (maximum, sensor_range, spring) == (buffer.buffer_maxrange,
+                    buffer.buffer_range, buffer.buffer_spring_state):
+                return self.rpc_sim_viewer_configure_buffer(conn, {'unit': index})
+            model = self.session.filament()
+            old_buffers = model.buffers.copy()
+            old = old_buffers.get(buffer.name)
+            buffer.buffer_maxrange = maximum
+            buffer.buffer_range = sensor_range
+            buffer.buffer_spring_state = spring
+            buffer.buffer_spring_state_num = {'none': None, 'tension': -1, 'neutral': 0, 'compression': 1}[spring]
+            model.buffers = {}
+            model.configure_buffers(units, model._selected_gate, model._drive_mode, model._gripped)
+            geometry = model.buffers[buffer.name]
+            for name, previous in old_buffers.items():
+                if name != buffer.name:
+                    model.buffers[name] = previous
+            for gate in geometry['gates']:
+                total = geometry['rest']
+                if old and (model._gripped(gate) or old['contact'][gate]):
+                    total += old['travel'][gate] + old['excess'][gate] - old['rest']
+                    geometry['contact'][gate] = old['contact'][gate]
+                travel = max(0., min(maximum, total))
+                geometry['travel'][gate] = travel
+                geometry['excess'][gate] = total-travel
+                model.unabsorbed[gate] = total-travel
+            for unit in units:
+                if unit.buffer is buffer:
+                    feedback = unit.sync_feedback
+                    if feedback.ctrl is not None:
+                        feedback.ctrl.close_log()
+                    feedback._init_controller()
+                    if feedback.active:
+                        feedback._reset_controller(self.session.reactor.monotonic())
+            model.sync()
+            self.viewer.observe_configuration()
+        return dict(available=True, buffer_maxrange=buffer.buffer_maxrange,
+                    buffer_range=buffer.buffer_range, buffer_spring_state=buffer.buffer_spring_state)
+
+    def rpc_sim_viewer_objects(self, conn, params):
+        """List distinct shared objects, or edit one supported runtime parameter."""
+        import math
+        kind = params.get('kind')
+        attributes = {'buffer': 'buffer', 'encoder': 'encoder', 'toolhead': 'toolhead_wrapper'}
+        if kind not in attributes:
+            raise RpcError('Unknown object type')
+        units = self.session.mmu.mmu_machine.units
+        objects = {}
+        for index, unit in enumerate(units):
+            obj = getattr(unit, attributes[kind], None)
+            if obj is not None:
+                item = objects.setdefault(obj.name, dict(obj=obj, units=[]))
+                item['units'].append(index)
+        encoder_fields = {
+            'encoder_resolution': ('resolution', 'float', 0, True),
+            'desired_headroom': ('desired_headroom', 'float', 0, True),
+            'detection_length': ('detection_length', 'float', 2, True),
+            'average_samples': ('average_samples', 'int', 1, False),
+            'calibration_length': ('calibration_length', 'float', 50, False),
+            'no_movement_samples': ('no_movement_samples', 'int', 1, False),
+            'flowrate_samples': ('flowrate_samples', 'int', 5, False),
+        }
+        if 'parameter' in params:
+            item = objects.get(params.get('name'))
+            if item is None:
+                raise RpcError('Object is not fitted')
+            obj, name = item['obj'], params['parameter']
+            if kind == 'toolhead':
+                allowed = {spec.name for spec in obj.p._SPECS if obj.p._is_available(spec)}
+                if name not in allowed:
+                    raise RpcError('Toolhead parameter is unavailable')
+                self.rpc_sim_viewer_configure(conn, dict(unit=item['units'][0], name=name, value=params.get('value')))
+            elif kind == 'encoder':
+                if name not in encoder_fields:
+                    raise RpcError('Encoder parameter is unavailable')
+                attr, value_kind, minimum, exclusive = encoder_fields[name]
+                try:
+                    value = float(params.get('value'))
+                except (TypeError, ValueError):
+                    raise RpcError('Enter a numeric value')
+                if not math.isfinite(value) or value < minimum or (exclusive and value == minimum) or (value_kind == 'int' and not value.is_integer()):
+                    raise RpcError('Invalid value for %s' % name)
+                if value_kind == 'int':
+                    value = int(value)
+                if name == 'encoder_resolution':
+                    distance = obj.get_distance()
+                    obj.set_resolution(value)
+                    obj.set_distance(distance)
+                else:
+                    setattr(obj, attr, value)
+                self.viewer.observe_configuration()
+            else:
+                raise RpcError('Use the buffer settings editor')
+        result = []
+        for name, item in objects.items():
+            obj = item['obj']
+            if kind == 'toolhead':
+                fields = [dict(name=spec.name, kind=spec.kind, value=getattr(obj.p, spec.name), choices=spec.choices)
+                          for spec in obj.p._SPECS if obj.p._is_available(spec)]
+            elif kind == 'encoder':
+                fields = [dict(name=key, kind=spec[1], value=getattr(obj, spec[0])) for key, spec in encoder_fields.items()]
+            else:
+                fields = []
+            result.append(dict(name=name, units=item['units'], parameters=fields))
+        return dict(objects=result)
+
+
+    def rpc_sim_viewer_sensor(self, conn, params):
+        name = params.get('name')
+        sensors = self.session.mmu.sensor_manager.get_sensor_states(all_sensors=True)
+        if name not in sensors or not isinstance(params.get('enabled'), bool):
+            raise RpcError('Choose an available sensor and enabled state')
+        self.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=%d' % (name, params['enabled']))
+        self.viewer.observe_configuration()
+        return {'enabled': bool(sensors[name][1].runout_helper.sensor_enabled)}
+
+    def rpc_sim_viewer_restart(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        if self.restart_profile is None:
+            raise RpcError('Profile restart requires the interactive console')
+        profile = params.get('profile')
+        if 'files' in params:
+            files = params['files']
+            if not isinstance(files, list) or not files or len(files) > 500:
+                raise RpcError('Supply a configuration directory with at most 500 files')
+            root = pathlib.Path(tempfile.mkdtemp(dir=self.uploads.name))
+            total = 0
+            for item in files:
+                name, text = item['name'], item['text']
+                path = pathlib.PurePosixPath(name)
+                if path.is_absolute() or '..' in path.parts or not name.endswith('.cfg'):
+                    raise RpcError('Supply relative .cfg filenames')
+                total += len(text.encode())
+                if total > 5_000_000:
+                    raise RpcError('Configuration upload exceeds 5 MB')
+                for inc in re.findall(r'(?im)^\s*\[include\s+([^]]+)\]', text):
+                    if pathlib.PurePosixPath(inc).is_absolute() or '..' in pathlib.PurePosixPath(inc).parts:
+                        raise RpcError('Includes must stay within the uploaded configuration')
+                target = root / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text)
+            roots = list(root.rglob('printer.cfg'))
+            if len(roots) != 1:
+                raise RpcError('Upload a directory containing one printer.cfg and its mmu directory')
+            profile = str(roots[0].parent)
+        elif profile not in {p.name for p in CONSOLE_PROFILES}:
+            raise RpcError('Choose an available simulator profile')
+        self.restart_profile(profile)
+        return {'profile': self.profile_name}

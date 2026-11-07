@@ -59,6 +59,7 @@ class MmuLoadCommand(BaseCommand):
         if not extruder_only:
             if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
 
+        mmu._toolchange_event(gcmd)
         mmu.fix_started_state()
 
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
