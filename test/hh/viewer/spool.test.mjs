@@ -35,3 +35,13 @@ test('rotation changes the face while the direction arrow stays stationary',()=>
   assert.match(arrow(a),/scale\(1 -1\)/);
   assert.doesNotMatch(renderSpool(options),/data-part="espooler-direction"/);
 });
+
+
+test('percentage labels are optional, centered, and bounded from 0 to 100',()=>{
+  assert.doesNotMatch(renderSpool(options),/data-part="spool-fill-label"/);
+  for (const [fillPercent,label] of [[0,0],[45.6,46],[100,100]]) {
+    const svg=renderSpool({...options,fillPercent,showFillPercent:true});
+    assert.match(svg,new RegExp(`>${label}%</text>`));
+    assert.match(svg,/data-part="spool-fill-label"[^>]*text-anchor="middle"/);
+  }
+});
