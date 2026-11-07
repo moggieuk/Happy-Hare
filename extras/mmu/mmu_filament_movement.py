@@ -1922,7 +1922,7 @@ class MmuFilamentMovement:
 
             length = max(
                 d
-                - u.extruder_wrapper.filament_remaining
+                - u.extruder_wrapper.filament_cut_fragment
                 - u.toolhead_wrapper.p.toolhead_residual_filament
                 - u.toolhead_wrapper.p.toolhead_ooze_reduction
                 - retracted,
@@ -1970,7 +1970,7 @@ class MmuFilamentMovement:
                 if self.gate_selected >= 0
                 else UNKNOWN_FILAMENT_COLOR
             )
-            u.extruder_wrapper.set_filament_remaining(0., color)
+            u.extruder_wrapper.set_filament_cut_fragment(0., color)
             if not unretract_on_restore:
                 self._set_park_retracted_length(0.)
                 self._persist_park_retraction()
@@ -3198,7 +3198,7 @@ class MmuFilamentMovement:
                 if self.gate_selected >= 0
                 else UNKNOWN_FILAMENT_COLOR
             )
-            u.extruder_wrapper.set_filament_remaining(remaining, color)
+            u.extruder_wrapper.set_filament_cut_fragment(remaining, color)
 
             cut_fragment = remaining if reported else 0.
             self.log_trace_exit(f"form_tip_standalone() => (detected={detected}, cut_fragment={cut_fragment})")
@@ -3507,7 +3507,7 @@ class MmuFilamentMovement:
                 msg = (
                     f"Suggested purge volume of {self.toolchange_purge_volume:.1f}mm{UI_CUBE} calculated from:\n"
                     f"- toolhead_residual_filament: {u.toolhead_wrapper.p.toolhead_residual_filament:.1f}mm\n"
-                    f"- filament_remaining (previous cut fragment): {u.extruder_wrapper.filament_remaining:.1f}mm\n"
+                    f"- filament_cut_fragment (previous cut): {u.extruder_wrapper.filament_cut_fragment:.1f}mm\n"
                 )
                 toolchange_volume_str = f"{self._slicer_purge_volume:.1f}mm{UI_CUBE}"
                 msg += (

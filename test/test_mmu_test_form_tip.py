@@ -76,7 +76,7 @@ class TestTipForming(TestFormTipCase):
 
     def test_ejects_after_the_macro_and_records_no_fragment(self):
         extruder = self.run_test_form_tip()
-        self.assertEqual(extruder.filament_remaining, 0.)
+        self.assertEqual(extruder.filament_cut_fragment, 0.)
 
 
 class TestCutterAfterExtruderGears(TestFormTipCase):
@@ -85,7 +85,7 @@ class TestCutterAfterExtruderGears(TestFormTipCase):
     def test_records_the_fragment(self):
         extruder = self.run_test_form_tip()
         # blade_pos 37.5 - retract_length 32.5: the load filled the nozzle and nothing is retracted
-        self.assertAlmostEqual(extruder.filament_remaining, 5.0, places=1)
+        self.assertAlmostEqual(extruder.filament_cut_fragment, 5.0, places=1)
 
 
 del TestFormTipCase
