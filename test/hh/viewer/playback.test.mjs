@@ -344,20 +344,20 @@ test('gate selection eases between lanes without interpolating physical filament
  const before={gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
  const state={...before,gate:1};
  const event={kind:'gate_changed',before,state};
- assert.equal(duration(event),3500);
+ assert.equal(duration(event),3100);
  const frame=t=>playbackFrame(event,t,duration(event)).state;
- assert.equal(frame(1050).gate_full_opacity,.5);
- assert.equal(frame(1050).gate_focus,0);
- assert.equal(frame(1750).gate_full_opacity,0);
- assert.equal(frame(1750).gate_focus,.5);
- assert.equal(frame(2450).gate_full_opacity,.5);
- assert.equal(frame(2450).gate_focus,1);
- assert.equal(frame(2450).gate_retraction,1);
- assert.equal(frame(2850).gate_full_opacity,1);
- assert.equal(frame(2850).gate_retraction,.5);
- assert.deepEqual(playbackFrame(event,499,duration(event)).state,{...before,gate_full_opacity:1,mmu_gripped:false});
- assert.deepEqual(playbackFrame(event,3000,duration(event)).state,{...state,gate_full_opacity:1,mmu_gripped:false});
- assert.deepEqual(playbackFrame(event,3499,duration(event)).state,{...state,gate_full_opacity:1,mmu_gripped:undefined});
+ assert.equal(frame(850).gate_full_opacity,.5);
+ assert.equal(frame(850).gate_focus,0);
+ assert.equal(frame(1550).gate_full_opacity,0);
+ assert.equal(frame(1550).gate_focus,.5);
+ assert.equal(frame(2250).gate_full_opacity,.5);
+ assert.equal(frame(2250).gate_focus,1);
+ assert.equal(frame(2250).gate_retraction,1);
+ assert.equal(frame(2650).gate_full_opacity,1);
+ assert.equal(frame(2650).gate_retraction,.5);
+ assert.deepEqual(playbackFrame(event,299,duration(event)).state,{...before,gate_full_opacity:1,mmu_gripped:false});
+ assert.deepEqual(playbackFrame(event,2800,duration(event)).state,{...state,gate_full_opacity:1,mmu_gripped:false});
+ assert.deepEqual(playbackFrame(event,3099,duration(event)).state,{...state,gate_full_opacity:1,mmu_gripped:undefined});
  assert.equal(interpolate(event,0),before);
  assert.equal(interpolate(event,1),state);
  assert.equal(interpolate(event,.5).gate_focus,.5);
@@ -689,7 +689,7 @@ test('gate swap restores its starting grip in either playback direction',()=>{
   const before={gate:0,tips:[-20,-30],mmu_gripped:!grip};
   const state={...before,gate:1,mmu_gripped:!grip};
   const event={kind:'gate_changed',before,state};
-  for (const elapsed of [0,100,300,800,1050,1750,2450,3000,3300,3500]) {
+  for (const elapsed of [0,100,300,600,850,1550,2250,2800,2900,3100]) {
    const frame=playbackFrame(event,reverse ? duration(event)-elapsed : elapsed,duration(event),grip);
    const time=reverse ? duration(event)-elapsed : elapsed;
    assert.equal(frame.state.mmu_gripped,time===duration(event) ? !grip : elapsed>=250 && elapsed<duration(event)-250 ? false : grip);

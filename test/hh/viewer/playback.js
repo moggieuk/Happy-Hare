@@ -26,7 +26,7 @@ export function spoolGrid(gates, focus, maxColumns=7) {
     offset:slot%columns-(columns-1)/2-Math.max(0,columns-7)/2,lift:10*Math.max(0,1-Math.abs(index-focus))}))};
 }
 
-const gateTiming={hold:500,retract:300,fade:500,slide:900,advance:300};
+const gateTiming={hold:300,retract:300,fade:500,slide:900,advance:300};
 const gateDuration=2*gateTiming.hold+gateTiming.retract+2*gateTiming.fade+gateTiming.slide+gateTiming.advance;
 
 // Residual contact melts only the immersed hair; retain at least 5mm.
@@ -401,22 +401,25 @@ export function dimensionParameter(state, label) {
 // Keep the encoder parking reference through bookkeeping state changes. Fade
 // its schematic offset along the Bowden so the toolhead landmarks stay exact.
 export function encoderFilamentDistance(events, event, state, tip, pathDistance, encoderDistance) {
-  let anchor = null;
+  let anchor = null, encoderHome=false;
   for (const item of events) {
     if (item.seq > event.seq) break;
     const value = item.state;
-    if (value?.gate !== state.gate || value.unit !== state.unit || item.kind === 'movement') continue;
+    if (value?.gate !== state.gate || value.unit !== state.unit) continue;
+    if (item.encoder_rehome) { anchor=value; encoderHome=true; continue; }
+    if (item.kind === 'movement') continue;
     const pos = value.filament_pos;
     const manual = item.telemetry?.source === '_MMU_TEST';
     if (manual || item.kind === 'session' || item.kind === 'gate_changed' || (!anchor && [0,1].includes(pos))) {
       anchor = [0,1,2].includes(pos) ? value : null;
+      encoderHome=false;
     } else if (!anchor && pos === 2) anchor = value;
   }
   if (!anchor) return pathDistance(tip);
   const anchorTip = anchor.tips[state.gate];
   const encoder = state.layout.mmu_encoder ?? 20;
   const overshoot = Math.max(0, anchor.encoder_reference?.overshoot || 0);
-  const origin = encoderDistance + (anchor.filament_pos === 0 ? -18
+  const origin = encoderDistance + (encoderHome ? pathDistance(anchorTip)-pathDistance(encoder) : anchor.filament_pos === 0 ? -18
     : pathDistance(encoder + overshoot) - pathDistance(encoder));
   const start = pathDistance(anchorTip), end = pathDistance(state.layout.extruder_entry);
   const position = pathDistance(tip);
@@ -627,7 +630,7 @@ export function orderedSteps(records) {
       steps.push({...motion,seq:record.seq,time:record.time,
         state:{...motion.state,espoolers:motion.before.espoolers}});
     } else if (motion && record.seq === motion.seq) {
-      steps.push({seq:record.seq,time:record.time,kind:'move_completed',
+      steps.push({seq:record.seq,time:record.time,kind:'move_completed',internal:true,during_move:true,
         label:motion.homing ? (motion.homed ? 'Homing completed' : 'Homing did not trigger') : 'Move completed',
         state:motion.state,telemetry:motion.telemetry.outcome});
       motion=null;
