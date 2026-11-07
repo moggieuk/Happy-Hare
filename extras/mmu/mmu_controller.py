@@ -634,7 +634,7 @@ class MmuController(MmuFilamentMovement):
         blade_pos = float(cut_vars['blade_pos'])
         # As _MMU_CUT_TIP limits it: to the retract left after what is already retracted
         if live:
-            retracted = (self.park_retracted_length() + u.extruder_wrapper.filament_remaining
+            retracted = (self.park_retracted_length() + u.extruder_wrapper.filament_cut_fragment
                          + toolhead.toolhead_residual_filament)
         else:
             retracted = toolhead.toolhead_residual_filament + self.toolchange_retract
@@ -960,7 +960,7 @@ class MmuController(MmuFilamentMovement):
         )
 
         status = self.get_status(0)
-        if status['filament_remaining']:
+        if status['filament_cut_fragment']:
             residual_filament_color = status['filament_remaining_color']
         else:
             residual_filament_color = ""

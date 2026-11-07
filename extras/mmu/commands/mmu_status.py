@@ -134,7 +134,7 @@ class MmuStatusCommand(BaseCommand):
             self.calibrated_bowden_length = mmu_unit.calibrator.get_bowden_length()
             self.encoder_clog_detection_length = mmu.encoder().get_effective_clog_detection_length(mmu_unit) if mmu.has_encoder() else 0.
             self.toolchange_retract = mmu.toolchange_retract
-            self.filament_remaining = mmu_unit.extruder_wrapper.filament_remaining
+            self.filament_cut_fragment = mmu_unit.extruder_wrapper.filament_cut_fragment
             self.buffer_range = mmu_unit.buffer.buffer_range if mmu_unit.has_buffer() else 0.
             unit_suffix = f" (UNIT {mmu_unit.unit_index})" if mmu.mmu_machine.num_units > 1 else ""
 
@@ -259,14 +259,14 @@ class MmuStatusCommand(BaseCommand):
                 lines.append(
                     f"\n- Extruder (synced) loads by homing a maximum of {move} "
                     "to TOOLHEAD sensor before moving the last "
-                    f"{self._f_calc('toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining')} "
+                    f"{self._f_calc('toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_cut_fragment')} "
                     "to the nozzle"
                 )
 
             else:
                 lines.append(
                     "\n- Extruder (synced) loads by moving "
-                    f"{self._f_calc('toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining')} "
+                    f"{self._f_calc('toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_cut_fragment')} "
                     "to the nozzle"
                 )
 

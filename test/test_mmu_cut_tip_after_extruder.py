@@ -8,7 +8,7 @@
 #
 # The fake gcode_move ignores E, so the extruder doesn't move during the macro. _MMU_PARK doesn't
 # run, so the only retraction is the 2mm toolchange retraction the standalone load ends with: the
-# macro retracts 2mm less and filament_remaining is park_pos - residual - 2.
+# macro retracts 2mm less and filament_cut_fragment is park_pos - residual - 2.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_cut_tip_after_extruder
 #
@@ -114,14 +114,14 @@ class AfterExtruderGoldenCase(unittest.TestCase):
         extruder = self.mmu.mmu_unit(0).extruder_wrapper
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertAlmostEqual(self.mmu.drive().get_filament_position(), self.UNLOAD_DRIVE_POS, places=2)
-        self.assertAlmostEqual(extruder.filament_remaining, 34.5)
+        self.assertAlmostEqual(extruder.filament_cut_fragment, 34.5)
 
         self.moves.clear()
         self.hh.run_gcode('MMU_LOAD')
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.moves, self.LOAD_MOVES)
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
-        self.assertEqual(extruder.filament_remaining, 0.)
+        self.assertEqual(extruder.filament_cut_fragment, 0.)
 
 
 class TestAfterExtruderEntrySensor(AfterExtruderGoldenCase):
