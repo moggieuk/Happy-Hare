@@ -206,11 +206,30 @@ class TestGateMapCommand(MotionTestCase):
         self.assertEqual(mmu.gate_spool_id[1], -1)
         self.assertEqual(mmu.gate_spool_rfid[1], '')
 
-        # Clearing is transition-based: metadata may intentionally be added later
+        # Only AVAILABLE=0 clears: metadata may intentionally be added later
         # without first changing the gate away from EMPTY.
         self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=PETG RFID=deadbeef')
         self.assertEqual(mmu.gate_material[1], 'PETG')
         self.assertEqual(mmu.gate_spool_rfid[1], 'DEADBEEF')
+
+    def test_available_0_clears_a_gate_already_empty(self):
+        mmu = self.hh.mmu
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=1 MATERIAL=PLA COLOR=ff0000 SPOOLID=7')
+        mmu.gate_maps.set_gate_status(1, GATE_EMPTY, clear_attributes=False)
+
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=0')
+
+        self.assertEqual(mmu.gate_material[1], '')
+        self.assertEqual(mmu.gate_color[1], '')
+        self.assertEqual(mmu.gate_spool_id[1], -1)
+
+    def test_gate_map_without_temp_keeps_the_temperature(self):
+        mmu = self.hh.mmu
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 TEMP=240')
+
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=1')
+
+        self.assertEqual(mmu.gate_temperature[1], 240)
 
     def test_gate_map_rejects_invalid_or_multiple_rfid_values(self):
         mmu = self.hh.mmu

@@ -308,13 +308,14 @@ class MmuGateMapCommand(BaseCommand):
                 vendor = gcmd.get('VENDOR', None)
                 color = gcmd.get('COLOR', None)
                 spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
-                temperature = gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp))
+                temperature = gcmd.get_int('TEMP', None)
                 speed_override = gcmd.get_int('SPEED', None, minval=10, maxval=150)
                 remaining_weight = gcmd.get_int('WEIGHT', None, minval=-1)
                 initial_weight = gcmd.get_int('INITIAL_WEIGHT', None, minval=-1)
                 rfid = gcmd.get('RFID', None)
 
-                if available == GATE_EMPTY and mmu.gate_status[gate_idx] != GATE_EMPTY:
+                # An explicit AVAILABLE=0 means no filament, even if the gate is already EMPTY
+                if available == GATE_EMPTY and gcmd.get('AVAILABLE', None) is not None:
                     mmu.gate_maps.clear_gate_attributes(gate_idx)
                     ids_dict[gate_idx] = -1
 
