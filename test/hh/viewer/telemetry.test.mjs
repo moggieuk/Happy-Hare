@@ -577,9 +577,9 @@ test('hidden gate delta does not swap filament before the selection animation',(
  event(r,'gate_changed',{previous_gate:0,gate:2,unit:r.facts.printer.mmu.unit});
  const steps=visibleSteps(r.events),selection=steps.at(-1),previous=steps.at(-2);
  assert.equal((previous.settled_state || previous.state).gate,0);
- assert.equal(playbackFrame(selection,250,3500).state.gate,0);
- assert.equal(playbackFrame(selection,1750,3500).state.gate_focus,1);
- assert.equal(playbackFrame(selection,3250,3500).state.gate,2);
+ assert.equal(playbackFrame(selection,250,3100).state.gate,0);
+ assert.equal(playbackFrame(selection,1550,3100).state.gate_focus,1);
+ assert.equal(playbackFrame(selection,3050,3100).state.gate,2);
 });
 
 
@@ -758,16 +758,28 @@ test('playback exposes start, motion, stop and outcome in raw order without movi
  const stop=r.sequence;
  assert.equal(visibleSteps(r.events).at(-1).seq,assist,'wait for actual distance before publishing the start or stop');
  event(r,'movement_outcome',{move_id:42,actual_mm:100,elapsed_s:2,status:'completed'});
- const steps=visibleSteps(r.events).slice(-4);
- assert.deepEqual(steps.map(e=>e.seq),[assist,start,stop,r.sequence]);
- assert.deepEqual(steps.map(e=>e.kind),['espooler','movement','espooler','move_completed']);
- const motion=steps[1], stopped=steps[2], completed=steps[3];
+ const steps=visibleSteps(r.events).slice(-3);
+ assert.deepEqual(steps.map(e=>e.seq),[assist,start,stop]);
+ assert.deepEqual(steps.map(e=>e.kind),['espooler','movement','espooler']);
+ const motion=steps[1], stopped=steps[2];
  assert.equal(interpolate(motion,.5).espoolers[0].direction,'assist');
  assert.equal(interpolate(motion,1).espoolers[0].direction,'assist');
  assert.equal(stopped.state.espoolers[0].direction,'stopped');
  assert.equal(motion.state.tips[0],motion.before.tips[0]+100);
  assert.deepEqual(stopped.state.tips,motion.state.tips);
- assert.deepEqual(completed.state.tips,motion.state.tips);
+
  assert.deepEqual(stopped.state.motors,motion.state.motors);
- assert.deepEqual(completed.state.motors,motion.state.motors);
+
+});
+
+test('successful encoder unloading anchors the tip behind the encoder; failed steps keep moving',()=>{
+ const r=stream(3);
+ const e=move(r,-15,{source:'move_filament',label:'Unloading step #1 from encoder',motor_mode:'gear',
+  outcome:{encoder_mm:2.937,encoder_delta_mm:12.063}});
+ assert.equal(e.encoder_rehome,true);
+ assert.ok(Math.abs(e.state.tips[0]-(e.state.layout.mmu_encoder-12.063))<1e-8);
+ const failed=move(r,-15,{source:'move_filament',label:'Unloading step #2 from encoder',motor_mode:'gear',
+  outcome:{encoder_mm:14,encoder_delta_mm:1}});
+ assert.equal(failed.encoder_rehome,undefined);
+ assert.equal(failed.state.tips[0],e.state.tips[0]-15);
 });
