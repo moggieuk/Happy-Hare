@@ -359,6 +359,16 @@ export class TelemetryReplay {
         if (tip+travel < gears) this.excess[gate]=0;
       }
       let next=tip+travel;
+      // Encoder reverse-homing is a series of ordinary moves; its shortfall
+      // identifies clearance, using Happy Hare's 20% step threshold.
+      if (start.source === 'move_filament' && /^Unloading step #\d+ from encoder$/.test(start.label || '')
+          && state.encoder_reference?.endstop === 'encoder' && d < 0
+          && finite(outcome.encoder_delta_mm) && outcome.encoder_delta_mm >= Math.abs(d)*.2) {
+        next=state.layout.mmu_encoder-outcome.encoder_delta_mm;
+        details.homing_anchor=true;
+        details.encoder_rehome=true;
+      }
+
       const target=state.active_sensors.find(n=>n === start.endstop || short(n) === short(start.endstop || '') || short(n) === `${start.endstop}_${gate}`);
       if (start.homing && outcome.homed && target) {
         const sensor=state.sensors[target];
