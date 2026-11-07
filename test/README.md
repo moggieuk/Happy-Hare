@@ -898,6 +898,14 @@ and `emu` console profiles using `MMU_LOAD`, `MMU_UNLOAD`, then `MMU_LOAD`.
 They contain source records only. Tests compare batched live reduction with JSONL
 loading and exercise every interpolated movement endpoint.
 
+The optional spool browser regression compares retained SVG updates with fresh
+renders across styles, fill levels, viewing angles, and rotation. With Playwright
+and Chromium available, run `node --test test/hh/viewer/spool.browser.mjs`.
+Set `PLAYWRIGHT_MODULE` to its module path and `CHROME_PATH` to a Chrome executable
+when using external installations. It also checks that motion preserves geometry
+nodes and unchanged props do not write to the DOM.
+
+
 ### Driving a real Mainsail or Fluidd — the web API
 
 At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
