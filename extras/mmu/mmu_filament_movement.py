@@ -368,8 +368,8 @@ class MmuFilamentMovement:
             mark_empty_on_failure: If True, a failed pickup marks the gate EMPTY and sets
                 filament position to UNLOADED. If False, the gate's sensors decide: an
                 untouched lane nothing can see raises MmuGateHomingMiss and is still EMPTY,
-                anything else leaves position UNKNOWN. Either way a gate concluded EMPTY
-                has its attributes cleared.
+                anything else leaves position UNKNOWN. A gate concluded EMPTY keeps its
+                attributes if True and has them cleared if False.
 
         Returns:
             float: Overshoot past the gate homing point that later stages should account for.
@@ -527,8 +527,11 @@ class MmuFilamentMovement:
             abs(measured) <= motion_floor
             and self.gate_occupancy(gate) == OCCUPANCY_UNKNOWN)
         if empty:
-            # Clears: the recorded spool must not outlive a lane concluded empty.
-            self.gate_maps.set_gate_status(gate, GATE_EMPTY)
+            # A missed load pickup doesn't prove the spool is gone, so its attributes are
+            # kept. MMU_CHECK_GATE (mark_empty_on_failure=False) exists to verify the map
+            # and clears them.
+            self.gate_maps.set_gate_status(gate, GATE_EMPTY,
+                                           clear_attributes=not mark_empty_on_failure)
             self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         msg = "Couldn't pick up filament at gate %d" % gate

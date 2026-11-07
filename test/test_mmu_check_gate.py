@@ -359,7 +359,7 @@ class TestCheckGateSafety(EndlessSpoolTestCase):
             self.hh.mmu._load_gate(allow_retry=False)
         self.assertEqual(self.hh.mmu.filament_pos, 0)
         self.assertEqual(self.hh.mmu.gate_status[0], 0)
-        self.assertEqual(self.hh.mmu.gate_spool_id[0], -1)
+        self.assert_metadata_preserved()
 
 
 class TestCheckGateEncoderFailure(unittest.TestCase):
