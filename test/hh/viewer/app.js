@@ -1,4 +1,4 @@
-import { renderSpool } from './spool.js';
+import { SpoolRenderer, renderSpool } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import { orderedSteps, virtualSelectorLayout, spoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
@@ -430,7 +430,20 @@ function animationNow() {
 let displayed = null, playing = null, played = 0, resumeAt = 0;
 const spoolAngles=new Map(), spoolArrowVisibility=new Map(), spoolDirections=new Map();
 let spoolLastFrame=null, spoolSession=null;
-// Keep the first neighboring lane clear of the selected spool; others stay evenly spaced.
+const spoolRenderers=new Map();
+let renderedSpoolState=null;
+function spoolMotion(index,operation) {
+  const active=operation?.output_power>0 && ['assist','rewind'].includes(operation.direction);
+  const visibility=spoolArrowVisibility.get(index) ?? (active ? 1 : 0);
+  return {rotation:spoolAngles.get(index) || 0,
+    arrowOpacity:visibility*visibility*(3-2*visibility),
+    direction:active ? operation.direction : spoolDirections.get(index)};
+}
+function updateSpoolMotion() {
+  for (const [index,renderer] of spoolRenderers)
+    renderer.updateMotion(spoolMotion(index,renderedSpoolState?.espoolers?.[index]));
+}
+// Gate lanes and spool columns share the same spacing.
 const gateLaneX=offset=>620+offset*Number($('spool-spacing').value);
 let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null;
 function currentIndex() {
@@ -522,8 +535,12 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
   return markup;
 }
 
-function draw() {
+// UI, telemetry, and animation changes share the existing frame loop.
+let sceneDirty=false;
+function draw() { sceneDirty=true; }
+function renderScene() {
   if (!events.length) return;
+  const spoolRequests=new Map();
   cursor = Math.max(0, Math.min(cursor, events.length - 1));
   const running = live && !paused && (playing || played < events.at(-1).seq);
   $("replay").disabled = pauseAfterStep || (!running && currentIndex() >= events.length - 1);
@@ -542,6 +559,7 @@ function draw() {
   const
     s = live && displayed ? displayed : (e.settled_state || e.state),
     gate = s.gate >= 0 ? s.gate : 0;
+  renderedSpoolState=s;
   let tip = s.visual_tips?.[gate] ?? s.tips[gate] ?? -1000;
   const {entry,end,height:toolheadHeight,sensorEntry,sensorGap} = toolheadDrawingRange(s);
   const eventsBehind = events.length - 1 - events.indexOf(e);
@@ -604,7 +622,7 @@ function draw() {
       branches+=`<path data-part="virtual-gate-tube" data-gate="${branch.gate}" d="${branchPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${branchPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/>`;
       if (s.gate_status?.[branch.gate]!==0 && spoolFill(s,branch.gate)>0) {
         const cone=renderCone && s.tip_shapes?.[branch.gate] === 'cone';
-        branches+=`<path data-part="virtual-parked-filament" data-gate="${branch.gate}" d="M${branch.x} 470 V${virtual.bottom-virtual.parkDistance+(cone ? toolheadHeight/(end-entry) : 0)}" fill="none" stroke="#${s.gate_colors[branch.gate] || '808182'}" stroke-width="7"/>`;
+        branches+=`<path data-part="virtual-parked-filament" data-gate="${branch.gate}" mask="url(#bowden-end-fade)" d="M${branch.x} 484 V${virtual.bottom-virtual.parkDistance+(cone ? toolheadHeight/(end-entry) : 0)}" fill="none" stroke="#${s.gate_colors[branch.gate] || '808182'}" stroke-width="7"/>`;
         if (cone && branch.gate !== gate) {
           parkedTips.push(branch);
           branches+=`<!--parked-tip-${branch.gate}-->`;
@@ -758,44 +776,31 @@ function draw() {
     const enclosureBottom=659+lastRowY;
     $('scene').setAttribute('viewBox',`0 0 ${Math.max(850,enclosureRight+14)} ${enclosureBottom+21}`);
     const coverPath=`M${enclosureLeft} ${585+lastRowY} V510 Q${enclosureLeft} 470 ${enclosureLeft+40} 470 H${enclosureRight-40} Q${enclosureRight} 470 ${enclosureRight} 510 V${585+lastRowY} Z`;
-    svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".14"/><stop offset=".25" stop-color="white" stop-opacity=".025"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".13" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${coverPath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${coverPath}"/></clipPath></defs><path d="${coverPath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>`;
+    svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".14"/><stop offset=".25" stop-color="white" stop-opacity=".025"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".13" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${coverPath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${coverPath}"/></clipPath></defs>`;
+    // Put the enclosure behind the short filament fade; the glass stays above it.
+    svg = `<path d="${coverPath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>` + svg;
     svg += '<defs><filter id="spool-separation-shadow" x="-30%" y="-20%" width="160%" height="145%"><feDropShadow dx="1.2" dy=".8" stdDeviation=".6" flood-color="#000" flood-opacity=".65"/></filter></defs><g id="espooler-indicators" clip-path="url(#spool-cover-clip)">';
     const spoolStyle=document.querySelector('input[name=spool-style]:checked').value;
-    const spoolDepth=34/3, spoolHubRadius=6.4, spoolScale=3.3;
+    const spoolDepth=34/3, spoolScale=3.3;
 
     for (const {index,offset,row,lift} of visible) {
       const operation=s.espoolers?.[index];
       const active=operation?.output_power>0 && ['assist','rewind'].includes(operation.direction);
-      const visibility=spoolArrowVisibility.get(index) ?? (active ? 1 : 0);
-      const fade=visibility*visibility*(3-2*visibility);
       // Offset the winding slightly right of the filament lane.
       const x=gateLaneX(offset)+4-spoolDepth*Math.sin(spoolViewAngle)*spoolScale/2;
       const y=549.6+row*rowSpacing-lift;
-      const angle=spoolAngles.get(index) || 0;
       const color=s.gate_colors[index] || '808182';
       const percent=spoolFill(s,index);
       const title=`Gate ${index} · ${percent}% filament · ${active ? operation.direction+' · '+Math.round(operation.output_power*100)+'% output' : 'Stopped'}`;
       const shelfY=575+row*rowSpacing;
       svg += `<defs><linearGradient id="spool-shelf-edge-${index}" gradientUnits="userSpaceOnUse" x1="0" y1="${shelfY-3}" x2="0" y2="${shelfY}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="spool-shelf-mask-${index}" maskUnits="userSpaceOnUse" x="${x-80}" y="${y-70}" width="160" height="150"><rect x="${x-80}" y="${y-70}" width="160" height="150" fill="url(#spool-shelf-edge-${index})"/></mask></defs><g mask="url(#spool-shelf-mask-${index})">`;
       svg += `<g data-part="espooler" data-gate="${index}" data-active="${active}" data-fill-percent="${percent}" data-tooltip="${escape(title)}" transform="translate(${x} ${y}) scale(${spoolScale})" filter="url(#spool-separation-shadow)">`;
-      svg += renderSpool({idPrefix:`gate-${index}`, style:spoolStyle, color,
-        fillPercent:percent, viewAngle:spoolViewAngle, rotation:angle,
-        arrowOpacity:fade, direction:active ? operation.direction : spoolDirections.get(index),
+      spoolRequests.set(index,{idPrefix:`gate-${index}`, style:spoolStyle, color,
+        fillPercent:percent, showFillPercent:true, viewAngle:spoolViewAngle, ...spoolMotion(index,operation),
         glow:index===s.gate ? Math.max(0,1-Math.abs(index-focus)) : 0});
       svg += '</g></g>';
     }
     svg += '</g>';
-    if (virtual) {
-      svg += '<g data-part="virtual-spool-filaments" clip-path="url(#spool-cover-clip)">';
-      for (const {index,offset,row,lift} of visible) {
-        const percent=spoolFill(s,index);
-        if (s.gate_status?.[index] === 0 || percent <= 0) continue;
-        const windingRadius=Math.sqrt(spoolHubRadius**2+(16**2-spoolHubRadius**2)*percent/100);
-        const windingTop=549.6+row*rowSpacing-lift-windingRadius*spoolScale;
-        svg += `<path data-gate="${index}" d="M${gateLaneX(offset)} ${470+row*rowSpacing} V${windingTop}" fill="none" stroke="#${s.gate_colors[index] || '808182'}" stroke-width="7" opacity="${index === gate ? .4 : .15}"/>`;
-      }
-      svg += '</g>';
-    }
     svg += `<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8"/><rect data-part="spool-cabinet" x="${enclosureLeft}" y="${575+lastRowY}" width="${enclosureRight-enclosureLeft}" height="84" rx="6" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`;
     for (let row=0; row<grid.rows-1; row++) {
       svg += `<rect data-part="spool-row-shelf" x="${enclosureLeft}" y="${575+row*rowSpacing}" width="${enclosureRight-enclosureLeft}" height="49" rx="5" fill="url(#spool-shelf-fade)"/>`;
@@ -839,7 +844,7 @@ function draw() {
     svg=svg.replace(`<!--parked-tip-${branch.gate}-->`,shapedTip(virtual.parkDistance,
       s.gate_colors[branch.gate] || '808182','parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
   }
-  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="474" y2="502"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="474" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="226" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="470" y2="484"><stop stop-color="#808080"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="470" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
     const firstBranch=virtual?.branches[0];
     const syncY=435;
@@ -1037,6 +1042,16 @@ function draw() {
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
   $("scene").innerHTML = svg;
+  for (const [index] of spoolRenderers) {
+    if (!spoolRequests.has(index)) spoolRenderers.delete(index);
+  }
+  for (const host of $('scene').querySelectorAll('[data-part="espooler"]')) {
+    const index=Number(host.dataset.gate);
+    let renderer=spoolRenderers.get(index);
+    if (!renderer) { renderer=new SpoolRenderer(host); spoolRenderers.set(index,renderer); }
+    renderer.update(spoolRequests.get(index));
+    renderer.mount(host);
+  }
   const encoderMarker=$("encoder-marker");
   if (encoderMarker) $("scene").append(encoderMarker);
   const excessLabel = $("bowden-excess");
@@ -1221,21 +1236,26 @@ $("live").onclick = followLive;
 $("timeline").oninput = () => seek(Number($("timeline").value));
 $("compress-bowden").onchange = () => renderTrace();
 $("show-filament-shape").onchange = draw;
+function spoolPreview(style,idPrefix) {
+  return `<svg viewBox="0 0 40 44" aria-hidden="true"><g transform="translate(14 22)">${renderSpool({
+    idPrefix,style,color:'36ad79',fillPercent:90,viewAngle:77*Math.PI/180,
+  })}</g></svg>`;
+}
+function selectSpoolPreview(style) {
+  // The summary has its own resources; cloning an option would duplicate SVG IDs.
+  $('spool-style-current').innerHTML=spoolPreview(style,'spool-preview-current');
+}
 for (const [value,name] of [['cardboard-windowed','Cardboard · windowed'],['dark-windowed','Dark grey · windowed'],['cardboard-solid','Cardboard · solid'],['dark-solid','Dark grey · solid']]) {
-  const dark=value.startsWith('dark'), solid=value.endsWith('solid');
-  const material=dark ? '#343638' : '#b49164', id=`spool-preview-${value}`;
-  // Match the scene: 75-degree face projection and depth of one-third diameter.
-  const face=x=>`<g transform="translate(${x} 22) scale(.258819 1)"><circle r="17" fill="${solid ? `url(#${id})` : 'none'}" stroke="${material}" stroke-width="4"/>${solid ? '' : `<path d="M0 -15 V15 M-13 -7.5 L13 7.5 M-13 7.5 L13 -7.5" stroke="${material}" stroke-width="4"/>`}<circle r="6.4" fill="${material}"/><circle r="5.8" fill="#202529"/></g>`;
   const label=document.createElement('label');
   label.className='spool-style-choice';
   label.dataset.tooltip=name;
-  label.innerHTML=`<input type="radio" name="spool-style" value="${value}" aria-label="${name}" ${value==='cardboard-windowed' ? 'checked' : ''}><svg viewBox="0 0 40 44" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${dark ? '#66696c' : '#d4b88f'}"/><stop offset="1" stop-color="${material}"/></linearGradient><linearGradient id="${id}-filament" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#287e62"/><stop offset=".5" stop-color="#6ac49d"/><stop offset="1" stop-color="#245d4b"/></linearGradient></defs>${face(25)}<path d="M14 6 H25 A4.14 16 0 0 1 25 38 H14 Z" fill="url(#${id}-filament)"/><ellipse cx="14" cy="22" rx="4.14" ry="16" fill="url(#${id}-filament)"/>${face(14)}</svg>`;
+  label.innerHTML=`<input type="radio" name="spool-style" value="${value}" aria-label="${name}" ${value==='cardboard-windowed' ? 'checked' : ''}>${spoolPreview(value,`spool-preview-${value}`)}`;
   label.querySelector('input').onchange=()=>{
-    $('spool-style-current').replaceChildren(label.querySelector('svg').cloneNode(true));
+    selectSpoolPreview(value);
     $('spool-style-menu').open=false;
     draw();
   };
-  if (value==='cardboard-windowed') $('spool-style-current').replaceChildren(label.querySelector('svg').cloneNode(true));
+  if (value==='cardboard-windowed') selectSpoolPreview(value);
   $('spool-style-grid').append(label);
 }
 for (const id of ['spool-angle','spool-spacing']) {
@@ -1376,7 +1396,6 @@ function animate() {
     }
   }
   spoolLastFrame=now;
-  if (spoolFading || spoolRotating) draw();
   if (live && !paused && events.length) {
     if (!playing && now >= resumeAt) {
       const event = events.find(e=>e.seq>played);
@@ -1407,6 +1426,12 @@ function animate() {
   if (sensorPulse) {
     if (now - sensorPulse.start >= 650) sensorPulse = null;
     draw();
+  }
+  if (sceneDirty) {
+    sceneDirty=false;
+    renderScene();
+  } else if (spoolFading || spoolRotating) {
+    updateSpoolMotion();
   }
   requestAnimationFrame(animate);
 }
