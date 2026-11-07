@@ -394,9 +394,14 @@ export class TelemetryReplay {
       // Presence sensors constrain drawing, never discard recorded tip travel.
 
       if (extruding && gripped && travel < 0) {
-        // Residual geometry does not add travel. Returning a retract must first
-        // recover the previous contact point before producing more purge.
-        hotend.front=Math.max(hotend.front,Math.min(nozzle,tip));
+        // Detaching from a full nozzle leaves calibrated melt behind once.
+        // Further retracts preserve that contact point until the next extrusion.
+        if (!segment && tip >= nozzle-.001) {
+          details.residual_separation_mm=state.filament.residual_mm;
+          next-=details.residual_separation_mm;
+          details.filament_travel_mm=(details.filament_travel_mm ?? travel)-details.residual_separation_mm;
+          hotend.front=nozzle-state.filament.residual_mm;
+        } else hotend.front=Math.max(hotend.front,Math.min(nozzle,tip));
         if (tip >= nozzle-state.filament.residual_mm-.01) {
           if (this.shapes[gate] !== 'cone') this.hairLengths[gate]=15;
           this.shapes[gate]='cone';
@@ -444,7 +449,7 @@ export class TelemetryReplay {
       if (tip > gears && next <= gears) hotend.front=nozzle-state.filament.residual_mm;
       this.tips[gate]=next;
       const rawBefore=copy(before), rawState=copy(state);
-      rawState.tips[gate]=tip+travel;
+      rawState.tips[gate]=tip+travel-(details.residual_separation_mm || 0);
       details.raw_before=rawBefore; details.raw_state=rawState;
     }
     const after=this.snapshot();

@@ -512,7 +512,7 @@ test('residual contact shortens hair permanently to a 5mm minimum',()=>{
  assert.equal(r.snapshot().hair_lengths[0],5);
  move(r,-20,{source:'mmu_gcode'});
  assert.equal(r.snapshot().hair_lengths[0],5,'withdrawal preserves the shortened hair');
- event(r,'cut',{phase:'CUT',blade_pos:r.snapshot().layout.nozzle-r.tips[0]+2});
+ event(r,'cut',{phase:'CUT',blade_pos:r.snapshot().layout.nozzle-r.tips[0]+4});
  assert.equal(r.snapshot().retained_segment.hair_length,5);
 });
 
@@ -531,15 +531,17 @@ test('move outcome sensor correction is animated without changing modeled travel
 });
 
 
-test('cut length reconciles reported geometry without adding residual to retraction',()=>{
+test('initial cut length excludes residual and matches later reported fragment',()=>{
  const r=stream(),nozzle=r.snapshot().layout.nozzle;
  r.tips[0]=nozzle;
  move(r,-2,{source:'mmu_gcode'});
- assert.equal(r.tips[0],nozzle-2);
+ assert.equal(r.tips[0],nozzle-4);
  move(r,-28.5,{source:'mmu_gcode'});
  event(r,'cut',{blade_pos:37.5});
  const fragment=r.snapshot().retained_segment;
- assert.equal(fragment.end-fragment.start,7);
+ assert.equal(fragment.end-fragment.start,5);
+ assert.equal(r.snapshot().filament.residual_mm,2);
+ assert.equal(r.tips[0],nozzle-37.5);
  const unit=r.facts.printer.mmu.unit;
  event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder','filament_remaining'],value:4.999375}]});
  const reconciled=r.snapshot().retained_segment;
@@ -617,21 +619,22 @@ test('purge strand blends only over the two millimeters extruded beyond zero',()
 });
 
 
-test('manual purge and retract never add residual length to tip travel',()=>{
+test('residual separation happens once and partial retract returns do not drift',()=>{
  const r=stream(),nozzle=r.snapshot().layout.nozzle;
  r.tips[0]=nozzle;
  const retract=move(r,-2,{source:'mmu_gcode'});
- assert.equal(retract.state.tips[0],nozzle-2);
- const base=retract.state.extruded_mm;
- for(let i=0;i<6;i++) move(r,1,{source:'mmu_gcode'});
- assert.equal(r.tips[0],nozzle);
- assert.equal(r.snapshot().extruded_mm-base,4);
+ assert.equal(retract.state.tips[0],nozzle-4);
+ assert.equal(interpolate(retract,.5).tips[0],nozzle-2);
+ for(let i=0;i<3;i++) {
+  move(r,1,{source:'mmu_gcode'});
+  move(r,-1,{source:'mmu_gcode'});
+  assert.equal(r.tips[0],nozzle-4);
+ }
  const back=move(r,-6,{source:'mmu_gcode'});
- assert.equal(back.state.tips[0],nozzle-6);
- assert.equal(interpolate(back,.5).tips[0],nozzle-3);
- const returned=move(r,6,{source:'mmu_gcode'});
- assert.equal(returned.state.tips[0],nozzle);
- assert.equal(returned.state.extruded_mm,back.state.extruded_mm);
+ assert.equal(back.state.tips[0],nozzle-10);
+ move(r,6,{source:'mmu_gcode'});
+ assert.equal(r.tips[0],nozzle-4);
+ assert.equal(r.snapshot().extruded_mm,retract.state.extruded_mm);
 });
 
 
@@ -782,4 +785,16 @@ test('successful encoder unloading anchors the tip behind the encoder; failed st
   outcome:{encoder_mm:14,encoder_delta_mm:1}});
  assert.equal(failed.encoder_rehome,undefined);
  assert.equal(failed.state.tips[0],e.state.tips[0]-15);
+});
+
+for (const residual of [0,2,10]) test(`cut preserves the existing endpoint with ${residual}mm residual`,()=>{
+ const r=stream(),unit=r.facts.printer.mmu_machine.units[r.snapshot().unit];
+ unit.toolhead.parameters.toolhead_residual_filament=residual;
+ const nozzle=r.snapshot().layout.nozzle;
+ r.tips[0]=nozzle-30;
+ event(r,'cut',{phase:'CUT',blade_pos:37});
+ const fragment=r.snapshot().retained_segment;
+ assert.equal(fragment ? fragment.end-fragment.start : 0,7);
+ assert.equal(r.tips[0],nozzle-37);
+ assert.equal(r.snapshot().tip_shapes[0],'square');
 });
