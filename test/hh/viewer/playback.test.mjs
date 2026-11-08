@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { virtualSelectorLayout, spoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { virtualSelectorLayout, spoolGrid, fittingSpoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -761,3 +761,18 @@ test('VirtualSelector parking interpolation advances continuously to the shared 
   assert.equal(wrapped.lanes[8].offset,-4);
   assert.equal(spoolGrid(gates.slice(0,8),0,7).rows,2);
  });
+
+
+test('non-virtual rows fill available width and grow left after reaching the right margin',()=>{
+  const gates=Array.from({length:30},(_,i)=>i), angle=77*Math.PI/180;
+  const small=fittingSpoolGrid(gates.slice(0,4),0,54,angle);
+  assert.ok(Math.abs((small.left+small.right)/2-620)<1e-8);
+  const large=fittingSpoolGrid(gates,0,54,angle);
+  assert.ok(large.columns>8);
+  assert.equal(large.right,836);
+  assert.ok(large.left>=14);
+  assert.ok(large.left-54<14);
+  assert.equal(large.rows,Math.ceil(gates.length/large.columns));
+  assert.ok(fittingSpoolGrid(gates,0,75,angle).columns<large.columns);
+  assert.ok(fittingSpoolGrid(gates,0,54,angle,1100).columns>large.columns);
+});
