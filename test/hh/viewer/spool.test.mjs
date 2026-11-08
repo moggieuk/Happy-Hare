@@ -36,7 +36,6 @@ test('rotation changes the face while the direction arrow stays stationary',()=>
   assert.doesNotMatch(renderSpool(options),/data-part="espooler-direction"/);
 });
 
-
 test('percentage labels are optional, centered, and bounded from 0 to 100',()=>{
   assert.doesNotMatch(renderSpool(options),/data-part="spool-fill-label"/);
   for (const [fillPercent,label] of [[0,0],[45.6,46],[100,100]]) {
@@ -44,4 +43,21 @@ test('percentage labels are optional, centered, and bounded from 0 to 100',()=>{
     assert.match(svg,new RegExp(`>${label}%</text>`));
     assert.match(svg,/data-part="spool-fill-label"[^>]*text-anchor="middle"/);
   }
+});
+
+test('window faces and sidewalls use vector clips rather than raster masks',()=>{
+  const svg=renderSpool(options);
+  assert.doesNotMatch(svg,/<mask\b/);
+  assert.equal([...svg.matchAll(/data-part="spool-window-sidewall"/g)].length,11);
+  assert.equal([...svg.matchAll(/data-spool-window-cut=/g)].length,11);
+  assert.match(svg,/clip-rule="evenodd"/);
+});
+
+test('crisp window shadows replace the blur filter on both faces only',()=>{
+  const simple=renderSpool({...options,shadowStyle:'crisp'});
+  assert.doesNotMatch(simple,/spool-cutout-shadow/);
+  assert.equal([...simple.matchAll(/data-part="spool-window-shadow"/g)].length,2);
+  assert.match(renderSpool(options),/<feDropShadow/);
+  const solid={...options,style:'cardboard-solid'};
+  assert.equal(renderSpool({...solid,shadowStyle:'crisp'}),renderSpool(solid));
 });
