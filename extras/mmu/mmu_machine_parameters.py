@@ -37,6 +37,10 @@ class MmuMachineParameters(TunableParametersBase):
         if new != old:
             self._mmu_machine.mmu.gate_maps.update_t_macros()
 
+    def _on_endless_spool_auto_groups(self, old, new):
+        if new != old:
+            self._mmu_machine.mmu.gate_maps.auto_group_endless_spool()
+
     def _on_macro_change(self, old, new):
         self._mmu_machine.mmu.init_macros()
 
@@ -135,6 +139,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
+        ParamSpec('endless_spool_auto_groups',     'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1), on_change=_on_endless_spool_auto_groups),
         ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
 
         # Logging

@@ -65,6 +65,8 @@ class MmuEndlessSpoolCommand(BaseCommand):
             if mmu.gate_maps.endless_spool_enabled:
                 msg = f"EndlessSpool is enabled\n"
                 msg += mmu.gate_maps.es_groups_to_string()
+                if mmu.p.endless_spool_auto_groups:
+                    msg += "\nGroups are set from the gate map (endless_spool_auto_groups)"
             else:
                 msg = f"EndlessSpool is disabled\n"
             if not quiet:
@@ -79,6 +81,12 @@ class MmuEndlessSpoolCommand(BaseCommand):
             if mmu.gate_maps.endless_spool_enabled != enabled:
                 mmu.gate_maps.endless_spool_enabled = enabled
                 mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, enabled, write=True)
+
+        if groups is not None and mmu.p.endless_spool_auto_groups:
+            mmu.log_error(
+                "GROUPS ignored: groups are set from the gate map because endless_spool_auto_groups is enabled"
+            )
+            return
 
         if groups is not None:
             try:

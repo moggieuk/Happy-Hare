@@ -585,5 +585,164 @@ class TestGateCheckParkingFailureIsNotAnEmptyGate(EndlessSpoolTestCase):
         self.assertNotEqual(self.hh.mmu.gate_status[0], GATE_EMPTY)
 
 
+class AutoGroupsTestCase(EndlessSpoolTestCase):
+    """
+    endless_spool_auto_groups builds the groups from the gate map: same material and
+    color (alpha ignored) means the gates back each other up.
+    """
+
+    GROUPS = '0,1,2,3'          # every gate on its own until auto grouping is enabled
+    MAP = (('PLA', 'ff0000'), ('PLA', 'ff0000'), ('PETG', 'ff0000'), ('PLA', '00ff00'))
+
+    def setUp(self):
+        super().setUp()
+        for gate, (material, color) in enumerate(self.MAP):
+            self.set_gate(gate, material, color)
+
+    def set_gate(self, gate, material, color):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=%d MATERIAL=%s COLOR=%s QUIET=1' % (gate, material, color))
+
+    def enable(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG endless_spool_auto_groups=1')
+
+    def groups(self):
+        return list(self.gate_maps.endless_spool_groups)
+
+
+class TestAutoGroups(AutoGroupsTestCase):
+
+    def test_off_by_default(self):
+        self.assertEqual(self.hh.mmu.p.endless_spool_auto_groups, 0)
+        self.assertEqual(self.groups(), [0, 1, 2, 3], 'manual groups must not follow the gate map')
+
+    def test_same_material_and_color_share_a_group(self):
+        self.enable()
+        self.assertEqual(self.groups(), [0, 0, 2, 3])
+
+    def test_a_gate_map_change_regroups(self):
+        self.enable()
+        self.set_gate(3, 'PLA', 'ff0000')
+        self.assertEqual(self.groups(), [0, 0, 2, 0])
+        self.set_gate(1, 'PETG', 'ff0000')
+        self.assertEqual(self.groups(), [0, 1, 1, 0], 'group number is the first gate of the group')
+
+    def test_alpha_and_case_are_ignored(self):
+        self.enable()
+        self.set_gate(1, 'pla', 'FF0000E3')
+        self.assertEqual(self.groups(), [0, 0, 2, 3])
+
+    def test_a_color_name_matches_its_hex_value(self):
+        self.enable()
+        self.set_gate(1, 'PLA', 'red')
+        self.assertEqual(self.groups(), [0, 0, 2, 3])
+
+    def test_a_gate_without_color_stays_alone(self):
+        self.enable()
+        self.set_gate(1, 'PLA', '""')
+        self.assertEqual(self.gate_maps.gate_color[1], '')
+        self.assertEqual(self.groups(), [0, 1, 2, 3])
+
+    def test_the_groups_are_persisted(self):
+        self.enable()
+        saved = self.hh.mmu.var_manager.get('mmu_state_endless_spool_groups', None)
+        self.assertEqual(list(saved), [0, 0, 2, 3])
+
+    def test_manual_groups_are_refused(self):
+        self.enable()
+        errors_before = len(self.hh.errors)
+        self.hh.run_gcode('MMU_ENDLESS_SPOOL GROUPS=1,1,1,1')
+        self.assertGreater(len(self.hh.errors), errors_before)
+        self.assertEqual(self.groups(), [0, 0, 2, 3])
+
+    def test_reset_regroups_from_the_gate_map(self):
+        self.enable()
+        self.hh.run_gcode('MMU_ENDLESS_SPOOL RESET=1')
+        self.assertEqual(self.groups(), [0, 0, 2, 3])
+
+    def test_an_emptied_gate_keeps_its_group(self):
+        """Marking a gate empty clears its material and color, but it must stay grouped."""
+        self.enable()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+        self.assertEqual(self.gate_maps.gate_material[0], '')
+        self.assertEqual(self.groups()[0], self.groups()[1])
+
+    def test_a_refilled_gate_follows_its_new_filament(self):
+        self.enable()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1 MATERIAL=PETG COLOR=ff0000 QUIET=1')
+        self.assertEqual(self.groups(), [0, 1, 0, 3])
+
+    def test_a_refilled_gate_without_data_leaves_its_group(self):
+        """Filament is back but nothing says what it is (e.g. the tag was not read)."""
+        self.enable()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=0 QUIET=1')
+        self.assertEqual(self.groups()[1], self.groups()[0])
+        self.gate_maps.set_gate_status(1, GATE_AVAILABLE)
+        self.assertEqual(self.gate_maps.gate_material[1], '')
+        self.assertEqual(self.groups(), [0, 1, 2, 3])
+
+    def test_a_sensor_corrected_gate_without_data_leaves_its_group(self):
+        """validate_gate_status (bootup, before a load) changes status without a gate map write."""
+        self.enable()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=0 QUIET=1')
+        self.assertEqual(self.groups()[1], self.groups()[0])
+        self.gate_maps.validate_gate_status([1])      # filament is still in gate 1
+        self.assertNotEqual(self.hh.mmu.gate_status[1], GATE_EMPTY)
+        self.assertEqual(self.groups(), [0, 1, 2, 3])
+
+    def test_a_new_spool_joins_its_group_during_a_print(self):
+        self.enable()
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        self.set_gate(3, 'PLA', 'ff0000')
+        self.assertEqual(self.groups(), [0, 0, 2, 0])
+
+
+class TestAutoGroupsRunout(AutoGroupsTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.enable()
+
+    def test_runout_swaps_to_the_gate_with_the_same_filament(self):
+        original = self.load_and_run_out(tool=0)
+        self.assertEqual(original, 0)
+        self.assertEqual(self.hh.mmu.gate_selected, 1, 'gate 1 is the only PLA ff0000 partner')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+
+    def test_runout_swaps_during_a_print(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        self.load_and_run_out(tool=0)
+        self.assertEqual(self.hh.mmu.gate_selected, 1)
+
+    def test_no_swap_to_other_material_or_color(self):
+        self.set_gate(1, 'PLA', '0000ff')
+        self.load_and_run_out(tool=0)
+        self.assertEqual(self.hh.mmu.gate_selected, 0, 'gates 1-3 are not PLA ff0000')
+
+    def test_successive_runouts_walk_through_the_group(self):
+        self.set_gate(3, 'PLA', 'ff0000')
+        used = [self.load_and_run_out(tool=0) for _ in range(2)]
+        self.assertEqual(used, [0, 1])
+        self.assertEqual(self.hh.mmu.gate_selected, 3)
+
+
+class TestAutoGroupsGateCheck(AutoGroupsTestCase):
+    """MMU_CHECK_GATE marks the gate empty (clearing its attributes) before the substitute lookup."""
+
+    def setUp(self):
+        super().setUp()
+        self.enable()
+        self.hh.run_gcode('MMU_TEST_CONFIG endless_spool_on_load=1')
+        self.hh.run_gcode('MMU_TEST_CONFIG test_force_in_print=1')
+        with self.hh.quiet_sensors():
+            self.fil.remove(0)
+        self.hh.settle()
+
+    def test_gate_check_substitutes_the_gate_with_the_same_filament(self):
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 1, 'T0 should have been substituted to gate 1')
+        self.assertFalse([e for e in self.hh.errors if 'marked EMPTY' in e])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -10,6 +10,7 @@
 #   PARAM_SPOOLMAN_NFC_AUTO_CREATE
 #   PARAM_ENDLESS_SPOOL_ENABLED
 #   PARAM_ENDLESS_SPOOL_ON_LOAD
+#   PARAM_ENDLESS_SPOOL_AUTO_GROUPS
 #   PARAM_T_MACRO_COLOR
 #
 #   INSTALL_12864_MENU
@@ -70,6 +71,13 @@ menu "Global software options"
     help
       If the gate selected for a load is empty, automatically run EndlessSpool to find and
       switch to a gate that has filament instead of erroring
+
+  config PARAM_ENDLESS_SPOOL_AUTO_GROUPS
+    boolint "Set EndlessSpool groups automatically from the gate map?"
+    default 0
+    help
+      Gates with the same material and color are put in the same EndlessSpool group.
+      Groups are rebuilt whenever the gate map changes
 
 
 # -------------------------------------
