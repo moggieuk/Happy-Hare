@@ -12,16 +12,16 @@ test('retained spool updates match fresh SVG without replacing geometry',async()
   try {
     const cases=[];
     for (const style of ['cardboard-windowed','dark-windowed','cardboard-solid','dark-solid'])
-    for (const fillPercent of [0,45,100]) for (const degrees of [0,45,78,90]) for (const rotation of [0,73])
+    for (const fillPercent of [0,45,100]) for (const degrees of [0,45,65,77,78,85,90]) for (const rotation of [0,73]) for (const shadowStyle of ['blur','crisp'])
       cases.push({idPrefix:`spool-${cases.length}`,style,fillPercent,viewAngle:degrees*Math.PI/180,
-        rotation,showFillPercent:true,color:fillPercent===45?'24ba5e80':'24ba5e',arrowOpacity:rotation?.6:0,
+        rotation,shadowStyle,showFillPercent:true,color:fillPercent===45?'24ba5e80':'24ba5e',arrowOpacity:rotation?.6:0,
         direction:'rewind',glow:rotation?.7:0});
     const pages=[];
     for (const retained of [false,true]) {
-      const page=await browser.newPage({viewport:{width:1200,height:1600}});pages.push(page);
+      const page=await browser.newPage({viewport:{width:1200,height:Math.ceil(cases.length/8)*130+40}});pages.push(page);
       await page.route('http://spool.test/**',route=>route.fulfill(route.request().url().endsWith('.js')
         ? {body:source,contentType:'text/javascript'}
-        : {body:'<body style="margin:0;background:#1b2933"><svg width="1200" height="1600"></svg>',contentType:'text/html'}));
+        : {body:'<body style="margin:0;background:#1b2933"><svg width="1200" height="6000"></svg>',contentType:'text/html'}));
       await page.goto('http://spool.test/');
       await page.evaluate(async({cases,retained})=>{
         const {renderSpool,SpoolRenderer}=await import('/spool.js');
