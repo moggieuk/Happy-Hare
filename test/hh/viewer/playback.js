@@ -1,4 +1,4 @@
-export function virtualSelectorLayout(state, spacing=54) {
+export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   if (state.selector_type!=='VirtualSelector') return null;
   const gates=state.unit_gates || state.tips.map((_,index)=>index);
   const columns=Math.min(6,gates.length), selected=Math.max(0,gates.indexOf(state.gate));
@@ -6,7 +6,7 @@ export function virtualSelectorLayout(state, spacing=54) {
   const branches=rowGates.map((gate,column)=>({gate,x:620+(column-(columns-1)/2)*spacing}));
   const active=branches.find(branch=>branch.gate===state.gate) || branches[0];
   if (!active) return null;
-  const bottom=570, shoulder=390, hub=190;
+  const bottom=570+verticalOffset, shoulder=390+verticalOffset, hub=190+verticalOffset;
   const diagonal=Math.hypot(active.x-620,shoulder-hub);
   const distanceAtY=y=>y>=shoulder ? bottom-y : y<=hub ? bottom-shoulder+diagonal+hub-y
     : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);
@@ -24,6 +24,20 @@ export function spoolGrid(gates, focus, maxColumns=7) {
   const columns=Math.min(maxColumns,gates.length), rows=Math.ceil(gates.length/columns);
   return {columns,rows,lanes:gates.map((index,slot)=>({index,row:Math.floor(slot/columns),
     offset:slot%columns-(columns-1)/2-Math.max(0,columns-7)/2,lift:10*Math.max(0,1-Math.abs(index-focus))}))};
+}
+
+// Fit whole spools into the drawing area, centering on the Bowden until the
+// right margin is reached. Further gates grow the enclosure toward the left.
+export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
+  const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24;
+  const margin=14, usable=availableWidth-2*margin;
+  const capacity=Math.max(1,Math.floor((usable-2*padding)/spacing)+1);
+  const grid=spoolGrid(gates,focus,capacity);
+  const width=(grid.columns-1)*spacing+2*padding;
+  const left=Math.max(margin,Math.min(620-width/2,availableWidth-margin-width));
+  const start=(left+padding-4-620)/spacing;
+  return {...grid,left,right:left+width,lanes:grid.lanes.map((lane,slot)=>({
+    ...lane,offset:start+slot%grid.columns}))};
 }
 
 const gateTiming={hold:300,retract:300,fade:500,slide:900,advance:300};

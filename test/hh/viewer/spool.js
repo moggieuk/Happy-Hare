@@ -48,7 +48,7 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
   const spoolDepthOffset=spoolDepth*Math.sin(viewAngle)/spoolFaceScale;
   const fullWindingRadius=16;
   const windingRadius=Math.sqrt(spoolHubRadius**2+(fullWindingRadius**2-spoolHubRadius**2)*percent/100);
-  let svg=`<defs><radialGradient id="spool-backlight-${idPrefix}" cx=".5" cy=".85" r=".65"><stop stop-color="#fff" stop-opacity="1"/><stop offset=".45" stop-color="#fff2b8" stop-opacity=".8"/><stop offset="1" stop-color="#fff2b8" stop-opacity="0"/></radialGradient></defs>`;
+  let svg=`<defs><radialGradient id="spool-backlight-${idPrefix}"><stop stop-color="#fff" stop-opacity=".85"/><stop offset=".25" stop-color="#fff2bd" stop-opacity=".6"/><stop offset="1" stop-color="#ffe6a0" stop-opacity="0"/></radialGradient><radialGradient id="spool-led-${idPrefix}"><stop stop-color="white"/><stop offset=".3" stop-color="#fff7dc" stop-opacity=".9"/><stop offset=".65" stop-color="#ffe6a0" stop-opacity=".45"/><stop offset="1" stop-color="#ffe6a0" stop-opacity="0"/></radialGradient></defs>`;
   // Lighting stays fixed while the spokes turn underneath it.
   const material=spoolStyle.startsWith('dark-') ? '#343638' : 'var(--spool-material, #b49164)';
   const windowPath=windowOutline();
@@ -73,6 +73,10 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
     // Contact shadow from the front flange, fading into the first winding turns.
     svg += `<defs><linearGradient id="spool-contact-shadow-${idPrefix}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${spoolDepthOffset*.2}" y2="0"><stop stop-color="black" stop-opacity=".75"/><stop offset=".35" stop-color="black" stop-opacity=".4"/><stop offset="1" stop-color="black" stop-opacity="0"/></linearGradient><clipPath id="spool-contact-clip-${idPrefix}"><path d="M0 -${windingRadius} H${spoolDepthOffset} A${windingRadius} ${windingRadius} 0 0 1 ${spoolDepthOffset} ${windingRadius} H0 Z"/></clipPath></defs><rect data-part="spool-contact-shadow" x="0" y="${-windingRadius}" width="${spoolDepthOffset*.2}" height="${windingRadius*2}" fill="url(#spool-contact-shadow-${idPrefix})" clip-path="url(#spool-contact-clip-${idPrefix})"/>`;
   }
+  if (glow>0) {
+    // Light the winding before painting the front flange, so the rim occludes it.
+    svg += `<g data-part="selected-spool-backlight" opacity="${glow}" pointer-events="none">${percent>0 ? `<ellipse data-part="spool-winding-light" cx="${spoolDepthOffset/2+windingRadius*.35}" cy="11" rx="${spoolDepthOffset*.7}" ry="7" fill="url(#spool-backlight-${idPrefix})" clip-path="url(#spool-contact-clip-${idPrefix})"/>` : ''}</g>`;
+  }
   svg += `${rimSidewall(0)}<g transform="translate(${-rimDepth} 0)"><circle r="16.5" fill="none" stroke="url(#spool-edge-${idPrefix})" stroke-width="1" opacity=".3"/>${percent ? `<circle r="${windingRadius}" fill="#${color}"/>` : ''}<g clip-path="url(#spool-face-clip-${idPrefix})"><g ${faceFilter}>${windowShadow(true)}<circle r="17" fill="url(#spool-face-${idPrefix})" ${solidSpool ? '' : `clip-path="url(#spool-front-spokes-${idPrefix})"`}/>${windowWalls(true)}<circle r="${spoolHubRadius}" fill="${material}"/></g>${faceDot}</g><circle data-part="spool-core-bore" r="${spoolBoreRadius}" fill="url(#spool-bore-${idPrefix})"/></g>`;
   svg += `<path data-part="spool-rim-mark" data-depth="${rimDepth}" d="${rimMarkPath(angle,rimDepth)}" fill="#fff"/></g>`;
   if (fade>0) {
@@ -81,7 +85,7 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
     svg += `<defs><linearGradient id="spool-arrow-fade-${idPrefix}" gradientUnits="userSpaceOnUse" x1="0" y1="-16.6" x2="0" y2="-5"><stop stop-color="white" stop-opacity=".333"/><stop offset=".4" stop-color="white" stop-opacity=".6"/><stop offset="1" stop-color="white"/></linearGradient><mask id="spool-arrow-mask-${idPrefix}" maskUnits="userSpaceOnUse" x="-6" y="-18" width="12" height="23"><rect x="-6" y="-18" width="12" height="23" fill="url(#spool-arrow-fade-${idPrefix})"/></mask></defs><g data-part="espooler-direction" data-direction="${direction}" opacity="${fade}" transform="translate(${arrowX} 0) scale(1 ${direction==='rewind' ? -1 : 1})" pointer-events="none"><path d="M-3.2 -16.6 C.8 -15.2 2.2 -11 2.1 -7 L3.7 -7 L1 -2.5 L-2.2 -6.8 L-.7 -6.8 C-.2 -10.3 -.8 -14.2 -3.2 -16.6 Z" fill="#c4c8cc" fill-opacity=".8" stroke="#d4d7da" stroke-opacity="1" stroke-width=".4" stroke-linejoin="round" mask="url(#spool-arrow-mask-${idPrefix})"/></g>`;
   }
   if (glow>0) {
-    svg += `<ellipse data-part="selected-spool-backlight" cx="${spoolDepth*Math.sin(spoolViewAngle)/2+4/spoolScale}" cy="9" rx="7" ry="5.88" opacity="${glow}" fill="url(#spool-backlight-${idPrefix})" pointer-events="none"/>`;
+    svg += `<ellipse data-part="selected-spool-backlight" cx="${spoolDepth*Math.sin(spoolViewAngle)/2+4/spoolScale}" cy="10.5" rx="3" ry=".9" opacity="${glow}" fill="url(#spool-led-${idPrefix})" pointer-events="none"/>`;
   }
   if (showFillPercent && Number.isFinite(fillPercent)) {
     const label=Math.round(Math.max(0,Math.min(100,fillPercent)));
@@ -121,7 +125,7 @@ export class SpoolRenderer {
       this.rimMarkDepth=Number(this.rimMark.dataset.depth);
       this.arrow=this.element.querySelector('[data-part="espooler-direction"]');
       this.arrowPosition=this.arrow.getAttribute('transform').split(' scale(')[0];
-      this.glow=this.element.querySelector('[data-part="selected-spool-backlight"]');
+      this.glows=[...this.element.querySelectorAll('[data-part="selected-spool-backlight"]')];
       this.geometryKey=key;
       this.motion={};
     }
@@ -142,7 +146,7 @@ export class SpoolRenderer {
       this.arrow.dataset.direction=direction;
       this.arrow.setAttribute('transform',`${this.arrowPosition} scale(1 ${direction==='rewind' ? -1 : 1})`);
     }
-    if (glow !== this.motion.glow) this.glow.setAttribute('opacity',glow);
+    if (glow !== this.motion.glow) for (const node of this.glows) node.setAttribute('opacity',glow);
     this.motion={rotation,arrowOpacity,direction,glow};
   }
 }
