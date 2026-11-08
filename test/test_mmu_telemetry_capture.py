@@ -54,6 +54,16 @@ class TestTelemetryCapture(unittest.TestCase):
             self.assertNotIn('state', record)
         json.dumps(records, allow_nan=False)
 
+    def test_per_gate_heater_capability(self):
+        unit = self.hh.mmu.mmu_machine.units[0]
+        for heaters, expected in [([], False), ([None, None], False),
+                                  (['heater_generic gate0', None], True)]:
+            with self.subTest(heaters=heaters), mock.patch.object(unit, 'filament_heaters', heaters):
+                capture = self.capture()
+                facts = capture.read()['records'][0]['state']
+                self.assertEqual(facts['printer']['mmu_machine']['units'][unit.name]
+                                 ['has_per_gate_heaters'], expected)
+
     def test_extruder_target_temperature_baseline_and_delta(self):
         heater = self.hh.mmu.printer.lookup_object('extruder').get_heater()
         heater.set_temp(200)

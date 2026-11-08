@@ -798,3 +798,16 @@ for (const residual of [0,2,10]) test(`cut preserves the existing endpoint with 
  assert.equal(r.tips[0],nozzle-37);
  assert.equal(r.snapshot().tip_shapes[0],'square');
 });
+
+
+test('per-gate heater capability follows the active unit and defaults off for old captures',()=>{
+  const h=header(), r=new TelemetryReplay();
+  r.feed(h);
+  assert.equal(r.snapshot().has_per_gate_heaters,false);
+  const units=r.facts.printer.mmu_machine.units;
+  const active=r.facts.printer.mmu.unit;
+  units[active].has_per_gate_heaters=true;
+  assert.equal(r.snapshot().has_per_gate_heaters,true);
+  units[active].has_per_gate_heaters=false;
+  assert.equal(r.snapshot().has_per_gate_heaters,false);
+});

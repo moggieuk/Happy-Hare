@@ -582,8 +582,27 @@ class TestEveryBootableProfile(unittest.TestCase):
             'are controlled in hardware' in line
             for line in captured.output))
 
+    def _check_emu_heaters(self, hh):
+        unit = hh.mmu.mmu_unit(0)
+        expected = ['heater_generic unit0_heater%d' % gate for gate in range(5)]
+        self.assertEqual(unit.filament_heaters, expected)
+        self.assertTrue(unit.environment_manager.has_per_gate_heaters())
+        hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        for gate, name in enumerate(expected):
+            self.assertEqual(hh.printer.lookup_object(name).get_temp()[1],
+                             45 if gate == 0 else 0)
+        from extras.mmu.mmu_telemetry_capture import TelemetryCapture
+        capture = TelemetryCapture(hh.mmu)
+        try:
+            facts = capture.read()['records'][0]['state']
+            self.assertTrue(facts['printer']['mmu_machine']['units'][unit.name]
+                            ['has_per_gate_heaters'])
+        finally:
+            capture.close()
+
     def test_emu(self):
-        self._check('emu')
+        hh = self._check('emu')
+        self._check_emu_heaters(hh)
 
         # EMU's unmodified board choice is SLB, independently wired for every gate.
         from test.hh import cfg, profiles
@@ -605,6 +624,7 @@ class TestEveryBootableProfile(unittest.TestCase):
 
     def test_emu_ebb(self):
         hh = self._check('emu_ebb')
+        self._check_emu_heaters(hh)
 
         # The shipped EBB defaults must remain internally valid too.  This caught the
         # obsolete BOARD_TYPE_EBB_1_0 guard: it left one-pixel chains mapped as (1-5).

@@ -595,8 +595,8 @@ QUATTROBOX_V2 = Profile(
 # multi-unit remains uncovered.
 EMU = Profile(
     'emu',
-    syms={'MMU_TYPE_EMU_1_0': True},
-    description='EMU 1.0 - 5 gates, proportional (analog) buffer sensor')
+    syms={'MMU_TYPE_EMU_1_0': True, 'MMU_HAS_HEATER': True},
+    description='EMU 1.0 - 5 gates, per-gate heaters, proportional (analog) buffer sensor')
 
 # The alternate EMU wiring: all five per-gate MCUs are EBB36/42 gen1 boards, with a
 # single five-pixel exit chain attached to gate 0's EBB.  Keep the LED map explicit:
@@ -611,7 +611,7 @@ EMU_EBB = EMU.derive(
         'PARAM_ENTRY_LEDS': '',
         'PARAM_EXIT_LEDS': 'neopixel:_unit0_gate0_leds (1-5)',
     },
-    description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, exit LEDs on gate 0')
+    description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, per-gate heaters, exit LEDs on gate 0')
 
 # BoxTurtle plus an encoder, homing to it instead of to the gate switch. KMS also ships an
 # encoder, but its exit sensors win the default homing choice, so _home_to_gate's encoder branch

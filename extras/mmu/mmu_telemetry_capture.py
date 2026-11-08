@@ -81,6 +81,7 @@ class ReplayState:
                             manager.get_sensor_states(unit=unit.unit_index).values()}
             units[unit.name] = dict(
                 gates=list(unit.gate_range()), selector_type=unit.selector_type,
+                has_per_gate_heaters=any(unit.filament_heaters),
                 filament_always_gripped=bool(unit.filament_always_gripped),
                 parameters=self.select(unit.p, self.UNIT_PARAMETERS),
                 toolhead=dict(name=unit.toolhead_wrapper.name,

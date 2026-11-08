@@ -783,6 +783,19 @@ function renderScene() {
     svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".22"/><stop offset=".12" stop-color="white" stop-opacity=".07"/><stop offset=".3" stop-color="white" stop-opacity=".02"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".055" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${coverPath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${coverPath}"/></clipPath></defs>`;
     // Put the enclosure behind the short filament fade; the glass stays above it.
     svg = `<path d="${coverPath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>` + svg;
+    if ($('heating-preview').checked) {
+      svg += `<defs><radialGradient id="mmu-heating-glow" cx=".5" cy=".9" r=".85"><stop stop-color="#ffbd59" stop-opacity=".65"/><stop offset=".45" stop-color="#ef8d27" stop-opacity=".3"/><stop offset="1" stop-color="#e87516" stop-opacity="0"/></radialGradient></defs><g data-part="heating-preview" clip-path="url(#spool-cover-clip)" pointer-events="none">`;
+      for (let row=0; row<grid.rows; row++) {
+        const lanes=grid.lanes.filter(lane=>lane.row===row).sort((a,b)=>a.offset-b.offset);
+        const regions=s.has_per_gate_heaters ? lanes.map((lane,i)=>({
+          left:i ? (gateLaneX(lanes[i-1].offset)+gateLaneX(lane.offset))/2+4 : glassLeft,
+          right:i<lanes.length-1 ? (gateLaneX(lane.offset)+gateLaneX(lanes[i+1].offset))/2+4 : glassRight,
+        })) : [{left:glassLeft,right:glassRight}];
+        for (const region of regions)
+          svg += `<rect data-part="heating-glow" x="${region.left}" y="${470+mmuOffset+row*rowSpacing}" width="${region.right-region.left}" height="105" fill="url(#mmu-heating-glow)"/>`;
+      }
+      svg += '</g>';
+    }
     svg += '<defs><filter id="spool-separation-shadow" x="-30%" y="-20%" width="160%" height="145%"><feDropShadow dx="1.2" dy=".8" stdDeviation=".6" flood-color="#000" flood-opacity=".65"/></filter></defs><g id="espooler-indicators" clip-path="url(#spool-cover-clip)">';
     const spoolStyle=document.querySelector('input[name=spool-style]:checked').value;
     const spoolDepth=34/3, spoolScale=3.3;
@@ -806,7 +819,7 @@ function renderScene() {
     }
     svg += '</g>';
     let glassDividers='';
-    for (let row=0; row<grid.rows; row++) {
+    for (let row=0; s.has_per_gate_heaters && row<grid.rows; row++) {
       const lanes=grid.lanes.filter(lane=>lane.row===row).sort((a,b)=>a.offset-b.offset);
       const top=470+mmuOffset+row*rowSpacing, bottom=575+mmuOffset+row*rowSpacing;
       for (let i=1;i<lanes.length;i++) {
@@ -1293,6 +1306,7 @@ for (const id of ['spool-angle','spool-spacing']) {
   };
 }
 $('preview-gate-count').oninput=draw;
+$('heating-preview').onchange=draw;
 $("slow-animation").onchange = () => {
   animationNow();
   animationRate=$("slow-animation").checked ? .1 : 1;
