@@ -1046,6 +1046,10 @@ def _init():
 
     _init_styles()
 
+    # Fill unused screen area with the list background, not the terminal's
+    _stdscr.bkgd(" ", _style["list"])
+    _stdscr.erase()
+
     # Hide the cursor
     _safe_curs_set(0)
 
