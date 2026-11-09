@@ -107,6 +107,22 @@ class WebUiBridgeTestCase(unittest.TestCase):
 
 
 class TestWebUiBridge(WebUiBridgeTestCase):
+    def test_telemetry_subscription_ack_and_unsubscribe(self):
+        batch = self.call('server.mmu.telemetry.subscribe')['result']
+        self.assertEqual(batch['records'][0]['event'], 'session')
+        self.hh.mmu.movement_telemetry.state('cut')
+        self.bridge.telemetry_stream.pump()
+        self.assertIsNotNone(self.bridge.telemetry_stream.clients[next(iter(self.bridge.clients))]['inflight'])
+        self.call('server.mmu.telemetry.ack', stream_id=batch['stream_id'], delivery_id=batch['delivery_id'])
+        self.bridge.telemetry_stream.pump()
+        self.serve(lambda: select.select([self.client.sock], [], [], 0)[0])
+        notification = self.client.receive()
+        self.assertEqual(notification['method'], 'notify_mmu_telemetry')
+        self.assertTrue(any(r.get('event') == 'cut'
+                            for r in notification['params'][0]['records']))
+        self.call('server.mmu.telemetry.unsubscribe')
+        self.assertEqual(self.bridge.telemetry_stream.clients, {})
+
     def test_handshake_completes_and_the_server_reports_klippy_ready(self):
         self.assertIn('101 Switching Protocols', self.client.handshake)
         info = self.call('server.info')['result']

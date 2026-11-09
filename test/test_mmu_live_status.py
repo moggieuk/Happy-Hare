@@ -1,4 +1,16 @@
-# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Verify printer status fields used by live subscription clients.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 import unittest
 from unittest import mock
 from types import SimpleNamespace

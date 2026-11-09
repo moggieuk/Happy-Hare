@@ -531,7 +531,8 @@ test('move outcome sensor correction is animated without changing modeled travel
 });
 
 
-test('initial cut length excludes residual and matches later reported fragment',()=>{
+for (const fragmentField of ['filament_cut_fragment','filament_remaining'])
+test(`initial cut length matches later ${fragmentField} report`,()=>{
  const r=stream(),nozzle=r.snapshot().layout.nozzle;
  r.tips[0]=nozzle;
  move(r,-2,{source:'mmu_gcode'});
@@ -543,10 +544,10 @@ test('initial cut length excludes residual and matches later reported fragment',
  assert.equal(r.snapshot().filament.residual_mm,2);
  assert.equal(r.tips[0],nozzle-37.5);
  const unit=r.facts.printer.mmu.unit;
- event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder','filament_remaining'],value:4.999375}]});
+ event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder',fragmentField],value:4.999375}]});
  const reconciled=r.snapshot().retained_segment;
  assert.ok(Math.abs(reconciled.end-reconciled.start-4.999375)<1e-8);
- event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder','filament_remaining'],value:0}]});
+ event(r,'state_delta',{changes:[{path:['printer','mmu_machine','units',unit,'extruder',fragmentField],value:0}]});
  assert.deepEqual(r.snapshot().retained_segment,reconciled);
 });
 

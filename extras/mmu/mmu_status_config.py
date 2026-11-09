@@ -1,5 +1,16 @@
-# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
-"""Effective geometry and object references for subscription-based clients."""
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Effective geometry and object references for subscription-based clients.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 UNIT_PARAMETERS = ('gate_homing_endstop', 'extruder_homing_endstop', 'gate_endstop_to_encoder',
                    'gate_parking_distance', 'gate_endstop_to_extruder')
 TOOLHEAD_PARAMETERS = ('toolhead_entry_to_extruder', 'toolhead_extruder_to_nozzle',

@@ -68,7 +68,7 @@ export class SceneModel {
     });
     const extruder=unit.extruder, residual=number(p.toolhead_residual_filament);
     const filament={extruder:extruder.name,retracted_length:extruder.retracted_length,residual_mm:residual,
-      fragment_mm:number(extruder.filament_remaining),retained_color:color(extruder.filament_remaining_color),incoming_color:color(m.gate_color[m.gate])};
+      fragment_mm:number(extruder.filament_cut_fragment ?? extruder.filament_remaining),retained_color:color(extruder.filament_remaining_color),incoming_color:color(m.gate_color[m.gate])};
     if (!this.hotends[extruder.name]) {
       this.hotends[extruder.name]={extruded:0,base:0,front:nozzle-residual,plan:null,nozzle:filament.retained_color};
       if (filament.fragment_mm > 0) this.fragments[extruder.name]={start:nozzle-residual-filament.fragment_mm,end:nozzle-residual,

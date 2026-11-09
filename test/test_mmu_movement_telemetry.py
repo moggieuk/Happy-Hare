@@ -1,15 +1,24 @@
-# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
-"""Source telemetry tests: these intentionally do not instantiate the live viewer."""
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Source telemetry tests: these intentionally do not instantiate the live viewer.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 import contextlib
 import io
 import json
-import pathlib
-import tempfile
 import unittest
 from unittest import mock
 
 from test.hh import session
-from test.console import Console, parse_args
+from test.console import parse_args
 
 
 class TestMovementTelemetry(unittest.TestCase):
@@ -232,20 +241,6 @@ class TestMovementTelemetry(unittest.TestCase):
         self.hh.mmu.move_filament('capture', 10)
         self.assertEqual(other[0]['event'], 'movement_start')
 
-    def test_jsonl_capture_is_independent_of_web_server(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = pathlib.Path(directory)/'motion.jsonl'
-            with contextlib.redirect_stdout(io.StringIO()):
-                console = Console(parse_args(['--profile','boxturtle','--no-serve','--no-log','--no-live','--pace','0','--telemetry',str(path)])).boot()
-                try:
-                    console.hh.mmu.move_filament('file capture', 10)
-                finally:
-                    console.close()
-            records = [json.loads(line) for line in path.read_text().splitlines()]
-            snapshot = next(r for r in records if r['event'] == 'filament_pos_snapshot')
-            self.assertIn('retained_color', snapshot['filament'])
-            self.assertIn('residual_mm', snapshot['filament'])
-            start = next(r for r in records if r.get('label') == 'file capture')
-            ends = [r for r in records if r['move_id']==start['move_id'] and r['event']=='movement_outcome']
-            self.assertEqual(len(ends), 1)
-            self.assertEqual(ends[0]['actual_mm'], 10)
+    def test_legacy_telemetry_option_is_removed(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args(['--telemetry', '/tmp/unused.jsonl'])

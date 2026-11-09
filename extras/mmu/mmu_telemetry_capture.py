@@ -1,11 +1,21 @@
 # Happy Hare MMU Software
-# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
-"""Opt-in, bounded capture of source events and the state needed to replay them.
-
-Capture runs on the printer thread. Readers receive detached copies. No printer
-objects, simulator coordinates or per-stepper samples enter the recording.
-"""
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Opt-in, bounded capture of source events and the state needed to replay them.
+#
+# Capture runs on the printer thread. Readers receive detached copies. No printer
+# objects, simulator coordinates or per-stepper samples enter the recording.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 import collections
+import itertools
 import copy
 import math
 import threading
@@ -140,7 +150,7 @@ Create only when a consumer requests capture, after Klipper is ready, and close
 when it leaves. Changes that cancel before the next event are intentionally lost.
 A rolling baseline keeps bounded exports usable after older records expire.
 """
-    def __init__(self, mmu, limit=6000, state_provider=None):
+    def __init__(self, mmu, limit=512, state_provider=None):
         if limit < 2:
             raise ValueError('Telemetry limit must be at least two records')
         self.telemetry = mmu.movement_telemetry
@@ -190,15 +200,33 @@ A rolling baseline keeps bounded exports usable after older records expire.
             self.baseline_sequence = expired['sequence']
             self.baseline_time = expired['timestamp']
 
-    def read(self, after=None):
+    def read(self, after=None, limit=None, history="start"):
         with self.lock:
             reset = after is None or after < self.baseline_sequence or after > self.sequence
             records = [dict(schema='happy_hare.motion', version=2, event='session',
                             session_id=self.telemetry.session_id,
                             sequence=self.baseline_sequence, timestamp=self.baseline_time,
                             checkpoint=self.baseline_sequence > 0, state=copy.deepcopy(self.baseline))] if reset else []
-            records.extend(record for record in self.records if reset or record['sequence'] > after)
-            if self.pending:
+            boundary = None
+            if reset and history == 'current':
+                boundary = self.sequence + 1
+            elif reset and history == 'latest':
+                boundary = next((r['sequence'] for r in reversed(self.records)
+                                 if r['event'] == 'toolchange'), None)
+            if boundary is not None:
+                for record in self.records:
+                    if record['sequence'] >= boundary:
+                        break
+                    if record['event'] == 'state_delta':
+                        apply_changes(records[0]['state'], record['changes'])
+                    records[0].update(sequence=record['sequence'], timestamp=record['timestamp'], checkpoint=True)
+            remaining = None if limit is None else max(0, limit - len(records))
+            if reset or after != self.sequence:
+                records.extend(itertools.islice((record for record in self.records
+                    if (reset and (boundary is None or record['sequence'] >= boundary))
+                    or (not reset and record['sequence'] > after)), remaining))
+            complete = not records or records[-1]['sequence'] >= self.sequence
+            if self.pending and complete:
                 records.append(self.pending)
             response = dict(schema='happy_hare.motion', version=2,
                             session_id=self.telemetry.session_id,

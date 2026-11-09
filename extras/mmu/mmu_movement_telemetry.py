@@ -1,17 +1,24 @@
 # Happy Hare MMU Software
-# Copyright (C) 2022-2026 Paul Morgan
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Versioned motion events, independent of console/file log verbosity.
+#
+# Subscribers run on the printer thread and must not block. A consumer exception
+# is isolated from motion and detaches that consumer. Endpoints are controller
+# observations, not proof of physical filament movement; encoder readings are
+# reported separately. An outcome can mean queue submission, not queue completion.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
-"""Versioned motion events, independent of console/file log verbosity.
-
-Subscribers run on the printer thread and must not block. A consumer exception
-is isolated from motion and detaches that consumer. Endpoints are controller
-observations, not proof of physical filament movement; encoder readings are
-reported separately. An outcome can mean queue submission, not queue completion.
-"""
+#
 import contextlib
 import copy
 import functools
-import json
 import logging
 import uuid
 
@@ -108,18 +115,6 @@ def movement_operation(function):
     return run
 
 
-class JsonlTelemetrySink:
-    """Optional local capture. Open in append mode to retain separate boot sessions."""
-    def __init__(self, filename):
-        self.file = open(filename, 'a', encoding='utf-8', buffering=1)
-
-    def __call__(self, record):
-        self.file.write(json.dumps(record, allow_nan=False, separators=(',', ':')) + '\n')
-
-    def close(self):
-        self.file.close()
-
-
 def filament_context(mmu):
     """Loaded config/persisted hotend state; lengths are input-filament millimetres."""
     from .mmu_utils import MmuColorUtils
@@ -129,6 +124,6 @@ def filament_context(mmu):
     color = mmu.gate_color[gate] if gate >= 0 else ''
     return dict(extruder=extruder.name, retracted_length=extruder.retracted_length,
                 residual_mm=unit.toolhead_wrapper.p.toolhead_residual_filament,
-                fragment_mm=extruder.filament_remaining,
+                fragment_mm=extruder.filament_cut_fragment,
                 retained_color=MmuColorUtils.color_to_rgb_hex(extruder.filament_remaining_color, '808182')[:6],
                 incoming_color=MmuColorUtils.color_to_rgb_hex(color, '808182')[:6])

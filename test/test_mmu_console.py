@@ -3124,3 +3124,36 @@ class TestSharedNfcSimulation(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class TestViewerProfileRestart(unittest.TestCase):
+    def test_restart_rebinds_connected_telemetry_for_same_and_new_profile(self):
+        from test.hh.webui_bridge import WebUiBridge
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'boxturtle', '--no-serve', '--no-log', '--plain', '--header', 'off']))
+            self.addCleanup(console.close)
+            console.boot()
+            bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
+            console.bridge = bridge
+            batches = []
+            first = bridge.telemetry_stream.subscribe('viewer', batches.append, lambda: False)
+            for profile in ('boxturtle', 'ercf_vvd'):
+                with self.subTest(profile=profile):
+                    previous_mmu = console.hh.mmu
+                    console._restart_for_viewer(profile)
+                    stream = bridge.telemetry_stream
+                    self.assertIs(stream.mmu, console.hh.mmu)
+                    self.assertIs(stream.capture, bridge.viewer.telemetry_capture)
+                    self.assertIsNot(stream.mmu, previous_mmu)
+                    stream.pump()
+                    baseline = batches[-1]
+                    self.assertTrue(baseline['reset'])
+                    self.assertNotEqual(baseline['stream_id'], first['stream_id'])
+                    self.assertEqual(baseline['records'][0]['session_id'], console.hh.mmu.movement_telemetry.session_id)
+                    stream.ack('viewer', first['stream_id'], first['delivery_id'])
+                    self.assertIsNotNone(stream.clients['viewer']['inflight'])
+                    stream.ack('viewer', baseline['stream_id'], baseline['delivery_id'])
+                    console.hh.mmu.movement_telemetry.state('cut')
+                    stream.pump()
+                    self.assertTrue(any(r['event'] == 'cut' for r in batches[-1]['records']))
+                    first = baseline
