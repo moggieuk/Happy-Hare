@@ -4375,7 +4375,8 @@ class MmuController(MmuFilamentMovement):
         try:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_get_spool_by_uid",
-                                        uid=uid, gate=gate, metadata=metadata, save=save, silent=quiet)
+                                        uid=uid, gate=gate, metadata=metadata, save=save, silent=quiet,
+                                        prefer_db_temps=bool(self.p.spoolman_nfc_prefer_db_temps))
             # Shared-reader lookups (gate is None) are guarded until NEXT_SPOOLID
             # resolves, so no further shared reads dispatch a competing request.
             # Per-gate lookups are deliberate/rare and stay outside the guard.
@@ -4406,7 +4407,8 @@ class MmuController(MmuFilamentMovement):
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_get_spool_by_uid",
                                         uid=uid, gate=None, metadata=metadata, save=save,
-                                        silent=False, report_only=True)
+                                        silent=False, report_only=True,
+                                        prefer_db_temps=bool(self.p.spoolman_nfc_prefer_db_temps))
         except Exception as e:
             self.log_error("Error while registering tag uid: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
