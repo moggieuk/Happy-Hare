@@ -40,8 +40,8 @@ export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
     ...lane,offset:start+slot%grid.columns}))};
 }
 
-const gateTiming={hold:300,retract:300,fade:500,slide:900,advance:300};
-const gateDuration=2*gateTiming.hold+gateTiming.retract+2*gateTiming.fade+gateTiming.slide+gateTiming.advance;
+const gateTiming={retract:300,fade:500,slide:900,advance:300};
+const gateDuration=gateTiming.retract+2*gateTiming.fade+gateTiming.slide+gateTiming.advance;
 
 // Residual contact melts only the immersed hair; retain at least 5mm.
 export function shortenedHair(length, tip, residualTop) {
@@ -694,8 +694,8 @@ export function nozzleArrivalTime(event, movementMs) {
 export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.before?.mmu_gripped) {
   let fraction, fullOpacity=1;
   if (event.kind === 'gate_changed') {
-    const {hold,retract,fade,slide,advance}=gateTiming;
-    const t=elapsed-hold, slideStart=retract+fade, slideEnd=slideStart+slide;
+    const {retract,fade,slide,advance}=gateTiming;
+    const t=elapsed, slideStart=retract+fade, slideEnd=slideStart+slide;
     if (t<retract) fraction=.25*t/retract;
     else if (t<slideStart) { fraction=.25; fullOpacity=1-(t-retract)/fade; }
     else if (t<slideEnd) { fraction=.25+.5*(t-slideStart)/slide; fullOpacity=0; }
@@ -707,7 +707,7 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
   if (event.kind === 'gate_changed' && elapsed < movementMs) {
     // Keep the gears released through retreat, both fades, the slide, and advance.
     state={...state,gate_full_opacity:fullOpacity,
-      mmu_gripped:elapsed >= 250 && elapsed < movementMs-250 ? false : selectionGrip};
+      mmu_gripped:elapsed > 0 && elapsed < movementMs ? false : selectionGrip};
   }
   const gate=event.state.gate;
   const arrivalTime=nozzleArrivalTime(event,movementMs);

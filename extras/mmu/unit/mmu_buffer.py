@@ -110,6 +110,11 @@ class MmuBuffer:
         self.mmu = self.mmu_machine.mmu_controller      # Shared MMU controller class
 
 
+    def get_status(self, eventtime):
+        return {'value': self.proportional_sensor.get_status(eventtime)['value']
+                if self.proportional_sensor is not None else None}
+
+
     def add_unit(self, mmu_unit):
         self.connected_units.append(mmu_unit)
 

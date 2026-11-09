@@ -9,6 +9,7 @@ import collections
 import copy
 import math
 import threading
+from .mmu_status_config import UNIT_PARAMETERS, TOOLHEAD_PARAMETERS
 
 
 def plain(value):
@@ -51,11 +52,8 @@ def apply_changes(state, delta):
 
 class ReplayState:
     """Read a small allowlist directly, avoiding the broad mmu.get_status scan."""
-    UNIT_PARAMETERS = ('gate_homing_endstop', 'extruder_homing_endstop', 'gate_endstop_to_encoder',
-                       'gate_parking_distance', 'gate_endstop_to_extruder')
-    TOOLHEAD_PARAMETERS = ('toolhead_entry_to_extruder', 'toolhead_extruder_to_nozzle',
-                           'toolhead_sensor_to_nozzle', 'toolhead_residual_filament',
-                           'toolhead_ooze_reduction')
+    UNIT_PARAMETERS = UNIT_PARAMETERS
+    TOOLHEAD_PARAMETERS = TOOLHEAD_PARAMETERS
     MACRO_VARIABLES = ('blade_pos', 'cutter_before_extruder',
                        'cooling_tube_position', 'cooling_tube_length')
 
@@ -89,7 +87,6 @@ class ReplayState:
                 bowden_lengths={str(g): unit.calibrator.get_bowden_length(g) for g in unit.gate_range()},
                 sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in unit_sensors],
                 extruder=dict(name=unit.extruder_wrapper.name,
-                              target_temperature=mmu.printer.lookup_object(unit.extruder_wrapper.name).get_heater().get_temp(now)[1],
                               retracted_length=unit.extruder_wrapper.retracted_length,
                               **unit.extruder_wrapper.get_status(now)),
                 encoder=None if encoder is None else dict(name=encoder.name, distance=encoder.get_distance(), status=encoder.get_status(now),

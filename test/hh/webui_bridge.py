@@ -247,11 +247,11 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
-        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/spool.js', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js', '/sim/viewer/telemetry.js'):
-            filename = {'/sim/viewer/spool.js': 'spool.js', '/sim/viewer/app.js': 'app.js', '/sim/viewer/telemetry.js': 'telemetry.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
+        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/spool.js', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js', '/sim/viewer/telemetry.js', '/sim/viewer/live-state.js', '/sim/viewer/scene-state.js'):
+            filename = {'/sim/viewer/live-state.js':'live-state.js', '/sim/viewer/scene-state.js':'scene-state.js', '/sim/viewer/spool.js': 'spool.js', '/sim/viewer/app.js': 'app.js', '/sim/viewer/telemetry.js': 'telemetry.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
             data = (pathlib.Path(__file__).parent / 'viewer' / filename).read_bytes()
             handler.send_response(200)
-            handler.send_header('Content-Type', {'spool.js':'text/javascript', 'telemetry.js':'text/javascript', 'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
+            handler.send_header('Content-Type', {'live-state.js':'text/javascript', 'scene-state.js':'text/javascript', 'spool.js':'text/javascript', 'telemetry.js':'text/javascript', 'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
             handler.send_header('Content-Length', str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)

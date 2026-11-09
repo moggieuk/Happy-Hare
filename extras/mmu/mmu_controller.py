@@ -56,6 +56,7 @@ class MmuController(MmuFilamentMovement):
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
         self._material_purge_volume = 0.        # During toolchange, the material change contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
+        self.homing = None                      # Active homing target for status subscribers
         self.bowden_start_pos = None            # If set then we can measure bowden progress
         self.step_unload_overshoot = 0.         # Handed from _MMU_STEP_UNLOAD_TOOLHEAD to _MMU_STEP_UNLOAD_BOWDEN
         self.step_unload_homing_buffer = 0.     # Handed from _MMU_STEP_UNLOAD_BOWDEN to _MMU_STEP_UNLOAD_GATE
@@ -817,6 +818,8 @@ class MmuController(MmuFilamentMovement):
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
                         "Unknown",
             'filament_position': self.drive().get_filament_position(),
+            'homing': None if self.homing is None else dict(self.homing, endstops=list(self.homing['endstops'])),
+            'filament_grip_state': self.selector().get_filament_grip_state(),
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'pending_spool_id': self.pending_spool_id,
@@ -863,6 +866,11 @@ class MmuController(MmuFilamentMovement):
 
         # Add in active sensors
         status['sensors'] = self.sensor_manager.get_status(eventtime)
+        all_sensors = self.sensor_manager.get_sensor_states(all_sensors=True)
+        active = {id(sensor) for _, sensor in self.sensor_manager.get_sensor_states().values()}
+        status['sensor_states'] = {name: dict(triggered=value, enabled=bool(sensor.runout_helper.sensor_enabled))
+                                   for name, (value, sensor) in all_sensors.items()}
+        status['active_sensors'] = [name for name, (_, sensor) in all_sensors.items() if id(sensor) in active]
 
         if self.has_encoder():
             status['encoder'] = self.encoder().get_status(eventtime)

@@ -10,12 +10,12 @@ const animation=app.slice(app.indexOf('function animate()'),app.indexOf('// Simu
 function harness() {
   const state={espoolers:{0:{direction:'assist',output_power:1}}};
   const event={seq:1,kind:'movement',source:'mmu_gcode',state,before:state};
-  const context=vm.createContext({
+  const context=vm.createContext({viewMode:"playback", setup:{connection_kind:"simulator"},
     now:100,animationNow:()=>context.now,
     spoolSession:'test',session:'test',spoolLastFrame:80,
     spoolAngles:new Map(),spoolArrowVisibility:new Map(),spoolDirections:new Map(),
     playing:{event,start:0},displayed:state,live:true,paused:false,
-    events:[event],played:0,resumeAt:0,pauseAfterStep:false,offline:false,
+    events:[event],played:0,pauseAfterStep:false,offline:false,
     sensorPulse:{start:0},renders:0,scheduled:0,spoolUpdates:0,
     updateSpoolMotion:()=>context.spoolUpdates++,
     $:()=>({checked:false}),duration:()=>1000,nozzleArrivalTime:()=>null,
@@ -59,4 +59,14 @@ test('spool-only animation updates retained elements without redrawing the scene
   assert.equal(c.renders,0);
   assert.equal(c.spoolUpdates,2);
   assert.ok(c.spoolAngles.get(0)>0);
+});
+
+test('a completed MMU move starts the next animation on the next frame without a hold',()=>{
+ const c=harness();c.now=1000;c.sensorPulse=null;
+ c.playing.event.kind='movement';c.playing.event.source='move_filament';
+ c.events.push({seq:2,kind:'movement',state:c.displayed});
+ vm.runInContext('animate();',c);
+ assert.equal(c.played,1);assert.equal(c.playing,null);
+ c.now=1016;vm.runInContext('animate();',c);
+ assert.equal(c.playing.event.seq,2);assert.equal(c.playing.start,1016);
 });

@@ -235,12 +235,20 @@ class MmuDrive():
         target_pos = start_pos + dist
 
         if homing_move != 0:
-            home_result = self._driving_stepper.do_homing_move(
-                target_pos, speed, accel,
-                probe_pos=True,
-                triggered=(homing_move > 0),
-                check_trigger=True,
-                endstop_name=endstop_name)
+            previous_homing = self.mmu.homing
+            endstop = self.get_endstop(endstop_name)
+            names = list(endstop.endstop_names.values()) if hasattr(endstop, 'endstop_names') else [endstop_name]
+            self.mmu.homing = dict(endstops=[self.mmu.sensor_manager.get_qualified_endstop_name(
+                name, self.mmu_unit) for name in names], triggered=homing_move > 0)
+            try:
+                home_result = self._driving_stepper.do_homing_move(
+                    target_pos, speed, accel,
+                    probe_pos=True,
+                    triggered=(homing_move > 0),
+                    check_trigger=True,
+                    endstop_name=endstop_name)
+            finally:
+                self.mmu.homing = previous_homing
 
             halt_pos = self._driving_stepper.get_mode_position()
             actual = halt_pos - start_pos
