@@ -1,4 +1,16 @@
-# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Verify simulator viewer controls and replay capture.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 import contextlib
 import io
 import json

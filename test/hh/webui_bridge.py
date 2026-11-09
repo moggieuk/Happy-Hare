@@ -156,8 +156,11 @@ class WebUiBridge:
         self.unsupported = collections.Counter()  # method -> times asked for
         self.started = time.time()
         self._next_status = 0.0
+        self._next_telemetry = 0.0
         self._server = None
         self.viewer = SourceViewer(session)
+        from extras.mmu.mmu_telemetry_stream import TelemetryStream
+        self.telemetry_stream = TelemetryStream(session.mmu, self.viewer.telemetry_capture)
         self.restart_profile = None
         self.profile_name = ""
         self.uploads = tempfile.TemporaryDirectory(prefix="hh-viewer-")
@@ -204,6 +207,7 @@ class WebUiBridge:
         return self
 
     def close(self):
+        self.telemetry_stream.close()
         self.viewer.close()
         self.uploads.cleanup()
         for conn in list(self.clients):
@@ -247,11 +251,11 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
-        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/spool.js', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js', '/sim/viewer/telemetry.js', '/sim/viewer/live-state.js', '/sim/viewer/scene-state.js'):
-            filename = {'/sim/viewer/live-state.js':'live-state.js', '/sim/viewer/scene-state.js':'scene-state.js', '/sim/viewer/spool.js': 'spool.js', '/sim/viewer/app.js': 'app.js', '/sim/viewer/telemetry.js': 'telemetry.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
+        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/spool.js', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js', '/sim/viewer/telemetry.js', '/sim/viewer/live-state.js', '/sim/viewer/scene-state.js', '/sim/viewer/telemetry-stream.js'):
+            filename = {'/sim/viewer/telemetry-stream.js':'telemetry-stream.js', '/sim/viewer/live-state.js':'live-state.js', '/sim/viewer/scene-state.js':'scene-state.js', '/sim/viewer/spool.js': 'spool.js', '/sim/viewer/app.js': 'app.js', '/sim/viewer/telemetry.js': 'telemetry.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
             data = (pathlib.Path(__file__).parent / 'viewer' / filename).read_bytes()
             handler.send_response(200)
-            handler.send_header('Content-Type', {'live-state.js':'text/javascript', 'scene-state.js':'text/javascript', 'spool.js':'text/javascript', 'telemetry.js':'text/javascript', 'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
+            handler.send_header('Content-Type', {'telemetry-stream.js':'text/javascript', 'live-state.js':'text/javascript', 'scene-state.js':'text/javascript', 'spool.js':'text/javascript', 'telemetry.js':'text/javascript', 'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
             handler.send_header('Content-Length', str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)
@@ -310,6 +314,9 @@ class WebUiBridge:
                 break
             self._handle(conn, text, waiter)
         now = time.monotonic()
+        if now >= self._next_telemetry:
+            self._next_telemetry = now + .25
+            self.telemetry_stream.pump()
         if self.clients and now >= self._next_status:
             self._next_status = now + STATUS_PERIOD
             self.push_status()
@@ -529,6 +536,20 @@ class WebUiBridge:
         raise RpcError('Not available in the simulator')
 
     rpc_printer_restart = rpc_printer_emergency_stop = rpc_printer_firmware_restart
+
+    def rpc_server_mmu_telemetry_subscribe(self, conn, params):
+        if conn is None:
+            raise RpcError('Telemetry requires a WebSocket')
+        return self.telemetry_stream.subscribe(conn,
+            lambda batch: conn.send_text(json.dumps(dict(jsonrpc='2.0',
+                method='notify_mmu_telemetry', params=[batch]))),
+            lambda: not conn.open, params.get('after'), params.get('stream_id'), params.get('history', 'latest'))
+
+    def rpc_server_mmu_telemetry_ack(self, conn, params):
+        return self.telemetry_stream.ack(conn, params.get('stream_id'), params.get('delivery_id'))
+
+    def rpc_server_mmu_telemetry_unsubscribe(self, conn, params):
+        return self.telemetry_stream.unsubscribe(conn)
 
     def rpc_sim_viewer_setup(self, conn, params):
         from test.hh.profiles import CONSOLE_PROFILES

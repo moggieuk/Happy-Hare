@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_TEST_CONFIG command
+# Goal: Shared command registration, help, unit dispatch and telemetry ownership.
 #
 #
 # (\_/)
@@ -73,37 +73,37 @@ class BaseCommand:
                     return calibration_handler(*args)
 
         def wrapped(gcmd):
-            mmu = self.mmu
+            with self.mmu.gcode_telemetry.scope(name):
+                mmu = self.mmu
 
-            if log:
-                mmu.log_to_file(gcmd.get_commandline())
+                if log:
+                    mmu.log_to_file(gcmd.get_commandline())
 
-            if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-                mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
-                return
-
-            # We don't use klipper's register_mux_command() because it isn't flexible really enough
-            # Instead provide flexible "UNIT" processing and pass the mmu_unit to the command handler
-            # Allow unit to be the name, index, or optional (implied) if only one unit configured
-            if per_unit:
-                unit_param = gcmd.get("UNIT", None)
-                mmu_machine = mmu.mmu_machine
-
-                if unit_param is not None and unit_param.upper() == ALL_UNITS:
-                    if all_units_once:
-                        return handler(gcmd, None)
-                    # Repeat for all units. Handler can abort iteration over remaining
-                    # units by returning a truthy value (e.g. after handling an error)
-                    for mmu_unit in mmu_machine.units:
-                        if handler(gcmd, mmu_unit):
-                            break
+                if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+                    mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
                     return
 
-                mmu_unit = self.get_unit(gcmd, mode="required")
-                return handler(gcmd, mmu_unit)
+                # We don't use klipper's register_mux_command() because it isn't flexible really enough
+                # Instead provide flexible "UNIT" processing and pass the mmu_unit to the command handler
+                # Allow unit to be the name, index, or optional (implied) if only one unit configured
+                if per_unit:
+                    unit_param = gcmd.get("UNIT", None)
+                    mmu_machine = mmu.mmu_machine
 
-            return handler(gcmd)
+                    if unit_param is not None and unit_param.upper() == ALL_UNITS:
+                        if all_units_once:
+                            return handler(gcmd, None)
+                        # Repeat for all units. Handler can abort iteration over remaining
+                        # units by returning a truthy value (e.g. after handling an error)
+                        for mmu_unit in mmu_machine.units:
+                            if handler(gcmd, mmu_unit):
+                                break
+                        return
 
+                    mmu_unit = self.get_unit(gcmd, mode="required")
+                    return handler(gcmd, mmu_unit)
+
+                return handler(gcmd)
 
         # Record metadata for this command for help subsystem
         metadata = {
@@ -115,13 +115,8 @@ class BaseCommand:
             "per_unit": per_unit,
         }
 
-        # Attribute nested extrusion to this MMU command until it returns.
-        def owned(gcmd):
-            with self.mmu.gcode_telemetry.scope(name):
-                return wrapped(gcmd)
-
         # Register command with klipper
-        self.mmu.gcode.register_command(name, owned, desc=help_brief)
+        self.mmu.gcode.register_command(name, wrapped, desc=help_brief)
 
         # Record metadata in the category (global registry)
         # This checks for duplicates and replaces in case of duplicate registration

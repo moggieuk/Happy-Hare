@@ -592,8 +592,9 @@ Most macro bodies retain the harness's recorded-only behavior described below.
 The trace records MMU gear/extruder moves, MMU-owned G1 extrusion, cutter hooks,
 toolchange markers, filament state changes and relevant configuration edits.
 Selector motion and simulator-only macro fallbacks do not create animation steps. Logical movement records are published when each move completes, with start/end
-states, actual travel and homing outcome. The viewer queues and interpolates them; HTTP polling reads immutable snapshots without waiting for the command
-to return or entering the reactor from a server thread. Pacing (`--pace`) makes
+states, actual travel and homing outcome. The viewer queues and interpolates them.
+Acknowledged WebSocket batches preserve event order even when the simulator
+delivers them after a command returns. Socket reader threads never enter the reactor. Pacing (`--pace`) makes
 long moves easier to follow. Instant operations can finish before the browser's
 next refresh, but their events remain available for replay.
 
@@ -679,6 +680,94 @@ Calibrated Bowden length runs from the gate homing point to those gears.
 `toolhead_entry_to_extruder` places the optional entry sensor upstream of the gears;
 it does not extend the Bowden or move the buffer's compression contact point.
 
+### Telemetry event subscriptions
+
+`[mmu_telemetry]` is a separate Moonraker component; `mmu_server.py` retains its
+Spoolman and file-processing responsibilities. The installer links both components
+and adds `[mmu_telemetry]` to `moonraker.conf`. Existing installations need to rerun
+the installer and restart Klipper and Moonraker. No Klipper or Moonraker fork is needed.
+
+The viewer uses the same protocol with a real printer and the simulator:
+
+* `server.mmu.telemetry.subscribe` returns a first replay batch with a baseline.
+* `notify_mmu_telemetry` delivers subsequent batches in `params[0]`.
+* `server.mmu.telemetry.ack` accepts `stream_id` and `delivery_id` after the
+  consumer has applied the batch. Only one batch per subscriber is outstanding.
+* `server.mmu.telemetry.unsubscribe` stops that connection's subscription.
+
+These are authenticated Moonraker WebSocket endpoints, separate from printer
+object subscriptions. Live view subscribes only to printer objects. Telemetry
+playback subscribes to the event stream, or loads an offline file. Loading a file
+or switching to live view unsubscribes from events. Missing component errors leave
+file loading available. Simulator command execution still advances virtual time
+without servicing sockets mid-command; recorded events are delivered afterwards.
+
+Klipper's `mmu_telemetry_api.py` exposes `mmu/telemetry/{subscribe,ack,unsubscribe}`.
+Moonraker owns one upstream subscription, acknowledges accepted batches, and fans
+out its own history to browsers. Browser acknowledgments only control that
+browser's delivery; they do not hold up Klipper or another browser. An acknowledgment
+means accepted into memory, not that animation or disk writes have completed.
+
+Klipper retains at most 512 committed records for delivery. Moonraker's
+`history_buffer` combines the history enable switch and its size:
+
+- `0` (default): no background history capture. While a viewer or file recorder
+  is subscribed, retain only a 128-record delivery window.
+- A positive value: retain up to that many records and capture from Klipper
+  readiness, even without a viewer. For example, `history_buffer: 6000` enables
+  a 6,000-record history. This does not enable file recording.
+
+Delivery batches contain up to 128 records. Expired
+cursors receive a replacement checkpoint instead of silently skipping records.
+The checkpoint includes the parameters and state in force at that point, including
+runtime configuration changes. Discarded motion cannot restore inferred geometry.
+
+`server.mmu.telemetry.subscribe` accepts `history: "latest"` (default) or
+`history: "start"`. Latest starts immediately before the most recent retained
+load/unload/toolchange marker, with a reconstructed session checkpoint. Start
+returns all *available* history, not records already discarded. The viewer's
+**Stream history** selector controls this choice. The simulator uses the same
+selection rules but retains its session capture for diagnostics. Internal
+`history: "current"` requests a current checkpoint without retained events; the
+viewer uses this when renewing its bounded local history.
+
+With both `history_buffer: 0` and `record: False`, real-printer capture begins
+with the first browser subscriber and ends when the last leaves. The first record is a freshly sampled current state,
+not cached startup configuration. It cannot recover events before capture began.
+While active, pending configuration previews are checked at 4 Hz. The printer
+thread performs no file I/O and never waits for a browser acknowledgment.
+
+To record without an open browser, configure Moonraker:
+
+```ini
+[mmu_telemetry]
+record: True
+history_buffer: 6000
+max_log_size: 10485760
+log_backups: 5
+```
+
+Recording defaults to off. When enabled it subscribes at Klipper readiness and
+writes `logs/mmu-telemetry.jsonl` under Moonraker's data directory. Load the JSONL
+file in the viewer. Each capture session (including a Moonraker/Klipper restart)
+rotates the previous file; size rotation happens after the configured threshold
+is reached, deferring until an in-flight movement pair has completed. Files `.1` through `.5` are retained by default. Each new file begins
+with the current replay checkpoint, so it can be loaded independently. A single
+record/checkpoint or movement pair can exceed the size threshold. Rotation does not preserve an
+entire operation if it crosses the boundary.
+
+Checkpoint and file rotation logic lives in `mmu_telemetry_store.py`; its
+`TelemetryWriter` handles the dedicated worker and bounded 64-batch queue.
+The Moonraker component handles subscriptions and lifecycle only.
+Queue overflow or write failure stops recording and raises a Moonraker warning;
+it never blocks motion or silently continues a damaged recording. Recording is
+best-effort, not crash-durable: buffered records may be lost if the process exits
+abruptly. Replaceable pending previews are not written until committed by an event.
+
+Tests: the telemetry stream, adapters, store, WebUI bridge and browser transport
+suites cover checkpoints, edited configuration, rotation, per-client backpressure,
+cleanup and reconnects.
+
 ### Structured movement telemetry
 
 MMU commands and macros invoked through `wrap_gcode_command` observe
@@ -737,18 +826,11 @@ existing STEPPER messages, after resolving speed/acceleration and gate overrides
 The stream is independent of the selected log level and works without the viewer.
 The text STEPPER log remains enabled as before for comparison.
 
-Capture a JSON object per line while running the console:
-
-```bash
-make console ARGS='--profile boxturtle --telemetry /tmp/hh-motion.jsonl'
-```
-
-The file is append-only across profile restarts; each boot has a distinct session
-ID. `--no-serve` and `--no-log` do not disable this explicitly requested capture.
-The optional local file sink writes on the console thread. Future live-server
-consumers should subscribe through `mmu.movement_telemetry.subscribe(callback)`
-and enqueue data without blocking the printer thread. The returned function
-unsubscribes. A failing subscriber is detached and logged without aborting motion.
+Use **Save telemetry** in the viewer for simulator captures, or enable Moonraker
+recording as described above. The old simulator `--telemetry` raw-event file sink
+has been removed. Source callbacks remain available via
+`mmu.movement_telemetry.subscribe(callback)`; callbacks must not block the printer
+thread. A failing callback is detached and logged without aborting motion.
 
 Every record has `schema: happy_hare.motion`, `version: 1`, `session_id`,
 `sequence`, `move_id`, `event` and a reactor-monotonic `timestamp` in seconds.
@@ -923,8 +1005,8 @@ current printer settings to interpret old movement.
 Coverage includes `move_filament()`, MMU-owned G1 extrusion, and explicit cutter
 hooks. Direct selector motion and simplified modeled macro effects without source
 events are not animation inputs. Audit remaining STEPPER categories before removing
-that log level. A real-printer transport must supply this same capture format; the
-simulator HTTP endpoint is not installed as a Klipper/Moonraker endpoint.
+that log level. The simulator and real-printer WebSocket transports supply the same capture format.
+The legacy simulator HTTP endpoint remains available for capture diagnostics.
 
 Tests: `make test UT=test_mmu_movement_telemetry.py` and
 `node --test test/hh/viewer/*.test.mjs`, plus the capture and viewer suites.

@@ -505,8 +505,6 @@ class Console:
         self.fil = None
         self.bridge = None                          # the web UI's Moonraker API
         self.bridge_error = None                    # why it did not start, if it was asked to
-        self.telemetry_sink = None
-        self.telemetry_unsubscribe = None
         self.cutter_telemetry_unsubscribe = None
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
@@ -535,10 +533,6 @@ class Console:
         # a handler registered after boot() misses the entire startup, which is exactly what
         # it used to do. build() is what creates the gcode object to register on.
         self.hh.build()
-        if a.telemetry:
-            from extras.mmu.mmu_movement_telemetry import JsonlTelemetrySink
-            self.telemetry_sink = JsonlTelemetrySink(a.telemetry)
-            self.telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self.telemetry_sink)
         self.hh.gcode.register_output_handler(self._on_output)
 
         # Execute maintenance and filament-processing macros in the interactive simulator.
@@ -698,6 +692,7 @@ class Console:
             bridge.session = self.hh
             from test.hh.live_viewer import SourceViewer
             bridge.viewer = SourceViewer(self.hh)
+            bridge.telemetry_stream.reset_capture(self.hh.mmu, bridge.viewer.telemetry_capture)
             bridge.profile_name = str(self.args.profile)
             bridge.last_sent.clear()
             self._install_pace_observer()
@@ -806,12 +801,6 @@ class Console:
         if self.cutter_telemetry_unsubscribe is not None:
             self.cutter_telemetry_unsubscribe()
             self.cutter_telemetry_unsubscribe = None
-        if self.telemetry_unsubscribe is not None:
-            self.telemetry_unsubscribe()
-            self.telemetry_unsubscribe = None
-        if self.telemetry_sink is not None:
-            self.telemetry_sink.close()
-            self.telemetry_sink = None
         if self.bridge is not None:
             self.bridge.close()
             self.bridge = None
@@ -3282,7 +3271,6 @@ def parse_args(argv=None):
     p.add_argument('--inline-header', action='store_true',
                    help='reprint the header above each prompt instead of pinning it to '
                         'the top of the terminal (automatic when not a TTY)')
-    p.add_argument('--telemetry', metavar='FILE', help='append structured movement start/outcome JSONL, independently of text logging')
     p.add_argument('--log-dir', default='/tmp', metavar='DIR',
                    help="where Happy Hare's mmu.log is written, replaced fresh each run. "
                         'The harness otherwise puts it in a temp dir it then deletes '

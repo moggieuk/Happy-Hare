@@ -1,5 +1,16 @@
-# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
-"""Viewer controls and source telemetry; no simulator animation observations."""
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Viewer controls and source telemetry; no simulator animation observations.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 import re
 
 
@@ -15,7 +26,7 @@ class SourceViewer:
         from extras.mmu.mmu_telemetry_capture import TelemetryCapture
         self.hh = session
         self.macro_catalog = self._macro_catalog()
-        self.telemetry_capture = TelemetryCapture(session.mmu)
+        self.telemetry_capture = TelemetryCapture(session.mmu, limit=6000)
         self.session_id = session.mmu.movement_telemetry.session_id
 
     def read_telemetry(self, after=None):

@@ -943,6 +943,7 @@ def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
 
     update_section("update_manager happy-hare")
     update_section("mmu_server")
+    update_section("mmu_telemetry")
 
     with open(existing_cfg, "w") as f:
         f.write(builder.write())
@@ -960,6 +961,9 @@ def uninstall_moonraker(moonraker_cfg):
     if builder.has_section("update_manager happy-hare"):
         logging.debug(" > Removing [update_manager happy-hare]")
         builder.remove_section("update_manager happy-hare")
+
+    if builder.has_section("mmu_telemetry"):
+        builder.remove_section("mmu_telemetry")
 
     if builder.has_section("mmu_server"):
         logging.debug(" > Removing [mmu_server]")

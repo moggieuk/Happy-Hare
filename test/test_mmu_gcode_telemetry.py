@@ -1,5 +1,16 @@
-# Copyright (C) 2022-2026 Paul Morgan. GPLv3.
-"""MMU-owned extrusion commands, independent of physical queue completion."""
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: MMU-owned extrusion commands, independent of physical queue completion.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 import unittest
 from unittest import mock
 import greenlet
@@ -99,6 +110,27 @@ class TestGcodeTelemetry(unittest.TestCase):
             'Test extrusion', '', log=False)
         self.run_gcode('MMU_CAPTURE_TEST')
         self.assertEqual([r['actual_mm'] for r in self.outcomes()], [2])
+
+    def test_registered_command_scope_cleans_up_on_help_unit_dispatch_and_error(self):
+        from extras.mmu.commands.mmu_base_command import BaseCommand
+        owners = self.hh.mmu.gcode_telemetry.owners
+        calls = []
+        def handler(gcmd, unit):
+            calls.append(owners[greenlet.getcurrent()][-1][0])
+            if gcmd.get_int('FAIL', 0):
+                raise gcmd.error('Expected test error')
+            return True
+        BaseCommand(self.hh.mmu).register('MMU_SCOPE_TEST', handler,
+            'Test scope', '', per_unit=True, log=False)
+        self.run_gcode('MMU_SCOPE_TEST HELP=1')
+        self.assertEqual(calls, [])
+        self.assertEqual(owners, {})
+        self.run_gcode('MMU_SCOPE_TEST UNIT=ALL')
+        self.assertEqual(calls, ['MMU_SCOPE_TEST'])
+        self.assertEqual(owners, {})
+        with self.assertRaisesRegex(Exception, 'Expected test error'):
+            self.run_gcode('MMU_SCOPE_TEST UNIT=0 FAIL=1')
+        self.assertEqual(owners, {})
 
     def test_coordinate_resets_and_flow_override(self):
         with self.scope('MMU_TEST'):

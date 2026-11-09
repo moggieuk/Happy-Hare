@@ -109,7 +109,7 @@ export class TelemetryReplay extends SceneModel {
       // Positive reports refine the cut length; zero during loading does not erase an unpurged fragment.
       for (const {path,value} of record.changes) {
         if (path.length !== 6 || path.slice(0,3).join('.') !== 'printer.mmu_machine.units' ||
-            path[4] !== 'extruder' || path[5] !== 'filament_remaining' || !finite(value) || value <= 0) continue;
+            path[4] !== 'extruder' || !['filament_cut_fragment','filament_remaining'].includes(path[5]) || !finite(value) || value <= 0) continue;
         const extruder=this.facts.printer.mmu_machine.units[path[3]]?.extruder;
         const fragment=this.fragments[extruder?.name];
         if (fragment) fragment.end=fragment.start+value;

@@ -1,3 +1,4 @@
+import {TelemetryStream} from './telemetry-stream.js';
 import {LiveState, liveFrame} from './live-state.js';
 import { SpoolRenderer, renderSpool } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
@@ -73,7 +74,7 @@ $('theme-toggle').onclick = () => {
 };
 let modeChosen=false;
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
-let offline = false, sourceGeneration = 0, sourceRecords = [], sourceReplay = new TelemetryReplay();
+let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
 let pendingSource = null, pendingFingerprint = '';
 function sourceMode() {
   const simulatorConnected=!offline && socket?.readyState === 1 && setup && (setup.connection_kind || 'simulator') === 'simulator';
@@ -82,7 +83,8 @@ function sourceMode() {
   });
   $('recording-option').hidden=!offline;
   $('view-mode').value=offline ? 'recording' : viewMode;
-  $('stream-option').textContent=setup?.connection_kind==='simulator' ? 'Telemetry playback · simulator stream' : 'Telemetry playback · file';
+  $('stream-history').disabled=offline || viewMode!=='playback';
+  $('stream-option').textContent=setup?.connection_kind==='simulator' ? 'Telemetry playback · simulator stream' : 'Telemetry playback · printer stream';
   $('simulator-controls').hidden=setup?.connection_kind==='live_machine';
   $('sidebar-playback').querySelectorAll('.playback-row, .playback-option').forEach(el=>el.hidden=viewMode==='live');
   $('trace').closest('.card').hidden=viewMode==='live';
@@ -222,10 +224,17 @@ function connect() {
       const p = pending.get(data.id);
       pending.delete(data.id);
       data.error ? p.reject(Error(data.error.message)) : p.resolve(data.result);
+    } else if (data.method === 'notify_mmu_telemetry') {
+      telemetryStream.receive(data.params[0]);
     } else if (data.method === 'notify_status_update') {
       if (viewMode==='live') acceptLive(data.params[0],data.params[1]);
     } else if (['notify_klippy_ready','notify_klippy_shutdown','notify_klippy_disconnected'].includes(data.method)) {
-      if (viewMode!=='live') return;
+      if (offline) return;
+      if (viewMode!=='live') {
+        telemetryStream.stop(false);
+        if (data.method==='notify_klippy_ready') telemetryStream.start();
+        return;
+      }
       liveState=new LiveState(); liveTarget=null; displayed=null; playing=null; sensorPulse=null;
       if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
       else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
@@ -241,6 +250,7 @@ function connect() {
   socket.onclose = () => {
     if (generation!==connectionGeneration) return;
     subscriptionGeneration++;
+    telemetryStream.stop(false);
     if (liveTarget) { liveTarget.homing=null; liveTarget.espoolers={}; }
     if (viewMode==='live' && displayed) displayed.espoolers={};
     draw();
@@ -262,9 +272,10 @@ async function initializeConnection() {
     setup={connection_kind:'live_machine',units:[],parameters:[],profiles:[]};
     $('connection').textContent='Connected to printer'; sourceMode();
   }
-  if (generation!==connectionGeneration) return;
+  if (generation!==connectionGeneration || offline) return;
   if (!modeChosen && setup?.connection_kind==='simulator') await changeView('playback');
   else if (viewMode==='live') await subscribeLive();
+  else await telemetryStream.start();
 }
 async function subscribeLive() {
   const generation=++subscriptionGeneration;
@@ -276,7 +287,7 @@ async function subscribeLive() {
     /^(extruder\d*|heater_generic .+|gcode_macro .+)$/.test(n)).map(n=>[n,n.startsWith('gcode_macro ') ? ['blade_pos','cutter_before_extruder','cooling_tube_position','cooling_tube_length'] : null]));
   wanted.mmu=['unit','gate','tool','filament_pos','filament_grip_state','bowden_progress','homing','sync_drive',
     'sensor_states','active_sensors','gate_color_rgb','gate_status','espooler','action',
-    'filament_remaining','filament_remaining_color'];
+    'filament_cut_fragment','filament_remaining_color'];
   wanted.mmu_machine=['configuration'];
   const initial=await rpc('printer.objects.subscribe',{objects:wanted});
   if (viewMode==='live' && generation===subscriptionGeneration) acceptLive(initial.status,initial.eventtime);
@@ -305,16 +316,20 @@ function acceptLive(delta,time) {
   draw();
 }
 async function changeView(mode) {
-  sourceGeneration++; subscriptionGeneration++;
+  await telemetryStream.stop();
+  subscriptionGeneration++;
   viewMode=mode; offline=false; playing=null; displayed=null; sensorPulse=null;
   events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay(); pendingSource=null; pendingFingerprint='';
   liveTarget=null; liveFrom=null; liveState=new LiveState();
   live=true; paused=false; replayingHistory=false;
   $('scene').replaceChildren();
-  $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : setup?.connection_kind==='simulator' ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Load a recording';
+  $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : setup?.connection_kind==='simulator' ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
   sourceMode(); renderTrace();
   if (mode==='live' && socket?.readyState===1) await subscribeLive();
-  else if(socket?.readyState===1) await rpc('printer.objects.subscribe',{objects:{}});
+  else if(socket?.readyState===1) {
+    await rpc('printer.objects.subscribe',{objects:{}});
+    await telemetryStream.start();
+  }
 }
 $('view-mode').onchange=()=>{
   modeChosen=true;
@@ -1440,7 +1455,7 @@ $('telemetry-file').onchange = async () => {
     const replay = new TelemetryReplay();
     replay.accept(records); // Validate completely before replacing the current view.
     if (!offline && socket?.readyState===1) await rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{});
-    sourceGeneration++;
+    await telemetryStream.stop();
     modeChosen=true; viewMode='playback'; offline=true; subscriptionGeneration++; liveTarget=null; liveFrom=null;
     pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
     sourceReplay=replay; sourceRecords=records; pendingSource=null; pendingFingerprint='';
@@ -1487,39 +1502,23 @@ function updateSource(records, reset=false) {
   }
   draw(); renderTrace();
 }
-async function poll() {
-  const generation=sourceGeneration;
-  try {
-    if (offline || viewMode!=='playback' || setup?.connection_kind!=='simulator') return;
-    // Leave headroom above the server’s 6,000 records plus session snapshot.
-    // Otherwise a full ring triggers another full replay on every idle poll.
-    const query=sourceRecords.length > 7000 || !sourceReplay.session ? '' : '?after='+sourceReplay.sequence;
-    const endpoint=new URL(connectionUrl);
-    endpoint.protocol=endpoint.protocol==='wss:' ? 'https:' : endpoint.protocol==='ws:' ? 'http:' : endpoint.protocol;
-    const telemetryUrl=new URL('/sim/viewer/telemetry',endpoint).href;
-    const res=await fetch(telemetryUrl+query);
-    if (!res.ok) throw Error('Telemetry connection unavailable');
-    let data=(await res.json()).result;
-    if (sourceReplay.session && data.session_id !== sourceReplay.session && !data.reset)
-      data=(await (await fetch(telemetryUrl)).json()).result;
-    if (offline || generation !== sourceGeneration) return;
-    updateSource(data.records,data.reset);
-    const latest=rawEvents.at(-1)?.state;
-    const selectedGate=latest ? `${session}:${latest.unit}:${latest.gate}` : null;
-    if (latest && selectedGate !== parameterGate) {
-      parameterGate=selectedGate;
-      const unit=latest.units?.indexOf(latest.unit) ?? -1;
-      if (unit>=0 && $('unit').value !== String(unit) && socket?.readyState === 1) {
-        $('unit').value=String(unit); await refresh();
-      }
+const telemetryStream=new TelemetryStream(rpc, async data=>{
+  if (offline || viewMode!=='playback') return false;
+  updateSource(data.records,data.reset);
+  const latest=rawEvents.at(-1)?.state;
+  const selectedGate=latest ? `${session}:${latest.unit}:${latest.gate}` : null;
+  if (latest && selectedGate!==parameterGate && setup?.connection_kind==='simulator') {
+    parameterGate=selectedGate;
+    const unit=latest.units?.indexOf(latest.unit) ?? -1;
+    if (unit>=0 && $('unit').value!==String(unit)) {
+      $('unit').value=String(unit); await refresh();
     }
-  } catch(error) {
-    if (!offline && generation === sourceGeneration) {
-      $('connection').textContent='Telemetry unavailable';
-      message(error.message,true);
-    }
-  } finally { setTimeout(poll,150); }
-}
+  }
+  return sourceRecords.length>7000;
+}, error=>{
+  $('connection').textContent='Telemetry stream unavailable';
+  message(`${error.message}. On a printer, enable [mmu_telemetry] in moonraker.conf. You can also load a recording.`,true);
+});
 function animate() {
   const now=animationNow();
   const spoolRunning=Boolean(playing) || (live && !paused);
@@ -1693,7 +1692,8 @@ $('connect-printer').onclick=()=>{
     const endpoint=new URL(value.includes('://') ? value : 'http://'+value);
     if (!['http:','https:','ws:','wss:'].includes(endpoint.protocol)) throw Error('Use an HTTP or WebSocket printer URL');
     connectionUrl=endpoint.href;
-    clearTimeout(reconnectTimer); connectionGeneration++; subscriptionGeneration++; sourceGeneration++;
+    clearTimeout(reconnectTimer); connectionGeneration++; subscriptionGeneration++;
+    telemetryStream.stop(false);
     socket?.close();
     pending.forEach(p=>p.reject(Error('Connection changed'))); pending.clear();
     modeChosen=false; offline=false; viewMode='live'; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
@@ -1703,5 +1703,8 @@ $('connect-printer').onclick=()=>{
   } catch(error) { message(error.message,true); }
 };
 connect();
-poll();
 requestAnimationFrame(animate);
+
+$('stream-history').onchange=()=>{
+  if (!offline && viewMode==='playback') telemetryStream.start($('stream-history').value);
+};
