@@ -631,6 +631,31 @@ def _style_to_curses(style_def):
     return _style_attr(fg_color, bg_color, attrs)
 
 
+def _disable_bce_terminfo():
+    # Points TERMINFO at a temporary copy of the current entry without 'bce'.
+    # Leaves the environment untouched if the ncurses tools are unavailable.
+    import atexit
+    import shutil
+    import subprocess
+
+    tmp = tempfile.mkdtemp(prefix="mmu_terminfo_")
+    try:
+        src = subprocess.run(["infocmp", "-x"], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, check=True,
+                             universal_newlines=True).stdout
+        src = re.sub(r"^\s+bce,\n", "", src, flags=re.M)
+        src = re.sub(r"(?<=[ \t,])bce,", "", src)
+        subprocess.run(["tic", "-x", "-o", tmp, "-"], input=src,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=True, universal_newlines=True)
+    except (OSError, subprocess.CalledProcessError):
+        shutil.rmtree(tmp, ignore_errors=True)
+        return
+
+    atexit.register(shutil.rmtree, tmp, True)
+    os.environ["TERMINFO"] = tmp
+
+
 def _init_styles():
     if curses.has_colors():
         try:
@@ -753,6 +778,12 @@ def menuconfig(kconf):
     # relevant for mouse events there, so maybe escapes are assumed to arrive
     # in one piece already...)
     os.environ.setdefault("ESCDELAY", "0")
+
+    # Apple Terminal paints cells cleared with erase-to-end-of-line in a
+    # different shade than text. Use the current terminfo minus the
+    # background-color-erase capability so curses writes explicit blanks.
+    if os.environ.get("TERM_PROGRAM") == "Apple_Terminal":
+        _disable_bce_terminfo()
 
     # Enter curses mode. _menuconfig() returns a string to print on exit, after
     # curses has been de-initialized.
@@ -1045,6 +1076,10 @@ def _init():
         _ERASE_CHAR = _ERASE_CHAR.decode("utf-8", "ignore")
 
     _init_styles()
+
+    # Fill unused screen area with the list background, not the terminal's
+    _stdscr.bkgd(" ", _style["list"])
+    _stdscr.erase()
 
     # Hide the cursor
     _safe_curs_set(0)
