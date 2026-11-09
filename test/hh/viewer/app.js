@@ -1,3 +1,4 @@
+import {LiveState, liveFrame} from './live-state.js';
 import { SpoolRenderer, renderSpool } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import { orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
@@ -70,6 +71,8 @@ $('theme-toggle').onclick = () => {
   setTheme(theme);
   try { localStorage.setItem('hh-viewer-theme', theme); } catch {}
 };
+let modeChosen=false;
+let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
 let offline = false, sourceGeneration = 0, sourceRecords = [], sourceReplay = new TelemetryReplay();
 let pendingSource = null, pendingFingerprint = '';
 function sourceMode() {
@@ -77,15 +80,32 @@ function sourceMode() {
   document.querySelectorAll('[data-simulator-config]').forEach(panel=>{
     panel.hidden=!simulatorConnected || panel.dataset.available !== 'true';
   });
-  $('return-live').hidden = !offline;
+  $('recording-option').hidden=!offline;
+  $('view-mode').value=offline ? 'recording' : viewMode;
+  $('stream-option').textContent=setup?.connection_kind==='simulator' ? 'Telemetry playback · simulator stream' : 'Telemetry playback · file';
+  $('simulator-controls').hidden=setup?.connection_kind==='live_machine';
+  $('sidebar-playback').querySelectorAll('.playback-row, .playback-option').forEach(el=>el.hidden=viewMode==='live');
+  $('trace').closest('.card').hidden=viewMode==='live';
+  $('return-live').hidden = viewMode==='live';
   $('recording-name').hidden = !offline;
   document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
     .forEach(node=>node.disabled=offline);
-  $('live').dataset.tooltip = offline ? 'End of recording' : 'End, go live';
+  $('live').dataset.tooltip = offline ? 'End of recording' : 'End, follow stream';
   $('live').setAttribute('aria-label', $('live').dataset.tooltip);
+  renderWarning();
 }
 
-let socket,
+function renderWarning(warnings=[]) {
+  const simulatorLive=viewMode==='live' && !offline && socket?.readyState===1 && setup?.connection_kind==='simulator';
+  const text=simulatorLive
+    ? 'Simulator subscriptions may skip movement updates. Use Telemetry playback · simulator stream for complete movement animation.'
+    : viewMode==='playback' && warnings.length ? 'Displayed tip adjusted to sensor readings: '+warnings.join('; ') : '';
+  $('filament-warning').hidden=!text;
+  $('filament-warning-message').textContent=text;
+}
+
+let socket, reconnectTimer, connectionGeneration=0,
+  connectionUrl=location.origin,
   serial = 0,
   pending = new Map(),
   events = [],
@@ -180,25 +200,37 @@ async function action(fn) {
   }
 }
 function connect() {
-  socket = new WebSocket(
-    `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/websocket`,
-  );
+  const generation=++connectionGeneration;
+  const endpoint=new URL(connectionUrl);
+  endpoint.protocol=endpoint.protocol==='https:' || endpoint.protocol==='wss:' ? 'wss:' : 'ws:';
+  endpoint.pathname='/websocket'; endpoint.search=''; endpoint.hash='';
+  socket = new WebSocket(endpoint);
   socket.onopen = () => {
+    if (generation!==connectionGeneration) return;
     setup=null;
+    liveState=new LiveState();
     sourceMode();
     if (offline) return;
     $("connection").textContent = "Connected · identifying source…";
-    refresh().catch((e) => message(e.message, true));
+    initializeConnection().catch((e) => message(e.message, true));
   };
   socket.onmessage = (e) => {
+    if (generation!==connectionGeneration) return;
     if (offline) return;
     const data = JSON.parse(e.data);
     if (pending.has(data.id)) {
       const p = pending.get(data.id);
       pending.delete(data.id);
       data.error ? p.reject(Error(data.error.message)) : p.resolve(data.result);
+    } else if (data.method === 'notify_status_update') {
+      if (viewMode==='live') acceptLive(data.params[0],data.params[1]);
+    } else if (['notify_klippy_ready','notify_klippy_shutdown','notify_klippy_disconnected'].includes(data.method)) {
+      if (viewMode!=='live') return;
+      liveState=new LiveState(); liveTarget=null; displayed=null; playing=null; sensorPulse=null;
+      if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
+      else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
     } else if (data.method === "notify_gcode_command") {
-      followLive();
+      if (viewMode==='playback') followLive();
       consoleLine(data.params[0], "command");
     } else if (data.method === "notify_gcode_response") {
       const line = data.params[0];
@@ -207,13 +239,87 @@ function connect() {
     }
   };
   socket.onclose = () => {
+    if (generation!==connectionGeneration) return;
+    subscriptionGeneration++;
+    if (liveTarget) { liveTarget.homing=null; liveTarget.espoolers={}; }
+    if (viewMode==='live' && displayed) displayed.espoolers={};
+    draw();
     sourceMode();
     if (!offline) $("connection").textContent = "Disconnected · retrying";
     pending.forEach((p) => p.reject(Error("Console disconnected")));
     pending.clear();
-    setTimeout(connect, 1500);
+    reconnectTimer=setTimeout(connect, 1500);
   };
 }
+async function initializeConnection() {
+  const generation=connectionGeneration;
+  const info=await rpc('server.info');
+  const simulator=info.moonraker_version?.endsWith('-sim');
+  try { await refresh(); }
+  catch(error) {
+    if (generation!==connectionGeneration) return;
+    if (simulator) throw error;
+    setup={connection_kind:'live_machine',units:[],parameters:[],profiles:[]};
+    $('connection').textContent='Connected to printer'; sourceMode();
+  }
+  if (generation!==connectionGeneration) return;
+  if (!modeChosen && setup?.connection_kind==='simulator') await changeView('playback');
+  else if (viewMode==='live') await subscribeLive();
+}
+async function subscribeLive() {
+  const generation=++subscriptionGeneration;
+  const {objects}=await rpc('printer.objects.list');
+  const config=(await rpc('printer.objects.query',{objects:{mmu_machine:['configuration']}})).status.mmu_machine?.configuration;
+  const references=new Set(Object.values(config?.units || {}).flatMap(u=>[u.extruder.name,...(u.heaters || [])]));
+  const wanted=Object.fromEntries(objects.filter(n=>references.has(n) || n==='mmu' || n==='mmu_machine' ||
+    /^mmu_(encoder|buffer|extruder|toolhead|espooler) /.test(n) ||
+    /^(extruder\d*|heater_generic .+|gcode_macro .+)$/.test(n)).map(n=>[n,n.startsWith('gcode_macro ') ? ['blade_pos','cutter_before_extruder','cooling_tube_position','cooling_tube_length'] : null]));
+  wanted.mmu=['unit','gate','tool','filament_pos','filament_grip_state','bowden_progress','homing','sync_drive',
+    'sensor_states','active_sensors','gate_color_rgb','gate_status','espooler','action',
+    'filament_remaining','filament_remaining_color'];
+  wanted.mmu_machine=['configuration'];
+  const initial=await rpc('printer.objects.subscribe',{objects:wanted});
+  if (viewMode==='live' && generation===subscriptionGeneration) acceptLive(initial.status,initial.eventtime);
+}
+function acceptLive(delta,time) {
+  const next=liveState.accept(delta,time);
+  if (!next) { $('mode').textContent='Live view · Waiting for MMU configuration'; return; }
+  const previous=liveTarget;
+  if (previous?.homing && !next.homing) {
+    const name=previous.homing.endstops.find(n=>next.sensors[n]?.state===previous.homing.triggered);
+    if (name) sensorPulse={sensor:name,reverse:!previous.homing.triggered,start:animationNow()};
+  }
+  liveFrom=displayed;
+  const sameGate=liveFrom?.unit===next.unit && liveFrom?.gate===next.gate && next.gate>=0;
+  const distance=sameGate ? next.tips[next.gate]-liveFrom.tips[next.gate] : 0;
+  next.motors={gear:(liveFrom?.motors.gear || 0)+(next.mmu_gripped ? distance : 0),
+    extruder:(liveFrom?.motors.extruder || 0)+(next.synced || next.filament_pos>=6 ? distance : 0)};
+  liveTarget=next; liveStart=animationNow();
+  if (setup?.connection_kind==='simulator' && previous?.unit!==next.unit) {
+    const unit=next.units.indexOf(next.unit);
+    if (unit>=0 && $('unit').value!==String(unit)) {
+      $('unit').value=String(unit); refresh().catch(error=>message(error.message,true));
+    }
+  }
+  live=true; paused=false; playing=null; session='subscription';
+  draw();
+}
+async function changeView(mode) {
+  sourceGeneration++; subscriptionGeneration++;
+  viewMode=mode; offline=false; playing=null; displayed=null; sensorPulse=null;
+  events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay(); pendingSource=null; pendingFingerprint='';
+  liveTarget=null; liveFrom=null; liveState=new LiveState();
+  live=true; paused=false; replayingHistory=false;
+  $('scene').replaceChildren();
+  $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : setup?.connection_kind==='simulator' ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Load a recording';
+  sourceMode(); renderTrace();
+  if (mode==='live' && socket?.readyState===1) await subscribeLive();
+  else if(socket?.readyState===1) await rpc('printer.objects.subscribe',{objects:{}});
+}
+$('view-mode').onchange=()=>{
+  modeChosen=true;
+  changeView($('view-mode').value).catch(e=>message(e.message,true));
+};
 function options(node, items) {
   node.replaceChildren(
     ...items.map(([value, label]) => {
@@ -427,7 +533,7 @@ function animationNow() {
   animationRealTime=now;
   return animationTime;
 }
-let displayed = null, playing = null, played = 0, resumeAt = 0;
+let displayed = null, playing = null, played = 0;
 const spoolAngles=new Map(), spoolArrowVisibility=new Map(), spoolDirections=new Map();
 let spoolLastFrame=null, spoolSession=null;
 const spoolRenderers=new Map();
@@ -473,10 +579,11 @@ function seek(index) {
 }
 // An inward ring marks active homing; the outward ring marks completion.
 function homingRing(name,x,y) {
-  if (!playing || homingTarget(playing.event) !== name) return '';
+  const active=viewMode==='live' ? liveTarget?.homing?.endstops.includes(name) : playing && homingTarget(playing.event)===name;
+  if (!active) return '';
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const phase=((animationNow()-playing.start)%600)/600;
-  const reverse=(playing.event.requested ?? playing.event.distance ?? 0) < 0;
+  const phase=((animationNow()-(viewMode==='live' ? 0 : playing.start))%600)/600;
+  const reverse=viewMode==='live' ? !liveTarget.homing.triggered : (playing.event.requested ?? playing.event.distance ?? 0) < 0;
   const color=reverse ? '#48c982' : 'var(--sensor-clear-pulse)';
   const radius=reduced ? 9 : 13-9*phase;
   const opacity=reduced ? .55 : .6*Math.min(1,phase*8)*(1-.35*phase);
@@ -538,12 +645,12 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
 let sceneDirty=false;
 function draw() { sceneDirty=true; }
 function renderScene() {
-  if (!events.length) return;
+  if (viewMode==='live' ? !displayed : !events.length) return;
   const spoolRequests=new Map();
   cursor = Math.max(0, Math.min(cursor, events.length - 1));
-  const running = live && !paused && (playing || played < events.at(-1).seq);
+  const running = viewMode==='playback' && live && !paused && (playing || played < events.at(-1).seq);
   $("replay").disabled = pauseAfterStep || (!running && currentIndex() >= events.length - 1);
-  const playLabel = running ? 'Pause after current step' : offline ? 'Play recording' : 'Play continuously — follow live when caught up';
+  const playLabel = running ? 'Pause after current step' : offline ? 'Play recording' : 'Play continuously — follow stream when caught up';
   $("replay").setAttribute('aria-label', playLabel);
   $("replay").dataset.tooltip = playLabel;
   $("replay").querySelector('path').setAttribute('d', running
@@ -554,7 +661,7 @@ function renderScene() {
   $("play-previous").disabled = Boolean(running) || $("previous").disabled;
   $("previous-toolchange").disabled = toolchangeIndex(events, currentIndex(), -1) < 0;
   $("next-toolchange").disabled = toolchangeIndex(events, currentIndex(), 1) < 0;
-  const e = live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
+  const e = viewMode==='live' ? {state:displayed,seq:0,kind:'state'} : live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
   const
     s = live && displayed ? displayed : (e.settled_state || e.state),
     gate = s.gate >= 0 ? s.gate : 0;
@@ -563,11 +670,12 @@ function renderScene() {
   const {entry,end,height:toolheadHeight,sensorEntry,sensorGap} = toolheadDrawingRange(s);
   const eventsBehind = events.length - 1 - events.indexOf(e);
   if (live && !paused && !playing && eventsBehind === 0) replayingHistory = false;
-  const modeLabel = paused || !live ? 'Paused' : offline ? 'Replay' : replayingHistory ? 'Replay' : eventsBehind >= 3 ? 'Live · catching up' : 'Live';
+  const modeLabel = paused || !live ? 'Paused' : playing || eventsBehind>0 ? 'Playing' : offline ? 'End of recording' : 'Following stream';
   // Bookkeeping events must not clear the last animated movement's annotation.
-  const annotatedEvent = annotatedStep(events, e, !live || paused);
+  const annotatedEvent = viewMode==='live' ? e : annotatedStep(events, e, !live || paused);
   const moveReason = annotatedEvent.label || annotatedEvent.telemetry?.start?.label;
-  $("mode").textContent = `${modeLabel} · event ${annotatedEvent.seq}` + (moveReason ? ` · ${moveReason}` : '');
+  $("mode").textContent = viewMode==='live' ? `Live view · ${socket?.readyState===1 ? s.action || s.filament_pos_name : 'Disconnected'}`
+    : `Telemetry playback · ${modeLabel} · event ${annotatedEvent.seq}` + (moveReason ? ` · ${moveReason}` : '');
   $("position").textContent = `Gate ${gate} · ${s.filament_pos_name || "Unknown state"} · tip ${tip.toFixed(2)} mm`;
   $("timeline").max = events.length - 1;
   $("timeline").value = live ? events.indexOf(e) : cursor;
@@ -594,7 +702,7 @@ function renderScene() {
     `M620 ${570+mmuOffset} L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 449`;
   const dimensionLink = label => {
     const id = dimensionParameter(s, label);
-    return id && !offline ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
+    return id && !offline && setup?.connection_kind==='simulator' ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
   };
   const nozzleDiameter = Number($("nozzle-diameter").value);
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
@@ -753,13 +861,10 @@ function renderScene() {
   const macroParams=s.configuration?.parameters?.[macroUnit] || {};
   $('scene-macros').innerHTML=[['purge_macro','Purge macro'],['form_tip_macro','Tip-forming macro']].map(([key,label])=>{
     const name=macroParams[key];
-    const link=offline ? '' : `role="button" tabindex="0" data-parameter="${key}" data-macro="${escape(name || '')}" data-unit="${macroUnit}" aria-label="Browse ${label} variables"`;
+    const link=offline || setup?.connection_kind!=='simulator' ? '' : `role="button" tabindex="0" data-parameter="${key}" data-macro="${escape(name || '')}" data-unit="${macroUnit}" aria-label="Browse ${label} variables"`;
     return `<div class="macro-label">${label}</div><span class="macro-name" ${link}>${escape(name === undefined ? 'Not recorded' : name || 'None')}</span>`;
   }).join('');
-  const warningBox = $('filament-warning');
-  warningBox.hidden = !constrained.warnings.length;
-  $('filament-warning-message').textContent = constrained.warnings.length
-    ? 'Displayed tip adjusted to sensor readings: '+constrained.warnings.join('; ') : '';
+  renderWarning(constrained.warnings);
   $("filament").setAttribute(
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
@@ -783,15 +888,16 @@ function renderScene() {
     svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".22"/><stop offset=".12" stop-color="white" stop-opacity=".07"/><stop offset=".3" stop-color="white" stop-opacity=".02"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".055" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${coverPath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${coverPath}"/></clipPath></defs>`;
     // Put the enclosure behind the short filament fade; the glass stays above it.
     svg = `<path d="${coverPath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>` + svg;
-    if ($('heating-preview').checked) {
+    if ($('heating-preview').checked || (viewMode==='live' && s.heaters?.some(h=>h.target>0))) {
       svg += `<defs><radialGradient id="mmu-heating-glow" cx=".5" cy=".9" r=".85"><stop stop-color="#ffbd59" stop-opacity=".65"/><stop offset=".45" stop-color="#ef8d27" stop-opacity=".3"/><stop offset="1" stop-color="#e87516" stop-opacity="0"/></radialGradient></defs><g data-part="heating-preview" clip-path="url(#spool-cover-clip)" pointer-events="none">`;
       for (let row=0; row<grid.rows; row++) {
         const lanes=grid.lanes.filter(lane=>lane.row===row).sort((a,b)=>a.offset-b.offset);
         const regions=s.has_per_gate_heaters ? lanes.map((lane,i)=>({
+          heating:s.heaters?.[unitGates.indexOf(lane.index)]?.target>0,
           left:i ? (gateLaneX(lanes[i-1].offset)+gateLaneX(lane.offset))/2+4 : glassLeft,
           right:i<lanes.length-1 ? (gateLaneX(lane.offset)+gateLaneX(lanes[i+1].offset))/2+4 : glassRight,
-        })) : [{left:glassLeft,right:glassRight}];
-        for (const region of regions)
+        })) : [{left:glassLeft,right:glassRight,heating:s.heaters?.some(h=>h.target>0)}];
+        for (const region of regions.filter(r=>$('heating-preview').checked || r.heating))
           svg += `<rect data-part="heating-glow" x="${region.left}" y="${470+mmuOffset+row*rowSpacing}" width="${region.right-region.left}" height="105" fill="url(#mmu-heating-glow)"/>`;
       }
       svg += '</g>';
@@ -1109,8 +1215,8 @@ function renderScene() {
       el.className = "chip sensor-chip" + (d.state === true ? " on" : d.state === null ? " disabled" : " off");
       el.textContent = name.split(':').at(-1);
       const enabled = d.enabled ?? d.state !== null;
-      const atLatest = live && !paused && !playing && played >= events.at(-1).seq;
-      el.disabled = offline || !atLatest || busy;
+      const atLatest = viewMode==='live' || (live && !paused && !playing && played >= events.at(-1)?.seq);
+      el.disabled = offline || !atLatest || busy || setup?.connection_kind!=='simulator';
       el.setAttribute('aria-pressed', String(enabled));
       el.setAttribute('aria-label', `${name}: ${enabled ? 'enabled' : 'disabled'}. Click to ${enabled ? 'disable' : 'enable'}`);
       el.dataset.tooltip = offline ? 'Recorded sensor state' : atLatest ? `${enabled ? 'Disable' : 'Enable'} ${name}` : 'Jump to live to change sensors';
@@ -1210,7 +1316,7 @@ for (const [id, direction] of [['previous-toolchange', -1], ['next-toolchange', 
 }
 $("next").onclick = () => seek(currentIndex() + 1);
 document.addEventListener('keydown', event => {
-  if ((!paused && live) || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
+  if (viewMode==='live' || (!paused && live) || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
       || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
   if (event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"]')) return;
   const button = $(event.shiftKey
@@ -1227,7 +1333,7 @@ function startPlayback() {
   if (!live) {
     const event = events[cursor];
     played = event.seq; displayed = event.settled_state || event.state;
-    playing = null; resumeAt = 0;
+    playing = null;
   }
   paused = false; live = true;
   draw(); followTrace();
@@ -1247,7 +1353,6 @@ $("play-step").onclick = () => {
   if ($("play-step").disabled) return;
   startPlayback();
   pauseAfterStep = true;
-  resumeAt = 0;
   draw();
 };
 $("replay").onclick = () => {
@@ -1260,7 +1365,7 @@ $("replay").onclick = () => {
 function followLive() {
   pauseAfterStep = false;
   replayingHistory = false;
-  live = true; paused = offline; playing = null; sensorPulse = null; resumeAt = 0;
+  live = true; paused = offline; playing = null; sensorPulse = null;
   played = events.at(-1)?.seq || 0;
   displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
   draw(); followTrace();
@@ -1334,8 +1439,9 @@ $('telemetry-file').onchange = async () => {
     const records = parseTelemetry(await file.text());
     const replay = new TelemetryReplay();
     replay.accept(records); // Validate completely before replacing the current view.
+    if (!offline && socket?.readyState===1) await rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{});
     sourceGeneration++;
-    offline=true;
+    modeChosen=true; viewMode='playback'; offline=true; subscriptionGeneration++; liveTarget=null; liveFrom=null;
     pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
     sourceReplay=replay; sourceRecords=records; pendingSource=null; pendingFingerprint='';
     rawEvents=replay.events; events=visibleSteps(rawEvents); session=replay.session;
@@ -1347,11 +1453,8 @@ $('telemetry-file').onchange = async () => {
   } catch(error) { message(error.message,true); }
   finally { $('telemetry-file').value=''; }
 };
-$('return-live').onclick = () => {
-  sourceGeneration++; offline=false; sourceReplay=new TelemetryReplay(); sourceRecords=[]; pendingSource=null; pendingFingerprint='';
-  sourceMode(); refresh().catch(error=>message(error.message,true));
-  message('Returning to live telemetry…');
-};
+$('return-live').onclick = () => { modeChosen=true; changeView('live').catch(error=>message(error.message,true)); };
+
 let parameterGate = null;
 function updateSource(records, reset=false) {
   const selectedSeq=events[currentIndex()]?.seq;
@@ -1371,7 +1474,7 @@ function updateSource(records, reset=false) {
   if (newSession) {
     if (session !== replay.session) $('mini-console').replaceChildren();
     session=replay.session; live=true; paused=false; replayingHistory=false; pauseAfterStep=false;
-    cursor=0; playing=null; sensorPulse=null; resumeAt=0;
+    cursor=0; playing=null; sensorPulse=null;
     played=events.at(-1)?.seq || 0; displayed=events.at(-1)?.settled_state || events.at(-1)?.state;
   } else {
     cursor=Math.max(0,events.findIndex(e=>e.seq === selectedSeq));
@@ -1387,15 +1490,18 @@ function updateSource(records, reset=false) {
 async function poll() {
   const generation=sourceGeneration;
   try {
-    if (offline) return;
+    if (offline || viewMode!=='playback' || setup?.connection_kind!=='simulator') return;
     // Leave headroom above the server’s 6,000 records plus session snapshot.
     // Otherwise a full ring triggers another full replay on every idle poll.
     const query=sourceRecords.length > 7000 || !sourceReplay.session ? '' : '?after='+sourceReplay.sequence;
-    const res=await fetch('/sim/viewer/telemetry'+query);
+    const endpoint=new URL(connectionUrl);
+    endpoint.protocol=endpoint.protocol==='wss:' ? 'https:' : endpoint.protocol==='ws:' ? 'http:' : endpoint.protocol;
+    const telemetryUrl=new URL('/sim/viewer/telemetry',endpoint).href;
+    const res=await fetch(telemetryUrl+query);
     if (!res.ok) throw Error('Telemetry connection unavailable');
     let data=(await res.json()).result;
     if (sourceReplay.session && data.session_id !== sourceReplay.session && !data.reset)
-      data=(await (await fetch('/sim/viewer/telemetry')).json()).result;
+      data=(await (await fetch(telemetryUrl)).json()).result;
     if (offline || generation !== sourceGeneration) return;
     updateSource(data.records,data.reset);
     const latest=rawEvents.at(-1)?.state;
@@ -1439,8 +1545,13 @@ function animate() {
     }
   }
   spoolLastFrame=now;
-  if (live && !paused && events.length) {
-    if (!playing && now >= resumeAt) {
+  if (viewMode==='live' && liveTarget) {
+    const fraction=Math.min(1,(now-liveStart)/350);
+    displayed=liveFrame(liveFrom,liveTarget,fraction);
+    if (fraction<1 || sceneDirty || liveTarget.homing) draw();
+  }
+  if (viewMode==='playback' && live && !paused && events.length) {
+    if (!playing) {
       const event = events.find(e=>e.seq>played);
       if (event) { playing={event,start:now,selectionGrip:displayed?.mmu_gripped ?? event.before?.mmu_gripped}; followTrace(); }
     }
@@ -1458,7 +1569,6 @@ function animate() {
         const pulse = homingPulse(playing.event);
         if (pulse) sensorPulse = {...pulse, start:now};
         played=playing.event.seq;
-        if (playing.event.kind === 'movement' && playing.event.source !== 'mmu_gcode') resumeAt=now+300;
         playing=null;
         if (pauseAfterStep || (offline && played >= events.at(-1).seq)) { paused = true; pauseAfterStep = false; }
         followTrace();
@@ -1576,6 +1686,22 @@ async function refreshObjectPanel(kind) {
   } catch(error) { panel.dataset.available='false'; message(error.message,true); }
 }
 
+$('printer-url').value=connectionUrl;
+$('connect-printer').onclick=()=>{
+  try {
+    const value=$('printer-url').value.trim();
+    const endpoint=new URL(value.includes('://') ? value : 'http://'+value);
+    if (!['http:','https:','ws:','wss:'].includes(endpoint.protocol)) throw Error('Use an HTTP or WebSocket printer URL');
+    connectionUrl=endpoint.href;
+    clearTimeout(reconnectTimer); connectionGeneration++; subscriptionGeneration++; sourceGeneration++;
+    socket?.close();
+    pending.forEach(p=>p.reject(Error('Connection changed'))); pending.clear();
+    modeChosen=false; offline=false; viewMode='live'; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
+    events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay(); pendingSource=null;
+    $('scene').replaceChildren(); $('mode').textContent='Live view · Connecting…';
+    connect();
+  } catch(error) { message(error.message,true); }
+};
 connect();
 poll();
 requestAnimationFrame(animate);

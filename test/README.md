@@ -773,6 +773,41 @@ and new states (including silent changes), unit and gate; repeated assignments
 are suppressed. This is Happy Hare's discrete progress state, not a millimetre
 coordinate. The viewer displays it alongside the tip position.
 
+The viewer has two independent modes, identified at the top left. Simulator
+connections default to telemetry playback; other connections default to live view.
+Explicit mode choices survive reconnects. To open a recording, select telemetry
+playback and use **Load telemetry**:
+
+- **Live view** uses Moonraker object queries/subscriptions only. It smoothly
+  follows `mmu.filament_pos` and `mmu.bowden_progress`; transitions are cosmetic,
+  not a reconstruction of motor travel. Heater targets, encoder readings,
+  proportional buffer values and sensor states update directly from subscriptions.
+- **Telemetry playback** uses only the loaded JSON/JSONL recording, or the
+  simulator's piped telemetry stream. Current printer status never changes an
+  old recording. Playback controls and the movement trace appear in this mode.
+
+The Settings panel accepts a printer/simulator URL (default: the server hosting
+this viewer). Simulator editors are hidden on a real printer. The printer must
+expose `mmu_machine.configuration`, the effective runtime geometry/object references,
+including calibration and changes made through `MMU_TEST_CONFIG`. This is a status
+field, not a telemetry baseline. `mmu.sensor_states` contains qualified sensor
+identities and `mmu.active_sensors` identifies the active path.
+
+`mmu.homing` is null when idle, otherwise `{endstops: [...], triggered: true/false}`.
+It is set only around a homing move, including compound endstops, and cleared on
+both success and error. The live viewer pulses these sensors while active and
+shows a completion pulse when the sensor's reported state confirms the transition.
+Short operations may finish between subscription updates; use telemetry playback
+when every operation must be inspected. The simulator executes commands with a
+virtual clock, so live subscriptions may skip intermediate states there too.
+
+`live-state.js` adapts subscriptions without retaining history; `telemetry.js`
+reduces recordings. Both use `scene-state.js` for scene geometry and share the SVG
+components. New movement recordings omit heater target changes; old recordings
+containing these fields remain readable. Run the live browser regression with
+`node --test test/hh/viewer/live.browser.mjs` using the same Playwright/Chrome
+settings as the spool browser test below.
+
 The simulator-only **Buffer Config**, **Encoder Config**, and **Toolhead Config**
 panels appear only when that profile has fitted objects of the corresponding type.
 Shared objects appear once, with their connected units listed. Edits change the
@@ -882,7 +917,7 @@ History is bounded. When an incremental cursor expires, `reset: true` accompanie
 a replacement session baseline with `checkpoint: true`. That baseline restores
 printer facts, but discarded movements cannot restore previously inferred purge
 or fragment geometry; a consumer must restart its inference at that checkpoint.
-Live and offline replay use only these captured facts and events. Neither loads
+Streamed and offline playback use only these captured facts and events. Neither loads
 current printer settings to interpret old movement.
 
 Coverage includes `move_filament()`, MMU-owned G1 extrusion, and explicit cutter

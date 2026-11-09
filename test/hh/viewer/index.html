@@ -10,7 +10,7 @@
     <header>
       <div>
         <small>HAPPY HARE / CONSOLE</small>
-        <h1>Live simulator</h1>
+        <h1>Happy Hare viewer</h1>
       </div>
       <div class="header-actions"><span id="connection">Connecting…</span><button id="theme-toggle" type="button" aria-label="Switch to light mode">Light mode</button></div>
     </header>
@@ -47,7 +47,8 @@
         <p id="message" role="status"></p>
       </aside>
       <section class="card" id="sidebar-playback" aria-label="Playback controls">
-        <h2>Playback</h2>
+        <h2>Viewing mode</h2>
+        <label>Source<select id="view-mode"><option value="live">Live view · subscriptions</option><option id="recording-option" value="recording" disabled hidden>Telemetry playback · loaded recording</option><option id="stream-option" value="playback">Telemetry playback · simulator stream</option></select></label>
         <div class="playback-row"><button id="beginning" data-tooltip="Beginning" aria-label="Beginning"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5h2v14H2z M13 5v14L5 12z M22 5v14l-8-7z"/></svg></button><button id="previous-toolchange" data-tooltip="Previous toolchange" aria-label="Previous toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5h3v14H5z M19 5v14L9 12z"/></svg></button><button id="replay" data-tooltip="Play continuously — follow live when caught up" aria-label="Play continuously — follow live when caught up" disabled><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg></button><button id="next-toolchange" data-tooltip="Next toolchange" aria-label="Next toolchange"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h3v14h-3z M5 5v14l10-7z"/></svg></button><button id="live" data-tooltip="End, go live" aria-label="End, go live"><svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 5h2v14h-2z M2 5v14l8-7z M11 5v14l8-7z"/></svg></button></div>
         <div class="playback-row"><button id="previous" data-tooltip="Previous step (Left Arrow)" aria-label="Previous step (Left Arrow)"><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5v14L2 12z M22 5v14l-9-7z"/></svg></button><button id="play-previous" data-tooltip="Play previous step in reverse (Shift+Left)" aria-label="Play previous step in reverse" disabled><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M23 4v16L11 12z"/><text x="4" y="16" text-anchor="middle" font-size="12" font-family="sans-serif" font-weight="700" fill="currentColor">1</text></svg></button><button id="play-step" data-tooltip="Play one step (Shift+Right)" aria-label="Play one step" disabled><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M1 4v16l12-8z"/><text x="20" y="16" text-anchor="middle" font-size="12" font-family="sans-serif" font-weight="700" fill="currentColor">1</text></svg></button><button id="next" data-tooltip="Next step (Right Arrow)" aria-label="Next step (Right Arrow)"><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l9-7z M13 5v14l9-7z"/></svg></button></div>
         <div class="playback-row"><button id="save-motion">Save telemetry</button><button id="load-telemetry">Load telemetry</button></div>
@@ -57,6 +58,8 @@
       </section>
       <section class="card" id="viewer-settings" aria-label="Viewer settings">
         <h2>Settings</h2>
+        <label>Printer / simulator URL<input id="printer-url" type="text" aria-label="Printer or simulator URL"></label>
+        <button id="connect-printer" type="button">Connect</button>
         <details class="spool-style-picker" id="spool-style-menu"><summary>Spool type <span id="spool-style-current"></span></summary><div id="spool-style-grid" role="group" aria-label="Spool type"></div></details>
         <label class="viewer-setting-slider" for="spool-angle">Viewing angle <output id="spool-angle-value">77°</output><input id="spool-angle" type="range" min="65" max="90" value="77" step="1"></label>
         <label class="viewer-setting-slider" for="spool-spacing">Spool spacing <output id="spool-spacing-value">54</output><input id="spool-spacing" type="range" min="45" max="75" value="54" step="1"></label>
@@ -69,7 +72,7 @@
       <section>
         <div class="card">
           <div class="heading">
-            <h2 id="mode" tabindex="0" data-tooltip="Schematic path inferred from Happy Hare source telemetry. Live updates and saved recordings use the same replay model." aria-description="Schematic path inferred from Happy Hare source telemetry. Live updates and saved recordings use the same replay model.">Live</h2>
+            <h2 id="mode" tabindex="0" data-tooltip="Live view animates subscribed printer state. Telemetry playback reconstructs recorded movement." aria-description="Live view animates subscribed printer state. Telemetry playback reconstructs recorded movement.">Live</h2>
             <span id="position"></span>
           </div>
           <div class="scene-container">
