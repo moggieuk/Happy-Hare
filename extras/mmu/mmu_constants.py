@@ -239,8 +239,7 @@ LOG_ESSENTIAL = 0
 LOG_INFO      = 1
 LOG_DEBUG     = 2
 LOG_TRACE     = 3
-LOG_STEPPER   = 4
-LOG_LEVELS = ['ESSENTIAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
+LOG_LEVELS = ['ESSENTIAL', 'INFO', 'DEBUG', 'TRACE']
 
 # States of espooler motor
 ESPOOLER_NONE   = ''

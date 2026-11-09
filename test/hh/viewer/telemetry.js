@@ -126,6 +126,11 @@ export class TelemetryReplay extends SceneModel {
       else this.emit(record, 'state', 'State changed', {internal:true, during_move:this.pending.size > 0, telemetry:record},state);
       return;
     }
+    if (record.event === 'selector_movement_start' || record.event === 'selector_movement_outcome') {
+      this.emit(record,'selector',record.label || 'Selector movement result',
+        {internal:true,telemetry:record});
+      return;
+    }
     if (record.event === 'movement_start') {
       this.pending.set(record.move_id, {start:copy(record), before:this.snapshot()});
       this.emit(record,'pending_move',record.label || 'Movement',{internal:true,telemetry:record});

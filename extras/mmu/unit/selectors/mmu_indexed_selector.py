@@ -22,6 +22,7 @@ from typing                 import Sequence
 # Klipper imports
 
 # Happy Hare imports
+from ...telemetry.selector import selector_operation
 from ...mmu_constants       import *
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
@@ -301,62 +302,62 @@ class IndexedSelector(PhysicalSelector):
 
         pos = self.selector_stepper.commanded_pos
 
-        if homing_move != 0:
-            # Check for valid endstop
-            if endstop_name is None:
-                if self.selector_stepper.rail.get_endstops() is None:
-                    self.mmu.log_error("No selector endstops configured")
-                    return pos, False
+        with selector_operation(self, 'stepper', label=trace_str or 'Move selector',
+                position_mm=pos, target_position_mm=new_pos, requested_mm=new_pos-pos,
+                speed_mm_s=speed, acceleration_mm_s2=accel, wait=wait,
+                homing=bool(homing_move), endstop=(endstop_name or 'default') if homing_move else None,
+                trigger_state=(homing_move > 0) if homing_move else None) as outcome:
+            if homing_move != 0:
+                # Check for valid endstop
+                if endstop_name is None:
+                    if self.selector_stepper.rail.get_endstops() is None:
+                        self.mmu.log_error("No selector endstops configured")
+                        return pos, False
+                else:
+                    if self.selector_stepper.rail.get_extra_endstop(endstop_name) is None:
+                        self.mmu.log_error(f"Endstop '{endstop_name}' not found")
+                        return pos, False
+
+                home_result = {
+                    'halt_pos': pos,
+                    'trig_pos': pos,
+                }
+                homed = True
+
+                try:
+                    home_result = self.selector_stepper.do_homing_move(
+                        new_pos,
+                        speed,
+                        accel,
+                        probe_pos=True,
+                        triggered=(homing_move > 0),
+                        check_trigger=True,
+                        endstop_name=endstop_name,
+                    )
+                except self.printer.command_error as exc:
+                    outcome['error'] = str(exc)
+                    homed = False
+                finally:
+                    self.mmu.toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
+
+                actual = home_result['halt_pos'] - pos
+
             else:
-                if self.selector_stepper.rail.get_extra_endstop(endstop_name) is None:
-                    self.mmu.log_error(f"Endstop '{endstop_name}' not found")
-                    return pos, False
-
-            home_result = {
-                'halt_pos': pos,
-                'trig_pos': pos,
-            }
-            homed = True
-
-            try:
-                home_result = self.selector_stepper.do_homing_move(
-                    new_pos,
-                    speed,
-                    accel,
-                    probe_pos=True,
-                    triggered=(homing_move > 0),
-                    check_trigger=True,
-                    endstop_name=endstop_name,
-                )
-            except self.printer.command_error:
                 homed = False
-            finally:
-                self.mmu.toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
+                self.selector_stepper.do_move(new_pos, speed, accel)
 
-            actual = home_result['halt_pos'] - pos
-            result = f"HOMED actual halt_pos={home_result['halt_pos']:.2f}, trig_pos={home_result['trig_pos']:.2f}" if homed else "DID NOT HOME"
-            self.mmu.log_stepper(
-                f"SELECTOR HOMING MOVE: requested position={new_pos:.1f}, "
-                f"speed={speed:.1f}, accel={accel:.1f}, "
-                f"endstop_name={endstop_name} >> {result} (actual_delta: {actual:.1f})"
-            )
+                actual = self.selector_stepper.commanded_pos - pos
 
-        else:
-            homed = False
-            self.selector_stepper.do_move(new_pos, speed, accel)
+                self.mmu.toolhead.flush_step_generation() # TTC mitigation
+                if wait:
+                    self.mmu.movequeue_wait()
 
-            actual = self.selector_stepper.commanded_pos - pos
-            self.mmu.log_stepper(
-                f"SELECTOR MOVE: requested position={new_pos:.1f}, "
-                f"speed={speed:.1f}, accel={accel:.1f}, actual_delta={actual:.1f}"
-            )
-
-            self.mmu.toolhead.flush_step_generation() # TTC mitigation
-            if wait:
-                self.mmu.movequeue_wait()
-
-        return self.selector_stepper.commanded_pos, homed
-
+            outcome.update(position_mm=self.selector_stepper.commanded_pos, actual_mm=actual,
+                           homed=homed if homing_move else None,
+                           status=('completed' if homed else 'not_homed') if homing_move else 'completed' if wait else 'submitted')
+            if homing_move:
+                outcome.update(trigger_position_mm=home_result['trig_pos'], halt_position_mm=home_result['halt_pos'])
+            return self.selector_stepper.commanded_pos, homed
 
     def _detect_gate_sequence(self):
         """

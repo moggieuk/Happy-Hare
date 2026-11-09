@@ -159,7 +159,7 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertEqual(len(self.outcomes()), 1)
 
     def test_install_preserves_an_existing_extension(self):
-        from extras.mmu.mmu_gcode_telemetry import GcodeExtrusionTelemetry
+        from extras.mmu.telemetry.gcode import GcodeExtrusionTelemetry
         previous = self.hh.gcode.register_command('G1', None)
         calls = []
         def extension(gcmd):

@@ -40,7 +40,7 @@ from ..homing             import HomingMove
 
 # Happy Hare imports
 from .mmu_constants       import *
-from .mmu_movement_telemetry import movement_operation
+from .telemetry.movement import movement_operation
 from .mmu_utils           import MmuError, MmuGateHomingMiss
 from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 
@@ -3780,8 +3780,8 @@ class MmuFilamentMovement:
 
                 start_pos = drive.get_filament_position()
 
-                # The same resolved values as the STEPPER messages below, independent
-                # of log level. Reject unsupported synced homing without a motion start.
+                # Record resolved movement values independently of text logging.
+                # Reject unsupported synced homing without a motion start.
                 motion = self.movement_telemetry.current
                 if not (motor == "synced" and homing_move):
                     owners = ([drive.mmu_gear_stepper] if motor == 'gear' else
@@ -3806,24 +3806,6 @@ class MmuFilamentMovement:
                 # Manual stepper move authority
                 if motor in ["gear", "gear+extruder", "extruder"]:
 
-                    if homing_move != 0:
-                        self.log_stepper(
-                            f"{motor.upper()} HOMING MOVE: "
-                            f"max dist={dist:.1f}, "
-                            f"speed={speed:.1f}, "
-                            f"accel={accel:.1f}, "
-                            f"endstop_name={endstop_name}->{qual_endstop_name}, "
-                            f"wait={wait}"
-                        )
-                    else:
-                        self.log_stepper(
-                            f"{motor.upper()} MOVE: "
-                            f"dist={dist:.1f}, "
-                            f"speed={speed:.1f}, "
-                            f"accel={accel:.1f}, "
-                            f"wait={wait}"
-                        )
-
                     actual, homed = drive.move(dist, speed, accel, homing_move=homing_move, endstop_name=qual_endstop_name)
 
                 # Normal extruder-side move authority
@@ -3831,9 +3813,6 @@ class MmuFilamentMovement:
                     if homing_move != 0:
                         self.log_error("Not possible to perform homing move while synced")
                         return null_rtn
-
-                    if self.log_enabled(LOG_STEPPER):
-                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=toolhead, wait=%s" % (motor.upper(), dist, speed, wait))
 
                     ext_pos[3] += dist
                     self.toolhead.move(ext_pos, speed)
@@ -3846,7 +3825,6 @@ class MmuFilamentMovement:
         except self.printer.command_error as e:
             if homing_move != 0:
                 self.movement_telemetry.current.error = str(e)
-                self.log_stepper("Did not complete homing move: %s" % str(e))
                 try:
                     actual = drive.get_filament_position() - start_pos
                 except Exception:
@@ -4270,7 +4248,7 @@ class MmuFilamentMovement:
         """
 
         u = self.mmu_unit()
-        self.log_stepper(f"_sync_gear_to_extruder(sync={sync})")
+        self.log_trace(f"_sync_gear_to_extruder(sync={sync})")
 
         # Protect cases where we should not sync (note type-B always has a homed selector).
         bypass_or_unknown_gate = self.gate_selected < 0
@@ -4353,7 +4331,7 @@ class MmuFilamentMovement:
                # Not in a print
                sync = out_of_print_sync
 
-        self.log_stepper(
+        self.log_trace(
             f"reset_sync_gear_to_extruder("
             f"sync_intention={sync_intention}, "
             f"force_grip={force_grip}, "

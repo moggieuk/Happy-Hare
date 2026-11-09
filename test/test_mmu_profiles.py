@@ -591,7 +591,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         for gate, name in enumerate(expected):
             self.assertEqual(hh.printer.lookup_object(name).get_temp()[1],
                              45 if gate == 0 else 0)
-        from extras.mmu.mmu_telemetry_capture import TelemetryCapture
+        from extras.mmu.telemetry.capture import TelemetryCapture
         capture = TelemetryCapture(hh.mmu)
         try:
             facts = capture.read()['records'][0]['state']

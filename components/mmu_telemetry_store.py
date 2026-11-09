@@ -135,9 +135,9 @@ class TelemetryRecorder:
                 self._rotate()
                 self._line(self.header)
             self._line(record)
-            if record['event'] == 'movement_start':
+            if record['event'] in ('movement_start', 'selector_movement_start'):
                 self.active_moves.add(record['move_id'])
-            elif record['event'] == 'movement_outcome':
+            elif record['event'] in ('movement_outcome', 'selector_movement_outcome'):
                 self.active_moves.discard(record['move_id'])
             TelemetryHistory._advance(self.header, record)
         if self.file:

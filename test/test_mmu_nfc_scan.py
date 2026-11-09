@@ -236,7 +236,7 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.hh.run_gcode('MMU_PRELOAD GATE=0')
 
     def test_compound_endstop_is_used(self):
-        self.hh.mmu.p.log_level = 4
+        self.hh.mmu.p.log_level = 3
         self.preload_with_tag_before_the_gate()
         trace = ' '.join(self.hh.console)
         self.assertIn('preload_compound', trace,

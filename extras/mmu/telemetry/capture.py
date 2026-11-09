@@ -19,7 +19,7 @@ import itertools
 import copy
 import math
 import threading
-from .mmu_status_config import UNIT_PARAMETERS, TOOLHEAD_PARAMETERS
+from ..mmu_status_config import UNIT_PARAMETERS, TOOLHEAD_PARAMETERS
 
 
 def plain(value):
@@ -75,7 +75,7 @@ class ReplayState:
         return {name: getattr(obj, name) for name in names if hasattr(obj, name)}
 
     def __call__(self):
-        from .mmu_utils import MmuColorUtils
+        from ..mmu_utils import MmuColorUtils
         mmu = self.mmu
         now = mmu.reactor.monotonic()
         manager = mmu.sensor_manager

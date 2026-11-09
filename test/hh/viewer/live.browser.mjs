@@ -61,7 +61,7 @@ test('live subscriptions animate homing and remain isolated from file playback',
   await page.waitForTimeout(100);
   assert.equal(await page.locator('#position').textContent(),position);
   await page.locator('#play-step').click();await page.waitForTimeout(100);
-  await page.locator('#return-live').click();await page.waitForTimeout(500);
+  await page.locator('#view-mode').selectOption('live');await page.waitForTimeout(500);
   assert.match(await page.locator('#mode').textContent(),/^Live view/);
   assert.deepEqual(errors,[]);assert.deepEqual(telemetryRequests,[]);
  } finally {await browser.close();}
