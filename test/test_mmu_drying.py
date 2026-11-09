@@ -203,6 +203,31 @@ class TestDryingRotationWhilePrinting(unittest.TestCase):
         accel_d = .5 * move['cruise_v'] * move['accel_t']
         return 2. * accel_d + move['cruise_v'] * move['cruise_t']
 
+    def test_configured_rotation_distance_while_printing(self):
+        self.unit.p.heater_rotate_distance = 50.
+        before = {gate: len(self._moves(gate)) for gate in (1, 2)}
+        queued = self._record_queueing()
+        self._dry_and_rotate()
+        for gate in (1, 2):
+            moves = self._moves(gate, before[gate])
+            self.assertTrue(moves)
+            self.assertAlmostEqual(sum(m['axes_r'][0] * self._distance(m) for m in moves), -50., places=3)
+        self._assert_bounded(queued)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_configured_rotation_speed_while_printing(self):
+        self.unit.p.heater_rotate_speed = 10.
+        before = {gate: len(self._moves(gate)) for gate in (1, 2)}
+        queued = self._record_queueing()
+        self._dry_and_rotate()
+        for gate in (1, 2):
+            moves = self._moves(gate, before[gate])
+            self.assertTrue(moves)
+            self.assertAlmostEqual(max(m['cruise_v'] for m in moves), 10.)
+            self.assertAlmostEqual(sum(m['axes_r'][0] * self._distance(m) for m in moves), -100., places=3)
+        self._assert_bounded(queued)
+        self.assertEqual(self.hh.errors, [])
+
     def _assert_bounded(self, queued):
         segment_time = sys.modules[type(self.manager).__module__].ROTATE_SEGMENT_TIME
         self.assertTrue(queued)
