@@ -60,7 +60,6 @@ VENT_SERVO_LEAD_TIME = 0.100 # Seconds ahead of the mcu clock to schedule a vent
 ENV_CHECK_INTERVAL = 30 # How often to check heater and environment sensors (seconds)
 
 # Experimental gear driven spool rotation while printing (heater_rotate_in_print)
-ROTATE_GEAR_DISTANCE = 100.  # mm of gear rewind per spool, same as outside a print
 ROTATE_SEGMENT_TIME  = 0.3   # Max seconds of motion queued per move so a step flush never waits long
 ROTATE_SEGMENT_LEAD  = 0.2   # Queue the next move this long before the previous one ends
 ROTATE_DISABLE_DELAY = 0.5   # Wait after the last move before turning the gear off again
@@ -487,6 +486,7 @@ class MmuEnvironmentManager:
                     'start_time': self._drying_start_time,
                     'end_time': self._drying_end_time,
                 }
+            drying['rotate'] = self._rotate_enabled
         return {
             'drying_state': self._drying_state,
             'drying': drying,
@@ -1254,7 +1254,9 @@ class MmuEnvironmentManager:
             prev_gate_selected = self.mmu.gate_selected
             for gate in gates:
                 self.mmu.select_gate(gate)
-                _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -100, motor="gear", wait=True)
+                # heater_rotate_speed 0 = the default gear speed
+                _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -self.mmu_unit.p.heater_rotate_distance,
+                                                 speed=self.mmu_unit.p.heater_rotate_speed or None, motor="gear", wait=True)
             self.mmu.select_gate(prev_gate_selected)
 
 
@@ -1322,12 +1324,14 @@ class MmuEnvironmentManager:
             gate = self._bg_rotate_gates.pop(0)
             stepper = self.mmu_unit.drive_obj(gate).mmu_gear_stepper
             if self._bg_can_rotate(gate, stepper, None, est_print_time):
-                cur = self._bg_rotate_cur = dict(gate=gate, stepper=stepper, remaining=ROTATE_GEAR_DISTANCE, end_time=None)
+                cur = self._bg_rotate_cur = dict(gate=gate, stepper=stepper,
+                                                remaining=self.mmu_unit.p.heater_rotate_distance, end_time=None)
         if cur is None:
             return self.reactor.NEVER
 
         # Each move is a short one
-        speed, accel = self.mmu_unit.p.gear_short_move_speed, self.mmu_unit.p.gear_short_move_accel
+        speed = self.mmu_unit.p.heater_rotate_speed or self.mmu_unit.p.gear_short_move_speed
+        accel = self.mmu_unit.p.gear_short_move_accel
         dist = min(cur['remaining'], self._bg_segment_distance(speed, accel))
         stepper = cur['stepper']
         cur['end_time'] = stepper.do_background_move(stepper.commanded_pos - dist, speed, accel)

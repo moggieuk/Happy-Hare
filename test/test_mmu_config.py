@@ -456,6 +456,11 @@ class TestHeaterRotateInPrint(unittest.TestCase):
         rendered = cfg.render(profiles.get('qidi'))[PARAMS]
         self.assertRegex(rendered, r'(?m)^heater_rotate_in_print\s*: 0\s')
 
+    def test_rotation_distance_and_speed_render_their_defaults(self):
+        rendered = cfg.render(profiles.get('qidi'))[PARAMS]
+        self.assertRegex(rendered, r'(?m)^heater_rotate_distance\s*: 100(\.0)?\s')
+        self.assertRegex(rendered, r'(?m)^heater_rotate_speed\s*: 0(\.0)?\s')
+
     def test_not_offered_with_a_shared_gear(self):
         vvd = profiles.get('ercf_vvd').units[-1].syms
         with cfg._env(cfg._SINGLE_UNIT_ENV):
