@@ -25,9 +25,12 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
+import os
+import shutil
+import tempfile
 import unittest
 
-from test.hh import session
+from test.hh import profiles, session
 from test.hh.filament import TIP_PARKED
 
 logging.getLogger().setLevel(logging.CRITICAL)
@@ -666,6 +669,39 @@ class TestAutoGroups(AutoGroupsTestCase):
         self.assertEqual(self.gate_maps.gate_material[0], '')
         self.assertEqual(self.groups()[0], self.groups()[1])
 
+    def test_an_emptied_gate_keeps_its_filament_when_a_partner_changes(self):
+        """The empty gate stays with the gates that still have its material and color."""
+        self.set_gate(3, 'PLA', 'ff0000')
+        self.enable()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+        self.set_gate(1, 'PETG', 'ff0000')
+        self.assertEqual(self.groups(), [3, 1, 1, 3])
+
+    def restart(self):
+        """Restart with the option on in the config and filament still in gates 1-3."""
+        self.hh.reactor.advance(1.) # Flush mmu_vars
+        vars_file = os.path.join(tempfile.mkdtemp(), 'mmu_vars.cfg')
+        shutil.copy(self.hh.save_variables.filename, vars_file)
+        self.hh.close()
+        self.hh = session(profiles.get('boxturtle_test').derive(
+            'boxturtle_test_auto_groups', syms={'PARAM_ENDLESS_SPOOL_AUTO_GROUPS': 1}))
+        self.hh._mmu_vars_copy = lambda: vars_file
+        self.hh.build()
+        self.hh.boot(pre_bootup=lambda: [self.hh.place_filament(g, position=TIP_AT_GATE) for g in (1, 2, 3)])
+        self.gate_maps = self.hh.mmu.gate_maps
+
+    def test_an_emptied_gate_keeps_its_filament_after_a_restart(self):
+        """After a restart the empty gate takes its filament from its former partners."""
+        self.set_gate(3, 'PLA', 'ff0000')
+        self.enable()
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+        self.restart()
+        self.assertEqual(self.hh.mmu.p.endless_spool_auto_groups, 1)
+        self.assertEqual(self.gate_maps.gate_status, [GATE_EMPTY, GATE_AVAILABLE, GATE_AVAILABLE, GATE_AVAILABLE])
+        self.assertEqual(self.groups(), [1, 1, 2, 1])
+        self.set_gate(1, 'PETG', 'ff0000')
+        self.assertEqual(self.groups(), [3, 1, 1, 3])
+
     def test_a_refilled_gate_follows_its_new_filament(self):
         self.enable()
         self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
@@ -742,6 +778,14 @@ class TestAutoGroupsGateCheck(AutoGroupsTestCase):
         self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
         self.assertEqual(self.gate_maps.ttg_map[0], 1, 'T0 should have been substituted to gate 1')
         self.assertFalse([e for e in self.hh.errors if 'marked EMPTY' in e])
+
+    def test_gate_check_keeps_the_filament_of_an_emptied_gate(self):
+        """Gate 0 emptied, then its former partner changed to another material."""
+        self.set_gate(3, 'PLA', 'ff0000')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+        self.set_gate(1, 'PETG', 'ff0000')
+        self.hh.run_gcode('MMU_CHECK_GATE TOOLS=0')
+        self.assertEqual(self.gate_maps.ttg_map[0], 3, 'T0 should have been substituted to gate 3 (PLA ff0000)')
 
 
 if __name__ == '__main__':

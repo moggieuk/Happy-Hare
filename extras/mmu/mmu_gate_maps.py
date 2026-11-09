@@ -45,6 +45,7 @@ class MmuGateMaps:
         else:
             self.p.default_endless_spool_groups = list(range(self.num_gates))
         self.endless_spool_groups = list(self.p.default_endless_spool_groups)
+        self._es_auto_identity = [None] * self.num_gates # Last (material, rgb) of each gate for auto groups
 
         # Components of the gate map (status, material, color, spool_id, filament name, temperature, and speed override)
         self._gate_map_vars = [
@@ -371,15 +372,18 @@ class MmuGateMaps:
         without material or color stays in a group of its own. The group number is the first
         gate of the group.
 
-        An EMPTY gate without material or color stays with the gates it was grouped with.
-        A runout (and MMU_CHECK_GATE) marks the gate empty and clears its attributes before
-        the next gate is looked up, so without this the gate would leave its own group and
-        the swap would not happen.
+        An EMPTY gate without material or color keeps the material and color it last had and
+        stays with the gates that still have them. A runout (and MMU_CHECK_GATE) marks the
+        gate empty and clears its attributes before the next gate is looked up, so without
+        this the gate would leave its own group and the swap would not happen. After a
+        restart, or when the option is turned on, that is taken from its former partners
+        if they all have the same material and color.
 
         Returns:
             bool: True if the groups changed
         """
         if not self.p.endless_spool_auto_groups:
+            self._es_auto_identity = [None] * self.num_gates
             return False
 
         keys = []
@@ -390,15 +394,23 @@ class MmuGateMaps:
                 keys.append((material, MmuColorUtils.color_to_rgb_hex(color)[:6]))
             else:
                 keys.append(None)
-        groups = [gate if key is None else keys.index(key) for gate, key in enumerate(keys)]
 
         previous = list(self.endless_spool_groups)
+        identity = list(self._es_auto_identity)
         for gate, key in enumerate(keys):
-            if key is None and self.gate_status[gate] == GATE_EMPTY:
-                partners = [g for g, k in enumerate(keys)
-                            if k is not None and g != gate and previous[g] == previous[gate]]
-                if partners:
-                    groups[gate] = groups[partners[0]]
+            if key is not None or self.gate_status[gate] != GATE_EMPTY:
+                identity[gate] = key
+            elif identity[gate] is None:
+                former = set(k for g, k in enumerate(keys)
+                             if k is not None and g != gate and previous[g] == previous[gate])
+                if len(former) == 1:
+                    identity[gate] = former.pop()
+        self._es_auto_identity = identity
+
+        groups = [gate if key is None else keys.index(key) for gate, key in enumerate(keys)]
+        for gate, key in enumerate(keys):
+            if key is None and identity[gate] is not None and identity[gate] in keys:
+                groups[gate] = groups[keys.index(identity[gate])]
 
         if groups == previous:
             return False
