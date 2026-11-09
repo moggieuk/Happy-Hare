@@ -35,23 +35,6 @@ from .mmu_dialog                import MmuErrorDialog
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
 
-# Safety net for a shared NFC lookup whose NEXT_SPOOLID result never arrives (lost
-# RPC / hung Moonraker). Must exceed Moonraker's worst-case request time (~16s) so a
-# slow comms failure signals '-1' before this fires. Normal outcomes resolve sooner.
-NFC_LOOKUP_TIMEOUT = 30.0
-
-# NFC reader LED indicator fallback durations - used only when the effect_nfc_* mapping in
-# [mmu_leds] omits its optional 3rd (duration) field; the config value is authoritative
-NFC_LED_READ_FLASH  = 1.5  # "tag read" flash
-NFC_LED_FAIL_FLASH  = 3.0  # "lookup failed" flash before returning to default
-TD1_LED_READ_FLASH  = 1.5  # "measured" flash
-TD1_LED_FAIL_FLASH  = 3.0  # "no measurement" flash before returning to default
-
-# Base spoolman pending-spool_id LED overlay: swap to the "expiring" effect this many
-# seconds before spoolman_pending_id_timeout voids the assignment
-PENDING_LED_WARN_WINDOW = 5.0
-
-
 # Main klipper module
 class MmuController(MmuFilamentMovement):
 
