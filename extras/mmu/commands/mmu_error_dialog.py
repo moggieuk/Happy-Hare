@@ -67,7 +67,7 @@ class MmuErrorDialogCommand(BaseCommand):
             dialog.set(show_abort=bool(abort))
         if buttons is not None:
             parsed = [tuple(part.strip() for part in button.split("|")) for button in buttons.split(",") if button.strip()]
-            if any(len(button) != 3 for button in parsed):
+            if any(len(button) != 3 or not button[0] or not button[1] for button in parsed):
                 raise gcmd.error("BUTTONS needs Label|GCODE|style, comma separated")
             dialog.set(buttons=parsed)
 
