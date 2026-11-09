@@ -1485,7 +1485,8 @@ class TestMultiUnitSelectors(SelectorTestCase):
         # sensor's own trigger is still drawn in the fill regardless, so the two
         # facts - "gate_map says empty" and "something is physically detected" -
         # are both visible at once rather than one hiding the other.
-        visual = self.hh.mmu.get_filament_position_string()
+        from test.filament_display import strip_color_markup
+        visual = strip_color_markup(self.hh.mmu.get_filament_position_string())
         self.assertIn('◉■■◉', visual)  # entry triggered, gap fully filled, exit triggered
         self.assertIn('EMPTY', visual)
 

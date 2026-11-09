@@ -2351,6 +2351,19 @@ class TestTheDefaultProfile(unittest.TestCase):
         gate_row = mmu.gate_maps.gate_map_to_string().splitlines()[gate + 2]
         self.assertIn('(%s?%s)' % (square, square), gate_row)
 
+    def test_gate_without_color_renders_the_webui_grey(self):
+        from extras.mmu.mmu_constants import UNKNOWN_FILAMENT_COLOR, UI_SOLID_SQUARE
+
+        mmu = self.console.hh.mmu
+        gate = mmu.gate_selected
+        mmu.gate_color[gate] = ''
+        grey = '{{%s}}' % UNKNOWN_FILAMENT_COLOR.lstrip('#').lower()
+        square = '%s%s{{}}' % (grey, UI_SOLID_SQUARE)
+
+        gate_row = mmu.gate_maps.gate_map_to_string().splitlines()[gate + 2]
+        self.assertIn('(%s' % square, gate_row)
+        self.assertIn(grey, mmu.get_filament_position_string())
+
     def test_the_homing_chatter_stays_out_of_the_banner(self):
         """
         Homing has to precede bootup, but "Homing MMU unit0... / Homed" is setup rather than
