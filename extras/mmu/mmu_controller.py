@@ -22,9 +22,9 @@ from itertools                  import repeat
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
-from .mmu_movement_telemetry     import MovementTelemetry
-from .mmu_telemetry_api          import TelemetryAPI
-from .mmu_gcode_telemetry        import GcodeExtrusionTelemetry
+from .telemetry.movement        import MovementTelemetry
+from .telemetry.api             import TelemetryAPI
+from .telemetry.gcode           import GcodeExtrusionTelemetry
 from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -2128,9 +2128,6 @@ class MmuController(MmuFilamentMovement):
 
     def log_trace_exit(self, msg):
         self.logger.log_trace_exit(msg)
-
-    def log_stepper(self, msg):
-        self.logger.log_stepper(msg)
 
     def log_enabled(self, level):
         return self.logger.log_enabled(level)

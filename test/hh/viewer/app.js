@@ -83,14 +83,12 @@ function sourceMode() {
   });
   $('recording-option').hidden=!offline;
   $('view-mode').value=offline ? 'recording' : viewMode;
-  $('stream-history').disabled=offline || viewMode!=='playback';
-  $('stream-option').textContent=setup?.connection_kind==='simulator' ? 'Telemetry playback · simulator stream' : 'Telemetry playback · printer stream';
   $('simulator-controls').hidden=setup?.connection_kind==='live_machine';
+  $('runtime-parameters').hidden=setup?.connection_kind==='live_machine';
   $('sidebar-playback').querySelectorAll('.playback-row, .playback-option').forEach(el=>el.hidden=viewMode==='live');
   $('trace').closest('.card').hidden=viewMode==='live';
-  $('return-live').hidden = viewMode==='live';
   $('recording-name').hidden = !offline;
-  document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
+  document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #runtime-parameters input, #runtime-parameters select, #runtime-parameters button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
     .forEach(node=>node.disabled=offline);
   $('live').dataset.tooltip = offline ? 'End of recording' : 'End, follow stream';
   $('live').setAttribute('aria-label', $('live').dataset.tooltip);
@@ -100,7 +98,7 @@ function sourceMode() {
 function renderWarning(warnings=[]) {
   const simulatorLive=viewMode==='live' && !offline && socket?.readyState===1 && setup?.connection_kind==='simulator';
   const text=simulatorLive
-    ? 'Simulator subscriptions may skip movement updates. Use Telemetry playback · simulator stream for complete movement animation.'
+    ? 'Simulator subscriptions may skip movement updates. Select Telemetry stream for complete movement animation.'
     : viewMode==='playback' && warnings.length ? 'Displayed tip adjusted to sensor readings: '+warnings.join('; ') : '';
   $('filament-warning').hidden=!text;
   $('filament-warning-message').textContent=text;
@@ -177,7 +175,7 @@ function message(text, error = false) {
 }
 function rpc(method, params = {}) {
   return new Promise((resolve, reject) => {
-    if (offline) return reject(Error("Return to live before changing the printer"));
+    if (offline) return reject(Error("Select a live source before changing the printer"));
     if (socket?.readyState !== 1) return reject(Error("Console disconnected"));
     const id = ++serial;
     pending.set(id, { resolve, reject });
@@ -1402,7 +1400,7 @@ function selectSpoolPreview(style) {
   // The summary has its own resources; cloning an option would duplicate SVG IDs.
   $('spool-style-current').innerHTML=spoolPreview(style,'spool-preview-current');
 }
-for (const [value,name] of [['cardboard-windowed','Cardboard · windowed'],['dark-windowed','Dark grey · windowed'],['cardboard-solid','Cardboard · solid'],['dark-solid','Dark grey · solid']]) {
+for (const [value,name] of [['cardboard-windowed','Cardboard · windowed'],['dark-windowed','Black plastic · windowed'],['cardboard-solid','Cardboard · solid'],['dark-solid','Black plastic · solid']]) {
   const label=document.createElement('label');
   label.className='spool-style-choice';
   label.dataset.tooltip=name;
@@ -1473,7 +1471,6 @@ $('telemetry-file').onchange = async () => {
   } catch(error) { message(error.message,true); }
   finally { $('telemetry-file').value=''; }
 };
-$('return-live').onclick = () => { modeChosen=true; changeView('live').catch(error=>message(error.message,true)); };
 
 let parameterGate = null;
 function updateSource(records, reset=false) {
@@ -1524,7 +1521,19 @@ const telemetryStream=new TelemetryStream(rpc, async data=>{
   $('connection').textContent='Telemetry stream unavailable';
   message(`${error.message}. On a printer, enable [mmu_telemetry] in moonraker.conf. You can also load a recording.`,true);
 });
+let liveIndicator=null;
+function updateLiveIndicator() {
+  const connected=!offline && socket?.readyState===1;
+  const active=Boolean(connected && (viewMode==='live' ? liveTarget
+    : telemetryStream.active && telemetryStream.ready && live && !paused
+      && (playing?.event.seq ?? played) >= (events.at(-1)?.seq ?? 0)));
+  if (active===liveIndicator) return;
+  liveIndicator=active;
+  $('viewer-live').classList.toggle('active',active);
+  $('viewer-live').setAttribute('aria-label',active ? 'Live' : 'Not live');
+}
 function animate() {
+  updateLiveIndicator();
   const now=animationNow();
   const spoolRunning=Boolean(playing) || (live && !paused);
   if (spoolSession !== session) { spoolAngles.clear(); spoolLastFrame=null; spoolArrowVisibility.clear(); spoolDirections.clear(); spoolSession=session; }
@@ -1709,7 +1718,3 @@ $('connect-printer').onclick=()=>{
 };
 connect();
 requestAnimationFrame(animate);
-
-$('stream-history').onchange=()=>{
-  if (!offline && viewMode==='playback') telemetryStream.start($('stream-history').value);
-};

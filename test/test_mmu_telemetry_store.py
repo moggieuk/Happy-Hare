@@ -58,14 +58,18 @@ class TestTelemetryStore(unittest.TestCase):
             self.assertEqual(json.loads(Path(str(path)+'.1').read_text().splitlines()[0])['state'], {'parameter':40})
 
     def test_size_rotation_keeps_movement_pair_together(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory)/'motion.jsonl'
-            recorder = TelemetryRecorder(path, 1, 3)
-            recorder.write([HEADER, event(1, 'movement_start', move_id=1), event(2),
-                            event(3, 'movement_outcome', move_id=1)])
-            recorder.close()
-            records = [json.loads(line) for line in path.read_text().splitlines()]
-            self.assertEqual([r['sequence'] for r in records], [0,1,2,3])
+        for kind in ('movement', 'selector_movement'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                self.check_movement_pair_rotation(directory, kind)
+
+    def check_movement_pair_rotation(self, directory, kind):
+        path = Path(directory)/'motion.jsonl'
+        recorder = TelemetryRecorder(path, 1, 3)
+        recorder.write([HEADER, event(1, kind+'_start', move_id=1), event(2),
+                        event(3, kind+'_outcome', move_id=1)])
+        recorder.close()
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        self.assertEqual([r['sequence'] for r in records], [0,1,2,3])
 
 
 class TestTelemetryWriter(unittest.IsolatedAsyncioTestCase):

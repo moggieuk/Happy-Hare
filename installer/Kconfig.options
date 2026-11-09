@@ -198,7 +198,7 @@ menu "Global software options"
     default CHOICE_LOG_LEVEL_INFO
     help
       Select verbosity of console logging.
-      Essential is minimal; Developer is very verbose.
+      Essential is minimal; Trace is very verbose.
       Recommend "Info"
 
     config CHOICE_LOG_LEVEL_ESSENTIAL
@@ -217,10 +217,6 @@ menu "Global software options"
       bool "Trace"
       help
         Very detailed step-by-step tracing
-    config CHOICE_LOG_LEVEL_STEPPER
-      bool "Developer"
-      help
-        Everything, including individual stepper movements
   endchoice
 
   config PARAM_LOG_LEVEL
@@ -229,7 +225,6 @@ menu "Global software options"
     default 1 if CHOICE_LOG_LEVEL_INFO
     default 2 if CHOICE_LOG_LEVEL_DEBUG
     default 3 if CHOICE_LOG_LEVEL_TRACE
-    default 4 if CHOICE_LOG_LEVEL_STEPPER
     default 1
 
   choice CHOICE_LOG_FILE_LEVEL
@@ -237,7 +232,7 @@ menu "Global software options"
     default CHOICE_LOG_FILE_LEVEL_DEBUG
     help
       Select verbosity of mmu.log logging.
-      Essential is minimal; Developer is very verbose.
+      Essential is minimal; Trace is very verbose.
       Recommend "Debug"
 
     config CHOICE_LOG_FILE_LEVEL_OFF
@@ -260,10 +255,6 @@ menu "Global software options"
       bool "Trace"
       help
         Very detailed step-by-step tracing
-    config CHOICE_LOG_FILE_LEVEL_STEPPER
-      bool "Developer / Stepper"
-      help
-        Everything, including individual stepper movements
   endchoice
 
   config PARAM_LOG_FILE_LEVEL
@@ -273,7 +264,6 @@ menu "Global software options"
     default 1 if CHOICE_LOG_FILE_LEVEL_INFO
     default 2 if CHOICE_LOG_FILE_LEVEL_DEBUG
     default 3 if CHOICE_LOG_FILE_LEVEL_TRACE
-    default 4 if CHOICE_LOG_FILE_LEVEL_STEPPER
     default 2
 
   config PARAM_LOG_STATISTICS

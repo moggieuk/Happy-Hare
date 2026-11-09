@@ -117,7 +117,7 @@ def movement_operation(function):
 
 def filament_context(mmu):
     """Loaded config/persisted hotend state; lengths are input-filament millimetres."""
-    from .mmu_utils import MmuColorUtils
+    from ..mmu_utils import MmuColorUtils
     unit = mmu.mmu_unit()
     extruder = unit.extruder_wrapper
     gate = mmu.gate_selected

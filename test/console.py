@@ -580,7 +580,7 @@ class Console:
                      prime=not a.no_prime, seed=a.seed,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
-        from extras.mmu.mmu_movement_telemetry import filament_context
+        from extras.mmu.telemetry.movement import filament_context
         self.hh.mmu.movement_telemetry.state('filament_pos_snapshot',
             filament=filament_context(self.hh.mmu),
             unit=self.hh.mmu.mmu_unit().name, gate=self.hh.mmu.gate_selected,
@@ -1540,7 +1540,7 @@ class Console:
                            '(alias /realtime)'),
         ('/timestamp [on|off]', 'stamp MMU output with the virtual clock (no argument '
                                 'toggles)'),
-        ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
+        ('/trace 0-3', "Happy Hare's own log_level, 3 = full narration"),
         ('/tag [UID [GATE|UNIT]]',
          'present an NFC tag: a GATE puts it on that gate\'s filament, a UNIT holds it '
          'on that unit\'s shared reader ("off" takes it away again). No argument lists '
@@ -2316,7 +2316,10 @@ class Console:
                   % ('on' if self.timestamps else 'off', self.sim_time()))
 
     def _meta_trace(self, args):
-        self.hh.mmu.p.log_level = int(args[0]) if args else 1
+        level = int(args[0]) if args else 1
+        if not 0 <= level <= 3:
+            raise ValueError('Log level must be between 0 and 3')
+        self.hh.mmu.p.log_level = level
         print('  log_level = %s' % self.hh.mmu.p.log_level)
 
     # Long enough to outlast NFC_TAG_HOLD_TIME (5s), the cooldown after the reader
@@ -3239,8 +3242,8 @@ def parse_args(argv=None):
                    help='how much of each move\'s real duration to spend in virtual time: '
                         '0 is instant, 0.5 (default) is twice as fast as real, 1 is real '
                         'time. Also settable live with /pace')
-    p.add_argument('--trace', type=int, default=0, metavar='0-4',
-                   help="Happy Hare log_level; 4 is full narration")
+    p.add_argument('--trace', type=int, choices=range(4), default=0, metavar='0-3',
+                   help="Happy Hare log_level; 3 is full narration")
     p.add_argument('--virtual-nfc', dest='virtual_nfc', action='store_true', default=True,
                    help='virtualize NFC readers so /tag works (default: on)')
     p.add_argument('--no-virtual-nfc', dest='virtual_nfc', action='store_false',

@@ -508,15 +508,15 @@ class MmuESpooler:
         Set the PWM or digital signal for espooler on gate
         The operation is used to ascertain motor direction
         """
-        if self.mmu.log_enabled(LOG_STEPPER):
-            self.mmu.log_stepper("ESPOOLER: _update_pwm(%s, %s, %s)" % (gate, value, operation))
+        if self.mmu.log_enabled(LOG_TRACE):
+            self.mmu.log_trace("ESPOOLER: _update_pwm(%s, %s, %s)" % (gate, value, operation))
 
         def _schedule_set_pin(name, value):
             mcu_pin = self.motor_mcu_pins.get(name, None)
             if mcu_pin:
                 estimated_print_time = mcu_pin.get_mcu().estimated_print_time(self.printer.reactor.monotonic())
-                if self.mmu.log_enabled(LOG_STEPPER):
-                    self.mmu.log_stepper("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
+                if self.mmu.log_enabled(LOG_TRACE):
+                    self.mmu.log_trace("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
                 self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
 
         # Sanity check
@@ -550,8 +550,8 @@ class MmuESpooler:
         if mcu_pin:
             if value == self.last_value.get(name, None):
                 return
-            if self.mmu.log_enabled(LOG_STEPPER):
-                self.mmu.log_stepper("ESPOOLER: -----> _set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, print_time))
+            if self.mmu.log_enabled(LOG_TRACE):
+                self.mmu.log_trace("ESPOOLER: -----> _set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, print_time))
             if self.is_pwm and not name.startswith('enable_'):
                 mcu_pin.set_pwm(print_time, value)
             else:

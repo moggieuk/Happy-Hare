@@ -19,7 +19,7 @@ class TestTelemetryStream(unittest.TestCase):
     def setUp(self):
         self.hh = session('boxturtle')
         self.hh.boot(calibrate=True)
-        from extras.mmu.mmu_telemetry_stream import TelemetryStream
+        from extras.mmu.telemetry.stream import TelemetryStream
         self.stream = TelemetryStream(self.hh.mmu)
         self.sent = []
 

@@ -3,7 +3,7 @@ export class TelemetryStream {
   constructor(rpc, accept, error) {
     Object.assign(this,{rpc,accept,error,generation:0,active:false});
   }
-  async start(history=this.history || 'latest', checkpoint=false) {
+  async start(history=this.history || 'start', checkpoint=false) {
     this.history=history;
     const generation=++this.generation;
     this.active=true; this.ready=false;

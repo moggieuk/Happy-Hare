@@ -766,7 +766,7 @@ ERCF_VVD = Profile(
         # Longer than the 20s default: this is the window to walk from the bench
         # scanner/reader to the printer and preload a gate
         'PARAM_SPOOLMAN_PENDING_ID_TIMEOUT': 30,
-        'CHOICE_LOG_FILE_LEVEL_STEPPER': True,
+        'CHOICE_LOG_FILE_LEVEL_TRACE': True,
         # Both default y (macro_vars/Kconfig.software:30,41); turned off on this machine, so
         # mmu_macro_vars.cfg gets check_gates/load_initial_tool = False at print start.
         'BOOL_SOFTWARE_CHECK_GATES': False,

@@ -117,11 +117,10 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertNotIn('drive_sync_requested', names)
         self.assertNotIn('drive_sync_decision', names)
 
-    def test_idle_disable_uses_trace_not_stepper(self):
-        with mock.patch.object(self.hh.mmu, 'log_stepper') as stepper, mock.patch.object(self.hh.mmu, 'log_trace') as trace:
+    def test_idle_disable_uses_trace(self):
+        with mock.patch.object(self.hh.mmu, 'log_trace') as trace:
             self.hh.mmu.disable_idle_gear_stepper(0)
             self.hh.mmu.disable_all_idle_gear_steppers()
-        stepper.assert_not_called()
         self.assertEqual(trace.call_count, 2)
 
     def test_sync_state_reports_successful_changes_only(self):
@@ -174,21 +173,19 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual(events, ['espooler_started', 'espooler_stopped'])
 
 
-    def test_resolved_speed_matches_stepper_log_after_override(self):
+    def test_resolved_speed_includes_override(self):
         self.hh.mmu.gate_speed_override[0] = 50
-        with mock.patch.object(self.hh.mmu, 'log_stepper') as log:
-            self.hh.mmu.move_filament('capture', 30, speed=80, accel=200, wait=True)
+        self.hh.mmu.move_filament('capture', 30, speed=80, accel=200, wait=True)
         start, end = self.pair()
         self.assertEqual(start['speed_mm_s'], 40)
-        self.assertTrue(any('speed=40.0' in str(call) for call in log.call_args_list))
         self.assertEqual(start['requested_mm'], 30)
         self.assertEqual(end['actual_mm'], 30)
         self.assertEqual(end['status'], 'completed')
         self.assertIsNone(end['homed'])
         self.assertTrue(start['motors'])
 
-    def test_source_stream_works_without_stepper_logging_or_viewer(self):
-        with mock.patch.object(self.hh.mmu, 'log_enabled', return_value=False), mock.patch.object(self.hh.mmu, 'log_stepper'):
+    def test_source_stream_works_without_text_logging_or_viewer(self):
+        with mock.patch.object(self.hh.mmu, 'log_enabled', return_value=False):
             self.hh.mmu.move_filament('capture', 10)
         start, end = self.pair()
         self.assertGreater(start['speed_mm_s'], 0)

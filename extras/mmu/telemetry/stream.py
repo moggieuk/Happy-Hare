@@ -13,7 +13,7 @@
 #
 import json
 import uuid
-from .mmu_telemetry_capture import TelemetryCapture
+from .capture import TelemetryCapture
 
 
 class TelemetryStream:

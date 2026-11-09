@@ -144,8 +144,8 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
 
         # Logging
-        ParamSpec('log_level',                     'int',      1, section="LOGGING", limits=dict(minval=0, maxval=4)),
-        ParamSpec('log_file_level',                'int',      2, section="LOGGING", limits=dict(minval=-1, maxval=4)),
+        ParamSpec('log_level',                     'int',      1, section="LOGGING", limits=dict(minval=0, maxval=3)),
+        ParamSpec('log_file_level',                'int',      2, section="LOGGING", limits=dict(minval=-1, maxval=3)),
         ParamSpec('log_statistics',                'int',      0, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_visual',                    'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_startup_status',            'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),

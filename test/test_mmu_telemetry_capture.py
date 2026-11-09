@@ -22,7 +22,7 @@ class TestTelemetryCapture(unittest.TestCase):
     def setUp(self):
         self.hh = session('ercf_vvd_buffers')
         self.hh.boot(calibrate=True, selected_gate=0)
-        from extras.mmu.mmu_telemetry_capture import TelemetryCapture, ReplayState, apply_changes
+        from extras.mmu.telemetry.capture import TelemetryCapture, ReplayState, apply_changes
         self.Capture, self.State, self.apply = TelemetryCapture, ReplayState, apply_changes
         self.captures = []
 
@@ -110,7 +110,7 @@ class TestTelemetryCapture(unittest.TestCase):
                 self.assertFalse(capture.lock.locked())
                 copied.append(True)
             return original(value, *args, **kwargs)
-        with mock.patch('extras.mmu.mmu_telemetry_capture.copy.deepcopy', side_effect=check):
+        with mock.patch('extras.mmu.telemetry.capture.copy.deepcopy', side_effect=check):
             capture.read()
         self.assertTrue(copied)
 
@@ -199,7 +199,7 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertEqual(capture.sequence, 0)
 
     def test_removals_are_distinct_from_null(self):
-        from extras.mmu.mmu_telemetry_capture import changes
+        from extras.mmu.telemetry.capture import changes
         old, new = {'a': 1, 'b': 2}, {'b': None}
         self.apply(old, changes(old, new))
         self.assertEqual(old, new)

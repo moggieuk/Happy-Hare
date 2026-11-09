@@ -15,7 +15,7 @@ import re
 
 
 def plain(value):
-    from extras.mmu.mmu_telemetry_capture import plain as serialize
+    from extras.mmu.telemetry.capture import plain as serialize
     return serialize(value)
 
 
@@ -23,7 +23,7 @@ class SourceViewer:
     """Console controls and source capture; no simulator animation observations."""
 
     def __init__(self, session):
-        from extras.mmu.mmu_telemetry_capture import TelemetryCapture
+        from extras.mmu.telemetry.capture import TelemetryCapture
         self.hh = session
         self.macro_catalog = self._macro_catalog()
         self.telemetry_capture = TelemetryCapture(session.mmu, limit=6000)

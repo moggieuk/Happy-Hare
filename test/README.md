@@ -266,7 +266,7 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/tag [UID [GATE\|UNIT]]` | present an NFC tag, addressed as `MMU_NFC` addresses one. A **gate** puts it on that gate's filament; a **unit** holds it on that unit's shared reader (`off` takes it away). Bare `/tag` lists the readers and the UIDs the fake Spoolman knows |
 | `/td1 [TD [RRGGBB]] [GATE\|SERIAL]` | hold filament measuring TD in front of a TD-1 scanner; `off` takes it away, no argument reports what each one sees |
 | `/reset` | rebuild the selected profile in the same state as a fresh simulator start |
-| `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
+| `/log [N]`, `/trace 0-3` | the log file, and how much detail goes into it |
 | `/timestamp [on\|off]` | stamp MMU output with the virtual clock; **on by default** at a terminal |
 | `/print [start\|end]` | act as a print in progress (or finished), so an MMU error pauses it |
 | `/print job [FILE]` | play a whole G-code print job — the built-in test job, or FILE — see below |
@@ -702,7 +702,7 @@ or switching to live view unsubscribes from events. Missing component errors lea
 file loading available. Simulator command execution still advances virtual time
 without servicing sockets mid-command; recorded events are delivered afterwards.
 
-Klipper's `mmu_telemetry_api.py` exposes `mmu/telemetry/{subscribe,ack,unsubscribe}`.
+Klipper's `extras/mmu/telemetry/api.py` exposes `mmu/telemetry/{subscribe,ack,unsubscribe}`.
 Moonraker owns one upstream subscription, acknowledges accepted batches, and fans
 out its own history to browsers. Browser acknowledgments only control that
 browser's delivery; they do not hold up Klipper or another browser. An acknowledgment
@@ -725,8 +725,8 @@ runtime configuration changes. Discarded motion cannot restore inferred geometry
 `server.mmu.telemetry.subscribe` accepts `history: "latest"` (default) or
 `history: "start"`. Latest starts immediately before the most recent retained
 load/unload/toolchange marker, with a reconstructed session checkpoint. Start
-returns all *available* history, not records already discarded. The viewer's
-**Stream history** selector controls this choice. The simulator uses the same
+returns all *available* history, not records already discarded. The viewer always
+requests `start` when connecting to a stream. The simulator uses the same
 selection rules but retains its session capture for diagnostics. Internal
 `history: "current"` requests a current checkpoint without retained events; the
 viewer uses this when renewing its bounded local history.
@@ -821,10 +821,22 @@ transfers that shape to the fragment and leaves the attached end square. Residua
 melt stays at the nozzle. These shapes are illustrations, not measured tip geometry.
 
 
-Happy Hare emits structured records directly in `move_filament()`, beside the
-existing STEPPER messages, after resolving speed/acceleration and gate overrides.
+Happy Hare emits structured records directly in `move_filament()`, after
+resolving speed/acceleration and gate overrides.
 The stream is independent of the selected log level and works without the viewer.
-The text STEPPER log remains enabled as before for comparison.
+TRACE (3) is the highest console and file log level. Existing configurations using
+level 4 must change to 3. File logging still accepts -1 to disable it. Low-level
+pin timing and drive-sync decisions use TRACE; motion details use telemetry.
+
+Selector commands emit `selector_movement_start` / `selector_movement_outcome`
+pairs with unit, selector type, actuator and move ID. Stepper records include
+resolved speed/acceleration, requested and actual travel, and homing results.
+Rail homing is one compound operation including retract/rehome, with trigger
+travel separate from its rebased final position. Servo records include requested
+angle or pulse width and duration; their outcome means submitted, not measured
+mechanical completion. Errors are recorded before being propagated. The viewer
+shows these diagnostics under **Show internal updates**, without treating selector
+travel as filament movement.
 
 Use **Save telemetry** in the viewer for simulator captures, or enable Moonraker
 recording as described above. The old simulator `--telemetry` raw-event file sink
@@ -964,7 +976,7 @@ otherwise null. They do not open or close movement pairs. The viewer retains the
 in its raw telemetry export. Gate, filament-position, and espooler changes also appear
 in the movement trace. Espooler records update spool direction and activity without
 adding a timed movement; diagnostic sync updates remain internal. Idle gear stepper
-disable messages use TRACE rather than STEPPER.
+disable messages use TRACE.
 
 `elapsed_s` measures time between source callbacks, including waits and simulator
 pacing; it is not a physical motion-duration measurement. Drive travel is not proof
@@ -989,7 +1001,7 @@ retaining edits that are subsequently undone. There is no periodic printer-wide
 status scan. Omitting `after` requests a session baseline; `after=0` requests only
 records after the initial baseline. A new session or expired cursor requires a reset.
 
-`extras/mmu/mmu_telemetry_capture.py` owns this capture independently of the
+`extras/mmu/telemetry/capture.py` owns this capture independently of the
 simulator. Create `TelemetryCapture(mmu)` on the printer thread after readiness;
 call `close()` when capture ends. Reads return detached copies and can run from
 an HTTP reader thread. Source subscribers still receive the existing v1 callback
@@ -1003,9 +1015,9 @@ Streamed and offline playback use only these captured facts and events. Neither 
 current printer settings to interpret old movement.
 
 Coverage includes `move_filament()`, MMU-owned G1 extrusion, and explicit cutter
-hooks. Direct selector motion and simplified modeled macro effects without source
-events are not animation inputs. Audit remaining STEPPER categories before removing
-that log level. The simulator and real-printer WebSocket transports supply the same capture format.
+hooks, plus selector stepper and servo diagnostics. Simplified modeled macro
+effects without source events are not animation inputs. The simulator and
+real-printer WebSocket transports supply the same capture format.
 The legacy simulator HTTP endpoint remains available for capture diagnostics.
 
 Tests: `make test UT=test_mmu_movement_telemetry.py` and
@@ -1661,7 +1673,7 @@ do and why.
 **Ask Happy Hare what it did.** Turn on its own trace logging:
 
 ```python
-hh.mmu.p.log_level = 4          # 4 = trace
+hh.mmu.p.log_level = 3          # 3 = trace
 hh.run_gcode('MMU_PRELOAD GATE=0')
 for line in hh.console:
     print(line)

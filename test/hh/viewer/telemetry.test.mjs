@@ -28,6 +28,18 @@ function move(r,d,fields={}) {
  event(r,'movement_outcome',{move_id:1,actual_mm:d,elapsed_s:0,status:'submitted',...fields.outcome});
  return r.events.at(-1);
 }
+test('selector actuator diagnostics never become filament movement',()=>{
+ const r=stream(),before=r.snapshot();
+ for(const actuator of ['stepper','servo']) {
+  event(r,'selector_movement_start',{move_id:100,actuator,requested_mm:100});
+  event(r,'selector_movement_outcome',{move_id:100,actuator,actual_mm:100,status:'completed'});
+  assert.ok(r.events.at(-1).internal);
+ }
+ const after=r.snapshot();
+ assert.deepEqual(after.tips,before.tips);
+ assert.equal(after.extruded_mm,before.extruded_mm);
+ assert.ok(r.events.filter(e=>e.kind==='selector').every(e=>e.internal));
+});
 for(const name of ['ercf-vvd','emu']) {
  test(`${name}: batched live updates and offline JSONL reproduce identical animation`,()=>{
   const records=fixture(name), live=new TelemetryReplay(),offline=new TelemetryReplay();

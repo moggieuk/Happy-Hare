@@ -76,7 +76,7 @@ class EncoderTestCase(unittest.TestCase):
         self.hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
 
     def trace(self):
-        self.hh.mmu.p.log_level = 4
+        self.hh.mmu.p.log_level = 3
         return len(self.hh.console)
 
 

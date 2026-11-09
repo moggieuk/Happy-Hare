@@ -27,6 +27,7 @@ from typing                 import Sequence
 
 # Happy Hare imports
 from ...mmu_constants       import *
+from ...telemetry.selector import selector_operation, home_selector_rail
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
 from ...mmu_base_parameters import TunableParametersBase, ParamSpec
@@ -429,7 +430,7 @@ class RotarySelector(PhysicalSelector):
 
         try:
             if self.has_endstop:
-                self.selector_stepper.do_home_rail()
+                home_selector_rail(self)
             else:
                 self._home_hard_endstop()
 
@@ -476,14 +477,17 @@ class RotarySelector(PhysicalSelector):
         speed = speed or self.p.selector_move_speed
         accel = accel or self.p.selector_accel
 
-        self.selector_stepper.do_move(new_pos, speed, accel)
-        self.mmu.log_stepper(
-            f"SELECTOR MOVE: requested position={new_pos:.1f}, "
-            f"speed={speed:.1f}, accel={accel:.1f}"
-        )
+        position = self.selector_stepper.commanded_pos
+        with selector_operation(self, 'stepper', label=trace_str or 'Move selector',
+                position_mm=position, target_position_mm=new_pos, requested_mm=new_pos-position,
+                speed_mm_s=speed, acceleration_mm_s2=accel, homing=False, wait=wait) as outcome:
+            self.selector_stepper.do_move(new_pos, speed, accel)
+            if wait:
+                self.mmu.movequeue_wait()
+            outcome.update(position_mm=self.selector_stepper.commanded_pos,
+                           actual_mm=self.selector_stepper.commanded_pos-position,
+                           status='completed' if wait else 'submitted')
 
-        if wait:
-            self.mmu.movequeue_wait()
 
         return new_pos
 
@@ -506,7 +510,7 @@ class RotarySelector(PhysicalSelector):
         homed = False
 
         try:
-            traveled = self.selector_stepper.do_home_rail()
+            traveled = home_selector_rail(self)
             homed = True
 
         except self.printer.command_error:

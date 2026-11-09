@@ -30,11 +30,11 @@ test('failed replay unsubscribes instead of acknowledging lost data',async()=>{
  assert.deepEqual(calls,['server.mmu.telemetry.subscribe','server.mmu.telemetry.unsubscribe']);
 });
 
-test('latest operation is default and start history survives reconnect',async()=>{
+test('all available history is requested by default and on reconnect',async()=>{
  const requests=[];
  const stream=new TelemetryStream(async (method,args)=>{if(method.endsWith('subscribe'))requests.push(args);return batch;},()=>{},assert.fail);
  await stream.start(); await stream.start('start'); await stream.start();
- assert.deepEqual(requests,[{history:'latest'},{history:'start'},{history:'start'}]);
+ assert.deepEqual(requests,[{history:'start'},{history:'start'},{history:'start'}]);
 });
 test('history renewal uses current checkpoint without replacing the user history choice',async()=>{
  let accepted=0;const requests=[];

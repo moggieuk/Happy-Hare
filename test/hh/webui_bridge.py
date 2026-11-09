@@ -159,7 +159,7 @@ class WebUiBridge:
         self._next_telemetry = 0.0
         self._server = None
         self.viewer = SourceViewer(session)
-        from extras.mmu.mmu_telemetry_stream import TelemetryStream
+        from extras.mmu.telemetry.stream import TelemetryStream
         self.telemetry_stream = TelemetryStream(session.mmu, self.viewer.telemetry_capture)
         self.restart_profile = None
         self.profile_name = ""
