@@ -112,6 +112,7 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.api.stream.capture)
 
     async def test_repeated_subscription_reuses_dormant_timer(self):
+        timer = None
         for i in range(5):
             conn = Browser()
             await self.component.subscribe(Request(connection=conn))
