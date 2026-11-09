@@ -361,10 +361,11 @@ class MmuGateMaps:
 
 
     # clear_attributes=False keeps spool identity when only a sensor reports the lane
-    # empty. The default clears, and unassigns the spool in Spoolman.
+    # empty. The default clears, and unassigns the spool in Spoolman, even if
+    # a previous failed pickup already marked the gate EMPTY with attributes kept.
     def set_gate_status(self, gate, state, clear_attributes=True):
         if 0 <= gate < self.num_gates:
-            if state != self.gate_status[gate]:
+            if state != self.gate_status[gate] or (state == GATE_EMPTY and clear_attributes):
                 self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
                 if state == GATE_EMPTY and clear_attributes:
                     self.clear_gate_attributes(gate)

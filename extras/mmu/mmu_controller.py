@@ -1240,9 +1240,6 @@ class MmuController(MmuFilamentMovement):
             return f" [ {sf_char} ] "
 
         def _color_filament(text, rgb_hex, *chars):
-            if not self.gate_color[gate]:
-                return text
-
             chars = set(chars)
             result = []
             in_markup = False
@@ -1385,7 +1382,7 @@ class MmuController(MmuFilamentMovement):
             else:
                 visual = visual.replace(residual_line, line)
 
-            rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
+            rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], UNKNOWN_FILAMENT_COLOR)
             visual = _color_filament(visual, rgb_hex, line)
 
             # Must happen after gate_color coloring, else residual_filament_color's
@@ -1446,11 +1443,8 @@ class MmuController(MmuFilamentMovement):
         swatch = "*" # Fallback character
         if self.p.console_show_filament_color:
             symbol = symbol or UI_SOLID_SQUARE
-            if self.gate_color[gate]:
-                rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
-                swatch = '{{%s}}%s{{}}' % (rgb_hex, symbol)
-            else:
-                swatch = symbol
+            rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], UNKNOWN_FILAMENT_COLOR)
+            swatch = '{{%s}}%s{{}}' % (rgb_hex, symbol)
 
         if self.endless_spool_enabled and gate == self.p.endless_spool_eject_gate:
             return "W" # Always show waste gate for filament tips if configured
