@@ -9,6 +9,11 @@ const color = value => /^[0-9a-f]{6}$/i.test(String(value)) ? String(value) : '8
 const positions = ['UNLOADED', 'HOMED TO GATE', 'START BOWDEN', 'IN BOWDEN', 'END BOWDEN',
   'HOMED TO EXTRUDER', 'EXTRUDER ENTRY', 'IN EXTRUDER', 'HOMED TO TOOLHEAD', 'IN TOOLHEAD', 'LOADED IN NOZZLE'];
 
+export function spoolPercentage(initial, remaining) {
+  return finite(initial) && initial > 0 && finite(remaining) && remaining >= 0
+    ? clamp(remaining / initial * 100, 0, 100) : null;
+}
+
 export class SceneModel {
   constructor() {
     this.tips=[]; this.shapes=[]; this.hairLengths=[]; this.motors={};
@@ -114,6 +119,7 @@ export class SceneModel {
     const cutters=finite(vars.blade_pos) ? [{kind:'toolhead',position:nozzle-vars.blade_pos,before_extruder:vars.cutter_before_extruder}] : [];
     return copy({unit:m.unit,units,unit_gates:unit.gates,selector_type:unit.selector_type || null,has_per_gate_heaters:unit.has_per_gate_heaters === true,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
       tips:this.tips,tails:this.tips.map(()=>null),tip_shapes:this.shapes,hair_lengths:this.hairLengths,gate_colors:m.gate_color.map(color),gate_status:m.gate_status || [],layout,sensors,active_sensors:m.active_sensors,
+      spool_percentages:m.gate_color.map((_,gate)=>spoolPercentage(m.gate_initial_weight?.[gate],m.gate_remaining_weight?.[gate])),
       unit_sensors:unit.sensors,devices,buffers,object_status,configuration,filament,cutters,cutter_pressed:this.cutter,
       espoolers:Object.assign({},...Object.values(machine.units).map(u=>u.espooler?.operations || {})),
       extruder_target_temperature:finite(extruder.target_temperature) ? extruder.target_temperature : null,

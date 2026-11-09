@@ -133,6 +133,7 @@ class ReplayState:
                      filament_pos=mmu.filament_pos, filament_direction=mmu.filament_direction,
                      filament_grip_state=mmu.selector().get_filament_grip_state(),
                      sync_mode=drive.get_sync_mode(), gate_status=list(mmu.gate_status), gate_color=[MmuColorUtils.color_to_rgb_hex(c, '808182')[:6] for c in mmu.gate_color],
+                     gate_initial_weight=list(mmu.gate_initial_weight), gate_remaining_weight=list(mmu.gate_remaining_weight),
                      active_sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in active],
                      sensors={name: dict(triggered=value, enabled=bool(sensor.runout_helper.sensor_enabled))
                               for name, (value, sensor) in sensors.items()},

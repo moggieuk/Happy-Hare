@@ -6,7 +6,7 @@ export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   const branches=rowGates.map((gate,column)=>({gate,x:620+(column-(columns-1)/2)*spacing}));
   const active=branches.find(branch=>branch.gate===state.gate) || branches[0];
   if (!active) return null;
-  const bottom=570+verticalOffset, shoulder=390+verticalOffset, hub=190+verticalOffset;
+  const bottom=570+verticalOffset, shoulder=370+verticalOffset, hub=180+verticalOffset;
   const diagonal=Math.hypot(active.x-620,shoulder-hub);
   const distanceAtY=y=>y>=shoulder ? bottom-y : y<=hub ? bottom-shoulder+diagonal+hub-y
     : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);

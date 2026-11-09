@@ -2,9 +2,24 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {TelemetryReplay,parseTelemetry,applyDelta} from './telemetry.js';
+import {spoolPercentage} from './scene-state.js';
 import {visibleSteps,interpolate,playbackFrame,purgeOutletColor,constrainFilament} from './playback.js';
 const fixture=name=>JSON.parse(fs.readFileSync(new URL(`./fixtures/${name}.json`,import.meta.url)));
 const header=()=>structuredClone(fixture('ercf-vvd')[0]);
+test('spool fill uses known weights, including zero, and rejects unknown weights',()=>{
+ assert.equal(spoolPercentage(1000,250),25);
+ assert.equal(spoolPercentage(1000,0),0);
+ assert.equal(spoolPercentage(1000,1200),100);
+ for (const pair of [[undefined,100],[1000,undefined],[-1,100],[0,0],[1000,-1],[1000,null]])
+  assert.equal(spoolPercentage(...pair),null);
+ const h=header(),r=new TelemetryReplay();
+ h.state.printer.mmu.gate_initial_weight=[1000,1000,-1];
+ h.state.printer.mmu.gate_remaining_weight=[250,0,-1];
+ r.feed(h);
+ assert.deepEqual(r.snapshot().spool_percentages.slice(0,3),[25,0,null]);
+ event(r,'state_delta',{changes:[{path:['printer','mmu','gate_remaining_weight'],value:[500,0,-1]}]});
+ assert.equal(r.snapshot().spool_percentages[0],50);
+});
 function stream(pos=10) {
  const h=header();h.state.printer.mmu.filament_pos=pos;h.state.printer.mmu.filament_grip_state=1;
  h.state.printer.mmu.gate_color[0]='ff0000';

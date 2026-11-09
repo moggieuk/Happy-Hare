@@ -19,6 +19,12 @@ from test.hh import session
 
 
 class TestTelemetryCapture(unittest.TestCase):
+    def test_spool_weights_are_captured(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 INITIAL_WEIGHT=1000 WEIGHT=250')
+        state = self.State(self.hh.mmu)()
+        self.assertEqual(state['printer']['mmu']['gate_initial_weight'][0], 1000)
+        self.assertEqual(state['printer']['mmu']['gate_remaining_weight'][0], 250)
+
     def setUp(self):
         self.hh = session('ercf_vvd_buffers')
         self.hh.boot(calibrate=True, selected_gate=0)

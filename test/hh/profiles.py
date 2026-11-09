@@ -432,6 +432,18 @@ TRADRACK = Profile(
     syms={'MMU_TYPE_TRADRACK_1_0': True},
     description='Tradrack 1.0 - physical LinearServoSelector')
 
+TRADRACK_ENCODER = TRADRACK.derive(
+    'tradrack_encoder',
+    syms={
+        'MOD_BINKY': True,
+        'MMU_HAS_ENCODER': True,
+        # Binky occupies the board's shared-exit connector; wire that switch to the printer MCU.
+        'PIN_SHARED_EXIT_SENSOR': '^mcu:PA6',
+        'CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT': True,
+    },
+    filament_layout={'mmu_shared_exit': 10.0, 'mmu_encoder': 41.0},
+    description='Tradrack 1.0 + Binky encoder, shared-exit homing')
+
 # 3MS has no Bowden move: each gate feeds directly to the extruder-entry sensor. This
 # exercises MmuSensorManager's alias from that sensor to mmu_shared_exit, which lets the
 # otherwise generic gate-loading code use the toolhead sensor as its homing point.
@@ -539,16 +551,23 @@ KMS = Profile(
 # and heater setup without relying on external objects hidden in the harness.
 QIDI = Profile(
     'qidi',
-    syms={'MMU_TYPE_QIDI_BOX_1_0': True},
-    description='QIDI Box 1.0 - 4 gates, fixed QIDI v2 MCU and THR sensor',
+    syms={
+        'MMU_TYPE_QIDI_BOX_1_0': True,
+        'TOOLHEAD_TYPE_QIDI_Q2': True,
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+        'BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER': True,
+        # Simulator geometry: blade 8mm before the Q2's 72mm gear-to-nozzle reference.
+        'VAR_CUT_TIP_BLADE_POS': 80,
+        'VAR_CUT_TIP_RETRACT_LENGTH': 20,
+        'VAR_CUT_TIP_PUSHBACK_LENGTH': 12,
+    },
+    description='QIDI Box 1.0 - Q2 toolhead with cutter before the extruder',
     # Keep a compact simulated internal leg and ~750 mm hub-to-extruder leg.
     # Preload uses the production homing limit to find the shared hub sensor,
     # then retracts to park clear of the shared path.
     filament_layout={
         'mmu_shared_exit': 150.0,
         'extruder_entry': 900.0,
-        'extruder': 900.0,
-        'toolhead': 940.0,
         'filament_compression': 900.0,
     })
 
@@ -991,7 +1010,7 @@ BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
                     QUATTROBOX_V2, EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,

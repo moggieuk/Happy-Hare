@@ -2448,6 +2448,17 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertEqual(first, second, 'same seed produced different data')
         self.assertGreater(len({(a['vendor'], a['material']) for a in first.values()}), 1,
                            'every gate got the same filament')
+        mmu = self.console.hh.mmu
+        self.assertEqual(mmu.gate_initial_weight[:-1], [1000] * (mmu.num_gates - 1))
+        self.assertEqual(mmu.gate_remaining_weight[1], 0)
+        self.assertEqual(mmu.gate_remaining_weight[6], 2)
+        self.assertEqual(mmu.gate_remaining_weight[-1], -1)
+        self.assertEqual(mmu.gate_initial_weight[-1], -1)
+        weights = list(mmu.gate_remaining_weight)
+        occupancy = list(mmu.gate_status)
+        self.console.hh.prime_gate_map(seed=7)
+        self.assertEqual(mmu.gate_remaining_weight, weights)
+        self.assertEqual(mmu.gate_status, occupancy)
 
     def test_pacing_makes_an_operation_take_virtual_time(self):
         """
