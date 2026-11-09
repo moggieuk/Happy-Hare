@@ -744,6 +744,22 @@ class TestDryingStatusCycle(unittest.TestCase):
         cycle = self._drying(hh)
         self.assertGreater(cycle['end_time'], cycle['start_time'] + 2 * 60)
 
+    def test_per_gate_end_ignores_a_gate_that_finished_early(self):
+        profile = profiles.get('emu').derive('emu_heaters_status_done', syms={
+            'MMU_HAS_HEATER': True, 'PARAM_MAX_CONCURRENT_HEATERS': 2})
+        hh = session(profile, printer_stub=EMU_HEATERS_STUB)
+        self.addCleanup(hh.close)
+        hh.boot()
+        manager = hh.mmu.mmu_unit(0).environment_manager
+        hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1 TEMP=50 TIMER=60')
+        active_end = manager._gate_drying[0]['end_time']
+        # Gate 1 reached its humidity goal early but keeps its original, later deadline
+        manager._gate_drying[1]['end_time'] = active_end + 3600
+        complete = manager._state_set.__globals__['DRYING_STATE_COMPLETE']
+        manager._gate_drying[1]['state'] = complete
+        manager._state_set(1, complete)
+        self.assertEqual(self._drying(hh)['end_time'], active_end)
+
 
 if __name__ == '__main__':
     unittest.main()

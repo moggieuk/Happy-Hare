@@ -462,14 +462,15 @@ class MmuEnvironmentManager:
         # remaining = end_time - eventtime. They only change when the cycle itself changes (the
         # temperature is changed or capped, or a queued gate starts) so reading status does not
         # push an update. With a heater per gate the cycle spans the gates: 'temp' and 'time' are
-        # the highest of them, 'start_time' the earliest start and 'end_time' the latest end, which
+        # the highest of them, 'start_time' the earliest start and 'end_time' the latest end of the gates still drying, which
         # is None while a queued gate has not started because its end is not yet known.
         drying = None
         if self.is_drying():
             if self.has_per_gate_heaters():
                 gds = list(self._gate_drying.values())
                 starts = [gd['start_time'] for gd in gds if gd.get('start_time') is not None]
-                ends = [gd['end_time'] for gd in gds if gd.get('end_time') is not None]
+                ends = [gd['end_time'] for gd in gds
+                        if gd.get('state') == DRYING_STATE_ACTIVE and gd.get('end_time') is not None]
                 queued = any(gd.get('state') == DRYING_STATE_QUEUED for gd in gds)
                 drying = {
                     'temp': max((gd['temp'] for gd in gds), default=None),
