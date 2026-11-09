@@ -754,6 +754,14 @@ def menuconfig(kconf):
     # in one piece already...)
     os.environ.setdefault("ESCDELAY", "0")
 
+    # Apple Terminal paints cells cleared with erase-to-end-of-line in a
+    # different shade than text. 'screen' terminfo has no background-color-erase
+    # so curses writes explicit blanks instead.
+    if os.environ.get("TERM_PROGRAM") == "Apple_Terminal" \
+       and os.environ.get("TERM", "").startswith("xterm"):
+        os.environ["TERM"] = "screen-256color" \
+            if "256color" in os.environ["TERM"] else "screen"
+
     # Enter curses mode. _menuconfig() returns a string to print on exit, after
     # curses has been de-initialized.
     msg, code = curses.wrapper(_menuconfig)
