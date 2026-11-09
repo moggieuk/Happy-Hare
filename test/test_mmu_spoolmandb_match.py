@@ -43,9 +43,9 @@ class SpoolmanDbMatchTestCase(MoonrakerTestCase):
         super().setUp()
         self.hh.db.external_filaments = [SUNLU_TEAL, SUNLU_GREEN_PLA, ESUN_GREEN, SUNLU_GREEN]
 
-    def scan(self, tag=TAG):
+    def scan(self, tag=TAG, prefer_db_temps=False):
         self.hh.call_remote('spoolman_get_spool_by_uid', uid=UNKNOWN_UID, gate=1,
-                            metadata=tag, save=True, silent=True)
+                            metadata=tag, save=True, silent=True, prefer_db_temps=prefer_db_temps)
         self.assertEqual(len(self.hh.db.created_spools), 1)
         return self.hh.db.spools[self.hh.db.created_spools[0]]
 
@@ -56,8 +56,13 @@ class SpoolmanDbMatchTestCase(MoonrakerTestCase):
         self.assertEqual(filament['density'], 1.23)
         self.assertEqual(filament['vendor']['name'], 'Sunlu')
 
-    def test_manufacturer_temperatures_win_over_the_tag(self):
+    def test_tag_temperatures_win_by_default(self):
         filament = self.scan()['filament']
+        self.assertEqual(filament['settings_extruder_temp'], 210)   # the tag's 190-230
+        self.assertEqual(filament['settings_bed_temp'], 75)         # tag has none: filled from SpoolmanDB
+
+    def test_manufacturer_temperatures_win_when_preferred(self):
+        filament = self.scan(prefer_db_temps=True)['filament']
         self.assertEqual(filament['settings_extruder_temp'], 255)
         self.assertEqual(filament['settings_bed_temp'], 75)
 
@@ -84,6 +89,16 @@ class SpoolmanDbMatchTestCase(MoonrakerTestCase):
         self.hh.db.external_filaments = [SUNLU_GREEN, matte]
         filament = self.scan(dict(TAG, material_detail='PETG Matte'))['filament']
         self.assertEqual(filament['external_id'], 'sunlu_petg_mattegreen_1000_175_p')
+
+    def test_an_empty_list_is_not_cached(self):
+        self.hh.db.external_filaments = []
+        self.assertIsNone(self.scan()['filament']['external_id'])
+        self.hh.db.external_filaments = [SUNLU_GREEN]
+        self.hh.db.created_spools.clear()
+        self.hh.call_remote('spoolman_get_spool_by_uid', uid='0A0B0C0D', gate=1,
+                            metadata=dict(TAG, color_hex='1C9D3B'), save=True, silent=True)
+        spool = self.hh.db.spools[self.hh.db.created_spools[0]]
+        self.assertEqual(spool['filament']['external_id'], 'sunlu_petg_green_1000_175_p')
 
     def test_spoolman_without_the_endpoint_keeps_the_tag_data(self):
         self.hh.db.external_filaments = None

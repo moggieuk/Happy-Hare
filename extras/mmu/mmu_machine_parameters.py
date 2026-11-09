@@ -129,6 +129,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,  section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
         ParamSpec('spoolman_pending_id_timeout',   'int',    20,            section="FEATURES", limits=dict(minval=5, maxval=120)),
         ParamSpec('spoolman_nfc_auto_create',      'int',    0,             section="FEATURES", limits=dict(minval=0, maxval=1)),
+        ParamSpec('spoolman_nfc_prefer_db_temps',  'int',    0,             section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('spoolman_led_segment',          'choice', 'gate_status', section="FEATURES", choices={o: o for o in ('gate_status', 'status', 'both')}),
 
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),

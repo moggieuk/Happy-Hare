@@ -8,6 +8,7 @@
 #   PARAM_SPOOLMAN_PENDING_ID_TIMEOUT
 #   PARAM_SPOOLMAN_LED_SEGMENT
 #   PARAM_SPOOLMAN_NFC_AUTO_CREATE
+#   PARAM_SPOOLMAN_NFC_PREFER_DB_TEMPS
 #   PARAM_ENDLESS_SPOOL_ENABLED
 #   PARAM_ENDLESS_SPOOL_ON_LOAD
 #   PARAM_T_MACRO_COLOR
@@ -167,6 +168,14 @@ menu "Global software options"
     help
       When a scanned tag UID is unknown to Spoolman, create a new spool from the tag metadata
       (requires nfc_deep_read and spoolman_support push or pull)
+
+  config PARAM_SPOOLMAN_NFC_PREFER_DB_TEMPS
+    boolint "Prefer SpoolmanDB temperatures over the tag's for auto-created filaments?"
+    default 0
+    help
+      When an auto-created filament (non-Bambu tag) matches a SpoolmanDB entry on brand,
+      material and colour, use SpoolmanDB's temperatures instead of the tag's. Off keeps the
+      tag's temperatures, using SpoolmanDB's only where the tag has none
 
 
 # -------------------------------------
