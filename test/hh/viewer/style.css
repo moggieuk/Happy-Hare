@@ -378,6 +378,8 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 #sidebar-playback #replay { flex: 1; }
 
 .timeline-control { position: relative; }
+.timeline-control.has-labels { margin-bottom: 16px; }
+#toolchange-ticks small { position: absolute; top: 12px; left: 50%; font-size: 9px; line-height: 12px; white-space: nowrap; transform: translateX(-50%); color: var(--scene-muted, #6e8190); }
 #toolchange-ticks { position: absolute; left: 8px; right: 8px; top: 50%; transform: translateY(-50%); height: 10px; pointer-events: none; }
 #toolchange-ticks span { position: absolute; width: 2px; height: 10px; background: #63778a; transform: translateX(-50%); }
 [data-theme="dark"] #toolchange-ticks span { background: #9bafbf; }

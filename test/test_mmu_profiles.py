@@ -493,8 +493,8 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
         self.assertEqual(unit.filament_heater, 'heater_generic unit0_heater')
         self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Env')
-        self.assertEqual(unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle, 72)
-        self.assertEqual(unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle, 62)
+        self.assertEqual(unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle, 75)
+        self.assertEqual(unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle, 78)
         cutter = hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS').variables
         self.assertTrue(cutter['cutter_before_extruder'])
         self.assertEqual(cutter['blade_pos'], 80)
@@ -503,8 +503,8 @@ class TestEveryBootableProfile(unittest.TestCase):
         model = hh.filament()
         self.assertEqual(model.layout['mmu_entry'], -150)
         self.assertEqual(model.layout['mmu_shared_exit'], 150)
-        self.assertEqual(model.layout['extruder'], 892)
-        self.assertEqual(model.layout['toolhead'], 910)
+        self.assertEqual(model.layout['extruder'], 876)
+        self.assertEqual(model.layout['toolhead'], 897)
         # Reproduce make console's startup preload of every gate. No other
         # filament may leave the shared sensor asserted after the selected gate
         # is ejected and preloaded again.
@@ -1415,7 +1415,7 @@ if __name__ == '__main__':
 
 
 class TestErcfQuattroBox(unittest.TestCase):
-    def test_shared_buffer_separate_encoders_and_all_filament_sensors(self):
+    def test_shared_buffer_separate_encoders_and_filament_sensors(self):
         hh = session('ercf_quattrobox')
         self.addCleanup(hh.close)
         hh.boot(calibrate=True, selected_gate=0)
@@ -1430,6 +1430,9 @@ class TestErcfQuattroBox(unittest.TestCase):
         sensors = hh.sensors()
         for gate in range(12):
             self.assertIn('mmu_entry_%d' % gate, sensors)
+        for gate in range(8):
+            self.assertNotIn('mmu_exit_%d' % gate, sensors)
+        for gate in range(8, 12):
             self.assertIn('mmu_exit_%d' % gate, sensors)
         for name in ('unit0:mmu_shared_exit', 'unit1:mmu_shared_exit',
                      'default:extruder', 'default:toolhead',

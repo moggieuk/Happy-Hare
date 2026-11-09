@@ -671,6 +671,7 @@ class Console:
         self.bridge_error = None
         self.bridge.restart_profile = self._restart_for_viewer
         self.bridge.profile_name = str(self.args.profile)
+        self._install_pace_observer()
 
     def _restart_for_viewer(self, profile):
         bridge, previous = self.bridge, self.args.profile
@@ -737,9 +738,9 @@ class Console:
 
     def _service_bridge(self):
         """Run what the web UI has asked for, from under the prompt."""
-        if self.bridge is None or not (self.bridge.inbox.qsize() or self.bridge.clients):
+        if self.bridge is None or not (self.bridge.has_pending_requests() or self.bridge.clients):
             return
-        if self.bridge.inbox.qsize():
+        if self.bridge.has_pending_requests():
             self._reprint(self.bridge.service)
         else:
             self.bridge.service()                   # nothing to print, just the status push
@@ -2592,8 +2593,12 @@ class Console:
         would interleave with Happy Hare's own output.
         """
         pinned = self.pinned
-        self.hh.printer.harness_pace_observer = (
-            pinned.repaint if (pinned is not None and pinned.active) else None)
+        def observe():
+            if self.bridge is not None:
+                self.bridge.service_during_move()
+            if pinned is not None and pinned.active:
+                pinned.repaint()
+        self.hh.printer.harness_pace_observer = observe
 
     def _meta_log(self, args):
         """Where mmu.log is, and its tail. It is live - `tail -f` it in another window."""

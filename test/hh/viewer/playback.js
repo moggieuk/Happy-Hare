@@ -613,6 +613,19 @@ export function excessFilamentLabel(excess) {
   return `${excess > 0 ? 'compression' : 'tension'} · ${excess > 0 ? '+' : ''}${excess.toFixed(1)}mm`;
 }
 
+export function timelineMarkers(events) {
+  const markers=events.flatMap((event,index)=>event.kind==='toolchange' ? [{event,index}] : []);
+  return markers.map(({event,index},i)=>{
+    const record=event.telemetry || {}, command=String(record.command || event.label || '').toUpperCase();
+    const requested=String(record.label || event.label || '').match(/\bTOOL\s*=\s*["']?(\d+)/i);
+    let tool=requested ? Number(requested[1]) : record.tool ?? event.state?.tool;
+    if (command.startsWith('MMU_CHANGE_TOOL') && !requested)
+      tool=events[(markers[i+1]?.index ?? events.length)-1]?.state?.tool ?? tool;
+    const label=command.startsWith('MMU_UNLOAD') ? 'U' : Number.isInteger(tool) && tool>=0 ? `T${tool}` : 'T?';
+    return {index,label:markers.length<30 ? label : ''};
+  });
+}
+
 export function toolchangeIndex(events, index, direction) {
   for (let i=index+direction; i>=0 && i<events.length; i+=direction)
     if (events[i].kind === 'toolchange') return i;

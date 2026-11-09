@@ -148,6 +148,7 @@ class WebUiBridge:
         self.host = host
         self.log = log or (lambda text: None)
         self.inbox = queue.Queue()
+        self._deferred_requests = []
         self.clients = set()
         self.subscriptions = {}                   # connection -> {object: fields or None}
         self.last_sent = {}                       # connection -> {object: status}
@@ -305,11 +306,35 @@ class WebUiBridge:
         self.gcode_store.append({'message': msg, 'time': time.time(), 'type': 'response'})
         self.notify('notify_gcode_response', [msg])
 
+    def has_pending_requests(self):
+        return bool(self._deferred_requests or self.inbox.qsize())
+
+    def service_during_move(self):
+        """Deliver completed moves without executing another printer command."""
+        for _ in range(self.inbox.qsize()):
+            try:
+                item = self.inbox.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                method = json.loads(item[1]).get('method')
+            except (ValueError, AttributeError):
+                method = None
+            if method in ('server.mmu.telemetry.ack', 'server.mmu.telemetry.unsubscribe'):
+                self._handle(*item)
+            else:
+                self._deferred_requests.append(item)
+        now = time.monotonic()
+        if now >= self._next_telemetry:
+            self._next_telemetry = now + .25
+            self.telemetry_stream.pump()
+
     def service(self):
         """Run every queued request. Call from the thread that owns the session."""
         while True:
             try:
-                conn, text, waiter = self.inbox.get_nowait()
+                conn, text, waiter = (self._deferred_requests.pop(0)
+                                      if self._deferred_requests else self.inbox.get_nowait())
             except queue.Empty:
                 break
             self._handle(conn, text, waiter)

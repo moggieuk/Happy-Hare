@@ -2,6 +2,7 @@ import {TelemetryStream} from './telemetry-stream.js';
 import {LiveState, liveFrame} from './live-state.js';
 import { SpoolRenderer, renderSpool, spoolWindingRadius } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
+import {timelineMarkers} from './playback.js';
 import { orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 function spoolFill(state, gate) {
@@ -1020,6 +1021,10 @@ function renderScene() {
   let previousLabelY = -Infinity;
   const mm = value => Number(value.toFixed(1));
   for (const ref of references) {
+    if (ref.label === 'Blade' && ref.y < extruderGearY) {
+      svg += `<g class="toolhead-reference"><text ${dimensionLink('Blade')} x="174" y="${ref.y}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)"><tspan class="reference-title">Blade · ${mm(ref.distance)}mm</tspan></text></g>`;
+      continue;
+    }
     if (ref.label === 'Extruder sensor' && ref.gap != null) {
       const gearY=references.find(item=>item.label === 'Extruder entry').y;
       const top=Math.min(ref.y,gearY)+2, bottom=Math.max(ref.y,gearY)-2;
@@ -1250,11 +1255,17 @@ function renderScene() {
   );
 }
 function renderTrace() {
-  $('toolchange-ticks').replaceChildren(...events.flatMap((event, index) => {
-    if (event.kind !== 'toolchange') return [];
+  const markers=timelineMarkers(events);
+  $('toolchange-ticks').closest('.timeline-control').classList.toggle('has-labels',markers.some(marker=>marker.label));
+  $('toolchange-ticks').replaceChildren(...markers.map(({index,label}) => {
     const tick = document.createElement('span');
     tick.style.left = `${events.length > 1 ? 100*index/(events.length-1) : 0}%`;
-    return [tick];
+    if (label) {
+      const text=document.createElement('small');
+      text.textContent=label;
+      tick.append(text);
+    }
+    return tick;
   }));
   const view = $("trace"),
     scroll = view.scrollTop;
