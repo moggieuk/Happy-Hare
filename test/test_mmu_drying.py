@@ -678,5 +678,88 @@ class TestDryingDuringPausePerGate(unittest.TestCase):
         self.assertEqual(self._targets(), [45., 0., 50., 0.])
 
 
+class TestDryingStatus(unittest.TestCase):
+    """printer.mmu.drying: the running cycle of each unit, or None."""
+
+    def setUp(self):
+        self.hh = session('qidi')
+        self.addCleanup(self.hh.close)
+        self.hh.boot()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        sensor_name = self.unit.environment_sensor.split()[-1]
+        self.hh.printer.add_object('aht10 %s' % sensor_name, _FakeHumidityChip(25., 60))
+
+    def _drying(self):
+        return self.hh.mmu.get_status(self.hh.reactor.monotonic())['drying']
+
+    def test_no_cycle_reports_none(self):
+        self.assertEqual(self._drying(), [None])
+
+    def test_running_cycle_is_reported_and_stays_fixed(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60 HUMIDITY=20')
+        self.hh.settle()
+        cycle = self._drying()[0]
+        self.assertEqual((cycle['temp'], cycle['humidity_target']), (45, 20))
+        self.assertGreater(cycle['end_time'], cycle['start_time'])
+        self.hh.reactor.advance(ENV_CHECK_INTERVAL * 2)
+        self.assertEqual(self._drying()[0], cycle)
+
+    def test_stopped_cycle_reports_none_again(self):
+        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60')
+        self.hh.settle()
+        self.hh.run_gcode('MMU_HEATER STOP=1')
+        self.hh.settle()
+        self.assertEqual(self._drying(), [None])
+
+
+class TestDryingStatusCycle(unittest.TestCase):
+    """The reported cycle follows the temperature cap and, with a heater per gate, the gate schedule."""
+
+    def _drying(self, hh):
+        return hh.mmu.get_status(hh.reactor.monotonic())['drying'][0]
+
+    def test_temp_is_the_capped_target(self):
+        hh = session('qidi')
+        self.addCleanup(hh.close)
+        hh.boot()
+        sensor_name = hh.mmu.mmu_unit(0).environment_sensor.split()[-1]
+        hh.printer.add_object('aht10 %s' % sensor_name, _FakeHumidityChip(25., 60))
+        manager = hh.mmu.mmu_unit(0).environment_manager
+        hh.run_gcode('MMU_HEATER DRY=1 TEMP=60 TIMER=60')
+        hh.settle()
+        manager._drying_temp_cap = 40.
+        self.assertEqual(self._drying(hh)['temp'], 40.)
+
+    def test_per_gate_end_is_unknown_until_every_gate_has_started(self):
+        profile = profiles.get('emu').derive('emu_heaters_status', syms={
+            'MMU_HAS_HEATER': True, 'PARAM_MAX_CONCURRENT_HEATERS': 2})
+        hh = session(profile, printer_stub=EMU_HEATERS_STUB)
+        self.addCleanup(hh.close)
+        hh.boot()
+        hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1,2 TEMP=50 TIMER=2')
+        cycle = self._drying(hh)
+        self.assertIsNotNone(cycle['start_time'])
+        self.assertIsNone(cycle['end_time'])
+        hh.reactor.advance(5 * ENV_CHECK_INTERVAL)
+        cycle = self._drying(hh)
+        self.assertGreater(cycle['end_time'], cycle['start_time'] + 2 * 60)
+
+    def test_per_gate_end_ignores_a_gate_that_finished_early(self):
+        profile = profiles.get('emu').derive('emu_heaters_status_done', syms={
+            'MMU_HAS_HEATER': True, 'PARAM_MAX_CONCURRENT_HEATERS': 2})
+        hh = session(profile, printer_stub=EMU_HEATERS_STUB)
+        self.addCleanup(hh.close)
+        hh.boot()
+        manager = hh.mmu.mmu_unit(0).environment_manager
+        hh.run_gcode('MMU_HEATER DRY=1 GATES=0,1 TEMP=50 TIMER=60')
+        active_end = manager._gate_drying[0]['end_time']
+        # Gate 1 reached its humidity goal early but keeps its original, later deadline
+        manager._gate_drying[1]['end_time'] = active_end + 3600
+        complete = manager._state_set.__globals__['DRYING_STATE_COMPLETE']
+        manager._gate_drying[1]['state'] = complete
+        manager._state_set(1, complete)
+        self.assertEqual(self._drying(hh)['end_time'], active_end)
+
+
 if __name__ == '__main__':
     unittest.main()

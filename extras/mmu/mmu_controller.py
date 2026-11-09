@@ -883,6 +883,13 @@ class MmuController(MmuFilamentMovement):
         # Merge environment status and fill in units without heater
         status["drying_state"] = merge_unit_status_list(eventtime, attr="environment_manager", key="drying_state", fill_value=DRYING_STATE_NONE)
 
+        # Current drying cycle of each unit (None when not drying), in unit order
+        status["drying"] = [
+            unit.environment_manager.get_status(eventtime)['drying']
+            if getattr(unit, 'environment_manager', None) is not None else None
+            for unit in self.mmu_machine.units
+        ]
+
         # NFC readers are shared-reader + sparse per-gate (not a flat per-gate list),
         # so report a per-unit dict list. Only present when readers are configured.
         nfc_status = []
