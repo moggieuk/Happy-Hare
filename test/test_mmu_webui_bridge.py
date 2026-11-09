@@ -107,6 +107,23 @@ class WebUiBridgeTestCase(unittest.TestCase):
 
 
 class TestWebUiBridge(WebUiBridgeTestCase):
+    def test_motion_delivery_handles_ack_but_defers_commands(self):
+        batch = self.call('server.mmu.telemetry.subscribe')['result']
+        self.hh.mmu.movement_telemetry.state('cut')
+        self.bridge.inbox.put((None, json.dumps(dict(method='printer.gcode.script',
+                                                    params=dict(script='MMU_LOAD'))), None))
+        conn = next(iter(self.bridge.clients))
+        self.bridge.inbox.put((conn, json.dumps(dict(method='server.mmu.telemetry.ack', params=dict(
+            stream_id=batch['stream_id'], delivery_id=batch['delivery_id']))), None))
+        self.bridge._next_telemetry = 0
+        self.bridge.service_during_move()
+        self.assertTrue(self.bridge.has_pending_requests())
+        self.assertEqual(len(self.bridge._deferred_requests), 1)
+        self.client.receive()  # Acknowledgement reply precedes the next delivery.
+        notification = self.client.receive()
+        self.assertEqual(notification['method'], 'notify_mmu_telemetry')
+        self.assertTrue(any(r.get('event') == 'cut' for r in notification['params'][0]['records']))
+
     def test_telemetry_subscription_ack_and_unsubscribe(self):
         batch = self.call('server.mmu.telemetry.subscribe')['result']
         self.assertEqual(batch['records'][0]['event'], 'session')

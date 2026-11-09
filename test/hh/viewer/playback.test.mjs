@@ -1,5 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { timelineMarkers } from './playback.js';
+
+test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
+ const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
+ const events=[marker('MMU_LOAD',1),{kind:'movement'},marker('MMU_UNLOAD',1),
+   marker('MMU_CHANGE_TOOL',1,'MMU_CHANGE_TOOL TOOL="5"'),
+   marker('MMU_CHANGE_TOOL',5,'MMU_CHANGE_TOOL GATE=2'),{kind:'state',state:{tool:3}}];
+ assert.deepEqual(timelineMarkers(events),[
+   {index:0,label:'T1'},{index:2,label:'U'},{index:3,label:'T5'},{index:4,label:'T3'}]);
+});
+test('timeline retains ticks but omits labels at thirty operations',()=>{
+ const events=Array.from({length:31},()=>({kind:'toolchange',telemetry:{command:'MMU_LOAD',tool:0}}));
+ assert.ok(timelineMarkers(events.slice(0,29)).every(marker=>marker.label==='T0'));
+ for (const count of [30,31]) {
+   const markers=timelineMarkers(events.slice(0,count));
+   assert.equal(markers.length,count);
+   assert.ok(markers.every(marker=>marker.label===''));
+ }
+});
 import { virtualSelectorLayout, spoolGrid, fittingSpoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{

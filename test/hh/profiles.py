@@ -553,15 +553,15 @@ QIDI = Profile(
     'qidi',
     syms={
         'MMU_TYPE_QIDI_BOX_1_0': True,
-        'TOOLHEAD_TYPE_QIDI_Q2': True,
+        'TOOLHEAD_TYPE_QIDI_Q1_PRO': True,
         'MMU_HAS_TOOLHEAD_CUTTER': True,
         'BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER': True,
-        # Simulator geometry: blade 8mm before the Q2's 72mm gear-to-nozzle reference.
+        # Simulator geometry: blade 5mm before the Q1 Pro's 75mm gear-to-nozzle reference.
         'VAR_CUT_TIP_BLADE_POS': 80,
         'VAR_CUT_TIP_RETRACT_LENGTH': 20,
         'VAR_CUT_TIP_PUSHBACK_LENGTH': 12,
     },
-    description='QIDI Box 1.0 - Q2 toolhead with cutter before the extruder',
+    description='QIDI Box 1.0 - Q1 Pro toolhead with cutter before the extruder',
     # Keep a compact simulated internal leg and ~750 mm hub-to-extruder leg.
     # Preload uses the production homing limit to find the shared hub sensor,
     # then retracts to park clear of the shared path.
@@ -955,10 +955,10 @@ ERCF_QUATTROBOX = Profile(
             'BOARD_TYPE_ERB_1': True,
             'PARAM_NUM_GATES': 8,
             'MMU_HAS_SENSOR_ENTRY': True,
-            'MMU_HAS_SENSOR_EXIT': True,
+            'MMU_HAS_SENSOR_EXIT': False,
             'MMU_HAS_SENSOR_SHARED_EXIT': True,
             'PIN_SHARED_EXIT_SENSOR': '^unit0:gpio220',
-            **_per_gate_pins(range(8), 100, 'ENTRY_SENSOR', 'EXIT_SENSOR', prefix='^unit0:'),
+            **_per_gate_pins(range(8), 100, 'ENTRY_SENSOR', prefix='^unit0:'),
             'CHOICE_ENCODER_TYPE_BINKY_12': True,
             'MMU_HAS_SYNC_FEEDBACK_BUFFER': True,
             'MMU_HAS_SENSOR_BUFFER_COMPRESSION': True,
@@ -985,7 +985,7 @@ ERCF_QUATTROBOX = Profile(
         }),
     ],
     filament_layout={'mmu_shared_exit': 150.0},
-    description='ERCF (8 gates) + QuattroBox v2 (4 gates), shared buffer, separate encoders, all filament sensors')
+    description='ERCF (8 gates) + QuattroBox v2 (4 gates), shared buffer, separate encoders, per-gate exits on QuattroBox only')
 
 
 TRADRACK_MAX_GATES = TRADRACK.derive(
