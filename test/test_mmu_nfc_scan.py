@@ -236,10 +236,12 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.hh.run_gcode('MMU_PRELOAD GATE=0')
 
     def test_compound_endstop_is_used(self):
-        self.hh.mmu.p.log_level = 3
+        records = []
+        self.addCleanup(self.hh.mmu.movement_telemetry.subscribe(records.append))
         self.preload_with_tag_before_the_gate()
-        trace = ' '.join(self.hh.console)
-        self.assertIn('preload_compound', trace,
+        self.assertTrue(any(record['event'] == 'movement_start' and record.get('homing')
+                            and 'preload_compound' in (record.get('endstop') or '')
+                            for record in records),
                       'preload did not home to a compound endstop - it silently fell '
                       'back to a plain load')
 

@@ -62,6 +62,7 @@ logging.getLogger().setLevel(logging.CRITICAL)
 BOOTABLE = {
     'boxturtle': (4, 'VirtualSelector'),
     'tradrack': (10, 'LinearServoSelector'),
+    'tradrack_encoder': (10, 'LinearServoSelector'),
     '3ms': (4, 'VirtualSelector'),
     # Needs two symbols the vendor Kconfig leaves open (a board and a gate homing sensor) or it
     # does not render at all - see the profile's own comment in test/hh/profiles.py.
@@ -161,6 +162,14 @@ class TestEveryBootableProfile(unittest.TestCase):
 
     def test_tradrack_max_gates(self):
         self._check('tradrack_max_gates')
+
+    def test_tradrack_encoder(self):
+        hh = self._check('tradrack_encoder')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertIsNotNone(unit.encoder)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_endstop_to_encoder, 31)
+        self.assertEqual(unit.p.gate_parking_distance, -48)
 
     def test_boxturtle_max_gates(self):
         self._check('boxturtle_max_gates')
@@ -484,11 +493,18 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
         self.assertEqual(unit.filament_heater, 'heater_generic unit0_heater')
         self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Env')
+        self.assertEqual(unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle, 72)
+        self.assertEqual(unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle, 62)
+        cutter = hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS').variables
+        self.assertTrue(cutter['cutter_before_extruder'])
+        self.assertEqual(cutter['blade_pos'], 80)
+        self.assertGreater(cutter['blade_pos'], unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
 
         model = hh.filament()
         self.assertEqual(model.layout['mmu_entry'], -150)
         self.assertEqual(model.layout['mmu_shared_exit'], 150)
-        self.assertEqual(model.layout['extruder'], 900)
+        self.assertEqual(model.layout['extruder'], 892)
+        self.assertEqual(model.layout['toolhead'], 910)
         # Reproduce make console's startup preload of every gate. No other
         # filament may leave the shared sensor asserted after the selected gate
         # is ejected and preloaded again.

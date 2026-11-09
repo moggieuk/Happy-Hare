@@ -16,6 +16,12 @@ test('live status needs no telemetry session or movement records',()=>{
  assert.equal(r.events,undefined);assert.equal(r.tips,undefined);
  assert.equal(s.devices[`${s.unit}:buffer`].value,-1);
 });
+test('live spool fill follows subscribed gate weights',()=>{
+ const r=new LiveState();r.accept(status(),1);
+ assert.deepEqual(r.accept({mmu:{gate_initial_weight:[1000,1000,-1],gate_remaining_weight:[750,0,-1]}},2)
+  .spool_percentages.slice(0,3),[75,0,null]);
+ assert.equal(r.accept({mmu:{gate_remaining_weight:[500,0,-1]}},3).spool_percentages[0],50);
+});
 test('Bowden progress sets the target independently of motor positions',()=>{
  const r=new LiveState();r.accept(status(),1);
  const s=r.accept({mmu:{filament_pos:3,bowden_progress:50,filament_position:99999}},2);

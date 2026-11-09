@@ -23,6 +23,10 @@ function rimMarkPath(rotation,depth) {
   return `M${x1-faceDepth} ${y1} A${radius} ${radius} 0 0 1 ${x2-faceDepth} ${y2} H${x2} A${radius} ${radius} 0 0 0 ${x1} ${y1} Z`;
 }
 
+export function spoolWindingRadius(percent) {
+  return Math.sqrt(6.4**2+(16**2-6.4**2)*Math.max(0,Math.min(100,percent))/100);
+}
+
 /** Render one spool in local SVG coordinates. No telemetry, DOM, or animation state.
  * Angles are radians for viewAngle and degrees for rotation. The caller owns
  * placement, scale, clipping, and animation; idPrefix must be unique and SVG-safe.
@@ -47,7 +51,7 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
   const spoolScale=3.3;
   const spoolDepthOffset=spoolDepth*Math.sin(viewAngle)/spoolFaceScale;
   const fullWindingRadius=16;
-  const windingRadius=Math.sqrt(spoolHubRadius**2+(fullWindingRadius**2-spoolHubRadius**2)*percent/100);
+  const windingRadius=spoolWindingRadius(percent);
   let svg=`<defs><radialGradient id="spool-backlight-${idPrefix}"><stop stop-color="#fff" stop-opacity=".85"/><stop offset=".25" stop-color="#fff2bd" stop-opacity=".6"/><stop offset="1" stop-color="#ffe6a0" stop-opacity="0"/></radialGradient><radialGradient id="spool-led-${idPrefix}"><stop stop-color="white"/><stop offset=".3" stop-color="#fff7dc" stop-opacity=".9"/><stop offset=".65" stop-color="#ffe6a0" stop-opacity=".45"/><stop offset="1" stop-color="#ffe6a0" stop-opacity="0"/></radialGradient></defs>`;
   // Lighting stays fixed while the spokes turn underneath it.
   const material=spoolStyle.startsWith('dark-') ? '#343638' : 'var(--spool-material, #b49164)';
@@ -87,10 +91,12 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
   if (glow>0) {
     svg += `<ellipse data-part="selected-spool-backlight" cx="${spoolDepth*Math.sin(spoolViewAngle)/2+4/spoolScale}" cy="10.5" rx="3" ry=".9" opacity="${glow}" fill="url(#spool-led-${idPrefix})" pointer-events="none"/>`;
   }
-  if (showFillPercent && Number.isFinite(fillPercent)) {
-    const label=Math.round(Math.max(0,Math.min(100,fillPercent)));
+  if (showFillPercent && Number.isFinite(fillPercent) && fillPercent > 0) {
+    const label=Math.round(Math.min(100,fillPercent));
+    const nearlyEmpty=label===0;
     const x=spoolDepth*Math.sin(spoolViewAngle)/2+windingRadius*Math.cos(spoolViewAngle)+.6;
-    svg += `<text data-part="spool-fill-label" x="${x}" y="0" text-anchor="middle" dominant-baseline="middle" font-size="3.2" font-weight="600" fill="#f4f5f6" stroke="#17212bcc" stroke-width=".55" paint-order="stroke" stroke-linejoin="round" pointer-events="none">${label}%</text>`;
+    if (nearlyEmpty) svg += `<circle data-part="spool-low-warning" cx="${x}" cy="0" r="2.7" fill="#fff" stroke="#17212bcc" stroke-width=".275" pointer-events="none"/>`;
+    svg += `<text data-part="spool-fill-label" x="${x}" y="0" text-anchor="middle" dominant-baseline="${nearlyEmpty ? 'central' : 'middle'}" font-size="${nearlyEmpty ? '4.8' : '3.2'}" font-weight="${nearlyEmpty ? '800' : '600'}" fill="${nearlyEmpty ? '#d82232' : '#f4f5f6'}" stroke="${nearlyEmpty ? 'none' : '#17212bcc'}" stroke-width=".55" paint-order="stroke" stroke-linejoin="round" pointer-events="none">${nearlyEmpty ? '!' : label+'%'}</text>`;
   }
   return svg;
 }

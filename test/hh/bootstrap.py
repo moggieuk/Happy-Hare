@@ -1188,7 +1188,7 @@ class Session:
 
     def prime_gate_map(self, seed=0):
         """
-        Give every gate a vendor, material, colour and temperature. Returns
+        Give every gate a vendor, material, colour, temperature and example spool weights. Returns
         {gate: {what was set}}.
 
         A fresh machine has none of this - `MMU_STATUS` shows "Unknown | 200C | Unknown" on
@@ -1209,6 +1209,10 @@ class Session:
         import random as _random
 
         rng = _random.Random(seed)
+        weights = _random.Random(seed + 1)
+        unknown_weight_gate = self.mmu.num_gates - 1
+        if unknown_weight_gate == 6:
+            unknown_weight_gate = 5
         applied = {}
         for gate in range(self.mmu.num_gates):
             material = rng.choice(self.FILAMENT_MATERIALS)
@@ -1225,6 +1229,20 @@ class Session:
             self.mmu.p.default_gate_color[gate] = attrs['color'].lower()
             self.mmu.p.default_gate_temperature[gate] = attrs['temperature']
             self.mmu.p.default_gate_filament_name[gate] = attrs['name']
+            # Weight metadata does not change gate occupancy or physical filament state.
+            # Include empty, nearly empty (0.2%), and unknown-weight examples.
+            initial = -1 if gate == unknown_weight_gate else 1000
+            if initial < 0:
+                remaining = -1
+            elif gate % 7 == 1:
+                remaining = 0
+            elif gate == 6:
+                remaining = 2
+            else:
+                remaining = weights.randint(100, 1000)
+            self.run_gcode('MMU_GATE_MAP GATE=%d INITIAL_WEIGHT=%d WEIGHT=%d QUIET=1' % (gate, initial, remaining))
+            self.mmu.p.default_gate_initial_weight[gate] = initial
+            self.mmu.p.default_gate_remaining_weight[gate] = remaining
             applied[gate] = attrs
         return applied
 

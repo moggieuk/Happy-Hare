@@ -1516,6 +1516,7 @@ templates** from them, so a broken template shows up as a test failure.
 | `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
+| `tradrack_encoder` | TradRack with a Binky encoder 31mm after the shared exit, shared-exit homing and −48mm parking |
 | `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
 | `pico_mmu` | PicoMMU's `ServoSelector`; deliberately boots uncalibrated because its gate angles depend on the physical cam build |
 | `mmx` | MMX's `ServoSelector` with its vendor gate-angle order; also used for a full load/unload selector test |

@@ -1,17 +1,11 @@
 import {TelemetryStream} from './telemetry-stream.js';
 import {LiveState, liveFrame} from './live-state.js';
-import { SpoolRenderer, renderSpool } from './spool.js';
+import { SpoolRenderer, renderSpool, spoolWindingRadius } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import { orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
-// Temporary preview values; explicit per-gate percentages can replace these later.
-const previewSpoolFill = new Map();
 function spoolFill(state, gate) {
-  const supplied = state.spool_percentages?.[gate];
-  if (Number.isFinite(supplied)) return Math.max(0, Math.min(100, supplied));
-  if (!previewSpoolFill.has(gate))
-    previewSpoolFill.set(gate, gate === 1 ? 0 : 10 + Math.floor(Math.random() * 91));
-  return previewSpoolFill.get(gate);
+  return state.spool_percentages?.[gate] ?? 100;
 }
 const $ = (id) => document.getElementById(id);
 // A shared overlay styles HTML and SVG tooltips consistently and avoids clipping.
@@ -284,7 +278,7 @@ async function subscribeLive() {
     /^mmu_(encoder|buffer|extruder|toolhead|espooler) /.test(n) ||
     /^(extruder\d*|heater_generic .+|gcode_macro .+)$/.test(n)).map(n=>[n,n.startsWith('gcode_macro ') ? ['blade_pos','cutter_before_extruder','cooling_tube_position','cooling_tube_length'] : null]));
   wanted.mmu=['unit','gate','tool','filament_pos','filament_grip_state','bowden_progress','homing','sync_drive',
-    'sensor_states','active_sensors','gate_color_rgb','gate_status','espooler','action',
+    'sensor_states','active_sensors','gate_color_rgb','gate_status','gate_initial_weight','gate_remaining_weight','espooler','action',
     'filament_cut_fragment','filament_remaining_color'];
   wanted.mmu_machine=['configuration'];
   const initial=await rpc('printer.objects.subscribe',{objects:wanted});
@@ -699,6 +693,7 @@ function renderScene() {
   // Keep the real selected gate visible when previewing a smaller unit.
   if (previewCount && s.gate>=0 && !displayGates.includes(s.gate)) displayGates[displayGates.length-1]=s.gate;
   const mmuOffset=60; // Keep the enclosure below the purge animation.
+  const hardwareOffset=mmuOffset-10; // Leave clearance above the enclosure.
   const virtual=virtualSelectorLayout({...s,unit_gates:displayGates},Number($('spool-spacing').value),mmuOffset);
   const gateLaneX=offset=>620+offset*Number($('spool-spacing').value)-(virtual ? 4 : 0);
   const mmuDistanceAtY=y=>{
@@ -757,7 +752,7 @@ function renderScene() {
   $("scene").innerHTML = svg;
   const tube = $("tube"),
     length = tube.getTotalLength();
-  const mmuExitFraction = (virtual ? mmuDistanceAtY(400+mmuOffset) : 200) / length; // Exit sits 20px above the MMU box.
+  const mmuExitFraction = (virtual ? mmuDistanceAtY(400+hardwareOffset) : 200) / length;
   const toolheadFraction=(length-toolheadHeight)/length;
   const progress = (p) =>
     p < 0
@@ -786,7 +781,7 @@ function renderScene() {
     gateSlots.sharedExit=shared && encoder ? (encoderBefore ? 158 : 177) : 170;
     gateSlots.encoder=shared && encoder ? (encoderBefore ? 177 : 158) : 170;
   }
-  for (const key of Object.keys(gateSlots)) if (Number.isFinite(gateSlots[key])) gateSlots[key]+=mmuOffset;
+  for (const key of Object.keys(gateSlots)) if (Number.isFinite(gateSlots[key])) gateSlots[key]+=hardwareOffset;
   const sensorPoint = (name, device) => {
     if (isTouchSensor(name)) return {x:260,y:420};
     const point = tube.getPointAtLength(progress(device.position)*length);
@@ -795,16 +790,16 @@ function renderScene() {
     if (virtual && branchSensor) {
       const sensorGate=branchSensor[2]===undefined ? gate : Number(branchSensor[2]);
       const branch=virtual.branches.find(item=>item.gate===sensorGate);
-      if (branch) return {x:branch.x,y:(branchSensor[1]==='entry' ? 450 : 400)+mmuOffset};
+      if (branch) return {x:branch.x,y:(branchSensor[1]==='entry' ? 465 : 400)+hardwareOffset};
     }
-    if (/^mmu_entry(?:_\d+)?$/.test(short)) point.y -= 93;
+    if (/^mmu_entry(?:_\d+)?$/.test(short)) { point.x = 620; point.y = 465+hardwareOffset; }
     if (/^mmu_exit(?:_\d+)?$/.test(short)) { point.x = 620; point.y = gateSlots.exit; }
     if (short === 'mmu_shared_exit') { point.x = 620; point.y = gateSlots.sharedExit; }
     return point;
   };
   const isBufferSensor = name => /(?:^|:)filament_(compression|tension)$/.test(name);
   const sensorFill = state => state === true ? '#399b64' : state === false ? '#fff' : '#9ba5ae';
-  const encoderPoint = () => ({x:620, y:gateSlots.encoder ?? 360+mmuOffset});
+  const encoderPoint = () => ({x:620, y:gateSlots.encoder ?? 360+hardwareOffset});
   const tipAtPathDistance = distance => {
     const target = Math.max(0,distance)/length;
     let low = Math.min(-100,(s.layout.mmu_entry ?? -150)-40), high = end;
@@ -882,7 +877,6 @@ function renderScene() {
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
-  const gatePillPositions=new Map();
   if (s.tips.length) {
     const spoolViewAngle=Number($('spool-angle').value)*Math.PI/180;
     const focusGate=s.gate>=0 ? focus : displayGates[0];
@@ -929,12 +923,19 @@ function renderScene() {
       const y=549.6+row*rowSpacing-lift+mmuOffset;
       const color=s.gate_colors[index] || '808182';
       const percent=spoolFill(s,index);
-      const title=`Gate ${index} · ${percent}% filament · ${active ? operation.direction+' · '+Math.round(operation.output_power*100)+'% output' : 'Stopped'}`;
+      const branch=virtual?.branches.find(branch=>branch.gate===index);
+      if (branch && percent>0 && s.gate_status?.[index]!==0) {
+        const top=470+mmuOffset, bottom=y-spoolWindingRadius(percent)*spoolScale;
+        const opacity=index===gate ? .5 : .2;
+        svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${top} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
+      }
+      const knownWeight=Number.isFinite(s.spool_percentages?.[index]);
+      const title=`Gate ${index} · ${knownWeight ? percent.toFixed(0)+'% filament' : 'Weight unavailable'} · ${active ? operation.direction+' · '+Math.round(operation.output_power*100)+'% output' : 'Stopped'}`;
       const shelfY=575+row*rowSpacing+mmuOffset;
       svg += `<defs><linearGradient id="spool-shelf-edge-${index}" gradientUnits="userSpaceOnUse" x1="0" y1="${shelfY-3}" x2="0" y2="${shelfY}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="spool-shelf-mask-${index}" maskUnits="userSpaceOnUse" x="${x-80}" y="${y-70}" width="160" height="150"><rect x="${x-80}" y="${y-70}" width="160" height="150" fill="url(#spool-shelf-edge-${index})"/></mask></defs><g mask="url(#spool-shelf-mask-${index})">`;
       svg += `<g data-part="espooler" data-gate="${index}" data-active="${active}" data-fill-percent="${percent}" data-tooltip="${escape(title)}" transform="translate(${x} ${y}) scale(${spoolScale})" filter="url(#spool-separation-shadow)">`;
       spoolRequests.set(index,{idPrefix:`gate-${index}`, style:spoolStyle, color,
-        fillPercent:percent, showFillPercent:true, shadowStyle:$('spool-realism').checked ? 'blur' : 'crisp',windingLines:$('spool-realism').checked, viewAngle:spoolViewAngle, ...spoolMotion(index,operation),
+        fillPercent:percent, showFillPercent:knownWeight, shadowStyle:$('spool-realism').checked ? 'blur' : 'crisp',windingLines:$('spool-realism').checked, viewAngle:spoolViewAngle, ...spoolMotion(index,operation),
         glow:index===s.gate ? Math.max(0,1-Math.abs(index-focus)) : 0});
       svg += '</g></g>';
     }
@@ -964,7 +965,6 @@ function renderScene() {
       // A pill is selected only while its spool is fully raised.
       const selected=index===s.gate && focus===index;
       const x=gateLaneX(offset)+8;
-      gatePillPositions.set(index,{x:x-16,y:587+row*rowSpacing+mmuOffset});
       svg += `<g data-part="gate-status-pill" data-gate="${index}" data-tooltip="Gate ${index} · ${status===0 ? 'Empty' : status>0 ? 'Available' : 'Unknown'}"><rect x="${x-16}" y="${587+row*rowSpacing+mmuOffset}" width="32" height="18" rx="9" fill="${selected ? '#36ca42' : 'color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)'}" stroke="${border}" stroke-width="2"/><text x="${x}" y="${596+row*rowSpacing+mmuOffset}" dominant-baseline="central" text-anchor="middle" font-size="11" font-weight="700" fill="${selected ? '#102514' : 'var(--scene-text, #304c65)'}">${index}</text></g>`;
     }
   }
@@ -998,11 +998,11 @@ function renderScene() {
     svg=svg.replace(`<!--parked-tip-${branch.gate}-->`,shapedTip(virtual.parkDistance,
       s.gate_colors[branch.gate] || '808182','parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
   }
-  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="#808080"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="${470+mmuOffset}" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="#808080"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="${470+mmuOffset}" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="${virtual ? 'black' : 'url(#bowden-fade-gradient)'}"/></mask></defs>`;
   const extruderGearY=tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
     const firstBranch=virtual?.branches[0];
-    const syncY=435+mmuOffset;
+    const syncY=435+hardwareOffset;
     const syncRight=virtual
       ? firstBranch.x-(virtual.active.gate === firstBranch.gate ? 38 : 15)
       : 575;
@@ -1012,7 +1012,7 @@ function renderScene() {
   } else if (!virtual) {
     const gripState=e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
     if (gripState?.mmu_gripped === true)
-      svg += `<text id="grip-indicator" x="552" y="${435+mmuOffset}" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Gripped</text>`;
+      svg += `<text id="grip-indicator" x="552" y="${435+hardwareOffset}" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Gripped</text>`;
   }
   // Nozzle-relative reference guides, matching the documentation diagrams.
   const references = toolheadReferences(s).map(ref => ({...ref,
@@ -1037,26 +1037,19 @@ function renderScene() {
     const midY = (startY + endY) / 2;
     svg += `<g class="cooling-measurements" fill="var(--scene-muted, #6e8190)" font-size="10"><path d="M285 ${startY} H330 M285 ${endY} H330" fill="none" stroke="var(--scene-border, #96abba)"/><path data-part="cooling-length-arrow" d="M315 ${startY-2} V${endY+2} M312 ${endY+6} L315 ${endY+2} L318 ${endY+6} M312 ${startY-6} L315 ${startY-2} L318 ${startY-6}" fill="none" stroke="var(--scene-border, #96abba)"/><text ${dimensionLink('Cooling tube position')} x="336" y="${startY}" dominant-baseline="middle">Cooling tube position · ${mm(cooling.position)}mm</text><text ${dimensionLink('Cooling tube length')} x="323" y="${midY}" dominant-baseline="middle">Cooling tube length · ${mm(cooling.length)}mm</text></g>`;
   }
-  const entryGate=name=>{
-    const match=name.split(':').at(-1).match(/^mmu_entry(?:_(\d+))?$/);
-    return match ? (match[1] === undefined ? gate : Number(match[1])) : null;
-  };
-  const renderedSensors=new Map(displayedSensors);
-  for (const [name,device] of Object.entries(s.sensors))
-    if (gatePillPositions.has(entryGate(name))) renderedSensors.set(name,device);
-  for (const [name, d] of renderedSensors) {
+  for (const [name, d] of displayedSensors) {
     if (isBufferSensor(name)) continue;
-    const pill=gatePillPositions.get(entryGate(name));
     const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
-    if (suffix && Number(suffix[1]) !== gate && !virtual && !pill) continue;
-    if (d.position === null && !isTouchSensor(name) && !pill) continue;
-    const pt = pill || sensorPoint(name, d);
+    if (suffix && Number(suffix[1]) !== gate && !virtual) continue;
+    if (d.position === null && !isTouchSensor(name)) continue;
+    const pt = sensorPoint(name, d);
     const short = name.split(':').at(-1);
     const sensorLabel = isTouchSensor(name) ? 'touch' : /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
     // Leave a one-unit gap outside the tube and the five-unit sensor radius.
-    const sensorX=pill ? pt.x : pt.x+16;
-    const showLabel=!pill && (!virtual || !['entry','exit'].includes(sensorLabel) || pt.x===virtual.branches.at(-1).x);
-    svg += `<g class="sensor-marker${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}">${showLabel ? `<text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text>` : ''}<circle cx="${sensorX}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    const sensorX=pt.x+16;
+    const sensorClass=virtual && ['entry','exit'].includes(sensorLabel) && pt.x!==virtual.active.x ? ' virtual-gate-sensor' : '';
+    const showLabel=!virtual || !['entry','exit'].includes(sensorLabel) || pt.x===virtual.branches.at(-1).x;
+    svg += `<g class="sensor-marker${sensorClass}${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}">${showLabel ? `<text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text>` : ''}<circle cx="${sensorX}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
     svg += homingRing(name,sensorX,pt.y);
     if (sensorPulse?.sensor === name) {
       const elapsed = (animationNow() - sensorPulse.start) / 650;
@@ -1067,7 +1060,7 @@ function renderScene() {
     }
   }
   for (const [x, y, type, gearGate] of [
-    ...(virtual ? [[virtual.active.x,435+mmuOffset,"gear",gate]] : [[620,435+mmuOffset,"gear",gate]]),
+    ...(virtual ? [[virtual.active.x,435+hardwareOffset,"gear",gate]] : [[620,435+hardwareOffset,"gear",gate]]),
     [260, extruderGearY, "extruder"],
   ]) {
     const names = s.drive_motors?.[type] || Object.keys(s.motors).filter(n => n.includes(type));
