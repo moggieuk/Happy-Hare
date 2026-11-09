@@ -899,10 +899,12 @@ function renderScene() {
     const enclosureBottom=659+lastRowY+mmuOffset;
     $('scene').setAttribute('viewBox',`0 0 ${Math.max(850,enclosureRight+14)} ${enclosureBottom+21}`);
     const glassLeft=enclosureLeft+6, glassRight=enclosureRight-6;
-    const coverPath=`M${glassLeft} ${585+lastRowY+mmuOffset} V${510+mmuOffset} Q${glassLeft} ${470+mmuOffset} ${glassLeft+40} ${470+mmuOffset} H${glassRight-40} Q${glassRight} ${470+mmuOffset} ${glassRight} ${510+mmuOffset} V${585+lastRowY+mmuOffset} Z`;
-    svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".22"/><stop offset=".12" stop-color="white" stop-opacity=".07"/><stop offset=".3" stop-color="white" stop-opacity=".02"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".055" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${coverPath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${coverPath}"/></clipPath></defs>`;
+    const coverPath=`M${glassLeft} ${585+mmuOffset} V${510+mmuOffset} Q${glassLeft} ${470+mmuOffset} ${glassLeft+40} ${470+mmuOffset} H${glassRight-40} Q${glassRight} ${470+mmuOffset} ${glassRight} ${510+mmuOffset} V${585+mmuOffset} Z`;
+    const lowerHousingPath=lastRowY ? `M${enclosureLeft} ${575+mmuOffset} H${enclosureRight} V${585+lastRowY+mmuOffset} H${enclosureLeft} Z` : '';
+    const enclosurePath=coverPath+lowerHousingPath;
+    svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".22"/><stop offset=".12" stop-color="white" stop-opacity=".07"/><stop offset=".3" stop-color="white" stop-opacity=".02"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".055" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${enclosurePath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${enclosurePath}"/></clipPath></defs>`;
     // Put the enclosure behind the short filament fade; the glass stays above it.
-    svg = `<path d="${coverPath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>` + svg;
+    svg = `<path data-part="spool-enclosure" d="${enclosurePath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>` + svg;
     if ($('heating-preview').checked || (viewMode==='live' && s.heaters?.some(h=>h.target>0))) {
       svg += `<defs><radialGradient id="mmu-heating-glow" cx=".5" cy=".9" r=".85"><stop stop-color="#ffbd59" stop-opacity=".65"/><stop offset=".45" stop-color="#ef8d27" stop-opacity=".3"/><stop offset="1" stop-color="#e87516" stop-opacity="0"/></radialGradient></defs><g data-part="heating-preview" clip-path="url(#spool-cover-clip)" pointer-events="none">`;
       for (let row=0; row<grid.rows; row++) {
@@ -954,7 +956,7 @@ function renderScene() {
     }
     glassDividers=`<g clip-path="url(#spool-cover-clip)" pointer-events="none">${glassDividers}</g>`;
     const glassHighlight=`<defs><filter id="spool-glass-soften" x="-5%" y="-25%" width="110%" height="150%"><feGaussianBlur stdDeviation=".7"/></filter><linearGradient id="spool-glass-reflection"><stop stop-color="white" stop-opacity="0"/><stop offset=".15" stop-color="white" stop-opacity=".25"/><stop offset=".55" stop-color="white" stop-opacity=".08"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient></defs><path data-part="spool-glass-highlight" filter="url(#spool-glass-soften)" d="M${glassLeft+4} ${510+mmuOffset} Q${glassLeft+4} ${474+mmuOffset} ${glassLeft+40} ${474+mmuOffset} H${glassRight-40} Q${glassRight-4} ${474+mmuOffset} ${glassRight-4} ${510+mmuOffset}" fill="none" stroke="url(#spool-glass-reflection)" stroke-width="2" stroke-linecap="round" pointer-events="none"/>`;
-    svg += `<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8"/>${glassDividers}${glassHighlight}<rect data-part="spool-cabinet" x="${enclosureLeft}" y="${575+lastRowY+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="84" rx="6" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`;
+    svg += `${lowerHousingPath ? `<path data-part="spool-lower-housing" d="${lowerHousingPath}" fill="none" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>` : ''}<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8"/>${glassDividers}${glassHighlight}<rect data-part="spool-cabinet" x="${enclosureLeft}" y="${575+lastRowY+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="84" rx="6" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`;
     for (let row=0; row<grid.rows-1; row++) {
       svg += `<rect data-part="spool-row-shelf" x="${enclosureLeft}" y="${575+row*rowSpacing+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="49" rx="5" fill="url(#spool-shelf-fade)"/>`;
     }
@@ -999,13 +1001,16 @@ function renderScene() {
       s.gate_colors[branch.gate] || '808182','parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
   }
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="#808080"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="${470+mmuOffset}" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="url(#bowden-fade-gradient)"/></mask></defs>`;
+  const extruderGearY=tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
     const firstBranch=virtual?.branches[0];
     const syncY=435+mmuOffset;
     const syncRight=virtual
       ? firstBranch.x-(virtual.active.gate === firstBranch.gate ? 38 : 15)
       : 575;
-    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced"><g transform="translate(${syncRight-18} ${syncY}) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g><text x="${syncRight-18}" y="${syncY+21}" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
+    const syncIcon=(x,y,scale=1)=>`<g transform="translate(${x} ${y}) scale(${scale}) rotate(-35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g>`;
+    svg += `<g id="extruder-synced-indicator" aria-label="Extruder and MMU gears synced">${syncIcon(213,extruderGearY,.7)}</g>`;
+    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced">${syncIcon(syncRight-18,syncY)}<text x="${syncRight-18}" y="${syncY+21}" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
   } else if (!virtual) {
     const gripState=e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
     if (gripState?.mmu_gripped === true)
@@ -1065,7 +1070,7 @@ function renderScene() {
   }
   for (const [x, y, type, gearGate] of [
     ...(virtual ? [[virtual.active.x,435+mmuOffset,"gear",gate]] : [[620,435+mmuOffset,"gear",gate]]),
-    [260, tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y, "extruder"],
+    [260, extruderGearY, "extruder"],
   ]) {
     const names = s.drive_motors?.[type] || Object.keys(s.motors).filter(n => n.includes(type));
     // Coupled motors share travel; do not add their distances or inactive gates.
