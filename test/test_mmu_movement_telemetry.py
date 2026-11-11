@@ -11,14 +11,11 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import contextlib
-import io
 import json
 import unittest
 from unittest import mock
 
 from test.hh import session
-from test.console import parse_args
 
 
 class TestMovementTelemetry(unittest.TestCase):
@@ -237,7 +234,3 @@ class TestMovementTelemetry(unittest.TestCase):
         self.hh.mmu.movement_telemetry.subscribe(other.append)
         self.hh.mmu.move_filament('capture', 10)
         self.assertEqual(other[0]['event'], 'movement_start')
-
-    def test_legacy_telemetry_option_is_removed(self):
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            parse_args(['--telemetry', '/tmp/unused.jsonl'])

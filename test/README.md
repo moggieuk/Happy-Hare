@@ -261,6 +261,10 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/redraw` | repaint the whole screen, log and all — the way back from a corrupted display |
 | `/clear` | as `/redraw`, but empty the log rather than repaint it |
 | `/scroll [N]`, `/s` | scroll back through the log (see below) |
+| `/sensors` | the sensor table (also `MMU_SENSORS`) |
+| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one); the viewer follows the change |
+| `/encoder [NAME] [RESOLUTION=mm] …` | show or change an encoder's runtime numeric settings; `/encoder NAME` lists them |
+| `/web` | where the web API is and how to point Mainsail or Fluidd at it |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
 | `/place`, `/insert`, `/remove`, `/preload`, `/exhaust` | quietly place filament, actively insert it, remove it, preload it, or run it out |
 | `/tag [UID [GATE\|UNIT]]` | present an NFC tag, addressed as `MMU_NFC` addresses one. A **gate** puts it on that gate's filament; a **unit** holds it on that unit's shared reader (`off` takes it away). Bare `/tag` lists the readers and the UIDs the fake Spoolman knows |
@@ -845,8 +849,7 @@ shows these diagnostics under **Show internal updates**, without treating select
 travel as filament movement.
 
 Use **Save telemetry** in the viewer for simulator captures, or enable Moonraker
-recording as described above. The old simulator `--telemetry` raw-event file sink
-has been removed. Source callbacks remain available via
+recording as described above. Source callbacks remain available via
 `mmu.movement_telemetry.subscribe(callback)`; callbacks must not block the printer
 thread. A failing callback is detached and logged without aborting motion.
 
@@ -1546,7 +1549,8 @@ templates** from them, so a broken template shows up as a test failure.
 
 | Profile | What it gives you |
 |---|---|
-| `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
+| `ercf_quattrobox` | multi-unit, mixed selector types with a shared downstream buffer and independent gate encoders |
+| `ercf_vvd` | **the console default.** A multi-unit profile and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
 | `tradrack_encoder` | TradRack with a Binky encoder 31mm after the shared exit, shared-exit homing and −48mm parking |

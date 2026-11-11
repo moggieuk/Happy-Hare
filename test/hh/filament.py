@@ -183,7 +183,9 @@ class FilamentPath:
             entry = self._extruder_position(unit.first_gate)
             sensor_range = min(maxrange, max(0., float(getattr(buffer, 'buffer_range', maxrange))))
             spring = getattr(buffer, 'buffer_spring_state', 'none')
-            spring_value = {'tension': -1, 'neutral': 0, 'compression': 1, 'compressed': 1}.get(spring, spring if isinstance(spring, (int, float)) else 0)
+            from extras.mmu.unit.mmu_buffer import SPRING_STATES
+            spring_value = SPRING_STATES.get(spring, spring)
+            spring_value = spring_value if isinstance(spring_value, (int, float)) else 0
             rest = maxrange * (spring_value + 1) / 2
             self.buffers[prefix] = {
                 'gates': gates,
@@ -193,7 +195,6 @@ class FilamentPath:
                 'tension_travel': (maxrange - sensor_range) / 2,
                 'range': sensor_range,
                 'rest': rest,
-                'spring': spring,
                 'proportional': getattr(buffer, 'proportional_sensor', None) is not None,
                 'virtual_switches': {
                     '%s:filament_%s' % (prefix, kind)

@@ -146,7 +146,7 @@ class TestViewerConsole(unittest.TestCase):
         import pathlib, re
         viewer = pathlib.Path(__file__).parent / 'hh' / 'viewer'
         names = {'index.html', 'app.js'}
-        for page in [p for p in viewer.glob('*.js') if not p.name.endswith('.test.mjs')]:
+        for page in viewer.glob('*.js'):
             names.update(re.findall(r"from '\./([\w.-]+\.js)'", page.read_text()))
         for name in sorted(names):
             with self.subTest(module=name):

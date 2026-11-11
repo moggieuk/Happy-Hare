@@ -1898,9 +1898,9 @@ class Console:
     def _settings_changed(self, kind, obj):
         self.hh.mmu.movement_telemetry.state('sim_settings_changed', kind=kind, object=obj.name)
 
-    _BUFFER_SPRINGS = {'none': None, 'tension': -1, 'neutral': 0, 'compression': 1}
 
     def _meta_buffer(self, args):
+        from extras.mmu.unit.mmu_buffer import SPRING_STATES
         buffer, units, values = self._object_arguments('buffer', args, ('range', 'maxrange', 'spring'))
         if values:
             import math
@@ -1909,8 +1909,8 @@ class Console:
             spring = values.get('spring', buffer.buffer_spring_state)
             if not all(math.isfinite(v) for v in (maximum, sensor_range)) or not 0 < sensor_range <= maximum:
                 raise ValueError('use 0 < RANGE <= MAXRANGE')
-            if spring not in self._BUFFER_SPRINGS:
-                raise ValueError('SPRING is one of %s' % ', '.join(self._BUFFER_SPRINGS))
+            if spring not in SPRING_STATES:
+                raise ValueError('SPRING is one of %s' % ', '.join(SPRING_STATES))
             if (maximum, sensor_range, spring) != (buffer.buffer_maxrange, buffer.buffer_range, buffer.buffer_spring_state):
                 self._apply_buffer(buffer, maximum, sensor_range, spring)
                 self._settings_changed('buffer', buffer)
@@ -1919,6 +1919,7 @@ class Console:
 
     def _apply_buffer(self, buffer, maximum, sensor_range, spring):
         """Change the buffer and rebuild its physical model, keeping the filament where it is."""
+        from extras.mmu.unit.mmu_buffer import SPRING_STATES
         units = self.hh.mmu.mmu_machine.units
         model = self.hh.filament()
         old_buffers = model.buffers.copy()
@@ -1926,7 +1927,7 @@ class Console:
         buffer.buffer_maxrange = maximum
         buffer.buffer_range = sensor_range
         buffer.buffer_spring_state = spring
-        buffer.buffer_spring_state_num = self._BUFFER_SPRINGS[spring]
+        buffer.buffer_spring_state_num = SPRING_STATES[spring]
         model.buffers = {}
         model.configure_buffers(units, model._selected_gate, model._drive_mode, model._gripped)
         geometry = model.buffers[buffer.name]
@@ -1954,20 +1955,20 @@ class Console:
 
     # setting: (attribute, integer?, minimum, minimum excluded?)
     _ENCODER_SETTINGS = {
-        'resolution': ('resolution', False, 0, True),
-        'desired_headroom': ('desired_headroom', False, 0, True),
-        'detection_length': ('detection_length', False, 2, True),
-        'average_samples': ('average_samples', True, 1, False),
-        'calibration_length': ('calibration_length', False, 50, False),
-        'no_movement_samples': ('no_movement_samples', True, 1, False),
-        'flowrate_samples': ('flowrate_samples', True, 5, False),
+        'resolution': (False, 0, True),
+        'desired_headroom': (False, 0, True),
+        'detection_length': (False, 2, True),
+        'average_samples': (True, 1, False),
+        'calibration_length': (False, 50, False),
+        'no_movement_samples': (True, 1, False),
+        'flowrate_samples': (True, 5, False),
     }
 
     def _meta_encoder(self, args):
         import math
         encoder, units, values = self._object_arguments('encoder', args, tuple(self._ENCODER_SETTINGS))
         for key, text in values.items():
-            attribute, integer, minimum, exclusive = self._ENCODER_SETTINGS[key]
+            integer, minimum, exclusive = self._ENCODER_SETTINGS[key]
             value = float(text)
             if not math.isfinite(value) or value < minimum or (exclusive and value == minimum) \
                     or (integer and not value.is_integer()):
@@ -1978,12 +1979,12 @@ class Console:
                 encoder.set_resolution(value)
                 encoder.set_distance(distance)    # The measured position survives a resolution change
             else:
-                setattr(encoder, attribute, value)
+                setattr(encoder, key, value)
         if values:
             self._settings_changed('encoder', encoder)
         print('    %s (%s)' % (encoder.name, ', '.join(u.name for u in units)))
-        for key, (attribute, *_rest) in self._ENCODER_SETTINGS.items():
-            print('      %-20s %g' % (key.upper(), getattr(encoder, attribute)))
+        for key in self._ENCODER_SETTINGS:
+            print('      %-20s %g' % (key.upper(), getattr(encoder, key)))
 
     def _meta_place(self, args):
         gate = int(args[0])
