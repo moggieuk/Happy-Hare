@@ -232,10 +232,12 @@ class MmuController(MmuFilamentMovement):
         sets = [self.p]
         for unit in self.mmu_machine.units:
             sets += [unit.p, unit.selector.p, unit.toolhead_wrapper.p]
+        changes = {s: dict(v) for s, v in self.config_changes.items()}
         for params in sets:
             for scope, name, value in params.differences_from(settings):
                 if not name.startswith('default_gate_') and name not in ('default_ttg_map', 'default_endless_spool_groups'):
-                    self.config_changes.setdefault(scope, {})[name] = value
+                    changes.setdefault(scope, {})[name] = value
+        self.config_changes = changes
 
 
     def handle_ready(self):

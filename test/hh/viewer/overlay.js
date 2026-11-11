@@ -13,7 +13,7 @@ export const overlayAllowed=({viewMode,offline,live,paused,playing,caughtUp,pend
 export function overlaySnapshot(replay,sensors) {
   const mmu=replay.facts?.printer?.mmu, machine=replay.facts?.printer?.mmu_machine;
   if (!mmu || !sensors) return null;
-  const reported=qualifySensors(sensors,mmu.unit,mmu.gate,machine.units[mmu.unit]?.buffer?.name);
+  const reported=qualifySensors(sensors,mmu.unit,mmu.gate,machine.units[mmu.unit]?.buffer?.name,machine.units[mmu.unit]?.toolhead?.name);
   const recorded=mmu.sensors;
   mmu.sensors={...recorded};
   for (const [name,reading] of Object.entries(reported))

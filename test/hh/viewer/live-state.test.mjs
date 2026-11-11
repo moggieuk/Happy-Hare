@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {LiveState,liveFrame} from './live-state.js';
 import {liveObjects as status} from './live-fixture.mjs';
-import {gripState} from './live-config.js';
+import {gripState,qualifySensors} from './live-config.js';
 test('live status needs no telemetry session or movement records',()=>{
  const r=new LiveState(),s=r.accept(status(),1);
  assert.equal(s.filament_pos,0);assert.equal(s.extruder_target_temperature,210);
@@ -35,6 +35,16 @@ test('homing target and direction survive status adaptation',()=>{
  const homing={endstops:['unit0:filament_compression'],triggered:false};
  assert.deepEqual(r.accept({mmu:{homing}},2).homing,homing);
  assert.equal(r.accept({mmu:{homing:null}},3).homing,null);
+});
+test('shared toolhead sensors are named for the unit toolhead',()=>{
+ assert.deepEqual(Object.keys(qualifySensors({extruder:false,toolhead:true},'u0',0,'b','head2')),['head2:extruder','head2:toolhead']);
+ assert.ok('default:extruder' in qualifySensors({extruder:false},'u0',0,'b'));
+ const objects=status(),section=Object.keys(objects.configfile.settings).find(k=>k.startsWith('mmu_unit ') && !k.includes('parameters'));
+ const old=objects.configfile.settings[section].toolhead;
+ objects.configfile.settings[section].toolhead='head2';
+ objects.configfile.settings['mmu_toolhead head2']=objects.configfile.settings[`mmu_toolhead ${old}`];
+ const s=new LiveState().accept(objects,1);
+ assert.ok('head2:extruder' in s.sensors);assert.ok(!('default:extruder' in s.sensors));
 });
 test('grip comes from the existing selector status',()=>{
  for (const [selector,grip] of [[{servo:'Down'},1],[{servo:'Move'},2],[{servo:'Up'},0],[{servo:'Unknown'},-1],
