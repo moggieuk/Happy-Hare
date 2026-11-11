@@ -148,7 +148,8 @@ class MmuGateMaps:
             gate_selected = self.mmu.mmu_unit().first_gate
 
         selector = self.mmu.selector(gate_selected)
-        if gate_selected != TOOL_GATE_UNKNOWN and not selector.is_homed:
+        carriage_independent = gate_selected == TOOL_GATE_BYPASS and not selector.has_bypass() # Bypass isn't a selector position
+        if gate_selected != TOOL_GATE_UNKNOWN and not selector.is_homed and not carriage_independent:
             errors.append(f"Persisted gate/tool {gate_selected}/{tool_selected} dropped because selector isn't homed")
             tool_selected = gate_selected = TOOL_GATE_UNKNOWN
 
