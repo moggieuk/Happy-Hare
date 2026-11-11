@@ -12,7 +12,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import asyncio
-import json
 from pathlib import Path
 import uuid
 from ..common import WebRequest, RequestType, TransportType
@@ -75,14 +74,12 @@ class MmuTelemetry:
 
     def _batch(self, client):
         batch = self.history.read(client['after'], history=client['history'])
-        fingerprint = json.dumps([r.get('changes') for r in batch['records'] if r.get('pending')], sort_keys=True)
-        committed = [r for r in batch['records'] if not r.get('pending')]
-        if not committed and fingerprint == client['fingerprint']:
+        if not batch['records']:
             return None
         self.delivery += 1
-        cursor = committed[-1]['sequence'] if committed else client['after']
+        cursor = batch['records'][-1]['sequence']
         batch.update(stream_id=self.stream_id, delivery_id=self.delivery, cursor=cursor)
-        client['inflight'] = (self.delivery, cursor, fingerprint)
+        client['inflight'] = (self.delivery, cursor)
         return batch
 
     async def subscribe(self, request):
@@ -92,7 +89,7 @@ class MmuTelemetry:
         history = request.get('history', 'latest')
         if history not in ('latest', 'start', 'current'):
             raise self.server.error('history must be latest, start or current')
-        client = dict(after=None, history=history, inflight=None, fingerprint=None, ready=False)
+        client = dict(after=None, history=history, inflight=None, ready=False)
         self.clients[conn] = client
         async with self.lock:
             try:
@@ -112,9 +109,9 @@ class MmuTelemetry:
     async def ack(self, request):
         client = self.clients.get(request.get_client_connection())
         if client and request.get_str('stream_id') == self.stream_id and client['inflight']:
-            delivery, cursor, fingerprint = client['inflight']
+            delivery, cursor = client['inflight']
             if delivery == request.get_int('delivery_id'):
-                client.update(after=cursor, fingerprint=fingerprint, inflight=None)
+                client.update(after=cursor, inflight=None)
                 self._deliver(request.get_client_connection(), client)
         return {}
 
@@ -150,7 +147,7 @@ class MmuTelemetry:
         if batch.get('reset'):
             self.stream_id = uuid.uuid4().hex
             for client in self.clients.values():
-                client.update(after=None, inflight=None, fingerprint=None)
+                client.update(after=None, inflight=None)
         committed = self.history.append(batch)
         if self.record and committed:
             if self.writer is None:

@@ -2,19 +2,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {liveObjects} from './live-fixture.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
-test('live subscriptions animate homing and remain isolated from file playback',async()=>{
+test('live subscriptions remain isolated from file playback',async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH});
  try {
   const page=await browser.newPage();const errors=[],telemetryRequests=[];
   page.on('pageerror',e=>errors.push(e.message));
-  const records=JSON.parse(readFileSync(new URL('./fixtures/emu.json',import.meta.url)));
-  const facts=records[0].state, m=facts.printer.mmu, machine=facts.printer.mmu_machine;
-  const objects={mmu_machine:{configuration:machine},mmu:{...m,unit:0,filament_pos:3,bowden_progress:25,
-    homing:null,sensor_states:m.sensors,sync_drive:false},extruder:{target:200}};
-  const buffer=machine.units[m.unit].buffer;
-  objects[`mmu_buffer ${buffer.name}`]={value:-1};
+  const objects=liveObjects();
+  Object.assign(objects.mmu,{filament_pos:3,bowden_progress:25});
   let socket,time=1;
   await page.routeWebSocket('**/websocket',ws=>{
     socket=ws;
@@ -37,18 +34,9 @@ test('live subscriptions animate homing and remain isolated from file playback',
   assert.match(await page.locator('#mode').textContent(),/^Live view/);
   assert.equal(await page.locator('#previous').isVisible(),false);
   assert.equal(await page.locator('#simulator-controls').isVisible(),false);
-  const sensor=Object.keys(m.sensors).find(n=>n.endsWith('filament_compression'));
   const notify=delta=>socket.send(JSON.stringify({method:'notify_status_update',params:[delta,++time]}));
-  notify({mmu:{homing:{endstops:[sensor],triggered:true},bowden_progress:60}});
-  await page.locator('[data-part="homing-sensor-ring"]').waitFor();
-  assert.equal(await page.locator('[data-part="homing-sensor-ring"]').getAttribute('stroke'),'var(--sensor-clear-pulse)');
-  notify({mmu:{homing:{endstops:[sensor],triggered:false}}});
+  notify({mmu:{bowden_progress:60,sensors:{mmu_entry:true,encoder:false,extruder:false,toolhead:false}}});
   await page.waitForTimeout(100);
-  assert.equal(await page.locator('[data-part="homing-sensor-ring"]').getAttribute('stroke'),'#48c982');
-  notify({mmu:{homing:null,sensor_states:{...m.sensors,[sensor]:{triggered:false,enabled:true}}}});
-  await page.waitForTimeout(80);
-  assert.equal(await page.locator('[data-part="homing-sensor-ring"]').count(),0);
-  assert.equal(await page.locator('[data-part="sensor-pulse"]').count(),1);
   assert.deepEqual(telemetryRequests,[]);
   assert.equal(await page.locator('#open-recording').count(),0);
   await page.locator('#view-mode').selectOption('playback');

@@ -37,15 +37,11 @@ class TelemetryHistory:
         self.limit = limit
         self.header = None
         self.records = deque()
-        self.pending = None
 
     def append(self, batch):
         committed = []
-        self.pending = None
         for record in batch['records']:
-            if record.get('pending'):
-                self.pending = deepcopy(record)
-            elif record['event'] == 'session':
+            if record['event'] == 'session':
                 self.header = deepcopy(record)
                 self.records.clear()
                 committed.append(record)
@@ -88,9 +84,7 @@ class TelemetryHistory:
                 if len(records) >= limit:
                     break
                 records.append(record)
-        if self.pending and (not records or records[-1]['sequence'] >= self.sequence):
-            records.append(self.pending)
-        return dict(schema='happy_hare.motion', version=2, session_id=self.header['session_id'],
+        return dict(schema='happy_hare.motion', version=1, session_id=self.header['session_id'],
                     reset=reset, records=deepcopy(records))
 
 

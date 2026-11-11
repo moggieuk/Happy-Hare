@@ -492,7 +492,6 @@ class MmuESpooler:
             requested_power=value if output else 0., output_power=output, pwm=self.is_pwm)
 
 
-
     def get_operation(self, gate):
         """
         Return tuple of current operation and pwm value for gate
@@ -527,7 +526,6 @@ class MmuESpooler:
         value = max(0, min(1, value)) / self.scale
         if not self.is_pwm:
             value = 1 if value > 0 else 0
-
 
         # Update PWM signal
         if self.get_operation(gate) != (operation, value):

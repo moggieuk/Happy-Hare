@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {TelemetryReplay,parseTelemetry,applyDelta} from './telemetry.js';
 import {spoolPercentage} from './scene-state.js';
-import {visibleSteps,interpolate,playbackFrame,purgeOutletColor,constrainFilament} from './playback.js';
+import {visibleSteps,interpolate,playbackFrame,purgeOutletColor,constrainFilament,duration,selectorNotice,selectorSummary,traceText,annotatedStep} from './playback.js';
 const fixture=name=>JSON.parse(fs.readFileSync(new URL(`./fixtures/${name}.json`,import.meta.url)));
 const header=()=>structuredClone(fixture('ercf-vvd')[0]);
 test('spool fill uses known weights, including zero, and rejects unknown weights',()=>{
@@ -47,13 +47,64 @@ test('selector actuator diagnostics never become filament movement',()=>{
  const r=stream(),before=r.snapshot();
  for(const actuator of ['stepper','servo']) {
   event(r,'selector_movement_start',{move_id:100,actuator,requested_mm:100});
-  event(r,'selector_movement_outcome',{move_id:100,actuator,actual_mm:100,status:'completed'});
   assert.ok(r.events.at(-1).internal);
+  event(r,'selector_movement_outcome',{move_id:100,actuator,actual_mm:100,status:'completed'});
+  assert.equal(r.events.at(-1).kind,'selector_move');
  }
  const after=r.snapshot();
  assert.deepEqual(after.tips,before.tips);
  assert.equal(after.extruded_mm,before.extruded_mm);
+ assert.ok(!r.events.some(e=>e.kind==='movement'));
  assert.ok(r.events.filter(e=>e.kind==='selector').every(e=>e.internal));
+});
+test('a selector start and outcome become one visible step carrying both records',()=>{
+ const r=stream();
+ event(r,'selector_movement_start',{move_id:7,actuator:'stepper',label:'Positioning selector',position_mm:4.2,target_position_mm:46.2});
+ event(r,'selector_movement_outcome',{move_id:7,actuator:'stepper',status:'submitted',position_mm:46.2,elapsed_s:.19});
+ const step=r.events.at(-1);
+ assert.equal(step.kind,'selector_move');assert.equal(step.label,'Positioning selector');assert.equal(step.actuator,'stepper');
+ assert.ok(!step.internal);assert.ok(step.before);
+ assert.equal(step.telemetry.start.target_position_mm,46.2);assert.equal(step.telemetry.outcome.position_mm,46.2);
+ assert.equal(r.pendingSelectors.size,0);
+});
+test('a selector pair inside a filament move stays bookkeeping, and an outcome without a start is tolerated',()=>{
+ const r=stream();
+ event(r,'movement_start',{move_id:9,motor_mode:'gear',requested_mm:5});
+ event(r,'selector_movement_start',{move_id:10,actuator:'servo',label:'Move selector servo'});
+ event(r,'selector_movement_outcome',{move_id:10,actuator:'servo'});
+ assert.ok(r.events.at(-1).internal);assert.ok(r.events.at(-1).during_move);
+ event(r,'movement_outcome',{move_id:9,actual_mm:5,status:'completed'});
+ event(r,'selector_movement_outcome',{move_id:99,actuator:'servo'});
+ assert.equal(r.events.at(-1).kind,'selector');assert.ok(r.events.at(-1).internal);
+});
+test('a gate selection shows the selector move, then the slide, with the notice kept until the slide ends',()=>{
+ const r=stream();
+ event(r,'selector_movement_start',{move_id:1,actuator:'stepper',label:'Positioning selector',position_mm:4.2,target_position_mm:46.2});
+ event(r,'selector_movement_outcome',{move_id:1,actuator:'stepper',status:'submitted',position_mm:46.2,elapsed_s:.19});
+ event(r,'gate_changed',{previous_gate:0,gate:1});
+ event(r,'selector_movement_start',{move_id:2,actuator:'servo',label:'Move selector servo',position_angle_deg:140,target_angle_deg:30});
+ event(r,'selector_movement_outcome',{move_id:2,actuator:'servo',status:'submitted',position_angle_deg:30});
+ const steps=visibleSteps(r.events), [stepper,gate,servo]=steps.slice(-3);
+ assert.deepEqual([stepper.kind,gate.kind,servo.kind],['selector_move','gate_changed','selector_move']);
+ assert.equal(selectorSummary(stepper),'Positioning selector 4.2 → 46.2 mm (0.19s)');
+ assert.equal(selectorSummary(servo),'Move selector servo 140 → 30°');
+ assert.equal(traceText(stepper).split(' · ')[2],'selector');
+ assert.match(traceText(stepper),/Positioning selector 4\.2 → 46\.2 mm/);
+ assert.equal(duration(stepper),0);               // No artificial hold: the notice stays up through the slide
+ assert.equal(annotatedStep(steps,stepper,false),stepper);
+ // The notice is up from the selector move, through the slide, until the viewer leaves the gate change
+ const move='Selector: Positioning selector 4.2 → 46.2 mm (0.19s)';
+ assert.equal(selectorNotice(steps,stepper,true,true),move);
+ assert.equal(selectorNotice(steps,stepper,false,true),move);  // At rest, about to slide
+ assert.equal(selectorNotice(steps,gate,true,true),move+' · Gate 0 → 1');
+ assert.equal(selectorNotice(steps,gate,false,true),move+' · Gate 0 → 1');   // Resting on the gate change
+ assert.equal(selectorNotice(steps,gate,false,false),move+' · Gate 0 → 1'); // Paused on it
+ // A servo move shows when played or stepped onto, but a lone one is not left behind while following
+ assert.equal(selectorNotice(steps,servo,false,false),'Selector: Move selector servo 140 → 30°');
+ assert.equal(selectorNotice(steps,servo,false,true),null);
+ assert.equal(selectorNotice(steps,servo,true,true),'Selector: Move selector servo 140 → 30°');
+ // A gate change not preceded by a stepper move has no notice
+ assert.equal(selectorNotice([servo,gate],gate,true,true),null);
 });
 for(const name of ['ercf-vvd','emu']) {
  test(`${name}: batched live updates and offline JSONL reproduce identical animation`,()=>{
@@ -133,7 +184,7 @@ test('status-only changes fold into a step without navigation stops',()=>{
 });
 test('session and sequence validation rejects unsupported and incomplete captures',()=>{
  assert.throws(()=>parseTelemetry('{"event":"movement_start"}'),/Expected|session/);
- const h=header();h.version=1;assert.throws(()=>new TelemetryReplay().feed(h),/Unsupported/);
+ const h=header();h.version=2;assert.throws(()=>new TelemetryReplay().feed(h),/Unsupported/);
  const r=stream();assert.throws(()=>r.feed({event:'cut',sequence:99,timestamp:1}),/gap/);
  assert.throws(()=>event(stream(),'movement_outcome',{move_id:4}),/no start/);
 });

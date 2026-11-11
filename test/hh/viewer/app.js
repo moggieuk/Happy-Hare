@@ -1,9 +1,12 @@
 import {TelemetryStream} from './telemetry-stream.js';
 import {LiveState, liveFrame} from './live-state.js';
+import {liveMachine} from './live-config.js';
+import {overlayAllowed,overlaySnapshot} from './overlay.js';
+import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroParameters,toolheadObjects} from './editor.js';
 import { SpoolRenderer, renderSpool, spoolWindingRadius } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
-import { orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
@@ -68,18 +71,14 @@ $('theme-toggle').onclick = () => {
   try { localStorage.setItem('hh-viewer-theme', theme); } catch {}
 };
 let modeChosen=false;
+let statusSensors=null, overlayCache={key:'',state:null};
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
 let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
-let pendingSource = null, pendingFingerprint = '';
 function sourceMode() {
-  const simulatorConnected=!offline && socket?.readyState === 1 && setup && (setup.connection_kind || 'simulator') === 'simulator';
-  document.querySelectorAll('[data-simulator-config]').forEach(panel=>{
-    panel.hidden=!simulatorConnected || panel.dataset.available !== 'true';
-  });
+  toolheadPanel.hidden=offline || socket?.readyState !== 1 || toolheadPanel.dataset.available !== 'true';
   $('recording-option').hidden=!offline;
   $('view-mode').value=offline ? 'recording' : viewMode;
   $('simulator-controls').hidden=setup?.connection_kind==='live_machine';
-  $('runtime-parameters').hidden=setup?.connection_kind==='live_machine';
   $('sidebar-playback').querySelectorAll('.playback-row, .playback-option').forEach(el=>el.hidden=viewMode==='live');
   $('trace').closest('.card').hidden=viewMode==='live';
   $('recording-name').hidden = !offline;
@@ -90,11 +89,16 @@ function sourceMode() {
   renderWarning();
 }
 
-function renderWarning(warnings=[]) {
+function renderWarning(warnings=[], notice=null) {
   const simulatorLive=viewMode==='live' && !offline && socket?.readyState===1 && setup?.connection_kind==='simulator';
   const text=simulatorLive
     ? 'Simulator subscriptions may skip movement updates. Select Telemetry stream for complete movement animation.'
-    : viewMode==='playback' && warnings.length ? 'Displayed tip adjusted to sensor readings: '+warnings.join('; ') : '';
+    : viewMode!=='playback' ? ''
+    : [notice, warnings.length ? 'Displayed tip adjusted to sensor readings: '+warnings.join('; ') : ''].filter(Boolean).join('\n');
+  // A notice alone is informational (blue, "i"); anything that is a warning keeps the warning look
+  const informational=Boolean(notice) && !warnings.length && viewMode==='playback';
+  $('filament-warning').dataset.kind=informational ? 'notice' : 'warning';
+  $('filament-warning').querySelector('.warning-bang').textContent=informational ? 'i' : '!';
   $('filament-warning').hidden=!text;
   $('filament-warning-message').textContent=text;
 }
@@ -203,7 +207,7 @@ function connect() {
   socket.onopen = () => {
     if (generation!==connectionGeneration) return;
     setup=null;
-    liveState=new LiveState();
+    liveState=new LiveState(); statusSensors=null;
     sourceMode();
     if (offline) return;
     $("connection").textContent = "Connected · identifying source…";
@@ -221,6 +225,7 @@ function connect() {
       telemetryStream.receive(data.params[0]);
     } else if (data.method === 'notify_status_update') {
       if (viewMode==='live') acceptLive(data.params[0],data.params[1]);
+      else if (data.params[0].mmu?.sensors) { statusSensors=data.params[0].mmu.sensors; draw(); }
     } else if (['notify_klippy_ready','notify_klippy_shutdown','notify_klippy_disconnected'].includes(data.method)) {
       if (offline) return;
       if (viewMode!=='live') {
@@ -228,7 +233,7 @@ function connect() {
         if (data.method==='notify_klippy_ready') telemetryStream.start();
         return;
       }
-      liveState=new LiveState(); liveTarget=null; displayed=null; playing=null; sensorPulse=null;
+      liveState=new LiveState(); statusSensors=null; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
       if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
       else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
     } else if (data.method === "notify_gcode_command") {
@@ -256,6 +261,7 @@ function connect() {
 }
 async function initializeConnection() {
   const generation=connectionGeneration;
+  editorStatic=null;
   const info=await rpc('server.info');
   const simulator=info.moonraker_version?.endsWith('-sim');
   try { await refresh(); }
@@ -264,6 +270,7 @@ async function initializeConnection() {
     if (simulator) throw error;
     setup={connection_kind:'live_machine',units:[],parameters:[],profiles:[]};
     $('connection').textContent='Connected to printer'; sourceMode();
+    await refreshLiveEditor().catch(error=>message(error.message,true));
   }
   if (generation!==connectionGeneration || offline) return;
   if (!modeChosen && setup?.connection_kind==='simulator') await changeView('playback');
@@ -273,22 +280,26 @@ async function initializeConnection() {
 async function subscribeLive() {
   const generation=++subscriptionGeneration;
   const {objects}=await rpc('printer.objects.list');
-  const config=(await rpc('printer.objects.query',{objects:{mmu_machine:['configuration']}})).status.mmu_machine?.configuration;
+  // Startup configuration and calibration come from Klipper itself; later edits arrive in mmu.config_changes.
+  const startup=(await rpc('printer.objects.query',{objects:{configfile:['settings'],save_variables:['variables']}})).status;
+  const config=liveMachine(startup);
   const references=new Set(Object.values(config?.units || {}).flatMap(u=>[u.extruder.name,...(u.heaters || [])]));
-  const wanted=Object.fromEntries(objects.filter(n=>references.has(n) || n==='mmu' || n==='mmu_machine' ||
-    /^mmu_(encoder|buffer|extruder|toolhead|espooler) /.test(n) ||
+  const wanted=Object.fromEntries(objects.filter(n=>references.has(n) || n==='mmu' || n==='save_variables' ||
+    /^mmu_(encoder|buffer|extruder|toolhead|espooler) /.test(n) || /:filament_proportional$/.test(n) ||
     /^(extruder\d*|heater_generic .+|gcode_macro .+)$/.test(n)).map(n=>[n,n.startsWith('gcode_macro ') ? ['blade_pos','cutter_before_extruder','cooling_tube_position','cooling_tube_length'] : null]));
-  wanted.mmu=['unit','gate','tool','filament_pos','filament_grip_state','bowden_progress','homing','sync_drive',
-    'sensor_states','active_sensors','gate_color_rgb','gate_status','gate_initial_weight','gate_remaining_weight','espooler','action',
+  wanted.mmu=['unit','gate','tool','filament_pos','bowden_progress','homing','selector','sync_drive','sensors','config_changes',
+    'gate_color_rgb','gate_status','gate_initial_weight','gate_remaining_weight','espooler','action',
     'filament_cut_fragment','filament_remaining_color'];
-  wanted.mmu_machine=['configuration'];
+  wanted.save_variables=['variables'];
   const initial=await rpc('printer.objects.subscribe',{objects:wanted});
+  liveState.accept({configfile:startup.configfile},initial.eventtime-1);
   if (viewMode==='live' && generation===subscriptionGeneration) acceptLive(initial.status,initial.eventtime);
 }
 function acceptLive(delta,time) {
   const next=liveState.accept(delta,time);
   if (!next) { $('mode').textContent='Live view · Waiting for MMU configuration'; return; }
   const previous=liveTarget;
+  if (setup?.connection_kind==='live_machine' || liveState.objects.configfile) showToolheads(toolheadObjects(liveState.objects));
   if (previous?.homing && !next.homing) {
     const name=previous.homing.endstops.find(n=>next.sensors[n]?.state===previous.homing.triggered);
     if (name) sensorPulse={sensor:name,reverse:!previous.homing.triggered,start:animationNow()};
@@ -312,15 +323,16 @@ async function changeView(mode) {
   await telemetryStream.stop();
   subscriptionGeneration++;
   viewMode=mode; offline=false; playing=null; displayed=null; sensorPulse=null;
-  events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay(); pendingSource=null; pendingFingerprint='';
-  liveTarget=null; liveFrom=null; liveState=new LiveState();
+  events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay();
+  liveTarget=null; liveFrom=null; liveState=new LiveState(); statusSensors=null;
   live=true; paused=false; replayingHistory=false;
   $('scene').replaceChildren();
   $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : setup?.connection_kind==='simulator' ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
   sourceMode(); renderTrace();
   if (mode==='live' && socket?.readyState===1) await subscribeLive();
   else if(socket?.readyState===1) {
-    await rpc('printer.objects.subscribe',{objects:{}});
+    // Near-live shows the stream; sensor readings are overlaid while it is idle.
+    statusSensors=(await rpc('printer.objects.subscribe',{objects:{mmu:['sensors']}})).status.mmu?.sensors || null;
     await telemetryStream.start();
   }
 }
@@ -338,8 +350,31 @@ function options(node, items) {
     }),
   );
 }
+// A printer has no simulator RPC: the editor lists come from configfile, mmu.config_changes and the
+// macro objects, and edits are sent as G-code like the command console does.
+let editorStatic=null;
+async function editorState() {   // configfile once per connection, config_changes every time
+  editorStatic ||= rpc('printer.objects.query',{objects:{configfile:['settings','config']}})
+    .then(({status})=>({configfile:status.configfile,catalog:macroCatalog(status.configfile.config)}));
+  const {configfile,catalog}=await editorStatic;
+  const {status:{mmu}}=await rpc('printer.objects.query',{objects:{mmu:['config_changes']}});
+  return {configfile,catalog,mmu};
+}
+async function refreshToolheads() { showToolheads(toolheadObjects(await editorState())); }
+async function refreshLiveEditor() {
+  const state=await editorState(), {configfile,catalog}=state, unit=Number($('unit').value || 0);
+  const names=[].concat(configfile.settings.mmu_machine?.units || []);
+  const macroObjects=Object.fromEntries([...new Set(catalog.map(([macro])=>`gcode_macro ${macro}`))].map(name=>[name,null]));
+  const {status:macros}=await rpc('printer.objects.query',{objects:macroObjects});
+  setup={...setup,units:names,parameters:editorParameters(state,unit),macro_parameters:editorMacroParameters(catalog,macros)};
+  options($('unit'),names.map((name,i)=>[i,name]));
+  $('unit').value=String(unit);
+  filter();
+  showToolheads(toolheadObjects(state));
+}
 async function refresh() {
   if (offline) return;
+  if (setup?.connection_kind==='live_machine') return refreshLiveEditor();
   setup = await rpc("sim.viewer.setup", { unit: Number($("unit").value || 0) });
   if (offline) return;
   sourceMode();
@@ -359,8 +394,8 @@ async function refresh() {
   if (setup.profiles.some((p) => p.name === setup.profile))
     $("profiles").value = setup.profile;
   $("profile").textContent = "Running: " + setup.profile;
-  await refreshSimulatorObjects();
   filter();
+  await refreshToolheads().catch(error=>message(error.message,true));
 }
 function filter() {
   const previous = $("parameter").value,
@@ -476,13 +511,12 @@ $("parameter").onchange = value;
 $("unit").onchange = () => refresh().catch((e) => message(e.message, true));
 $("apply").onclick = () =>
   action(async () => {
-    setup = await rpc("sim.viewer.configure", {
-      unit: Number($("unit").value),
-      name: selectedParameter()?.name,
-      macro: selectedParameter()?.macro,
-      value: $("value").value,
-    });
-    filter();
+    const p = selectedParameter();
+    if (!p) return;
+    const script = p.macro ? macroCommand(p.macro, p.name, $("value").value, p.value)
+      : parameterCommand(Number($("unit").value), p.name, $("value").value);
+    await rpc("printer.gcode.script", { script });
+    await refresh();
     message("Runtime parameter applied.");
   });
 const commandHistory = new CommandHistory();
@@ -652,6 +686,14 @@ function renderBuffer(s, d, bufferSensors, sensorFill) {
 // UI, telemetry, and animation changes share the existing frame loop.
 let sceneDirty=false;
 function draw() { sceneDirty=true; }
+function idleOverlay() {
+  const last=events.at(-1);
+  if (!statusSensors || !last || !overlayAllowed({viewMode,offline,live,paused,playing,caughtUp:played>=last.seq,
+      pendingMoves:sourceReplay.pending.size})) return null;
+  const key=`${sourceReplay.session}:${sourceReplay.sequence}:${JSON.stringify(statusSensors)}`;
+  if (overlayCache.key!==key) overlayCache={key,state:overlaySnapshot(sourceReplay,statusSensors)};
+  return overlayCache.state;
+}
 function renderScene() {
   if (viewMode==='live' ? !displayed : !events.length) return;
   const spoolRequests=new Map();
@@ -671,7 +713,7 @@ function renderScene() {
   $("next-toolchange").disabled = toolchangeIndex(events, currentIndex(), 1) < 0;
   const e = viewMode==='live' ? {state:displayed,seq:0,kind:'state'} : live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
   const
-    s = live && displayed ? displayed : (e.settled_state || e.state),
+    s = idleOverlay() || (live && displayed ? displayed : (e.settled_state || e.state)),
     gate = s.gate >= 0 ? s.gate : 0;
   renderedSpoolState=s;
   let tip = s.visual_tips?.[gate] ?? s.tips[gate] ?? -1000;
@@ -852,7 +894,10 @@ function renderScene() {
       const short=name.split(':').at(-1);
       const position = /^mmu_(?:entry|exit)(?:_\d+)?$/.test(short) || short === 'mmu_shared_exit'
         ? mmuDistanceAtY(sensorPoint(name,d).y) : pathDistance(d.position);
-      return {...d,name,position};
+      // An encoder-derived tip may differ from a sensor by the encoder's movement threshold,
+      // 1.5 x resolution as in Happy Hare's movement_min(); that much is not worth a warning
+      const slack=1.5*(s.devices?.[`${s.unit}:encoder`]?.resolution || 0);
+      return {...d,name,position,tolerance:slack ? Math.abs(pathDistance(d.position+slack)-pathDistance(d.position)) : 0};
     });
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
   const constrained = constrainFilament(schematicTip ?? pathDistance(tip),
@@ -873,7 +918,7 @@ function renderScene() {
     const link=offline || setup?.connection_kind!=='simulator' ? '' : `role="button" tabindex="0" data-parameter="${key}" data-macro="${escape(name || '')}" data-unit="${macroUnit}" aria-label="Browse ${label} variables"`;
     return `<div class="macro-label">${label}</div><span class="macro-name" ${link}>${escape(name === undefined ? 'Not recorded' : name || 'None')}</span>`;
   }).join('');
-  renderWarning(constrained.warnings);
+  renderWarning(constrained.warnings, viewMode==='playback' ? selectorNotice(events, e, Boolean(playing), live && !paused) : null);
   $("filament").setAttribute(
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
@@ -1271,7 +1316,7 @@ function renderTrace() {
     scroll = view.scrollTop;
   const expanded = new Set([...view.querySelectorAll('details[open]')].map(row=>row.dataset.seq));
   const showDetails=$('show-internal').checked;
-  const records=new Map(showDetails ? [...sourceRecords,...(pendingSource ? [pendingSource] : [])].map(record=>[record.sequence,record]) : []);
+  const records=new Map(showDetails ? sourceRecords.map(record=>[record.sequence,record]) : []);
   view.replaceChildren(
     ...($('show-internal').checked ? orderedSteps(rawEvents) : events).map(e => {
       const internal = isInternalUpdate(e);
@@ -1443,7 +1488,7 @@ $("show-dimensions").onchange = () => {
 };
 $("nozzle-diameter").onchange = () => draw();
 function downloadTelemetry() {
-  const records = [...sourceRecords, ...(pendingSource ? [pendingSource] : [])];
+  const records = sourceRecords;
   if (!records.length) return message('No telemetry captured yet', true);
   const text = records.map(r=>JSON.stringify(r)).join('\n')+'\n';
   const url = URL.createObjectURL(new Blob([text],{type:'application/x-ndjson'}));
@@ -1465,7 +1510,7 @@ $('telemetry-file').onchange = async () => {
     await telemetryStream.stop();
     modeChosen=true; viewMode='playback'; offline=true; subscriptionGeneration++; liveTarget=null; liveFrom=null;
     pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
-    sourceReplay=replay; sourceRecords=records; pendingSource=null; pendingFingerprint='';
+    sourceReplay=replay; sourceRecords=records;
     rawEvents=replay.events; events=visibleSteps(rawEvents); session=replay.session;
     live=false; paused=true; cursor=0; playing=null; sensorPulse=null; pauseAfterStep=false; displayed=null;
     $('recording-name').textContent=file.name;
@@ -1480,17 +1525,11 @@ let parameterGate = null;
 function updateSource(records, reset=false) {
   const selectedSeq=events[currentIndex()]?.seq;
   const newSession=reset || records.some(r=>r.event === 'session');
-  const committed=records.filter(r=>!r.pending);
-  const preview=records.find(r=>r.pending) || null;
-  const fingerprint=JSON.stringify(preview?.changes || []);
   if (newSession) { sourceReplay=new TelemetryReplay(); sourceRecords=[]; }
-  sourceReplay.accept(committed);
-  sourceRecords.push(...committed);
-  pendingSource=preview;
-  if (!committed.length && fingerprint === pendingFingerprint) return;
-  pendingFingerprint=fingerprint;
-  let replay=sourceReplay;
-  if (preview) { replay=new TelemetryReplay(); replay.accept([...sourceRecords,preview]); }
+  sourceReplay.accept(records);
+  sourceRecords.push(...records);
+  if (!records.length) return;
+  const replay=sourceReplay;
   rawEvents=replay.events; events=visibleSteps(rawEvents);
   if (newSession) {
     if (session !== replay.session) $('mini-console').replaceChildren();
@@ -1606,102 +1645,46 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
-// Simulator-only editors for shared hardware objects.
+// Toolhead Config panel: values are set with MMU_TEST_CONFIG, so it works on a printer and the simulator.
 const configColumn=document.querySelector('.left-column');
-const bufferPanel=document.createElement('aside');
-bufferPanel.id='buffer-config';
-bufferPanel.hidden=true;
-bufferPanel.dataset.simulatorConfig='buffer';
-bufferPanel.innerHTML=`<h2>Buffer Config</h2><p class="note">Runtime simulator settings. Shared objects affect every listed unit. Restart restores defaults.</p>
-<label>Buffer object<select id="buffer-unit"></select></label>
-<label>Parameter<select id="buffer-parameter"><option>buffer_maxrange</option><option>buffer_range</option><option>buffer_spring_state</option></select></label>
-<label>Value<input id="buffer-value" type="number" min="0.1" step="0.1"><select id="buffer-spring" hidden><option value="none">Free moving (none)</option><option value="tension">Tension (−1)</option><option value="neutral">Neutral (0)</option><option value="compression">Compression (+1)</option></select></label>
-<button id="buffer-apply">Apply</button><p class="note" id="buffer-status" role="status"></p>`;
-configColumn.insertBefore(bufferPanel,$('viewer-settings'));
-function showBufferValues(values) {
-  bufferPanel.bufferValues=values;
-  const spring=$('buffer-parameter').value === 'buffer_spring_state';
-  $('buffer-value').hidden=spring;
-  $('buffer-spring').hidden=!spring;
-  for(const id of ['buffer-parameter','buffer-value','buffer-spring','buffer-apply']) $(id).disabled=!values.available;
-  if(values.available) {
-    $('buffer-value').value=spring ? '' : values[$('buffer-parameter').value];
-    $('buffer-spring').value=values.buffer_spring_state;
-  }
-  $('buffer-status').textContent=values.available ? '' : 'No buffer fitted to this unit.';
+const toolheadPanel=document.createElement('aside');
+toolheadPanel.hidden=true;
+toolheadPanel.innerHTML=`<h2>Toolhead Config</h2><p class="note">Applied with MMU_TEST_CONFIG. Shared toolheads affect every listed unit.</p><label>Toolhead object<select class="object-choice"></select></label><label>Parameter<select class="object-parameter"></select></label><label>Value<input class="object-value" type="number" step="any"></label><button class="object-apply">Apply</button><p class="note object-status" role="status"></p>`;
+configColumn.insertBefore(toolheadPanel,$('viewer-settings'));
+const toolheadField=name=>toolheadPanel.querySelector('.object-'+name);
+let toolheads=[], toolheadFingerprint='';
+function selectedToolhead() { return toolheads.find(item=>item.name===toolheadField('choice').value); }
+function renderToolheadParameters() {
+  const previous=toolheadField('parameter').value, selected=selectedToolhead();
+  options(toolheadField('parameter'),(selected?.parameters || []).map(item=>[item.name,item.name]));
+  if (selected?.parameters.some(item=>item.name===previous)) toolheadField('parameter').value=previous;
+  showToolheadValue();
 }
-$('buffer-parameter').onchange=()=>showBufferValues(bufferPanel.bufferValues || {available:false});
-async function refreshSimulatorObjects() {
-  if (offline || socket?.readyState !== 1 || !setup || (setup.connection_kind || 'simulator') !== 'simulator') { sourceMode(); return; }
-  try {
-    const result=await rpc('sim.viewer.objects',{kind:'buffer'});
-    const available=result.objects;
-    bufferPanel.dataset.available=String(available.length>0);
-    const previous=$('buffer-unit').value;
-    options($('buffer-unit'),available.map(item=>[item.name,`${item.name} (${item.units.map(i=>setup.units[i]).join(', ')})`]));
-    const selected=available.find(item=>item.name===previous) || available[0];
-    bufferPanel.bufferObjects=available;
-    if(selected) {
-      $('buffer-unit').value=selected.name;
-      showBufferValues(await rpc('sim.viewer.configure_buffer',{unit:selected.units[0]}));
-    }
-  } catch(error) { bufferPanel.dataset.available='false'; message(error.message,true); }
-  await Promise.all(['encoder','toolhead'].map(refreshObjectPanel));
-  sourceMode();
+function showToolheadValue() {
+  const parameter=selectedToolhead()?.parameters.find(item=>item.name===toolheadField('parameter').value);
+  toolheadField('value').value=parameter?.value ?? '';
+  toolheadField('apply').disabled=!parameter;
 }
-$('buffer-unit').onchange=()=>refreshSimulatorObjects();
-$('buffer-apply').onclick=()=>action(async()=>{
-  const unit=bufferPanel.bufferObjects.find(item=>item.name===$('buffer-unit').value).units[0];
-  const current=await rpc('sim.viewer.configure_buffer',{unit});
-  const name=$('buffer-parameter').value;
-  const values={buffer_maxrange:current.buffer_maxrange,buffer_range:current.buffer_range,buffer_spring_state:current.buffer_spring_state};
-  values[name]=name === 'buffer_spring_state' ? $('buffer-spring').value : Number($('buffer-value').value);
-  const result=await rpc('sim.viewer.configure_buffer',{unit,values});
-  showBufferValues(result);
-  $('buffer-status').textContent='Applied. Restart restores profile defaults.';
-  followLive();
+function showToolheads(list) {
+  const fingerprint=JSON.stringify(list);
+  if (fingerprint===toolheadFingerprint) return;
+  toolheadFingerprint=fingerprint; toolheads=list;
+  const menu=toolheadField('choice'), previous=menu.value;
+  options(menu,list.map(item=>[item.name,`${item.name} (${item.unitNames.join(', ')})`]));
+  if (list.some(item=>item.name===previous)) menu.value=previous;
+  toolheadPanel.dataset.available=String(list.length>0);
+  renderToolheadParameters(); sourceMode();
+}
+toolheadField('choice').onchange=renderToolheadParameters;
+toolheadField('parameter').onchange=showToolheadValue;
+toolheadField('apply').onclick=()=>action(async()=>{
+  const number=Number(toolheadField('value').value);
+  if (!Number.isFinite(number)) throw Error('Enter a numeric value');
+  // Same path as typing the command: the change is reported as a config delta.
+  await rpc('printer.gcode.script',{script:parameterCommand(selectedToolhead().units[0],toolheadField('parameter').value,number)});
+  toolheadField('status').textContent='Applied with MMU_TEST_CONFIG.';
+  await refresh();
 });
-const objectPanels=new Map();
-for (const kind of ['encoder','toolhead']) {
-  const panel=document.createElement('aside');
-  panel.hidden=true; panel.dataset.simulatorConfig=kind;
-  panel.innerHTML=`<h2>${kind === 'encoder' ? 'Encoder' : 'Toolhead'} Config</h2><p class="note">Runtime simulator settings. Shared objects affect every listed unit. Restart restores defaults.</p><label>${kind === 'encoder' ? 'Encoder' : 'Toolhead'} object<select class="object-choice"></select></label><label>Parameter<select class="object-parameter"></select></label><label>Value<input class="object-value" type="number" step="any"></label><button class="object-apply">Apply</button><p class="note object-status" role="status"></p>`;
-  configColumn.insertBefore(panel,$('viewer-settings')); objectPanels.set(kind,panel);
-  panel.querySelector('.object-choice').onchange=()=>renderObjectParameters(panel);
-  panel.querySelector('.object-parameter').onchange=()=>showObjectValue(panel);
-  panel.querySelector('.object-apply').onclick=()=>action(async()=>{
-    const result=await rpc('sim.viewer.objects',{kind,name:panel.querySelector('.object-choice').value,
-      parameter:panel.querySelector('.object-parameter').value,value:panel.querySelector('.object-value').value});
-    panel.objects=result.objects; renderObjectParameters(panel);
-    panel.querySelector('.object-status').textContent='Applied. Restart restores profile defaults.';
-    await refresh(); followLive();
-  });
-}
-function renderObjectParameters(panel) {
-  const selected=panel.objects.find(item=>item.name===panel.querySelector('.object-choice').value);
-  const menu=panel.querySelector('.object-parameter'), previous=menu.value;
-  options(menu,(selected?.parameters || []).map(item=>[item.name,item.name]));
-  if(selected?.parameters.some(item=>item.name===previous)) menu.value=previous;
-  showObjectValue(panel);
-}
-function showObjectValue(panel) {
-  const selected=panel.objects.find(item=>item.name===panel.querySelector('.object-choice').value);
-  const parameter=selected?.parameters.find(item=>item.name===panel.querySelector('.object-parameter').value);
-  panel.querySelector('.object-value').value=parameter?.value ?? '';
-  panel.querySelector('.object-apply').disabled=!parameter;
-}
-async function refreshObjectPanel(kind) {
-  const panel=objectPanels.get(kind);
-  try {
-    const result=await rpc('sim.viewer.objects',{kind});
-    panel.objects=result.objects;
-    panel.dataset.available=String(result.objects.length>0);
-    const menu=panel.querySelector('.object-choice'), previous=menu.value;
-    options(menu,result.objects.map(item=>[item.name,`${item.name} (${item.units.map(i=>setup.units[i]).join(', ')})`]));
-    if(result.objects.some(item=>item.name===previous)) menu.value=previous;
-    renderObjectParameters(panel);
-  } catch(error) { panel.dataset.available='false'; message(error.message,true); }
-}
 
 $('printer-url').value=connectionUrl;
 $('connect-printer').onclick=()=>{
@@ -1715,7 +1698,7 @@ $('connect-printer').onclick=()=>{
     socket?.close();
     pending.forEach(p=>p.reject(Error('Connection changed'))); pending.clear();
     modeChosen=false; offline=false; viewMode='live'; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
-    events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay(); pendingSource=null;
+    events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay();
     $('scene').replaceChildren(); $('mode').textContent='Live view · Connecting…';
     connect();
   } catch(error) { message(error.message,true); }

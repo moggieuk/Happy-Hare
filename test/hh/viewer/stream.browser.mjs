@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {liveObjects} from './live-fixture.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 test('printer telemetry arrives by subscription and stops when leaving playback',async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH});
@@ -9,8 +10,7 @@ test('printer telemetry arrives by subscription and stops when leaving playback'
   const page=await browser.newPage(), errors=[],calls=[];
   page.on('pageerror',e=>errors.push(e.message));
   const records=JSON.parse(readFileSync(new URL('./fixtures/emu.json',import.meta.url)));
-  const machine=records[0].state.printer.mmu_machine;
-  const status={mmu_machine:{configuration:machine},mmu:{...records[0].state.printer.mmu,filament_pos:0}};
+  const status=liveObjects();
   let socket;
   const batch=(items,delivery,reset=false)=>({stream_id:'browser-test',delivery_id:delivery,reset,records:items});
   await page.routeWebSocket('**/websocket',ws=>{
@@ -44,6 +44,9 @@ test('printer telemetry arrives by subscription and stops when leaving playback'
   assert.equal(calls.filter(c=>c==='server.mmu.telemetry.ack').length,2);
   await page.locator('#live').click();
   await page.waitForFunction(()=>document.querySelector('#viewer-live').classList.contains('active'));
+  // While following the stream at rest, subscribed sensor readings are overlaid on the recorded state
+  socket.send(JSON.stringify({method:'notify_status_update',params:[{mmu:{sensors:{mmu_entry:true,encoder:false}}},2]}));
+  await page.waitForTimeout(150);
   await page.locator('#previous').click();
   await page.waitForFunction(()=>!document.querySelector('#viewer-live').classList.contains('active'));
   await page.locator('#view-mode').selectOption('live');

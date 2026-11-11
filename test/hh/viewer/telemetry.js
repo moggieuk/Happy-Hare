@@ -72,6 +72,7 @@ export class TelemetryReplay extends SceneModel {
     this.facts = null;
     this.events = [];
     this.pending = new Map();
+    this.pendingSelectors = new Map();
     this.selectionBefore = null;
   }
 
@@ -81,8 +82,8 @@ export class TelemetryReplay extends SceneModel {
     if (!record || !Number.isSafeInteger(record.sequence) || record.sequence < 0 || !finite(record.timestamp))
       throw Error('Invalid telemetry sequence or timestamp');
     if (record.event === 'session') {
-      if (record.schema !== 'happy_hare.motion' || record.version !== 2 || typeof record.session_id !== 'string' || !record.session_id)
-        throw Error('Unsupported telemetry format; expected happy_hare.motion version 2');
+      if (record.schema !== 'happy_hare.motion' || record.version !== 1 || typeof record.session_id !== 'string' || !record.session_id)
+        throw Error('Unsupported telemetry format; expected happy_hare.motion version 1');
       const f = record.state, machine = f?.printer?.mmu_machine, mmu = f?.printer?.mmu;
       validateFacts(f);
       Object.assign(this, new TelemetryReplay());
@@ -126,9 +127,23 @@ export class TelemetryReplay extends SceneModel {
       else this.emit(record, 'state', 'State changed', {internal:true, during_move:this.pending.size > 0, telemetry:record},state);
       return;
     }
-    if (record.event === 'selector_movement_start' || record.event === 'selector_movement_outcome') {
-      this.emit(record,'selector',record.label || 'Selector movement result',
-        {internal:true,telemetry:record});
+    if (record.event === 'selector_movement_start') {
+      this.pendingSelectors.set(record.move_id, {start:copy(record), before:this.snapshot()});
+      this.emit(record,'selector',record.label || 'Selector movement',{internal:true,telemetry:record});
+      return;
+    }
+    if (record.event === 'selector_movement_outcome') {
+      const pair = this.pendingSelectors.get(record.move_id);
+      this.pendingSelectors.delete(record.move_id);
+      if (!pair) { // A rolling capture may begin inside a selector move
+        this.emit(record,'selector','Selector movement result',{internal:true,telemetry:record});
+        return;
+      }
+      // Inside a filament move the pair stays bookkeeping, so that move's animation is not interrupted
+      const inMove = this.pending.size > 0;
+      this.emit(record,'selector_move',pair.start.label || 'Selector movement',
+        {before:pair.before,actuator:pair.start.actuator,internal:inMove,during_move:inMove,
+         telemetry:{start:pair.start,outcome:copy(record)}});
       return;
     }
     if (record.event === 'movement_start') {

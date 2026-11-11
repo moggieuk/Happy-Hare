@@ -292,7 +292,8 @@ class Session:
         pconfig.status_raw_config = {section: dict(self.fileconfig.items(section))
                                      for section in self.fileconfig.sections()}
         printer.add_object('configfile', pconfig)
-        self.config = configfile.ConfigWrapper(printer, self.fileconfig, {}, '')
+        pconfig.access_tracking = {}
+        self.config = configfile.ConfigWrapper(printer, self.fileconfig, pconfig.access_tracking, '')
 
         # -- step 3: pins + mcus --------------------------------------------
         import pins as pins_mod

@@ -11,7 +11,6 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import json
 import uuid
 from .capture import TelemetryCapture
 
@@ -33,7 +32,7 @@ class TelemetryStream:
         self.owns_capture = False
         self.stream_id = uuid.uuid4().hex
         for client in self.clients.values():
-            client.update(after=None, inflight=None, fingerprint=None)
+            client.update(after=None, inflight=None)
 
     def subscribe(self, key, send, closed, after=None, stream_id=None, history="start"):
         if key not in self.clients and len(self.clients) >= 32:
@@ -42,28 +41,26 @@ class TelemetryStream:
             self.capture = TelemetryCapture(self.mmu, limit=512)
             self.stream_id = uuid.uuid4().hex
         client = dict(send=send, closed=closed, after=after if stream_id == self.stream_id else None,
-                      inflight=None, fingerprint=None, history=history)
+                      inflight=None, history=history)
         self.clients[key] = client
         return self._batch(client)
 
     def _batch(self, client):
         batch = self.capture.read(client['after'], limit=128, history=client['history'])
-        fingerprint = json.dumps([r.get('changes') for r in batch['records'] if r.get('pending')], sort_keys=True)
-        committed = [r for r in batch['records'] if not r.get('pending')]
-        if not committed and fingerprint == client['fingerprint']:
+        if not batch['records']:
             return None
         self.delivery += 1
-        cursor = committed[-1]['sequence'] if committed else client['after']
+        cursor = batch['records'][-1]['sequence']
         batch.update(stream_id=self.stream_id, delivery_id=self.delivery, cursor=cursor)
-        client['inflight'] = (self.delivery, cursor, fingerprint)
+        client['inflight'] = (self.delivery, cursor)
         return batch
 
     def ack(self, key, stream_id, delivery_id):
         client = self.clients.get(key)
         if client and stream_id == self.stream_id and client['inflight']:
-            delivery, cursor, fingerprint = client['inflight']
+            delivery, cursor = client['inflight']
             if delivery == delivery_id:
-                client.update(after=cursor, fingerprint=fingerprint, inflight=None)
+                client.update(after=cursor, inflight=None)
         return {}
 
     def unsubscribe(self, key):
@@ -79,7 +76,6 @@ class TelemetryStream:
                 self.unsubscribe(key)
         if not self.clients:
             return
-        self.capture.observe()
         for key, client in list(self.clients.items()):
             if client['inflight'] is None:
                 batch = self._batch(client)

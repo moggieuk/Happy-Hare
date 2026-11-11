@@ -362,6 +362,8 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 
 .trace-type[data-type="gate changed"] { color: #216342; background: #d8f2e2; }
 [data-theme="dark"] .trace-type[data-type="gate changed"] { color: #d6f6e2; background: #2a6247; }
+.trace-type[data-type="selector"] { color: #4a5a12; background: #e8f0c4; }
+[data-theme="dark"] .trace-type[data-type="selector"] { color: #eef6c9; background: #566320; }
 
 .parameter-filter { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
 .parameter-filter input { min-width: 0; flex: 1; }
@@ -456,3 +458,11 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 
 /* Layout rules must not override mode-specific visibility. */
 [hidden] { display: none !important; }
+
+#filament-warning-message { white-space: pre-line; }
+
+/* Informational notices (selector moves) are blue with an "i", unlike the amber "!" warnings */
+#filament-warning[data-kind="notice"] { border-color: #4f86c6; background: #e6f0fb; color: #1d4468; }
+#filament-warning[data-kind="notice"] .warning-bang { background: #4f86c6; color: #fff; font-family: Georgia, serif; font-style: italic; }
+[data-theme="dark"] #filament-warning[data-kind="notice"] { border-color: #3f78b8; background: #1c2b3d; color: #b9d7f5; }
+[data-theme="dark"] #filament-warning[data-kind="notice"] .warning-bang { background: #3f78b8; color: #fff; }

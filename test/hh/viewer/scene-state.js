@@ -89,7 +89,7 @@ export class SceneModel {
     const devices={}, buffers={}, object_status={};
     for (const name of units) {
       const u=machine.units[name];
-      if (u.encoder) { devices[`${name}:encoder`]={encoder_pos:u.encoder.distance}; object_status[`mmu_encoder ${u.encoder.name}`]=u.encoder.status || {encoder_pos:u.encoder.distance}; }
+      if (u.encoder) { devices[`${name}:encoder`]={encoder_pos:u.encoder.distance,resolution:u.encoder.parameters?.resolution}; object_status[`mmu_encoder ${u.encoder.name}`]=u.encoder.status || {encoder_pos:u.encoder.distance}; }
       if (u.buffer) {
         const b=u.buffer, maximum=Math.max(0,number(b.buffer_maxrange)), range=clamp(number(b.buffer_range),0,maximum);
         const rest=b.buffer_spring_state === 'tension' ? 0 : b.buffer_spring_state === 'compression' ? maximum : maximum/2;

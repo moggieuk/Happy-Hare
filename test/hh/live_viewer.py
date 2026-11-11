@@ -32,9 +32,6 @@ class SourceViewer:
     def read_telemetry(self, after=None):
         return self.telemetry_capture.read(after)
 
-    def observe_configuration(self):
-        self.telemetry_capture.observe()
-
     def close(self):
         self.telemetry_capture.close()
 

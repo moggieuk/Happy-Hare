@@ -1,5 +1,6 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 import {SceneModel} from './scene-state.js';
+import {liveMachine,qualifySensors,bufferValue,gripState} from './live-config.js';
 const clone=value=>structuredClone(value);
 const rgb=value=>Array.isArray(value) ? value.slice(0,3).map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('') : String(value || '808182').replace(/^#/,'').slice(0,6);
 
@@ -14,13 +15,15 @@ export class LiveState {
     return this.snapshot();
   }
   snapshot() {
-    const status=this.objects.mmu, config=this.objects.mmu_machine?.configuration;
-    if (!status || !config?.units) return null;
-    const machine=clone(config), names=Object.keys(machine.units), unitName=names[status.unit] || names[0];
+    const status=this.objects.mmu, machine=liveMachine(this.objects);
+    if (!status || !machine) return null;
+    const names=Object.keys(machine.units), unitName=names[status.unit] || names[0];
     if (!unitName) return null;
-    const m={...clone(status),unit:unitName, sensors:clone(status.sensor_states || {}),active_sensors:status.active_sensors || [],
+    const sensors=qualifySensors(status.sensors,unitName,status.gate,machine.units[unitName].buffer?.name);
+    machine.units[unitName].sensors=Object.keys(sensors);
+    const m={...clone(status),unit:unitName, sensors,active_sensors:Object.keys(sensors),
       gate_color:(status.gate_color_rgb || status.gate_color || []).map(rgb),
-      drive_motors:{gear:['gear'],extruder:['extruder']},sync_mode:status.sync_drive ? 1 : 0};
+      filament_grip_state:gripState(status.selector),drive_motors:{gear:['gear'],extruder:['extruder']},sync_mode:status.sync_drive ? 1 : 0};
     while (m.gate_color.length<machine.num_gates) m.gate_color.push('808182');
     const macros={};
     for (const [name,object] of Object.entries(this.objects)) if (name.startsWith('gcode_macro ')) macros[name.slice(12)]=clone(object);
@@ -32,7 +35,7 @@ export class LiveState {
         u.encoder.status=this.objects[`mmu_encoder ${u.encoder.name}`] || {};
         u.encoder.distance=u.encoder.status.encoder_pos ?? 0;
       }
-      if (u.buffer) u.buffer.value=this.objects[`mmu_buffer ${u.buffer.name}`]?.value ?? null;
+      if (u.buffer) u.buffer.value=bufferValue(this.objects,u.buffer);
       u.espooler={operations:Object.fromEntries(u.gates.map(g=>[g,{direction:status.espooler?.[g] || 'stopped',
         output_power:['assist','rewind'].includes(status.espooler?.[g]) ? 1 : 0}]))};
     }

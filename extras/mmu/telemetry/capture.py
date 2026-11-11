@@ -19,7 +19,6 @@ import itertools
 import copy
 import math
 import threading
-from ..mmu_status_config import UNIT_PARAMETERS, TOOLHEAD_PARAMETERS
 
 
 def plain(value):
@@ -60,10 +59,21 @@ def apply_changes(state, delta):
             target[key] = copy.deepcopy(change['value'])
 
 
+def merge(target, source):
+    """Deep-merge source into target in place."""
+    for key, value in source.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            merge(target[key], value)
+        else:
+            target[key] = copy.deepcopy(value)
+    return target
+
+
 class ReplayState:
-    """Read a small allowlist directly, avoiding the broad mmu.get_status scan."""
-    UNIT_PARAMETERS = UNIT_PARAMETERS
-    TOOLHEAD_PARAMETERS = TOOLHEAD_PARAMETERS
+    """
+    Read a small allowlist directly, avoiding the broad mmu.get_status scan.
+    Tunable parameter sets are read once by static(); runtime edits arrive as config_changed events.
+    """
     MACRO_VARIABLES = ('blade_pos', 'cutter_before_extruder',
                        'cooling_tube_position', 'cooling_tube_length')
 
@@ -73,6 +83,44 @@ class ReplayState:
     @staticmethod
     def select(obj, names):
         return {name: getattr(obj, name) for name in names if hasattr(obj, name)}
+
+    @staticmethod
+    def values(*sets):
+        return {spec.name: getattr(params, spec.name) for params in sets
+                for spec in params._SPECS if hasattr(params, spec.name)}
+
+    def parameter_sets(self):
+        """(params, state path) for every tunable set; the set's config section names its events."""
+        mmu = self.mmu
+        machine = ('printer', 'mmu_machine')
+        sets = [(mmu.p, machine + ('parameters',))]
+        for unit in mmu.mmu_machine.units:
+            unit_path = machine + ('units', unit.name)
+            sets.append((unit.p, unit_path + ('parameters',)))
+            sets.append((unit.selector.p, unit_path + ('parameters',)))
+            sets.append((unit.toolhead_wrapper.p, unit_path + ('toolhead', 'parameters')))
+        return sets
+
+    def scopes(self):
+        """Config section name -> state paths holding that section's parameters."""
+        scopes = {}
+        for params, path in self.parameter_sets():
+            if params.scope():
+                scopes.setdefault(params.scope(), []).append(list(path))
+        return scopes
+
+    def static(self):
+        """Tunable parameter sets, read once when capture starts."""
+        state = {}
+        grouped = {}
+        for params, path in self.parameter_sets():
+            grouped.setdefault(path, []).append(params)
+        for path, sets in grouped.items():
+            target = state
+            for key in path[:-1]:
+                target = target.setdefault(key, {})
+            target[path[-1]] = self.values(*sets)
+        return plain(state)
 
     def __call__(self):
         from ..mmu_utils import MmuColorUtils
@@ -91,9 +139,7 @@ class ReplayState:
                 gates=list(unit.gate_range()), selector_type=unit.selector_type,
                 has_per_gate_heaters=any(unit.filament_heaters),
                 filament_always_gripped=bool(unit.filament_always_gripped),
-                parameters=self.select(unit.p, self.UNIT_PARAMETERS),
-                toolhead=dict(name=unit.toolhead_wrapper.name,
-                              parameters=self.select(unit.toolhead_wrapper.p, self.TOOLHEAD_PARAMETERS)),
+                toolhead=dict(name=unit.toolhead_wrapper.name),
                 bowden_lengths={str(g): unit.calibrator.get_bowden_length(g) for g in unit.gate_range()},
                 sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in unit_sensors],
                 extruder=dict(name=unit.extruder_wrapper.name,
@@ -159,10 +205,12 @@ A rolling baseline keeps bounded exports usable after older records expire.
         self.limit = limit
         self.lock = threading.Lock()
         self.records = collections.deque()
-        self.pending = None
         self.sequence = 0
         self.state = copy.deepcopy(self.state_provider())
-        self.baseline = copy.deepcopy(self.state)
+        # Parameter sets are read once; later edits are config_changed events routed by section name
+        replay = isinstance(self.state_provider, ReplayState)
+        self.scopes = self.state_provider.scopes() if replay else {}
+        self.baseline = merge(copy.deepcopy(self.state), self.state_provider.static() if replay else {})
         self.baseline_sequence = 0
         self.baseline_time = mmu.reactor.monotonic()
         self.unsubscribe = self.telemetry.subscribe(self.on_event)
@@ -170,26 +218,26 @@ A rolling baseline keeps bounded exports usable after older records expire.
     def close(self):
         self.unsubscribe()
 
+    def _config_delta(self, source):
+        value = plain(source['value'])
+        return [dict(path=[*path, source['name']], value=value) for path in self.scopes.get(source['scope'], ())]
+
     def on_event(self, source):
+        # Every event, including a configuration change, commits whatever else has changed since the last one
         current = self.state_provider()
         delta = changes(self.state, current)
-        record = {key: value for key, value in source.items()
-                  if key not in ('schema', 'version', 'session_id', 'sequence')}
+        record = None
+        if source['event'] == 'config_changed':
+            delta += self._config_delta(source)
+        else:
+            record = {key: value for key, value in source.items()
+                      if key not in ('schema', 'version', 'session_id', 'sequence')}
         with self.lock:
-            self.pending = None
             if delta:
                 self._append(dict(event='state_delta', timestamp=source['timestamp'], changes=delta))
                 self.state = copy.deepcopy(current)
-            self._append(record)
-
-    def observe(self):
-        """Preview idle edits without committing changes that may be reverted."""
-        current = self.state_provider()
-        with self.lock:
-            delta = changes(self.state, current)
-            self.pending = dict(event='state_delta', sequence=self.sequence+1,
-                                timestamp=self.telemetry.reactor.monotonic(),
-                                changes=delta, pending=True) if delta else None
+            if record:
+                self._append(record)
 
     def _append(self, record):
         self.sequence += 1
@@ -204,7 +252,7 @@ A rolling baseline keeps bounded exports usable after older records expire.
     def read(self, after=None, limit=None, history="start"):
         with self.lock:
             reset = after is None or after < self.baseline_sequence or after > self.sequence
-            records = [dict(schema='happy_hare.motion', version=2, event='session',
+            records = [dict(schema='happy_hare.motion', version=1, event='session',
                             session_id=self.telemetry.session_id,
                             sequence=self.baseline_sequence, timestamp=self.baseline_time,
                             checkpoint=self.baseline_sequence > 0, state=copy.deepcopy(self.baseline))] if reset else []
@@ -226,12 +274,9 @@ A rolling baseline keeps bounded exports usable after older records expire.
                 records.extend(itertools.islice((record for record in self.records
                     if (reset and (boundary is None or record['sequence'] >= boundary))
                     or (not reset and record['sequence'] > after)), remaining))
-            complete = not records or records[-1]['sequence'] >= self.sequence
-            if self.pending and complete:
-                records.append(self.pending)
-            response = dict(schema='happy_hare.motion', version=2,
+            response = dict(schema='happy_hare.motion', version=1,
                             session_id=self.telemetry.session_id,
                             reset=reset, records=records)
-        # Committed records and pending deltas are replaced, never mutated.
+        # Committed records are replaced, never mutated.
         # Only the rolling baseline needs copying while the producer is locked.
         return copy.deepcopy(response)

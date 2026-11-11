@@ -25,7 +25,7 @@ test('reconnect preserves explicitly selected live or playback mode',async()=>{
 
 const warning=app.slice(app.indexOf('function renderWarning('),app.indexOf('let socket, reconnectTimer'));
 test('simulator subscription warning clears on mode, source, and connection changes',()=>{
- const nodes={'filament-warning':{},'filament-warning-message':{}};
+ const bang={}, nodes={'filament-warning':{dataset:{},querySelector:()=>bang},'filament-warning-message':{}};
  const c=vm.createContext({viewMode:'live',offline:false,socket:{readyState:1},setup:{connection_kind:'simulator'},$:id=>nodes[id]});
  vm.runInContext(warning,c);
  const draw=()=>vm.runInContext('renderWarning()',c);
@@ -34,6 +34,12 @@ test('simulator subscription warning clears on mode, source, and connection chan
  c.viewMode='playback';draw();assert.equal(nodes['filament-warning'].hidden,true);
  vm.runInContext("renderWarning(['sensor conflict'])",c);
  assert.match(nodes['filament-warning-message'].textContent,/sensor conflict/);
+ assert.equal(nodes['filament-warning'].dataset.kind,'warning');assert.equal(bang.textContent,'!');
+ vm.runInContext("renderWarning([], 'Selector: moved')",c);
+ assert.equal(nodes['filament-warning-message'].textContent,'Selector: moved');
+ assert.equal(nodes['filament-warning'].dataset.kind,'notice');assert.equal(bang.textContent,'i');
+ vm.runInContext("renderWarning(['sensor conflict'], 'Selector: moved')",c);   // A warning always keeps the warning look
+ assert.equal(nodes['filament-warning'].dataset.kind,'warning');assert.match(nodes['filament-warning-message'].textContent,/Selector: moved\nDisplayed tip/);
  c.viewMode='live';c.setup.connection_kind='live_machine';draw();assert.equal(nodes['filament-warning'].hidden,true);
  c.setup.connection_kind='simulator';c.socket.readyState=3;draw();assert.equal(nodes['filament-warning'].hidden,true);
 });

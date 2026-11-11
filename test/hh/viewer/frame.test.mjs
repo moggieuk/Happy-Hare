@@ -6,7 +6,7 @@ import vm from 'node:vm';
 // Exercise the actual frame loop without SVG/layout cost or a browser clock.
 const app=readFileSync(new URL('./app.js',import.meta.url),'utf8');
 const invalidation=app.slice(app.indexOf('let sceneDirty='),app.indexOf('function renderScene()'));
-const animation=app.slice(app.indexOf('function animate()'),app.indexOf('// Simulator-only editors'));
+const animation=app.slice(app.indexOf('function animate()'),app.indexOf('// Toolhead Config panel'));
 function harness() {
   const state={espoolers:{0:{direction:'assist',output_power:1}}};
   const event={seq:1,kind:'movement',source:'mmu_gcode',state,before:state};
