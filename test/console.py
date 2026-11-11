@@ -581,9 +581,16 @@ class Console:
                      prime=not a.no_prime, seed=a.seed,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
-        from extras.mmu.telemetry.movement import filament_context
-        self.hh.mmu.movement_telemetry.state('filament_pos_snapshot',
-            filament=filament_context(self.hh.mmu),
+        from extras.mmu.mmu_utils import MmuColorUtils
+        mmu = self.hh.mmu
+        unit, extruder = mmu.mmu_unit(), mmu.mmu_unit().extruder_wrapper
+        hex6 = lambda color: MmuColorUtils.color_to_rgb_hex(color, '808182')[:6]
+        mmu.movement_telemetry.state('filament_pos_snapshot',
+            filament=dict(extruder=extruder.name, retracted_length=extruder.retracted_length,
+                          residual_mm=unit.toolhead_wrapper.p.toolhead_residual_filament,
+                          fragment_mm=extruder.filament_cut_fragment,
+                          retained_color=hex6(extruder.filament_remaining_color),
+                          incoming_color=hex6(mmu.gate_color[mmu.gate_selected] if mmu.gate_selected >= 0 else '')),
             unit=self.hh.mmu.mmu_unit().name, gate=self.hh.mmu.gate_selected,
             filament_pos=self.hh.mmu.filament_pos,
             filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.hh.mmu.filament_pos, 'UNKNOWN'))
@@ -763,10 +770,8 @@ class Console:
         if blade is None or gate < 0:
             return
         model = self.hh.printer.harness_filament
-        params = self.hh.mmu.mmu_unit().toolhead_wrapper.p
-        nozzle = model.layout['extruder_entry'] + params.toolhead_entry_to_extruder + params.toolhead_extruder_to_nozzle
         # Severing changes only the attached endpoint, not encoder/buffer travel.
-        model.tip[gate] = min(model.tip[gate], nozzle-blade)
+        model.tip[gate] = min(model.tip[gate], model._nozzle_position(gate)-blade)
         model.sync(gate)
 
     def _preload_all(self):

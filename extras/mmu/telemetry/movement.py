@@ -118,17 +118,3 @@ def movement_operation(function):
         with self.movement_telemetry.operation():
             return function(self, *args, **kwargs)
     return run
-
-
-def filament_context(mmu):
-    """Loaded config/persisted hotend state; lengths are input-filament millimetres."""
-    from ..mmu_utils import MmuColorUtils
-    unit = mmu.mmu_unit()
-    extruder = unit.extruder_wrapper
-    gate = mmu.gate_selected
-    color = mmu.gate_color[gate] if gate >= 0 else ''
-    return dict(extruder=extruder.name, retracted_length=extruder.retracted_length,
-                residual_mm=unit.toolhead_wrapper.p.toolhead_residual_filament,
-                fragment_mm=extruder.filament_cut_fragment,
-                retained_color=MmuColorUtils.color_to_rgb_hex(extruder.filament_remaining_color, '808182')[:6],
-                incoming_color=MmuColorUtils.color_to_rgb_hex(color, '808182')[:6])
