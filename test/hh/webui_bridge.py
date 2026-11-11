@@ -255,27 +255,16 @@ class WebUiBridge:
         name = 'index.html' if parsed.path in ('/sim/viewer', '/sim/viewer/') else parsed.path.removeprefix('/sim/viewer/')
         if parsed.path.startswith('/sim/viewer') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
                 and (viewer_dir / name).is_file():
-            filename = name
-            data = (viewer_dir / filename).read_bytes()
-            handler.send_response(200)
-            handler.send_header('Content-Type', {'js': 'text/javascript', 'css': 'text/css'}.get(filename.rsplit('.', 1)[-1], 'text/html'))
-            handler.send_header('Content-Length', str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
+            self._reply(handler, 200, (viewer_dir / name).read_bytes(),
+                        {'js': 'text/javascript', 'css': 'text/css'}.get(name.rsplit('.', 1)[-1], 'text/html'))
             return
         if parsed.path == '/sim/viewer/telemetry':
             try:
                 after = int(params['after']) if 'after' in params else None
             except (TypeError, ValueError):
                 after = None
-            reader = self.viewer.read_telemetry
-            data = json.dumps({'result': reader(after)}, allow_nan=False).encode()
-            handler.send_response(200)
-            handler.send_header('Content-Type', 'application/json')
-            handler.send_header('Cache-Control', 'no-store')
-            handler.send_header('Content-Length', str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
+            data = json.dumps({'result': self.viewer.read_telemetry(after)}, allow_nan=False).encode()
+            self._reply(handler, 200, data, 'application/json', no_store=True)
             return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':
@@ -289,13 +278,24 @@ class WebUiBridge:
         else:
             payload, status = json.dumps({'error': {'code': 404, 'message': box.get(
                 'error', 'Not found: %s' % parsed.path)}}), 404
-        data = payload.encode()
+        self._reply(handler, status, payload.encode(), 'application/json', cors=True)
+
+    @staticmethod
+    def _reply(handler, status, data, content_type, no_store=False, cors=False):
         handler.send_response(status)
-        handler.send_header('Content-Type', 'application/json')
+        handler.send_header('Content-Type', content_type)
+        if no_store:
+            handler.send_header('Cache-Control', 'no-store')
         handler.send_header('Content-Length', str(len(data)))
-        handler._cors()
+        if cors:
+            handler._cors()
         handler.end_headers()
         handler.wfile.write(data)
+
+    def _pump_telemetry(self, now):
+        if now >= self._next_telemetry:
+            self._next_telemetry = now + .25
+            self.telemetry_stream.pump()
 
     def notify(self, method, params):
         text = json.dumps({'jsonrpc': '2.0', 'method': method, 'params': params}, default=str)
@@ -327,9 +327,7 @@ class WebUiBridge:
             else:
                 self._deferred_requests.append(item)
         now = time.monotonic()
-        if now >= self._next_telemetry:
-            self._next_telemetry = now + .25
-            self.telemetry_stream.pump()
+        self._pump_telemetry(now)
 
     def service(self):
         """Run every queued request. Call from the thread that owns the session."""
@@ -341,9 +339,7 @@ class WebUiBridge:
                 break
             self._handle(conn, text, waiter)
         now = time.monotonic()
-        if now >= self._next_telemetry:
-            self._next_telemetry = now + .25
-            self.telemetry_stream.pump()
+        self._pump_telemetry(now)
         if self.clients and now >= self._next_status:
             self._next_status = now + STATUS_PERIOD
             self.push_status()
