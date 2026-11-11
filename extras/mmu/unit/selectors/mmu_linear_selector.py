@@ -23,7 +23,7 @@ import logging
 from typing                 import Sequence
 
 # Happy Hare imports
-from ...telemetry.selector import selector_operation, home_selector_rail
+from ...telemetry.selector import selector_move, finish_selector_move, home_selector_rail
 from ...mmu_constants       import *
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
@@ -628,11 +628,7 @@ class LinearSelector(PhysicalSelector):
 
         pos = self.selector_stepper.commanded_pos
 
-        with selector_operation(self, 'stepper', label=trace_str or 'Move selector',
-                position_mm=pos, target_position_mm=new_pos, requested_mm=new_pos-pos,
-                speed_mm_s=speed, acceleration_mm_s2=accel, wait=wait,
-                homing=bool(homing_move), endstop=(endstop_name or 'default') if homing_move else None,
-                trigger_state=(homing_move > 0) if homing_move else None) as outcome:
+        with selector_move(self, trace_str, pos, new_pos, speed, accel, wait, homing_move, endstop_name) as outcome:
             if homing_move != 0:
                 # Check for valid endstop
                 if endstop_name is None:
@@ -689,11 +685,7 @@ class LinearSelector(PhysicalSelector):
                 if wait:
                     self.mmu.movequeue_wait()
 
-            outcome.update(position_mm=self.selector_stepper.commanded_pos, actual_mm=actual,
-                           homed=homed if homing_move else None,
-                           status=('completed' if homed else 'not_homed') if homing_move else 'completed' if wait else 'submitted')
-            if homing_move:
-                outcome.update(trigger_position_mm=home_result['trig_pos'], halt_position_mm=home_result['halt_pos'])
+            finish_selector_move(self, outcome, actual, homed, homing_move, wait)
             return self.selector_stepper.commanded_pos, homed
 
     def _restore_position(self, position):

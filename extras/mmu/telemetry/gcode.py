@@ -21,7 +21,6 @@ class GcodeExtrusionTelemetry:
         self.mmu = mmu
         self.owners = {}
         self.original = None
-        self.handler = self._handle_g1
         self.handling = set()
         mmu.printer.register_event_handler('klippy:ready', self.install)
 
@@ -34,7 +33,7 @@ class GcodeExtrusionTelemetry:
         if original is None:
             return
         try:
-            gcode.register_command('G1', self.handler)
+            gcode.register_command('G1', self._handle_g1)
         except BaseException:
             gcode.register_command('G1', original)
             raise
