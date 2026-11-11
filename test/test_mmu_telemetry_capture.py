@@ -201,10 +201,11 @@ class TestTelemetryCapture(unittest.TestCase):
 
     def test_bounded_history_rolls_forward_its_baseline(self):
         current = {'printer': {'mmu': {'gate': 0}}}
-        capture = self.capture(limit=3, state_provider=lambda: copy.deepcopy(current))
-        for gate in range(1, 10):
-            current['printer']['mmu']['gate'] = gate
-            self.emit()
+        with mock.patch.object(self.State, '__call__', lambda _: copy.deepcopy(current)):
+            capture = self.capture(limit=3)
+            for gate in range(1, 10):
+                current['printer']['mmu']['gate'] = gate
+                self.emit()
         result = capture.read()
         records = result['records']
         self.assertEqual(len(records), 4)
@@ -213,7 +214,7 @@ class TestTelemetryCapture(unittest.TestCase):
         for record in records[1:]:
             if record['event'] == 'state_delta':
                 self.apply(restored, record['changes'])
-        self.assertEqual(restored, current)
+        self.assertEqual(restored['printer']['mmu'], current['printer']['mmu'])
         self.assertTrue(capture.read(after=1)['reset'])
         self.assertEqual(capture.read(after=records[-1]['sequence'])['records'], [])
 
@@ -257,12 +258,12 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertEqual(capture.read()['records'][1]['event'], 'cut')
 
     def test_closing_capture_removes_all_state_collection_work(self):
-        provider = mock.Mock(return_value={})
-        capture = self.capture(state_provider=provider)
-        capture.close()
-        provider.reset_mock()
-        self.emit()
-        provider.assert_not_called()
+        with mock.patch.object(self.State, '__call__', return_value={}) as provider:
+            capture = self.capture()
+            capture.close()
+            provider.reset_mock()
+            self.emit()
+            provider.assert_not_called()
         self.assertNotIn(capture.on_event, self.hh.mmu.movement_telemetry.listeners)
 
     def test_status_capture_does_not_reinstall_g1_wrapper(self):

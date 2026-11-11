@@ -197,20 +197,19 @@ Create only when a consumer requests capture, after Klipper is ready, and close
 when it leaves. Changes that cancel before the next event are intentionally lost.
 A rolling baseline keeps bounded exports usable after older records expire.
 """
-    def __init__(self, mmu, limit=512, state_provider=None):
+    def __init__(self, mmu, limit=512):
         if limit < 2:
             raise ValueError('Telemetry limit must be at least two records')
         self.telemetry = mmu.movement_telemetry
-        self.state_provider = state_provider or ReplayState(mmu)
+        self.state_provider = ReplayState(mmu)
         self.limit = limit
         self.lock = threading.Lock()
         self.records = collections.deque()
         self.sequence = 0
         self.state = copy.deepcopy(self.state_provider())
         # Parameter sets are read once; later edits are config_changed events routed by section name
-        replay = isinstance(self.state_provider, ReplayState)
-        self.scopes = self.state_provider.scopes() if replay else {}
-        self.baseline = merge(copy.deepcopy(self.state), self.state_provider.static() if replay else {})
+        self.scopes = self.state_provider.scopes()
+        self.baseline = merge(copy.deepcopy(self.state), self.state_provider.static())
         self.baseline_sequence = 0
         self.baseline_time = mmu.reactor.monotonic()
         self.unsubscribe = self.telemetry.subscribe(self.on_event)
