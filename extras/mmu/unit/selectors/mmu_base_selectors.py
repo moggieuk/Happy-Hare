@@ -348,7 +348,8 @@ class PhysicalSelector(BaseSelector, object):
 
     def _select_gate(self, lgate):
         if lgate == TOOL_GATE_UNKNOWN: return
-        if self.requires_homing and not self.is_homed:
+        bypass_needs_no_carriage = lgate == TOOL_GATE_BYPASS and not self.has_bypass()
+        if self.requires_homing and not self.is_homed and not bypass_needs_no_carriage:
             raise MmuError(f"Selector is not homed on %s" % self.mmu_unit.name)
         super()._select_gate(lgate)
 
