@@ -1,14 +1,9 @@
 import {SceneModel} from './scene-state.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
-import {purgeColor, purgeOutletColor, shortenedHair} from './playback.js';
+import {purgeColor, shortenedHair} from './playback.js';
+import {finite, number, short, positions} from './util.js';
 
 const copy = value => structuredClone(value);
-const finite = value => typeof value === 'number' && Number.isFinite(value);
-const number = (value, fallback=0) => finite(value) ? value : fallback;
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const short = name => name.split(':').at(-1);
-const positions = ['UNLOADED', 'HOMED TO GATE', 'START BOWDEN', 'IN BOWDEN', 'END BOWDEN',
-  'HOMED TO EXTRUDER', 'EXTRUDER ENTRY', 'IN EXTRUDER', 'HOMED TO TOOLHEAD', 'IN TOOLHEAD', 'LOADED IN NOZZLE'];
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
 
 function validateFacts(facts) {

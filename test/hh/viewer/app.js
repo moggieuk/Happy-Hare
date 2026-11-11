@@ -7,6 +7,7 @@ import { SpoolRenderer, renderSpool, spoolWindingRadius } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import {short as sensorName, DEFAULT_COLOR} from './util.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
@@ -771,7 +772,7 @@ function renderScene() {
   const branchShade=Math.round(branchOpacity*255);
   const branchMask=virtual ? `<defs><mask id="virtual-selection-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="350" y="${virtual.hub}" width="500" height="${700-virtual.hub}" fill="rgb(${branchShade},${branchShade},${branchShade})"/></mask></defs>` : '';
 
-  let svg = `${branchMask}<path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g><g${virtual ? ' mask="url(#virtual-selection-fade)"' : ''}><path id="tube" d="${path}" fill="none" stroke="none"/><g><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" mask="url(#bowden-end-fade)" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || "808182"}" stroke-width="7"/></g></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
+  let svg = `${branchMask}<path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g><g${virtual ? ' mask="url(#virtual-selection-fade)"' : ''}><path id="tube" d="${path}" fill="none" stroke="none"/><g><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" mask="url(#bowden-end-fade)" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || DEFAULT_COLOR}" stroke-width="7"/></g></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
   const parkedTips=[];
   if (virtual) {
     let branches='';
@@ -781,7 +782,7 @@ function renderScene() {
       branches+=`<path data-part="virtual-gate-tube" data-gate="${branch.gate}" d="${branchPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${branchPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/>`;
       if (s.gate_status?.[branch.gate]!==0 && spoolFill(s,branch.gate)>0) {
         const cone=s.tip_shapes?.[branch.gate] === 'cone';
-        branches+=`<path data-part="virtual-parked-filament" data-gate="${branch.gate}" mask="url(#bowden-end-fade)" d="M${branch.x} ${484+mmuOffset} V${virtual.bottom-virtual.parkDistance+(cone ? toolheadHeight/(end-entry) : 0)}" fill="none" stroke="#${s.gate_colors[branch.gate] || '808182'}" stroke-width="7"/>`;
+        branches+=`<path data-part="virtual-parked-filament" data-gate="${branch.gate}" mask="url(#bowden-end-fade)" d="M${branch.x} ${484+mmuOffset} V${virtual.bottom-virtual.parkDistance+(cone ? toolheadHeight/(end-entry) : 0)}" fill="none" stroke="#${s.gate_colors[branch.gate] || DEFAULT_COLOR}" stroke-width="7"/>`;
         if (cone && branch.gate !== gate) {
           parkedTips.push(branch);
           branches+=`<!--parked-tip-${branch.gate}-->`;
@@ -809,9 +810,9 @@ function renderScene() {
     svg += `<text id="extruder-temperature" x="218" y="426" font-size="9" fill="var(--scene-text, #304c65)" data-tooltip="Extruder target temperature">${Number(s.extruder_target_temperature.toFixed(1))}°C</text>`;
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (name === `${s.unit}:mmu_gear_touch`) return true;
-    if (s.active_sensors && !(virtual && /^mmu_(entry|exit)(?:_\d+)?$/.test(name.split(':').at(-1)))) return s.active_sensors.includes(name);
+    if (s.active_sensors && !(virtual && /^mmu_(entry|exit)(?:_\d+)?$/.test(sensorName(name)))) return s.active_sensors.includes(name);
     if (s.unit_sensors && !s.unit_sensors.includes(name)) return false;
-    const gateSuffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
+    const gateSuffix = sensorName(name).match(/^mmu_.*_(\d+)$/);
     return !gateSuffix || (virtual ? virtual.branches.some(branch=>branch.gate===Number(gateSuffix[1])) : Number(gateSuffix[1]) === s.gate);
   });
   const isTouchSensor=name=>/(?:^|:)mmu_gear_touch(?:_\d+)?$/.test(name);
@@ -865,7 +866,7 @@ function renderScene() {
   } else if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry) {
     const endstop = s.encoder_reference?.endstop?.split(':').at(-1);
     const sensor = unitSensors.find(([name,d]) => Number.isFinite(d.position) &&
-      [endstop,`${endstop}_${gate}`].includes(name.split(':').at(-1)));
+      [endstop,`${endstop}_${gate}`].includes(sensorName(name)));
     if (sensor) {
       schematicDistance = position => switchFilamentDistance(position,sensor[1].position,
         s.encoder_reference?.parking || 0,entry,mmuDistanceAtY(sensorPoint(...sensor).y),p=>progress(p)*length,
@@ -883,7 +884,7 @@ function renderScene() {
   const displayedSensors=unitSensors.map(([name,device])=>{
     const before=e.before?.sensors[name], after=e.state.sensors[name];
     if (playing && e.kind === 'movement' && before && after && before.state !== after.state &&
-        ['extruder','toolhead'].includes(name.split(':').at(-1))) {
+        ['extruder','toolhead'].includes(sensorName(name))) {
       return [name,{...device,state:pathDistance(tip)>=pathDistance(device.position)-1e-6}];
     }
     return [name,device];
@@ -967,7 +968,7 @@ function renderScene() {
       // Offset the winding slightly right of the filament lane.
       const x=gateLaneX(offset)+4-spoolDepth*Math.sin(spoolViewAngle)*spoolScale/2;
       const y=549.6+row*rowSpacing-lift+mmuOffset;
-      const color=s.gate_colors[index] || '808182';
+      const color=s.gate_colors[index] || DEFAULT_COLOR;
       const percent=spoolFill(s,index);
       const branch=virtual?.branches.find(branch=>branch.gate===index);
       if (branch && percent>0 && s.gate_status?.[index]!==0) {
@@ -1042,7 +1043,7 @@ function renderScene() {
     const route=document.createElementNS('http://www.w3.org/2000/svg','path');
     route.setAttribute('d',virtual.branchPath(branch.x));
     svg=svg.replace(`<!--parked-tip-${branch.gate}-->`,shapedTip(virtual.parkDistance,
-      s.gate_colors[branch.gate] || '808182','parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
+      s.gate_colors[branch.gate] || DEFAULT_COLOR,'parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
   }
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="#808080"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="${470+mmuOffset}" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="${virtual ? 'black' : 'url(#bowden-fade-gradient)'}"/></mask></defs>`;
   const extruderGearY=tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y;
@@ -1089,7 +1090,7 @@ function renderScene() {
   }
   for (const [name, d] of displayedSensors) {
     if (isBufferSensor(name)) continue;
-    const suffix = name.split(':').at(-1).match(/^mmu_.*_(\d+)$/);
+    const suffix = sensorName(name).match(/^mmu_.*_(\d+)$/);
     if (suffix && Number(suffix[1]) !== gate && !virtual) continue;
     if (d.position === null && !isTouchSensor(name)) continue;
     const pt = sensorPoint(name, d);
@@ -1150,7 +1151,7 @@ function renderScene() {
   if (Number.isFinite(excess) && excess !== 0) svg += `<text id="bowden-excess" x="640" y="${bowdenLengthLabel(s).includes('Uncalibrated') ? 134 : 118}" font-size="10" fill="var(--scene-text, #304c65)"><tspan x="640">Excess filament</tspan><tspan x="640" dy="14">${excessFilamentLabel(excess)}</tspan></text>`;
   const residual = s.filament?.residual_mm || 0;
   const fragment = s.filament?.fragment_mm || 0;
-  const retainedColor = s.nozzle_color || s.filament?.retained_color || '808182';
+  const retainedColor = s.nozzle_color || s.filament?.retained_color || DEFAULT_COLOR;
   const residualTop = tube.getPointAtLength(progress(end-residual)*length).y;
   const nozzleZero = tube.getPointAtLength(progress(end)*length).y;
   if (s.retained_segment && !s.retained_segment.residual_only) {
@@ -1181,7 +1182,7 @@ function renderScene() {
   // Show the incoming front inside the residual instead of hiding it under a uniform color.
   if (residual > 0 && tip > end-residual) {
     const frontY=tube.getPointAtLength(Math.max(progress(end-residual)*length,progress(tip)*length-coneOffset)).y;
-    svg += `<path id="residual-incoming" d="M260 ${residualTop} L260 ${frontY}" fill="none" stroke="#${s.filament?.incoming_color || '808182'}" stroke-width="7"/>`;
+    svg += `<path id="residual-incoming" d="M260 ${residualTop} L260 ${frontY}" fill="none" stroke="#${s.filament?.incoming_color || DEFAULT_COLOR}" stroke-width="7"/>`;
   }
   // A cosmetic seam keeps touching cut pieces distinct until the joint reaches the nozzle.
   const cutJoint = s.retained_segment;
@@ -1194,19 +1195,19 @@ function renderScene() {
   const flooding=s.nozzle_fill_fraction != null && s.nozzle_fill_fraction < 1 && tip >= end-.001;
   if (residual > 0 || tip >= end-.01) {
     // Once the incoming end reaches zero, do not leave an old-color rim around its cone.
-    const funnelColor=tip >= end-.01 ? s.filament?.incoming_color || '808182'
+    const funnelColor=tip >= end-.01 ? s.filament?.incoming_color || DEFAULT_COLOR
       : s.nozzle_outlet_color || purgeOutletColor(s,s.extruded_mm || 0);
     svg += `<path id="nozzle-funnel" d="${nozzleFunnel}" fill="${flooding ? (s.nozzle_fill_from ? `#${s.nozzle_fill_from}` : 'var(--scene-tube, #edf4f8)') : `#${funnelColor}`}"/>`;
   }
   const plan=s.purge_transition;
   const meltingTip=tip >= end-.001 && plan && s.extruded_mm < plan.start_mm+plan.retained_mm+plan.mix_mm;
   if (spoolFill(s,gate)>0 && (s.tip_shapes?.[gate] === 'cone' || meltingTip || s.cone_edge_opacity > 0)) {
-    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="${virtual ? virtual.branches[0].x-20 : 500}" y="${nozzleZero}" width="${virtual ? 850-virtual.branches[0].x+20 : 350}" height="${700-nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-nozzle-clip)"><g mask="url(#outside-mmu)">${shapedTip(tip,s.filament?.incoming_color || '808182','attached-tip')}</g></g>`;
+    svg += `<defs><clipPath id="tip-nozzle-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="${virtual ? virtual.branches[0].x-20 : 500}" y="${nozzleZero}" width="${virtual ? 850-virtual.branches[0].x+20 : 350}" height="${700-nozzleZero}"/>${flooding ? '' : `<path d="${nozzleFunnel}"/>`}</clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-nozzle-clip)"><g mask="url(#outside-mmu)">${shapedTip(tip,s.filament?.incoming_color || DEFAULT_COLOR,'attached-tip')}</g></g>`;
   }
   if (tip >= end-.01 || Number.isFinite(s.purge_transition?.nozzle_arrival_mm)) {
     const fillHeight=(nozzleExit-nozzleZero)*(s.nozzle_fill_fraction ?? 1);
     const outletColor=purgeOutletColor(s,s.extruded_mm || 0);
-    svg += `<defs><linearGradient id="nozzle-fill-gradient" gradientUnits="userSpaceOnUse" x1="260" x2="260" y1="${nozzleZero}" y2="${nozzleZero+Math.max(.001,fillHeight)}"><stop stop-color="#${s.filament?.incoming_color || '808182'}"/><stop offset="1" stop-color="#${outletColor}"/></linearGradient><clipPath id="nozzle-fill-clip"><rect x="250" y="${nozzleZero}" width="20" height="${fillHeight}"/></clipPath></defs><path id="nozzle-fill-front" d="${nozzleFunnel}" fill="url(#nozzle-fill-gradient)" clip-path="url(#nozzle-fill-clip)"/>`;
+    svg += `<defs><linearGradient id="nozzle-fill-gradient" gradientUnits="userSpaceOnUse" x1="260" x2="260" y1="${nozzleZero}" y2="${nozzleZero+Math.max(.001,fillHeight)}"><stop stop-color="#${s.filament?.incoming_color || DEFAULT_COLOR}"/><stop offset="1" stop-color="#${outletColor}"/></linearGradient><clipPath id="nozzle-fill-clip"><rect x="250" y="${nozzleZero}" width="20" height="${fillHeight}"/></clipPath></defs><path id="nozzle-fill-front" d="${nozzleFunnel}" fill="url(#nozzle-fill-gradient)" clip-path="url(#nozzle-fill-clip)"/>`;
   }
   // Keep the dissolving tip edge above the flood, clipped to the complete nozzle bore.
   if (attachedTipEdge) svg += `<defs><clipPath id="tip-edge-clip"><rect x="0" y="0" width="850" height="${nozzleZero}"/><rect x="${virtual ? virtual.branches[0].x-20 : 500}" y="${nozzleZero}" width="${virtual ? 850-virtual.branches[0].x+20 : 350}" height="${700-nozzleZero}"/><path d="${nozzleFunnel}"/></clipPath></defs><g opacity="${shapedTipOpacity}" mask="url(#bowden-end-fade)" clip-path="url(#tip-edge-clip)">${attachedTipEdge}</g>`;
@@ -1274,7 +1275,7 @@ function renderScene() {
       const el = document.createElement("button");
       el.type = "button";
       el.className = "chip sensor-chip" + (d.state === true ? " on" : d.state === null ? " disabled" : " off");
-      el.textContent = name.split(':').at(-1);
+      el.textContent = sensorName(name);
       const enabled = d.enabled ?? d.state !== null;
       const atLatest = viewMode==='live' || (live && !paused && !playing && played >= events.at(-1)?.seq);
       el.disabled = offline || !atLatest || busy || setup?.connection_kind!=='simulator';

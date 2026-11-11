@@ -71,7 +71,3 @@ export function gripState(selector) {
   if (selector?.grip) return selector.grip==='Gripped' ? 1 : 0;
   return undefined;
 }
-
-export function bufferValue(objects,buffer) {
-  return objects[`${buffer.name}:filament_proportional`]?.value ?? null;
-}

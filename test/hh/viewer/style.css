@@ -216,9 +216,7 @@ select, input { max-width: 100%; }
 
 main > section { display: flex; flex-direction: column; gap: 16px; align-self: start; }
 #mini-console { height: 210px; overflow: auto; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-.console-command { color: #27678a; font-weight: 600; }
 .console-error { color: #b0294b; font-weight: 600; }
-[data-theme="dark"] .console-command { color: #81c9eb; }
 [data-theme="dark"] .console-error { color: #ff92ac; }
 
 .command-row { margin-top: 10px; }
@@ -227,7 +225,6 @@ main > section { display: flex; flex-direction: column; gap: 16px; align-self: s
 .command-input input { flex: 1; min-width: 0; margin: 0; }
 .command-input button { flex: none; margin: 0; }
 
-#sensor-readout { margin-top: 10px; font-size: 12px; }
 #sensor-readout summary { cursor: pointer; color: #67788b; }
 #sensor-readout summary span { margin-left: 8px; text-decoration: underline; }
 #sensor-readout .collapse-label, #sensor-readout[open] .expand-label { display: none; }
@@ -236,7 +233,7 @@ main > section { display: flex; flex-direction: column; gap: 16px; align-self: s
 #sensor-readout summary:focus-visible { outline: 3px solid #cc5690; outline-offset: 3px; }
 
 .heading h2 { margin-bottom: 0; }
-#sensor-readout { margin-top: 6px; }
+#sensor-readout { margin-top: 6px; font-size: 12px; }
 #message:empty { display: none; }
 
 .console-command { color: inherit; font-weight: 400; }
@@ -316,8 +313,6 @@ h2[data-tooltip] { position: relative; width: fit-content; cursor: help; }
 [data-theme="dark"] .trace-type:is([data-type="cut"], [data-type="release"]) { color: #e4e6e9; background: #4b515a; }
 
 
-.trace-type[data-type="config"] { color: #643b8d; background: #eee1fb; }
-[data-theme="dark"] .trace-type[data-type="config"] { color: #eddaff; background: #583b76; }
 button.sensor-chip { cursor: pointer; font: inherit; }
 button.sensor-chip:disabled { cursor: default; }
 
@@ -357,8 +352,6 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 
 #mode { font-size: 14px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
 
-.transport-group { display: flex; gap: 4px; align-items: center; }
-.transport-group + .transport-group { margin-left: 4px; padding-left: 13px; }
 
 .trace-type[data-type="gate changed"] { color: #216342; background: #d8f2e2; }
 [data-theme="dark"] .trace-type[data-type="gate changed"] { color: #d6f6e2; background: #2a6247; }

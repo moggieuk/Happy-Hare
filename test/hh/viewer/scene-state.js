@@ -1,13 +1,8 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 import {purgeOutletColor} from './playback.js';
+import {DEFAULT_COLOR, finite, number, clamp, short, positions} from './util.js';
 const copy = value => structuredClone(value);
-const finite = value => typeof value === 'number' && Number.isFinite(value);
-const number = (value, fallback=0) => finite(value) ? value : fallback;
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const short = name => name.split(':').at(-1);
-const color = value => /^[0-9a-f]{6}$/i.test(String(value)) ? String(value) : '808182';
-const positions = ['UNLOADED', 'HOMED TO GATE', 'START BOWDEN', 'IN BOWDEN', 'END BOWDEN',
-  'HOMED TO EXTRUDER', 'EXTRUDER ENTRY', 'IN EXTRUDER', 'HOMED TO TOOLHEAD', 'IN TOOLHEAD', 'LOADED IN NOZZLE'];
+const color = value => /^[0-9a-f]{6}$/i.test(String(value)) ? String(value) : DEFAULT_COLOR;
 
 export function spoolPercentage(initial, remaining) {
   return finite(initial) && initial > 0 && finite(remaining) && remaining >= 0
