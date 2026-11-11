@@ -88,6 +88,7 @@ menu "Paths & Services"
   config SERVICE_MOONRAKER
     string "Moonraker service name  "
     depends on !OCTOPRINT
+    default "${CONFIG_SERVICE_MOONRAKER}" if $(nonempty,$(CONFIG_SERVICE_MOONRAKER))
     default "moonraker.service" if INIT_SYSTEMD 
     default "moonraker_service"
 
