@@ -185,6 +185,8 @@ class PrinterConfig:
         self.status_raw_config = {}
         self.status_save_pending = {}
         self.status_settings = {}
+        self.access_tracking = None   # Shared with the ConfigWrapper; Klipper builds settings from it
+        self._settings_size = -1
         self.status_warnings = []
         self.save_config_pending = False
         self.deprecated = {}
@@ -203,9 +205,17 @@ class PrinterConfig:
     def remove_section(self, section):
         self.set_values[(section, None)] = 'REMOVED'
 
+    def _build_settings(self):
+        if self.access_tracking is not None and len(self.access_tracking) != self._settings_size:
+            self._settings_size = len(self.access_tracking)
+            self.status_settings = {}
+            for (section, option), value in self.access_tracking.items():
+                self.status_settings.setdefault(section, {})[option] = value
+        return self.status_settings
+
     def get_status(self, eventtime):
         return {'config': self.status_raw_config,
-                'settings': self.status_settings,
+                'settings': self._build_settings(),
                 'warnings': self.status_warnings,
                 'save_config_pending': self.save_config_pending,
                 'save_config_pending_items': self.status_save_pending}

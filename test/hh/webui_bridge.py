@@ -20,7 +20,6 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import ast
 import base64
 import collections
 import hashlib
@@ -32,7 +31,6 @@ import tempfile
 import re
 
 from test.hh.live_viewer import SourceViewer
-import socket
 import struct
 import sys
 import threading
@@ -252,11 +250,15 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
-        if parsed.path in ('/sim/viewer', '/sim/viewer/', '/sim/viewer/spool.js', '/sim/viewer/app.js', '/sim/viewer/style.css', '/sim/viewer/playback.js', '/sim/viewer/telemetry.js', '/sim/viewer/live-state.js', '/sim/viewer/scene-state.js', '/sim/viewer/telemetry-stream.js'):
-            filename = {'/sim/viewer/telemetry-stream.js':'telemetry-stream.js', '/sim/viewer/live-state.js':'live-state.js', '/sim/viewer/scene-state.js':'scene-state.js', '/sim/viewer/spool.js': 'spool.js', '/sim/viewer/app.js': 'app.js', '/sim/viewer/telemetry.js': 'telemetry.js', '/sim/viewer/playback.js': 'playback.js', '/sim/viewer/style.css': 'style.css'}.get(parsed.path, 'index.html')
-            data = (pathlib.Path(__file__).parent / 'viewer' / filename).read_bytes()
+        # The viewer's own pages only: index plus the flat modules and stylesheet beside this file
+        viewer_dir = pathlib.Path(__file__).parent / 'viewer'
+        name = 'index.html' if parsed.path in ('/sim/viewer', '/sim/viewer/') else parsed.path.removeprefix('/sim/viewer/')
+        if parsed.path.startswith('/sim/viewer') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
+                and (viewer_dir / name).is_file():
+            filename = name
+            data = (viewer_dir / filename).read_bytes()
             handler.send_response(200)
-            handler.send_header('Content-Type', {'telemetry-stream.js':'text/javascript', 'live-state.js':'text/javascript', 'scene-state.js':'text/javascript', 'spool.js':'text/javascript', 'telemetry.js':'text/javascript', 'playback.js':'text/javascript', 'app.js':'text/javascript', 'style.css':'text/css'}.get(filename, 'text/html'))
+            handler.send_header('Content-Type', {'js': 'text/javascript', 'css': 'text/css'}.get(filename.rsplit('.', 1)[-1], 'text/html'))
             handler.send_header('Content-Length', str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)
@@ -545,7 +547,11 @@ class WebUiBridge:
         script = params.get('script', '')
         self.gcode_store.append({'message': script, 'time': time.time(), 'type': 'command'})
         self.notify('notify_gcode_command', [script])
-        self.run_gcode(script)
+        errors = len(self.session.errors)
+        failure = self.run_gcode(script)
+        failure = failure if isinstance(failure, str) else ''   # The console runner returns its first failure
+        if failure or len(self.session.errors) > errors:   # A failed command is an error reply, as with Moonraker
+            raise RpcError(failure or '; '.join(self.session.errors[errors:]))
         return 'ok'
 
     def rpc_printer_print_pause(self, conn, params):
@@ -587,192 +593,12 @@ class WebUiBridge:
                     units=[u.name for u in units], parameters=self.viewer.parameters(index),
                     macro_parameters=self.viewer.macro_parameters())
 
-    def rpc_sim_viewer_configure(self, conn, params):
-        index = int(params.get('unit', 0))
-        setup = self.rpc_sim_viewer_setup(conn, {'unit':index})
-        name, value = params.get('name'), str(params.get('value', ''))
-        macro = params.get('macro')
-        if macro:
-            item = next((p for p in setup['macro_parameters'] if p['macro'] == macro and p['name'] == name), None)
-            if item is None:
-                raise RpcError('Macro variable is internal or unavailable')
-            try:
-                literal = ast.literal_eval(value)
-            except (ValueError, SyntaxError):
-                if isinstance(item['value'], str):
-                    literal = value
-                else:
-                    raise RpcError('Enter a Python literal, for example 52, True, or [1, 2]')
-            old = item['value']
-            compatible = (isinstance(literal, bool) if isinstance(old, bool) else
-                          isinstance(literal, (int, float)) and not isinstance(literal, bool)
-                          if isinstance(old, (int, float)) else
-                          isinstance(literal, (list, tuple)) if isinstance(old, list) else
-                          isinstance(literal, type(old)))
-            if not compatible:
-                raise RpcError('Keep the existing value type for this macro variable')
-            # Encode strings so quoting and newlines cannot create extra G-code commands.
-            def encode(v):
-                if isinstance(v, str):
-                    return "'" + ''.join('\\U%08x' % ord(c) for c in v) + "'"
-                if isinstance(v, tuple):
-                    return '(' + ','.join(encode(x) for x in v) + ',)' if v else '()'
-                if isinstance(v, list):
-                    return '[' + ','.join(encode(x) for x in v) + ']'
-                if isinstance(v, dict):
-                    return '{' + ','.join(encode(k)+':'+encode(x) for k,x in v.items()) + '}'
-                if v is None or isinstance(v, (bool, int, float)):
-                    return repr(v)
-                raise RpcError('Unsupported macro value')
-            command = 'SET_GCODE_VARIABLE MACRO=%s VARIABLE=%s VALUE="%s"' % (macro, name, encode(literal))
-        else:
-            available = {p['name'] for p in setup['parameters']}
-            if name not in available:
-                raise RpcError('Parameter is not available through MMU_TEST_CONFIG')
-            if any(c in value for c in '\r\n;'):
-                raise RpcError('Enter one parameter value')
-            command = 'MMU_TEST_CONFIG UNIT=%d %s=%s' % (index, name.upper(), json.dumps(value))
-        errors_before = len(self.session.errors)
-        self.run_gcode(command)
-        if len(self.session.errors) > errors_before:
-            raise RpcError('; '.join(self.session.errors[errors_before:]))
-        self.viewer.observe_configuration()
-        return self.rpc_sim_viewer_setup(conn, {'unit':index})
-
-    def rpc_sim_viewer_configure_buffer(self, conn, params):
-        import math
-        units = self.session.mmu.mmu_machine.units
-        index = int(params.get('unit', 0))
-        if not 0 <= index < len(units):
-            raise RpcError('Unknown MMU unit')
-        buffer = units[index].buffer
-        if buffer is None:
-            return {'available': False}
-        if 'values' in params:
-            values = params['values']
-            try:
-                maximum = float(values['buffer_maxrange'])
-                sensor_range = float(values['buffer_range'])
-                spring = values['buffer_spring_state']
-            except (KeyError, TypeError, ValueError):
-                raise RpcError('Supply numeric buffer ranges and a spring state')
-            if not all(math.isfinite(v) for v in (maximum, sensor_range)) or not 0 < sensor_range <= maximum:
-                raise RpcError('Use 0 < buffer_range <= buffer_maxrange')
-            if spring not in ('none', 'tension', 'neutral', 'compression'):
-                raise RpcError('Choose a spring state')
-            if (maximum, sensor_range, spring) == (buffer.buffer_maxrange,
-                    buffer.buffer_range, buffer.buffer_spring_state):
-                return self.rpc_sim_viewer_configure_buffer(conn, {'unit': index})
-            model = self.session.filament()
-            old_buffers = model.buffers.copy()
-            old = old_buffers.get(buffer.name)
-            buffer.buffer_maxrange = maximum
-            buffer.buffer_range = sensor_range
-            buffer.buffer_spring_state = spring
-            buffer.buffer_spring_state_num = {'none': None, 'tension': -1, 'neutral': 0, 'compression': 1}[spring]
-            model.buffers = {}
-            model.configure_buffers(units, model._selected_gate, model._drive_mode, model._gripped)
-            geometry = model.buffers[buffer.name]
-            for name, previous in old_buffers.items():
-                if name != buffer.name:
-                    model.buffers[name] = previous
-            for gate in geometry['gates']:
-                total = geometry['rest']
-                if old and (model._gripped(gate) or old['contact'][gate]):
-                    total += old['travel'][gate] + old['excess'][gate] - old['rest']
-                    geometry['contact'][gate] = old['contact'][gate]
-                travel = max(0., min(maximum, total))
-                geometry['travel'][gate] = travel
-                geometry['excess'][gate] = total-travel
-                model.unabsorbed[gate] = total-travel
-            for unit in units:
-                if unit.buffer is buffer:
-                    feedback = unit.sync_feedback
-                    if feedback.ctrl is not None:
-                        feedback.ctrl.close_log()
-                    feedback._init_controller()
-                    if feedback.active:
-                        feedback._reset_controller(self.session.reactor.monotonic())
-            model.sync()
-            self.viewer.observe_configuration()
-        return dict(available=True, buffer_maxrange=buffer.buffer_maxrange,
-                    buffer_range=buffer.buffer_range, buffer_spring_state=buffer.buffer_spring_state)
-
-    def rpc_sim_viewer_objects(self, conn, params):
-        """List distinct shared objects, or edit one supported runtime parameter."""
-        import math
-        kind = params.get('kind')
-        attributes = {'buffer': 'buffer', 'encoder': 'encoder', 'toolhead': 'toolhead_wrapper'}
-        if kind not in attributes:
-            raise RpcError('Unknown object type')
-        units = self.session.mmu.mmu_machine.units
-        objects = {}
-        for index, unit in enumerate(units):
-            obj = getattr(unit, attributes[kind], None)
-            if obj is not None:
-                item = objects.setdefault(obj.name, dict(obj=obj, units=[]))
-                item['units'].append(index)
-        encoder_fields = {
-            'encoder_resolution': ('resolution', 'float', 0, True),
-            'desired_headroom': ('desired_headroom', 'float', 0, True),
-            'detection_length': ('detection_length', 'float', 2, True),
-            'average_samples': ('average_samples', 'int', 1, False),
-            'calibration_length': ('calibration_length', 'float', 50, False),
-            'no_movement_samples': ('no_movement_samples', 'int', 1, False),
-            'flowrate_samples': ('flowrate_samples', 'int', 5, False),
-        }
-        if 'parameter' in params:
-            item = objects.get(params.get('name'))
-            if item is None:
-                raise RpcError('Object is not fitted')
-            obj, name = item['obj'], params['parameter']
-            if kind == 'toolhead':
-                allowed = {spec.name for spec in obj.p._SPECS if obj.p._is_available(spec)}
-                if name not in allowed:
-                    raise RpcError('Toolhead parameter is unavailable')
-                self.rpc_sim_viewer_configure(conn, dict(unit=item['units'][0], name=name, value=params.get('value')))
-            elif kind == 'encoder':
-                if name not in encoder_fields:
-                    raise RpcError('Encoder parameter is unavailable')
-                attr, value_kind, minimum, exclusive = encoder_fields[name]
-                try:
-                    value = float(params.get('value'))
-                except (TypeError, ValueError):
-                    raise RpcError('Enter a numeric value')
-                if not math.isfinite(value) or value < minimum or (exclusive and value == minimum) or (value_kind == 'int' and not value.is_integer()):
-                    raise RpcError('Invalid value for %s' % name)
-                if value_kind == 'int':
-                    value = int(value)
-                if name == 'encoder_resolution':
-                    distance = obj.get_distance()
-                    obj.set_resolution(value)
-                    obj.set_distance(distance)
-                else:
-                    setattr(obj, attr, value)
-                self.viewer.observe_configuration()
-            else:
-                raise RpcError('Use the buffer settings editor')
-        result = []
-        for name, item in objects.items():
-            obj = item['obj']
-            if kind == 'toolhead':
-                fields = [dict(name=spec.name, kind=spec.kind, value=getattr(obj.p, spec.name), choices=spec.choices)
-                          for spec in obj.p._SPECS if obj.p._is_available(spec)]
-            elif kind == 'encoder':
-                fields = [dict(name=key, kind=spec[1], value=getattr(obj, spec[0])) for key, spec in encoder_fields.items()]
-            else:
-                fields = []
-            result.append(dict(name=name, units=item['units'], parameters=fields))
-        return dict(objects=result)
-
-
     def rpc_sim_viewer_sensor(self, conn, params):
         name = params.get('name')
         sensors = self.session.mmu.sensor_manager.get_sensor_states(all_sensors=True)
         if name not in sensors or not isinstance(params.get('enabled'), bool):
             raise RpcError('Choose an available sensor and enabled state')
         self.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=%d' % (name, params['enabled']))
-        self.viewer.observe_configuration()
         return {'enabled': bool(sensors[name][1].runout_helper.sensor_enabled)}
 
     def rpc_sim_viewer_restart(self, conn, params):

@@ -177,8 +177,7 @@ class MmuMachine:
 
 
     def get_status(self, eventtime):
-        from .mmu.mmu_status_config import configuration
-        return dict(self.machine_status, configuration=configuration(self.mmu_controller))
+        return self.machine_status
 
 
 def load_config(config):

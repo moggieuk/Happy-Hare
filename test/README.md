@@ -638,10 +638,15 @@ continues working if the simulator disconnects after the page has loaded.
 **Return to live** reconnects to the current capture. Files require a v2 session
 snapshot; older motion-only JSONL and diagnostic trace files cannot be loaded.
 
-Runtime parameter choices come from the same parameter specifications and guards
-as `MMU_TEST_CONFIG`, including unit and calibration parameters where available.
-Edits are dispatched through that command, so its validation and change callbacks
-still apply. Hardware is not editable in this panel. Loaded macro tuning variables
+The parameter editor works on the simulator and on a printer. Every edit is sent through
+`printer.gcode.script` as `MMU_TEST_CONFIG` (or `SET_GCODE_VARIABLE` for macro variables),
+so Happy Hare's own validation and change callbacks apply and the edit appears in
+telemetry as a configuration change. The simulator lists parameters from the parameter
+specifications and guards (including calibration where available). On a printer the list
+is built from `configfile.settings` and `mmu.config_changes`: the machine and unit
+parameter sections, and `toolhead_*` values; macro variables come from the macro
+definitions in `configfile.config`. Types are inferred from the values, and invalid input is
+rejected by the command itself. Hardware is not editable in this panel. Loaded macro tuning variables
 appear under separate macro-name headers and are applied with `SET_GCODE_VARIABLE`.
 Enter Python literals (for example `52`, `True`, or `[1, 2]`). Output variables,
 saved state, and variables assigned by macro bodies are excluded from the editor.
@@ -656,10 +661,11 @@ Each captured state includes its runtime settings, editable macro variables,
 sensor enablement, and drawing geometry. Changes appear as a **config** entry
 before the next activity, so playback applies the recorded blade position and
 sensor states before continuing. Returning to the beginning restores the initial
-illustration without changing the running simulator. Consecutive edits are grouped
-until another event occurs; changing a setting back to its original value removes
-it from the pending entry. Sensor off/on toggles behave the same way. Exported
-traces include these settings and configuration boundaries.
+illustration without changing the running simulator. Parameter edits (`MMU_TEST_CONFIG`)
+are reported at once, each as its own entry. Edits that raise no event (macro variables,
+sensor off/on) are captured by the next event's snapshot, like all other MMU state, so a
+change undone before then leaves no entry. Exported traces include these settings and
+configuration boundaries.
 
 Choose a built-in console profile and select **Restart with profile** to boot a
 fresh session. Alternatively, upload the installed configuration directory with
@@ -734,7 +740,7 @@ viewer uses this when renewing its bounded local history.
 With both `history_buffer: 0` and `record: False`, real-printer capture begins
 with the first browser subscriber and ends when the last leaves. The first record is a freshly sampled current state,
 not cached startup configuration. It cannot recover events before capture began.
-While active, pending configuration previews are checked at 4 Hz. The printer
+While active, new records are delivered to subscribers at 4 Hz. The printer
 thread performs no file I/O and never waits for a browser acknowledgment.
 
 To record without an open browser, configure Moonraker:
@@ -762,7 +768,7 @@ The Moonraker component handles subscriptions and lifecycle only.
 Queue overflow or write failure stops recording and raises a Moonraker warning;
 it never blocks motion or silently continues a damaged recording. Recording is
 best-effort, not crash-durable: buffered records may be lost if the process exits
-abruptly. Replaceable pending previews are not written until committed by an event.
+abruptly.
 
 Tests: the telemetry stream, adapters, store, WebUI bridge and browser transport
 suites cover checkpoints, edited configuration, rotation, per-client backpressure,
@@ -879,21 +885,34 @@ playback and use **Load telemetry**:
 - **Telemetry playback** uses only the loaded JSON/JSONL recording, or the
   simulator's piped telemetry stream. Current printer status never changes an
   old recording. Playback controls and the movement trace appear in this mode.
+  While following the stream at rest (not paused, not animating, no move in
+  progress) the viewer also subscribes to `mmu.sensors` and shows those readings
+  on the live end, so a sensor toggled or triggered while idle appears at once
+  instead of at the next event (`overlay.js`). Nothing else is overlaid, and the
+  next event carries the same values.
 
 The Settings panel accepts a printer/simulator URL (default: the server hosting
-this viewer). Simulator editors are hidden on a real printer. The printer must
-expose `mmu_machine.configuration`, the effective runtime geometry/object references,
-including calibration and changes made through `MMU_TEST_CONFIG`. This is a status
-field, not a telemetry baseline. `mmu.sensor_states` contains qualified sensor
-identities and `mmu.active_sensors` identifies the active path.
+this viewer). The parameter editor and Toolhead Config panel work on a real printer
+because they only send `MMU_TEST_CONFIG` and `SET_GCODE_VARIABLE`; the Buffer and Encoder
+panels, which set object attributes directly, are simulator-only.
 
-`mmu.homing` is null when idle, otherwise `{endstops: [...], triggered: true/false}`.
-It is set only around a homing move, including compound endstops, and cleared on
-both success and error. The live viewer pulses these sensors while active and
-shows a completion pulse when the sensor's reported state confirms the transition.
-Short operations may finish between subscription updates; use telemetry playback
-when every operation must be inspected. The simulator executes commands with a
-virtual clock, so live subscriptions may skip intermediate states there too.
+Live view needs no Happy Hare specific configuration object. `live-config.js`
+builds the machine description from state Klipper already publishes:
+
+- `configfile.settings` for startup configuration: units, gates, selector type,
+  toolhead, encoder and buffer, and every parameter section.
+- `mmu.config_changes`, a dictionary of values changed since startup by
+  `MMU_TEST_CONFIG`, keyed by config section then parameter. It is empty until
+  something is edited, and overrides the startup value.
+- `save_variables` for calibration such as bowden lengths.
+- `mmu.sensors` for the active sensors (short names, requalified by the viewer),
+  plus the existing `mmu_extruder`, `mmu_encoder` and proportional sensor objects.
+
+Live view is approximate by design: it has no homing, grip or inactive-sensor state.
+Telemetry mode carries those. In telemetry the same edits arrive as `state_delta`
+records, produced from a `config_changed` event emitted where the parameter changes,
+so recordings are replayable without a printer. The session baseline holds each full
+parameter set once; it is not re-read per event.
 
 `live-state.js` adapts subscriptions without retaining history; `telemetry.js`
 reduces recordings. Both use `scene-state.js` for scene geometry and share the SVG
@@ -902,12 +921,27 @@ containing these fields remain readable. Run the live browser regression with
 `node --test test/hh/viewer/live.browser.mjs` using the same Playwright/Chrome
 settings as the spool browser test below.
 
-The simulator-only **Buffer Config**, **Encoder Config**, and **Toolhead Config**
-panels appear only when that profile has fitted objects of the corresponding type.
-Shared objects appear once, with their connected units listed. Edits change the
-running simulator; restart restores profile defaults. Toolhead edits use
-`MMU_TEST_CONFIG` validation, buffer edits also update the physical model, and
-encoder edits expose runtime numeric settings rather than pins or MCU sampling.
+The **Toolhead Config** panel appears when the machine has a toolhead section. A toolhead shared
+by several units is listed once with those units, and edits are sent as `MMU_TEST_CONFIG`.
+
+Buffers and encoders are simulator objects whose settings are not `MMU_TEST_CONFIG` parameters,
+so they are edited from the simulator console instead of the viewer. `/buffer [NAME] [RANGE=mm]
+[MAXRANGE=mm] [SPRING=none|tension|neutral|compression]` changes a buffer (and rebuilds its
+physical model, keeping the filament where it is); `/encoder [NAME] [RESOLUTION=mm] ...` changes an
+encoder's runtime numeric settings, never pins or MCU sampling. NAME is the object's own name,
+which can differ from its unit and may be shared; it can be omitted when there is only one. With
+no values the command prints the current ones. Each edit emits one `sim_settings_changed` event, so
+the change is committed to the telemetry stream at once; reload the viewer to see it. Restart
+restores the profile defaults.
+Each selector movement (the stepper moving the carriage, the servo changing grip, rail homing) is a
+visible step with its own **selector** pill, paired from the `selector_movement_start` and
+`selector_movement_outcome` records. It has no animation of its own and no artificial delay. While it
+plays, or when you step onto it, the notice box shows a summary such as
+`Selector: Positioning selector 4.2 → 46.2 mm (0.19s)`. After a stepper move the next step is normally the
+gate change, which still owns the rack-slide animation: the box stays up through the slide, with
+`· Gate 0 → 2` added, and until you leave that gate change. The notice is blue with an "i", unlike the amber
+"!" warnings, and a sensor warning always keeps the warning look. A selector pair inside a filament move
+stays internal, and a lone servo move is not left behind while following the stream at rest.
 Configuration changes are included in telemetry. **Show internal updates** also
 adds expandable raw telemetry details to each trace entry; movements expose both
 the start and outcome messages without changing playback selection.
@@ -995,10 +1029,9 @@ MMU/machine state, calibration, sensors and toolhead macro dimensions. Later
 `state_delta` records contain changed leaves only and precede the source event
 that observed them. Paths are arrays of keys; `remove: true` deletes a value,
 whereas `value: null` explicitly stores an unknown value. Edits that cancel before
-the next event are omitted. Idle UI edits and completed configuration commands
-produce a replaceable pending delta, allowing an immediate preview without
-retaining edits that are subsequently undone. There is no periodic printer-wide
-status scan. Omitting `after` requests a session baseline; `after=0` requests only
+the next event are omitted. A change that raises no event of its own is captured by the
+snapshot taken at the next event, so it is stamped with that event's time. There is no
+periodic printer-wide status scan. Omitting `after` requests a session baseline; `after=0` requests only
 records after the initial baseline. A new session or expired cursor requires a reset.
 
 `extras/mmu/telemetry/capture.py` owns this capture independently of the

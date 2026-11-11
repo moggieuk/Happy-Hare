@@ -414,6 +414,15 @@ test('device stack collapses absent sensors and keeps signed encoder ordering',(
  assert.deepEqual(gateDevicePositions(state,[]),{});
 });
 
+test('a tip within the sensor tolerance of a clear sensor is clamped without a warning',()=>{
+ const sensor={name:'extruder',position:20,state:false,tolerance:1};
+ const near=constrainFilament(20.4,null,[sensor]);
+ assert.equal(near.tip,20);assert.deepEqual(near.warnings,[]);
+ const far=constrainFilament(22,null,[sensor]);
+ assert.equal(far.tip,20);assert.equal(far.warnings.length,1);
+ assert.equal(constrainFilament(20.4,null,[{...sensor,tolerance:undefined}]).warnings.length,1);
+});
+
 test('presence constraints use sensor boundaries without freezing at the previous tip',()=>{
  const sensor={name:'exit',position:20,state:false};
  assert.equal(constrainFilament(30,null,[sensor]).tip,20);

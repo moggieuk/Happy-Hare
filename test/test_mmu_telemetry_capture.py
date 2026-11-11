@@ -28,8 +28,8 @@ class TestTelemetryCapture(unittest.TestCase):
     def setUp(self):
         self.hh = session('ercf_vvd_buffers')
         self.hh.boot(calibrate=True, selected_gate=0)
-        from extras.mmu.telemetry.capture import TelemetryCapture, ReplayState, apply_changes
-        self.Capture, self.State, self.apply = TelemetryCapture, ReplayState, apply_changes
+        from extras.mmu.telemetry.capture import TelemetryCapture, ReplayState, apply_changes, merge
+        self.Capture, self.State, self.apply, self.merge = TelemetryCapture, ReplayState, apply_changes, merge
         self.captures = []
 
     def tearDown(self):
@@ -52,7 +52,7 @@ class TestTelemetryCapture(unittest.TestCase):
         records = capture.read()['records']
         baseline = records[0]
         self.assertEqual(baseline['event'], 'session')
-        self.assertEqual(baseline['version'], 2)
+        self.assertEqual(baseline['version'], 1)
         state = baseline['state']
         self.assertEqual(set(state['printer']), {'mmu', 'mmu_machine'})
         self.assertEqual(state['printer']['mmu']['gate'], 0)
@@ -87,7 +87,7 @@ class TestTelemetryCapture(unittest.TestCase):
         baseline = capture.read()['records'][0]['state']
         self.assertNotIn('target_temperature', baseline['printer']['mmu_machine']['units']['unit0']['extruder'])
         heater.set_temp(220)
-        capture.observe()
+        self.emit()
         changes = [change for record in capture.read()['records'] if record['event'] == 'state_delta'
                    for change in record['changes']]
         self.assertFalse(any('target_temperature' in change['path'] for change in changes))
@@ -143,9 +143,52 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertEqual(len(delta), 1)
         self.assertEqual(delta[0]['path'][-1], 'buffer_range')
         self.apply(old, delta)
-        self.assertEqual(old, self.State(self.hh.mmu)())
+        state = self.State(self.hh.mmu)
+        self.assertEqual(old, self.merge(state(), state.static()))
         self.emit()
         self.assertEqual(len(capture.read()['records']), 4)
+
+    def test_baseline_holds_full_parameter_sets_read_once(self):
+        capture = self.capture()
+        state = capture.read()['records'][0]['state']['printer']['mmu_machine']
+        unit = state['units']['unit0']
+        self.assertIn('log_level', state['parameters'])
+        self.assertIn('gate_homing_endstop', unit['parameters'])
+        self.assertIn('toolhead_residual_filament', unit['toolhead']['parameters'])
+
+    def test_parameter_edit_is_one_delta_and_does_not_reread_parameter_sets(self):
+        capture = self.capture()
+        with mock.patch.object(self.State, 'parameter_sets', side_effect=AssertionError('re-read')):
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 TOOLHEAD_RESIDUAL_FILAMENT=3')
+        records = capture.read()['records']
+        deltas = [r for r in records if r['event'] == 'state_delta']
+        self.assertEqual([r['event'] for r in records].count('config_changed'), 0)
+        paths = [c['path'] for d in deltas for c in d['changes']]
+        self.assertIn(['printer', 'mmu_machine', 'units', 'unit0', 'toolhead', 'parameters',
+                       'toolhead_residual_filament'], paths)
+        change = next(c for d in deltas for c in d['changes'] if c['path'][-1] == 'toolhead_residual_filament')
+        self.assertEqual(change['value'], 3)
+
+    def test_changing_a_parameter_back_still_records_each_change(self):
+        capture = self.capture()
+        original = self.hh.mmu.mmu_unit().toolhead_wrapper.p.toolhead_residual_filament
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 TOOLHEAD_RESIDUAL_FILAMENT=%s' % (original + 1))
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 TOOLHEAD_RESIDUAL_FILAMENT=%s' % original)
+        # A shared toolhead is one record that updates every unit using it
+        records = [r for r in capture.read()['records'] if r['event'] == 'state_delta']
+        self.assertEqual([{c['value'] for c in r['changes']} for r in records], [{original + 1}, {original}])
+
+    def test_unchanged_parameter_adds_no_record(self):
+        capture = self.capture()
+        before = len(capture.read()['records'])
+        self.hh.run_gcode('MMU_TEST_CONFIG LOG_LEVEL=%d' % self.hh.mmu.p.log_level)
+        self.assertEqual(len(capture.read()['records']), before)
+
+    def test_edit_without_listener_emits_nothing(self):
+        telemetry = self.hh.mmu.movement_telemetry
+        sequence = telemetry.sequence
+        self.hh.run_gcode('MMU_TEST_CONFIG LOG_LEVEL=2')
+        self.assertEqual(telemetry.sequence, sequence)
 
     def test_cancelled_edits_are_not_saved(self):
         capture = self.capture()
@@ -189,20 +232,14 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertIn(['printer', 'mmu', 'sensors', name, 'enabled'], paths)
         self.assertIn(['macros', '_MMU_CUT_TIP_VARS', 'blade_pos'], paths)
 
-    def test_idle_preview_does_not_advance_cursor_and_reverts_cleanly(self):
+    def test_idle_change_waits_for_the_next_event(self):
         capture = self.capture()
-        self.assertEqual(capture.read(after=0)['records'], [])
         buffer = self.hh.mmu.mmu_unit().buffer
-        old = buffer.buffer_range
         buffer.buffer_range += 1
-        capture.observe()
-        pending = capture.read(after=0)['records'][0]
-        self.assertTrue(pending['pending'])
-        self.assertEqual(capture.sequence, 0)
-        buffer.buffer_range = old
-        capture.observe()
         self.assertEqual(capture.read(after=0)['records'], [])
         self.assertEqual(capture.sequence, 0)
+        self.emit()
+        self.assertEqual([r['event'] for r in capture.read(after=0)['records']], ['state_delta', 'cut'])
 
     def test_removals_are_distinct_from_null(self):
         from extras.mmu.telemetry.capture import changes

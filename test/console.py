@@ -511,6 +511,7 @@ class Console:
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
         # leave --script exiting 0.
         self.failures = 0
+        self.last_failure = ''
         self.job = None                             # a /print job, while one is held
 
     # -- lifecycle ------------------------------------------------------------
@@ -730,11 +731,14 @@ class Console:
                   'dialog appear.' % (host, port, host, port))
 
     def _run_for_bridge(self, script):
-        """A script sent from the web UI: shown and run as if typed at the prompt."""
+        """A script sent from the web UI: shown and run as if typed at the prompt. Returns the first failure."""
         for line in script.split('\n'):
             if line.strip():
                 print(self.prompt() + line)
+                failures = self.failures
                 self.run_command(line)
+                if self.failures > failures:
+                    return self.last_failure
 
     def _service_bridge(self):
         """Run what the web UI has asked for, from under the prompt."""
@@ -989,6 +993,7 @@ class Console:
             if self.bridge is not None:
                 self.bridge.host_output('!! %s' % exc)
             self.failures += 1
+            self.last_failure = str(exc)
         physical_changed = False
         if gate_status_before is not None:
             physical_changed = self._sync_filament_to_gate_map(gate_status_before)
@@ -1005,8 +1010,6 @@ class Console:
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
-        if self.bridge is not None and re.match(r'^\s*(?:_?MMU_\w+|SET_GCODE_VARIABLE|SET_FILAMENT_SENSOR)(?:\s|$)', line, re.I):
-            self.bridge.viewer.observe_configuration()
         if warn_unknown:
             self._warn_unhandled(line, unhandled_mark)
 
@@ -1523,6 +1526,10 @@ class Console:
         ('/sensors', 'sensor table (also: MMU_SENSORS)'),
         ('/sensor NAME on|off|enable|disable',
          'on/off drives the switch; enable/disable makes HH ignore it entirely'),
+        ('/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none|tension|neutral|compression]',
+         'show or change a sync-feedback buffer (by object name; NAME may be omitted if there is one)'),
+        ('/encoder [NAME] [RESOLUTION=mm] [DESIRED_HEADROOM=mm] [DETECTION_LENGTH=mm] ...',
+         'show or change an encoder\'s runtime numeric settings; /encoder NAME lists them'),
         ('/place GATE [POS]', 'put a filament tip at POS mm (default %g)' % TIP_AT_GATE),
         ('/insert GATE [POS]', 'place filament and fire its entry-sensor callback'),
         ('/remove GATE', 'remove that gate\'s filament and clear its path sensors'),
@@ -1853,6 +1860,125 @@ class Console:
             self.hh.reactor.advance(0.)
             print('  %s %sd' % (handle.name, action))
         self._drain(mark)
+
+    # Buffers and encoders are simulator objects whose settings are not MMU_TEST_CONFIG parameters,
+    # so they are edited here. Each edit emits one event so a viewer refresh shows it at once.
+
+    def _object_arguments(self, kind, args, settings):
+        """Resolve `[NAME] KEY=value ...` to (object, units sharing it, {key: text})."""
+        found = {}
+        for unit in self.hh.mmu.mmu_machine.units:
+            obj = getattr(unit, kind)
+            if obj is not None:
+                found.setdefault(obj.name, (obj, []))[1].append(unit)
+        if not found:
+            raise ValueError('this machine has no %s' % kind)
+        name, values = None, {}
+        for arg in args:
+            if '=' in arg:
+                key, text = arg.split('=', 1)
+                if key.lower() not in settings:
+                    raise ValueError('unknown %s setting %r; use %s' % (kind, key, ', '.join(s.upper() for s in settings)))
+                values[key.lower()] = text
+            elif name is None:
+                name = arg
+            else:
+                raise ValueError('expected one %s name' % kind)
+        if name is None and len(found) == 1:
+            name = next(iter(found))
+        if name not in found:
+            raise ValueError('which %s? %s' % (kind, ', '.join(found)))
+        return found[name][0], found[name][1], values
+
+    def _settings_changed(self, kind, obj):
+        self.hh.mmu.movement_telemetry.state('sim_settings_changed', kind=kind, object=obj.name)
+
+    _BUFFER_SPRINGS = {'none': None, 'tension': -1, 'neutral': 0, 'compression': 1}
+
+    def _meta_buffer(self, args):
+        buffer, units, values = self._object_arguments('buffer', args, ('range', 'maxrange', 'spring'))
+        if values:
+            import math
+            maximum = float(values.get('maxrange', buffer.buffer_maxrange))
+            sensor_range = float(values.get('range', buffer.buffer_range))
+            spring = values.get('spring', buffer.buffer_spring_state)
+            if not all(math.isfinite(v) for v in (maximum, sensor_range)) or not 0 < sensor_range <= maximum:
+                raise ValueError('use 0 < RANGE <= MAXRANGE')
+            if spring not in self._BUFFER_SPRINGS:
+                raise ValueError('SPRING is one of %s' % ', '.join(self._BUFFER_SPRINGS))
+            if (maximum, sensor_range, spring) != (buffer.buffer_maxrange, buffer.buffer_range, buffer.buffer_spring_state):
+                self._apply_buffer(buffer, maximum, sensor_range, spring)
+                self._settings_changed('buffer', buffer)
+        print('    %s (%s): RANGE=%g MAXRANGE=%g SPRING=%s' % (buffer.name, ', '.join(u.name for u in units),
+              buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state))
+
+    def _apply_buffer(self, buffer, maximum, sensor_range, spring):
+        """Change the buffer and rebuild its physical model, keeping the filament where it is."""
+        units = self.hh.mmu.mmu_machine.units
+        model = self.hh.filament()
+        old_buffers = model.buffers.copy()
+        old = old_buffers.get(buffer.name)
+        buffer.buffer_maxrange = maximum
+        buffer.buffer_range = sensor_range
+        buffer.buffer_spring_state = spring
+        buffer.buffer_spring_state_num = self._BUFFER_SPRINGS[spring]
+        model.buffers = {}
+        model.configure_buffers(units, model._selected_gate, model._drive_mode, model._gripped)
+        geometry = model.buffers[buffer.name]
+        for name, previous in old_buffers.items():
+            if name != buffer.name:
+                model.buffers[name] = previous
+        for gate in geometry['gates']:
+            total = geometry['rest']
+            if old and (model._gripped(gate) or old['contact'][gate]):
+                total += old['travel'][gate] + old['excess'][gate] - old['rest']
+                geometry['contact'][gate] = old['contact'][gate]
+            travel = max(0., min(maximum, total))
+            geometry['travel'][gate] = travel
+            geometry['excess'][gate] = total - travel
+            model.unabsorbed[gate] = total - travel
+        for unit in units:
+            if unit.buffer is buffer:
+                feedback = unit.sync_feedback
+                if feedback.ctrl is not None:
+                    feedback.ctrl.close_log()
+                feedback._init_controller()
+                if feedback.active:
+                    feedback._reset_controller(self.hh.reactor.monotonic())
+        model.sync()
+
+    # setting: (attribute, integer?, minimum, minimum excluded?)
+    _ENCODER_SETTINGS = {
+        'resolution': ('resolution', False, 0, True),
+        'desired_headroom': ('desired_headroom', False, 0, True),
+        'detection_length': ('detection_length', False, 2, True),
+        'average_samples': ('average_samples', True, 1, False),
+        'calibration_length': ('calibration_length', False, 50, False),
+        'no_movement_samples': ('no_movement_samples', True, 1, False),
+        'flowrate_samples': ('flowrate_samples', True, 5, False),
+    }
+
+    def _meta_encoder(self, args):
+        import math
+        encoder, units, values = self._object_arguments('encoder', args, tuple(self._ENCODER_SETTINGS))
+        for key, text in values.items():
+            attribute, integer, minimum, exclusive = self._ENCODER_SETTINGS[key]
+            value = float(text)
+            if not math.isfinite(value) or value < minimum or (exclusive and value == minimum) \
+                    or (integer and not value.is_integer()):
+                raise ValueError('invalid %s' % key.upper())
+            value = int(value) if integer else value
+            if key == 'resolution':
+                distance = encoder.get_distance()
+                encoder.set_resolution(value)
+                encoder.set_distance(distance)    # The measured position survives a resolution change
+            else:
+                setattr(encoder, attribute, value)
+        if values:
+            self._settings_changed('encoder', encoder)
+        print('    %s (%s)' % (encoder.name, ', '.join(u.name for u in units)))
+        for key, (attribute, *_rest) in self._ENCODER_SETTINGS.items():
+            print('      %-20s %g' % (key.upper(), getattr(encoder, attribute)))
 
     def _meta_place(self, args):
         gate = int(args[0])

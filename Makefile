@@ -203,9 +203,6 @@ hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/tel
 hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/* # These will get removed upon install/uninstall
 hh_old_config_files     := macros/mmu_fan_control.cfg # These will get removed upon install
 hh_old_klipper_files    := extras/mmu/commands/mmu_cut_tip_motion.py # These will get removed upon install
-hh_old_klipper_files    += extras/mmu/mmu_movement_telemetry.py extras/mmu/mmu_selector_telemetry.py \
-                         extras/mmu/mmu_gcode_telemetry.py extras/mmu/mmu_telemetry_capture.py \
-                         extras/mmu/mmu_telemetry_stream.py extras/mmu/mmu_telemetry_api.py
 hh_moonraker_components := $(wildcard components/*.py)
 
 # All repo configs files less mmu_vars.cfg. Zero-length files (e.g. config/base/*.cfg

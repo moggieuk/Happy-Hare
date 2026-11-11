@@ -76,6 +76,19 @@ class TestSourceViewer(unittest.TestCase):
                     if viewer: viewer.close()
                     console.close()
 
+    def test_real_purge_macro_restores_absolute_extrusion_mode(self):
+        console = Console(parse_args(['--profile','ercf_vvd','--no-serve','--no-log','--plain']))
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                console.boot()
+                gcode_move = console.hh.printer.lookup_object('gcode_move')
+                gcode_move.absolute_extrude = True
+                console.run_command('MMU_TEST_PURGE')
+            self.assertEqual(console.hh.errors, [])
+            self.assertTrue(gcode_move.absolute_extrude)
+        finally:
+            console.close()
+
     def test_raw_telemetry_reads_do_not_expose_mutable_capture_records(self):
         self.hh.mmu.move_filament('Original label', 1)
         record = next(r for r in self.viewer.read_telemetry()['records'] if r['event'] == 'movement_start')
@@ -129,26 +142,42 @@ class TestViewerConsole(unittest.TestCase):
         with urllib.request.urlopen(url.replace('/telemetry','/'),timeout=2) as response:
             self.assertIn(b'Live simulator',response.read())
 
-    def configure_macro(self, macro, name, value):
-        with contextlib.redirect_stdout(self.out):
-            return self.bridge.rpc_sim_viewer_configure(None,
-                dict(unit=0, macro=macro, name=name, value=value))
+    def test_every_imported_viewer_module_is_served(self):
+        import pathlib, re
+        viewer = pathlib.Path(__file__).parent / 'hh' / 'viewer'
+        names = {'index.html', 'app.js'}
+        for page in [p for p in viewer.glob('*.js') if not p.name.endswith('.test.mjs')]:
+            names.update(re.findall(r"from '\./([\w.-]+\.js)'", page.read_text()))
+        for name in sorted(names):
+            with self.subTest(module=name):
+                url = 'http://127.0.0.1:%d/sim/viewer/%s' % (self.bridge.port, '' if name == 'index.html' else name)
+                with urllib.request.urlopen(url, timeout=2) as response:
+                    self.assertEqual(response.status, 200)
 
-    def test_macro_geometry_is_recorded_and_reverts_without_activity(self):
+    def run_script(self, script):
+        with contextlib.redirect_stdout(self.out):
+            return self.bridge.rpc_printer_gcode_script(None, {'script': script})
+
+    def configure_macro(self, macro, name, value):
+        self.run_script('SET_GCODE_VARIABLE MACRO=%s VARIABLE=%s VALUE="%s"' % (macro, name, value))
+
+    def test_macro_edit_rides_on_the_next_event_and_cancelled_edits_leave_nothing(self):
         with contextlib.redirect_stdout(self.out):
             self.bridge.rpc_sim_viewer_restart(None, {'profile': 'ercf_vvd'})
         viewer = self.bridge.viewer
         initial = viewer.read_telemetry()['records'][0]
         macro = '_MMU_CUT_TIP_VARS'
         old = initial['state']['macros'][macro]['blade_pos']
-        with self.assertRaises(RpcError):
-            self.configure_macro(macro, 'blade_pos', "'not a number'")
         self.configure_macro(macro, 'blade_pos', str(old + 5))
-        pending = viewer.read_telemetry()['records'][-1]
-        self.assertTrue(pending['pending'])
-        self.assertIn(dict(path=['macros', macro, 'blade_pos'], value=old+5), pending['changes'])
-        self.configure_macro(macro, 'blade_pos', str(old))
         self.assertEqual(viewer.read_telemetry()['records'], [initial])
+        self.configure_macro(macro, 'blade_pos', str(old))
+        self.console.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
+        self.assertEqual([r['event'] for r in viewer.read_telemetry()['records']], ['session', 'cut'])
+        self.configure_macro(macro, 'blade_pos', str(old + 5))
+        self.console.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
+        delta = viewer.read_telemetry()['records'][-2]
+        self.assertEqual(delta['event'], 'state_delta')
+        self.assertIn(dict(path=['macros', macro, 'blade_pos'], value=old+5), delta['changes'])
 
     def test_grouped_configuration_precedes_move_with_historical_geometry(self):
         with contextlib.redirect_stdout(self.out):
@@ -157,17 +186,16 @@ class TestViewerConsole(unittest.TestCase):
         macro = '_MMU_CUT_TIP_VARS'
         old = next(p['value'] for p in viewer.macro_parameters() if p['macro'] == macro and p['name'] == 'blade_pos')
         self.configure_macro(macro, 'blade_pos', str(old + 3))
+        self.run_script('MMU_TEST_CONFIG UNIT=0 TOOLHEAD_OOZE_REDUCTION=1.5')
         with contextlib.redirect_stdout(self.out):
-            self.bridge.rpc_sim_viewer_configure(None,dict(unit=0,name='toolhead_ooze_reduction',value='1.5'))
             self.console.hh.mmu.move_filament('after settings', 1, motor='gear')
         records = viewer.read_telemetry()['records']
         config = next(r for r in records if r['event'] == 'state_delta')
         self.assertGreaterEqual(len(config['changes']), 2)
         self.assertLess(config['sequence'], next(r['sequence'] for r in records if r['event'] == 'movement_start'))
         self.assertEqual(records[0]['state']['macros'][macro]['blade_pos'], old)
-        self.assertFalse(any(r.get('pending') for r in records))
 
-    def test_sensor_toggles_coalesce_but_survive_a_move(self):
+    def test_sensor_toggles_ride_on_the_next_event(self):
         viewer = self.bridge.viewer
         initial = viewer.read_telemetry()['records'][0]
         name = next(n for n, sensor in initial['state']['printer']['mmu']['sensors'].items() if sensor['enabled'])
@@ -175,41 +203,30 @@ class TestViewerConsole(unittest.TestCase):
             with contextlib.redirect_stdout(self.out):
                 self.bridge.rpc_sim_viewer_sensor(None, dict(name=name, enabled=enabled))
         toggle(False)
-        self.assertTrue(viewer.read_telemetry()['records'][-1]['pending'])
         toggle(True)
         self.assertEqual(viewer.read_telemetry()['records'], [initial])
         toggle(False)
+        self.assertEqual(viewer.read_telemetry()['records'], [initial])
         with contextlib.redirect_stdout(self.out):
             self.console.hh.mmu.move_filament('disabled sensor', 1, motor='gear')
-        toggle(True)
         records = viewer.read_telemetry()['records']
-        self.assertTrue(records[-1]['pending'])
-        self.assertTrue(any(r['event']=='state_delta' and not r.get('pending') for r in records))
+        self.assertTrue(any(r['event'] == 'state_delta' for r in records))
         self.assertTrue(initial['state']['printer']['mmu']['sensors'][name]['enabled'])
 
-    def test_running_bridge_does_not_observe_simulator_geometry(self):
-        with mock.patch.object(self.console.hh, 'filament', side_effect=AssertionError('simulator geometry')):
-            self.bridge.viewer.observe_configuration()
-            self.bridge.viewer.read_telemetry()
-        self.assertIsNone(getattr(self.console.hh.printer, 'harness_stepper_observer', None))
-        self.assertIsNone(getattr(self.console.hh.printer, 'harness_drive_observer', None))
-
-    def test_internal_macro_variables_are_rejected_and_strings_are_quoted(self):
-        with self.assertRaises(RpcError):
-            self.configure_macro('_MMU_CUT_TIP', 'output_park_pos', '99')
-        viewer = self.bridge.viewer
-        item = next(p for p in viewer.macro_parameters() if isinstance(p['value'], str))
-        text = 'both \" and \' quotes; M112\nnext line'
-        self.configure_macro(item['macro'], item['name'], repr(text))
+    def test_escaped_string_literals_reach_a_macro_variable_unchanged(self):
+        # The viewer escapes every character (editor.js); the printer must decode it back exactly.
+        item = next(p for p in self.bridge.viewer.macro_parameters() if isinstance(p['value'], str))
+        text = 'both " and \' quotes; M112\nnext line'
+        literal = "'" + ''.join('\\U%08x' % ord(c) for c in text) + "'"
+        self.configure_macro(item['macro'], item['name'], literal)
         obj = self.console.hh.printer.lookup_object('gcode_macro ' + item['macro'])
         self.assertEqual(obj.variables[item['name']], text)
 
     def test_apply_and_reject_hardware(self):
-        with contextlib.redirect_stdout(self.out):
-            self.bridge.rpc_sim_viewer_configure(None,dict(unit=0,name='toolhead_ooze_reduction',value='1.5'))
+        self.run_script('MMU_TEST_CONFIG UNIT=0 TOOLHEAD_OOZE_REDUCTION=1.5')
         self.assertEqual(self.console.hh.mmu.mmu_unit().toolhead_wrapper.p.toolhead_ooze_reduction,1.5)
         with self.assertRaises(RpcError):
-            self.bridge.rpc_sim_viewer_configure(None,dict(unit=0,name='extruder_switch_pin',value='PA1'))
+            self.run_script('MMU_TEST_CONFIG UNIT=0 EXTRUDER_SWITCH_PIN=PA1')
 
     def test_restart_preserves_server_and_replaces_session(self):
         old=self.bridge.viewer.session_id

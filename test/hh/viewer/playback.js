@@ -195,7 +195,9 @@ export function constrainFilament(tip, tail, sensors, fragments = [], reported =
     const fragment = fragments.some(part => part.start <= position && part.end >= position);
     if (!state && (tail === null || tail <= position)) {
       upper = Math.min(upper, position);
-      if (tip > position || fragment) warnings.push(`${name}: estimated tip is beyond a clear sensor`);
+      // The tip is still pulled back to the sensor, but an encoder-derived estimate within the
+      // sensor's tolerance (the encoder resolution) of it is not a disagreement worth reporting.
+      if (tip > position + (sensor.tolerance || 0) || fragment) warnings.push(`${name}: estimated tip is beyond a clear sensor`);
     } else if (state && !fragment && (tail === null || tail <= position)) {
       lower = Math.max(lower,position);
     }
@@ -290,14 +292,39 @@ export class CommandHistory {
   }
 }
 
+// "Positioning selector 4.2 → 46.2 mm (0.19s)", "Move selector servo 140 → 30°"
+export function selectorSummary(event) {
+  const {start={},outcome={}}=event.telemetry || {};
+  const value=v=>Number.isInteger(v) ? String(v) : v.toFixed(1);
+  const range=(from,to,unit)=>Number.isFinite(from) && Number.isFinite(to) ? ` ${value(from)} → ${value(to)}${unit}` : '';
+  const text=(event.label || 'Selector movement')
+    + (start.actuator === 'servo'
+      ? range(start.position_angle_deg,outcome.position_angle_deg ?? start.target_angle_deg,'°')
+      : range(start.position_mm,outcome.position_mm ?? start.target_position_mm,' mm'));
+  return outcome.elapsed_s > 0 ? `${text} (${outcome.elapsed_s.toFixed(2)}s)` : text;
+}
+
+// The notice for a selector move: up from the move through the gate-selection slide that follows a
+// stepper move, and until the viewer leaves that gate change. Following the stream at rest, a selector
+// move that is not about to slide (a lone servo move) does not leave it behind.
+export function selectorNotice(events, event, playing, following) {
+  const index=events.indexOf(event);
+  if (event.kind === 'selector_move')
+    return playing || !following || events[index+1]?.kind === 'gate_changed' ? `Selector: ${selectorSummary(event)}` : null;
+  const previous=events[index-1];
+  return event.kind === 'gate_changed' && previous?.kind === 'selector_move' && previous.actuator === 'stepper'
+    ? `Selector: ${selectorSummary(previous)} · Gate ${event.before?.gate} → ${event.state?.gate}` : null;
+}
+
 export function traceText(event) {
-  let type = {state:'state changed', gate_changed:'gate changed',move_completed:'move completed'}[event.kind] || event.kind;
+  let type = {state:'state changed', gate_changed:'gate changed',move_completed:'move completed',selector_move:'selector'}[event.kind] || event.kind;
   if (event.kind === 'movement') {
     const source = event.source || event.telemetry?.start?.source;
     type = event.homing ? 'homing move' : source === 'mmu_gcode' ? 'G1' : 'move';
   }
   const prefix = `${event.seq} · ${event.time.toFixed(2)}s · ${type} · `;
   if (event.kind === 'config') return prefix + (event.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.after)}`).join(' · ');
+  if (event.kind === 'selector_move') return prefix + selectorSummary(event);
   if (event.kind !== 'movement') return prefix + event.label;
   const start = event.telemetry?.start;
   let motor = start?.motor_mode || event.motor_mode;
@@ -634,7 +661,7 @@ export function toolchangeIndex(events, index, direction) {
 
 export function annotatedStep(events, event, navigating) {
   if (navigating) return event;
-  const animated = item => ['movement', 'gate_changed', 'toolchange'].includes(item.kind);
+  const animated = item => ['movement', 'gate_changed', 'toolchange', 'selector_move'].includes(item.kind);
   return animated(event) ? event : events.findLast(item => item.seq <= event.seq && animated(item)) || event;
 }
 

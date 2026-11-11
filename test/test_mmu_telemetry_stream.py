@@ -81,17 +81,13 @@ class TestTelemetryStream(unittest.TestCase):
         self.stream.unsubscribe('b')
         self.assertIsNone(self.stream.capture)
 
-    def test_idle_and_cancelled_configuration_preview(self):
+    def test_idle_change_is_delivered_with_the_next_event(self):
         first = self.subscribe(); self.ack(first)
-        self.stream.pump(); self.assertEqual(self.sent, [])
-        initial = self.hh.mmu.gate_selected
         self.hh.mmu.gate_selected = 1
+        self.stream.pump(); self.assertEqual(self.sent, [])
+        self.emit()
         self.stream.pump()
-        self.assertTrue(self.sent[-1]['records'][-1]['pending'])
-        self.ack(self.sent[-1])
-        self.hh.mmu.gate_selected = initial
-        self.stream.pump()
-        self.assertEqual(self.sent[-1]['records'], [])
+        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta', 'cut'])
 
     def test_simulator_latest_operation_has_configuration_checkpoint(self):
         first = self.subscribe()

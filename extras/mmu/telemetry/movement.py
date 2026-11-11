@@ -60,6 +60,11 @@ class MovementTelemetry:
         start = operation.start_record if operation else None
         return self.emit(event, start['move_id'] if start else None, **fields)
 
+    def config_changed(self, scope, name, value):
+        """A tunable value changed at runtime. Scope is the owning config section name."""
+        if self.listeners:
+            self.state('config_changed', scope=scope, name=name, value=value)
+
     @property
     def current(self):
         return self.operations[-1]

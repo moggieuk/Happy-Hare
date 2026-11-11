@@ -3133,6 +3133,61 @@ class TestSharedNfcSimulation(unittest.TestCase):
         self.assertIn('/remove 9', self._meta('/tag off 9'))
 
 
+class TestBufferAndEncoderCommands(unittest.TestCase):
+    """/buffer and /encoder edit simulator objects that are not MMU_TEST_CONFIG parameters."""
+
+    def setUp(self):
+        self.console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'ercf_vvd', '--no-log', '--plain']))
+        self.addCleanup(self.console.close)
+        self.console.boot()
+        self.units = self.console.hh.mmu.mmu_machine.units
+
+    def meta(self, line):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.console.meta(line)
+        return output.getvalue()
+
+    def test_buffer_edit_updates_the_object_and_physical_model(self):
+        buffer = next(u.buffer for u in self.units if u.buffer is not None)
+        output = self.meta('/buffer %s RANGE=12 MAXRANGE=20 SPRING=neutral' % buffer.name)
+        self.assertNotIn('!!', output)
+        self.assertEqual((buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state), (12, 20, 'neutral'))
+        self.assertEqual(self.console.hh.filament().buffers[buffer.name]['maxrange'], 20)
+        self.assertIn('RANGE=12 MAXRANGE=20 SPRING=neutral', output)
+        self.assertIn('RANGE=12 MAXRANGE=20 SPRING=neutral', self.meta('/buffer %s' % buffer.name))
+
+    def test_buffer_rejects_invalid_values_and_unknown_names(self):
+        buffer = next(u.buffer for u in self.units if u.buffer is not None)
+        before = (buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state)
+        for bad in ('RANGE=999', 'RANGE=abc', 'SPRING=bad', 'WIDTH=1'):
+            self.assertIn('!!', self.meta('/buffer %s %s' % (buffer.name, bad)), bad)
+        self.assertIn('!!', self.meta('/buffer missing RANGE=1'))
+        self.assertEqual((buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state), before)
+
+    def test_encoder_edit_validates_values_and_preserves_position(self):
+        encoder = self.units[0].encoder
+        self.units[1].encoder = encoder           # One shared object, reached through either unit
+        encoder.set_distance(100)
+        distance = encoder.get_distance()
+        self.assertNotIn('!!', self.meta('/encoder %s RESOLUTION=0.25' % encoder.name))
+        self.assertLessEqual(abs(encoder.get_distance() - distance), .125)
+        self.assertEqual(encoder.get_resolution(), .25)
+        for bad in ('RESOLUTION=0', 'AVERAGE_SAMPLES=1.5', 'DESIRED_HEADROOM=nan', 'ENCODER_PIN=PA1'):
+            self.assertIn('!!', self.meta('/encoder %s %s' % (encoder.name, bad)), bad)
+        self.assertEqual(encoder.get_resolution(), .25)
+
+    def test_an_edit_reaches_the_telemetry_stream_at_once(self):
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        buffer = next(u.buffer for u in self.units if u.buffer is not None)
+        capture = TelemetryCapture(self.console.hh.mmu)
+        self.addCleanup(capture.close)
+        self.meta('/buffer %s RANGE=%g' % (buffer.name, buffer.buffer_range - 1))
+        records = capture.read()['records']
+        self.assertEqual([r['event'] for r in records], ['session', 'state_delta', 'sim_settings_changed'])
+        self.assertTrue(any(c['path'][-1] == 'buffer_range' for c in records[1]['changes']))
+
+
 if __name__ == '__main__':
     unittest.main()
 

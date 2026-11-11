@@ -58,7 +58,9 @@ class MmuController(MmuFilamentMovement):
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
         self._material_purge_volume = 0.        # During toolchange, the material change contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
+        self.klipper_idle_timeout = None        # Printer's own [idle_timeout], captured on connect
         self.homing = None                      # Active homing target for status subscribers
+        self.config_changes = {}                # Runtime changes to configfile values: {section: {name: value}}
         self.bowden_start_pos = None            # If set then we can measure bowden progress
         self.step_unload_overshoot = 0.         # Handed from _MMU_STEP_UNLOAD_TOOLHEAD to _MMU_STEP_UNLOAD_BOWDEN
         self.step_unload_homing_buffer = 0.     # Handed from _MMU_STEP_UNLOAD_BOWDEN to _MMU_STEP_UNLOAD_GATE
@@ -209,9 +211,8 @@ class MmuController(MmuFilamentMovement):
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-        # Remember user setting of idle_timeout so it can be restored (if not overridden)
-        if self.p.default_idle_timeout < 0:
-            self.p.default_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
+        # Remember user setting of idle_timeout so it can be restored (see default_idle_timeout)
+        self.klipper_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
 
         # Establish existence of Blobifier and filament cutter options
         # TODO: A little bit hacky until a more universal approach is implemented
@@ -226,6 +227,17 @@ class MmuController(MmuFilamentMovement):
         self.log_debug('Klipper disconnected!')
 
 
+    def _seed_config_changes(self):
+        settings = self.printer.lookup_object('configfile').get_status(0).get('settings', {})
+        sets = [self.p]
+        for unit in self.mmu_machine.units:
+            sets += [unit.p, unit.selector.p, unit.toolhead_wrapper.p]
+        for params in sets:
+            for scope, name, value in params.differences_from(settings):
+                if not name.startswith('default_gate_') and name not in ('default_ttg_map', 'default_endless_spool_groups'):
+                    self.config_changes.setdefault(scope, {})[name] = value
+
+
     def handle_ready(self):
         # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
@@ -235,6 +247,9 @@ class MmuController(MmuFilamentMovement):
 
         # Restore state (only if fully calibrated)
         self._load_persisted_state()
+
+        # Clients start from the configfile, so record where load-time fix-ups moved values away from it
+        self._seed_config_changes()
 
         # Setup events for managing internal print state machine
         self.psm.register_event_handlers()
@@ -563,11 +578,8 @@ class MmuController(MmuFilamentMovement):
         """
         retract = self.toolchange_retract
         length = retract - self.park_retracted_length()
-        if not self.toolhead.get_extruder().get_heater().can_extrude:
-            self._persist_park_retraction()
-            return
-        if abs(length) < 0.01:
-            self._persist_park_retraction()
+        if abs(length) < 0.01 or not self.toolhead.get_extruder().get_heater().can_extrude:
+            self._persist_park_retraction() # Not every load restores the toolhead position afterwards
             return
         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
@@ -582,7 +594,6 @@ class MmuController(MmuFilamentMovement):
             )
         self._set_park_retracted_length(retract)
         self._persist_park_retraction()
-
 
 
     def _persist_park_retraction(self):
@@ -821,7 +832,7 @@ class MmuController(MmuFilamentMovement):
                         "Unknown",
             'filament_position': self.drive().get_filament_position(),
             'homing': None if self.homing is None else dict(self.homing, endstops=list(self.homing['endstops'])),
-            'filament_grip_state': self.selector().get_filament_grip_state(),
+            'config_changes': self.config_changes,
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'pending_spool_id': self.pending_spool_id,
@@ -868,11 +879,6 @@ class MmuController(MmuFilamentMovement):
 
         # Add in active sensors
         status['sensors'] = self.sensor_manager.get_status(eventtime)
-        all_sensors = self.sensor_manager.get_sensor_states(all_sensors=True)
-        active = {id(sensor) for _, sensor in self.sensor_manager.get_sensor_states().values()}
-        status['sensor_states'] = {name: dict(triggered=value, enabled=bool(sensor.runout_helper.sensor_enabled))
-                                   for name, (value, sensor) in all_sensors.items()}
-        status['active_sensors'] = [name for name, (_, sensor) in all_sensors.items() if id(sensor) in active]
 
         if self.has_encoder():
             status['encoder'] = self.encoder().get_status(eventtime)
@@ -1941,6 +1947,12 @@ class MmuController(MmuFilamentMovement):
 # -----------------------------------------------------------------------------------------------------------
 
     @property
+    def default_idle_timeout(self):
+        """Idle timeout to restore: the parameter, or Klipper's own [idle_timeout] while it is left at -1"""
+        configured = self.p.default_idle_timeout
+        return self.klipper_idle_timeout if configured < 0 else configured
+
+    @property
     def gate_status(self):
         return self.gate_maps.gate_status
 
@@ -2751,7 +2763,7 @@ class MmuController(MmuFilamentMovement):
 
     def _mmu_unlock(self):
         if self.is_mmu_paused():
-            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
+            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
 
             # Important to wait for stable temperature to resume exactly how we paused
@@ -3139,14 +3151,18 @@ class MmuController(MmuFilamentMovement):
     def set_filament_pos_state(self, state, silent=False, source=None, homing_overshoot_mm=None):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
             self.td1.release()
-        if self.filament_pos != state or source is not None or homing_overshoot_mm is not None:
-            previous = self.filament_pos
+        previous = self.filament_pos
+        changed = previous != state
+        if changed:
             self.filament_pos = state
+        # A repeated position can still carry a sensor-anchored homing result
+        if self.movement_telemetry.listeners and (changed or source is not None or homing_overshoot_mm is not None):
             self.movement_telemetry.state('filament_pos_changed',
                 unit=self.mmu_unit().name, gate=self.gate_selected,
                 previous=previous, filament_pos=state, source=source,
                 homing_overshoot_mm=homing_overshoot_mm,
                 filament_pos_name=FILAMENT_POS_NAME_MAP.get(state, 'UNKNOWN'))
+        if changed:
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
                 if not silent:
                     self._display_visual_state()
@@ -3470,7 +3486,7 @@ class MmuController(MmuFilamentMovement):
         self._clear_pending() # Drop any pending shared-NFC spool_id/metadata on disable
         self._disable_filament_monitoring()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
-        self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
+        self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.motors_onoff(on=False) # Will also unsync gear
         self.is_enabled = False
         self.printer.send_event("mmu:disabled")
@@ -3900,8 +3916,9 @@ class MmuController(MmuFilamentMovement):
         self.led_manager.gate_map_changed(gate)
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
-        self.movement_telemetry.state('gate_changed', previous_gate=prev_gate,
-                                     gate=gate, unit=self.mmu_unit(gate).name)
+        if self.movement_telemetry.listeners:
+            self.movement_telemetry.state('gate_changed', previous_gate=prev_gate,
+                                         gate=gate, unit=self.mmu_unit(gate).name)
 
         # A real gate in use means the bypass filament is gone
         if gate >= 0 and self.bypass_filament:

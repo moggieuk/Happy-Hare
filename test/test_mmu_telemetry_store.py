@@ -18,7 +18,7 @@ import unittest
 from components.mmu_telemetry_store import TelemetryHistory, TelemetryRecorder
 
 
-HEADER = dict(event='session', schema='happy_hare.motion', version=2,
+HEADER = dict(event='session', schema='happy_hare.motion', version=1,
               session_id='test', sequence=0, timestamp=0, state={'parameter': 10})
 
 def event(seq, kind='cut', **fields):
@@ -35,14 +35,10 @@ class TestTelemetryStore(unittest.TestCase):
         self.assertEqual(latest['records'][0]['state'], {'parameter': 20})
         self.assertEqual(history.read(history='start')['records'][0]['state'], {'parameter': 10})
 
-    def test_rollover_checkpoint_and_pending_cancellation(self):
+    def test_rollover_checkpoint(self):
         history = TelemetryHistory(2)
         history.append(dict(records=[HEADER, event(1, 'state_delta', changes=[dict(path=['parameter'],value=30)]),event(2),event(3)]))
         self.assertEqual(history.read(0)['records'][0]['state'], {'parameter':30})
-        history.append(dict(records=[event(4, 'state_delta', pending=True, changes=[])]))
-        self.assertTrue(history.read(3)['records'][0]['pending'])
-        history.append(dict(records=[]))
-        self.assertEqual(history.read(3)['records'], [])
 
     def test_each_rotated_file_has_current_baseline_and_startup_preserves_log(self):
         with tempfile.TemporaryDirectory() as directory:

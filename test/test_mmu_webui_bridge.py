@@ -235,56 +235,14 @@ class TestPauseDialogReachesTheUi(WebUiBridgeTestCase):
 class TestViewerSharedObjects(WebUiBridgeTestCase):
     PROFILE = 'ercf_vvd'
 
-    def test_shared_toolhead_is_listed_once_and_edits_reach_both_units(self):
-        objects = self.call('sim.viewer.objects', kind='toolhead')['result']['objects']
-        self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]['units'], [0, 1])
-        reply = self.call('sim.viewer.objects', kind='toolhead', name=objects[0]['name'],
-                          parameter='toolhead_residual_filament', value='3')
+    def test_toolhead_edit_through_gcode_script_reaches_both_units(self):
+        reply = self.call('printer.gcode.script', script='MMU_TEST_CONFIG UNIT=0 TOOLHEAD_RESIDUAL_FILAMENT=3')
         self.assertIn('result', reply)
         for unit in self.hh.mmu.mmu_machine.units:
             self.assertEqual(unit.toolhead_wrapper.p.toolhead_residual_filament, 3)
 
-    def test_shared_encoder_edits_validate_values_and_preserve_position(self):
-        units = self.hh.mmu.mmu_machine.units
-        encoder = units[0].encoder
-        units[1].encoder = encoder
-        objects = self.call('sim.viewer.objects', kind='encoder')['result']['objects']
-        self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]['units'], [0, 1])
-        encoder.set_distance(100)
-        distance = encoder.get_distance()
-        reply = self.call('sim.viewer.objects', kind='encoder', name=encoder.name,
-                          parameter='encoder_resolution', value='0.25')
-        self.assertIn('result', reply)
-        self.assertLessEqual(abs(encoder.get_distance()-distance), .125)
-        for name, value in [('encoder_resolution', '0'), ('average_samples', '1.5'),
-                            ('desired_headroom', 'nan'), ('encoder_pin', 'PA1')]:
-            self.assertIn('error', self.call('sim.viewer.objects', kind='encoder',
-                                            name=encoder.name, parameter=name, value=value))
-        self.assertEqual(encoder.get_resolution(), .25)
-
-    def test_missing_objects_and_invalid_object_types(self):
-        self.hh.mmu.mmu_machine.units[0].encoder = None
-        self.assertEqual(self.call('sim.viewer.objects', kind='encoder')['result']['objects'], [])
-        self.assertIn('error', self.call('sim.viewer.objects', kind='unknown'))
-        self.assertIn('error', self.call('sim.viewer.objects', kind='toolhead', name='missing',
-                                        parameter='toolhead_residual_filament', value='3'))
-
-    def test_buffer_edits_update_model_and_reject_invalid_ranges(self):
-        fitted = self.call('sim.viewer.objects', kind='buffer')['result']['objects'][0]
-        index = fitted['units'][0]
-        values = dict(buffer_maxrange=20, buffer_range=12, buffer_spring_state='neutral')
-        reply = self.call('sim.viewer.configure_buffer', unit=index, values=values)
-        self.assertIn('result', reply)
-        buffer = self.hh.mmu.mmu_machine.units[index].buffer
-        self.assertEqual(buffer.buffer_maxrange, 20)
-        self.assertEqual(buffer.buffer_spring_state, 'neutral')
-        self.assertEqual(self.hh.filament().buffers[buffer.name]['maxrange'], 20)
-        for invalid in [{**values, 'buffer_range': 21}, {**values, 'buffer_maxrange': 'bad'},
-                        {**values, 'buffer_spring_state': 'bad'}]:
-            self.assertIn('error', self.call('sim.viewer.configure_buffer', unit=index, values=invalid))
-        self.assertEqual(buffer.buffer_range, 12)
+    def test_failed_script_is_an_error_reply(self):
+        self.assertIn('error', self.call('printer.gcode.script', script='MMU_TEST_CONFIG UNIT=0 EXTRUDER_SWITCH_PIN=PA1'))
 
 
 if __name__ == '__main__':
