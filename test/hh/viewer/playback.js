@@ -1,3 +1,4 @@
+import {short as sensorName, DEFAULT_COLOR} from './util.js';
 export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   if (state.selector_type!=='VirtualSelector') return null;
   const gates=state.unit_gates || state.tips.map((_,index)=>index);
@@ -512,10 +513,9 @@ function gateSpacingScale(distance) {
 
 // Expand the ordered stack for long offsets, keeping every device below the curve.
 export function gateDevicePositions(state, sensors) {
-  const short = name => name.split(':').at(-1);
   const hasExit = sensors.some(([name,d]) => Number.isFinite(d.position) &&
-    ['mmu_exit',`mmu_exit_${state.gate}`].includes(short(name)));
-  const hasShared = sensors.some(([name,d]) => Number.isFinite(d.position) && short(name) === 'mmu_shared_exit');
+    ['mmu_exit',`mmu_exit_${state.gate}`].includes(sensorName(name)));
+  const hasShared = sensors.some(([name,d]) => Number.isFinite(d.position) && sensorName(name) === 'mmu_shared_exit');
   const devices = [...(hasExit ? ['exit'] : []), ...(hasShared ? ['sharedExit'] : [])];
   if (state.devices?.[`${state.unit}:encoder`]) {
     const reference = encoderReference(state,sensors);
@@ -559,7 +559,7 @@ export function lastEncoderReading(events, current, unit) {
 // Blend through the last retained melt, finishing when its volume has cleared.
 export function purgeColor(state, deposited) {
   const plan = state.purge_transition;
-  if (!plan) return state.nozzle_color || state.filament?.retained_color || '808182';
+  if (!plan) return state.nozzle_color || state.filament?.retained_color || DEFAULT_COLOR;
   let fraction = plan.mix_mm > 0
     ? Math.max(0, Math.min(1, (deposited-plan.start_mm-plan.retained_mm+plan.mix_mm)/plan.mix_mm))
     : Number(deposited >= plan.start_mm+plan.retained_mm);
@@ -764,7 +764,7 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
       let result=tip;
       for (const [name,sensor] of Object.entries(s.sensors || {})) {
         if (s.active_sensors && !s.active_sensors.includes(name)) continue;
-        if (!['extruder','toolhead'].includes(name.split(':').at(-1)) || sensor.enabled === false || !Number.isFinite(sensor.position)) continue;
+        if (!['extruder','toolhead'].includes(sensorName(name)) || sensor.enabled === false || !Number.isFinite(sensor.position)) continue;
         const fragment=s.retained_segment;
         if (fragment && fragment.start<=sensor.position && fragment.end>=sensor.position) continue;
         if (sensor.state === true) result=Math.max(result,sensor.position);
@@ -789,7 +789,7 @@ export function toolheadDrawingRange(state) {
   const entry=state.layout.extruder_gears ?? state.layout.extruder_entry ?? 700;
   const sensor=Object.entries(state.sensors || {}).find(([name,sensor])=>
     (!state.active_sensors || state.active_sensors.includes(name)) &&
-    name.split(':').at(-1) === 'extruder' && Number.isFinite(sensor.position) && sensor.position < entry);
+    sensorName(name) === 'extruder' && Number.isFinite(sensor.position) && sensor.position < entry);
   return {entry,end:state.layout.nozzle ?? (state.layout.toolhead ?? 760)+30,
     height:243,sensorEntry:sensor?.[1].position ?? entry,sensorGap:sensor ? 35 : 0};
 }
@@ -799,7 +799,7 @@ export function toolheadProgress(state, position, range=toolheadDrawingRange(sta
   const fraction=(position-range.entry)/(range.end-range.entry);
   const sensor=Object.entries(state.sensors || {}).find(([name,sensor])=>
     (!state.active_sensors || state.active_sensors.includes(name)) &&
-    name.split(':').at(-1) === 'toolhead' && Number.isFinite(sensor.position));
+    sensorName(name) === 'toolhead' && Number.isFinite(sensor.position));
   const pivot=sensor ? (sensor[1].position-range.entry)/(range.end-range.entry) : 0;
   if (pivot <= 0 || pivot >= 1) return fraction;
   const drawn=Math.max(pivot,34/range.height);
