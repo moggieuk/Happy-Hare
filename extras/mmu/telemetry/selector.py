@@ -36,23 +36,30 @@ def selector_operation(owner, actuator, **fields):
                        elapsed_s=max(0., telemetry.reactor.monotonic()-start['timestamp']), **outcome)
 
 
-def home_selector_rail(owner, endstop_name=None):
+def selector_move(owner, trace_str, pos, new_pos, speed, accel, wait, homing_move=0, endstop_name=None):
+    """Telemetry scope for one selector stepper move (plain, or homing against an endstop)"""
+    return selector_operation(owner, 'stepper', label=trace_str or 'Move selector',
+            position_mm=pos, target_position_mm=new_pos, requested_mm=new_pos-pos,
+            speed_mm_s=speed, acceleration_mm_s2=accel, wait=wait,
+            homing=bool(homing_move), endstop=(endstop_name or 'default') if homing_move else None,
+            trigger_state=(homing_move > 0) if homing_move else None)
+
+
+def finish_selector_move(owner, outcome, actual, homed, homing_move, wait):
+    outcome.update(position_mm=owner.selector_stepper.commanded_pos, actual_mm=actual,
+                   homed=homed if homing_move else None,
+                   status=('completed' if homed else 'not_homed') if homing_move else 'completed' if wait else 'submitted')
+
+
+def home_selector_rail(owner):
     stepper = owner.selector_stepper
-    command = {} if endstop_name is None else dict(endstop_name=endstop_name)
     if not owner.mmu.movement_telemetry.listeners:
-        return stepper.do_home_rail(**command)
-    hi = stepper.rail.get_homing_info()
-    # Rail homing rebases coordinates and may retract/rehome. Its net trigger
-    # travel is separate from the final commanded coordinate.
-    with selector_operation(owner, 'stepper', label='Home selector rail', homing=True,
-            rail_homing=True, endstop=endstop_name or 'default', trigger_state=True,
-            target_position_mm=hi.position_endstop, speed_mm_s=hi.speed,
-            retract_mm=hi.retract_dist, retract_speed_mm_s=hi.retract_speed,
-            second_homing_speed_mm_s=hi.second_homing_speed,
-            position_reference='homing_rebased') as outcome:
-        traveled = stepper.do_home_rail(**command)
-        outcome.update(status='completed', homed=True, trigger_travel_mm=traveled,
-                       position_mm=stepper.commanded_pos)
+        return stepper.do_home_rail()
+    # Rail homing rebases coordinates, so the net trigger travel differs from the final commanded position
+    with selector_operation(owner, 'stepper', label='Home selector rail', homing=True, endstop='default',
+            trigger_state=True, target_position_mm=stepper.rail.get_homing_info().position_endstop) as outcome:
+        traveled = stepper.do_home_rail()
+        outcome.update(status='completed', homed=True, position_mm=stepper.commanded_pos)
         return traveled
 
 

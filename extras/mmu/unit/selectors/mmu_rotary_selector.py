@@ -27,7 +27,7 @@ from typing                 import Sequence
 
 # Happy Hare imports
 from ...mmu_constants       import *
-from ...telemetry.selector import selector_operation, home_selector_rail
+from ...telemetry.selector import selector_move, finish_selector_move, home_selector_rail
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
 from ...mmu_base_parameters import TunableParametersBase, ParamSpec
@@ -478,15 +478,11 @@ class RotarySelector(PhysicalSelector):
         accel = accel or self.p.selector_accel
 
         position = self.selector_stepper.commanded_pos
-        with selector_operation(self, 'stepper', label=trace_str or 'Move selector',
-                position_mm=position, target_position_mm=new_pos, requested_mm=new_pos-position,
-                speed_mm_s=speed, acceleration_mm_s2=accel, homing=False, wait=wait) as outcome:
+        with selector_move(self, trace_str, position, new_pos, speed, accel, wait) as outcome:
             self.selector_stepper.do_move(new_pos, speed, accel)
             if wait:
                 self.mmu.movequeue_wait()
-            outcome.update(position_mm=self.selector_stepper.commanded_pos,
-                           actual_mm=self.selector_stepper.commanded_pos-position,
-                           status='completed' if wait else 'submitted')
+            finish_selector_move(self, outcome, self.selector_stepper.commanded_pos-position, False, 0, wait)
 
 
         return new_pos
