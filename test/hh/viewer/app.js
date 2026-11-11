@@ -3,7 +3,7 @@ import {LiveState, liveFrame} from './live-state.js';
 import {liveMachine} from './live-config.js';
 import {overlayAllowed,overlaySnapshot} from './overlay.js';
 import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroParameters,toolheadObjects} from './editor.js';
-import { SpoolRenderer, renderSpool, spoolWindingRadius } from './spool.js';
+import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
@@ -582,7 +582,7 @@ let spoolLastFrame=null, spoolSession=null;
 const spoolRenderers=new Map();
 let renderedSpoolState=null;
 function spoolMotion(index,operation) {
-  const active=operation?.output_power>0 && ['assist','rewind'].includes(operation.direction);
+  const active=espoolerActive(operation);
   const visibility=spoolArrowVisibility.get(index) ?? (active ? 1 : 0);
   return {rotation:spoolAngles.get(index) || 0,
     arrowOpacity:visibility*visibility*(3-2*visibility),
@@ -964,7 +964,7 @@ function renderScene() {
 
     for (const {index,offset,row,lift} of visible) {
       const operation=s.espoolers?.[index];
-      const active=operation?.output_power>0 && ['assist','rewind'].includes(operation.direction);
+      const active=espoolerActive(operation);
       // Offset the winding slightly right of the filament lane.
       const x=gateLaneX(offset)+4-spoolDepth*Math.sin(spoolViewAngle)*spoolScale/2;
       const y=549.6+row*rowSpacing-lift+mmuOffset;
@@ -1584,7 +1584,7 @@ function animate() {
   let spoolFading=false;
   const fadeStep=spoolLastFrame === null ? 0 : Math.min(100,now-spoolLastFrame)/450;
   for (const [gate,operation] of Object.entries(displayed?.espoolers || {})) {
-    const index=Number(gate), active=operation.output_power>0 && ['assist','rewind'].includes(operation.direction);
+    const index=Number(gate), active=espoolerActive(operation);
     if (active) spoolDirections.set(index,operation.direction);
     const target=active ? 1 : 0, previous=spoolArrowVisibility.get(index) ?? (spoolRunning ? 0 : target);
     const next=previous+Math.sign(target-previous)*Math.min(Math.abs(target-previous),fadeStep);
@@ -1595,7 +1595,7 @@ function animate() {
   if (spoolRunning && spoolLastFrame !== null) {
     const seconds=Math.min(100,now-spoolLastFrame)/1000;
     for (const [gate,operation] of Object.entries(displayed?.espoolers || {})) {
-      if (!(operation.output_power>0) || !['assist','rewind'].includes(operation.direction)) continue;
+      if (!espoolerActive(operation)) continue;
       const speed=(40+100*Math.min(1,operation.output_power))*(operation.direction==='rewind'?-1:1);
       spoolAngles.set(Number(gate),((spoolAngles.get(Number(gate)) || 0)+seconds*speed)%360);
       spoolRotating=true;

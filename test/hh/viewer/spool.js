@@ -156,3 +156,6 @@ export class SpoolRenderer {
     this.motion={rotation,arrowOpacity,direction,glow};
   }
 }
+
+// An espooler operation that is turning the spool (assist or rewind with power)
+export const espoolerActive = operation => operation?.output_power > 0 && ['assist', 'rewind'].includes(operation.direction);

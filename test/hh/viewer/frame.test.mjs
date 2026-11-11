@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {espoolerActive} from './spool.js';
 
 // Exercise the actual frame loop without SVG/layout cost or a browser clock.
 const app=readFileSync(new URL('./app.js',import.meta.url),'utf8');
@@ -17,7 +18,7 @@ function harness() {
     playing:{event,start:0},displayed:state,live:true,paused:false,
     events:[event],played:0,pauseAfterStep:false,offline:false,
     sensorPulse:{start:0},renders:0,scheduled:0,spoolUpdates:0,
-    updateSpoolMotion:()=>context.spoolUpdates++,
+    updateSpoolMotion:()=>context.spoolUpdates++,espoolerActive,
     updateLiveIndicator:()=>{},
     $:()=>({checked:false}),duration:()=>1000,nozzleArrivalTime:()=>null,
     playbackFrame:()=>({fraction:.1,state}),homingPulse:()=>null,followTrace:()=>{},
