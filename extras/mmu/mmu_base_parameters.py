@@ -482,10 +482,13 @@ class TunableParametersBase:
         mmu = self._config.get_printer().lookup_object('mmu', None) if scope else None
         if mmu is not None:
             settings = self._config.get_printer().lookup_object('configfile').get_status(0)['settings']
+            # Copy on write: get_status() hands out this dict and Klipper compares it with the previous one
+            changes = {s: dict(v) for s, v in mmu.config_changes.items()}
             if self.differs_from_configfile(settings, name, value):
-                mmu.config_changes.setdefault(scope, {})[name] = value
+                changes.setdefault(scope, {})[name] = value
             else:
-                mmu.config_changes.get(scope, {}).pop(name, None)
-                if not mmu.config_changes.get(scope, True):
-                    del mmu.config_changes[scope]
+                changes.get(scope, {}).pop(name, None)
+                if not changes.get(scope, True):
+                    del changes[scope]
+            mmu.config_changes = changes
             mmu.movement_telemetry.config_changed(scope, name, value)

@@ -44,6 +44,15 @@ class TestLiveStatus(unittest.TestCase):
         self.assertEqual(changes['mmu_toolhead default'], {'toolhead_residual_filament': 3})
         self.assertEqual(changes['mmu_parameters']['log_level'], 2)
 
+    def test_each_edit_reports_a_new_snapshot_so_status_subscribers_see_it(self):
+        mmu = self.hh.mmu
+        self.hh.run_gcode('MMU_TEST_CONFIG TOOLHEAD_RESIDUAL_FILAMENT=3')
+        earlier = mmu.get_status(0)['config_changes']
+        self.hh.run_gcode('MMU_TEST_CONFIG TOOLHEAD_RESIDUAL_FILAMENT=4')
+        self.assertEqual(earlier['mmu_toolhead default'], {'toolhead_residual_filament': 3})
+        self.assertIsNot(mmu.get_status(0)['config_changes'], earlier)
+        self.assertEqual(mmu.get_status(0)['config_changes']['mmu_toolhead default'], {'toolhead_residual_filament': 4})
+
     def test_unchanged_value_is_not_reported(self):
         mmu = self.hh.mmu
         before = mmu.get_status(0)['config_changes'].get('mmu_parameters', {}).get('log_level')

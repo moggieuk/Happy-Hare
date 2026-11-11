@@ -53,11 +53,11 @@ export function liveMachine(objects) {
 // The active sensor map is keyed by short names for the selected gate. Rebuild the
 // qualified names the scene uses: shared toolhead sensors, per-gate switches, buffer sensors
 // (named for the buffer, which units may share) and per-unit devices.
-export function qualifySensors(sensors,unit,gate,buffer) {
+export function qualifySensors(sensors,unit,gate,buffer,toolhead='default') {
   const result={};
   for (const [name,value] of Object.entries(sensors || {})) {
     if (UNREGISTERED.test(name)) continue;
-    const key=SHARED_SENSOR.test(name) ? `default:${name}` : GATE_SENSOR.test(name) ? `${name}_${gate}` :
+    const key=SHARED_SENSOR.test(name) ? `${toolhead}:${name}` : GATE_SENSOR.test(name) ? `${name}_${gate}` :
       BUFFER_SENSOR.test(name) ? `${buffer || unit}:${name}` : `${unit}:${name}`;
     result[key]={triggered:value,enabled:value!==null};
   }

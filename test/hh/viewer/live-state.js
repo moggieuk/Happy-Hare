@@ -19,7 +19,7 @@ export class LiveState {
     if (!status || !machine) return null;
     const names=Object.keys(machine.units), unitName=names[status.unit] || names[0];
     if (!unitName) return null;
-    const sensors=qualifySensors(status.sensors,unitName,status.gate,machine.units[unitName].buffer?.name);
+    const sensors=qualifySensors(status.sensors,unitName,status.gate,machine.units[unitName].buffer?.name,machine.units[unitName].toolhead.name);
     machine.units[unitName].sensors=Object.keys(sensors);
     const m={...clone(status),unit:unitName, sensors,active_sensors:Object.keys(sensors),
       gate_color:(status.gate_color_rgb || status.gate_color || []).map(rgb),
