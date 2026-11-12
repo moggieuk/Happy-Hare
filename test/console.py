@@ -581,10 +581,9 @@ class Console:
                      prime=not a.no_prime, seed=a.seed,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
-        from extras.mmu.mmu_utils import MmuColorUtils
+        from extras.mmu.telemetry.capture import display_color as hex6
         mmu = self.hh.mmu
         unit, extruder = mmu.mmu_unit(), mmu.mmu_unit().extruder_wrapper
-        hex6 = lambda color: MmuColorUtils.color_to_rgb_hex(color, '808182')[:6]
         mmu.movement_telemetry.state('filament_pos_snapshot',
             filament=dict(extruder=extruder.name, retracted_length=extruder.retracted_length,
                           residual_mm=unit.toolhead_wrapper.p.toolhead_residual_filament,
