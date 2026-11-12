@@ -815,12 +815,13 @@ test('a spool tooltip lists its gate map entry and leaves out unset values',()=>
  const state={gate_status:[1,0],gate_colors:['ff0000','808182'],spool_percentages:[75,null],
   gate_map:{material:['PLA',''],filament_name:['Matte red',''],vendor:['',''],temperature:[210,-1],speed_override:[100,100],
    spool_id:[12,-1],td:[null,null],rfid:['',''],ttg_map:[1,0],endless_spool_groups:[0,1],initial_weight:[1000,-1],remaining_weight:[750,-1]}};
- const lines=spoolTooltip(state,0,{direction:'assist',output_power:.4},true).split('\n');
+ const lines=spoolTooltip(state,0).split('\n');
  assert.deepEqual(lines,['Gate 0 · Available','Material: PLA','Filament: Matte red','Color: #ff0000','Temperature: 210 °C',
-  'Speed override: 100%','Spool ID: 12','Weight: 750 of 1000 g (75%)','Tool: T1','Endless spool group: 0','Espooler: assist · 40% output']);
- const empty=spoolTooltip(state,1,undefined,false).split('\n');
- assert.deepEqual(empty,['Gate 1 · Empty','Color: #808182','Speed override: 100%','Weight: unavailable','Tool: T0','Endless spool group: 1','Espooler: stopped']);
- assert.equal(spoolTooltip({gate_status:[]},0,undefined,false).split('\n')[0],'Gate 0 · Unknown'); // Old recordings carry no gate map
+  'Spool ID: 12','Weight: 750 of 1000 g (75%)','Tool: T1','Endless spool group: 0']);
+ state.gate_map.speed_override[1]=85;
+ const empty=spoolTooltip(state,1).split('\n');
+ assert.deepEqual(empty,['Gate 1 · Empty','Color: #808182','Speed override: 85%','Weight: unavailable','Tool: T0','Endless spool group: 1']); // Only a changed speed is listed
+ assert.equal(spoolTooltip({gate_status:[]},0).split('\n')[0],'Gate 0 · Unknown'); // Old recordings carry no gate map
 });
 test('the gear spacing eases between grip states over half a second instead of snapping',()=>{
  let tw=tweenTo(null,17.25,0);
