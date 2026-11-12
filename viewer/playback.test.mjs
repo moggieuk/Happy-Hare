@@ -883,20 +883,21 @@ test('a slide between units moves the rack at constant speed and the raised spoo
  assert.equal(lift(0,3),10);assert.equal(lift(1,4),10);
  assert.ok(lift(.5,3)<10 && lift(.5,4)<10);                       // Neither is under the exit mid-slide
 });
-test('the Bowden fades back while the rack moves away from the exit and returns when the gate arrives',()=>{
+test('the MMU side fades only when the rack leaves the selected unit, and returns as the next unit arrives',()=>{
  const layouts=[{name:'v',gates:[0,1,2,3],selector_type:'VirtualSelector'},{name:'l',gates:[4,5,6,7],selector_type:'LinearSelector'}];
  const options={current:'v',spacing:54,angle:77*Math.PI/180};
  const reach=extra=>rackGrid(layouts,{...options,...extra}).reach;
  assert.equal(reach({focus:1}),1);                                   // Selected gate under the exit: attached
  assert.equal(reach({focus:5}),1);
- assert.equal(reach({focus:1,manual:-200}),0);                      // Scrolled well away: detached
- const part=reach({focus:1,manual:-60});assert.ok(part>0 && part<1);
+ assert.equal(reach({focus:1,manual:-400}),0);                       // Scrolled out of the unit: detached
+ const part=reach({focus:1,manual:-100});assert.ok(part>0 && part<1);
  const slide=t=>reach({slide:{from:1,to:5,t}});                      // Virtual unit to a linear one
  assert.equal(slide(0),1);assert.equal(slide(1),1);
- assert.equal(slide(.5),0);                                          // Fully faded while the units pass
- assert.ok(slide(.3)<1 && slide(.7)<1);                         // ...fading out and back in
- const within=rackGrid([{name:'l',gates:[0,1,2,3],selector_type:'LinearSelector'}],{...options,current:'l',slide:{from:1,to:2,t:.5}});
- assert.equal(within.reach,1);                                       // A move to the next lane stays attached
+ assert.ok(slide(.5)<.1);                                            // Faded while the units pass
+ assert.ok(slide(.4)<1 && slide(.6)<1);                              // ...fading out and back in
+ const linear=[{name:'l',gates:[0,1,2,3],selector_type:'LinearSelector'}];
+ const within=t=>rackGrid(linear,{...options,current:'l',slide:{from:0,to:3,t}}).reach;
+ for (const t of [0,.25,.5,.75,1]) assert.equal(within(t),1);        // Gate changes inside one unit never fade
 });
 test('a hand-scrolled rack returns to the selected gate only after 2.5 seconds of inactivity',()=>{
  assert.equal(rackIdleReturn(-300,2499),false);

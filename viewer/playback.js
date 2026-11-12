@@ -54,7 +54,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     if (!count) continue;
     const virtual=layout.selector_type === 'VirtualSelector';
     const columns=Math.min(virtual ? maxVirtualColumns : capacity,count), width=(columns-1)*spacing+2*padding;
-    units.push({name:layout.name,virtual,columns,rows:Math.ceil(count/columns),left,right:left+width,current:layout.name === current});
+    units.push({name:layout.name,gates:layout.gates,virtual,columns,rows:Math.ceil(count/columns),left,right:left+width,current:layout.name === current});
     layout.gates.forEach((index,slot)=>{
       const x=left+padding+(slot%columns)*spacing;
       lanes.push({index,row:Math.floor(slot/columns),x,unit:layout.name,virtual});
@@ -71,10 +71,13 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const rackLeft=0, rackRight=Math.max(0,left-gap);
   const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
   const shift=base+applied;
-  // The Bowden stays attached while a gate (or the gate it is leaving) sits within half a lane of the exit,
-  // and fades out over the next lane as the rack moves away, so it never appears joined to the wrong spool.
-  const closeness=x=>Math.max(0,Math.min(1,1-(Math.abs(x+shift-620)-spacing/2)/spacing));
-  const reach=slide ? Math.max(closeness(anchorOf(slide.from)),closeness(anchorOf(slide.to))) : closeness(anchor);
+  // The MMU side stays attached while the exit is well inside the unit that holds the selected gate (or the
+  // one being left or entered), and fades over one padding as the exit nears that unit's edge. Moving between
+  // gates of one unit therefore never fades; leaving a unit does, and the next unit fades in as it arrives.
+  const unitOf=gate=>units.find(unit=>unit.gates.includes(gate)) ?? units[0];
+  const attached=unit=>unit ? Math.max(0,Math.min(1,Math.min(620-(unit.left+shift),unit.right+shift-620)/padding)) : 1;
+  const ends=slide ? [slide.from,slide.to] : [low,high];
+  const reach=Math.max(...ends.map(gate=>attached(unitOf(gate))));
   return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,reach,
     // Only units actually clipped by the panel edge (which bleeds out by `bleed`) call for an arrow.
     overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
