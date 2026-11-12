@@ -71,7 +71,11 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const rackLeft=0, rackRight=Math.max(0,left-gap);
   const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
   const shift=base+applied;
-  return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,
+  // The Bowden stays attached while a gate (or the gate it is leaving) sits within half a lane of the exit,
+  // and fades out over the next lane as the rack moves away, so it never appears joined to the wrong spool.
+  const closeness=x=>Math.max(0,Math.min(1,1-(Math.abs(x+shift-620)-spacing/2)/spacing));
+  const reach=slide ? Math.max(closeness(anchorOf(slide.from)),closeness(anchorOf(slide.to))) : closeness(anchor);
+  return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,reach,
     // Only units actually clipped by the panel edge (which bleeds out by `bleed`) call for an arrow.
     overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
     units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
