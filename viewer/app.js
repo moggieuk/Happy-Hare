@@ -7,10 +7,11 @@ import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroP
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
-import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 import {consoleLine} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
+import {renderBuffer} from './buffer-view.js';
 import './chrome.js';
 const sim = simulatorApi(rpc);
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
@@ -512,58 +513,6 @@ function homingRing(name,x,y) {
   const opacity=reduced ? .55 : .6*Math.min(1,phase*8)*(1-.35*phase);
   return `<circle data-part="homing-sensor-ring" cx="${x}" cy="${y}" r="${radius}" fill="none" stroke="${color}" stroke-width="2" opacity="${opacity}" pointer-events="none"/>`;
 }
-// Buffer drawing is isolated from the toolhead and filament layers.
-function renderBuffer(s, d, bufferSensors, sensorFill) {
-  let markup = '';
-  const tension=bufferSensors.find(([n])=>n.endsWith('tension'))?.[1]?.state;
-  const compression=bufferSensors.find(([n])=>n.endsWith('compression'))?.[1]?.state;
-  const piston=bufferPiston(d,tension,compression);
-  // Fixed housing; the inner piston tracks buffer travel.
-  const tick=(travel)=>498.8-57.6*(piston.maximum ? travel/piston.maximum : .5);
-  const edge=tick(piston.position);
-  // Retain protrusion even at the maximum-tension stop.
-  const pistonLeft=edge-80;
-  markup += `<defs><mask id="buffer-tube-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${pistonLeft+4}" y="50" width="${508-pistonLeft-4}" height="50" fill="black"/></mask></defs><g id="sync-buffer"><path data-part="buffer-filament-guide" d="M${pistonLeft+4} 66.5 H508 M${pistonLeft+4} 83.5 H508" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="1.2" opacity="0.3"/><text x="470" y="38" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Sync-feedback buffer</text><g fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.5"><rect id="buffer-housing" x="428" y="46" width="84" height="51.88" rx="6.4"/><rect id="buffer-piston" x="${pistonLeft}" y="59" width="80" height="32" rx="5.6"/></g><g fill="var(--scene-tube-border, #b1c4d2)"><rect data-part="buffer-housing-port" x="509.6" y="62.2" width="4.8" height="25.6" rx="2.4"/><rect data-part="buffer-piston-port" x="${pistonLeft-2.4}" y="62.2" width="4.8" height="25.6" rx="2.4"/></g>`;
-  const geometry=Object.values(s.buffers || {}).find(buffer=>buffer.gates.includes(s.gate));
-  const spring=geometry?.spring ?? d.spring ?? 'none';
-  const springSides = spring === 'neutral' || spring === 0 ? ['left','right']
-    : spring === 'tension' || spring === -1 ? ['right']
-    : spring === 'compression' || spring === 'compressed' || spring === 1 ? ['left'] : [];
-  if (springSides.length) {
-    markup += `<defs><linearGradient id="buffer-coil-shading" gradientUnits="userSpaceOnUse" x1="0" y1="48.8" x2="0" y2="56.2"><stop offset="0" stop-color="color-mix(in srgb, var(--scene-border, #96abba), white 45%)"/><stop offset="0.45" stop-color="color-mix(in srgb, var(--scene-border, #96abba), white 15%)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-border, #96abba), black 30%)"/></linearGradient></defs><g id="buffer-springs" opacity="0.5" fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.2" stroke-linejoin="round">`;
-    let anchors=`<circle data-part="buffer-spring-anchor" cx="${edge}" cy="52.5" r="1.5" fill="var(--scene-border, #96abba)" stroke="none"/>`;
-    for (const side of springSides) {
-      const wall=side === 'left' ? 428 : 512;
-      const coil=bufferSpringPath(wall,edge);
-      markup += `<path data-part="buffer-spring" data-side="${side}" stroke="url(#buffer-coil-shading)" d="${coil}"/>`;
-      anchors += `<circle data-part="buffer-spring-wall-anchor" cx="${wall}" cy="52.5" r="1.5" fill="var(--scene-border, #96abba)" stroke="none"/>`;
-    }
-    markup += anchors+`<path data-part="buffer-spring-piston-tick" d="M${edge} 48.5 V56.5" stroke-width="1.8" opacity="0.9"/>`+'</g>';
-  }
-  for (const travel of [0,piston.maximum]) {
-    markup += `<path data-part="buffer-maxrange-tick" opacity="0.4" d="M${tick(travel)} 93.88 V101.88" stroke="var(--scene-border, #96abba)" stroke-width="1.5" data-tooltip="Physical travel limit · ${travel.toFixed(1)}mm"/>`;
-  }
-  for (const [x,label,on] of [[tick(piston.low),'tension',tension],[tick(piston.maximum/2),'',null],[tick(piston.high),'compression',compression]]) {
-    if (!label) {
-      markup += `<path d="M${x} 95.08 V101.08" stroke="var(--scene-border, #96abba)" stroke-width="1.5"/>`;
-      continue;
-    }
-    const sensorName=bufferSensors.find(([n])=>n.endsWith(label.toLowerCase()))?.[0];
-    markup += `<g class="sensor-marker${on === null ? ' sensor-disabled' : ''}" data-sensor="${escape(sensorName || '')}"><circle cx="${x}" cy="97.88" r="5" fill="${sensorFill(on)}" stroke="#698394"/><text x="${x}" y="116.88" text-anchor="${label === 'compression' ? 'end' : 'start'}" font-size="9" fill="var(--scene-text, #304c65)">${label}</text></g>`;
-    if (sensorName) markup += homingRing(sensorName,x,97.88);
-    if (sensorName && sensorPulse?.sensor === sensorName) {
-      const elapsed=(animationNow()-sensorPulse.start)/650;
-      if (elapsed >= 0 && elapsed < 1) {
-        const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-        markup += `<circle data-part="sensor-pulse" cx="${x}" cy="97.88" r="${reduced ? 10 : 7+elapsed*15}" fill="none" stroke="${sensorPulse.reverse ? 'var(--sensor-clear-pulse)' : '#48c982'}" stroke-width="2.5" opacity="${1-elapsed}"/>`;
-      }
-    }
-  }
-  if (d.proportional) markup += `<text id="buffer-reading" x="470" y="128.88" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">${(d.value || 0).toFixed(1)}</text>`;
-  markup += '</g>';
-  return markup;
-}
-
 // UI, telemetry, and animation changes share the existing frame loop.
 let sceneDirty=false;
 function draw() { sceneDirty=true; }
@@ -1024,7 +973,7 @@ function renderScene() {
       svg += `<g id="encoder-marker"><g transform="rotate(${angle} ${pt.x} ${pt.y})"><circle cx="${pt.x}" cy="${pt.y}" r="11" fill="#faf4d9" stroke="#9d8e52"/><path d="M${pt.x - 7} ${pt.y} H${pt.x + 7} M${pt.x} ${pt.y - 7} V${pt.y + 7}" stroke="#9d8e52"/><circle cx="${pt.x + 7}" cy="${pt.y}" r="2" fill="#9d8e52"/></g><text x="${pt.x - 25}" y="${pt.y + 4}" text-anchor="end" font-size="11" fill="var(--scene-text, #304c65)">Encoder</text>${Number.isFinite(encoderReading) ? `<text id="encoder-measurement" x="${pt.x+25}" y="${pt.y+4}" font-size="11" fill="var(--scene-text, #304c65)">${encoderReading.toFixed(1)}mm</text>` : ''}</g>`;
     }
     if (name.endsWith(":buffer")) {
-      svg += renderBuffer(s,d,unitSensors.filter(([sensor])=>isBufferSensor(sensor)),sensorFill);
+      svg += renderBuffer(s,d,unitSensors.filter(([sensor])=>isBufferSensor(sensor)),sensorFill,{homingRing,pulse:sensorPulse,now:animationNow});
     }
   }
   const excess = s.bowden_unabsorbed_mm || 0;
