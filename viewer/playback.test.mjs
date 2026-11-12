@@ -363,20 +363,20 @@ test('gate selection eases between lanes without interpolating physical filament
  const before={gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
  const state={...before,gate:1};
  const event={kind:'gate_changed',before,state};
- assert.equal(duration(event),2500);
+ assert.equal(duration(event),2950);
  const frame=t=>playbackFrame(event,t,duration(event)).state;
  assert.equal(frame(550).gate_full_opacity,.5);
  assert.equal(frame(550).gate_focus,0);
- assert.equal(frame(1250).gate_full_opacity,0);
- assert.equal(frame(1250).gate_focus,.5);
- assert.equal(frame(1950).gate_full_opacity,.5);
- assert.equal(frame(1950).gate_focus,1);
- assert.equal(frame(1950).gate_retraction,1);
- assert.equal(frame(2350).gate_full_opacity,1);
- assert.equal(frame(2350).gate_retraction,.5);
+ assert.equal(frame(1475).gate_full_opacity,0);
+ assert.equal(frame(1475).gate_focus,.5);
+ assert.equal(frame(2400).gate_full_opacity,.5);
+ assert.equal(frame(2400).gate_focus,1);
+ assert.equal(frame(2400).gate_retraction,1);
+ assert.equal(frame(2800).gate_full_opacity,1);
+ assert.equal(frame(2800).gate_retraction,.5);
  assert.equal(frame(1).gate_retraction>0,true);
- assert.equal(frame(2499).gate_retraction>0,true);
- assert.equal(frame(2500).gate,1);
+ assert.equal(frame(2949).gate_retraction>0,true);
+ assert.equal(frame(2950).gate,1);
  assert.equal(interpolate(event,0),before);
  assert.equal(interpolate(event,1),state);
  assert.equal(interpolate(event,.5).gate_focus,.5);
@@ -717,7 +717,7 @@ test('gate swap restores its starting grip in either playback direction',()=>{
   const before={gate:0,tips:[-20,-30],mmu_gripped:!grip};
   const state={...before,gate:1,mmu_gripped:!grip};
   const event={kind:'gate_changed',before,state};
-  for (const elapsed of [0,100,300,550,1250,1950,2300,2400,2500]) {
+  for (const elapsed of [0,100,300,550,1475,2400,2750,2850,2950]) {
    const frame=playbackFrame(event,reverse ? duration(event)-elapsed : elapsed,duration(event),grip);
    const time=reverse ? duration(event)-elapsed : elapsed;
    assert.equal(frame.state.mmu_gripped,time===duration(event) ? !grip : time>0 && time<duration(event) ? false : grip);
@@ -870,4 +870,15 @@ test('the rack arrows appear only when a unit is off screen, and manual scroll i
  assert.ok(rackGrid(layouts,{...deep,manual:-100000}).units.at(-1).right>=850-14-1e-6);
  assert.ok(rackGrid(layouts,{...deep,manual:100000}).units[0].left<=14+1e-6);   // ...or the first
  assert.equal(rackGrid(layouts,{...deep,manual:0}).manual,0);
+});
+test('a slide between units moves the rack at constant speed and the raised spool follows the exit',()=>{
+ const layouts=[{name:'a',gates:[0,1,2,3],selector_type:'LinearSelector'},{name:'b',gates:[4,5,6,7],selector_type:'LinearSelector'}];
+ const options={current:'a',spacing:54,angle:77*Math.PI/180,focus:3};
+ const at=t=>rackGrid(layouts,{...options,slide:{from:3,to:4,t}});
+ const [s0,s25,s50,s100]=[0,.25,.5,1].map(t=>at(t).shift);
+ assert.ok(Math.abs((s25-s0)*2-(s50-s0))<1e-9);                  // Linear in progress, even across the gap
+ assert.ok(Math.abs(s0-at(0).shift)<1e-9 && s100<s0);
+ const lift=(t,gate)=>at(t).lanes.find(l=>l.index===gate).lift;
+ assert.equal(lift(0,3),10);assert.equal(lift(1,4),10);
+ assert.ok(lift(.5,3)<10 && lift(.5,4)<10);                       // Neither is under the exit mid-slide
 });
