@@ -44,7 +44,7 @@ export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
 // Every unit side by side as one scrollable rack. The rack slides so the focused gate (or, for a virtual
 // selector, its unit) stays under the Bowden exit at x=620. Gates wrap into rows within their unit.
 // `manual` is an extra shift from the edge arrows; the clamped value is returned.
-export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, maxVirtualColumns=6, availableWidth=850, gap=18}) {
+export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, maxVirtualColumns=6, availableWidth=850, gap=18}) {
   const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
   const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
   const units=[], lanes=[], anchors=new Map();
@@ -72,7 +72,8 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
   const shift=base+applied;
   return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,
-    overflow:{left:rackLeft+shift<margin,right:rackRight+shift>availableWidth-margin},
+    // Only units actually clipped by the panel edge (which bleeds out by `bleed`) call for an arrow.
+    overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
     units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
     // The spool passing under the exit rises with it; a virtual unit's spools rise by gate number instead.
     lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-620)/spacing))}))};
@@ -330,6 +331,9 @@ export function tweenTo(tween, target, now, duration = gripSpacingTime) {
   const t = Math.min(1, Math.max(0, (now - tween.start) / duration));
   return {...tween, value: tween.from + (tween.to - tween.from) * t * t * (3 - 2 * t), done: t >= 1};
 }
+
+// A rack scrolled by hand returns to the selected gate once the user has been idle this long.
+export const rackIdleReturn = (manual, idleMs, limit = 2500) => manual !== 0 && idleMs >= limit;
 
 // A short pause after a homing move that found its sensor, before the next step starts.
 export const homingHold = event => event.kind === 'movement' && event.homing && event.homed === true ? 200 : 0;

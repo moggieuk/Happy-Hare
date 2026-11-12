@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid } from './playback.js';
+import { timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -860,7 +860,8 @@ test('the rack arrows appear only when a unit is off screen, and manual scroll i
   {name:'b',gates:Array.from({length:8},(_,i)=>i+8),selector_type:'LinearSelector'}];
  const options={current:'a',spacing:54,angle:77*Math.PI/180};
  assert.ok(!rackGrid(layouts,{...options,focus:0}).overflow.left);     // Gate 0 at the exit leaves nothing off the left
- const rack=rackGrid(layouts,{...options,focus:12});
+ const three=[...layouts,{name:'c',gates:Array.from({length:8},(_,i)=>i+16),selector_type:'LinearSelector'}];
+ const rack=rackGrid(three,{...options,focus:12});          // A middle unit at the exit: more on both sides
  assert.ok(rack.overflow.left && rack.overflow.right);
  const fits=rackGrid([{name:'a',gates:[0,1,2],selector_type:'LinearSelector'}],{...options,focus:1});
  assert.ok(!fits.overflow.left && !fits.overflow.right);
@@ -881,4 +882,22 @@ test('a slide between units moves the rack at constant speed and the raised spoo
  const lift=(t,gate)=>at(t).lanes.find(l=>l.index===gate).lift;
  assert.equal(lift(0,3),10);assert.equal(lift(1,4),10);
  assert.ok(lift(.5,3)<10 && lift(.5,4)<10);                       // Neither is under the exit mid-slide
+});
+test('a hand-scrolled rack returns to the selected gate only after 2.5 seconds of inactivity',()=>{
+ assert.equal(rackIdleReturn(-300,2499),false);
+ assert.equal(rackIdleReturn(-300,2500),true);
+ assert.equal(rackIdleReturn(0,60000),false);   // Nothing to return from
+});
+test('no arrow is offered when every unit is fully shown, even close to the panel edge',()=>{
+ const layouts=[{name:'a',gates:[0,1,2],selector_type:'LinearSelector'}];
+ const options={current:'a',spacing:54,angle:77*Math.PI/180,focus:1};
+ const fits=rackGrid(layouts,options);
+ assert.ok(!fits.overflow.left && !fits.overflow.right);
+ const wide=[{name:'a',gates:Array.from({length:8},(_,i)=>i),selector_type:'LinearSelector'},{name:'b',gates:[8,9,10],selector_type:'LinearSelector'}];
+ const deep={...options,focus:10};
+ const edge=rackGrid(wide,{...deep,bleed:0,manual:100000});          // Scrolled to the very start
+ assert.ok(edge.units[0].left>=0 && !edge.overflow.left);           // Nothing is left of the first unit
+ assert.ok(rackGrid(wide,{...deep,bleed:0}).overflow.left);          // But before scrolling there is more to see
+ const end=rackGrid(wide,{...deep,manual:-100000});
+ assert.ok(!end.overflow.right);                                     // Nothing is right of the last unit at the end
 });
