@@ -19,3 +19,14 @@ export const escape = (s) =>
         c
       ],
   );
+
+export function options(node, items) {
+  node.replaceChildren(
+    ...items.map(([value, label]) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      return o;
+    }),
+  );
+}
