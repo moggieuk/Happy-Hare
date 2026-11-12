@@ -585,6 +585,9 @@ make console ARGS='--profile boxturtle --script /tmp/job.txt'
 banner if another port was selected. No separate server or JavaScript build is
 required. `--no-serve` disables both the viewer and the existing API.
 
+The viewer itself is a standalone application in the top-level `viewer/` folder (see
+`viewer/README.md`); the simulator only hosts it, so a test setup needs nothing else.
+
 The diagram follows the console session, including commands typed at the terminal
 or sent from the browser. It shows the MMU and extruder gears, a compressed Bowden
 path, configured switches and encoder/buffer state. Animation is reconstructed
@@ -921,7 +924,7 @@ parameter set once; it is not re-read per event.
 reduces recordings. Both use `scene-state.js` for scene geometry and share the SVG
 components. New movement recordings omit heater target changes; old recordings
 containing these fields remain readable. Run the live browser regression with
-`node --test test/hh/viewer/live.browser.mjs` using the same Playwright/Chrome
+`node --test viewer/live.browser.mjs` using the same Playwright/Chrome
 settings as the spool browser test below.
 
 The **Toolhead Config** panel appears when the machine has a toolhead section. A toolhead shared
@@ -1057,15 +1060,15 @@ real-printer WebSocket transports supply the same capture format.
 The legacy simulator HTTP endpoint remains available for capture diagnostics.
 
 Tests: `make test UT=test_mmu_movement_telemetry.py` and
-`node --test test/hh/viewer/*.test.mjs`, plus the capture and viewer suites.
-The replay fixtures under `test/hh/viewer/fixtures/` were captured with `ercf_vvd`
+`node --test viewer/*.test.mjs`, plus the capture and viewer suites.
+The replay fixtures under `viewer/fixtures/` were captured with `ercf_vvd`
 and `emu` console profiles using `MMU_LOAD`, `MMU_UNLOAD`, then `MMU_LOAD`.
 They contain source records only. Tests compare batched live reduction with JSONL
 loading and exercise every interpolated movement endpoint.
 
 The optional spool browser regression compares retained SVG updates with fresh
 renders across styles, fill levels, viewing angles, and rotation. With Playwright
-and Chromium available, run `node --test test/hh/viewer/spool.browser.mjs`.
+and Chromium available, run `node --test viewer/spool.browser.mjs`.
 Set `PLAYWRIGHT_MODULE` to its module path and `CHROME_PATH` to a Chrome executable
 when using external installations. It also checks that motion preserves geometry
 nodes and unchanged props do not write to the DOM.

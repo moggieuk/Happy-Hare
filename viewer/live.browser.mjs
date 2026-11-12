@@ -1,4 +1,4 @@
-// Optional integration regression: node --test test/hh/viewer/live.browser.mjs
+// Optional integration regression: node --test viewer/live.browser.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

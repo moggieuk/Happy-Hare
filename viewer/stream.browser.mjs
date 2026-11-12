@@ -1,4 +1,4 @@
-// Optional browser integration: node --test test/hh/viewer/stream.browser.mjs
+// Optional browser integration: node --test viewer/stream.browser.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
