@@ -318,7 +318,7 @@ export function selectorNotice(events, event, playing, following) {
 }
 
 export function traceText(event) {
-  let type = {state:'state changed', gate_changed:'gate changed',move_completed:'move completed',selector_move:'selector'}[event.kind] || event.kind;
+  let type = {state:'state changed', gate_changed:'gate changed',move_completed:'move completed',selector_move:'selector',selector_completed:'selector'}[event.kind] || event.kind;
   if (event.kind === 'movement') {
     const source = event.source || event.telemetry?.start?.source;
     type = event.homing ? 'homing move' : source === 'mmu_gcode' ? 'G1' : 'move';
@@ -675,10 +675,23 @@ export function isInternalUpdate(record) {
 export function orderedSteps(records) {
   const outcomes=new Map(records.filter(e=>e.kind === 'movement' && e.telemetry?.outcome)
     .map(e=>[e.telemetry.start.sequence,e]));
+  // Selector moves are anchored the same way. Pairs inside a filament move stay internal bookkeeping.
+  const selectors=records.filter(e=>e.kind === 'selector_move' && e.telemetry?.start);
+  const selectorSteps=new Map(selectors.filter(e=>!e.internal).map(e=>[e.telemetry.start.sequence,e]));
+  const selectorSeen=new Set(selectors.map(e=>e.telemetry.start.sequence));
+  const anchored=new Set();
   const steps=[];
   let motion=null;
   for (const record of records) {
-    if (record.kind === 'pending_move') {
+    if (!motion && record.kind === 'selector' && record.telemetry?.event === 'selector_movement_start') {
+      const step=selectorSteps.get(record.seq);
+      if (step) { anchored.add(record.seq); steps.push({...step,seq:record.seq,time:record.time}); }
+      else if (!selectorSeen.has(record.seq)) break; // Unfinished: hold it back until its outcome arrives
+      else steps.push(record);
+    } else if (record.kind === 'selector_move' && anchored.has(record.telemetry.start.sequence)) {
+      steps.push({seq:record.seq,time:record.time,kind:'selector_completed',internal:true,during_move:true,
+        label:'Selector move completed',state:record.state,telemetry:record.telemetry.outcome});
+    } else if (record.kind === 'pending_move') {
       motion=outcomes.get(record.seq);
       if (!motion) break;
       steps.push({...motion,seq:record.seq,time:record.time,
