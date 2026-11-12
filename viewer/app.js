@@ -7,7 +7,7 @@ import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroP
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
-import { selectorNotice, orderedSteps, homingHold, spoolTooltip, tweenTo, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { selectorNotice, orderedSteps, homingHold, spoolTooltip, tweenTo, virtualSelectorLayout, rackGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 import {consoleLine} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
@@ -476,6 +476,8 @@ function updateSpoolMotion() {
 }
 // Gate lanes and spool columns share the same spacing.
 let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null, nextStepAt = 0;
+// The rack of units scrolls to the selected gate; the edge arrows add a temporary manual shift until the gate changes.
+let rackGate = null, rackManualShift = 0;
 function currentIndex() {
   return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
 }
@@ -522,6 +524,19 @@ function homingRing(name,x,y) {
   const opacity=reduced ? .55 : .6*Math.min(1,phase*8)*(1-.35*phase);
   return `<circle data-part="homing-sensor-ring" cx="${x}" cy="${y}" r="${radius}" fill="none" stroke="${color}" stroke-width="2" opacity="${opacity}" pointer-events="none"/>`;
 }
+const rackScrollStep = 300;
+function scrollRack(arrow) {
+  rackManualShift += -Number(arrow.dataset.direction)*rackScrollStep;
+  draw();
+}
+$('scene').addEventListener('click',event=>{
+  const arrow=event.target.closest('[data-part="rack-scroll"]');
+  if (arrow) scrollRack(arrow);
+});
+$('scene').addEventListener('keydown',event=>{
+  const arrow=event.target.closest?.('[data-part="rack-scroll"]');
+  if (arrow && ['Enter',' '].includes(event.key)) { event.preventDefault(); scrollRack(arrow); }
+});
 // UI, telemetry, and animation changes share the existing frame loop.
 let sceneDirty=false;
 function draw() { sceneDirty=true; }
@@ -577,7 +592,6 @@ function renderScene() {
   const mmuOffset=60; // Keep the enclosure below the purge animation.
   const hardwareOffset=mmuOffset-10; // Leave clearance above the enclosure.
   const virtual=virtualSelectorLayout({...s,unit_gates:displayGates},Number($('spool-spacing').value),mmuOffset);
-  const gateLaneX=offset=>620+offset*Number($('spool-spacing').value)-(virtual ? 4 : 0);
   const mmuDistanceAtY=y=>{
     if (!virtual) return 570+mmuOffset-y;
     // Resolve positions on the rounded branch rather than its sharp-corner approximation.
@@ -765,32 +779,40 @@ function renderScene() {
   if (s.tips.length) {
     const spoolViewAngle=Number($('spool-angle').value)*Math.PI/180;
     const focusGate=s.gate>=0 ? focus : displayGates[0];
-    const grid=virtual ? spoolGrid(displayGates,focusGate,6)
-      : fittingSpoolGrid(displayGates,focusGate,Number($('spool-spacing').value),spoolViewAngle);
-    const visible=[...grid.lanes].sort((a,b)=>a.row-b.row || b.offset-a.offset);
-    const edgePadding=17*3.3*Math.cos(spoolViewAngle)+(34/3)*3.3*Math.sin(spoolViewAngle)/2+24;
-    const enclosureLeft=grid.left ?? gateLaneX(Math.min(...grid.lanes.map(lane=>lane.offset)))+4-edgePadding;
-    const enclosureRight=grid.right ?? gateLaneX(Math.max(...grid.lanes.map(lane=>lane.offset)))+4+edgePadding;
+    // Every unit sits side by side on one rack that slides to keep the selected spool under the Bowden exit.
+    const layouts=(s.unit_layouts?.length ? s.unit_layouts : [{name:s.unit,gates:unitGates,selector_type:s.selector_type}])
+      .map(layout=>layout.name===s.unit ? {...layout,gates:displayGates} : layout);
+    if (s.gate!==rackGate) { rackGate=s.gate; rackManualShift=0; }
+    const grid=rackGrid(layouts,{current:s.unit,focus:focusGate,spacing:Number($('spool-spacing').value),angle:spoolViewAngle,manual:rackManualShift});
+    rackManualShift=grid.manual;
+    const visible=grid.lanes.filter(lane=>lane.x>-140 && lane.x<990).sort((a,b)=>a.row-b.row || b.x-a.x);
     const rowSpacing=135;
     const lastRowY=Math.max(0,grid.rows-1)*rowSpacing;
     const enclosureBottom=659+lastRowY+mmuOffset;
-    $('scene').setAttribute('viewBox',`0 0 ${Math.max(850,enclosureRight+14)} ${enclosureBottom+21}`);
-    const glassLeft=enclosureLeft+6, glassRight=enclosureRight-6;
-    const coverPath=`M${glassLeft} ${585+mmuOffset} V${510+mmuOffset} Q${glassLeft} ${470+mmuOffset} ${glassLeft+40} ${470+mmuOffset} H${glassRight-40} Q${glassRight} ${470+mmuOffset} ${glassRight} ${510+mmuOffset} V${585+mmuOffset} Z`;
-    const lowerHousingPath=lastRowY ? `M${enclosureLeft} ${580+mmuOffset} Q${enclosureLeft} ${575+mmuOffset} ${enclosureLeft+5} ${575+mmuOffset} H${enclosureRight-5} Q${enclosureRight} ${575+mmuOffset} ${enclosureRight} ${580+mmuOffset} V${585+lastRowY+mmuOffset} H${enclosureLeft} Z` : '';
+    $('scene').setAttribute('viewBox',`0 0 850 ${enclosureBottom+21}`);
+    const shells=grid.units.map(unit=>{
+      const enclosureLeft=unit.left, enclosureRight=unit.right, unitLastRow=(unit.rows-1)*rowSpacing;
+      const glassLeft=enclosureLeft+6, glassRight=enclosureRight-6;
+      return {unit,enclosureLeft,enclosureRight,glassLeft,glassRight,unitLastRow,
+        coverPath:`M${glassLeft} ${585+mmuOffset} V${510+mmuOffset} Q${glassLeft} ${470+mmuOffset} ${glassLeft+40} ${470+mmuOffset} H${glassRight-40} Q${glassRight} ${470+mmuOffset} ${glassRight} ${510+mmuOffset} V${585+mmuOffset} Z`,
+        lowerHousingPath:unitLastRow ? `M${enclosureLeft} ${580+mmuOffset} Q${enclosureLeft} ${575+mmuOffset} ${enclosureLeft+5} ${575+mmuOffset} H${enclosureRight-5} Q${enclosureRight} ${575+mmuOffset} ${enclosureRight} ${580+mmuOffset} V${585+unitLastRow+mmuOffset} H${enclosureLeft} Z` : ''};
+    });
+    const coverPath=shells.map(shell=>shell.coverPath).join('');
+    const lowerHousingPath=shells.map(shell=>shell.lowerHousingPath).join('');
     const enclosurePath=coverPath+lowerHousingPath;
     svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".22"/><stop offset=".12" stop-color="white" stop-opacity=".07"/><stop offset=".3" stop-color="white" stop-opacity=".02"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".055" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${enclosurePath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${enclosurePath}"/></clipPath></defs>`;
     // Put the enclosure behind the short filament fade; the glass stays above it.
     svg = `<path data-part="spool-enclosure" d="${enclosurePath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>` + svg;
     if ($('heating-preview').checked || (viewMode==='live' && s.heaters?.some(h=>h.target>0))) {
       svg += `<defs><radialGradient id="mmu-heating-glow" cx=".5" cy=".9" r=".85"><stop stop-color="#ffbd59" stop-opacity=".65"/><stop offset=".45" stop-color="#ef8d27" stop-opacity=".3"/><stop offset="1" stop-color="#e87516" stop-opacity="0"/></radialGradient></defs><g data-part="heating-preview" clip-path="url(#spool-cover-clip)" pointer-events="none">`;
-      for (let row=0; row<grid.rows; row++) {
-        const lanes=grid.lanes.filter(lane=>lane.row===row).sort((a,b)=>a.offset-b.offset);
-        const regions=s.has_per_gate_heaters ? lanes.map((lane,i)=>({
+      for (const {unit,glassLeft,glassRight} of shells) for (let row=0; row<unit.rows; row++) {
+        const lanes=grid.lanes.filter(lane=>lane.unit===unit.name && lane.row===row).sort((a,b)=>a.x-b.x);
+        const current=unit.name===s.unit;
+        const regions=current && s.has_per_gate_heaters ? lanes.map((lane,i)=>({
           heating:s.heaters?.[unitGates.indexOf(lane.index)]?.target>0,
-          left:i ? (gateLaneX(lanes[i-1].offset)+gateLaneX(lane.offset))/2+4 : glassLeft,
-          right:i<lanes.length-1 ? (gateLaneX(lane.offset)+gateLaneX(lanes[i+1].offset))/2+4 : glassRight,
-        })) : [{left:glassLeft,right:glassRight,heating:s.heaters?.some(h=>h.target>0)}];
+          left:i ? (lanes[i-1].x+lane.x)/2 : glassLeft,
+          right:i<lanes.length-1 ? (lane.x+lanes[i+1].x)/2 : glassRight,
+        })) : [{left:glassLeft,right:glassRight,heating:current && s.heaters?.some(h=>h.target>0)}];
         for (const region of regions.filter(r=>$('heating-preview').checked || r.heating))
           svg += `<rect data-part="heating-glow" x="${region.left}" y="${470+mmuOffset+row*rowSpacing}" width="${region.right-region.left}" height="105" fill="url(#mmu-heating-glow)"/>`;
       }
@@ -800,11 +822,11 @@ function renderScene() {
     const spoolStyle=document.querySelector('input[name=spool-style]:checked').value;
     const spoolDepth=34/3, spoolScale=3.3;
 
-    for (const {index,offset,row,lift} of visible) {
+    for (const {index,x:laneX,row,lift} of visible) {
       const operation=s.espoolers?.[index];
       const active=espoolerActive(operation);
       // Offset the winding slightly right of the filament lane.
-      const x=gateLaneX(offset)+4-spoolDepth*Math.sin(spoolViewAngle)*spoolScale/2;
+      const x=laneX-spoolDepth*Math.sin(spoolViewAngle)*spoolScale/2;
       const y=549.6+row*rowSpacing-lift+mmuOffset;
       const color=s.gate_colors[index] || DEFAULT_COLOR;
       const percent=spoolFill(s,index);
@@ -826,11 +848,11 @@ function renderScene() {
     }
     svg += '</g>';
     let glassDividers='';
-    for (let row=0; s.has_per_gate_heaters && row<grid.rows; row++) {
-      const lanes=grid.lanes.filter(lane=>lane.row===row).sort((a,b)=>a.offset-b.offset);
+    for (const {unit} of shells) for (let row=0; s.has_per_gate_heaters && unit.name===s.unit && row<unit.rows; row++) {
+      const lanes=grid.lanes.filter(lane=>lane.unit===unit.name && lane.row===row).sort((a,b)=>a.x-b.x);
       const top=470+mmuOffset+row*rowSpacing, bottom=575+mmuOffset+row*rowSpacing;
       for (let i=1;i<lanes.length;i++) {
-        const x=(gateLaneX(lanes[i-1].offset)+gateLaneX(lanes[i].offset))/2+4;
+        const x=(lanes[i-1].x+lanes[i].x)/2;
         const perspective=Math.max(0,Math.cos(spoolViewAngle)/Math.cos(74*Math.PI/180));
         const shift=10*perspective, bend=18*perspective;
         const divider=perspective<.001 ? `M${x} ${top} V${bottom}`
@@ -839,18 +861,26 @@ function renderScene() {
       }
     }
     glassDividers=`<g clip-path="url(#spool-cover-clip)" pointer-events="none">${glassDividers}</g>`;
-    const glassHighlight=`<defs><filter id="spool-glass-soften" x="-5%" y="-25%" width="110%" height="150%"><feGaussianBlur stdDeviation=".7"/></filter><linearGradient id="spool-glass-reflection"><stop stop-color="white" stop-opacity="0"/><stop offset=".15" stop-color="white" stop-opacity=".25"/><stop offset=".55" stop-color="white" stop-opacity=".08"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient></defs><path data-part="spool-glass-highlight" filter="url(#spool-glass-soften)" d="M${glassLeft+4} ${510+mmuOffset} Q${glassLeft+4} ${474+mmuOffset} ${glassLeft+40} ${474+mmuOffset} H${glassRight-40} Q${glassRight-4} ${474+mmuOffset} ${glassRight-4} ${510+mmuOffset}" fill="none" stroke="url(#spool-glass-reflection)" stroke-width="2" stroke-linecap="round" pointer-events="none"/>`;
-    svg += `${lowerHousingPath ? `<path data-part="spool-lower-housing" d="${lowerHousingPath}" fill="none" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>` : ''}<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8" pointer-events="none"/>${glassDividers}${glassHighlight}<rect data-part="spool-cabinet" x="${enclosureLeft}" y="${575+lastRowY+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="84" rx="6" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`;
-    for (let row=0; row<grid.rows-1; row++) {
+    const glassDefs=`<defs><filter id="spool-glass-soften" x="-5%" y="-25%" width="110%" height="150%"><feGaussianBlur stdDeviation=".7"/></filter><linearGradient id="spool-glass-reflection"><stop stop-color="white" stop-opacity="0"/><stop offset=".15" stop-color="white" stop-opacity=".25"/><stop offset=".55" stop-color="white" stop-opacity=".08"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient></defs>`;
+    const glassHighlight=glassDefs+shells.map(({glassLeft,glassRight})=>`<path data-part="spool-glass-highlight" filter="url(#spool-glass-soften)" d="M${glassLeft+4} ${510+mmuOffset} Q${glassLeft+4} ${474+mmuOffset} ${glassLeft+40} ${474+mmuOffset} H${glassRight-40} Q${glassRight-4} ${474+mmuOffset} ${glassRight-4} ${510+mmuOffset}" fill="none" stroke="url(#spool-glass-reflection)" stroke-width="2" stroke-linecap="round" pointer-events="none"/>`).join('');
+    svg += `${lowerHousingPath ? `<path data-part="spool-lower-housing" d="${lowerHousingPath}" fill="none" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>` : ''}<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8" pointer-events="none"/>${glassDividers}${glassHighlight}${shells.map(({enclosureLeft,enclosureRight,unitLastRow})=>`<rect data-part="spool-cabinet" x="${enclosureLeft}" y="${575+unitLastRow+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="84" rx="6" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`).join('')}`;
+    for (const {unit,enclosureLeft,enclosureRight} of shells) for (let row=0; row<unit.rows-1; row++) {
       svg += `<rect data-part="spool-row-shelf" x="${enclosureLeft}" y="${575+row*rowSpacing+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="49" rx="5" fill="url(#spool-shelf-fade)"/>`;
     }
-    for (const {index,offset,row} of visible) {
+    for (const {index,x:laneX,row} of visible) {
       const status=s.gate_status?.[index];
       const border=status===0 ? '#858b91' : status>0 ? '#399b64' : '#d58a30';
       // A pill is selected only while its spool is fully raised.
       const selected=index===s.gate && focus===index;
-      const x=gateLaneX(offset)+8;
+      const x=laneX+4;
       svg += `<g data-part="gate-status-pill" data-gate="${index}" data-tooltip="Gate ${index} · ${status===0 ? 'Empty' : status>0 ? 'Available' : 'Unknown'}"><rect x="${x-16}" y="${587+row*rowSpacing+mmuOffset}" width="32" height="18" rx="9" fill="${selected ? '#36ca42' : 'color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)'}" stroke="${border}" stroke-width="2"/><text x="${x}" y="${596+row*rowSpacing+mmuOffset}" dominant-baseline="central" text-anchor="middle" font-size="11" font-weight="700" fill="${selected ? '#102514' : 'var(--scene-text, #304c65)'}">${index}</text></g>`;
+    }
+    // Narrow vertical arrows at the panel edges scroll to units that are off screen.
+    for (const side of [-1,1]) {
+      if (!(side<0 ? grid.overflow.left : grid.overflow.right)) continue;
+      const top=470+mmuOffset, height=105+lastRowY, centerX=side<0 ? 12 : 838, middle=top+height/2;
+      const label=side<0 ? 'Scroll to units on the left' : 'Scroll to units on the right';
+      svg += `<g data-part="rack-scroll" data-direction="${side}" role="button" tabindex="0" aria-label="${label}" data-tooltip="${label}"><rect x="${side<0 ? 0 : 826}" y="${top}" width="24" height="${height}" rx="4" fill="var(--scene-body, #edf2f6)" fill-opacity=".85" stroke="var(--scene-border, #96abba)" stroke-width=".8"/><path d="M${centerX-side*6} ${middle-34} L${centerX+side*6} ${middle} L${centerX-side*6} ${middle+34}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
     }
   }
   let attachedTipEdge='';

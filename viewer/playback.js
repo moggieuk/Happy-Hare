@@ -41,6 +41,39 @@ export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
     ...lane,offset:start+slot%grid.columns}))};
 }
 
+// Every unit side by side as one scrollable rack. The rack slides so the focused gate (or, for a virtual
+// selector, its unit) stays under the Bowden exit at x=620. Gates wrap into rows within their unit.
+// `manual` is an extra shift from the edge arrows; the clamped value is returned.
+export function rackGrid(layouts, {current, focus, spacing, angle, manual=0, maxVirtualColumns=6, availableWidth=850, gap=18}) {
+  const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
+  const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
+  const units=[], lanes=[], anchors=new Map();
+  let left=0;
+  for (const layout of layouts) {
+    const count=layout.gates.length;
+    if (!count) continue;
+    const virtual=layout.selector_type === 'VirtualSelector';
+    const columns=Math.min(virtual ? maxVirtualColumns : capacity,count), width=(columns-1)*spacing+2*padding;
+    units.push({name:layout.name,virtual,columns,rows:Math.ceil(count/columns),left,right:left+width,current:layout.name === current});
+    layout.gates.forEach((index,slot)=>{
+      const x=left+padding+(slot%columns)*spacing;
+      lanes.push({index,row:Math.floor(slot/columns),x,unit:layout.name,virtual});
+      anchors.set(index,virtual ? left+width/2 : x);
+    });
+    left+=width+gap;
+  }
+  const first=lanes[0]?.index, anchorOf=gate=>anchors.get(gate) ?? anchors.get(first) ?? 620;
+  const low=Math.floor(focus), high=Math.ceil(focus);
+  const base=620-(anchorOf(low)+(anchorOf(high)-anchorOf(low))*(focus-low));
+  const rackLeft=0, rackRight=Math.max(0,left-gap);
+  const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
+  const shift=base+applied;
+  return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,
+    overflow:{left:rackLeft+shift<margin,right:rackRight+shift>availableWidth-margin},
+    units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
+    lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-Math.abs(lane.index-focus))}))};
+}
+
 const gateTiming={retract:300,fade:500,slide:900,advance:300};
 const gateDuration=gateTiming.retract+2*gateTiming.fade+gateTiming.slide+gateTiming.advance;
 

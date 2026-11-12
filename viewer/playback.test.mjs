@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { timelineMarkers, homingHold, spoolTooltip, tweenTo } from './playback.js';
+import { timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -836,4 +836,38 @@ test('the gear spacing eases between grip states over half a second instead of s
  const end=tweenTo(tw,26.25,1500);
  assert.equal(end.value,26.25);assert.ok(end.done);
  assert.equal(tweenTo(end,26.25,9999).value,26.25);
+});
+test('the rack places every unit in sequence and slides to keep the focused gate under the Bowden exit',()=>{
+ const layouts=[{name:'unit0',gates:[0,1,2,3],selector_type:'LinearSelector'},{name:'unit1',gates:[4,5,6,7,8,9,10,11],selector_type:'VirtualSelector'}];
+ const options={current:'unit0',spacing:54,angle:77*Math.PI/180};
+ const a=rackGrid(layouts,{...options,focus:1});
+ assert.equal(a.units.length,2);assert.ok(a.units[0].right<a.units[1].left);
+ const lane=g=>a.lanes.find(l=>l.index===g);
+ assert.equal(Math.round(lane(1).x),620);                       // The focused spool sits under the exit
+ assert.equal(Math.round(lane(2).x-lane(1).x),54);
+ assert.equal(lane(0).row,0);
+ const b=rackGrid(layouts,{...options,focus:3});
+ assert.equal(Math.round(b.lanes.find(l=>l.index===3).x),620);
+ const mid=rackGrid(layouts,{...options,focus:1.5});             // Mid-slide lies between the two
+ assert.ok(mid.shift<a.shift && mid.shift>rackGrid(layouts,{...options,focus:2}).shift-1e-9);
+ const v=rackGrid(layouts,{...options,focus:6});                 // A virtual unit centres on the exit
+ const unit1=v.units[1];assert.equal(Math.round((unit1.left+unit1.right)/2),620);
+ assert.equal(unit1.columns,6);assert.equal(unit1.rows,2);       // Large units break into rows
+ assert.ok(v.lanes.find(l=>l.index===10).row===1);
+});
+test('the rack arrows appear only when a unit is off screen, and manual scroll is clamped',()=>{
+ const layouts=[{name:'a',gates:Array.from({length:8},(_,i)=>i),selector_type:'LinearSelector'},
+  {name:'b',gates:Array.from({length:8},(_,i)=>i+8),selector_type:'LinearSelector'}];
+ const options={current:'a',spacing:54,angle:77*Math.PI/180};
+ assert.ok(!rackGrid(layouts,{...options,focus:0}).overflow.left);     // Gate 0 at the exit leaves nothing off the left
+ const rack=rackGrid(layouts,{...options,focus:12});
+ assert.ok(rack.overflow.left && rack.overflow.right);
+ const fits=rackGrid([{name:'a',gates:[0,1,2],selector_type:'LinearSelector'}],{...options,focus:1});
+ assert.ok(!fits.overflow.left && !fits.overflow.right);
+ const pushed=rackGrid(layouts,{...options,focus:0,manual:-100000});
+ assert.ok(pushed.units.at(-1).right>=850-14-1e-6);              // Cannot scroll past the last unit
+ const deep={...options,focus:12};
+ assert.ok(rackGrid(layouts,{...deep,manual:-100000}).units.at(-1).right>=850-14-1e-6);
+ assert.ok(rackGrid(layouts,{...deep,manual:100000}).units[0].left<=14+1e-6);   // ...or the first
+ assert.equal(rackGrid(layouts,{...deep,manual:0}).manual,0);
 });
