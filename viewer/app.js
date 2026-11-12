@@ -815,7 +815,7 @@ function renderScene() {
         svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${top} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
       }
       const knownWeight=Number.isFinite(s.spool_percentages?.[index]);
-      const title=spoolTooltip(s,index,operation,active);
+      const title=spoolTooltip(s,index);
       const shelfY=575+row*rowSpacing+mmuOffset;
       svg += `<defs><linearGradient id="spool-shelf-edge-${index}" gradientUnits="userSpaceOnUse" x1="0" y1="${shelfY-3}" x2="0" y2="${shelfY}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="spool-shelf-mask-${index}" maskUnits="userSpaceOnUse" x="${x-80}" y="${y-70}" width="160" height="150"><rect x="${x-80}" y="${y-70}" width="160" height="150" fill="url(#spool-shelf-edge-${index})"/></mask></defs><g mask="url(#spool-shelf-mask-${index})">`;
       svg += `<g data-part="espooler" data-gate="${index}" data-active="${active}" data-fill-percent="${percent}" data-tooltip="${escape(title)}" transform="translate(${x} ${y}) scale(${spoolScale})" filter="url(#spool-separation-shadow)">`;

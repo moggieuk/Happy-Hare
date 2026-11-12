@@ -266,13 +266,14 @@ export function duration(event, compressBowden = false) {
 // The complete gate map entry for one spool, one "label: value" line each. Unset values are left out.
 const gateStatusNames = {'-1': 'Unknown', 0: 'Empty', 1: 'Available', 2: 'Available from buffer'};
 const gateValue = value => value !== undefined && value !== null && value !== '' && value !== -1;
-export function spoolTooltip(state, index, operation, active) {
+export function spoolTooltip(state, index) {
   const map = state.gate_map || {}, at = name => map[name]?.[index];
   const lines = [`Gate ${index} · ${gateStatusNames[state.gate_status?.[index]] ?? 'Unknown'}`];
   const add = (label, value, unit = '') => { if (gateValue(value)) lines.push(`${label}: ${value}${unit}`); };
   add('Material', at('material')); add('Filament', at('filament_name')); add('Vendor', at('vendor'));
   add('Color', state.gate_colors?.[index] && `#${state.gate_colors[index]}`);
-  add('Temperature', at('temperature'), ' °C'); add('Speed override', at('speed_override'), '%');
+  add('Temperature', at('temperature'), ' °C');
+  if (at('speed_override') !== 100) add('Speed override', at('speed_override'), '%');
   add('Spool ID', at('spool_id')); add('TD', at('td')); add('RFID', at('rfid'));
   const initial = at('initial_weight'), remaining = at('remaining_weight'), percent = state.spool_percentages?.[index];
   lines.push(Number.isFinite(percent) && initial > 0 && remaining >= 0
@@ -280,7 +281,6 @@ export function spoolTooltip(state, index, operation, active) {
   const tools = (map.ttg_map || []).flatMap((gate, tool) => gate === index ? [`T${tool}`] : []);
   if (tools.length) lines.push(`Tool: ${tools.join(', ')}`);
   add('Endless spool group', at('endless_spool_groups'));
-  lines.push(active ? `Espooler: ${operation.direction} · ${Math.round(operation.output_power * 100)}% output` : 'Espooler: stopped');
   return lines.join('\n');
 }
 
