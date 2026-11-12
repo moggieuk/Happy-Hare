@@ -1,4 +1,4 @@
-// Optional browser regression: node --test test/hh/viewer/spool.browser.mjs
+// Optional browser regression: node --test viewer/spool.browser.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

@@ -250,9 +250,16 @@ class WebUiBridge:
                 params.update(json.loads(body))
             except ValueError:
                 pass
-        # The viewer's own pages only: index plus the flat modules and stylesheet beside this file
-        viewer_dir = pathlib.Path(__file__).parent / 'viewer'
-        name = 'index.html' if parsed.path in ('/sim/viewer', '/sim/viewer/') else parsed.path.removeprefix('/sim/viewer/')
+        # The standalone viewer (repo-root viewer/): index plus its flat modules and stylesheet. The page
+        # uses relative URLs, so the directory form of the address is required.
+        if parsed.path == '/sim/viewer':
+            handler.send_response(301)
+            handler.send_header('Location', '/sim/viewer/')
+            handler.send_header('Content-Length', '0')
+            handler.end_headers()
+            return
+        viewer_dir = pathlib.Path(__file__).resolve().parents[2] / 'viewer'
+        name = 'index.html' if parsed.path == '/sim/viewer/' else parsed.path.removeprefix('/sim/viewer/')
         if parsed.path.startswith('/sim/viewer') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
                 and (viewer_dir / name).is_file():
             self._reply(handler, 200, (viewer_dir / name).read_bytes(),

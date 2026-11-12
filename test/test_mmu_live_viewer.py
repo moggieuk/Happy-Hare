@@ -144,7 +144,7 @@ class TestViewerConsole(unittest.TestCase):
 
     def test_every_imported_viewer_module_is_served(self):
         import pathlib, re
-        viewer = pathlib.Path(__file__).parent / 'hh' / 'viewer'
+        viewer = pathlib.Path(__file__).parent.parent / 'viewer'
         names = {'index.html', 'app.js'}
         for page in viewer.glob('*.js'):
             names.update(re.findall(r"from '\./([\w.-]+\.js)'", page.read_text()))
