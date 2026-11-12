@@ -1,6 +1,7 @@
 import {TelemetryStream} from './telemetry-stream.js';
 import {LiveState, liveFrame} from './live-state.js';
 import {liveMachine} from './live-config.js';
+import {simulatorApi, detectConnection} from './simulator.js';
 import {overlayAllowed,overlaySnapshot} from './overlay.js';
 import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroParameters,toolheadObjects} from './editor.js';
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
@@ -8,6 +9,7 @@ import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
+const sim = simulatorApi(rpc);
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
@@ -91,7 +93,7 @@ function sourceMode() {
 }
 
 function renderWarning(warnings=[], notice=null) {
-  const simulatorLive=viewMode==='live' && !offline && socket?.readyState===1 && setup?.connection_kind==='simulator';
+  const simulatorLive=viewMode==='live' && !offline && socket?.readyState===1 && isSimulator();
   const text=simulatorLive
     ? 'Simulator subscriptions may skip movement updates. Select Telemetry stream for complete movement animation.'
     : viewMode!=='playback' ? ''
@@ -173,6 +175,7 @@ function message(text, error = false) {
   $("message").textContent = text;
   $("message").classList.toggle("error", error);
 }
+function isSimulator() { return setup?.connection_kind === 'simulator'; }
 function rpc(method, params = {}) {
   return new Promise((resolve, reject) => {
     if (offline) return reject(Error("Select a live source before changing the printer"));
@@ -263,18 +266,15 @@ function connect() {
 async function initializeConnection() {
   const generation=connectionGeneration;
   editorStatic=null;
-  const info=await rpc('server.info');
-  const simulator=info.moonraker_version?.endsWith('-sim');
-  try { await refresh(); }
-  catch(error) {
-    if (generation!==connectionGeneration) return;
-    if (simulator) throw error;
-    setup={connection_kind:'live_machine',units:[],parameters:[],profiles:[]};
+  const probe=await detectConnection(rpc,Number($('unit').value || 0));
+  if (generation!==connectionGeneration) return;
+  if (probe.connection_kind==='live_machine') {
+    setup=probe;
     $('connection').textContent='Connected to printer'; sourceMode();
     await refreshLiveEditor().catch(error=>message(error.message,true));
-  }
+  } else await refresh(probe);
   if (generation!==connectionGeneration || offline) return;
-  if (!modeChosen && setup?.connection_kind==='simulator') await changeView('playback');
+  if (!modeChosen && isSimulator()) await changeView('playback');
   else if (viewMode==='live') await subscribeLive();
   else await telemetryStream.start();
 }
@@ -311,7 +311,7 @@ function acceptLive(delta,time) {
   next.motors={gear:(liveFrom?.motors.gear || 0)+(next.mmu_gripped ? distance : 0),
     extruder:(liveFrom?.motors.extruder || 0)+(next.synced || next.filament_pos>=6 ? distance : 0)};
   liveTarget=next; liveStart=animationNow();
-  if (setup?.connection_kind==='simulator' && previous?.unit!==next.unit) {
+  if (isSimulator() && previous?.unit!==next.unit) {
     const unit=next.units.indexOf(next.unit);
     if (unit>=0 && $('unit').value!==String(unit)) {
       $('unit').value=String(unit); refresh().catch(error=>message(error.message,true));
@@ -328,7 +328,7 @@ async function changeView(mode) {
   liveTarget=null; liveFrom=null; liveState=new LiveState(); statusSensors=null;
   live=true; paused=false; replayingHistory=false;
   $('scene').replaceChildren();
-  $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : setup?.connection_kind==='simulator' ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
+  $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : isSimulator() ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
   sourceMode(); renderTrace();
   if (mode==='live' && socket?.readyState===1) await subscribeLive();
   else if(socket?.readyState===1) {
@@ -373,10 +373,10 @@ async function refreshLiveEditor() {
   filter();
   showToolheads(toolheadObjects(state));
 }
-async function refresh() {
+async function refresh(probed) {
   if (offline) return;
   if (setup?.connection_kind==='live_machine') return refreshLiveEditor();
-  setup = await rpc("sim.viewer.setup", { unit: Number($("unit").value || 0) });
+  setup = probed || await sim.setup(Number($("unit").value || 0));
   if (offline) return;
   sourceMode();
   const kind = setup.connection_kind || 'simulator'; // Older sim.viewer.setup responses are simulator-only.
@@ -547,7 +547,7 @@ $("command-form").onsubmit = (event) => {
 $("restart").onclick = () =>
   action(async () => {
     message("Restarting simulator…");
-    await rpc("sim.viewer.restart", { profile: $("profiles").value });
+    await sim.restart({ profile: $("profiles").value });
     $("unit").value = "0";
     await refresh();
     message("Fresh profile session started.");
@@ -563,7 +563,7 @@ $("files").onchange = () =>
         })),
     );
     message("Loading uploaded profile…");
-    await rpc("sim.viewer.restart", { files });
+    await sim.restart({ files });
     $("unit").value = "0";
     await refresh();
     message("Uploaded profile started.");
@@ -754,7 +754,7 @@ function renderScene() {
     `M620 ${570+mmuOffset} L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 449`;
   const dimensionLink = label => {
     const id = dimensionParameter(s, label);
-    return id && !offline && setup?.connection_kind==='simulator' ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
+    return id && !offline && isSimulator() ? `class="editable-dimension" role="button" tabindex="0" data-parameter="${escape(id)}" data-unit="${s.units?.indexOf(s.unit) ?? 0}" aria-label="Edit ${escape(label)}"` : '';
   };
   const nozzleDiameter = Number($("nozzle-diameter").value);
   const nozzleWidth = 7 * nozzleDiameter / 1.75;
@@ -916,7 +916,7 @@ function renderScene() {
   const macroParams=s.configuration?.parameters?.[macroUnit] || {};
   $('scene-macros').innerHTML=[['purge_macro','Purge macro'],['form_tip_macro','Tip-forming macro']].map(([key,label])=>{
     const name=macroParams[key];
-    const link=offline || setup?.connection_kind!=='simulator' ? '' : `role="button" tabindex="0" data-parameter="${key}" data-macro="${escape(name || '')}" data-unit="${macroUnit}" aria-label="Browse ${label} variables"`;
+    const link=offline || !isSimulator() ? '' : `role="button" tabindex="0" data-parameter="${key}" data-macro="${escape(name || '')}" data-unit="${macroUnit}" aria-label="Browse ${label} variables"`;
     return `<div class="macro-label">${label}</div><span class="macro-name" ${link}>${escape(name === undefined ? 'Not recorded' : name || 'None')}</span>`;
   }).join('');
   renderWarning(constrained.warnings, viewMode==='playback' ? selectorNotice(events, e, Boolean(playing), live && !paused) : null);
@@ -1278,12 +1278,12 @@ function renderScene() {
       el.textContent = sensorName(name);
       const enabled = d.enabled ?? d.state !== null;
       const atLatest = viewMode==='live' || (live && !paused && !playing && played >= events.at(-1)?.seq);
-      el.disabled = offline || !atLatest || busy || setup?.connection_kind!=='simulator';
+      el.disabled = offline || !atLatest || busy || !isSimulator();
       el.setAttribute('aria-pressed', String(enabled));
       el.setAttribute('aria-label', `${name}: ${enabled ? 'enabled' : 'disabled'}. Click to ${enabled ? 'disable' : 'enable'}`);
       el.dataset.tooltip = offline ? 'Recorded sensor state' : atLatest ? `${enabled ? 'Disable' : 'Enable'} ${name}` : 'Jump to live to change sensors';
       el.onclick = () => action(async () => {
-        await rpc('sim.viewer.sensor', {name, enabled: !enabled});
+        await sim.sensor(name, !enabled);
         message(`Sensor ${name} ${enabled ? 'disabled' : 'enabled'}.`);
       });
       return el;
@@ -1553,7 +1553,7 @@ const telemetryStream=new TelemetryStream(rpc, async data=>{
   updateSource(data.records,data.reset);
   const latest=rawEvents.at(-1)?.state;
   const selectedGate=latest ? `${session}:${latest.unit}:${latest.gate}` : null;
-  if (latest && selectedGate!==parameterGate && setup?.connection_kind==='simulator') {
+  if (latest && selectedGate!==parameterGate && isSimulator()) {
     parameterGate=selectedGate;
     const unit=latest.units?.indexOf(latest.unit) ?? -1;
     if (unit>=0 && $('unit').value!==String(unit)) {

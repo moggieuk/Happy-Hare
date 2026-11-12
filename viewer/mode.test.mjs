@@ -2,16 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {detectConnection} from './simulator.js';
 const app=readFileSync(new URL('./app.js',import.meta.url),'utf8');
+const isSimulator=app.match(/function isSimulator\(\) \{.*\}/)[0];
 const initialize=app.slice(app.indexOf('async function initializeConnection()'),app.indexOf('async function subscribeLive()'));
 async function connection(kind,chosen=false,mode='live',offline=false) {
  const calls=[];
  const c=vm.createContext({connectionGeneration:1,modeChosen:chosen,viewMode:mode,setup:null,offline,
-   rpc:async()=>({moonraker_version:kind==='simulator'?'v0.9-sim':'v0.9'}),
-   refresh:async()=>{c.setup={connection_kind:kind};},
+   rpc:async method=>{ if (kind!=='simulator') throw Error(`Method not found: ${method}`); return {units:[]}; },
+   detectConnection,$:()=>({value:'0'}),sourceMode:()=>{},refreshLiveEditor:async()=>{},message:()=>{},
+   refresh:async probed=>{c.setup=probed;},
    telemetryStream:{start:async()=>calls.push('telemetry')},
    changeView:async mode=>calls.push(mode),subscribeLive:async()=>calls.push('subscribe')});
- vm.runInContext(initialize,c);await vm.runInContext('initializeConnection()',c);return calls;
+ vm.runInContext(isSimulator+initialize,c);await vm.runInContext('initializeConnection()',c);return calls;
 }
 test('simulator defaults to telemetry, printer defaults to subscriptions',async()=>{
  assert.deepEqual(await connection('simulator'),['playback']);
@@ -27,7 +30,7 @@ const warning=app.slice(app.indexOf('function renderWarning('),app.indexOf('let 
 test('simulator subscription warning clears on mode, source, and connection changes',()=>{
  const bang={}, nodes={'filament-warning':{dataset:{},querySelector:()=>bang},'filament-warning-message':{}};
  const c=vm.createContext({viewMode:'live',offline:false,socket:{readyState:1},setup:{connection_kind:'simulator'},$:id=>nodes[id]});
- vm.runInContext(warning,c);
+ vm.runInContext(isSimulator+warning,c);
  const draw=()=>vm.runInContext('renderWarning()',c);
  draw();assert.equal(nodes['filament-warning'].hidden,false);
  assert.match(nodes['filament-warning-message'].textContent,/subscriptions may skip/);
@@ -47,4 +50,12 @@ test('simulator subscription warning clears on mode, source, and connection chan
 test('reconnect leaves loaded recordings offline',async()=>{
  assert.deepEqual(await connection('simulator',true,'playback',true),[]);
  assert.deepEqual(await connection('live_machine',true,'playback',true),[]);
+});
+
+test('a failed simulator probe is a live machine and nothing else calls sim.* afterwards',async()=>{
+ const methods=[];
+ const live=await detectConnection(async method=>{methods.push(method);throw Error('Method not found');},2);
+ assert.equal(live.connection_kind,'live_machine');assert.deepEqual(methods,['sim.viewer.setup']);
+ const sim=await detectConnection(async(method,params)=>({units:[],unit:params.unit}),1);
+ assert.equal(sim.connection_kind,'simulator');assert.equal(sim.unit,1);
 });
