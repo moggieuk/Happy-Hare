@@ -59,3 +59,10 @@ test('a failed simulator probe is a live machine and nothing else calls sim.* af
  const sim=await detectConnection(async(method,params)=>({units:[],unit:params.unit}),1);
  assert.equal(sim.connection_kind,'simulator');assert.equal(sim.unit,1);
 });
+
+test('a command from elsewhere never pulls a paused view back to live; one typed in the viewer follows it',()=>{
+ const handler=app.slice(app.indexOf('data.method === "notify_gcode_command"'),app.indexOf('data.method === "notify_gcode_response"'));
+ assert.ok(!handler.includes('followLive'));
+ const form=app.slice(app.indexOf('$("command-form").onsubmit'),app.indexOf('$("restart").onclick'));
+ assert.match(form,/followLive\(\)/);
+});

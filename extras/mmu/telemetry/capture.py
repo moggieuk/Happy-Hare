@@ -80,6 +80,9 @@ class ReplayState:
     Read a small allowlist directly, avoiding the broad mmu.get_status scan.
     Tunable parameter sets are read once by static(); runtime edits arrive as config_changed events.
     """
+    # Gate map attributes shown for a spool, beside the status, colour and weights read above
+    GATE_MAP_ATTRIBUTES = ('gate_filament_name', 'gate_material', 'gate_vendor', 'gate_td', 'gate_temperature',
+                           'gate_spool_id', 'gate_speed_override', 'gate_spool_rfid', 'ttg_map', 'endless_spool_groups')
     MACRO_VARIABLES = ('blade_pos', 'cutter_before_extruder',
                        'cooling_tube_position', 'cooling_tube_length')
 
@@ -183,6 +186,7 @@ class ReplayState:
                      filament_grip_state=mmu.selector().get_filament_grip_state(),
                      sync_mode=drive.get_sync_mode(), gate_status=list(mmu.gate_status), gate_color=[display_color(c) for c in mmu.gate_color],
                      gate_initial_weight=list(mmu.gate_initial_weight), gate_remaining_weight=list(mmu.gate_remaining_weight),
+                     **{name: list(getattr(mmu, name)) for name in self.GATE_MAP_ATTRIBUTES},
                      active_sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in active],
                      sensors={name: dict(triggered=value, enabled=bool(sensor.runout_helper.sensor_enabled))
                               for name, (value, sensor) in sensors.items()},

@@ -25,6 +25,14 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertEqual(state['printer']['mmu']['gate_initial_weight'][0], 1000)
         self.assertEqual(state['printer']['mmu']['gate_remaining_weight'][0], 250)
 
+    def test_gate_map_attributes_are_captured(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=PETG NAME="Matte red" SPOOLID=12')
+        mmu = self.State(self.hh.mmu)()['printer']['mmu']
+        self.assertEqual(mmu['gate_material'][1], 'PETG')
+        self.assertEqual(mmu['gate_filament_name'][1], 'Matte red')
+        self.assertEqual(mmu['gate_spool_id'][1], 12)
+        self.assertEqual(len(mmu['ttg_map']), self.hh.mmu.num_gates)
+
     def setUp(self):
         self.hh = session('ercf_vvd_buffers')
         self.hh.boot(calibrate=True, selected_gate=0)
