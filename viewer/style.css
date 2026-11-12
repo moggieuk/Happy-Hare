@@ -459,3 +459,6 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 #filament-warning[data-kind="notice"] .warning-bang { background: #4f86c6; color: #fff; font-family: Georgia, serif; font-style: italic; }
 [data-theme="dark"] #filament-warning[data-kind="notice"] { border-color: #3f78b8; background: #1c2b3d; color: #b9d7f5; }
 [data-theme="dark"] #filament-warning[data-kind="notice"] .warning-bang { background: #3f78b8; color: #fff; }
+[data-part="rack-scroll"] { cursor: pointer; }
+[data-part="rack-scroll"]:hover rect, [data-part="rack-scroll"]:focus-visible rect { fill-opacity: 1; stroke-width: 1.4; }
+[data-part="rack-scroll"]:focus-visible { outline: none; }

@@ -112,7 +112,7 @@ export class SceneModel {
     }
     const vars=f.macros?.[machine.form_tip_macro+'_VARS'] || f.macros?.[machine.form_tip_macro] || {};
     const cutters=finite(vars.blade_pos) ? [{kind:'toolhead',position:nozzle-vars.blade_pos,before_extruder:vars.cutter_before_extruder}] : [];
-    return copy({unit:m.unit,units,unit_gates:unit.gates,selector_type:unit.selector_type || null,has_per_gate_heaters:unit.has_per_gate_heaters === true,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
+    return copy({unit:m.unit,units,unit_layouts:units.map(name=>({name,gates:machine.units[name].gates,selector_type:machine.units[name].selector_type || null})),unit_gates:unit.gates,selector_type:unit.selector_type || null,has_per_gate_heaters:unit.has_per_gate_heaters === true,tool:m.tool,gate:m.gate,filament_pos:m.filament_pos,filament_pos_name:positions[m.filament_pos] || 'UNKNOWN',
       tips:this.tips,tails:this.tips.map(()=>null),tip_shapes:this.shapes,hair_lengths:this.hairLengths,gate_colors:m.gate_color.map(color),gate_status:m.gate_status || [],layout,sensors,active_sensors:m.active_sensors,
       spool_percentages:m.gate_color.map((_,gate)=>spoolPercentage(m.gate_initial_weight?.[gate],m.gate_remaining_weight?.[gate])),
       gate_map:{filament_name:m.gate_filament_name,material:m.gate_material,vendor:m.gate_vendor,td:m.gate_td,temperature:m.gate_temperature,

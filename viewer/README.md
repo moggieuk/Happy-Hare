@@ -13,6 +13,12 @@ the simulator.
 The parameter and Toolhead Config editors send `MMU_TEST_CONFIG` / `SET_GCODE_VARIABLE` through
 `printer.gcode.script`, so they work against a real printer and the simulator alike.
 
+## The unit rack
+Every MMU unit is drawn side by side on one rack under the Bowden exit, and a unit with many gates wraps into rows.
+The rack slides so the selected spool stays under the exit (a virtual-selector unit centres on it), and a gate change
+slides it along with the existing selection animation. Narrow arrows at the panel edges appear when part of a unit is
+off screen; they scroll the rack by hand until the next gate selection.
+
 ## Simulator-only features
 Profile switching, loading a recording into the simulator and sensor toggles use `sim.viewer.*` RPCs that only
 the simulator provides. The viewer probes for them once on connect and hides those controls elsewhere.
