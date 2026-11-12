@@ -883,6 +883,21 @@ test('a slide between units moves the rack at constant speed and the raised spoo
  assert.equal(lift(0,3),10);assert.equal(lift(1,4),10);
  assert.ok(lift(.5,3)<10 && lift(.5,4)<10);                       // Neither is under the exit mid-slide
 });
+test('the Bowden fades back while the rack moves away from the exit and returns when the gate arrives',()=>{
+ const layouts=[{name:'v',gates:[0,1,2,3],selector_type:'VirtualSelector'},{name:'l',gates:[4,5,6,7],selector_type:'LinearSelector'}];
+ const options={current:'v',spacing:54,angle:77*Math.PI/180};
+ const reach=extra=>rackGrid(layouts,{...options,...extra}).reach;
+ assert.equal(reach({focus:1}),1);                                   // Selected gate under the exit: attached
+ assert.equal(reach({focus:5}),1);
+ assert.equal(reach({focus:1,manual:-200}),0);                      // Scrolled well away: detached
+ const part=reach({focus:1,manual:-60});assert.ok(part>0 && part<1);
+ const slide=t=>reach({slide:{from:1,to:5,t}});                      // Virtual unit to a linear one
+ assert.equal(slide(0),1);assert.equal(slide(1),1);
+ assert.equal(slide(.5),0);                                          // Fully faded while the units pass
+ assert.ok(slide(.3)<1 && slide(.7)<1);                         // ...fading out and back in
+ const within=rackGrid([{name:'l',gates:[0,1,2,3],selector_type:'LinearSelector'}],{...options,current:'l',slide:{from:1,to:2,t:.5}});
+ assert.equal(within.reach,1);                                       // A move to the next lane stays attached
+});
 test('a hand-scrolled rack returns to the selected gate only after 2.5 seconds of inactivity',()=>{
  assert.equal(rackIdleReturn(-300,2499),false);
  assert.equal(rackIdleReturn(-300,2500),true);
