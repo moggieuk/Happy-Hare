@@ -8,71 +8,14 @@ import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from '
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
-import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
+import {$, escape, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
+import {consoleLine} from './console-log.js';
+import './chrome.js';
 const sim = simulatorApi(rpc);
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
 }
-const $ = (id) => document.getElementById(id);
-// A shared overlay styles HTML and SVG tooltips consistently and avoids clipping.
-const tooltip = document.createElement('div');
-tooltip.id = 'viewer-tooltip';
-tooltip.setAttribute('role', 'tooltip');
-tooltip.hidden = true;
-document.body.append(tooltip);
-let tooltipTimer, tooltipTarget;
-function hideTooltip() {
-  clearTimeout(tooltipTimer);
-  tooltip.hidden = true;
-  if (tooltipTarget) {
-    const ids = (tooltipTarget.getAttribute('aria-describedby') || '').split(' ').filter(id => id && id !== tooltip.id);
-    if (ids.length) tooltipTarget.setAttribute('aria-describedby', ids.join(' '));
-    else tooltipTarget.removeAttribute('aria-describedby');
-  }
-  tooltipTarget = null;
-}
-function showTooltipLater(target) {
-  if (target === tooltipTarget) return;
-  hideTooltip();
-  if (!target?.dataset.tooltip) return;
-  tooltipTarget = target;
-  tooltipTimer = setTimeout(() => {
-    if (!target.isConnected) return hideTooltip();
-    tooltip.textContent = target.dataset.tooltip;
-    tooltip.hidden = false;
-    const rect = target.getBoundingClientRect();
-    const box = tooltip.getBoundingClientRect();
-    tooltip.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - box.width - 8))}px`;
-    tooltip.style.top = `${Math.max(8, rect.bottom + box.height + 6 <= innerHeight ? rect.bottom + 6 : rect.top - box.height - 6)}px`;
-    target.setAttribute('aria-describedby', [target.getAttribute('aria-describedby'), tooltip.id].filter(Boolean).join(' '));
-  }, target.closest('#sidebar-playback') ? 1000 : 500);
-}
-document.addEventListener('pointerover', e => showTooltipLater(e.target.closest('[data-tooltip]')));
-document.addEventListener('pointerout', e => {
-  if (!tooltipTarget?.contains(e.relatedTarget)) hideTooltip();
-});
-document.addEventListener('focusin', e => showTooltipLater(e.target.closest('[data-tooltip]')));
-document.addEventListener('focusout', hideTooltip);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTooltip(); });
-document.addEventListener('scroll', hideTooltip, true);
-window.addEventListener('blur', hideTooltip);
-function setTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  const next = theme === 'dark' ? 'Light' : 'Dark';
-  const icons = {"light": "<svg aria-hidden=\"true\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z\"/></svg>", "dark": "<svg aria-hidden=\"true\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z\"/></svg>"};
-  $('theme-toggle').innerHTML = icons[next.toLowerCase()];
-  $('theme-toggle').dataset.tooltip = 'Switch to ' + next.toLowerCase() + ' mode';
-  $('theme-toggle').setAttribute('aria-label', 'Switch to ' + next.toLowerCase() + ' mode');
-}
-let savedTheme;
-try { savedTheme = localStorage.getItem('hh-viewer-theme'); } catch {}
-setTheme(savedTheme === 'light' ? 'light' : 'dark');
-$('theme-toggle').onclick = () => {
-  const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  setTheme(theme);
-  try { localStorage.setItem('hh-viewer-theme', theme); } catch {}
-};
 let modeChosen=false;
 let statusSensors=null, overlayCache={key:'',state:null};
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
@@ -117,60 +60,6 @@ let socket, reconnectTimer, connectionGeneration=0,
   cursor = 0,
   setup = null,
   busy = false;
-const escape = (s) =>
-  String(s).replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
-function consoleMarkup(text) {
-  const template = document.createElement('template');
-  template.innerHTML = text;
-  const fragment = document.createDocumentFragment();
-  const copy = (node, parent) => {
-    if (node.nodeType === Node.TEXT_NODE) { parent.append(document.createTextNode(node.textContent)); return; }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    if (node.tagName === 'SPAN') {
-      const span = document.createElement('span');
-      const color = node.style.color;
-      if (color && /^(#[0-9a-f]{3,8}|[a-z]+|rgba?\([0-9.,% /]+\)|hsla?\([0-9.,% /a-z]+\))$/i.test(color) && CSS.supports('color', color)) span.style.color = color;
-      for (const child of node.childNodes) copy(child, span);
-      parent.append(span);
-    } else if (node.tagName === 'B' || node.tagName === 'STRONG') {
-      const bold = document.createElement('strong');
-      for (const child of node.childNodes) copy(child, bold);
-      parent.append(bold);
-    } else if (node.tagName === 'BR') parent.append(document.createElement('br'));
-    else parent.append(document.createTextNode(node.outerHTML));
-  };
-  for (const node of template.content.childNodes) copy(node, fragment);
-  return fragment;
-}
-function consoleLine(text, kind = 'response') {
-  const log = $('mini-console');
-  const follow = log.scrollHeight-log.scrollTop-log.clientHeight < 32;
-  for (const line of String(text).split('\n')) {
-    const row = document.createElement('div');
-    row.className = 'console-' + ((line.startsWith('!!') || line.startsWith('Unknown command:')) ? 'error' : kind);
-    const time = document.createElement('span');
-    time.className = 'console-time';
-    time.textContent = new Date().toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) + ' ';
-    row.append(time);
-    if (kind === 'command') {
-      const command = document.createElement('span');
-      command.className = 'console-command-text';
-      command.textContent = line;
-      row.append(command);
-    }
-    else row.append(consoleMarkup(line));
-    log.append(row);
-  }
-  while (log.children.length > 500) log.firstChild.remove();
-  if (follow) log.scrollTop = log.scrollHeight;
-}
-$('clear-console').onclick = () => $('mini-console').replaceChildren();
 function message(text, error = false) {
   $("message").textContent = text;
   $("message").classList.toggle("error", error);
