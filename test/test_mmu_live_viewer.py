@@ -147,7 +147,7 @@ class TestViewerConsole(unittest.TestCase):
         viewer = pathlib.Path(__file__).parent.parent / 'viewer'
         names = {'index.html', 'app.js'}
         for page in viewer.glob('*.js'):
-            names.update(re.findall(r"from '\./([\w.-]+\.js)'", page.read_text()))
+            names.update(re.findall(r"(?:from|import) '\./([\w.-]+\.js)'", page.read_text()))
         for name in sorted(names):
             with self.subTest(module=name):
                 url = 'http://127.0.0.1:%d/sim/viewer/%s' % (self.bridge.port, '' if name == 'index.html' else name)
