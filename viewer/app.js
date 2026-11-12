@@ -8,8 +8,9 @@ import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from '
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
-import {$, escape, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
+import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 import {consoleLine} from './console-log.js';
+import {createToolheadPanel} from './toolhead-panel.js';
 import './chrome.js';
 const sim = simulatorApi(rpc);
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
@@ -21,7 +22,7 @@ let statusSensors=null, overlayCache={key:'',state:null};
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
 let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
 function sourceMode() {
-  toolheadPanel.hidden=offline || socket?.readyState !== 1 || toolheadPanel.dataset.available !== 'true';
+  toolheadPanel.element.hidden=offline || socket?.readyState !== 1 || toolheadPanel.element.dataset.available !== 'true';
   $('recording-option').hidden=!offline;
   $('view-mode').value=offline ? 'recording' : viewMode;
   $('simulator-controls').hidden=setup?.connection_kind==='live_machine';
@@ -189,7 +190,7 @@ function acceptLive(delta,time) {
   const next=liveState.accept(delta,time);
   if (!next) { $('mode').textContent='Live view · Waiting for MMU configuration'; return; }
   const previous=liveTarget;
-  if (setup?.connection_kind==='live_machine' || liveState.objects.configfile) showToolheads(toolheadObjects(liveState.objects));
+  if (setup?.connection_kind==='live_machine' || liveState.objects.configfile) toolheadPanel.show(toolheadObjects(liveState.objects));
   if (previous?.homing && !next.homing) {
     const name=previous.homing.endstops.find(n=>next.sensors[n]?.state===previous.homing.triggered);
     if (name) sensorPulse={sensor:name,reverse:!previous.homing.triggered,start:animationNow()};
@@ -230,16 +231,6 @@ $('view-mode').onchange=()=>{
   modeChosen=true;
   changeView($('view-mode').value).catch(e=>message(e.message,true));
 };
-function options(node, items) {
-  node.replaceChildren(
-    ...items.map(([value, label]) => {
-      const o = document.createElement("option");
-      o.value = value;
-      o.textContent = label;
-      return o;
-    }),
-  );
-}
 // A printer has no simulator RPC: the editor lists come from configfile, mmu.config_changes and the
 // macro objects, and edits are sent as G-code like the command console does.
 let editorStatic=null;
@@ -250,7 +241,7 @@ async function editorState() {   // configfile once per connection, config_chang
   const {status:{mmu}}=await rpc('printer.objects.query',{objects:{mmu:['config_changes']}});
   return {configfile,catalog,mmu};
 }
-async function refreshToolheads() { showToolheads(toolheadObjects(await editorState())); }
+async function refreshToolheads() { toolheadPanel.show(toolheadObjects(await editorState())); }
 async function refreshLiveEditor() {
   const state=await editorState(), {configfile,catalog}=state, unit=Number($('unit').value || 0);
   const names=[].concat(configfile.settings.mmu_machine?.units || []);
@@ -260,7 +251,7 @@ async function refreshLiveEditor() {
   options($('unit'),names.map((name,i)=>[i,name]));
   $('unit').value=String(unit);
   filter();
-  showToolheads(toolheadObjects(state));
+  toolheadPanel.show(toolheadObjects(state));
 }
 async function refresh(probed) {
   if (offline) return;
@@ -1535,46 +1526,7 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
-// Toolhead Config panel: values are set with MMU_TEST_CONFIG, so it works on a printer and the simulator.
-const configColumn=document.querySelector('.left-column');
-const toolheadPanel=document.createElement('aside');
-toolheadPanel.hidden=true;
-toolheadPanel.innerHTML=`<h2>Toolhead Config</h2><p class="note">Applied with MMU_TEST_CONFIG. Shared toolheads affect every listed unit.</p><label>Toolhead object<select class="object-choice"></select></label><label>Parameter<select class="object-parameter"></select></label><label>Value<input class="object-value" type="number" step="any"></label><button class="object-apply">Apply</button><p class="note object-status" role="status"></p>`;
-configColumn.insertBefore(toolheadPanel,$('viewer-settings'));
-const toolheadField=name=>toolheadPanel.querySelector('.object-'+name);
-let toolheads=[], toolheadFingerprint='';
-function selectedToolhead() { return toolheads.find(item=>item.name===toolheadField('choice').value); }
-function renderToolheadParameters() {
-  const previous=toolheadField('parameter').value, selected=selectedToolhead();
-  options(toolheadField('parameter'),(selected?.parameters || []).map(item=>[item.name,item.name]));
-  if (selected?.parameters.some(item=>item.name===previous)) toolheadField('parameter').value=previous;
-  showToolheadValue();
-}
-function showToolheadValue() {
-  const parameter=selectedToolhead()?.parameters.find(item=>item.name===toolheadField('parameter').value);
-  toolheadField('value').value=parameter?.value ?? '';
-  toolheadField('apply').disabled=!parameter;
-}
-function showToolheads(list) {
-  const fingerprint=JSON.stringify(list);
-  if (fingerprint===toolheadFingerprint) return;
-  toolheadFingerprint=fingerprint; toolheads=list;
-  const menu=toolheadField('choice'), previous=menu.value;
-  options(menu,list.map(item=>[item.name,`${item.name} (${item.unitNames.join(', ')})`]));
-  if (list.some(item=>item.name===previous)) menu.value=previous;
-  toolheadPanel.dataset.available=String(list.length>0);
-  renderToolheadParameters(); sourceMode();
-}
-toolheadField('choice').onchange=renderToolheadParameters;
-toolheadField('parameter').onchange=showToolheadValue;
-toolheadField('apply').onclick=()=>action(async()=>{
-  const number=Number(toolheadField('value').value);
-  if (!Number.isFinite(number)) throw Error('Enter a numeric value');
-  // Same path as typing the command: the change is reported as a config delta.
-  await rpc('printer.gcode.script',{script:parameterCommand(selectedToolhead().units[0],toolheadField('parameter').value,number)});
-  toolheadField('status').textContent='Applied with MMU_TEST_CONFIG.';
-  await refresh();
-});
+const toolheadPanel=createToolheadPanel({rpc, action, refresh, changed:()=>sourceMode()});
 
 $('printer-url').value=connectionUrl;
 $('connect-printer').onclick=()=>{
