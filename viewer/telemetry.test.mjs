@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {TelemetryReplay,parseTelemetry,applyDelta} from './telemetry.js';
 import {spoolPercentage} from './scene-state.js';
-import {visibleSteps,interpolate,playbackFrame,purgeOutletColor,constrainFilament,duration,selectorNotice,selectorSummary,traceText,annotatedStep} from './playback.js';
+import {orderedSteps,visibleSteps,interpolate,playbackFrame,purgeOutletColor,constrainFilament,duration,selectorNotice,selectorSummary,traceText,annotatedStep} from './playback.js';
 const fixture=name=>JSON.parse(fs.readFileSync(new URL(`./fixtures/${name}.json`,import.meta.url)));
 const header=()=>structuredClone(fixture('ercf-vvd')[0]);
 test('spool fill uses known weights, including zero, and rejects unknown weights',()=>{
@@ -889,4 +889,22 @@ test('per-gate heater capability follows the active unit and defaults off for ol
   assert.equal(r.snapshot().has_per_gate_heaters,true);
   units[active].has_per_gate_heaters=false;
   assert.equal(r.snapshot().has_per_gate_heaters,false);
+});
+test('a selector move is anchored at its start, like a filament move, with its completion internal',()=>{
+ const r=stream();
+ event(r,'selector_movement_start',{move_id:5,actuator:'stepper',label:'Positioning selector',position_mm:4.2,target_position_mm:46.2});
+ const start=r.events.at(-1);
+ assert.ok(!orderedSteps(r.events).some(e=>e.seq>=start.seq)); // An unfinished start is held back
+ event(r,'drive_sync_changed',{mode:0});
+ event(r,'selector_movement_outcome',{move_id:5,actuator:'stepper',status:'submitted',position_mm:46.2,elapsed_s:.19});
+ const ordered=orderedSteps(r.events).filter(e=>e.seq>=start.seq);
+ assert.deepEqual(ordered.map(e=>e.kind),['selector_move','state','selector_completed']);
+ const [step,,done]=ordered;
+ assert.equal(step.seq,start.seq);assert.equal(step.time,start.time);
+ assert.equal(step.telemetry.outcome.position_mm,46.2);assert.ok(!step.internal);
+ assert.ok(done.internal && done.during_move);assert.ok(done.seq>step.seq);
+ assert.equal(traceText(done).split(' · ')[2],'selector');
+ const visible=visibleSteps(r.events);
+ assert.equal(visible.filter(e=>e.kind==='selector_move').length,1);
+ assert.ok(visible.every(e=>e.kind!=='selector_completed'));
 });

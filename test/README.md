@@ -941,7 +941,10 @@ the change is committed to the telemetry stream at once; reload the viewer to se
 restores the profile defaults.
 Each selector movement (the stepper moving the carriage, the servo changing grip, rail homing) is a
 visible step with its own **selector** pill, paired from the `selector_movement_start` and
-`selector_movement_outcome` records. It has no animation of its own and no artificial delay. While it
+`selector_movement_outcome` records. Like a filament move it is anchored at the start of the move
+(the sequence and time of the start record), carries the outcome data, and its completion is an internal
+marker; an unfinished start is held back until its outcome arrives. It has no animation of its own and no
+artificial delay. While it
 plays, or when you step onto it, the notice box shows a summary such as
 `Selector: Positioning selector 4.2 → 46.2 mm (0.19s)`. After a stepper move the next step is normally the
 gate change, which still owns the rack-slide animation: the box stays up through the slide, with
