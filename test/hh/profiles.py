@@ -988,6 +988,49 @@ ERCF_QUATTROBOX = Profile(
     description='ERCF (8 gates) + QuattroBox v2 (4 gates), shared buffer, separate encoders, per-gate exits on QuattroBox only')
 
 
+# Two BoxTurtles (4 gates each, virtual selectors) and an ERCF (8 gates, servo selector with an
+# encoder) sharing one toolhead: three units, with the virtual-selector units first.
+_BOXTURTLE_UNIT = {
+    'MMU_TYPE_BOX_TURTLE_1_0': True,
+    # As the standalone BoxTurtle profile: normal loading homes at the shared hub,
+    # preloading uses each gate's own exit sensor.
+    'CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT': True,
+    'CHOICE_GATE_PRELOAD_ENDSTOP_EXIT': True,
+    'PARAM_GATE_PRELOAD_PARKING_DISTANCE': 10,
+}
+BOXTURTLE2_ERCF = Profile(
+    'boxturtle2_ercf',
+    syms={
+        'MMU_HAS_SENSOR_TOOLHEAD': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_TOOLHEAD_SENSOR': 'PG13',
+        'PIN_EXTRUDER_SENSOR': 'PG14',
+        'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+        'PARAM_ENDLESS_SPOOL_ENABLED': True,
+    },
+    units=[
+        UnitProfile('unit0', index=0, syms=dict(_BOXTURTLE_UNIT)),
+        UnitProfile('unit1', index=1, syms=dict(_BOXTURTLE_UNIT)),
+        UnitProfile('unit2', index=2, syms={
+            'MMU_FAMILY_ERCF': True,
+            'MMU_TYPE_ERCF_1_1': True,
+            'BOARD_TYPE_ERB_1': True,
+            'PARAM_NUM_GATES': 8,
+            'MOD_BINKY': True,
+            'MOD_SPRINGY': True,
+            'CHOICE_ENCODER_TYPE_BINKY_12': True,
+            'PARAM_HAS_BYPASS': True,
+            'MMU_HAS_SENSOR_ENTRY': True,
+            'SERVO_TYPE_SAVOX_SH0255MG': True,
+            'PARAM_SERVO_MAX_ANGLE': 180,
+            'CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER': True,
+        }),
+    ],
+    filament_layout={'mmu_shared_exit': 150.0},
+    description='2 x BoxTurtle 1.0 (4 gates each, VirtualSelector) + ERCF 1.1sb (8 gates, encoder)')
+
+
 TRADRACK_MAX_GATES = TRADRACK.derive(
     'tradrack_max_gates',
     syms=dict({'PARAM_NUM_GATES': MAX_GATES,
@@ -1010,7 +1053,7 @@ BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE2_ERCF, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
                     QUATTROBOX_V2, EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,
