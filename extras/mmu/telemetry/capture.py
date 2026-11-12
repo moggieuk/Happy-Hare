@@ -47,6 +47,12 @@ def changes(previous, current, path=()):
     return result
 
 
+def display_color(color):
+    """Six-digit hex for the viewer, grey when the colour is unset"""
+    from ..mmu_utils import MmuColorUtils
+    return MmuColorUtils.color_to_rgb_hex(color, '808182')[:6]
+
+
 def apply_changes(state, delta):
     for change in delta:
         target = state
@@ -123,7 +129,6 @@ class ReplayState:
         return plain(state)
 
     def __call__(self):
-        from ..mmu_utils import MmuColorUtils
         mmu = self.mmu
         now = mmu.reactor.monotonic()
         manager = mmu.sensor_manager
@@ -164,7 +169,7 @@ class ReplayState:
             units[unit.name]['espooler'] = dict(name=spooler.name, operations=operations)
         for unit in units.values():
             extruder = unit['extruder']
-            extruder['filament_remaining_color'] = MmuColorUtils.color_to_rgb_hex(extruder['filament_remaining_color'], '808182')[:6]
+            extruder['filament_remaining_color'] = display_color(extruder['filament_remaining_color'])
         macro_name = mmu._macro_name(mmu.p.form_tip_macro)
         macros = {}
         for name in (macro_name, macro_name + '_VARS'):
@@ -176,7 +181,7 @@ class ReplayState:
             mmu=dict(unit=mmu.mmu_unit().name, tool=mmu.tool_selected, gate=mmu.gate_selected,
                      filament_pos=mmu.filament_pos, filament_direction=mmu.filament_direction,
                      filament_grip_state=mmu.selector().get_filament_grip_state(),
-                     sync_mode=drive.get_sync_mode(), gate_status=list(mmu.gate_status), gate_color=[MmuColorUtils.color_to_rgb_hex(c, '808182')[:6] for c in mmu.gate_color],
+                     sync_mode=drive.get_sync_mode(), gate_status=list(mmu.gate_status), gate_color=[display_color(c) for c in mmu.gate_color],
                      gate_initial_weight=list(mmu.gate_initial_weight), gate_remaining_weight=list(mmu.gate_remaining_weight),
                      active_sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in active],
                      sensors={name: dict(triggered=value, enabled=bool(sensor.runout_helper.sensor_enabled))
