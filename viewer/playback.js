@@ -263,6 +263,39 @@ export function duration(event, compressBowden = false) {
   return Math.max(releasingPurge ? 0.65 : 0.12,seconds)*1000;
 }
 
+// The complete gate map entry for one spool, one "label: value" line each. Unset values are left out.
+const gateStatusNames = {'-1': 'Unknown', 0: 'Empty', 1: 'Available', 2: 'Available from buffer'};
+const gateValue = value => value !== undefined && value !== null && value !== '' && value !== -1;
+export function spoolTooltip(state, index, operation, active) {
+  const map = state.gate_map || {}, at = name => map[name]?.[index];
+  const lines = [`Gate ${index} · ${gateStatusNames[state.gate_status?.[index]] ?? 'Unknown'}`];
+  const add = (label, value, unit = '') => { if (gateValue(value)) lines.push(`${label}: ${value}${unit}`); };
+  add('Material', at('material')); add('Filament', at('filament_name')); add('Vendor', at('vendor'));
+  add('Color', state.gate_colors?.[index] && `#${state.gate_colors[index]}`);
+  add('Temperature', at('temperature'), ' °C'); add('Speed override', at('speed_override'), '%');
+  add('Spool ID', at('spool_id')); add('TD', at('td')); add('RFID', at('rfid'));
+  const initial = at('initial_weight'), remaining = at('remaining_weight'), percent = state.spool_percentages?.[index];
+  lines.push(Number.isFinite(percent) && initial > 0 && remaining >= 0
+    ? `Weight: ${remaining} of ${initial} g (${Math.round(percent)}%)` : 'Weight: unavailable');
+  const tools = (map.ttg_map || []).flatMap((gate, tool) => gate === index ? [`T${tool}`] : []);
+  if (tools.length) lines.push(`Tool: ${tools.join(', ')}`);
+  add('Endless spool group', at('endless_spool_groups'));
+  lines.push(active ? `Espooler: ${operation.direction} · ${Math.round(operation.output_power * 100)}% output` : 'Espooler: stopped');
+  return lines.join('\n');
+}
+
+// The MMU gears ease between gripped and released over half a second. Returns the tween advanced to `now`.
+export const gripSpacingTime = 500;
+export function tweenTo(tween, target, now, duration = gripSpacingTime) {
+  if (!tween) return {from: target, to: target, start: now, value: target, done: true};
+  if (tween.to !== target) tween = {...tween, from: tween.value, to: target, start: now};
+  const t = Math.min(1, Math.max(0, (now - tween.start) / duration));
+  return {...tween, value: tween.from + (tween.to - tween.from) * t * t * (3 - 2 * t), done: t >= 1};
+}
+
+// A short pause after a homing move that found its sensor, before the next step starts.
+export const homingHold = event => event.kind === 'movement' && event.homing && event.homed === true ? 200 : 0;
+
 // A selected movement describes its motor mode; idle live view describes now.
 export function syncForDisplay(event, state, inspectingMovement = false) {
   const mode = event?.telemetry?.start?.motor_mode || event?.motor_mode;

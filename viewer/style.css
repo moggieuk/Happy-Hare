@@ -111,7 +111,7 @@ svg {
   accent-color: #63778a;
 }
 #trace {
-  height: 300px;
+  height: 450px;
   overflow: auto;
 }
 #trace button {
@@ -215,7 +215,7 @@ select, input { max-width: 100%; }
 [data-theme="dark"] .error { color: #ff92ac; }
 
 main > section { display: flex; flex-direction: column; gap: 16px; align-self: start; }
-#mini-console { height: 210px; overflow: auto; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+#mini-console { height: 315px; overflow: auto; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .console-error { color: #b0294b; font-weight: 600; }
 [data-theme="dark"] .console-error { color: #ff92ac; }
 
@@ -263,7 +263,7 @@ h2[data-tooltip] { position: relative; width: fit-content; cursor: help; }
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-  white-space: normal;
+  white-space: pre-line;
   pointer-events: none;
 }
 [data-theme="dark"] #viewer-tooltip { background: #dce5ef; color: #172431; }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { timelineMarkers } from './playback.js';
+import { timelineMarkers, homingHold, spoolTooltip, tweenTo } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -803,4 +803,36 @@ test('non-virtual rows fill available width and grow left after reaching the rig
   assert.equal(large.rows,Math.ceil(gates.length/large.columns));
   assert.ok(fittingSpoolGrid(gates,0,75,angle).columns<large.columns);
   assert.ok(fittingSpoolGrid(gates,0,54,angle,1100).columns>large.columns);
+});
+test('only a homing move that found its sensor holds the next step for 0.2s',()=>{
+ const move=(extra)=>({kind:'movement',...extra});
+ assert.equal(homingHold(move({homing:true,homed:true})),200);
+ assert.equal(homingHold(move({homing:true,homed:false})),0);
+ assert.equal(homingHold(move({homing:false,homed:true})),0);
+ assert.equal(homingHold({kind:'gate_changed',homing:true,homed:true}),0);
+});
+test('a spool tooltip lists its gate map entry and leaves out unset values',()=>{
+ const state={gate_status:[1,0],gate_colors:['ff0000','808182'],spool_percentages:[75,null],
+  gate_map:{material:['PLA',''],filament_name:['Matte red',''],vendor:['',''],temperature:[210,-1],speed_override:[100,100],
+   spool_id:[12,-1],td:[null,null],rfid:['',''],ttg_map:[1,0],endless_spool_groups:[0,1],initial_weight:[1000,-1],remaining_weight:[750,-1]}};
+ const lines=spoolTooltip(state,0,{direction:'assist',output_power:.4},true).split('\n');
+ assert.deepEqual(lines,['Gate 0 · Available','Material: PLA','Filament: Matte red','Color: #ff0000','Temperature: 210 °C',
+  'Speed override: 100%','Spool ID: 12','Weight: 750 of 1000 g (75%)','Tool: T1','Endless spool group: 0','Espooler: assist · 40% output']);
+ const empty=spoolTooltip(state,1,undefined,false).split('\n');
+ assert.deepEqual(empty,['Gate 1 · Empty','Color: #808182','Speed override: 100%','Weight: unavailable','Tool: T0','Endless spool group: 1','Espooler: stopped']);
+ assert.equal(spoolTooltip({gate_status:[]},0,undefined,false).split('\n')[0],'Gate 0 · Unknown'); // Old recordings carry no gate map
+});
+test('the gear spacing eases between grip states over half a second instead of snapping',()=>{
+ let tw=tweenTo(null,17.25,0);
+ assert.equal(tw.value,17.25);assert.ok(tw.done);
+ tw=tweenTo(tw,26.25,1000);                      // Released: starts from the old spacing
+ assert.equal(tw.value,17.25);assert.ok(!tw.done);
+ const mid=tweenTo(tw,26.25,1250);
+ assert.ok(mid.value>17.25 && mid.value<26.25);assert.ok(!mid.done);
+ assert.equal(tweenTo(mid,26.25,1250).value,mid.value);
+ const reversed=tweenTo(mid,17.25,1300);          // Interrupted: eases back from where it is
+ assert.equal(reversed.value,mid.value);
+ const end=tweenTo(tw,26.25,1500);
+ assert.equal(end.value,26.25);assert.ok(end.done);
+ assert.equal(tweenTo(end,26.25,9999).value,26.25);
 });

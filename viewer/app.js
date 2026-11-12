@@ -7,7 +7,7 @@ import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroP
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
-import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { selectorNotice, orderedSteps, homingHold, spoolTooltip, tweenTo, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 import {consoleLine} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
@@ -133,7 +133,6 @@ function connect() {
       if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
       else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
     } else if (data.method === "notify_gcode_command") {
-      if (viewMode==='playback') followLive();
       consoleLine(data.params[0], "command");
     } else if (data.method === "notify_gcode_response") {
       const line = data.params[0];
@@ -415,6 +414,7 @@ $("command-form").onsubmit = (event) => {
   event.preventDefault();
   const script = $("command").value.trim();
   if (busy || !script) return;
+  if (viewMode==='playback') followLive(); // A command typed here is watched; commands from elsewhere never move a paused view
   action(async () => {
     const sent = rpc("printer.gcode.script", { script });
     if (socket.readyState === WebSocket.OPEN) {
@@ -475,7 +475,7 @@ function updateSpoolMotion() {
     renderer.updateMotion(spoolMotion(index,renderedSpoolState?.espoolers?.[index]));
 }
 // Gate lanes and spool columns share the same spacing.
-let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null;
+let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null, nextStepAt = 0;
 function currentIndex() {
   return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
 }
@@ -496,11 +496,19 @@ function followTrace() {
   }
 }
 function seek(index) {
-  pauseAfterStep = false;
+  pauseAfterStep = false; nextStepAt = 0;
   spoolArrowVisibility.clear();
   cursor = Math.max(0, Math.min(index, events.length - 1));
   live = false; paused = true; replayingHistory = true; playing = null; sensorPulse = null;
   draw(); followTrace();
+}
+// The MMU gears ease between gripped and released instead of snapping.
+let gearSpacingTween = null;
+function animatedGearSpacing(target) {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  gearSpacingTween = tweenTo(reduced ? null : gearSpacingTween, target, animationNow());
+  if (!gearSpacingTween.done) draw();
+  return gearSpacingTween.value;
 }
 // An inward ring marks active homing; the outward ring marks completion.
 function homingRing(name,x,y) {
@@ -807,7 +815,7 @@ function renderScene() {
         svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${top} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
       }
       const knownWeight=Number.isFinite(s.spool_percentages?.[index]);
-      const title=`Gate ${index} · ${knownWeight ? percent.toFixed(0)+'% filament' : 'Weight unavailable'} · ${active ? operation.direction+' · '+Math.round(operation.output_power*100)+'% output' : 'Stopped'}`;
+      const title=spoolTooltip(s,index,operation,active);
       const shelfY=575+row*rowSpacing+mmuOffset;
       svg += `<defs><linearGradient id="spool-shelf-edge-${index}" gradientUnits="userSpaceOnUse" x1="0" y1="${shelfY-3}" x2="0" y2="${shelfY}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="spool-shelf-mask-${index}" maskUnits="userSpaceOnUse" x="${x-80}" y="${y-70}" width="160" height="150"><rect x="${x-80}" y="${y-70}" width="160" height="150" fill="url(#spool-shelf-edge-${index})"/></mask></defs><g mask="url(#spool-shelf-mask-${index})">`;
       svg += `<g data-part="espooler" data-gate="${index}" data-active="${active}" data-fill-percent="${percent}" data-tooltip="${escape(title)}" transform="translate(${x} ${y}) scale(${spoolScale})" filter="url(#spool-separation-shadow)">`;
@@ -832,7 +840,7 @@ function renderScene() {
     }
     glassDividers=`<g clip-path="url(#spool-cover-clip)" pointer-events="none">${glassDividers}</g>`;
     const glassHighlight=`<defs><filter id="spool-glass-soften" x="-5%" y="-25%" width="110%" height="150%"><feGaussianBlur stdDeviation=".7"/></filter><linearGradient id="spool-glass-reflection"><stop stop-color="white" stop-opacity="0"/><stop offset=".15" stop-color="white" stop-opacity=".25"/><stop offset=".55" stop-color="white" stop-opacity=".08"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient></defs><path data-part="spool-glass-highlight" filter="url(#spool-glass-soften)" d="M${glassLeft+4} ${510+mmuOffset} Q${glassLeft+4} ${474+mmuOffset} ${glassLeft+40} ${474+mmuOffset} H${glassRight-40} Q${glassRight-4} ${474+mmuOffset} ${glassRight-4} ${510+mmuOffset}" fill="none" stroke="url(#spool-glass-reflection)" stroke-width="2" stroke-linecap="round" pointer-events="none"/>`;
-    svg += `${lowerHousingPath ? `<path data-part="spool-lower-housing" d="${lowerHousingPath}" fill="none" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>` : ''}<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8"/>${glassDividers}${glassHighlight}<rect data-part="spool-cabinet" x="${enclosureLeft}" y="${575+lastRowY+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="84" rx="6" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`;
+    svg += `${lowerHousingPath ? `<path data-part="spool-lower-housing" d="${lowerHousingPath}" fill="none" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>` : ''}<path data-part="spool-glass-cover" d="${coverPath}" fill="url(#spool-glass)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 55%)" stroke-width=".8" pointer-events="none"/>${glassDividers}${glassHighlight}<rect data-part="spool-cabinet" x="${enclosureLeft}" y="${575+lastRowY+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="84" rx="6" fill="url(#spool-cabinet)" stroke="color-mix(in srgb, var(--scene-border, #96abba), transparent 60%)" stroke-width=".6"/>`;
     for (let row=0; row<grid.rows-1; row++) {
       svg += `<rect data-part="spool-row-shelf" x="${enclosureLeft}" y="${575+row*rowSpacing+mmuOffset}" width="${enclosureRight-enclosureLeft}" height="49" rx="5" fill="url(#spool-shelf-fade)"/>`;
     }
@@ -951,7 +959,8 @@ function renderScene() {
     const pixelsPerMm = .27 * length / (end-entry);
     const angle = gearAngle(virtual && type==='gear' && gearGate!==gate ? 0 : distance, pixelsPerMm, 14.25);
     const gripState = e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
-    const spacing = type === 'gear' && !virtual && gripState?.mmu_gripped === false ? 26.25 : 17.25;
+    const gripSpacing = type === 'gear' && !virtual && gripState?.mmu_gripped === false ? 26.25 : 17.25;
+    const spacing = type === 'gear' && !virtual ? animatedGearSpacing(gripSpacing) : gripSpacing;
     for (const side of [-1, 1])
       svg += `<g data-part="${type}-wheel" opacity="${virtual && type==='gear' ? branchOpacity : 1}" transform="translate(${x + side * spacing} ${y}) rotate(${(type === "extruder" ? -1 : 1) * side * angle}) scale(.75)"><circle r="19" fill="var(--scene-gear, #d8e4ed)" stroke="var(--scene-border, #6d899f)"/><path d="M-14 0 H14 M0 -14 V14" stroke="var(--scene-spoke, #526f86)"/><circle class="gear-center" r="3" fill="var(--scene-spoke, #526f86)"/></g>`;
   }
@@ -1226,7 +1235,7 @@ document.addEventListener('keydown', event => {
   }
 });
 function startPlayback() {
-  pauseAfterStep = false;
+  pauseAfterStep = false; nextStepAt = 0;
   if (!events.length) return;
   if (!live) {
     const event = events[cursor];
@@ -1261,7 +1270,7 @@ $("replay").onclick = () => {
   } else startPlayback();
 };
 function followLive() {
-  pauseAfterStep = false;
+  pauseAfterStep = false; nextStepAt = 0;
   replayingHistory = false;
   live = true; paused = offline; playing = null; sensorPulse = null;
   played = events.at(-1)?.seq || 0;
@@ -1402,7 +1411,7 @@ function animate() {
     if (fraction<1 || sceneDirty || liveTarget.homing) draw();
   }
   if (viewMode==='playback' && live && !paused && events.length) {
-    if (!playing) {
+    if (!playing && now>=nextStepAt) {
       const event = events.find(e=>e.seq>played);
       if (event) { playing={event,start:now,selectionGrip:displayed?.mmu_gripped ?? event.before?.mmu_gripped}; followTrace(); }
     }
@@ -1420,6 +1429,7 @@ function animate() {
         const pulse = homingPulse(playing.event);
         if (pulse) sensorPulse = {...pulse, start:now};
         played=playing.event.seq;
+        nextStepAt=now+homingHold(playing.event);
         playing=null;
         if (pauseAfterStep || (offline && played >= events.at(-1).seq)) { paused = true; pauseAfterStep = false; }
         followTrace();
