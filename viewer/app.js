@@ -525,6 +525,14 @@ function homingRing(name,x,y) {
   const opacity=reduced ? .55 : .6*Math.min(1,phase*8)*(1-.35*phase);
   return `<circle data-part="homing-sensor-ring" cx="${x}" cy="${y}" r="${radius}" fill="none" stroke="${color}" stroke-width="2" opacity="${opacity}" pointer-events="none"/>`;
 }
+// Fades the ends of the rack to nothing beneath each arrow (a luminance mask: white shows, black hides).
+function rackFadeMask({left, right, bleed}) {
+  const x0=-bleed, width=850+2*bleed, inner=20, fade=56;                   // Arrow width plus a little clearance
+  const stop=(x,white)=>`<stop offset="${(x-x0)/width}" stop-color="${white ? 'white' : 'black'}"/>`;
+  const stops=(left ? stop(x0+inner,false)+stop(x0+inner+fade,true) : stop(x0,true))
+    +(right ? stop(x0+width-inner-fade,true)+stop(x0+width-inner,false) : stop(x0+width,true));
+  return `<defs><linearGradient id="rack-fade-gradient" gradientUnits="userSpaceOnUse" x1="${x0}" x2="${x0+width}" y1="0" y2="0">${(left ? stop(x0,false) : '')+stops+(right ? stop(x0+width,false) : '')}</linearGradient><mask id="rack-edge-fade" maskUnits="userSpaceOnUse" x="${x0}" y="0" width="${width}" height="2000"><rect x="${x0}" y="0" width="${width}" height="2000" fill="url(#rack-fade-gradient)"/></mask></defs>`;
+}
 const rackScrollStep = 300;
 function scrollRack(arrow) {
   rackManualShift += -Number(arrow.dataset.direction)*rackScrollStep;
@@ -777,6 +785,7 @@ function renderScene() {
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
+  let rackArrows='', rackFade=null;
   if (s.tips.length) {
     const spoolViewAngle=Number($('spool-angle').value)*Math.PI/180;
     const focusGate=s.gate>=0 ? focus : displayGates[0];
@@ -885,13 +894,14 @@ function renderScene() {
       const x=laneX+4;
       svg += `<g data-part="gate-status-pill" data-gate="${index}" data-tooltip="Gate ${index} · ${status===0 ? 'Empty' : status>0 ? 'Available' : 'Unknown'}"><rect x="${x-16}" y="${587+row*rowSpacing+mmuOffset}" width="32" height="18" rx="9" fill="${selected ? '#36ca42' : 'color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)'}" stroke="${border}" stroke-width="2"/><text x="${x}" y="${596+row*rowSpacing+mmuOffset}" dominant-baseline="central" text-anchor="middle" font-size="11" font-weight="700" fill="${selected ? '#102514' : 'var(--scene-text, #304c65)'}">${index}</text></g>`;
     }
-    // Narrow vertical arrows at the panel edges scroll to units that are off screen.
+    // Narrow vertical arrows at the panel edges scroll to units that are off screen; the rack fades out beneath them.
+    if (grid.overflow.left || grid.overflow.right) rackFade={left:grid.overflow.left,right:grid.overflow.right,bleed};
     for (const side of [-1,1]) {
       if (!(side<0 ? grid.overflow.left : grid.overflow.right)) continue;
       // The same size whatever the row count, level with the top row of spools.
       const top=470+mmuOffset, height=105, width=16, left=side<0 ? -bleed+2 : 850+bleed-2-width, middle=top+height/2;
       const label=side<0 ? 'Scroll to units on the left' : 'Scroll to units on the right';
-      svg += `<g data-part="rack-scroll" data-direction="${side}" role="button" tabindex="0" aria-label="${label}" data-tooltip="${label}"><rect x="${left}" y="${top}" width="${width}" height="${height}" rx="4" fill="var(--scene-body, #edf2f6)" fill-opacity=".85" stroke="var(--scene-border, #96abba)" stroke-width=".8"/><path d="M${left+width/2-side*4} ${middle-30} L${left+width/2+side*4} ${middle} L${left+width/2-side*4} ${middle+30}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+      rackArrows += `<g data-part="rack-scroll" data-direction="${side}" role="button" tabindex="0" aria-label="${label}" data-tooltip="${label}"><rect x="${left}" y="${top}" width="${width}" height="${height}" rx="4" fill="var(--scene-body, #edf2f6)" fill-opacity=".85" stroke="var(--scene-border, #96abba)" stroke-width=".8"/><path d="M${left+width/2-side*4} ${middle-30} L${left+width/2+side*4} ${middle} L${left+width/2-side*4} ${middle+30}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
     }
   }
   let attachedTipEdge='';
@@ -1122,7 +1132,7 @@ function renderScene() {
   }
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
-  $("scene").innerHTML = svg;
+  $("scene").innerHTML = rackFade ? `${rackFadeMask(rackFade)}<g mask="url(#rack-edge-fade)">${svg}</g>${rackArrows}` : svg+rackArrows;
   for (const [index] of spoolRenderers) {
     if (!spoolRequests.has(index)) spoolRenderers.delete(index);
   }
