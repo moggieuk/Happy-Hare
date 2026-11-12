@@ -7,7 +7,7 @@ import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroP
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
-import { selectorNotice, orderedSteps, homingHold, spoolTooltip, tweenTo, virtualSelectorLayout, rackGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, rackGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 import {consoleLine} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
@@ -527,7 +527,7 @@ function homingRing(name,x,y) {
 }
 // Fades the ends of the rack to nothing beneath each arrow (a luminance mask: white shows, black hides).
 function rackFadeMask({left, right, bleed}) {
-  const x0=-bleed, width=850+2*bleed, inner=20, fade=56;                   // Arrow width plus a little clearance
+  const x0=-bleed, width=850+2*bleed, inner=18, fade=48;                   // Arrow width plus a little clearance
   const stop=(x,white)=>`<stop offset="${(x-x0)/width}" stop-color="${white ? 'white' : 'black'}"/>`;
   const stops=(left ? stop(x0+inner,false)+stop(x0+inner+fade,true) : stop(x0,true))
     +(right ? stop(x0+width-inner-fade,true)+stop(x0+width-inner,false) : stop(x0+width,true));
@@ -536,6 +536,7 @@ function rackFadeMask({left, right, bleed}) {
 const rackScrollStep = 300;
 function scrollRack(arrow) {
   rackManualShift += -Number(arrow.dataset.direction)*rackScrollStep;
+  lastActivity = performance.now();
   draw();
 }
 $('scene').addEventListener('click',event=>{
@@ -546,6 +547,14 @@ $('scene').addEventListener('keydown',event=>{
   const arrow=event.target.closest?.('[data-part="rack-scroll"]');
   if (arrow && ['Enter',' '].includes(event.key)) { event.preventDefault(); scrollRack(arrow); }
 });
+// Any pointer, key or tooltip use counts as activity; a rack left scrolled by hand eases back to the selected gate.
+let lastActivity = performance.now();
+for (const type of ['pointermove','pointerdown','keydown','wheel','focusin'])
+  document.addEventListener(type,()=>{ lastActivity=performance.now(); },{passive:true,capture:true});
+function returnRackWhenIdle() {
+  if (!$('viewer-tooltip').hidden) lastActivity=performance.now();
+  if (rackIdleReturn(rackManualShift,performance.now()-lastActivity)) { rackManualShift=0; draw(); }
+}
 // UI, telemetry, and animation changes share the existing frame loop.
 let sceneDirty=false;
 function draw() { sceneDirty=true; }
@@ -793,7 +802,9 @@ function renderScene() {
     const layouts=(s.unit_layouts?.length ? s.unit_layouts : [{name:s.unit,gates:unitGates,selector_type:s.selector_type}])
       .map(layout=>layout.name===s.unit ? {...layout,gates:displayGates} : layout);
     if (s.gate!==rackGate || s.gate_slide!==undefined) { rackGate=s.gate; rackManualShift=0; }
-    const rackOptions={current:s.unit,focus:focusGate,spacing:Number($('spool-spacing').value),angle:spoolViewAngle,
+    // The scene reaches the panel edges: it bleeds into the card padding, at the same scale.
+    const sceneWidth=$('scene').clientWidth, bleed=sceneWidth>2*rackBleedPx ? rackBleedPx*850/(sceneWidth-2*rackBleedPx) : 0;
+    const rackOptions={current:s.unit,focus:focusGate,spacing:Number($('spool-spacing').value),angle:spoolViewAngle,bleed,
       slide:s.gate_slide!==undefined ? {from:s.gate_from,to:s.gate_to,t:s.gate_slide} : null};
     const targetGrid=rackGrid(layouts,{...rackOptions,manual:rackManualShift});
     rackManualShift=targetGrid.manual;
@@ -802,8 +813,6 @@ function renderScene() {
     rackTween=tweenTo(reducedMotion ? null : rackTween,rackManualShift,animationNow(),rackScrollTime);
     if (!rackTween.done) draw();
     const grid=rackTween.value===rackManualShift ? targetGrid : rackGrid(layouts,{...rackOptions,manual:rackTween.value});
-    // Let the scene reach the panel edges: it bleeds into the card padding, at the same scale.
-    const sceneWidth=$('scene').clientWidth, bleed=sceneWidth>2*rackBleedPx ? rackBleedPx*850/(sceneWidth-2*rackBleedPx) : 0;
     const visible=grid.lanes.filter(lane=>lane.x>-140 && lane.x<990).sort((a,b)=>a.row-b.row || b.x-a.x);
     const rowSpacing=135;
     const lastRowY=Math.max(0,grid.rows-1)*rowSpacing;
@@ -1492,6 +1501,7 @@ function animate() {
     if (now - sensorPulse.start >= 650) sensorPulse = null;
     draw();
   }
+  returnRackWhenIdle();
   if (sceneDirty) {
     sceneDirty=false;
     renderScene();

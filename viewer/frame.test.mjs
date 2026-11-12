@@ -19,7 +19,7 @@ function harness() {
     playing:{event,start:0},displayed:state,live:true,paused:false,
     events:[event],played:0,pauseAfterStep:false,offline:false,
     sensorPulse:{start:0},renders:0,scheduled:0,spoolUpdates:0,
-    updateSpoolMotion:()=>context.spoolUpdates++,espoolerActive,nextStepAt:0,homingHold,
+    updateSpoolMotion:()=>context.spoolUpdates++,espoolerActive,nextStepAt:0,homingHold,returnRackWhenIdle:()=>{},
     updateLiveIndicator:()=>{},
     $:()=>({checked:false}),duration:()=>1000,nozzleArrivalTime:()=>null,
     playbackFrame:()=>({fraction:.1,state}),homingPulse:()=>null,followTrace:()=>{},
