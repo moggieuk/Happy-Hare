@@ -658,9 +658,9 @@ test('hidden gate delta does not swap filament before the selection animation',(
  event(r,'gate_changed',{previous_gate:0,gate:2,unit:r.facts.printer.mmu.unit});
  const steps=visibleSteps(r.events),selection=steps.at(-1),previous=steps.at(-2);
  assert.equal((previous.settled_state || previous.state).gate,0);
- assert.equal(playbackFrame(selection,1,2500).state.gate,0);
- assert.equal(playbackFrame(selection,1250,2500).state.gate_focus,1);
- assert.equal(playbackFrame(selection,2500,2500).state.gate,2);
+ assert.equal(playbackFrame(selection,1,2950).state.gate,0);
+ assert.equal(playbackFrame(selection,1475,2950).state.gate_focus,1);
+ assert.equal(playbackFrame(selection,2950,2950).state.gate,2);
 });
 
 

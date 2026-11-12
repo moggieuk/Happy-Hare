@@ -477,7 +477,8 @@ function updateSpoolMotion() {
 // Gate lanes and spool columns share the same spacing.
 let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null, nextStepAt = 0;
 // The rack of units scrolls to the selected gate; the edge arrows add a temporary manual shift until the gate changes.
-let rackGate = null, rackManualShift = 0;
+let rackGate = null, rackManualShift = 0, rackTween = null;
+const rackScrollTime = 350, rackBleedPx = 12;
 function currentIndex() {
   return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
 }
@@ -782,14 +783,23 @@ function renderScene() {
     // Every unit sits side by side on one rack that slides to keep the selected spool under the Bowden exit.
     const layouts=(s.unit_layouts?.length ? s.unit_layouts : [{name:s.unit,gates:unitGates,selector_type:s.selector_type}])
       .map(layout=>layout.name===s.unit ? {...layout,gates:displayGates} : layout);
-    if (s.gate!==rackGate) { rackGate=s.gate; rackManualShift=0; }
-    const grid=rackGrid(layouts,{current:s.unit,focus:focusGate,spacing:Number($('spool-spacing').value),angle:spoolViewAngle,manual:rackManualShift});
-    rackManualShift=grid.manual;
+    if (s.gate!==rackGate || s.gate_slide!==undefined) { rackGate=s.gate; rackManualShift=0; }
+    const rackOptions={current:s.unit,focus:focusGate,spacing:Number($('spool-spacing').value),angle:spoolViewAngle,
+      slide:s.gate_slide!==undefined ? {from:s.gate_from,to:s.gate_to,t:s.gate_slide} : null};
+    const targetGrid=rackGrid(layouts,{...rackOptions,manual:rackManualShift});
+    rackManualShift=targetGrid.manual;
+    // The arrows scroll with a short ease instead of jumping.
+    const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    rackTween=tweenTo(reducedMotion ? null : rackTween,rackManualShift,animationNow(),rackScrollTime);
+    if (!rackTween.done) draw();
+    const grid=rackTween.value===rackManualShift ? targetGrid : rackGrid(layouts,{...rackOptions,manual:rackTween.value});
+    // Let the scene reach the panel edges: it bleeds into the card padding, at the same scale.
+    const sceneWidth=$('scene').clientWidth, bleed=sceneWidth>2*rackBleedPx ? rackBleedPx*850/(sceneWidth-2*rackBleedPx) : 0;
     const visible=grid.lanes.filter(lane=>lane.x>-140 && lane.x<990).sort((a,b)=>a.row-b.row || b.x-a.x);
     const rowSpacing=135;
     const lastRowY=Math.max(0,grid.rows-1)*rowSpacing;
     const enclosureBottom=659+lastRowY+mmuOffset;
-    $('scene').setAttribute('viewBox',`0 0 850 ${enclosureBottom+21}`);
+    $('scene').setAttribute('viewBox',`${-bleed} 0 ${850+2*bleed} ${enclosureBottom+21}`);
     const shells=grid.units.map(unit=>{
       const enclosureLeft=unit.left, enclosureRight=unit.right, unitLastRow=(unit.rows-1)*rowSpacing;
       const glassLeft=enclosureLeft+6, glassRight=enclosureRight-6;
@@ -878,9 +888,10 @@ function renderScene() {
     // Narrow vertical arrows at the panel edges scroll to units that are off screen.
     for (const side of [-1,1]) {
       if (!(side<0 ? grid.overflow.left : grid.overflow.right)) continue;
-      const top=470+mmuOffset, height=105+lastRowY, centerX=side<0 ? 12 : 838, middle=top+height/2;
+      // The same size whatever the row count, level with the top row of spools.
+      const top=470+mmuOffset, height=105, width=16, left=side<0 ? -bleed+2 : 850+bleed-2-width, middle=top+height/2;
       const label=side<0 ? 'Scroll to units on the left' : 'Scroll to units on the right';
-      svg += `<g data-part="rack-scroll" data-direction="${side}" role="button" tabindex="0" aria-label="${label}" data-tooltip="${label}"><rect x="${side<0 ? 0 : 826}" y="${top}" width="24" height="${height}" rx="4" fill="var(--scene-body, #edf2f6)" fill-opacity=".85" stroke="var(--scene-border, #96abba)" stroke-width=".8"/><path d="M${centerX-side*6} ${middle-34} L${centerX+side*6} ${middle} L${centerX-side*6} ${middle+34}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+      svg += `<g data-part="rack-scroll" data-direction="${side}" role="button" tabindex="0" aria-label="${label}" data-tooltip="${label}"><rect x="${left}" y="${top}" width="${width}" height="${height}" rx="4" fill="var(--scene-body, #edf2f6)" fill-opacity=".85" stroke="var(--scene-border, #96abba)" stroke-width=".8"/><path d="M${left+width/2-side*4} ${middle-30} L${left+width/2+side*4} ${middle} L${left+width/2-side*4} ${middle+30}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
     }
   }
   let attachedTipEdge='';

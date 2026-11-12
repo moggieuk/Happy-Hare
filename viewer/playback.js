@@ -44,7 +44,7 @@ export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
 // Every unit side by side as one scrollable rack. The rack slides so the focused gate (or, for a virtual
 // selector, its unit) stays under the Bowden exit at x=620. Gates wrap into rows within their unit.
 // `manual` is an extra shift from the edge arrows; the clamped value is returned.
-export function rackGrid(layouts, {current, focus, spacing, angle, manual=0, maxVirtualColumns=6, availableWidth=850, gap=18}) {
+export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, maxVirtualColumns=6, availableWidth=850, gap=18}) {
   const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
   const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
   const units=[], lanes=[], anchors=new Map();
@@ -63,18 +63,22 @@ export function rackGrid(layouts, {current, focus, spacing, angle, manual=0, max
     left+=width+gap;
   }
   const first=lanes[0]?.index, anchorOf=gate=>anchors.get(gate) ?? anchors.get(first) ?? 620;
+  // A slide moves the rack by distance, so its speed stays constant across the gap between units.
   const low=Math.floor(focus), high=Math.ceil(focus);
-  const base=620-(anchorOf(low)+(anchorOf(high)-anchorOf(low))*(focus-low));
+  const anchor=slide ? anchorOf(slide.from)+(anchorOf(slide.to)-anchorOf(slide.from))*slide.t
+    : anchorOf(low)+(anchorOf(high)-anchorOf(low))*(focus-low);
+  const base=620-anchor;
   const rackLeft=0, rackRight=Math.max(0,left-gap);
   const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
   const shift=base+applied;
   return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,
     overflow:{left:rackLeft+shift<margin,right:rackRight+shift>availableWidth-margin},
     units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
-    lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-Math.abs(lane.index-focus))}))};
+    // The spool passing under the exit rises with it; a virtual unit's spools rise by gate number instead.
+    lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-620)/spacing))}))};
 }
 
-const gateTiming={retract:300,fade:500,slide:900,advance:300};
+const gateTiming={retract:300,fade:500,slide:1350,advance:300};
 const gateDuration=gateTiming.retract+2*gateTiming.fade+gateTiming.slide+gateTiming.advance;
 
 // Residual contact melts only the immersed hair; retain at least 5mm.
@@ -97,6 +101,7 @@ export function interpolate(event, fraction) {
     const from = a.gate >= 0 ? a.gate : b.gate;
     const to = b.gate >= 0 ? b.gate : a.gate;
     state.gate_focus = from+(to-from)*eased;
+    Object.assign(state,{gate_slide:eased,gate_from:from,gate_to:to}); // Pixel progress of the rack slide
     const retract=fraction < .25 ? fraction/.25 : fraction > .75 ? (1-fraction)/.25 : 1;
     state.gate_retraction=retract*retract*(3-2*retract);
     return state;

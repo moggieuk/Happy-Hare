@@ -99,6 +99,8 @@ svg {
   display: block;
   height: auto;
   max-height: none;
+  margin: 0 -12px;
+  width: calc(100% + 24px);
 }
 .controls {
   display: flex;
