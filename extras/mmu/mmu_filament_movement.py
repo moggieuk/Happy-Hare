@@ -3668,6 +3668,11 @@ class MmuFilamentMovement:
                 self.espooler().set_operation(self.gate_selected, 0, ESPOOLER_OFF)
 
 
+    def _sensor_readings(self):
+        """Every sensor's triggered state, for movement telemetry"""
+        return {name: value[0] for name, value in self.sensor_manager.get_sensor_states(all_sensors=True).items()}
+
+
     @movement_operation
     def move_filament(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0,
                       endstop_name="default", track=False, wait=False, encoder_dwell=False,
@@ -3800,8 +3805,7 @@ class MmuFilamentMovement:
                         trigger_state=(homing_move > 0) if homing_move else None,
                         endstop=qual_endstop_name if homing_move else None,
                         wait=bool(wait),
-                        sensors={name: value[0] for name, value in
-                                 self.sensor_manager.get_sensor_states(all_sensors=True).items()})
+                        sensors=self._sensor_readings())
 
                 # Manual stepper move authority
                 if motor in ["gear", "gear+extruder", "extruder"]:
@@ -3845,8 +3849,7 @@ class MmuFilamentMovement:
                 filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.filament_pos, 'UNKNOWN'),
                 homed=bool(homed) if homing_move else None,
                 encoder_mm=measured, encoder_delta_mm=delta,
-                sensors={name: value[0] for name, value in
-                         self.sensor_manager.get_sensor_states(all_sensors=True).items()})
+                sensors=self._sensor_readings())
 
         if trace_str:
             if homing_move != 0:

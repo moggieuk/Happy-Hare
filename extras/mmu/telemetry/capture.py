@@ -159,9 +159,7 @@ class ReplayState:
             operations = {}
             for gate in unit.gate_range():
                 direction, power = spooler.get_operation(gate)
-                output = max(0, min(1, power)) / spooler.scale if direction in ('assist', 'rewind') else 0
-                if not spooler.is_pwm:
-                    output = float(output > 0)
+                output = spooler.output_power(direction, power)
                 operations[str(gate)] = dict(direction=direction if output else 'stopped', output_power=output)
             units[unit.name]['espooler'] = dict(name=spooler.name, operations=operations)
         for unit in units.values():

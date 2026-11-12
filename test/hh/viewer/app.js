@@ -7,7 +7,7 @@ import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from '
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { selectorNotice, orderedSteps, virtualSelectorLayout, spoolGrid, fittingSpoolGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
-import {short as sensorName, DEFAULT_COLOR} from './util.js';
+import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
@@ -806,8 +806,9 @@ function renderScene() {
         : p < entry
           ? toolheadFraction-sensorGap/length+(sensorGap/length)*(p-sensorEntry)/(entry-sensorEntry)
         : Math.min(1, toolheadFraction + (1-toolheadFraction) * toolheadProgress(s,p));
+  const pathDistance = position => progress(position)*length;
   if (Number.isFinite(s.extruder_target_temperature))
-    svg += `<text id="extruder-temperature" x="218" y="426" font-size="9" fill="var(--scene-text, #304c65)" data-tooltip="Extruder target temperature">${Number(s.extruder_target_temperature.toFixed(1))}°C</text>`;
+    svg += `<text id="extruder-temperature" x="218" y="426" font-size="9" fill="var(--scene-text, #304c65)" data-tooltip="Extruder target temperature">${round1(s.extruder_target_temperature)}°C</text>`;
   const unitSensors = Object.entries(s.sensors).filter(([name]) => {
     if (name === `${s.unit}:mmu_gear_touch`) return true;
     if (s.active_sensors && !(virtual && /^mmu_(entry|exit)(?:_\d+)?$/.test(sensorName(name)))) return s.active_sensors.includes(name);
@@ -858,18 +859,18 @@ function renderScene() {
   if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry && s.encoder_reference?.endstop === 'encoder') {
     if (virtual) {
       schematicDistance=position=>switchFilamentDistance(position,s.layout.mmu_encoder,
-        s.encoder_reference.parking,entry,mmuDistanceAtY(encoderPoint().y),p=>progress(p)*length,
+        s.encoder_reference.parking,entry,mmuDistanceAtY(encoderPoint().y),pathDistance,
         null,s.encoder_reference.parking<0 ? virtual.parkDistance : null);
       schematicTip=schematicDistance(tip);
       tip=tipAtPathDistance(schematicTip);
-    } else tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,p=>progress(p)*length,mmuDistanceAtY(encoderPoint().y)));
+    } else tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,pathDistance,mmuDistanceAtY(encoderPoint().y)));
   } else if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry) {
     const endstop = s.encoder_reference?.endstop?.split(':').at(-1);
     const sensor = unitSensors.find(([name,d]) => Number.isFinite(d.position) &&
       [endstop,`${endstop}_${gate}`].includes(sensorName(name)));
     if (sensor) {
       schematicDistance = position => switchFilamentDistance(position,sensor[1].position,
-        s.encoder_reference?.parking || 0,entry,mmuDistanceAtY(sensorPoint(...sensor).y),p=>progress(p)*length,
+        s.encoder_reference?.parking || 0,entry,mmuDistanceAtY(sensorPoint(...sensor).y),pathDistance,
         encoderAnchor?.name === sensor[0] && s.devices?.[`${s.unit}:encoder`]
           ? {position:sensor[1].position+encoderAnchor.offset,distance:mmuDistanceAtY(encoderPoint().y)} : null,
         virtual && endstop==='mmu_shared_exit' && s.encoder_reference.parking<0 ? virtual.parkDistance : null);
@@ -879,7 +880,6 @@ function renderScene() {
   }
   const tipScale = toolheadHeight/(end-entry);
   const coneOffset = s.tip_shapes?.[gate] === 'cone' ? tipScale : 0;
-  const pathDistance = position => progress(position)*length;
   // Apply recorded transitions where the drawn tip crosses, after schematic Bowden scaling.
   const displayedSensors=unitSensors.map(([name,device])=>{
     const before=e.before?.sensors[name], after=e.state.sensors[name];
@@ -1065,7 +1065,7 @@ function renderScene() {
   const references = toolheadReferences(s).map(ref => ({...ref,
     y: tube.getPointAtLength(progress(ref.position) * length).y})).sort((a, b) => a.y - b.y);
   let previousLabelY = -Infinity;
-  const mm = value => Number(value.toFixed(1));
+  const mm = round1;
   for (const ref of references) {
     if (ref.label === 'Blade' && ref.y < extruderGearY) {
       svg += `<g class="toolhead-reference"><text ${dimensionLink('Blade')} x="174" y="${ref.y}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--scene-muted, #6e8190)"><tspan class="reference-title">Blade · ${mm(ref.distance)}mm</tspan></text></g>`;
@@ -1295,7 +1295,7 @@ function renderScene() {
       el.className = "chip";
       el.textContent = name + " · " + (d === null ? "No status exposed" : JSON.stringify(d, (key, value) =>
         name.includes('encoder') && typeof value === 'number' && Number.isFinite(value)
-          ? Number(value.toFixed(1)) : value));
+          ? round1(value) : value));
       return el;
     }),
   );

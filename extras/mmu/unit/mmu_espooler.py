@@ -472,16 +472,18 @@ class MmuESpooler:
                     self._dequeue_espooler_burst(g)
 
 
+    def output_power(self, operation, value):
+        """Power actually driven for an operation: scaled, and on/off for a non-PWM pin"""
+        output = 0 if operation in (ESPOOLER_OFF, ESPOOLER_PRINT) else max(0, min(1, value)) / self.scale
+        return output if self.is_pwm else (1 if output > 0 else 0)
+
+
     def _record_operation(self, gate, operation, value):
         previous_operation, previous_power = self.get_operation(gate)
         self.operation[gate] = (operation, value)
         if (previous_operation, previous_power) == (operation, value):
             return
-        output = max(0, min(1, value)) / self.scale
-        if operation in (ESPOOLER_OFF, ESPOOLER_PRINT):
-            output = 0
-        if not self.is_pwm:
-            output = 1 if output > 0 else 0
+        output = self.output_power(operation, value)
         was_running = previous_operation in (ESPOOLER_ASSIST, ESPOOLER_REWIND) and previous_power > 0
         if not output and not was_running:
             return

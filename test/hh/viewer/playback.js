@@ -1,4 +1,4 @@
-import {short as sensorName, DEFAULT_COLOR} from './util.js';
+import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   if (state.selector_type!=='VirtualSelector') return null;
   const gates=state.unit_gates || state.tips.map((_,index)=>index);
@@ -387,7 +387,7 @@ export function configurationLabel(name) {
 export function bowdenLengthLabel(state) {
   const length = state.configuration?.calibration?.[state.unit]?.bowden_lengths?.[state.gate];
   return state.gate >= 0 && Number.isFinite(length) && length > 0
-    ? `Bowden · ${Number(length.toFixed(1))}mm` : 'Bowden · Uncalibrated length';
+    ? `Bowden · ${round1(length)}mm` : 'Bowden · Uncalibrated length';
 }
 
 export function toolheadReferences(state) {
