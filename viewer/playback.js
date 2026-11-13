@@ -1,10 +1,15 @@
-import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
+import {short as sensorName, DEFAULT_COLOR, round1, clamp01} from './util.js';
 
-// The drawing's two vertical axes: the MMU side (Bowden exit, gears, sensors) on the left, the extruder column on the right.
-export const BOWDEN_EXIT_X=270, EXTRUDER_X=680;
+// The drawing's vertical axes: the MMU side (Bowden exit, gears, sensors) on the left, the extruder column on the right.
+export const SCENE_WIDTH=850, BOWDEN_EXIT_X=270, EXTRUDER_X=680;
+// The buffer sits on the Bowden's horizontal run; everything left of its centre belongs to the MMU side.
+export const BUFFER_CENTER_X=BOWDEN_EXIT_X+200;
+export const VIRTUAL_COLUMNS=6;
 // From the exit up and over to the top of the extruder: a vertical run, then a rounded horizontal run at y=75.
-export const BOWDEN_TO_EXTRUDER=`L${BOWDEN_EXIT_X} 150 Q${BOWDEN_EXIT_X} 75 ${BOWDEN_EXIT_X+95} 75 L${EXTRUDER_X-95} 75 Q${EXTRUDER_X} 75 ${EXTRUDER_X} 170 L${EXTRUDER_X} 449`;
-// How the Bowden descends into the MMU: from the hub at the exit, over a diagonal, to the lane of a gate.
+const bowdenToExtruder=endY=>`L${BOWDEN_EXIT_X} 150 Q${BOWDEN_EXIT_X} 75 ${BOWDEN_EXIT_X+95} 75 L${EXTRUDER_X-95} 75 Q${EXTRUDER_X} 75 ${EXTRUDER_X} 170 L${EXTRUDER_X} ${endY}`;
+
+// How the Bowden descends into the MMU: from the hub at the exit, over a diagonal, to the lane of a gate,
+// then on to the extruder. `pathFrom` starts at height `start` and ends at `endY` in the extruder.
 function bowdenDescent(verticalOffset) {
   const bottom=570+verticalOffset, shoulder=370+verticalOffset, hub=180+verticalOffset;
   const distanceAtY=laneX=>{
@@ -13,48 +18,41 @@ function bowdenDescent(verticalOffset) {
       : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);
   };
   const branchPath=(x,start=bottom)=>{
-    // Each bend starts where it always has (`bend` along the vertical, just above an exit sensor) but sweeps
-    // further (`sweep`) along the diagonal, which softens the radius.
+    // Each bend starts `bend` along the vertical, just above an exit sensor, and sweeps `sweep` along the
+    // diagonal, which softens the radius.
     const bend=20, sweep=46, diagonalLength=Math.hypot(BOWDEN_EXIT_X-x,hub-shoulder);
     const dx=(BOWDEN_EXIT_X-x)*sweep/diagonalLength, dy=(hub-shoulder)*sweep/diagonalLength;
     return `M${x} ${start} V${shoulder+bend} Q${x} ${shoulder} ${x+dx} ${shoulder+dy} L${BOWDEN_EXIT_X-dx} ${hub-dy} Q${BOWDEN_EXIT_X} ${hub} ${BOWDEN_EXIT_X} ${hub-bend}`;
   };
-  return {bottom,shoulder,hub,distanceAtY,branchPath};
+  const lane=x=>({distanceAtY:distanceAtY(x),
+    pathFrom:(start=bottom,endY=449)=>`${branchPath(x,start)} ${bowdenToExtruder(endY)}`});
+  return {bottom,shoulder,hub,branchPath,lane};
 }
 
 // A selector with one gate position (not virtual) uses the path of the right-most gate of a four gate virtual selector,
 // which sits further from the exit than the rest and so brings the unit closer to the middle of the drawing.
 export const bowdenLaneOffset=spacing=>1.5*spacing;
 export function bowdenLane(spacing=54, verticalOffset=0) {
-  const {bottom,shoulder,hub,distanceAtY,branchPath}=bowdenDescent(verticalOffset);
   const x=BOWDEN_EXIT_X+bowdenLaneOffset(spacing);
-  return {x,bottom,shoulder,hub,distanceAtY:distanceAtY(x),path:`${branchPath(x)} ${BOWDEN_TO_EXTRUDER}`};
+  return {x,...bowdenDescent(verticalOffset).lane(x)};
 }
 
 export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   if (state.selector_type!=='VirtualSelector') return null;
   const gates=state.unit_gates || state.tips.map((_,index)=>index);
-  const columns=Math.min(6,gates.length), selected=Math.max(0,gates.indexOf(state.gate));
-  const row=Math.floor(selected/6), rowGates=gates.slice(row*6,row*6+6);
+  const columns=Math.min(VIRTUAL_COLUMNS,gates.length), selected=Math.max(0,gates.indexOf(state.gate));
+  const firstGate=Math.floor(selected/VIRTUAL_COLUMNS)*VIRTUAL_COLUMNS, rowGates=gates.slice(firstGate,firstGate+VIRTUAL_COLUMNS);
   const branches=rowGates.map((gate,column)=>({gate,x:BOWDEN_EXIT_X+(column-(columns-1)/2)*spacing}));
   const active=branches.find(branch=>branch.gate===state.gate) || branches[0];
   if (!active) return null;
-  const {bottom,shoulder,hub,distanceAtY,branchPath}=bowdenDescent(verticalOffset);
-  return {branches,active,row,bottom,shoulder,hub,distanceAtY:distanceAtY(active.x),branchPath,parkDistance:bottom-shoulder-12,
-    path:`${branchPath(active.x)} ${BOWDEN_TO_EXTRUDER}`};
-}
-
-// Fixed rows belong to the active MMU unit; selection lifts a wave without shifting lanes.
-export function spoolGrid(gates, focus, maxColumns=7) {
-  const columns=Math.min(maxColumns,gates.length), rows=Math.ceil(gates.length/columns);
-  return {columns,rows,lanes:gates.map((index,slot)=>({index,row:Math.floor(slot/columns),
-    offset:slot%columns-(columns-1)/2-Math.max(0,columns-7)/2,lift:10*Math.max(0,1-Math.abs(index-focus))}))};
+  const {bottom,shoulder,hub,branchPath,lane}=bowdenDescent(verticalOffset);
+  return {branches,active,bottom,shoulder,hub,branchPath,parkDistance:bottom-shoulder-12,...lane(active.x)};
 }
 
 // Every unit side by side as one scrollable rack. The rack slides so the focused gate (or, for a virtual
 // selector, its unit) stays under the Bowden exit. Gates wrap into rows within their unit.
 // `manual` is an extra shift from the edge arrows; the clamped value is returned.
-export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, maxVirtualColumns=6, availableWidth=850, gap=18}) {
+export function rackGrid(layouts, {focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, availableWidth=SCENE_WIDTH, gap=18}) {
   const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
   const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
   const units=[], lanes=[], anchors=new Map(), laneExit=BOWDEN_EXIT_X+bowdenLaneOffset(spacing);
@@ -63,8 +61,8 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     const count=layout.gates.length;
     if (!count) continue;
     const virtual=layout.selector_type === 'VirtualSelector';
-    const columns=Math.min(virtual ? maxVirtualColumns : capacity,count), width=(columns-1)*spacing+2*padding;
-    units.push({name:layout.name,gates:layout.gates,virtual,columns,first:left+padding,last:left+padding+(columns-1)*spacing,rows:Math.ceil(count/columns),left,right:left+width,current:layout.name === current});
+    const columns=Math.min(virtual ? VIRTUAL_COLUMNS : capacity,count), width=(columns-1)*spacing+2*padding;
+    units.push({name:layout.name,gates:layout.gates,virtual,columns,first:left+padding,last:left+padding+(columns-1)*spacing,rows:Math.ceil(count/columns),left,right:left+width});
     layout.gates.forEach((index,slot)=>{
       const x=left+padding+(slot%columns)*spacing;
       lanes.push({index,row:Math.floor(slot/columns),x,unit:layout.name,virtual});
@@ -78,15 +76,14 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const anchor=slide ? anchorOf(slide.from)+(anchorOf(slide.to)-anchorOf(slide.from))*slide.t
     : anchorOf(low)+(anchorOf(high)-anchorOf(low))*(focus-low);
   const base=BOWDEN_EXIT_X-anchor;
-  const rackLeft=0, rackRight=Math.max(0,left-gap);
-  const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
+  const rackRight=Math.max(0,left-gap);
+  const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-base),manual));
   const shift=base+applied;
   // Everything on the MMU side of the exit (Bowden, gears, sensors) stays attached to the unit holding the
   // selected gate. When the gate change crosses units it fades before the slide starts (`fullOpacity` is the
   // animation's own fade phase), stays hidden while the units pass, and fades in again once the new unit is in
   // place. Moving between gates of one unit never fades. Scrolled by hand, it fades as the exit leaves the unit.
   const unitOf=gate=>units.find(unit=>unit.gates.includes(gate)) ?? units[0];
-  const clamp01=v=>Math.max(0,Math.min(1,v));
   const attached=(unit,role)=>{
     if (!unit) return 1;
     if (slide) return (role==='from' && slide.t===0) || (role==='to' && slide.t===1) ? fullOpacity : 0;
@@ -97,7 +94,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const reach=unitOf(from)===unitOf(to) && slide ? 1 : Math.max(attached(unitOf(from),'from'),attached(unitOf(to),'to'));
   return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,reach,
     // Only units actually clipped by the panel edge (which bleeds out by `bleed`) call for an arrow.
-    overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
+    overflow:{left:shift<-bleed,right:rackRight+shift>availableWidth+bleed},
     units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
     // The spool passing under the exit rises with it; a virtual unit's spools rise by gate number instead.
     lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-laneExit)/spacing))}))};
@@ -107,7 +104,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
 // fades back in over `spacing` of scroll. A selection slide has its own fade and never stays detached.
 export function bowdenAttachment(detached, reach, offset, spacing, sliding=false) {
   if (sliding) return {detached:false,reach};
-  const alignment=Math.max(0,Math.min(1,1-Math.abs(offset)/spacing));
+  const alignment=clamp01(1-Math.abs(offset)/spacing);
   const held=(detached || reach<1) && alignment<1;
   return {detached:held,reach:held ? Math.min(reach,alignment) : reach};
 }
@@ -116,7 +113,7 @@ export function bowdenAttachment(detached, reach, offset, spacing, sliding=false
 // change; gates the selection passes over stay unselected.
 export function gateSelectionLit(state, gate) {
   const from=state.gate_from ?? state.gate, to=state.gate_to ?? state.gate, span=Math.abs(to-from);
-  const arrived=state.gate_focus===undefined || !span ? 1 : Math.max(0,Math.min(1,Math.abs(state.gate_focus-from)/span));
+  const arrived=state.gate_focus===undefined || !span ? 1 : clamp01(Math.abs(state.gate_focus-from)/span);
   return gate===to ? arrived : gate===from ? 1-arrived : 0;
 }
 
@@ -137,7 +134,7 @@ export function interpolate(event, fraction) {
   const hasMotorMode = event.kind === 'movement' && Boolean(motorMode);
   if (fraction <= 0) return hasMotorMode ? {...a, synced} : a;
   if (event.kind === 'gate_changed') {
-    const selection=Math.max(0,Math.min(1,(fraction-.25)/.5));
+    const selection=clamp01((fraction-.25)/.5);
     const eased = selection*selection*(3-2*selection);
     const state = structuredClone(fraction < .5 ? a : b);
     const from = a.gate >= 0 ? a.gate : b.gate;
@@ -216,7 +213,7 @@ export function interpolate(event, fraction) {
   }
   for (const [name,value] of Object.entries(b.motors)) s.motors[name]=mix(a.motors[name]||0,value);
   const contact=event.buffer_contact_fraction;
-  const bufferFraction=contact == null ? fraction : Math.max(0,Math.min(1,(fraction-contact)/Math.max(1e-9,1-contact)));
+  const bufferFraction=contact == null ? fraction : clamp01((fraction-contact)/Math.max(1e-9,1-contact));
   const bufferMix=(x,y)=>typeof x === 'number' && typeof y === 'number' ? x+(y-x)*bufferFraction : x;
   for (const [name,device] of Object.entries(a.devices)) {
     for (const [key,value] of Object.entries(device)) s.devices[name][key]=(name.endsWith(':buffer') ? bufferMix : mix)(value,b.devices[name]?.[key]);
@@ -312,7 +309,7 @@ export function motionFraction(event, timeFraction) {
   const travelled=time < rampTime ? acceleration*time*time/2
     : time < rampTime+cruiseTime ? rampDistance+peak*(time-rampTime)
     : distance-acceleration*(seconds-time)**2/2;
-  return Math.max(0,Math.min(1,travelled/distance));
+  return clamp01(travelled/distance);
 }
 
 export function duration(event, compressBowden = false) {
@@ -365,7 +362,7 @@ export function spoolTooltip(state, index) {
 }
 
 // The MMU gears ease between gripped and released over half a second. Returns the tween advanced to `now`.
-export const gripSpacingTime = 500;
+const gripSpacingTime = 500;
 export function tweenTo(tween, target, now, duration = gripSpacingTime) {
   if (!tween) return {from: target, to: target, start: now, value: target, done: true};
   if (tween.to !== target) tween = {...tween, from: tween.value, to: target, start: now};
@@ -486,7 +483,7 @@ export function homingPulse(event) {
 }
 
 export function bladeStroke(event, fraction, kind) {
-  if (event?.cutter === kind && event.kind === 'release') return 1-Math.max(0,Math.min(1,fraction));
+  if (event?.cutter === kind && event.kind === 'release') return 1-clamp01(fraction);
   if (event?.cutter === kind && event.kind === 'cut' && event.state?.cutter_pressed) return Math.min(1,Math.max(0,fraction)/.4);
   if (event?.kind !== 'cut' || event.cutter !== kind) return 0;
   const t = Math.max(0, Math.min(1, fraction));
@@ -624,7 +621,7 @@ export function encoderReference(state, sensors) {
 }
 
 function gateSpacingScale(distance) {
-  return Number.isFinite(distance) ? Math.max(0,Math.min(1,(Math.abs(distance)-25)/75)) : 0;
+  return Number.isFinite(distance) ? clamp01((Math.abs(distance)-25)/75) : 0;
 }
 
 // Expand the ordered stack for long offsets, keeping every device below the curve.
@@ -870,7 +867,7 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
     else if (t<slideEnd) { fraction=.25+.5*(t-slideStart)/slide; fullOpacity=0; }
     else if (t<slideEnd+fade) { fraction=.75; fullOpacity=(t-slideEnd)/fade; }
     else fraction=.75+.25*(t-slideEnd-fade)/advance;
-    fraction=Math.max(0,Math.min(1,fraction));
+    fraction=clamp01(fraction);
   } else fraction=motionFraction(event,movementMs ? Math.min(1,elapsed/movementMs) : 1);
   let state=interpolate(event,fraction);
   if (event.kind === 'gate_changed' && elapsed < movementMs) {
@@ -880,13 +877,13 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
     if (event.before?.unit !== event.state.unit) {
       // Virtual feeds retract into their spools first, and rise again only once the new unit is in place and the Bowden has faded in.
       const {fade,slide,retract,advance}=gateTiming, slideEnd=retract+fade+slide;
-      state.gate_feed=Math.max(0,Math.min(1,elapsed<retract ? 1-elapsed/retract : elapsed<slideEnd+fade ? 0 : (elapsed-slideEnd-fade)/advance));
+      state.gate_feed=clamp01(elapsed<retract ? 1-elapsed/retract : elapsed<slideEnd+fade ? 0 : (elapsed-slideEnd-fade)/advance);
     }
   }
   const gate=event.state.gate;
   const arrivalTime=nozzleArrivalTime(event,movementMs);
   if (arrivalTime !== null) {
-    const flood=Math.max(0,Math.min(1,(elapsed-arrivalTime)/500));
+    const flood=clamp01((elapsed-arrivalTime)/500);
     state={...state,nozzle_fill_fraction:flood,
       nozzle_fill_from:event.before.filament?.residual_mm > 0
         ? event.before.nozzle_outlet_color || event.before.filament.retained_color : null};

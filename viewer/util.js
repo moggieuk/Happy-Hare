@@ -5,6 +5,7 @@ export const DEFAULT_COLOR = '808182';
 export const finite = value => typeof value === 'number' && Number.isFinite(value);
 export const number = (value, fallback=0) => finite(value) ? value : fallback;
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+export const clamp01 = v => clamp(v, 0, 1);
 export const round1 = value => Number(value.toFixed(1));
 // A printer object's status for the readout, with distances (and any other number) to two decimal places.
 export const statusText = status => status === null ? 'No status exposed'
