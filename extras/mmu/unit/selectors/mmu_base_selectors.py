@@ -445,7 +445,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
     HELP_BRIEF = "Soak test of selector movement"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
+        + "UNIT  = #(int)|ALL Optional if only one unit fitted to printer\n"
         + "LOOP  = #(int) Test loops (default 10)\n"
         + "GRIP  = [0|1]  Force filament gripping after selection where optional\n"
         + "HOME  = [0|1]  Randomized homing\n"
@@ -467,24 +467,27 @@ class MmuSoaktestSelectorCommand(BaseCommand):
             help_supplement=self.HELP_SUPPLEMENT,
             category=CATEGORY_TESTING,
             per_unit=True,
+            all_units_once=True,
         )
 
     def _run(self, gcmd, mmu_unit):
         """
         Run a soak test exercising selector movement across random gates.
 
-        The command supports unit selection, loop count, optional gripping
-        and randomized homing. Errors from the MMU are handled and cause
-        the soak test to abort cleanly.
+        The command supports unit selection (UNIT=ALL picks random gates across all
+        units), loop count, optional gripping and randomized homing. Errors from the
+        MMU are handled and cause the soak test to abort cleanly.
         """
         mmu = self.mmu
 
         if self.check_if_disabled(): return
-        if mmu_unit.selector.check_if_unit_loaded(): return
 
-        if not mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-            mmu.log_error("Operation not possible. Selector not yet calibrated")
-            return
+        units = [mmu_unit] if mmu_unit is not None else list(mmu.mmu_machine.units)
+        for u in units:
+            if u.selector.check_if_unit_loaded(): return
+            if not u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                mmu.log_error("Operation not possible. Selector not yet calibrated on %s" % u.name)
+                return
 
         loops = gcmd.get_int('LOOP', 10)
         servo = gcmd.get_int('SERVO', 0) # Legacy option, replaced by generic "GRIP"
@@ -492,27 +495,35 @@ class MmuSoaktestSelectorCommand(BaseCommand):
         home = bool(gcmd.get_int('HOME', 0))
 
         # Test and report using logical system-wide gate numbering (by design user never sees local gate numbers)
-        min_gate, max_gate = mmu_unit.gate_bounds()
-        mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
+        if len(units) == 1:
+            min_gate, max_gate = units[0].gate_bounds()
+            mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (units[0].name, min_gate, max_gate, loops))
+        else:
+            mmu.log_always("Soak testing selector across %d units (gates %d-%d) for %s iterations..." % (len(units), 0, mmu.num_gates - 1, loops))
 
         # We test fully by going through the MMU controller and not to the selector directly
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 for l in range(loops):
-                    gate = random.randint(min_gate, max_gate)
+                    # Choose gate uniformly across all units under test
+                    gate = random.choice([g for u in units for g in range(u.gate_bounds()[0], u.gate_bounds()[1] + 1)])
+                    unit = mmu.mmu_unit(gate) if len(units) > 1 else units[0]
 
                     if random.randint(0, 10) == 0 and home:
-                        mmu.home_unit(mmu_unit)
+                        mmu.home_unit(unit)
 
-                    if random.randint(0, 10) == 0 and mmu_unit.selector.has_bypass():
-                        mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
-                        mmu_unit.selector._select_gate(TOOL_GATE_BYPASS) # Force local bypass gate
+                    if random.randint(0, 10) == 0 and unit.selector.has_bypass():
+                        mmu.log_always("Testing loop %d / %d. Selecting bypass on %s..." % (l + 1, loops, unit.name))
+                        unit.selector._select_gate(TOOL_GATE_BYPASS) # Force local bypass gate
                     else:
                         mmu.log_always("Testing loop %d / %d. Selecting gate %d..." % (l + 1, loops, gate))
-                        mmu_unit.selector.select_gate(gate)
+                        if len(units) > 1:
+                            mmu.select_gate(gate) # Handles switching between units
+                        else:
+                            unit.selector.select_gate(gate)
 
                     if grip:
-                        mmu_unit.selector.filament_drive()
+                        unit.selector.filament_drive()
         except MmuError as ee:
             mmu.handle_mmu_error(ee.with_message("Soaktest abandoned because of error: %s" % str(ee)))
 
