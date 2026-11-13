@@ -53,6 +53,7 @@ class MmuTestCommand(BaseCommand):
         + "QUIESCE_TEST=1 Quick test of problematic sync changes\n"
         + "SEL_MOVE=1 Selector move. Params: MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} WAIT=[0|1] LOOP={n}\n"
         + "SEL_HOMING_MOVE=1 Selector homing move. Params: MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} LOOP={n} ENDSTOP={name}\n"
+        + "RANDOM_SELECT=1 Randomly select configured gates across all units. Params: LOOP={n} (default 10)\n"
         + "SEL_LOAD_TEST=1 Load test selector movements. Params: LOOP={n} HOME=[0|1]\n"
         + "TTC_TEST=1 / TTC_TEST2=1 / TTC_TEST3=1 Provoke known TTC conditions. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1]\n"
         + "STEPCOMPRESS_TEST=1 Provoke stepcompress error. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1] SELECT=[0|1] MOTOR={name} STOP_ON_ENDSTOP=[-1|0|1]\n"
@@ -547,6 +548,18 @@ class MmuTestCommand(BaseCommand):
                     mmu.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
                     if actual != pos + move:
                         mmu.log_always("Off target position by: %.4f" % (actual - (pos + move)))
+
+            if gcmd.get_int('RANDOM_SELECT', 0, minval=0, maxval=1):
+                have_run_test = True
+                loop = gcmd.get_int('LOOP', 10, minval=1)
+                try:
+                    mmu._is_running_test = False  # Gate selection needs normal servo movement
+                    for i in range(loop):
+                        gate = random.randint(0, mmu.num_gates - 1)
+                        log("Random selection %d/%d: gate %d" % (i + 1, loop, gate))
+                        mmu.gcode.run_script_from_command("MMU_SELECT GATE=%d" % gate)
+                finally:
+                    mmu._is_running_test = True
 
             if gcmd.get_int('SEL_LOAD_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
