@@ -327,6 +327,13 @@ test('legacy recordings do not invent excess without grip evidence',()=>{
  assert.equal(r.snapshot().bowden_unabsorbed_mm,0);
 });
 
+test('each unit layout names its buffer so a gate change can tell a shared buffer from a different one',()=>{
+ const h=structuredClone(fixture('emu')[0]);
+ const unit=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];
+ unit.buffer.name='shared_buffer';
+ const r=new TelemetryReplay();r.feed(h);
+ assert.equal(r.snapshot().unit_layouts.find(layout=>layout.name===h.state.printer.mmu.unit).buffer,'shared_buffer');
+});
 test('compression homing reaches the gears before expanding the buffer',()=>{
  const h=structuredClone(fixture('emu')[0]);h.state.printer.mmu.filament_grip_state=1;
  const unit=h.state.printer.mmu_machine.units[h.state.printer.mmu.unit];

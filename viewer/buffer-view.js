@@ -1,10 +1,11 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 // The sync-feedback buffer drawing. App state (homing rings, the sensor pulse, the frame clock) is passed in.
+// `gapFill` shades the gap the buffer cuts in the Bowden tube: black while shown, white once faded away.
 import {escape} from './util.js';
 import {bufferPiston, bufferSpringPath} from './playback.js';
 
 // Buffer drawing is isolated from the toolhead and filament layers.
-export function renderBuffer(s, d, bufferSensors, sensorFill, {homingRing, pulse, now}) {
+export function renderBuffer(s, d, bufferSensors, sensorFill, {homingRing, pulse, now, gapFill='black'}) {
   let markup = '';
   const tension=bufferSensors.find(([n])=>n.endsWith('tension'))?.[1]?.state;
   const compression=bufferSensors.find(([n])=>n.endsWith('compression'))?.[1]?.state;
@@ -14,7 +15,7 @@ export function renderBuffer(s, d, bufferSensors, sensorFill, {homingRing, pulse
   const edge=tick(piston.position);
   // Retain protrusion even at the maximum-tension stop.
   const pistonLeft=edge-80;
-  markup += `<defs><mask id="buffer-tube-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${pistonLeft+4}" y="50" width="${508-pistonLeft-4}" height="50" fill="black"/></mask></defs><g id="sync-buffer"><path data-part="buffer-filament-guide" d="M${pistonLeft+4} 66.5 H508 M${pistonLeft+4} 83.5 H508" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="1.2" opacity="0.3"/><text x="470" y="38" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Sync-feedback buffer</text><g fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.5"><rect id="buffer-housing" x="428" y="46" width="84" height="51.88" rx="6.4"/><rect id="buffer-piston" x="${pistonLeft}" y="59" width="80" height="32" rx="5.6"/></g><g fill="var(--scene-tube-border, #b1c4d2)"><rect data-part="buffer-housing-port" x="509.6" y="62.2" width="4.8" height="25.6" rx="2.4"/><rect data-part="buffer-piston-port" x="${pistonLeft-2.4}" y="62.2" width="4.8" height="25.6" rx="2.4"/></g>`;
+  markup += `<defs><mask id="buffer-tube-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${pistonLeft+4}" y="50" width="${508-pistonLeft-4}" height="50" fill="${gapFill}"/></mask></defs><g id="sync-buffer"><path data-part="buffer-filament-guide" d="M${pistonLeft+4} 66.5 H508 M${pistonLeft+4} 83.5 H508" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="1.2" opacity="0.3"/><text x="470" y="38" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Sync-feedback buffer</text><g fill="none" stroke="var(--scene-border, #96abba)" stroke-width="1.5"><rect id="buffer-housing" x="428" y="46" width="84" height="51.88" rx="6.4"/><rect id="buffer-piston" x="${pistonLeft}" y="59" width="80" height="32" rx="5.6"/></g><g fill="var(--scene-tube-border, #b1c4d2)"><rect data-part="buffer-housing-port" x="509.6" y="62.2" width="4.8" height="25.6" rx="2.4"/><rect data-part="buffer-piston-port" x="${pistonLeft-2.4}" y="62.2" width="4.8" height="25.6" rx="2.4"/></g>`;
   const geometry=Object.values(s.buffers || {}).find(buffer=>buffer.gates.includes(s.gate));
   const spring=geometry?.spring ?? d.spring ?? 'none';
   const springSides = spring === 'neutral' || spring === 0 ? ['left','right']

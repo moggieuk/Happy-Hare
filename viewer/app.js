@@ -1056,7 +1056,7 @@ function renderScene() {
     }
     if (name.endsWith(":buffer")) {
       // A different buffer on the new unit fades out and in with the Bowden (see `bufferFade` below).
-      svg += `<g data-part="buffer-layer" opacity="@@buffer-opacity@@">${renderBuffer(s,d,unitSensors.filter(([sensor])=>isBufferSensor(sensor)),sensorFill,{homingRing,pulse:sensorPulse,now:animationNow})}</g>`;
+      svg += `<g data-part="buffer-layer" opacity="@@buffer-opacity@@">${renderBuffer(s,d,unitSensors.filter(([sensor])=>isBufferSensor(sensor)),sensorFill,{homingRing,pulse:sensorPulse,now:animationNow,gapFill:'@@buffer-gap@@'})}</g>`;
     }
   }
   const excess = s.bowden_unabsorbed_mm || 0;
@@ -1157,9 +1157,11 @@ function renderScene() {
   // Away from the exit, everything attached to the MMU side fades: Bowden, branches, gears, sensors, tips.
   // The mask covers only the scene above the unit enclosures (y<534, except the enclosures themselves) and the MMU side (x>=470, clear of the toolhead labels),
   // so the rack, the toolhead and the top of the Bowden stay put.
-  const bufferName=gate=>Object.entries(s.buffers || {}).find(([,buffer])=>buffer.gates.includes(gate))?.[0];
-  const bufferFade=s.gate_slide!==undefined && bufferName(s.gate_from)!==bufferName(s.gate_to);
-  svg=svg.replace('@@buffer-opacity@@',bufferFade ? bowdenReach : 1);
+  // Units sharing one buffer keep it; otherwise it fades away (leaving the plain Bowden) and back with the Bowden.
+  const bufferOf=gate=>s.unit_layouts?.find(layout=>layout.gates.includes(gate))?.buffer ?? null;
+  const bufferFade=s.gate_slide!==undefined && bufferOf(s.gate_from)!==bufferOf(s.gate_to);
+  const bufferShown=bufferFade ? bowdenReach : 1, gapShade=Math.round(255*(1-bufferShown));
+  svg=svg.replace('@@buffer-opacity@@',bufferShown).replace('@@buffer-gap@@',`rgb(${gapShade},${gapShade},${gapShade})`);
   const reachCut=195+bowdenReach*380;
   svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="470" y="0" width="1530" height="534" fill="url(#bowden-reach-gradient)"/><path d="${enclosurePaths}" fill="white"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
   $("scene").innerHTML = rackFade ? `${rackFadeMask(rackFade)}<g mask="url(#rack-edge-fade)">${svg}</g>${rackArrows}` : svg+rackArrows;
