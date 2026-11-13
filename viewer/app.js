@@ -1008,9 +1008,12 @@ function renderScene() {
     const sensorLabel = isTouchSensor(name) ? 'touch' : /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
     // Leave a one-unit gap outside the tube and the five-unit sensor radius.
     const sensorX=pt.x+16;
-    const sensorClass=virtual && ['entry','exit'].includes(sensorLabel) && pt.x!==virtual.active.x ? ' virtual-gate-sensor' : '';
+    const branchGate=virtual && ['entry','exit'].includes(sensorLabel) ? virtual.branches.find(branch=>branch.x===pt.x)?.gate : undefined;
+    // A branch's sensors brighten with its gear as the selection arrives, rather than switching at once.
+    const sensorClass=branchGate!==undefined ? ' virtual-gate-sensor' : '';
+    const sensorLit=branchGate!==undefined ? Math.max(0,1-Math.abs(branchGate-(s.gate_focus ?? s.gate))) : 1;
     const showLabel=!virtual || !['entry','exit'].includes(sensorLabel) || pt.x===virtual.branches.at(-1).x;
-    svg += `<g class="sensor-marker${sensorClass}${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}">${showLabel ? `<text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text>` : ''}<circle cx="${sensorX}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
+    svg += `<g class="sensor-marker${sensorClass}${d.state === null ? ' sensor-disabled' : ''}" data-sensor="${escape(name)}"${sensorClass ? ` style="--sensor-lit:${sensorLit}"` : ''}>${showLabel ? `<text x="${isTouchSensor(name) || pt.x > 400 ? pt.x + 29 : pt.x - 29}" y="${sensorLabel === 'entry' ? pt.y : pt.y + 4}" dominant-baseline="${sensorLabel === 'entry' ? 'central' : 'auto'}" text-anchor="${isTouchSensor(name) || pt.x > 400 ? "start" : "end"}" font-size="10" fill="var(--scene-text, #456078)">${escape(sensorLabel)}</text>` : ''}<circle cx="${sensorX}" cy="${pt.y}" r="5" fill="${d.state === true ? "#399b64" : d.state === false ? "#fff" : "#9ba5ae"}" stroke="#698394"/></g>`;
     svg += homingRing(name,sensorX,pt.y);
     if (sensorPulse?.sensor === name) {
       const elapsed = (animationNow() - sensorPulse.start) / 650;
