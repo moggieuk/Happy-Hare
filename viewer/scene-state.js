@@ -108,7 +108,7 @@ export class SceneModel {
         buffers[b.name]={gates:u.gates,maxrange:maximum,range,spring:b.buffer_spring_state,travel:{[m.gate]:travel},excess:{[m.gate]:displacement-travel},tension_travel:(maximum-range)/2,compression_travel:(maximum+range)/2};
         object_status[`mmu_buffer ${b.name}`]=null;
       }
-      object_status[`mmu_toolhead ${u.toolhead.name}`]=null;
+      object_status[`mmu_extruder ${u.extruder.name}`]=null;
     }
     const vars=f.macros?.[machine.form_tip_macro+'_VARS'] || f.macros?.[machine.form_tip_macro] || {};
     const cutters=finite(vars.blade_pos) ? [{kind:'toolhead',position:nozzle-vars.blade_pos,before_extruder:vars.cutter_before_extruder}] : [];
