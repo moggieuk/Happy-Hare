@@ -76,6 +76,7 @@ class TelemetryStream:
                 self.unsubscribe(key)
         if not self.clients:
             return
+        self.capture.sync()
         for key, client in list(self.clients.items()):
             if client['inflight'] is None:
                 batch = self._batch(client)
