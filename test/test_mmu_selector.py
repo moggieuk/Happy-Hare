@@ -287,6 +287,21 @@ class TestTestMoveGrip(SelectorTestCase):
         self.assertEqual(self.grip_state(), FILAMENT_RELEASE_STATE)
 
 
+class TestLinearServoGripStatus(SelectorTestCase):
+    """The linear-servo selector reports `grip` in its status, like the rotary and servo selectors."""
+
+    PROFILE = 'tradrack'
+
+    def test_status_grip_follows_mmu_grip_and_release(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_GRIP')
+        self.assertEqual(selector.get_status(0)['grip'], 'Gripped')
+        self.hh.run_gcode('MMU_RELEASE')
+        self.assertEqual(selector.get_status(0)['grip'], 'Released')
+        self.assertEqual(self.hh.errors, [])
+
+
 class TestTestMoveGripAlwaysGripped(TestTestMoveGrip):
     """mmx: a type-B ServoSelector, which stays gripped whatever GRIP says."""
 
