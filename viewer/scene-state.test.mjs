@@ -21,3 +21,16 @@ test('the device readout names the extruder, encoder and buffer objects by their
  assert.ok(names.every(n=>!n.startsWith('mmu_toolhead ')));
  assert.ok(names.some(n=>n.startsWith('mmu_encoder ')));
 });
+
+test('a cut fragment stays in the extruder when another gate has a different Bowden length',()=>{
+ const r=new TelemetryReplay();
+ r.accept(JSON.parse(fs.readFileSync(new URL('./fixtures/ercf-vvd.json',import.meta.url))));
+ const first=r.snapshot(), name=first.filament.extruder;
+ r.fragments[name]={start:first.layout.nozzle-30,end:first.layout.nozzle-10,tip_shape:'cone',color:'ff0000'};
+ const mmu=r.facts.printer.mmu, unit=r.facts.printer.mmu_machine.units[mmu.unit];
+ unit.bowden_lengths[mmu.gate]=(unit.bowden_lengths[mmu.gate] || 700)+120;
+ const moved=r.snapshot();
+ assert.equal(moved.layout.nozzle,first.layout.nozzle+120);
+ assert.equal(moved.layout.nozzle-moved.retained_segment.end,10);
+ assert.equal(moved.layout.nozzle-moved.retained_segment.start,30);
+});

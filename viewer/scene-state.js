@@ -13,7 +13,7 @@ export class SceneModel {
   constructor() {
     this.tips=[]; this.shapes=[]; this.hairLengths=[]; this.motors={};
     this.fragments={}; this.hotends={}; this.bufferPositions={};
-    this.excess={}; this.overshoot={}; this.cutter=false;
+    this.excess={}; this.overshoot={}; this.cutter=false; this.nozzles={};
   }
   logicalTip(s, pos, manual=false) {
     const {extruder_entry:entry,extruder_gears:gears,nozzle} = s.layout;
@@ -69,6 +69,14 @@ export class SceneModel {
     const extruder=unit.extruder, residual=number(p.toolhead_residual_filament);
     const filament={extruder:extruder.name,retracted_length:extruder.retracted_length,residual_mm:residual,
       fragment_mm:number(extruder.filament_cut_fragment ?? extruder.filament_remaining),retained_color:color(extruder.filament_remaining_color),incoming_color:color(m.gate_color[m.gate])};
+    // Positions run from the selected gate, whose Bowden length places the nozzle; what sits in the extruder moves with it.
+    const shift=this.nozzles[extruder.name] === undefined ? 0 : nozzle-this.nozzles[extruder.name];
+    this.nozzles[extruder.name]=nozzle;
+    if (shift && this.hotends[extruder.name]) {
+      this.hotends[extruder.name].front+=shift;
+      const kept=this.fragments[extruder.name];
+      if (kept) { kept.start+=shift; kept.end+=shift; }
+    }
     if (!this.hotends[extruder.name]) {
       this.hotends[extruder.name]={extruded:0,base:0,front:nozzle-residual,plan:null,nozzle:filament.retained_color};
       if (filament.fragment_mm > 0) this.fragments[extruder.name]={start:nozzle-residual-filament.fragment_mm,end:nozzle-residual,
