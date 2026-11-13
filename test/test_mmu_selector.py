@@ -2037,3 +2037,19 @@ class TestSelectorFinalMethods(unittest.TestCase):
             '_select_gate': lambda self, lgate: None,
             '_restore_gate': lambda self, lgate: None,
         })
+
+
+class TestSoaktestSelectorVirtualUnit(unittest.TestCase):
+    """UNIT=ALL must skip units with a VirtualSelector rather than crash on them"""
+
+    def test_all_units_with_virtual_selector_is_clean_error(self):
+        hh = session('boxturtle_test')
+        try:
+            hh.boot()
+            import sys
+            module = sys.modules[type(hh.mmu.mmu_machine.units[0].selector).__module__.rsplit('.', 1)[0] + '.mmu_base_selectors']
+            module.MmuSoaktestSelectorCommand(hh.mmu)  # Only registered by physical selectors
+            hh.run_gcode('MMU_SOAKTEST_SELECTOR UNIT=ALL LOOP=1')
+            self.assertFalse(any('check_if_unit_loaded' in str(e) for e in hh.errors), hh.errors)
+        finally:
+            hh.close()
