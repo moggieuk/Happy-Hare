@@ -26,14 +26,14 @@ def event(seq, kind='cut', **fields):
 
 
 class TestTelemetryStore(unittest.TestCase):
-    def test_latest_operation_checkpoint_includes_edited_parameters(self):
+    def test_current_checkpoint_includes_edited_parameters(self):
         history = TelemetryHistory()
         history.append(dict(records=[HEADER, event(1, 'toolchange'), event(2, 'state_delta',
             changes=[dict(path=['parameter'], value=20)]), event(3, 'toolchange'), event(4)]))
-        latest = history.read()
-        self.assertEqual([r['sequence'] for r in latest['records']], [2, 3, 4])
-        self.assertEqual(latest['records'][0]['state'], {'parameter': 20})
-        self.assertEqual(history.read(history='start')['records'][0]['state'], {'parameter': 10})
+        current = history.read(history='current')
+        self.assertEqual([r['sequence'] for r in current['records']], [4])
+        self.assertEqual(current['records'][0]['state'], {'parameter': 20})
+        self.assertEqual(history.read()['records'][0]['state'], {'parameter': 10})
 
     def test_rollover_checkpoint(self):
         history = TelemetryHistory(2)

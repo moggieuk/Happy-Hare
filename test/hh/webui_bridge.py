@@ -265,14 +265,6 @@ class WebUiBridge:
             self._reply(handler, 200, (viewer_dir / name).read_bytes(),
                         {'js': 'text/javascript', 'css': 'text/css'}.get(name.rsplit('.', 1)[-1], 'text/html'))
             return
-        if parsed.path == '/sim/viewer/telemetry':
-            try:
-                after = int(params['after']) if 'after' in params else None
-            except (TypeError, ValueError):
-                after = None
-            data = json.dumps({'result': self.viewer.read_telemetry(after)}, allow_nan=False).encode()
-            self._reply(handler, 200, data, 'application/json', no_store=True)
-            return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':
             method = 'server.database.get_item' if body is None else 'server.database.post_item'
@@ -577,7 +569,7 @@ class WebUiBridge:
         return self.telemetry_stream.subscribe(conn,
             lambda batch: conn.send_text(json.dumps(dict(jsonrpc='2.0',
                 method='notify_mmu_telemetry', params=[batch]))),
-            lambda: not conn.open, params.get('after'), params.get('stream_id'), params.get('history', 'latest'))
+            lambda: not conn.open, params.get('history', 'start'))
 
     def rpc_server_mmu_telemetry_ack(self, conn, params):
         return self.telemetry_stream.ack(conn, params.get('stream_id'), params.get('delivery_id'))

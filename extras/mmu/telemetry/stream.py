@@ -11,8 +11,11 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+import logging
 import uuid
 from .capture import TelemetryCapture
+
+MAX_SUBSCRIBERS = 32
 
 
 class TelemetryStream:
@@ -34,14 +37,13 @@ class TelemetryStream:
         for client in self.clients.values():
             client.update(after=None, inflight=None)
 
-    def subscribe(self, key, send, closed, after=None, stream_id=None, history="start"):
-        if key not in self.clients and len(self.clients) >= 32:
+    def subscribe(self, key, send, closed, history="start"):
+        if key not in self.clients and len(self.clients) >= MAX_SUBSCRIBERS:
             raise ValueError('Too many telemetry subscribers')
         if self.capture is None:
             self.capture = TelemetryCapture(self.mmu, limit=512)
             self.stream_id = uuid.uuid4().hex
-        client = dict(send=send, closed=closed, after=after if stream_id == self.stream_id else None,
-                      inflight=None, history=history)
+        client = dict(send=send, closed=closed, after=None, inflight=None, history=history)
         self.clients[key] = client
         return self._batch(client)
 
@@ -84,6 +86,7 @@ class TelemetryStream:
                     try:
                         client['send'](batch)
                     except Exception:
+                        logging.exception('MMU telemetry subscriber dropped')
                         self.unsubscribe(key)
 
     def close(self):

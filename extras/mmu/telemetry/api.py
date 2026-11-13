@@ -35,8 +35,7 @@ class TelemetryAPI:
         def send(batch):
             conn.send(dict(template, params=dict(subscription_id=token, batch=batch)))
         try:
-            batch = self.stream.subscribe(key, send, conn.is_closed,
-                request.get_int('after', None), request.get_str('stream_id', None))
+            batch = self.stream.subscribe(key, send, conn.is_closed)
         except ValueError as exc:
             raise request.error(str(exc))
         request.send(batch)

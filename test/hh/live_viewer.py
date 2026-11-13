@@ -27,7 +27,6 @@ class SourceViewer:
         self.hh = session
         self.macro_catalog = self._macro_catalog()
         self.telemetry_capture = TelemetryCapture(session.mmu, limit=6000)
-        self.session_id = session.mmu.movement_telemetry.session_id
 
     def read_telemetry(self, after=None):
         return self.telemetry_capture.read(after)
