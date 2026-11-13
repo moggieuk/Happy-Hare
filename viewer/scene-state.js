@@ -116,7 +116,9 @@ export class SceneModel {
         buffers[b.name]={gates:u.gates,maxrange:maximum,range,spring:b.buffer_spring_state,travel:{[m.gate]:travel},excess:{[m.gate]:displacement-travel},tension_travel:(maximum-range)/2,compression_travel:(maximum+range)/2};
         object_status[`mmu_buffer ${b.name}`]=null;
       }
-      object_status[`mmu_extruder ${u.extruder.name}`]=null;
+      const extruderStatus=Object.fromEntries(['extruder_name','extruder_filament_remaining','filament_cut_fragment','filament_remaining_color',
+        'filament_remaining_material','filament_remaining_temp'].filter(key=>u.extruder[key] !== undefined).map(key=>[key,u.extruder[key]]));
+      object_status[`mmu_extruder ${u.extruder.name}`]=Object.keys(extruderStatus).length ? extruderStatus : null;
     }
     const vars=f.macros?.[machine.form_tip_macro+'_VARS'] || f.macros?.[machine.form_tip_macro] || {};
     const cutters=finite(vars.blade_pos) ? [{kind:'toolhead',position:nozzle-vars.blade_pos,before_extruder:vars.cutter_before_extruder}] : [];
