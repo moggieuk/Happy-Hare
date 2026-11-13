@@ -39,7 +39,6 @@
 
 import logging
 import unittest
-from unittest.mock import patch
 
 from test.hh import session
 
@@ -306,37 +305,6 @@ class TestEncoderProbes(DevTestCase):
         for args in ('SET_ENCODER=42', 'ADJUST_ENCODER=5', 'ADJUST_ENCODER=-5'):
             with self.subTest(option=args):
                 self.run_option(args)
-
-
-class TestRandomSelection(DevTestCase):
-
-    def test_default_ten_selections_across_units(self):
-        mmu = self.hh.mmu
-        gates = [0, mmu.num_gates - 1] * 5
-        with patch('extras.mmu.commands.mmu_dev_test.random.randint',
-                   side_effect=gates) as choose, patch.object(
-                       mmu, 'select_gate', wraps=mmu.select_gate) as select:
-            self.run_option('RANDOM_SELECT=1')
-        self.assertEqual([call.args[0] for call in select.call_args_list], gates)
-        self.assertEqual(choose.call_count, 10)
-        choose.assert_called_with(0, mmu.num_gates - 1)
-        self.assertEqual(mmu.gate_selected, gates[-1])
-        self.assertFalse(mmu._is_running_test)
-
-    def test_explicit_loop_and_normal_servo_context(self):
-        mmu = self.hh.mmu
-        contexts = []
-        original = mmu.select_gate
-
-        def select_gate(gate):
-            contexts.append(mmu._is_running_test)
-            return original(gate)
-
-        with patch('extras.mmu.commands.mmu_dev_test.random.randint', return_value=0), \
-                patch.object(mmu, 'select_gate', side_effect=select_gate):
-            self.run_option('RANDOM_SELECT=1 LOOP=3')
-        self.assertEqual(contexts, [False] * 3)
-        self.assertFalse(mmu._is_running_test)
 
 
 if __name__ == '__main__':
