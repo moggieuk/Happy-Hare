@@ -72,20 +72,16 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
   const shift=base+applied;
   // Everything on the MMU side of the exit (Bowden, gears, sensors) stays attached to the unit holding the
-  // selected gate, and fades only when the rack leaves that unit or brings another in:
-  //  - a linear unit fades over one lane as its first/last spool lowers away from, or rises toward, the exit;
-  //  - a virtual unit fades before the slide begins and again after it has settled (`fullOpacity` is the
-  //    animation's own fade phase), and by distance from the unit's edge when scrolled by hand.
-  // Moving between gates of one unit never fades.
+  // selected gate. When the gate change crosses units it fades before the slide starts (`fullOpacity` is the
+  // animation's own fade phase), stays hidden while the units pass, and fades in again once the new unit is in
+  // place. Moving between gates of one unit never fades. Scrolled by hand, it fades as the exit leaves the unit.
   const unitOf=gate=>units.find(unit=>unit.gates.includes(gate)) ?? units[0];
   const clamp01=v=>Math.max(0,Math.min(1,v));
   const attached=(unit,role)=>{
     if (!unit) return 1;
-    if (unit.virtual) {
-      if (slide) return (role==='from' && slide.t===0) || (role==='to' && slide.t===1) ? fullOpacity : 0;
-      return clamp01(Math.min(620-(unit.left+shift),unit.right+shift-620)/padding);
-    }
-    return clamp01(1-Math.max(0,unit.first+shift-620,620-(unit.last+shift))/spacing);
+    if (slide) return (role==='from' && slide.t===0) || (role==='to' && slide.t===1) ? fullOpacity : 0;
+    return unit.virtual ? clamp01(Math.min(620-(unit.left+shift),unit.right+shift-620)/padding)
+      : clamp01(1-Math.max(0,unit.first+shift-620,620-(unit.last+shift))/spacing);
   };
   const from=slide ? slide.from : low, to=slide ? slide.to : high;
   const reach=unitOf(from)===unitOf(to) && slide ? 1 : Math.max(attached(unitOf(from),'from'),attached(unitOf(to),'to'));
@@ -854,6 +850,11 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
     // Keep the gears released through retreat, both fades, the slide, and advance.
     state={...state,gate_full_opacity:fullOpacity,
       mmu_gripped:elapsed > 0 && elapsed < movementMs ? false : selectionGrip};
+    if (event.before?.unit !== event.state.unit) {
+      // Feeds from the spools to the gate rise only after the new unit is in place and the Bowden has faded in.
+      const {fade,slide,retract,advance}=gateTiming, slideEnd=retract+fade+slide;
+      state.gate_feed=elapsed<retract+fade ? 1 : Math.max(0,Math.min(1,(elapsed-slideEnd-fade)/advance));
+    }
   }
   const gate=event.state.gate;
   const arrivalTime=nozzleArrivalTime(event,movementMs);

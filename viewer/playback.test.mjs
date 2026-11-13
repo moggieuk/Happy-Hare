@@ -883,7 +883,7 @@ test('a slide between units moves the rack at constant speed and the raised spoo
  assert.equal(lift(0,3),10);assert.equal(lift(1,4),10);
  assert.ok(lift(.5,3)<10 && lift(.5,4)<10);                       // Neither is under the exit mid-slide
 });
-test('the MMU side fades only when the rack leaves the selected unit, timed to each selector type',()=>{
+test('the MMU side fades only when the rack changes units: before the slide, and after the new unit is in place',()=>{
  const layouts=[{name:'v',gates:[0,1,2,3],selector_type:'VirtualSelector'},{name:'l',gates:[4,5,6,7],selector_type:'LinearSelector'}];
  const options={current:'v',spacing:54,angle:77*Math.PI/180};
  const reach=extra=>rackGrid(layouts,{...options,...extra}).reach;
@@ -891,21 +891,27 @@ test('the MMU side fades only when the rack leaves the selected unit, timed to e
  assert.equal(reach({focus:5}),1);
  assert.equal(reach({focus:1,manual:-400}),0);                       // Hand-scrolled out of a virtual unit: detached
  const part=reach({focus:1,manual:-100});assert.ok(part>0 && part<1);
- // Virtual to linear: the fade finishes before the slide starts; the linear unit fades in as its first spool rises.
- const out=(t,fullOpacity=1)=>reach({slide:{from:1,to:5,t},fullOpacity});
- assert.equal(out(0),1);assert.equal(out(0,.5),.5);assert.equal(out(0,0),0);
- assert.equal(out(.001,0),0);assert.equal(out(.5),0);                // Nothing attached while the units pass
- assert.ok(reach({slide:{from:1,to:4,t:.9}})>0 && reach({slide:{from:1,to:4,t:.9}})<1);assert.equal(out(1),1);   // The first spool is rising under the exit
- // Linear to virtual: the linear unit fades as its spool lowers; the virtual one only once it is in place.
- const back=(t,fullOpacity=1)=>reach({slide:{from:5,to:1,t},fullOpacity});
- const leaving=t=>reach({slide:{from:4,to:1,t}});
- assert.equal(back(0),1);assert.equal(back(.1),1);                  // Still passing over the unit's own lanes
- assert.ok(leaving(.1)>0 && leaving(.1)<1);assert.equal(back(.5),0);
- assert.equal(back(1,.4),.4);assert.equal(back(1),1);
+ // The same timing for both selector types, in either direction.
+ for (const [from,to] of [[1,5],[5,1],[4,2]]) {
+  const at=(t,fullOpacity=1)=>reach({slide:{from,to,t},fullOpacity});
+  assert.equal(at(0),1);assert.equal(at(0,.5),.5);assert.equal(at(0,0),0);   // Fading out before the slide
+  assert.equal(at(.001,0),0);assert.equal(at(.5),0);assert.equal(at(.999),0); // Nothing attached while the units pass
+  assert.equal(at(1,0),0);assert.equal(at(1,.5),.5);assert.equal(at(1),1);   // Fading in once the unit is in place
+ }
  // Gate changes inside one unit never fade.
- const linear=[{name:'l',gates:[0,1,2,3],selector_type:'LinearSelector'}];
- for (const t of [0,.25,.5,.75,1]) assert.equal(rackGrid(linear,{...options,current:'l',slide:{from:0,to:3,t},fullOpacity:0}).reach,1);
- for (const t of [0,.5,1]) assert.equal(reach({slide:{from:0,to:3,t},fullOpacity:0}),1);
+ for (const t of [0,.25,.5,.75,1]) assert.equal(reach({slide:{from:0,to:3,t},fullOpacity:0}),1);
+ for (const t of [0,.5,1]) assert.equal(reach({slide:{from:5,to:7,t},fullOpacity:0}),1);
+});
+test('virtual spool feeds rise only after the unit has arrived and the Bowden has faded in',()=>{
+ const before={unit:'a',gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
+ const event={kind:'gate_changed',before,state:{...before,unit:'b',gate:1}};
+ const frame=t=>playbackFrame(event,t,duration(event)).state.gate_feed;
+ assert.equal(frame(500),1);                                 // The leaving unit keeps its feeds through the fade
+ assert.equal(frame(1475),0);assert.equal(frame(2400),0);    // Hidden while sliding and fading in
+ assert.equal(frame(2650),0);assert.equal(frame(2800),.5);   // Then they rise quickly
+ assert.equal(frame(2949)>.99,true);
+ const same={kind:'gate_changed',before,state:{...before,gate:1}};
+ assert.equal(playbackFrame(same,1475,duration(same)).state.gate_feed,undefined);   // Same unit: untouched
 });
 test('a hand-scrolled rack returns to the selected gate only after 2.5 seconds of inactivity',()=>{
  assert.equal(rackIdleReturn(-300,2499),false);

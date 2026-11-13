@@ -864,9 +864,9 @@ function renderScene() {
       const percent=spoolFill(s,index);
       const branch=virtual?.branches.find(branch=>branch.gate===index);
       if (branch && percent>0 && s.gate_status?.[index]!==0) {
-        const top=470+mmuOffset, bottom=y-spoolWindingRadius(percent)*spoolScale;
+        const top=470+mmuOffset, bottom=y-spoolWindingRadius(percent)*spoolScale, feed=s.gate_feed ?? 1;
         const opacity=(index===gate ? .5 : .2)*endReach();
-        svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${top} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
+        svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${bottom-(bottom-top)*feed} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
       }
       const knownWeight=Number.isFinite(s.spool_percentages?.[index]);
       const title=spoolTooltip(s,index);
@@ -1146,10 +1146,10 @@ function renderScene() {
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
   // Away from the exit, everything attached to the MMU side fades: Bowden, branches, gears, sensors, tips.
-  // The mask covers only the scene above the unit enclosures (y<528) and the MMU side (x>=470, clear of the toolhead labels),
+  // The mask covers only the scene above the unit enclosures (y<531) and the MMU side (x>=470, clear of the toolhead labels),
   // so the rack, the toolhead and the top of the Bowden stay put.
-  const reachCut=240+bowdenReach*328;
-  svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="470" y="0" width="1530" height="528" fill="url(#bowden-reach-gradient)"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
+  const reachCut=240+bowdenReach*335;
+  svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="470" y="0" width="1530" height="531" fill="url(#bowden-reach-gradient)"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
   $("scene").innerHTML = rackFade ? `${rackFadeMask(rackFade)}<g mask="url(#rack-edge-fade)">${svg}</g>${rackArrows}` : svg+rackArrows;
   for (const [index] of spoolRenderers) {
     if (!spoolRequests.has(index)) spoolRenderers.delete(index);
