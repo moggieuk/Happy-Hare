@@ -749,11 +749,13 @@ function renderScene() {
   let schematicTip = null;
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
   if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(virtual ? virtual.parkDistance : 570-405);
+  // The schematic Bowden scale ends at the extruder sensor: beyond it positions use the toolhead's own scale, so the
+  // sensor and the extruder never move as the tip enters.
   // Encoder loading keeps one reference across START OF BOWDEN bookkeeping.
   if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry && s.encoder_reference?.endstop === 'encoder') {
     if (virtual) {
       schematicDistance=position=>switchFilamentDistance(position,s.layout.mmu_encoder,
-        s.encoder_reference.parking,entry,mmuDistanceAtY(encoderPoint().y),pathDistance,
+        s.encoder_reference.parking,sensorEntry,mmuDistanceAtY(encoderPoint().y),pathDistance,
         null,s.encoder_reference.parking<0 ? virtual.parkDistance : null);
       schematicTip=schematicDistance(tip);
       tip=tipAtPathDistance(schematicTip);
@@ -764,7 +766,7 @@ function renderScene() {
       [endstop,`${endstop}_${gate}`].includes(sensorName(name)));
     if (sensor) {
       schematicDistance = position => switchFilamentDistance(position,sensor[1].position,
-        s.encoder_reference?.parking || 0,entry,mmuDistanceAtY(sensorPoint(...sensor).y),pathDistance,
+        s.encoder_reference?.parking || 0,sensorEntry,mmuDistanceAtY(sensorPoint(...sensor).y),pathDistance,
         encoderAnchor?.name === sensor[0] && s.devices?.[`${s.unit}:encoder`]
           ? {position:sensor[1].position+encoderAnchor.offset,distance:mmuDistanceAtY(encoderPoint().y)} : null,
         virtual && endstop==='mmu_shared_exit' && s.encoder_reference.parking<0 ? virtual.parkDistance : null);
