@@ -12,3 +12,12 @@ test('the scene carries the encoder resolution the tip tolerance is based on',()
  delete unit.encoder.parameters;
  assert.equal(r.snapshot().devices[`${r.facts.printer.mmu.unit}:encoder`].resolution,undefined);
 });
+
+test('the device readout names the extruder, encoder and buffer objects by their MMU names',()=>{
+ const r=new TelemetryReplay();
+ r.accept(JSON.parse(fs.readFileSync(new URL('./fixtures/ercf-vvd.json',import.meta.url))));
+ const names=Object.keys(r.snapshot().object_status);
+ assert.ok(names.some(n=>n.startsWith('mmu_extruder ')));
+ assert.ok(names.every(n=>!n.startsWith('mmu_toolhead ')));
+ assert.ok(names.some(n=>n.startsWith('mmu_encoder ')));
+});
