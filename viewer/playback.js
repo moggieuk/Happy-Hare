@@ -4,6 +4,33 @@ import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 export const BOWDEN_EXIT_X=270, EXTRUDER_X=680;
 // From the exit up and over to the top of the extruder: a vertical run, then a rounded horizontal run at y=75.
 export const BOWDEN_TO_EXTRUDER=`L${BOWDEN_EXIT_X} 150 Q${BOWDEN_EXIT_X} 75 ${BOWDEN_EXIT_X+95} 75 L${EXTRUDER_X-95} 75 Q${EXTRUDER_X} 75 ${EXTRUDER_X} 170 L${EXTRUDER_X} 449`;
+// How the Bowden descends into the MMU: from the hub at the exit, over a diagonal, to the lane of a gate.
+function bowdenDescent(verticalOffset) {
+  const bottom=570+verticalOffset, shoulder=370+verticalOffset, hub=180+verticalOffset;
+  const distanceAtY=laneX=>{
+    const diagonal=Math.hypot(laneX-BOWDEN_EXIT_X,shoulder-hub);
+    return y=>y>=shoulder ? bottom-y : y<=hub ? bottom-shoulder+diagonal+hub-y
+      : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);
+  };
+  const branchPath=(x,start=bottom)=>{
+    // Each bend starts where it always has (`bend` along the vertical, just above an exit sensor) but sweeps
+    // further (`sweep`) along the diagonal, which softens the radius.
+    const bend=20, sweep=46, diagonalLength=Math.hypot(BOWDEN_EXIT_X-x,hub-shoulder);
+    const dx=(BOWDEN_EXIT_X-x)*sweep/diagonalLength, dy=(hub-shoulder)*sweep/diagonalLength;
+    return `M${x} ${start} V${shoulder+bend} Q${x} ${shoulder} ${x+dx} ${shoulder+dy} L${BOWDEN_EXIT_X-dx} ${hub-dy} Q${BOWDEN_EXIT_X} ${hub} ${BOWDEN_EXIT_X} ${hub-bend}`;
+  };
+  return {bottom,shoulder,hub,distanceAtY,branchPath};
+}
+
+// A selector with one gate position (not virtual) uses the path of the right-most gate of a four gate virtual selector,
+// which sits further from the exit than the rest and so brings the unit closer to the middle of the drawing.
+export const bowdenLaneOffset=spacing=>1.5*spacing;
+export function bowdenLane(spacing=54, verticalOffset=0) {
+  const {bottom,shoulder,hub,distanceAtY,branchPath}=bowdenDescent(verticalOffset);
+  const x=BOWDEN_EXIT_X+bowdenLaneOffset(spacing);
+  return {x,bottom,shoulder,hub,distanceAtY:distanceAtY(x),path:`${branchPath(x)} ${BOWDEN_TO_EXTRUDER}`};
+}
+
 export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   if (state.selector_type!=='VirtualSelector') return null;
   const gates=state.unit_gates || state.tips.map((_,index)=>index);
@@ -12,18 +39,8 @@ export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   const branches=rowGates.map((gate,column)=>({gate,x:BOWDEN_EXIT_X+(column-(columns-1)/2)*spacing}));
   const active=branches.find(branch=>branch.gate===state.gate) || branches[0];
   if (!active) return null;
-  const bottom=570+verticalOffset, shoulder=370+verticalOffset, hub=180+verticalOffset;
-  const diagonal=Math.hypot(active.x-BOWDEN_EXIT_X,shoulder-hub);
-  const distanceAtY=y=>y>=shoulder ? bottom-y : y<=hub ? bottom-shoulder+diagonal+hub-y
-    : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);
-  const branchPath=(x,start=bottom)=>{
-    // Each bend starts where it always has (`bend` along the vertical, just above an exit sensor) but sweeps
-    // further (`sweep`) along the diagonal, which softens the radius.
-    const bend=20, sweep=46, diagonalLength=Math.hypot(BOWDEN_EXIT_X-x,hub-shoulder);
-    const dx=(BOWDEN_EXIT_X-x)*sweep/diagonalLength, dy=(hub-shoulder)*sweep/diagonalLength;
-    return `M${x} ${start} V${shoulder+bend} Q${x} ${shoulder} ${x+dx} ${shoulder+dy} L${BOWDEN_EXIT_X-dx} ${hub-dy} Q${BOWDEN_EXIT_X} ${hub} ${BOWDEN_EXIT_X} ${hub-bend}`;
-  };
-  return {branches,active,row,bottom,shoulder,hub,distanceAtY,branchPath,parkDistance:bottom-shoulder-12,
+  const {bottom,shoulder,hub,distanceAtY,branchPath}=bowdenDescent(verticalOffset);
+  return {branches,active,row,bottom,shoulder,hub,distanceAtY:distanceAtY(active.x),branchPath,parkDistance:bottom-shoulder-12,
     path:`${branchPath(active.x)} ${BOWDEN_TO_EXTRUDER}`};
 }
 
@@ -40,7 +57,7 @@ export function spoolGrid(gates, focus, maxColumns=7) {
 export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, maxVirtualColumns=6, availableWidth=850, gap=18}) {
   const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
   const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
-  const units=[], lanes=[], anchors=new Map();
+  const units=[], lanes=[], anchors=new Map(), laneExit=BOWDEN_EXIT_X+bowdenLaneOffset(spacing);
   let left=0;
   for (const layout of layouts) {
     const count=layout.gates.length;
@@ -51,7 +68,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     layout.gates.forEach((index,slot)=>{
       const x=left+padding+(slot%columns)*spacing;
       lanes.push({index,row:Math.floor(slot/columns),x,unit:layout.name,virtual});
-      anchors.set(index,virtual ? left+width/2 : x);
+      anchors.set(index,virtual ? left+width/2 : x-bowdenLaneOffset(spacing));
     });
     left+=width+gap;
   }
@@ -74,7 +91,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     if (!unit) return 1;
     if (slide) return (role==='from' && slide.t===0) || (role==='to' && slide.t===1) ? fullOpacity : 0;
     return unit.virtual ? clamp01(Math.min(BOWDEN_EXIT_X-(unit.left+shift),unit.right+shift-BOWDEN_EXIT_X)/padding)
-      : clamp01(1-Math.max(0,unit.first+shift-BOWDEN_EXIT_X,BOWDEN_EXIT_X-(unit.last+shift))/spacing);
+      : clamp01(1-Math.max(0,unit.first+shift-laneExit,laneExit-(unit.last+shift))/spacing);
   };
   const from=slide ? slide.from : low, to=slide ? slide.to : high;
   const reach=unitOf(from)===unitOf(to) && slide ? 1 : Math.max(attached(unitOf(from),'from'),attached(unitOf(to),'to'));
@@ -83,7 +100,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
     units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
     // The spool passing under the exit rises with it; a virtual unit's spools rise by gate number instead.
-    lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-BOWDEN_EXIT_X)/spacing))}))};
+    lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-laneExit)/spacing))}))};
 }
 
 // How selected a gate looks while the selection moves. Only the gate being left and the gate being reached

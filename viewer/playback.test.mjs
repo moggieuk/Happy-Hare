@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BOWDEN_EXIT_X, EXTRUDER_X, BOWDEN_TO_EXTRUDER, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
+import { BOWDEN_EXIT_X, EXTRUDER_X, BOWDEN_TO_EXTRUDER, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -830,11 +830,11 @@ test('the rack places every unit in sequence and slides to keep the focused gate
  const a=rackGrid(layouts,{...options,focus:1});
  assert.equal(a.units.length,2);assert.ok(a.units[0].right<a.units[1].left);
  const lane=g=>a.lanes.find(l=>l.index===g);
- assert.equal(Math.round(lane(1).x),BOWDEN_EXIT_X);                       // The focused spool sits under the exit
+ assert.equal(Math.round(lane(1).x),BOWDEN_EXIT_X+bowdenLaneOffset(54));                       // The focused spool sits under the exit
  assert.equal(Math.round(lane(2).x-lane(1).x),54);
  assert.equal(lane(0).row,0);
  const b=rackGrid(layouts,{...options,focus:3});
- assert.equal(Math.round(b.lanes.find(l=>l.index===3).x),BOWDEN_EXIT_X);
+ assert.equal(Math.round(b.lanes.find(l=>l.index===3).x),BOWDEN_EXIT_X+bowdenLaneOffset(54));
  const mid=rackGrid(layouts,{...options,focus:1.5});             // Mid-slide lies between the two
  assert.ok(mid.shift<a.shift && mid.shift>rackGrid(layouts,{...options,focus:2}).shift-1e-9);
  const v=rackGrid(layouts,{...options,focus:6});                 // A virtual unit centres on the exit
@@ -933,4 +933,11 @@ test('the Bowden runs from the MMU exit on the left to the extruder column on th
  assert.ok(layout.path.endsWith(BOWDEN_TO_EXTRUDER));
  assert.deepEqual(layout.branches.map(b=>b.gate),[0,1,2,3]);                 // Gates keep their order left to right
  assert.ok(layout.branches[0].x<BOWDEN_EXIT_X && layout.branches[3].x>BOWDEN_EXIT_X);
+});
+test('a selector without a virtual hub follows the right-most lane of a four gate virtual selector',()=>{
+ const virtual=virtualSelectorLayout({selector_type:'VirtualSelector',gate:3,unit_gates:[0,1,2,3],tips:[0,0,0,0]},54,60);
+ const lane=bowdenLane(54,60);
+ assert.equal(lane.x,virtual.branches[3].x);
+ assert.equal(lane.path,virtual.path);
+ assert.equal(lane.distanceAtY(150),virtual.distanceAtY(150));
 });
