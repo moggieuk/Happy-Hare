@@ -2040,17 +2040,22 @@ class TestSelectorFinalMethods(unittest.TestCase):
 
 
 class TestSoaktestSelectorVirtualUnit(unittest.TestCase):
-    """UNIT=ALL must skip units with a VirtualSelector rather than crash on them"""
+    """The soak test also runs on a VirtualSelector: no movement, just gate selection"""
 
-    def test_all_units_with_virtual_selector_is_clean_error(self):
+    def test_soaktest_selects_gates_on_virtual_selector(self):
         hh = session('boxturtle_test')
         try:
             hh.boot()
-            import sys
-            module = sys.modules[type(hh.mmu.mmu_machine.units[0].selector).__module__.rsplit('.', 1)[0] + '.mmu_base_selectors']
-            if 'MMU_SOAKTEST_SELECTOR' not in hh.mmu.gcode.ready_gcode_handlers:
-                module.MmuSoaktestSelectorCommand(hh.mmu)  # Only registered by physical selectors
-            hh.run_gcode('MMU_SOAKTEST_SELECTOR UNIT=ALL LOOP=1')
-            self.assertFalse(any('check_if_unit_loaded' in str(e) for e in hh.errors), hh.errors)
+            picked = []
+            real = hh.mmu.select_gate
+            hh.mmu.select_gate = lambda gate: (picked.append(gate), real(gate))[1]
+            unit = hh.mmu.mmu_machine.units[0]
+            real_unit_select = unit.selector.select_gate
+            unit.selector.select_gate = lambda gate: (picked.append(gate), real_unit_select(gate))[1]
+
+            hh.run_gcode('MMU_SOAKTEST_SELECTOR UNIT=ALL LOOP=5')
+
+            self.assertEqual(hh.errors, [])
+            self.assertEqual(len(picked), 5)
         finally:
             hh.close()

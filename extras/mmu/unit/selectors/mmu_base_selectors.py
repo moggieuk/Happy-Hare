@@ -60,6 +60,12 @@ class BaseSelector:
         self.is_homed = False                   # Whether selector is home and knows current position
         self.requires_homing = True             # Whether selector requires homing
 
+        # Soak test applies to all selector types (physical movement, or just gate selection for virtual)
+        try:
+            register_command(MmuSoaktestSelectorCommand)
+        except KeyError:
+            pass # Already registered
+
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
@@ -164,6 +170,16 @@ class BaseSelector:
         return False
 
 
+    def check_if_unit_loaded(self):
+        """
+        Similar to MMU controller check but localized to specific selector
+        """
+        if self.mmu._unit_may_have_filament(self.mmu_unit):
+            self.mmu.log_error("Operation not possible. Filament may be loaded or its state is unknown")
+            return True
+        return False
+
+
     def has_bypass(self):
         """
         Whether the selector has a selectable bypass gate
@@ -211,7 +227,7 @@ class PhysicalSelector(BaseSelector, object):
     Base class for selectors that involve movement.
 
     Provides common functionality used by physical selector implementations
-    including a soak test command for exercising selector movement.
+    including the grip and release commands.
     """
 
     def __init__(self, config, mmu_unit, params):
@@ -219,7 +235,6 @@ class PhysicalSelector(BaseSelector, object):
 
         # Register GCODE commands
         try:
-            register_command(MmuSoaktestSelectorCommand)
             register_command(MmuGripCommand)
             register_command(MmuReleaseCommand)
         except KeyError:
@@ -371,16 +386,6 @@ class PhysicalSelector(BaseSelector, object):
         return False
 
 
-    def check_if_unit_loaded(self):
-        """
-        Similar to MMU controller check but localized to specific selector
-        """
-        if self.mmu._unit_may_have_filament(self.mmu_unit):
-            self.mmu.log_error("Operation not possible. Filament may be loaded or its state is unknown")
-            return True
-        return False
-
-
     def get_mmu_status_config(self):
         msg =  super().get_mmu_status_config()
         if self.requires_homing:
@@ -435,7 +440,7 @@ from ...commands.mmu_base_command import *
 
 # -----------------------------------------------------------------------------------------------------------
 # MMU_SOAKTEST_SELECTOR command
-#  This "registered command" will be conditionally registered in PhysicalSelector, then instantiated later
+#  This "registered command" will be registered by BaseSelector, then instantiated later
 #  by the main mmu_controller module when commands are loaded
 # -----------------------------------------------------------------------------------------------------------
 
@@ -483,13 +488,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
-        # Virtual selectors have no selector movement to test
         units = [mmu_unit] if mmu_unit is not None else list(mmu.mmu_machine.units)
-        units = [u for u in units if isinstance(u.selector, PhysicalSelector)]
-        if not units:
-            mmu.log_error("Operation not possible. No unit with a physical selector")
-            return
-
         for u in units:
             if u.selector.check_if_unit_loaded(): return
             if not u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
