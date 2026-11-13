@@ -8,7 +8,7 @@ import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from '
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, BOWDEN_TO_EXTRUDER, gateSelectionLit, selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, bowdenLane, rackGrid, bowdenAttachment, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
-import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
+import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1, statusText} from './util.js';
 import {consoleLine, consoleEndsWith} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
 import {renderBuffer} from './buffer-view.js';
@@ -1234,9 +1234,7 @@ function renderScene() {
     ...Object.entries(s.object_status || {}).map(([name, d]) => {
       const el = document.createElement("span");
       el.className = "chip";
-      el.textContent = name + " · " + (d === null ? "No status exposed" : JSON.stringify(d, (key, value) =>
-        name.includes('encoder') && typeof value === 'number' && Number.isFinite(value)
-          ? round1(value) : value));
+      el.textContent = name + " · " + statusText(d);
       return el;
     }),
   );
