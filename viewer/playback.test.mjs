@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
+import { syncIndicatorSide, bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -921,4 +921,9 @@ test('after a scroll the MMU side stays faded until the selected spool is back u
  s=step(s,1,-27);assert.equal(s.reach,.5);assert.ok(s.detached); // Nearly back: fading in
  s=step(s,1,0);assert.deepEqual(s,{detached:false,reach:1});     // Back under the Bowden: attached
  assert.deepEqual(bowdenAttachment(true,.3,-400,54,true),{detached:false,reach:.3}); // A selection slide has its own fade
+});
+test('the synced indicator sits on the side of the gate row the gears are nearer, defaulting to the right at the centre',()=>{
+ const layout=(count,gate)=>virtualSelectorLayout({selector_type:'VirtualSelector',gate,unit_gates:Array.from({length:count},(_,i)=>i),tips:Array(count).fill(0)});
+ assert.deepEqual([0,1,2,3].map(g=>syncIndicatorSide(layout(4,g))),[-1,-1,1,1]);
+ assert.deepEqual([0,1,2].map(g=>syncIndicatorSide(layout(3,g))),[-1,1,1]);   // The centre gate goes right
 });

@@ -7,7 +7,7 @@ import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroP
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
-import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, bowdenLane, rackGrid, bowdenAttachment, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1, clamp01, statusText} from './util.js';
 import {consoleLine, consoleEndsWith, scrollConsoleToEnd} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
@@ -976,14 +976,14 @@ function renderScene() {
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="rgb(${Math.round(128*endReach())},${Math.round(128*endReach())},${Math.round(128*endReach())})"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="${SCENE_WIDTH}" height="${MASK_HEIGHT}"><rect width="${SCENE_WIDTH}" height="${MASK_HEIGHT}" fill="white"/><rect x="${mmuColumn.left}" y="${470+mmuOffset}" width="${mmuColumn.right-mmuColumn.left}" height="230" fill="${virtual ? 'black' : 'url(#bowden-fade-gradient)'}"/></mask></defs>`;
   const extruderGearY=tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
-    const lastBranch=virtual?.branches.at(-1);
     const syncY=435+hardwareOffset;
-    const syncLeft=virtual
-      ? lastBranch.x+(virtual.active.gate === lastBranch.gate ? 38 : 15)
-      : lane.x+45;
+    // Beside the unit, on the side the gears are nearer.
+    const syncSide=virtual ? syncIndicatorSide(virtual) : 1;
+    const syncEdge=virtual ? (syncSide<0 ? virtual.branches[0] : virtual.branches.at(-1)) : {x:lane.x+45-15};
+    const syncX=syncEdge.x+syncSide*((virtual?.active === syncEdge ? 38 : 15)+18);
     const syncIcon=(x,y,scale=1)=>`<g transform="translate(${x} ${y}) scale(${scale}) rotate(35)" fill="none" stroke="#53b9b0" stroke-width="2.2"><rect x="-12" y="-5" width="15" height="10" rx="5"/><rect x="-3" y="-5" width="15" height="10" rx="5"/></g>`;
     svg += `<g id="extruder-synced-indicator" aria-label="Extruder and MMU gears synced">${syncIcon(E+47,extruderGearY,.7)}</g>`;
-    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced">${syncIcon(syncLeft+18,syncY)}<text x="${syncLeft+18}" y="${syncY+21}" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
+    svg += `<g id="synced-indicator" aria-label="Extruder and MMU gears synced">${syncIcon(syncX,syncY)}<text x="${syncX}" y="${syncY+21}" text-anchor="middle" font-size="10" fill="var(--scene-text, #304c65)">Synced</text></g>`;
   } else if (!virtual) {
     const gripState=e.kind === 'movement' && (playing || !live || paused) ? e.before : s;
     if (gripState?.mmu_gripped === true)

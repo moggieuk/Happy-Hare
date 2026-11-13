@@ -37,6 +37,10 @@ export function bowdenLane(spacing=54, verticalOffset=0) {
   return {x,...bowdenDescent(verticalOffset).lane(x)};
 }
 
+// Which side of a virtual selector's gates the 'synced' indicator sits: left while the gears are in the first half
+// of the gates, right in the second half and at the centre.
+export const syncIndicatorSide=({branches,active})=>branches.indexOf(active) < (branches.length-1)/2 ? -1 : 1;
+
 export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   if (state.selector_type!=='VirtualSelector') return null;
   const gates=state.unit_gates || state.tips.map((_,index)=>index);
