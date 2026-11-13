@@ -382,6 +382,8 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 [data-theme="dark"] #toolchange-ticks span { background: #9bafbf; }
 
 .scene-annotations { position: absolute; z-index: 2; top: 34px; left: 14px; width: 220px; max-width: 27%; display: grid; gap: 14px; }
+.recording-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+#recording-name { overflow-wrap: anywhere; opacity: .8; }
 #scene-macros { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 #scene-macros .macro-label { opacity: .65; }
 #scene-macros .macro-name { display: block; margin-bottom: 10px; }
