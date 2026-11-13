@@ -906,7 +906,7 @@ test('virtual spool feeds rise only after the unit has arrived and the Bowden ha
  const before={unit:'a',gate:0,tips:[-20,-30],gate_colors:['ff0000','0000ff']};
  const event={kind:'gate_changed',before,state:{...before,unit:'b',gate:1}};
  const frame=t=>playbackFrame(event,t,duration(event)).state.gate_feed;
- assert.equal(frame(500),1);                                 // The leaving unit keeps its feeds through the fade
+ assert.equal(frame(0),1);assert.equal(frame(150),.5);assert.equal(frame(500),0);   // The leaving unit's feeds retract first
  assert.equal(frame(1475),0);assert.equal(frame(2400),0);    // Hidden while sliding and fading in
  assert.equal(frame(2650),0);assert.equal(frame(2800),.5);   // Then they rise quickly
  assert.equal(frame(2949)>.99,true);
