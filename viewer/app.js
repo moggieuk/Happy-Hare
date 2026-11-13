@@ -542,6 +542,8 @@ function scrollRack(arrow) {
 $('scene').addEventListener('click',event=>{
   const arrow=event.target.closest('[data-part="rack-scroll"]');
   if (arrow) scrollRack(arrow);
+  // A click on the background brings the rack straight back to the selected gate, as the idle timer would.
+  else if (!event.target.closest('[role="button"],[data-sensor],[data-part="espooler"],[data-tooltip]') && rackManualShift!==0) { rackManualShift=0; draw(); }
 });
 $('scene').addEventListener('keydown',event=>{
   const arrow=event.target.closest?.('[data-part="rack-scroll"]');
