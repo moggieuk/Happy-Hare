@@ -519,15 +519,15 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                     if random.randint(0, 10) == 0 and home:
                         mmu.home_unit(unit)
 
+                    # Select through the controller so the selected gate follows the selector (and telemetry sees it)
                     if random.randint(0, 10) == 0 and unit.selector.has_bypass():
                         mmu.log_always("Testing loop %d / %d. Selecting bypass on %s..." % (l + 1, loops, unit.name))
-                        unit.selector._select_gate(TOOL_GATE_BYPASS) # Force local bypass gate
+                        if mmu.mmu_unit() is not unit:
+                            mmu.select_gate(gate) # Handles switching between units
+                        mmu.select_gate(TOOL_GATE_BYPASS)
                     else:
                         mmu.log_always("Testing loop %d / %d. Selecting gate %d..." % (l + 1, loops, gate))
-                        if len(units) > 1:
-                            mmu.select_gate(gate) # Handles switching between units
-                        else:
-                            unit.selector.select_gate(gate)
+                        mmu.select_gate(gate)
 
                     if grip:
                         unit.selector.filament_drive()

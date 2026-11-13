@@ -72,6 +72,23 @@ class TestSelectorTelemetry(unittest.TestCase):
                 finally:
                     hh.close()
 
+    def test_soaktest_selects_through_the_controller_so_the_gate_follows_the_selector(self):
+        hh = session('tradrack')
+        try:
+            hh.boot(calibrate=True)
+            records = []
+            hh.mmu.movement_telemetry.subscribe(records.append)
+            with mock.patch('random.randint', side_effect=lambda low, high: high), \
+                 mock.patch('random.choice', side_effect=lambda gates: gates[-1]):
+                hh.run_gcode('MMU_SOAKTEST_SELECTOR LOOP=1 GRIP=1')
+            self.assertEqual(hh.errors, [])
+            changed = [r for r in records if r.get('event') == 'gate_changed']
+            self.assertTrue(changed)
+            self.assertEqual(hh.mmu.gate_selected, changed[-1]['gate'])
+            self.assertEqual(hh.mmu.gate_selected, hh.mmu.mmu_machine.units[0].gate_bounds()[1])
+        finally:
+            hh.close()
+
     def test_servo_selection_grip_and_off_preserve_command_arguments(self):
         for profile in ('mmx', 'tradrack'):
             with self.subTest(profile=profile):
