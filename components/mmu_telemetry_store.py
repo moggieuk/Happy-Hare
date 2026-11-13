@@ -20,6 +20,7 @@ import logging
 from pathlib import Path
 
 
+# The Moonraker process cannot import extras.mmu, so this mirrors capture.apply_changes.
 def apply_delta(state, changes):
     for change in changes:
         target = state
@@ -62,20 +63,13 @@ class TelemetryHistory:
             apply_delta(header['state'], record['changes'])
         header.update(sequence=record['sequence'], timestamp=record['timestamp'], checkpoint=True)
 
-    def read(self, after=None, limit=128, history='latest'):
+    def read(self, after=None, limit=128, history='start'):
         if self.header is None:
             raise ValueError('Telemetry has no initial state')
         reset = after is None or after < self.header['sequence'] or after > self.sequence
         header = deepcopy(self.header) if reset else None
-        boundary = None
         if reset and history == 'current':
-            boundary = self.sequence + 1
-        elif reset and history == 'latest':
-            boundary = next((r['sequence'] for r in reversed(self.records) if r['event'] == 'toolchange'), None)
-        if boundary is not None:
             for record in self.records:
-                if record['sequence'] >= boundary:
-                    break
                 self._advance(header, record)
         cursor = header['sequence'] if reset else after
         records = [header] if reset else []

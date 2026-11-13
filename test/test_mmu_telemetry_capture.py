@@ -114,20 +114,6 @@ class TestTelemetryCapture(unittest.TestCase):
         delta = capture.read()['records'][1]
         self.assertIn(dict(path=['printer', 'mmu', 'selector', 'grip'], value='Released'), delta['changes'])
 
-    def test_history_response_is_copied_outside_the_producer_lock(self):
-        capture = self.capture()
-        self.emit()
-        original = copy.deepcopy
-        copied = []
-        def check(value, *args, **kwargs):
-            if isinstance(value, dict) and 'records' in value:
-                self.assertFalse(capture.lock.locked())
-                copied.append(True)
-            return original(value, *args, **kwargs)
-        with mock.patch('extras.mmu.telemetry.capture.copy.deepcopy', side_effect=check):
-            capture.read()
-        self.assertTrue(copied)
-
     def test_encoder_runtime_parameters_are_captured_as_configuration_changes(self):
         capture = self.capture()
         encoder = self.hh.mmu.mmu_unit().encoder

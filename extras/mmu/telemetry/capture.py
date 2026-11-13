@@ -15,10 +15,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import collections
-import itertools
 import copy
 import math
-import threading
 
 
 def plain(value):
@@ -210,7 +208,6 @@ A rolling baseline keeps bounded exports usable after older records expire.
         self.telemetry = mmu.movement_telemetry
         self.state_provider = ReplayState(mmu)
         self.limit = limit
-        self.lock = threading.Lock()
         self.records = collections.deque()
         self.sequence = 0
         self.state = copy.deepcopy(self.state_provider())
@@ -238,12 +235,11 @@ A rolling baseline keeps bounded exports usable after older records expire.
         else:
             record = {key: value for key, value in source.items()
                       if key not in ('schema', 'version', 'session_id', 'sequence')}
-        with self.lock:
-            if delta:
-                self._append(dict(event='state_delta', timestamp=source['timestamp'], changes=delta))
-                self.state = copy.deepcopy(current)
-            if record:
-                self._append(record)
+        if delta:
+            self._append(dict(event='state_delta', timestamp=source['timestamp'], changes=delta))
+            self.state = copy.deepcopy(current)
+        if record:
+            self._append(record)
 
     def sync(self):
         """Commit state that settled after the last event (a servo gripping, say), once nothing is moving"""
@@ -252,9 +248,8 @@ A rolling baseline keeps bounded exports usable after older records expire.
         current = self.state_provider()
         delta = changes(self.state, current)
         if delta:
-            with self.lock:
-                self._append(dict(event='state_delta', timestamp=self.telemetry.reactor.monotonic(), changes=delta))
-                self.state = copy.deepcopy(current)
+            self._append(dict(event='state_delta', timestamp=self.telemetry.reactor.monotonic(), changes=delta))
+            self.state = copy.deepcopy(current)
 
     def _append(self, record):
         self.sequence += 1
@@ -267,33 +262,22 @@ A rolling baseline keeps bounded exports usable after older records expire.
             self.baseline_time = expired['timestamp']
 
     def read(self, after=None, limit=None, history="start"):
-        with self.lock:
-            reset = after is None or after < self.baseline_sequence or after > self.sequence
-            records = [dict(schema='happy_hare.motion', version=1, event='session',
-                            session_id=self.telemetry.session_id,
-                            sequence=self.baseline_sequence, timestamp=self.baseline_time,
-                            checkpoint=self.baseline_sequence > 0, state=copy.deepcopy(self.baseline))] if reset else []
-            boundary = None
-            if reset and history == 'current':
-                boundary = self.sequence + 1
-            elif reset and history == 'latest':
-                boundary = next((r['sequence'] for r in reversed(self.records)
-                                 if r['event'] == 'toolchange'), None)
-            if boundary is not None:
-                for record in self.records:
-                    if record['sequence'] >= boundary:
-                        break
-                    if record['event'] == 'state_delta':
-                        apply_changes(records[0]['state'], record['changes'])
-                    records[0].update(sequence=record['sequence'], timestamp=record['timestamp'], checkpoint=True)
-            remaining = None if limit is None else max(0, limit - len(records))
-            if reset or after != self.sequence:
-                records.extend(itertools.islice((record for record in self.records
-                    if (reset and (boundary is None or record['sequence'] >= boundary))
-                    or (not reset and record['sequence'] > after)), remaining))
-            response = dict(schema='happy_hare.motion', version=1,
-                            session_id=self.telemetry.session_id,
-                            reset=reset, records=records)
-        # Committed records are replaced, never mutated.
-        # Only the rolling baseline needs copying while the producer is locked.
+        """Records after the cursor; a stale or missing cursor restarts at the baseline.
+        history='current' folds everything recorded so far into that baseline instead of replaying it."""
+        reset = after is None or after < self.baseline_sequence or after > self.sequence
+        header = dict(schema='happy_hare.motion', version=1, event='session',
+                      session_id=self.telemetry.session_id,
+                      sequence=self.baseline_sequence, timestamp=self.baseline_time,
+                      checkpoint=self.baseline_sequence > 0, state=copy.deepcopy(self.baseline))
+        if reset and history == 'current':
+            for record in self.records:
+                if record['event'] == 'state_delta':
+                    apply_changes(header['state'], record['changes'])
+                header.update(sequence=record['sequence'], timestamp=record['timestamp'], checkpoint=True)
+            pending = []
+        else:
+            pending = [record for record in self.records if reset or record['sequence'] > after]
+        records = ([header] if reset else []) + pending
+        response = dict(schema='happy_hare.motion', version=1, session_id=self.telemetry.session_id,
+                        reset=reset, records=records if limit is None else records[:limit])
         return copy.deepcopy(response)

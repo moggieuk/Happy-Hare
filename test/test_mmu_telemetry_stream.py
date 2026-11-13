@@ -81,24 +81,11 @@ class TestTelemetryStream(unittest.TestCase):
         self.stream.unsubscribe('b')
         self.assertIsNone(self.stream.capture)
 
-    def test_idle_change_is_delivered_with_the_next_event(self):
+    def test_idle_change_is_delivered_without_waiting_for_an_event(self):
         first = self.subscribe(); self.ack(first)
         self.hh.mmu.gate_selected = 1
-        self.stream.pump(); self.assertEqual(self.sent, [])
-        self.emit()
         self.stream.pump()
-        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta', 'cut'])
-
-    def test_simulator_latest_operation_has_configuration_checkpoint(self):
-        first = self.subscribe()
-        self.hh.mmu.movement_telemetry.state('toolchange', command='MMU_LOAD')
-        self.hh.mmu.gate_selected = 1
-        self.hh.mmu.movement_telemetry.state('toolchange', command='MMU_UNLOAD')
-        result = self.stream.subscribe('late', self.sent.append, lambda: False, history='latest')
-        self.assertEqual(result['records'][0]['state']['printer']['mmu']['gate'], 1)
-        self.assertEqual(result['records'][1]['command'], 'MMU_UNLOAD')
-        self.assertEqual(len(result['records']), 2)
-        self.assertEqual(self.stream.capture.limit, 512)
+        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta'])
 
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory
@@ -107,7 +94,7 @@ class TestTelemetryStream(unittest.TestCase):
         self.emit()
         history = TelemetryHistory()
         history.append(self.stream.capture.read())
-        for mode in ('start', 'latest', 'current'):
+        for mode in ('start', 'current'):
             source = self.stream.capture.read(history=mode)
             self.assertEqual(source, history.read(history=mode))
         current = history.read(history='current')

@@ -17,6 +17,8 @@ import uuid
 from ..common import WebRequest, RequestType, TransportType
 from .mmu_telemetry_store import TelemetryHistory, TelemetryRecorder, TelemetryWriter
 
+MAX_SUBSCRIBERS = 32
+
 
 class MmuTelemetry:
     def __init__(self, config):
@@ -84,11 +86,11 @@ class MmuTelemetry:
 
     async def subscribe(self, request):
         conn = request.get_client_connection()
-        if conn not in self.clients and len(self.clients) >= 32:
+        if conn not in self.clients and len(self.clients) >= MAX_SUBSCRIBERS:
             raise self.server.error('Too many telemetry subscribers')
-        history = request.get('history', 'latest')
-        if history not in ('latest', 'start', 'current'):
-            raise self.server.error('history must be latest, start or current')
+        history = request.get('history', 'start')
+        if history not in ('start', 'current'):
+            raise self.server.error('history must be start or current')
         client = dict(after=None, history=history, inflight=None, ready=False)
         self.clients[conn] = client
         async with self.lock:

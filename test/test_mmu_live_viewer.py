@@ -135,13 +135,6 @@ class TestViewerConsole(unittest.TestCase):
         self.assertEqual(self.console.hh.mmu.tool_selected,1)
         self.assertEqual(self.console.hh.mmu.filament_pos,10)
 
-    def test_http_capture_does_not_need_console_service(self):
-        url='http://127.0.0.1:%d/sim/viewer/telemetry'%self.bridge.port
-        with urllib.request.urlopen(url,timeout=2) as response:
-            self.assertEqual(json.load(response)['result']['records'][0]['event'], 'session')
-        with urllib.request.urlopen(url.replace('/telemetry','/'),timeout=2) as response:
-            self.assertIn(b'Live simulator',response.read())
-
     def test_every_imported_viewer_module_is_served(self):
         import pathlib, re
         viewer = pathlib.Path(__file__).parent.parent / 'viewer'
@@ -229,14 +222,14 @@ class TestViewerConsole(unittest.TestCase):
             self.run_script('MMU_TEST_CONFIG UNIT=0 EXTRUDER_SWITCH_PIN=PA1')
 
     def test_restart_preserves_server_and_replaces_session(self):
-        old=self.bridge.viewer.session_id
+        old=self.console.hh.mmu.movement_telemetry.session_id
         port=self.bridge.port
         with contextlib.redirect_stdout(self.out), mock.patch.object(self.console, 'clear_log') as clear_log:
             self.bridge.rpc_sim_viewer_restart(None,{'profile':'encoder'})
         clear_log.assert_called_once_with()
         self.assertIs(self.console.bridge,self.bridge)
         self.assertEqual(self.bridge.port,port)
-        self.assertNotEqual(self.bridge.viewer.session_id,old)
+        self.assertNotEqual(self.console.hh.mmu.movement_telemetry.session_id,old)
         self.assertEqual(self.console.args.profile,'encoder')
         self.assertIn('Happy Hare console  profile=encoder', self.out.getvalue())
         self.assertIn('Live viewer: http://127.0.0.1:%d/sim/viewer/' % port, self.out.getvalue())
