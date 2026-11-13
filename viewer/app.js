@@ -23,6 +23,12 @@ let modeChosen=false;
 let statusSensors=null, overlayCache={key:'',state:null};
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
 let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
+let returnMode = 'live'; // The source to go back to when a loaded recording is closed
+function showConnection() {
+  const kind = setup?.connection_kind;
+  $('connection').textContent = socket?.readyState !== 1 ? 'Disconnected · retrying'
+    : kind === 'simulator' ? 'Connected to the simulator' : kind === 'live_machine' ? 'Connected to printer' : 'Connected · unknown source';
+}
 function sourceMode() {
   toolheadPanel.element.hidden=offline || socket?.readyState !== 1 || toolheadPanel.element.dataset.available !== 'true';
   $('recording-option').hidden=!offline;
@@ -30,7 +36,7 @@ function sourceMode() {
   $('simulator-controls').hidden=setup?.connection_kind==='live_machine';
   $('sidebar-playback').querySelectorAll('.playback-row, .playback-option').forEach(el=>el.hidden=viewMode==='live');
   $('trace').closest('.card').hidden=viewMode==='live';
-  $('recording-name').hidden = !offline;
+  $('recording-bar').hidden = !offline;
   document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #runtime-parameters input, #runtime-parameters select, #runtime-parameters button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
     .forEach(node=>node.disabled=offline);
   $('live').dataset.tooltip = offline ? 'End of recording' : 'End, follow stream';
@@ -220,7 +226,7 @@ async function changeView(mode) {
   live=true; paused=false; replayingHistory=false;
   $('scene').replaceChildren();
   $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : isSimulator() ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
-  sourceMode(); renderTrace();
+  sourceMode(); showConnection(); renderTrace();
   if (mode==='live' && socket?.readyState===1) await subscribeLive();
   else if(socket?.readyState===1) {
     // Near-live shows the stream; sensor readings are overlaid while it is idle.
@@ -260,9 +266,7 @@ async function refresh(probed) {
   setup = probed || await sim.setup(Number($("unit").value || 0));
   if (offline) return;
   sourceMode();
-  const kind = setup.connection_kind || 'simulator'; // Older sim.viewer.setup responses are simulator-only.
-  $("connection").textContent = kind === 'simulator' ? 'Connected to the simulator'
-    : kind === 'live_machine' ? 'Connected to a live machine' : 'Connected · unknown source';
+  showConnection();
   const unit = $("unit").value;
   options(
     $("unit"),
@@ -1409,6 +1413,7 @@ function downloadTelemetry() {
   link.href=url; link.download='happy-hare-motion.jsonl'; link.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+$('close-recording').onclick = () => changeView(returnMode).then(() => message('Returned to the live source.'), e => message(e.message, true));
 $('save-motion').onclick = downloadTelemetry;
 $('load-telemetry').onclick = () => $('telemetry-file').click();
 $('telemetry-file').onchange = async () => {
@@ -1421,6 +1426,7 @@ $('telemetry-file').onchange = async () => {
     replay.accept(records); // Validate completely before replacing the current view.
     if (!offline && socket?.readyState===1) await rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{});
     await telemetryStream.stop();
+    if (!offline) returnMode=viewMode;
     modeChosen=true; viewMode='playback'; offline=true; subscriptionGeneration++; liveTarget=null; liveFrom=null;
     pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
     sourceReplay=replay; sourceRecords=records;

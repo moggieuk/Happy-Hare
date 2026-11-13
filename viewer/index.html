@@ -39,8 +39,7 @@
         <div class="playback-row"><button id="previous" data-tooltip="Previous step (Left Arrow)" aria-label="Previous step (Left Arrow)"><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5v14L2 12z M22 5v14l-9-7z"/></svg></button><button id="play-previous" data-tooltip="Play previous step in reverse (Shift+Left)" aria-label="Play previous step in reverse" disabled><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M23 4v16L11 12z"/><text x="4" y="16" text-anchor="middle" font-size="12" font-family="sans-serif" font-weight="700" fill="currentColor">1</text></svg></button><button id="play-step" data-tooltip="Play one step (Shift+Right)" aria-label="Play one step" disabled><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M1 4v16l12-8z"/><text x="20" y="16" text-anchor="middle" font-size="12" font-family="sans-serif" font-weight="700" fill="currentColor">1</text></svg></button><button id="next" data-tooltip="Next step (Right Arrow)" aria-label="Next step (Right Arrow)"><svg class="transport-icon transport-outline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5v14l9-7z M13 5v14l9-7z"/></svg></button></div>
         <div class="playback-row"><button id="save-motion">Save telemetry</button><button id="load-telemetry">Load telemetry</button></div>
         <input id="telemetry-file" type="file" accept=".jsonl,.ndjson,.json" hidden>
-        <p id="recording-name" class="note" hidden></p>
-        <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>
+        <div id="recording-bar" class="recording-bar" hidden><span id="recording-name"></span><button id="close-recording" type="button" data-tooltip="Close the recording and return to the live source">Return to live</button></div>
       </section>
       <aside id="runtime-parameters" aria-label="Runtime parameters">
         <h2>Runtime parameters</h2>
@@ -72,6 +71,7 @@
         <label class="viewer-setting-slider" for="spool-spacing">Spool spacing <output id="spool-spacing-value">54</output><input id="spool-spacing" type="range" min="45" max="75" value="54" step="1"></label>
           </div>
         </div>
+        <label class="playback-option"><input id="compress-bowden" type="checkbox">Compress Bowden playback time</label>
         <div class="settings-divider" role="separator" aria-label="Debug controls">Debug</div>
         <label class="nozzle-control" for="nozzle-diameter">Nozzle size
           <select id="nozzle-diameter" aria-label="Nozzle diameter">
