@@ -2048,7 +2048,8 @@ class TestSoaktestSelectorVirtualUnit(unittest.TestCase):
             hh.boot()
             import sys
             module = sys.modules[type(hh.mmu.mmu_machine.units[0].selector).__module__.rsplit('.', 1)[0] + '.mmu_base_selectors']
-            module.MmuSoaktestSelectorCommand(hh.mmu)  # Only registered by physical selectors
+            if 'MMU_SOAKTEST_SELECTOR' not in hh.mmu.gcode.ready_gcode_handlers:
+                module.MmuSoaktestSelectorCommand(hh.mmu)  # Only registered by physical selectors
             hh.run_gcode('MMU_SOAKTEST_SELECTOR UNIT=ALL LOOP=1')
             self.assertFalse(any('check_if_unit_loaded' in str(e) for e in hh.errors), hh.errors)
         finally:
