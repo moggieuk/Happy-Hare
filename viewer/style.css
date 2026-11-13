@@ -423,7 +423,7 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 .spool-sliders .viewer-setting-slider { margin: 0 0 16px; }
 .settings-divider { display: flex; align-items: center; gap: 8px; opacity: .6; margin: 14px 0; font-size: 11px; }
 .settings-divider::before, .settings-divider::after { content: ''; flex: 1; border-top: 1px solid var(--scene-border, #96abba); }
-.virtual-gate-sensor > circle { opacity: .55; }
+.virtual-gate-sensor > circle { opacity: calc(.55 + .45 * var(--sensor-lit, 0)); }
 .viewer-live { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; opacity: .55; }
 .viewer-live > span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .viewer-live.active { color: #48c982; opacity: 1; }
