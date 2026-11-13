@@ -93,6 +93,14 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-620)/spacing))}))};
 }
 
+// How selected a gate looks while the selection moves. Only the gate being left and the gate being reached
+// change; gates the selection passes over stay unselected.
+export function gateSelectionLit(state, gate) {
+  const from=state.gate_from ?? state.gate, to=state.gate_to ?? state.gate, span=Math.abs(to-from);
+  const arrived=state.gate_focus===undefined || !span ? 1 : Math.max(0,Math.min(1,Math.abs(state.gate_focus-from)/span));
+  return gate===to ? arrived : gate===from ? 1-arrived : 0;
+}
+
 const gateTiming={retract:300,fade:500,slide:1350,advance:300};
 const gateDuration=gateTiming.retract+2*gateTiming.fade+gateTiming.slide+gateTiming.advance;
 

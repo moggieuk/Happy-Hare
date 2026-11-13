@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
+import { gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -882,6 +882,14 @@ test('a slide between units moves the rack at constant speed and the raised spoo
  const lift=(t,gate)=>at(t).lanes.find(l=>l.index===gate).lift;
  assert.equal(lift(0,3),10);assert.equal(lift(1,4),10);
  assert.ok(lift(.5,3)<10 && lift(.5,4)<10);                       // Neither is under the exit mid-slide
+});
+test('a moving selection brightens only the gate it reaches and dims the gate it leaves, never those it passes',()=>{
+ const state=focus=>({gate:focus<1.5 ? 0 : 3,gate_from:0,gate_to:3,gate_focus:focus});
+ assert.deepEqual([0,1,2,3].map(g=>gateSelectionLit(state(0),g)),[1,0,0,0]);
+ const mid=[0,1,2,3].map(g=>gateSelectionLit(state(1.5),g));
+ assert.equal(mid[1],0);assert.equal(mid[2],0);assert.equal(mid[0],.5);assert.equal(mid[3],.5);   // Passed gates stay dim
+ assert.deepEqual([0,1,2,3].map(g=>gateSelectionLit(state(3),g)),[0,0,0,1]);
+ assert.deepEqual([0,1,2].map(g=>gateSelectionLit({gate:1},g)),[0,1,0]);                           // At rest: the selected gate
 });
 test('the MMU side fades only when the rack changes units: before the slide, and after the new unit is in place',()=>{
  const layouts=[{name:'v',gates:[0,1,2,3],selector_type:'VirtualSelector'},{name:'l',gates:[4,5,6,7],selector_type:'LinearSelector'}];
