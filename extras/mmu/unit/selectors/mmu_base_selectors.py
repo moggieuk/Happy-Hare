@@ -483,7 +483,13 @@ class MmuSoaktestSelectorCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
+        # Virtual selectors have no selector movement to test
         units = [mmu_unit] if mmu_unit is not None else list(mmu.mmu_machine.units)
+        units = [u for u in units if isinstance(u.selector, PhysicalSelector)]
+        if not units:
+            mmu.log_error("Operation not possible. No unit with a physical selector")
+            return
+
         for u in units:
             if u.selector.check_if_unit_loaded(): return
             if not u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
