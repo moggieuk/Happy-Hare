@@ -348,6 +348,9 @@ class LinearSelectorServo:
                      "Down" if self.servo_state == SERVO_DOWN_STATE else
                      "Move" if self.servo_state == SERVO_MOVE_STATE else
                      "Unknown",
+            'grip': "Gripped"  if self.servo_state == SERVO_DOWN_STATE else
+                    "Released" if self.servo_state in (SERVO_UP_STATE, SERVO_MOVE_STATE) else
+                    "Unknown",
         }
 
 
