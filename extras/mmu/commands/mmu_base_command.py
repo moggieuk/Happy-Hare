@@ -50,6 +50,7 @@ class BaseCommand:
         category=CATEGORY_OTHER,
         per_unit=False,
         log=True,
+        all_units_once=False,
     ):
         """
         Register a gcode command with shared help behavior.
@@ -60,7 +61,9 @@ class BaseCommand:
 
         With UNIT=ALL a per_unit handler is invoked once per unit. Returning a truthy
         value from the handler aborts the iteration over the remaining units (used to
-        stop multi-unit operations after an error has been handled)
+        stop multi-unit operations after an error has been handled). With all_units_once=True
+        the handler is instead invoked a single time with mmu_unit=None and must itself
+        iterate mmu.mmu_machine.units
         """
         if name.upper().startswith("MMU_CALIBRATE_"):
             calibration_handler = handler
@@ -87,6 +90,8 @@ class BaseCommand:
                 mmu_machine = mmu.mmu_machine
 
                 if unit_param is not None and unit_param.upper() == ALL_UNITS:
+                    if all_units_once:
+                        return handler(gcmd, None)
                     # Repeat for all units. Handler can abort iteration over remaining
                     # units by returning a truthy value (e.g. after handling an error)
                     for mmu_unit in mmu_machine.units:
