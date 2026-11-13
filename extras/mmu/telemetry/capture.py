@@ -245,6 +245,17 @@ A rolling baseline keeps bounded exports usable after older records expire.
             if record:
                 self._append(record)
 
+    def sync(self):
+        """Commit state that settled after the last event (a servo gripping, say), once nothing is moving"""
+        if self.telemetry.operations:
+            return
+        current = self.state_provider()
+        delta = changes(self.state, current)
+        if delta:
+            with self.lock:
+                self._append(dict(event='state_delta', timestamp=self.telemetry.reactor.monotonic(), changes=delta))
+                self.state = copy.deepcopy(current)
+
     def _append(self, record):
         self.sequence += 1
         self.records.append(dict(sequence=self.sequence, **copy.deepcopy(record)))

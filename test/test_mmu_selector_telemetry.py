@@ -30,6 +30,24 @@ class TestSelectorTelemetry(unittest.TestCase):
         finally:
             hh.close()
 
+    def test_grip_state_that_settles_after_the_last_event_is_committed_when_idle(self):
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        hh = session('ercf_vvd')
+        try:
+            hh.boot(calibrate=True)
+            hh.run_gcode('MMU_SELECT GATE=2')
+            capture = TelemetryCapture(hh.mmu)
+            hh.run_gcode('MMU_SERVO UNIT=0 POS=down')
+            # The grip state is only set after the servo's own events, so nothing has recorded it yet
+            self.assertEqual(capture.state['printer']['mmu']['filament_grip_state'], 0)
+            capture.sync()
+            self.assertEqual(capture.state['printer']['mmu']['filament_grip_state'], 1)
+            delta = [r for r in capture.read()['records'] if r['event'] == 'state_delta'][-1]
+            self.assertIn(['printer', 'mmu', 'filament_grip_state'], [c['path'] for c in delta['changes']])
+            capture.close()
+        finally:
+            hh.close()
+
     def test_unsubscribed_selector_does_not_allocate_records(self):
         hh = session('chameleon')
         try:
