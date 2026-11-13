@@ -776,7 +776,7 @@ function renderScene() {
     !name.includes('encoder') && !isTouchSensor(name) && d.position !== null).map(([name,d]) => {
       const short=name.split(':').at(-1);
       const position = /^mmu_(?:entry|exit)(?:_\d+)?$/.test(short) || short === 'mmu_shared_exit'
-        ? mmuDistanceAtY(sensorPoint(name,d).y) : pathDistance(d.position);
+        ? mmuDistanceAtY(sensorPoint(name,d).y) : schematicDistance(d.position);
       // An encoder-derived tip may differ from a sensor by the encoder's movement threshold,
       // 1.5 x resolution as in Happy Hare's movement_min(); that much is not worth a warning
       const slack=1.5*(s.devices?.[`${s.unit}:encoder`]?.resolution || 0);
