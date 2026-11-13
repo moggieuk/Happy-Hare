@@ -60,7 +60,7 @@ config SW8
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=35@
+  @repeat var=i min=1 max=36@
     default y if W$(i)
   @endrepeat@
 
@@ -96,7 +96,7 @@ config W7
 @endrepeat@
 
 config W8
-    def_bool y if MMU_HAS_ENCODER && PIN_ENCODER = "" && !MMU_SHARED_ENCODER
+    def_bool y if MMU_HAS_ENCODER && PIN_ENCODER = "" && !MMU_SHARED_ENCODER && !CHOICE_ENCODER_TYPE_ANALOG
 
 config W9
     def_bool y if MMU_HAS_SENSOR_SHARED_EXIT && PIN_SHARED_EXIT_SENSOR = ""
@@ -280,6 +280,12 @@ config W34
 config W35
     def_bool y if PARAM_NUM_GATES > $(max_gates)
 
+@repeat var=i min=0 max=$(max_gate)@
+config W36
+    def_bool y if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER && CHOICE_ENCODER_TYPE_ANALOG && \
+        PARAM_NUM_GATES > $(i) && PIN_ENCODER_ANALOG_$(i) = ""
+@endrepeat@
+
 
 
 # -------------------------------------
@@ -337,5 +343,6 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Buffer name is blank or another unit's buffer name [Buffer config]"               if W33
     comment "Encoder name is blank or another unit's encoder name [Encoder config]"            if W34
     comment "More gates than the $(max_gates) menuconfig can configure: ./install.sh -g <gates>" if W35
+    comment "Analog encoder is enabled but a gate has no analog MCU pin [Encoder config]"     if W36
   endif
 endif
