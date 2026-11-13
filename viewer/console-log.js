@@ -25,6 +25,12 @@ function consoleMarkup(text) {
   for (const node of template.content.childNodes) copy(node, fragment);
   return fragment;
 }
+// True when the newest console row already shows this message (a failed command's error is also echoed as output).
+export function consoleEndsWith(text) {
+  const last = $('mini-console').lastElementChild?.lastChild?.textContent ?? '';
+  const lines = String(text).split('\n');
+  return last.replace(/^!!\s*/, '') === lines[lines.length - 1].replace(/^!!\s*/, '');
+}
 export function consoleLine(text, kind = 'response') {
   const log = $('mini-console');
   const follow = log.scrollHeight-log.scrollTop-log.clientHeight < 32;

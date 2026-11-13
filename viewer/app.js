@@ -9,7 +9,7 @@ import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { gateSelectionLit, selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, rackGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
-import {consoleLine} from './console-log.js';
+import {consoleLine, consoleEndsWith} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
 import {renderBuffer} from './buffer-view.js';
 import {initSpoolPicker} from './spool-picker.js';
@@ -85,7 +85,7 @@ async function action(fn) {
     await fn();
   } catch (e) {
     message(e.message, true);
-    consoleLine(e.message, 'error');
+    if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error');
   } finally {
     busy = false;
     document
