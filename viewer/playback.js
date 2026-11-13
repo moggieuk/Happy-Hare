@@ -103,6 +103,15 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-laneExit)/spacing))}))};
 }
 
+// Once scrolled away, the MMU side stays detached (faded) until the selected spool is back under the Bowden, then
+// fades back in over `spacing` of scroll. A selection slide has its own fade and never stays detached.
+export function bowdenAttachment(detached, reach, offset, spacing, sliding=false) {
+  if (sliding) return {detached:false,reach};
+  const alignment=Math.max(0,Math.min(1,1-Math.abs(offset)/spacing));
+  const held=(detached || reach<1) && alignment<1;
+  return {detached:held,reach:held ? Math.min(reach,alignment) : reach};
+}
+
 // How selected a gate looks while the selection moves. Only the gate being left and the gate being reached
 // change; gates the selection passes over stay unselected.
 export function gateSelectionLit(state, gate) {

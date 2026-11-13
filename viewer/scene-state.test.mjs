@@ -34,3 +34,12 @@ test('a cut fragment stays in the extruder when another gate has a different Bow
  assert.equal(moved.layout.nozzle-moved.retained_segment.end,10);
  assert.equal(moved.layout.nozzle-moved.retained_segment.start,30);
 });
+
+test('the extruder readout shows the status the MMU exposes',()=>{
+ const r=new TelemetryReplay();
+ r.accept(JSON.parse(fs.readFileSync(new URL('./fixtures/ercf-vvd.json',import.meta.url))));
+ const status=r.snapshot().object_status;
+ const key=Object.keys(status).find(n=>n.startsWith('mmu_extruder '));
+ assert.equal(status[key].extruder_name,r.snapshot().filament.extruder);
+ assert.ok('filament_remaining_color' in status[key]);
+});

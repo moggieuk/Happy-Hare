@@ -7,7 +7,7 @@ import {parameterCommand,macroCommand,editorParameters,macroCatalog,editorMacroP
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
-import { BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, BOWDEN_TO_EXTRUDER, gateSelectionLit, selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, bowdenLane, rackGrid, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, BOWDEN_TO_EXTRUDER, gateSelectionLit, selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, bowdenLane, rackGrid, bowdenAttachment, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 import {consoleLine, consoleEndsWith} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
@@ -477,7 +477,7 @@ function updateSpoolMotion() {
 // Gate lanes and spool columns share the same spacing.
 let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null, nextStepAt = 0;
 // The rack of units scrolls to the selected gate; the edge arrows add a temporary manual shift until the gate changes.
-let rackGate = null, rackManualShift = 0, rackTween = null;
+let rackGate = null, rackManualShift = 0, rackTween = null, bowdenDetached = false;
 const rackScrollTime = 350, rackBleedPx = 12;
 function currentIndex() {
   return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
@@ -828,7 +828,7 @@ function renderScene() {
     rackTween=tweenTo(reducedMotion ? null : rackTween,rackManualShift,animationNow(),rackScrollTime);
     if (!rackTween.done) draw();
     const grid=rackTween.value===rackManualShift ? targetGrid : rackGrid(layouts,{...rackOptions,manual:rackTween.value});
-    bowdenReach=grid.reach;
+    ({detached:bowdenDetached,reach:bowdenReach}=bowdenAttachment(bowdenDetached,grid.reach,grid.manual,rackOptions.spacing,s.gate_slide!==undefined));
     const visible=grid.lanes.filter(lane=>lane.x>-140 && lane.x<990).sort((a,b)=>a.row-b.row || b.x-a.x);
     const rowSpacing=135;
     const lastRowY=Math.max(0,grid.rows-1)*rowSpacing;
@@ -925,7 +925,8 @@ function renderScene() {
     for (const side of [-1,1]) {
       if (!(side<0 ? grid.overflow.left : grid.overflow.right)) continue;
       // The same size whatever the row count, level with the top row of spools.
-      const top=470+mmuOffset, height=105, width=16, left=side<0 ? -bleed+2 : 850+bleed-2-width, middle=top+height/2;
+      // Level with the middle of a single row unit.
+      const height=105, top=(470+659)/2+mmuOffset-height/2, width=16, left=side<0 ? -bleed+2 : 850+bleed-2-width, middle=top+height/2;
       const label=side<0 ? 'Scroll to units on the left' : 'Scroll to units on the right';
       rackArrows += `<g data-part="rack-scroll" data-direction="${side}" role="button" tabindex="0" aria-label="${label}" data-tooltip="${label}"><rect x="${left}" y="${top}" width="${width}" height="${height}" rx="4" fill="var(--scene-body, #edf2f6)" fill-opacity=".85" stroke="var(--scene-border, #96abba)" stroke-width=".8"/><path d="M${left+width/2-side*4} ${middle-30} L${left+width/2+side*4} ${middle} L${left+width/2-side*4} ${middle+30}" fill="none" stroke="var(--scene-text, #304c65)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
     }

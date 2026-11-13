@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BOWDEN_EXIT_X, EXTRUDER_X, BOWDEN_TO_EXTRUDER, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
+import { bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, BOWDEN_TO_EXTRUDER, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -940,4 +940,14 @@ test('a selector without a virtual hub follows the right-most lane of a four gat
  assert.equal(lane.x,virtual.branches[3].x);
  assert.equal(lane.path,virtual.path);
  assert.equal(lane.distanceAtY(150),virtual.distanceAtY(150));
+});
+test('after a scroll the MMU side stays faded until the selected spool is back under the Bowden',()=>{
+ const step=(state,reach,offset)=>bowdenAttachment(state.detached,reach,offset,54);
+ let s={detached:false,reach:1};
+ assert.equal(step(s,1,-30).reach,1);                       // Scrolled within the unit: attached
+ s=step(s,0,-400);assert.deepEqual(s,{detached:true,reach:0});   // Scrolled away: faded
+ s=step(s,1,-200);assert.deepEqual(s,{detached:true,reach:0});   // Over the unit again, spool still far: stays faded
+ s=step(s,1,-27);assert.equal(s.reach,.5);assert.ok(s.detached); // Nearly back: fading in
+ s=step(s,1,0);assert.deepEqual(s,{detached:false,reach:1});     // Back under the Bowden: attached
+ assert.deepEqual(bowdenAttachment(true,.3,-400,54,true),{detached:false,reach:.3}); // A selection slide has its own fade
 });
