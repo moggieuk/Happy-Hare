@@ -795,6 +795,8 @@ function renderScene() {
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
   let rackArrows='', rackFade=null, bowdenReach=1;
+  // The filament ends where they enter the unit go first, before the Bowden itself.
+  const endReach=()=>Math.max(0,Math.min(1,(bowdenReach-.7)/.3));
   if (s.tips.length) {
     const spoolViewAngle=Number($('spool-angle').value)*Math.PI/180;
     const focusGate=s.gate>=0 ? focus : displayGates[0];
@@ -805,7 +807,7 @@ function renderScene() {
     // The scene reaches the panel edges: it bleeds into the card padding, at the same scale.
     const sceneWidth=$('scene').clientWidth, bleed=sceneWidth>2*rackBleedPx ? rackBleedPx*850/(sceneWidth-2*rackBleedPx) : 0;
     const rackOptions={current:s.unit,focus:focusGate,spacing:Number($('spool-spacing').value),angle:spoolViewAngle,bleed,
-      slide:s.gate_slide!==undefined ? {from:s.gate_from,to:s.gate_to,t:s.gate_slide} : null};
+      fullOpacity:s.gate_full_opacity ?? 1,slide:s.gate_slide!==undefined ? {from:s.gate_from,to:s.gate_to,t:s.gate_slide} : null};
     const targetGrid=rackGrid(layouts,{...rackOptions,manual:rackManualShift});
     rackManualShift=targetGrid.manual;
     bowdenReach=targetGrid.reach;
@@ -863,7 +865,7 @@ function renderScene() {
       const branch=virtual?.branches.find(branch=>branch.gate===index);
       if (branch && percent>0 && s.gate_status?.[index]!==0) {
         const top=470+mmuOffset, bottom=y-spoolWindingRadius(percent)*spoolScale;
-        const opacity=index===gate ? .5 : .2;
+        const opacity=(index===gate ? .5 : .2)*endReach();
         svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${top} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
       }
       const knownWeight=Number.isFinite(s.spool_percentages?.[index]);
@@ -945,7 +947,7 @@ function renderScene() {
     svg=svg.replace(`<!--parked-tip-${branch.gate}-->`,shapedTip(virtual.parkDistance,
       s.gate_colors[branch.gate] || DEFAULT_COLOR,'parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
   }
-  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="#808080"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="${470+mmuOffset}" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="${virtual ? 'black' : 'url(#bowden-fade-gradient)'}"/></mask></defs>`;
+  svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="rgb(${Math.round(128*endReach())},${Math.round(128*endReach())},${Math.round(128*endReach())})"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="${470+mmuOffset}" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="${virtual ? 'black' : 'url(#bowden-fade-gradient)'}"/></mask></defs>`;
   const extruderGearY=tube.getPointAtLength(progress(s.layout.extruder_gears ?? entry) * length).y;
   if (syncForDisplay(e, s, Boolean(playing) || !live || paused)) {
     const firstBranch=virtual?.branches[0];
@@ -1160,7 +1162,13 @@ function renderScene() {
     renderer.mount(host);
   }
   const encoderMarker=$("encoder-marker");
-  if (encoderMarker) $("scene").append(encoderMarker);
+  if (encoderMarker) {
+    // Raised above the spools, but still faded with the rest of the MMU side.
+    const layer=document.createElementNS('http://www.w3.org/2000/svg','g');
+    layer.setAttribute('mask','url(#bowden-reach-fade)');
+    layer.append(encoderMarker);
+    $("scene").append(layer);
+  }
   const excessLabel = $("bowden-excess");
   if (excessLabel) {
     const bounds = $("bowden-length").getBBox();

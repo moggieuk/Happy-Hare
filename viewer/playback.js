@@ -44,7 +44,7 @@ export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
 // Every unit side by side as one scrollable rack. The rack slides so the focused gate (or, for a virtual
 // selector, its unit) stays under the Bowden exit at x=620. Gates wrap into rows within their unit.
 // `manual` is an extra shift from the edge arrows; the clamped value is returned.
-export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, maxVirtualColumns=6, availableWidth=850, gap=18}) {
+export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, maxVirtualColumns=6, availableWidth=850, gap=18}) {
   const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
   const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
   const units=[], lanes=[], anchors=new Map();
@@ -54,7 +54,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     if (!count) continue;
     const virtual=layout.selector_type === 'VirtualSelector';
     const columns=Math.min(virtual ? maxVirtualColumns : capacity,count), width=(columns-1)*spacing+2*padding;
-    units.push({name:layout.name,gates:layout.gates,virtual,columns,rows:Math.ceil(count/columns),left,right:left+width,current:layout.name === current});
+    units.push({name:layout.name,gates:layout.gates,virtual,columns,first:left+padding,last:left+padding+(columns-1)*spacing,rows:Math.ceil(count/columns),left,right:left+width,current:layout.name === current});
     layout.gates.forEach((index,slot)=>{
       const x=left+padding+(slot%columns)*spacing;
       lanes.push({index,row:Math.floor(slot/columns),x,unit:layout.name,virtual});
@@ -71,13 +71,24 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const rackLeft=0, rackRight=Math.max(0,left-gap);
   const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
   const shift=base+applied;
-  // The MMU side stays attached while the exit is well inside the unit that holds the selected gate (or the
-  // one being left or entered), and fades over one padding as the exit nears that unit's edge. Moving between
-  // gates of one unit therefore never fades; leaving a unit does, and the next unit fades in as it arrives.
+  // Everything on the MMU side of the exit (Bowden, gears, sensors) stays attached to the unit holding the
+  // selected gate, and fades only when the rack leaves that unit or brings another in:
+  //  - a linear unit fades over one lane as its first/last spool lowers away from, or rises toward, the exit;
+  //  - a virtual unit fades before the slide begins and again after it has settled (`fullOpacity` is the
+  //    animation's own fade phase), and by distance from the unit's edge when scrolled by hand.
+  // Moving between gates of one unit never fades.
   const unitOf=gate=>units.find(unit=>unit.gates.includes(gate)) ?? units[0];
-  const attached=unit=>unit ? Math.max(0,Math.min(1,Math.min(620-(unit.left+shift),unit.right+shift-620)/padding)) : 1;
-  const ends=slide ? [slide.from,slide.to] : [low,high];
-  const reach=Math.max(...ends.map(gate=>attached(unitOf(gate))));
+  const clamp01=v=>Math.max(0,Math.min(1,v));
+  const attached=(unit,role)=>{
+    if (!unit) return 1;
+    if (unit.virtual) {
+      if (slide) return (role==='from' && slide.t===0) || (role==='to' && slide.t===1) ? fullOpacity : 0;
+      return clamp01(Math.min(620-(unit.left+shift),unit.right+shift-620)/padding);
+    }
+    return clamp01(1-Math.max(0,unit.first+shift-620,620-(unit.last+shift))/spacing);
+  };
+  const from=slide ? slide.from : low, to=slide ? slide.to : high;
+  const reach=unitOf(from)===unitOf(to) && slide ? 1 : Math.max(attached(unitOf(from),'from'),attached(unitOf(to),'to'));
   return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,reach,
     // Only units actually clipped by the panel edge (which bleeds out by `bleed`) call for an arrow.
     overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
