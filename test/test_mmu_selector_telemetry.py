@@ -39,11 +39,11 @@ class TestSelectorTelemetry(unittest.TestCase):
             capture = TelemetryCapture(hh.mmu)
             hh.run_gcode('MMU_SERVO UNIT=0 POS=down')
             # The grip state is only set after the servo's own events, so nothing has recorded it yet
-            self.assertEqual(capture.state['printer']['mmu']['filament_grip_state'], 0)
+            self.assertEqual(capture.state['printer']['mmu']['selector']['grip'], 'Released')
             capture.sync()
-            self.assertEqual(capture.state['printer']['mmu']['filament_grip_state'], 1)
+            self.assertEqual(capture.state['printer']['mmu']['selector']['grip'], 'Gripped')
             delta = [r for r in capture.read()['records'] if r['event'] == 'state_delta'][-1]
-            self.assertIn(['printer', 'mmu', 'filament_grip_state'], [c['path'] for c in delta['changes']])
+            self.assertIn(['printer', 'mmu', 'selector', 'grip'], [c['path'] for c in delta['changes']])
             capture.close()
         finally:
             hh.close()

@@ -183,7 +183,7 @@ class ReplayState:
         return plain(dict(printer=dict(
             mmu=dict(unit=mmu.mmu_unit().name, tool=mmu.tool_selected, gate=mmu.gate_selected,
                      filament_pos=mmu.filament_pos, filament_direction=mmu.filament_direction,
-                     filament_grip_state=mmu.selector().get_filament_grip_state(),
+                     selector=mmu.selector().get_status(now),
                      sync_mode=drive.get_sync_mode(), gate_status=list(mmu.gate_status), gate_color=[display_color(c) for c in mmu.gate_color],
                      gate_initial_weight=list(mmu.gate_initial_weight), gate_remaining_weight=list(mmu.gate_remaining_weight),
                      **{name: list(getattr(mmu, name)) for name in self.GATE_MAP_ATTRIBUTES},

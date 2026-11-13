@@ -34,7 +34,10 @@ export class SceneModel {
     const units=Object.keys(machine.units), unit=machine.units[m.unit];
     if (!unit) throw Error('Unknown MMU unit in telemetry');
     // Unknown/legacy grip data cannot establish a constrained Bowden segment.
-    const mmuGripped=unit.filament_always_gripped === true || [1,2].includes(m.filament_grip_state);
+    // mmu.selector.grip is the printer variable; recordings made before it was captured carry filament_grip_state instead.
+    const grip=m.selector?.grip;
+    const mmuGripped=unit.filament_always_gripped === true
+      || (grip !== undefined ? grip === 'Gripped' : [1,2].includes(m.filament_grip_state));
     if (!mmuGripped) {
       this.excess[m.gate]=0;
       delete this.bufferPositions[m.gate];

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {LiveState,liveFrame} from './live-state.js';
 import {liveObjects as status} from './live-fixture.mjs';
-import {gripState,qualifySensors} from './live-config.js';
+import {qualifySensors} from './live-config.js';
 test('live status needs no telemetry session or movement records',()=>{
  const r=new LiveState(),s=r.accept(status(),1);
  assert.equal(s.filament_pos,0);assert.equal(s.extruder_target_temperature,210);
@@ -46,10 +46,12 @@ test('shared toolhead sensors are named for the unit toolhead',()=>{
  const s=new LiveState().accept(objects,1);
  assert.ok('head2:extruder' in s.sensors);assert.ok(!('default:extruder' in s.sensors));
 });
-test('grip comes from the existing selector status',()=>{
- for (const [selector,grip] of [[{servo:'Down'},1],[{servo:'Move'},2],[{servo:'Up'},0],[{servo:'Unknown'},-1],
-   [{grip:'Gripped'},1],[{grip:'Released'},0],[{has_bypass:false},undefined],[undefined,undefined]])
-  assert.equal(gripState(selector),grip,JSON.stringify(selector));
+test('grip comes from the selector status',()=>{
+ for (const [selector,gripped] of [[{grip:'Gripped'},true],[{grip:'Released'},false],[{grip:'Unknown'},false]]) {
+  const r=new LiveState();
+  const s=r.accept({...status(),mmu:{...status().mmu,selector}},1);
+  assert.equal(s.mmu_gripped,gripped,JSON.stringify(selector));
+ }
 });
 test('active sensors are requalified from the short names Klipper reports',()=>{
  const r=new LiveState();r.accept(status(),1);
