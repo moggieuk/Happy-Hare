@@ -883,21 +883,29 @@ test('a slide between units moves the rack at constant speed and the raised spoo
  assert.equal(lift(0,3),10);assert.equal(lift(1,4),10);
  assert.ok(lift(.5,3)<10 && lift(.5,4)<10);                       // Neither is under the exit mid-slide
 });
-test('the MMU side fades only when the rack leaves the selected unit, and returns as the next unit arrives',()=>{
+test('the MMU side fades only when the rack leaves the selected unit, timed to each selector type',()=>{
  const layouts=[{name:'v',gates:[0,1,2,3],selector_type:'VirtualSelector'},{name:'l',gates:[4,5,6,7],selector_type:'LinearSelector'}];
  const options={current:'v',spacing:54,angle:77*Math.PI/180};
  const reach=extra=>rackGrid(layouts,{...options,...extra}).reach;
  assert.equal(reach({focus:1}),1);                                   // Selected gate under the exit: attached
  assert.equal(reach({focus:5}),1);
- assert.equal(reach({focus:1,manual:-400}),0);                       // Scrolled out of the unit: detached
+ assert.equal(reach({focus:1,manual:-400}),0);                       // Hand-scrolled out of a virtual unit: detached
  const part=reach({focus:1,manual:-100});assert.ok(part>0 && part<1);
- const slide=t=>reach({slide:{from:1,to:5,t}});                      // Virtual unit to a linear one
- assert.equal(slide(0),1);assert.equal(slide(1),1);
- assert.ok(slide(.5)<.1);                                            // Faded while the units pass
- assert.ok(slide(.4)<1 && slide(.6)<1);                              // ...fading out and back in
+ // Virtual to linear: the fade finishes before the slide starts; the linear unit fades in as its first spool rises.
+ const out=(t,fullOpacity=1)=>reach({slide:{from:1,to:5,t},fullOpacity});
+ assert.equal(out(0),1);assert.equal(out(0,.5),.5);assert.equal(out(0,0),0);
+ assert.equal(out(.001,0),0);assert.equal(out(.5),0);                // Nothing attached while the units pass
+ assert.ok(reach({slide:{from:1,to:4,t:.9}})>0 && reach({slide:{from:1,to:4,t:.9}})<1);assert.equal(out(1),1);   // The first spool is rising under the exit
+ // Linear to virtual: the linear unit fades as its spool lowers; the virtual one only once it is in place.
+ const back=(t,fullOpacity=1)=>reach({slide:{from:5,to:1,t},fullOpacity});
+ const leaving=t=>reach({slide:{from:4,to:1,t}});
+ assert.equal(back(0),1);assert.equal(back(.1),1);                  // Still passing over the unit's own lanes
+ assert.ok(leaving(.1)>0 && leaving(.1)<1);assert.equal(back(.5),0);
+ assert.equal(back(1,.4),.4);assert.equal(back(1),1);
+ // Gate changes inside one unit never fade.
  const linear=[{name:'l',gates:[0,1,2,3],selector_type:'LinearSelector'}];
- const within=t=>rackGrid(linear,{...options,current:'l',slide:{from:0,to:3,t}}).reach;
- for (const t of [0,.25,.5,.75,1]) assert.equal(within(t),1);        // Gate changes inside one unit never fade
+ for (const t of [0,.25,.5,.75,1]) assert.equal(rackGrid(linear,{...options,current:'l',slide:{from:0,to:3,t},fullOpacity:0}).reach,1);
+ for (const t of [0,.5,1]) assert.equal(reach({slide:{from:0,to:3,t},fullOpacity:0}),1);
 });
 test('a hand-scrolled rack returns to the selected gate only after 2.5 seconds of inactivity',()=>{
  assert.equal(rackIdleReturn(-300,2499),false);
