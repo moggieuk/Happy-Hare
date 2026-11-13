@@ -46,7 +46,7 @@ export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
 // Every unit side by side as one scrollable rack. The rack slides so the focused gate (or, for a virtual
 // selector, its unit) stays under the Bowden exit at x=620. Gates wrap into rows within their unit.
 // `manual` is an extra shift from the edge arrows; the clamped value is returned.
-export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, maxVirtualColumns=6, availableWidth=850, gap=18}) {
+export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, maxVirtualColumns=6, availableWidth=850, viewLeft=0, gap=18}) {
   const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
   const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
   const units=[], lanes=[], anchors=new Map();
@@ -71,7 +71,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     : anchorOf(low)+(anchorOf(high)-anchorOf(low))*(focus-low);
   const base=620-anchor;
   const rackLeft=0, rackRight=Math.max(0,left-gap);
-  const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
+  const applied=Math.max(Math.min(0,viewLeft+availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,viewLeft+margin-(rackLeft+base)),manual));
   const shift=base+applied;
   // Everything on the MMU side of the exit (Bowden, gears, sensors) stays attached to the unit holding the
   // selected gate. When the gate change crosses units it fades before the slide starts (`fullOpacity` is the
@@ -89,7 +89,7 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const reach=unitOf(from)===unitOf(to) && slide ? 1 : Math.max(attached(unitOf(from),'from'),attached(unitOf(to),'to'));
   return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,reach,
     // Only units actually clipped by the panel edge (which bleeds out by `bleed`) call for an arrow.
-    overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
+    overflow:{left:rackLeft+shift<viewLeft-bleed,right:rackRight+shift>viewLeft+availableWidth+bleed},
     units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
     // The spool passing under the exit rises with it; a virtual unit's spools rise by gate number instead.
     lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-620)/spacing))}))};
