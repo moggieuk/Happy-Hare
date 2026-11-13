@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {TelemetryReplay} from './telemetry.js';
+import {statusText} from './util.js';
 
 test('the scene carries the encoder resolution the tip tolerance is based on',()=>{
  const r=new TelemetryReplay();
@@ -42,4 +43,11 @@ test('the extruder readout shows the status the MMU exposes',()=>{
  const key=Object.keys(status).find(n=>n.startsWith('mmu_extruder '));
  assert.equal(status[key].extruder_name,r.snapshot().filament.extruder);
  assert.ok('filament_remaining_color' in status[key]);
+});
+
+test('the status readout rounds distances to two decimal places',()=>{
+ assert.equal(statusText({filament_cut_fragment:4.999375000000001,extruder_name:'extruder',filament_remaining_temp:220}),
+  '{"filament_cut_fragment":5,"extruder_name":"extruder","filament_remaining_temp":220}');
+ assert.equal(statusText({encoder_pos:2199.8123}),'{"encoder_pos":2199.81}');
+ assert.equal(statusText(null),'No status exposed');
 });
