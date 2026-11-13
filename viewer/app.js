@@ -720,9 +720,10 @@ function renderScene() {
   for (const key of Object.keys(gateSlots)) if (Number.isFinite(gateSlots[key])) gateSlots[key]+=hardwareOffset;
   // Where the Bowden is at a given height within the MMU.
   const descentX = y => tube.getPointAtLength(mmuDistanceAtY(y)).x;
-  const sensorPoint = (name, device) => {
+  // Sensors are drawn on the tip's schematic scale (`schematic`), but the scale itself is built from plain positions.
+  const sensorPoint = (name, device, schematic=false) => {
     if (isTouchSensor(name)) return {x:E,y:420};
-    const point = tube.getPointAtLength(progress(device.position)*length);
+    const point = tube.getPointAtLength((schematic ? schematicDistance : pathDistance)(device.position));
     const short = name.split(':').at(-1);
     const branchSensor=short.match(/^mmu_(entry|exit)(?:_(\d+))?$/);
     if (virtual && branchSensor) {
@@ -1017,7 +1018,7 @@ function renderScene() {
     const suffix = sensorName(name).match(/^mmu_.*_(\d+)$/);
     if (suffix && Number(suffix[1]) !== gate && !virtual) continue;
     if (d.position === null && !isTouchSensor(name)) continue;
-    const pt = sensorPoint(name, d);
+    const pt = sensorPoint(name, d, true);
     const short = name.split(':').at(-1);
     const sensorLabel = isTouchSensor(name) ? 'touch' : /^mmu_entry(?:_\d+)?$/.test(short) ? 'entry' : /^mmu_exit(?:_\d+)?$/.test(short) ? 'exit' : short === 'mmu_shared_exit' ? 'shared exit' : short;
     // Leave a one-unit gap outside the tube and the five-unit sensor radius. MMU-side labels sit left of the
