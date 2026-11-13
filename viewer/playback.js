@@ -12,8 +12,10 @@ export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   const distanceAtY=y=>y>=shoulder ? bottom-y : y<=hub ? bottom-shoulder+diagonal+hub-y
     : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);
   const branchPath=(x,start=bottom)=>{
-    const bend=20, diagonalLength=Math.hypot(620-x,hub-shoulder);
-    const dx=(620-x)*bend/diagonalLength, dy=(hub-shoulder)*bend/diagonalLength;
+    // Each bend starts where it always has (`bend` along the vertical, just above an exit sensor) but sweeps
+    // further (`sweep`) along the diagonal, which softens the radius.
+    const bend=20, sweep=46, diagonalLength=Math.hypot(620-x,hub-shoulder);
+    const dx=(620-x)*sweep/diagonalLength, dy=(hub-shoulder)*sweep/diagonalLength;
     return `M${x} ${start} V${shoulder+bend} Q${x} ${shoulder} ${x+dx} ${shoulder+dy} L${620-dx} ${hub-dy} Q620 ${hub} 620 ${hub-bend}`;
   };
   return {branches,active,row,bottom,shoulder,hub,distanceAtY,branchPath,parkDistance:bottom-shoulder-12,
