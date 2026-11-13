@@ -410,6 +410,28 @@ class TestPins(_Install):
         self.assertTrue(reason.startswith("would also change [mmu_stepper unit0_gear] extra_endstops"), reason)
 
 
+class TestAnalogEncoderPins(_Install):
+    """An analog encoder's per-gate pins and thresholds survive Refresh like other values"""
+
+    PROFILE = "encoder_analog"
+
+    def test_per_gate_analog_pin_is_imported_to_its_gate(self):
+        self.edit("mmu_hardware_unit0.cfg", "analog_pin_2", "unit0:PA4", section="mmu_encoder unit0")
+        analysis = self.analyse()
+        candidate = self.by_symbol(analysis)["PIN_ENCODER_ANALOG_2"]
+        self.assertEqual(candidate.locations, [("mmu_encoder unit0", "analog_pin_2")])
+        self.assertEqual(candidate.kconfig_value, "unit0:PA4")
+        analysis.apply([candidate])
+        hardware = self.build_file("config/base/mmu_hardware.cfg", "mmu_hardware_unit0.cfg")
+        self.assertEqual(hardware.get("mmu_encoder unit0", "analog_pin_2").strip(), "unit0:PA4")
+        self.assertEqual(hardware.get("mmu_encoder unit0", "analog_pin_1").strip(), "unit0:PC1")
+
+    def test_threshold_is_imported(self):
+        self.edit("mmu_hardware_unit0.cfg", "analog_low", "0.55", section="mmu_encoder unit0")
+        candidate = self.by_symbol(self.analyse())["PARAM_ENCODER_ANALOG_LOW"]
+        self.assertEqual(float(candidate.kconfig_value), 0.55)
+
+
 class TestEnvironmentSensors(_Install):
     """Per-gate [temperature_sensor] options, including those a blank value leaves out"""
 

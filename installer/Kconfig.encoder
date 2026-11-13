@@ -125,13 +125,47 @@ if MMU_HAS_ENCODER
           bool "Other"
           help
             Select for any other encoder and ensure you set the resolution correctly.
+
+        config CHOICE_ENCODER_TYPE_ANALOG
+          bool "Analog sensor per gate"
+          help
+            An ADC pin per gate instead of an encoder pin, for a sensor whose reading
+            swings as the filament moves (e.g. a Hall sensor on a magnet wheel).
+            Sampled on the host: for coarse sensors (several mm per pulse) only, and
+            not for encoder homing or move checks. A fine encoder needs a digital pin.
       endchoice
 
       config PIN_ENCODER
-        prompt "$(pad,36,Encoder pin)"
+        prompt "$(pad,36,Encoder pin)" if !CHOICE_ENCODER_TYPE_ANALOG
         validator "$(pin_validator)"
         help
           $(pin_help)
+
+      if CHOICE_ENCODER_TYPE_ANALOG
+        @repeat var=i min=0 max=$(max_gate)@
+          config PIN_ENCODER_ANALOG_$(i)
+            prompt "$(pad,36,Gate $(i) analog pin)" if PARAM_NUM_GATES > $(i)
+            validator "$(pin_validator)"
+            help
+              $(pin_help)
+        @endrepeat@
+
+        config PARAM_ENCODER_ANALOG_HIGH
+          float "$(pad,36,Analog high threshold)"
+          default 0.72
+          help
+            analog_high: a pulse is counted when the reading rises past this
+            (fraction of the ADC's full scale, 0-1). Set it between the middle
+            and the top of the reading's range as the wheel turns.
+
+        config PARAM_ENCODER_ANALOG_LOW
+          float "$(pad,36,Analog low threshold)"
+          default 0.58
+          help
+            analog_low: a pulse is counted when the reading falls past this
+            (fraction of full scale). Must be below the high threshold: the gap
+            between them keeps noise from counting.
+      endif
 
       config PARAM_ENCODER_RESOLUTION
         help
@@ -146,6 +180,7 @@ if MMU_HAS_ENCODER
         default 1.175  if CHOICE_ENCODER_TYPE_BINKY_10
         default 1.469  if CHOICE_ENCODER_TYPE_BINKY_8
         default 1.0    if CHOICE_ENCODER_TYPE_OTHER
+        default 5.0    if CHOICE_ENCODER_TYPE_ANALOG
         default 1.0
 
     endif
