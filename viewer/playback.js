@@ -851,9 +851,9 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
     state={...state,gate_full_opacity:fullOpacity,
       mmu_gripped:elapsed > 0 && elapsed < movementMs ? false : selectionGrip};
     if (event.before?.unit !== event.state.unit) {
-      // Feeds from the spools to the gate rise only after the new unit is in place and the Bowden has faded in.
+      // Virtual feeds retract into their spools first, and rise again only once the new unit is in place and the Bowden has faded in.
       const {fade,slide,retract,advance}=gateTiming, slideEnd=retract+fade+slide;
-      state.gate_feed=elapsed<retract+fade ? 1 : Math.max(0,Math.min(1,(elapsed-slideEnd-fade)/advance));
+      state.gate_feed=Math.max(0,Math.min(1,elapsed<retract ? 1-elapsed/retract : elapsed<slideEnd+fade ? 0 : (elapsed-slideEnd-fade)/advance));
     }
   }
   const gate=event.state.gate;

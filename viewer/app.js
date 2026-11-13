@@ -644,6 +644,12 @@ function renderScene() {
 
   let svg = `${branchMask}<path id="extruder-body" d="M250 205 H242 Q240 205 240 207 V435 H280 V207 Q280 205 278 205 H270" fill="var(--scene-body, #edf2f6)" stroke="var(--scene-border, #96abba)"/><rect x="213" y="375" width="94" height="58" rx="5" fill="var(--scene-heater, #c4d3df)"/><rect id="nozzle-collar" x="240" y="433" width="40" height="2" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-body" d="${nozzleBody}" fill="var(--scene-nozzle, #9cafbe)"/><path id="nozzle-bore" d="${nozzleFunnel}" fill="var(--scene-tube, #edf4f8)"/><g><g${virtual ? ' mask="url(#virtual-selection-fade)"' : ''}><path id="tube" d="${path}" fill="none" stroke="none"/><g><g${s.devices[`${s.unit}:buffer`] ? ' mask="url(#buffer-tube-gap)"' : ''}><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${bowdenPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/></g></g><path id="nozzle-entrance" d="${nozzleEntrance}" fill="var(--scene-tube, #edf4f8)"/><path id="filament" mask="url(#bowden-end-fade)" d="${path}" fill="none" stroke="#${s.filament?.incoming_color || DEFAULT_COLOR}" stroke-width="7"/></g></g><text ${dimensionLink('Bowden')} id="bowden-length" x="660" y="100" text-anchor="start" fill="var(--scene-muted, #6e8190)" font-size="13">${bowdenLengthLabel(s).includes('Uncalibrated') ? '<tspan x="660">Bowden</tspan><tspan x="660" dy="16">Uncalibrated length</tspan>' : bowdenLengthLabel(s)}</text>`;
   const parkedTips=[];
+  // Virtual feeds rise from the spool to the parked position; `feed` (cross-unit changes only) is the progress.
+  const feedFront=virtual ? gateIndex => {
+    const spoolBottom=549.6+mmuOffset-spoolWindingRadius(spoolFill(s,gateIndex))*3.3;
+    const parkEnd=virtual.bottom-virtual.parkDistance+(s.tip_shapes?.[gateIndex]==='cone' ? toolheadHeight/(end-entry) : 0);
+    return spoolBottom-(spoolBottom-parkEnd)*(s.gate_feed ?? 1);
+  } : null;
   if (virtual) {
     let branches='';
     for (const branch of virtual.branches) {
@@ -652,8 +658,9 @@ function renderScene() {
       branches+=`<path data-part="virtual-gate-tube" data-gate="${branch.gate}" d="${branchPath}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${branchPath}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/>`;
       if (s.gate_status?.[branch.gate]!==0 && spoolFill(s,branch.gate)>0) {
         const cone=s.tip_shapes?.[branch.gate] === 'cone';
-        branches+=`<path data-part="virtual-parked-filament" data-gate="${branch.gate}" mask="url(#bowden-end-fade)" d="M${branch.x} ${484+mmuOffset} V${virtual.bottom-virtual.parkDistance+(cone ? toolheadHeight/(end-entry) : 0)}" fill="none" stroke="#${s.gate_colors[branch.gate] || DEFAULT_COLOR}" stroke-width="7"/>`;
-        if (cone && branch.gate !== gate) {
+        const front=feedFront(branch.gate);
+        if (front<484+mmuOffset) branches+=`<path data-part="virtual-parked-filament" data-gate="${branch.gate}" mask="url(#bowden-end-fade)" d="M${branch.x} ${484+mmuOffset} V${Math.max(front,virtual.bottom-virtual.parkDistance+(cone ? toolheadHeight/(end-entry) : 0))}" fill="none" stroke="#${s.gate_colors[branch.gate] || DEFAULT_COLOR}" stroke-width="7"/>`;
+        if (cone && branch.gate !== gate && front<484+mmuOffset) {
           parkedTips.push(branch);
           branches+=`<!--parked-tip-${branch.gate}-->`;
         }
@@ -778,7 +785,7 @@ function renderScene() {
   const fullTipOpacity=virtual ? 1 : s.gate_full_opacity ?? 1;
   const slidingRack=fullTipOpacity===0;
   const spoolTip=570-504;
-  const selectedTip=constrained.tip+(Math.min(constrained.tip,spoolTip)-constrained.tip)*(virtual ? 0 : s.gate_retraction || 0);
+  const selectedTip=constrained.tip+(Math.min(constrained.tip,spoolTip)-constrained.tip)*(virtual ? (s.gate_feed===undefined ? 0 : 1-s.gate_feed) : s.gate_retraction || 0);
   tip = tipAtPathDistance(selectedTip);
   const shapedTipOpacity=fullTipOpacity*(virtual && selectedTip<virtual.distanceAtY(virtual.hub) ? branchOpacity : 1)*Math.max(0,Math.min(1,(selectedTip-(570-502))/28));
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);
@@ -794,7 +801,7 @@ function renderScene() {
     "stroke-dasharray",
     `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
   );
-  let rackArrows='', rackFade=null, bowdenReach=1;
+  let rackArrows='', rackFade=null, bowdenReach=1, enclosurePaths='';
   // The filament ends where they enter the unit go first, before the Bowden itself.
   const endReach=()=>Math.max(0,Math.min(1,(bowdenReach-.7)/.3));
   if (s.tips.length) {
@@ -832,6 +839,7 @@ function renderScene() {
     const coverPath=shells.map(shell=>shell.coverPath).join('');
     const lowerHousingPath=shells.map(shell=>shell.lowerHousingPath).join('');
     const enclosurePath=coverPath+lowerHousingPath;
+    enclosurePaths=enclosurePath;
     svg += `<defs><linearGradient id="spool-shelf-fade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".12" stop-color="var(--scene-body, #edf2f6)"/><stop offset=".65" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="var(--scene-body, #edf2f6)" stop-opacity="0"/></linearGradient><linearGradient id="spool-glass" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="white" stop-opacity=".22"/><stop offset=".12" stop-color="white" stop-opacity=".07"/><stop offset=".3" stop-color="white" stop-opacity=".02"/><stop offset="1" stop-color="black" stop-opacity=".1"/></linearGradient><linearGradient id="spool-cabinet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), white 18%)"/><stop offset=".055" stop-color="var(--scene-body, #edf2f6)"/><stop offset="1" stop-color="color-mix(in srgb, var(--scene-body, #edf2f6), black 18%)"/></linearGradient><mask id="outside-mmu" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="2000"><rect width="1200" height="2000" fill="white"/><path d="${enclosurePath}" fill="black"/></mask><clipPath id="spool-cover-clip"><path d="${enclosurePath}"/></clipPath></defs>`;
     // Put the enclosure behind the short filament fade; the glass stays above it.
     svg = `<path data-part="spool-enclosure" d="${enclosurePath}" fill="color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)"/>` + svg;
@@ -864,9 +872,9 @@ function renderScene() {
       const percent=spoolFill(s,index);
       const branch=virtual?.branches.find(branch=>branch.gate===index);
       if (branch && percent>0 && s.gate_status?.[index]!==0) {
-        const top=470+mmuOffset, bottom=y-spoolWindingRadius(percent)*spoolScale, feed=s.gate_feed ?? 1;
+        const top=470+mmuOffset, bottom=y-spoolWindingRadius(percent)*spoolScale, feedTop=Math.min(bottom,Math.max(top,feedFront(index)));
         const opacity=(index===gate ? .5 : .2)*endReach();
-        svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${bottom-(bottom-top)*feed} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
+        svg += `<defs><linearGradient id="spool-feed-fade-${index}" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${top}" y2="${bottom}"><stop stop-color="#${color}" stop-opacity="${opacity}"/><stop offset="1" stop-color="#${color}" stop-opacity="0"/></linearGradient></defs><path data-part="virtual-spool-feed" data-gate="${index}" d="M${branch.x} ${feedTop} V${bottom}" stroke="url(#spool-feed-fade-${index})" stroke-width="7" fill="none"/>`;
       }
       const knownWeight=Number.isFinite(s.spool_percentages?.[index]);
       const title=spoolTooltip(s,index);
@@ -944,7 +952,7 @@ function renderScene() {
   for (const branch of parkedTips) {
     const route=document.createElementNS('http://www.w3.org/2000/svg','path');
     route.setAttribute('d',virtual.branchPath(branch.x));
-    svg=svg.replace(`<!--parked-tip-${branch.gate}-->`,shapedTip(virtual.parkDistance,
+    svg=svg.replace(`<!--parked-tip-${branch.gate}-->`,shapedTip(s.gate_feed===undefined ? virtual.parkDistance : Math.min(virtual.parkDistance,virtual.bottom-feedFront(branch.gate)),
       s.gate_colors[branch.gate] || DEFAULT_COLOR,'parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
   }
   svg += `<defs><linearGradient id="bowden-fade-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${470+mmuOffset}" y2="${484+mmuOffset}"><stop stop-color="rgb(${Math.round(128*endReach())},${Math.round(128*endReach())},${Math.round(128*endReach())})"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-end-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="700"><rect width="850" height="700" fill="white"/><rect x="${virtual ? virtual.branches[0].x-20 : 600}" y="${470+mmuOffset}" width="${virtual ? virtual.branches.at(-1).x-virtual.branches[0].x+40 : 40}" height="230" fill="${virtual ? 'black' : 'url(#bowden-fade-gradient)'}"/></mask></defs>`;
@@ -1146,10 +1154,10 @@ function renderScene() {
   // Keep the measured filament stroke when appending markers and gears.
   const measured = $("filament").getAttribute("stroke-dasharray");
   // Away from the exit, everything attached to the MMU side fades: Bowden, branches, gears, sensors, tips.
-  // The mask covers only the scene above the unit enclosures (y<531) and the MMU side (x>=470, clear of the toolhead labels),
+  // The mask covers only the scene above the unit enclosures (y<534, except the enclosures themselves) and the MMU side (x>=470, clear of the toolhead labels),
   // so the rack, the toolhead and the top of the Bowden stay put.
   const reachCut=240+bowdenReach*335;
-  svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="470" y="0" width="1530" height="531" fill="url(#bowden-reach-gradient)"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
+  svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="470" y="0" width="1530" height="534" fill="url(#bowden-reach-gradient)"/><path d="${enclosurePaths}" fill="white"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
   $("scene").innerHTML = rackFade ? `${rackFadeMask(rackFade)}<g mask="url(#rack-edge-fade)">${svg}</g>${rackArrows}` : svg+rackArrows;
   for (const [index] of spoolRenderers) {
     if (!spoolRequests.has(index)) spoolRenderers.delete(index);
