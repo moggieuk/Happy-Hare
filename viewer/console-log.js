@@ -31,6 +31,11 @@ export function consoleEndsWith(text) {
   const lines = String(text).split('\n');
   return last.replace(/^!!\s*/, '') === lines[lines.length - 1].replace(/^!!\s*/, '');
 }
+// Brings the newest line into view; later lines then follow, as they do whenever the log is already at its end.
+export function scrollConsoleToEnd() {
+  const log = $('mini-console');
+  log.scrollTop = log.scrollHeight;
+}
 export function consoleLine(text, kind = 'response') {
   const log = $('mini-console');
   const follow = log.scrollHeight-log.scrollTop-log.clientHeight < 32;
