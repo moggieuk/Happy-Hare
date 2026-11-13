@@ -9,7 +9,7 @@ import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, selectorNotice, orderedSteps, homingHold, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, bowdenLane, rackGrid, bowdenAttachment, nozzleArrivalTime, toolheadProgress, toolheadDrawingRange, playbackFrame, switchFilamentDistance, syncForDisplay, isInternalUpdate, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, configurationLabel, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, options, short as sensorName, DEFAULT_COLOR, round1, clamp01, statusText} from './util.js';
-import {consoleLine, consoleEndsWith} from './console-log.js';
+import {consoleLine, consoleEndsWith, scrollConsoleToEnd} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
 import {renderBuffer} from './buffer-view.js';
 import {initSpoolPicker} from './spool-picker.js';
@@ -415,6 +415,7 @@ $("command-form").onsubmit = (event) => {
   const script = $("command").value.trim();
   if (busy || !script) return;
   if (viewMode==='playback') followLive(); // A command typed here is watched; commands from elsewhere never move a paused view
+  scrollConsoleToEnd();
   action(async () => {
     const sent = rpc("printer.gcode.script", { script });
     if (socket.readyState === WebSocket.OPEN) {
@@ -777,7 +778,7 @@ function renderScene() {
     const before=e.before?.sensors[name], after=e.state.sensors[name];
     if (playing && e.kind === 'movement' && before && after && before.state !== after.state &&
         ['extruder','toolhead'].includes(sensorName(name))) {
-      return [name,{...device,state:pathDistance(tip)>=pathDistance(device.position)-1e-6}];
+      return [name,{...device,state:(schematicTip ?? pathDistance(tip))>=schematicDistance(device.position)-1e-6}];
     }
     return [name,device];
   });
