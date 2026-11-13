@@ -63,11 +63,3 @@ export function qualifySensors(sensors,unit,gate,buffer,toolhead='default') {
   }
   return result;
 }
-
-// Grip comes from the existing mmu.selector status: servo selectors report Up/Down/Move,
-// servo-less grippers report Gripped/Released. Indexed selectors are always gripped (config).
-export function gripState(selector) {
-  if (selector?.servo) return {Up:0,Down:1,Move:2}[selector.servo] ?? -1;
-  if (selector?.grip) return selector.grip==='Gripped' ? 1 : 0;
-  return undefined;
-}

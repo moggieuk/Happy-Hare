@@ -1,6 +1,6 @@
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
 import {SceneModel} from './scene-state.js';
-import {liveMachine,qualifySensors,gripState} from './live-config.js';
+import {liveMachine,qualifySensors} from './live-config.js';
 import {short as sensorName, DEFAULT_COLOR} from './util.js';
 const clone=value=>structuredClone(value);
 const rgb=value=>Array.isArray(value) ? value.slice(0,3).map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('') : String(value || DEFAULT_COLOR).replace(/^#/,'').slice(0,6);
@@ -24,7 +24,7 @@ export class LiveState {
     machine.units[unitName].sensors=Object.keys(sensors);
     const m={...clone(status),unit:unitName, sensors,active_sensors:Object.keys(sensors),
       gate_color:(status.gate_color_rgb || status.gate_color || []).map(rgb),
-      filament_grip_state:gripState(status.selector),drive_motors:{gear:['gear'],extruder:['extruder']},sync_mode:status.sync_drive ? 1 : 0};
+      drive_motors:{gear:['gear'],extruder:['extruder']},sync_mode:status.sync_drive ? 1 : 0};
     while (m.gate_color.length<machine.num_gates) m.gate_color.push(DEFAULT_COLOR);
     const macros={};
     for (const [name,object] of Object.entries(this.objects)) if (name.startsWith('gcode_macro ')) macros[name.slice(12)]=clone(object);

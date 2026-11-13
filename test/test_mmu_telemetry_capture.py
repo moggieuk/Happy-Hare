@@ -103,16 +103,16 @@ class TestTelemetryCapture(unittest.TestCase):
     def test_grip_state_and_always_gripped_are_captured(self):
         selector = self.hh.mmu.selector()
         unit = self.hh.mmu.mmu_unit()
-        with mock.patch.object(selector, 'get_filament_grip_state', return_value=1):
+        with mock.patch.object(selector, 'get_status', return_value={'grip': 'Gripped'}):
             capture = self.capture()
         baseline = capture.read()['records'][0]['state']['printer']
-        self.assertEqual(baseline['mmu']['filament_grip_state'], 1)
+        self.assertEqual(baseline['mmu']['selector']['grip'], 'Gripped')
         self.assertEqual(baseline['mmu_machine']['units'][unit.name]['filament_always_gripped'],
                          unit.filament_always_gripped)
-        with mock.patch.object(selector, 'get_filament_grip_state', return_value=0):
+        with mock.patch.object(selector, 'get_status', return_value={'grip': 'Released'}):
             self.emit()
         delta = capture.read()['records'][1]
-        self.assertIn(dict(path=['printer', 'mmu', 'filament_grip_state'], value=0), delta['changes'])
+        self.assertIn(dict(path=['printer', 'mmu', 'selector', 'grip'], value='Released'), delta['changes'])
 
     def test_history_response_is_copied_outside_the_producer_lock(self):
         capture = self.capture()

@@ -915,3 +915,14 @@ test('a selector move is anchored at its start, like a filament move, with its c
  assert.equal(visible.filter(e=>e.kind==='selector_move').length,1);
  assert.ok(visible.every(e=>e.kind!=='selector_completed'));
 });
+
+test('the gears are gripped according to the recorded mmu.selector.grip',()=>{
+ const h=header(),r=new TelemetryReplay();
+ h.state.printer.mmu.selector={grip:'Released'};
+ r.feed(h);
+ assert.equal(r.snapshot().mmu_gripped,false);
+ event(r,'state_delta',{changes:[{path:['printer','mmu','selector','grip'],value:'Gripped'}]});
+ assert.equal(r.snapshot().mmu_gripped,true);
+ event(r,'state_delta',{changes:[{path:['printer','mmu','selector','grip'],value:'Unknown'}]});
+ assert.equal(r.snapshot().mmu_gripped,false);
+});
