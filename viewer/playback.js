@@ -1,25 +1,30 @@
 import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
+
+// The drawing's two vertical axes: the MMU side (Bowden exit, gears, sensors) on the left, the extruder column on the right.
+export const BOWDEN_EXIT_X=320, EXTRUDER_X=680;
+// From the exit up and over to the top of the extruder: a vertical run, then a rounded horizontal run at y=75.
+export const BOWDEN_TO_EXTRUDER=`L${BOWDEN_EXIT_X} 150 Q${BOWDEN_EXIT_X} 75 ${BOWDEN_EXIT_X+95} 75 L${EXTRUDER_X-95} 75 Q${EXTRUDER_X} 75 ${EXTRUDER_X} 170 L${EXTRUDER_X} 449`;
 export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {
   if (state.selector_type!=='VirtualSelector') return null;
   const gates=state.unit_gates || state.tips.map((_,index)=>index);
   const columns=Math.min(6,gates.length), selected=Math.max(0,gates.indexOf(state.gate));
   const row=Math.floor(selected/6), rowGates=gates.slice(row*6,row*6+6);
-  const branches=rowGates.map((gate,column)=>({gate,x:620+(column-(columns-1)/2)*spacing}));
+  const branches=rowGates.map((gate,column)=>({gate,x:BOWDEN_EXIT_X+(column-(columns-1)/2)*spacing}));
   const active=branches.find(branch=>branch.gate===state.gate) || branches[0];
   if (!active) return null;
   const bottom=570+verticalOffset, shoulder=370+verticalOffset, hub=180+verticalOffset;
-  const diagonal=Math.hypot(active.x-620,shoulder-hub);
+  const diagonal=Math.hypot(active.x-BOWDEN_EXIT_X,shoulder-hub);
   const distanceAtY=y=>y>=shoulder ? bottom-y : y<=hub ? bottom-shoulder+diagonal+hub-y
     : bottom-shoulder+diagonal*(shoulder-y)/(shoulder-hub);
   const branchPath=(x,start=bottom)=>{
     // Each bend starts where it always has (`bend` along the vertical, just above an exit sensor) but sweeps
     // further (`sweep`) along the diagonal, which softens the radius.
-    const bend=20, sweep=46, diagonalLength=Math.hypot(620-x,hub-shoulder);
-    const dx=(620-x)*sweep/diagonalLength, dy=(hub-shoulder)*sweep/diagonalLength;
-    return `M${x} ${start} V${shoulder+bend} Q${x} ${shoulder} ${x+dx} ${shoulder+dy} L${620-dx} ${hub-dy} Q620 ${hub} 620 ${hub-bend}`;
+    const bend=20, sweep=46, diagonalLength=Math.hypot(BOWDEN_EXIT_X-x,hub-shoulder);
+    const dx=(BOWDEN_EXIT_X-x)*sweep/diagonalLength, dy=(hub-shoulder)*sweep/diagonalLength;
+    return `M${x} ${start} V${shoulder+bend} Q${x} ${shoulder} ${x+dx} ${shoulder+dy} L${BOWDEN_EXIT_X-dx} ${hub-dy} Q${BOWDEN_EXIT_X} ${hub} ${BOWDEN_EXIT_X} ${hub-bend}`;
   };
   return {branches,active,row,bottom,shoulder,hub,distanceAtY,branchPath,parkDistance:bottom-shoulder-12,
-    path:`${branchPath(active.x)} L620 150 Q620 75 525 75 L355 75 Q260 75 260 170 L260 449`};
+    path:`${branchPath(active.x)} ${BOWDEN_TO_EXTRUDER}`};
 }
 
 // Fixed rows belong to the active MMU unit; selection lifts a wave without shifting lanes.
@@ -29,24 +34,10 @@ export function spoolGrid(gates, focus, maxColumns=7) {
     offset:slot%columns-(columns-1)/2-Math.max(0,columns-7)/2,lift:10*Math.max(0,1-Math.abs(index-focus))}))};
 }
 
-// Fit whole spools into the drawing area, centering on the Bowden until the
-// right margin is reached. Further gates grow the enclosure toward the left.
-export function fittingSpoolGrid(gates,focus,spacing,angle,availableWidth=850) {
-  const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24;
-  const margin=14, usable=availableWidth-2*margin;
-  const capacity=Math.max(1,Math.floor((usable-2*padding)/spacing)+1);
-  const grid=spoolGrid(gates,focus,capacity);
-  const width=(grid.columns-1)*spacing+2*padding;
-  const left=Math.max(margin,Math.min(620-width/2,availableWidth-margin-width));
-  const start=(left+padding-4-620)/spacing;
-  return {...grid,left,right:left+width,lanes:grid.lanes.map((lane,slot)=>({
-    ...lane,offset:start+slot%grid.columns}))};
-}
-
 // Every unit side by side as one scrollable rack. The rack slides so the focused gate (or, for a virtual
-// selector, its unit) stays under the Bowden exit at x=620. Gates wrap into rows within their unit.
+// selector, its unit) stays under the Bowden exit. Gates wrap into rows within their unit.
 // `manual` is an extra shift from the edge arrows; the clamped value is returned.
-export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, maxVirtualColumns=6, availableWidth=850, viewLeft=0, gap=18}) {
+export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, manual=0, bleed=0, fullOpacity=1, maxVirtualColumns=6, availableWidth=850, gap=18}) {
   const padding=17*3.3*Math.cos(angle)+(34/3)*3.3*Math.sin(angle)/2+24, margin=14;
   const capacity=Math.max(1,Math.floor((availableWidth-2*margin-2*padding)/spacing)+1);
   const units=[], lanes=[], anchors=new Map();
@@ -64,14 +55,14 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
     });
     left+=width+gap;
   }
-  const first=lanes[0]?.index, anchorOf=gate=>anchors.get(gate) ?? anchors.get(first) ?? 620;
+  const first=lanes[0]?.index, anchorOf=gate=>anchors.get(gate) ?? anchors.get(first) ?? BOWDEN_EXIT_X;
   // A slide moves the rack by distance, so its speed stays constant across the gap between units.
   const low=Math.floor(focus), high=Math.ceil(focus);
   const anchor=slide ? anchorOf(slide.from)+(anchorOf(slide.to)-anchorOf(slide.from))*slide.t
     : anchorOf(low)+(anchorOf(high)-anchorOf(low))*(focus-low);
-  const base=620-anchor;
+  const base=BOWDEN_EXIT_X-anchor;
   const rackLeft=0, rackRight=Math.max(0,left-gap);
-  const applied=Math.max(Math.min(0,viewLeft+availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,viewLeft+margin-(rackLeft+base)),manual));
+  const applied=Math.max(Math.min(0,availableWidth-margin-(rackRight+base)),Math.min(Math.max(0,margin-(rackLeft+base)),manual));
   const shift=base+applied;
   // Everything on the MMU side of the exit (Bowden, gears, sensors) stays attached to the unit holding the
   // selected gate. When the gate change crosses units it fades before the slide starts (`fullOpacity` is the
@@ -82,17 +73,17 @@ export function rackGrid(layouts, {current, focus, slide=null, spacing, angle, m
   const attached=(unit,role)=>{
     if (!unit) return 1;
     if (slide) return (role==='from' && slide.t===0) || (role==='to' && slide.t===1) ? fullOpacity : 0;
-    return unit.virtual ? clamp01(Math.min(620-(unit.left+shift),unit.right+shift-620)/padding)
-      : clamp01(1-Math.max(0,unit.first+shift-620,620-(unit.last+shift))/spacing);
+    return unit.virtual ? clamp01(Math.min(BOWDEN_EXIT_X-(unit.left+shift),unit.right+shift-BOWDEN_EXIT_X)/padding)
+      : clamp01(1-Math.max(0,unit.first+shift-BOWDEN_EXIT_X,BOWDEN_EXIT_X-(unit.last+shift))/spacing);
   };
   const from=slide ? slide.from : low, to=slide ? slide.to : high;
   const reach=unitOf(from)===unitOf(to) && slide ? 1 : Math.max(attached(unitOf(from),'from'),attached(unitOf(to),'to'));
   return {rows:Math.max(1,...units.map(unit=>unit.rows)),shift,manual:applied,reach,
     // Only units actually clipped by the panel edge (which bleeds out by `bleed`) call for an arrow.
-    overflow:{left:rackLeft+shift<viewLeft-bleed,right:rackRight+shift>viewLeft+availableWidth+bleed},
+    overflow:{left:rackLeft+shift<-bleed,right:rackRight+shift>availableWidth+bleed},
     units:units.map(unit=>({...unit,left:unit.left+shift,right:unit.right+shift})),
     // The spool passing under the exit rises with it; a virtual unit's spools rise by gate number instead.
-    lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-620)/spacing))}))};
+    lanes:lanes.map(lane=>({...lane,x:lane.x+shift,lift:10*Math.max(0,1-(lane.virtual ? Math.abs(lane.index-focus) : Math.abs(lane.x+base-BOWDEN_EXIT_X)/spacing))}))};
 }
 
 // How selected a gate looks while the selection moves. Only the gate being left and the gate being reached
@@ -693,7 +684,7 @@ export function purgeCoils(state, nozzleDiameter = .4) {
   for (let layer=0; layer<Math.ceil(layers); layer++) {
     const height=layer*pitch, y=498-height, radius=23-height*1.75/3.2;
     const bend=pitch/3.2;
-    coils.push({path:`M260,${y} C${260-radius},${y-5*bend} ${260-radius},${y+5*bend} 260,${y+2*bend} S${260+radius*1.6},${y-3*bend} 260,${y-3*bend}`,
+    coils.push({path:`M${EXTRUDER_X},${y} C${EXTRUDER_X+radius},${y-5*bend} ${EXTRUDER_X+radius},${y+5*bend} ${EXTRUDER_X},${y+2*bend} S${EXTRUDER_X-radius*1.6},${y-3*bend} ${EXTRUDER_X},${y-3*bend}`,
       fraction: Math.min(1,layers-layer), color:purgeOutletColor(state,base+(1.2+layer*28.8/capacity)/ratio)});
   }
   return {amount, layers, pitch, coils, drop:state.purge_drop ?? Math.max(0,(amount-30)/6)};
