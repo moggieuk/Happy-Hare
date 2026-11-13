@@ -241,6 +241,13 @@ class TestViewerConsole(unittest.TestCase):
         self.assertIn('Happy Hare console  profile=encoder', self.out.getvalue())
         self.assertIn('Live viewer: http://127.0.0.1:%d/sim/viewer/' % port, self.out.getvalue())
 
+    def test_restart_tells_connected_viewers_the_printer_is_ready_again(self):
+        sent=[]
+        self.bridge.clients.add(mock.Mock(send_text=sent.append))
+        with contextlib.redirect_stdout(self.out):
+            self.bridge.rpc_sim_viewer_restart(None,{'profile':'encoder'})
+        self.assertTrue(any('notify_klippy_ready' in text for text in sent))
+
     def test_uploaded_config_and_failure_recovery(self):
         with tempfile.TemporaryDirectory() as root:
             make_install_tree(root)

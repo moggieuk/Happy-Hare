@@ -636,4 +636,5 @@ class WebUiBridge:
         elif profile not in {p.name for p in CONSOLE_PROFILES}:
             raise RpcError('Choose an available simulator profile')
         self.restart_profile(profile)
+        self.notify('notify_klippy_ready', [])  # As after a Klipper restart: live views resubscribe to the new session
         return {'profile': self.profile_name}
