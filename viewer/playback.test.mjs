@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
+import { BOWDEN_EXIT_X, EXTRUDER_X, BOWDEN_TO_EXTRUDER, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -19,7 +19,7 @@ test('timeline retains ticks but omits labels at thirty operations',()=>{
    assert.ok(markers.every(marker=>marker.label===''));
  }
 });
-import { virtualSelectorLayout, spoolGrid, fittingSpoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { virtualSelectorLayout, spoolGrid, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -791,19 +791,6 @@ test('VirtualSelector parking interpolation advances continuously to the shared 
  });
 
 
-test('non-virtual rows fill available width and grow left after reaching the right margin',()=>{
-  const gates=Array.from({length:30},(_,i)=>i), angle=77*Math.PI/180;
-  const small=fittingSpoolGrid(gates.slice(0,4),0,54,angle);
-  assert.ok(Math.abs((small.left+small.right)/2-620)<1e-8);
-  const large=fittingSpoolGrid(gates,0,54,angle);
-  assert.ok(large.columns>8);
-  assert.equal(large.right,836);
-  assert.ok(large.left>=14);
-  assert.ok(large.left-54<14);
-  assert.equal(large.rows,Math.ceil(gates.length/large.columns));
-  assert.ok(fittingSpoolGrid(gates,0,75,angle).columns<large.columns);
-  assert.ok(fittingSpoolGrid(gates,0,54,angle,1100).columns>large.columns);
-});
 test('only a homing move that found its sensor holds the next step for 0.2s',()=>{
  const move=(extra)=>({kind:'movement',...extra});
  assert.equal(homingHold(move({homing:true,homed:true})),200);
@@ -843,15 +830,15 @@ test('the rack places every unit in sequence and slides to keep the focused gate
  const a=rackGrid(layouts,{...options,focus:1});
  assert.equal(a.units.length,2);assert.ok(a.units[0].right<a.units[1].left);
  const lane=g=>a.lanes.find(l=>l.index===g);
- assert.equal(Math.round(lane(1).x),620);                       // The focused spool sits under the exit
+ assert.equal(Math.round(lane(1).x),BOWDEN_EXIT_X);                       // The focused spool sits under the exit
  assert.equal(Math.round(lane(2).x-lane(1).x),54);
  assert.equal(lane(0).row,0);
  const b=rackGrid(layouts,{...options,focus:3});
- assert.equal(Math.round(b.lanes.find(l=>l.index===3).x),620);
+ assert.equal(Math.round(b.lanes.find(l=>l.index===3).x),BOWDEN_EXIT_X);
  const mid=rackGrid(layouts,{...options,focus:1.5});             // Mid-slide lies between the two
  assert.ok(mid.shift<a.shift && mid.shift>rackGrid(layouts,{...options,focus:2}).shift-1e-9);
  const v=rackGrid(layouts,{...options,focus:6});                 // A virtual unit centres on the exit
- const unit1=v.units[1];assert.equal(Math.round((unit1.left+unit1.right)/2),620);
+ const unit1=v.units[1];assert.equal(Math.round((unit1.left+unit1.right)/2),BOWDEN_EXIT_X);
  assert.equal(unit1.columns,6);assert.equal(unit1.rows,2);       // Large units break into rows
  assert.ok(v.lanes.find(l=>l.index===10).row===1);
 });
@@ -868,7 +855,7 @@ test('the rack arrows appear only when a unit is off screen, and manual scroll i
  const pushed=rackGrid(layouts,{...options,focus:0,manual:-100000});
  assert.ok(pushed.units.at(-1).right>=850-14-1e-6);              // Cannot scroll past the last unit
  const deep={...options,focus:12};
- assert.ok(rackGrid(layouts,{...deep,manual:-100000}).units.at(-1).right>=850-14-1e-6);
+ assert.ok(rackGrid(three,{...deep,manual:-100000}).units.at(-1).right>=850-14-1e-6);
  assert.ok(rackGrid(layouts,{...deep,manual:100000}).units[0].left<=14+1e-6);   // ...or the first
  assert.equal(rackGrid(layouts,{...deep,manual:0}).manual,0);
 });
@@ -892,7 +879,7 @@ test('a moving selection brightens only the gate it reaches and dims the gate it
  assert.deepEqual([0,1,2].map(g=>gateSelectionLit({gate:1},g)),[0,1,0]);                           // At rest: the selected gate
 });
 test('the MMU side fades only when the rack changes units: before the slide, and after the new unit is in place',()=>{
- const layouts=[{name:'v',gates:[0,1,2,3],selector_type:'VirtualSelector'},{name:'l',gates:[4,5,6,7],selector_type:'LinearSelector'}];
+ const layouts=[{name:'v',gates:[0,1,2,3],selector_type:'VirtualSelector'},{name:'l',gates:[4,5,6,7],selector_type:'LinearSelector'},{name:'m',gates:[8,9,10,11],selector_type:'LinearSelector'}];
  const options={current:'v',spacing:54,angle:77*Math.PI/180};
  const reach=extra=>rackGrid(layouts,{...options,...extra}).reach;
  assert.equal(reach({focus:1}),1);                                   // Selected gate under the exit: attached
@@ -938,4 +925,12 @@ test('no arrow is offered when every unit is fully shown, even close to the pane
  assert.ok(rackGrid(wide,{...deep,bleed:0}).overflow.left);          // But before scrolling there is more to see
  const end=rackGrid(wide,{...deep,manual:-100000});
  assert.ok(!end.overflow.right);                                     // Nothing is right of the last unit at the end
+});
+test('the Bowden runs from the MMU exit on the left to the extruder column on the right',()=>{
+ assert.ok(BOWDEN_EXIT_X<EXTRUDER_X);
+ assert.match(BOWDEN_TO_EXTRUDER,new RegExp(`^L${BOWDEN_EXIT_X} 150.* L${EXTRUDER_X} 449$`));
+ const layout=virtualSelectorLayout({selector_type:'VirtualSelector',gate:1,unit_gates:[0,1,2,3],tips:[0,0,0,0]});
+ assert.ok(layout.path.endsWith(BOWDEN_TO_EXTRUDER));
+ assert.deepEqual(layout.branches.map(b=>b.gate),[0,1,2,3]);                 // Gates keep their order left to right
+ assert.ok(layout.branches[0].x<BOWDEN_EXIT_X && layout.branches[3].x>BOWDEN_EXIT_X);
 });

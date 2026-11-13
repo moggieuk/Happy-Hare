@@ -381,7 +381,7 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 #toolchange-ticks span { position: absolute; width: 2px; height: 10px; background: #63778a; transform: translateX(-50%); }
 [data-theme="dark"] #toolchange-ticks span { background: #9bafbf; }
 
-.scene-annotations { position: absolute; z-index: 2; top: 34px; right: 14px; width: 220px; max-width: 27%; display: grid; gap: 14px; }
+.scene-annotations { position: absolute; z-index: 2; top: 34px; left: 14px; width: 220px; max-width: 27%; display: grid; gap: 14px; }
 #scene-macros { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 #scene-macros .macro-label { opacity: .65; }
 #scene-macros .macro-name { display: block; margin-bottom: 10px; }
