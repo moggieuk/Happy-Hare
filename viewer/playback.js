@@ -1,7 +1,7 @@
 import {short as sensorName, DEFAULT_COLOR, round1} from './util.js';
 
 // The drawing's two vertical axes: the MMU side (Bowden exit, gears, sensors) on the left, the extruder column on the right.
-export const BOWDEN_EXIT_X=320, EXTRUDER_X=680;
+export const BOWDEN_EXIT_X=270, EXTRUDER_X=680;
 // From the exit up and over to the top of the extruder: a vertical run, then a rounded horizontal run at y=75.
 export const BOWDEN_TO_EXTRUDER=`L${BOWDEN_EXIT_X} 150 Q${BOWDEN_EXIT_X} 75 ${BOWDEN_EXIT_X+95} 75 L${EXTRUDER_X-95} 75 Q${EXTRUDER_X} 75 ${EXTRUDER_X} 170 L${EXTRUDER_X} 449`;
 export function virtualSelectorLayout(state, spacing=54, verticalOffset=0) {

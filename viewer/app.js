@@ -1170,7 +1170,7 @@ function renderScene() {
   const bufferShown=bufferFade ? bowdenReach : 1, gapShade=Math.round(255*(1-bufferShown));
   svg=svg.replace('@@buffer-opacity@@',bufferShown).replace('@@buffer-gap@@',`rgb(${gapShade},${gapShade},${gapShade})`);
   const reachCut=195+bowdenReach*380;
-  svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="-1000" y="0" width="${1150+EXIT}" height="534" fill="url(#bowden-reach-gradient)"/><path d="${enclosurePaths}" fill="white"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
+  svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="-1000" y="0" width="${1200+EXIT}" height="534" fill="url(#bowden-reach-gradient)"/><path d="${enclosurePaths}" fill="white"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
   $("scene").innerHTML = rackFade ? `${rackFadeMask(rackFade)}<g mask="url(#rack-edge-fade)">${svg}</g>${rackArrows}` : svg+rackArrows;
   for (const [index] of spoolRenderers) {
     if (!spoolRequests.has(index)) spoolRenderers.delete(index);

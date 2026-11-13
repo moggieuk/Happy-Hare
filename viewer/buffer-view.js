@@ -4,8 +4,8 @@
 import {escape} from './util.js';
 import {BOWDEN_EXIT_X, bufferPiston, bufferSpringPath} from './playback.js';
 
-// The housing is centred on the Bowden's horizontal run, 150 right of the exit.
-const CENTER=BOWDEN_EXIT_X+150;
+// The housing is centred on the Bowden's horizontal run, 200 right of the exit.
+const CENTER=BOWDEN_EXIT_X+200;
 
 // Buffer drawing is isolated from the toolhead and filament layers.
 export function renderBuffer(s, d, bufferSensors, sensorFill, {homingRing, pulse, now, gapFill='black'}) {
