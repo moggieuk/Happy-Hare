@@ -143,13 +143,6 @@ svg {
   background: #e3f4e8;
   border-color: #60a87c;
 }
-.error {
-  color: #b0294b;
-}
-#message {
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
 #profile {
   font-size: 12px;
   overflow-wrap: anywhere;
@@ -214,7 +207,6 @@ select, input { max-width: 100%; }
 [data-theme="dark"] .sensor-chip { color: #dce5ef; }
 [data-theme="dark"] .sensor-chip.off { background: #1a2530; }
 [data-theme="dark"] .sensor-chip.disabled { background: #2b343e; border-color: #45515e; color: #91a0ae; }
-[data-theme="dark"] .error { color: #ff92ac; }
 
 main > section { display: flex; flex-direction: column; gap: 16px; align-self: start; }
 #mini-console { height: 315px; overflow: auto; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -236,7 +228,6 @@ main > section { display: flex; flex-direction: column; gap: 16px; align-self: s
 
 .heading h2 { margin-bottom: 0; }
 #sensor-readout { margin-top: 6px; font-size: 12px; }
-#message:empty { display: none; }
 
 .console-command { color: inherit; font-weight: 400; }
 .console-command-text { color: #007b91; }

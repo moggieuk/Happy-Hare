@@ -7,7 +7,7 @@ export function createToolheadPanel({rpc, action, refresh, changed}) {
   const configColumn=document.querySelector('.left-column');
   const toolheadPanel=document.createElement('aside');
   toolheadPanel.hidden=true;
-  toolheadPanel.innerHTML=`<h2>Toolhead Config</h2><p class="note">Applied with MMU_TEST_CONFIG. Shared toolheads affect every listed unit.</p><label>Toolhead object<select class="object-choice"></select></label><label>Parameter<select class="object-parameter"></select></label><label>Value<input class="object-value" type="number" step="any"></label><button class="object-apply">Apply</button><p class="note object-status" role="status"></p>`;
+  toolheadPanel.innerHTML=`<h2>Toolhead config</h2><p class="note">Applied with MMU_TEST_CONFIG. Shared toolheads affect every listed unit.</p><label>Toolhead object<select class="object-choice"></select></label><label>Parameter<select class="object-parameter"></select></label><label>Value<input class="object-value" type="number" step="any"></label><button class="object-apply">Apply</button><p class="note object-status" role="status"></p>`;
   configColumn.insertBefore(toolheadPanel,$('viewer-settings'));
   const toolheadField=name=>toolheadPanel.querySelector('.object-'+name);
   let toolheads=[], toolheadFingerprint='';
