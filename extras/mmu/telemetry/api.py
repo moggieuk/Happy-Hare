@@ -20,8 +20,8 @@ class TelemetryAPI:
         self.reactor = mmu.reactor
         self.stream = TelemetryStream(mmu)
         self.timer = None
-        webhooks = mmu.printer.lookup_object('webhooks')
-        for name in ('subscribe', 'ack', 'unsubscribe'):
+        self.webhooks = webhooks = mmu.printer.lookup_object('webhooks')
+        for name in ('subscribe', 'ack', 'unsubscribe', 'status', 'record'):
             webhooks.register_endpoint('mmu/telemetry/' + name, getattr(self, name))
         mmu.printer.register_event_handler('klippy:disconnect', self.close)
         mmu.printer.register_event_handler('klippy:shutdown', self.close)
@@ -48,6 +48,21 @@ class TelemetryAPI:
         request.send(self.stream.ack(self._key(request), request.get_str('stream_id'),
                                     request.get_int('delivery_id')))
 
+    def status(self, request):
+        request.send(dict(record=self.stream.record_mode))
+
+    def record(self, request):
+        try:
+            self.set_record_mode(request.get_str('mode'))
+        except ValueError as exc:
+            raise request.error(str(exc))
+        request.send({})
+
+    def set_record_mode(self, mode):
+        """Moonraker persists records; ask it to subscribe if no viewer already has."""
+        if self.stream.set_record_mode(mode):
+            self.webhooks.call_remote_method('mmu_telemetry_wake')
+
     def unsubscribe(self, request):
         request.send(self.stream.unsubscribe(self._key(request)))
 
@@ -62,6 +77,7 @@ class TelemetryAPI:
         return eventtime + .25
 
     def close(self):
+        self.stream.record_mode = 'off'
         if self.timer is not None:
             self.reactor.unregister_timer(self.timer)
             self.timer = None

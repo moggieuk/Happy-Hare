@@ -11,5 +11,3 @@ enable_toolchange_next_pos: True
 update_spoolman_location: True
 
 [mmu_telemetry]
-history_buffer: 0
-record: False
