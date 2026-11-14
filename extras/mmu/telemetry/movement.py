@@ -32,6 +32,7 @@ class MovementTelemetry:
         self.listeners = []
         self.operations = []
         self.toolchange_depth = 0
+        self.toolchange_serial = 0  # Identifies a command's start and end records to the consumers
 
     def subscribe(self, callback):
         self.listeners.append(callback)
@@ -64,13 +65,15 @@ class MovementTelemetry:
     def toolchange_start(self, **fields):
         """Bracket a load, unload or toolchange command; nested commands share the outermost pair."""
         self.toolchange_depth += 1
-        if self.toolchange_depth == 1 and self.listeners:
-            self.state('toolchange', **fields)
+        if self.toolchange_depth == 1:
+            self.toolchange_serial += 1
+            if self.listeners:
+                self.state('toolchange', toolchange_id=self.toolchange_serial, **fields)
 
     def toolchange_end(self, **fields):
         self.toolchange_depth = max(0, self.toolchange_depth - 1)
         if self.toolchange_depth == 0 and self.listeners:
-            self.state('toolchange_end', **fields)
+            self.state('toolchange_end', toolchange_id=self.toolchange_serial, **fields)
 
     def config_changed(self, scope, name, value):
         """A tunable value changed at runtime. Scope is the owning config section name."""

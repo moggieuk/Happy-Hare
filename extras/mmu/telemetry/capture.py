@@ -219,7 +219,7 @@ kept; the limit only bounds a consumer that stops acknowledging.
         self.sequence = 0
         self.failed = False  # Set when the source detaches this capture after an error; the stream then replaces it
         self.on_toolchange_end = None
-        self.in_toolchange = False  # Its start was seen, so its end is not that of an earlier command
+        self.segment = None  # (toolchange_id, sequence of its start) of the command being recorded as one toolchange
         self.reactor = mmu.reactor
         self.open_moves = set()  # Started but not finished; state is not sampled in the middle of a move
         self.settle_timer = self.reactor.register_timer(self._settle, self.reactor.NEVER)
@@ -254,6 +254,10 @@ kept; the limit only bounds a consumer that stops acknowledging.
         except Exception:
             self.failed = True  # The source detaches a listener that raises
             raise
+        event = source['event']
+        # A segment is a command started while armed. One with nothing recorded between its start and end
+        # (a refused command) neither records anything nor uses up the arming.
+        empty = self.segment is not None and self.segment[1] == self.sequence and not delta
         self._commit(source['timestamp'], current, delta, record)
         if source['event'] in ('movement_start', 'selector_movement_start'):
             self.open_moves.add(source['move_id'])
@@ -261,17 +265,17 @@ kept; the limit only bounds a consumer that stops acknowledging.
             self.open_moves.discard(source['move_id'])
         self.reactor.update_timer(self.settle_timer, self.reactor.NEVER if self.open_moves
                                   else self.reactor.monotonic() + SETTLE_DELAY)
-        if source['event'] == 'toolchange':
-            self.in_toolchange = True
-        elif source['event'] == 'toolchange_end' and self.in_toolchange:
-            self.in_toolchange = False
-            if self.on_toolchange_end:
+        if event == 'toolchange' and self.state_provider.record_mode() == 'toolchange':
+            self.segment = (source['toolchange_id'], self.sequence)
+        elif event == 'toolchange_end' and self.segment and self.segment[0] == source['toolchange_id']:
+            self.segment = None
+            if not empty and self.on_toolchange_end:
                 self.on_toolchange_end()
 
     def mark_record_mode(self, mode):
         """Commit the settled state, then tell the consumers, in order, that recording changed mode."""
-        if mode == 'toolchange':
-            self.in_toolchange = False  # A command already running when armed is not the one to record
+        if mode != 'toolchange':
+            self.segment = None
         try:
             current, delta = self._read()
         except Exception:

@@ -79,6 +79,18 @@ class TestTelemetryStore(unittest.TestCase):
             self.assertEqual(recorder.mode, 'off')
             self.assertIsNone(recorder.file)
 
+    def test_a_start_straight_followed_by_its_end_opens_no_file_and_stays_armed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            recorder = TelemetryRecorder(path, 10000, 3, 'toolchange')
+            recorder.write([HEADER, event(1, 'toolchange'), event(2, 'toolchange_end')])
+            self.assertFalse(path.exists())
+            self.assertEqual(recorder.mode, 'toolchange')
+            recorder.write([event(3, 'toolchange'), event(4), event(5, 'toolchange_end')])
+            self.assertEqual([r['event'] for r in map(json.loads, path.read_text().splitlines())],
+                             ['session', 'toolchange', 'cut', 'toolchange_end'])
+            self.assertEqual(recorder.mode, 'off')
+
     def test_off_mode_writes_nothing_but_tracks_state(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'motion.jsonl'
@@ -109,10 +121,10 @@ class TestTelemetryStore(unittest.TestCase):
             path = Path(directory)/'motion.jsonl'
             recorder = TelemetryRecorder(path, 10000, 3, 'toolchange')
             reset = dict(HEADER, state={'parameter': 80}, sequence=10, checkpoint=True)
-            recorder.write([HEADER, event(1, 'toolchange'), reset, event(11), event(12, 'toolchange_end')])
+            recorder.write([HEADER, event(1, 'toolchange'), event(2), reset, event(11), event(12, 'toolchange_end')])
             lines = [json.loads(line) for line in path.read_text().splitlines()]
-            self.assertEqual([r['event'] for r in lines], ['session', 'toolchange', 'session', 'cut', 'toolchange_end'])
-            self.assertEqual(lines[2]['state'], {'parameter': 80})
+            self.assertEqual([r['event'] for r in lines], ['session', 'toolchange', 'cut', 'session', 'cut', 'toolchange_end'])
+            self.assertEqual(lines[3]['state'], {'parameter': 80})
 
     def test_size_rotation_keeps_movement_pair_together(self):
         for kind in ('movement', 'selector_movement'):
