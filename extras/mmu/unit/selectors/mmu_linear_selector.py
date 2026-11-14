@@ -249,9 +249,21 @@ class LinearSelector(PhysicalSelector):
     def _select_gate(self, lgate):
         super()._select_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
 
+        position = self._gate_position(lgate)
+
+        # Already selected and in position: don't release the servo and regrip for a zero-length move.
+        # Touch moves still run because they detect filament blockage in the gate
+        if (
+            position is not None
+            and self.mmu.gate_selected == self._logical_gate(lgate)
+            and self.mmu._next_gate is None
+            and not self.use_touch_move()
+            and abs(self.selector_stepper.commanded_pos - position) < 0.01
+        ):
+            return
+
         with self.mmu.wrap_action(ACTION_SELECTING):
             self.filament_hold_move()
-            position = self._gate_position(lgate)
             if position is not None:
                 self._select_position(position)
 
