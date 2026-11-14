@@ -55,6 +55,7 @@ BOARD_MACHINE = {
     'boards/Kconfig.skr_pico_1':             ('BOARD_TYPE_SKR_PICO_1', _TRADRACK),
     'boards/Kconfig.tzb_1_0':                ('BOARD_TYPE_TZB_1_0', _TRADRACK),
     'boards/Kconfig.wgb_3_0':                ('BOARD_TYPE_WGB_3_0', _TRADRACK),
+    'boards/Kconfig.emb_c':                  ('BOARD_TYPE_EMB_C', 'MMU_TYPE_EMU_1_0'),
     'boards/custom/Kconfig.kms':             ('BOARD_TYPE_KMS_1_0', 'MMU_TYPE_KMS_1_0'),
     'boards/custom/Kconfig.qidi_box':        ('BOARD_TYPE_QIDI_BOX_2_0', 'MMU_TYPE_QIDI_BOX_1_0'),
     'boards/custom/Kconfig.vvd':             ('BOARD_TYPE_VVD_1_0', 'MMU_TYPE_VVD_1_0'),
@@ -64,6 +65,12 @@ BOARD_MACHINE = {
     # would appear to contribute one default instead of ~60.
     'boards/per_gate/Kconfig.ebb_gen1':      ('BOARD_TYPE_EBB_GEN1', 'MMU_TYPE_EMU_1_0'),
     'boards/per_gate/Kconfig.slb':           ('BOARD_TYPE_SLB_1_0', 'MMU_TYPE_EMU_1_0'),
+}
+
+# EMU normally implies one MCU per gate. EMB-C is the single-MCU EMU option,
+# so its regular-board defaults are live only after that user choice is off.
+BOARD_OVERRIDES = {
+    'BOARD_TYPE_EMB_C': {'MMU_HAS_PER_GATE_MCU': False},
 }
 
 # How many defaults each board is currently observed to win. A floor, not an
@@ -83,6 +90,7 @@ EXPECTED_WINS = {
     'boards/Kconfig.mmb_2_0': 22,               'boards/Kconfig.owlfc_mini_1_0': 18,
     'boards/Kconfig.skr_pico_1': 15,            'boards/Kconfig.tzb_1_0': 32,
     'boards/Kconfig.wgb_3_0': 44,               'boards/custom/Kconfig.kms': 39,
+    'boards/Kconfig.emb_c': 50,
     'boards/custom/Kconfig.qidi_box': 23,       'boards/custom/Kconfig.vvd': 24,
     'boards/per_gate/Kconfig.ebb_gen1': 59,     'boards/per_gate/Kconfig.slb': 64,
 }
@@ -107,9 +115,10 @@ class TestBoardDefaultPrecedence(unittest.TestCase):
         cls.tree = cfg._new_kconfig('board_defaults')
 
     def _select(self, board_sym, machine):
+        syms = {machine: True, board_sym: True}
+        syms.update(BOARD_OVERRIDES.get(board_sym, {}))
         kc = cfg._apply_syms(
-            self.tree, 'board_defaults',
-            {machine: True, board_sym: True}, reset=True)
+            self.tree, 'board_defaults', syms, reset=True)
         self.assertTrue(
             kc.is_enabled(board_sym),
             '%s is not selectable under %s - the BOARD_MACHINE entry is wrong, '

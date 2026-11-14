@@ -8,6 +8,9 @@ if BOARD_TYPE_EBB_GEN1
   config PARAM_BOARD_TYPE
     default "EBB36/42 gen1"
 
+  config BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default y
+
   # Heater output for a [heater_generic]: HE0 PA2 (v1.1) or PB13 (v1.2). Thermistor TH0 PA3
   # is used for the PSF buffer
 
@@ -43,7 +46,8 @@ if BOARD_TYPE_EBB_GEN1
       default "^$(MCU_NAME):PB5"
 
     config PIN_EJECT_BUTTON_0
-      default "^!$(MCU_NAME):PB6"
+      default "^!$(MCU_NAME):PB6" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+      default "^$(MCU_NAME):PB6"
 
     config PIN_NEOPIXEL
       default "$(MCU_NAME):PD3"
@@ -110,7 +114,8 @@ if BOARD_TYPE_EBB_GEN1
         default "^$(MCU_NAME)_gate$(gate):PB5"
 
       config PIN_EJECT_BUTTON_$(gate)
-        default "^!$(MCU_NAME)_gate$(gate):PB6"
+        default "^!$(MCU_NAME)_gate$(gate):PB6" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+        default "^$(MCU_NAME)_gate$(gate):PB6"
 
       config PIN_NEOPIXEL_$(gate)
         default "$(MCU_NAME)_gate$(gate):PD3"

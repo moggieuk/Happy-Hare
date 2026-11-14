@@ -56,7 +56,7 @@ menu "Pins / TMC"
       prompt "$(pad,$(pin_pad),Gear UART addr)" if PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_SPI
       default 0
       range 0 3
-      depends on BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
+      depends on BOARD_TYPE_EMB_C || BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL
     config PIN_GEAR_STEP
       string "$(pad,$(pin_pad),Gear step pin)"
       validator "$(pin_validator)"
@@ -117,7 +117,7 @@ menu "Pins / TMC"
               $(pin_help)
           config PARAM_GEAR_UART_ADDRESS_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) UART addr)" if PARAM_GEAR_TMC != "" && !BOOL_GEAR_TMC_SPI && \
-                (BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL)
+                (BOARD_TYPE_EMB_C || BOARD_TYPE_EASY_BRD || BOARD_TYPE_SKR_PICO_1 || BOARD_TYPE_OTHER || BOARD_TYPE_MANUAL)
           config PIN_GEAR_STEP_$(i)
             prompt "$(pad,$(pin_pad),Gear $(i) step pin)"
             validator "$(pin_validator)"
