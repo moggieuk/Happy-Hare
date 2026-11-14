@@ -150,6 +150,7 @@ export function interpolate(event, fraction) {
     return state;
   }
   if (event.kind === 'cut') return fraction < .4 ? a : b;
+  if (gripChanges(event)) return fraction < .4 ? a : event.settled_state || b; // The late grip change belongs to this step
   const mix = (x,y) => typeof x === 'number' && typeof y === 'number' ? x+(y-x)*fraction : x;
   const s = structuredClone(a);
   if (hasMotorMode) s.synced = synced;
@@ -316,9 +317,13 @@ export function motionFraction(event, timeFraction) {
   return clamp01(travelled/distance);
 }
 
+const gripChanges = event => event.kind === 'selector_move' && event.before
+  && (event.settled_state || event.state).mmu_gripped !== event.before.mmu_gripped;
+
 export function duration(event, compressBowden = false) {
   if (event.kind === 'gate_changed') return gateDuration;
   if (event.kind === 'cut' || event.kind === 'release') return 650;
+  if (gripChanges(event)) return 650; // Long enough to see the gears grip or release
   if (event.kind !== 'movement') return 0;
   const travel=Math.abs(event.distance ?? Math.max(0,...Object.values(event.motors||{}).map(Math.abs)));
   // Use resolved feed speed, not console pacing or time spent waiting for sensors.
