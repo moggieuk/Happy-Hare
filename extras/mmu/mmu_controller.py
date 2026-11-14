@@ -241,6 +241,8 @@ class MmuController(MmuFilamentMovement):
 
 
     def handle_ready(self):
+        self.telemetry_api.stream.record_mode = self.p.default_telemetry_mode  # Moonraker learns it when it connects
+
         # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:

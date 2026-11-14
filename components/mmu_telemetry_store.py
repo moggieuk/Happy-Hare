@@ -91,7 +91,7 @@ class TelemetryRecorder:
         self.file = None
         self.size = 0
         self.active_moves = set()
-        self.mode = mode  # continuous, toolchange (one command, then off) or off; Klipper decides
+        self.mode = mode  # on, toolchange (one command, then off) or off; Klipper decides
 
     def _rotate(self):
         if self.file:
@@ -113,7 +113,7 @@ class TelemetryRecorder:
     def set_mode(self, mode):
         self.close()
         self.mode = mode
-        if mode == 'continuous' and self.header is not None:
+        if mode == 'on' and self.header is not None:
             self._rotate()
             self._line(self.header)
 
@@ -125,7 +125,7 @@ class TelemetryRecorder:
             if record['event'] == 'session':
                 self.header = deepcopy(record)
                 self.active_moves.clear()
-                if self.mode == 'continuous':
+                if self.mode == 'on':
                     self._rotate()
                     self._line(record)
                 continue
@@ -133,14 +133,14 @@ class TelemetryRecorder:
                 raise ValueError('Recording requires an initial checkpoint')
             if self.mode == 'toolchange':
                 self._segment(record)
-            elif self.mode == 'continuous':
-                self._continuous(record)
+            elif self.mode == 'on':
+                self._write_on(record)
             else:
                 TelemetryHistory._advance(self.header, record)
         if self.file:
             self.file.flush()
 
-    def _continuous(self, record):
+    def _write_on(self, record):
         if self.size >= self.max_bytes and not self.active_moves:
             self._rotate()
             self._line(self.header)

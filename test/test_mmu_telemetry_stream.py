@@ -171,14 +171,14 @@ class TestTelemetryStream(unittest.TestCase):
     def test_a_recording_mode_change_commits_the_settled_state_then_tells_consumers_in_order(self):
         first = self.subscribe(); self.ack(first)
         self.hh.mmu.gate_selected = 1
-        self.assertFalse(self.stream.set_record_mode('continuous'))   # A consumer is already subscribed
+        self.assertFalse(self.stream.set_record_mode('on'))   # A consumer is already subscribed
         self.stream.pump()
         records = self.sent[-1]['records']
         self.assertEqual([r['event'] for r in records], ['state_delta', 'record_mode'])
-        self.assertEqual(records[1]['mode'], 'continuous')
+        self.assertEqual(records[1]['mode'], 'on')
         changes = {tuple(c['path']): c['value'] for c in records[0]['changes']}
         self.assertEqual(changes[('printer', 'mmu', 'gate')], 1)
-        self.assertEqual(changes[('printer', 'mmu', 'telemetry', 'record')], 'continuous')
+        self.assertEqual(changes[('printer', 'mmu', 'telemetry', 'record')], 'on')
 
     def test_a_subscriber_after_recording_was_requested_learns_it_with_its_baseline(self):
         self.assertTrue(self.stream.set_record_mode('toolchange'))     # Nobody subscribed: Moonraker must be asked
@@ -198,15 +198,35 @@ class TestTelemetryStream(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.stream.set_record_mode('sometimes')
 
+    def test_the_default_telemetry_mode_is_off_and_a_configured_one_applies_at_startup(self):
+        from test.hh import profiles
+        self.assertEqual((self.hh.mmu.p.default_telemetry_mode, self.hh.mmu.telemetry_api.stream.record_mode), ('off', 'off'))
+        base = profiles.get('boxturtle')
+        configured = profiles.Profile('boxturtle_telemetry_on', syms={
+            **base.syms, 'CHOICE_DEFAULT_TELEMETRY_MODE_ON': True})
+        with session(configured) as hh:
+            hh.boot(calibrate=True)
+            self.assertEqual(hh.mmu.p.default_telemetry_mode, 'on')
+            self.assertEqual(hh.mmu.telemetry_api.stream.record_mode, 'on')
+
+    def test_default_telemetry_mode_is_hidden_from_the_runtime_parameter_listing(self):
+        self.assertNotIn('default_telemetry_mode', self.hh.mmu.p.format_params())
+        self.assertIn('default_telemetry_mode', self.hh.mmu.p.format_params(include_hidden=True))
+
     def test_mmu_telemetry_command_sets_and_reports_the_mode(self):
         webhooks = self.hh.printer.lookup_object('webhooks')
-        self.hh.run_gcode('MMU_TELEMETRY RECORD=continuous')
-        self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'continuous')
+        self.hh.run_gcode('MMU_TELEMETRY MODE=on')
+        self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'on')
         self.assertEqual([c[0] for c in webhooks.calls if c[0] == 'mmu_telemetry_wake'], ['mmu_telemetry_wake'])
-        self.hh.run_gcode('MMU_TELEMETRY RECORD=off')
+        self.hh.run_gcode('MMU_TELEMETRY MODE=off')
         self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'off')
-        with self.assertRaises(Exception):
-            self.hh.run_gcode('MMU_TELEMETRY RECORD=sometimes')
+        self.hh.run_gcode('MMU_TELEMETRY DEFAULT=toolchange')     # What a restart will use; the current mode is untouched
+        self.assertEqual((self.hh.mmu.p.default_telemetry_mode, self.hh.mmu.telemetry_api.stream.record_mode), ('toolchange', 'off'))
+        self.hh.run_gcode('MMU_TELEMETRY')                        # Reports only
+        self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'off')
+        for bad in ('MODE=sometimes', 'DEFAULT=sometimes'):
+            with self.assertRaises(Exception):
+                self.hh.run_gcode('MMU_TELEMETRY ' + bad)
 
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory

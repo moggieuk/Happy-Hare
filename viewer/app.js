@@ -38,7 +38,7 @@ function renderRecordControl() {
   $('record-row').hidden=!visible;
   if (visible) $('record-mode').value=value;
 }
-$('record-mode').onchange=()=>rpc('printer.gcode.script',{script:`MMU_TELEMETRY RECORD=${$('record-mode').value}`})
+$('record-mode').onchange=()=>rpc('printer.gcode.script',{script:`MMU_TELEMETRY MODE=${$('record-mode').value}`})
   .catch(error=>{ message(error.message,true); renderRecordControl(); });
 function sourceMode() {
   renderRecordControl();

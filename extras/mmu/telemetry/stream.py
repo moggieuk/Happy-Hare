@@ -13,6 +13,7 @@
 #
 import logging
 import uuid
+from ..mmu_constants import TELEMETRY_MODES
 from .capture import TelemetryCapture
 
 MAX_SUBSCRIBERS = 32
@@ -27,7 +28,7 @@ class TelemetryStream:
         self.stream_id = uuid.uuid4().hex
         self.clients = {}
         self.delivery = 0
-        self.record_mode = 'off'  # off, continuous or toolchange (one command, then off); Moonraker persists
+        self.record_mode = 'off'  # off, on or toolchange (one command, then off); Moonraker persists
 
     def reset_capture(self, mmu, capture):
         """Keep connected consumers, but replace a restarted simulator's source."""
@@ -94,7 +95,7 @@ class TelemetryStream:
 
     def set_record_mode(self, mode):
         """Returns True when nobody is subscribed yet, so Moonraker must be asked to subscribe."""
-        if mode not in ('off', 'continuous', 'toolchange'):
+        if mode not in TELEMETRY_MODES:
             raise ValueError('Unknown recording mode: %s' % mode)
         self.record_mode = mode
         if self.capture is not None:

@@ -19,7 +19,7 @@
         <button id="connect-printer" type="button">Connect</button>
         <label>Data source<select id="view-mode"><option value="live">Live status subscription</option><option id="recording-option" value="recording" disabled hidden>Loaded telemetry recording</option><option value="playback">Telemetry stream</option></select></label>
         <div class="playback-row"><button id="save-motion">Save telemetry</button><button id="load-telemetry">Load telemetry</button></div>
-        <label id="record-row" hidden>Record to log<select id="record-mode"><option value="off">Off</option><option value="continuous">Continuous</option><option value="toolchange">Next toolchange only</option></select></label>
+        <label id="record-row" hidden>Record to log<select id="record-mode"><option value="off">Off</option><option value="on">On</option><option value="toolchange">Next toolchange only</option></select></label>
         <input id="telemetry-file" type="file" accept=".jsonl,.ndjson,.json" hidden>
         <p id="recording-name" class="note" hidden></p>
       </section>

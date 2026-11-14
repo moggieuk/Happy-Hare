@@ -150,6 +150,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('log_visual',                    'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_startup_status',            'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_m117_messages',             'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
+        ParamSpec('default_telemetry_mode',        'choice', 'off', section="LOGGING", choices={o: o for o in TELEMETRY_MODES}, hidden=True),
 
         # Cosmetic console stuff
         ParamSpec('console_stat_columns',          'list', ['unload', 'load', 'total'],     section="CONSOLE", hidden=True),

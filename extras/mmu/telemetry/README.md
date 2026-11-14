@@ -55,10 +55,14 @@ thread performs no file I/O and never waits for a browser acknowledgment.
 Recording is controlled entirely from Klipper; there are no recording options in `moonraker.conf`:
 
 ```
-MMU_TELEMETRY RECORD=continuous   # record everything until switched off
-MMU_TELEMETRY RECORD=toolchange   # record the next load, unload or toolchange, then stop
-MMU_TELEMETRY RECORD=off          # stop (no RECORD shows the current mode)
+MMU_TELEMETRY MODE=on           # record everything until switched off
+MMU_TELEMETRY MODE=toolchange    # record the next load, unload or toolchange, then stop
+MMU_TELEMETRY MODE=off          # stop
 ```
+
+`default_telemetry_mode` (`off`, `on` or `toolchange`; menuconfig Logging, `mmu.cfg`, hidden from
+`MMU_TEST_CONFIG`) is the mode after a restart. `MMU_TELEMETRY` with no parameters reports the
+current mode and the default; `MMU_TELEMETRY DEFAULT=...` changes the default until the next restart.
 
 Klipper keeps the mode (it is not saved across a restart) and publishes it in the stream as
 `printer.mmu.telemetry.record`. A mode change commits the settled state, then emits a `record_mode`
@@ -68,11 +72,11 @@ is requested reads `mmu/telemetry/status` at readiness and resumes. Moonraker pe
 and the viewer only reads them.
 
 Files live under Moonraker's data directory as `logs/mmu-telemetry.jsonl` with up to five backups
-(`.1` to `.5`). Every capture is one slot: `continuous` starts a new file (rotating the previous
+(`.1` to `.5`). Every capture is one slot: `on` starts a new file (rotating the previous
 one), and each `toolchange` capture is its own file, starting at the `toolchange` record with the
-checkpoint in force at that point and ending at `toolchange_end`. Switching from `continuous` to
-`toolchange` closes the continuous file; after the single toolchange the mode is `off`. Arming
-`toolchange` while a command is already running waits for the next command. `continuous` starts at a
+checkpoint in force at that point and ending at `toolchange_end`. Switching from `on` to
+`toolchange` closes that file; after the single toolchange the mode is `off`. Arming
+`toolchange` while a command is already running waits for the next command. `on` starts at a
 checkpoint of the present state, which may fall inside a move. Size rotation (`max_log_size`
 and `log_backups`, optional in `[mmu_telemetry]`) defers until an in-flight movement pair has completed.
 A single record/checkpoint or movement pair can exceed the size threshold. Load a file in the viewer.
