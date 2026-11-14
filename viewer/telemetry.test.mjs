@@ -82,6 +82,10 @@ test('a grip change that settles after a selector move is shown as part of that 
  assert.equal(step.settled_state.mmu_gripped,true);
  assert.equal(interpolate(step,1).mmu_gripped,true);            // The step ends gripped
  assert.equal(interpolate(step,0).mmu_gripped,false);           // Reversing it releases again
+ assert.equal(interpolate(step,.3).mmu_gripped,false);          // The gears change part-way through the step
+ assert.equal(interpolate(step,.5).mmu_gripped,true);
+ assert.equal(duration(step),650);                              // Held long enough to be seen when playing on
+ assert.equal(duration({...step,settled_state:undefined,state:step.before}),0);   // No grip change, no hold
 });
 test('a selector pair inside a filament move stays bookkeeping, and an outcome without a start is tolerated',()=>{
  const r=stream();
