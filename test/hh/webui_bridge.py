@@ -27,6 +27,9 @@ import http.server
 import json
 import queue
 import pathlib
+import select
+import shutil
+import socket
 import tempfile
 import re
 
@@ -43,6 +46,10 @@ RPC_SERVER_ERROR = -32000
 STATUS_PERIOD = 0.5                 # seconds between notify_status_update pushes
 REQUEST_TIMEOUT = 20.0              # an HTTP caller waits this long for the console thread
 GCODE_STORE_LINES = 1000
+MAX_MESSAGE_BYTES = 8_000_000      # one WebSocket message; a configuration upload is the largest legitimate one
+MAX_BODY_BYTES = 8_000_000         # an HTTP request body
+SEND_TIMEOUT = 5.0                 # a client that stops reading is dropped after this
+LOOPBACK_HOSTS = {'localhost', '127.0.0.1', '::1'}
 
 
 class RpcError(Exception):
@@ -70,7 +77,20 @@ class WebSocketConnection:
                 pass
             self.open = False
 
+    def _send_all(self, data):
+        view, deadline = memoryview(data), time.monotonic() + SEND_TIMEOUT
+        while view:
+            _, writable, _ = select.select([], [self.sock], [], max(0., deadline - time.monotonic()))
+            if not writable:
+                raise OSError('client stopped reading')
+            try:
+                view = view[self.sock.send(view, socket.MSG_DONTWAIT):]
+            except BlockingIOError:
+                pass
+
     def _send(self, opcode, payload):
+        if not self.open:
+            return
         header = bytearray([0x80 | opcode])
         n = len(payload)
         if n < 126:
@@ -81,7 +101,7 @@ class WebSocketConnection:
             header += bytes([127]) + struct.pack('>Q', n)
         with self.lock:
             try:
-                self.sock.sendall(bytes(header) + payload)
+                self._send_all(bytes(header) + payload)
             except OSError:
                 self.open = False
 
@@ -105,10 +125,13 @@ class WebSocketConnection:
                 n = struct.unpack('>H', self._read(2))[0]
             elif n == 127:
                 n = struct.unpack('>Q', self._read(8))[0]
-            mask = self._read(4) if b1 & 0x80 else None
+            if not b1 & 0x80:
+                raise ConnectionError('client frames must be masked')
+            if len(message) + n > MAX_MESSAGE_BYTES:
+                raise ConnectionError('message too large')
+            mask = self._read(4)
             payload = self._read(n)
-            if mask:
-                payload = bytes(c ^ mask[i % 4] for i, c in enumerate(payload))
+            payload = bytes(c ^ mask[i % 4] for i, c in enumerate(payload))
             if opcode == 0x8:
                 return
             if opcode == 0x9:
@@ -163,6 +186,7 @@ class WebUiBridge:
         self.restart_profile = None
         self.profile_name = ""
         self.uploads = tempfile.TemporaryDirectory(prefix="hh-viewer-")
+        self._upload_root = None                  # The configuration directory the running session was booted from, if uploaded
 
     # -- lifecycle -------------------------------------------------------------
     def start(self):
@@ -175,24 +199,37 @@ class WebUiBridge:
                 pass
 
             def do_OPTIONS(self):
+                if not bridge._trusted(self):
+                    return bridge._refuse(self)
                 self.send_response(204)
                 self._cors()
                 self.send_header('Content-Length', '0')
                 self.end_headers()
 
             def do_GET(self):
+                if not bridge._trusted(self):
+                    return bridge._refuse(self)
                 if self.headers.get('Upgrade', '').lower() == 'websocket':
                     bridge._serve_websocket(self)
                 else:
                     bridge._serve_http(self, None)
 
             def do_POST(self):
-                n = int(self.headers.get('Content-Length') or 0)
+                if not bridge._trusted(self):
+                    return bridge._refuse(self)
+                try:
+                    n = int(self.headers.get('Content-Length') or 0)
+                except ValueError:
+                    n = -1
+                if not 0 <= n <= MAX_BODY_BYTES:
+                    return bridge._refuse(self, 413 if n > 0 else 400, 'Bad request body')
                 bridge._serve_http(self, self.rfile.read(n) if n else b'')
 
             def _cors(self):
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Access-Control-Allow-Headers', '*')
+                # Only a page the bridge trusts (see _trusted) ever gets this far, so echo its origin.
+                self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin') or '*')
+                self.send_header('Vary', 'Origin')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type')
                 self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
 
         try:
@@ -217,8 +254,35 @@ class WebUiBridge:
             self._server = None
 
     # -- socket side (any thread) ----------------------------------------------
+    def _trusted(self, handler):
+        """A request is from this machine's own pages: web pages elsewhere must not be able to drive the console.
+        Cross-site requests are caught by Origin, DNS rebinding by Host. Serving beyond localhost
+        (--serve-host) is a deliberate choice, so then only the origin must match the host asked for."""
+        host = urllib.parse.urlparse('//' + handler.headers.get('Host', '')).hostname
+        local = self.host in LOOPBACK_HOSTS
+        if local and host not in LOOPBACK_HOSTS:
+            return False
+        origin = handler.headers.get('Origin')
+        if origin is None:
+            return True
+        origin_host = urllib.parse.urlparse(origin).hostname
+        return origin_host in LOOPBACK_HOSTS or origin_host == host
+
+    @staticmethod
+    def _refuse(handler, status=403, text='Forbidden'):
+        data = text.encode()
+        handler.send_response(status)
+        handler.send_header('Content-Type', 'text/plain')
+        handler.send_header('Content-Length', str(len(data)))
+        handler.send_header('Connection', 'close')
+        handler.end_headers()
+        handler.wfile.write(data)
+        handler.close_connection = True
+
     def _serve_websocket(self, handler):
         key = handler.headers.get('Sec-WebSocket-Key', '')
+        if not key:
+            return self._refuse(handler, 400, 'Missing WebSocket key')
         accept = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
         handler.send_response(101, 'Switching Protocols')
         handler.send_header('Upgrade', 'websocket')
@@ -247,9 +311,11 @@ class WebUiBridge:
         params = {k: v[-1] for k, v in urllib.parse.parse_qs(parsed.query).items()}
         if body:
             try:
-                params.update(json.loads(body))
+                sent = json.loads(body)
             except ValueError:
-                pass
+                sent = None
+            if isinstance(sent, dict):
+                params.update(sent)
         # The standalone viewer (repo-root viewer/): index plus its flat modules and stylesheet. The page
         # uses relative URLs, so the directory form of the address is required.
         if parsed.path == '/sim/viewer':
@@ -600,33 +666,47 @@ class WebUiBridge:
         from test.hh.profiles import CONSOLE_PROFILES
         if self.restart_profile is None:
             raise RpcError('Profile restart requires the interactive console')
-        profile = params.get('profile')
-        if 'files' in params:
-            files = params['files']
-            if not isinstance(files, list) or not files or len(files) > 500:
-                raise RpcError('Supply a configuration directory with at most 500 files')
-            root = pathlib.Path(tempfile.mkdtemp(dir=self.uploads.name))
-            total = 0
-            for item in files:
-                name, text = item['name'], item['text']
-                path = pathlib.PurePosixPath(name)
-                if path.is_absolute() or '..' in path.parts or not name.endswith('.cfg'):
-                    raise RpcError('Supply relative .cfg filenames')
-                total += len(text.encode())
-                if total > 5_000_000:
-                    raise RpcError('Configuration upload exceeds 5 MB')
-                for inc in re.findall(r'(?im)^\s*\[include\s+([^]]+)\]', text):
-                    if pathlib.PurePosixPath(inc).is_absolute() or '..' in pathlib.PurePosixPath(inc).parts:
-                        raise RpcError('Includes must stay within the uploaded configuration')
-                target = root / path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(text)
-            roots = list(root.rglob('printer.cfg'))
-            if len(roots) != 1:
-                raise RpcError('Upload a directory containing one printer.cfg and its mmu directory')
-            profile = str(roots[0].parent)
-        elif profile not in {p.name for p in CONSOLE_PROFILES}:
-            raise RpcError('Choose an available simulator profile')
-        self.restart_profile(profile)
+        profile, root = params.get('profile'), None
+        try:
+            if 'files' in params:
+                root = self._store_upload(params['files'])
+                profile = str(next(root.rglob('printer.cfg')).parent)
+            elif profile not in {p.name for p in CONSOLE_PROFILES}:
+                raise RpcError('Choose an available simulator profile')
+            self.restart_profile(profile)
+        except BaseException:
+            if root is not None:
+                shutil.rmtree(root, ignore_errors=True)
+            raise
+        # The previous upload is only needed until its replacement has booted
+        if self._upload_root is not None:
+            shutil.rmtree(self._upload_root, ignore_errors=True)
+        self._upload_root = root
         self.notify('notify_klippy_ready', [])  # As after a Klipper restart: live views resubscribe to the new session
         return {'profile': self.profile_name}
+
+    def _store_upload(self, files):
+        """Write an uploaded configuration directory to temporary storage and return its root."""
+        if not isinstance(files, list) or not files or len(files) > 500:
+            raise RpcError('Supply a configuration directory with at most 500 files')
+        root = pathlib.Path(tempfile.mkdtemp(dir=self.uploads.name))
+        total = 0
+        for item in files:
+            if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not isinstance(item.get('text'), str):
+                raise RpcError('Each uploaded file needs a name and text')
+            name, text = item['name'], item['text']
+            path = pathlib.PurePosixPath(name)
+            if path.is_absolute() or '..' in path.parts or not name.endswith('.cfg'):
+                raise RpcError('Supply relative .cfg filenames')
+            total += len(text.encode())
+            if total > 5_000_000:
+                raise RpcError('Configuration upload exceeds 5 MB')
+            for inc in re.findall(r'(?im)^\s*\[include\s+([^]]+)\]', text):
+                if pathlib.PurePosixPath(inc).is_absolute() or '..' in pathlib.PurePosixPath(inc).parts:
+                    raise RpcError('Includes must stay within the uploaded configuration')
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+        if len(list(root.rglob('printer.cfg'))) != 1:
+            raise RpcError('Upload a directory containing one printer.cfg and its mmu directory')
+        return root
