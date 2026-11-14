@@ -8,7 +8,7 @@ import {homingHold} from './playback.js';
 // Exercise the actual frame loop without SVG/layout cost or a browser clock.
 const app=readFileSync(new URL('./app.js',import.meta.url),'utf8');
 const invalidation=app.slice(app.indexOf('let sceneDirty='),app.indexOf('function renderScene()'));
-const animation=app.slice(app.indexOf('function animate()'),app.indexOf('const toolheadPanel=createToolheadPanel'));
+const animation=app.slice(app.indexOf('function drawFrame()'),app.indexOf('const toolheadPanel=createToolheadPanel'));
 function harness() {
   const state={espoolers:{0:{direction:'assist',output_power:1}}};
   const event={seq:1,kind:'movement',source:'mmu_gcode',state,before:state};
@@ -72,4 +72,14 @@ test('a completed MMU move starts the next animation on the next frame without a
  assert.equal(c.played,1);assert.equal(c.playing,null);
  c.now=1016;vm.runInContext('animate();',c);
  assert.equal(c.playing.event.seq,2);assert.equal(c.playing.start,1016);
+});
+
+test('a frame that throws is reported once and the loop keeps running',()=>{
+  const c=harness();const messages=[];
+  c.message=text=>messages.push(text);
+  c.renderScene=()=>{throw Error('bad value');};
+  const log=console.error;console.error=()=>{};
+  try { vm.runInContext('draw(); animate(); draw(); animate();',c); } finally { console.error=log; }
+  assert.equal(c.scheduled,2);                 // Both frames still asked for the next one
+  assert.deepEqual(messages,['Drawing failed: bad value']);
 });
