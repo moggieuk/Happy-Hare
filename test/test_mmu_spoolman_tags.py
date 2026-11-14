@@ -442,6 +442,18 @@ class TestMigrateOnResolve(TagTestCase):
         self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID])
         self.assertEqual(self.hh.mmu_server.legacy_only_uid_count, 0)
 
+    def test_migration_is_reported_on_the_console(self):
+        """Shown even for a quiet lookup: it changes the user's Spoolman data."""
+        self.lookup(LEGACY_UID, silent=True)
+        self.assertIn('NFC: tag %s migrated to a native Spoolman tag on spool 1' % LEGACY_UID,
+                      ' '.join(self.hh.gcode('MMU_LOG')))
+
+    def test_no_message_when_already_native(self):
+        self.lookup(LEGACY_UID)
+        before = len(self.hh.gcode('MMU_LOG'))
+        self.lookup(LEGACY_UID)
+        self.assertFalse([m for m in self.hh.gcode('MMU_LOG')[before:] if 'migrated' in m])
+
     def test_shared_reader_legacy_tag_is_linked(self):
         self.lookup(LEGACY_UID, gate=None)
         self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID])

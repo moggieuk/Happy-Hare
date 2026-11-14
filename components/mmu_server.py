@@ -1445,7 +1445,8 @@ class MmuServer:
         if ok:
             self.native_uids.add(uid_norm)
             self.legacy_only_uid_count = max(0, self.legacy_only_uid_count - 1)
-            logging.info(f"NFC: tag {uid_norm} linked natively to spool {spool_id}")
+            # Always shown (lookups are usually quiet): a one-off change to the user's Spoolman data
+            await self._log_n_send(f"NFC: tag {uid_norm} migrated to a native Spoolman tag on spool {spool_id}")
         else:
             logging.warning(f"NFC: couldn't link tag {uid_norm} natively to spool {spool_id}: {conflict}")
 
