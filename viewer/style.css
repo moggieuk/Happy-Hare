@@ -366,6 +366,8 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 
  .left-column { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .left-column > aside { width: 100%; box-sizing: border-box; }
+#connection-panel .playback-row { display: flex; gap: 8px; margin-bottom: 10px; }
+#connection-panel .playback-row button { flex: 1; margin: 0; }
 #sidebar-playback .playback-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 #sidebar-playback button { margin: 0; }
 #sidebar-playback button[aria-label] { width: 44px; height: 38px; padding: 7px; }

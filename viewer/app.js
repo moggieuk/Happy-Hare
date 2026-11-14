@@ -37,6 +37,7 @@ function sourceMode() {
   $('sidebar-playback').hidden=viewMode==='live';
   $('trace').closest('.card').hidden=viewMode==='live';
   $('recording-bar').hidden = !offline;
+  $('save-motion').disabled = viewMode==='live';
   document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #runtime-parameters input, #runtime-parameters select, #runtime-parameters button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
     .forEach(node=>node.disabled=offline);
   $('live').dataset.tooltip = offline ? 'End of recording' : 'End, follow stream';
