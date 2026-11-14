@@ -910,13 +910,13 @@ The test files, grouped by what they're about:
 | `test_mmu_webui_bridge.py` | 16 | the Moonraker-compatible web API the console serves: handshake, status, gcode, the pause dialog reaching a UI, and refusing cross-site pages, oversized bodies and unmasked frames |
 | `test_mmu_live_viewer.py` | 18 | the viewer's hosting by the console: source capture, parameter editor, profile restart and upload |
 | `test_mmu_live_status.py` | 14 | the status objects the viewer subscribes to |
-| `test_mmu_movement_telemetry.py` | 18 | movement start/outcome pairs and the replay state around them |
+| `test_mmu_movement_telemetry.py` | 20 | movement start/outcome pairs, toolchange start/end markers, and the replay state around them |
 | `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |
 | `test_mmu_selector_telemetry.py` | 6 | selector motion, servo and homing records |
 | `test_mmu_telemetry_capture.py` | 27 | replay state, state deltas, the rolling baseline, the settle read after the last event |
-| `test_mmu_telemetry_stream.py` | 10 | acknowledged delivery, resend after a lost ack, replacing a failed capture |
-| `test_mmu_telemetry_api.py` | 10 | the Klipper webhook adapter and the Moonraker component together |
-| `test_mmu_telemetry_store.py` | 4 | Moonraker-side history and recording |
+| `test_mmu_telemetry_stream.py` | 19 | acknowledged delivery, folding acknowledged records, resend after a lost ack, replacing a failed capture, the recording mode |
+| `test_mmu_telemetry_api.py` | 13 | the Klipper webhook adapter and the Moonraker component together, including Klipper-driven recording |
+| `test_mmu_telemetry_store.py` | 9 | Moonraker-side history, continuous and one-toolchange recording |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |
 
 Counts as the picker reports them.
