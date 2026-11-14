@@ -86,7 +86,6 @@ MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
 MMU_RFID_FIELD   = 'rfid_tag'      # NFC/RFID tag UID registered against a spool
 MIN_SM_VER       = (0, 18, 1)
-MIN_SM_TAG_VER   = (0, 27, 0)  # Native tag links; older versions use MMU_RFID_FIELD
 
 PRINTER_NAME_HEADER = 'X-Printer-Name'  # sent with every request to the configured Spoolman server
 
@@ -243,11 +242,25 @@ class MmuServer:
         # Get current printer hostname
         self.printer_hostname = self.printer_info["hostname"]
         self.spoolman_has_extras = False
-        self.spoolman_has_tags = False       # Spoolman >= MIN_SM_TAG_VER
+        self.spoolman_has_tags = False       # Native tag API found by _probe_tag_api (Spoolman 0.27+)
         self.spoolman_has_rfid_field = False # MMU_RFID_FIELD exists
         self.legacy_only_uid_count = 0       # UIDs not yet migrated to native tags
         self.native_uids = set()             # Cached UIDs that are natively linked
         asyncio.create_task(self._init_spoolman(retry=3)) # Spoolman may start up after us so retry a few times
+
+
+    async def _probe_tag_api(self) -> bool | None:
+        '''
+        Native tag API present? Probed rather than version-checked so dev builds and
+        forks are detected. None if it couldn't be determined (probed again next init)
+        '''
+        resp = await self.http_client.get(url=f"{self.spoolman.spoolman_url}/v1/tag/reader")
+        if resp.status_code in (404, 405):
+            return False
+        if resp.has_error():
+            logging.warning(f"Spoolman tag API probe failed, using extra-field tags for now: {self.spoolman._get_response_error(resp)}")
+            return None
+        return True
 
 
     async def _init_spoolman(self, retry=1) -> bool:
@@ -273,7 +286,7 @@ class MmuServer:
                     extras = extras and await self._add_extra_field("spool", field_name="Printer Name", field_key=MMU_NAME_FIELD, field_type="text", default_value="")
                 if MMU_GATE_FIELD not in fields:
                     extras = extras and await self._add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=-1)
-                native_tags = self.spoolman_version >= MIN_SM_TAG_VER
+                native_tags = await self._probe_tag_api() is True
 
                 # RFID field is required before native tags; afterwards only kept if it already exists
                 self.spoolman_has_rfid_field = MMU_RFID_FIELD in fields
@@ -496,7 +509,7 @@ class MmuServer:
 
 
     def _get_native_uid_list(self, spool_info) -> list[str]:
-        '''UIDs in spool 'tags' ([] before Spoolman 0.27)'''
+        '''UIDs in spool 'tags' ([] without the native tag API)'''
         uids = []
         for tag in (spool_info or {}).get('tags') or []:
             uid = self._normalise_uid((tag or {}).get('uid', ''))
@@ -636,7 +649,7 @@ class MmuServer:
         if not await self._check_init_spoolman(): return False
         if not self.spoolman_has_tags:
             ver = '.'.join(map(str, self.spoolman_version or ()))
-            await self._log_n_send(f"NFC: tag migration needs Spoolman >= {'.'.join(map(str, MIN_SM_TAG_VER))} (found {ver or 'unknown'})", error=True, silent=silent)
+            await self._log_n_send(f"NFC: tag migration needs a Spoolman with native tag support, 0.27 or later (found {ver or 'unknown'})", error=True, silent=silent)
             return False
         direction = str(direction).strip().lower()
         if direction not in ('native', 'extra'):
@@ -1266,7 +1279,7 @@ class MmuServer:
 
 
     async def _link_resolved_tag(self, spool_id, uid_norm, tag_format=None):
-        '''Resolved from the extra field on >= 0.27: link natively. Failure is not fatal'''
+        '''Resolved from the extra field with native tags: link natively. Failure is not fatal'''
         ok, conflict = await self._link_native_tag(spool_id, uid_norm, tag_format)
         if ok:
             self.native_uids.add(uid_norm)
@@ -1321,7 +1334,7 @@ class MmuServer:
                 return False
             tag_format = metadata.get("tag_format") if isinstance(metadata, dict) else None
 
-            # Spoolman >= 0.27: ask Spoolman first. Anything but a match falls through
+            # Native tag API: ask Spoolman first. Anything but a match falls through
             # to the cached lookup below
             spool_id = None
             native_hit = False
@@ -1386,7 +1399,7 @@ class MmuServer:
                     "NFC lookup: uid=%s cache refresh result=%s" %
                     (uid_norm, spool_id if spool_id is not None else "not found"))
 
-            # Resolved from the extra field on >= 0.27: migrate this UID to a native tag
+            # Resolved from the extra field with native tags: migrate this UID
             if spool_id is not None and not native_hit and self.spoolman_has_tags:
                 await self._link_resolved_tag(spool_id, uid_norm, tag_format)
 

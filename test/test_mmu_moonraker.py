@@ -126,7 +126,7 @@ class TestInitialisation(MoonrakerTestCase):
             hh.close()
 
     def test_native_tag_api_off_below_0_27(self):
-        """Spoolman < MIN_SM_TAG_VER (0,27,0) has no tag API - legacy extra-field path."""
+        """Spoolman before 0.27 has no tag API (probe gets 404) - legacy extra-field path."""
         for version in ('0.18.1', '0.26.9'):
             with self.subTest(version=version):
                 hh = harness(spoolman_version=version)

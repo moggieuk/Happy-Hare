@@ -33,7 +33,7 @@ FIELD_GATE = 'mmu_gate_map'
 FIELD_RFID = 'rfid_tag'
 
 SPOOLMAN_VERSION = '0.18.1'      # >= MIN_SM_VER (0,18,1) at mmu_server.py:86
-TAG_API_VERSION = '0.27.0'       # MIN_SM_TAG_VER - first Spoolman with native tag links
+TAG_API_VERSION = '0.27.0'       # First Spoolman release with native tag links
 
 # The two hardcoded donkie.github.io SpoolmanDB URLs (mmu_server.py:95-96) have no
 # config flag to disable them, so they MUST be intercepted or tests hit the real
@@ -119,9 +119,12 @@ class InMemorySpoolman:
         self.tag_links = {}
         self.tag_formats = {}
         self.scans = []             # bodies of POST /v1/tag/scan, in order
+        self.tag_api = None         # None: follow version; True/False: force (dev builds, forks)
 
     @property
     def has_tag_api(self):
+        if self.tag_api is not None:
+            return self.tag_api
         try:
             return tuple(int(n) for n in self.version.split('.')) >= (0, 27, 0)
         except ValueError:
@@ -261,6 +264,8 @@ class InMemorySpoolman:
             return Response(200, {'version': self.version})
         if len(parts) >= 3 and parts[1] == 'field':
             return self._field(method, parts, body)
+        if self.has_tag_api and parts[1:3] == ['tag', 'reader'] and method == 'GET':
+            return Response(200, [])
         if self.has_tag_api and parts[1:3] == ['tag', 'scan'] and method == 'POST':
             return self._tag_scan(body or {})
         if self.has_tag_api and len(parts) >= 4 and parts[1] in ('spool', 'filament') and parts[3] == 'tag':

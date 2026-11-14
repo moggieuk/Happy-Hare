@@ -9,7 +9,7 @@ import logging
 import unittest
 
 from test.hh import spoolman
-from test.hh.moonraker import harness
+from test.hh.moonraker import SPOOLMAN_URL, harness
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -27,7 +27,11 @@ TAG_METADATA = {
 }
 
 
+PROBE = ('GET', SPOOLMAN_URL + '/v1/tag/reader')
+
+
 class TagTestCase(unittest.TestCase):
+    PROBE_ONLY = [PROBE]
     VERSION = spoolman.TAG_API_VERSION
     SPOOLS = (dict(uid=LEGACY_UID, material='PLA'),
               dict(material='ABS', vendor='Polymaker'))
@@ -54,20 +58,64 @@ class TagTestCase(unittest.TestCase):
 
 
 class TestLegacySpoolmanUntouched(TagTestCase):
-    """Below 0.27 the tag API doesn't exist - Happy Hare must not call it."""
+    """Below 0.27 the tag API doesn't exist - only the startup probe may touch /tag."""
     VERSION = '0.26.9'
 
     def test_no_tag_endpoint_is_called(self):
         self.lookup(LEGACY_UID)
         self.hh.call_remote('spoolman_set_spool_uid', spool_id=2, uid=NEW_UID, silent=True)
         self.lookup(NEW_UID)
-        self.assertEqual(self.tag_requests(), [])
+        self.assertEqual(self.tag_requests(), self.PROBE_ONLY)
         self.assertEqual(self.db.spool_uid(2), NEW_UID)
         self.assertEqual(self.last_gcode(), 'MMU_GATE_MAP NEXT_SPOOLID=2 QUIET=1')
 
     def test_migrate_is_refused(self):
         self.assertFalse(self.hh.call_remote('spoolman_migrate_tags', direction='native', silent=True))
-        self.assertEqual(self.tag_requests(), [])
+        self.assertEqual(self.tag_requests(), self.PROBE_ONLY)
+
+
+class TestCapabilityProbe(TagTestCase):
+    """Native tags are detected by probing GET /v1/tag/reader, not by version number."""
+
+    def init(self, version, tag_api=None, fail=None):
+        hh = harness(spools=list(self.SPOOLS), spoolman_version=version)
+        hh.db.tag_api = tag_api
+        if fail is not None:
+            real = hh.db.handle
+            def handle(method, url, body=None):
+                if url.endswith('/v1/tag/reader'):
+                    hh.db.requests.append((method, url, body))
+                    return spoolman.Response(fail, error='injected')
+                return real(method, url, body)
+            hh.db.handle = handle
+        hh.component_init()
+        self.addCleanup(hh.close)
+        return hh
+
+    def test_probe_is_sent(self):
+        self.assertIn(PROBE, self.tag_requests())
+
+    def test_dev_build_with_old_number_is_native(self):
+        """A fork or dev build reporting an older version but serving the API."""
+        self.assertTrue(self.init('0.26.0', tag_api=True).mmu_server.spoolman_has_tags)
+
+    def test_new_number_without_api_is_legacy(self):
+        hh = self.init('0.27.0', tag_api=False)
+        self.assertFalse(hh.mmu_server.spoolman_has_tags)
+        self.assertTrue(hh.mmu_server.spoolman_has_extras, 'integration still on')
+
+    def test_probe_error_is_legacy_and_retried(self):
+        hh = self.init('0.27.0', fail=500)
+        self.assertFalse(hh.mmu_server.spoolman_has_tags)
+        self.assertTrue(hh.mmu_server.spoolman_has_extras)
+        hh.db.handle = spoolman.InMemorySpoolman.handle.__get__(hh.db)   # server recovers
+        hh.mmu_server.spoolman_has_extras = False                       # force a re-init
+        hh.call_remote('spoolman_refresh', silent=True)
+        self.assertTrue(hh.mmu_server.spoolman_has_tags, 'probed again on the next init')
+
+    def test_old_spoolman_without_extras_is_not_probed(self):
+        hh = self.init('0.17.0')
+        self.assertEqual([u for _, u, _ in hh.db.requests if '/tag' in u], [])
 
 
 class TestNoAutomaticMigration(TagTestCase):
@@ -418,7 +466,7 @@ class TestMigrateOnResolve(TagTestCase):
         try:
             hh.component_init()
             hh.call_remote('spoolman_get_spool_by_uid', uid=LEGACY_UID, gate=None, silent=True)
-            self.assertEqual([u for _, u, _ in hh.db.requests if '/tag' in u], [])
+            self.assertEqual([(m, u) for m, u, _ in hh.db.requests if '/tag' in u], self.PROBE_ONLY)
         finally:
             hh.close()
 
