@@ -69,8 +69,10 @@ let socket, reconnectTimer, connectionGeneration=0,
   cursor = 0,
   setup = null,
   busy = false;
-// Failures go to the console log, which already shows Happy Hare's own output.
-const fail = text => consoleLine(text, 'error');
+function message(text, error = false) {
+  $("message").textContent = text;
+  $("message").classList.toggle("error", error);
+}
 function isSimulator() { return setup?.connection_kind === 'simulator'; }
 function rpc(method, params = {}) {
   return new Promise((resolve, reject) => {
@@ -88,7 +90,8 @@ async function action(fn) {
   try {
     await fn();
   } catch (e) {
-    if (!consoleEndsWith(e.message)) fail(e.message);
+    message(e.message, true);
+    if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error');
   } finally {
     busy = false;
     document
@@ -110,7 +113,7 @@ function connect() {
     sourceMode();
     if (offline) return;
     $("connection").textContent = "Connected · identifying source…";
-    initializeConnection().catch((e) => fail(e.message));
+    initializeConnection().catch((e) => message(e.message, true));
   };
   socket.onmessage = (e) => {
     if (generation!==connectionGeneration) return;
@@ -133,13 +136,14 @@ function connect() {
         return;
       }
       liveState=new LiveState(); statusSensors=null; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
-      if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>fail(e.message));
+      if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
       else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
     } else if (data.method === "notify_gcode_command") {
       consoleLine(data.params[0], "command");
     } else if (data.method === "notify_gcode_response") {
       const line = data.params[0];
       consoleLine(line);
+      if (line.startsWith("!!") || line.startsWith("Unknown command:")) message(line, true);
     }
   };
   socket.onclose = () => {
@@ -164,7 +168,7 @@ async function initializeConnection() {
   if (probe.connection_kind==='live_machine') {
     setup=probe;
     $('connection').textContent='Connected to printer'; sourceMode();
-    await refreshLiveEditor().catch(error=>fail(error.message));
+    await refreshLiveEditor().catch(error=>message(error.message,true));
   } else await refresh(probe);
   if (generation!==connectionGeneration || offline) return;
   if (!modeChosen && isSimulator()) await changeView('playback');
@@ -207,7 +211,7 @@ function acceptLive(delta,time) {
   if (isSimulator() && previous?.unit!==next.unit) {
     const unit=next.units.indexOf(next.unit);
     if (unit>=0 && $('unit').value!==String(unit)) {
-      $('unit').value=String(unit); refresh().catch(error=>fail(error.message));
+      $('unit').value=String(unit); refresh().catch(error=>message(error.message,true));
     }
   }
   live=true; paused=false; playing=null; session='subscription';
@@ -232,7 +236,7 @@ async function changeView(mode) {
 }
 $('view-mode').onchange=()=>{
   modeChosen=true;
-  changeView($('view-mode').value).catch(e=>fail(e.message));
+  changeView($('view-mode').value).catch(e=>message(e.message,true));
 };
 // A printer has no simulator RPC: the editor lists come from configfile, mmu.config_changes and the
 // macro objects, and edits are sent as G-code like the command console does.
@@ -277,7 +281,7 @@ async function refresh(probed) {
     $("profiles").value = setup.profile;
   $("profile").textContent = "Running: " + setup.profile;
   filter();
-  await refreshToolheads().catch(error=>fail(error.message));
+  await refreshToolheads().catch(error=>message(error.message,true));
 }
 function filter() {
   const previous = $("parameter").value,
@@ -352,7 +356,7 @@ async function selectDimension(event) {
       const name=target.dataset.macro.trim().split(/\s+/)[0].toUpperCase();
       const groups=[...menu.querySelectorAll('optgroup')];
       const group=[name+'_VARS',name].map(candidate=>groups.find(item=>item.dataset.macro?.toUpperCase()===candidate)).find(Boolean);
-      if (!group) { fail('This macro has no editable variables in the current configuration.'); return; }
+      if (!group) { message('This macro has no editable variables in the current configuration.',true); return; }
       menu.scrollIntoView({block:'nearest'});
       menu.focus();
       menu.style.setProperty('--macro-picker-padding','400px');
@@ -366,7 +370,7 @@ async function selectDimension(event) {
     filter();
     const id = target.dataset.parameter;
     if (![...$('parameter').options].some(option => option.value === id)) {
-      fail('This item has no editable parameter in the current configuration.');
+      message('This item has no editable parameter in the current configuration.', true);
       return;
     }
     $('parameter').value = id;
@@ -374,7 +378,8 @@ async function selectDimension(event) {
     $('value').focus();
     $('value').select();
     $('parameter').scrollIntoView({block: 'nearest'});
-  } catch (error) { fail(error.message); }
+    message('Parameter selected. Apply to update the live configuration.');
+  } catch (error) { message(error.message, true); }
 }
 $('scene').addEventListener('click', selectDimension);
 $('scene').addEventListener('keydown', selectDimension);
@@ -389,7 +394,7 @@ $("clear-filter").onclick = () => {
   $("filter").focus();
 };
 $("parameter").onchange = value;
-$("unit").onchange = () => refresh().catch((e) => fail(e.message));
+$("unit").onchange = () => refresh().catch((e) => message(e.message, true));
 $("apply").onclick = () =>
   action(async () => {
     const p = selectedParameter();
@@ -398,6 +403,7 @@ $("apply").onclick = () =>
       : parameterCommand(Number($("unit").value), p.name, $("value").value);
     await rpc("printer.gcode.script", { script });
     await refresh();
+    message("Runtime parameter applied.");
   });
 const commandHistory = new CommandHistory();
 $("command").addEventListener('keydown', event => {
@@ -420,14 +426,18 @@ $("command-form").onsubmit = (event) => {
       commandHistory.add(script);
       $("command").value = "";
     }
+    message("Command running…");
     await sent;
+    message("Command finished. Inspect the trace and console output.");
   });
 };
 $("restart").onclick = () =>
   action(async () => {
+    message("Restarting simulator…");
     await sim.restart({ profile: $("profiles").value });
     $("unit").value = "0";
     await refresh();
+    message("Fresh profile session started.");
   });
 $("files").onchange = () =>
   action(async () => {
@@ -439,9 +449,11 @@ $("files").onchange = () =>
           text: await f.text(),
         })),
     );
+    message("Loading uploaded profile…");
     await sim.restart({ files });
     $("unit").value = "0";
     await refresh();
+    message("Uploaded profile started.");
   });
 // Temporary visual-debug clock: telemetry and simulator execution keep their original timing.
 let animationRate=1, animationTime=0, animationRealTime=performance.now();
@@ -1226,6 +1238,7 @@ function renderScene() {
       el.dataset.tooltip = offline ? 'Recorded sensor state' : atLatest ? `${enabled ? 'Disable' : 'Enable'} ${name}` : 'Jump to live to change sensors';
       el.onclick = () => action(async () => {
         await sim.sensor(name, !enabled);
+        message(`Sensor ${name} ${enabled ? 'disabled' : 'enabled'}.`);
       });
       return el;
     }),
@@ -1393,14 +1406,14 @@ $("show-dimensions").onchange = () => {
 $("nozzle-diameter").onchange = () => draw();
 function downloadTelemetry() {
   const records = sourceRecords;
-  if (!records.length) return fail('No telemetry captured yet');
+  if (!records.length) return message('No telemetry captured yet', true);
   const text = records.map(r=>JSON.stringify(r)).join('\n')+'\n';
   const url = URL.createObjectURL(new Blob([text],{type:'application/x-ndjson'}));
   const link = document.createElement('a');
   link.href=url; link.download='happy-hare-motion.jsonl'; link.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-$('close-recording').onclick = () => changeView(returnMode).catch(e => fail(e.message));
+$('close-recording').onclick = () => changeView(returnMode).then(() => message('Returned to the live source.'), e => message(e.message, true));
 $('save-motion').onclick = downloadTelemetry;
 $('load-telemetry').onclick = () => $('telemetry-file').click();
 $('telemetry-file').onchange = async () => {
@@ -1422,8 +1435,8 @@ $('telemetry-file').onchange = async () => {
     $('recording-name').textContent=file.name;
     $('connection').textContent='Offline recording';
     sourceMode(); draw(); renderTrace();
-    if (replay.checkpoint) consoleLine('Loaded checkpoint: earlier motion and inferred geometry are unavailable.');
-  } catch(error) { fail(error.message); }
+    message(replay.checkpoint ? 'Loaded checkpoint: earlier motion and inferred geometry are unavailable.' : 'Recording loaded. Use Play or step through the trace.');
+  } catch(error) { message(error.message,true); }
   finally { $('telemetry-file').value=''; }
 };
 
@@ -1468,7 +1481,7 @@ const telemetryStream=new TelemetryStream(rpc, async data=>{
   return sourceRecords.length>7000;
 }, error=>{
   $('connection').textContent='Telemetry stream unavailable';
-  fail(`${error.message}. On a printer, enable [mmu_telemetry] in moonraker.conf. You can also load a recording.`);
+  message(`${error.message}. On a printer, enable [mmu_telemetry] in moonraker.conf. You can also load a recording.`,true);
 });
 let liveIndicator=null;
 function updateLiveIndicator() {
@@ -1570,7 +1583,7 @@ $('connect-printer').onclick=()=>{
     events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay();
     $('scene').replaceChildren(); $('mode').textContent='Live view · Connecting…';
     connect();
-  } catch(error) { fail(error.message); }
+  } catch(error) { message(error.message,true); }
 };
 connect();
 requestAnimationFrame(animate);
