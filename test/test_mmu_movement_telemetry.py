@@ -62,8 +62,8 @@ class TestMovementTelemetry(unittest.TestCase):
         mmu = self.hh.mmu
         before = (mmu.filament_pos, mmu.gate_selected, self.hh.filament().tip[:])
         with mock.patch.object(self.hh.printer.lookup_object('toolhead'), 'wait_moves') as wait:
-            self.hh.run_gcode('_MMU_TELEMETRY EVENT="cut"')
-            self.hh.run_gcode('_MMU_TELEMETRY EVENT="release"')
+            self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="cut"')
+            self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="release"')
         wait.assert_not_called()
         self.assertEqual(self.hh.errors, [])
         self.assertEqual([r['event'] for r in self.records], ['cut', 'release'])
@@ -75,7 +75,7 @@ class TestMovementTelemetry(unittest.TestCase):
         self.unsubscribe()
         telemetry = self.hh.mmu.movement_telemetry
         with mock.patch.object(telemetry, 'state') as emit:
-            self.hh.run_gcode('_MMU_TELEMETRY EVENT="cut"')
+            self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="cut"')
         emit.assert_not_called()
         self.assertEqual(self.hh.errors, [])
 
