@@ -6,7 +6,7 @@ import {liveMachine} from './live-config.js';
 
 test('parameters are applied with MMU_TEST_CONFIG, one value on one line',()=>{
  assert.equal(parameterCommand(1,'toolhead_ooze_reduction',2.5),'MMU_TEST_CONFIG UNIT=1 TOOLHEAD_OOZE_REDUCTION="2.5"');
- for (const bad of ['1\nM112','1;M112']) assert.throws(()=>parameterCommand(0,'x',bad),/one parameter value/);
+ for (const bad of ['1\nM112','1;M112','a" X=1 "b']) assert.throws(()=>parameterCommand(0,'x',bad),/one parameter value/);
 });
 test('macro variables keep their type and cannot break out of the command',()=>{
  assert.equal(macroCommand('_M','blade_pos',' 52 ',40),'SET_GCODE_VARIABLE MACRO=_M VARIABLE=blade_pos VALUE="52"');

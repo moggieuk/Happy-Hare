@@ -925,7 +925,8 @@ export function toolheadDrawingRange(state) {
   const sensor=Object.entries(state.sensors || {}).find(([name,sensor])=>
     (!state.active_sensors || state.active_sensors.includes(name)) &&
     sensorName(name) === 'extruder' && Number.isFinite(sensor.position) && sensor.position < entry);
-  return {entry,end:state.layout.nozzle ?? (state.layout.toolhead ?? 760)+30,
+  // The drawing divides by the length from the gears to the nozzle, so never let it collapse to nothing.
+  return {entry,end:Math.max(entry+1,state.layout.nozzle ?? (state.layout.toolhead ?? 760)+30),
     height:243,sensorEntry:sensor?.[1].position ?? entry,sensorGap:sensor ? 35 : 0};
 }
 

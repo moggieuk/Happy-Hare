@@ -8,7 +8,7 @@ import {effective} from './live-config.js';
 
 export function parameterCommand(unit,name,value) {
   const text=String(value);
-  if (/[\r\n;]/.test(text)) throw Error('Enter one parameter value');
+  if (/[\r\n;"]/.test(text)) throw Error('Enter one parameter value without quotes');
   return `MMU_TEST_CONFIG UNIT=${unit} ${name.toUpperCase()}=${JSON.stringify(text)}`;
 }
 

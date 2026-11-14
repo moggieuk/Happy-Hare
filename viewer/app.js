@@ -19,7 +19,7 @@ const sim = simulatorApi(rpc);
 function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
 }
-let modeChosen=false;
+let modeChosen=false, viewGeneration=0;
 let statusSensors=null, overlayCache={key:'',state:null};
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
 let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
@@ -65,8 +65,9 @@ function renderWarning(warnings=[], notice=null) {
   $('filament-warning-message').textContent=text;
 }
 
+const RPC_TIMEOUT_MS = 15000;
 let socket, reconnectTimer, connectionGeneration=0,
-  connectionUrl=location.origin,
+  connectionUrl=location.protocol === 'file:' ? 'http://localhost:7125' : location.origin,
   serial = 0,
   pending = new Map(),
   events = [],
@@ -86,7 +87,11 @@ function rpc(method, params = {}) {
     if (offline) return reject(Error("Select a live source before changing the printer"));
     if (socket?.readyState !== 1) return reject(Error("Console disconnected"));
     const id = ++serial;
-    pending.set(id, { resolve, reject });
+    // A lost reply must not hold the viewer forever; only G-code is allowed to take as long as it takes.
+    const timer = method === 'printer.gcode.script' ? null
+      : setTimeout(() => { if (pending.delete(id)) reject(Error(`${method} timed out`)); }, RPC_TIMEOUT_MS);
+    const done = (settle) => (value) => { clearTimeout(timer); settle(value); };
+    pending.set(id, { resolve: done(resolve), reject: done(reject) });
     socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
   });
 }
@@ -94,7 +99,8 @@ function rpc(method, params = {}) {
 async function action(fn, report = true) {
   if (busy) return;
   busy = true;
-  document.querySelectorAll("aside button, #send").forEach((b) => (b.disabled = true));
+  const disabled = [...document.querySelectorAll("aside button, #send")].filter((b) => !b.disabled);
+  disabled.forEach((b) => (b.disabled = true));
   try {
     await fn();
   } catch (e) {
@@ -102,9 +108,7 @@ async function action(fn, report = true) {
     if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error');
   } finally {
     busy = false;
-    document
-      .querySelectorAll("aside button, #send")
-      .forEach((b) => (b.disabled = false));
+    disabled.forEach((b) => (b.disabled = false));
     if (offline) sourceMode();
   }
 }
@@ -138,9 +142,10 @@ function connect() {
       else if (data.params[0].mmu?.sensors) { statusSensors=data.params[0].mmu.sensors; draw(); }
     } else if (['notify_klippy_ready','notify_klippy_shutdown','notify_klippy_disconnected'].includes(data.method)) {
       if (offline) return;
+      if (data.method==='notify_klippy_ready') reloadEditor();
       if (viewMode!=='live') {
         telemetryStream.stop(false);
-        if (data.method==='notify_klippy_ready') telemetryStream.start();
+        if (data.method==='notify_klippy_ready') startStream().catch(e=>message(e.message,true));
         return;
       }
       liveState=new LiveState(); statusSensors=null; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
@@ -156,6 +161,7 @@ function connect() {
     if (generation!==connectionGeneration) return;
     subscriptionGeneration++;
     telemetryStream.stop(false);
+    statusSensors=null;
     if (liveTarget) { liveTarget.homing=null; liveTarget.espoolers={}; }
     if (viewMode==='live' && displayed) displayed.espoolers={};
     draw();
@@ -170,16 +176,17 @@ async function initializeConnection() {
   const generation=connectionGeneration;
   editorStatic=null;
   const probe=await detectConnection(rpc,Number($('unit').value || 0));
-  if (generation!==connectionGeneration) return;
+  if (generation!==connectionGeneration || socket?.readyState!==1) return;
   if (probe.connection_kind==='live_machine') {
     setup=probe;
+    if ($('command').value==='MMU_LOAD') $('command').value=''; // The simulator's default must not be one Enter away on a printer
     setConnection('Connected to printer', 'connected'); sourceMode();
     await refreshLiveEditor().catch(error=>message(error.message,true));
   } else await refresh(probe);
   if (generation!==connectionGeneration || offline) return;
   if (!modeChosen && isSimulator()) await changeView('playback');
   else if (viewMode==='live') await subscribeLive();
-  else await telemetryStream.start();
+  else await startStream();
 }
 async function subscribeLive() {
   const generation=++subscriptionGeneration;
@@ -190,7 +197,8 @@ async function subscribeLive() {
   const references=new Set(Object.values(config?.units || {}).flatMap(u=>[u.extruder.name,...(u.heaters || [])]));
   const wanted=Object.fromEntries(objects.filter(n=>references.has(n) || n==='mmu' || n==='save_variables' ||
     /^mmu_(encoder|buffer|extruder|toolhead|espooler) /.test(n) || /:filament_proportional$/.test(n) ||
-    /^(extruder\d*|heater_generic .+|gcode_macro .+)$/.test(n)).map(n=>[n,n.startsWith('gcode_macro ') ? ['blade_pos','cutter_before_extruder','cooling_tube_position','cooling_tube_length'] : null]));
+    /^(extruder\d*|heater_generic .+|gcode_macro .+)$/.test(n)).map(n=>[n,n.startsWith('gcode_macro ') ? ['blade_pos','cutter_before_extruder','cooling_tube_position','cooling_tube_length']
+      : /^(extruder\d*|heater_generic .+)$/.test(n) ? ['target'] : null]));
   wanted.mmu=['unit','gate','tool','filament_pos','bowden_progress','homing','selector','sync_drive','sensors','config_changes',
     'gate_color_rgb','gate_status','gate_initial_weight','gate_remaining_weight','espooler','action',
     'filament_cut_fragment','filament_remaining_color'];
@@ -201,7 +209,7 @@ async function subscribeLive() {
 }
 function acceptLive(delta,time) {
   const next=liveState.accept(delta,time);
-  if (!next) { $('mode').textContent='Live view · Waiting for MMU configuration'; return; }
+  if (!next) { if (!liveTarget) $('mode').textContent='Live view · Waiting for MMU configuration'; return; }
   const previous=liveTarget;
   if (setup?.connection_kind==='live_machine' || liveState.objects.configfile) toolheadPanel.show(toolheadObjects(liveState.objects));
   if (previous?.homing && !next.homing) {
@@ -223,7 +231,16 @@ function acceptLive(delta,time) {
   live=true; paused=false; playing=null; session='subscription';
   draw();
 }
+// The near-live stream shows the printer's event stream; sensor readings are overlaid while it is idle.
+async function startStream() {
+  const generation=viewGeneration;
+  const sensors=(await rpc('printer.objects.subscribe',{objects:{mmu:['sensors']}})).status.mmu?.sensors || null;
+  if (generation!==viewGeneration || viewMode!=='playback' || offline) return;
+  statusSensors=sensors;
+  await telemetryStream.start();
+}
 async function changeView(mode) {
+  const generation=++viewGeneration;
   await telemetryStream.stop();
   subscriptionGeneration++;
   viewMode=mode; offline=false; playing=null; displayed=null; sensorPulse=null;
@@ -233,12 +250,11 @@ async function changeView(mode) {
   $('scene').replaceChildren();
   $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : isSimulator() ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
   sourceMode(); showConnection(); renderTrace();
-  if (mode==='live' && socket?.readyState===1) await subscribeLive();
-  else if(socket?.readyState===1) {
-    // Near-live shows the stream; sensor readings are overlaid while it is idle.
-    statusSensors=(await rpc('printer.objects.subscribe',{objects:{mmu:['sensors']}})).status.mmu?.sensors || null;
-    await telemetryStream.start();
-  }
+  if (socket?.readyState!==1 || generation!==viewGeneration) return;
+  // A reconnect while a recording was loaded left the connection unidentified.
+  if (!setup) return initializeConnection();
+  if (mode==='live') await subscribeLive();
+  else await startStream();
 }
 $('view-mode').onchange=()=>{
   modeChosen=true;
@@ -247,9 +263,14 @@ $('view-mode').onchange=()=>{
 // A printer has no simulator RPC: the editor lists come from configfile, mmu.config_changes and the
 // macro objects, and edits are sent as G-code like the command console does.
 let editorStatic=null;
+function reloadEditor() {
+  editorStatic=null;
+  return (isSimulator() ? refresh() : refreshLiveEditor()).catch(error=>message(error.message,true));
+}
 async function editorState() {   // configfile once per connection, config_changes every time
   editorStatic ||= rpc('printer.objects.query',{objects:{configfile:['settings','config']}})
-    .then(({status})=>({configfile:status.configfile,catalog:macroCatalog(status.configfile.config)}));
+    .then(({status})=>({configfile:status.configfile,catalog:macroCatalog(status.configfile.config)}))
+    .catch(error=>{ editorStatic=null; throw error; });
   const {configfile,catalog}=await editorStatic;
   const {status:{mmu}}=await rpc('printer.objects.query',{objects:{mmu:['config_changes']}});
   return {configfile,catalog,mmu};
@@ -423,17 +444,15 @@ $("command").addEventListener('keydown', event => {
 $("command-form").onsubmit = (event) => {
   event.preventDefault();
   const script = $("command").value.trim();
-  if (busy || !script) return;
+  if (!script) return;
   if (viewMode==='playback') followLive(); // A command typed here is watched; commands from elsewhere never move a paused view
   scrollConsoleToEnd();
-  action(async () => {
-    const sent = rpc("printer.gcode.script", { script });
-    if (socket.readyState === WebSocket.OPEN) {
-      commandHistory.add(script);
-      $("command").value = "";
-    }
-    await sent;
-  }, false);
+  // Not under the busy lock: a second command (a pause, an emergency stop) must go through while the first runs.
+  rpc("printer.gcode.script", { script }).catch((e) => { if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error'); });
+  if (socket.readyState === WebSocket.OPEN) {
+    commandHistory.add(script);
+    $("command").value = "";
+  }
 };
 $("restart").onclick = () =>
   action(async () => {
@@ -1196,7 +1215,11 @@ function renderScene() {
   svg=svg.replace('@@buffer-opacity@@',bufferShown).replace('@@buffer-gap@@',`rgb(${gapShade},${gapShade},${gapShade})`);
   const reachCut=195+bowdenReach*380;
   svg = `<defs><linearGradient id="bowden-reach-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${reachCut-40}" y2="${reachCut}"><stop stop-color="white"/><stop offset="1" stop-color="black"/></linearGradient><mask id="bowden-reach-fade" maskUnits="userSpaceOnUse" x="-1000" y="-100" width="3000" height="4000"><rect x="-1000" y="-100" width="3000" height="4000" fill="white"/><rect x="-1000" y="0" width="${1000+BUFFER_CENTER_X}" height="534" fill="url(#bowden-reach-gradient)"/><path d="${enclosurePaths}" fill="white"/></mask></defs><g mask="url(#bowden-reach-fade)">${svg}</g>`;
+  // The scene is rebuilt every frame: put keyboard focus back on the same control afterwards.
+  const focused=document.activeElement?.closest?.('#scene [data-part], #scene [data-parameter]');
+  const focusKeys=focused ? ['part','gate','direction','parameter'].filter(key=>focused.dataset[key]!==undefined) : [];
   $("scene").innerHTML = rackFade ? `${rackFadeMask(rackFade)}<g mask="url(#rack-edge-fade)">${svg}</g>${rackArrows}` : svg+rackArrows;
+  if (focused) $('scene').querySelector(focusKeys.map(key=>`[data-${key}="${CSS.escape(focused.dataset[key])}"]`).join(''))?.focus({preventScroll:true});
   for (const [index] of spoolRenderers) {
     if (!spoolRequests.has(index)) spoolRenderers.delete(index);
   }
@@ -1427,7 +1450,7 @@ $('telemetry-file').onchange = async () => {
     const records = parseTelemetry(await file.text());
     const replay = new TelemetryReplay();
     replay.accept(records); // Validate completely before replacing the current view.
-    if (!offline && socket?.readyState===1) await rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{});
+    if (!offline && socket?.readyState===1) rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{}); // Not awaited: a long G-code would hold the load up
     await telemetryStream.stop();
     modeChosen=true; viewMode='playback'; offline=true; subscriptionGeneration++; liveTarget=null; liveFrom=null;
     pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
@@ -1477,7 +1500,7 @@ const telemetryStream=new TelemetryStream(rpc, async data=>{
     parameterGate=selectedGate;
     const unit=latest.units?.indexOf(latest.unit) ?? -1;
     if (unit>=0 && $('unit').value!==String(unit)) {
-      $('unit').value=String(unit); await refresh();
+      $('unit').value=String(unit); await refresh().catch(error=>message(error.message,true));
     }
   }
   return sourceRecords.length>7000;
@@ -1598,5 +1621,5 @@ $('connect-printer').onclick=()=>{
     connect();
   } catch(error) { message(error.message,true); }
 };
-connect();
+try { connect(); } catch (error) { message(error.message, true); }
 requestAnimationFrame(animate);

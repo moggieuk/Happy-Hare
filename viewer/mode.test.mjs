@@ -12,7 +12,7 @@ async function connection(kind,chosen=false,mode='live',offline=false) {
    rpc:async method=>{ if (kind!=='simulator') throw Error(`Method not found: ${method}`); return {units:[]}; },
    detectConnection,$:()=>({value:'0'}),sourceMode:()=>{},setConnection:()=>{},refreshLiveEditor:async()=>{},message:()=>{},
    refresh:async probed=>{c.setup=probed;},
-   telemetryStream:{start:async()=>calls.push('telemetry')},
+   socket:{readyState:1},startStream:async()=>calls.push('telemetry'),
    changeView:async mode=>calls.push(mode),subscribeLive:async()=>calls.push('subscribe')});
  vm.runInContext(isSimulator+initialize,c);await vm.runInContext('initializeConnection()',c);return calls;
 }

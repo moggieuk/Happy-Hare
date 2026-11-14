@@ -51,7 +51,7 @@ export function parseTelemetry(text) {
       try { return JSON.parse(line); } catch { throw Error(`Invalid JSON on line ${i+1}`); }
     });
   }
-  if (!Array.isArray(records) || !records.length || records.length > 100000)
+  if (!Array.isArray(records) || !records.length || records.length > 20000)
     throw Error('Expected a telemetry JSONL file or an array of telemetry records');
   if (records[0]?.event !== 'session') throw Error('This recording has no session snapshot. Save a new telemetry capture.');
   if (records.slice(1).some(r=>r.event === 'session')) throw Error('Load one telemetry session at a time');
