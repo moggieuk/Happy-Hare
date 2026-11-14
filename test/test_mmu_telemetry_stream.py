@@ -194,6 +194,26 @@ class TestTelemetryStream(unittest.TestCase):
         telemetry.toolchange_start(command='MMU_LOAD'); telemetry.toolchange_end(command='MMU_LOAD')
         self.assertEqual(self.stream.record_mode, 'off')
 
+    def test_saying_the_same_mode_again_does_not_announce_it_again(self):
+        self.subscribe()
+        self.stream.set_record_mode('on'); self.stream.set_record_mode('on')
+        self.assertEqual([r['mode'] for r in self.stream.capture.records if r['event'] == 'record_mode'], ['on'])
+        self.assertFalse(self.stream.set_record_mode('on'))            # Subscribed: nothing to wake
+
+    def test_a_same_mode_request_still_wakes_moonraker_when_nobody_is_subscribed(self):
+        self.assertTrue(self.stream.set_record_mode('on'))
+        self.assertTrue(self.stream.set_record_mode('on'))
+
+    def test_arming_one_toolchange_ignores_the_command_already_running(self):
+        self.stream.set_record_mode('on'); self.subscribe()
+        telemetry = self.hh.mmu.movement_telemetry
+        telemetry.toolchange_start(command='MMU_LOAD')          # Started while recording was on
+        self.stream.set_record_mode('toolchange')
+        telemetry.toolchange_end(command='MMU_LOAD')
+        self.assertEqual(self.stream.record_mode, 'toolchange')
+        telemetry.toolchange_start(command='MMU_UNLOAD'); telemetry.toolchange_end(command='MMU_UNLOAD')
+        self.assertEqual(self.stream.record_mode, 'off')
+
     def test_unknown_recording_mode_is_rejected(self):
         with self.assertRaises(ValueError):
             self.stream.set_record_mode('sometimes')

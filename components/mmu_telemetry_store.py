@@ -111,6 +111,8 @@ class TelemetryRecorder:
         self.size += len(line.encode('utf-8'))
 
     def set_mode(self, mode):
+        if mode == self.mode:
+            return  # Saying it again must not close and rotate the log
         self.close()
         self.mode = mode
         if mode == 'on' and self.header is not None:
@@ -128,6 +130,8 @@ class TelemetryRecorder:
                 if self.mode == 'on':
                     self._rotate()
                     self._line(record)
+                elif self.mode == 'toolchange' and self.file is not None:
+                    self._line(record)  # A new baseline inside a segment: the viewer restarts its replay here
                 continue
             if self.header is None:
                 raise ValueError('Recording requires an initial checkpoint')

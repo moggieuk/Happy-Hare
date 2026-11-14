@@ -64,6 +64,7 @@ class MmuTelemetry:
                     await self._start()
             except Exception:
                 logging.exception('MMU telemetry could not read the recording state')
+        await self._release_if_idle()  # Recording may have been switched off again meanwhile
 
     async def wake(self):
         """Klipper has a recording to make and nobody is subscribed."""
@@ -72,6 +73,7 @@ class MmuTelemetry:
                 await self._start()
             except Exception:
                 logging.exception('MMU telemetry could not subscribe')
+        await self._release_if_idle()  # Recording may have been switched off again meanwhile
 
     async def _start(self):
         if self.upstream is not None:
@@ -159,6 +161,7 @@ class MmuTelemetry:
 
     def disconnected(self):
         self.upstream = None
+        self.segment = False
         self.clients.clear()
         self.history = TelemetryHistory(self.history.limit)
         self.stream_id = uuid.uuid4().hex

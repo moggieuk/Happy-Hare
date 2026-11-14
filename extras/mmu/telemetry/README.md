@@ -70,7 +70,9 @@ Klipper keeps the mode (it is not saved across a restart) and publishes it in th
 `printer.mmu.telemetry.record`. A mode change commits the settled state, then emits a `record_mode`
 record, so Moonraker acts on it at the right place in the stream. If nobody is subscribed, Klipper
 asks Moonraker to subscribe (`mmu_telemetry_wake`). A Moonraker that restarts while a recording
-is requested reads `mmu/telemetry/status` at readiness and resumes. Moonraker persists the records
+is requested reads `mmu/telemetry/status` at readiness and resumes. If Moonraker has not started a requested
+recording within five seconds (not running, or `[mmu_telemetry]` not loaded) Klipper logs a warning. Repeating the current
+mode changes nothing: it does not rotate the log. Moonraker persists the records
 and the viewer only reads them.
 
 Files live under Moonraker's data directory as `logs/mmu-telemetry.jsonl` with up to five backups
