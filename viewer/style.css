@@ -19,10 +19,6 @@ header {
   justify-content: space-between;
   align-items: center;
 }
-header small {
-  letter-spacing: 2px;
-  color: #9b436f;
-}
 h1 {
   margin: 3px 0;
 }
@@ -207,7 +203,6 @@ select, input { max-width: 100%; }
 [data-theme="dark"] input, [data-theme="dark"] select { background: #111c26; border-color: #526779; }
 [data-theme="dark"] button { background: #385573; }
 [data-theme="dark"] .note { color: #a5b5c5; }
-[data-theme="dark"] header small { color: #ed91bc; }
 [data-theme="dark"] #trace button { background: #223240; color: #dce5ef; }
 [data-theme="dark"] .chip { border-color: #526779; }
 [data-theme="dark"] .on { background: #214332; border-color: #60a87c; }
