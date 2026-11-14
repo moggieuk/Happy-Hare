@@ -19,7 +19,7 @@ test('timeline retains ticks but omits labels at thirty operations',()=>{
    assert.ok(markers.every(marker=>marker.label===''));
  }
 });
-import { virtualSelectorLayout, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { changeLines, virtualSelectorLayout, toolheadProgress, toolheadDrawingRange, playbackFrame, motionFraction, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, visibleSteps, toolchangeIndex, annotatedStep, excessFilamentLabel, bufferSpringPath, bufferPiston, interpolate, constrainFilament, duration, gearAngle, CommandHistory, traceText, homingTarget, homingPulse, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeColor, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 const state=(tip,on)=>({gate:0,tips:[tip],tails:[null],motors:{gear:tip},devices:{encoder:{distance:tip}},buffers:{},sensors:{toolhead:{state:on,position:5}}});
 test('sensor crosses at geometric position with exact endpoints',()=>{
  const e={before:state(0,false),state:state(10,true)};
@@ -932,4 +932,13 @@ test('the toolhead drawing never collapses when the nozzle sits at the gears',()
  const range=toolheadDrawingRange(state);
  assert.ok(range.end>range.entry);
  assert.ok(Number.isFinite(toolheadProgress(state,705)));
+});
+
+test('a state update reads as one path: value line per change',()=>{
+ assert.equal(changeLines([
+  {path:['printer','mmu','selector','grip'],value:'Gripped'},
+  {path:['printer','mmu','sync_mode'],value:0},
+  {path:['printer','mmu','gate_status'],value:[1,0]},
+  {path:['printer','mmu','sensors','unit0:mmu_shared_exit'],remove:true}]),
+  'printer.mmu.selector.grip: "Gripped"\nprinter.mmu.sync_mode: 0\nprinter.mmu.gate_status: [1,0]\nprinter.mmu.sensors.unit0:mmu_shared_exit: (removed)');
 });

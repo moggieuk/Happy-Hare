@@ -439,6 +439,10 @@ export function selectorNotice(events, event, playing, following) {
     ? `Selector: ${selectorSummary(previous)} · Gate ${event.before?.gate} → ${event.state?.gate}` : null;
 }
 
+// A state update as one readable line per value; the recording keeps the full path/value records
+export const changeLines = changes => changes.map(({path, value, remove}) =>
+  `${path.join('.')}: ${remove ? '(removed)' : JSON.stringify(value)}`).join('\n');
+
 export function traceText(event) {
   let type = {state:'state changed', gate_changed:'gate changed',move_completed:'move completed',selector_move:'selector',selector_completed:'selector'}[event.kind] || event.kind;
   if (event.kind === 'movement') {
