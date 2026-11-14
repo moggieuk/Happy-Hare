@@ -53,13 +53,13 @@ class TestTelemetryStore(unittest.TestCase):
     def test_each_rotated_file_has_current_baseline_and_startup_preserves_log(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'motion.jsonl'
-            recorder = TelemetryRecorder(path, 1, 3, 'continuous')
+            recorder = TelemetryRecorder(path, 1, 3, 'on')
             recorder.write([HEADER, event(1, 'state_delta', changes=[dict(path=['parameter'],value=40)]), event(2)])
             recorder.close()
             records = [json.loads(line) for line in path.read_text().splitlines()]
             self.assertEqual(records[0]['state'], {'parameter':40})
             self.assertEqual([r['sequence'] for r in records], [1,2])
-            recorder = TelemetryRecorder(path, 10000, 3, 'continuous')
+            recorder = TelemetryRecorder(path, 10000, 3, 'on')
             recorder.write([HEADER]); recorder.close()
             self.assertEqual(json.loads(Path(str(path)+'.1').read_text().splitlines()[0])['state'], {'parameter':40})
 
@@ -91,7 +91,7 @@ class TestTelemetryStore(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'motion.jsonl'
             recorder = TelemetryRecorder(path, 10000, 3)
-            recorder.write([HEADER, event(1, 'record_mode', mode='continuous'), event(2), event(3, 'record_mode', mode='off'), event(4)])
+            recorder.write([HEADER, event(1, 'record_mode', mode='on'), event(2), event(3, 'record_mode', mode='off'), event(4)])
             self.assertEqual([r['event'] for r in map(json.loads, path.read_text().splitlines())], ['session', 'cut'])
             self.assertEqual(recorder.mode, 'off')
             self.assertIsNone(recorder.file)
@@ -103,7 +103,7 @@ class TestTelemetryStore(unittest.TestCase):
 
     def check_movement_pair_rotation(self, directory, kind):
         path = Path(directory)/'motion.jsonl'
-        recorder = TelemetryRecorder(path, 1, 3, 'continuous')
+        recorder = TelemetryRecorder(path, 1, 3, 'on')
         recorder.write([HEADER, event(1, kind+'_start', move_id=1), event(2),
                         event(3, kind+'_outcome', move_id=1)])
         recorder.close()

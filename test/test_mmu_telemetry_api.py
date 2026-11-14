@@ -169,17 +169,17 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
     def logged(self, path):
         return [json.loads(line) for line in path.read_text().splitlines()]
 
-    async def test_klipper_starts_and_stops_a_continuous_recording_with_the_final_state(self):
+    async def test_klipper_starts_and_stops_an_on_recording_with_the_final_state(self):
         from components.mmu_telemetry_store import TelemetryRecorder
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'motion.jsonl'
             self.component.recorder = TelemetryRecorder(path, 1000000, 2)
             await self.component.ready()
             self.assertIsNone(self.api.stream.capture)             # Recording is off: nothing subscribes
-            self.api.set_record_mode('continuous')
+            self.api.set_record_mode('on')
             self.assertEqual(len(self.wakes()), 1)                  # Nobody was subscribed, so Moonraker is asked to
             await self.remote['mmu_telemetry_wake']()
-            self.assertEqual(self.component.mode, 'continuous')
+            self.assertEqual(self.component.mode, 'on')
             self.hh.mmu.movement_telemetry.state('toolchange', command='MMU_LOAD')
             await self.settle()
             self.hh.mmu.gate_selected = 1                           # Changes after the last event
@@ -234,13 +234,13 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([r['event'] for r in self.logged(path)], ['session', 'toolchange', 'toolchange_end'])
             await self.component.close()
 
-    async def test_switching_from_continuous_to_one_toolchange_closes_the_log_and_rotates(self):
+    async def test_switching_from_on_to_one_toolchange_closes_the_log_and_rotates(self):
         from components.mmu_telemetry_store import TelemetryRecorder
         telemetry = self.hh.mmu.movement_telemetry
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'motion.jsonl'
             self.component.recorder = TelemetryRecorder(path, 1000000, 2)
-            self.api.set_record_mode('continuous')
+            self.api.set_record_mode('on')
             await self.remote['mmu_telemetry_wake']()
             telemetry.state('cut', cutter='toolhead')
             await self.settle()
@@ -257,10 +257,10 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         from components.mmu_telemetry_store import TelemetryRecorder
         with tempfile.TemporaryDirectory() as directory:
             self.component.recorder = TelemetryRecorder(Path(directory)/'motion.jsonl', 1000000, 2)
-            self.api.stream.record_mode = 'continuous'
+            self.api.stream.record_mode = 'on'
             await self.component.ready()
             self.assertIsNotNone(self.component.upstream)
-            self.assertEqual(self.component.mode, 'continuous')
+            self.assertEqual(self.component.mode, 'on')
             await self.component.close()
 
     async def test_writer_failure_stops_recording_warns_and_tells_klipper(self):
@@ -269,7 +269,7 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         self.add_warning = warnings.append
         with tempfile.TemporaryDirectory() as directory:
             self.component.recorder = TelemetryRecorder(Path(directory)/'missing'/'motion.jsonl', 10000, 2)
-            self.api.set_record_mode('continuous')
+            self.api.set_record_mode('on')
             await self.remote['mmu_telemetry_wake']()
             await self.component.writer.queue.join()
             for _ in range(5): await asyncio.sleep(0)

@@ -22,6 +22,7 @@
 #   PARAM_LOG_VISUAL
 #   PARAM_LOG_STARTUP_STATUS
 #   PARAM_LOG_M117_MESSAGES
+#   PARAM_DEFAULT_TELEMETRY_MODE
 #
 #   PARAM_CONSOLE_STAT_COLUMNS
 #   PARAM_CONSOLE_STAT_ROWS
@@ -289,6 +290,35 @@ menu "Global software options"
     default 1
     help
       Whether send toolchange message via M117 to screen
+
+  choice CHOICE_DEFAULT_TELEMETRY_MODE
+    prompt "Motion telemetry recording after a restart"
+    default CHOICE_DEFAULT_TELEMETRY_MODE_OFF
+    help
+      Whether motion telemetry is recorded to the Moonraker log (for the
+      Visualizer). Change it at runtime with MMU_TELEMETRY MODE=...
+
+    config CHOICE_DEFAULT_TELEMETRY_MODE_OFF
+      bool "Off"
+      help
+        Don't record (default). A browser can still watch live
+
+    config CHOICE_DEFAULT_TELEMETRY_MODE_ON
+      bool "On"
+      help
+        Record everything from startup
+
+    config CHOICE_DEFAULT_TELEMETRY_MODE_TOOLCHANGE
+      bool "Next toolchange"
+      help
+        Record the first load, unload or toolchange after startup, then stop
+  endchoice
+
+  config PARAM_DEFAULT_TELEMETRY_MODE
+    string
+    default "on" if CHOICE_DEFAULT_TELEMETRY_MODE_ON
+    default "toolchange" if CHOICE_DEFAULT_TELEMETRY_MODE_TOOLCHANGE
+    default "off"
 
   config PARAM_SUPPRESS_KLIPPER_WARNINGS
     boolint "Suppress startup Klipper compatibility warnings?"

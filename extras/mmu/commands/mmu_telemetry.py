@@ -11,6 +11,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+from ..mmu_constants import TELEMETRY_MODES
 from .mmu_base_command import BaseCommand, CATEGORY_GENERAL, CATEGORY_INTERNAL
 
 
@@ -45,31 +46,38 @@ class MmuTelemetryCommand(BaseCommand):
     HELP_BRIEF = 'Record motion telemetry to the Moonraker log'
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + f"{CMD} RECORD=[off|continuous|toolchange]\n"
-        + "  RECORD=continuous   ...record everything until switched off\n"
-        + "  RECORD=toolchange   ...record the next load, unload or toolchange command, then stop\n"
-        + "  RECORD=off          ...stop recording (no RECORD shows the current mode)\n"
+        + f"{CMD} [MODE=[off|on|toolchange]] [DEFAULT=[off|on|toolchange]]\n"
+        + "  MODE=on          ...record everything until switched off\n"
+        + "  MODE=toolchange  ...record the next load, unload or toolchange command, then stop\n"
+        + "  MODE=off         ...stop recording\n"
+        + "  DEFAULT=...      ...mode to use after a restart (default_telemetry_mode), not saved\n"
+        + "  (no parameters)  ...report the current mode and the default\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD} RECORD=toolchange ...then run T1 to capture just that toolchange\n"
-        + f"{CMD} RECORD=off ...close the log\n"
+        + f"{CMD} MODE=toolchange ...then run T1 to capture just that toolchange\n"
+        + f"{CMD} MODE=off ...close the log\n"
     )
-    MODES = ('off', 'continuous', 'toolchange')
 
     def __init__(self, mmu):
         super().__init__(mmu)
         self.register(name=self.CMD, handler=self._run, help_brief=self.HELP_BRIEF, help_params=self.HELP_PARAMS,
                       help_supplement=self.HELP_SUPPLEMENT, category=CATEGORY_GENERAL)
 
+    def _mode(self, gcmd, name):
+        value = gcmd.get(name, None)
+        if value is None:
+            return None
+        value = value.strip().lower()
+        if value not in TELEMETRY_MODES:
+            raise gcmd.error("%s must be one of: %s" % (name, ', '.join(TELEMETRY_MODES)))
+        return value
+
     def _run(self, gcmd):
-        api = self.mmu.telemetry_api
-        mode = gcmd.get('RECORD', None)
-        if mode is None:
-            self.mmu.log_always("Telemetry recording: %s" % api.stream.record_mode)
-            return
-        mode = mode.strip().lower()
-        if mode not in self.MODES:
-            raise gcmd.error("RECORD must be one of: %s" % ', '.join(self.MODES))
-        api.set_record_mode(mode)
-        self.mmu.log_always("Telemetry recording: %s" % mode)
+        mmu = self.mmu
+        mode, default = self._mode(gcmd, 'MODE'), self._mode(gcmd, 'DEFAULT')
+        if default is not None:
+            mmu.p.set_param('default_telemetry_mode', default)
+        if mode is not None:
+            mmu.telemetry_api.set_record_mode(mode)
+        mmu.log_always("Telemetry mode: %s (default: %s)" % (mmu.telemetry_api.stream.record_mode, mmu.p.default_telemetry_mode))
