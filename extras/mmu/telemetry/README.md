@@ -30,14 +30,8 @@ means accepted into memory, not that animation or disk writes have completed.
 
 Klipper keeps only records its consumers have not acknowledged: each acknowledgment folds the
 acknowledged records into the capture's baseline. A consumer that stops acknowledging is bounded by a
-256-record cap, after which it receives a replacement checkpoint with a new stream id. Moonraker's
-`history_buffer` combines the history enable switch and its size:
-
-- `0` (default): no background history capture. While a viewer or file recorder
-  is subscribed, retain only a 128-record delivery window.
-- A positive value: retain up to that many records and capture from Klipper
-  readiness, even without a viewer. For example, `history_buffer: 6000` enables
-  a 6,000-record history. This does not enable file recording.
+256-record cap, after which it receives a replacement checkpoint with a new stream id. Moonraker
+keeps a 128-record window so a browser that joins late sees recent events.
 
 Delivery batches contain up to 128 records. Expired
 cursors receive a replacement checkpoint instead of silently skipping records.
@@ -50,30 +44,38 @@ discarded. Current returns a checkpoint of the present state without retained
 events; the viewer uses it when renewing its bounded local history. The simulator
 uses the same rules but retains its session capture for diagnostics.
 
-With both `history_buffer: 0` and `record: False`, real-printer capture begins
-with the first browser subscriber and ends when the last leaves. The first record is a freshly sampled current state,
+Moonraker subscribes to Klipper only while a browser is connected or a recording is running, and
+releases the subscription when neither needs it. The first record is a freshly sampled current state,
 not cached startup configuration. It cannot recover events before capture began.
 While active, new records are delivered to subscribers at 4 Hz. The printer
 thread performs no file I/O and never waits for a browser acknowledgment.
 
-To record without an open browser, configure Moonraker:
+### Recording
 
-```ini
-[mmu_telemetry]
-record: True
-history_buffer: 6000
-max_log_size: 10485760
-log_backups: 5
+Recording is controlled entirely from Klipper; there are no recording options in `moonraker.conf`:
+
+```
+MMU_TELEMETRY RECORD=continuous   # record everything until switched off
+MMU_TELEMETRY RECORD=toolchange   # record the next load, unload or toolchange, then stop
+MMU_TELEMETRY RECORD=off          # stop (no RECORD shows the current mode)
 ```
 
-Recording defaults to off. When enabled it subscribes at Klipper readiness and
-writes `logs/mmu-telemetry.jsonl` under Moonraker's data directory. Load the JSONL
-file in the viewer. Each capture session (including a Moonraker/Klipper restart)
-rotates the previous file; size rotation happens after the configured threshold
-is reached, deferring until an in-flight movement pair has completed. Files `.1` through `.5` are retained by default. Each new file begins
-with the current replay checkpoint, so it can be loaded independently. A single
-record/checkpoint or movement pair can exceed the size threshold. Rotation does not preserve an
-entire operation if it crosses the boundary.
+Klipper keeps the mode (it is not saved across a restart) and publishes it in the stream as
+`printer.mmu.telemetry.record`. A mode change commits the settled state, then emits a `record_mode`
+record, so Moonraker acts on it at the right place in the stream. If nobody is subscribed, Klipper
+asks Moonraker to subscribe (`mmu_telemetry_wake`). A Moonraker that restarts while a recording
+is requested reads `mmu/telemetry/status` at readiness and resumes. Moonraker persists the records
+and the viewer only reads them.
+
+Files live under Moonraker's data directory as `logs/mmu-telemetry.jsonl` with up to five backups
+(`.1` to `.5`). Every capture is one slot: `continuous` starts a new file (rotating the previous
+one), and each `toolchange` capture is its own file, starting at the `toolchange` record with the
+checkpoint in force at that point and ending at `toolchange_end`. Switching from `continuous` to
+`toolchange` closes the continuous file; after the single toolchange the mode is `off`. Arming
+`toolchange` while a command is already running waits for the next command. `continuous` starts at a
+checkpoint of the present state, which may fall inside a move. Size rotation (`max_log_size`
+and `log_backups`, optional in `[mmu_telemetry]`) defers until an in-flight movement pair has completed.
+A single record/checkpoint or movement pair can exceed the size threshold. Load a file in the viewer.
 
 Checkpoint and file rotation logic lives in `mmu_telemetry_store.py`; its
 `TelemetryWriter` handles the dedicated worker and bounded 64-batch queue.

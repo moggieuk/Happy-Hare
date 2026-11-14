@@ -157,71 +157,135 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.api.stream.clients, {})
         self.assertEqual(self.component.clients, {})
 
-    async def test_recording_subscribes_at_readiness_without_a_browser(self):
+    def wakes(self):
+        return [call for call in self.hh.printer.lookup_object('webhooks').calls if call[0] == 'mmu_telemetry_wake']
+
+    async def settle(self, recorded=True):
+        self.api.stream.pump()
+        for _ in range(3): await asyncio.sleep(0)
+        if recorded and self.component.writer is not None:
+            await self.component.writer.queue.join()
+
+    def logged(self, path):
+        return [json.loads(line) for line in path.read_text().splitlines()]
+
+    async def test_klipper_starts_and_stops_a_continuous_recording_with_the_final_state(self):
         from components.mmu_telemetry_store import TelemetryRecorder
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'motion.jsonl'
-            self.component.record = True
             self.component.recorder = TelemetryRecorder(path, 1000000, 2)
             await self.component.ready()
-            self.assertEqual(len(self.api.stream.clients), 1)
-            self.assertEqual(self.component.clients, {})
+            self.assertIsNone(self.api.stream.capture)             # Recording is off: nothing subscribes
+            self.api.set_record_mode('continuous')
+            self.assertEqual(len(self.wakes()), 1)                  # Nobody was subscribed, so Moonraker is asked to
+            await self.remote['mmu_telemetry_wake']()
+            self.assertEqual(self.component.mode, 'continuous')
             self.hh.mmu.movement_telemetry.state('toolchange', command='MMU_LOAD')
-            self.api.stream.pump()
-            await asyncio.sleep(0)
-            await self.component.writer.queue.join()
-            records = [json.loads(line) for line in path.read_text().splitlines()]
+            await self.settle()
+            self.hh.mmu.gate_selected = 1                           # Changes after the last event
+            self.api.set_record_mode('off')
+            await self.settle()
+            records = self.logged(path)
             self.assertEqual(records[0]['event'], 'session')
-            self.assertEqual(records[-1]['command'], 'MMU_LOAD')
-            browser = Browser()
-            batch = await self.component.subscribe(Request(connection=browser))
-            self.assertEqual(batch['records'][1]['command'], 'MMU_LOAD')
-            await self.component.client_removed(browser)
-            self.assertEqual(len(self.api.stream.clients), 1)
+            self.assertEqual(records[-1]['event'], 'state_delta')
+            self.assertIn(dict(path=['printer', 'mmu', 'gate'], value=1), records[-1]['changes'])
+            self.assertNotIn('record_mode', [r['event'] for r in records])
+            self.assertEqual((self.component.mode, self.component.recorder.mode), ('off', 'off'))
+            self.assertIsNone(self.api.stream.capture)              # Nothing needs the Klipper subscription now
             await self.component.close()
 
-    async def test_writer_failure_stops_recording_and_warns(self):
+    async def test_one_toolchange_is_recorded_between_its_markers_then_recording_stops(self):
+        from components.mmu_telemetry_store import TelemetryRecorder
+        telemetry = self.hh.mmu.movement_telemetry
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            self.component.recorder = TelemetryRecorder(path, 1000000, 2)
+            self.api.set_record_mode('toolchange')
+            await self.remote['mmu_telemetry_wake']()
+            telemetry.state('cut')                                  # Before the command: not recorded
+            telemetry.toolchange_start(command='MMU_LOAD')
+            telemetry.state('cut', cutter='toolhead')
+            self.hh.mmu.gate_selected = 1
+            telemetry.toolchange_end(command='MMU_LOAD', status='completed')
+            await self.settle()
+            records = self.logged(path)
+            self.assertEqual([r['event'] for r in records],
+                             ['session', 'toolchange', 'cut', 'state_delta', 'toolchange_end'])
+            self.assertEqual(self.api.stream.record_mode, 'off')
+            self.assertEqual(self.component.mode, 'off')
+            self.assertIsNone(self.api.stream.capture)
+            await self.component.close()
+
+    async def test_arming_while_a_command_is_running_waits_for_the_next_one(self):
+        from components.mmu_telemetry_store import TelemetryRecorder
+        telemetry = self.hh.mmu.movement_telemetry
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            self.component.recorder = TelemetryRecorder(path, 1000000, 2)
+            telemetry.toolchange_start(command='MMU_LOAD')          # Already running when recording is armed
+            self.api.set_record_mode('toolchange')
+            await self.remote['mmu_telemetry_wake']()
+            telemetry.toolchange_end(command='MMU_LOAD', status='completed')
+            await self.settle(recorded=False)
+            self.assertEqual((self.api.stream.record_mode, self.component.mode), ('toolchange', 'toolchange'))
+            telemetry.toolchange_start(command='MMU_UNLOAD')
+            telemetry.toolchange_end(command='MMU_UNLOAD', status='completed')
+            await self.settle()
+            self.assertEqual([r['event'] for r in self.logged(path)], ['session', 'toolchange', 'toolchange_end'])
+            await self.component.close()
+
+    async def test_switching_from_continuous_to_one_toolchange_closes_the_log_and_rotates(self):
+        from components.mmu_telemetry_store import TelemetryRecorder
+        telemetry = self.hh.mmu.movement_telemetry
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            self.component.recorder = TelemetryRecorder(path, 1000000, 2)
+            self.api.set_record_mode('continuous')
+            await self.remote['mmu_telemetry_wake']()
+            telemetry.state('cut', cutter='toolhead')
+            await self.settle()
+            self.api.set_record_mode('toolchange')
+            telemetry.toolchange_start(command='MMU_LOAD')
+            telemetry.toolchange_end(command='MMU_LOAD', status='completed')
+            await self.settle()
+            self.assertEqual([r['event'] for r in self.logged(path)], ['session', 'toolchange', 'toolchange_end'])
+            earlier = self.logged(Path(str(path) + '.1'))
+            self.assertIn('cut', [r['event'] for r in earlier])
+            await self.component.close()
+
+    async def test_a_recording_requested_before_moonraker_restarted_resumes(self):
+        from components.mmu_telemetry_store import TelemetryRecorder
+        with tempfile.TemporaryDirectory() as directory:
+            self.component.recorder = TelemetryRecorder(Path(directory)/'motion.jsonl', 1000000, 2)
+            self.api.stream.record_mode = 'continuous'
+            await self.component.ready()
+            self.assertIsNotNone(self.component.upstream)
+            self.assertEqual(self.component.mode, 'continuous')
+            await self.component.close()
+
+    async def test_writer_failure_stops_recording_warns_and_tells_klipper(self):
         from components.mmu_telemetry_store import TelemetryRecorder
         warnings = []
         self.add_warning = warnings.append
         with tempfile.TemporaryDirectory() as directory:
-            self.component.record = True
             self.component.recorder = TelemetryRecorder(Path(directory)/'missing'/'motion.jsonl', 10000, 2)
-            await self.component.ready()
+            self.api.set_record_mode('continuous')
+            await self.remote['mmu_telemetry_wake']()
             await self.component.writer.queue.join()
-            self.assertFalse(self.component.record)
+            for _ in range(5): await asyncio.sleep(0)
+            self.assertEqual(self.component.mode, 'off')
             self.assertEqual(len(warnings), 1)
-            for _ in range(3): await asyncio.sleep(0)
-            self.assertIsNone(self.api.stream.capture)   # No client or history needs the Klipper subscription now
+            self.assertEqual(self.api.stream.record_mode, 'off')
+            self.assertIsNone(self.api.stream.capture)   # No client or recording needs the Klipper subscription now
 
-    async def test_history_buffer_zero_is_on_demand_with_small_delivery_window(self):
+    async def test_nothing_subscribes_until_a_browser_or_a_recording_needs_it(self):
         await self.component.ready()
-        self.assertEqual(self.component.history_buffer, 0)
         self.assertEqual(self.component.history.limit, 128)
         self.assertIsNone(self.api.stream.capture)
         browser = Browser()
         await self.component.subscribe(Request(connection=browser))
         await self.component.client_removed(browser)
         self.assertIsNone(self.api.stream.capture)
-
-    async def test_positive_history_buffer_enables_background_capture_without_files(self):
-        self.component = self.module.load_component(types.SimpleNamespace(
-            get_server=lambda: self,
-            getint=lambda key, default, **kw: 300 if key == 'history_buffer' else default,
-            getboolean=lambda key, default: default))
-        await self.component.ready()
-        self.assertEqual(self.component.history.limit, 300)
-        self.assertIsNotNone(self.api.stream.capture)
-        self.assertIsNone(self.component.recorder)
-        browser = Browser()
-        await self.component.subscribe(Request(connection=browser))
-        await self.component.client_removed(browser)
-        self.assertIsNotNone(self.api.stream.capture)
-        self.hh.mmu.movement_telemetry.state('toolchange', command='MMU_LOAD')
-        self.api.stream.pump()
-        await asyncio.sleep(0)
-        batch = await self.component.subscribe(Request(connection=Browser()))
-        self.assertEqual(batch['records'][-1]['command'], 'MMU_LOAD')
 
     async def test_failed_initial_ack_releases_upstream_capture(self):
         request = self.component.request

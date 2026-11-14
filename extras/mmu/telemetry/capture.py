@@ -87,8 +87,9 @@ class ReplayState:
     MACRO_VARIABLES = ('blade_pos', 'cutter_before_extruder',
                        'cooling_tube_position', 'cooling_tube_length')
 
-    def __init__(self, mmu):
+    def __init__(self, mmu, record_mode=lambda: 'off'):
         self.mmu = mmu
+        self.record_mode = record_mode
 
     @staticmethod
     def select(obj, names):
@@ -184,7 +185,7 @@ class ReplayState:
         return plain(dict(printer=dict(
             mmu=dict(unit=mmu.mmu_unit().name, tool=mmu.tool_selected, gate=mmu.gate_selected,
                      filament_pos=mmu.filament_pos, filament_direction=mmu.filament_direction,
-                     selector=mmu.selector().get_status(now),
+                     selector=mmu.selector().get_status(now), telemetry=dict(record=self.record_mode()),
                      sync_mode=drive.get_sync_mode(), gate_status=list(mmu.gate_status), gate_color=[display_color(c) for c in mmu.gate_color],
                      gate_initial_weight=list(mmu.gate_initial_weight), gate_remaining_weight=list(mmu.gate_remaining_weight),
                      **{name: list(getattr(mmu, name)) for name in self.GATE_MAP_ATTRIBUTES},
@@ -208,15 +209,17 @@ timer. Changes that cancel before the next read are intentionally lost.
 The stream folds acknowledged records into a rolling baseline, so only unacknowledged records are
 kept; the limit only bounds a consumer that stops acknowledging.
 """
-    def __init__(self, mmu, limit=256):
+    def __init__(self, mmu, limit=256, record_mode=lambda: 'off'):
         if limit < 2:
             raise ValueError('Telemetry limit must be at least two records')
         self.telemetry = mmu.movement_telemetry
-        self.state_provider = ReplayState(mmu)
+        self.state_provider = ReplayState(mmu, record_mode)
         self.limit = limit
         self.records = collections.deque()
         self.sequence = 0
         self.failed = False  # Set when the source detaches this capture after an error; the stream then replaces it
+        self.on_toolchange_end = None
+        self.in_toolchange = False  # Its start was seen, so its end is not that of an earlier command
         self.reactor = mmu.reactor
         self.open_moves = set()  # Started but not finished; state is not sampled in the middle of a move
         self.settle_timer = self.reactor.register_timer(self._settle, self.reactor.NEVER)
@@ -258,6 +261,22 @@ kept; the limit only bounds a consumer that stops acknowledging.
             self.open_moves.discard(source['move_id'])
         self.reactor.update_timer(self.settle_timer, self.reactor.NEVER if self.open_moves
                                   else self.reactor.monotonic() + SETTLE_DELAY)
+        if source['event'] == 'toolchange':
+            self.in_toolchange = True
+        elif source['event'] == 'toolchange_end' and self.in_toolchange:
+            self.in_toolchange = False
+            if self.on_toolchange_end:
+                self.on_toolchange_end()
+
+    def mark_record_mode(self, mode):
+        """Commit the settled state, then tell the consumers, in order, that recording changed mode."""
+        try:
+            current, delta = self._read()
+        except Exception:
+            self.failed = True
+            raise
+        self._commit(self.reactor.monotonic(), current, delta, dict(event='record_mode', mode=mode,
+                                                                    timestamp=self.reactor.monotonic()))
 
     def _read(self):
         current = self.state_provider()

@@ -12,6 +12,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import asyncio
+from copy import deepcopy
 import logging
 from pathlib import Path
 import uuid
@@ -19,6 +20,7 @@ from ..common import WebRequest, RequestType, TransportType
 from .mmu_telemetry_store import TelemetryHistory, TelemetryRecorder, TelemetryWriter
 
 MAX_SUBSCRIBERS = 32
+HISTORY_LIMIT = 128  # Records kept for browsers that join late
 RESUBSCRIBE_DELAY = 5.  # Seconds before subscribing again after Klipper closes the stream
 
 
@@ -26,21 +28,21 @@ class MmuTelemetry:
     def __init__(self, config):
         self.server = config.get_server()
         self.clients = {}
-        self.history_buffer = config.getint('history_buffer', 0, minval=0)
-        # With history disabled, retain only one delivery batch for streaming.
-        self.history = TelemetryHistory(self.history_buffer or 128)
-        self.record = config.getboolean('record', False)
+        self.history = TelemetryHistory(HISTORY_LIMIT)
+        # What to record, and when, is decided by Klipper (MMU_TELEMETRY) and arrives in the stream
+        self.mode = 'off'
+        self.segment = False  # A toolchange start has been seen while recording one toolchange
         max_log_size = config.getint('max_log_size', 10485760, minval=1024)
         log_backups = config.getint('log_backups', 5, minval=1)
         logdir = Path(self.server.get_app_args()['data_path']) / 'logs'
-        self.recorder = TelemetryRecorder(logdir / 'mmu-telemetry.jsonl',
-            max_log_size, log_backups) if self.record else None
+        self.recorder = TelemetryRecorder(logdir / 'mmu-telemetry.jsonl', max_log_size, log_backups)
         self.writer = None
         self.upstream = None
         self.stream_id = uuid.uuid4().hex
         self.delivery = 0
         self.lock = asyncio.Lock()
         self.server.register_remote_method('process_mmu_telemetry', self.process_batch)
+        self.server.register_remote_method('mmu_telemetry_wake', self.wake)
         for name in ('subscribe', 'ack', 'unsubscribe'):
             self.server.register_endpoint('/server/mmu/telemetry/' + name, RequestType.POST,
                 getattr(self, name), transports=TransportType.WEBSOCKET)
@@ -54,9 +56,22 @@ class MmuTelemetry:
             WebRequest('mmu/telemetry/' + method, args))
 
     async def ready(self):
-        if self.record or self.history_buffer:
-            async with self.lock:
+        # Klipper decides: a recording requested before Moonraker (re)started resumes at once
+        async with self.lock:
+            try:
+                status = await self.request('status', {})
+                if status.get('record', 'off') != 'off':
+                    await self._start()
+            except Exception:
+                logging.exception('MMU telemetry could not read the recording state')
+
+    async def wake(self):
+        """Klipper has a recording to make and nobody is subscribed."""
+        async with self.lock:
+            try:
                 await self._start()
+            except Exception:
+                logging.exception('MMU telemetry could not subscribe')
 
     async def _start(self):
         if self.upstream is not None:
@@ -135,7 +150,7 @@ class MmuTelemetry:
 
     async def _release_if_idle(self):
         async with self.lock:
-            if not self.clients and not self.record and not self.history_buffer and self.upstream:
+            if not self.clients and self.mode == 'off' and self.upstream:
                 token, self.upstream = self.upstream, None
                 try:
                     await self.request('unsubscribe', dict(subscription_id=token))
@@ -147,6 +162,9 @@ class MmuTelemetry:
         self.clients.clear()
         self.history = TelemetryHistory(self.history.limit)
         self.stream_id = uuid.uuid4().hex
+        if self.mode != 'off':
+            self.mode = 'off'
+            self._submit([dict(event='record_mode', mode='off', sequence=0, timestamp=0)])  # Close the file
 
     async def process_batch(self, subscription_id, batch, initial=False):
         if subscription_id != self.upstream:
@@ -154,18 +172,14 @@ class MmuTelemetry:
         if batch.get('closed'):
             # Klipper dropped the subscription after an error: subscribe again shortly.
             self.upstream = None
-            if self.clients or self.record or self.history_buffer:
+            if self.clients or self.mode != 'off':
                 self.server.get_event_loop().delay_callback(RESUBSCRIBE_DELAY, self._resubscribe)
             return
         if batch.get('reset'):
             self.stream_id = uuid.uuid4().hex
             for client in self.clients.values():
                 client.update(after=None, inflight=None)
-        committed = self.history.append(batch)
-        if self.record and committed:
-            if self.writer is None:
-                self.writer = TelemetryWriter(self.recorder, self._recording_failed)
-            self.writer.submit(committed)
+        self._persist(self.history.append(batch))
         # Acknowledgment means accepted into Moonraker history, not rendered or flushed to disk.
         try:
             await self.request('ack', dict(subscription_id=subscription_id,
@@ -186,10 +200,57 @@ class MmuTelemetry:
             except Exception:
                 logging.exception('MMU telemetry could not subscribe again')
 
+    def _persist(self, committed):
+        """Forward to the recorder from the record that turns recording on until the one that ends it."""
+        forward = []
+        was_recording = self.mode != 'off'
+        for record in committed:
+            event = record['event']
+            if event == 'record_mode':
+                previous, self.mode = self.mode, record['mode']
+                if previous == 'off' and self.mode != 'off':
+                    forward.append(self._checkpoint(record['sequence']))
+                elif self.mode == 'off':
+                    forward.append(record)
+                    continue
+            if self.mode != 'off':
+                forward.append(record)
+            if self.mode == 'toolchange':
+                if event == 'toolchange':
+                    self.segment = True
+                elif event == 'toolchange_end' and self.segment:  # An end without its start is a command already running
+                    self.mode = 'off'
+            if self.mode != 'toolchange':
+                self.segment = False
+        if forward:
+            self._submit(forward)
+        if was_recording and self.mode == 'off' and not self.clients:
+            asyncio.create_task(self._release_if_idle())  # Nothing needs the Klipper subscription now
+
+    def _checkpoint(self, sequence):
+        """The state in force at a stream position, for a recording that begins there."""
+        header = deepcopy(self.history.header)
+        for record in self.history.records:
+            if record['sequence'] <= sequence:
+                TelemetryHistory._advance(header, record)
+        return header
+
+    def _submit(self, records):
+        if self.writer is None:
+            self.writer = TelemetryWriter(self.recorder, self._recording_failed)
+        self.writer.submit(records)
+
     def _recording_failed(self, reason):
-        self.record = False
+        self.mode = 'off'
         self.server.add_warning('MMU telemetry recording stopped: %s.' % reason)
+        asyncio.create_task(self._tell_klipper_off())
         asyncio.create_task(self._release_if_idle())  # Nothing else needs the Klipper subscription
+
+    async def _tell_klipper_off(self):
+        try:
+            await self.request('record', dict(mode='off'))
+        except Exception:
+            pass
 
     async def close(self):
         token, self.upstream = self.upstream, None

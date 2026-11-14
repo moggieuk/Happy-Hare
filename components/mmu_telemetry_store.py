@@ -84,14 +84,14 @@ class TelemetryHistory:
 
 class TelemetryRecorder:
     """Called only on a dedicated worker. Every rotated file is independently replayable."""
-    def __init__(self, path, max_bytes, backups):
+    def __init__(self, path, max_bytes, backups, mode='off'):
         self.path = Path(path)
         self.max_bytes, self.backups = max_bytes, backups
         self.header = None
         self.file = None
         self.size = 0
         self.active_moves = set()
-        self.mode = 'continuous'  # continuous, toolchange (one command, then off) or off
+        self.mode = mode  # continuous, toolchange (one command, then off) or off; Klipper decides
 
     def _rotate(self):
         if self.file:
@@ -110,8 +110,18 @@ class TelemetryRecorder:
         self.file.write(line)
         self.size += len(line.encode('utf-8'))
 
+    def set_mode(self, mode):
+        self.close()
+        self.mode = mode
+        if mode == 'continuous' and self.header is not None:
+            self._rotate()
+            self._line(self.header)
+
     def write(self, records):
         for record in records:
+            if record['event'] == 'record_mode':
+                self.set_mode(record['mode'])
+                continue
             if record['event'] == 'session':
                 self.header = deepcopy(record)
                 self.active_moves.clear()

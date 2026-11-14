@@ -27,6 +27,7 @@ class TelemetryStream:
         self.stream_id = uuid.uuid4().hex
         self.clients = {}
         self.delivery = 0
+        self.record_mode = 'off'  # off, continuous or toolchange (one command, then off); Moonraker persists
 
     def reset_capture(self, mmu, capture):
         """Keep connected consumers, but replace a restarted simulator's source."""
@@ -42,7 +43,7 @@ class TelemetryStream:
         if key not in self.clients and len(self.clients) >= MAX_SUBSCRIBERS:
             raise ValueError('Too many telemetry subscribers')
         if self.capture is None:
-            self.capture = TelemetryCapture(self.mmu, limit=256)
+            self._new_capture()
             self.stream_id = uuid.uuid4().hex
         client = dict(send=send, closed=closed, after=None, inflight=None, history=history)
         self.clients[key] = client
@@ -81,10 +82,29 @@ class TelemetryStream:
             self.capture = None
         return {}
 
+    def _new_capture(self):
+        self.capture = TelemetryCapture(self.mmu, limit=256, record_mode=lambda: self.record_mode)
+        self.capture.on_toolchange_end = self._toolchange_ended
+        if self.record_mode != 'off':
+            self.capture.mark_record_mode(self.record_mode)  # A new consumer learns that recording is on
+
+    def _toolchange_ended(self):
+        if self.record_mode == 'toolchange':
+            self.record_mode = 'off'
+
+    def set_record_mode(self, mode):
+        """Returns True when nobody is subscribed yet, so Moonraker must be asked to subscribe."""
+        if mode not in ('off', 'continuous', 'toolchange'):
+            raise ValueError('Unknown recording mode: %s' % mode)
+        self.record_mode = mode
+        if self.capture is not None:
+            self.capture.mark_record_mode(mode)
+        return self.capture is None and mode != 'off'
+
     def _renew_capture(self):
         """The source detached a capture that failed: start a new one and send every consumer a fresh baseline."""
         self.capture.close()
-        self.capture = TelemetryCapture(self.mmu, limit=256)
+        self._new_capture()
         self.stream_id = uuid.uuid4().hex
         for client in self.clients.values():
             client.update(after=None, inflight=None)

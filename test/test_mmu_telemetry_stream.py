@@ -168,6 +168,46 @@ class TestTelemetryStream(unittest.TestCase):
         self.assertTrue(self.sent[-1]['reset'])
         self.assertLessEqual(len(self.stream.capture.records), self.stream.capture.limit)
 
+    def test_a_recording_mode_change_commits_the_settled_state_then_tells_consumers_in_order(self):
+        first = self.subscribe(); self.ack(first)
+        self.hh.mmu.gate_selected = 1
+        self.assertFalse(self.stream.set_record_mode('continuous'))   # A consumer is already subscribed
+        self.stream.pump()
+        records = self.sent[-1]['records']
+        self.assertEqual([r['event'] for r in records], ['state_delta', 'record_mode'])
+        self.assertEqual(records[1]['mode'], 'continuous')
+        changes = {tuple(c['path']): c['value'] for c in records[0]['changes']}
+        self.assertEqual(changes[('printer', 'mmu', 'gate')], 1)
+        self.assertEqual(changes[('printer', 'mmu', 'telemetry', 'record')], 'continuous')
+
+    def test_a_subscriber_after_recording_was_requested_learns_it_with_its_baseline(self):
+        self.assertTrue(self.stream.set_record_mode('toolchange'))     # Nobody subscribed: Moonraker must be asked
+        batch = self.subscribe()
+        self.assertEqual([r['event'] for r in batch['records']], ['session', 'record_mode'])
+        self.assertEqual(batch['records'][0]['state']['printer']['mmu']['telemetry']['record'], 'toolchange')
+
+    def test_one_toolchange_mode_ends_with_its_own_command_only(self):
+        self.stream.set_record_mode('toolchange'); self.subscribe()
+        telemetry = self.hh.mmu.movement_telemetry
+        telemetry.toolchange_end(command='earlier')            # Armed while that command was running
+        self.assertEqual(self.stream.record_mode, 'toolchange')
+        telemetry.toolchange_start(command='MMU_LOAD'); telemetry.toolchange_end(command='MMU_LOAD')
+        self.assertEqual(self.stream.record_mode, 'off')
+
+    def test_unknown_recording_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.stream.set_record_mode('sometimes')
+
+    def test_mmu_telemetry_command_sets_and_reports_the_mode(self):
+        webhooks = self.hh.printer.lookup_object('webhooks')
+        self.hh.run_gcode('MMU_TELEMETRY RECORD=continuous')
+        self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'continuous')
+        self.assertEqual([c[0] for c in webhooks.calls if c[0] == 'mmu_telemetry_wake'], ['mmu_telemetry_wake'])
+        self.hh.run_gcode('MMU_TELEMETRY RECORD=off')
+        self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'off')
+        with self.assertRaises(Exception):
+            self.hh.run_gcode('MMU_TELEMETRY RECORD=sometimes')
+
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory
         self.subscribe()
