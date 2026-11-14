@@ -89,6 +89,9 @@ MIN_SM_VER       = (0, 18, 1)
 
 PRINTER_NAME_HEADER = 'X-Printer-Name'  # sent with every request to the configured Spoolman server
 
+LIVE_DETAIL_KEYS = ('material', 'color', 'name', 'temp', 'bed_temp', 'vendor', 'filament_id') # Forwarded to Klipper; weight isn't
+LIVE_OWN_WRITE_WINDOW = 5.0        # Seconds to ignore Spoolman events for a spool Happy Hare just wrote (its own echo)
+LIVE_RETRY_MAX = 60.0              # Longest wait between live-update reconnect attempts
 NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spoolman (avoids re-querying on every scan)
 
 # ─── RFID spool auto-create: SpoolmanDB reference data + offline fallbacks ─────
@@ -143,10 +146,29 @@ class _SpoolmanHeaderHttpClient:
         return await self._http_client.get(url, headers=self._inject(url, headers), **kwargs)
 
     async def post(self, url, body=None, headers=None, **kwargs):
-        return await self._http_client.post(url, body=body, headers=self._inject(url, headers), **kwargs)
+        resp = await self._http_client.post(url, body=body, headers=self._inject(url, headers), **kwargs)
+        self._note_write(url, resp)
+        return resp
 
     async def request(self, method, url, body=None, headers=None, **kwargs):
-        return await self._http_client.request(method, url, body=body, headers=self._inject(url, headers), **kwargs)
+        resp = await self._http_client.request(method, url, body=body, headers=self._inject(url, headers), **kwargs)
+        if str(method).upper() != "GET":
+            self._note_write(url, resp)
+        return resp
+
+    def _note_write(self, url, resp):
+        '''Remember spools Happy Hare writes, so their live-update echoes are ignored'''
+        m = re.search(r'/v1/spool(?:/(\d+))?(?:/|$|\?)', url)
+        if not m:
+            return
+        spool_id = m.group(1)
+        if spool_id is None: # POST /v1/spool: the new id is in the response
+            try:
+                spool_id = (resp.json() or {}).get('id')
+            except Exception:
+                spool_id = None
+        if spool_id is not None:
+            self._owner.own_writes[int(spool_id)] = time.monotonic()
 
     def __getattr__(self, name):
         return getattr(self._http_client, name) # Passthrough for anything else (get_file, etc.)
@@ -178,6 +200,11 @@ class MmuServer:
         # confirmed absent from Spoolman, so frequent scans of an unknown tag
         # don't trigger a full spool fetch every time
         self.uid_miss_cache = {}
+
+        # Spoolman live updates (see SPOOLMAN LIVE UPDATES)
+        self.spool_records = {}  # Last full Spoolman record per cached spool (for filament events)
+        self.own_writes = {}     # spool_id -> monotonic time Happy Hare last wrote it
+        self._live_task = None
 
         # Process-lifetime caches of SpoolmanDB reference data, fetched lazily on
         # the first tag auto-create. None = not yet fetched; {}/[] = fetch failed
@@ -218,6 +245,7 @@ class MmuServer:
 
         # Options
         self.update_location = self.config.getboolean("update_spoolman_location", True)
+        self.live_updates = self.config.getboolean("spoolman_live_updates", True)
 
 
     async def _get_spoolman_version(self) -> tuple[int, int, int] | None:
@@ -247,6 +275,135 @@ class MmuServer:
         self.legacy_only_uid_count = 0       # UIDs not yet migrated to native tags
         self.native_uids = set()             # Cached UIDs that are natively linked
         asyncio.create_task(self._init_spoolman(retry=3)) # Spoolman may start up after us so retry a few times
+
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SPOOLMAN LIVE UPDATES
+    #
+    # Spoolman pushes every change over a websocket. The cache is updated from each
+    # event in every mode; Klipper only hears what it doesn't own: filament details
+    # in any mode, gate assignments only in pull mode. Weight-only changes (Moonraker
+    # reports usage every few seconds while printing) never reach Klipper.
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _start_live_updates(self):
+        if self.live_updates and self.spoolman and (self._live_task is None or self._live_task.done()):
+            self._live_task = asyncio.create_task(self._live_updates_loop())
+
+
+    async def close(self):
+        '''Moonraker shutdown'''
+        if self._live_task is not None:
+            self._live_task.cancel()
+
+
+    def _live_updates_url(self):
+        return re.sub(r'^http', 'ws', self.spoolman.spoolman_url.rstrip('/')) + '/v1/'
+
+
+    async def _ws_connect(self, url):
+        '''Moonraker ships tornado; imported here so tests can replace this method'''
+        from tornado.websocket import websocket_connect
+        from tornado.httpclient import HTTPRequest
+        return await websocket_connect(HTTPRequest(url, headers={PRINTER_NAME_HEADER: str(self.printer_hostname or "")}))
+
+
+    async def _live_updates_loop(self):
+        delay, connected_before = 2.0, False
+        while True:
+            try:
+                ws = await self._ws_connect(self._live_updates_url())
+                logging.info("Spoolman live updates connected")
+                delay = 2.0
+                if connected_before: # Events sent while disconnected are lost
+                    async with self.cache_lock:
+                        await self._build_spool_location_cache(silent=True)
+                connected_before = True
+                while True:
+                    msg = await ws.read_message()
+                    if msg is None:
+                        break
+                    try:
+                        event = json.loads(msg)
+                    except ValueError:
+                        continue
+                    if isinstance(event, dict):
+                        await self._on_spoolman_event(event)
+                logging.info("Spoolman live updates disconnected")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logging.info(f"Spoolman live updates unavailable ({str(e)}), retrying in {delay:.0f}s")
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, LIVE_RETRY_MAX)
+
+
+    async def _on_spoolman_event(self, event):
+        resource, kind, payload = event.get('resource'), event.get('type'), event.get('payload')
+        if not isinstance(payload, dict) or payload.get('id') is None:
+            return
+        async with self.cache_lock:
+            await self._initialize_mmu()
+            if resource == 'spool' and kind in ('added', 'updated', 'deleted'):
+                await self._apply_spool_change(kind, payload)
+            elif resource == 'filament' and kind == 'updated':
+                # Spools embed their filament: re-apply each cached spool of it
+                for record in [r for r in self.spool_records.values() if (r.get('filament') or {}).get('id') == payload['id']]:
+                    await self._apply_spool_change('updated', dict(record, filament=payload))
+
+
+    async def _mmu_status(self, *fields) -> dict:
+        try:
+            result = await self.klippy_apis.query_objects({"mmu": list(fields)})
+            return (result or {}).get('mmu', {}) or {}
+        except Exception as e:
+            logging.debug(f"Spoolman live updates: couldn't query mmu status: {str(e)}")
+            return {}
+
+
+    async def _apply_spool_change(self, kind, spool_info):
+        '''Update the cache from one changed spool, then tell Klipper only what it doesn't own'''
+        spool_id = int(spool_info['id'])
+        written = self.own_writes.get(spool_id)
+        if written is not None and time.monotonic() - written < LIVE_OWN_WRITE_WINDOW:
+            return # Happy Hare's own write: the cache already reflects it
+
+        old = self.spool_location.get(spool_id)
+        if old:
+            for u in self._parse_uid_list(old[2].get('rfids')):
+                if self.uid_to_spool_id.get(u) == spool_id:
+                    self.uid_to_spool_id.pop(u, None)
+        if kind == 'deleted':
+            self.spool_location.pop(spool_id, None)
+            self.spool_records.pop(spool_id, None)
+            new = None
+        else:
+            self._cache_insert_spool(spool_info) # Unlinked native UIDs stay in native_uids so a scan still detects the unlink
+            new = self.spool_location[spool_id]
+            for u in self._parse_uid_list(new[2].get('rfids')):
+                self.uid_miss_cache.pop(u, None)
+
+        if not self._mmu_backend_enabled():
+            return
+        ours = lambda loc: loc is not None and loc[0] == self.printer_hostname and loc[1] >= 0
+        moved = (old[:2] if old else None) != (new[:2] if new else None) and (ours(old) or ours(new))
+        details = old is not None and new is not None and any(old[2].get(k) != new[2].get(k) for k in LIVE_DETAIL_KEYS)
+        if not moved and not details:
+            return
+
+        status = await self._mmu_status('spoolman_support', 'gate_spool_id')
+        mode = status.get('spoolman_support')
+        if mode in (None, 'off'):
+            return
+        if moved and mode == 'pull':
+            gate_ids = [(gate, self._find_first_spool_id(self.printer_hostname, gate)) for gate in range(self.nb_gates)]
+            logging.info(f"Spoolman live update: spool {spool_id} reassigned in Spoolman, updating gate map")
+            await self._send_gate_map_update(gate_ids, replace=True, silent=True)
+        elif details:
+            gates = [gate for gate, sid in enumerate(status.get('gate_spool_id') or []) if sid == spool_id]
+            if gates:
+                logging.info(f"Spoolman live update: spool {spool_id} details changed, updating gate(s) {gates}")
+                await self._send_gate_map_update([(gate, spool_id) for gate in gates], silent=True)
 
 
     async def _probe_tag_api(self) -> bool | None:
@@ -302,6 +459,7 @@ class MmuServer:
                 # Create cache of spool location from Spoolman db for efficiency
                 if extras:
                     await self._build_spool_location_cache(silent=True)
+                    self._start_live_updates()
                 self.spoolman_has_extras = extras
 
                 # Migration is never automatic - just hint at it
@@ -697,6 +855,7 @@ class MmuServer:
             new_spool_location = {}
             new_uid_to_spool_id = {}
             new_native_uids = set()
+            new_spool_records = {}
             legacy_only = 0
             # Fetch all spools
             errors = ""
@@ -711,6 +870,7 @@ class MmuServer:
                 mmu_gate = int(spool_info['extra'].get(MMU_GATE_FIELD, -1))
                 filament_attr = self._get_filament_attr(spool_info)
                 new_spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
+                new_spool_records[spool_id] = spool_info
 
                 # Maintain reverse UID -> spool_id map for fast tag resolution. A spool
                 # may register more than one UID (e.g. a tag on each side). There's no
@@ -755,6 +915,7 @@ class MmuServer:
         self.spool_location = new_spool_location
         self.uid_to_spool_id = new_uid_to_spool_id
         self.native_uids = new_native_uids
+        self.spool_records = new_spool_records
         self.legacy_only_uid_count = legacy_only
 
         if errors:
@@ -1832,6 +1993,7 @@ class MmuServer:
         mmu_gate = int(extra.get(MMU_GATE_FIELD, -1))
         filament_attr = self._get_filament_attr(spool_info)
         self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
+        self.spool_records[spool_id] = spool_info
         for uid in self._parse_uid_list(filament_attr['rfids']):
             self.uid_to_spool_id[uid] = spool_id
         self.native_uids.update(self._get_native_uid_list(spool_info))

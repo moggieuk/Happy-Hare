@@ -478,6 +478,8 @@ class MoonrakerHarness:
             self.db.add_spool(**spec)
         self.server = FakeServer(self.db, num_gates=num_gates, hostname=hostname,
                                  spoolmandb=spoolmandb, mmu_enabled=mmu_enabled)
+        # Live updates run an endless websocket task; tests that want it turn it on
+        options = dict({'spoolman_live_updates': False}, **(options or {}))
         self.config = FakeConfigHelper(self.server, options=options)
         self.loop = asyncio.new_event_loop()
         self.mmu_server = self.mmu_server_mod.MmuServer(self.config)

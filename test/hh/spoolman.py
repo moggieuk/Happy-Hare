@@ -119,6 +119,7 @@ class InMemorySpoolman:
         self.tag_links = {}
         self.tag_formats = {}
         self.scans = []             # bodies of POST /v1/tag/scan, in order
+        self.events = []            # websocket change events a real Spoolman would broadcast
         self.tag_api = None         # None: follow version; True/False: force (dev builds, forks)
 
     @property
@@ -196,6 +197,16 @@ class InMemorySpoolman:
         self.tag_links[uid] = ('spool', spool_id) if spool_id is not None else ('filament', filament_id)
         self.tag_formats[uid] = fmt
         return uid
+
+    def emit(self, kind, resource, payload):
+        """Record the change event a real Spoolman broadcasts on its websocket."""
+        import copy
+        self.events.append({'type': kind, 'resource': resource, 'date': '2026-01-01T00:00:00Z',
+                            'payload': copy.deepcopy(payload)})
+
+    def take_events(self):
+        events, self.events = self.events, []
+        return events
 
     def spool_native_uids(self, spool_id):
         return [u for u, holder in self.tag_links.items() if holder == ('spool', spool_id)]
@@ -308,6 +319,7 @@ class InMemorySpoolman:
                     return Response(400, {'message': 'Unknown extra field %s' % bad}, error='unknown extra field')
                 self._merge_spool(sid, body or {})
                 self.patched_spools.append((sid, body))
+                self.emit('updated', 'spool', self._render_spool(sid))
                 return Response(200, self._render_spool(sid))
             return Response(405)
         if method == 'GET':
@@ -350,6 +362,7 @@ class InMemorySpoolman:
             'lot_nr': body.get('lot_nr'),
         }
         self.created_spools.append(sid)
+        self.emit('added', 'spool', self._render_spool(sid))
         return Response(200, self.spools[sid])
 
     def _tag_scan(self, body):
@@ -387,6 +400,8 @@ class InMemorySpoolman:
             self.tag_links[uid] = (kind, ident)
             if (body or {}).get('format') or uid not in self.tag_formats:
                 self.tag_formats[uid] = (body or {}).get('format')
+            if kind == 'spool':
+                self.emit('updated', 'spool', self._render_spool(ident))
             return Response(201, {'uid': uid, 'format': self.tag_formats[uid], 'added': '2026-01-01T00:00:00Z'})
         if method == 'DELETE' and len(parts) == 5:
             uid = normalise_uid(parts[4])
@@ -394,6 +409,8 @@ class InMemorySpoolman:
                 return Response(404, {'message': 'tag not linked'})
             del self.tag_links[uid]
             self.tag_formats.pop(uid, None)
+            if kind == 'spool':
+                self.emit('updated', 'spool', self._render_spool(ident))
             return Response(204)
         return Response(405)
 
