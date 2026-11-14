@@ -168,33 +168,62 @@ class TestStartupMigration(TagTestCase):
         finally:
             hh.close()
 
-    def test_klipper_not_ready_logs_only_and_never_pauses(self):
-        """Without Klipper the console fallback (M118) would pause the print on an error."""
+    def test_klipper_never_ready_logs_only_and_never_pauses(self):
+        """Without a ready Klipper the console fallback (M118) would pause the print on an error."""
         self.make_legacy()
-        server = self.hh.mmu_server
-        del server.mmu_backend_present
-        async def not_ready():
-            raise RuntimeError('Klippy not connected')
-        self.hh.klippy.get_object_list = not_ready
-        self.hh.run(server._auto_migrate_tags(wait=0, attempts=2))
+        del self.hh.mmu_server.mmu_backend_present
+        self.hh.klippy.klippy_state = 'startup'
+        self.hh.run(self.hh.mmu_server._auto_migrate_tags(wait=0, attempts=2))
         self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID], 'still migrated')
         self.assertEqual(self.hh.klippy.drain(), [], 'nothing sent to Klipper')
         self.assertEqual(self.hh.klippy.pause_calls, 0)
 
-    def test_waits_for_klipper(self):
+    def test_waits_until_klipper_is_ready_not_just_connected(self):
+        """Seen on a real printer: queries work while Klipper is starting, gcode doesn't."""
         self.make_legacy()
-        server = self.hh.mmu_server
+        server, klippy = self.hh.mmu_server, self.hh.klippy
         del server.mmu_backend_present
-        real, calls = self.hh.klippy.get_object_list, []
-        async def late():
-            calls.append(1)
-            if len(calls) < 3:
-                raise RuntimeError('Klippy not connected')
-            return await real()
-        self.hh.klippy.get_object_list = late
+        klippy.klippy_state = 'startup'
+        real_query, real_gcode, polls = klippy.query_objects, klippy.run_gcode, []
+        async def query(objects, default=None):
+            if 'webhooks' in objects:
+                polls.append(1)
+                if len(polls) >= 3:
+                    klippy.klippy_state = 'ready'
+            return await real_query(objects, default)
+        async def gcode(script, default=None):
+            if klippy.klippy_state != 'ready':
+                raise RuntimeError('Printer is not ready')
+            return await real_gcode(script, default)
+        klippy.query_objects, klippy.run_gcode = query, gcode
         self.hh.run(server._auto_migrate_tags(wait=0, attempts=5))
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(polls), 3)
         self.assertIn('migrated to a native Spoolman tag', ' '.join(self.hh.gcode('MMU_LOG')))
+        self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID])
+
+    def test_console_failure_mid_run_does_not_abort(self):
+        """If Klipper drops while reporting, the migration still finishes (log only)."""
+        self.make_legacy()
+        self.db.spools[2]['extra'][spoolman.FIELD_RFID] = '"%s"' % NATIVE_UID
+        self.hh.call_remote('spoolman_refresh', silent=True)
+        klippy, sent = self.hh.klippy, []
+        real_gcode = klippy.run_gcode
+        async def flaky(script, default=None):
+            sent.append(script)
+            if len(sent) >= 2:
+                raise RuntimeError('Printer is not ready')
+            return await real_gcode(script, default)
+        klippy.run_gcode = flaky
+        self.hh.run(self.hh.mmu_server._auto_migrate_tags(wait=0, attempts=1))
+        self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID])
+        self.assertEqual(self.db.spool_native_uids(2), [NATIVE_UID])
+        self.assertEqual(klippy.pause_calls, 0)
+
+    def test_quiet_migration_never_touches_the_console(self):
+        self.make_legacy()
+        before = len(self.hh.gcode())
+        self.hh.call_remote('spoolman_migrate_tags', direction='native', silent=True)
+        self.assertEqual(self.hh.gcode()[before:], [], 'not even the summary')
 
 
 class TestFreshNativeInstall(TagTestCase):

@@ -149,6 +149,7 @@ class FakeKlippyApis:
         self.queue = []             # undrained commands
         self.sink = None
         self.pause_calls = 0
+        self.klippy_state = 'ready'  # webhooks.state: 'startup' until Klipper accepts gcode
         self.extra_status = {}
         # The second channel back into Klipper, for the TD-1 bridge alone: an endpoint
         # reply rather than a gcode command, queued for the same reason
@@ -162,11 +163,14 @@ class FakeKlippyApis:
         return objects
 
     async def query_objects(self, objects, default=None):
+        result = {}
+        if 'webhooks' in objects:
+            result['webhooks'] = {'state': self.klippy_state}
         if 'mmu' in objects and self.mmu_present:
             status = {'enabled': self.mmu_enabled, 'num_gates': self.num_gates}
             status.update(self.extra_status)
-            return {'mmu': status}
-        return {}
+            result['mmu'] = status
+        return result
 
     async def subscribe_objects(self, objects, callback=None, default=None):
         return await self.query_objects(objects)

@@ -51,7 +51,7 @@ class MmuSpoolmanTagCommand(BaseCommand):
         + f"{CMD} GATE=LAST SPOOLID=87 REGISTER=1   ...Bind last gate preloaded already-known tag uid to spool 87\n"
         + f"{CMD} SPOOLID=87 REGISTER=1             ...Bind currently selected gate's tag uid to spool 87\n"
         + f"{CMD} MIGRATE=native DRYRUN=1          ...Report how many legacy extra-field tags would become native Spoolman tags\n"
-        + f"{CMD} MIGRATE=native                    ...Link every legacy extra-field tag natively (never done automatically)\n"
+        + f"{CMD} MIGRATE=native                    ...Link every legacy extra-field tag natively (also done automatically at startup)\n"
         + f"{CMD} MIGRATE=extra                     ...(Developer) Move native tags back into the extra field, to re-test migration\n"
         + f"{CMD} MIGRATE=extra GATE=2              ...(Developer) Same, but only for the spool assigned to gate 2\n"
         + "\nSee MMU_SPOOLMAN read or change gate-spool assignment in spoolman\n"

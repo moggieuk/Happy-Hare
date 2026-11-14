@@ -804,26 +804,45 @@ class MmuServer:
             msg += f"\n  - Conflict: {c}"
         logging.info(msg)
         if not silent or summary['conflicts'] or summary['errors']:
-            await self._log_n_send(msg, error=bool(summary['errors']), silent=silent and not summary['moved'])
+            await self._log_n_send(msg, error=bool(summary['errors']), silent=silent)
         return summary
+
+
+    async def _klippy_ready(self) -> bool:
+        '''Klipper accepts gcode only once ready, not merely connected'''
+        try:
+            result = await self.klippy_apis.query_objects({"webhooks": ["state"]})
+            return (result or {}).get('webhooks', {}).get('state') == 'ready'
+        except Exception:
+            return False
 
 
     async def _auto_migrate_tags(self, wait=5.0, attempts=24):
         '''
         Startup migration of legacy extra-field UIDs to native tags. Waits for Klipper
-        (up to ~2 min) so progress reaches the console; without it, logs only - never
-        through the M118 fallback, which pauses the print on an error
+        to be ready (up to ~2 min) so progress reaches the console; otherwise logs only -
+        never through the M118 fallback, which pauses the print on an error
         '''
+        ready = False
         for _ in range(attempts):
-            try:
-                await self._initialize_mmu()
-                break
-            except Exception:
-                await asyncio.sleep(wait)
+            if await self._klippy_ready():
+                try:
+                    await self._initialize_mmu()
+                    ready = True
+                    break
+                except Exception:
+                    pass
+            await asyncio.sleep(wait)
         async with self.cache_lock:
             if not self.spoolman_has_tags or not self.legacy_only_uid_count:
                 return
-            summary = await self._migrate_tags(to_native=True, silent=not self._mmu_backend_enabled())
+            quiet = not (ready and self._mmu_backend_enabled())
+            try:
+                summary = await self._migrate_tags(to_native=True, silent=quiet)
+            except Exception as e:
+                # Usually a console message failing (Klipper restarting); migrating again is safe
+                logging.warning(f"NFC: startup tag migration couldn't report progress ({str(e)}), continuing in moonraker.log only")
+                summary = await self._migrate_tags(to_native=True, silent=True)
             if summary and summary['moved']:
                 await self._build_spool_location_cache(silent=True)
 
