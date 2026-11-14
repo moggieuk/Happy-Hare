@@ -95,7 +95,7 @@ opens that JSONL (or a JSON array/envelope of records) with the same replay redu
 used live. Loading starts paused at the beginning. Printer controls are disabled,
 live updates cannot overwrite the file, and playback stops at its end. The viewer
 continues working if the simulator disconnects after the page has loaded.
-**Return to live** reconnects to the current capture. Files require a v2 session
+**Reconnect** (the Connect button) leaves the recording and reconnects to the current source. Files require a v2 session
 snapshot; older motion-only JSONL and diagnostic trace files cannot be loaded.
 
 The parameter editor works on the simulator and on a printer. Every edit is sent through

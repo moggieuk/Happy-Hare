@@ -10,7 +10,7 @@ async function connection(kind,chosen=false,mode='live',offline=false) {
  const calls=[];
  const c=vm.createContext({connectionGeneration:1,modeChosen:chosen,viewMode:mode,setup:null,offline,
    rpc:async method=>{ if (kind!=='simulator') throw Error(`Method not found: ${method}`); return {units:[]}; },
-   detectConnection,$:()=>({value:'0'}),sourceMode:()=>{},refreshLiveEditor:async()=>{},message:()=>{},
+   detectConnection,$:()=>({value:'0'}),sourceMode:()=>{},setConnection:()=>{},refreshLiveEditor:async()=>{},message:()=>{},
    refresh:async probed=>{c.setup=probed;},
    telemetryStream:{start:async()=>calls.push('telemetry')},
    changeView:async mode=>calls.push(mode),subscribeLive:async()=>calls.push('subscribe')});

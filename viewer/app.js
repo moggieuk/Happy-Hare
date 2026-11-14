@@ -23,21 +23,27 @@ let modeChosen=false;
 let statusSensors=null, overlayCache={key:'',state:null};
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
 let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
-let returnMode = 'live'; // The source to go back to when a loaded recording is closed
+// The Connection panel's status: a dot coloured by `state` (connected, pending, warning, offline or disconnected) and a label.
+function setConnection(text, state) {
+  $('connection').textContent = text;
+  $('connection').dataset.state = state;
+}
 function showConnection() {
   const kind = setup?.connection_kind;
-  $('connection').textContent = socket?.readyState !== 1 ? 'Disconnected · retrying'
-    : kind === 'simulator' ? 'Connected to the simulator' : kind === 'live_machine' ? 'Connected to printer' : 'Connected · unknown source';
+  if (socket?.readyState !== 1) return setConnection('Disconnected · retrying', 'disconnected');
+  setConnection(kind === 'simulator' ? 'Connected to the simulator' : kind === 'live_machine' ? 'Connected to printer' : 'Connected · unknown source', 'connected');
 }
 function sourceMode() {
   toolheadPanel.element.hidden=offline || socket?.readyState !== 1 || toolheadPanel.element.dataset.available !== 'true';
   $('recording-option').hidden=!offline;
   $('view-mode').value=offline ? 'recording' : viewMode;
-  $('simulator-controls').hidden=!isSimulator();
   $('sidebar-playback').hidden=viewMode==='live';
   $('trace').closest('.card').hidden=viewMode==='live';
-  $('recording-bar').hidden = !offline;
-  $('save-motion').disabled = viewMode==='live';
+  $('recording-name').hidden = !offline;
+  $('connect-printer').textContent = offline ? 'Reconnect' : 'Connect';
+  $('save-motion').disabled = viewMode==='live' || offline;
+  $('simulator-controls').hidden = !isSimulator() || offline;
+  $('runtime-parameters').hidden = offline;
   document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #runtime-parameters input, #runtime-parameters select, #runtime-parameters button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
     .forEach(node=>node.disabled=offline);
   $('live').dataset.tooltip = offline ? 'End of recording' : 'End, follow stream';
@@ -114,7 +120,7 @@ function connect() {
     liveState=new LiveState(); statusSensors=null;
     sourceMode();
     if (offline) return;
-    $("connection").textContent = "Connected · identifying source…";
+    setConnection("Connected · identifying source…", "pending");
     initializeConnection().catch((e) => message(e.message, true));
   };
   socket.onmessage = (e) => {
@@ -154,7 +160,7 @@ function connect() {
     if (viewMode==='live' && displayed) displayed.espoolers={};
     draw();
     sourceMode();
-    if (!offline) $("connection").textContent = "Disconnected · retrying";
+    if (!offline) setConnection("Disconnected · retrying", "disconnected");
     pending.forEach((p) => p.reject(Error("Console disconnected")));
     pending.clear();
     reconnectTimer=setTimeout(connect, 1500);
@@ -167,7 +173,7 @@ async function initializeConnection() {
   if (generation!==connectionGeneration) return;
   if (probe.connection_kind==='live_machine') {
     setup=probe;
-    $('connection').textContent='Connected to printer'; sourceMode();
+    setConnection('Connected to printer', 'connected'); sourceMode();
     await refreshLiveEditor().catch(error=>message(error.message,true));
   } else await refresh(probe);
   if (generation!==connectionGeneration || offline) return;
@@ -1411,7 +1417,6 @@ function downloadTelemetry() {
   link.href=url; link.download='happy-hare-motion.jsonl'; link.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-$('close-recording').onclick = () => changeView(returnMode).then(() => message('Returned to the live source.'), e => message(e.message, true));
 $('save-motion').onclick = downloadTelemetry;
 $('load-telemetry').onclick = () => $('telemetry-file').click();
 $('telemetry-file').onchange = async () => {
@@ -1424,14 +1429,13 @@ $('telemetry-file').onchange = async () => {
     replay.accept(records); // Validate completely before replacing the current view.
     if (!offline && socket?.readyState===1) await rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{});
     await telemetryStream.stop();
-    if (!offline) returnMode=viewMode;
     modeChosen=true; viewMode='playback'; offline=true; subscriptionGeneration++; liveTarget=null; liveFrom=null;
     pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
     sourceReplay=replay; sourceRecords=records;
     rawEvents=replay.events; events=visibleSteps(rawEvents); session=replay.session;
     live=false; paused=true; cursor=0; playing=null; sensorPulse=null; pauseAfterStep=false; displayed=null;
     $('recording-name').textContent=file.name;
-    $('connection').textContent='Offline recording';
+    setConnection('Offline recording · not connected', 'offline');
     sourceMode(); draw(); renderTrace();
     message(replay.checkpoint ? 'Loaded checkpoint: earlier motion and inferred geometry are unavailable.' : 'Recording loaded. Use Play or step through the trace.');
   } catch(error) { message(error.message,true); }
@@ -1478,7 +1482,7 @@ const telemetryStream=new TelemetryStream(rpc, async data=>{
   }
   return sourceRecords.length>7000;
 }, error=>{
-  $('connection').textContent='Telemetry stream unavailable';
+  setConnection('Telemetry stream unavailable', 'warning');
   message(`${error.message}. On a printer, enable [mmu_telemetry] in moonraker.conf. You can also load a recording.`,true);
 });
 let liveIndicator=null;
