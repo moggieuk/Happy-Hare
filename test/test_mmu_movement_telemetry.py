@@ -127,7 +127,7 @@ class TestMovementTelemetry(unittest.TestCase):
         starts = [r for r in self.records if r['event'] == 'movement_start']
         self.assertEqual(len(starts), 1)
         self.assertEqual(starts[0]['label'], 'Final load retraction')
-        self.assertTrue(any(r['event'] == 'retracted_length_changed' for r in self.records))
+        self.assertGreater(mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
 
     def test_sync_telemetry_reports_changes_without_policy_diagnostics(self):
         self.hh.mmu._sync_gear_to_extruder(True)

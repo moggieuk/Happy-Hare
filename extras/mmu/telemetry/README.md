@@ -298,8 +298,8 @@ behind the lower screen and the next coil starts growing. Any actual extruder
 retraction detaches accumulated purge within that movement's animation; gear-only
 retraction does not. There is no separate purge-release animation event.
 The final standalone-load G1 is annotated **Final load retraction**, without a
-separate notification. `retracted_length_changed` records persisted
-per-extruder changes. Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
+separate notification. The persisted per-extruder `retracted_length` is part of the replay state, so its
+changes arrive as `state_delta` records. Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
 configured residual, persisted per-extruder fragment length and retained color,
 the selected gate color and persisted `retracted_length`. Missing colors are neutral gray. Retained material
 is drawn at the nozzle and blends toward incoming color as material is extruded. Missing sensors supply no positional evidence.
