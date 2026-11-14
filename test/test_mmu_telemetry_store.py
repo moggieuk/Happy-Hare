@@ -96,6 +96,24 @@ class TestTelemetryStore(unittest.TestCase):
             self.assertEqual(recorder.mode, 'off')
             self.assertIsNone(recorder.file)
 
+    def test_repeating_a_mode_does_not_rotate_the_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            recorder = TelemetryRecorder(path, 10000, 3)
+            recorder.write([HEADER, event(1, 'record_mode', mode='on'), event(2), event(3, 'record_mode', mode='on'), event(4)])
+            self.assertEqual([r['event'] for r in map(json.loads, path.read_text().splitlines())], ['session', 'cut', 'cut'])
+            self.assertFalse(Path(str(path)+'.1').exists())
+
+    def test_a_new_baseline_inside_a_toolchange_segment_is_written_to_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            recorder = TelemetryRecorder(path, 10000, 3, 'toolchange')
+            reset = dict(HEADER, state={'parameter': 80}, sequence=10, checkpoint=True)
+            recorder.write([HEADER, event(1, 'toolchange'), reset, event(11), event(12, 'toolchange_end')])
+            lines = [json.loads(line) for line in path.read_text().splitlines()]
+            self.assertEqual([r['event'] for r in lines], ['session', 'toolchange', 'session', 'cut', 'toolchange_end'])
+            self.assertEqual(lines[2]['state'], {'parameter': 80})
+
     def test_size_rotation_keeps_movement_pair_together(self):
         for kind in ('movement', 'selector_movement'):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:

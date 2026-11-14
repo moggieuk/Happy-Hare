@@ -97,8 +97,9 @@ class TelemetryStream:
         """Returns True when nobody is subscribed yet, so Moonraker must be asked to subscribe."""
         if mode not in TELEMETRY_MODES:
             raise ValueError('Unknown recording mode: %s' % mode)
+        changed = mode != self.record_mode
         self.record_mode = mode
-        if self.capture is not None:
+        if changed and self.capture is not None:
             self.capture.mark_record_mode(mode)
         return self.capture is None and mode != 'off'
 

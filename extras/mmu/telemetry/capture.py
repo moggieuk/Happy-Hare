@@ -270,6 +270,8 @@ kept; the limit only bounds a consumer that stops acknowledging.
 
     def mark_record_mode(self, mode):
         """Commit the settled state, then tell the consumers, in order, that recording changed mode."""
+        if mode == 'toolchange':
+            self.in_toolchange = False  # A command already running when armed is not the one to record
         try:
             current, delta = self._read()
         except Exception:
