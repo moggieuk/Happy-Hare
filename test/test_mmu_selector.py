@@ -26,6 +26,7 @@
 
 import logging
 import unittest
+from unittest import mock
 
 from test.hh import session
 from test.hh.root import install
@@ -299,6 +300,32 @@ class TestLinearServoGripStatus(SelectorTestCase):
         self.assertEqual(selector.get_status(0)['grip'], 'Gripped')
         self.hh.run_gcode('MMU_RELEASE')
         self.assertEqual(selector.get_status(0)['grip'], 'Released')
+        self.assertEqual(self.hh.errors, [])
+
+
+class TestLinearServoReselect(SelectorTestCase):
+    """Re-selecting the current, already positioned gate must not release and regrip the servo."""
+
+    PROFILE = 'tradrack'
+
+    def test_reselecting_the_current_gate_keeps_the_servo_gripped(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_GRIP')
+        with mock.patch.object(selector, 'filament_hold_move') as hold, \
+                mock.patch.object(selector, '_select_position') as position:
+            self.hh.mmu.select_gate(0)
+        hold.assert_not_called()
+        position.assert_not_called()
+        self.assertEqual(selector.get_status(0)['grip'], 'Gripped')
+
+    def test_changing_gate_still_moves_the_selector(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_GRIP')
+        self.hh.run_gcode('MMU_SELECT GATE=4')
+        self.assertEqual(self.hh.mmu.gate_selected, 4)
+        self.assertAlmostEqual(self.axis('unit0').carriage, selector.selector_offsets[4], places=3)
         self.assertEqual(self.hh.errors, [])
 
 
