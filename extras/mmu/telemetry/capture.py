@@ -256,23 +256,27 @@ A rolling baseline keeps bounded exports usable after older records expire.
             self.baseline_sequence = expired['sequence']
             self.baseline_time = expired['timestamp']
 
-    def read(self, after=None, limit=None, history="start"):
+    def read(self, after=None, limit=None, history="start", detach=True):
         """Records after the cursor; a stale or missing cursor restarts at the baseline.
-        history='current' folds everything recorded so far into that baseline instead of replaying it."""
+        history='current' folds everything recorded so far into that baseline instead of replaying it.
+        Records are copied unless detach is False: appended records are never modified, so the
+        stream, which serializes them at once, shares them. The baseline header is always a copy."""
         reset = after is None or after < self.baseline_sequence or after > self.sequence
-        header = dict(schema='happy_hare.motion', version=1, event='session',
-                      session_id=self.telemetry.session_id,
-                      sequence=self.baseline_sequence, timestamp=self.baseline_time,
-                      checkpoint=self.baseline_sequence > 0, state=copy.deepcopy(self.baseline))
-        if reset and history == 'current':
-            for record in self.records:
-                if record['event'] == 'state_delta':
-                    apply_changes(header['state'], record['changes'])
-                header.update(sequence=record['sequence'], timestamp=record['timestamp'], checkpoint=True)
-            pending = []
-        else:
+        records = []
+        if reset:
+            # Only the baseline is edited in place (when old records expire), so only it is copied
+            header = dict(schema='happy_hare.motion', version=1, event='session',
+                          session_id=self.telemetry.session_id,
+                          sequence=self.baseline_sequence, timestamp=self.baseline_time,
+                          checkpoint=self.baseline_sequence > 0, state=copy.deepcopy(self.baseline))
+            records.append(header)
+            if history == 'current':
+                for record in self.records:
+                    if record['event'] == 'state_delta':
+                        apply_changes(header['state'], record['changes'])
+                    header.update(sequence=record['sequence'], timestamp=record['timestamp'], checkpoint=True)
+        if not (reset and history == 'current'):
             pending = [record for record in self.records if reset or record['sequence'] > after]
-        records = ([header] if reset else []) + pending
-        response = dict(schema='happy_hare.motion', version=1, session_id=self.telemetry.session_id,
-                        reset=reset, records=records if limit is None else records[:limit])
-        return copy.deepcopy(response)
+            records.extend(copy.deepcopy(pending) if detach else pending)
+        return dict(schema='happy_hare.motion', version=1, session_id=self.telemetry.session_id,
+                    reset=reset, records=records if limit is None else records[:limit])

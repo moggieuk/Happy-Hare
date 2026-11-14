@@ -11,6 +11,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+import copy
 import unittest
 from test.hh import session
 
@@ -121,6 +122,26 @@ class TestTelemetryStream(unittest.TestCase):
         self.emit()
         self.stream.pump()
         self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta', 'cut'])
+
+    def test_idle_polling_does_not_copy_the_baseline(self):
+        from unittest import mock
+        first = self.subscribe(); self.ack(first)
+        with mock.patch('copy.deepcopy', wraps=copy.deepcopy) as spy:
+            for i in range(8): self.stream.pump()
+        self.assertEqual(spy.call_count, 0)
+        self.emit()
+        with mock.patch('copy.deepcopy', wraps=copy.deepcopy) as spy:
+            self.stream.pump()                            # New records are shared, not copied
+        self.assertEqual(spy.call_count, 0)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_a_reset_copies_the_baseline_so_later_folds_do_not_change_it(self):
+        self.subscribe()
+        batch = self.stream.capture.read()
+        before = copy.deepcopy(batch['records'][0]['state'])
+        self.stream.capture.limit = 2
+        self.emit(5)
+        self.assertEqual(batch['records'][0]['state'], before)
 
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory
