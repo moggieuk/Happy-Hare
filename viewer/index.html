@@ -12,7 +12,7 @@
         <small>HAPPY HARE / CONSOLE</small>
         <h1>Happy Hare viewer</h1>
       </div>
-      <div class="header-actions"><span id="connection">Connecting…</span><button id="theme-toggle" type="button" aria-label="Switch to light mode">Light mode</button></div>
+      <div class="header-actions"><button id="theme-toggle" type="button" aria-label="Switch to light mode">Light mode</button></div>
     </header>
     <main>
       <div class="left-column">
@@ -20,10 +20,11 @@
         <div class="heading"><h2>Connection</h2><span id="viewer-live" class="viewer-live" role="status" aria-label="Not live"><span aria-hidden="true"></span>Live</span></div>
         <label>Printer / simulator URL<input id="printer-url" type="text" aria-label="Printer or simulator URL"></label>
         <button id="connect-printer" type="button">Connect</button>
+        <p id="connection" class="connection-status" role="status" data-state="pending">Connecting…</p>
         <label>Data source<select id="view-mode"><option value="live">Live status subscription</option><option id="recording-option" value="recording" disabled hidden>Loaded telemetry recording</option><option value="playback">Telemetry stream</option></select></label>
         <div class="playback-row"><button id="save-motion">Save telemetry</button><button id="load-telemetry">Load telemetry</button></div>
         <input id="telemetry-file" type="file" accept=".jsonl,.ndjson,.json" hidden>
-        <div id="recording-bar" class="recording-bar" hidden><span id="recording-name"></span><button id="close-recording" type="button" data-tooltip="Close the recording and return to the live source">Return to live</button></div>
+        <p id="recording-name" class="note" hidden></p>
       </section>
       <section class="card" id="sidebar-playback" aria-label="Playback" hidden>
         <h2>Playback</h2>
