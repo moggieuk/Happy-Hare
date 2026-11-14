@@ -56,7 +56,7 @@ class TelemetryAPI:
             self.stream.pump()
         except Exception:
             logging.exception('MMU telemetry delivery stopped')
-            self.stream.close()
+            self.stream.close(notify=True)
         if not self.stream.clients:
             return self.reactor.NEVER
         return eventtime + .25

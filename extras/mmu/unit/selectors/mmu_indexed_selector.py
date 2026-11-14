@@ -308,10 +308,12 @@ class IndexedSelector(PhysicalSelector):
                 if endstop_name is None:
                     if self.selector_stepper.rail.get_endstops() is None:
                         self.mmu.log_error("No selector endstops configured")
+                        outcome.update(status='error', homed=False, error='Invalid selector endstop')
                         return pos, False
                 else:
                     if self.selector_stepper.rail.get_extra_endstop(endstop_name) is None:
                         self.mmu.log_error(f"Endstop '{endstop_name}' not found")
+                        outcome.update(status='error', homed=False, error='Invalid selector endstop')
                         return pos, False
 
                 home_result = {

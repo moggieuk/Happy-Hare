@@ -210,6 +210,7 @@ A rolling baseline keeps bounded exports usable after older records expire.
         self.limit = limit
         self.records = collections.deque()
         self.sequence = 0
+        self.failed = False  # Set when the source detaches this capture after an error; the stream then replaces it
         self.state = copy.deepcopy(self.state_provider())
         # Parameter sets are read once; later edits are config_changed events routed by section name
         self.scopes = self.state_provider.scopes()
@@ -227,33 +228,27 @@ A rolling baseline keeps bounded exports usable after older records expire.
 
     def on_event(self, source):
         # Every event, including a configuration change, commits whatever else has changed since the last one
-        current = self.state_provider()
-        delta = changes(self.state, current)
-        record = None
-        if source['event'] == 'config_changed':
-            delta += self._config_delta(source)
-        else:
-            record = {key: value for key, value in source.items()
-                      if key not in ('schema', 'version', 'session_id', 'sequence')}
+        try:
+            current = self.state_provider()
+            delta = changes(self.state, current)
+            record = None
+            if source['event'] == 'config_changed':
+                delta += self._config_delta(source)
+            else:
+                record = plain({key: value for key, value in source.items()
+                                if key not in ('schema', 'version', 'session_id', 'sequence')})
+        except Exception:
+            self.failed = True  # The source detaches a listener that raises
+            raise
         if delta:
             self._append(dict(event='state_delta', timestamp=source['timestamp'], changes=delta))
-            self.state = copy.deepcopy(current)
+            self.state = current
         if record:
             self._append(record)
 
-    def sync(self):
-        """Commit state that settled after the last event (a servo gripping, say), once nothing is moving"""
-        if self.telemetry.operations:
-            return
-        current = self.state_provider()
-        delta = changes(self.state, current)
-        if delta:
-            self._append(dict(event='state_delta', timestamp=self.telemetry.reactor.monotonic(), changes=delta))
-            self.state = copy.deepcopy(current)
-
     def _append(self, record):
         self.sequence += 1
-        self.records.append(dict(sequence=self.sequence, **copy.deepcopy(record)))
+        self.records.append(dict(sequence=self.sequence, **record))
         while len(self.records) > self.limit:
             expired = self.records.popleft()
             if expired['event'] == 'state_delta':

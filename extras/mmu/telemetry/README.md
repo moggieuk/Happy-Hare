@@ -342,8 +342,7 @@ MMU/machine state, calibration, sensors and toolhead macro dimensions. Later
 that observed them. Paths are arrays of keys; `remove: true` deletes a value,
 whereas `value: null` explicitly stores an unknown value. Edits that cancel before
 the next event are omitted. A change that raises no event of its own is captured by the
-snapshot taken at the next event, or by the stream's idle tick (every 0.25 s while no
-move is in progress), whichever comes first, and is stamped with that time. A new session or
+snapshot taken at the next event, so it is stamped with that event's time. A new session or
 expired cursor requires a reset.
 
 `extras/mmu/telemetry/capture.py` owns this capture independently of the

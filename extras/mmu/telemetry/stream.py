@@ -16,6 +16,7 @@ import uuid
 from .capture import TelemetryCapture
 
 MAX_SUBSCRIBERS = 32
+ACK_TIMEOUT = 5.  # A batch not acknowledged by now is sent again
 
 
 class TelemetryStream:
@@ -55,6 +56,7 @@ class TelemetryStream:
         cursor = batch['records'][-1]['sequence']
         batch.update(stream_id=self.stream_id, delivery_id=self.delivery, cursor=cursor)
         client['inflight'] = (self.delivery, cursor)
+        client['sent_at'] = self.mmu.reactor.monotonic()
         return batch
 
     def ack(self, key, stream_id, delivery_id):
@@ -72,13 +74,27 @@ class TelemetryStream:
             self.capture = None
         return {}
 
+    def _renew_capture(self):
+        """The source detached a capture that failed: start a new one and send every consumer a fresh baseline."""
+        self.capture.close()
+        self.capture = TelemetryCapture(self.mmu, limit=512)
+        self.stream_id = uuid.uuid4().hex
+        for client in self.clients.values():
+            client.update(after=None, inflight=None)
+
     def pump(self):
         for key, client in list(self.clients.items()):
             if client['closed']():
                 self.unsubscribe(key)
         if not self.clients:
             return
-        self.capture.sync()
+        if self.capture.failed and self.owns_capture:
+            logging.error('MMU telemetry capture failed; restarting it')
+            self._renew_capture()
+        now = self.mmu.reactor.monotonic()
+        for client in self.clients.values():
+            if client['inflight'] is not None and now - client['sent_at'] > ACK_TIMEOUT:
+                client['inflight'] = None  # The acknowledgement was lost: resend from the last acknowledged record
         for key, client in list(self.clients.items()):
             if client['inflight'] is None:
                 batch = self._batch(client)
@@ -89,6 +105,12 @@ class TelemetryStream:
                         logging.exception('MMU telemetry subscriber dropped')
                         self.unsubscribe(key)
 
-    def close(self):
-        for key in list(self.clients):
+    def close(self, notify=False):
+        """Drop every consumer. With `notify` each is first told the stream is closed, so it can subscribe again."""
+        for key, client in list(self.clients.items()):
+            if notify:
+                try:
+                    client['send'](dict(schema='happy_hare.motion', version=1, closed=True, records=[]))
+                except Exception:
+                    logging.exception('MMU telemetry close notice failed')
             self.unsubscribe(key)

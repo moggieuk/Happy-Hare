@@ -43,7 +43,7 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.hh = session('boxturtle'); self.hh.boot(calibrate=True)
         self.api = self.hh.mmu.telemetry_api
-        self.remote = {}; self.endpoints = {}; self.handlers = {}
+        self.remote = {}; self.endpoints = {}; self.handlers = {}; self.delayed = []
         self.closed = False
         common = types.ModuleType('telemetry_test.common')
         common.WebRequest = Request
@@ -65,6 +65,7 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         self.api.close(); self.hh.close()
 
     def get_app_args(self): return {'data_path': '/tmp'}
+    def get_event_loop(self): return types.SimpleNamespace(delay_callback=lambda delay, callback: self.delayed.append((delay, callback)))
     def add_warning(self, message): self.fail(message)
     def register_remote_method(self, name, callback): self.remote[name] = callback
     def register_endpoint(self, name, method, callback, **kwargs):
@@ -101,6 +102,20 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         await self.component.client_removed(b)
         self.assertEqual(self.api.stream.clients, {})
         self.assertIsNone(self.api.stream.capture)
+
+    async def test_a_closed_stream_is_subscribed_again_and_a_failed_ack_is_not_fatal(self):
+        conn = Browser()
+        await self.component.subscribe(Request(connection=conn))
+        token = self.component.upstream
+        await self.component.process_batch(token, dict(closed=True, records=[]))
+        self.assertIsNone(self.component.upstream)
+        self.assertEqual(len(self.delayed), 1)
+        await self.delayed[0][1]()
+        self.assertIsNotNone(self.component.upstream)
+        batch = self.hh.mmu.telemetry_api.stream.capture.read()
+        batch.update(stream_id=self.hh.mmu.telemetry_api.stream.stream_id, delivery_id=99, cursor=0)
+        with patch.object(self.component, 'request', side_effect=OSError('busy')):
+            await self.component.process_batch(self.component.upstream, batch)   # Klipper resends later
 
     async def test_klipper_disconnect_releases_capture(self):
         await self.component.subscribe(Request(connection=Browser()))

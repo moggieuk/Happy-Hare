@@ -81,11 +81,46 @@ class TestTelemetryStream(unittest.TestCase):
         self.stream.unsubscribe('b')
         self.assertIsNone(self.stream.capture)
 
-    def test_idle_change_is_delivered_without_waiting_for_an_event(self):
+    def test_a_lost_acknowledgement_is_resent_after_the_timeout(self):
+        from unittest import mock
+        first = self.subscribe()
+        self.emit()
+        self.stream.pump(); self.assertEqual(self.sent, [])       # The first batch is still unacknowledged
+        later = self.hh.mmu.reactor.monotonic() + 6
+        with mock.patch.object(self.hh.mmu.reactor, 'monotonic', return_value=later):
+            self.stream.pump()
+        self.assertEqual(len(self.sent), 1)
+        self.assertNotEqual(self.sent[0]['delivery_id'], first['delivery_id'])
+        self.assertEqual([r['event'] for r in self.sent[0]['records']], ['session', 'cut'])
+
+    def test_a_failed_capture_is_replaced_and_consumers_get_a_new_baseline(self):
+        from unittest import mock
+        first = self.subscribe(); self.ack(first)
+        failed = self.stream.capture
+        with mock.patch.object(failed, 'state_provider', side_effect=RuntimeError('boom')):
+            self.emit()                                          # The source detaches the failing capture
+        self.assertTrue(failed.failed)
+        self.assertEqual(self.hh.mmu.movement_telemetry.listeners, [])
+        self.stream.pump()
+        self.assertIsNot(self.stream.capture, failed)
+        self.assertNotEqual(self.sent[-1]['stream_id'], first['stream_id'])
+        self.assertTrue(self.sent[-1]['reset'])
+        self.emit()
+        self.assertEqual(len(self.hh.mmu.movement_telemetry.listeners), 1)
+
+    def test_closing_with_notice_tells_each_consumer(self):
+        self.subscribe()
+        self.stream.close(notify=True)
+        self.assertEqual(self.sent[-1]['closed'], True)
+        self.assertEqual(self.stream.clients, {})
+
+    def test_idle_change_is_delivered_with_the_next_event(self):
         first = self.subscribe(); self.ack(first)
         self.hh.mmu.gate_selected = 1
+        self.stream.pump(); self.assertEqual(self.sent, [])
+        self.emit()
         self.stream.pump()
-        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta'])
+        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta', 'cut'])
 
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory
