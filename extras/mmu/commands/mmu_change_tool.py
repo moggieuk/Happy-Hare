@@ -70,8 +70,8 @@ class MmuChangeToolCommand(BaseCommand):
             if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, mmu_unit=u):
                 return
 
-        mmu._toolchange_event(gcmd)
         mmu.fix_started_state()
+        mmu._toolchange_event(gcmd)
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
