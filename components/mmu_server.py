@@ -743,49 +743,57 @@ class MmuServer:
                 return None
             self.spoolman_has_rfid_field = True
 
-        summary = {'spools': 0, 'moved': 0, 'conflicts': [], 'errors': 0}
+        # Plan first, so progress can be reported against a known total
+        plan = [] # (spool_id, native, extra, uids to move)
         for spool_info in resp.json():
             spool_id = spool_info['id']
             if spool_id_filter is not None and spool_id != spool_id_filter:
                 continue
             native = self._get_native_uid_list(spool_info)
             extra = self._get_uid_list_from_extra(spool_info.get('extra'))
+            moving = [u for u in extra if u not in native] if to_native else native
+            if moving:
+                plan.append((spool_id, native, extra, moving))
+        total = sum(len(m) for *_, m in plan)
+        target = "native Spoolman tags" if to_native else "the extra field"
+        summary = {'spools': len(plan), 'moved': 0, 'conflicts': [], 'errors': 0}
+        if total:
+            await self._log_n_send(f"NFC: {'checking' if dry_run else 'migrating'} {total} tag(s) on {len(plan)} spool(s) to {target}...", silent=silent)
 
-            if to_native:
-                pending = [u for u in extra if u not in native]
-                if not pending:
-                    continue
-                summary['spools'] += 1
-                for uid in pending:
-                    if dry_run:
-                        summary['moved'] += 1
-                        continue
-                    ok, conflict = await self._link_native_tag(spool_id, uid)
-                    if ok:
-                        summary['moved'] += 1
-                    elif conflict is not None:
-                        holder = (f"spool {conflict['spool_id']}" if conflict.get('spool_id') is not None else
-                                  f"filament {conflict['filament_id']}" if conflict.get('filament_id') is not None else
-                                  conflict.get('message', 'another record'))
-                        summary['conflicts'].append(f"tag {uid} on spool {spool_id} is already linked to {holder}")
-                    else:
-                        summary['errors'] += 1
-            else:
-                if not native:
-                    continue
-                summary['spools'] += 1
-                if dry_run:
-                    summary['moved'] += len(native)
-                    continue
-                # Extra field first, so the UID is never in neither store
+        done = 0
+        for spool_id, native, extra, moving in plan:
+            if dry_run:
+                for uid in moving:
+                    done += 1
+                    summary['moved'] += 1
+                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} would be migrated", silent=silent)
+                continue
+
+            if not to_native: # Extra field first, so the UID is never in neither store
                 if not await self._write_extra_uids(spool_id, extra + [u for u in native if u not in extra]):
-                    summary['errors'] += 1
+                    done += len(moving)
+                    summary['errors'] += len(moving)
+                    await self._log_n_send(f"NFC: couldn't write the extra field on spool {spool_id} - its {len(moving)} tag(s) were not moved", error=True, silent=silent)
                     continue
-                for uid in native:
-                    if await self._unlink_native_tag(spool_id, uid):
-                        summary['moved'] += 1
-                    else:
-                        summary['errors'] += 1
+
+            for uid in moving:
+                done += 1
+                if to_native:
+                    ok, conflict = await self._link_native_tag(spool_id, uid)
+                else:
+                    ok, conflict = await self._unlink_native_tag(spool_id, uid), None
+                if ok:
+                    summary['moved'] += 1
+                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} migrated to {'a native Spoolman tag' if to_native else 'the extra field'}", silent=silent)
+                elif conflict is not None:
+                    holder = (f"spool {conflict['spool_id']}" if conflict.get('spool_id') is not None else
+                              f"filament {conflict['filament_id']}" if conflict.get('filament_id') is not None else
+                              conflict.get('message', 'another record'))
+                    summary['conflicts'].append(f"tag {uid} on spool {spool_id} is already linked to {holder}")
+                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} not migrated - already linked to {holder}", silent=silent)
+                else:
+                    summary['errors'] += 1
+                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} failed - see moonraker.log", error=True, silent=silent)
 
         direction = "extra field -> native tags" if to_native else "native tags -> extra field"
         if spool_id_filter is not None:
@@ -814,6 +822,7 @@ class MmuServer:
             await self._log_n_send(f"NFC: unknown tag migration direction '{direction}' (use native or extra)", error=True, silent=silent)
             return False
         async with self.cache_lock:
+            await self._initialize_mmu() # Console messages go via MMU_LOG, which needs the backend known
             summary = await self._migrate_tags(to_native=(direction == 'native'), dry_run=dry_run, silent=silent,
                                                spool_id_filter=int(spool_id) if spool_id is not None else None)
             if summary is None:
