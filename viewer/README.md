@@ -116,8 +116,9 @@ before the next activity, so playback applies the recorded blade position and
 sensor states before continuing. Returning to the beginning restores the initial
 illustration without changing the running simulator. Parameter edits (`MMU_TEST_CONFIG`)
 are reported at once, each as its own entry. Edits that raise no event (macro variables,
-sensor off/on) are captured by the next event's snapshot, like all other MMU state, so a
-change undone before then leaves no entry. Exported traces include these settings and
+sensor off/on) are captured by the next state read (at an event, or 0.25 s after the last one), like
+all other MMU state, so a change undone before then leaves no entry. A change recorded just after a
+step, such as a selector's grip, is shown as part of that step. Exported traces include these settings and
 configuration boundaries.
 
 Choose a built-in console profile and select **Restart with profile** to boot a

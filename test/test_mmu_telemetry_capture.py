@@ -242,6 +242,58 @@ class TestTelemetryCapture(unittest.TestCase):
         self.apply(old, changes(old, new))
         self.assertEqual(old, new)
 
+    def test_state_assigned_after_the_last_event_is_recorded_once_events_stop(self):
+        capture = self.capture()
+        self.emit()
+        self.hh.mmu.gate_selected = 1                      # Set just after the last event
+        count = len(capture.records)
+        self.hh.mmu.reactor.advance(.1)
+        self.assertEqual(len(capture.records), count)
+        self.hh.mmu.reactor.advance(.5)
+        self.assertEqual(capture.records[-1]['event'], 'state_delta')
+        self.assertIn(dict(path=['printer', 'mmu', 'gate'], value=1), capture.records[-1]['changes'])
+
+    def test_settle_reads_state_once_per_burst_and_never_when_idle(self):
+        capture = self.capture()
+        with mock.patch.object(capture, 'state_provider', wraps=capture.state_provider) as provider:
+            for i in range(10):
+                self.emit()
+                self.hh.mmu.reactor.advance(.1)            # Closer together than the quiet time
+            self.assertEqual(provider.call_count, 10)
+            self.hh.mmu.reactor.advance(.5)
+            self.assertEqual(provider.call_count, 11)
+            self.hh.mmu.reactor.advance(30.)
+            self.assertEqual(provider.call_count, 11)
+
+    def test_state_is_not_sampled_while_a_move_is_open(self):
+        capture = self.capture()
+        telemetry = self.hh.mmu.movement_telemetry
+        telemetry.emit('selector_movement_start', 777, unit='unit0', gate=0)
+        self.hh.mmu.gate_selected = 1
+        self.hh.mmu.reactor.advance(2.)
+        self.assertNotIn('state_delta', [r['event'] for r in capture.records])
+        telemetry.emit('selector_movement_outcome', 777, unit='unit0', gate=0)
+        self.hh.mmu.gate_selected = 2                      # Closed: sampling resumes
+        self.hh.mmu.reactor.advance(.5)
+        self.assertEqual(capture.records[-1]['event'], 'state_delta')
+        self.assertIn(dict(path=['printer', 'mmu', 'gate'], value=2), capture.records[-1]['changes'])
+
+    def test_closed_capture_stops_reading_state(self):
+        capture = self.capture()
+        self.emit()
+        capture.close()
+        capture.close()
+        with mock.patch.object(capture, 'state_provider') as provider:
+            self.hh.mmu.reactor.advance(2.)
+        provider.assert_not_called()
+
+    def test_failed_settle_read_marks_the_capture_failed_without_raising(self):
+        capture = self.capture()
+        self.emit()
+        with mock.patch.object(capture, 'state_provider', side_effect=RuntimeError('boom')):
+            self.hh.mmu.reactor.advance(.5)
+        self.assertTrue(capture.failed)
+
     def test_readers_cannot_mutate_recording(self):
         capture = self.capture()
         self.emit()
@@ -265,3 +317,25 @@ class TestTelemetryCapture(unittest.TestCase):
         before = dict(gcode.ready_gcode_handlers)
         self.capture()
         self.assertEqual(gcode.ready_gcode_handlers['G1'], before['G1'])
+
+
+class TestSelectorGripSettles(unittest.TestCase):
+    def setUp(self):
+        self.hh = session('tradrack')
+        self.hh.boot(calibrate=True, selected_gate=0)
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        self.capture = TelemetryCapture(self.hh.mmu)
+
+    def tearDown(self):
+        self.capture.close()
+        self.hh.close()
+
+    def grip(self):
+        return self.capture.state['printer']['mmu']['selector']['grip']
+
+    def test_grip_is_recorded_after_each_command_including_the_last(self):
+        for command, expected in (('MMU_GRIP', 'Gripped'), ('MMU_RELEASE', 'Released'), ('MMU_GRIP', 'Gripped')):
+            self.hh.run_gcode(command)
+            self.hh.mmu.reactor.advance(.5)
+            self.assertEqual(self.grip(), expected, command)
+            self.assertEqual(self.capture.records[-1]['event'], 'state_delta')

@@ -198,8 +198,8 @@ playback and use **Load telemetry**:
   While following the stream at rest (not paused, not animating, no move in
   progress) the viewer also subscribes to `mmu.sensors` and shows those readings
   on the live end, so a sensor toggled or triggered while idle appears at once
-  instead of at the next event (`overlay.js`). Nothing else is overlaid, and the
-  next event carries the same values.
+  instead of when the capture's next read records it (`overlay.js`). Nothing else is
+  overlaid, and the recorded state carries the same values.
 
 The Settings panel accepts a printer/simulator URL (default: the server hosting
 this viewer). The parameter editor and Toolhead Config panel work on a real printer
@@ -341,9 +341,11 @@ MMU/machine state, calibration, sensors and toolhead macro dimensions. Later
 `state_delta` records contain changed leaves only and precede the source event
 that observed them. Paths are arrays of keys; `remove: true` deletes a value,
 whereas `value: null` explicitly stores an unknown value. Edits that cancel before
-the next event are omitted. A change that raises no event of its own is captured by the
-snapshot taken at the next event, so it is stamped with that event's time. A new session or
-expired cursor requires a reset.
+the next read are omitted. State is read at every event and once more 0.25 s after the
+last one (never in the middle of an open move), so a value assigned just after an event, such as a
+selector's grip, is recorded as a trailing `state_delta` without any polling. A change that
+raises no event of its own is captured by the next read, so it is stamped with that read's time.
+A new session or expired cursor requires a reset.
 
 `extras/mmu/telemetry/capture.py` owns this capture independently of the
 simulator. Create `TelemetryCapture(mmu)` on the printer thread after readiness;

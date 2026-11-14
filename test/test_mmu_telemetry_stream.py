@@ -115,33 +115,25 @@ class TestTelemetryStream(unittest.TestCase):
         self.assertEqual(self.sent[-1]['closed'], True)
         self.assertEqual(self.stream.clients, {})
 
-    def test_idle_change_is_delivered_with_the_next_event(self):
+    def test_a_change_after_the_last_event_is_delivered_once_it_settles(self):
         first = self.subscribe(); self.ack(first)
+        self.emit(); self.stream.pump(); self.ack(self.sent[-1])
         self.hh.mmu.gate_selected = 1
-        self.stream.pump(); self.assertEqual(self.sent, [])
-        self.emit()
+        self.stream.pump(); self.assertEqual(len(self.sent), 1)
+        self.hh.mmu.reactor.advance(.5)
         self.stream.pump()
-        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta', 'cut'])
+        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['state_delta'])
 
-    def test_idle_polling_does_not_copy_the_baseline(self):
+    def test_a_failed_settle_read_gets_the_capture_replaced(self):
         from unittest import mock
         first = self.subscribe(); self.ack(first)
-        with mock.patch('copy.deepcopy', wraps=copy.deepcopy) as spy:
-            for i in range(8): self.stream.pump()
-        self.assertEqual(spy.call_count, 0)
+        failed = self.stream.capture
         self.emit()
-        with mock.patch('copy.deepcopy', wraps=copy.deepcopy) as spy:
-            self.stream.pump()                            # New records are shared, not copied
-        self.assertEqual(spy.call_count, 0)
-        self.assertEqual(len(self.sent), 1)
-
-    def test_a_reset_copies_the_baseline_so_later_folds_do_not_change_it(self):
-        self.subscribe()
-        batch = self.stream.capture.read()
-        before = copy.deepcopy(batch['records'][0]['state'])
-        self.stream.capture.limit = 2
-        self.emit(5)
-        self.assertEqual(batch['records'][0]['state'], before)
+        with mock.patch.object(failed, 'state_provider', side_effect=RuntimeError('boom')):
+            self.hh.mmu.reactor.advance(.5)
+        self.assertTrue(failed.failed)
+        self.stream.pump()
+        self.assertIsNot(self.stream.capture, failed)
 
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory

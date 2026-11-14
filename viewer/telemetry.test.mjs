@@ -67,6 +67,22 @@ test('a selector start and outcome become one visible step carrying both records
  assert.equal(step.telemetry.start.target_position_mm,46.2);assert.equal(step.telemetry.outcome.position_mm,46.2);
  assert.equal(r.pendingSelectors.size,0);
 });
+test('a grip change that settles after a selector move is shown as part of that step',()=>{
+ const h=header(),mmu=h.state.printer.mmu;
+ mmu.selector={...mmu.selector,grip:'Released',servo:'Up'};
+ for(const u of Object.values(h.state.printer.mmu_machine.units)) u.filament_always_gripped=false;
+ const r=new TelemetryReplay();r.feed(h);
+ event(r,'selector_movement_start',{move_id:5,actuator:'servo',label:'Move selector servo',position_angle_deg:145,target_angle_deg:1});
+ event(r,'selector_movement_outcome',{move_id:5,actuator:'servo',status:'submitted',position_angle_deg:1,elapsed_s:0});
+ event(r,'state_delta',{changes:[{path:['printer','mmu','selector','grip'],value:'Gripped'},{path:['printer','mmu','selector','servo'],value:'Down'}]});
+ const steps=visibleSteps(r.events),step=steps.at(-1);
+ assert.equal(step.kind,'selector_move');                       // No separate step for the late status
+ assert.equal(step.before.mmu_gripped,false);
+ assert.equal(step.state.mmu_gripped,false);
+ assert.equal(step.settled_state.mmu_gripped,true);
+ assert.equal(interpolate(step,1).mmu_gripped,true);            // The step ends gripped
+ assert.equal(interpolate(step,0).mmu_gripped,false);           // Reversing it releases again
+});
 test('a selector pair inside a filament move stays bookkeeping, and an outcome without a start is tolerated',()=>{
  const r=stream();
  event(r,'movement_start',{move_id:9,motor_mode:'gear',requested_mm:5});
