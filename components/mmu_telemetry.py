@@ -59,8 +59,8 @@ class MmuTelemetry:
         # Klipper decides: a recording requested before Moonraker (re)started resumes at once
         async with self.lock:
             try:
-                status = await self.request('status', {})
-                if status.get('record', 'off') != 'off':
+                status = await self.server.lookup_component('klippy_apis').query_objects({'mmu': ['telemetry_mode']})
+                if status.get('mmu', {}).get('telemetry_mode', 'off') != 'off':
                     await self._start()
             except Exception:
                 logging.exception('MMU telemetry could not read the recording state')

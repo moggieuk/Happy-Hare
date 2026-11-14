@@ -91,11 +91,11 @@ class TelemetryStream:
 
     def _attach(self, capture):
         """A capture made elsewhere (the simulator's) reports the recording mode and its end the same way."""
-        capture.state_provider.record_mode = self._mode
+        capture.record_mode = self._mode
         capture.on_toolchange_end = self._toolchange_ended
 
     def _new_capture(self):
-        capture = TelemetryCapture(self.mmu, limit=256, record_mode=self._mode)
+        capture = TelemetryCapture(self.mmu, limit=256)
         self._attach(capture)
         if self.record_mode != 'off':
             try:

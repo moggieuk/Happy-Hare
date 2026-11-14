@@ -73,7 +73,12 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs['transports'], 2)
     def register_event_handler(self, name, callback): self.handlers[name] = callback
     def lookup_component(self, name):
+        if name == 'klippy_apis':
+            return types.SimpleNamespace(query_objects=self.query_objects)
         self.assertEqual(name, 'klippy_connection'); return self
+    async def query_objects(self, objects):
+        status = self.hh.mmu.get_status(self.hh.reactor.monotonic())
+        return {'mmu': {key: status[key] for key in objects['mmu']}}
     def is_closed(self): return self.closed
     def send(self, message):
         asyncio.create_task(self.remote[message['method']](**message['params']))
@@ -305,6 +310,34 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
             self.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
             await self.settle()
             self.assertEqual([r['event'] for r in self.logged(path)][:2], ['session', 'cut'])
+            await self.component.close()
+
+    async def test_a_wake_for_a_recording_already_switched_off_releases_the_subscription(self):
+        self.api.set_record_mode('on')
+        self.api.set_record_mode('off')                         # Before Moonraker handled the wake
+        await self.remote['mmu_telemetry_wake']()
+        self.assertIsNone(self.component.upstream)
+        self.assertIsNone(self.api.stream.capture)
+
+    async def test_disconnecting_forgets_a_segment_in_progress(self):
+        self.component.mode, self.component.segment = 'toolchange', (1, 1)
+        self.component.disconnected()
+        self.assertEqual((self.component.mode, self.component.segment), ('off', None))
+
+    async def test_a_recording_moonraker_never_starts_warns_the_user_once(self):
+        from components.mmu_telemetry_store import TelemetryRecorder
+        with patch.object(self.hh.mmu, 'log_warning') as warn, tempfile.TemporaryDirectory() as directory:
+            self.component.recorder = TelemetryRecorder(Path(directory)/'motion.jsonl', 1000000, 2)
+            self.api.set_record_mode('on')
+            self.hh.reactor.advance(6.)
+            self.assertEqual(warn.call_count, 1)
+            self.assertIn('Moonraker', warn.call_args[0][0])
+            warn.reset_mock()
+            await self.remote['mmu_telemetry_wake']()            # It did subscribe after all
+            self.api.set_record_mode('off')
+            self.api.set_record_mode('on')
+            self.hh.reactor.advance(6.)
+            warn.assert_not_called()
             await self.component.close()
 
     async def test_nothing_subscribes_until_a_browser_or_a_recording_needs_it(self):

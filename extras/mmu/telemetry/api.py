@@ -26,7 +26,7 @@ class TelemetryAPI:
         self.stream = TelemetryStream(mmu)
         self.timer = None
         self.webhooks = webhooks = mmu.printer.lookup_object('webhooks')
-        for name in ('subscribe', 'ack', 'unsubscribe', 'status', 'record'):
+        for name in ('subscribe', 'ack', 'unsubscribe', 'record'):
             webhooks.register_endpoint('mmu/telemetry/' + name, getattr(self, name))
         mmu.printer.register_event_handler('klippy:disconnect', self.close)
         mmu.printer.register_event_handler('klippy:shutdown', self.close)
@@ -52,9 +52,6 @@ class TelemetryAPI:
     def ack(self, request):
         request.send(self.stream.ack(self._key(request), request.get_str('stream_id'),
                                     request.get_int('delivery_id')))
-
-    def status(self, request):
-        request.send(dict(record=self.stream.record_mode))
 
     def record(self, request):
         try:

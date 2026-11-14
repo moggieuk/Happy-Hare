@@ -178,13 +178,12 @@ class TestTelemetryStream(unittest.TestCase):
         self.assertEqual(records[1]['mode'], 'on')
         changes = {tuple(c['path']): c['value'] for c in records[0]['changes']}
         self.assertEqual(changes[('printer', 'mmu', 'gate')], 1)
-        self.assertEqual(changes[('printer', 'mmu', 'telemetry', 'record')], 'on')
 
     def test_a_subscriber_after_recording_was_requested_learns_it_with_its_baseline(self):
         self.assertTrue(self.stream.set_record_mode('toolchange'))     # Nobody subscribed: Moonraker must be asked
         batch = self.subscribe()
         self.assertEqual([r['event'] for r in batch['records']], ['session', 'record_mode'])
-        self.assertEqual(batch['records'][0]['state']['printer']['mmu']['telemetry']['record'], 'toolchange')
+        self.assertEqual(batch['records'][1]['mode'], 'toolchange')
 
     def test_one_toolchange_mode_ends_with_its_own_command_only(self):
         self.stream.set_record_mode('toolchange'); self.subscribe()
@@ -223,9 +222,6 @@ class TestTelemetryStream(unittest.TestCase):
         try:
             stream = TelemetryStream(self.hh.mmu, external)
             telemetry = self.hh.mmu.movement_telemetry
-            stream.set_record_mode('on')
-            telemetry.state('cut')
-            self.assertEqual(external.state['printer']['mmu']['telemetry']['record'], 'on')
             stream.set_record_mode('toolchange')
             telemetry.toolchange_start(command='MMU_LOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_LOAD')
             self.assertEqual(stream.record_mode, 'off')
@@ -245,6 +241,17 @@ class TestTelemetryStream(unittest.TestCase):
     def test_unknown_recording_mode_is_rejected(self):
         with self.assertRaises(ValueError):
             self.stream.set_record_mode('sometimes')
+
+    def test_the_mode_is_a_status_variable_that_follows_the_command_and_the_end_of_a_toolchange(self):
+        mmu, now = self.hh.mmu, self.hh.mmu.reactor.monotonic()
+        self.assertEqual(mmu.get_status(now)['telemetry_mode'], 'off')
+        self.hh.run_gcode('MMU_TELEMETRY MODE=toolchange')
+        self.assertEqual(mmu.get_status(now)['telemetry_mode'], 'toolchange')
+        mmu.movement_telemetry.toolchange_start(command='MMU_LOAD')
+        mmu.movement_telemetry.toolchange_end(command='MMU_LOAD')   # Nothing recorded without a capture: still armed
+        self.assertEqual(mmu.get_status(now)['telemetry_mode'], 'toolchange')
+        self.hh.run_gcode('MMU_TELEMETRY MODE=off')
+        self.assertEqual(mmu.get_status(now)['telemetry_mode'], 'off')
 
     def test_the_default_telemetry_mode_is_off_and_a_configured_one_applies_at_startup(self):
         from test.hh import profiles

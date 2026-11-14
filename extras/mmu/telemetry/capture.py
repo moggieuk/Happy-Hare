@@ -87,9 +87,8 @@ class ReplayState:
     MACRO_VARIABLES = ('blade_pos', 'cutter_before_extruder',
                        'cooling_tube_position', 'cooling_tube_length')
 
-    def __init__(self, mmu, record_mode=lambda: 'off'):
+    def __init__(self, mmu):
         self.mmu = mmu
-        self.record_mode = record_mode
 
     @staticmethod
     def select(obj, names):
@@ -185,7 +184,7 @@ class ReplayState:
         return plain(dict(printer=dict(
             mmu=dict(unit=mmu.mmu_unit().name, tool=mmu.tool_selected, gate=mmu.gate_selected,
                      filament_pos=mmu.filament_pos, filament_direction=mmu.filament_direction,
-                     selector=mmu.selector().get_status(now), telemetry=dict(record=self.record_mode()),
+                     selector=mmu.selector().get_status(now),
                      sync_mode=drive.get_sync_mode(), gate_status=list(mmu.gate_status), gate_color=[display_color(c) for c in mmu.gate_color],
                      gate_initial_weight=list(mmu.gate_initial_weight), gate_remaining_weight=list(mmu.gate_remaining_weight),
                      **{name: list(getattr(mmu, name)) for name in self.GATE_MAP_ATTRIBUTES},
@@ -209,11 +208,12 @@ timer. Changes that cancel before the next read are intentionally lost.
 The stream folds acknowledged records into a rolling baseline, so only unacknowledged records are
 kept; the limit only bounds a consumer that stops acknowledging.
 """
-    def __init__(self, mmu, limit=256, record_mode=lambda: 'off'):
+    def __init__(self, mmu, limit=256):
         if limit < 2:
             raise ValueError('Telemetry limit must be at least two records')
         self.telemetry = mmu.movement_telemetry
-        self.state_provider = ReplayState(mmu, record_mode)
+        self.state_provider = ReplayState(mmu)
+        self.record_mode = lambda: 'off'  # The stream says which mode is being recorded
         self.limit = limit
         self.records = collections.deque()
         self.sequence = 0
@@ -265,7 +265,7 @@ kept; the limit only bounds a consumer that stops acknowledging.
             self.open_moves.discard(source['move_id'])
         self.reactor.update_timer(self.settle_timer, self.reactor.NEVER if self.open_moves
                                   else self.reactor.monotonic() + SETTLE_DELAY)
-        if event == 'toolchange' and self.state_provider.record_mode() == 'toolchange':
+        if event == 'toolchange' and self.record_mode() == 'toolchange':
             self.segment = (source['toolchange_id'], self.sequence)
         elif event == 'toolchange_end' and self.segment and self.segment[0] == source['toolchange_id']:
             self.segment = None

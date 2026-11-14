@@ -20,7 +20,7 @@ function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
 }
 let modeChosen=false, viewGeneration=0;
-let statusSensors=null, overlayCache={key:'',state:null};
+let statusSensors=null, statusRecordMode=null, overlayCache={key:'',state:null};
 let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
 let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
 // The Connection panel's status: a dot coloured by `state` (connected, pending, warning, offline or disconnected) and a label.
@@ -34,7 +34,7 @@ function showConnection() {
   setConnection(kind === 'simulator' ? 'Connected to the simulator' : kind === 'live_machine' ? 'Connected to printer' : 'Connected · unknown source', 'connected');
 }
 function renderRecordControl() {
-  const {visible,value}=recordControl({viewMode,offline,simulator:isSimulator(),connected:socket?.readyState===1,facts:sourceReplay.facts});
+  const {visible,value}=recordControl({viewMode,offline,simulator:isSimulator(),connected:socket?.readyState===1,mode:statusRecordMode});
   $('record-row').hidden=!visible;
   if (visible) $('record-mode').value=value;
 }
@@ -129,7 +129,7 @@ function connect() {
   socket.onopen = () => {
     if (generation!==connectionGeneration) return;
     setup=null;
-    liveState=new LiveState(); statusSensors=null;
+    liveState=new LiveState(); statusSensors=null; statusRecordMode=null;
     sourceMode();
     if (offline) return;
     setConnection("Connected · identifying source…", "pending");
@@ -147,7 +147,11 @@ function connect() {
       telemetryStream.receive(data.params[0]);
     } else if (data.method === 'notify_status_update') {
       if (viewMode==='live') acceptLive(data.params[0],data.params[1]);
-      else if (data.params[0].mmu?.sensors) { statusSensors=data.params[0].mmu.sensors; draw(); }
+      else {
+        const mmu=data.params[0].mmu;
+        if (mmu?.sensors) { statusSensors=mmu.sensors; draw(); }
+        if (mmu && 'telemetry_mode' in mmu) { statusRecordMode=mmu.telemetry_mode; renderRecordControl(); }
+      }
     } else if (['notify_klippy_ready','notify_klippy_shutdown','notify_klippy_disconnected'].includes(data.method)) {
       if (offline) return;
       if (data.method==='notify_klippy_ready') reloadEditor();
@@ -156,7 +160,7 @@ function connect() {
         if (data.method==='notify_klippy_ready') startStream().catch(e=>message(e.message,true));
         return;
       }
-      liveState=new LiveState(); statusSensors=null; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
+      liveState=new LiveState(); statusSensors=null; statusRecordMode=null; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
       if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
       else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
     } else if (data.method === "notify_gcode_command") {
@@ -169,7 +173,7 @@ function connect() {
     if (generation!==connectionGeneration) return;
     subscriptionGeneration++;
     telemetryStream.stop(false);
-    statusSensors=null;
+    statusSensors=null; statusRecordMode=null;
     if (liveTarget) { liveTarget.homing=null; liveTarget.espoolers={}; }
     if (viewMode==='live' && displayed) displayed.espoolers={};
     draw();
@@ -239,12 +243,14 @@ function acceptLive(delta,time) {
   live=true; paused=false; playing=null; session='subscription';
   draw();
 }
-// The near-live stream shows the printer's event stream; sensor readings are overlaid while it is idle.
+// The near-live stream shows the printer's event stream; sensor readings are overlaid while it is idle, and the
+// recording mode (a status variable) drives the Record control.
 async function startStream() {
   const generation=viewGeneration;
-  const sensors=(await rpc('printer.objects.subscribe',{objects:{mmu:['sensors']}})).status.mmu?.sensors || null;
+  const mmu=(await rpc('printer.objects.subscribe',{objects:{mmu:['sensors','telemetry_mode']}})).status.mmu;
   if (generation!==viewGeneration || viewMode!=='playback' || offline) return;
-  statusSensors=sensors;
+  statusSensors=mmu?.sensors || null; statusRecordMode=mmu?.telemetry_mode ?? null;
+  renderRecordControl();
   await telemetryStream.start();
 }
 async function changeView(mode) {
@@ -253,7 +259,7 @@ async function changeView(mode) {
   subscriptionGeneration++;
   viewMode=mode; offline=false; playing=null; displayed=null; sensorPulse=null;
   events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay();
-  liveTarget=null; liveFrom=null; liveState=new LiveState(); statusSensors=null;
+  liveTarget=null; liveFrom=null; liveState=new LiveState(); statusSensors=null; statusRecordMode=null;
   live=true; paused=false; replayingHistory=false;
   $('scene').replaceChildren();
   $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : isSimulator() ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
@@ -1497,7 +1503,7 @@ function updateSource(records, reset=false) {
       else if (played > (events.at(-1)?.seq ?? 0)) followLive();
     }
   }
-  draw(); renderTrace(); renderRecordControl();
+  draw(); renderTrace();
 }
 const telemetryStream=new TelemetryStream(rpc, async data=>{
   if (offline || viewMode!=='playback') return false;

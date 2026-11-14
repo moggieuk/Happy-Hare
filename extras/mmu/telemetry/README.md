@@ -66,11 +66,11 @@ MMU_TELEMETRY MODE=off          # stop
 `MMU_TEST_CONFIG`) is the mode after a restart. `MMU_TELEMETRY` with no parameters reports the
 current mode and the default, which is set only in `mmu.cfg`.
 
-Klipper keeps the mode (it is not saved across a restart) and publishes it in the stream as
-`printer.mmu.telemetry.record`. A mode change commits the settled state, then emits a `record_mode`
-record, so Moonraker acts on it at the right place in the stream. If nobody is subscribed, Klipper
-asks Moonraker to subscribe (`mmu_telemetry_wake`). A Moonraker that restarts while a recording
-is requested reads `mmu/telemetry/status` at readiness and resumes. If Moonraker has not started a requested
+Klipper keeps the mode (it is not saved across a restart) and exposes it as the printer variable
+`mmu.telemetry_mode`: that is what the viewer's Record control shows (from the `mmu` object subscription it already makes
+for sensors) and what a Moonraker that restarts reads at readiness to resume a recording. A mode change also commits the
+settled state and emits a `record_mode` record, so Moonraker's recorder acts on it at the right place in the stream. If nobody
+is subscribed, Klipper asks Moonraker to subscribe (`mmu_telemetry_wake`). If Moonraker has not started a requested
 recording within five seconds (not running, or `[mmu_telemetry]` not loaded) Klipper logs a warning. Repeating the current
 mode changes nothing: it does not rotate the log. Moonraker persists the records
 and the viewer only reads them.

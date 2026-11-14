@@ -43,10 +43,10 @@ test('history renewal uses current checkpoint without replacing the user history
  assert.deepEqual(requests,[{history:'start'},{history:'current'},{history:'start'}]);
 });
 
-test('the record control follows the printer stream and reflects the mode Klipper reports',()=>{
- const base={viewMode:'playback',offline:false,simulator:false,connected:true,facts:{printer:{mmu:{telemetry:{record:'on'}}}}};
+test('the record control follows the printer stream and reflects the telemetry_mode status variable',()=>{
+ const base={viewMode:'playback',offline:false,simulator:false,connected:true,mode:'on'};
  assert.deepEqual(recordControl(base),{visible:true,value:'on'});
- assert.equal(recordControl({...base,facts:undefined}).value,'off');
+ assert.equal(recordControl({...base,mode:null}).value,'off');
  for (const change of [{viewMode:'live'},{offline:true},{simulator:true},{connected:false}])
   assert.equal(recordControl({...base,...change}).visible,false,JSON.stringify(change));
 });

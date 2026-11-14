@@ -847,6 +847,7 @@ class MmuController(MmuFilamentMovement):
             'filament_position': self.drive().get_filament_position(),
             'homing': None if self.homing is None else dict(self.homing, endstops=list(self.homing['endstops'])),
             'config_changes': self.config_changes,
+            'telemetry_mode': self.telemetry_api.stream.record_mode, # off, on or toolchange (MMU_TELEMETRY)
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'pending_spool_id': self.pending_spool_id,
