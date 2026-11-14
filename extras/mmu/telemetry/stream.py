@@ -49,7 +49,7 @@ class TelemetryStream:
         return self._batch(client)
 
     def _batch(self, client):
-        batch = self.capture.read(client['after'], limit=128, history=client['history'])
+        batch = self.capture.read(client['after'], limit=128, history=client['history'], detach=False)
         if not batch['records']:
             return None
         self.delivery += 1
