@@ -4,13 +4,13 @@ A standalone, build-free web application that animates Happy Hare's filament mov
 ES modules, CSS and one `index.html`; it talks to a Moonraker-compatible API and has no dependency on
 the simulator.
 
-## Modes
-- **Live**: subscribes to Moonraker printer objects (`configfile`, `save_variables`, `mmu`, macros).
+## Data sources
+- **Live status subscription**: subscribes to Moonraker printer objects (`configfile`, `save_variables`, `mmu`, macros).
   Needs nothing from Happy Hare beyond `mmu.homing` and `mmu.config_changes`.
-- **Near-live**: follows the `server.mmu.telemetry.*` stream and overlays the latest sensor readings.
-- **Replay**: plays a saved telemetry recording (`.jsonl`).
+- **Telemetry stream**: follows the `server.mmu.telemetry.*` stream and overlays the latest sensor readings.
+- **Loaded telemetry recording**: plays a saved recording (`.jsonl`) offline.
 
-The parameter and Toolhead Config editors send `MMU_TEST_CONFIG` / `SET_GCODE_VARIABLE` through
+The parameter and Toolhead config editors send `MMU_TEST_CONFIG` / `SET_GCODE_VARIABLE` through
 `printer.gcode.script`, so they work against a real printer and the simulator alike.
 
 ## The unit rack
@@ -20,11 +20,12 @@ slides it along with the existing selection animation. Narrow arrows at the pane
 off screen; they scroll the rack by hand until the next gate selection.
 
 ## Simulator-only features
-Profile switching, loading a recording into the simulator and sensor toggles use `sim.viewer.*` RPCs that only
+Profile switching and sensor toggles use `sim.viewer.*` RPCs that only
 the simulator provides. The viewer probes for them once on connect and hides those controls elsewhere.
 
 ## Running it
-- With the simulator: `make console` serves it at `http://127.0.0.1:7125/sim/viewer/`.
+- With the simulator: `make console` serves it at `http://127.0.0.1:7125/sim/viewer/` (or the address in the console
+  banner if another port was selected); `--no-serve` turns the viewer and the web API off.
 - Any other static host works if the page can reach a Moonraker URL (the host must be allowed by Moonraker's
   `cors_domains`). Hosting on a real printer is not decided yet.
 
@@ -32,14 +33,6 @@ the simulator provides. The viewer probes for them once on connect and hides tho
 `node --test viewer/*.test.mjs` (optional browser tests: `viewer/*.browser.mjs`, need Playwright).
 
 ## Using the live viewer
-
-`make console` also serves a live visual viewer on the same local web API. Open
-`http://127.0.0.1:7125/sim/viewer/`, or use the address printed in the console
-banner if another port was selected. No separate server or JavaScript build is
-required. `--no-serve` disables both the viewer and the existing API.
-
-The viewer itself is a standalone application in the top-level `viewer/` folder (see
-`viewer/README.md`); the simulator only hosts it, so a test setup needs nothing else.
 
 The diagram follows the console session, including commands typed at the terminal
 or sent from the browser. It shows the MMU and extruder gears, a compressed Bowden
