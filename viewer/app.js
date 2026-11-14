@@ -84,14 +84,15 @@ function rpc(method, params = {}) {
     socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
   });
 }
-async function action(fn) {
+// `report` shows a failure in the status line too; the command box leaves that to the console, which already has it.
+async function action(fn, report = true) {
   if (busy) return;
   busy = true;
   document.querySelectorAll("aside button, #send").forEach((b) => (b.disabled = true));
   try {
     await fn();
   } catch (e) {
-    message(e.message, true);
+    if (report) message(e.message, true);
     if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error');
   } finally {
     busy = false;
@@ -142,9 +143,7 @@ function connect() {
     } else if (data.method === "notify_gcode_command") {
       consoleLine(data.params[0], "command");
     } else if (data.method === "notify_gcode_response") {
-      const line = data.params[0];
-      consoleLine(line);
-      if (line.startsWith("!!") || line.startsWith("Unknown command:")) message(line, true);
+      consoleLine(data.params[0]);
     }
   };
   socket.onclose = () => {
@@ -427,10 +426,8 @@ $("command-form").onsubmit = (event) => {
       commandHistory.add(script);
       $("command").value = "";
     }
-    message("Command running…");
     await sent;
-    message("Command finished. Inspect the trace and console output.");
-  });
+  }, false);
 };
 $("restart").onclick = () =>
   action(async () => {
