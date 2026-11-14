@@ -310,9 +310,9 @@ State records share the same versioned stream and sequence numbers:
   change. The viewer animates selection using captured per-gate colors.
 - `filament_pos_changed` records the previous/new logical filament state and its
   name; the viewer displays these with a **state changed** pill.
-- `drive_sync_changed` reports a successful
-  drive mode change, with previous/new numeric modes and names and drive identity.
-  Repeating the current mode does not emit another change.
+- Drive sync changes have no event: only the selected gate's drive changes mode, and the previous
+  gate's drive is unsynced as the selection moves, so `printer.mmu.sync_mode` in the replay state
+  (a `state_delta`) is the whole record.
 - `espooler_started` covers continuous operation and bursts, with unit, gate,
   direction, requested/scaled output power and PWM/digital mode. A start while
   running replaces the previous direction/power setting.

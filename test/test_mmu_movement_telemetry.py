@@ -129,13 +129,12 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual(starts[0]['label'], 'Final load retraction')
         self.assertGreater(mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
 
-    def test_sync_telemetry_reports_changes_without_policy_diagnostics(self):
+    def test_sync_changes_are_state_not_events(self):
         self.hh.mmu._sync_gear_to_extruder(True)
         self.hh.mmu._sync_gear_to_extruder(False)
         names = {r['event'] for r in self.records}
-        self.assertIn('drive_sync_changed', names)
-        self.assertNotIn('drive_sync_requested', names)
-        self.assertNotIn('drive_sync_decision', names)
+        for name in ('drive_sync_changed', 'drive_sync_requested', 'drive_sync_decision'):
+            self.assertNotIn(name, names)
 
     def test_idle_disable_uses_trace(self):
         with mock.patch.object(self.hh.mmu, 'log_trace') as trace:
@@ -143,16 +142,18 @@ class TestMovementTelemetry(unittest.TestCase):
             self.hh.mmu.disable_all_idle_gear_steppers()
         self.assertEqual(trace.call_count, 2)
 
-    def test_sync_state_reports_successful_changes_only(self):
+    def test_the_sync_mode_reaches_the_recording_as_a_state_delta(self):
         from extras.mmu.mmu_constants import DRIVE_EXTRUDER_ONLY
-        drive = self.hh.mmu.drive()
-        drive.sync_mode(DRIVE_EXTRUDER_ONLY)
-        drive.sync_mode(DRIVE_EXTRUDER_ONLY)
-        events = [r for r in self.records if r['event'] == 'drive_sync_changed']
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]['mode'], DRIVE_EXTRUDER_ONLY)
-        self.assertEqual(events[0]['drive'], drive.name)
-        self.assertIsNone(events[0]['move_id'])
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        capture = TelemetryCapture(self.hh.mmu)
+        try:
+            self.hh.mmu.drive().sync_mode(DRIVE_EXTRUDER_ONLY)
+            self.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
+            deltas = [r for r in capture.records if r['event'] == 'state_delta']
+            self.assertEqual([c for r in deltas for c in r['changes'] if c['path'][-1] == 'sync_mode'],
+                             [dict(path=['printer', 'mmu', 'sync_mode'], value=DRIVE_EXTRUDER_ONLY)])
+        finally:
+            capture.close()
 
     def test_espooler_operation_changes_are_semantic_and_deduplicated(self):
         from extras.mmu.mmu_constants import ESPOOLER_ASSIST, ESPOOLER_OFF, ESPOOLER_REWIND
