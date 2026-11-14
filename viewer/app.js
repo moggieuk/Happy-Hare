@@ -1,4 +1,4 @@
-import {TelemetryStream} from './telemetry-stream.js';
+import {TelemetryStream, recordControl} from './telemetry-stream.js';
 import {LiveState, liveFrame} from './live-state.js';
 import {liveMachine} from './live-config.js';
 import {simulatorApi, detectConnection} from './simulator.js';
@@ -33,7 +33,15 @@ function showConnection() {
   if (socket?.readyState !== 1) return setConnection('Disconnected · retrying', 'disconnected');
   setConnection(kind === 'simulator' ? 'Connected to the simulator' : kind === 'live_machine' ? 'Connected to printer' : 'Connected · unknown source', 'connected');
 }
+function renderRecordControl() {
+  const {visible,value}=recordControl({viewMode,offline,simulator:isSimulator(),connected:socket?.readyState===1,facts:sourceReplay.facts});
+  $('record-row').hidden=!visible;
+  if (visible) $('record-mode').value=value;
+}
+$('record-mode').onchange=()=>rpc('printer.gcode.script',{script:`MMU_TELEMETRY RECORD=${$('record-mode').value}`})
+  .catch(error=>{ message(error.message,true); renderRecordControl(); });
 function sourceMode() {
+  renderRecordControl();
   toolheadPanel.element.hidden=offline || socket?.readyState !== 1 || toolheadPanel.element.dataset.available !== 'true';
   $('recording-option').hidden=!offline;
   $('view-mode').value=offline ? 'recording' : viewMode;
@@ -1489,7 +1497,7 @@ function updateSource(records, reset=false) {
       else if (played > (events.at(-1)?.seq ?? 0)) followLive();
     }
   }
-  draw(); renderTrace();
+  draw(); renderTrace(); renderRecordControl();
 }
 const telemetryStream=new TelemetryStream(rpc, async data=>{
   if (offline || viewMode!=='playback') return false;
