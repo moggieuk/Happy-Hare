@@ -247,10 +247,22 @@ class MmuTelemetry:
         self.writer.submit(records)
 
     def _recording_failed(self, reason):
-        self.mode = 'off'
+        # The next recording starts clean: a new writer and recorder, not the stopped ones
+        self.mode, self.segment = 'off', None
+        writer, self.writer = self.writer, None
+        stale, self.recorder = self.recorder, self.recorder.fresh()
         self.server.add_warning('MMU telemetry recording stopped: %s.' % reason)
+        asyncio.create_task(self._discard(writer, stale))
         asyncio.create_task(self._tell_klipper_off())
         asyncio.create_task(self._release_if_idle())  # Nothing else needs the Klipper subscription
+
+    async def _discard(self, writer, recorder):
+        try:
+            if writer is not None:
+                await writer.close()
+            recorder.close()  # The failed file may still be open
+        except Exception:
+            logging.exception('MMU telemetry could not close the failed recording')
 
     async def _tell_klipper_off(self):
         try:

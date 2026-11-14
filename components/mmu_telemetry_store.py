@@ -94,6 +94,10 @@ class TelemetryRecorder:
         self.pending = None  # A toolchange start waiting to see whether anything follows it
         self.mode = mode  # on, toolchange (one command, then off) or off; Klipper decides
 
+    def fresh(self):
+        """The same destination and limits with nothing open, for a recording that starts over"""
+        return TelemetryRecorder(self.path, self.max_bytes, self.backups)
+
     def _rotate(self):
         if self.file:
             self.file.close()

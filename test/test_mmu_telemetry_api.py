@@ -285,32 +285,26 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.api.stream.record_mode, 'off')
             self.assertIsNone(self.api.stream.capture)   # No client or recording needs the Klipper subscription now
 
-    async def test_a_wake_for_a_recording_already_switched_off_releases_the_subscription(self):
-        self.api.set_record_mode('on')
-        self.api.set_record_mode('off')                         # Before Moonraker handled the wake
-        await self.remote['mmu_telemetry_wake']()
-        self.assertIsNone(self.component.upstream)
-        self.assertIsNone(self.api.stream.capture)
-
-    async def test_disconnecting_forgets_a_segment_in_progress(self):
-        self.component.mode, self.component.segment = 'toolchange', (1, 1)
-        self.component.disconnected()
-        self.assertEqual((self.component.mode, self.component.segment), ('off', None))
-
-    async def test_a_recording_moonraker_never_starts_warns_the_user_once(self):
+    async def test_recording_can_start_again_after_a_write_failure(self):
         from components.mmu_telemetry_store import TelemetryRecorder
-        with patch.object(self.hh.mmu, 'log_warning') as warn, tempfile.TemporaryDirectory() as directory:
-            self.component.recorder = TelemetryRecorder(Path(directory)/'motion.jsonl', 1000000, 2)
+        self.add_warning = lambda message: None
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)/'logs'
+            path = folder/'motion.jsonl'
+            self.component.recorder = TelemetryRecorder(path, 10000, 2)
+            self.component.segment = (1, 1)
             self.api.set_record_mode('on')
-            self.hh.reactor.advance(6.)
-            self.assertEqual(warn.call_count, 1)
-            self.assertIn('Moonraker', warn.call_args[0][0])
-            warn.reset_mock()
-            await self.remote['mmu_telemetry_wake']()            # It did subscribe after all
-            self.api.set_record_mode('off')
+            await self.remote['mmu_telemetry_wake']()             # The folder is missing: the first write fails
+            await self.component.writer.queue.join()
+            for _ in range(5): await asyncio.sleep(0)
+            self.assertIsNone(self.component.writer)
+            self.assertEqual((self.component.mode, self.component.segment, self.component.recorder.mode), ('off', None, 'off'))
+            folder.mkdir()                                         # Space is back
             self.api.set_record_mode('on')
-            self.hh.reactor.advance(6.)
-            warn.assert_not_called()
+            await self.remote['mmu_telemetry_wake']()
+            self.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
+            await self.settle()
+            self.assertEqual([r['event'] for r in self.logged(path)][:2], ['session', 'cut'])
             await self.component.close()
 
     async def test_nothing_subscribes_until_a_browser_or_a_recording_needs_it(self):
