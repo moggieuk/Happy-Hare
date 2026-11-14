@@ -913,8 +913,8 @@ The test files, grouped by what they're about:
 | `test_mmu_movement_telemetry.py` | 18 | movement start/outcome pairs and the replay state around them |
 | `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |
 | `test_mmu_selector_telemetry.py` | 6 | selector motion, servo and homing records |
-| `test_mmu_telemetry_capture.py` | 21 | replay state, state deltas, the rolling baseline |
-| `test_mmu_telemetry_stream.py` | 9 | acknowledged delivery, resend after a lost ack, replacing a failed capture |
+| `test_mmu_telemetry_capture.py` | 27 | replay state, state deltas, the rolling baseline, the settle read after the last event |
+| `test_mmu_telemetry_stream.py` | 10 | acknowledged delivery, resend after a lost ack, replacing a failed capture |
 | `test_mmu_telemetry_api.py` | 10 | the Klipper webhook adapter and the Moonraker component together |
 | `test_mmu_telemetry_store.py` | 4 | Moonraker-side history and recording |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |

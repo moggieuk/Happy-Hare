@@ -16,7 +16,10 @@
 #
 import collections
 import copy
+import logging
 import math
+
+SETTLE_DELAY = .25  # Quiet time after the last event before state that settled late is read
 
 
 def plain(value):
@@ -199,7 +202,9 @@ class TelemetryCapture:
     """Session baseline plus ordered deltas; unchanged state costs no wire bytes.
 
 Create only when a consumer requests capture, after Klipper is ready, and close
-when it leaves. Changes that cancel before the next event are intentionally lost.
+when it leaves. State is read at each event, and once more when events have stopped
+(SETTLE_DELAY), so a value assigned just after an event is recorded without a polling
+timer. Changes that cancel before the next read are intentionally lost.
 A rolling baseline keeps bounded exports usable after older records expire.
 """
     def __init__(self, mmu, limit=512):
@@ -211,6 +216,9 @@ A rolling baseline keeps bounded exports usable after older records expire.
         self.records = collections.deque()
         self.sequence = 0
         self.failed = False  # Set when the source detaches this capture after an error; the stream then replaces it
+        self.reactor = mmu.reactor
+        self.open_moves = set()  # Started but not finished; state is not sampled in the middle of a move
+        self.settle_timer = self.reactor.register_timer(self._settle, self.reactor.NEVER)
         self.state = copy.deepcopy(self.state_provider())
         # Parameter sets are read once; later edits are config_changed events routed by section name
         self.scopes = self.state_provider.scopes()
@@ -220,6 +228,9 @@ A rolling baseline keeps bounded exports usable after older records expire.
         self.unsubscribe = self.telemetry.subscribe(self.on_event)
 
     def close(self):
+        if self.settle_timer is not None:
+            self.reactor.unregister_timer(self.settle_timer)
+            self.settle_timer = None
         self.unsubscribe()
 
     def _config_delta(self, source):
@@ -229,8 +240,7 @@ A rolling baseline keeps bounded exports usable after older records expire.
     def on_event(self, source):
         # Every event, including a configuration change, commits whatever else has changed since the last one
         try:
-            current = self.state_provider()
-            delta = changes(self.state, current)
+            current, delta = self._read()
             record = None
             if source['event'] == 'config_changed':
                 delta += self._config_delta(source)
@@ -240,11 +250,36 @@ A rolling baseline keeps bounded exports usable after older records expire.
         except Exception:
             self.failed = True  # The source detaches a listener that raises
             raise
+        self._commit(source['timestamp'], current, delta, record)
+        if source['event'] in ('movement_start', 'selector_movement_start'):
+            self.open_moves.add(source['move_id'])
+        elif source['event'] in ('movement_outcome', 'selector_movement_outcome'):
+            self.open_moves.discard(source['move_id'])
+        self.reactor.update_timer(self.settle_timer, self.reactor.NEVER if self.open_moves
+                                  else self.reactor.monotonic() + SETTLE_DELAY)
+
+    def _read(self):
+        current = self.state_provider()
+        return current, changes(self.state, current)
+
+    def _commit(self, timestamp, current, delta, record=None):
         if delta:
-            self._append(dict(event='state_delta', timestamp=source['timestamp'], changes=delta))
+            self._append(dict(event='state_delta', timestamp=timestamp, changes=delta))
             self.state = current
         if record:
             self._append(record)
+
+    def _settle(self, eventtime):
+        # Events have stopped: record whatever the last one left behind
+        if not self.open_moves:
+            try:
+                current, delta = self._read()
+            except Exception:
+                logging.exception('MMU telemetry settle read failed')
+                self.failed = True  # A timer must not raise; the stream replaces a failed capture
+            else:
+                self._commit(eventtime, current, delta)
+        return self.reactor.NEVER
 
     def _append(self, record):
         self.sequence += 1
