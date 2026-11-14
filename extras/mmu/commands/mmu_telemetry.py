@@ -46,12 +46,11 @@ class MmuTelemetryCommand(BaseCommand):
     HELP_BRIEF = 'Record motion telemetry to the Moonraker log'
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + f"{CMD} [MODE=[off|on|toolchange]] [DEFAULT=[off|on|toolchange]]\n"
+        + f"{CMD} [MODE=[off|on|toolchange]]\n"
         + "  MODE=on          ...record everything until switched off\n"
         + "  MODE=toolchange  ...record the next load, unload or toolchange command, then stop\n"
         + "  MODE=off         ...stop recording\n"
-        + "  DEFAULT=...      ...mode to use after a restart (default_telemetry_mode), not saved\n"
-        + "  (no parameters)  ...report the current mode and the default\n"
+        + "  (no parameters)  ...report the current mode and the default (default_telemetry_mode in mmu.cfg)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
@@ -64,20 +63,12 @@ class MmuTelemetryCommand(BaseCommand):
         self.register(name=self.CMD, handler=self._run, help_brief=self.HELP_BRIEF, help_params=self.HELP_PARAMS,
                       help_supplement=self.HELP_SUPPLEMENT, category=CATEGORY_GENERAL)
 
-    def _mode(self, gcmd, name):
-        value = gcmd.get(name, None)
-        if value is None:
-            return None
-        value = value.strip().lower()
-        if value not in TELEMETRY_MODES:
-            raise gcmd.error("%s must be one of: %s" % (name, ', '.join(TELEMETRY_MODES)))
-        return value
-
     def _run(self, gcmd):
         mmu = self.mmu
-        mode, default = self._mode(gcmd, 'MODE'), self._mode(gcmd, 'DEFAULT')
-        if default is not None:
-            mmu.p.set_param('default_telemetry_mode', default)
+        mode = gcmd.get('MODE', None)
         if mode is not None:
+            mode = mode.strip().lower()
+            if mode not in TELEMETRY_MODES:
+                raise gcmd.error("MODE must be one of: %s" % ', '.join(TELEMETRY_MODES))
             mmu.telemetry_api.set_record_mode(mode)
         mmu.log_always("Telemetry mode: %s (default: %s)" % (mmu.telemetry_api.stream.record_mode, mmu.p.default_telemetry_mode))

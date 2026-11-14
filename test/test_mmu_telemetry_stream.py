@@ -220,13 +220,10 @@ class TestTelemetryStream(unittest.TestCase):
         self.assertEqual([c[0] for c in webhooks.calls if c[0] == 'mmu_telemetry_wake'], ['mmu_telemetry_wake'])
         self.hh.run_gcode('MMU_TELEMETRY MODE=off')
         self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'off')
-        self.hh.run_gcode('MMU_TELEMETRY DEFAULT=toolchange')     # What a restart will use; the current mode is untouched
-        self.assertEqual((self.hh.mmu.p.default_telemetry_mode, self.hh.mmu.telemetry_api.stream.record_mode), ('toolchange', 'off'))
         self.hh.run_gcode('MMU_TELEMETRY')                        # Reports only
         self.assertEqual(self.hh.mmu.telemetry_api.stream.record_mode, 'off')
-        for bad in ('MODE=sometimes', 'DEFAULT=sometimes'):
-            with self.assertRaises(Exception):
-                self.hh.run_gcode('MMU_TELEMETRY ' + bad)
+        with self.assertRaises(Exception):
+            self.hh.run_gcode('MMU_TELEMETRY MODE=sometimes')
 
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory
