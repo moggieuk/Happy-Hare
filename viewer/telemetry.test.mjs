@@ -95,6 +95,17 @@ test('the recording mode is carried by the stream and a mode record is internal 
  assert.equal(r.events.at(-1).label,'Recording toolchange');assert.ok(r.events.at(-1).internal);
  assert.equal(visibleSteps(r.events).at(-1).kind,r.events.find(e=>!e.internal).kind);
 });
+test('a gate change unsyncs in the same delta, so its animation starts from the synced scene',()=>{
+ const r=stream();
+ r.facts.printer.mmu.sync_mode=1;
+ event(r,'state_delta',{changes:[{path:['printer','mmu','gate'],value:1},{path:['printer','mmu','sync_mode'],value:0}]});
+ event(r,'gate_changed',{previous_gate:0,gate:1,unit:'unit0'});
+ const step=r.events.at(-1);
+ assert.equal(step.kind,'gate_changed');
+ assert.equal(step.before.gate,0);
+ assert.equal(step.before.synced,true);
+ assert.equal(step.state.synced,false);
+});
 test('a toolchange end is internal bookkeeping and adds no step',()=>{
  const r=stream();
  event(r,'toolchange',{command:'MMU_LOAD',label:'MMU_LOAD'});
@@ -215,7 +226,7 @@ test('configuration changes affect subsequent steps, never earlier snapshots',()
  assert.deepEqual(r.events.at(-1).before.cutters,config.state.cutters);
 });
 test('status-only changes fold into a step without navigation stops',()=>{
- const r=stream();event(r,'drive_sync_changed');
+ const r=stream();event(r,'diagnostic_note');
  assert.equal(visibleSteps(r.events).length,1);
 });
 test('session and sequence validation rejects unsupported and incomplete captures',()=>{
@@ -299,10 +310,10 @@ test('in-move bookkeeping cannot attach future sensor readings to the preceding 
  const previous=visibleSteps(r.events).at(-1);
  event(r,'movement_start',{move_id:17,label:'Next homing move',gate:0,unit:'unit0',motor_mode:'gear+extruder',motors:['gear','extruder'],requested_mm:10});
  event(r,'state_delta',{changes:[{path:['printer','mmu','sensors',name,'triggered'],value:true}]});
- event(r,'drive_sync_changed',{mode:0});
+ event(r,'diagnostic_note',{mode:0});
  assert.equal(r.events.at(-1).internal,true);
  assert.equal(r.events.at(-1).during_move,true);
- assert.equal(r.events.at(-1).telemetry.event,'drive_sync_changed');
+ assert.equal(r.events.at(-1).telemetry.event,'diagnostic_note');
  const during=visibleSteps(r.events).at(-1);
  assert.equal(during.seq,previous.seq);
  assert.equal((during.settled_state || during.state).sensors[name].state,false);
@@ -938,7 +949,7 @@ test('a selector move is anchored at its start, like a filament move, with its c
  event(r,'selector_movement_start',{move_id:5,actuator:'stepper',label:'Positioning selector',position_mm:4.2,target_position_mm:46.2});
  const start=r.events.at(-1);
  assert.ok(!orderedSteps(r.events).some(e=>e.seq>=start.seq)); // An unfinished start is held back
- event(r,'drive_sync_changed',{mode:0});
+ event(r,'diagnostic_note',{mode:0});
  event(r,'selector_movement_outcome',{move_id:5,actuator:'stepper',status:'submitted',position_mm:46.2,elapsed_s:.19});
  const ordered=orderedSteps(r.events).filter(e=>e.seq>=start.seq);
  assert.deepEqual(ordered.map(e=>e.kind),['selector_move','state','selector_completed']);
