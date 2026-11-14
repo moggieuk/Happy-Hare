@@ -14,14 +14,14 @@
 from .mmu_base_command import BaseCommand, CATEGORY_INTERNAL
 
 
-class MmuTelemetryCommand(BaseCommand):
-    CMD = '_MMU_TELEMETRY'
+class MmuSendTelemetryCommand(BaseCommand):
+    CMD = '_MMU_SEND_TELEMETRY'
 
     def __init__(self, mmu):
         super().__init__(mmu)
         self.register(self.CMD, self._run,
                       help_brief='Record a macro animation event',
-                      help_params='_MMU_TELEMETRY EVENT=cut|release',
+                      help_params='_MMU_SEND_TELEMETRY EVENT=cut|release',
                       category=CATEGORY_INTERNAL, log=False)
 
     def _run(self, gcmd):

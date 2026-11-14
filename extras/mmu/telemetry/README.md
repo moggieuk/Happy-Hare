@@ -119,8 +119,8 @@ Simulator macros that use simplified effects still produce modeled movement;
 individual G1 events require an executed macro body. The console executes the
 reference purge, `_MMU_CUT_TIP`, and `_MMU_FORM_TIP` bodies and their helpers, so
 extrusion, retraction, push-back, and cooling moves are recorded individually with
-G1 trace pills. The real cut motion helper emits `_MMU_TELEMETRY EVENT="cut"`
-after blade contact and `_MMU_TELEMETRY EVENT="release"` after withdrawing the
+G1 trace pills. The real cut motion helper emits `_MMU_SEND_TELEMETRY EVENT="cut"`
+after blade contact and `_MMU_SEND_TELEMETRY EVENT="release"` after withdrawing the
 blade. These commands only add ordered telemetry annotations: no motion, waits,
 or MMU state changes. Without subscribers they return without emitting a record.
 The existing `_MMU_EVENT EVENT="filament_cut"` still handles operational counting.
