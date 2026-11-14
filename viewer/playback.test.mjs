@@ -927,3 +927,9 @@ test('the synced indicator sits on the side of the gate row the gears are nearer
  assert.deepEqual([0,1,2,3].map(g=>syncIndicatorSide(layout(4,g))),[-1,-1,1,1]);
  assert.deepEqual([0,1,2].map(g=>syncIndicatorSide(layout(3,g))),[-1,1,1]);   // The centre gate goes right
 });
+test('the toolhead drawing never collapses when the nozzle sits at the gears',()=>{
+ const state={layout:{extruder_gears:700,nozzle:700},sensors:{}};
+ const range=toolheadDrawingRange(state);
+ assert.ok(range.end>range.entry);
+ assert.ok(Number.isFinite(toolheadProgress(state,705)));
+});

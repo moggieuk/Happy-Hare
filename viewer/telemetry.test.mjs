@@ -933,3 +933,8 @@ test('a recording with a non-integer gate number is rejected before it reaches a
  unit.gates=[0,'1" onmouseover="alert(1)',2];
  assert.throws(()=>new TelemetryReplay().feed(h),/unit configuration/);
 });
+
+test('a recording with too many records is refused before it is replayed',()=>{
+ const line=JSON.stringify({event:'x'});
+ assert.throws(()=>parseTelemetry(Array(20001).fill(line).join('\n')),/Expected a telemetry/);
+});
