@@ -48,7 +48,7 @@ class TestTelemetryStream(unittest.TestCase):
 
     def test_one_outstanding_batch_and_wrong_ack_ignored(self):
         first = self.subscribe()
-        self.emit(300)
+        self.emit(200)
         for i in range(4): self.stream.pump()
         self.assertEqual(self.sent, [])
         self.stream.ack('viewer', first['stream_id'], -1)
@@ -134,6 +134,39 @@ class TestTelemetryStream(unittest.TestCase):
         self.assertTrue(failed.failed)
         self.stream.pump()
         self.assertIsNot(self.stream.capture, failed)
+
+    def test_acknowledged_records_are_folded_so_only_the_unacknowledged_tail_is_kept(self):
+        first = self.subscribe(); self.ack(first)
+        self.emit(40)
+        self.stream.pump()
+        self.assertEqual(len(self.stream.capture.records), 40)
+        self.ack(self.sent[-1])
+        self.assertEqual(len(self.stream.capture.records), 0)
+        self.emit(); self.stream.pump()
+        self.assertEqual(self.sent[-1]['reset'], False)
+        self.assertEqual([r['event'] for r in self.sent[-1]['records']], ['cut'])
+
+    def test_a_consumer_that_has_not_acknowledged_pins_the_records(self):
+        first = self.subscribe('a'); self.ack(first, 'a')
+        self.subscribe('b')                                   # Never acknowledges its baseline
+        self.emit(5); self.stream.pump()
+        self.ack(self.sent[-1], 'a')
+        self.assertEqual(len(self.stream.capture.records), 5)
+
+    def test_a_late_subscriber_gets_the_current_state_without_folded_events(self):
+        first = self.subscribe(); self.ack(first)
+        self.hh.mmu.gate_selected = 1
+        self.emit(); self.stream.pump(); self.ack(self.sent[-1])
+        late = self.stream.subscribe('late', self.sent.append, lambda: False)
+        self.assertEqual([r['event'] for r in late['records']], ['session'])
+        self.assertEqual(late['records'][0]['state']['printer']['mmu']['gate'], 1)
+
+    def test_a_stalled_consumer_gets_a_new_baseline_once_the_cap_is_passed(self):
+        first = self.subscribe(); self.ack(first)
+        self.emit(300)
+        self.stream.pump()
+        self.assertTrue(self.sent[-1]['reset'])
+        self.assertLessEqual(len(self.stream.capture.records), self.stream.capture.limit)
 
     def test_current_checkpoint_matches_moonraker_history_without_old_events(self):
         from components.mmu_telemetry_store import TelemetryHistory

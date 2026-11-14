@@ -205,9 +205,10 @@ Create only when a consumer requests capture, after Klipper is ready, and close
 when it leaves. State is read at each event, and once more when events have stopped
 (SETTLE_DELAY), so a value assigned just after an event is recorded without a polling
 timer. Changes that cancel before the next read are intentionally lost.
-A rolling baseline keeps bounded exports usable after older records expire.
+The stream folds acknowledged records into a rolling baseline, so only unacknowledged records are
+kept; the limit only bounds a consumer that stops acknowledging.
 """
-    def __init__(self, mmu, limit=512):
+    def __init__(self, mmu, limit=256):
         if limit < 2:
             raise ValueError('Telemetry limit must be at least two records')
         self.telemetry = mmu.movement_telemetry
@@ -284,7 +285,12 @@ A rolling baseline keeps bounded exports usable after older records expire.
     def _append(self, record):
         self.sequence += 1
         self.records.append(dict(sequence=self.sequence, **record))
-        while len(self.records) > self.limit:
+        while len(self.records) > self.limit:  # A consumer has stopped acknowledging
+            self.fold_through(self.records[0]['sequence'])
+
+    def fold_through(self, sequence):
+        """Fold records up to a sequence into the baseline: nothing at or before it needs replaying."""
+        while self.records and self.records[0]['sequence'] <= sequence:
             expired = self.records.popleft()
             if expired['event'] == 'state_delta':
                 apply_changes(self.baseline, expired['changes'])

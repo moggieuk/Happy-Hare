@@ -47,7 +47,7 @@ class TelemetryHistory:
                 self.records.clear()
                 committed.append(record)
             elif record['sequence'] > self.sequence:
-                self.records.append(deepcopy(record))
+                self.records.append(record)
                 committed.append(record)
                 while len(self.records) > self.limit:
                     self._advance(self.header, self.records.popleft())
@@ -79,7 +79,7 @@ class TelemetryHistory:
                     break
                 records.append(record)
         return dict(schema='happy_hare.motion', version=1, session_id=self.header['session_id'],
-                    reset=reset, records=deepcopy(records))
+                    reset=reset, records=records)
 
 
 class TelemetryRecorder:
