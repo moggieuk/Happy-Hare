@@ -719,7 +719,17 @@ class TestBootupOutput(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             console.meta('/remove 0')
             console.meta('/sensor mmu_entry_0 disable')
-            console.meta('/reset')
+            output = io.StringIO()
+            with mock.patch.object(console, 'clear_log') as clear_log, contextlib.redirect_stdout(output):
+                console.meta('/reset')
+            expected = io.StringIO()
+            with contextlib.redirect_stdout(expected):
+                console.banner()
+            self.assertEqual(output.getvalue(), expected.getvalue())
+            self.assertTrue(console.startup_output)
+            self.assertIn('Happy Hare console', output.getvalue())
+            self.assertIn('/help for meta-commands', output.getvalue())
+            clear_log.assert_called_once_with()
 
         self.assertIsNot(console.hh, original_session)
         self.assertEqual(console.hh.mmu.gate_status[0], 1)
@@ -1872,12 +1882,13 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('Happy Hare', out)             # the next command still ran
         self.assertEqual(rc, 1, 'a session that reported !! should exit non-zero')
 
-    def test_a_bare_T_command_explains_that_macro_bodies_do_not_run(self):
-        """T1 is registered, so it is not 'unknown' - it just silently does nothing."""
+    def test_a_bare_T_command_runs_the_shipped_toolchange_macro(self):
         rc, out = self._run(['T1'], ['--header', 'off'])
         self.assertEqual(rc, 0, out)
-        self.assertIn('does not run macro bodies', out)
-        self.assertIn('MMU_CHANGE_TOOL TOOL=1', out)
+        self.assertIn('Tool T1 enabled', out)
+        self.assertIn('Load of', out)
+        self.assertNotIn('does not run macro bodies', out)
+        self.assertNotIn('!!', out)
 
     def test_mmu_cold_pull_runs_its_macro_body(self):
         rc, out = self._run(
@@ -2155,19 +2166,61 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('host 127.0.0.1  port %d' % port, out)
         self.assertIn('--no-serve', out)
         self.assertIn('VUE_APP_PORT=%d' % port, out)
+        self.assertIn('http://127.0.0.1:%d/sim/viewer/' % port, out)
 
-    def test_a_taken_default_port_moves_on_but_a_named_one_is_reported(self):
+    def test_web_command_is_printed_to_terminal_and_executed(self):
+        console = self._make_console(['--no-log', '--no-serve', '--header', 'off'])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), mock.patch.object(console, 'run_command') as run:
+            console._run_for_bridge('MMU_STATUS\n\nMMU_HELP')
+        self.assertIn('MMU_STATUS', output.getvalue())
+        self.assertIn('MMU_HELP', output.getvalue())
+        self.assertEqual([call.args[0] for call in run.call_args_list], ['MMU_STATUS', 'MMU_HELP'])
+
+    def test_command_parse_errors_are_forwarded_to_web_console(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve', '0'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            console._run_for_bridge('MMU_TEST_MOVE MOVE=banana')
+        self.assertTrue(any(e['message'].startswith('!!') and 'banana' in e['message'] for e in console.bridge.gcode_store))
+
+    def test_unknown_command_is_reported_to_web_console(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve', '0'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            console._run_for_bridge('mmu_sensor')
+        messages = [e['message'] for e in console.bridge.gcode_store]
+        self.assertEqual(messages.count('Unknown command:"MMU_SENSOR"'), 1)
+
+    def test_serve_host_is_forwarded_and_advertised(self):
+        console = self._make_console(['--no-log', '--header', 'off', '--serve-host', '192.168.0.157'])
+        with mock.patch('test.console.WebUiBridge') as bridge_type:
+            bridge = bridge_type.return_value.start.return_value
+            bridge.host, bridge.port = '192.168.0.157', 7125
+            console._start_bridge(7125)
+            self.assertEqual(bridge_type.call_args.kwargs['host'], '192.168.0.157')
+            self.assertIn('http://192.168.0.157:7125/sim/viewer/', console.web_api_lines()[1])
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                console._meta_web([])
+            self.assertIn('VUE_APP_HOSTNAME=192.168.0.157', out.getvalue())
+        console.bridge = None
+
+    def test_default_viewer_port_is_7125(self):
+        from test.console import API_PORT, parse_args
+        self.assertEqual(parse_args([]).serve_host, '127.0.0.1')
+        self.assertEqual(API_PORT, 7125)
+        self.assertEqual(parse_args(['--serve']).serve, 7125)
+        self.assertEqual(parse_args(['--serve', '8771']).serve, 8771)
+
+    def test_a_taken_port_warns_without_stopping_console_or_trying_another(self):
         taken = socket.socket()
         self.addCleanup(taken.close)
         taken.bind(('127.0.0.1', 0))
         taken.listen(1)
         port = taken.getsockname()[1]
         console = self._make_console(['--no-log', '--header', 'off'])
-        console._start_bridge(port)                  # the default: next free port
-        self.assertIsNotNone(console.bridge)
-        self.assertNotEqual(console.bridge.port, port)
-        console.bridge.close()
-        console.bridge = None
+        console._start_bridge(port)
+        self.assertIsNone(console.bridge)
+        self.assertIn('Console remains available', console.web_api_lines()[0])
         console._start_bridge(port, explicit=True)   # named: left alone, and said so
         self.assertIsNone(console.bridge)
         self.assertIn('Web API not started: port %d' % port, console.web_api_lines()[0])
@@ -2395,6 +2448,17 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertEqual(first, second, 'same seed produced different data')
         self.assertGreater(len({(a['vendor'], a['material']) for a in first.values()}), 1,
                            'every gate got the same filament')
+        mmu = self.console.hh.mmu
+        self.assertEqual(mmu.gate_initial_weight[:-1], [1000] * (mmu.num_gates - 1))
+        self.assertEqual(mmu.gate_remaining_weight[1], 0)
+        self.assertEqual(mmu.gate_remaining_weight[6], 2)
+        self.assertEqual(mmu.gate_remaining_weight[-1], -1)
+        self.assertEqual(mmu.gate_initial_weight[-1], -1)
+        weights = list(mmu.gate_remaining_weight)
+        occupancy = list(mmu.gate_status)
+        self.console.hh.prime_gate_map(seed=7)
+        self.assertEqual(mmu.gate_remaining_weight, weights)
+        self.assertEqual(mmu.gate_status, occupancy)
 
     def test_pacing_makes_an_operation_take_virtual_time(self):
         """
@@ -3069,5 +3133,93 @@ class TestSharedNfcSimulation(unittest.TestCase):
         self.assertIn('/remove 9', self._meta('/tag off 9'))
 
 
+class TestBufferAndEncoderCommands(unittest.TestCase):
+    """/buffer and /encoder edit simulator objects that are not MMU_TEST_CONFIG parameters."""
+
+    def setUp(self):
+        self.console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'ercf_vvd', '--no-log', '--plain']))
+        self.addCleanup(self.console.close)
+        self.console.boot()
+        self.units = self.console.hh.mmu.mmu_machine.units
+
+    def meta(self, line):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.console.meta(line)
+        return output.getvalue()
+
+    def test_buffer_edit_updates_the_object_and_physical_model(self):
+        buffer = next(u.buffer for u in self.units if u.buffer is not None)
+        output = self.meta('/buffer %s RANGE=12 MAXRANGE=20 SPRING=neutral' % buffer.name)
+        self.assertNotIn('!!', output)
+        self.assertEqual((buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state), (12, 20, 'neutral'))
+        self.assertEqual(self.console.hh.filament().buffers[buffer.name]['maxrange'], 20)
+        self.assertIn('RANGE=12 MAXRANGE=20 SPRING=neutral', output)
+        self.assertIn('RANGE=12 MAXRANGE=20 SPRING=neutral', self.meta('/buffer %s' % buffer.name))
+
+    def test_buffer_rejects_invalid_values_and_unknown_names(self):
+        buffer = next(u.buffer for u in self.units if u.buffer is not None)
+        before = (buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state)
+        for bad in ('RANGE=999', 'RANGE=abc', 'SPRING=bad', 'WIDTH=1'):
+            self.assertIn('!!', self.meta('/buffer %s %s' % (buffer.name, bad)), bad)
+        self.assertIn('!!', self.meta('/buffer missing RANGE=1'))
+        self.assertEqual((buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state), before)
+
+    def test_encoder_edit_validates_values_and_preserves_position(self):
+        encoder = self.units[0].encoder
+        self.units[1].encoder = encoder           # One shared object, reached through either unit
+        encoder.set_distance(100)
+        distance = encoder.get_distance()
+        self.assertNotIn('!!', self.meta('/encoder %s RESOLUTION=0.25' % encoder.name))
+        self.assertLessEqual(abs(encoder.get_distance() - distance), .125)
+        self.assertEqual(encoder.get_resolution(), .25)
+        for bad in ('RESOLUTION=0', 'AVERAGE_SAMPLES=1.5', 'DESIRED_HEADROOM=nan', 'ENCODER_PIN=PA1'):
+            self.assertIn('!!', self.meta('/encoder %s %s' % (encoder.name, bad)), bad)
+        self.assertEqual(encoder.get_resolution(), .25)
+
+    def test_an_edit_reaches_the_telemetry_stream_at_once(self):
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        buffer = next(u.buffer for u in self.units if u.buffer is not None)
+        capture = TelemetryCapture(self.console.hh.mmu)
+        self.addCleanup(capture.close)
+        self.meta('/buffer %s RANGE=%g' % (buffer.name, buffer.buffer_range - 1))
+        records = capture.read()['records']
+        self.assertEqual([r['event'] for r in records], ['session', 'state_delta', 'sim_settings_changed'])
+        self.assertTrue(any(c['path'][-1] == 'buffer_range' for c in records[1]['changes']))
+
+
 if __name__ == '__main__':
     unittest.main()
+
+class TestViewerProfileRestart(unittest.TestCase):
+    def test_restart_rebinds_connected_telemetry_for_same_and_new_profile(self):
+        from test.hh.webui_bridge import WebUiBridge
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'boxturtle', '--no-serve', '--no-log', '--plain', '--header', 'off']))
+            self.addCleanup(console.close)
+            console.boot()
+            bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
+            console.bridge = bridge
+            batches = []
+            first = bridge.telemetry_stream.subscribe('viewer', batches.append, lambda: False)
+            for profile in ('boxturtle', 'ercf_vvd'):
+                with self.subTest(profile=profile):
+                    previous_mmu = console.hh.mmu
+                    console._restart_for_viewer(profile)
+                    stream = bridge.telemetry_stream
+                    self.assertIs(stream.mmu, console.hh.mmu)
+                    self.assertIs(stream.capture, bridge.viewer.telemetry_capture)
+                    self.assertIsNot(stream.mmu, previous_mmu)
+                    stream.pump()
+                    baseline = batches[-1]
+                    self.assertTrue(baseline['reset'])
+                    self.assertNotEqual(baseline['stream_id'], first['stream_id'])
+                    self.assertEqual(baseline['records'][0]['session_id'], console.hh.mmu.movement_telemetry.session_id)
+                    stream.ack('viewer', first['stream_id'], first['delivery_id'])
+                    self.assertIsNotNone(stream.clients['viewer']['inflight'])
+                    stream.ack('viewer', baseline['stream_id'], baseline['delivery_id'])
+                    console.hh.mmu.movement_telemetry.state('cut')
+                    stream.pump()
+                    self.assertTrue(any(r['event'] == 'cut' for r in batches[-1]['records']))
+                    first = baseline

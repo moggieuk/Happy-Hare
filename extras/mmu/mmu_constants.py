@@ -239,8 +239,7 @@ LOG_ESSENTIAL = 0
 LOG_INFO      = 1
 LOG_DEBUG     = 2
 LOG_TRACE     = 3
-LOG_STEPPER   = 4
-LOG_LEVELS = ['ESSENTIAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
+LOG_LEVELS = ['ESSENTIAL', 'INFO', 'DEBUG', 'TRACE']
 
 # States of espooler motor
 ESPOOLER_NONE   = ''
@@ -354,6 +353,9 @@ T_MACRO_COLOR_GATEMAP  = 'gatemap'  # As per gatemap but hide empty tools. Will 
 T_MACRO_COLOR_SLICER   = 'slicer'   # Color from slicer tool map. Will add spool_id if spoolman is enabled
 T_MACRO_COLOR_OFF      = 'off'      # Turn off color and spool_id association
 T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES, T_MACRO_COLOR_OFF]
+
+# Motion telemetry recording (MMU_TELEMETRY): off, on until switched off, or one toolchange then off
+TELEMETRY_MODES = ('off', 'on', 'toolchange')
 
 # Default color or "unknown" - translucent grey (matches various UIs)
 UNKNOWN_FILAMENT_COLOR = '#808182E3'

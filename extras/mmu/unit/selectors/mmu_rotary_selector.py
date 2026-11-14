@@ -27,6 +27,7 @@ from typing                 import Sequence
 
 # Happy Hare imports
 from ...mmu_constants       import *
+from ...telemetry.selector import selector_move, finish_selector_move, home_selector_rail
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
 from ...mmu_base_parameters import TunableParametersBase, ParamSpec
@@ -429,7 +430,7 @@ class RotarySelector(PhysicalSelector):
 
         try:
             if self.has_endstop:
-                self.selector_stepper.do_home_rail()
+                home_selector_rail(self)
             else:
                 self._home_hard_endstop()
 
@@ -476,14 +477,13 @@ class RotarySelector(PhysicalSelector):
         speed = speed or self.p.selector_move_speed
         accel = accel or self.p.selector_accel
 
-        self.selector_stepper.do_move(new_pos, speed, accel)
-        self.mmu.log_stepper(
-            f"SELECTOR MOVE: requested position={new_pos:.1f}, "
-            f"speed={speed:.1f}, accel={accel:.1f}"
-        )
+        position = self.selector_stepper.commanded_pos
+        with selector_move(self, trace_str, position, new_pos, speed, accel, wait) as outcome:
+            self.selector_stepper.do_move(new_pos, speed, accel)
+            if wait:
+                self.mmu.movequeue_wait()
+            finish_selector_move(self, outcome, self.selector_stepper.commanded_pos-position, False, 0, wait)
 
-        if wait:
-            self.mmu.movequeue_wait()
 
         return new_pos
 
@@ -506,7 +506,7 @@ class RotarySelector(PhysicalSelector):
         homed = False
 
         try:
-            traveled = self.selector_stepper.do_home_rail()
+            traveled = home_selector_rail(self)
             homed = True
 
         except self.printer.command_error:

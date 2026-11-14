@@ -239,8 +239,8 @@ class MmuPrintStateMachine:
             self.mmu.gate_maps.restore_automap_option()
             self.mmu._disable_filament_monitoring() # Disable filament monitoring
 
-            if self.mmu.printer.lookup_object("idle_timeout").idle_timeout != self.mmu.p.default_idle_timeout:
-                self.mmu.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.mmu.p.default_idle_timeout) # Restore original idle_timeout
+            if self.mmu.printer.lookup_object("idle_timeout").idle_timeout != self.mmu.default_idle_timeout:
+                self.mmu.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.mmu.default_idle_timeout) # Restore original idle_timeout
 
             self.mmu._standalone_sync = False # Safer to clear this on print end or idle_timeout to standby to avoid user confusion
             self.set_print_state(state)

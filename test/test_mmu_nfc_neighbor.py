@@ -616,7 +616,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         u.p.nfc_neighbor_check = 0
         u.p.nfc_neighbor_evict_distance = 0.0
         u.p.nfc_gate_clear_distance = -999.0  # bypass config validator deliberately
-        self.hh.mmu.p.log_level = 4
+        self.hh.mmu.p.log_level = 3
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)
@@ -760,7 +760,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         is deliberately left at its default 0 here - proves self-jog ratification doesn't
         need neighbor eviction armed at all.
         """
-        self.hh.mmu.p.log_level = 4  # so the self-jog's own log_debug lines are visible
+        self.hh.mmu.p.log_level = 3  # so the self-jog's own log_debug lines are visible
         self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance = -40.0
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
@@ -777,7 +777,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
 
     def test_provisional_verdict_is_ratified_via_self_jog_when_passive_check_fails_preload(self):
         """Preload's side of the self-jog-succeeds scenario above."""
-        self.hh.mmu.p.log_level = 4
+        self.hh.mmu.p.log_level = 3
         self.hh.mmu.mmu_unit(0).p.nfc_preload_clear_distance = -40.0
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
@@ -798,12 +798,12 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         and nfc_preload_clear_distance=0 (all default) must keep the "no motion budget at
         all" promise even with self-jog escalation added: _ratify's `if distance and ...`
         guard is false for distance=0, so it falls straight to the unchanged passive-only
-        discard, exactly as before this feature existed. log_level=4 makes _jog_off's own
+        discard, exactly as before this feature existed. log_level=3 makes _jog_off's own
         "jogging ... off its park reference" debug line visible if it ran at all -
         asserting its absence is a direct check that neither neighbor eviction nor the
         new self-jog spent any motion.
         """
-        self.hh.mmu.p.log_level = 4
+        self.hh.mmu.p.log_level = 3
         self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = 0.0
         self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance = 0.0
         self.fil.attach_tag(0, TAG, offset=-20.0)

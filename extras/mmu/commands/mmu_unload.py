@@ -45,7 +45,8 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_GENERAL,
+            toolchange=True
         )
 
     def _run(self, gcmd):

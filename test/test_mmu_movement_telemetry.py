@@ -1,0 +1,260 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Source telemetry tests: these intentionally do not instantiate the live viewer.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+import json
+import unittest
+from unittest import mock
+
+from test.hh import session
+
+
+class TestMovementTelemetry(unittest.TestCase):
+    def setUp(self):
+        self.hh = session('boxturtle')
+        self.hh.boot(calibrate=True, selected_gate=0)
+        self.hh.heat_extruder(220)
+        self.hh.place_filament(0, 200)
+        self.records = []
+        self.unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self.records.append)
+
+    def tearDown(self):
+        self.unsubscribe()
+        self.hh.close()
+
+    def test_gripping_moves_have_source_annotations(self):
+        with session('ercf_vvd') as hh:
+            hh.boot(calibrate=True, selected_gate=0)
+            records = []
+            unsubscribe = hh.mmu.movement_telemetry.subscribe(records.append)
+            try:
+                hh.mmu.selector().filament_release()
+                hh.mmu.selector().filament_drive()
+            finally:
+                unsubscribe()
+            moves = [r for r in records if r['event'] == 'movement_start']
+            self.assertTrue(moves)
+            self.assertTrue(all(r['label'] == 'Engaging mmu gear' for r in moves))
+            self.assertEqual({r['requested_mm'] for r in moves}, {0.8, -0.8})
+
+    def toolchange_events(self):
+        return [r['event'] for r in self.records if r['event'] in ('toolchange', 'toolchange_end')]
+
+    def test_toolchange_commands_are_bracketed_once_including_error_exits(self):
+        self.hh.mmu.gate_status[1] = 0
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.toolchange_events(), ['toolchange', 'toolchange_end'])
+        end = [r for r in self.records if r['event'] == 'toolchange_end'][0]
+        self.assertEqual((end['command'], end['status']), ('MMU_LOAD', 'completed'))
+        self.records.clear()
+        self.hh.run_gcode('MMU_LOAD HELP=1')
+        self.assertEqual(self.toolchange_events(), [])
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=1')       # Empty gate: handled as an error, still closed
+        self.assertEqual(self.toolchange_events(), ['toolchange', 'toolchange_end'])
+
+    def test_nested_toolchange_scopes_share_the_outermost_pair(self):
+        telemetry = self.hh.mmu.movement_telemetry
+        telemetry.toolchange_start(command='A'); telemetry.toolchange_start(command='B')
+        telemetry.toolchange_end(command='B')
+        self.assertEqual(self.toolchange_events(), ['toolchange'])
+        telemetry.toolchange_end(command='A')
+        self.assertEqual(self.toolchange_events(), ['toolchange', 'toolchange_end'])
+
+    def pair(self):
+        moves = [r for r in self.records if r['event'].startswith('movement_')]
+        self.assertEqual(len(moves), 2)
+        start, end = moves
+        self.assertEqual(start['event'], 'movement_start')
+        self.assertEqual(end['event'], 'movement_outcome')
+        self.assertEqual(start['move_id'], end['move_id'])
+        self.assertEqual(start['session_id'], end['session_id'])
+        self.assertLess(start['sequence'], end['sequence'])
+        json.dumps(self.records, allow_nan=False)
+        return start, end
+
+    def test_macro_hooks_are_ordered_annotations_without_motion_or_state_changes(self):
+        mmu = self.hh.mmu
+        before = (mmu.filament_pos, mmu.gate_selected, self.hh.filament().tip[:])
+        with mock.patch.object(self.hh.printer.lookup_object('toolhead'), 'wait_moves') as wait:
+            self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="cut"')
+            self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="release"')
+        wait.assert_not_called()
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual([r['event'] for r in self.records], ['cut', 'release'])
+        self.assertEqual([r['phase'] for r in self.records], ['CUT', 'RELEASE'])
+        self.assertEqual(before, (mmu.filament_pos, mmu.gate_selected, self.hh.filament().tip[:]))
+        self.assertLess(self.records[0]['sequence'], self.records[1]['sequence'])
+
+    def test_macro_hook_with_no_subscribers_does_nothing(self):
+        self.unsubscribe()
+        telemetry = self.hh.mmu.movement_telemetry
+        with mock.patch.object(telemetry, 'state') as emit:
+            self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="cut"')
+        emit.assert_not_called()
+        self.assertEqual(self.hh.errors, [])
+
+    def test_filament_state_changes_include_silent_changes_without_duplicates(self):
+        from extras.mmu.mmu_constants import FILAMENT_POS_IN_BOWDEN
+        previous = self.hh.mmu.filament_pos
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=True)
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=True)
+        records = [r for r in self.records if r['event'] == 'filament_pos_changed']
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]['previous'], previous)
+        self.assertEqual(records[0]['filament_pos'], FILAMENT_POS_IN_BOWDEN)
+        self.hh.mmu.move_filament('Move', 1)
+        start, end = self.pair()
+        self.assertEqual(start['filament_pos'], FILAMENT_POS_IN_BOWDEN)
+        self.assertEqual(end['filament_pos'], FILAMENT_POS_IN_BOWDEN)
+
+    def test_final_retraction_has_one_annotated_move_and_no_extra_notification(self):
+        mmu = self.hh.mmu
+        mmu._set_park_retracted_length(0)
+        mmu._retract_after_standalone_load()
+        count = len(self.records)
+        mmu._retract_after_standalone_load()
+        self.assertEqual(len(self.records), count)
+        self.assertFalse(any(r['event'] == 'standalone_load_retraction' for r in self.records))
+        starts = [r for r in self.records if r['event'] == 'movement_start']
+        self.assertEqual(len(starts), 1)
+        self.assertEqual(starts[0]['label'], 'Final load retraction')
+        self.assertGreater(mmu.mmu_unit().extruder_wrapper.retracted_length, 0)
+
+    def test_sync_changes_are_state_not_events(self):
+        self.hh.mmu._sync_gear_to_extruder(True)
+        self.hh.mmu._sync_gear_to_extruder(False)
+        names = {r['event'] for r in self.records}
+        for name in ('drive_sync_changed', 'drive_sync_requested', 'drive_sync_decision'):
+            self.assertNotIn(name, names)
+
+    def test_idle_disable_uses_trace(self):
+        with mock.patch.object(self.hh.mmu, 'log_trace') as trace:
+            self.hh.mmu.disable_idle_gear_stepper(0)
+            self.hh.mmu.disable_all_idle_gear_steppers()
+        self.assertEqual(trace.call_count, 2)
+
+    def test_the_sync_mode_reaches_the_recording_as_a_state_delta(self):
+        from extras.mmu.mmu_constants import DRIVE_EXTRUDER_ONLY
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        capture = TelemetryCapture(self.hh.mmu)
+        try:
+            self.hh.mmu.drive().sync_mode(DRIVE_EXTRUDER_ONLY)
+            self.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
+            deltas = [r for r in capture.records if r['event'] == 'state_delta']
+            self.assertEqual([c for r in deltas for c in r['changes'] if c['path'][-1] == 'sync_mode'],
+                             [dict(path=['printer', 'mmu', 'sync_mode'], value=DRIVE_EXTRUDER_ONLY)])
+        finally:
+            capture.close()
+
+    def test_espooler_operation_changes_are_semantic_and_deduplicated(self):
+        from extras.mmu.mmu_constants import ESPOOLER_ASSIST, ESPOOLER_OFF, ESPOOLER_REWIND
+        espooler = self.hh.mmu.espooler()
+        espooler.assist_gates = sorted(set(espooler.assist_gates + [0]))
+        espooler.respool_gates = sorted(set(espooler.respool_gates + [0]))
+        for op, power in [(ESPOOLER_ASSIST, .5), (ESPOOLER_ASSIST, .5),
+                          (ESPOOLER_ASSIST, .8), (ESPOOLER_REWIND, .8), (ESPOOLER_OFF, 0)]:
+            espooler.set_operation(0, power, op)
+        events = [r for r in self.records if r['event'].startswith('espooler_')]
+        self.assertEqual([r['event'] for r in events], ['espooler_started'] * 3 + ['espooler_stopped'])
+        self.assertEqual([r['direction'] for r in events], ['assist', 'assist', 'rewind', 'stopped'])
+        self.assertEqual(events[-1]['direction'], 'stopped')
+        self.assertEqual(events[-1]['output_power'], 0)
+        self.assertEqual(events[0]['requested_power'], .5)
+
+    def test_espooler_print_assist_burst_and_reset(self):
+        from extras.mmu.mmu_constants import ESPOOLER_ASSIST
+        espooler = self.hh.mmu.espooler()
+        espooler.assist_gates = sorted(set(espooler.assist_gates + [0]))
+        espooler.set_print_assist_mode(0)
+        espooler._handle_espooler_burst(0, .5, 1., ESPOOLER_ASSIST)
+        espooler._stop_espooler_burst(0)
+        espooler.reset_print_assist_mode()
+        events = [r for r in self.records if r['event'].startswith('espooler_')]
+        self.assertEqual([r['event'] for r in events], ['espooler_started', 'espooler_stopped'])
+        self.assertEqual(events[0]['direction'], 'assist')
+        self.assertEqual(events[-1]['output_power'], 0)
+
+    def test_espooler_burst_cancellation_emits_one_stop(self):
+        from extras.mmu.mmu_constants import ESPOOLER_REWIND, ESPOOLER_OFF
+        espooler = self.hh.mmu.espooler()
+        espooler.respool_gates = sorted(set(espooler.respool_gates + [0]))
+        espooler._handle_espooler_burst(0, .5, 10., ESPOOLER_REWIND)
+        espooler.set_operation(0, 0, ESPOOLER_OFF)
+        espooler._stop_espooler_burst(0)
+        events = [r['event'] for r in self.records if r['event'].startswith('espooler_')]
+        self.assertEqual(events, ['espooler_started', 'espooler_stopped'])
+
+
+    def test_resolved_speed_includes_override(self):
+        self.hh.mmu.gate_speed_override[0] = 50
+        self.hh.mmu.move_filament('capture', 30, speed=80, accel=200, wait=True)
+        start, end = self.pair()
+        self.assertEqual(start['speed_mm_s'], 40)
+        self.assertEqual(start['requested_mm'], 30)
+        self.assertEqual(end['actual_mm'], 30)
+        self.assertEqual(end['status'], 'completed')
+        self.assertIsNone(end['homed'])
+        self.assertTrue(start['motors'])
+
+    def test_source_stream_works_without_text_logging_or_viewer(self):
+        with mock.patch.object(self.hh.mmu, 'log_enabled', return_value=False):
+            self.hh.mmu.move_filament('capture', 10)
+        start, end = self.pair()
+        self.assertGreater(start['speed_mm_s'], 0)
+        self.assertEqual(end['status'], 'submitted')
+        self.assertNotIn('tips', start)  # No simulator-only geometry in the source schema.
+
+    def test_homing_reports_actual_stop_and_sensor_endpoints(self):
+        name = self.hh.mmu.mmu_unit().name + ':mmu_shared_exit'
+        self.hh.place_filament(0, self.hh.filament().position(name)-20)
+        self.hh.mmu.move_filament('home', 100, speed=30, homing_move=1, endstop_name=name)
+        start, end = self.pair()
+        self.assertTrue(start['trigger_state'])
+        self.assertEqual(start['endstop'], name)
+        self.assertEqual(start['requested_mm'], 100)
+        self.assertAlmostEqual(end['actual_mm'], 20)
+        self.assertTrue(end['homed'])
+        self.assertFalse(start['sensors'][name])
+        self.assertTrue(end['sensors'][name])
+
+    def test_missed_home_has_terminal_outcome(self):
+        name = self.hh.mmu.mmu_unit().name + ':mmu_shared_exit'
+        self.hh.place_filament(0, self.hh.filament().position(name)-100)
+        self.hh.mmu.move_filament('miss', 5, homing_move=1, endstop_name=name)
+        _, end = self.pair()
+        self.assertFalse(end['homed'])
+        self.assertEqual(end['status'], 'not_homed')
+        self.assertAlmostEqual(end['actual_mm'], 5)
+
+    def test_exception_emits_one_outcome_and_propagates(self):
+        with mock.patch.object(self.hh.mmu.drive(), 'move', side_effect=RuntimeError('injected')):
+            with self.assertRaisesRegex(RuntimeError, 'injected'):
+                self.hh.mmu.move_filament('failure', 30)
+        _, end = self.pair()
+        self.assertEqual(end['status'], 'error')
+        self.assertEqual(end['error'], 'injected')
+        self.assertIsNone(end['actual_mm'])
+        self.assertEqual(self.hh.mmu.movement_telemetry.operations, [])
+
+    def test_failed_subscriber_does_not_affect_motion(self):
+        self.hh.mmu.movement_telemetry.subscribe(lambda record: (_ for _ in ()).throw(RuntimeError('sink failed')))
+        with self.assertLogs(level='ERROR'):
+            result = self.hh.mmu.move_filament('capture', 10)
+        self.assertEqual(result[0], 10)
+        self.pair()
+
+    def test_subscriber_cannot_mutate_another_consumers_record(self):
+        self.hh.mmu.movement_telemetry.subscribe(lambda r: r.update(event='corrupted'))
+        other = []
+        self.hh.mmu.movement_telemetry.subscribe(other.append)
+        self.hh.mmu.move_filament('capture', 10)
+        self.assertEqual(other[0]['event'], 'movement_start')

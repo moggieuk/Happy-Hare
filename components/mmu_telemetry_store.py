@@ -1,0 +1,241 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Printer-independent replay checkpoints and rotated JSONL recording.
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+from copy import deepcopy
+import json
+import logging
+from pathlib import Path
+
+
+# The Moonraker process cannot import extras.mmu, so this mirrors capture.apply_changes.
+def apply_delta(state, changes):
+    for change in changes:
+        target = state
+        for key in change['path'][:-1]:
+            target = target.setdefault(key, {})
+        key = change['path'][-1]
+        if change.get('remove'):
+            target.pop(key, None)
+        else:
+            target[key] = deepcopy(change['value'])
+
+
+class TelemetryHistory:
+    def __init__(self, limit=6000):
+        self.limit = limit
+        self.header = None
+        self.records = deque()
+
+    def append(self, batch):
+        committed = []
+        for record in batch['records']:
+            if record['event'] == 'session':
+                self.header = deepcopy(record)
+                self.records.clear()
+                committed.append(record)
+            elif record['sequence'] > self.sequence:
+                self.records.append(record)
+                committed.append(record)
+                while len(self.records) > self.limit:
+                    self._advance(self.header, self.records.popleft())
+        return committed
+
+    @property
+    def sequence(self):
+        return self.records[-1]['sequence'] if self.records else self.header['sequence'] if self.header else 0
+
+    @staticmethod
+    def _advance(header, record):
+        if record['event'] == 'state_delta':
+            apply_delta(header['state'], record['changes'])
+        header.update(sequence=record['sequence'], timestamp=record['timestamp'], checkpoint=True)
+
+    def read(self, after=None, limit=128, history='start'):
+        if self.header is None:
+            raise ValueError('Telemetry has no initial state')
+        reset = after is None or after < self.header['sequence'] or after > self.sequence
+        header = deepcopy(self.header) if reset else None
+        if reset and history == 'current':
+            for record in self.records:
+                self._advance(header, record)
+        cursor = header['sequence'] if reset else after
+        records = [header] if reset else []
+        for record in self.records:
+            if record['sequence'] > cursor:
+                if len(records) >= limit:
+                    break
+                records.append(record)
+        return dict(schema='happy_hare.motion', version=1, session_id=self.header['session_id'],
+                    reset=reset, records=records)
+
+
+class TelemetryRecorder:
+    """Called only on a dedicated worker. Every rotated file is independently replayable."""
+    def __init__(self, path, max_bytes, backups, mode='off'):
+        self.path = Path(path)
+        self.max_bytes, self.backups = max_bytes, backups
+        self.header = None
+        self.file = None
+        self.size = 0
+        self.active_moves = set()
+        self.pending = None  # A toolchange start waiting to see whether anything follows it
+        self.mode = mode  # on, toolchange (one command, then off) or off; Klipper decides
+
+    def _rotate(self):
+        if self.file:
+            self.file.close()
+            self.file = None
+        for index in range(self.backups, 0, -1):
+            source = self.path if index == 1 else Path(str(self.path) + '.' + str(index-1))
+            target = Path(str(self.path) + '.' + str(index))
+            if source.exists():
+                source.replace(target)
+        self.file = self.path.open('w', encoding='utf-8')
+        self.size = 0
+
+    def _line(self, record):
+        line = json.dumps(record, allow_nan=False, separators=(',', ':')) + '\n'
+        self.file.write(line)
+        self.size += len(line.encode('utf-8'))
+
+    def set_mode(self, mode):
+        if mode == self.mode:
+            return  # Saying it again must not close and rotate the log
+        self.close()
+        self.pending = None
+        self.mode = mode
+        if mode == 'on' and self.header is not None:
+            self._rotate()
+            self._line(self.header)
+
+    def write(self, records):
+        for record in records:
+            if record['event'] == 'record_mode':
+                self.set_mode(record['mode'])
+                continue
+            if record['event'] == 'session':
+                self.header = deepcopy(record)
+                self.active_moves.clear()
+                if self.mode == 'on':
+                    self._rotate()
+                    self._line(record)
+                elif self.mode == 'toolchange':
+                    self.pending = None
+                    if self.file is not None:
+                        self._line(record)  # A new baseline inside a segment: the viewer restarts its replay here
+                continue
+            if self.header is None:
+                raise ValueError('Recording requires an initial checkpoint')
+            if self.mode == 'toolchange':
+                self._segment(record)
+            elif self.mode == 'on':
+                self._write_on(record)
+            else:
+                TelemetryHistory._advance(self.header, record)
+        if self.file:
+            self.file.flush()
+
+    def _write_on(self, record):
+        if self.size >= self.max_bytes and not self.active_moves:
+            self._rotate()
+            self._line(self.header)
+        self._line(record)
+        if record['event'] in ('movement_start', 'selector_movement_start'):
+            self.active_moves.add(record['move_id'])
+        elif record['event'] in ('movement_outcome', 'selector_movement_outcome'):
+            self.active_moves.discard(record['move_id'])
+        TelemetryHistory._advance(self.header, record)
+
+    def _segment(self, record):
+        """One toolchange: its own file, opened at the start record and closed at the end record.
+        A start straight followed by its end (a refused command) is no segment and opens nothing."""
+        if self.file is None:
+            if self.pending is None:
+                if record['event'] == 'toolchange':
+                    self.pending = record
+                else:
+                    TelemetryHistory._advance(self.header, record)
+                return
+            start, self.pending = self.pending, None
+            if record['event'] == 'toolchange_end':
+                TelemetryHistory._advance(self.header, start)
+                TelemetryHistory._advance(self.header, record)
+                return
+            self._rotate()
+            self._line(self.header)
+            self._line(start)
+            TelemetryHistory._advance(self.header, start)
+        self._line(record)
+        TelemetryHistory._advance(self.header, record)
+        if record['event'] == 'toolchange_end':
+            self.close()
+            self.mode = 'off'
+
+    def close(self):
+        if self.file:
+            self.file.close()
+            self.file = None
+
+
+class TelemetryWriter:
+    """Bounded asynchronous handoff; all file operations stay on one worker."""
+    def __init__(self, recorder, failed, capacity=64):
+        self.recorder, self.failed = recorder, failed
+        self.queue = asyncio.Queue(maxsize=capacity)
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='mmu-telemetry')
+        self.task = asyncio.create_task(self._run())
+        self.stopped = False
+
+    def submit(self, records):
+        if self.stopped:
+            return
+        try:
+            self.queue.put_nowait(records)
+        except asyncio.QueueFull:
+            self.stopped = True
+            self.failed('disk writer queue is full')
+
+    async def _run(self):
+        loop = asyncio.get_running_loop()
+        while True:
+            records = await self.queue.get()
+            try:
+                if records is None:
+                    return
+                await loop.run_in_executor(self.executor, self.recorder.write, records)
+            except Exception:
+                self.stopped = True
+                logging.exception('MMU telemetry recording stopped')
+                self.failed('unable to write log')
+                while not self.queue.empty():
+                    self.queue.get_nowait()
+                    self.queue.task_done()
+            finally:
+                self.queue.task_done()
+
+    async def close(self):
+        if self.task is None:
+            return
+        self.stopped = True
+        # Drain before sending the stop signal: an I/O failure discards queued data.
+        await self.queue.join()
+        await self.queue.put(None)
+        await self.task
+        try:
+            await asyncio.get_running_loop().run_in_executor(self.executor, self.recorder.close)
+        finally:
+            self.executor.shutdown(wait=False)
+            self.task = None

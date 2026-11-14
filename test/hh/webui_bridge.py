@@ -26,7 +26,14 @@ import hashlib
 import http.server
 import json
 import queue
+import pathlib
+import select
+import shutil
 import socket
+import tempfile
+import re
+
+from test.hh.live_viewer import SourceViewer
 import struct
 import sys
 import threading
@@ -39,6 +46,10 @@ RPC_SERVER_ERROR = -32000
 STATUS_PERIOD = 0.5                 # seconds between notify_status_update pushes
 REQUEST_TIMEOUT = 20.0              # an HTTP caller waits this long for the console thread
 GCODE_STORE_LINES = 1000
+MAX_MESSAGE_BYTES = 8_000_000      # one WebSocket message; a configuration upload is the largest legitimate one
+MAX_BODY_BYTES = 8_000_000         # an HTTP request body
+SEND_TIMEOUT = 5.0                 # a client that stops reading is dropped after this
+LOOPBACK_HOSTS = {'localhost', '127.0.0.1', '::1'}
 
 
 class RpcError(Exception):
@@ -66,7 +77,20 @@ class WebSocketConnection:
                 pass
             self.open = False
 
+    def _send_all(self, data):
+        view, deadline = memoryview(data), time.monotonic() + SEND_TIMEOUT
+        while view:
+            _, writable, _ = select.select([], [self.sock], [], max(0., deadline - time.monotonic()))
+            if not writable:
+                raise OSError('client stopped reading')
+            try:
+                view = view[self.sock.send(view, socket.MSG_DONTWAIT):]
+            except BlockingIOError:
+                pass
+
     def _send(self, opcode, payload):
+        if not self.open:
+            return
         header = bytearray([0x80 | opcode])
         n = len(payload)
         if n < 126:
@@ -77,7 +101,7 @@ class WebSocketConnection:
             header += bytes([127]) + struct.pack('>Q', n)
         with self.lock:
             try:
-                self.sock.sendall(bytes(header) + payload)
+                self._send_all(bytes(header) + payload)
             except OSError:
                 self.open = False
 
@@ -101,10 +125,13 @@ class WebSocketConnection:
                 n = struct.unpack('>H', self._read(2))[0]
             elif n == 127:
                 n = struct.unpack('>Q', self._read(8))[0]
-            mask = self._read(4) if b1 & 0x80 else None
+            if not b1 & 0x80:
+                raise ConnectionError('client frames must be masked')
+            if len(message) + n > MAX_MESSAGE_BYTES:
+                raise ConnectionError('message too large')
+            mask = self._read(4)
             payload = self._read(n)
-            if mask:
-                payload = bytes(c ^ mask[i % 4] for i, c in enumerate(payload))
+            payload = bytes(c ^ mask[i % 4] for i, c in enumerate(payload))
             if opcode == 0x8:
                 return
             if opcode == 0x9:
@@ -142,6 +169,7 @@ class WebUiBridge:
         self.host = host
         self.log = log or (lambda text: None)
         self.inbox = queue.Queue()
+        self._deferred_requests = []
         self.clients = set()
         self.subscriptions = {}                   # connection -> {object: fields or None}
         self.last_sent = {}                       # connection -> {object: status}
@@ -150,7 +178,15 @@ class WebUiBridge:
         self.unsupported = collections.Counter()  # method -> times asked for
         self.started = time.time()
         self._next_status = 0.0
+        self._next_telemetry = 0.0
         self._server = None
+        self.viewer = SourceViewer(session)
+        from extras.mmu.telemetry.stream import TelemetryStream
+        self.telemetry_stream = TelemetryStream(session.mmu, self.viewer.telemetry_capture)
+        self.restart_profile = None
+        self.profile_name = ""
+        self.uploads = tempfile.TemporaryDirectory(prefix="hh-viewer-")
+        self._upload_root = None                  # The configuration directory the running session was booted from, if uploaded
 
     # -- lifecycle -------------------------------------------------------------
     def start(self):
@@ -163,32 +199,53 @@ class WebUiBridge:
                 pass
 
             def do_OPTIONS(self):
+                if not bridge._trusted(self):
+                    return bridge._refuse(self)
                 self.send_response(204)
                 self._cors()
                 self.send_header('Content-Length', '0')
                 self.end_headers()
 
             def do_GET(self):
+                if not bridge._trusted(self):
+                    return bridge._refuse(self)
                 if self.headers.get('Upgrade', '').lower() == 'websocket':
                     bridge._serve_websocket(self)
                 else:
                     bridge._serve_http(self, None)
 
             def do_POST(self):
-                n = int(self.headers.get('Content-Length') or 0)
+                if not bridge._trusted(self):
+                    return bridge._refuse(self)
+                try:
+                    n = int(self.headers.get('Content-Length') or 0)
+                except ValueError:
+                    n = -1
+                if not 0 <= n <= MAX_BODY_BYTES:
+                    return bridge._refuse(self, 413 if n > 0 else 400, 'Bad request body')
                 bridge._serve_http(self, self.rfile.read(n) if n else b'')
 
             def _cors(self):
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Access-Control-Allow-Headers', '*')
+                # Only a page the bridge trusts (see _trusted) ever gets this far, so echo its origin.
+                self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin') or '*')
+                self.send_header('Vary', 'Origin')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type')
                 self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
 
-        self._server = _Server((self.host, self.port), Handler)
+        try:
+            self._server = _Server((self.host, self.port), Handler)
+        except OSError:
+            self.viewer.close()
+            self.uploads.cleanup()
+            raise
         self.port = self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         return self
 
     def close(self):
+        self.telemetry_stream.close()
+        self.viewer.close()
+        self.uploads.cleanup()
         for conn in list(self.clients):
             conn.close()
         if self._server is not None:
@@ -197,8 +254,35 @@ class WebUiBridge:
             self._server = None
 
     # -- socket side (any thread) ----------------------------------------------
+    def _trusted(self, handler):
+        """A request is from this machine's own pages: web pages elsewhere must not be able to drive the console.
+        Cross-site requests are caught by Origin, DNS rebinding by Host. Serving beyond localhost
+        (--serve-host) is a deliberate choice, so then only the origin must match the host asked for."""
+        host = urllib.parse.urlparse('//' + handler.headers.get('Host', '')).hostname
+        local = self.host in LOOPBACK_HOSTS
+        if local and host not in LOOPBACK_HOSTS:
+            return False
+        origin = handler.headers.get('Origin')
+        if origin is None:
+            return True
+        origin_host = urllib.parse.urlparse(origin).hostname
+        return origin_host in LOOPBACK_HOSTS or origin_host == host
+
+    @staticmethod
+    def _refuse(handler, status=403, text='Forbidden'):
+        data = text.encode()
+        handler.send_response(status)
+        handler.send_header('Content-Type', 'text/plain')
+        handler.send_header('Content-Length', str(len(data)))
+        handler.send_header('Connection', 'close')
+        handler.end_headers()
+        handler.wfile.write(data)
+        handler.close_connection = True
+
     def _serve_websocket(self, handler):
         key = handler.headers.get('Sec-WebSocket-Key', '')
+        if not key:
+            return self._refuse(handler, 400, 'Missing WebSocket key')
         accept = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
         handler.send_response(101, 'Switching Protocols')
         handler.send_header('Upgrade', 'websocket')
@@ -227,9 +311,26 @@ class WebUiBridge:
         params = {k: v[-1] for k, v in urllib.parse.parse_qs(parsed.query).items()}
         if body:
             try:
-                params.update(json.loads(body))
+                sent = json.loads(body)
             except ValueError:
-                pass
+                sent = None
+            if isinstance(sent, dict):
+                params.update(sent)
+        # The standalone viewer (repo-root viewer/): index plus its flat modules and stylesheet. The page
+        # uses relative URLs, so the directory form of the address is required.
+        if parsed.path == '/sim/viewer':
+            handler.send_response(301)
+            handler.send_header('Location', '/sim/viewer/')
+            handler.send_header('Content-Length', '0')
+            handler.end_headers()
+            return
+        viewer_dir = pathlib.Path(__file__).resolve().parents[2] / 'viewer'
+        name = 'index.html' if parsed.path == '/sim/viewer/' else parsed.path.removeprefix('/sim/viewer/')
+        if parsed.path.startswith('/sim/viewer') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
+                and (viewer_dir / name).is_file():
+            self._reply(handler, 200, (viewer_dir / name).read_bytes(),
+                        {'js': 'text/javascript', 'css': 'text/css'}.get(name.rsplit('.', 1)[-1], 'text/html'))
+            return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':
             method = 'server.database.get_item' if body is None else 'server.database.post_item'
@@ -242,13 +343,24 @@ class WebUiBridge:
         else:
             payload, status = json.dumps({'error': {'code': 404, 'message': box.get(
                 'error', 'Not found: %s' % parsed.path)}}), 404
-        data = payload.encode()
+        self._reply(handler, status, payload.encode(), 'application/json', cors=True)
+
+    @staticmethod
+    def _reply(handler, status, data, content_type, no_store=False, cors=False):
         handler.send_response(status)
-        handler.send_header('Content-Type', 'application/json')
+        handler.send_header('Content-Type', content_type)
+        if no_store:
+            handler.send_header('Cache-Control', 'no-store')
         handler.send_header('Content-Length', str(len(data)))
-        handler._cors()
+        if cors:
+            handler._cors()
         handler.end_headers()
         handler.wfile.write(data)
+
+    def _pump_telemetry(self, now):
+        if now >= self._next_telemetry:
+            self._next_telemetry = now + .25
+            self.telemetry_stream.pump()
 
     def notify(self, method, params):
         text = json.dumps({'jsonrpc': '2.0', 'method': method, 'params': params}, default=str)
@@ -261,15 +373,38 @@ class WebUiBridge:
         self.gcode_store.append({'message': msg, 'time': time.time(), 'type': 'response'})
         self.notify('notify_gcode_response', [msg])
 
+    def has_pending_requests(self):
+        return bool(self._deferred_requests or self.inbox.qsize())
+
+    def service_during_move(self):
+        """Deliver completed moves without executing another printer command."""
+        for _ in range(self.inbox.qsize()):
+            try:
+                item = self.inbox.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                method = json.loads(item[1]).get('method')
+            except (ValueError, AttributeError):
+                method = None
+            if method in ('server.mmu.telemetry.ack', 'server.mmu.telemetry.unsubscribe'):
+                self._handle(*item)
+            else:
+                self._deferred_requests.append(item)
+        now = time.monotonic()
+        self._pump_telemetry(now)
+
     def service(self):
         """Run every queued request. Call from the thread that owns the session."""
         while True:
             try:
-                conn, text, waiter = self.inbox.get_nowait()
+                conn, text, waiter = (self._deferred_requests.pop(0)
+                                      if self._deferred_requests else self.inbox.get_nowait())
             except queue.Empty:
                 break
             self._handle(conn, text, waiter)
         now = time.monotonic()
+        self._pump_telemetry(now)
         if self.clients and now >= self._next_status:
             self._next_status = now + STATUS_PERIOD
             self.push_status()
@@ -472,7 +607,12 @@ class WebUiBridge:
     def rpc_printer_gcode_script(self, conn, params):
         script = params.get('script', '')
         self.gcode_store.append({'message': script, 'time': time.time(), 'type': 'command'})
-        self.run_gcode(script)
+        self.notify('notify_gcode_command', [script])
+        errors = len(self.session.errors)
+        failure = self.run_gcode(script)
+        failure = failure if isinstance(failure, str) else ''   # The console runner returns its first failure
+        if failure or len(self.session.errors) > errors:   # A failed command is an error reply, as with Moonraker
+            raise RpcError(failure or '; '.join(self.session.errors[errors:]))
         return 'ok'
 
     def rpc_printer_print_pause(self, conn, params):
@@ -488,3 +628,85 @@ class WebUiBridge:
         raise RpcError('Not available in the simulator')
 
     rpc_printer_restart = rpc_printer_emergency_stop = rpc_printer_firmware_restart
+
+    def rpc_server_mmu_telemetry_subscribe(self, conn, params):
+        if conn is None:
+            raise RpcError('Telemetry requires a WebSocket')
+        return self.telemetry_stream.subscribe(conn,
+            lambda batch: conn.send_text(json.dumps(dict(jsonrpc='2.0',
+                method='notify_mmu_telemetry', params=[batch]))),
+            lambda: not conn.open, params.get('history', 'start'))
+
+    def rpc_server_mmu_telemetry_ack(self, conn, params):
+        return self.telemetry_stream.ack(conn, params.get('stream_id'), params.get('delivery_id'))
+
+    def rpc_server_mmu_telemetry_unsubscribe(self, conn, params):
+        return self.telemetry_stream.unsubscribe(conn)
+
+    def rpc_sim_viewer_setup(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        units = self.session.mmu.mmu_machine.units
+        index = int(params.get('unit', 0))
+        if not 0 <= index < len(units):
+            raise RpcError('Unknown MMU unit')
+        return dict(connection_kind='simulator', profile=self.profile_name,
+                    profiles=[dict(name=p.name, description=p.description) for p in CONSOLE_PROFILES],
+                    units=[u.name for u in units], parameters=self.viewer.parameters(index),
+                    macro_parameters=self.viewer.macro_parameters())
+
+    def rpc_sim_viewer_sensor(self, conn, params):
+        name = params.get('name')
+        sensors = self.session.mmu.sensor_manager.get_sensor_states(all_sensors=True)
+        if name not in sensors or not isinstance(params.get('enabled'), bool):
+            raise RpcError('Choose an available sensor and enabled state')
+        self.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=%d' % (name, params['enabled']))
+        return {'enabled': bool(sensors[name][1].runout_helper.sensor_enabled)}
+
+    def rpc_sim_viewer_restart(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        if self.restart_profile is None:
+            raise RpcError('Profile restart requires the interactive console')
+        profile, root = params.get('profile'), None
+        try:
+            if 'files' in params:
+                root = self._store_upload(params['files'])
+                profile = str(next(root.rglob('printer.cfg')).parent)
+            elif profile not in {p.name for p in CONSOLE_PROFILES}:
+                raise RpcError('Choose an available simulator profile')
+            self.restart_profile(profile)
+        except BaseException:
+            if root is not None:
+                shutil.rmtree(root, ignore_errors=True)
+            raise
+        # The previous upload is only needed until its replacement has booted
+        if self._upload_root is not None:
+            shutil.rmtree(self._upload_root, ignore_errors=True)
+        self._upload_root = root
+        self.notify('notify_klippy_ready', [])  # As after a Klipper restart: live views resubscribe to the new session
+        return {'profile': self.profile_name}
+
+    def _store_upload(self, files):
+        """Write an uploaded configuration directory to temporary storage and return its root."""
+        if not isinstance(files, list) or not files or len(files) > 500:
+            raise RpcError('Supply a configuration directory with at most 500 files')
+        root = pathlib.Path(tempfile.mkdtemp(dir=self.uploads.name))
+        total = 0
+        for item in files:
+            if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not isinstance(item.get('text'), str):
+                raise RpcError('Each uploaded file needs a name and text')
+            name, text = item['name'], item['text']
+            path = pathlib.PurePosixPath(name)
+            if path.is_absolute() or '..' in path.parts or not name.endswith('.cfg'):
+                raise RpcError('Supply relative .cfg filenames')
+            total += len(text.encode())
+            if total > 5_000_000:
+                raise RpcError('Configuration upload exceeds 5 MB')
+            for inc in re.findall(r'(?im)^\s*\[include\s+([^]]+)\]', text):
+                if pathlib.PurePosixPath(inc).is_absolute() or '..' in pathlib.PurePosixPath(inc).parts:
+                    raise RpcError('Includes must stay within the uploaded configuration')
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+        if len(list(root.rglob('printer.cfg'))) != 1:
+            raise RpcError('Upload a directory containing one printer.cfg and its mmu directory')
+        return root

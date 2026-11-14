@@ -6,9 +6,9 @@
 # can't change it. 3ms reverse-homes off its extruder entry sensor; ercf_vvd (entry sensor
 # disabled, see test_mmu_toolhead_unload_test) uses its toolhead sensor.
 #
-# The fake gcode_move ignores E, so the extruder doesn't move during the macro. _MMU_PARK doesn't
+# G1 E moves transport filament while the extruder grips it, even with the gear unsynced. _MMU_PARK doesn't
 # run, so the only retraction is the 2mm toolchange retraction the standalone load ends with: the
-# macro retracts 2mm less and filament_cut_fragment is park_pos - residual - 2.
+# macro retracts 2mm less; filament_cut_fragment subtracts measured motor retraction, residual, and 2.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_cut_tip_after_extruder
 #
@@ -50,10 +50,12 @@ CUT_GCODE = [
     'G1 X0.5 Y250.0 F1920.0',
     '_SAFE_G1 X=0.5 Y=250.0 F=480.0',
     'G1 X0.5 Y250.0 F480.0',
+    '_MMU_SEND_TELEMETRY EVENT="cut"',
     'G4 P50.0',
     'G1 E-1.0 F180.0',
     '_SAFE_G1 X=19.0 Y=250.0 F=9000.0',
     'G1 X19.0 Y250.0 F9000.0',
+    '_MMU_SEND_TELEMETRY EVENT="release"',
     '_SAFE_G1 X=49.0 F=9000.0',
     'G1 X49.0 F9000.0',
     '_CUT_TIP_GANTRY_SERVO_UP',
@@ -97,7 +99,7 @@ class AfterExtruderGoldenCase(unittest.TestCase):
 
         def record(trace, dist, *args, **kwargs):
             result = move_filament(trace, dist, *args, **kwargs)
-            if trace:
+            if trace and not kwargs.get('suppress_grip_change'):
                 self.moves.append((trace, round(dist, 2), kwargs.get('motor'), kwargs.get('endstop_name')))
             return result
 
@@ -114,7 +116,7 @@ class AfterExtruderGoldenCase(unittest.TestCase):
         extruder = self.mmu.mmu_unit(0).extruder_wrapper
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertAlmostEqual(self.mmu.drive().get_filament_position(), self.UNLOAD_DRIVE_POS, places=2)
-        self.assertAlmostEqual(extruder.filament_cut_fragment, 34.5)
+        self.assertAlmostEqual(extruder.filament_cut_fragment, 5., places=2)
 
         self.moves.clear()
         self.hh.run_gcode('MMU_LOAD')
@@ -136,7 +138,7 @@ class TestAfterExtruderEntrySensor(AfterExtruderGoldenCase):
         ('Initial homing to default:extruder sensor', 500.0, 'gear', 'default:extruder'),
         ('Homing filament to extruder endstop', 100.0, 'gear', 'extruder'),
         ('Aligning filament to extruder gear', 8.0, 'gear', None),
-        ('Loading filament to nozzle', 35.5, 'gear+extruder', None),
+        ('Loading filament to nozzle', 65.0, 'gear+extruder', None),
     ]
 
 
@@ -149,16 +151,15 @@ class TestAfterExtruderToolheadSensor(AfterExtruderGoldenCase):
         ('Unloading extruder', -19.3, 'extruder', None),
         ('Fast unloading move through bowden', -660.0, None, None),
         ('Unloading step #1 from encoder', -15.0, None, None),
-        ('Unloading step #2 from encoder', -15.0, None, None),
-        ('Unloading step #3 from encoder', -15.0, None, None),
-        ('Final parking', -18.77, None, None),
+        ('Final parking', -17.79, None, None),
     ]
-    UNLOAD_DRIVE_POS = -808.87
+    UNLOAD_DRIVE_POS = -777.89
     LOAD_MOVES = [
         ('Initial load into encoder', 100.0, None, None),
+        # The real 1mm unsynced rip now contributes one 0.98mm encoder pulse.
         ('Fast loading move through bowden', 602.66, None, None),
         ('Homing to toolhead sensor', 60.0, 'gear+extruder', 'toolhead'),
-        ('Loading filament to nozzle', 39.3, 'gear+extruder', None),
+        ('Loading filament to nozzle', 68.8, 'gear+extruder', None),
     ]
 
 

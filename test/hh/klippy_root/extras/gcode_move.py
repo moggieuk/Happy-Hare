@@ -144,13 +144,16 @@ class GCodeMove:
             raise gcmd.error('Unknown g-code state: %s' % (name,))
         self.absolute_coord = state['absolute_coord']
         self.absolute_extrude = state['absolute_extrude']
+        e_diff = self.last_position[3]-state['last_position'][3]
         self.base_position = list(state['base_position'])
-        self.last_position = list(state['last_position'])
+        # Restore the G-code origin, not physical extrusion already performed.
+        self.base_position[3] += e_diff
         self.homing_position = list(state['homing_position'])
         self.speed = state['speed']
         self.speed_factor = state['speed_factor']
         self.extrude_factor = state['extrude_factor']
         if gcmd.get_int('MOVE', 0):
+            self.last_position[:3] = state['last_position'][:3]
             self.speed = gcmd.get_float('MOVE_SPEED', self.speed * 60.) / 60.
             self._move_with_transform(self.speed)
 

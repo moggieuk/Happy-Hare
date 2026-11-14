@@ -261,12 +261,16 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/redraw` | repaint the whole screen, log and all — the way back from a corrupted display |
 | `/clear` | as `/redraw`, but empty the log rather than repaint it |
 | `/scroll [N]`, `/s` | scroll back through the log (see below) |
+| `/sensors` | the sensor table (also `MMU_SENSORS`) |
+| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one); the viewer follows the change |
+| `/encoder [NAME] [RESOLUTION=mm] …` | show or change an encoder's runtime numeric settings; `/encoder NAME` lists them |
+| `/web` | where the web API is and how to point Mainsail or Fluidd at it |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
 | `/place`, `/insert`, `/remove`, `/preload`, `/exhaust` | quietly place filament, actively insert it, remove it, preload it, or run it out |
 | `/tag [UID [GATE\|UNIT]]` | present an NFC tag, addressed as `MMU_NFC` addresses one. A **gate** puts it on that gate's filament; a **unit** holds it on that unit's shared reader (`off` takes it away). Bare `/tag` lists the readers and the UIDs the fake Spoolman knows |
 | `/td1 [TD [RRGGBB]] [GATE\|SERIAL]` | hold filament measuring TD in front of a TD-1 scanner; `off` takes it away, no argument reports what each one sees |
 | `/reset` | rebuild the selected profile in the same state as a fresh simulator start |
-| `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
+| `/log [N]`, `/trace 0-3` | the log file, and how much detail goes into it |
 | `/timestamp [on\|off]` | stamp MMU output with the virtual clock; **on by default** at a terminal |
 | `/print [start\|end]` | act as a print in progress (or finished), so an MMU error pauses it |
 | `/print job [FILE]` | play a whole G-code print job — the built-in test job, or FILE — see below |
@@ -382,6 +386,7 @@ Useful flags — `make console ARGS='...'`:
 --seed N                       # seed for the primed gate map (default 0, reproducible)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
 --serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
+--serve-host ADDRESS          # listening address (default 127.0.0.1)
 --no-serve                     # don't serve the web API for Mainsail/Fluidd
 --pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
 --wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
@@ -502,6 +507,7 @@ Unit : ------------- unit0 -------------
 `#` and not `!`: `!! …` is already a command that raised and `?? …` one that does not
 exist, so a lone `!` would read as a quieter error rather than as a note.
 
+
 ### Playing a print job — `/print job`
 
 `/print job` plays a print from start to finish: Happy Hare's standard start sequence, the
@@ -540,10 +546,10 @@ What is simulated:
 
 - **The print lifecycle.** `print_stats` and `idle_timeout` move as `virtual_sdcard` would
   move them, so Happy Hare's automatic job start/end detection runs for real.
-- **Macro bodies, for the duration of the job only.** `T<n>`, `MMU_START_SETUP`,
-  `MMU_START_CHECK`, `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` run their real Jinja. The
-  park, cut and purge macros stay recorded no-ops (§"Three things that will look like bugs"),
-  and at the prompt `T1` is silent again.
+- **Macro bodies.** Configured `T<n>` macros run their real Jinja in both consoles
+  and during jobs, delegating to `MMU_CHANGE_TOOL`. `MMU_START_SETUP`, `MMU_START_CHECK`,
+  `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` are additionally enabled during jobs.
+  Park macros retain their modeled effects; cut and tip-forming macros run their real bodies.
 - **Extrusion.** `G0`–`G3` E, in absolute (`M82`) or relative (`M83`, or anything after `G91`)
   mode, with `G92` re-basing, go through the fake `gcode_move` to the toolhead and so into the
   filament model and the encoder while the gate is synced. XYZ only costs time.
@@ -572,10 +578,20 @@ echo '/print job' > /tmp/job.txt
 make console ARGS='--profile boxturtle --script /tmp/job.txt'
 ```
 
+### Integrated live viewer
+
+`make console` also serves the viewer on the same local web API: open
+`http://127.0.0.1:7125/sim/viewer/`, or the address printed in the console banner.
+`--no-serve` disables both the viewer and the web API. The viewer is a standalone
+application in the top-level `viewer/` folder and the simulator only hosts it; how it
+works is described in `viewer/README.md`, and the telemetry it replays in
+`extras/mmu/telemetry/README.md`. Tests: `make test UT=test_mmu_live_viewer.py`, plus the
+console, web API and telemetry suites.
+
 ### Driving a real Mainsail or Fluidd — the web API
 
 At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
-(the next free port if that is taken, so it can sit beside a real Moonraker), so an
+(if that port cannot be opened, a warning is printed and the console continues without the server), so an
 unmodified Mainsail (or Fluidd) can connect to the simulator: the MMU panel shows live state,
 the console shows everything Happy Hare says, and `RESUME`, `UNLOCK` and anything else typed
 or clicked in the UI runs in the session as if typed at the prompt. The banner says where it
@@ -599,6 +615,20 @@ VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=7125 npx vite serve
 
 or, for a built Mainsail or Fluidd, add a printer at `127.0.0.1:7125` in its connection
 dialog.
+
+For a browser on another machine on your LAN, bind to the simulator computer's LAN address:
+
+```bash
+make console ARGS='--serve-host 192.168.0.157'
+```
+
+Use that address and port 7125 in Mainsail. `--serve-host 0.0.0.0` listens on all IPv4
+interfaces; remote clients still use the simulator computer's LAN address. The default
+remains localhost only. The simulator API has no authentication, so use LAN access only
+on a trusted network. The bridge refuses requests whose `Origin` is a page from another site, and
+whose `Host` is not this machine (DNS rebinding), so a web page you happen to visit cannot drive the
+simulator; pages served from localhost, or from the address given to `--serve-host`, can. The live viewer
+and Mainsail can connect simultaneously.
 
 To see the pause dialog, pretend a print is running and make something fail:
 
@@ -769,9 +799,10 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
 ### Three things that will look like bugs
 
 1. **Most macro bodies do not run.** The fake `gcode_macro` records a call and normally never
-   renders the body, so `T1`, the print start/end and the park/cut/purge sequences produce
+   renders the body, so `T1`, the print start/end and the park/cut sequences produce
    **silence**. Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
-   `MMU_COLD_PULL` is the deliberate exception: the console runs its body and simulates its
+   The console executes the reference purge macros as individual G1 moves.
+   `MMU_COLD_PULL` is another exception: the console runs its body and simulates its
    heater waits instantly so the complete maintenance workflow can be exercised. `/print job`
    is the other: while a job plays, `T<n>` and the print start/end macros run for real.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The
@@ -876,7 +907,16 @@ The test files, grouped by what they're about:
 | `test_mmu_leds.py` | 34 | LED effects, flashes, the pending overlay |
 | `test_mmu_console.py` | 211 | the interactive console of §1a — rendering, command dispatch |
 | `test_mmu_print_job.py` | 10 | `/print job` end to end, molding the built-in job, and the fake G-code it needs: parsing, extrusion modes, the extruder heater |
-| `test_mmu_webui_bridge.py` | 8 | the Moonraker-compatible web API the console serves: handshake, status, gcode, and the pause dialog reaching a UI |
+| `test_mmu_webui_bridge.py` | 16 | the Moonraker-compatible web API the console serves: handshake, status, gcode, the pause dialog reaching a UI, and refusing cross-site pages, oversized bodies and unmasked frames |
+| `test_mmu_live_viewer.py` | 18 | the viewer's hosting by the console: source capture, parameter editor, profile restart and upload |
+| `test_mmu_live_status.py` | 14 | the status objects the viewer subscribes to |
+| `test_mmu_movement_telemetry.py` | 20 | movement start/outcome pairs, toolchange start/end markers, and the replay state around them |
+| `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |
+| `test_mmu_selector_telemetry.py` | 6 | selector motion, servo and homing records |
+| `test_mmu_telemetry_capture.py` | 27 | replay state, state deltas, the rolling baseline, the settle read after the last event |
+| `test_mmu_telemetry_stream.py` | 21 | acknowledged delivery, folding acknowledged records, resend after a lost ack, replacing a failed capture, the recording mode |
+| `test_mmu_telemetry_api.py` | 13 | the Klipper webhook adapter and the Moonraker component together, including Klipper-driven recording |
+| `test_mmu_telemetry_store.py` | 9 | Moonraker-side history, on and one-toolchange recording |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |
 
 Counts as the picker reports them.
@@ -951,13 +991,27 @@ The encoder is not a switch: it reports *motion*, so what matters is how much of
 happened while filament covered the wheel. That is `fil.travel_over()`, and the harness
 turns it into real pulses so Happy Hare's own counter callback does the accumulating.
 
-A tension-sprung, two-switch sync-feedback buffer also has travel. It starts squeezed with
-tension triggered. Reaching the extruder opens tension, but passing the nominal coordinate
-during an ordinary Bowden move does not prove contact and cannot build compression. A
-`filament_compression` homing move establishes contact; another 70% of the configured
-`buffer_maxrange` then triggers compression. Gear-only and extruder-only moves change that
+Sync-feedback buffers also have physical travel. Tension-sprung buffers rest squeezed,
+compression-sprung buffers rest expanded, and neutral buffers rest at the midpoint.
+Filament advances freely until it contacts the stationary extruder gears. Further gear
+feed expands the buffer; contact alone does not mean the extruder has gripped the filament.
+Reversing takes up stored compression before withdrawing the tip. The compression switch lies at
+`(buffer_maxrange + buffer_range) / 2` of physical travel, and tension at
+`(buffer_maxrange - buffer_range) / 2`. Gear-only and extruder-only moves change that
 stored travel in opposite directions, so a paced console load visibly passes through tension,
-neutral and compression.
+neutral and compression. Once filament is gripped by the extruder, gear-only moves
+keep its downstream tip stationary and change buffer travel instead. Travel is bounded by
+`buffer_maxrange`; additional displacement is retained as unabsorbed compression or tension,
+so reversal takes up that excess before the buffer leaves its stop. Equal gear/extruder
+movement leaves the buffer unchanged. Simulated physical buffer switches have 2mm of release hysteresis;
+proportional buffers retain their configured virtual-switch thresholds. The viewer shows travel and any unabsorbed displacement
+in millimetres, not force. Without a modeled buffer, relative displacement is reported but
+no Bowden spring is simulated. The inline piston rests at the configured spring position
+when empty. Switch readings
+constrain its displayed position, while proportional buffers use the actual analog reading
+within the sensor range and modeled displacement beyond it. Analog sensor injection remains
+available through the existing simulator controls. Both rectangles are transparent so the
+filament remains visible.
 
 **The fake Moonraker** provides a working in-memory Spoolman — not a mock. When Happy Hare
 auto-creates a spool, a spool really is created, and the next scan of that tag really
@@ -1024,9 +1078,12 @@ templates** from them, so a broken template shows up as a test failure.
 
 | Profile | What it gives you |
 |---|---|
-| `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
+| `boxturtle2_ercf` | three units on one toolhead: two BoxTurtle 1.0 (4 gates each, `VirtualSelector`) and an ERCF 1.1sb (8 gates, `LinearServoSelector`, encoder) — 16 gates, for the scrolling unit rack |
+| `ercf_quattrobox` | multi-unit, mixed selector types with a shared downstream buffer and independent gate encoders |
+| `ercf_vvd` | **the console default.** A multi-unit profile and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
+| `tradrack_encoder` | TradRack with a Binky encoder 31mm after the shared exit, shared-exit homing and −48mm parking |
 | `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
 | `pico_mmu` | PicoMMU's `ServoSelector`; deliberately boots uncalibrated because its gate angles depend on the physical cam build |
 | `mmx` | MMX's `ServoSelector` with its vendor gate-angle order; also used for a full load/unload selector test |
@@ -1184,7 +1241,7 @@ do and why.
 **Ask Happy Hare what it did.** Turn on its own trace logging:
 
 ```python
-hh.mmu.p.log_level = 4          # 4 = trace
+hh.mmu.p.log_level = 3          # 3 = trace
 hh.run_gcode('MMU_PRELOAD GATE=0')
 for line in hh.console:
     print(line)

@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import collections
 import contextlib
-import datetime
 import logging
 import os
 import re
@@ -78,8 +77,7 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
-API_PORT = 7125                                 # Moonraker's own port, so UIs find it unprompted
-API_PORT_TRIES = 10                             # next ports to try if the default is taken
+API_PORT = 7125                                 # Local simulator viewer/API
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -507,11 +505,13 @@ class Console:
         self.fil = None
         self.bridge = None                          # the web UI's Moonraker API
         self.bridge_error = None                    # why it did not start, if it was asked to
+        self.cutter_telemetry_unsubscribe = None
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
         # leave --script exiting 0.
         self.failures = 0
+        self.last_failure = ''
         self.job = None                             # a /print job, while one is held
 
     # -- lifecycle ------------------------------------------------------------
@@ -536,15 +536,28 @@ class Console:
         self.hh.build()
         self.hh.gcode.register_output_handler(self._on_output)
 
-        # Macro bodies are no-ops in the general-purpose harness. Cold pull is deliberately
-        # executable in this interactive simulator: it is a self-contained maintenance
-        # workflow whose temperature checkpoints and extruder moves are useful to exercise.
-        # Keep the exception local so print-start/toolchange macros retain the established
-        # recorded-only behavior relied on by the unit tests.
+        # Execute maintenance and filament-processing macros in the interactive simulator.
+        # The general-purpose unit-test harness keeps its simplified effects.
+        # Keep these opt-ins local to the interactive simulator.
         effects = getattr(self.hh.printer, 'harness_macro_effects', None)
         if effects is None:
             effects = self.hh.printer.harness_macro_effects = {}
+        for section in self.hh.fileconfig.sections():
+            name = section.removeprefix('gcode_macro ').upper()
+            if section.startswith('gcode_macro ') and re.fullmatch(r'T\d+', name):
+                effects[name] = self._run_macro_body
         effects['MMU_COLD_PULL'] = self._run_macro_body
+        # Execute reference purge segments so G1 telemetry and filament transport
+        # reflect real macro commands instead of the harness's time-only effect.
+        effects['_MMU_PURGE'] = self._run_macro_body
+        effects['__MMU_PURGE_SEGMENT'] = self._run_macro_body
+        for name in ('_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
+                     '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP',
+                     '_MMU_FORM_TIP', '_WAIT_FOR_TEMP'):
+            effects[name] = self._run_macro_body
+        effects['_CUT_TIP_DO_CUT_MOTION'] = self._run_macro_body
+        self.cutter_telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self._on_cutter_telemetry)
+
 
         if a.trace:
             self.hh.mmu.p.log_level = a.trace
@@ -567,6 +580,19 @@ class Console:
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
                      prime=not a.no_prime, seed=a.seed,
                      pre_bootup=self._home_before_bootup)
+        from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
+        from extras.mmu.telemetry.capture import display_color as hex6
+        mmu = self.hh.mmu
+        unit, extruder = mmu.mmu_unit(), mmu.mmu_unit().extruder_wrapper
+        mmu.movement_telemetry.state('filament_pos_snapshot',
+            filament=dict(extruder=extruder.name, retracted_length=extruder.retracted_length,
+                          residual_mm=unit.toolhead_wrapper.p.toolhead_residual_filament,
+                          fragment_mm=extruder.filament_cut_fragment,
+                          retained_color=hex6(extruder.filament_remaining_color),
+                          incoming_color=hex6(mmu.gate_color[mmu.gate_selected] if mmu.gate_selected >= 0 else '')),
+            unit=self.hh.mmu.mmu_unit().name, gate=self.hh.mmu.gate_selected,
+            filament_pos=self.hh.mmu.filament_pos,
+            filament_pos_name=FILAMENT_POS_NAME_MAP.get(self.hh.mmu.filament_pos, 'UNKNOWN'))
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         self._clear_sink()
 
@@ -641,28 +667,55 @@ class Console:
         simulator (see test/hh/webui_bridge.py). Happy Hare's pause dialog arrives as
         '// action:prompt_*' output lines, which reach the UI with the rest of the output.
 
-        A port that is taken (a real Moonraker, or another console) is skipped for the next
-        free one unless the user named it, in which case that is reported and left alone.
+        If the port cannot be opened, warn in the startup banner and keep the console usable.
         """
-        printer = self.hh.printer
-        tries = 1 if explicit or port == 0 else API_PORT_TRIES
-        for candidate in range(port, port + tries):
-            try:
-                self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=candidate).start()
-                break
-            except OSError as exc:
-                self.bridge_error = 'Web API not started: port %d: %s' % (candidate, exc.strerror or exc)
+        try:
+            self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port, host=self.args.serve_host).start()
+        except OSError as exc:
+            self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
         if self.bridge is None:
             return
         self.bridge_error = None
+        self.bridge.restart_profile = self._restart_for_viewer
+        self.bridge.profile_name = str(self.args.profile)
+        self._install_pace_observer()
+
+    def _restart_for_viewer(self, profile):
+        bridge, previous = self.bridge, self.args.profile
+        no_serve = self.args.no_serve
+        bridge.viewer.close()
+        self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
+        self.args.no_serve = True
+        self.args.profile = profile
+        try:
+            try:
+                self._meta_reset([], show_banner=False)
+            except Exception:
+                self.args.profile = previous
+                self._meta_reset([], show_banner=False)
+                raise
+        finally:
+            self.args.no_serve = no_serve
+            self.bridge = bridge
+            bridge.session = self.hh
+            from test.hh.live_viewer import SourceViewer
+            bridge.viewer = SourceViewer(self.hh)
+            bridge.telemetry_stream.reset_capture(self.hh.mmu, bridge.viewer.telemetry_capture)
+            bridge.profile_name = str(self.args.profile)
+            bridge.last_sent.clear()
+            self._install_pace_observer()
+            self.banner()
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""
         if self.bridge is None:
             return [self.bridge_error] if self.bridge_error else []
         port = self.bridge.port
-        return ['Web API (for Mainsail/Fluidd): host 127.0.0.1  port %d  (http://127.0.0.1:%d)'
-                % (port, port),
+        host = self.bridge.host
+        address = '127.0.0.1' if host == '0.0.0.0' else host
+        return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
+                % (host, port, address, port),
+                'Live viewer: http://%s:%d/sim/viewer/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):
@@ -673,25 +726,31 @@ class Console:
         port = self.bridge.port
         for line in lines[:1]:
             self.info(line)
+        host = '127.0.0.1' if self.bridge.host == '0.0.0.0' else self.bridge.host
+        if self.bridge.host == '0.0.0.0':
+            self.info('Listening on all IPv4 interfaces. Remote clients use this computer’s LAN IP.')
         self.info('Mainsail dev server, from a Mainsail checkout:\n'
-                  '  VUE_APP_HOSTNAME=127.0.0.1 VUE_APP_PORT=%d npx vite serve\n'
-                  'A built Mainsail or Fluidd: add a printer at 127.0.0.1:%d in its connection '
+                  '  VUE_APP_HOSTNAME=%s VUE_APP_PORT=%d npx vite serve\n'
+                  'A built Mainsail or Fluidd: add a printer at %s:%d in its connection '
                   'dialog.\n'
                   'Then /print start, /exhaust 1 and MMU_CHANGE_TOOL TOOL=1 make a pause '
-                  'dialog appear.' % (port, port))
+                  'dialog appear.' % (host, port, host, port))
 
     def _run_for_bridge(self, script):
-        """A script sent from the web UI: shown and run as if typed at the prompt."""
+        """A script sent from the web UI: shown and run as if typed at the prompt. Returns the first failure."""
         for line in script.split('\n'):
             if line.strip():
-                self.echo(self.prompt() + line)
+                print(self.prompt() + line)
+                failures = self.failures
                 self.run_command(line)
+                if self.failures > failures:
+                    return self.last_failure
 
     def _service_bridge(self):
         """Run what the web UI has asked for, from under the prompt."""
-        if self.bridge is None or not (self.bridge.inbox.qsize() or self.bridge.clients):
+        if self.bridge is None or not (self.bridge.has_pending_requests() or self.bridge.clients):
             return
-        if self.bridge.inbox.qsize():
+        if self.bridge.has_pending_requests():
             self._reprint(self.bridge.service)
         else:
             self.bridge.service()                   # nothing to print, just the status push
@@ -699,6 +758,20 @@ class Console:
     @staticmethod
     def _run_macro_body(macro, gcmd):
         macro.run_body(gcmd)
+
+    def _on_cutter_telemetry(self, record):
+        # Only the simulator changes geometry. The real command merely emits an
+        # ordered annotation and never waits for or modifies printer movement.
+        if record['event'] != 'cut' or record.get('cutter') != 'toolhead':
+            return
+        blade = record.get('blade_pos')
+        gate = record['gate']
+        if blade is None or gate < 0:
+            return
+        model = self.hh.printer.harness_filament
+        # Severing changes only the attached endpoint, not encoder/buffer travel.
+        model.tip[gate] = min(model.tip[gate], model._nozzle_position(gate)-blade)
+        model.sync(gate)
 
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
@@ -734,6 +807,9 @@ class Console:
         self.startup_output = refreshed
 
     def close(self):
+        if self.cutter_telemetry_unsubscribe is not None:
+            self.cutter_telemetry_unsubscribe()
+            self.cutter_telemetry_unsubscribe = None
         if self.bridge is not None:
             self.bridge.close()
             self.bridge = None
@@ -918,7 +994,10 @@ class Console:
             # gcode.error and responds (gcode.py:220), so without this the first bad
             # parameter would end the session.
             print(paint('!! %s' % exc, '1;31', self.color))
+            if self.bridge is not None:
+                self.bridge.host_output('!! %s' % exc)
             self.failures += 1
+            self.last_failure = str(exc)
         physical_changed = False
         if gate_status_before is not None:
             physical_changed = self._sync_filament_to_gate_map(gate_status_before)
@@ -930,12 +1009,13 @@ class Console:
             self.hh.reactor.advance(0.)
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
+            if self.bridge is not None:
+                self.bridge.host_output('!! reactor: %s' % exc)
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
         if warn_unknown:
             self._warn_unhandled(line, unhandled_mark)
-            self._warn_silent_macro(line, mark)
 
     def _sync_filament_to_gate_map(self, before):
         """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""
@@ -1016,21 +1096,6 @@ class Console:
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! moonraker: %s' % exc, '1;31', self.color))
 
-    def _warn_silent_macro(self, line, mark):
-        """
-        With the explicit MMU_COLD_PULL exception installed in boot(), the fake gcode_macro
-        otherwise records a macro call but never renders or runs its BODY (pinned by
-        test_mmu_toolchange.py). So T1, print start/end and the park/cut/purge sequences are
-        REGISTERED - they do not show up as unknown commands - and simply do nothing. Silence
-        is the whole symptom, so key off "produced no output at all".
-        """
-        if len(self.sink) > mark:
-            return
-        word = line.strip().split(None, 1)[0].upper() if line.strip() else ''
-        if re.fullmatch(r'T\d+', word):
-            print(paint('   (%s is a macro, and the harness does not run macro bodies - '
-                        'use MMU_CHANGE_TOOL TOOL=%s)' % (word, word[1:]), '33', self.color))
-
     def _warn_unhandled(self, line, mark):
         """
         Unknown commands are recorded and ignored (gcode.py:230), so a typo produces no
@@ -1042,9 +1107,10 @@ class Console:
         for raw in self.hh.gcode.unhandled[mark:]:
             if raw.split(None, 1)[0].upper() == typed:
                 print(paint("?? no such command %r" % typed, '33', self.color))
+                if self.bridge is not None:
+                    self.bridge.host_output('Unknown command:"%s"' % typed)
                 if re.fullmatch(r'T\d+', typed):
-                    print('   (the fake gcode_macro records macros but does not run '
-                          'their bodies - use MMU_CHANGE_TOOL TOOL=%s)' % typed[1:])
+                    print('   (no %s macro is configured for this profile)' % typed)
                 return
 
     ##################
@@ -1464,6 +1530,10 @@ class Console:
         ('/sensors', 'sensor table (also: MMU_SENSORS)'),
         ('/sensor NAME on|off|enable|disable',
          'on/off drives the switch; enable/disable makes HH ignore it entirely'),
+        ('/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none|tension|neutral|compression]',
+         'show or change a sync-feedback buffer (by object name; NAME may be omitted if there is one)'),
+        ('/encoder [NAME] [RESOLUTION=mm] [DESIRED_HEADROOM=mm] [DETECTION_LENGTH=mm] ...',
+         'show or change an encoder\'s runtime numeric settings; /encoder NAME lists them'),
         ('/place GATE [POS]', 'put a filament tip at POS mm (default %g)' % TIP_AT_GATE),
         ('/insert GATE [POS]', 'place filament and fire its entry-sensor callback'),
         ('/remove GATE', 'remove that gate\'s filament and clear its path sensors'),
@@ -1482,7 +1552,7 @@ class Console:
                            '(alias /realtime)'),
         ('/timestamp [on|off]', 'stamp MMU output with the virtual clock (no argument '
                                 'toggles)'),
-        ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
+        ('/trace 0-3', "Happy Hare's own log_level, 3 = full narration"),
         ('/tag [UID [GATE|UNIT]]',
          'present an NFC tag: a GATE puts it on that gate\'s filament, a UNIT holds it '
          'on that unit\'s shared reader ("off" takes it away again). No argument lists '
@@ -1563,7 +1633,7 @@ class Console:
             self.scrollback.clear()
         self.clear_log()
 
-    def _meta_reset(self, args):
+    def _meta_reset(self, args, show_banner=True):
         """Discard all simulated machine state and boot the selected profile afresh."""
         if args:
             raise ValueError('usage: /reset')
@@ -1577,7 +1647,11 @@ class Console:
         if self.scrollback is not None:
             self.scrollback.clear()
         self.boot()
-        self.info('simulator reset to %s startup state' % self.args.profile)
+        self.clear_log()
+        if hasattr(self, '_words'):
+            del self._words
+        if show_banner:
+            self.banner()
 
     def _meta_redraw(self, args):
         """Repaint everything, log included. /clear is the same thing minus the history."""
@@ -1791,6 +1865,126 @@ class Console:
             print('  %s %sd' % (handle.name, action))
         self._drain(mark)
 
+    # Buffers and encoders are simulator objects whose settings are not MMU_TEST_CONFIG parameters,
+    # so they are edited here. Each edit emits one event so a viewer refresh shows it at once.
+
+    def _object_arguments(self, kind, args, settings):
+        """Resolve `[NAME] KEY=value ...` to (object, units sharing it, {key: text})."""
+        found = {}
+        for unit in self.hh.mmu.mmu_machine.units:
+            obj = getattr(unit, kind)
+            if obj is not None:
+                found.setdefault(obj.name, (obj, []))[1].append(unit)
+        if not found:
+            raise ValueError('this machine has no %s' % kind)
+        name, values = None, {}
+        for arg in args:
+            if '=' in arg:
+                key, text = arg.split('=', 1)
+                if key.lower() not in settings:
+                    raise ValueError('unknown %s setting %r; use %s' % (kind, key, ', '.join(s.upper() for s in settings)))
+                values[key.lower()] = text
+            elif name is None:
+                name = arg
+            else:
+                raise ValueError('expected one %s name' % kind)
+        if name is None and len(found) == 1:
+            name = next(iter(found))
+        if name not in found:
+            raise ValueError('which %s? %s' % (kind, ', '.join(found)))
+        return found[name][0], found[name][1], values
+
+    def _settings_changed(self, kind, obj):
+        self.hh.mmu.movement_telemetry.state('sim_settings_changed', kind=kind, object=obj.name)
+
+
+    def _meta_buffer(self, args):
+        from extras.mmu.unit.mmu_buffer import SPRING_STATES
+        buffer, units, values = self._object_arguments('buffer', args, ('range', 'maxrange', 'spring'))
+        if values:
+            import math
+            maximum = float(values.get('maxrange', buffer.buffer_maxrange))
+            sensor_range = float(values.get('range', buffer.buffer_range))
+            spring = values.get('spring', buffer.buffer_spring_state)
+            if not all(math.isfinite(v) for v in (maximum, sensor_range)) or not 0 < sensor_range <= maximum:
+                raise ValueError('use 0 < RANGE <= MAXRANGE')
+            if spring not in SPRING_STATES:
+                raise ValueError('SPRING is one of %s' % ', '.join(SPRING_STATES))
+            if (maximum, sensor_range, spring) != (buffer.buffer_maxrange, buffer.buffer_range, buffer.buffer_spring_state):
+                self._apply_buffer(buffer, maximum, sensor_range, spring)
+                self._settings_changed('buffer', buffer)
+        print('    %s (%s): RANGE=%g MAXRANGE=%g SPRING=%s' % (buffer.name, ', '.join(u.name for u in units),
+              buffer.buffer_range, buffer.buffer_maxrange, buffer.buffer_spring_state))
+
+    def _apply_buffer(self, buffer, maximum, sensor_range, spring):
+        """Change the buffer and rebuild its physical model, keeping the filament where it is."""
+        from extras.mmu.unit.mmu_buffer import SPRING_STATES
+        units = self.hh.mmu.mmu_machine.units
+        model = self.hh.filament()
+        old_buffers = model.buffers.copy()
+        old = old_buffers.get(buffer.name)
+        buffer.buffer_maxrange = maximum
+        buffer.buffer_range = sensor_range
+        buffer.buffer_spring_state = spring
+        buffer.buffer_spring_state_num = SPRING_STATES[spring]
+        model.buffers = {}
+        model.configure_buffers(units, model._selected_gate, model._drive_mode, model._gripped)
+        geometry = model.buffers[buffer.name]
+        for name, previous in old_buffers.items():
+            if name != buffer.name:
+                model.buffers[name] = previous
+        for gate in geometry['gates']:
+            total = geometry['rest']
+            if old and (model._gripped(gate) or old['contact'][gate]):
+                total += old['travel'][gate] + old['excess'][gate] - old['rest']
+                geometry['contact'][gate] = old['contact'][gate]
+            travel = max(0., min(maximum, total))
+            geometry['travel'][gate] = travel
+            geometry['excess'][gate] = total - travel
+            model.unabsorbed[gate] = total - travel
+        for unit in units:
+            if unit.buffer is buffer:
+                feedback = unit.sync_feedback
+                if feedback.ctrl is not None:
+                    feedback.ctrl.close_log()
+                feedback._init_controller()
+                if feedback.active:
+                    feedback._reset_controller(self.hh.reactor.monotonic())
+        model.sync()
+
+    # setting: (attribute, integer?, minimum, minimum excluded?)
+    _ENCODER_SETTINGS = {
+        'resolution': (False, 0, True),
+        'desired_headroom': (False, 0, True),
+        'detection_length': (False, 2, True),
+        'average_samples': (True, 1, False),
+        'calibration_length': (False, 50, False),
+        'no_movement_samples': (True, 1, False),
+        'flowrate_samples': (True, 5, False),
+    }
+
+    def _meta_encoder(self, args):
+        import math
+        encoder, units, values = self._object_arguments('encoder', args, tuple(self._ENCODER_SETTINGS))
+        for key, text in values.items():
+            integer, minimum, exclusive = self._ENCODER_SETTINGS[key]
+            value = float(text)
+            if not math.isfinite(value) or value < minimum or (exclusive and value == minimum) \
+                    or (integer and not value.is_integer()):
+                raise ValueError('invalid %s' % key.upper())
+            value = int(value) if integer else value
+            if key == 'resolution':
+                distance = encoder.get_distance()
+                encoder.set_resolution(value)
+                encoder.set_distance(distance)    # The measured position survives a resolution change
+            else:
+                setattr(encoder, key, value)
+        if values:
+            self._settings_changed('encoder', encoder)
+        print('    %s (%s)' % (encoder.name, ', '.join(u.name for u in units)))
+        for key in self._ENCODER_SETTINGS:
+            print('      %-20s %g' % (key.upper(), getattr(encoder, key)))
+
     def _meta_place(self, args):
         gate = int(args[0])
         pos = float(args[1]) if len(args) > 1 else TIP_AT_GATE
@@ -1874,9 +2068,8 @@ class Console:
     ##### Print jobs #####
     ######################
 
-    # Macros whose bodies run while a job plays. Everywhere else the harness only records a
-    # macro call (klippy_root/extras/gcode_macro.py), which is why T1 at the prompt is silent.
-    # Park, cut and purge stay recorded no-ops even in a job: their motion is not modelled.
+    # Additional lifecycle macros enabled while a job plays. Tool-selection and
+    # filament-processing macros are already enabled for interactive commands.
     JOB_MACROS = ('MMU_START_SETUP', 'MMU_START_CHECK', 'MMU_START_LOAD_INITIAL_TOOL',
                   'MMU_END')
     # Played straight through the dispatcher with no per-line settle: a sliced file is almost
@@ -1940,8 +2133,8 @@ class Console:
         Feed the held job from where it stopped until it ends, the machine pauses, a command
         fails (the print errors, as virtual_sdcard's would) or the job cancels itself.
 
-        What runs for real: the macros in JOB_MACROS and T<n> (their bodies, only for the
-        duration), every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
+        What runs for real: configured tool macros, lifecycle macros in JOB_MACROS,
+        every Happy Hare command, extrusion (G0-G3 E through gcode_move into the
         filament model) and the extruder heater (M104/M109). Time passes as the moves would
         take it, plus G4 dwells. Anything else the harness does not know - bed heaters,
         EXCLUDE_OBJECT_*, the user's own PRINT_START - is ignored and listed at the end.
@@ -1952,7 +2145,7 @@ class Console:
         toolhead = self.hh.printer.lookup_object('toolhead')
         pause_resume = self.hh.printer.lookup_object('pause_resume')
         effects = self.hh.printer.harness_macro_effects
-        names = list(self.JOB_MACROS) + ['T%d' % t for t in range(self.hh.mmu.num_gates)]
+        names = self.JOB_MACROS
         saved = {n: effects.get(n) for n in names}
         for n in names:
             effects[n] = self._run_macro_body
@@ -2255,7 +2448,10 @@ class Console:
                   % ('on' if self.timestamps else 'off', self.sim_time()))
 
     def _meta_trace(self, args):
-        self.hh.mmu.p.log_level = int(args[0]) if args else 1
+        level = int(args[0]) if args else 1
+        if not 0 <= level <= 3:
+            raise ValueError('Log level must be between 0 and 3')
+        self.hh.mmu.p.log_level = level
         print('  log_level = %s' % self.hh.mmu.p.log_level)
 
     # Long enough to outlast NFC_TAG_HOLD_TIME (5s), the cooldown after the reader
@@ -2528,8 +2724,12 @@ class Console:
         would interleave with Happy Hare's own output.
         """
         pinned = self.pinned
-        self.hh.printer.harness_pace_observer = (
-            pinned.repaint if (pinned is not None and pinned.active) else None)
+        def observe():
+            if self.bridge is not None:
+                self.bridge.service_during_move()
+            if pinned is not None and pinned.active:
+                pinned.repaint()
+        self.hh.printer.harness_pace_observer = observe
 
     def _meta_log(self, args):
         """Where mmu.log is, and its tail. It is live - `tail -f` it in another window."""
@@ -3163,6 +3363,9 @@ def parse_args(argv=None):
                    help='serve the Moonraker-compatible web API on this port (default %d). It is '
                         'already on by default at a terminal, so this is for choosing the port or '
                         'turning it on when not at one' % API_PORT)
+    p.add_argument('--serve-host', default='127.0.0.1', metavar='ADDRESS',
+                   help='web API listening address (default %(default)s); use a LAN IPv4 address '
+                        'or 0.0.0.0 for remote access. The simulator API has no authentication')
     p.add_argument('--no-serve', '--no_serve', dest='no_serve', action='store_true',
                    help='do not serve the web API that lets Mainsail or Fluidd connect to the '
                         'simulator')
@@ -3175,8 +3378,8 @@ def parse_args(argv=None):
                    help='how much of each move\'s real duration to spend in virtual time: '
                         '0 is instant, 0.5 (default) is twice as fast as real, 1 is real '
                         'time. Also settable live with /pace')
-    p.add_argument('--trace', type=int, default=0, metavar='0-4',
-                   help="Happy Hare log_level; 4 is full narration")
+    p.add_argument('--trace', type=int, choices=range(4), default=0, metavar='0-3',
+                   help="Happy Hare log_level; 3 is full narration")
     p.add_argument('--virtual-nfc', dest='virtual_nfc', action='store_true', default=True,
                    help='virtualize NFC readers so /tag works (default: on)')
     p.add_argument('--no-virtual-nfc', dest='virtual_nfc', action='store_false',
