@@ -1,5 +1,94 @@
 # Happy Hare movement telemetry
 
+## Overview
+
+Motion telemetry records what the MMU does (filament moves, selector and servo moves, extruder moves, state changes) so the
+web app (the Visualizer) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
+relays and stores them, and the web app displays them.
+
+```
+Klipper:   moves / selectors / G1 / state events -> capture (baseline + deltas) -> 0.25 s batches
+               |                                                     ^ ack
+Moonraker: shared upstream -> 128-record window -> browsers (WebSocket)  +  recorder -> JSONL files
+               |                                                     ^ ack
+Web app:   replay -> animated steps (live)   |   load a saved JSONL (offline)
+```
+
+### Klipper (Happy Hare): produces the events and the replay state
+
+**Event sources.** Each emits a record only while someone is listening, so there is no cost when nothing is subscribed.
+- filament moves, as start and outcome pairs
+- selector stepper and servo moves
+- G1 extrusion inside MMU commands and macros
+- state events: filament position, gate change, espooler start and stop, cut and release marks from the macros, configuration changes
+- `toolchange` and `toolchange_end`, which bracket the load, unload and change-tool commands
+
+**Capture.** When a consumer subscribes, Klipper starts a capture.
+- It holds a baseline of the full replay state plus ordered records.
+- At every event it reads the state, diffs it against the last read, and writes a `state_delta` before the event record.
+- It reads once more 0.25 s after the last event (never in the middle of a move). This catches values that settle late, such as the selector grip.
+- It keeps only records its consumers have not acknowledged. A 256-record cap bounds a consumer that stops acknowledging.
+
+**Delivery.**
+- A 0.25 s timer sends one batch at a time to each subscriber.
+- A batch is resent after 5 s without an acknowledgement.
+- A failed capture is replaced and the consumer gets a fresh baseline.
+
+**Recording control.**
+- The mode lives in Klipper: `off`, `on`, or `toolchange` (record one command, then stop).
+- It is set with `MMU_TELEMETRY MODE=...`. With no parameters the command reports the current mode and the default.
+- It starts at `default_telemetry_mode` from `mmu.cfg` (also a menuconfig option under Logging, default `off`, hidden from `MMU_TEST_CONFIG`).
+- It is exposed as the printer variable `mmu.telemetry_mode`.
+- A mode change commits the settled state, then emits a `record_mode` record so consumers act on it at the right point in the stream.
+- If Moonraker is not subscribed, Klipper asks it to subscribe (`mmu_telemetry_wake`) and logs a warning if it has not within 5 s.
+
+**File I/O.** Klipper does none.
+
+### Moonraker (`[mmu_telemetry]`): relay, history and files
+
+**Upstream.**
+- One subscription to Klipper, shared by all browsers.
+- It subscribes only while a browser is connected or a recording is running, and releases it when neither needs it.
+- It acknowledges each batch to Klipper and resubscribes if Klipper closes the stream.
+- At startup it reads `mmu.telemetry_mode` to resume a recording.
+
+**Browsers.**
+- It keeps a 128-record window for late joiners.
+- It fans batches out over WebSocket: `server.mmu.telemetry.subscribe`, `ack`, `unsubscribe`, with `notify_mmu_telemetry` pushes. Each browser has one batch in flight.
+
+**Recording.** The recorder follows the in-band `record_mode` records.
+- `on` writes a rolling `logs/mmu-telemetry.jsonl` with up to five backups (`.1` to `.5`).
+- Each `toolchange` capture is its own file, opened at the `toolchange` record and closed at its `toolchange_end`. It takes one of the five slots.
+- A refused command, with nothing between its start and end, opens no file and leaves the one-toolchange arming in place.
+- Switching from `on` to `toolchange` closes the continuous file.
+- All disk work runs on a worker thread. A write failure stops recording with a warning, and recording can start again afterwards.
+- Optional settings in `[mmu_telemetry]`: `max_log_size` (default 10485760 bytes) and `log_backups` (default 5).
+
+### Web app (the Visualizer): display only
+
+**Three data sources.**
+- **Live status subscription:** Moonraker object subscriptions drive the scene.
+- **Telemetry stream:** it replays the batches into the scene. Each start is paired with its outcome into an animated step, and a trailing state change is folded into the preceding step. When idle it overlays live sensor readings.
+- **Loaded telemetry recording:** the same replay reads a saved JSONL offline.
+
+**Recording control.**
+- On a printer's telemetry stream, the Record control shows `mmu.telemetry_mode` from the `mmu` object subscription it already makes for sensors.
+- Choosing a mode sends `MMU_TELEMETRY MODE=...` as G-code.
+
+**Storage.** The web app writes no files of its own. **Save telemetry** downloads what it holds, and **Load telemetry** opens a recording.
+
+### In the simulator
+
+The simulator's bridge takes Moonraker's place. It serves the viewer, runs the same stream protocol over its own WebSocket, and pumps the capture itself. Recording to files and the Record control do not apply there.
+
+### Reading a recording
+
+- The first record is a `session` baseline: the full replay state at that moment.
+- `state_delta` records hold only the changed values (`path` and `value`), and come before the event that observed them.
+- Event records say what happened and why (for example `movement_start` and `movement_outcome`, `selector_movement_*`, `filament_pos_changed`, `gate_changed`, `toolchange` and `toolchange_end`).
+- Sync mode and retracted length have no events: they arrive only as `state_delta`.
+- A `session` record in the middle of a file is a fresh baseline; the viewer restarts its replay there.
+
 ## Event subscriptions
 
 `[mmu_telemetry]` is a separate Moonraker component; `mmu_server.py` retains its
