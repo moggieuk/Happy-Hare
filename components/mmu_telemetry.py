@@ -12,12 +12,14 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import asyncio
+import logging
 from pathlib import Path
 import uuid
 from ..common import WebRequest, RequestType, TransportType
 from .mmu_telemetry_store import TelemetryHistory, TelemetryRecorder, TelemetryWriter
 
 MAX_SUBSCRIBERS = 32
+RESUBSCRIBE_DELAY = 5.  # Seconds before subscribing again after Klipper closes the stream
 
 
 class MmuTelemetry:
@@ -64,7 +66,7 @@ class MmuTelemetry:
             batch = await self.request('subscribe', dict(subscription_id=token,
                 response_template={'method': 'process_mmu_telemetry'}))
             if self.upstream == token:
-                await self.process_batch(token, batch)
+                await self.process_batch(token, batch, initial=True)
         except Exception:
             if self.upstream == token:
                 self.upstream = None
@@ -143,8 +145,14 @@ class MmuTelemetry:
         self.history = TelemetryHistory(self.history.limit)
         self.stream_id = uuid.uuid4().hex
 
-    async def process_batch(self, subscription_id, batch):
+    async def process_batch(self, subscription_id, batch, initial=False):
         if subscription_id != self.upstream:
+            return
+        if batch.get('closed'):
+            # Klipper dropped the subscription after an error: subscribe again shortly.
+            self.upstream = None
+            if self.clients or self.record or self.history_buffer:
+                self.server.get_event_loop().delay_callback(RESUBSCRIBE_DELAY, self._resubscribe)
             return
         if batch.get('reset'):
             self.stream_id = uuid.uuid4().hex
@@ -156,12 +164,24 @@ class MmuTelemetry:
                 self.writer = TelemetryWriter(self.recorder, self._recording_failed)
             self.writer.submit(committed)
         # Acknowledgment means accepted into Moonraker history, not rendered or flushed to disk.
-        await self.request('ack', dict(subscription_id=subscription_id,
-            stream_id=batch['stream_id'], delivery_id=batch['delivery_id']))
+        try:
+            await self.request('ack', dict(subscription_id=subscription_id,
+                stream_id=batch['stream_id'], delivery_id=batch['delivery_id']))
+        except Exception:
+            if initial:
+                raise  # The subscription is not established
+            logging.exception('MMU telemetry acknowledgement failed; Klipper will resend')
         for conn, client in list(self.clients.items()):
             # Initial subscription returns its baseline through the request response.
             if client['ready']:
                 self._deliver(conn, client)
+
+    async def _resubscribe(self):
+        async with self.lock:
+            try:
+                await self._start()
+            except Exception:
+                logging.exception('MMU telemetry could not subscribe again')
 
     def _recording_failed(self, reason):
         self.record = False
