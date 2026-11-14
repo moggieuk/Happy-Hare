@@ -926,3 +926,10 @@ test('the gears are gripped according to the recorded mmu.selector.grip',()=>{
  event(r,'state_delta',{changes:[{path:['printer','mmu','selector','grip'],value:'Unknown'}]});
  assert.equal(r.snapshot().mmu_gripped,false);
 });
+
+test('a recording with a non-integer gate number is rejected before it reaches any markup',()=>{
+ const h=header();
+ const unit=Object.values(h.state.printer.mmu_machine.units)[0];
+ unit.gates=[0,'1" onmouseover="alert(1)',2];
+ assert.throws(()=>new TelemetryReplay().feed(h),/unit configuration/);
+});

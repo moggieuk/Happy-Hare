@@ -14,7 +14,8 @@ function validateFacts(facts) {
       !Array.isArray(mmu.drive_motors?.gear) || !Array.isArray(mmu.drive_motors?.extruder))
     throw Error('Telemetry is missing valid MMU/machine configuration');
   for (const unit of Object.values(machine.units)) {
-    if (!Array.isArray(unit.gates) || !Array.isArray(unit.sensors) || !unit.parameters ||
+    // Gate numbers are drawn into attributes and ids, so only integers are acceptable.
+    if (!Array.isArray(unit.gates) || !unit.gates.every(Number.isInteger) || !Array.isArray(unit.sensors) || !unit.parameters ||
         !unit.toolhead?.parameters || !unit.extruder || !unit.bowden_lengths)
       throw Error('Telemetry is missing unit configuration');
   }

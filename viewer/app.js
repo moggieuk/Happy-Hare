@@ -1496,7 +1496,7 @@ function updateLiveIndicator() {
   $('viewer-live').classList.toggle('active',active);
   $('viewer-live').setAttribute('aria-label',active ? 'Live' : 'Not live');
 }
-function animate() {
+function drawFrame() {
   updateLiveIndicator();
   const now=animationNow();
   const spoolRunning=Boolean(playing) || (live && !paused);
@@ -1565,7 +1565,18 @@ function animate() {
   } else if (spoolFading || spoolRotating) {
     updateSpoolMotion();
   }
-  requestAnimationFrame(animate);
+}
+// One bad frame must not end the animation loop: report it once and carry on.
+let lastFrameError = '';
+function animate() {
+  try {
+    drawFrame();
+  } catch (error) {
+    if (error.message !== lastFrameError) { lastFrameError = error.message; message(`Drawing failed: ${error.message}`, true); }
+    console.error(error);
+  } finally {
+    requestAnimationFrame(animate);
+  }
 }
 
 const toolheadPanel=createToolheadPanel({rpc, action, refresh, changed:()=>sourceMode()});
