@@ -191,7 +191,8 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
             await self.component.writer.queue.join()
             self.assertFalse(self.component.record)
             self.assertEqual(len(warnings), 1)
-            self.assertIsNotNone(self.api.stream.capture)
+            for _ in range(3): await asyncio.sleep(0)
+            self.assertIsNone(self.api.stream.capture)   # No client or history needs the Klipper subscription now
 
     async def test_history_buffer_zero_is_on_demand_with_small_delivery_window(self):
         await self.component.ready()

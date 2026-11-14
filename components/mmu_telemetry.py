@@ -131,6 +131,9 @@ class MmuTelemetry:
 
     async def client_removed(self, conn):
         self.clients.pop(conn, None)
+        await self._release_if_idle()
+
+    async def _release_if_idle(self):
         async with self.lock:
             if not self.clients and not self.record and not self.history_buffer and self.upstream:
                 token, self.upstream = self.upstream, None
@@ -186,6 +189,7 @@ class MmuTelemetry:
     def _recording_failed(self, reason):
         self.record = False
         self.server.add_warning('MMU telemetry recording stopped: %s.' % reason)
+        asyncio.create_task(self._release_if_idle())  # Nothing else needs the Klipper subscription
 
     async def close(self):
         token, self.upstream = self.upstream, None
