@@ -42,7 +42,7 @@ class TelemetryStream:
         if key not in self.clients and len(self.clients) >= MAX_SUBSCRIBERS:
             raise ValueError('Too many telemetry subscribers')
         if self.capture is None:
-            self.capture = TelemetryCapture(self.mmu, limit=512)
+            self.capture = TelemetryCapture(self.mmu, limit=256)
             self.stream_id = uuid.uuid4().hex
         client = dict(send=send, closed=closed, after=None, inflight=None, history=history)
         self.clients[key] = client
@@ -65,7 +65,14 @@ class TelemetryStream:
             delivery, cursor = client['inflight']
             if delivery == delivery_id:
                 client.update(after=cursor, inflight=None)
+                self._fold()
         return {}
+
+    def _fold(self):
+        # Records every consumer has acknowledged need not be kept: the baseline already includes them
+        cursors = [client['after'] for client in self.clients.values()]
+        if None not in cursors:
+            self.capture.fold_through(min(cursors))
 
     def unsubscribe(self, key):
         self.clients.pop(key, None)
@@ -77,7 +84,7 @@ class TelemetryStream:
     def _renew_capture(self):
         """The source detached a capture that failed: start a new one and send every consumer a fresh baseline."""
         self.capture.close()
-        self.capture = TelemetryCapture(self.mmu, limit=512)
+        self.capture = TelemetryCapture(self.mmu, limit=256)
         self.stream_id = uuid.uuid4().hex
         for client in self.clients.values():
             client.update(after=None, inflight=None)

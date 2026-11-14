@@ -35,6 +35,16 @@ class TestTelemetryStore(unittest.TestCase):
         self.assertEqual(current['records'][0]['state'], {'parameter': 20})
         self.assertEqual(history.read()['records'][0]['state'], {'parameter': 10})
 
+    def test_records_are_shared_but_the_checkpoint_is_a_copy(self):
+        history = TelemetryHistory()
+        record = event(1)
+        history.append(dict(records=[HEADER, record]))
+        batch = history.read(0)
+        self.assertIs(batch['records'][0], record)
+        batch = history.read()
+        batch['records'][0]['state']['parameter'] = 99
+        self.assertEqual(history.read()['records'][0]['state'], {'parameter': 10})
+
     def test_rollover_checkpoint(self):
         history = TelemetryHistory(2)
         history.append(dict(records=[HEADER, event(1, 'state_delta', changes=[dict(path=['parameter'],value=30)]),event(2),event(3)]))

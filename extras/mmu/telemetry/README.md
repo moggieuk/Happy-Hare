@@ -28,7 +28,9 @@ out its own history to browsers. Browser acknowledgments only control that
 browser's delivery; they do not hold up Klipper or another browser. An acknowledgment
 means accepted into memory, not that animation or disk writes have completed.
 
-Klipper retains at most 512 committed records for delivery. Moonraker's
+Klipper keeps only records its consumers have not acknowledged: each acknowledgment folds the
+acknowledged records into the capture's baseline. A consumer that stops acknowledging is bounded by a
+256-record cap, after which it receives a replacement checkpoint with a new stream id. Moonraker's
 `history_buffer` combines the history enable switch and its size:
 
 - `0` (default): no background history capture. While a viewer or file recorder
