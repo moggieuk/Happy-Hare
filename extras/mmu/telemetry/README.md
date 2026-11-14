@@ -62,7 +62,7 @@ MMU_TELEMETRY MODE=off          # stop
 
 `default_telemetry_mode` (`off`, `on` or `toolchange`; menuconfig Logging, `mmu.cfg`, hidden from
 `MMU_TEST_CONFIG`) is the mode after a restart. `MMU_TELEMETRY` with no parameters reports the
-current mode and the default; `MMU_TELEMETRY DEFAULT=...` changes the default until the next restart.
+current mode and the default, which is set only in `mmu.cfg`.
 
 Klipper keeps the mode (it is not saved across a restart) and publishes it in the stream as
 `printer.mmu.telemetry.record`. A mode change commits the settled state, then emits a `record_mode`
