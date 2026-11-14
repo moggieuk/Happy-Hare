@@ -534,6 +534,53 @@ class TestNfcCommandSurface(RoundTripTestCase):
         self.assertIn('disabled', self.rt.errors[-1].lower())
 
 
+class TestSpoolmanTagMigrateCommand(RoundTripTestCase):
+    """MMU_SPOOLMAN_TAG MIGRATE= end to end against Spoolman 0.27."""
+
+    SPOOLS = (dict(uid=TAG_A, material='PLA'),
+              dict(uid=TAG_B, material='ABS', vendor='Polymaker'))
+
+    def setUp(self):
+        self.rt = RoundTrip(profile=self.PROFILE, spools=list(self.SPOOLS),
+                            moonraker_kwargs={'spoolman_version': '0.27.0'})
+        self.rt.boot()
+        self.assertEqual(self.rt.errors, [], 'bootup was not clean')
+        self.rt.advance(self.WARMUP)
+
+    def test_startup_does_not_migrate(self):
+        self.assertEqual(self.rt.db.tag_links, {})
+
+    def test_migrate_native_then_extra(self):
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native')
+        self.assertEqual(self.rt.db.spool_native_uids(1), [TAG_A])
+        self.assertEqual(self.rt.db.spool_native_uids(2), [TAG_B])
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=extra')
+        self.assertEqual(self.rt.db.tag_links, {})
+        self.assertEqual(self.rt.db.spool_uid(1), TAG_A, 'still in the extra field')
+        self.assertEqual(self.rt.errors, [])
+
+    def test_dry_run_changes_nothing(self):
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native DRYRUN=1')
+        self.assertEqual(self.rt.db.tag_links, {})
+
+    def test_gate_limits_migration_to_its_spool(self):
+        self.rt.run_gcode('MMU_GATE_MAP GATE=3 SPOOLID=2')
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native GATE=3')
+        self.assertEqual(self.rt.db.spool_native_uids(2), [TAG_B])
+        self.assertEqual(self.rt.db.spool_native_uids(1), [], 'other spools untouched')
+
+    def test_gate_with_no_spool_errors(self):
+        errors_before = len(self.rt.errors)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native GATE=1')
+        self.assertGreater(len(self.rt.errors), errors_before)
+        self.assertEqual(self.rt.db.tag_links, {}, 'nothing migrated')
+
+    def test_bad_direction_errors(self):
+        with self.assertRaisesRegex(Exception, "MIGRATE must be"):
+            self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=sideways')
+        self.assertEqual(self.rt.db.tag_links, {}, 'nothing migrated')
+
+
 class TestSpoolmanRfidCommand(RoundTripTestCase):
     """
     'MMU_SPOOLMAN_TAG ... RFID=' end to end: Klipper command -> _spoolman_set_spool_uid ->

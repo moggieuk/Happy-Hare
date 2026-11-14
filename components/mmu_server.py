@@ -86,6 +86,7 @@ MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
 MMU_RFID_FIELD   = 'rfid_tag'      # NFC/RFID tag UID registered against a spool
 MIN_SM_VER       = (0, 18, 1)
+MIN_SM_TAG_VER   = (0, 27, 0)  # Native tag links; older versions use MMU_RFID_FIELD
 
 PRINTER_NAME_HEADER = 'X-Printer-Name'  # sent with every request to the configured Spoolman server
 
@@ -206,6 +207,7 @@ class MmuServer:
             # NFC/RFID tag support (see mmu_nfc_manager on the Klipper side)
             self.server.register_remote_method("spoolman_get_spool_by_uid", self.get_spool_by_uid)     # tag scan -> pending spool_id
             self.server.register_remote_method("spoolman_set_spool_uid", self.set_spool_uid)           # register a tag UID onto a spool
+            self.server.register_remote_method("spoolman_migrate_tags", self.migrate_tags)             # move UIDs between extra field and native tags
 
         # TD-1 bridge and lane data push for slicer integration
         self.server.register_remote_method("mmu_td1_request", self.td1_request)
@@ -241,6 +243,10 @@ class MmuServer:
         # Get current printer hostname
         self.printer_hostname = self.printer_info["hostname"]
         self.spoolman_has_extras = False
+        self.spoolman_has_tags = False       # Spoolman >= MIN_SM_TAG_VER
+        self.spoolman_has_rfid_field = False # MMU_RFID_FIELD exists
+        self.legacy_only_uid_count = 0       # UIDs not yet migrated to native tags
+        self.native_uids = set()             # Cached UIDs that are natively linked
         asyncio.create_task(self._init_spoolman(retry=3)) # Spoolman may start up after us so retry a few times
 
 
@@ -258,6 +264,7 @@ class MmuServer:
                 await asyncio.sleep(2)
 
             extras = False
+            self.spoolman_has_tags = False
             if self.spoolman_version and self.spoolman_version >= MIN_SM_VER:
                 # Make sure db has required extra fields
                 extras = True
@@ -266,13 +273,30 @@ class MmuServer:
                     extras = extras and await self._add_extra_field("spool", field_name="Printer Name", field_key=MMU_NAME_FIELD, field_type="text", default_value="")
                 if MMU_GATE_FIELD not in fields:
                     extras = extras and await self._add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=-1)
-                if MMU_RFID_FIELD not in fields:
+                native_tags = self.spoolman_version >= MIN_SM_TAG_VER
+
+                # RFID field is required before native tags; afterwards only kept if it already exists
+                self.spoolman_has_rfid_field = MMU_RFID_FIELD in fields
+                if not self.spoolman_has_rfid_field and not native_tags:
                     extras = extras and await self._add_extra_field("spool", field_name="RFID", field_key=MMU_RFID_FIELD, field_type="text", default_value="")
+                    self.spoolman_has_rfid_field = extras
+
+                self.spoolman_has_tags = extras and native_tags
+                logging.info(
+                    f"Spoolman {'.'.join(map(str, self.spoolman_version))}: "
+                    f"{'native tag API' if self.spoolman_has_tags else 'legacy extra-field'} NFC/RFID tag storage")
 
                 # Create cache of spool location from Spoolman db for efficiency
                 if extras:
                     await self._build_spool_location_cache(silent=True)
                 self.spoolman_has_extras = extras
+
+                # Migration is never automatic - just hint at it
+                if self.spoolman_has_tags and self.legacy_only_uid_count:
+                    logging.info(
+                        f"NFC: {self.legacy_only_uid_count} tag UID(s) are only in the legacy '{MMU_RFID_FIELD}' "
+                        f"extra field. They still resolve; run 'MMU_SPOOLMAN_TAG MIGRATE=native' to link them "
+                        f"as native Spoolman tags")
 
             elif self.spoolman_version:
                 logging.error(f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
@@ -465,6 +489,170 @@ class MmuServer:
         return self._parse_uid_list(raw)
 
 
+    @property
+    def _use_extra_uids(self) -> bool:
+        '''Write UIDs to the extra field too?'''
+        return not self.spoolman_has_tags or self.spoolman_has_rfid_field
+
+
+    def _get_native_uid_list(self, spool_info) -> list[str]:
+        '''UIDs in spool 'tags' ([] before Spoolman 0.27)'''
+        uids = []
+        for tag in (spool_info or {}).get('tags') or []:
+            uid = self._normalise_uid((tag or {}).get('uid', ''))
+            if uid and uid not in uids:
+                uids.append(uid)
+        return uids
+
+
+    def _get_spool_uid_list(self, spool_info) -> list[str]:
+        '''Native tags plus any extra-field-only UIDs'''
+        uids = self._get_native_uid_list(spool_info)
+        uids += [u for u in self._get_uid_list_from_extra((spool_info or {}).get('extra')) if u not in uids]
+        return uids
+
+
+    async def _link_native_tag(self, spool_id, uid, tag_format=None, kind='spool'):
+        '''Returns (ok, conflict); conflict is the 409 body naming the current holder'''
+        body = {'uid': uid}
+        if tag_format:
+            body['format'] = str(tag_format)[:32]
+        resp = await self.http_client.post(url=f"{self.spoolman.spoolman_url}/v1/{kind}/{spool_id}/tag", body=body)
+        if resp.status_code == 409:
+            try:
+                conflict = resp.json() or {}
+            except Exception:
+                conflict = {}
+            return False, conflict
+        if resp.has_error():
+            logging.error(f"NFC: failed to link tag {uid} to {kind} {spool_id}: {self.spoolman._get_response_error(resp)}")
+            return False, None
+        return True, None
+
+
+    async def _unlink_native_tag(self, spool_id, uid, kind='spool') -> bool:
+        '''Already unlinked (404) counts as success'''
+        resp = await self.http_client.request(
+            method="DELETE",
+            url=f"{self.spoolman.spoolman_url}/v1/{kind}/{spool_id}/tag/{uid}",
+            body=None)
+        if resp.status_code == 404 or not resp.has_error():
+            return True
+        logging.error(f"NFC: failed to unlink tag {uid} from {kind} {spool_id}: {self.spoolman._get_response_error(resp)}")
+        return False
+
+
+    async def _write_extra_uids(self, spool_id, uids) -> bool:
+        '''Replace the spool's extra-field UID list'''
+        resp = await self.http_client.request(
+            method="PATCH",
+            url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
+            body={'extra': {MMU_RFID_FIELD: json.dumps(','.join(uids))}})
+        if resp.has_error():
+            logging.error(f"NFC: failed to write tag field on spool {spool_id}: {self.spoolman._get_response_error(resp)}")
+            return False
+        return True
+
+
+    async def _migrate_tags(self, to_native=True, dry_run=False, silent=False, spool_id_filter=None) -> dict | None:
+        '''
+        to_native: link extra-field UIDs natively (extra field kept)
+        else (testing): move native UIDs back to the extra field
+        Caller holds cache_lock. Returns a summary, or None if spools can't be fetched
+        '''
+        resp = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/spool')
+        if resp.has_error():
+            await self._log_n_send(f"NFC: tag migration couldn't fetch spools: {self.spoolman._get_response_error(resp)}", error=True, silent=silent)
+            return None
+
+        if not to_native and not dry_run and not self.spoolman_has_rfid_field:
+            # Field may never have existed on a native-only install
+            if not await self._add_extra_field("spool", field_name="RFID", field_key=MMU_RFID_FIELD, field_type="text", default_value=""):
+                await self._log_n_send("NFC: couldn't create the RFID extra field in Spoolman - see moonraker.log", error=True, silent=silent)
+                return None
+            self.spoolman_has_rfid_field = True
+
+        summary = {'spools': 0, 'moved': 0, 'conflicts': [], 'errors': 0}
+        for spool_info in resp.json():
+            spool_id = spool_info['id']
+            if spool_id_filter is not None and spool_id != spool_id_filter:
+                continue
+            native = self._get_native_uid_list(spool_info)
+            extra = self._get_uid_list_from_extra(spool_info.get('extra'))
+
+            if to_native:
+                pending = [u for u in extra if u not in native]
+                if not pending:
+                    continue
+                summary['spools'] += 1
+                for uid in pending:
+                    if dry_run:
+                        summary['moved'] += 1
+                        continue
+                    ok, conflict = await self._link_native_tag(spool_id, uid)
+                    if ok:
+                        summary['moved'] += 1
+                    elif conflict is not None:
+                        holder = (f"spool {conflict['spool_id']}" if conflict.get('spool_id') is not None else
+                                  f"filament {conflict['filament_id']}" if conflict.get('filament_id') is not None else
+                                  conflict.get('message', 'another record'))
+                        summary['conflicts'].append(f"tag {uid} on spool {spool_id} is already linked to {holder}")
+                    else:
+                        summary['errors'] += 1
+            else:
+                if not native:
+                    continue
+                summary['spools'] += 1
+                if dry_run:
+                    summary['moved'] += len(native)
+                    continue
+                # Extra field first, so the UID is never in neither store
+                if not await self._write_extra_uids(spool_id, extra + [u for u in native if u not in extra]):
+                    summary['errors'] += 1
+                    continue
+                for uid in native:
+                    if await self._unlink_native_tag(spool_id, uid):
+                        summary['moved'] += 1
+                    else:
+                        summary['errors'] += 1
+
+        direction = "extra field -> native tags" if to_native else "native tags -> extra field"
+        if spool_id_filter is not None:
+            direction += f", spool {spool_id_filter} only"
+        msg = (f"NFC: tag migration ({direction}){' [dry run]' if dry_run else ''}: "
+               f"{summary['moved']} tag(s) {'would be ' if dry_run else ''}moved on {summary['spools']} spool(s)")
+        if summary['errors']:
+            msg += f", {summary['errors']} error(s) - see moonraker.log"
+        for c in summary['conflicts']:
+            msg += f"\n  - Conflict: {c}"
+        logging.info(msg)
+        if not silent or summary['conflicts'] or summary['errors']:
+            await self._log_n_send(msg, error=bool(summary['errors']), silent=silent and not summary['moved'])
+        return summary
+
+
+    async def migrate_tags(self, direction='native', dry_run=False, silent=False, spool_id=None) -> bool:
+        '''MMU_SPOOLMAN_TAG MIGRATE=native|extra; spool_id limits it to one spool'''
+        if not await self._check_init_spoolman(): return False
+        if not self.spoolman_has_tags:
+            ver = '.'.join(map(str, self.spoolman_version or ()))
+            await self._log_n_send(f"NFC: tag migration needs Spoolman >= {'.'.join(map(str, MIN_SM_TAG_VER))} (found {ver or 'unknown'})", error=True, silent=silent)
+            return False
+        direction = str(direction).strip().lower()
+        if direction not in ('native', 'extra'):
+            await self._log_n_send(f"NFC: unknown tag migration direction '{direction}' (use native or extra)", error=True, silent=silent)
+            return False
+        async with self.cache_lock:
+            summary = await self._migrate_tags(to_native=(direction == 'native'), dry_run=dry_run, silent=silent,
+                                               spool_id_filter=int(spool_id) if spool_id is not None else None)
+            if summary is None:
+                return False
+            if not dry_run:
+                await self._build_spool_location_cache(silent=True)
+                self.uid_miss_cache = {}
+            return not summary['errors']
+
+
     def _get_filament_attr(self, spool_info) -> dict:
         spool_id = spool_info["id"]
         filament = spool_info["filament"]
@@ -475,7 +663,7 @@ class MmuServer:
         bed_temp = filament.get('settings_bed_temp', '')
         vendor = filament.get('vendor', {}).get('name', '')
         filament_id = filament.get('id', '')
-        rfid_uids = self._get_uid_list_from_extra(spool_info.get('extra'))
+        rfid_uids = self._get_spool_uid_list(spool_info)
         rfids = ','.join(rfid_uids)
         # Net filament weights in grams (-1 if unknown). A spool without its own initial weight is
         # assumed to have started with the filament's nominal net weight
@@ -495,6 +683,8 @@ class MmuServer:
             # timed-out fetch leaves the existing cache intact
             new_spool_location = {}
             new_uid_to_spool_id = {}
+            new_native_uids = set()
+            legacy_only = 0
             # Fetch all spools
             errors = ""
             assignments = {}
@@ -518,6 +708,11 @@ class MmuServer:
                     if other_spool_id is not None and other_spool_id != spool_id:
                         errors += f"\n  - Tag {uid} is registered against both spool {other_spool_id} and spool {spool_id}"
                     new_uid_to_spool_id[uid] = spool_id
+
+                if self.spoolman_has_tags:
+                    native = self._get_native_uid_list(spool_info)
+                    new_native_uids.update(native)
+                    legacy_only += sum(1 for u in self._get_uid_list_from_extra(spool_info.get('extra')) if u not in native)
 
                 if printer_name and mmu_gate >= 0:
                     if printer_name not in assignments:
@@ -546,6 +741,8 @@ class MmuServer:
         # Fetch and parse succeeded - commit the freshly built cache atomically
         self.spool_location = new_spool_location
         self.uid_to_spool_id = new_uid_to_spool_id
+        self.native_uids = new_native_uids
+        self.legacy_only_uid_count = legacy_only
 
         if errors:
             if fix:
@@ -1012,6 +1209,73 @@ class MmuServer:
             logging.error(f"NFC: failed to send GATE={gate} SPOOLID={spool_id}: {str(e)}")
 
 
+    def _reader_id(self, gate):
+        '''Spoolman reader id: <host>-gate<N>, or <host>-mmu for a shared reader'''
+        suffix = f"-gate{gate}" if gate is not None else "-mmu"
+        host = re.sub(r'[^A-Za-z0-9._:-]', '-', str(self.printer_hostname or 'printer'))
+        return host[:64 - len(suffix)] + suffix
+
+
+    def _reader_name(self, gate):
+        where = f"gate {gate}" if gate is not None else "MMU"
+        return f"Happy Hare {self.printer_hostname} {where}"[:64]
+
+
+    async def _scan_tag(self, uid_norm, gate, tag_format=None) -> dict | None:
+        '''
+        POST /v1/tag/scan (also shows the scan live in Spoolman). None on any error.
+        Doesn't read a tag (Klipper does that); it asks Spoolman which spool or
+        filament an already-read UID belongs to
+        '''
+        body = {'uid': uid_norm, 'reader_id': self._reader_id(gate), 'name': self._reader_name(gate)}
+        if tag_format:
+            body['format'] = str(tag_format)[:32]
+        try:
+            resp = await self.http_client.post(url=f"{self.spoolman.spoolman_url}/v1/tag/scan", body=body)
+            if resp.has_error():
+                logging.warning(f"NFC: tag scan failed, using cached lookup: {self.spoolman._get_response_error(resp)}")
+                return None
+            result = resp.json()
+            return result if isinstance(result, dict) else None
+        except Exception as e:
+            logging.warning(f"NFC: tag scan failed, using cached lookup: {str(e)}")
+            return None
+
+
+    async def _forget_unlinked_tag(self, uid_norm):
+        '''
+        A cached native tag that Spoolman no longer links was unlinked by the user.
+        Drop it, including its extra-field mirror, so it isn't linked straight back
+        '''
+        spool_id = self.uid_to_spool_id.pop(uid_norm, None)
+        self.native_uids.discard(uid_norm)
+        if spool_id is None:
+            return
+        logging.info(f"NFC: tag {uid_norm} was unlinked from spool {spool_id} in Spoolman")
+        if not self._use_extra_uids:
+            return
+        spool_info = await self._fetch_spool_info(spool_id)
+        if spool_info is None:
+            return
+        extra = self._get_uid_list_from_extra(spool_info.get('extra'))
+        if uid_norm in extra:
+            await self._write_extra_uids(spool_id, [u for u in extra if u != uid_norm])
+        spool_info = await self._fetch_spool_info(spool_id)
+        if spool_info:
+            self._cache_insert_spool(spool_info)
+
+
+    async def _link_resolved_tag(self, spool_id, uid_norm, tag_format=None):
+        '''Resolved from the extra field on >= 0.27: link natively. Failure is not fatal'''
+        ok, conflict = await self._link_native_tag(spool_id, uid_norm, tag_format)
+        if ok:
+            self.native_uids.add(uid_norm)
+            self.legacy_only_uid_count = max(0, self.legacy_only_uid_count - 1)
+            logging.info(f"NFC: tag {uid_norm} linked natively to spool {spool_id}")
+        else:
+            logging.warning(f"NFC: couldn't link tag {uid_norm} natively to spool {spool_id}: {conflict}")
+
+
     async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False, report_only=False,
                                 prefer_db_temps=False) -> bool:
         '''
@@ -1055,7 +1319,31 @@ class MmuServer:
             if not uid_norm:
                 await self._log_n_send(f"NFC: invalid tag UID {uid}", error=True, silent=silent)
                 return False
-            spool_id = self.uid_to_spool_id.get(uid_norm)
+            tag_format = metadata.get("tag_format") if isinstance(metadata, dict) else None
+
+            # Spoolman >= 0.27: ask Spoolman first. Anything but a match falls through
+            # to the cached lookup below
+            spool_id = None
+            native_hit = False
+            filament = None # Tag linked to a filament: only auto-create can resolve it
+            if self.spoolman_has_tags:
+                scan = await self._scan_tag(uid_norm, gate, tag_format)
+                if scan is not None:
+                    if scan.get('matched_spool_id') is not None:
+                        spool_id = int(scan['matched_spool_id'])
+                        native_hit = True
+                        if isinstance(scan.get('spool'), dict):
+                            self._cache_insert_spool(scan['spool'])
+                        self.uid_to_spool_id[uid_norm] = spool_id
+                        self.native_uids.add(uid_norm)
+                    elif scan.get('matched_filament_id') is not None:
+                        filament = scan.get('filament') if isinstance(scan.get('filament'), dict) else {}
+                        filament['id'] = int(scan['matched_filament_id'])
+                    elif uid_norm in self.native_uids:
+                        await self._forget_unlinked_tag(uid_norm)
+
+            if not native_hit and filament is None:
+                spool_id = self.uid_to_spool_id.get(uid_norm)
             logging.debug(
                 "NFC lookup: received uid_raw=%r uid=%s gate=%s save=%s report_only=%s "
                 "cache=%s metadata_keys=%s" % (
@@ -1063,7 +1351,7 @@ class MmuServer:
                     "hit" if spool_id is not None else "miss",
                     sorted(metadata.keys()) if isinstance(metadata, dict) else []))
 
-            if spool_id is None:
+            if spool_id is None and filament is None:
                 # Skip the fetch if we recently confirmed this tag is unknown, so
                 # rapid re-scans of an unregistered tag don't hammer Spoolman
                 now = time.monotonic()
@@ -1098,12 +1386,16 @@ class MmuServer:
                     "NFC lookup: uid=%s cache refresh result=%s" %
                     (uid_norm, spool_id if spool_id is not None else "not found"))
 
+            # Resolved from the extra field on >= 0.27: migrate this UID to a native tag
+            if spool_id is not None and not native_hit and self.spoolman_has_tags:
+                await self._link_resolved_tag(spool_id, uid_norm, tag_format)
+
             created = False
-            if spool_id is None and save and metadata and metadata.get("material"):
+            if spool_id is None and save and (filament is not None or (metadata and metadata.get("material"))):
                 # Tag isn't registered but carried usable filament metadata and
                 # auto-create is enabled: build the vendor/filament/spool now and
                 # register this UID against the new spool.
-                new_id = await self._create_spool_from_metadata(metadata, uid_norm, prefer_db_temps)
+                new_id = await self._create_spool_from_metadata(metadata, uid_norm, prefer_db_temps, filament)
                 if new_id is not None:
                     # Targeted cache insert - no full rebuild (see _cache_insert_spool)
                     spool_info = await self._fetch_spool_info(new_id)
@@ -1121,7 +1413,15 @@ class MmuServer:
                 now = time.monotonic()
                 self.uid_miss_cache = {u: exp for u, exp in self.uid_miss_cache.items() if exp > now}
                 self.uid_miss_cache[uid_norm] = now + NFC_UID_MISS_TTL
-                await self._log_n_send(f"NFC: unknown tag {uid_norm} - not registered against any spool in Spoolman", silent=silent)
+                if filament is not None:
+                    # Always shown: the tag is known, just not to a spool
+                    name = str(filament.get('name') or filament['id']).replace("'", "") # MMU_LOG MSG='...' quoting
+                    await self._log_n_send(
+                        f'Warning: tag {uid_norm} is assigned to filament "{name}" (id {filament["id"]}) in Spoolman. '
+                        + ("Couldn't create a spool for it - see moonraker.log" if save else
+                           "Link it to a spool, or enable spoolman_nfc_auto_create to create one"))
+                else:
+                    await self._log_n_send(f"NFC: unknown tag {uid_norm} - not registered against any spool in Spoolman", silent=silent)
                 # Definitive miss. For a shared-reader lookup signal NEXT_SPOOLID=-2
                 # so Klipper releases the guard WITHOUT re-reading (a re-scan of the
                 # same unregistered tag won't help and would just loop).
@@ -1177,11 +1477,13 @@ class MmuServer:
     # (donkie.github.io) and degrades gracefully to the module-level fallbacks.
     # ══════════════════════════════════════════════════════════════════════════
 
-    async def _create_spool_from_metadata(self, metadata, uid_norm, prefer_db_temps=False) -> int | None:
+    async def _create_spool_from_metadata(self, metadata, uid_norm, prefer_db_temps=False, filament=None) -> int | None:
         '''
-        Create a Spoolman vendor -> filament -> spool from parsed tag metadata.
-        Returns the new spool_id, or None if the metadata is insufficient or any
-        Spoolman call fails.
+        Create a spool for an unregistered tag and link the tag to it. With 'filament'
+        (the tag is linked to that filament in Spoolman) the spool is of that filament
+        and the tag moves to it; otherwise vendor -> filament -> spool come from parsed
+        tag metadata. Returns the new spool_id, or None if the metadata is insufficient
+        or any Spoolman call fails.
 
         'metadata' is the flat dict produced by the Klipper-side tag parser
         (keys: material, material_detail, color_hex, brand, weight_g,
@@ -1189,6 +1491,20 @@ class MmuServer:
         tag_format, is_bambu, ...). The UID is written into the spool's
         '{MMU_RFID_FIELD}' extra field at creation time.
         '''
+        metadata = metadata if isinstance(metadata, dict) else {}
+        if filament is not None:
+            # Filament already known: move the tag off it before the new spool links it
+            filament_id = filament['id']
+            weight = self._to_float(metadata.get("weight_g"), None) or self._to_float(filament.get("weight"), DEFAULT_SPOOL_WEIGHT_G)
+            if not await self._unlink_native_tag(filament_id, uid_norm, kind='filament'):
+                return None
+            spool_id = await self._create_spool(filament_id, metadata, uid_norm, weight, None)
+            if spool_id is None:
+                await self._link_native_tag(filament_id, uid_norm, metadata.get("tag_format"), kind='filament') # Put it back
+            else:
+                logging.info(f"NFC: tag {uid_norm} moved from filament {filament_id} to new spool {spool_id}")
+            return spool_id
+
         material = str(metadata.get("material") or "").strip()
         if not material:
             logging.info("NFC: auto-create skipped - tag metadata has no material")
@@ -1464,8 +1780,9 @@ class MmuServer:
         body = {
             "filament_id": int(filament_id),
             "remaining_weight": float(weight),
-            "extra": {MMU_RFID_FIELD: json.dumps(uid_norm)},
         }
+        if self._use_extra_uids:
+            body["extra"] = {MMU_RFID_FIELD: json.dumps(uid_norm)}
         sw = self._to_float(spool_weight, None)
         if sw is not None:
             body["spool_weight"] = sw
@@ -1481,7 +1798,13 @@ class MmuServer:
         if not isinstance(created, dict) or created.get("id") is None:
             logging.warning(f"NFC: spool create returned unexpected response: {created!r}")
             return None
-        return int(created["id"])
+        spool_id = int(created["id"])
+        if self.spoolman_has_tags:
+            # Not fatal - the tag can be linked again later
+            ok, conflict = await self._link_native_tag(spool_id, uid_norm, metadata.get("tag_format"))
+            if not ok:
+                logging.warning(f"NFC: spool {spool_id} created but native tag link for {uid_norm} failed: {conflict}")
+        return spool_id
 
 
     def _cache_insert_spool(self, spool_info) -> int:
@@ -1496,8 +1819,9 @@ class MmuServer:
         mmu_gate = int(extra.get(MMU_GATE_FIELD, -1))
         filament_attr = self._get_filament_attr(spool_info)
         self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
-        for uid in self._get_uid_list_from_extra(extra):
+        for uid in self._parse_uid_list(filament_attr['rfids']):
             self.uid_to_spool_id[uid] = spool_id
+        self.native_uids.update(self._get_native_uid_list(spool_info))
         return spool_id
 
 
@@ -1686,6 +2010,35 @@ class MmuServer:
         return None
 
 
+    async def _set_native_uids(self, spool_id, native_uids, final_uids, silent=False) -> bool:
+        '''
+        Make the spool's native tags exactly final_uids. A tag on another spool is
+        moved here; one on a filament is refused
+        '''
+        for uid in [u for u in native_uids if u not in final_uids]:
+            if not await self._unlink_native_tag(spool_id, uid):
+                await self._log_n_send(f"NFC: failed to unlink tag {uid} from spool {spool_id}. See moonraker.log for details.", error=True, silent=silent)
+                return False
+        for uid in [u for u in final_uids if u not in native_uids]:
+            ok, conflict = await self._link_native_tag(spool_id, uid)
+            if not ok and conflict is not None and conflict.get('spool_id') is not None:
+                other_spool_id = conflict['spool_id']
+                await self._log_n_send(f"NFC: tag {uid} was linked to spool {other_spool_id} - moving it to spool {spool_id}", silent=silent)
+                if await self._unlink_native_tag(other_spool_id, uid):
+                    ok, conflict = await self._link_native_tag(spool_id, uid)
+            if not ok:
+                if conflict is not None and conflict.get('filament_id') is not None:
+                    reason = (f"it identifies filament {conflict['filament_id']} in Spoolman - "
+                              f"unlink it from the filament first if it belongs to this spool")
+                elif conflict is not None:
+                    reason = conflict.get('message', 'it is linked elsewhere')
+                else:
+                    reason = "see moonraker.log for details"
+                await self._log_n_send(f"NFC: can't link tag {uid} to spool {spool_id}: {reason}", error=True, silent=silent)
+                return False
+        return True
+
+
     async def set_spool_uid(self, spool_id=None, uid=None, append=False, silent=False, gate=None) -> bool:
         '''
         Write NFC/RFID tag UID(s) onto a spool record in Spoolman, so future
@@ -1721,15 +2074,25 @@ class MmuServer:
                 await self._log_n_send("NFC: APPEND=1 needs a tag UID to add", error=True, silent=silent)
                 return False
 
-            if append:
+            # Native mode needs the live record to know what to unlink
+            native_uids = []
+            if append or self.spoolman_has_tags:
                 spool_info = await self._fetch_spool_info(spool_id)
                 if spool_info is None:
                     await self._log_n_send(f"NFC: SpoolId {spool_id} not found", error=True, silent=silent)
                     return False
-                existing_uids = self._get_uid_list_from_extra(spool_info.get('extra'))
+                native_uids = self._get_native_uid_list(spool_info)
+                existing_uids = self._get_spool_uid_list(spool_info)
+            if append:
                 final_uids = existing_uids + [u for u in new_uids if u not in existing_uids]
             else:
                 final_uids = new_uids
+
+            if self.spoolman_has_tags:
+                if not await self._set_native_uids(spool_id, native_uids, final_uids, silent=silent):
+                    return False
+                self.native_uids.difference_update(native_uids)
+                self.native_uids.update(final_uids)
 
             # A UID that's already claimed by a different spool is silently moved
             # over - make that visible, and strip it from the OTHER spool's own
@@ -1739,39 +2102,42 @@ class MmuServer:
                 other_spool_id = self.uid_to_spool_id.get(u)
                 if other_spool_id is None or other_spool_id == spool_id:
                     continue
-                await self._log_n_send(f"NFC: tag {u} was registered to spool {other_spool_id} - moving it to spool {spool_id}", silent=silent)
+                if not self.spoolman_has_tags: # Native path already logged it
+                    await self._log_n_send(f"NFC: tag {u} was registered to spool {other_spool_id} - moving it to spool {spool_id}", silent=silent)
                 other_info = await self._fetch_spool_info(other_spool_id)
                 if other_info is None:
                     continue
-                other_uids = [x for x in self._get_uid_list_from_extra(other_info.get('extra')) if x != u]
-                other_resp = await self.http_client.request(
-                    method="PATCH",
-                    url=f"{self.spoolman.spoolman_url}/v1/spool/{other_spool_id}",
-                    body={'extra': {MMU_RFID_FIELD: json.dumps(','.join(other_uids))}}
-                )
-                if other_resp.has_error():
-                    logging.warning(f"NFC: failed to strip moved tag {u} from its previous spool {other_spool_id}: {self.spoolman._get_response_error(other_resp)}")
-                    continue
+                if self._use_extra_uids:
+                    other_uids = [x for x in self._get_uid_list_from_extra(other_info.get('extra')) if x != u]
+                    if not await self._write_extra_uids(other_spool_id, other_uids):
+                        logging.warning(f"NFC: failed to strip moved tag {u} from its previous spool {other_spool_id}")
+                        continue
                 if other_spool_id in self.spool_location:
                     printer, other_gate, filament_attr = self.spool_location[other_spool_id]
-                    filament_attr['rfids'] = ','.join(other_uids)
+                    filament_attr['rfids'] = ','.join([x for x in self._get_spool_uid_list(other_info) if x != u])
                     self.spool_location[other_spool_id] = (printer, other_gate, filament_attr)
 
-            data = {'extra': {MMU_RFID_FIELD: json.dumps(','.join(final_uids))}}
-            response = await self.http_client.request(
-                method="PATCH",
-                url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
-                body=data
-            )
-            if response.status_code == 404:
-                logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
-                await self._log_n_send(f"NFC: SpoolId {spool_id} not found", error=True, silent=silent)
-                return False
-            elif response.has_error():
-                err_msg = self.spoolman._get_response_error(response)
-                logging.error(f"Attempt to register tag failed: {err_msg}")
-                await self._log_n_send(f"NFC: Failed to register tag(s) {','.join(new_uids)} on spool {spool_id}. See moonraker.log for details.", error=True, silent=silent)
-                return False
+            if self._use_extra_uids:
+                data = {'extra': {MMU_RFID_FIELD: json.dumps(','.join(final_uids))}}
+                response = await self.http_client.request(
+                    method="PATCH",
+                    url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
+                    body=data
+                )
+                if self.spoolman_has_tags:
+                    # Native links succeeded; the extra field is only a mirror
+                    if response.has_error():
+                        logging.warning(f"NFC: tags linked natively on spool {spool_id} but mirroring to the "
+                                        f"'{MMU_RFID_FIELD}' extra field failed: {self.spoolman._get_response_error(response)}")
+                elif response.status_code == 404:
+                    logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+                    await self._log_n_send(f"NFC: SpoolId {spool_id} not found", error=True, silent=silent)
+                    return False
+                elif response.has_error():
+                    err_msg = self.spoolman._get_response_error(response)
+                    logging.error(f"Attempt to register tag failed: {err_msg}")
+                    await self._log_n_send(f"NFC: Failed to register tag(s) {','.join(new_uids)} on spool {spool_id}. See moonraker.log for details.", error=True, silent=silent)
+                    return False
 
             # Update caches to reflect the new UID association
             self.uid_to_spool_id = {u: sid for u, sid in self.uid_to_spool_id.items() if sid != spool_id}
