@@ -33,9 +33,9 @@ class WebSocketClient:
     def __init__(self, port):
         self.sock = socket.create_connection(('127.0.0.1', port), timeout=5)
         key = base64.b64encode(os.urandom(16)).decode()
-        self.sock.sendall(('GET /websocket HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\n'
+        self.sock.sendall(('GET /websocket HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nUpgrade: websocket\r\n'
                            'Connection: Upgrade\r\nSec-WebSocket-Key: %s\r\n'
-                           'Sec-WebSocket-Version: 13\r\n\r\n' % key).encode())
+                           'Sec-WebSocket-Version: 13\r\n\r\n' % (port, key)).encode())
         head = b''
         while b'\r\n\r\n' not in head:
             head += self.sock.recv(1)
@@ -170,6 +170,44 @@ class TestWebUiBridge(WebUiBridgeTestCase):
         update = self.client.receive()
         self.assertEqual(update['method'], 'notify_status_update')
         self.assertEqual(update['params'][0]['mmu']['print_state'], self.hh.mmu.psm.print_state)
+
+    def request(self, method, path='/printer/info', headers=None, body=None):
+        import http.client
+        conn = http.client.HTTPConnection('127.0.0.1', self.bridge.port, timeout=5)
+        conn.putrequest(method, path, skip_host=True)
+        for name, value in {'Host': '127.0.0.1:%d' % self.bridge.port, **(headers or {})}.items():
+            conn.putheader(name, value)
+        conn.putheader('Content-Length', str(len(body or b'')))
+        conn.endheaders(body)
+        response = conn.getresponse()
+        status, allow = response.status, response.getheader('Access-Control-Allow-Origin')
+        conn.close()
+        return status, allow
+
+    def test_pages_from_elsewhere_cannot_use_the_bridge(self):
+        self.assertEqual(self.request('GET', headers={'Origin': 'https://example.com'})[0], 403)
+        self.assertEqual(self.request('POST', headers={'Origin': 'https://example.com'}, body=b'{}')[0], 403)
+        self.assertEqual(self.request('OPTIONS', headers={'Origin': 'https://example.com'})[0], 403)
+        self.assertEqual(self.request('GET', headers={'Host': 'attacker.example'})[0], 403)   # DNS rebinding
+
+    def test_local_pages_are_allowed_and_get_their_own_origin_back(self):
+        self.assertEqual(self.request('OPTIONS', headers={'Origin': 'http://localhost:8000'}), (204, 'http://localhost:8000'))
+
+    def test_oversized_bodies_are_refused(self):
+        from test.hh.webui_bridge import MAX_BODY_BYTES
+        import http.client
+        conn = http.client.HTTPConnection('127.0.0.1', self.bridge.port, timeout=5)
+        conn.putrequest('POST', '/printer/info', skip_host=True)
+        conn.putheader('Host', '127.0.0.1:%d' % self.bridge.port)
+        conn.putheader('Content-Length', str(MAX_BODY_BYTES + 1))
+        conn.endheaders()
+        self.assertEqual(conn.getresponse().status, 413)
+        conn.close()
+
+    def test_unmasked_websocket_frames_close_the_connection(self):
+        self.client.sock.sendall(bytes([0x81, 2]) + b'{}')
+        with self.assertRaises((ConnectionError, OSError)):
+            self.client.receive()
 
     def test_http_database_item_is_served_like_moonraker(self):
         import http.client, threading

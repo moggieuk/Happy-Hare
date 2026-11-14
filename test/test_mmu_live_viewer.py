@@ -255,6 +255,6 @@ class TestViewerConsole(unittest.TestCase):
         self.assertIsNotNone(self.console.hh.mmu)
 
     def test_upload_cannot_escape(self):
-        for name,text in [('../bad.cfg',''),('printer.cfg','[include /etc/*.cfg]')]:
+        for name,text in [('../bad.cfg',''),('printer.cfg','[include /etc/*.cfg]'),(3,'x'),('printer.cfg',None)]:
             with self.assertRaises(RpcError):
                 self.bridge.rpc_sim_viewer_restart(None,{'files':[dict(name=name,text=text)]})

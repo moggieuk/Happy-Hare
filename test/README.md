@@ -625,7 +625,10 @@ make console ARGS='--serve-host 192.168.0.157'
 Use that address and port 7125 in Mainsail. `--serve-host 0.0.0.0` listens on all IPv4
 interfaces; remote clients still use the simulator computer's LAN address. The default
 remains localhost only. The simulator API has no authentication, so use LAN access only
-on a trusted network. The live viewer and Mainsail can connect simultaneously.
+on a trusted network. The bridge refuses requests whose `Origin` is a page from another site, and
+whose `Host` is not this machine (DNS rebinding), so a web page you happen to visit cannot drive the
+simulator; pages served from localhost, or from the address given to `--serve-host`, can. The live viewer
+and Mainsail can connect simultaneously.
 
 To see the pause dialog, pretend a print is running and make something fail:
 
