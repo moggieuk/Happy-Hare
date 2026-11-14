@@ -87,6 +87,14 @@ test('a grip change that settles after a selector move is shown as part of that 
  assert.equal(duration(step),650);                              // Held long enough to be seen when playing on
  assert.equal(duration({...step,settled_state:undefined,state:step.before}),0);   // No grip change, no hold
 });
+test('the recording mode is carried by the stream and a mode record is internal bookkeeping',()=>{
+ const r=stream();
+ event(r,'state_delta',{changes:[{path:['printer','mmu','telemetry','record'],value:'toolchange'}]});
+ event(r,'record_mode',{mode:'toolchange'});
+ assert.equal(r.facts.printer.mmu.telemetry.record,'toolchange');
+ assert.equal(r.events.at(-1).label,'Recording toolchange');assert.ok(r.events.at(-1).internal);
+ assert.equal(visibleSteps(r.events).at(-1).kind,r.events.find(e=>!e.internal).kind);
+});
 test('a toolchange end is internal bookkeeping and adds no step',()=>{
  const r=stream();
  event(r,'toolchange',{command:'MMU_LOAD',label:'MMU_LOAD'});

@@ -83,7 +83,8 @@ motor differences, constrained by its configured spring, travel limits and senso
 readings. Proportional readings and successful buffer homing establish its position;
 equal synced travel preserves that position. Encoder labels update at move endpoints.
 
-**Save telemetry** exports the bounded source recording as JSONL. **Load telemetry**
+**Record to log** (printers only, in Telemetry stream mode) runs `MMU_TELEMETRY RECORD=...` and shows the
+mode Klipper reports (off, continuous or next toolchange only); see the telemetry README. **Save telemetry** exports the bounded source recording as JSONL. **Load telemetry**
 opens that JSONL (or a JSON array/envelope of records) with the same replay reducer
 used live. Loading starts paused at the beginning. Printer controls are disabled,
 live updates cannot overwrite the file, and playback stops at its end. The viewer

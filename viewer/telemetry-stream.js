@@ -1,4 +1,10 @@
 // Transport only: replay state and rendering belong to the caller.
+
+// Recording is decided by Klipper (MMU_TELEMETRY) and published in the stream, so the control only
+// shows a printer's stream and reflects the mode the stream reports. The simulator and loaded files have none.
+export const recordControl=({viewMode,offline,simulator,connected,facts})=>({
+  visible:viewMode==='playback' && !offline && !simulator && Boolean(connected),
+  value:facts?.printer?.mmu?.telemetry?.record || 'off'});
 export class TelemetryStream {
   constructor(rpc, accept, error) {
     Object.assign(this,{rpc,accept,error,generation:0,active:false});

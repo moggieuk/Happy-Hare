@@ -159,8 +159,8 @@ mechanical completion. Errors are recorded before being propagated. The viewer
 shows these diagnostics under **Show internal updates**, without treating selector
 travel as filament movement.
 
-Use **Save telemetry** in the viewer for simulator captures, or enable Moonraker
-recording as described above. Source callbacks remain available via
+Use **Save telemetry** in the viewer for simulator captures, or record on a printer with
+`MMU_TELEMETRY` as described above. Source callbacks remain available via
 `mmu.movement_telemetry.subscribe(callback)`; callbacks must not block the printer
 thread. A failing callback is detached and logged without aborting motion.
 
