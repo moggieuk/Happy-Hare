@@ -730,12 +730,22 @@ class MmuController(MmuFilamentMovement):
                 raise
 
 
-    def _toolchange_event(self, gcmd):
-        """Mark the start of a load, unload, or toolchange for replay navigation."""
+    @contextlib.contextmanager
+    def toolchange_scope(self, gcmd):
+        """Mark the start and end of a load, unload, or toolchange for replay navigation and recording."""
+        telemetry = self.movement_telemetry
         command = gcmd.get_command()
-        self.movement_telemetry.state('toolchange', command=command,
-            label=gcmd.get_commandline(), tool=self.tool_selected,
-            gate=self.gate_selected, unit=self.mmu_unit().name)
+        telemetry.toolchange_start(command=command, label=gcmd.get_commandline(), tool=self.tool_selected,
+                                   gate=self.gate_selected, unit=self.mmu_unit().name)
+        status = 'completed'
+        try:
+            yield
+        except BaseException:
+            status = 'error'
+            raise
+        finally:
+            telemetry.toolchange_end(command=command, tool=self.tool_selected, gate=self.gate_selected,
+                                     filament_pos=self.filament_pos, status=status)
 
 
     def mmu_macro_event(self, event_name, params=""):

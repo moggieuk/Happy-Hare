@@ -51,6 +51,7 @@ class BaseCommand:
         per_unit=False,
         log=True,
         all_units_once=False,
+        toolchange=False,
     ):
         """
         Register a gcode command with shared help behavior.
@@ -64,6 +65,8 @@ class BaseCommand:
         stop multi-unit operations after an error has been handled). With all_units_once=True
         the handler is instead invoked a single time with mmu_unit=None and must itself
         iterate mmu.mmu_machine.units
+
+        With toolchange=True the whole command is bracketed by telemetry toolchange start and end records
         """
         if name.upper().startswith("MMU_CALIBRATE_"):
             calibration_handler = handler
@@ -106,6 +109,9 @@ class BaseCommand:
 
         def wrapped(gcmd):
             with self.mmu.gcode_telemetry.scope(name):
+                if toolchange and not gcmd.get_int('HELP', 0, minval=0, maxval=1):
+                    with self.mmu.toolchange_scope(gcmd):
+                        return run(gcmd)
                 return run(gcmd)
 
 

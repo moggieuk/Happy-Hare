@@ -45,7 +45,8 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_GENERAL,
+            toolchange=True
         )
 
     def _run(self, gcmd):
@@ -55,7 +56,6 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
         if self.check_if_disabled(): return
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
         mmu.fix_started_state()
-        mmu._toolchange_event(gcmd)
 
         if mmu.filament_pos == FILAMENT_POS_UNLOADED:
             mmu.log_always("Filament not loaded")

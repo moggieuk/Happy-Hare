@@ -196,6 +196,8 @@ export class TelemetryReplay extends SceneModel {
       this.emit(record,'espooler',`Gate ${record.gate} · ${record.direction}`,{before,telemetry:record,internal:Boolean(pending),during_move:Boolean(pending)},state);
 } else if (record.event === 'toolchange') {
       this.emit(record, 'toolchange', record.label || record.command, {telemetry:record});
+    } else if (record.event === 'toolchange_end') {
+      this.emit(record, 'state', 'Toolchange ended', {internal:true, telemetry:record});
     } else if (record.event === 'cut' || record.event === 'filament_cut') {
       const gate = mmu.gate, nozzle = before.layout.nozzle;
       const blade = finite(record.blade_pos) ? nozzle-record.blade_pos : before.cutters.find(c=>c.kind === 'toolhead')?.position;

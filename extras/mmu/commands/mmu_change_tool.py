@@ -55,7 +55,8 @@ class MmuChangeToolCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_GENERAL,
+            toolchange=True
         )
 
     def _run(self, gcmd):
@@ -71,7 +72,6 @@ class MmuChangeToolCommand(BaseCommand):
                 return
 
         mmu.fix_started_state()
-        mmu._toolchange_event(gcmd)
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))

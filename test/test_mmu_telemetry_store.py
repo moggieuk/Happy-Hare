@@ -63,6 +63,32 @@ class TestTelemetryStore(unittest.TestCase):
             recorder.write([HEADER]); recorder.close()
             self.assertEqual(json.loads(Path(str(path)+'.1').read_text().splitlines()[0])['state'], {'parameter':40})
 
+    def test_toolchange_mode_records_one_command_from_its_start_to_its_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            path.write_text('older\n')
+            recorder = TelemetryRecorder(path, 10000, 3)
+            recorder.mode = 'toolchange'
+            recorder.write([HEADER, event(1, 'state_delta', changes=[dict(path=['parameter'],value=50)]), event(2),
+                            event(3, 'toolchange'), event(4), event(5, 'state_delta', changes=[dict(path=['parameter'],value=60)]),
+                            event(6, 'toolchange_end'), event(7)])
+            lines = [json.loads(line) for line in path.read_text().splitlines()]
+            self.assertEqual([r['event'] for r in lines], ['session', 'toolchange', 'cut', 'state_delta', 'toolchange_end'])
+            self.assertEqual(lines[0]['state'], {'parameter': 50})              # Known state at the start of the command
+            self.assertEqual(lines[-2]['changes'][0]['value'], 60)                # The late delta precedes the end record
+            self.assertEqual(Path(str(path)+'.1').read_text(), 'older\n')       # One slot in the rolling set
+            self.assertEqual(recorder.mode, 'off')
+            self.assertIsNone(recorder.file)
+
+    def test_off_mode_writes_nothing_but_tracks_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'motion.jsonl'
+            recorder = TelemetryRecorder(path, 10000, 3)
+            recorder.mode = 'off'
+            recorder.write([HEADER, event(1, 'state_delta', changes=[dict(path=['parameter'],value=70)])])
+            self.assertFalse(path.exists())
+            self.assertEqual(recorder.header['state'], {'parameter': 70})
+
     def test_size_rotation_keeps_movement_pair_together(self):
         for kind in ('movement', 'selector_movement'):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:

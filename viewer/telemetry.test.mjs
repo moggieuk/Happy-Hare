@@ -87,6 +87,14 @@ test('a grip change that settles after a selector move is shown as part of that 
  assert.equal(duration(step),650);                              // Held long enough to be seen when playing on
  assert.equal(duration({...step,settled_state:undefined,state:step.before}),0);   // No grip change, no hold
 });
+test('a toolchange end is internal bookkeeping and adds no step',()=>{
+ const r=stream();
+ event(r,'toolchange',{command:'MMU_LOAD',label:'MMU_LOAD'});
+ event(r,'toolchange_end',{command:'MMU_LOAD',status:'completed'});
+ const steps=visibleSteps(r.events);
+ assert.equal(r.events.at(-1).kind,'state');assert.ok(r.events.at(-1).internal);
+ assert.equal(steps.at(-1).kind,'toolchange');
+});
 test('a selector pair inside a filament move stays bookkeeping, and an outcome without a start is tolerated',()=>{
  const r=stream();
  event(r,'movement_start',{move_id:9,motor_mode:'gear',requested_mm:5});

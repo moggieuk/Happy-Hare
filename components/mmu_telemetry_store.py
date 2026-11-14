@@ -91,6 +91,7 @@ class TelemetryRecorder:
         self.file = None
         self.size = 0
         self.active_moves = set()
+        self.mode = 'continuous'  # continuous, toolchange (one command, then off) or off
 
     def _rotate(self):
         if self.file:
@@ -114,22 +115,45 @@ class TelemetryRecorder:
             if record['event'] == 'session':
                 self.header = deepcopy(record)
                 self.active_moves.clear()
-                self._rotate()
-                self._line(record)
+                if self.mode == 'continuous':
+                    self._rotate()
+                    self._line(record)
                 continue
             if self.header is None:
                 raise ValueError('Recording requires an initial checkpoint')
-            if self.size >= self.max_bytes and not self.active_moves:
-                self._rotate()
-                self._line(self.header)
-            self._line(record)
-            if record['event'] in ('movement_start', 'selector_movement_start'):
-                self.active_moves.add(record['move_id'])
-            elif record['event'] in ('movement_outcome', 'selector_movement_outcome'):
-                self.active_moves.discard(record['move_id'])
-            TelemetryHistory._advance(self.header, record)
+            if self.mode == 'toolchange':
+                self._segment(record)
+            elif self.mode == 'continuous':
+                self._continuous(record)
+            else:
+                TelemetryHistory._advance(self.header, record)
         if self.file:
             self.file.flush()
+
+    def _continuous(self, record):
+        if self.size >= self.max_bytes and not self.active_moves:
+            self._rotate()
+            self._line(self.header)
+        self._line(record)
+        if record['event'] in ('movement_start', 'selector_movement_start'):
+            self.active_moves.add(record['move_id'])
+        elif record['event'] in ('movement_outcome', 'selector_movement_outcome'):
+            self.active_moves.discard(record['move_id'])
+        TelemetryHistory._advance(self.header, record)
+
+    def _segment(self, record):
+        """One toolchange: its own file, opened at the start record and closed at the end record."""
+        if self.file is None:
+            if record['event'] != 'toolchange':
+                TelemetryHistory._advance(self.header, record)
+                return
+            self._rotate()
+            self._line(self.header)
+        self._line(record)
+        TelemetryHistory._advance(self.header, record)
+        if record['event'] == 'toolchange_end':
+            self.close()
+            self.mode = 'off'
 
     def close(self):
         if self.file:
