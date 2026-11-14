@@ -75,15 +75,8 @@ class BaseCommand:
                 with self.mmu.wrap_suspend_calibration_events():
                     return calibration_handler(*args)
 
-        def run(gcmd):
+        def dispatch(gcmd):
             mmu = self.mmu
-
-            if log:
-                mmu.log_to_file(gcmd.get_commandline())
-
-            if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-                mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
-                return
 
             # We don't use klipper's register_mux_command() because it isn't flexible really enough
             # Instead provide flexible "UNIT" processing and pass the mmu_unit to the command handler
@@ -107,11 +100,23 @@ class BaseCommand:
 
             return handler(gcmd)
 
+        def run(gcmd):
+            mmu = self.mmu
+
+            if log:
+                mmu.log_to_file(gcmd.get_commandline())
+
+            if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+                mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
+                return
+
+            if toolchange:
+                with mmu.toolchange_scope(gcmd):
+                    return dispatch(gcmd)
+            return dispatch(gcmd)
+
         def wrapped(gcmd):
             with self.mmu.gcode_telemetry.scope(name):
-                if toolchange and not gcmd.get_int('HELP', 0, minval=0, maxval=1):
-                    with self.mmu.toolchange_scope(gcmd):
-                        return run(gcmd)
                 return run(gcmd)
 
 

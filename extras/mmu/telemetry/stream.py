@@ -29,12 +29,15 @@ class TelemetryStream:
         self.clients = {}
         self.delivery = 0
         self.record_mode = 'off'  # off, on or toolchange (one command, then off); Moonraker persists
+        if capture is not None:
+            self._attach(capture)
 
     def reset_capture(self, mmu, capture):
         """Keep connected consumers, but replace a restarted simulator's source."""
         if self.capture is not None and self.owns_capture:
             self.capture.close()
         self.mmu, self.capture = mmu, capture
+        self._attach(capture)
         self.owns_capture = False
         self.stream_id = uuid.uuid4().hex
         for client in self.clients.values():
@@ -83,11 +86,24 @@ class TelemetryStream:
             self.capture = None
         return {}
 
+    def _mode(self):
+        return self.record_mode
+
+    def _attach(self, capture):
+        """A capture made elsewhere (the simulator's) reports the recording mode and its end the same way."""
+        capture.state_provider.record_mode = self._mode
+        capture.on_toolchange_end = self._toolchange_ended
+
     def _new_capture(self):
-        self.capture = TelemetryCapture(self.mmu, limit=256, record_mode=lambda: self.record_mode)
-        self.capture.on_toolchange_end = self._toolchange_ended
+        capture = TelemetryCapture(self.mmu, limit=256, record_mode=self._mode)
+        self._attach(capture)
         if self.record_mode != 'off':
-            self.capture.mark_record_mode(self.record_mode)  # A new consumer learns that recording is on
+            try:
+                capture.mark_record_mode(self.record_mode)  # A new consumer learns that recording is on
+            except Exception:
+                capture.close()
+                raise
+        self.capture = capture
 
     def _toolchange_ended(self):
         if self.record_mode == 'toolchange':

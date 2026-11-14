@@ -91,6 +91,7 @@ class TelemetryRecorder:
         self.file = None
         self.size = 0
         self.active_moves = set()
+        self.pending = None  # A toolchange start waiting to see whether anything follows it
         self.mode = mode  # on, toolchange (one command, then off) or off; Klipper decides
 
     def _rotate(self):
@@ -114,6 +115,7 @@ class TelemetryRecorder:
         if mode == self.mode:
             return  # Saying it again must not close and rotate the log
         self.close()
+        self.pending = None
         self.mode = mode
         if mode == 'on' and self.header is not None:
             self._rotate()
@@ -130,8 +132,10 @@ class TelemetryRecorder:
                 if self.mode == 'on':
                     self._rotate()
                     self._line(record)
-                elif self.mode == 'toolchange' and self.file is not None:
-                    self._line(record)  # A new baseline inside a segment: the viewer restarts its replay here
+                elif self.mode == 'toolchange':
+                    self.pending = None
+                    if self.file is not None:
+                        self._line(record)  # A new baseline inside a segment: the viewer restarts its replay here
                 continue
             if self.header is None:
                 raise ValueError('Recording requires an initial checkpoint')
@@ -156,13 +160,24 @@ class TelemetryRecorder:
         TelemetryHistory._advance(self.header, record)
 
     def _segment(self, record):
-        """One toolchange: its own file, opened at the start record and closed at the end record."""
+        """One toolchange: its own file, opened at the start record and closed at the end record.
+        A start straight followed by its end (a refused command) is no segment and opens nothing."""
         if self.file is None:
-            if record['event'] != 'toolchange':
+            if self.pending is None:
+                if record['event'] == 'toolchange':
+                    self.pending = record
+                else:
+                    TelemetryHistory._advance(self.header, record)
+                return
+            start, self.pending = self.pending, None
+            if record['event'] == 'toolchange_end':
+                TelemetryHistory._advance(self.header, start)
                 TelemetryHistory._advance(self.header, record)
                 return
             self._rotate()
             self._line(self.header)
+            self._line(start)
+            TelemetryHistory._advance(self.header, start)
         self._line(record)
         TelemetryHistory._advance(self.header, record)
         if record['event'] == 'toolchange_end':

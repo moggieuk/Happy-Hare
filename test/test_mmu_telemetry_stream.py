@@ -192,6 +192,8 @@ class TestTelemetryStream(unittest.TestCase):
         telemetry.toolchange_end(command='earlier')            # Armed while that command was running
         self.assertEqual(self.stream.record_mode, 'toolchange')
         telemetry.toolchange_start(command='MMU_LOAD'); telemetry.toolchange_end(command='MMU_LOAD')
+        self.assertEqual(self.stream.record_mode, 'toolchange')   # Nothing happened (a refused command): still armed
+        telemetry.toolchange_start(command='MMU_LOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_LOAD')
         self.assertEqual(self.stream.record_mode, 'off')
 
     def test_saying_the_same_mode_again_does_not_announce_it_again(self):
@@ -211,8 +213,34 @@ class TestTelemetryStream(unittest.TestCase):
         self.stream.set_record_mode('toolchange')
         telemetry.toolchange_end(command='MMU_LOAD')
         self.assertEqual(self.stream.record_mode, 'toolchange')
-        telemetry.toolchange_start(command='MMU_UNLOAD'); telemetry.toolchange_end(command='MMU_UNLOAD')
+        telemetry.toolchange_start(command='MMU_UNLOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_UNLOAD')
         self.assertEqual(self.stream.record_mode, 'off')
+
+    def test_a_capture_made_elsewhere_reports_and_ends_the_mode_like_any_other(self):
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        from extras.mmu.telemetry.stream import TelemetryStream
+        external = TelemetryCapture(self.hh.mmu)                # As the simulator bridge builds its own
+        try:
+            stream = TelemetryStream(self.hh.mmu, external)
+            telemetry = self.hh.mmu.movement_telemetry
+            stream.set_record_mode('on')
+            telemetry.state('cut')
+            self.assertEqual(external.state['printer']['mmu']['telemetry']['record'], 'on')
+            stream.set_record_mode('toolchange')
+            telemetry.toolchange_start(command='MMU_LOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_LOAD')
+            self.assertEqual(stream.record_mode, 'off')
+        finally:
+            external.close()
+
+    def test_a_capture_that_cannot_announce_the_mode_is_not_left_attached(self):
+        from unittest import mock
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        self.stream.record_mode = 'on'
+        with mock.patch.object(TelemetryCapture, 'mark_record_mode', side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                self.subscribe()
+        self.assertIsNone(self.stream.capture)
+        self.assertEqual(self.hh.mmu.movement_telemetry.listeners, [])
 
     def test_unknown_recording_mode_is_rejected(self):
         with self.assertRaises(ValueError):

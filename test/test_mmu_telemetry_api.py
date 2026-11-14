@@ -229,9 +229,15 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
             await self.settle(recorded=False)
             self.assertEqual((self.api.stream.record_mode, self.component.mode), ('toolchange', 'toolchange'))
             telemetry.toolchange_start(command='MMU_UNLOAD')
+            telemetry.toolchange_end(command='MMU_UNLOAD', status='completed')   # A refused command: nothing recorded
+            await self.settle(recorded=False)
+            self.assertFalse(path.exists())
+            self.assertEqual((self.api.stream.record_mode, self.component.mode), ('toolchange', 'toolchange'))
+            telemetry.toolchange_start(command='MMU_UNLOAD')
+            telemetry.state('cut', cutter='toolhead')
             telemetry.toolchange_end(command='MMU_UNLOAD', status='completed')
             await self.settle()
-            self.assertEqual([r['event'] for r in self.logged(path)], ['session', 'toolchange', 'toolchange_end'])
+            self.assertEqual([r['event'] for r in self.logged(path)], ['session', 'toolchange', 'cut', 'toolchange_end'])
             await self.component.close()
 
     async def test_switching_from_on_to_one_toolchange_closes_the_log_and_rotates(self):
@@ -246,9 +252,10 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
             await self.settle()
             self.api.set_record_mode('toolchange')
             telemetry.toolchange_start(command='MMU_LOAD')
+            telemetry.state('cut', cutter='toolhead')
             telemetry.toolchange_end(command='MMU_LOAD', status='completed')
             await self.settle()
-            self.assertEqual([r['event'] for r in self.logged(path)], ['session', 'toolchange', 'toolchange_end'])
+            self.assertEqual([r['event'] for r in self.logged(path)], ['session', 'toolchange', 'cut', 'toolchange_end'])
             earlier = self.logged(Path(str(path) + '.1'))
             self.assertIn('cut', [r['event'] for r in earlier])
             await self.component.close()
@@ -286,9 +293,9 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.api.stream.capture)
 
     async def test_disconnecting_forgets_a_segment_in_progress(self):
-        self.component.mode, self.component.segment = 'toolchange', True
+        self.component.mode, self.component.segment = 'toolchange', (1, 1)
         self.component.disconnected()
-        self.assertEqual((self.component.mode, self.component.segment), ('off', False))
+        self.assertEqual((self.component.mode, self.component.segment), ('off', None))
 
     async def test_a_recording_moonraker_never_starts_warns_the_user_once(self):
         from components.mmu_telemetry_store import TelemetryRecorder

@@ -331,8 +331,9 @@ marks its end on every exit path, with the resulting tool, gate, `filament_pos` 
 `completed`). Both are emitted by the command registration (`toolchange=True`), only for the
 outermost command, and nothing is emitted for `HELP=1`. The capture commits the settled state
 just before `toolchange_end`, so the segment between the two replays from a known start to the
-final state. Because the pair brackets the whole command, a refused command (disabled, not
-calibrated, already loaded) emits an empty pair.
+final state. Both records carry the same `toolchange_id`. Because the pair brackets the whole command,
+a refused command (disabled, not calibrated, already loaded) emits an empty pair; recording ignores
+it: it opens no file and leaves `toolchange` mode armed for the next command.
 The viewer’s previous/next toolchange buttons navigate these markers; the
 previous button returns to the current operation’s start before moving to an
 earlier operation. Older recordings without markers disable these buttons.
