@@ -46,6 +46,29 @@ class TestMovementTelemetry(unittest.TestCase):
             self.assertTrue(all(r['label'] == 'Engaging mmu gear' for r in moves))
             self.assertEqual({r['requested_mm'] for r in moves}, {0.8, -0.8})
 
+    def toolchange_events(self):
+        return [r['event'] for r in self.records if r['event'] in ('toolchange', 'toolchange_end')]
+
+    def test_toolchange_commands_are_bracketed_once_including_error_exits(self):
+        self.hh.mmu.gate_status[1] = 0
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.toolchange_events(), ['toolchange', 'toolchange_end'])
+        end = [r for r in self.records if r['event'] == 'toolchange_end'][0]
+        self.assertEqual((end['command'], end['status']), ('MMU_LOAD', 'completed'))
+        self.records.clear()
+        self.hh.run_gcode('MMU_LOAD HELP=1')
+        self.assertEqual(self.toolchange_events(), [])
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=1')       # Empty gate: handled as an error, still closed
+        self.assertEqual(self.toolchange_events(), ['toolchange', 'toolchange_end'])
+
+    def test_nested_toolchange_scopes_share_the_outermost_pair(self):
+        telemetry = self.hh.mmu.movement_telemetry
+        telemetry.toolchange_start(command='A'); telemetry.toolchange_start(command='B')
+        telemetry.toolchange_end(command='B')
+        self.assertEqual(self.toolchange_events(), ['toolchange'])
+        telemetry.toolchange_end(command='A')
+        self.assertEqual(self.toolchange_events(), ['toolchange', 'toolchange_end'])
+
     def pair(self):
         moves = [r for r in self.records if r['event'].startswith('movement_')]
         self.assertEqual(len(moves), 2)

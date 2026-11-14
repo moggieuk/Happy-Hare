@@ -45,7 +45,8 @@ class MmuLoadCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_GENERAL,
+            toolchange=True
         )
 
     def _run(self, gcmd):
@@ -60,7 +61,6 @@ class MmuLoadCommand(BaseCommand):
             if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
 
         mmu.fix_started_state()
-        mmu._toolchange_event(gcmd)
 
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
