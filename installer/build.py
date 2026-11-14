@@ -931,10 +931,10 @@ def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     builder = ConfigBuilder(existing_cfg)
     report_parse_errors(builder, existing_cfg)
 
-    def update_section(section):
+    def update_section(section, comment=None):
         if not builder.has_section(section):
             logging.debug(" > Adding [{}]".format(section))
-            builder.add_section(section)
+            builder.add_section(section, comment=comment)
 
         for option, value in update.items(section):
             if not builder.has_option(section, option):
@@ -943,7 +943,7 @@ def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
 
     update_section("update_manager happy-hare")
     update_section("mmu_server")
-    update_section("mmu_telemetry")
+    update_section("mmu_telemetry", "Happy Hare telemetry log: rotation size (bytes) and files kept. Record with MMU_TELEMETRY")
 
     with open(existing_cfg, "w") as f:
         f.write(builder.write())

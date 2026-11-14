@@ -4,7 +4,9 @@
 
 `[mmu_telemetry]` is a separate Moonraker component; `mmu_server.py` retains its
 Spoolman and file-processing responsibilities. The installer links both components
-and adds `[mmu_telemetry]` to `moonraker.conf`. Existing installations need to rerun
+and adds `[mmu_telemetry]` (with its `max_log_size` and `log_backups` defaults) to `moonraker.conf`. New
+installs also list `moonraker` in the update manager's `managed_services`, so an update restarts it; existing
+installs keep their value, so restart Moonraker after updating. Existing installations need to rerun
 the installer and restart Klipper and Moonraker. No Klipper or Moonraker fork is needed.
 
 The viewer uses the same protocol with a real printer and the simulator:
@@ -78,7 +80,7 @@ checkpoint in force at that point and ending at `toolchange_end`. Switching from
 `toolchange` closes that file; after the single toolchange the mode is `off`. Arming
 `toolchange` while a command is already running waits for the next command. `on` starts at a
 checkpoint of the present state, which may fall inside a move. Size rotation (`max_log_size`
-and `log_backups`, optional in `[mmu_telemetry]`) defers until an in-flight movement pair has completed.
+and `log_backups` in `[mmu_telemetry]`) defers until an in-flight movement pair has completed.
 A single record/checkpoint or movement pair can exceed the size threshold. Load a file in the viewer.
 
 Checkpoint and file rotation logic lives in `mmu_telemetry_store.py`; its
