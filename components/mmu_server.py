@@ -462,12 +462,10 @@ class MmuServer:
                     self._start_live_updates()
                 self.spoolman_has_extras = extras
 
-                # Migration is never automatic - just hint at it
+                # Legacy extra-field UIDs are migrated in the background once Klipper is up
                 if self.spoolman_has_tags and self.legacy_only_uid_count:
-                    logging.info(
-                        f"NFC: {self.legacy_only_uid_count} tag UID(s) are only in the legacy '{MMU_RFID_FIELD}' "
-                        f"extra field. They still resolve; run 'MMU_SPOOLMAN_TAG MIGRATE=native' to link them "
-                        f"as native Spoolman tags")
+                    logging.info(f"NFC: {self.legacy_only_uid_count} tag UID(s) are only in the legacy '{MMU_RFID_FIELD}' extra field - migrating")
+                    asyncio.create_task(self._auto_migrate_tags())
 
             elif self.spoolman_version:
                 logging.error(f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
@@ -808,6 +806,26 @@ class MmuServer:
         if not silent or summary['conflicts'] or summary['errors']:
             await self._log_n_send(msg, error=bool(summary['errors']), silent=silent and not summary['moved'])
         return summary
+
+
+    async def _auto_migrate_tags(self, wait=5.0, attempts=24):
+        '''
+        Startup migration of legacy extra-field UIDs to native tags. Waits for Klipper
+        (up to ~2 min) so progress reaches the console; without it, logs only - never
+        through the M118 fallback, which pauses the print on an error
+        '''
+        for _ in range(attempts):
+            try:
+                await self._initialize_mmu()
+                break
+            except Exception:
+                await asyncio.sleep(wait)
+        async with self.cache_lock:
+            if not self.spoolman_has_tags or not self.legacy_only_uid_count:
+                return
+            summary = await self._migrate_tags(to_native=True, silent=not self._mmu_backend_enabled())
+            if summary and summary['moved']:
+                await self._build_spool_location_cache(silent=True)
 
 
     async def migrate_tags(self, direction='native', dry_run=False, silent=False, spool_id=None) -> bool:

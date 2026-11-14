@@ -44,6 +44,13 @@ class TagTestCase(unittest.TestCase):
     def tearDown(self):
         self.hh.close()
 
+    def make_legacy(self):
+        """Put the database back to the pre-migration state (startup migrates it)."""
+        self.db.tag_links.clear()
+        self.db.tag_formats.clear()
+        self.hh.call_remote('spoolman_refresh', silent=True)
+        self.hh.klippy.drain()
+
     def tag_requests(self):
         return [(m, u) for m, u, _ in self.db.requests if '/tag' in u]
 
@@ -118,24 +125,76 @@ class TestCapabilityProbe(TagTestCase):
         self.assertEqual([u for _, u, _ in hh.db.requests if '/tag' in u], [])
 
 
-class TestNoAutomaticMigration(TagTestCase):
-    """Migration is the user's choice: startup must not write any tag links."""
+class TestStartupMigration(TagTestCase):
+    """Legacy extra-field UIDs are linked natively at startup, with progress on the console."""
 
-    def test_startup_makes_no_tag_writes(self):
-        writes = [r for r in self.tag_requests() if r[0] in ('POST', 'DELETE')]
-        self.assertEqual(writes, [])
-        self.assertEqual(self.db.tag_links, {})
+    def test_legacy_uid_linked_at_startup(self):
+        self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID])
+        self.assertEqual(self.hh.mmu_server.legacy_only_uid_count, 0)
 
-    def test_extra_field_untouched(self):
+    def test_extra_field_is_kept_for_older_clients(self):
         self.assertEqual(self.db.spool_uid(1), LEGACY_UID)
 
-    def test_pending_count_is_recorded(self):
-        """Feeds the startup hint pointing at MMU_SPOOLMAN_TAG MIGRATE=native."""
-        self.assertEqual(self.hh.mmu_server.legacy_only_uid_count, 1)
+    def test_progress_on_the_console(self):
+        msgs = ' '.join(self.hh.gcode('MMU_LOG'))
+        self.assertIn('migrating 1 tag(s) on 1 spool(s) to native Spoolman tags', msgs)
+        self.assertIn('[1/1] tag %s on spool 1 migrated to a native Spoolman tag' % LEGACY_UID, msgs)
 
-    def test_unmigrated_tag_still_resolves(self):
-        self.assertTrue(self.lookup(LEGACY_UID))
-        self.assertEqual(self.last_gcode(), 'MMU_GATE_MAP NEXT_SPOOLID=1 QUIET=1')
+    def test_second_startup_does_nothing(self):
+        before = len(self.tag_requests())
+        self.hh.mmu_server.spoolman_has_extras = False  # force a re-init
+        self.hh.call_remote('spoolman_refresh', silent=True)
+        self.hh.drain_tasks()
+        posts = [r for r in self.tag_requests()[before:] if r[0] == 'POST']
+        self.assertEqual(posts, [], 'already-migrated tags must not be re-posted')
+
+    def test_conflict_is_reported_not_fatal(self):
+        hh = harness(spools=[dict(uid=LEGACY_UID, material='PLA')], spoolman_version=self.VERSION)
+        try:
+            fid = hh.db.add_filament(name='Vendor tag product')
+            hh.db.link_tag(LEGACY_UID, filament_id=fid)
+            hh.component_init()
+            self.assertTrue(hh.mmu_server.spoolman_has_tags)
+            self.assertEqual(hh.db.tag_links[LEGACY_UID], ('filament', fid))
+            self.assertIn('not migrated - already linked to filament %d' % fid, ' '.join(hh.gcode('MMU_LOG')))
+        finally:
+            hh.close()
+
+    def test_nothing_to_migrate_says_nothing(self):
+        hh = harness(spools=[dict(material='PLA')], spoolman_version=self.VERSION)
+        try:
+            hh.component_init()
+            self.assertFalse([m for m in hh.gcode('MMU_LOG') if 'migrat' in m])
+        finally:
+            hh.close()
+
+    def test_klipper_not_ready_logs_only_and_never_pauses(self):
+        """Without Klipper the console fallback (M118) would pause the print on an error."""
+        self.make_legacy()
+        server = self.hh.mmu_server
+        del server.mmu_backend_present
+        async def not_ready():
+            raise RuntimeError('Klippy not connected')
+        self.hh.klippy.get_object_list = not_ready
+        self.hh.run(server._auto_migrate_tags(wait=0, attempts=2))
+        self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID], 'still migrated')
+        self.assertEqual(self.hh.klippy.drain(), [], 'nothing sent to Klipper')
+        self.assertEqual(self.hh.klippy.pause_calls, 0)
+
+    def test_waits_for_klipper(self):
+        self.make_legacy()
+        server = self.hh.mmu_server
+        del server.mmu_backend_present
+        real, calls = self.hh.klippy.get_object_list, []
+        async def late():
+            calls.append(1)
+            if len(calls) < 3:
+                raise RuntimeError('Klippy not connected')
+            return await real()
+        self.hh.klippy.get_object_list = late
+        self.hh.run(server._auto_migrate_tags(wait=0, attempts=5))
+        self.assertEqual(len(calls), 3)
+        self.assertIn('migrated to a native Spoolman tag', ' '.join(self.hh.gcode('MMU_LOG')))
 
 
 class TestFreshNativeInstall(TagTestCase):
@@ -254,12 +313,18 @@ class TestNativeAutoCreate(TagTestCase):
 
 class TestMigrateCommand(TagTestCase):
 
+    def setUp(self):
+        super().setUp()
+        self.make_legacy()
+        self.log_start = len(self.hh.gcode('MMU_LOG'))
+
     def migrate(self, direction, **kwargs):
         return self.hh.call_remote('spoolman_migrate_tags', direction=direction,
                                    silent=True, **kwargs)
 
     def console(self):
-        return [m for m in self.hh.gcode('MMU_LOG') if 'NFC:' in m]
+        """NFC console messages sent since setUp (startup's own migration excluded)."""
+        return [m for m in self.hh.gcode('MMU_LOG')[self.log_start:] if 'NFC:' in m]
 
     def test_progress_is_reported_tag_by_tag(self):
         """The console shows a start line, one line per tag, then the summary."""
@@ -482,6 +547,10 @@ class TestTagScan(TagTestCase):
 
 class TestMigrateOnResolve(TagTestCase):
     """A tag the cached lookup resolves from the extra field is linked natively."""
+
+    def setUp(self):
+        super().setUp()
+        self.make_legacy()
 
     def test_legacy_tag_is_linked_when_scanned(self):
         self.assertEqual(self.db.tag_links, {}, 'precondition: nothing migrated at startup')

@@ -535,7 +535,8 @@ class TestNfcCommandSurface(RoundTripTestCase):
 
 
 class TestSpoolmanTagMigrateCommand(RoundTripTestCase):
-    """MMU_SPOOLMAN_TAG MIGRATE= end to end against Spoolman 0.27."""
+    """MMU_SPOOLMAN_TAG MIGRATE= end to end against Spoolman 0.27. Startup migrates;
+    each test then starts from the legacy state via MIGRATE=extra."""
 
     SPOOLS = (dict(uid=TAG_A, material='PLA'),
               dict(uid=TAG_B, material='ABS', vendor='Polymaker'))
@@ -546,9 +547,12 @@ class TestSpoolmanTagMigrateCommand(RoundTripTestCase):
         self.rt.boot()
         self.assertEqual(self.rt.errors, [], 'bootup was not clean')
         self.rt.advance(self.WARMUP)
+        self.migrated_at_startup = dict(self.rt.db.tag_links)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=extra')
 
-    def test_startup_does_not_migrate(self):
-        self.assertEqual(self.rt.db.tag_links, {})
+    def test_startup_migrates(self):
+        self.assertEqual(self.migrated_at_startup, {TAG_A: ('spool', 1), TAG_B: ('spool', 2)})
+        self.assertEqual(self.rt.db.tag_links, {}, 'precondition for the other tests')
 
     def test_migrate_native_then_extra(self):
         self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native')
