@@ -1,5 +1,7 @@
 # Happy Hare viewer
 
+![The Visualizer connected to the simulator (boxturtle2_ercf profile), mid-load on a BoxTurtle gate with its espooler assisting](docs/boxturtle2-ercf-load.jpg)
+
 A standalone, build-free web application that animates Happy Hare's filament movement. It is plain
 ES modules, CSS and one `index.html`; it talks to a Moonraker-compatible API and has no dependency on
 the simulator.
