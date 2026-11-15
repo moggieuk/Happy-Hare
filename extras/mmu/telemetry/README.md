@@ -3,7 +3,7 @@
 ## Overview
 
 Motion telemetry records what the MMU does (filament moves, selector and servo moves, extruder moves, state changes) so the
-web app (the Visualizer) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
+web app (for example the Visualizer, a separate PR) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
 relays and stores them, and the web app displays them.
 
 ```
@@ -79,7 +79,7 @@ Web app:   replay -> animated steps (live)   |   load a saved JSONL (offline)
 
 ### In the simulator
 
-The simulator's bridge takes Moonraker's place. It serves the viewer, runs the same stream protocol over its own WebSocket, and pumps the capture itself. Recording to files and the Record control do not apply there.
+The simulator's bridge takes Moonraker's place. It runs the same stream protocol over its own WebSocket, and pumps the capture itself. Recording to files and the Record control do not apply there.
 
 ### Reading a recording
 
@@ -284,31 +284,7 @@ and new states (including silent changes), unit and gate; repeated assignments
 are suppressed. This is Happy Hare's discrete progress state, not a millimetre
 coordinate. The viewer displays it alongside the tip position.
 
-The viewer has two independent modes, identified at the top left. Simulator
-connections default to telemetry playback; other connections default to live view.
-Explicit mode choices survive reconnects. To open a recording, select telemetry
-playback and use **Load telemetry**:
-
-- **Live view** uses Moonraker object queries/subscriptions only. It smoothly
-  follows `mmu.filament_pos` and `mmu.bowden_progress`; transitions are cosmetic,
-  not a reconstruction of motor travel. Heater targets, encoder readings,
-  proportional buffer values and sensor states update directly from subscriptions.
-- **Telemetry playback** uses only the loaded JSON/JSONL recording, or the
-  simulator's piped telemetry stream. Current printer status never changes an
-  old recording. Playback controls and the movement trace appear in this mode.
-  While following the stream at rest (not paused, not animating, no move in
-  progress) the viewer also subscribes to `mmu.sensors` and shows those readings
-  on the live end, so a sensor toggled or triggered while idle appears at once
-  instead of when the capture's next read records it (`overlay.js`). Nothing else is
-  overlaid, and the recorded state carries the same values.
-
-The Settings panel accepts a printer/simulator URL (default: the server hosting
-this viewer). The parameter editor and Toolhead Config panel work on a real printer
-because they only send `MMU_TEST_CONFIG` and `SET_GCODE_VARIABLE`; the Buffer and Encoder
-panels, which set object attributes directly, are simulator-only.
-
-Live view needs no Happy Hare specific configuration object. `live-config.js`
-builds the machine description from state Klipper already publishes:
+A client can build the machine description from state Klipper already publishes:
 
 - `configfile.settings` for startup configuration: units, gates, selector type,
   toolhead, encoder and buffer, and every parameter section.
@@ -325,24 +301,14 @@ records, produced from a `config_changed` event emitted where the parameter chan
 so recordings are replayable without a printer. The session baseline holds each full
 parameter set once; it is not re-read per event.
 
-`live-state.js` adapts subscriptions without retaining history; `telemetry.js`
-reduces recordings. Both use `scene-state.js` for scene geometry and share the SVG
-components. New movement recordings omit heater target changes; old recordings
-containing these fields remain readable. Run the live browser regression with
-`node --test viewer/live.browser.mjs` using the same Playwright/Chrome
-settings as the spool browser test below.
-
-The **Toolhead Config** panel appears when the machine has a toolhead section. A toolhead shared
-by several units is listed once with those units, and edits are sent as `MMU_TEST_CONFIG`.
-
 Buffers and encoders are simulator objects whose settings are not `MMU_TEST_CONFIG` parameters,
-so they are edited from the simulator console instead of the viewer. `/buffer [NAME] [RANGE=mm]
+so they are edited from the simulator console instead of a client. `/buffer [NAME] [RANGE=mm]
 [MAXRANGE=mm] [SPRING=none|tension|neutral|compression]` changes a buffer (and rebuilds its
 physical model, keeping the filament where it is); `/encoder [NAME] [RESOLUTION=mm] ...` changes an
 encoder's runtime numeric settings, never pins or MCU sampling. NAME is the object's own name,
 which can differ from its unit and may be shared; it can be omitted when there is only one. With
 no values the command prints the current ones. Each edit emits one `sim_settings_changed` event, so
-the change is committed to the telemetry stream at once; reload the viewer to see it. Restart
+the change is committed to the telemetry stream at once; a client sees it when it next connects. Restart
 restores the profile defaults.
 Each selector movement (the stepper moving the carriage, the servo changing grip, rail homing) is a
 visible step with its own **selector** pill, paired from the `selector_movement_start` and
@@ -440,10 +406,9 @@ of physical filament movement, and a submitted move is not proof of completion.
 Encoder travel is reported separately for that reason. Origin changes are not
 filament travel; before/after drive positions share the stated reference.
 
-The browser consumes these pairs and derives animation snapshots locally. The
+A client such as the Visualizer (a separate PR) consumes these pairs and derives animation snapshots locally. The
 console bridge captures source records without wrapping movement methods or
-observing simulator geometry. `SourceViewer` owns capture and parameter controls;
-the JavaScript replay tests cover derived animation behavior.
+observing simulator geometry. The bridge owns a `TelemetryCapture`.
 **Save motion telemetry** now downloads the compact v2 capture as JSONL.
 The stream's first `session` record contains the schema, session identity and a baseline of relevant
 MMU/machine state, calibration, sensors and toolhead macro dimensions. Later
@@ -474,16 +439,4 @@ effects without source events are not animation inputs. The simulator and
 real-printer WebSocket transports supply the same capture format.
 The legacy simulator HTTP endpoint remains available for capture diagnostics.
 
-Tests: `make test UT=test_mmu_movement_telemetry.py` and
-`node --test viewer/*.test.mjs`, plus the capture and viewer suites.
-The replay fixtures under `viewer/fixtures/` were captured with `ercf_vvd`
-and `emu` console profiles using `MMU_LOAD`, `MMU_UNLOAD`, then `MMU_LOAD`.
-They contain source records only. Tests compare batched live reduction with JSONL
-loading and exercise every interpolated movement endpoint.
-
-The optional spool browser regression compares retained SVG updates with fresh
-renders across styles, fill levels, viewing angles, and rotation. With Playwright
-and Chromium available, run `node --test viewer/spool.browser.mjs`.
-Set `PLAYWRIGHT_MODULE` to its module path and `CHROME_PATH` to a Chrome executable
-when using external installations. It also checks that motion preserves geometry
-nodes and unchanged props do not write to the DOM.
+Tests: `make test UT=test_mmu_movement_telemetry.py`, plus the capture, stream, API and store suites.

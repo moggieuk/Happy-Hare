@@ -77,7 +77,7 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
-API_PORT = 7125                                 # Local simulator viewer/API
+API_PORT = 7125                                 # Local simulator web API
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -676,35 +676,7 @@ class Console:
         if self.bridge is None:
             return
         self.bridge_error = None
-        self.bridge.restart_profile = self._restart_for_viewer
-        self.bridge.profile_name = str(self.args.profile)
         self._install_pace_observer()
-
-    def _restart_for_viewer(self, profile):
-        bridge, previous = self.bridge, self.args.profile
-        no_serve = self.args.no_serve
-        bridge.viewer.close()
-        self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
-        self.args.no_serve = True
-        self.args.profile = profile
-        try:
-            try:
-                self._meta_reset([], show_banner=False)
-            except Exception:
-                self.args.profile = previous
-                self._meta_reset([], show_banner=False)
-                raise
-        finally:
-            self.args.no_serve = no_serve
-            self.bridge = bridge
-            bridge.session = self.hh
-            from test.hh.live_viewer import SourceViewer
-            bridge.viewer = SourceViewer(self.hh)
-            bridge.telemetry_stream.reset_capture(self.hh.mmu, bridge.viewer.telemetry_capture)
-            bridge.profile_name = str(self.args.profile)
-            bridge.last_sent.clear()
-            self._install_pace_observer()
-            self.banner()
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""
@@ -715,7 +687,6 @@ class Console:
         address = '127.0.0.1' if host == '0.0.0.0' else host
         return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
                 % (host, port, address, port),
-                'Live viewer: http://%s:%d/sim/viewer/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):
