@@ -2166,6 +2166,7 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('host 127.0.0.1  port %d' % port, out)
         self.assertIn('--no-serve', out)
         self.assertIn('VUE_APP_PORT=%d' % port, out)
+        self.assertIn('http://127.0.0.1:%d/sim/viewer/' % port, out)
 
     def test_web_command_is_printed_to_terminal_and_executed(self):
         console = self._make_console(['--no-log', '--no-serve', '--header', 'off'])
@@ -2196,14 +2197,14 @@ class TestConsoleScript(unittest.TestCase):
             bridge.host, bridge.port = '192.168.0.157', 7125
             console._start_bridge(7125)
             self.assertEqual(bridge_type.call_args.kwargs['host'], '192.168.0.157')
-            self.assertIn('http://192.168.0.157:7125', console.web_api_lines()[0])
+            self.assertIn('http://192.168.0.157:7125/sim/viewer/', console.web_api_lines()[1])
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 console._meta_web([])
             self.assertIn('VUE_APP_HOSTNAME=192.168.0.157', out.getvalue())
         console.bridge = None
 
-    def test_default_web_api_port_is_7125(self):
+    def test_default_viewer_port_is_7125(self):
         from test.console import API_PORT, parse_args
         self.assertEqual(parse_args([]).serve_host, '127.0.0.1')
         self.assertEqual(API_PORT, 7125)
@@ -3192,3 +3193,36 @@ class TestBufferAndEncoderCommands(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class TestViewerProfileRestart(unittest.TestCase):
+    def test_restart_rebinds_connected_telemetry_for_same_and_new_profile(self):
+        from test.hh.webui_bridge import WebUiBridge
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'boxturtle', '--no-serve', '--no-log', '--plain', '--header', 'off']))
+            self.addCleanup(console.close)
+            console.boot()
+            bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
+            console.bridge = bridge
+            batches = []
+            first = bridge.telemetry_stream.subscribe('viewer', batches.append, lambda: False)
+            for profile in ('boxturtle', 'ercf_vvd'):
+                with self.subTest(profile=profile):
+                    previous_mmu = console.hh.mmu
+                    console._restart_for_viewer(profile)
+                    stream = bridge.telemetry_stream
+                    self.assertIs(stream.mmu, console.hh.mmu)
+                    self.assertIs(stream.capture, bridge.viewer.telemetry_capture)
+                    self.assertIsNot(stream.mmu, previous_mmu)
+                    stream.pump()
+                    baseline = batches[-1]
+                    self.assertTrue(baseline['reset'])
+                    self.assertNotEqual(baseline['stream_id'], first['stream_id'])
+                    self.assertEqual(baseline['records'][0]['session_id'], console.hh.mmu.movement_telemetry.session_id)
+                    stream.ack('viewer', first['stream_id'], first['delivery_id'])
+                    self.assertIsNotNone(stream.clients['viewer']['inflight'])
+                    stream.ack('viewer', baseline['stream_id'], baseline['delivery_id'])
+                    console.hh.mmu.movement_telemetry.state('cut')
+                    stream.pump()
+                    self.assertTrue(any(r['event'] == 'cut' for r in batches[-1]['records']))
+                    first = baseline
