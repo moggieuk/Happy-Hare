@@ -56,6 +56,7 @@ usage() {
     echo "  -c <dir> non-default klipper config directory"
     echo "  -m <dir> non-default moonraker home directory"
     echo "  -p, --prev choose a MMU backup and recover its configuration"
+    echo "  -w serve the Visualizer from this printer (an nginx site beside Mainsail/Fluidd), then exit"
     echo
     echo "  Advanced:"
     echo "  -y, --yes automatically answer yes to all y/n prompts"
@@ -725,7 +726,7 @@ for arg in "$@"; do
     esac
 done
 
-while getopts "rhfiudylpzsb:nk:c:m:a:g:toqv" arg; do
+while getopts "rhfiudylpzsb:nk:c:m:a:g:towqv" arg; do
     case $arg in
     f)
         FIX_LINKS=y
@@ -734,6 +735,7 @@ while getopts "rhfiudylpzsb:nk:c:m:a:g:toqv" arg; do
     i) F_MENUCONFIG=y ;;
     u | d) F_UNINSTALL=y ;;
     y) export F_YES=y ;;
+    w) F_VISUALIZER=y ;;
     l) F_RECOVER_LAST=y ;;
     p) F_RECOVER_PREVIOUS=y ;;
     z) export F_SKIP_UPDATE="${F_SKIP_UPDATE:=y}" ;;
@@ -765,6 +767,11 @@ done
 # sudo/root invocation needs to fail before either one runs.
 detect_platform
 enforce_root_policy
+
+# Serving the Visualizer only adds an nginx site: it needs no configuration or update
+if [ "${F_VISUALIZER:-}" ]; then
+    exec "${SCRIPT_DIR}/installer/visualizer_nginx.sh" install "${SCRIPT_DIR}/viewer"
+fi
 
 if [ -n "${F_MAX_GATES:-}" ] && ! valid_max_gates "${F_MAX_GATES}"; then
     echo "${C_ERROR}-g needs a number of gates of at least 12, not '${F_MAX_GATES}'${C_OFF}"
@@ -1007,6 +1014,7 @@ if [ "${F_UNINSTALL}" ]; then
     echo
     time_elapsed run_make uninstall &&
         [ "${TESTDIR}" ] && rm -rf "${TESTDIR}"
+    [ -z "${TESTDIR}" ] && "${SCRIPT_DIR}/installer/visualizer_nginx.sh" remove
     exit 0
 fi
 

@@ -26,8 +26,31 @@ the simulator provides. The viewer probes for them once on connect and hides tho
 ## Running it
 - With the simulator: `make console` serves it at `http://127.0.0.1:7125/sim/viewer/` (or the address in the console
   banner if another port was selected); `--no-serve` turns the viewer and the web API off.
+- On a printer: see "Hosting on a printer" below.
 - Any other static host works if the page can reach a Moonraker URL (the host must be allowed by Moonraker's
-  `cors_domains`). Hosting on a real printer is not decided yet.
+  `cors_domains`).
+
+## Hosting on a printer
+From the Happy Hare directory on the printer:
+
+```bash
+./install.sh -w
+```
+
+This adds an nginx site of its own, beside Mainsail or Fluidd, and prints its address (the first free port from
+8090, for example `http://<printer>:8090/`). It serves the `viewer/` folder and proxies `/websocket` and the
+Moonraker API paths to Moonraker on port 7125, exactly as Mainsail's own site does, so the page and the API
+share an origin and nothing needs adding to `cors_domains`. The step asks before using `sudo`, runs `nginx -t`
+before reloading, and puts the old configuration back if nginx rejects it. Re-running it keeps the same port.
+`./install.sh -u` removes the site along with Happy Hare. Updates need nothing extra: the files are in the
+Happy Hare checkout, so the normal update refreshes them.
+
+- nginx must already be installed (Mainsail and Fluidd images include it). If it is missing the step says so and
+  changes nothing; install it with your system's package manager, or use any other static host as above.
+- If the page shows a 403, nginx's user cannot read the folder, usually because the home directory is private.
+  Allow it to be traversed with `chmod o+x ~`.
+- The site exposes the same Moonraker API as Mainsail does on its port; Moonraker's own authorization rules apply.
+- Another Moonraker port: `UPSTREAM_PORT=7126 ./install.sh -w`; another first port: `VISUALIZER_PORT=9000 ./install.sh -w`.
 
 ## Tests
 `node --test viewer/*.test.mjs` (optional browser tests: `viewer/*.browser.mjs`, need Playwright).
