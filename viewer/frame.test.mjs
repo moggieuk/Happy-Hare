@@ -14,12 +14,14 @@ function harness() {
   const event={seq:1,kind:'movement',source:'mmu_gcode',state,before:state};
   const context=vm.createContext({viewMode:"playback", setup:{connection_kind:"simulator"},
     now:100,animationNow:()=>context.now,
-    spoolSession:'test',session:'test',spoolLastFrame:80,
-    spoolAngles:new Map(),spoolArrowVisibility:new Map(),spoolDirections:new Map(),
+    session:'test',advances:[],
     playing:{event,start:0},displayed:state,live:true,paused:false,
     events:[event],played:0,pauseAfterStep:false,offline:false,
     sensorPulse:{start:0},renders:0,scheduled:0,spoolUpdates:0,
-    updateSpoolMotion:()=>context.spoolUpdates++,espoolerActive,nextStepAt:0,homingHold,returnRackWhenIdle:()=>{},
+    // The scene owns spool rotation; here it only reports whether a spool is turning
+    scene:{advanceSpools:(now,spools)=>{ context.advances.push(spools); return spools.running && Object.values(spools.espoolers || {}).some(espoolerActive); },
+      updateSpoolMotion:()=>context.spoolUpdates++,returnRackWhenIdle:()=>{}},
+    nextStepAt:0,homingHold,
     updateLiveIndicator:()=>{},
     $:()=>({checked:false}),duration:()=>1000,nozzleArrivalTime:()=>null,
     playbackFrame:()=>({fraction:.1,state}),homingPulse:()=>null,followTrace:()=>{},
@@ -34,7 +36,7 @@ test('UI invalidations, rotating spools, playback and sensor pulses share one dr
   vm.runInContext('draw(); draw(); animate();',c);
   assert.equal(c.renders,1);
   assert.equal(c.scheduled,1);
-  assert.ok(c.spoolAngles.get(0)>0);
+  assert.ok(c.advances.at(-1).running);
   vm.runInContext('animate();',c);
   assert.equal(c.renders,2);
 });
@@ -61,7 +63,7 @@ test('spool-only animation updates retained elements without redrawing the scene
   vm.runInContext('animate(); animate();',c);
   assert.equal(c.renders,0);
   assert.equal(c.spoolUpdates,2);
-  assert.ok(c.spoolAngles.get(0)>0);
+  assert.ok(c.advances.at(-1).running);
 });
 
 test('a completed MMU move starts the next animation on the next frame without a hold',()=>{
