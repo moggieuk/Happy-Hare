@@ -38,9 +38,9 @@ class TestSelectorTelemetry(unittest.TestCase):
             hh.boot(calibrate=True)
             telemetry = hh.mmu.movement_telemetry
             self.assertFalse(telemetry.listeners)
-            before = (telemetry.move_id, telemetry.sequence)
+            before = telemetry.move_id
             hh.mmu.selector()._move_selector('Unobserved selector', 1)
-            self.assertEqual((telemetry.move_id, telemetry.sequence), before)
+            self.assertEqual(telemetry.move_id, before)
         finally:
             hh.close()
 

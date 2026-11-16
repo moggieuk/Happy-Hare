@@ -179,10 +179,9 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertEqual(len(capture.read()['records']), before)
 
     def test_edit_without_listener_emits_nothing(self):
-        telemetry = self.hh.mmu.movement_telemetry
-        sequence = telemetry.sequence
-        self.hh.run_gcode('MMU_TEST_CONFIG LOG_LEVEL=2')
-        self.assertEqual(telemetry.sequence, sequence)
+        with mock.patch.object(self.hh.mmu.movement_telemetry, 'emit') as emit:
+            self.hh.run_gcode('MMU_TEST_CONFIG LOG_LEVEL=2')
+        emit.assert_not_called()
 
     def test_cancelled_edits_are_not_saved(self):
         capture = self.capture()

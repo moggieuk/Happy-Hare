@@ -76,8 +76,7 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual(start['event'], 'movement_start')
         self.assertEqual(end['event'], 'movement_outcome')
         self.assertEqual(start['move_id'], end['move_id'])
-        self.assertEqual(start['session_id'], end['session_id'])
-        self.assertLess(start['sequence'], end['sequence'])
+        self.assertLessEqual(start['timestamp'], end['timestamp'])
         json.dumps(self.records, allow_nan=False)
         return start, end
 
@@ -92,7 +91,6 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual([r['event'] for r in self.records], ['cut', 'release'])
         self.assertEqual([r['phase'] for r in self.records], ['CUT', 'RELEASE'])
         self.assertEqual(before, (mmu.filament_pos, mmu.gate_selected, self.hh.filament().tip[:]))
-        self.assertLess(self.records[0]['sequence'], self.records[1]['sequence'])
 
     def test_macro_hook_with_no_subscribers_does_nothing(self):
         self.unsubscribe()

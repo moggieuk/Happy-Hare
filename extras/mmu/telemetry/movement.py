@@ -27,7 +27,6 @@ class MovementTelemetry:
     def __init__(self, reactor):
         self.reactor = reactor
         self.session_id = uuid.uuid4().hex
-        self.sequence = 0
         self.move_id = 0
         self.listeners = []
         self.operations = []
@@ -42,11 +41,7 @@ class MovementTelemetry:
         return unsubscribe
 
     def emit(self, event, move_id, **fields):
-        self.sequence += 1
-        record = dict(schema='happy_hare.motion', version=1,
-                      session_id=self.session_id, sequence=self.sequence,
-                      move_id=move_id, event=event,
-                      timestamp=self.reactor.monotonic(), **fields)
+        record = dict(move_id=move_id, event=event, timestamp=self.reactor.monotonic(), **fields)
         for callback in tuple(self.listeners):
             try:
                 callback(copy.deepcopy(record))

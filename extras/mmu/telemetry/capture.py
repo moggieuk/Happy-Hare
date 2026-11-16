@@ -249,8 +249,7 @@ kept; the limit only bounds a consumer that stops acknowledging.
             if source['event'] == 'config_changed':
                 delta += self._config_delta(source)
             else:
-                record = plain({key: value for key, value in source.items()
-                                if key not in ('schema', 'version', 'session_id', 'sequence')})
+                record = plain(source)
         except Exception:
             self.failed = True  # The source detaches a listener that raises
             raise
