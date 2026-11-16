@@ -22,11 +22,13 @@ class TestSelectorTelemetry(unittest.TestCase):
         try:
             hh.boot(calibrate=True)
             for parameter in ('LOG_LEVEL', 'LOG_FILE_LEVEL'):
-                hh.run_gcode('MMU_TEST_CONFIG %s=3' % parameter)
-                self.assertEqual(getattr(hh.mmu.p, parameter.lower()), 3)
-                with self.assertRaisesRegex(hh.gcode.error, 'maximum of 3'):
-                    hh.run_gcode('MMU_TEST_CONFIG %s=4' % parameter)
-                self.assertEqual(getattr(hh.mmu.p, parameter.lower()), 3)
+                # 4 was the developer level: a saved 4 must still load, and it logs as trace
+                hh.run_gcode('MMU_TEST_CONFIG %s=4' % parameter)
+                self.assertEqual(getattr(hh.mmu.p, parameter.lower()), 4)
+                self.assertTrue(hh.mmu.log_enabled(3))
+                with self.assertRaisesRegex(hh.gcode.error, 'maximum of 4'):
+                    hh.run_gcode('MMU_TEST_CONFIG %s=5' % parameter)
+                self.assertEqual(getattr(hh.mmu.p, parameter.lower()), 4)
         finally:
             hh.close()
 
