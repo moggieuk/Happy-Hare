@@ -282,7 +282,7 @@ The console emits a `filament_pos_snapshot` after boot. Movement starts/outcomes
 also include `filament_pos` and its readable name, so recording mid-session still
 establishes the logical starting state. `filament_pos_changed` records previous
 and new states (including silent changes), unit and gate; repeated assignments
-are suppressed. This is Happy Hare's discrete progress state, not a millimetre
+are suppressed. This is Happy Hare's discrete progress state, not a millimeter
 coordinate. The viewer displays it alongside the tip position.
 
 A client can build the machine description from state Klipper already publishes:

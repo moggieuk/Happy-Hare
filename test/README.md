@@ -994,7 +994,7 @@ keep its downstream tip stationary and change buffer travel instead. Travel is b
 so reversal takes up that excess before the buffer leaves its stop. Equal gear/extruder
 movement leaves the buffer unchanged. Simulated physical buffer switches have 2mm of release hysteresis;
 proportional buffers retain their configured virtual-switch thresholds. The viewer shows travel and any unabsorbed displacement
-in millimetres, not force. Without a modeled buffer, relative displacement is reported but
+in millimeters, not force. Without a modeled buffer, relative displacement is reported but
 no Bowden spring is simulated. The inline piston rests at the configured spring position
 when empty. Switch readings
 constrain its displayed position, while proportional buffers use the actual analog reading
