@@ -897,13 +897,13 @@ The test files, grouped by what they're about:
 | `test_mmu_console.py` | 211 | the interactive console of §1a — rendering, command dispatch |
 | `test_mmu_print_job.py` | 10 | `/print job` end to end, molding the built-in job, and the fake G-code it needs: parsing, extrusion modes, the extruder heater |
 | `test_mmu_webui_bridge.py` | 16 | the Moonraker-compatible web API the console serves: handshake, status, gcode, the pause dialog reaching a UI, and refusing cross-site pages, oversized bodies and unmasked frames |
-| `test_mmu_simulator_telemetry.py` | 6 | the simulator's telemetry capture, real macros and the bridge |
+| `test_mmu_simulator_telemetry.py` | 7 | the simulator's telemetry capture, real macros and the bridge |
 | `test_mmu_live_status.py` | 14 | the status objects the viewer subscribes to |
 | `test_mmu_movement_telemetry.py` | 20 | movement start/outcome pairs, toolchange start/end markers, and the replay state around them |
 | `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |
 | `test_mmu_selector_telemetry.py` | 6 | selector motion, servo and homing records |
 | `test_mmu_telemetry_capture.py` | 27 | replay state, state deltas, the rolling baseline, the settle read after the last event |
-| `test_mmu_telemetry_stream.py` | 27 | acknowledged delivery, folding acknowledged records, resend after a lost ack, replacing a failed capture, the recording mode |
+| `test_mmu_telemetry_stream.py` | 26 | acknowledged delivery, folding acknowledged records, resend after a lost ack, replacing a failed capture, the recording mode |
 | `test_mmu_telemetry_api.py` | 18 | the Klipper webhook adapter and the Moonraker component together, including Klipper-driven recording |
 | `test_mmu_telemetry_store.py` | 12 | Moonraker-side history, on and one-toolchange recording |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |

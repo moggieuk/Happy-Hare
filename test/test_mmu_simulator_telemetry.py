@@ -109,6 +109,23 @@ class TestSimulatorBridge(unittest.TestCase):
         finally:
             hh.close()
 
+    def test_the_bridge_keeps_capturing_without_a_browser_and_ends_a_one_toolchange_recording(self):
+        hh = session('boxturtle')
+        hh.boot(calibrate=True, selected_gate=0)
+        bridge = WebUiBridge(hh, hh.run_gcode, port=0)
+        try:
+            stream, telemetry = bridge.telemetry_stream, hh.mmu.movement_telemetry
+            stream.subscribe('browser', lambda batch: None, lambda: False)
+            stream.unsubscribe('browser')
+            self.assertIs(stream.capture, bridge.telemetry_capture)   # Still recording for whoever connects next
+            self.assertIn(bridge.telemetry_capture.on_event, telemetry.listeners)
+            stream.set_record_mode('toolchange')
+            telemetry.toolchange_start(command='MMU_LOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_LOAD')
+            self.assertEqual(stream.record_mode, 'off')
+        finally:
+            bridge.close()
+            hh.close()
+
     def test_console_runs_tool_selection_macro(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):

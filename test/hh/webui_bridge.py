@@ -47,6 +47,35 @@ SEND_TIMEOUT = 5.0                 # a client that stops reading is dropped afte
 LOOPBACK_HOSTS = {'localhost', '127.0.0.1', '::1'}
 
 
+def simulator_stream(mmu, capture):
+    """The printer's stream, but over a capture the simulator owns: it keeps recording while no browser is
+    connected, so one that connects later can replay from the start, and it survives a profile restart."""
+    import uuid
+    from extras.mmu.telemetry.stream import TelemetryStream
+
+    class SimulatorStream(TelemetryStream):
+        def __init__(self, mmu, capture):
+            super().__init__(mmu)
+            self.capture = capture
+            self._attach(capture)
+
+        def _idle(self):
+            pass
+
+        def _renew_capture(self):
+            pass
+
+        def reset_capture(self, mmu, capture):
+            """Keep connected consumers, but replace a restarted simulator's source."""
+            self.mmu, self.capture = mmu, capture
+            self._attach(capture)
+            self.stream_id = uuid.uuid4().hex
+            for client in self.clients.values():
+                client.update(after=None, inflight=None)
+
+    return SimulatorStream(mmu, capture)
+
+
 class RpcError(Exception):
     def __init__(self, message, code=RPC_SERVER_ERROR):
         super().__init__(message)
@@ -176,9 +205,8 @@ class WebUiBridge:
         self._next_telemetry = 0.0
         self._server = None
         from extras.mmu.telemetry.capture import TelemetryCapture
-        from extras.mmu.telemetry.stream import TelemetryStream
         self.telemetry_capture = TelemetryCapture(session.mmu, limit=6000)
-        self.telemetry_stream = TelemetryStream(session.mmu, self.telemetry_capture)
+        self.telemetry_stream = simulator_stream(session.mmu, self.telemetry_capture)
 
     # -- lifecycle -------------------------------------------------------------
     def start(self):

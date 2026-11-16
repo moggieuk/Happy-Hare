@@ -21,27 +21,13 @@ ACK_TIMEOUT = 5.  # A batch not acknowledged by now is sent again
 
 
 class TelemetryStream:
-    def __init__(self, mmu, capture=None):
+    def __init__(self, mmu):
         self.mmu = mmu
-        self.capture = capture
-        self.owns_capture = capture is None
+        self.capture = None  # Exists only while a consumer is subscribed
         self.stream_id = uuid.uuid4().hex
         self.clients = {}
         self.delivery = 0
         self.record_mode = 'off'  # off, on or toolchange (one command, then off); Moonraker persists
-        if capture is not None:
-            self._attach(capture)
-
-    def reset_capture(self, mmu, capture):
-        """Keep connected consumers, but replace a restarted simulator's source."""
-        if self.capture is not None and self.owns_capture:
-            self.capture.close()
-        self.mmu, self.capture = mmu, capture
-        self._attach(capture)
-        self.owns_capture = False
-        self.stream_id = uuid.uuid4().hex
-        for client in self.clients.values():
-            client.update(after=None, inflight=None)
 
     def subscribe(self, key, send, closed, history="start"):
         if key not in self.clients and len(self.clients) >= MAX_SUBSCRIBERS:
@@ -81,16 +67,20 @@ class TelemetryStream:
 
     def unsubscribe(self, key):
         self.clients.pop(key, None)
-        if not self.clients and self.capture is not None and self.owns_capture:
+        if not self.clients:
+            self._idle()
+        return {}
+
+    def _idle(self):
+        """Nobody is listening, so stop capturing."""
+        if self.capture is not None:
             self.capture.close()
             self.capture = None
-        return {}
 
     def _mode(self):
         return self.record_mode
 
     def _attach(self, capture):
-        """A capture made elsewhere (the simulator's) reports the recording mode and its end the same way."""
         capture.record_mode = self._mode
         capture.on_toolchange_end = self._toolchange_ended
 
@@ -122,6 +112,7 @@ class TelemetryStream:
 
     def _renew_capture(self):
         """The source detached a capture that failed: start a new one and send every consumer a fresh baseline."""
+        logging.error('MMU telemetry capture failed; restarting it')
         self.capture.close()
         self._new_capture()
         if self.record_mode == 'off':
@@ -136,8 +127,7 @@ class TelemetryStream:
                 self.unsubscribe(key)
         if not self.clients:
             return
-        if self.capture.failed and self.owns_capture:
-            logging.error('MMU telemetry capture failed; restarting it')
+        if self.capture.failed:
             self._renew_capture()
         now = self.mmu.reactor.monotonic()
         for client in self.clients.values():

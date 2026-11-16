@@ -218,19 +218,6 @@ class TestTelemetryStream(unittest.TestCase):
         tail = [(r['event'], r.get('mode')) for r in self.stream.capture.read()['records'][-2:]]
         self.assertEqual(tail, [('toolchange_end', None), ('record_mode', 'off')])
 
-    def test_a_capture_made_elsewhere_reports_and_ends_the_mode_like_any_other(self):
-        from extras.mmu.telemetry.capture import TelemetryCapture
-        from extras.mmu.telemetry.stream import TelemetryStream
-        external = TelemetryCapture(self.hh.mmu)                # As the simulator bridge builds its own
-        try:
-            stream = TelemetryStream(self.hh.mmu, external)
-            telemetry = self.hh.mmu.movement_telemetry
-            stream.set_record_mode('toolchange')
-            telemetry.toolchange_start(command='MMU_LOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_LOAD')
-            self.assertEqual(stream.record_mode, 'off')
-        finally:
-            external.close()
-
     def test_a_capture_that_cannot_announce_the_mode_is_not_left_attached(self):
         from unittest import mock
         from extras.mmu.telemetry.capture import TelemetryCapture
