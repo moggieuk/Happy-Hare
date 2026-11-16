@@ -5,6 +5,7 @@ import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from '
 import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, toolheadProgress, toolheadDrawingRange, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, excessFilamentLabel, constrainFilament, gearAngle, homingTarget, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
 import {$, escape, short as sensorName, DEFAULT_COLOR, round1, clamp01} from './util.js';
 import {renderBuffer} from './buffer-view.js';
+import {measurePath} from './path-measure.js';
 
 export function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
@@ -197,8 +198,8 @@ function measure(c) {
     // The active tube is painted last so inactive branches cannot close its visible bore.
     svg=branches+svg;
   }
-  host.innerHTML = svg;
-  const tube = $("tube"),
+  // The tube is measured from its path alone, so nothing has to be in the page yet
+  const tube = measurePath(path),
     length = tube.getTotalLength();
   const mmuExitFraction = (virtual ? mmuDistanceAtY(400+hardwareOffset) : 200) / length;
   const toolheadFraction=(length-toolheadHeight)/length;
@@ -323,11 +324,8 @@ function measure(c) {
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);
   const macroUnit=s.units?.indexOf(s.unit) ?? 0;
   const macroParams=s.configuration?.parameters?.[macroUnit] || {};
-  $("filament").setAttribute(
-    "stroke-dasharray",
-    `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`,
-  );
-  Object.assign(c, {spoolRequests, gate, tip, entry, end, toolheadHeight, sensorEntry, sensorGap, unitGates, previewCount, displayGates, mmuOffset, hardwareOffset, virtual, lane, guide, mmuColumn, mmuDistanceAtY, path, dimensionLink, nozzleDiameter, nozzleWidth, funnelShoulder, nozzleExit, shadowEndX, shadowEndY, nozzleFunnel, nozzleBody, nozzleEntrance, bodyTop, bowdenPath, branchOpacity, branchShade, selectionLit, branchMask, svg, parkedTips, feedFront, tube, length, mmuExitFraction, toolheadFraction, progress, pathDistance, unitSensors, isTouchSensor, encoderAnchor, gateSlots, descentX, sensorPoint, isBufferSensor, sensorFill, encoderPoint, tipAtPathDistance, schematicDistance, schematicTip, tipScale, coneOffset, displayedSensors, presenceSensors, fragments, constrained, focus, fullTipOpacity, slidingRack, spoolTip, selectedTip, shapedTipOpacity, start, macroUnit, macroParams});
+  const filamentDash = `0 ${start} ${Math.max(0, stop - start)} ${length + 1}`;
+  Object.assign(c, {filamentDash, spoolRequests, gate, tip, entry, end, toolheadHeight, sensorEntry, sensorGap, unitGates, previewCount, displayGates, mmuOffset, hardwareOffset, virtual, lane, guide, mmuColumn, mmuDistanceAtY, path, dimensionLink, nozzleDiameter, nozzleWidth, funnelShoulder, nozzleExit, shadowEndX, shadowEndY, nozzleFunnel, nozzleBody, nozzleEntrance, bodyTop, bowdenPath, branchOpacity, branchShade, selectionLit, branchMask, svg, parkedTips, feedFront, tube, length, mmuExitFraction, toolheadFraction, progress, pathDistance, unitSensors, isTouchSensor, encoderAnchor, gateSlots, descentX, sensorPoint, isBufferSensor, sensorFill, encoderPoint, tipAtPathDistance, schematicDistance, schematicTip, tipScale, coneOffset, displayedSensors, presenceSensors, fragments, constrained, focus, fullTipOpacity, slidingRack, spoolTip, selectedTip, shapedTipOpacity, start, macroUnit, macroParams});
 }
 
 // The rack of units: enclosures, spools, gate pills and the scroll arrows
@@ -487,8 +485,7 @@ function tips(c) {
     return `<g data-part="${part}">${hairStart < hairLimit ? `<path data-part="filament-hair" d="${outline.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')} Z" fill="#${color}"/>` : ''}<path d="M${base.x+dx} ${base.y+dy} L${nose.x} ${nose.y} L${base.x-dx} ${base.y-dy} Z" fill="#${color}"/>${part === 'attached-tip' ? '' : edge}</g>`;
   };
   for (const branch of parkedTips) {
-    const route=document.createElementNS('http://www.w3.org/2000/svg','path');
-    route.setAttribute('d',virtual.branchPath(branch.x));
+    const route=measurePath(virtual.branchPath(branch.x));
     svg=svg.replace(`<!--parked-tip-${branch.gate}-->`,shapedTip(s.gate_feed===undefined ? virtual.parkDistance : Math.min(virtual.parkDistance,virtual.bottom-feedFront(branch.gate)),
       s.gate_colors[branch.gate] || DEFAULT_COLOR,'parked-tip',s.hair_lengths?.[branch.gate] ?? 15,route));
   }
@@ -748,9 +745,7 @@ function cutters(c) {
 
 // Fades over the whole scene, then the markup goes into the page and retained nodes are mounted
 function finish(c) {
-  let {s, spoolRequests, gate, path, svg, length, unitSensors, constrained, focus, fullTipOpacity, slidingRack, rackArrows, rackFade, bowdenReach, enclosurePaths, excess}=c;
-  // Keep the measured filament stroke when appending markers and gears.
-  const measured = $("filament").getAttribute("stroke-dasharray");
+  let {s, spoolRequests, gate, path, svg, length, unitSensors, constrained, filamentDash, focus, fullTipOpacity, slidingRack, rackArrows, rackFade, bowdenReach, enclosurePaths, excess}=c;
   // Away from the exit, everything attached to the MMU side fades: Bowden, branches, gears, sensors, tips.
   // The mask covers only the scene above the unit enclosures (y<534, except the enclosures themselves) and the MMU side (left of the buffer's centre, clear of the toolhead labels),
   // so the rack, the toolhead and the top of the Bowden stay put.
@@ -791,7 +786,7 @@ function finish(c) {
     for (const line of excessLabel.querySelectorAll('tspan'))
       line.setAttribute('x', bounds.x + bounds.width/2);
   }
-  $("filament").setAttribute("stroke-dasharray", measured);
+  $("filament").setAttribute("stroke-dasharray", filamentDash);
   $("filament").setAttribute("opacity", fullTipOpacity);
   $("filament").setAttribute("visibility", slidingRack || spoolFill(s,gate)===0 ? "hidden" : "visible");
   const encoderTitle = host.querySelector('.encoder-offset-title');

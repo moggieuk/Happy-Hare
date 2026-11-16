@@ -15,6 +15,7 @@ the simulator.
 | `telemetry-stream.js` | The stream transport: subscribe, acknowledge, and never replay a repeated batch |
 | `telemetry.js`, `live-state.js`, `live-config.js`, `scene-state.js` | Telemetry replay and live status, both reduced to the same scene state |
 | `playback.js`, `overlay.js`, `editor.js` | Pure helpers: step timing, geometry, labels, the idle sensor overlay, editor commands |
+| `path-measure.js` | Length and point-at-length of the scene's paths, computed without the page |
 | `spool.js`, `buffer-view.js`, `spool-picker.js`, `toolhead-panel.js`, `console-log.js`, `chrome.js`, `simulator.js`, `util.js` | Spool and buffer drawing, side panels, the console, theme and tooltips, simulator calls, shared helpers |
 
 Everything outside `app.js`, `scene.js` and the small DOM modules has no DOM access and is covered by the JS tests.
