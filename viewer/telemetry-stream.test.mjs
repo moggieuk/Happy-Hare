@@ -50,3 +50,17 @@ test('the record control follows the printer stream and reflects the telemetry_m
  for (const change of [{viewMode:'live'},{offline:true},{simulator:true},{connected:false}])
   assert.equal(recordControl({...base,...change}).visible,false,JSON.stringify(change));
 });
+test('a batch repeated while it is still being accepted, or after, is not replayed twice',async()=>{
+ const calls=[];let accepted=0,release;
+ const stream=new TelemetryStream(async method=>{calls.push(method);return {stream_id:'a',delivery_id:1,records:[]};},
+  ()=>{accepted++;if(accepted===2)return new Promise(r=>release=r);},assert.fail);
+ await stream.start();
+ const slow={stream_id:'a',delivery_id:2,records:[]};
+ const first=stream.receive(slow);          // Accepting it takes longer than the sender waits
+ await stream.receive(slow);                // The repeat arrives meanwhile
+ assert.equal(accepted,2);
+ release();await first;
+ await stream.receive(slow);                // A repeat after it was acknowledged: the acknowledgement was lost
+ assert.equal(accepted,2);
+ assert.deepEqual(calls.slice(-2),['server.mmu.telemetry.ack','server.mmu.telemetry.ack']);
+});
