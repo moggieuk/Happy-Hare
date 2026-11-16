@@ -6,6 +6,19 @@ A standalone, build-free web application that animates Happy Hare's filament mov
 ES modules, CSS and one `index.html`; it talks to a Moonraker-compatible API and has no dependency on
 the simulator.
 
+## Modules
+| Module | Holds |
+|---|---|
+| `app.js` | Connection, data sources, playback state, the frame loop and the sidebar |
+| `scene.js` | The main view: `createScene(host, hooks).render(view, settings)` draws one scene state. It reads no sidebar input and writes no control. The render is a sequence of named parts (`measure`, `rack`, `tips`, `sensors`, `gears`, `nozzle` and others) sharing one frame context |
+| `controls.js`, `readout.js` | The playback controls; the macro names and the sensor and device chips |
+| `telemetry-stream.js` | The stream transport: subscribe, acknowledge, and never replay a repeated batch |
+| `telemetry.js`, `live-state.js`, `live-config.js`, `scene-state.js` | Telemetry replay and live status, both reduced to the same scene state |
+| `playback.js`, `overlay.js`, `editor.js` | Pure helpers: step timing, geometry, labels, the idle sensor overlay, editor commands |
+| `spool.js`, `buffer-view.js`, `spool-picker.js`, `toolhead-panel.js`, `console-log.js`, `chrome.js`, `simulator.js`, `util.js` | Spool and buffer drawing, side panels, the console, theme and tooltips, simulator calls, shared helpers |
+
+Everything outside `app.js`, `scene.js` and the small DOM modules has no DOM access and is covered by the JS tests.
+
 ## Data sources
 - **Live status subscription**: subscribes to Moonraker printer objects (`configfile`, `save_variables`, `mmu`, macros).
   Needs nothing from Happy Hare beyond `mmu.homing` and `mmu.config_changes`.
