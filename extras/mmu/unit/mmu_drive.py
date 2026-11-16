@@ -90,8 +90,6 @@ class MmuDrive():
         if mode not in DRIVE_MODE_NAMES:
             raise self.printer.command_error(f"Invalid MMU drive sync mode: {mode}")
 
-        self.mmu.log_trace(f"sync_mode({DRIVE_MODE_NAMES[mode]}) for {self.name}")
-
         # Before resetting the driving stepper, capture it's position
         current_pos = self._driving_stepper.get_mode_position()
 

@@ -4252,7 +4252,6 @@ class MmuFilamentMovement:
         """
 
         u = self.mmu_unit()
-        self.log_trace(f"_sync_gear_to_extruder(sync={sync})")
 
         # Protect cases where we should not sync (note type-B always has a homed selector).
         bypass_or_unknown_gate = self.gate_selected < 0
