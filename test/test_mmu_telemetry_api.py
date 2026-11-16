@@ -361,3 +361,25 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.component.upstream)
         self.assertEqual(self.component.clients, {})
         self.assertIsNone(self.api.stream.capture)
+
+    async def test_a_failing_request_or_mode_change_is_an_error_not_a_klipper_shutdown(self):
+        import extras.mmu.telemetry.stream as stream
+        subscribe = self.hh.printer.lookup_object('webhooks')._endpoints['mmu/telemetry/subscribe']
+        with patch.object(stream, 'TelemetryCapture', side_effect=RuntimeError('state unreadable')):
+            with self.assertRaises(Request.error):                # Klipper shuts down on anything else
+                subscribe(Request(args=dict(subscription_id='a', response_template={}), connection=self))
+        await self.component.subscribe(Request(connection=Browser()))
+        with patch.object(self.api.stream.capture, 'mark_record_mode', side_effect=RuntimeError('state unreadable')):
+            with self.assertRaises(self.hh.printer.command_error):
+                self.api.set_record_mode('on')
+
+    async def test_recording_without_the_moonraker_component_warns_at_once(self):
+        webhooks = self.hh.printer.lookup_object('webhooks')
+        missing = self.hh.printer.command_error("Remote method 'mmu_telemetry_wake' not registered")
+        with patch.object(webhooks, 'call_remote_method', side_effect=missing), \
+                patch.object(self.hh.mmu, 'log_warning') as warn:
+            self.api.set_record_mode('on')
+        self.assertEqual(warn.call_count, 1)
+        self.assertIn('[mmu_telemetry]', warn.call_args[0][0])
+        self.assertEqual(self.api.stream.record_mode, 'on')     # Recording starts when Moonraker connects
+

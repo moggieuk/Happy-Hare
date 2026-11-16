@@ -25,11 +25,24 @@ class TelemetryAPI:
         self.wake_timer = None
         self.stream = TelemetryStream(mmu)
         self.timer = None
+        self.error = mmu.printer.command_error
         self.webhooks = webhooks = mmu.printer.lookup_object('webhooks')
         for name in ('subscribe', 'ack', 'unsubscribe', 'record'):
-            webhooks.register_endpoint('mmu/telemetry/' + name, getattr(self, name))
+            webhooks.register_endpoint('mmu/telemetry/' + name, self._guarded(getattr(self, name)))
         mmu.printer.register_event_handler('klippy:disconnect', self.close)
         mmu.printer.register_event_handler('klippy:shutdown', self.close)
+
+    def _guarded(self, endpoint):
+        """Klipper shuts down on any other exception from an endpoint, so report a failure to the caller instead."""
+        def run(request):
+            try:
+                endpoint(request)
+            except self.error:
+                raise
+            except Exception as exc:
+                logging.exception('MMU telemetry request failed')
+                raise request.error(str(exc))
+        return run
 
     def _key(self, request):
         return request.get_client_connection(), request.get_str('subscription_id')
@@ -39,11 +52,7 @@ class TelemetryAPI:
         template = request.get_dict('response_template')
         def send(batch):
             conn.send(dict(template, params=dict(subscription_id=token, batch=batch)))
-        try:
-            batch = self.stream.subscribe(key, send, conn.is_closed)
-        except ValueError as exc:
-            raise request.error(str(exc))
-        request.send(batch)
+        request.send(self.stream.subscribe(key, send, conn.is_closed))
         if self.timer is None:
             self.timer = self.reactor.register_timer(self._tick, self.reactor.monotonic() + .25)
         else:
@@ -54,21 +63,28 @@ class TelemetryAPI:
                                     request.get_int('delivery_id')))
 
     def record(self, request):
-        try:
-            self.set_record_mode(request.get_str('mode'))
-        except ValueError as exc:
-            raise request.error(str(exc))
+        self.set_record_mode(request.get_str('mode'))
         request.send({})
 
     def set_record_mode(self, mode):
         """Moonraker persists records; ask it to subscribe if no viewer already has."""
-        if self.stream.set_record_mode(mode):
-            self.webhooks.call_remote_method('mmu_telemetry_wake')
+        try:
+            wake = self.stream.set_record_mode(mode)
+        except Exception as exc:
+            if not isinstance(exc, ValueError):
+                logging.exception('MMU telemetry could not change the recording mode')
+            raise self.error("Telemetry recording mode not changed: %s" % exc)  # Anything else would shut Klipper down
+        if wake:
+            try:
+                self.webhooks.call_remote_method('mmu_telemetry_wake')
+            except self.error:
+                self._check_wake()  # Moonraker has not registered the method: it is not running or lacks [mmu_telemetry]
+                return
             if self.wake_timer is None:
                 self.wake_timer = self.reactor.register_timer(self._check_wake)
             self.reactor.update_timer(self.wake_timer, self.reactor.monotonic() + WAKE_TIMEOUT)
 
-    def _check_wake(self, eventtime):
+    def _check_wake(self, eventtime=None):
         if self.stream.capture is None and self.stream.record_mode != 'off':
             self.mmu.log_warning("Telemetry recording is requested but Moonraker has not started it. Check that Moonraker "
                                  "is running with [mmu_telemetry] loaded; recording starts when it connects")
