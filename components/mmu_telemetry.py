@@ -31,7 +31,6 @@ class MmuTelemetry:
         self.history = TelemetryHistory(HISTORY_LIMIT)
         # What to record, and when, is decided by Klipper (MMU_TELEMETRY) and arrives in the stream
         self.mode = 'off'
-        self.segment = None  # (toolchange_id, sequence) of the command being recorded as one toolchange
         max_log_size = config.getint('max_log_size', 10485760, minval=1024)
         log_backups = config.getint('log_backups', 5, minval=1)
         logdir = Path(self.server.get_app_args()['data_path']) / 'logs'
@@ -161,7 +160,6 @@ class MmuTelemetry:
 
     def disconnected(self):
         self.upstream = None
-        self.segment = None
         self.clients.clear()
         self.history = TelemetryHistory(self.history.limit)
         self.stream_id = uuid.uuid4().hex
@@ -214,20 +212,11 @@ class MmuTelemetry:
                 if previous == 'off' and self.mode != 'off':
                     forward.append(self._checkpoint(record['sequence']))
                 elif self.mode == 'off':
-                    forward.append(record)
+                    if previous != 'off':
+                        forward.append(record)
                     continue
             if self.mode != 'off':
                 forward.append(record)
-            if self.mode == 'toolchange':
-                if event == 'toolchange':
-                    self.segment = (record.get('toolchange_id'), record['sequence'])
-                elif event == 'toolchange_end' and self.segment and self.segment[0] == record.get('toolchange_id'):
-                    # Nothing between start and end (a refused command) leaves the recording armed
-                    if record['sequence'] != self.segment[1] + 1:
-                        self.mode = 'off'
-                    self.segment = None
-            if self.mode != 'toolchange':
-                self.segment = None
         if forward:
             self._submit(forward)
         if was_recording and self.mode == 'off' and not self.clients:
@@ -248,7 +237,7 @@ class MmuTelemetry:
 
     def _recording_failed(self, reason):
         # The next recording starts clean: a new writer and recorder, not the stopped ones
-        self.mode, self.segment = 'off', None
+        self.mode = 'off'
         writer, self.writer = self.writer, None
         stale, self.recorder = self.recorder, self.recorder.fresh()
         self.server.add_warning('MMU telemetry recording stopped: %s.' % reason)

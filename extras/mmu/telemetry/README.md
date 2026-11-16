@@ -58,7 +58,7 @@ Web app:   replay -> animated steps (live)   |   load a saved JSONL (offline)
 
 **Recording.** The recorder follows the in-band `record_mode` records.
 - `on` writes a rolling `logs/mmu-telemetry.jsonl` with up to five backups (`.1` to `.5`).
-- Each `toolchange` capture is its own file, opened at the `toolchange` record and closed at its `toolchange_end`. It takes one of the five slots.
+- Each `toolchange` capture is its own file, opened at the `toolchange` record. Klipper follows the `toolchange_end` with `record_mode` `off`, which closes it. It takes one of the five slots.
 - A refused command, with nothing between its start and end, opens no file and leaves the one-toolchange arming in place.
 - Switching from `on` to `toolchange` closes the continuous file.
 - All disk work runs on a worker thread. A write failure stops recording with a warning, and recording can start again afterwards.
@@ -167,8 +167,9 @@ and the viewer only reads them.
 Files live under Moonraker's data directory as `logs/mmu-telemetry.jsonl` with up to five backups
 (`.1` to `.5`). Every capture is one slot: `on` starts a new file (rotating the previous
 one), and each `toolchange` capture is its own file, starting at the `toolchange` record with the
-checkpoint in force at that point and ending at `toolchange_end`. Switching from `on` to
-`toolchange` closes that file; after the single toolchange the mode is `off`. Arming
+checkpoint in force at that point. Klipper emits `record_mode` `off` straight after the
+`toolchange_end`, which closes the file, so consumers only follow `record_mode`. Switching from `on` to
+`toolchange` closes that file. Arming
 `toolchange` while a command is already running waits for the next command. `on` starts at a
 checkpoint of the present state, which may fall inside a move. Size rotation (`max_log_size`
 and `log_backups` in `[mmu_telemetry]`) defers until an in-flight movement pair has completed.
@@ -423,8 +424,8 @@ A new session or expired cursor requires a reset.
 
 `extras/mmu/telemetry/capture.py` owns this capture independently of the
 simulator. Create `TelemetryCapture(mmu)` on the printer thread after readiness;
-call `close()` when capture ends. Reads return detached copies. Source subscribers still receive the existing v1 callback
-records. The recorder removes their repeated schema/session fields on export.
+call `close()` when capture ends. Reads return detached copies. Source subscribers receive only
+the event fields (`move_id`, `event`, `timestamp` and the event's own); the capture adds the sequence and the session header.
 
 History is bounded. When an incremental cursor expires, `reset: true` accompanies
 a replacement session baseline with `checkpoint: true`. That baseline restores

@@ -214,6 +214,9 @@ class TestTelemetryStream(unittest.TestCase):
         self.assertEqual(self.stream.record_mode, 'toolchange')
         telemetry.toolchange_start(command='MMU_UNLOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_UNLOAD')
         self.assertEqual(self.stream.record_mode, 'off')
+        # Consumers are told in the stream, straight after the end record, so none works it out for itself
+        tail = [(r['event'], r.get('mode')) for r in self.stream.capture.read()['records'][-2:]]
+        self.assertEqual(tail, [('toolchange_end', None), ('record_mode', 'off')])
 
     def test_a_capture_made_elsewhere_reports_and_ends_the_mode_like_any_other(self):
         from extras.mmu.telemetry.capture import TelemetryCapture

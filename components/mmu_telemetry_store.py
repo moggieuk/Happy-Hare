@@ -164,7 +164,7 @@ class TelemetryRecorder:
         TelemetryHistory._advance(self.header, record)
 
     def _segment(self, record):
-        """One toolchange: its own file, opened at the start record and closed at the end record.
+        """One toolchange: its own file, opened at the start record; Klipper's record_mode off closes it.
         A start straight followed by its end (a refused command) is no segment and opens nothing."""
         if self.file is None:
             if self.pending is None:
@@ -184,9 +184,6 @@ class TelemetryRecorder:
             TelemetryHistory._advance(self.header, start)
         self._line(record)
         TelemetryHistory._advance(self.header, record)
-        if record['event'] == 'toolchange_end':
-            self.close()
-            self.mode = 'off'
 
     def close(self):
         if self.file:

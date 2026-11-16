@@ -297,13 +297,12 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
             folder = Path(directory)/'logs'
             path = folder/'motion.jsonl'
             self.component.recorder = TelemetryRecorder(path, 10000, 2)
-            self.component.segment = (1, 1)
             self.api.set_record_mode('on')
             await self.remote['mmu_telemetry_wake']()             # The folder is missing: the first write fails
             await self.component.writer.queue.join()
             for _ in range(5): await asyncio.sleep(0)
             self.assertIsNone(self.component.writer)
-            self.assertEqual((self.component.mode, self.component.segment, self.component.recorder.mode), ('off', None, 'off'))
+            self.assertEqual((self.component.mode, self.component.recorder.mode), ('off', 'off'))
             folder.mkdir()                                         # Space is back
             self.api.set_record_mode('on')
             await self.remote['mmu_telemetry_wake']()
@@ -318,11 +317,6 @@ class TestTelemetryAdapters(unittest.IsolatedAsyncioTestCase):
         await self.remote['mmu_telemetry_wake']()
         self.assertIsNone(self.component.upstream)
         self.assertIsNone(self.api.stream.capture)
-
-    async def test_disconnecting_forgets_a_segment_in_progress(self):
-        self.component.mode, self.component.segment = 'toolchange', (1, 1)
-        self.component.disconnected()
-        self.assertEqual((self.component.mode, self.component.segment), ('off', None))
 
     async def test_a_recording_moonraker_never_starts_warns_the_user_once(self):
         from components.mmu_telemetry_store import TelemetryRecorder

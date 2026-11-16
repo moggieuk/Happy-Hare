@@ -70,7 +70,7 @@ class TestTelemetryStore(unittest.TestCase):
             recorder = TelemetryRecorder(path, 10000, 3, 'toolchange')
             recorder.write([HEADER, event(1, 'state_delta', changes=[dict(path=['parameter'],value=50)]), event(2),
                             event(3, 'toolchange'), event(4), event(5, 'state_delta', changes=[dict(path=['parameter'],value=60)]),
-                            event(6, 'toolchange_end'), event(7)])
+                            event(6, 'toolchange_end'), event(7, 'record_mode', mode='off'), event(8)])  # Klipper says when it is over
             lines = [json.loads(line) for line in path.read_text().splitlines()]
             self.assertEqual([r['event'] for r in lines], ['session', 'toolchange', 'cut', 'state_delta', 'toolchange_end'])
             self.assertEqual(lines[0]['state'], {'parameter': 50})              # Known state at the start of the command
@@ -86,7 +86,7 @@ class TestTelemetryStore(unittest.TestCase):
             recorder.write([HEADER, event(1, 'toolchange'), event(2, 'toolchange_end')])
             self.assertFalse(path.exists())
             self.assertEqual(recorder.mode, 'toolchange')
-            recorder.write([event(3, 'toolchange'), event(4), event(5, 'toolchange_end')])
+            recorder.write([event(3, 'toolchange'), event(4), event(5, 'toolchange_end'), event(6, 'record_mode', mode='off')])
             self.assertEqual([r['event'] for r in map(json.loads, path.read_text().splitlines())],
                              ['session', 'toolchange', 'cut', 'toolchange_end'])
             self.assertEqual(recorder.mode, 'off')

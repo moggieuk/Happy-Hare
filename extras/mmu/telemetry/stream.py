@@ -108,6 +108,7 @@ class TelemetryStream:
     def _toolchange_ended(self):
         if self.record_mode == 'toolchange':
             self.record_mode = 'off'
+            self.capture.mark_record_mode('off')  # In the stream, so no consumer works out the end for itself
 
     def set_record_mode(self, mode):
         """Returns True when nobody is subscribed yet, so Moonraker must be asked to subscribe."""
@@ -123,6 +124,8 @@ class TelemetryStream:
         """The source detached a capture that failed: start a new one and send every consumer a fresh baseline."""
         self.capture.close()
         self._new_capture()
+        if self.record_mode == 'off':
+            self.capture.mark_record_mode('off')  # The failed capture may have lost the record that said so
         self.stream_id = uuid.uuid4().hex
         for client in self.clients.values():
             client.update(after=None, inflight=None)

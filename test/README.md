@@ -904,7 +904,7 @@ The test files, grouped by what they're about:
 | `test_mmu_selector_telemetry.py` | 6 | selector motion, servo and homing records |
 | `test_mmu_telemetry_capture.py` | 27 | replay state, state deltas, the rolling baseline, the settle read after the last event |
 | `test_mmu_telemetry_stream.py` | 27 | acknowledged delivery, folding acknowledged records, resend after a lost ack, replacing a failed capture, the recording mode |
-| `test_mmu_telemetry_api.py` | 19 | the Klipper webhook adapter and the Moonraker component together, including Klipper-driven recording |
+| `test_mmu_telemetry_api.py` | 18 | the Klipper webhook adapter and the Moonraker component together, including Klipper-driven recording |
 | `test_mmu_telemetry_store.py` | 12 | Moonraker-side history, on and one-toolchange recording |
 | `test_mmu_dev_test.py` | 25 | every `_MMU_TEST` developer probe — breadth, not depth |
 
