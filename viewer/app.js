@@ -804,7 +804,7 @@ const telemetryStream=new TelemetryStream(rpc, async data=>{
     parameterGate=selectedGate;
     const unit=latest.units?.indexOf(latest.unit) ?? -1;
     if (unit>=0 && $('unit').value!==String(unit)) {
-      $('unit').value=String(unit); await refresh().catch(error=>message(error.message,true));
+      $('unit').value=String(unit); refresh().catch(error=>message(error.message,true));  // Not awaited: the batch must be acknowledged promptly
     }
   }
   return sourceRecords.length>7000;
