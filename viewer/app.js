@@ -7,7 +7,7 @@ import {parameterCommand, macroCommand, editorParameters, macroCatalog, editorMa
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
 import {selectorNotice, orderedSteps, homingHold, nozzleArrivalTime, playbackFrame, isInternalUpdate, changeLines, visibleSteps, toolchangeIndex, annotatedStep, interpolate, duration, CommandHistory, traceText, homingPulse, configurationLabel} from './playback.js';
-import {$, options} from './util.js';
+import {$, options, syncChildren} from './util.js';
 import {consoleLine, consoleEndsWith, scrollConsoleToEnd} from './console-log.js';
 import {createToolheadPanel} from './toolhead-panel.js';
 import {initSpoolPicker} from './spool-picker.js';
@@ -582,6 +582,62 @@ function renderScene() {
     })});
   renderDevices(view.state);
 }
+// What a trace row shows, as one string: a row is rebuilt only when this changes
+function traceRowKey(e, showDetails, compressed) {
+  return [showDetails, compressed && e.fast_bowden, traceText(e), e.label || e.telemetry?.start?.label, e.origin,
+    Boolean(e.telemetry?.outcome), (e.changes || []).map(c=>`${c.name}=${JSON.stringify(c.after)}`).join()].join('|');
+}
+let traceRows=new Map();
+function traceRow(e, {showDetails, records, expanded}) {
+  const internal = isInternalUpdate(e);
+  const row = document.createElement(internal ? 'details' : 'div');
+  row.dataset.seq = e.seq;
+  const b = document.createElement(internal ? 'summary' : 'button');
+  if (!internal) { row.className='trace-event'; row.append(b); }
+  if (internal) { row.className = 'trace-internal'; row.open = expanded.has(String(e.seq)); }
+  const [sequence, time, type, ...detail] = traceText(e).split(' · ');
+  const pill = document.createElement('span');
+  pill.className = 'trace-type';
+  pill.dataset.type = internal ? 'internal' : type;
+  pill.textContent = internal ? 'internal' : type;
+  b.append(`${sequence} · ${time} · `, pill);
+  const reason = e.label || e.telemetry?.start?.label;
+  if (e.kind === 'movement' && reason) {
+    const heading = document.createElement('strong');
+    heading.textContent = reason;
+    const details = document.createElement('span');
+    details.className = 'trace-details';
+    details.textContent = detail.join(' · ');
+    b.append(' · ', heading, details);
+  } else if (internal) {
+    const name = e.telemetry?.event;
+    b.append(' · ' + (name && name !== 'state_delta' ? name.replaceAll('_',' ') : 'State update'));
+    const details = document.createElement('pre');
+    details.textContent = e.telemetry?.changes ? changeLines(e.telemetry.changes) : JSON.stringify(e.telemetry || e.state, null, 2);
+    row.append(b, details);
+  } else b.append(` · ${detail.join(' · ')}`);
+  // Detailed provenance stays in the tooltip.
+  b.dataset.tooltip = [e.origin,
+    e.fast_bowden && $('compress-bowden').checked ? 'Compressed Bowden playback' : '',
+    ...(e.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`)]
+    .filter(Boolean).join(' · ');
+  if (!internal) {
+    b.onclick = () => seek(store.events.findIndex(item => item.seq === e.seq));
+    if (showDetails) {
+      const details=document.createElement('details'), summary=document.createElement('summary'), payload=document.createElement('pre');
+      details.className='trace-telemetry'; details.dataset.seq=e.seq;
+      details.open=expanded.has(String(e.seq));
+      summary.textContent='Telemetry details';
+      const telemetry=e.kind === 'movement' ? {
+        start:records.get(e.telemetry?.start?.sequence) || e.telemetry?.start,
+        outcome:records.get(e.telemetry?.outcome?.sequence) || e.telemetry?.outcome
+      } : records.get(e.seq) || e.telemetry || e.changes || {event:e.kind,label:e.label};
+      payload.textContent=JSON.stringify(telemetry,null,2);
+      details.append(summary,payload); row.append(details);
+    }
+  }
+  return row;
+}
 function renderTrace() {
   const markers=timelineMarkers(store.events);
   $('toolchange-ticks').closest('.timeline-control').classList.toggle('has-labels',markers.some(marker=>marker.label));
@@ -598,60 +654,16 @@ function renderTrace() {
   const view = $("trace"),
     scroll = view.scrollTop;
   const expanded = new Set([...view.querySelectorAll('details[open]')].map(row=>row.dataset.seq));
-  const showDetails=$('show-internal').checked;
+  const showDetails=$('show-internal').checked, compressed=$('compress-bowden').checked;
   const records=new Map(showDetails ? store.sourceRecords.map(record=>[record.sequence,record]) : []);
-  view.replaceChildren(
-    ...($('show-internal').checked ? orderedSteps(store.rawEvents) : store.events).map(e => {
-      const internal = isInternalUpdate(e);
-      const row = document.createElement(internal ? 'details' : 'div');
-      row.dataset.seq = e.seq;
-      const b = document.createElement(internal ? 'summary' : 'button');
-      if (!internal) { row.className='trace-event'; row.append(b); }
-      if (internal) { row.className = 'trace-internal'; row.open = expanded.has(String(e.seq)); }
-      const [sequence, time, type, ...detail] = traceText(e).split(' · ');
-      const pill = document.createElement('span');
-      pill.className = 'trace-type';
-      pill.dataset.type = internal ? 'internal' : type;
-      pill.textContent = internal ? 'internal' : type;
-      b.append(`${sequence} · ${time} · `, pill);
-      const reason = e.label || e.telemetry?.start?.label;
-      if (e.kind === 'movement' && reason) {
-        const heading = document.createElement('strong');
-        heading.textContent = reason;
-        const details = document.createElement('span');
-        details.className = 'trace-details';
-        details.textContent = detail.join(' · ');
-        b.append(' · ', heading, details);
-      } else if (internal) {
-        const name = e.telemetry?.event;
-        b.append(' · ' + (name && name !== 'state_delta' ? name.replaceAll('_',' ') : 'State update'));
-        const details = document.createElement('pre');
-        details.textContent = e.telemetry?.changes ? changeLines(e.telemetry.changes) : JSON.stringify(e.telemetry || e.state, null, 2);
-        row.append(b, details);
-      } else b.append(` · ${detail.join(' · ')}`);
-      // Detailed provenance stays in the tooltip.
-      b.dataset.tooltip = [e.origin,
-        e.fast_bowden && $('compress-bowden').checked ? 'Compressed Bowden playback' : '',
-        ...(e.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`)]
-        .filter(Boolean).join(' · ');
-      if (!internal) {
-        b.onclick = () => seek(store.events.findIndex(item => item.seq === e.seq));
-        if (showDetails) {
-          const details=document.createElement('details'), summary=document.createElement('summary'), payload=document.createElement('pre');
-          details.className='trace-telemetry'; details.dataset.seq=e.seq;
-          details.open=expanded.has(String(e.seq));
-          summary.textContent='Telemetry details';
-          const telemetry=e.kind === 'movement' ? {
-            start:records.get(e.telemetry?.start?.sequence) || e.telemetry?.start,
-            outcome:records.get(e.telemetry?.outcome?.sequence) || e.telemetry?.outcome
-          } : records.get(e.seq) || e.telemetry || e.changes || {event:e.kind,label:e.label};
-          payload.textContent=JSON.stringify(telemetry,null,2);
-          details.append(summary,payload); row.append(details);
-        }
-      }
-      return row;
-    }),
-  );
+  // Most steps are unchanged from one batch to the next: keep their rows and build only new or changed ones
+  const rows=new Map();
+  for (const e of showDetails ? orderedSteps(store.rawEvents) : store.events) {
+    const key=traceRowKey(e, showDetails, compressed), kept=traceRows.get(e.seq);
+    rows.set(e.seq, kept?.key===key ? kept : {key, row:traceRow(e, {showDetails, records, expanded})});
+  }
+  traceRows=rows;
+  syncChildren(view, [...rows.values()].map(entry=>entry.row));
   view.scrollTop = scroll;
   followTrace();
 }

@@ -34,3 +34,12 @@ export function options(node, items) {
     }),
   );
 }
+
+// Make `parent` hold exactly `nodes`, in order, touching only what differs: nodes already in place stay where they are
+export function syncChildren(parent, nodes) {
+  const wanted=new Set(nodes);
+  for (const child of [...parent.children]) if (!wanted.has(child)) child.remove();
+  nodes.forEach((node, index)=>{
+    if (parent.children[index]!==node) parent.insertBefore(node, parent.children[index] || null);
+  });
+}
