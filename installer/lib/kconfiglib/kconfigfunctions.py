@@ -97,7 +97,9 @@ def _device_choice(device, empty, prefix, suffix=""):
     basename = os.path.basename(device.rstrip("/"))
     if not basename or basename == ".":
         return empty
-    return prefix + basename.replace("-", "_").upper() + suffix
+    # Symbol names end up as shell variables when install.sh sources the saved config,
+    # so anything but [A-Z0-9_] (e.g. the dots in a "..._V1_1.1.1-if00" serial) must go
+    return prefix + re.sub(r"[^A-Z0-9_]", "_", basename.upper()) + suffix
 
 
 def mmu_serial_choice(_kconf, _name, device):
