@@ -62,6 +62,9 @@ def simulator_stream(mmu, capture):
         def _idle(self):
             pass
 
+        def _fold(self):
+            pass  # Acknowledged records stay, for the next browser; the capture's own limit bounds them
+
         def _renew_capture(self):
             pass
 

@@ -119,6 +119,15 @@ class TestSimulatorBridge(unittest.TestCase):
             stream.unsubscribe('browser')
             self.assertIs(stream.capture, bridge.telemetry_capture)   # Still recording for whoever connects next
             self.assertIn(bridge.telemetry_capture.on_event, telemetry.listeners)
+            # A browser that acknowledged everything and left (a reload) does not take the history with it
+            telemetry.state('cut')
+            first = stream.subscribe('browser', lambda batch: None, lambda: False)
+            stream.ack('browser', first['stream_id'], first['delivery_id'])
+            stream.unsubscribe('browser')
+            again = stream.subscribe('reloaded', lambda batch: None, lambda: False)
+            self.assertFalse(again['records'][0].get('checkpoint'))
+            self.assertEqual([r['sequence'] for r in again['records']], [r['sequence'] for r in first['records']])
+            stream.unsubscribe('reloaded')
             stream.set_record_mode('toolchange')
             telemetry.toolchange_start(command='MMU_LOAD'); telemetry.state('cut'); telemetry.toolchange_end(command='MMU_LOAD')
             self.assertEqual(stream.record_mode, 'off')
