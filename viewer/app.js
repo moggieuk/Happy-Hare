@@ -16,23 +16,36 @@ import {renderControls} from './controls.js';
 import {renderMacros, renderSensors, renderDevices} from './readout.js';
 import './chrome.js';
 const sim = simulatorApi(rpc);
+// Everything the app knows: one object, so the views can be handed it (or watch it) instead of sharing module variables
+const store = {
+  // Connection
+  socket: null, reconnectTimer: null, connectionGeneration: 0, serial: 0, pending: new Map(), busy: false,
+  connectionUrl: location.protocol === 'file:' ? 'http://localhost:7125' : location.origin,
+  setup: null,                                  // What the simulator offers, or the machine built from a printer's status
+  // Which source is shown
+  viewMode: 'live', modeChosen: false, viewGeneration: 0, offline: false,
+  // Live status subscription
+  liveState: new LiveState(), liveTarget: null, liveFrom: null, liveStart: 0, subscriptionGeneration: 0,
+  statusSensors: null, statusRecordMode: null, overlayCache: {key: '', state: null},
+  // Telemetry: the records, their replay and the steps made from them
+  sourceRecords: [], sourceReplay: new TelemetryReplay(), rawEvents: [], events: [], session: null, parameterGate: null,
+  // Playback position and animation
+  live: true, cursor: 0, displayed: null, playing: null, played: 0, paused: false, pauseAfterStep: false,
+  replayingHistory: false, sensorPulse: null, nextStepAt: 0, sceneDirty: false,
+};
 /* Copyright (C) 2022-2026 Paul Morgan. GPLv3. */
-let modeChosen=false, viewGeneration=0;
-let statusSensors=null, statusRecordMode=null, overlayCache={key:'',state:null};
-let viewMode='live', liveState=new LiveState(), liveTarget=null, liveFrom=null, liveStart=0, subscriptionGeneration=0;
-let offline = false, sourceRecords = [], sourceReplay = new TelemetryReplay();
 // The Connection panel's status: a dot coloured by `state` (connected, pending, warning, offline or disconnected) and a label.
 function setConnection(text, state) {
   $('connection').textContent = text;
   $('connection').dataset.state = state;
 }
 function showConnection() {
-  const kind = setup?.connection_kind;
-  if (socket?.readyState !== 1) return setConnection('Disconnected · retrying', 'disconnected');
+  const kind = store.setup?.connection_kind;
+  if (store.socket?.readyState !== 1) return setConnection('Disconnected · retrying', 'disconnected');
   setConnection(kind === 'simulator' ? 'Connected to the simulator' : kind === 'live_machine' ? 'Connected to printer' : 'Connected · unknown source', 'connected');
 }
 function renderRecordControl() {
-  const {visible,value}=recordControl({viewMode,offline,simulator:isSimulator(),connected:socket?.readyState===1,mode:statusRecordMode});
+  const {visible,value}=recordControl({viewMode:store.viewMode,offline:store.offline,simulator:isSimulator(),connected:store.socket?.readyState===1,mode:store.statusRecordMode});
   $('record-row').hidden=!visible;
   if (visible) $('record-mode').value=value;
 }
@@ -40,31 +53,31 @@ $('record-mode').onchange=()=>rpc('printer.gcode.script',{script:`MMU_TELEMETRY 
   .catch(error=>{ message(error.message,true); renderRecordControl(); });
 function sourceMode() {
   renderRecordControl();
-  toolheadPanel.element.hidden=offline || socket?.readyState !== 1 || toolheadPanel.element.dataset.available !== 'true';
-  $('recording-option').hidden=!offline;
-  $('view-mode').value=offline ? 'recording' : viewMode;
-  $('sidebar-playback').hidden=viewMode==='live';
-  $('trace').closest('.card').hidden=viewMode==='live';
-  $('recording-name').hidden = !offline;
-  $('connect-printer').textContent = offline ? 'Reconnect' : 'Connect';
-  $('save-motion').disabled = viewMode==='live' || offline;
-  $('simulator-controls').hidden = !isSimulator() || offline;
-  $('runtime-parameters').hidden = offline;
+  toolheadPanel.element.hidden=store.offline || store.socket?.readyState !== 1 || toolheadPanel.element.dataset.available !== 'true';
+  $('recording-option').hidden=!store.offline;
+  $('view-mode').value=store.offline ? 'recording' : store.viewMode;
+  $('sidebar-playback').hidden=store.viewMode==='live';
+  $('trace').closest('.card').hidden=store.viewMode==='live';
+  $('recording-name').hidden = !store.offline;
+  $('connect-printer').textContent = store.offline ? 'Reconnect' : 'Connect';
+  $('save-motion').disabled = store.viewMode==='live' || store.offline;
+  $('simulator-controls').hidden = !isSimulator() || store.offline;
+  $('runtime-parameters').hidden = store.offline;
   document.querySelectorAll('#simulator-controls input, #simulator-controls select, #simulator-controls button, #runtime-parameters input, #runtime-parameters select, #runtime-parameters button, #command-form input, #command-form button, [data-simulator-config] input, [data-simulator-config] select, [data-simulator-config] button')
-    .forEach(node=>node.disabled=offline);
-  $('live').dataset.tooltip = offline ? 'End of recording' : 'End, follow stream';
+    .forEach(node=>node.disabled=store.offline);
+  $('live').dataset.tooltip = store.offline ? 'End of recording' : 'End, follow stream';
   $('live').setAttribute('aria-label', $('live').dataset.tooltip);
   renderWarning();
 }
 
 function renderWarning(warnings=[], notice=null) {
-  const simulatorLive=viewMode==='live' && !offline && socket?.readyState===1 && isSimulator();
+  const simulatorLive=store.viewMode==='live' && !store.offline && store.socket?.readyState===1 && isSimulator();
   const text=simulatorLive
     ? 'Simulator subscriptions may skip movement updates. Select Telemetry stream for complete movement animation.'
-    : viewMode!=='playback' ? ''
+    : store.viewMode!=='playback' ? ''
     : [notice, warnings.length ? 'Displayed tip adjusted to sensor readings: '+warnings.join('; ') : ''].filter(Boolean).join('\n');
   // A notice alone is informational (blue, "i"); anything that is a warning keeps the warning look
-  const informational=Boolean(notice) && !warnings.length && viewMode==='playback';
+  const informational=Boolean(notice) && !warnings.length && store.viewMode==='playback';
   $('filament-warning').dataset.kind=informational ? 'notice' : 'warning';
   $('filament-warning').querySelector('.warning-bang').textContent=informational ? 'i' : '!';
   $('filament-warning').hidden=!text;
@@ -72,39 +85,28 @@ function renderWarning(warnings=[], notice=null) {
 }
 
 const RPC_TIMEOUT_MS = 15000;
-let socket, reconnectTimer, connectionGeneration=0,
-  connectionUrl=location.protocol === 'file:' ? 'http://localhost:7125' : location.origin,
-  serial = 0,
-  pending = new Map(),
-  events = [],
-  rawEvents = [],
-  session = null,
-  live = true,
-  cursor = 0,
-  setup = null,
-  busy = false;
 function message(text, error = false) {
   $("message").textContent = text;
   $("message").classList.toggle("error", error);
 }
-function isSimulator() { return setup?.connection_kind === 'simulator'; }
+function isSimulator() { return store.setup?.connection_kind === 'simulator'; }
 function rpc(method, params = {}) {
   return new Promise((resolve, reject) => {
-    if (offline) return reject(Error("Select a live source before changing the printer"));
-    if (socket?.readyState !== 1) return reject(Error("Console disconnected"));
-    const id = ++serial;
+    if (store.offline) return reject(Error("Select a live source before changing the printer"));
+    if (store.socket?.readyState !== 1) return reject(Error("Console disconnected"));
+    const id = ++store.serial;
     // A lost reply must not hold the viewer forever; only G-code is allowed to take as long as it takes.
     const timer = method === 'printer.gcode.script' ? null
-      : setTimeout(() => { if (pending.delete(id)) reject(Error(`${method} timed out`)); }, RPC_TIMEOUT_MS);
+      : setTimeout(() => { if (store.pending.delete(id)) reject(Error(`${method} timed out`)); }, RPC_TIMEOUT_MS);
     const done = (settle) => (value) => { clearTimeout(timer); settle(value); };
-    pending.set(id, { resolve: done(resolve), reject: done(reject) });
-    socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+    store.pending.set(id, { resolve: done(resolve), reject: done(reject) });
+    store.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
   });
 }
 // `report` shows a failure in the status line too; the command box leaves that to the console, which already has it.
 async function action(fn, report = true) {
-  if (busy) return;
-  busy = true;
+  if (store.busy) return;
+  store.busy = true;
   const disabled = [...document.querySelectorAll("aside button, #send")].filter((b) => !b.disabled);
   disabled.forEach((b) => (b.disabled = true));
   try {
@@ -113,52 +115,52 @@ async function action(fn, report = true) {
     if (report) message(e.message, true);
     if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error');
   } finally {
-    busy = false;
+    store.busy = false;
     disabled.forEach((b) => (b.disabled = false));
-    if (offline) sourceMode();
+    if (store.offline) sourceMode();
   }
 }
 function connect() {
-  const generation=++connectionGeneration;
-  const endpoint=new URL(connectionUrl);
+  const generation=++store.connectionGeneration;
+  const endpoint=new URL(store.connectionUrl);
   endpoint.protocol=endpoint.protocol==='https:' || endpoint.protocol==='wss:' ? 'wss:' : 'ws:';
   endpoint.pathname='/websocket'; endpoint.search=''; endpoint.hash='';
-  socket = new WebSocket(endpoint);
-  socket.onopen = () => {
-    if (generation!==connectionGeneration) return;
-    setup=null;
-    liveState=new LiveState(); statusSensors=null; statusRecordMode=null;
+  store.socket = new WebSocket(endpoint);
+  store.socket.onopen = () => {
+    if (generation!==store.connectionGeneration) return;
+    store.setup=null;
+    store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null;
     sourceMode();
-    if (offline) return;
+    if (store.offline) return;
     setConnection("Connected · identifying source…", "pending");
     initializeConnection().catch((e) => message(e.message, true));
   };
-  socket.onmessage = (e) => {
-    if (generation!==connectionGeneration) return;
-    if (offline) return;
+  store.socket.onmessage = (e) => {
+    if (generation!==store.connectionGeneration) return;
+    if (store.offline) return;
     const data = JSON.parse(e.data);
-    if (pending.has(data.id)) {
-      const p = pending.get(data.id);
-      pending.delete(data.id);
+    if (store.pending.has(data.id)) {
+      const p = store.pending.get(data.id);
+      store.pending.delete(data.id);
       data.error ? p.reject(Error(data.error.message)) : p.resolve(data.result);
     } else if (data.method === 'notify_mmu_telemetry') {
       telemetryStream.receive(data.params[0]);
     } else if (data.method === 'notify_status_update') {
-      if (viewMode==='live') acceptLive(data.params[0],data.params[1]);
+      if (store.viewMode==='live') acceptLive(data.params[0],data.params[1]);
       else {
         const mmu=data.params[0].mmu;
-        if (mmu?.sensors) { statusSensors=mmu.sensors; draw(); }
-        if (mmu && 'telemetry_mode' in mmu) { statusRecordMode=mmu.telemetry_mode; renderRecordControl(); }
+        if (mmu?.sensors) { store.statusSensors=mmu.sensors; draw(); }
+        if (mmu && 'telemetry_mode' in mmu) { store.statusRecordMode=mmu.telemetry_mode; renderRecordControl(); }
       }
     } else if (['notify_klippy_ready','notify_klippy_shutdown','notify_klippy_disconnected'].includes(data.method)) {
-      if (offline) return;
+      if (store.offline) return;
       if (data.method==='notify_klippy_ready') reloadEditor();
-      if (viewMode!=='live') {
+      if (store.viewMode!=='live') {
         telemetryStream.stop(false);
         if (data.method==='notify_klippy_ready') startStream().catch(e=>message(e.message,true));
         return;
       }
-      liveState=new LiveState(); statusSensors=null; statusRecordMode=null; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
+      store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null; store.liveTarget=null; store.displayed=null; store.playing=null; store.sensorPulse=null;
       if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
       else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
     } else if (data.method === "notify_gcode_command") {
@@ -167,39 +169,39 @@ function connect() {
       consoleLine(data.params[0]);
     }
   };
-  socket.onclose = () => {
-    if (generation!==connectionGeneration) return;
-    subscriptionGeneration++;
+  store.socket.onclose = () => {
+    if (generation!==store.connectionGeneration) return;
+    store.subscriptionGeneration++;
     telemetryStream.stop(false);
-    statusSensors=null; statusRecordMode=null;
-    if (liveTarget) { liveTarget.homing=null; liveTarget.espoolers={}; }
-    if (viewMode==='live' && displayed) displayed.espoolers={};
+    store.statusSensors=null; store.statusRecordMode=null;
+    if (store.liveTarget) { store.liveTarget.homing=null; store.liveTarget.espoolers={}; }
+    if (store.viewMode==='live' && store.displayed) store.displayed.espoolers={};
     draw();
     sourceMode();
-    if (!offline) setConnection("Disconnected · retrying", "disconnected");
-    pending.forEach((p) => p.reject(Error("Console disconnected")));
-    pending.clear();
-    reconnectTimer=setTimeout(connect, 1500);
+    if (!store.offline) setConnection("Disconnected · retrying", "disconnected");
+    store.pending.forEach((p) => p.reject(Error("Console disconnected")));
+    store.pending.clear();
+    store.reconnectTimer=setTimeout(connect, 1500);
   };
 }
 async function initializeConnection() {
-  const generation=connectionGeneration;
+  const generation=store.connectionGeneration;
   editorStatic=null;
   const probe=await detectConnection(rpc,Number($('unit').value || 0));
-  if (generation!==connectionGeneration || socket?.readyState!==1) return;
+  if (generation!==store.connectionGeneration || store.socket?.readyState!==1) return;
   if (probe.connection_kind==='live_machine') {
-    setup=probe;
+    store.setup=probe;
     if ($('command').value==='MMU_LOAD') $('command').value=''; // The simulator's default must not be one Enter away on a printer
     setConnection('Connected to printer', 'connected'); sourceMode();
     await refreshLiveEditor().catch(error=>message(error.message,true));
   } else await refresh(probe);
-  if (generation!==connectionGeneration || offline) return;
-  if (!modeChosen && isSimulator()) await changeView('playback');
-  else if (viewMode==='live') await subscribeLive();
+  if (generation!==store.connectionGeneration || store.offline) return;
+  if (!store.modeChosen && isSimulator()) await changeView('playback');
+  else if (store.viewMode==='live') await subscribeLive();
   else await startStream();
 }
 async function subscribeLive() {
-  const generation=++subscriptionGeneration;
+  const generation=++store.subscriptionGeneration;
   const {objects}=await rpc('printer.objects.list');
   // Startup configuration and calibration come from Klipper itself; later edits arrive in mmu.config_changes.
   const startup=(await rpc('printer.objects.query',{objects:{configfile:['settings'],save_variables:['variables']}})).status;
@@ -214,62 +216,62 @@ async function subscribeLive() {
     'filament_cut_fragment','filament_remaining_color'];
   wanted.save_variables=['variables'];
   const initial=await rpc('printer.objects.subscribe',{objects:wanted});
-  liveState.accept({configfile:startup.configfile},initial.eventtime-1);
-  if (viewMode==='live' && generation===subscriptionGeneration) acceptLive(initial.status,initial.eventtime);
+  store.liveState.accept({configfile:startup.configfile},initial.eventtime-1);
+  if (store.viewMode==='live' && generation===store.subscriptionGeneration) acceptLive(initial.status,initial.eventtime);
 }
 function acceptLive(delta,time) {
-  const next=liveState.accept(delta,time);
-  if (!next) { if (!liveTarget) $('mode').textContent='Live view · Waiting for MMU configuration'; return; }
-  const previous=liveTarget;
-  if (setup?.connection_kind==='live_machine' || liveState.objects.configfile) toolheadPanel.show(toolheadObjects(liveState.objects));
+  const next=store.liveState.accept(delta,time);
+  if (!next) { if (!store.liveTarget) $('mode').textContent='Live view · Waiting for MMU configuration'; return; }
+  const previous=store.liveTarget;
+  if (store.setup?.connection_kind==='live_machine' || store.liveState.objects.configfile) toolheadPanel.show(toolheadObjects(store.liveState.objects));
   if (previous?.homing && !next.homing) {
     const name=previous.homing.endstops.find(n=>next.sensors[n]?.state===previous.homing.triggered);
-    if (name) sensorPulse={sensor:name,reverse:!previous.homing.triggered,start:animationNow()};
+    if (name) store.sensorPulse={sensor:name,reverse:!previous.homing.triggered,start:animationNow()};
   }
-  liveFrom=displayed;
-  const sameGate=liveFrom?.unit===next.unit && liveFrom?.gate===next.gate && next.gate>=0;
-  const distance=sameGate ? next.tips[next.gate]-liveFrom.tips[next.gate] : 0;
-  next.motors={gear:(liveFrom?.motors.gear || 0)+(next.mmu_gripped ? distance : 0),
-    extruder:(liveFrom?.motors.extruder || 0)+(next.synced || next.filament_pos>=6 ? distance : 0)};
-  liveTarget=next; liveStart=animationNow();
+  store.liveFrom=store.displayed;
+  const sameGate=store.liveFrom?.unit===next.unit && store.liveFrom?.gate===next.gate && next.gate>=0;
+  const distance=sameGate ? next.tips[next.gate]-store.liveFrom.tips[next.gate] : 0;
+  next.motors={gear:(store.liveFrom?.motors.gear || 0)+(next.mmu_gripped ? distance : 0),
+    extruder:(store.liveFrom?.motors.extruder || 0)+(next.synced || next.filament_pos>=6 ? distance : 0)};
+  store.liveTarget=next; store.liveStart=animationNow();
   if (isSimulator() && previous?.unit!==next.unit) {
     const unit=next.units.indexOf(next.unit);
     if (unit>=0 && $('unit').value!==String(unit)) {
       $('unit').value=String(unit); refresh().catch(error=>message(error.message,true));
     }
   }
-  live=true; paused=false; playing=null; session='subscription';
+  store.live=true; store.paused=false; store.playing=null; store.session='subscription';
   draw();
 }
 // The near-live stream shows the printer's event stream; sensor readings are overlaid while it is idle, and the
 // recording mode (a status variable) drives the Record control.
 async function startStream() {
-  const generation=viewGeneration;
+  const generation=store.viewGeneration;
   const mmu=(await rpc('printer.objects.subscribe',{objects:{mmu:['sensors','telemetry_mode']}})).status.mmu;
-  if (generation!==viewGeneration || viewMode!=='playback' || offline) return;
-  statusSensors=mmu?.sensors || null; statusRecordMode=mmu?.telemetry_mode ?? null;
+  if (generation!==store.viewGeneration || store.viewMode!=='playback' || store.offline) return;
+  store.statusSensors=mmu?.sensors || null; store.statusRecordMode=mmu?.telemetry_mode ?? null;
   renderRecordControl();
   await telemetryStream.start();
 }
 async function changeView(mode) {
-  const generation=++viewGeneration;
+  const generation=++store.viewGeneration;
   await telemetryStream.stop();
-  subscriptionGeneration++;
-  viewMode=mode; offline=false; playing=null; displayed=null; sensorPulse=null;
-  events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay();
-  liveTarget=null; liveFrom=null; liveState=new LiveState(); statusSensors=null; statusRecordMode=null;
-  live=true; paused=false; replayingHistory=false;
+  store.subscriptionGeneration++;
+  store.viewMode=mode; store.offline=false; store.playing=null; store.displayed=null; store.sensorPulse=null;
+  store.events=[]; store.rawEvents=[]; store.sourceRecords=[]; store.sourceReplay=new TelemetryReplay();
+  store.liveTarget=null; store.liveFrom=null; store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null;
+  store.live=true; store.paused=false; store.replayingHistory=false;
   $('scene').replaceChildren();
   $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : isSimulator() ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
   sourceMode(); showConnection(); renderTrace();
-  if (socket?.readyState!==1 || generation!==viewGeneration) return;
+  if (store.socket?.readyState!==1 || generation!==store.viewGeneration) return;
   // A reconnect while a recording was loaded left the connection unidentified.
-  if (!setup) return initializeConnection();
+  if (!store.setup) return initializeConnection();
   if (mode==='live') await subscribeLive();
   else await startStream();
 }
 $('view-mode').onchange=()=>{
-  modeChosen=true;
+  store.modeChosen=true;
   changeView($('view-mode').value).catch(e=>message(e.message,true));
 };
 // A printer has no simulator RPC: the editor lists come from configfile, mmu.config_changes and the
@@ -293,32 +295,32 @@ async function refreshLiveEditor() {
   const names=[].concat(configfile.settings.mmu_machine?.units || []);
   const macroObjects=Object.fromEntries([...new Set(catalog.map(([macro])=>`gcode_macro ${macro}`))].map(name=>[name,null]));
   const {status:macros}=await rpc('printer.objects.query',{objects:macroObjects});
-  setup={...setup,units:names,parameters:editorParameters(state,unit),macro_parameters:editorMacroParameters(catalog,macros)};
+  store.setup={...store.setup,units:names,parameters:editorParameters(state,unit),macro_parameters:editorMacroParameters(catalog,macros)};
   options($('unit'),names.map((name,i)=>[i,name]));
   $('unit').value=String(unit);
   filter();
   toolheadPanel.show(toolheadObjects(state));
 }
 async function refresh(probed) {
-  if (offline) return;
-  if (setup?.connection_kind==='live_machine') return refreshLiveEditor();
-  setup = probed || await sim.setup(Number($("unit").value || 0));
-  if (offline) return;
+  if (store.offline) return;
+  if (store.setup?.connection_kind==='live_machine') return refreshLiveEditor();
+  store.setup = probed || await sim.setup(Number($("unit").value || 0));
+  if (store.offline) return;
   sourceMode();
   showConnection();
   const unit = $("unit").value;
   options(
     $("unit"),
-    setup.units.map((name, i) => [i, name]),
+    store.setup.units.map((name, i) => [i, name]),
   );
   $("unit").value = unit || "0";
   options(
     $("profiles"),
-    setup.profiles.map((p) => [p.name, p.name + " · " + p.description]),
+    store.setup.profiles.map((p) => [p.name, p.name + " · " + p.description]),
   );
-  if (setup.profiles.some((p) => p.name === setup.profile))
-    $("profiles").value = setup.profile;
-  $("profile").textContent = "Running: " + setup.profile;
+  if (store.setup.profiles.some((p) => p.name === store.setup.profile))
+    $("profiles").value = store.setup.profile;
+  $("profile").textContent = "Running: " + store.setup.profile;
   filter();
   await refreshToolheads().catch(error=>message(error.message,true));
 }
@@ -326,7 +328,7 @@ function filter() {
   const previous = $("parameter").value,
     query = $("filter").value.trim().toLowerCase();
   const groups = new Map();
-  for (const p of [...setup.parameters, ...(setup.macro_parameters || [])]) {
+  for (const p of [...store.setup.parameters, ...(store.setup.macro_parameters || [])]) {
     if (!p.name.toLowerCase().includes(query)) continue;
     // Older servers already expose MMU_TEST_CONFIG section names, even when
     // owner metadata is unavailable. Never misclassify these as "Other".
@@ -370,7 +372,7 @@ function filter() {
   value();
 }
 function selectedParameter() {
-  return [...(setup?.parameters || []), ...(setup?.macro_parameters || [])]
+  return [...(store.setup?.parameters || []), ...(store.setup?.macro_parameters || [])]
     .find(p => (p.id || p.name) === $("parameter").value);
 }
 function value() {
@@ -429,7 +431,7 @@ $('scene-macros').addEventListener('keydown', selectDimension);
 $("filter").oninput = filter;
 $("clear-filter").onclick = () => {
   $("filter").value = '';
-  if (setup) filter();
+  if (store.setup) filter();
   $("filter").focus();
 };
 $("parameter").onchange = value;
@@ -457,11 +459,11 @@ $("command-form").onsubmit = (event) => {
   event.preventDefault();
   const script = $("command").value.trim();
   if (!script) return;
-  if (viewMode==='playback') followLive(); // A command typed here is watched; commands from elsewhere never move a paused view
+  if (store.viewMode==='playback') followLive(); // A command typed here is watched; commands from elsewhere never move a paused view
   scrollConsoleToEnd();
   // Not under the busy lock: a second command (a pause, an emergency stop) must go through while the first runs.
   rpc("printer.gcode.script", { script }).catch((e) => { if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error'); });
-  if (socket.readyState === WebSocket.OPEN) {
+  if (store.socket.readyState === WebSocket.OPEN) {
     commandHistory.add(script);
     $("command").value = "";
   }
@@ -498,16 +500,14 @@ function animationNow() {
   animationRealTime=now;
   return animationTime;
 }
-let displayed = null, playing = null, played = 0;
 const scene=createScene($('scene'), {now:animationNow, requestFrame:draw, tooltipOpen:()=>!$('viewer-tooltip').hidden});
 // Gate lanes and spool columns share the same spacing.
-let paused = false, pauseAfterStep = false, replayingHistory = false, sensorPulse = null, nextStepAt = 0;
 function currentIndex() {
-  return live ? Math.max(0, events.findIndex(e => e.seq === (playing?.event.seq || played))) : cursor;
+  return store.live ? Math.max(0, store.events.findIndex(e => e.seq === (store.playing?.event.seq || store.played))) : store.cursor;
 }
 function followTrace() {
   const view = $("trace"), index = currentIndex();
-  const sequence = events[index]?.seq;
+  const sequence = store.events[index]?.seq;
   for (const row of view.children) {
     const selected = Number(row.dataset.seq) === sequence;
     row.classList.toggle('selected', selected);
@@ -522,22 +522,21 @@ function followTrace() {
   }
 }
 function seek(index) {
-  pauseAfterStep = false; nextStepAt = 0;
+  store.pauseAfterStep = false; store.nextStepAt = 0;
   scene.resetSpoolArrows();
-  cursor = Math.max(0, Math.min(index, events.length - 1));
-  live = false; paused = true; replayingHistory = true; playing = null; sensorPulse = null;
+  store.cursor = Math.max(0, Math.min(index, store.events.length - 1));
+  store.live = false; store.paused = true; store.replayingHistory = true; store.playing = null; store.sensorPulse = null;
   draw(); followTrace();
 }
 // UI, telemetry, and animation changes share the existing frame loop.
-let sceneDirty=false;
-function draw() { sceneDirty=true; }
+function draw() { store.sceneDirty=true; }
 function idleOverlay() {
-  const last=events.at(-1);
-  if (!statusSensors || !last || !overlayAllowed({viewMode,offline,live,paused,playing,caughtUp:played>=last.seq,
-      pendingMoves:sourceReplay.pending.size})) return null;
-  const key=`${sourceReplay.session}:${sourceReplay.sequence}:${JSON.stringify(statusSensors)}`;
-  if (overlayCache.key!==key) overlayCache={key,state:overlaySnapshot(sourceReplay,statusSensors)};
-  return overlayCache.state;
+  const last=store.events.at(-1);
+  if (!store.statusSensors || !last || !overlayAllowed({viewMode:store.viewMode,offline:store.offline,live:store.live,paused:store.paused,playing:store.playing,caughtUp:store.played>=last.seq,
+      pendingMoves:store.sourceReplay.pending.size})) return null;
+  const key=`${store.sourceReplay.session}:${store.sourceReplay.sequence}:${JSON.stringify(store.statusSensors)}`;
+  if (store.overlayCache.key!==key) store.overlayCache={key,state:overlaySnapshot(store.sourceReplay,store.statusSensors)};
+  return store.overlayCache.state;
 }
 function sceneSettings() {
   return {spoolSpacing:Number($('spool-spacing').value), spoolAngle:Number($('spool-angle').value),
@@ -546,37 +545,37 @@ function sceneSettings() {
 }
 // Everything one frame draws from, derived once: the scene, the controls and the readout all take it.
 function currentView() {
-  cursor = Math.max(0, Math.min(cursor, events.length - 1));
-  const running = viewMode==='playback' && live && !paused && (playing || played < events.at(-1).seq);
+  store.cursor = Math.max(0, Math.min(store.cursor, store.events.length - 1));
+  const running = store.viewMode==='playback' && store.live && !store.paused && (store.playing || store.played < store.events.at(-1).seq);
   const index = currentIndex();
-  const e = viewMode==='live' ? {state:displayed,seq:0,kind:'state'} : live ? (playing?.event || events.find(e=>e.seq===played) || events.at(-1)) : events[cursor];
-  const s = idleOverlay() || (live && displayed ? displayed : (e.settled_state || e.state)),
+  const e = store.viewMode==='live' ? {state:store.displayed,seq:0,kind:'state'} : store.live ? (store.playing?.event || store.events.find(e=>e.seq===store.played) || store.events.at(-1)) : store.events[store.cursor];
+  const s = idleOverlay() || (store.live && store.displayed ? store.displayed : (e.settled_state || e.state)),
     gate = s.gate >= 0 ? s.gate : 0;
   const tip = s.visual_tips?.[gate] ?? s.tips[gate] ?? -1000;
-  const eventIndex = events.indexOf(e), eventsBehind = events.length - 1 - eventIndex;
-  if (live && !paused && !playing && eventsBehind === 0) replayingHistory = false;
-  const modeLabel = paused || !live ? 'Paused' : playing || eventsBehind>0 ? 'Playing' : offline ? 'End of recording' : 'Following stream';
+  const eventIndex = store.events.indexOf(e), eventsBehind = store.events.length - 1 - eventIndex;
+  if (store.live && !store.paused && !store.playing && eventsBehind === 0) store.replayingHistory = false;
+  const modeLabel = store.paused || !store.live ? 'Paused' : store.playing || eventsBehind>0 ? 'Playing' : store.offline ? 'End of recording' : 'Following stream';
   // Bookkeeping events must not clear the last animated movement's annotation.
-  const annotatedEvent = viewMode==='live' ? e : annotatedStep(events, e, !live || paused);
+  const annotatedEvent = store.viewMode==='live' ? e : annotatedStep(store.events, e, !store.live || store.paused);
   const moveReason = annotatedEvent.label || annotatedEvent.telemetry?.start?.label;
-  const connected = socket?.readyState===1;
-  return {viewMode, offline, live, paused, playing, played, events, sensorPulse, event:e, state:s,
-    homing:liveTarget?.homing, simulator:isSimulator(), running, index, count:events.length, pauseAfterStep,
-    previousToolchange:toolchangeIndex(events, index, -1) >= 0, nextToolchange:toolchangeIndex(events, index, 1) >= 0,
-    modeText: viewMode==='live' ? `Live view · ${connected ? s.action || s.filament_pos_name : 'Disconnected'}`
+  const connected = store.socket?.readyState===1;
+  return {viewMode:store.viewMode, offline:store.offline, live:store.live, paused:store.paused, playing:store.playing, played:store.played, events:store.events, sensorPulse:store.sensorPulse, event:e, state:s,
+    homing:store.liveTarget?.homing, simulator:isSimulator(), running, index, count:store.events.length, pauseAfterStep:store.pauseAfterStep,
+    previousToolchange:toolchangeIndex(store.events, index, -1) >= 0, nextToolchange:toolchangeIndex(store.events, index, 1) >= 0,
+    modeText: store.viewMode==='live' ? `Live view · ${connected ? s.action || s.filament_pos_name : 'Disconnected'}`
       : `Telemetry playback · ${modeLabel} · event ${annotatedEvent.seq}` + (moveReason ? ` · ${moveReason}` : ''),
     positionText: `Gate ${gate} · ${s.filament_pos_name || "Unknown state"} · tip ${tip.toFixed(2)} mm`,
-    timelineValue: live ? eventIndex : cursor,
-    atLatest: viewMode==='live' || (live && !paused && !playing && played >= events.at(-1)?.seq)};
+    timelineValue: store.live ? eventIndex : store.cursor,
+    atLatest: store.viewMode==='live' || (store.live && !store.paused && !store.playing && store.played >= store.events.at(-1)?.seq)};
 }
 function renderScene() {
-  if (viewMode==='live' ? !displayed : !events.length) return;
+  if (store.viewMode==='live' ? !store.displayed : !store.events.length) return;
   const view=currentView();
   renderControls(view);
   const {warnings, unitSensors}=scene.render(view, sceneSettings());
-  renderMacros(view.state, !offline && isSimulator());
-  renderWarning(warnings, viewMode==='playback' ? selectorNotice(events, view.event, Boolean(playing), live && !paused) : null);
-  renderSensors(unitSensors, {offline, atLatest:view.atLatest, editable:!busy && isSimulator(),
+  renderMacros(view.state, !store.offline && isSimulator());
+  renderWarning(warnings, store.viewMode==='playback' ? selectorNotice(store.events, view.event, Boolean(store.playing), store.live && !store.paused) : null);
+  renderSensors(unitSensors, {offline:store.offline, atLatest:view.atLatest, editable:!store.busy && isSimulator(),
     onToggle:(name, enable)=>action(async () => {
       await sim.sensor(name, enable);
       message(`Sensor ${name} ${enable ? 'enabled' : 'disabled'}.`);
@@ -584,11 +583,11 @@ function renderScene() {
   renderDevices(view.state);
 }
 function renderTrace() {
-  const markers=timelineMarkers(events);
+  const markers=timelineMarkers(store.events);
   $('toolchange-ticks').closest('.timeline-control').classList.toggle('has-labels',markers.some(marker=>marker.label));
   $('toolchange-ticks').replaceChildren(...markers.map(({index,label}) => {
     const tick = document.createElement('span');
-    tick.style.left = `${events.length > 1 ? 100*index/(events.length-1) : 0}%`;
+    tick.style.left = `${store.events.length > 1 ? 100*index/(store.events.length-1) : 0}%`;
     if (label) {
       const text=document.createElement('small');
       text.textContent=label;
@@ -600,9 +599,9 @@ function renderTrace() {
     scroll = view.scrollTop;
   const expanded = new Set([...view.querySelectorAll('details[open]')].map(row=>row.dataset.seq));
   const showDetails=$('show-internal').checked;
-  const records=new Map(showDetails ? sourceRecords.map(record=>[record.sequence,record]) : []);
+  const records=new Map(showDetails ? store.sourceRecords.map(record=>[record.sequence,record]) : []);
   view.replaceChildren(
-    ...($('show-internal').checked ? orderedSteps(rawEvents) : events).map(e => {
+    ...($('show-internal').checked ? orderedSteps(store.rawEvents) : store.events).map(e => {
       const internal = isInternalUpdate(e);
       const row = document.createElement(internal ? 'details' : 'div');
       row.dataset.seq = e.seq;
@@ -636,7 +635,7 @@ function renderTrace() {
         ...(e.changes || []).map(c => `${configurationLabel(c.name)}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`)]
         .filter(Boolean).join(' · ');
       if (!internal) {
-        b.onclick = () => seek(events.findIndex(item => item.seq === e.seq));
+        b.onclick = () => seek(store.events.findIndex(item => item.seq === e.seq));
         if (showDetails) {
           const details=document.createElement('details'), summary=document.createElement('summary'), payload=document.createElement('pre');
           details.className='trace-telemetry'; details.dataset.seq=e.seq;
@@ -661,13 +660,13 @@ $("beginning").onclick = () => seek(0);
 $("previous").onclick = () => seek(currentIndex() - 1);
 for (const [id, direction] of [['previous-toolchange', -1], ['next-toolchange', 1]]) {
   $(id).onclick = () => {
-    const index = toolchangeIndex(events, currentIndex(), direction);
+    const index = toolchangeIndex(store.events, currentIndex(), direction);
     if (index >= 0) seek(index);
   };
 }
 $("next").onclick = () => seek(currentIndex() + 1);
 document.addEventListener('keydown', event => {
-  if (viewMode==='live' || (!paused && live) || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
+  if (store.viewMode==='live' || (!store.paused && store.live) || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
       || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
   if (event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"]')) return;
   const button = $(event.shiftKey
@@ -679,46 +678,46 @@ document.addEventListener('keydown', event => {
   }
 });
 function startPlayback() {
-  pauseAfterStep = false; nextStepAt = 0;
-  if (!events.length) return;
-  if (!live) {
-    const event = events[cursor];
-    played = event.seq; displayed = event.settled_state || event.state;
-    playing = null;
+  store.pauseAfterStep = false; store.nextStepAt = 0;
+  if (!store.events.length) return;
+  if (!store.live) {
+    const event = store.events[store.cursor];
+    store.played = event.seq; store.displayed = event.settled_state || event.state;
+    store.playing = null;
   }
-  paused = false; live = true;
+  store.paused = false; store.live = true;
   draw(); followTrace();
 }
 $("play-previous").onclick = () => {
   if ($("play-previous").disabled) return;
   const index = currentIndex();
-  playing = {event:events[index], start:animationNow(), reverse:true,
-    targetSeq:events[index-1].seq, fraction:1,
-    selectionGrip:(live && displayed ? displayed : events[index].settled_state || events[index].state).mmu_gripped};
-  displayed = interpolate(playing.event,1);
-  live = true; paused = false; pauseAfterStep = true; replayingHistory = true;
-  sensorPulse = null;
+  store.playing = {event:store.events[index], start:animationNow(), reverse:true,
+    targetSeq:store.events[index-1].seq, fraction:1,
+    selectionGrip:(store.live && store.displayed ? store.displayed : store.events[index].settled_state || store.events[index].state).mmu_gripped};
+  store.displayed = interpolate(store.playing.event,1);
+  store.live = true; store.paused = false; store.pauseAfterStep = true; store.replayingHistory = true;
+  store.sensorPulse = null;
   draw(); followTrace();
 };
 $("play-step").onclick = () => {
   if ($("play-step").disabled) return;
   startPlayback();
-  pauseAfterStep = true;
+  store.pauseAfterStep = true;
   draw();
 };
 $("replay").onclick = () => {
-  if (live && !paused) {
-    if (playing) pauseAfterStep = true;
-    else paused = true;
+  if (store.live && !store.paused) {
+    if (store.playing) store.pauseAfterStep = true;
+    else store.paused = true;
     draw();
   } else startPlayback();
 };
 function followLive() {
-  pauseAfterStep = false; nextStepAt = 0;
-  replayingHistory = false;
-  live = true; paused = offline; playing = null; sensorPulse = null;
-  played = events.at(-1)?.seq || 0;
-  displayed = events.at(-1)?.settled_state || events.at(-1)?.state;
+  store.pauseAfterStep = false; store.nextStepAt = 0;
+  store.replayingHistory = false;
+  store.live = true; store.paused = store.offline; store.playing = null; store.sensorPulse = null;
+  store.played = store.events.at(-1)?.seq || 0;
+  store.displayed = store.events.at(-1)?.settled_state || store.events.at(-1)?.state;
   draw(); followTrace();
 }
 $("live").onclick = followLive;
@@ -736,7 +735,7 @@ $("show-dimensions").onchange = () => {
 };
 $("nozzle-diameter").onchange = () => draw();
 function downloadTelemetry() {
-  const records = sourceRecords;
+  const records = store.sourceRecords;
   if (!records.length) return message('No telemetry captured yet', true);
   const text = records.map(r=>JSON.stringify(r)).join('\n')+'\n';
   const url = URL.createObjectURL(new Blob([text],{type:'application/x-ndjson'}));
@@ -754,13 +753,13 @@ $('telemetry-file').onchange = async () => {
     const records = parseTelemetry(await file.text());
     const replay = new TelemetryReplay();
     replay.accept(records); // Validate completely before replacing the current view.
-    if (!offline && socket?.readyState===1) rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{}); // Not awaited: a long G-code would hold the load up
+    if (!store.offline && store.socket?.readyState===1) rpc('printer.objects.subscribe',{objects:{}}).catch(()=>{}); // Not awaited: a long G-code would hold the load up
     await telemetryStream.stop();
-    modeChosen=true; viewMode='playback'; offline=true; subscriptionGeneration++; liveTarget=null; liveFrom=null;
-    pending.forEach(p=>p.reject(Error('Switched to offline recording'))); pending.clear();
-    sourceReplay=replay; sourceRecords=records;
-    rawEvents=replay.events; events=visibleSteps(rawEvents); session=replay.session;
-    live=false; paused=true; cursor=0; playing=null; sensorPulse=null; pauseAfterStep=false; displayed=null;
+    store.modeChosen=true; store.viewMode='playback'; store.offline=true; store.subscriptionGeneration++; store.liveTarget=null; store.liveFrom=null;
+    store.pending.forEach(p=>p.reject(Error('Switched to offline recording'))); store.pending.clear();
+    store.sourceReplay=replay; store.sourceRecords=records;
+    store.rawEvents=replay.events; store.events=visibleSteps(store.rawEvents); store.session=replay.session;
+    store.live=false; store.paused=true; store.cursor=0; store.playing=null; store.sensorPulse=null; store.pauseAfterStep=false; store.displayed=null;
     $('recording-name').textContent=file.name;
     setConnection('Offline recording · not connected', 'offline');
     sourceMode(); draw(); renderTrace();
@@ -769,55 +768,54 @@ $('telemetry-file').onchange = async () => {
   finally { $('telemetry-file').value=''; }
 };
 
-let parameterGate = null;
 function updateSource(records, reset=false) {
-  const selectedSeq=events[currentIndex()]?.seq;
+  const selectedSeq=store.events[currentIndex()]?.seq;
   const newSession=reset || records.some(r=>r.event === 'session');
-  if (newSession) { sourceReplay=new TelemetryReplay(); sourceRecords=[]; }
-  sourceReplay.accept(records);
-  sourceRecords.push(...records);
+  if (newSession) { store.sourceReplay=new TelemetryReplay(); store.sourceRecords=[]; }
+  store.sourceReplay.accept(records);
+  store.sourceRecords.push(...records);
   if (!records.length) return;
-  const replay=sourceReplay;
-  rawEvents=replay.events; events=visibleSteps(rawEvents);
+  const replay=store.sourceReplay;
+  store.rawEvents=replay.events; store.events=visibleSteps(store.rawEvents);
   if (newSession) {
-    if (session !== replay.session) $('mini-console').replaceChildren();
-    session=replay.session; live=true; paused=false; replayingHistory=false; pauseAfterStep=false;
-    cursor=0; playing=null; sensorPulse=null;
-    played=events.at(-1)?.seq || 0; displayed=events.at(-1)?.settled_state || events.at(-1)?.state;
+    if (store.session !== replay.session) $('mini-console').replaceChildren();
+    store.session=replay.session; store.live=true; store.paused=false; store.replayingHistory=false; store.pauseAfterStep=false;
+    store.cursor=0; store.playing=null; store.sensorPulse=null;
+    store.played=store.events.at(-1)?.seq || 0; store.displayed=store.events.at(-1)?.settled_state || store.events.at(-1)?.state;
   } else {
-    cursor=Math.max(0,events.findIndex(e=>e.seq === selectedSeq));
-    if (playing) playing.event=events.find(e=>e.seq === playing.event.seq) || playing.event;
-    else if (live) {
-      const current=events.find(e=>e.seq === played);
-      if (current) displayed=current.settled_state || current.state;
-      else if (played > (events.at(-1)?.seq ?? 0)) followLive();
+    store.cursor=Math.max(0,store.events.findIndex(e=>e.seq === selectedSeq));
+    if (store.playing) store.playing.event=store.events.find(e=>e.seq === store.playing.event.seq) || store.playing.event;
+    else if (store.live) {
+      const current=store.events.find(e=>e.seq === store.played);
+      if (current) store.displayed=current.settled_state || current.state;
+      else if (store.played > (store.events.at(-1)?.seq ?? 0)) followLive();
     }
   }
   draw(); renderTrace();
 }
 const telemetryStream=new TelemetryStream(rpc, async data=>{
-  if (offline || viewMode!=='playback') return false;
+  if (store.offline || store.viewMode!=='playback') return false;
   updateSource(data.records,data.reset);
-  const latest=rawEvents.at(-1)?.state;
-  const selectedGate=latest ? `${session}:${latest.unit}:${latest.gate}` : null;
-  if (latest && selectedGate!==parameterGate && isSimulator()) {
-    parameterGate=selectedGate;
+  const latest=store.rawEvents.at(-1)?.state;
+  const selectedGate=latest ? `${store.session}:${latest.unit}:${latest.gate}` : null;
+  if (latest && selectedGate!==store.parameterGate && isSimulator()) {
+    store.parameterGate=selectedGate;
     const unit=latest.units?.indexOf(latest.unit) ?? -1;
     if (unit>=0 && $('unit').value!==String(unit)) {
       $('unit').value=String(unit); refresh().catch(error=>message(error.message,true));  // Not awaited: the batch must be acknowledged promptly
     }
   }
-  return sourceRecords.length>7000;
+  return store.sourceRecords.length>7000;
 }, error=>{
   setConnection('Telemetry stream unavailable', 'warning');
   message(`${error.message}. On a printer, enable [mmu_telemetry] in moonraker.conf. You can also load a recording.`,true);
 });
 let liveIndicator=null;
 function updateLiveIndicator() {
-  const connected=!offline && socket?.readyState===1;
-  const active=Boolean(connected && (viewMode==='live' ? liveTarget
-    : telemetryStream.active && telemetryStream.ready && live && !paused
-      && (playing?.event.seq ?? played) >= (events.at(-1)?.seq ?? 0)));
+  const connected=!store.offline && store.socket?.readyState===1;
+  const active=Boolean(connected && (store.viewMode==='live' ? store.liveTarget
+    : telemetryStream.active && telemetryStream.ready && store.live && !store.paused
+      && (store.playing?.event.seq ?? store.played) >= (store.events.at(-1)?.seq ?? 0)));
   if (active===liveIndicator) return;
   liveIndicator=active;
   $('viewer-live').classList.toggle('active',active);
@@ -826,47 +824,47 @@ function updateLiveIndicator() {
 function drawFrame() {
   updateLiveIndicator();
   const now=animationNow();
-  const spoolRunning=Boolean(playing) || (live && !paused);
-  const spoolMoving=scene.advanceSpools(now, {espoolers:displayed?.espoolers, running:spoolRunning, session});
-  if (viewMode==='live' && liveTarget) {
-    const fraction=Math.min(1,(now-liveStart)/350);
-    displayed=liveFrame(liveFrom,liveTarget,fraction);
-    if (fraction<1 || sceneDirty || liveTarget.homing) draw();
+  const spoolRunning=Boolean(store.playing) || (store.live && !store.paused);
+  const spoolMoving=scene.advanceSpools(now, {espoolers:store.displayed?.espoolers, running:spoolRunning, session:store.session});
+  if (store.viewMode==='live' && store.liveTarget) {
+    const fraction=Math.min(1,(now-store.liveStart)/350);
+    store.displayed=liveFrame(store.liveFrom,store.liveTarget,fraction);
+    if (fraction<1 || store.sceneDirty || store.liveTarget.homing) draw();
   }
-  if (viewMode==='playback' && live && !paused && events.length) {
-    if (!playing && now>=nextStepAt) {
-      const event = events.find(e=>e.seq>played);
-      if (event) { playing={event,start:now,selectionGrip:displayed?.mmu_gripped ?? event.before?.mmu_gripped}; followTrace(); }
+  if (store.viewMode==='playback' && store.live && !store.paused && store.events.length) {
+    if (!store.playing && now>=store.nextStepAt) {
+      const event = store.events.find(e=>e.seq>store.played);
+      if (event) { store.playing={event,start:now,selectionGrip:store.displayed?.mmu_gripped ?? event.before?.mmu_gripped}; followTrace(); }
     }
-    if (playing) {
-      const ms=duration(playing.event, $("compress-bowden").checked);
-      const arrival=nozzleArrivalTime(playing.event,ms);
-      const total=Math.max(ms,arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-playing.start);
+    if (store.playing) {
+      const ms=duration(store.playing.event, $("compress-bowden").checked);
+      const arrival=nozzleArrivalTime(store.playing.event,ms);
+      const total=Math.max(ms,arrival === null ? 0 : arrival+500), elapsed=Math.min(total,now-store.playing.start);
       const f=total ? elapsed/total : 1;
-      const frame=playbackFrame(playing.event,playing.reverse ? total-elapsed : elapsed,ms,playing.selectionGrip);
-      playing.fraction=frame.fraction;
-      displayed=frame.state;
-      if (f===1 && playing.reverse) {
-        seek(events.findIndex(e=>e.seq === playing.targetSeq));
+      const frame=playbackFrame(store.playing.event,store.playing.reverse ? total-elapsed : elapsed,ms,store.playing.selectionGrip);
+      store.playing.fraction=frame.fraction;
+      store.displayed=frame.state;
+      if (f===1 && store.playing.reverse) {
+        seek(store.events.findIndex(e=>e.seq === store.playing.targetSeq));
       } else if (f===1) {
-        const pulse = homingPulse(playing.event);
-        if (pulse) sensorPulse = {...pulse, start:now};
-        played=playing.event.seq;
-        nextStepAt=now+homingHold(playing.event);
-        playing=null;
-        if (pauseAfterStep || (offline && played >= events.at(-1).seq)) { paused = true; pauseAfterStep = false; }
+        const pulse = homingPulse(store.playing.event);
+        if (pulse) store.sensorPulse = {...pulse, start:now};
+        store.played=store.playing.event.seq;
+        store.nextStepAt=now+homingHold(store.playing.event);
+        store.playing=null;
+        if (store.pauseAfterStep || (store.offline && store.played >= store.events.at(-1).seq)) { store.paused = true; store.pauseAfterStep = false; }
         followTrace();
       }
       draw();
     }
   }
-  if (sensorPulse) {
-    if (now - sensorPulse.start >= 650) sensorPulse = null;
+  if (store.sensorPulse) {
+    if (now - store.sensorPulse.start >= 650) store.sensorPulse = null;
     draw();
   }
   scene.returnRackWhenIdle();
-  if (sceneDirty) {
-    sceneDirty=false;
+  if (store.sceneDirty) {
+    store.sceneDirty=false;
     renderScene();
   } else if (spoolMoving) {
     scene.updateSpoolMotion();
@@ -887,19 +885,19 @@ function animate() {
 
 const toolheadPanel=createToolheadPanel({rpc, action, refresh, changed:()=>sourceMode()});
 
-$('printer-url').value=connectionUrl;
+$('printer-url').value=store.connectionUrl;
 $('connect-printer').onclick=()=>{
   try {
     const value=$('printer-url').value.trim();
     const endpoint=new URL(value.includes('://') ? value : 'http://'+value);
     if (!['http:','https:','ws:','wss:'].includes(endpoint.protocol)) throw Error('Use an HTTP or WebSocket printer URL');
-    connectionUrl=endpoint.href;
-    clearTimeout(reconnectTimer); connectionGeneration++; subscriptionGeneration++;
+    store.connectionUrl=endpoint.href;
+    clearTimeout(store.reconnectTimer); store.connectionGeneration++; store.subscriptionGeneration++;
     telemetryStream.stop(false);
-    socket?.close();
-    pending.forEach(p=>p.reject(Error('Connection changed'))); pending.clear();
-    modeChosen=false; offline=false; viewMode='live'; liveTarget=null; displayed=null; playing=null; sensorPulse=null;
-    events=[]; rawEvents=[]; sourceRecords=[]; sourceReplay=new TelemetryReplay();
+    store.socket?.close();
+    store.pending.forEach(p=>p.reject(Error('Connection changed'))); store.pending.clear();
+    store.modeChosen=false; store.offline=false; store.viewMode='live'; store.liveTarget=null; store.displayed=null; store.playing=null; store.sensorPulse=null;
+    store.events=[]; store.rawEvents=[]; store.sourceRecords=[]; store.sourceReplay=new TelemetryReplay();
     scene.clear(); $('mode').textContent='Live view · Connecting…';
     connect();
   } catch(error) { message(error.message,true); }
