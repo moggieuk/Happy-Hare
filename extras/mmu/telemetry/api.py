@@ -16,6 +16,7 @@ from .stream import TelemetryStream
 
 
 WAKE_TIMEOUT = 5.  # Seconds Moonraker has to subscribe after being asked to record
+STARTUP_TIMEOUT = 30.  # Seconds it has after Klipper is ready, when recording is the configured default
 
 
 class TelemetryAPI:
@@ -80,9 +81,18 @@ class TelemetryAPI:
             except self.error:
                 self._check_wake()  # Moonraker has not registered the method: it is not running or lacks [mmu_telemetry]
                 return
-            if self.wake_timer is None:
-                self.wake_timer = self.reactor.register_timer(self._check_wake)
-            self.reactor.update_timer(self.wake_timer, self.reactor.monotonic() + WAKE_TIMEOUT)
+            self._expect_moonraker(WAKE_TIMEOUT)
+
+    def start(self, mode):
+        """The configured default at startup. Moonraker reads it when it sees Klipper ready, so nothing is sent."""
+        self.stream.record_mode = mode
+        if mode != 'off':
+            self._expect_moonraker(STARTUP_TIMEOUT)
+
+    def _expect_moonraker(self, delay):
+        if self.wake_timer is None:
+            self.wake_timer = self.reactor.register_timer(self._check_wake)
+        self.reactor.update_timer(self.wake_timer, self.reactor.monotonic() + delay)
 
     def _check_wake(self, eventtime=None):
         if self.stream.capture is None and self.stream.record_mode != 'off':

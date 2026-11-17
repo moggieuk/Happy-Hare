@@ -150,7 +150,8 @@ Klipper keeps the mode (it is not saved across a restart) and exposes it as the 
 `mmu.telemetry_mode`: that is what a client shows as the recording mode and what a Moonraker that restarts reads at readiness to resume a recording. A mode change also commits the
 settled state and emits a `record_mode` record, so Moonraker's recorder acts on it at the right place in the stream. If nobody
 is subscribed, Klipper asks Moonraker to subscribe (`mmu_telemetry_wake`). If Moonraker has not started a requested
-recording within five seconds (not running, or `[mmu_telemetry]` not loaded) Klipper logs a warning. Repeating the current
+recording within five seconds (not running, or `[mmu_telemetry]` not loaded) Klipper logs a warning; for a recording that is
+the configured default it allows thirty seconds after startup. Repeating the current
 mode changes nothing: it does not rotate the log. Moonraker persists the records
 and clients only read them.
 

@@ -249,10 +249,14 @@ class TestTelemetryStream(unittest.TestCase):
         base = profiles.get('boxturtle')
         configured = profiles.Profile('boxturtle_telemetry_on', syms={
             **base.syms, 'CHOICE_DEFAULT_TELEMETRY_MODE_ON': True})
-        with session(configured) as hh:
+        from unittest import mock
+        with session(configured) as hh, mock.patch.object(hh.mmu, 'log_warning') as warn:
             hh.boot(calibrate=True)
             self.assertEqual(hh.mmu.p.default_telemetry_mode, 'on')
             self.assertEqual(hh.mmu.telemetry_api.stream.record_mode, 'on')
+            # Nothing records unless Moonraker subscribes: say so if it has not
+            hh.reactor.advance(31.)
+            self.assertEqual(sum('Moonraker has not started' in call.args[0] for call in warn.call_args_list), 1)
 
     def test_default_telemetry_mode_is_hidden_from_the_runtime_parameter_listing(self):
         self.assertNotIn('default_telemetry_mode', self.hh.mmu.p.format_params())
