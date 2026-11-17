@@ -53,6 +53,15 @@ class TestTelemetryCapture(unittest.TestCase):
     def emit(self):
         self.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
 
+    def test_a_capture_that_fails_to_start_leaves_no_timer(self):
+        reactor = self.hh.mmu.reactor
+        with mock.patch.object(reactor, 'register_timer', wraps=reactor.register_timer) as register, \
+                mock.patch.object(reactor, 'unregister_timer', wraps=reactor.unregister_timer) as unregister, \
+                mock.patch.object(self.State, '__call__', side_effect=RuntimeError('unreadable')):
+            with self.assertRaises(RuntimeError):
+                self.Capture(self.hh.mmu)
+        self.assertEqual(register.call_count, unregister.call_count)
+
     def test_baseline_uses_printer_facts_without_simulator_coordinates(self):
         with mock.patch.object(self.hh.mmu, 'get_status', side_effect=AssertionError('broad scan')):
             capture = self.capture()

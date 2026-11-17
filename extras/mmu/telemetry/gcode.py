@@ -21,7 +21,6 @@ class GcodeExtrusionTelemetry:
         self.mmu = mmu
         self.owners = {}
         self.original = None
-        self.handling = set()
         mmu.printer.register_event_handler('klippy:ready', self.install)
 
     def install(self):
@@ -64,7 +63,7 @@ class GcodeExtrusionTelemetry:
             return self.original(gcmd)
         owner = greenlet.getcurrent()
         stack = self.owners.get(owner, ())
-        if ((not stack and mmu.is_printing()) or owner in self.handling or
+        if ((not stack and mmu.is_printing()) or
                 'E' not in gcmd.get_command_parameters() or telemetry.operations):
             return self.original(gcmd)
         move = mmu.printer.lookup_object('gcode_move')
@@ -88,30 +87,26 @@ class GcodeExtrusionTelemetry:
                 speed = float(gcmd.get_command_parameters()['F']) * move.speed_factor
         except (ValueError, TypeError):
             pass  # Let the original handler report malformed commands.
-        self.handling.add(owner)
-        try:
-            with telemetry.operation() as operation:
-                operation.start(source='mmu_gcode',
-                    label=next((label for _, label in reversed(stack) if label), gcmd.get_commandline()),
-                    command='G1', commandline=gcmd.get_commandline(),
-                    context=[name for name, _ in stack],
-                    unit=mmu.mmu_unit().name, gate=mmu.gate_selected,
-                    motor_mode='extruder', extruder=extruder_name, motors=[extruder_name],
-                    requested_mm=requested_e, speed_mm_s=speed if math.isfinite(speed) else None,
-                    acceleration_mm_s2=None, position_mm=before[e_index],
-                    position_reference='gcode_extruder', homing=False, endstop=None)
-                result = self.original(gcmd)
-                after = list(move.last_position)
-                delta = after[e_index] - before[e_index]
-                # Mixed XYZ/E feed rate belongs to the coordinated path. Keep XYZ
-                # out of telemetry, but use it to estimate extrusion pacing.
-                xyz = math.sqrt(sum((after[i]-before[i])**2 for i in range(3)))
-                travel = xyz if xyz else abs(delta)
-                seconds = travel / move.speed if move.speed > 0 else None
-                operation.finish(status='submitted', actual_mm=delta,
-                    position_mm=after[e_index], speed_mm_s=move.speed,
-                    extrusion_speed_mm_s=abs(delta)/seconds if seconds else 0.,
-                    estimated_duration_s=seconds)
-                return result
-        finally:
-            self.handling.remove(owner)
+        with telemetry.operation() as operation:
+            operation.start(source='mmu_gcode',
+                label=next((label for _, label in reversed(stack) if label), gcmd.get_commandline()),
+                command='G1', commandline=gcmd.get_commandline(),
+                context=[name for name, _ in stack],
+                unit=mmu.mmu_unit().name, gate=mmu.gate_selected,
+                motor_mode='extruder', extruder=extruder_name, motors=[extruder_name],
+                requested_mm=requested_e, speed_mm_s=speed if math.isfinite(speed) else None,
+                acceleration_mm_s2=None, position_mm=before[e_index],
+                position_reference='gcode_extruder', homing=False, endstop=None)
+            result = self.original(gcmd)
+            after = list(move.last_position)
+            delta = after[e_index] - before[e_index]
+            # Mixed XYZ/E feed rate belongs to the coordinated path. Keep XYZ
+            # out of telemetry, but use it to estimate extrusion pacing.
+            xyz = math.sqrt(sum((after[i]-before[i])**2 for i in range(3)))
+            travel = xyz if xyz else abs(delta)
+            seconds = travel / move.speed if move.speed > 0 else None
+            operation.finish(status='submitted', actual_mm=delta,
+                position_mm=after[e_index], speed_mm_s=move.speed,
+                extrusion_speed_mm_s=abs(delta)/seconds if seconds else 0.,
+                estimated_duration_s=seconds)
+            return result

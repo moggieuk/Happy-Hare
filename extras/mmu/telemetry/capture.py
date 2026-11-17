@@ -222,13 +222,13 @@ kept; the limit only bounds a consumer that stops acknowledging.
         self.segment = None  # (toolchange_id, sequence of its start) of the command being recorded as one toolchange
         self.reactor = mmu.reactor
         self.open_moves = set()  # Started but not finished; state is not sampled in the middle of a move
-        self.settle_timer = self.reactor.register_timer(self._settle, self.reactor.NEVER)
         self.state = copy.deepcopy(self.state_provider())
         # Parameter sets are read once; later edits are config_changed events routed by section name
         self.scopes = self.state_provider.scopes()
         self.baseline = merge(copy.deepcopy(self.state), self.state_provider.static())
         self.baseline_sequence = 0
         self.baseline_time = mmu.reactor.monotonic()
+        self.settle_timer = self.reactor.register_timer(self._settle, self.reactor.NEVER)
         self.unsubscribe = self.telemetry.subscribe(self.on_event)
 
     def close(self):

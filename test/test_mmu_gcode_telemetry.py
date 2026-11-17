@@ -235,7 +235,6 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertIs(self.handler(), original)
         self.assertEqual(self.outcomes()[0]['status'], 'error')
         self.assertEqual(self.hh.mmu.gcode_telemetry.owners, {})
-        self.assertEqual(self.hh.mmu.gcode_telemetry.handling, set())
         self.run_gcode('G1 E1 F300')
         self.assertEqual(len(self.outcomes()), 2)
 
