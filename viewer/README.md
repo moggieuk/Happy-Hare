@@ -174,3 +174,106 @@ The simulator's `extruder_entry` geometry coordinate denotes the extruder gears.
 Calibrated Bowden length runs from the gate homing point to those gears.
 `toolhead_entry_to_extruder` places the optional entry sensor upstream of the gears;
 it does not extend the Bowden or move the buffer's compression contact point.
+
+## Modes and panels
+
+The viewer has two independent modes, identified at the top left. Simulator
+connections default to telemetry playback; other connections default to live view.
+Explicit mode choices survive reconnects. To open a recording, select telemetry
+playback and use **Load telemetry**:
+
+- **Live view** uses Moonraker object queries/subscriptions only. It smoothly
+  follows `mmu.filament_pos` and `mmu.bowden_progress`; transitions are cosmetic,
+  not a reconstruction of motor travel. Heater targets, encoder readings,
+  proportional buffer values and sensor states update directly from subscriptions.
+- **Telemetry playback** uses only the loaded JSON/JSONL recording, or the
+  simulator's piped telemetry stream. Current printer status never changes an
+  old recording. Playback controls and the movement trace appear in this mode.
+  While following the stream at rest (not paused, not animating, no move in
+  progress) the viewer also subscribes to `mmu.sensors` and shows those readings
+  on the live end, so a sensor toggled or triggered while idle appears at once
+  instead of when the capture's next read records it (`overlay.js`). Nothing else is
+  overlaid, and the recorded state carries the same values.
+
+The Settings panel accepts a printer/simulator URL (default: the server hosting
+this viewer). The parameter editor and Toolhead Config panel work on a real printer
+because they only send `MMU_TEST_CONFIG` and `SET_GCODE_VARIABLE`; the Buffer and Encoder
+panels, which set object attributes directly, are simulator-only.
+
+Live view needs no Happy Hare specific configuration object. `live-config.js`
+builds the machine description from state Klipper already publishes (see
+`extras/mmu/telemetry/README.md`).
+
+`live-state.js` adapts subscriptions without retaining history; `telemetry.js`
+reduces recordings. Both use `scene-state.js` for scene geometry and share the SVG
+components. New movement recordings omit heater target changes; old recordings
+containing these fields remain readable. Run the live browser regression with
+`node --test viewer/live.browser.mjs` using the same Playwright/Chrome
+settings as the spool browser test below.
+
+The **Toolhead Config** panel appears when the machine has a toolhead section. A toolhead shared
+by several units is listed once with those units, and edits are sent as `MMU_TEST_CONFIG`.
+
+## How telemetry is drawn
+
+The viewer holds the severed fragment until an advancing filament end pushes it.
+A withdrawn nozzle tip has a schematic cone and approximately 15mm hair; cutting
+transfers that shape to the fragment and leaves the attached end square. Residual
+melt stays at the nozzle. These shapes are illustrations, not measured tip geometry.
+
+Each selector movement (the stepper moving the carriage, the servo changing grip, rail homing) is a
+visible step with its own **selector** pill, paired from the `selector_movement_start` and
+`selector_movement_outcome` records. Like a filament move it is anchored at the start of the move
+(the sequence and time of the start record), carries the outcome data, and its completion is an internal
+marker; an unfinished start is held back until its outcome arrives. It has no animation of its own and no
+artificial delay. While it
+plays, or when you step onto it, the notice box shows a summary such as
+`Selector: Positioning selector 4.2 → 46.2 mm (0.19s)`. After a stepper move the next step is normally the
+gate change, which still owns the rack-slide animation: the box stays up through the slide, with
+`· Gate 0 → 2` added, and until you leave that gate change. The notice is blue with an "i", unlike the amber
+"!" warnings, and a sensor warning always keeps the warning look. A selector pair inside a filament move
+stays internal, and a lone servo move is not left behind while following the stream at rest.
+Configuration changes are included in telemetry. **Show internal updates** also
+adds expandable raw telemetry details to each trace entry; movements expose both
+the start and outcome messages without changing playback selection.
+
+Viewer snapshots retain `raw_state`/`raw_before` separately from displayed states.
+A forward move with stationary extruder motors stops the displayed tip at the
+configured gear position, while motor travel continues. The calibrated Bowden endpoint is the extruder gear position;
+`toolhead_entry_to_extruder` locates the entry sensor upstream of it. Clear enabled presence
+sensors bound occupied filament; buffer and encoder sensors are excluded. The
+source does not report a continuous physical tail coordinate, so runout-tail
+geometry is not reconstructed. These are
+visual constraints: they do not change simulator physics, homing results or source
+telemetry. Extruder-fed travel beyond the configured nozzle accumulates as
+`extruded_mm` and grows a shaded purge coil. Retraction leaves deposited filament
+in place and recovering that retraction does not count as new extrusion. The
+recorded amount is input-filament length. The nozzle selector converts it to an
+equivalent round strand using `length * (1.75 / nozzle_diameter)^2`, defaulting to
+0.4mm, for the purge animation and strand-length label.
+The non-modeled nozzle exit fills downward over 0.5 seconds after the true tip
+reaches zero. Purged material blends to the incoming color over the next 2mm of
+extrusion; waiting or retracting does not recolor material already deposited.
+
+Coil size and blending are schematic, not a melt-flow model. A full coil falls
+behind the lower screen and the next coil starts growing. Any actual extruder
+retraction detaches accumulated purge within that movement's animation; gear-only
+retraction does not. There is no separate purge-release animation event.
+
+The viewer’s previous/next toolchange buttons navigate these markers; the
+previous button returns to the current operation’s start before moving to an
+earlier operation. Older recordings without markers disable these buttons.
+
+## Fixtures and browser tests
+
+The replay fixtures under `viewer/fixtures/` were captured with `ercf_vvd`
+and `emu` console profiles using `MMU_LOAD`, `MMU_UNLOAD`, then `MMU_LOAD`.
+They contain source records only. Tests compare batched live reduction with JSONL
+loading and exercise every interpolated movement endpoint.
+
+The optional spool browser regression compares retained SVG updates with fresh
+renders across styles, fill levels, viewing angles, and rotation. With Playwright
+and Chromium available, run `node --test viewer/spool.browser.mjs`.
+Set `PLAYWRIGHT_MODULE` to its module path and `CHROME_PATH` to a Chrome executable
+when using external installations. It also checks that motion preserves geometry
+nodes and unchanged props do not write to the DOM.
