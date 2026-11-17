@@ -3,7 +3,7 @@
 ## Overview
 
 Motion telemetry records what the MMU does (filament moves, selector and servo moves, extruder moves, state changes) so the
-web app (for example the Visualizer, a separate PR) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
+web app (for example the Happy Hare Visualizer) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
 relays and stores them, and the web app displays them.
 
 ```
@@ -64,18 +64,11 @@ Web app:   replay -> animated steps (live)   |   load a saved JSONL (offline)
 - All disk work runs on a worker thread. A write failure stops recording with a warning, and recording can start again afterwards.
 - Optional settings in `[mmu_telemetry]`: `max_log_size` (default 10485760 bytes) and `log_backups` (default 5).
 
-### Web app (the Visualizer): display only
+### Clients: display only
 
-**Three data sources.**
-- **Live status subscription:** Moonraker object subscriptions drive the scene.
-- **Telemetry stream:** it replays the batches into the scene. Each start is paired with its outcome into an animated step, and a trailing state change is folded into the preceding step. When idle it overlays live sensor readings.
-- **Loaded telemetry recording:** the same replay reads a saved JSONL offline.
-
-**Recording control.**
-- On a printer's telemetry stream, the Record control shows `mmu.telemetry_mode` from the `mmu` object subscription it already makes for sensors.
-- Choosing a mode sends `MMU_TELEMETRY MODE=...` as G-code.
-
-**Storage.** The web app writes no files of its own. **Save telemetry** downloads what it holds, and **Load telemetry** opens a recording.
+- A client subscribes to the stream through Moonraker, replays the baseline and the records that follow, and acknowledges each batch.
+- It can also read a saved JSONL recording offline: the format is the same.
+- Recording is controlled from Klipper. A client can show `mmu.telemetry_mode` and send `MMU_TELEMETRY MODE=...`, but it writes no files of its own.
 
 ### In the simulator
 
@@ -87,7 +80,7 @@ The simulator's bridge takes Moonraker's place. It runs the same stream protocol
 - `state_delta` records hold only the changed values (`path` and `value`), and come before the event that observed them.
 - Event records say what happened and why (for example `movement_start` and `movement_outcome`, `selector_movement_*`, `filament_pos_changed`, `gate_changed`, `toolchange` and `toolchange_end`).
 - Sync mode and retracted length have no events: they arrive only as `state_delta`.
-- A `session` record in the middle of a file is a fresh baseline; the viewer restarts its replay there.
+- A `session` record in the middle of a file is a fresh baseline; a consumer restarts its replay there.
 
 ## Event subscriptions
 
@@ -98,7 +91,7 @@ installs also list `moonraker` in the update manager's `managed_services`, so an
 installs keep their value, so restart Moonraker after updating. Existing installations need to rerun
 the installer and restart Klipper and Moonraker. No Klipper or Moonraker fork is needed.
 
-The viewer uses the same protocol with a real printer and the simulator:
+A client uses the same protocol with a real printer and the simulator:
 
 * `server.mmu.telemetry.subscribe` returns a first replay batch with a baseline.
 * `notify_mmu_telemetry` delivers subsequent batches in `params[0]`.
@@ -107,10 +100,8 @@ The viewer uses the same protocol with a real printer and the simulator:
 * `server.mmu.telemetry.unsubscribe` stops that connection's subscription.
 
 These are authenticated Moonraker WebSocket endpoints, separate from printer
-object subscriptions. Live view subscribes only to printer objects. Telemetry
-playback subscribes to the event stream, or loads an offline file. Loading a file
-or switching to live view unsubscribes from events. Missing component errors leave
-file loading available. Simulator command execution still advances virtual time
+object subscriptions. A client that only needs current status subscribes to printer
+objects and uses none of this. Simulator command execution still advances virtual time
 without servicing sockets mid-command; recorded events are delivered afterwards.
 
 Klipper's `extras/mmu/telemetry/api.py` exposes `mmu/telemetry/{subscribe,ack,unsubscribe}`.
@@ -132,7 +123,7 @@ runtime configuration changes. Discarded motion cannot restore inferred geometry
 `server.mmu.telemetry.subscribe` accepts `history: "start"` (default) or
 `history: "current"`. Start returns all *available* history, not records already
 discarded. Current returns a checkpoint of the present state without retained
-events; the viewer uses it when renewing its bounded local history. The simulator
+events; a client can use it to renew a bounded local history. The simulator
 uses the same rules but retains its session capture for diagnostics.
 
 Moonraker subscribes to Klipper only while a browser is connected or a recording is running, and
@@ -156,13 +147,12 @@ MMU_TELEMETRY MODE=off          # stop
 current mode and the default, which is set only in `mmu.cfg`.
 
 Klipper keeps the mode (it is not saved across a restart) and exposes it as the printer variable
-`mmu.telemetry_mode`: that is what the viewer's Record control shows (from the `mmu` object subscription it already makes
-for sensors) and what a Moonraker that restarts reads at readiness to resume a recording. A mode change also commits the
+`mmu.telemetry_mode`: that is what a client shows as the recording mode and what a Moonraker that restarts reads at readiness to resume a recording. A mode change also commits the
 settled state and emits a `record_mode` record, so Moonraker's recorder acts on it at the right place in the stream. If nobody
 is subscribed, Klipper asks Moonraker to subscribe (`mmu_telemetry_wake`). If Moonraker has not started a requested
 recording within five seconds (not running, or `[mmu_telemetry]` not loaded) Klipper logs a warning. Repeating the current
 mode changes nothing: it does not rotate the log. Moonraker persists the records
-and the viewer only reads them.
+and clients only read them.
 
 Files live under Moonraker's data directory as `logs/mmu-telemetry.jsonl` with up to five backups
 (`.1` to `.5`). Every capture is one slot: `on` starts a new file (rotating the previous
@@ -173,7 +163,7 @@ checkpoint in force at that point. Klipper emits `record_mode` `off` straight af
 `toolchange` while a command is already running waits for the next command. `on` starts at a
 checkpoint of the present state, which may fall inside a move. Size rotation (`max_log_size`
 and `log_backups` in `[mmu_telemetry]`) defers until an in-flight movement pair has completed.
-A single record/checkpoint or movement pair can exceed the size threshold. Load a file in the viewer.
+A single record/checkpoint or movement pair can exceed the size threshold.
 
 Checkpoint and file rotation logic lives in `mmu_telemetry_store.py`; its
 `TelemetryWriter` handles the dedicated worker and bounded 64-batch queue.
@@ -183,7 +173,7 @@ it never blocks motion or silently continues a damaged recording. Recording is
 best-effort, not crash-durable: buffered records may be lost if the process exits
 abruptly.
 
-Tests: the telemetry stream, adapters, store, WebUI bridge and browser transport
+Tests: the telemetry stream, adapters, store and WebUI bridge
 suites cover checkpoints, edited configuration, rotation, per-client backpressure,
 cleanup and reconnects.
 
@@ -214,8 +204,7 @@ MMU moves, independently of filament grip. Coordinate resets and saved-state
 restoration do not count as motion. This lets Happy Hare measure real macro
 retraction and calculate cut fragments without test-only step-count adjustments.
 
-The viewer does not record individual filament or stepper samples. Model updates
-still maintain filament positions and motor totals for movement snapshots.
+The stream carries no individual filament or stepper samples.
 
 Simulator macros that use simplified effects still produce modeled movement;
 individual G1 events require an executed macro body. The console executes the
@@ -229,22 +218,16 @@ The existing `_MMU_EVENT EVENT="filament_cut"` still handles operational countin
 
 Both a printer and the simulator emit the same `cut` and `release` records with
 unit, gate, cutter identity, and configured blade position. The simulator consumes
-CUT to shorten its modeled filament; the viewer holds the blade through the rip
+CUT to shorten its modeled filament; a client can hold the blade through the rip
 until RELEASE. It no longer identifies cutter contact from coordinates or speed. The
 post-unload cutter is not covered by these hooks. The general unit-test harness
 retains its simplified macro effects.
 
-The viewer holds the severed fragment until an advancing filament end pushes it.
-A withdrawn nozzle tip has a schematic cone and approximately 15mm hair; cutting
-transfers that shape to the fragment and leaves the attached end square. Residual
-melt stays at the nozzle. These shapes are illustrations, not measured tip geometry.
-
-
 Happy Hare emits structured records directly in `move_filament()`, after
 resolving speed/acceleration and gate overrides.
-The stream is independent of the selected log level and works without the viewer.
-TRACE (3) is the highest console and file log level. Existing configurations using
-level 4 must change to 3. File logging still accepts -1 to disable it. Low-level
+The stream is independent of the selected log level.
+TRACE (3) is the highest console and file log level. A saved level 4 still loads
+and logs as trace. File logging still accepts -1 to disable it. Low-level
 pin timing and drive-sync decisions use TRACE; motion details use telemetry.
 
 Selector commands emit `selector_movement_start` / `selector_movement_outcome`
@@ -253,12 +236,10 @@ resolved speed/acceleration, requested and actual travel, and homing results.
 Rail homing is one compound operation including retract/rehome, with trigger
 travel separate from its rebased final position. Servo records include requested
 angle or pulse width and duration; their outcome means submitted, not measured
-mechanical completion. Errors are recorded before being propagated. The viewer
-shows these diagnostics under **Show internal updates**, without treating selector
-travel as filament movement.
+mechanical completion. Errors are recorded before being propagated. Selector
+travel is not filament movement.
 
-Use **Save telemetry** in the viewer for simulator captures, or record on a printer with
-`MMU_TELEMETRY` as described above. Source callbacks remain available via
+Record on a printer with `MMU_TELEMETRY` as described above. Source callbacks remain available via
 `mmu.movement_telemetry.subscribe(callback)`; callbacks must not block the printer
 thread. A failing callback is detached and logged without aborting motion.
 
@@ -283,7 +264,7 @@ also include `filament_pos` and its readable name, so recording mid-session stil
 establishes the logical starting state. `filament_pos_changed` records previous
 and new states (including silent changes), unit and gate; repeated assignments
 are suppressed. This is Happy Hare's discrete progress state, not a millimeter
-coordinate. The viewer displays it alongside the tip position.
+coordinate.
 
 A client can build the machine description from state Klipper already publishes:
 
@@ -293,11 +274,11 @@ A client can build the machine description from state Klipper already publishes:
   `MMU_TEST_CONFIG`, keyed by config section then parameter. It is empty until
   something is edited, and overrides the startup value.
 - `save_variables` for calibration such as bowden lengths.
-- `mmu.sensors` for the active sensors (short names, requalified by the viewer),
+- `mmu.sensors` for the active sensors (short names),
   plus the existing `mmu_extruder`, `mmu_encoder` and proportional sensor objects.
 
-Live view is approximate by design: it has no homing, grip or inactive-sensor state.
-Telemetry mode carries those. In telemetry the same edits arrive as `state_delta`
+Status alone is approximate: it has no inactive-sensor state and reports nothing between the start and end of a move.
+Telemetry carries those. In telemetry the same edits arrive as `state_delta`
 records, produced from a `config_changed` event emitted where the parameter changes,
 so recordings are replayable without a printer. The session baseline holds each full
 parameter set once; it is not re-read per event.
@@ -312,62 +293,26 @@ no values the command prints the current ones. Each edit emits one `sim_settings
 the change is committed to the telemetry stream at once; a client sees it when it next connects. Restart
 restores the profile defaults.
 Each selector movement (the stepper moving the carriage, the servo changing grip, rail homing) is a
-visible step with its own **selector** pill, paired from the `selector_movement_start` and
-`selector_movement_outcome` records. Like a filament move it is anchored at the start of the move
-(the sequence and time of the start record), carries the outcome data, and its completion is an internal
-marker; an unfinished start is held back until its outcome arrives. It has no animation of its own and no
-artificial delay. While it
-plays, or when you step onto it, the notice box shows a summary such as
-`Selector: Positioning selector 4.2 → 46.2 mm (0.19s)`. After a stepper move the next step is normally the
-gate change, which still owns the rack-slide animation: the box stays up through the slide, with
-`· Gate 0 → 2` added, and until you leave that gate change. The notice is blue with an "i", unlike the amber
-"!" warnings, and a sensor warning always keeps the warning look. A selector pair inside a filament move
-stays internal, and a lone servo move is not left behind while following the stream at rest.
-Configuration changes are included in telemetry. **Show internal updates** also
-adds expandable raw telemetry details to each trace entry; movements expose both
-the start and outcome messages without changing playback selection.
+`selector_movement_start` and `selector_movement_outcome` pair with its own `move_id`. Configuration changes
+are included in telemetry.
 
 Sensor observations are full name-to-state maps at movement start and outcome:
 true means triggered, false means clear, null means disabled. Absent sensors are
 not listed. These are controller observations, not timestamped transitions inside
-a move. The viewer estimates intervening crossings from geometry and preserves
-recorded endpoint states.
+a move.
 
-Viewer snapshots retain `raw_state`/`raw_before` separately from displayed states.
-A forward move with stationary extruder motors stops the displayed tip at the
-configured gear position, while motor travel continues. The calibrated Bowden endpoint is the extruder gear position;
-`toolhead_entry_to_extruder` locates the entry sensor upstream of it. Clear enabled presence
-sensors bound occupied filament; buffer and encoder sensors are excluded. The
-source does not report a continuous physical tail coordinate, so runout-tail
-geometry is not reconstructed. These are
-visual constraints: they do not change simulator physics, homing results or source
-telemetry. Extruder-fed travel beyond the configured nozzle accumulates as
-`extruded_mm` and grows a shaded purge coil. Retraction leaves deposited filament
-in place and recovering that retraction does not count as new extrusion. The
-recorded amount is input-filament length. The nozzle selector converts it to an
-equivalent round strand using `length * (1.75 / nozzle_diameter)^2`, defaulting to
-0.4mm, for the purge animation and strand-length label.
-The non-modeled nozzle exit fills downward over 0.5 seconds after the true tip
-reaches zero. Purged material blends to the incoming color over the next 2mm of
-extrusion; waiting or retracting does not recolor material already deposited.
-
-Coil size and blending are schematic, not a melt-flow model. A full coil falls
-behind the lower screen and the next coil starts growing. Any actual extruder
-retraction detaches accumulated purge within that movement's animation; gear-only
-retraction does not. There is no separate purge-release animation event.
 The final standalone-load G1 is annotated **Final load retraction**, without a
 separate notification. The persisted per-extruder `retracted_length` is part of the replay state, so its
 changes arrive as `state_delta` records. Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
 configured residual, persisted per-extruder fragment length and retained color,
-the selected gate color and persisted `retracted_length`. Missing colors are neutral gray. Retained material
-is drawn at the nozzle and blends toward incoming color as material is extruded. Missing sensors supply no positional evidence.
+the selected gate color and persisted `retracted_length`. Missing sensors supply no positional evidence.
 
 State records share the same versioned stream and sequence numbers:
 
 - `gate_changed` records previous/new gates and the selected unit, once per
-  change. The viewer animates selection using captured per-gate colors.
+  change.
 - `filament_pos_changed` records the previous/new logical filament state and its
-  name; the viewer displays these with a **state changed** pill.
+  name.
 - Drive sync changes have no event: only the selected gate's drive changes mode, and the previous
   gate's drive is unsynced as the selection moves, so `printer.mmu.sync_mode` in the replay state
   (a `state_delta`) is the whole record.
@@ -390,15 +335,9 @@ just before `toolchange_end`, so the segment between the two replays from a know
 final state. Both records carry the same `toolchange_id`. Because the pair brackets the whole command,
 a refused command (disabled, not calibrated, already loaded) emits an empty pair; recording ignores
 it: it opens no file and leaves `toolchange` mode armed for the next command.
-The viewer’s previous/next toolchange buttons navigate these markers; the
-previous button returns to the current operation’s start before moving to an
-earlier operation. Older recordings without markers disable these buttons.
-
 State records carry the active `move_id` when emitted inside a started movement,
-otherwise null. They do not open or close movement pairs. The viewer retains them
-in its raw telemetry export. Gate, filament-position, and espooler changes also appear
-in the movement trace. Espooler records update spool direction and activity without
-adding a timed movement; diagnostic sync updates remain internal. Idle gear stepper
+otherwise null. They do not open or close movement pairs. Espooler records report spool direction and
+activity; they are not timed movements. Idle gear stepper
 disable messages use TRACE.
 
 `elapsed_s` measures time between source callbacks, including waits and simulator
@@ -407,7 +346,7 @@ of physical filament movement, and a submitted move is not proof of completion.
 Encoder travel is reported separately for that reason. Origin changes are not
 filament travel; before/after drive positions share the stated reference.
 
-A client such as the Visualizer (a separate PR) consumes these pairs and derives animation snapshots locally. The
+A client such as the Visualizer consumes these pairs and derives animation snapshots locally. The
 console bridge captures source records without wrapping movement methods or
 observing simulator geometry. The bridge owns a `TelemetryCapture`.
 **Save motion telemetry** now downloads the compact v2 capture as JSONL.
@@ -436,7 +375,7 @@ current printer settings to interpret old movement.
 
 Coverage includes `move_filament()`, MMU-owned G1 extrusion, and explicit cutter
 hooks, plus selector stepper and servo diagnostics. Simplified modeled macro
-effects without source events are not animation inputs. The simulator and
+effects without source events are not in the stream. The simulator and
 real-printer WebSocket transports supply the same capture format.
 The legacy simulator HTTP endpoint remains available for capture diagnostics.
 
