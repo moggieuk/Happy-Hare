@@ -1,3 +1,7 @@
+import {brightness} from './util.js';
+
+const BRIGHT_FILAMENT = .5;  // Luminance above which white text is lost on the winding
+
 // Annular window, optionally rotated and shifted along the spool axis.
 function windowOutline(rotation=0,shift=0) {
   const windowPoint=(radius,degrees)=>{
@@ -94,9 +98,10 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
   if (showFillPercent && Number.isFinite(fillPercent) && fillPercent > 0) {
     const label=Math.round(Math.min(100,fillPercent));
     const nearlyEmpty=label===0;
+    const bright=brightness(color)>BRIGHT_FILAMENT;  // The label sits on the winding, so it must contrast with the filament
     const x=spoolDepth*Math.sin(spoolViewAngle)/2+windingRadius*Math.cos(spoolViewAngle)+.6;
     if (nearlyEmpty) svg += `<circle data-part="spool-low-warning" cx="${x}" cy="0" r="2.7" fill="#fff" stroke="#17212bcc" stroke-width=".275" pointer-events="none"/>`;
-    svg += `<text data-part="spool-fill-label" x="${x}" y="0" text-anchor="middle" dominant-baseline="${nearlyEmpty ? 'central' : 'middle'}" font-size="${nearlyEmpty ? '4.8' : '3.2'}" font-weight="${nearlyEmpty ? '800' : '600'}" fill="${nearlyEmpty ? '#d82232' : '#f4f5f6'}" stroke="${nearlyEmpty ? 'none' : '#17212bcc'}" stroke-width=".55" paint-order="stroke" stroke-linejoin="round" pointer-events="none">${nearlyEmpty ? '!' : label+'%'}</text>`;
+    svg += `<text data-part="spool-fill-label" x="${x}" y="0" text-anchor="middle" dominant-baseline="${nearlyEmpty ? 'central' : 'middle'}" font-size="${nearlyEmpty ? '4.8' : '3.2'}" font-weight="${nearlyEmpty ? '800' : '600'}" fill="${nearlyEmpty ? '#d82232' : bright ? '#17212b' : '#f4f5f6'}" stroke="${nearlyEmpty ? 'none' : bright ? '#f4f5f6cc' : '#17212bcc'}" stroke-width=".55" paint-order="stroke" stroke-linejoin="round" pointer-events="none">${nearlyEmpty ? '!' : label+'%'}</text>`;
   }
   return svg;
 }
