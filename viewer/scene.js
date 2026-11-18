@@ -12,7 +12,7 @@ export function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
 }
 
-export function createScene(host, {now: animationNow, requestFrame: draw, rackHeld}) {
+export function createScene(host, {now: animationNow, requestFrame: draw, rackHeld, rackMoved}) {
   let view={}, settings={};
 const spoolAngles=new Map(), spoolArrowVisibility=new Map(), spoolDirections=new Map();
 let spoolLastFrame=null, spoolSession=null;
@@ -405,7 +405,8 @@ function rack(c) {
     // Every unit sits side by side on one rack that slides to keep the selected spool under the Bowden exit.
     const layouts=(s.unit_layouts?.length ? s.unit_layouts : [{name:s.unit,gates:unitGates,selector_type:s.selector_type}])
       .map(layout=>layout.name===s.unit ? {...layout,gates:displayGates} : layout);
-    if (s.gate!==rackGate || s.gate_slide!==undefined) { rackGate=s.gate; rackManualShift=0; }
+    // A change of gate takes the rack with it, whatever was open over it
+    if (s.gate!==rackGate || s.gate_slide!==undefined) { rackGate=s.gate; rackManualShift=0; rackMoved?.(); }
     // The scene reaches the panel edges: it bleeds into the card padding, at the same scale.
     const sceneWidth=host.clientWidth, bleed=sceneWidth>2*rackBleedPx ? rackBleedPx*SCENE_WIDTH/(sceneWidth-2*rackBleedPx) : 0;
     const rackOptions={focus:focusGate,spacing:settings.spoolSpacing,angle:spoolViewAngle,bleed,
