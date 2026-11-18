@@ -1045,6 +1045,10 @@ BOXTURTLE2_ERCF = Profile(
         'PIN_EXTRUDER_SENSOR': 'PG14',
         'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
         'MMU_HAS_TOOLHEAD_CUTTER': True,
+        # The only profile with a cutter at the MMU: it runs as the post-unload extension
+        'MMU_HAS_SERVO_CUTTER': True,
+        'PIN_SERVO_CUTTER_SERVO': 'PG15',
+        'VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION': 'SERVO_CUTTER_ACTION',
         'PARAM_ENDLESS_SPOOL_ENABLED': True,
     },
     units=[
