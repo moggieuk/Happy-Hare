@@ -61,10 +61,13 @@ class Profile:
                   once menuconfig has renamed the unit (default unit0).
     max_gates:    the most gates a unit can configure, as ./install.sh -g passes it
                   (default: Kconfig's own, 12).
+    parameters:   [mmu_parameters] option -> value, set on the assembled config. For
+                  options with no Kconfig symbol, which the shipped template leaves
+                  commented out for the user to hand-edit (the default_* reset lists).
     """
 
     def __init__(self, name, syms=None, extra_params=None, description='', units=None,
-                 filament_layout=None, unit_name=None, max_gates=None):
+                 filament_layout=None, unit_name=None, max_gates=None, parameters=None):
         self.name = name
         self.unit_name = unit_name
         self.max_gates = max_gates
@@ -73,9 +76,10 @@ class Profile:
         self.description = description
         self.units = list(units or [])
         self.filament_layout = dict(filament_layout or {})
+        self.parameters = dict(parameters or {})
 
     def derive(self, name, syms=None, extra_params=None, description='', units=None,
-               filament_layout=None, unit_name=None, max_gates=None):
+               filament_layout=None, unit_name=None, max_gates=None, parameters=None):
         merged_syms = dict(self.syms)
         merged_syms.update(syms or {})
         merged_params = dict(self.extra_params)
@@ -84,7 +88,8 @@ class Profile:
             name, merged_syms, merged_params, description or self.description,
             units if units is not None else self.units,
             self.filament_layout if filament_layout is None else filament_layout,
-            unit_name or self.unit_name, max_gates or self.max_gates)
+            unit_name or self.unit_name, max_gates or self.max_gates,
+            dict(self.parameters, **(parameters or {})))
 
     def __repr__(self):
         return 'Profile(%r)' % (self.name,)
@@ -868,6 +873,18 @@ ERCF_VVD = Profile(
             'PARAM_TD1_BOWDEN_DEVICE': 'TD1-VVD',
         }),
     ],
+    # Non-identity maps, so the console starts with something to look at in MMU_TTG_MAP and
+    # MMU_ENDLESS_SPOOL_GROUPS and RESET=1 has a configured default to restore:
+    #   - T0/T1 swap gates within unit0, T9/T10 within unit1
+    #   - T6, T7 and T8 all print from gate 6, with the two gates that leaves without a
+    #     tool (7, 8) grouped behind it as its endless spool spares
+    #   - gates 3 and 9 form a group that spans both units; 11 and 12 one inside unit1
+    parameters={
+        # Tool:                        T0 T1 T2 T3 T4 T5 T6 T7 T8  T9  T10 T11 T12
+        'default_ttg_map':              '1, 0, 2, 3, 4, 5, 6, 6, 6, 10, 9,  11, 12',
+        # Gate:                        #0 #1 #2 #3 #4 #5 #6 #7 #8  #9  #10 #11 #12
+        'default_endless_spool_groups': '0, 1, 2, 3, 4, 5, 6, 6, 6, 3,  7,  8,  8',
+    },
     description='ERCF 1.1sb (9 gates) + ViViD 1.0 (4 gates) - the only multi-unit profile')
 
 # Synthetic variant for tests that specifically need unit-scoped sync-feedback state on BOTH

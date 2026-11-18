@@ -288,6 +288,8 @@ class Session:
         # stub value would be silently overridden by the real
         # ~/printer_data/config/mmu/mmu_vars.cfg path.
         self.fileconfig.set('save_variables', 'filename', self._mmu_vars_copy())
+        for option, value in (getattr(self.profile, 'parameters', None) or {}).items():
+            self.fileconfig.set('mmu_parameters', option, value)
         pconfig = configfile.PrinterConfig(printer)
         pconfig.status_raw_config = {section: dict(self.fileconfig.items(section))
                                      for section in self.fileconfig.sections()}
