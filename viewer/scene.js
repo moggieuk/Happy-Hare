@@ -338,7 +338,9 @@ function unitFooter(info,left,right,top,dark,showLogo) {
   const textLeft=left+12+(showLogo ? 38+8 : 0), row=top+33, id=`unit-footer-${escape(info.name)}`;
   let svg=`<defs><clipPath id="${id}"><rect x="${left}" y="${top}" width="${right-left-8}" height="46"/></clipPath></defs><g data-part="unit-footer" data-unit="${escape(info.name)}" clip-path="url(#${id})" font-size="11" fill="var(--scene-text, #304c65)">`;
   if (showLogo) svg += glyph(logo.path,left+12+(38-size)/2,top+4+(38-size)/2,size,'data-part="unit-logo" fill="var(--scene-text, #304c65)" opacity=".7"');
-  svg += `<text data-part="unit-name" x="${(textLeft+right-12)/2}" y="${top+15}" text-anchor="middle" dominant-baseline="middle">${escape(info.display_name)}</text>`;
+  // Alone, the name sits level with the middle of the logo
+  const climate=info.humidity || info.temperature || info.heaterIcon;
+  svg += `<text data-part="unit-name" x="${textLeft}" y="${top+(climate ? 15 : 23)}" dominant-baseline="middle">${escape(info.display_name)}</text>`;
   const tooltip=info.tooltip ? ` data-tooltip="${escape(info.tooltip)}"` : '';
   svg += `<g data-part="unit-climate"${tooltip}>`;
   let x=textLeft;
