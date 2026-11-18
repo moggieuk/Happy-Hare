@@ -67,6 +67,11 @@ class TestViewerConsole(unittest.TestCase):
     def tearDown(self):
         self.console.close()
 
+    def test_the_unit_footer_can_read_each_unit_from_the_bridge(self):
+        self.assertIn('mmu_machine', self.bridge.rpc_printer_objects_list(None, {})['objects'])
+        unit = self.bridge.rpc_printer_objects_query(None, {'objects': {'mmu_machine': None}})['status']['mmu_machine']['unit_0']
+        self.assertEqual((unit['vendor'], unit['display_name']), ('BoxTurtle', 'BoxTurtle-0'))
+
     def test_every_imported_viewer_module_is_served(self):
         import pathlib, re
         viewer = pathlib.Path(__file__).parent.parent / 'viewer'

@@ -3,6 +3,7 @@ import {LiveState, liveFrame} from './live-state.js';
 import {liveMachine} from './live-config.js';
 import {simulatorApi, detectConnection} from './simulator.js';
 import {overlayAllowed, overlaySnapshot} from './overlay.js';
+import {unitInfo, unitObjectFields} from './unit-info.js';
 import {parameterCommand, macroCommand, editorParameters, macroCatalog, editorMacroParameters, toolheadObjects} from './editor.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
@@ -26,7 +27,7 @@ const store = {
   viewMode: 'live', modeChosen: false, viewGeneration: 0, offline: false,
   // Live status subscription
   liveState: new LiveState(), liveTarget: null, liveFrom: null, liveStart: 0, subscriptionGeneration: 0,
-  statusSensors: null, statusRecordMode: null, overlayCache: {key: '', state: null},
+  statusSensors: null, statusRecordMode: null, unitObjects: {}, overlayCache: {key: '', state: null},
   // Telemetry: the records, their replay and the steps made from them
   sourceRecords: [], sourceReplay: new TelemetryReplay(), rawEvents: [], events: [], session: null, parameterGate: null,
   // Playback position and animation
@@ -129,7 +130,7 @@ function connect() {
   store.socket.onopen = () => {
     if (generation!==store.connectionGeneration) return;
     store.setup=null;
-    store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null;
+    store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null; store.unitObjects={};
     sourceMode();
     if (store.offline) return;
     setConnection("Connected · identifying source…", "pending");
@@ -146,6 +147,7 @@ function connect() {
     } else if (data.method === 'notify_mmu_telemetry') {
       telemetryStream.receive(data.params[0]);
     } else if (data.method === 'notify_status_update') {
+      acceptUnitObjects(data.params[0]);
       if (store.viewMode==='live') acceptLive(data.params[0],data.params[1]);
       else {
         const mmu=data.params[0].mmu;
@@ -160,7 +162,7 @@ function connect() {
         if (data.method==='notify_klippy_ready') startStream().catch(e=>message(e.message,true));
         return;
       }
-      store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null; store.liveTarget=null; store.displayed=null; store.playing=null; store.sensorPulse=null;
+      store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null; store.unitObjects={}; store.liveTarget=null; store.displayed=null; store.playing=null; store.sensorPulse=null;
       if (data.method==='notify_klippy_ready') subscribeLive().catch(e=>message(e.message,true));
       else { $('mode').textContent='Live view · Printer unavailable'; $('scene').replaceChildren(); }
     } else if (data.method === "notify_gcode_command") {
@@ -173,7 +175,7 @@ function connect() {
     if (generation!==store.connectionGeneration) return;
     store.subscriptionGeneration++;
     telemetryStream.stop(false);
-    store.statusSensors=null; store.statusRecordMode=null;
+    store.statusSensors=null; store.statusRecordMode=null; store.unitObjects={};
     if (store.liveTarget) { store.liveTarget.homing=null; store.liveTarget.espoolers={}; }
     if (store.viewMode==='live' && store.displayed) store.displayed.espoolers={};
     draw();
@@ -200,6 +202,15 @@ async function initializeConnection() {
   else if (store.viewMode==='live') await subscribeLive();
   else await startStream();
 }
+// The unit footers read the machine's units and their heaters and climate sensors, in either connected mode
+async function unitObjectsWanted(available) {
+  if (!available.includes('mmu_machine')) return {};
+  const machine=(await rpc('printer.objects.query',{objects:{mmu_machine:null}})).status.mmu_machine;
+  return unitObjectFields(machine,available);
+}
+function acceptUnitObjects(status) {
+  for (const [name,fields] of Object.entries(status || {})) store.unitObjects[name]={...store.unitObjects[name],...fields};
+}
 async function subscribeLive() {
   const generation=++store.subscriptionGeneration;
   const {objects}=await rpc('printer.objects.list');
@@ -215,7 +226,10 @@ async function subscribeLive() {
     'gate_color_rgb','gate_status','gate_initial_weight','gate_remaining_weight','espooler','action',
     'filament_cut_fragment','filament_remaining_color'];
   wanted.save_variables=['variables'];
+  Object.assign(wanted,await unitObjectsWanted(objects));
+  wanted.mmu.push('drying_state');
   const initial=await rpc('printer.objects.subscribe',{objects:wanted});
+  acceptUnitObjects(initial.status);
   store.liveState.accept({configfile:startup.configfile},initial.eventtime-1);
   if (store.viewMode==='live' && generation===store.subscriptionGeneration) acceptLive(initial.status,initial.eventtime);
 }
@@ -247,8 +261,11 @@ function acceptLive(delta,time) {
 // recording mode (a status variable) drives the Record control.
 async function startStream() {
   const generation=store.viewGeneration;
-  const mmu=(await rpc('printer.objects.subscribe',{objects:{mmu:['sensors','telemetry_mode']}})).status.mmu;
+  const wanted=await unitObjectsWanted((await rpc('printer.objects.list')).objects);
+  const status=(await rpc('printer.objects.subscribe',{objects:{...wanted,mmu:['sensors','telemetry_mode','drying_state']}})).status;
+  const mmu=status.mmu;
   if (generation!==store.viewGeneration || store.viewMode!=='playback' || store.offline) return;
+  acceptUnitObjects(status);
   store.statusSensors=mmu?.sensors || null; store.statusRecordMode=mmu?.telemetry_mode ?? null;
   renderRecordControl();
   await telemetryStream.start();
@@ -259,7 +276,7 @@ async function changeView(mode) {
   store.subscriptionGeneration++;
   store.viewMode=mode; store.offline=false; store.playing=null; store.displayed=null; store.sensorPulse=null;
   store.events=[]; store.rawEvents=[]; store.sourceRecords=[]; store.sourceReplay=new TelemetryReplay();
-  store.liveTarget=null; store.liveFrom=null; store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null;
+  store.liveTarget=null; store.liveFrom=null; store.liveState=new LiveState(); store.statusSensors=null; store.statusRecordMode=null; store.unitObjects={};
   store.live=true; store.paused=false; store.replayingHistory=false;
   $('scene').replaceChildren();
   $('mode').textContent=mode==='live' ? 'Live view · Connecting…' : isSimulator() ? 'Telemetry playback · Waiting for simulator stream' : 'Telemetry playback · Waiting for printer stream';
@@ -560,6 +577,7 @@ function currentView() {
   const moveReason = annotatedEvent.label || annotatedEvent.telemetry?.start?.label;
   const connected = store.socket?.readyState===1;
   return {viewMode:store.viewMode, offline:store.offline, live:store.live, paused:store.paused, playing:store.playing, played:store.played, events:store.events, sensorPulse:store.sensorPulse, event:e, state:s,
+    unitInfo:store.offline ? null : unitInfo(store.unitObjects,s.gate),
     homing:store.liveTarget?.homing, simulator:isSimulator(), running, index, count:store.events.length, pauseAfterStep:store.pauseAfterStep,
     previousToolchange:toolchangeIndex(store.events, index, -1) >= 0, nextToolchange:toolchangeIndex(store.events, index, 1) >= 0,
     modeText: store.viewMode==='live' ? `Live view · ${connected ? s.action || s.filament_pos_name : 'Disconnected'}`

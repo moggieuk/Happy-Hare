@@ -16,6 +16,8 @@ the simulator.
 | `telemetry.js`, `live-state.js`, `live-config.js`, `scene-state.js` | Telemetry replay and live status, both reduced to the same scene state |
 | `playback.js`, `overlay.js`, `editor.js` | Pure helpers: step timing, geometry, labels, the idle sensor overlay, editor commands |
 | `path-measure.js` | Length and point-at-length of the scene's paths, computed without the page |
+| `unit-info.js` | What the footer under each unit shows, worked out from live printer objects |
+| `unit-icons.js` | The vendor logos and climate glyphs, as SVG paths |
 | `spool.js`, `buffer-view.js`, `spool-picker.js`, `toolhead-panel.js`, `console-log.js`, `chrome.js`, `simulator.js`, `util.js` | Spool and buffer drawing, side panels, the console, theme and tooltips, simulator calls, shared helpers |
 
 Everything outside `app.js`, `scene.js` and the small DOM modules has no DOM access and is covered by the JS tests.
@@ -174,6 +176,18 @@ The simulator's `extruder_entry` geometry coordinate denotes the extruder gears.
 Calibrated Bowden length runs from the gate homing point to those gears.
 `toolhead_entry_to_extruder` places the optional entry sensor upstream of the gears;
 it does not extend the Bowden or move the buffer's compression contact point.
+
+## Unit footer
+
+Under each unit's gate numbers the scene shows what Mainsail Happy Hare Edition shows there, by the same rules:
+
+- **Logo and name:** the vendor's logo (Happy Hare's own for a vendor without one) and the unit's `display_name`.
+- **Climate:** humidity and temperature from the unit's environment sensor, and at the right the heater's
+  target with a heating-coil icon, or a rotating-orbit icon while any of the unit's gates is drying or queued to dry.
+- **Per-gate heaters or sensors:** the row shows the selected gate's values followed by `...`, and a tooltip lists every gate.
+
+It is read from live printer objects (`mmu_machine`, the unit's heater and sensor objects, `mmu.drying_state`)
+in both connected modes. A loaded recording has no connection, so it shows no footer.
 
 ## Modes and panels
 
