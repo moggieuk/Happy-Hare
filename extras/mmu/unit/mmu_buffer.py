@@ -47,6 +47,7 @@ class MmuBuffer:
         self.name = config.get_name().split()[-1]
 
         self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
+        self.mmu = None                         # Set at klippy:connect
 
         register = bool(config.getint('register_buffer_sensors', 1, minval=0, maxval=1))
         event_delay = config.getfloat('event_delay', 0., minval=0.)
@@ -132,6 +133,8 @@ class MmuBuffer:
         """
         Button event handler for sync-feedback tension switch
         """
+        if self.mmu is None:
+            return # Switch event before klippy:connect, the state is already stored by the runout helper
         c_sensor_name = t_sensor_name.replace(SENSOR_TENSION, SENSOR_COMPRESSION)
         compression_sensor = self.mmu.sensor_manager.get_sensor_obj(c_sensor_name)
         compression_enabled = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
@@ -150,6 +153,8 @@ class MmuBuffer:
         """
         Button event handler for sync-feedback compression switch
         """
+        if self.mmu is None:
+            return # Switch event before klippy:connect, the state is already stored by the runout helper
         t_sensor_name = c_sensor_name.replace(SENSOR_COMPRESSION, SENSOR_TENSION)
         tension_sensor = self.mmu.sensor_manager.get_sensor_obj(t_sensor_name)
         tension_enabled = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False

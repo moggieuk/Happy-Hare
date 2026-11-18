@@ -813,5 +813,38 @@ class TestAutotuneSummary(unittest.TestCase):
         self.assertFalse(any('Autotune summary' in line for line in hh.console))
 
 
+class TestBufferSwitchBeforeConnect(unittest.TestCase):
+    """
+    Klipper can deliver a buffer switch's first state before klippy:connect (a sprung
+    tension switch reads triggered at rest). The buffer only learns its MMU controller at
+    connect, so the callback must not use it before then - an exception there shuts
+    Klipper down at startup.
+    """
+
+    def test_switch_events_before_connect_are_ignored(self):
+        hh = session('boxturtle')
+        self.addCleanup(hh.close)
+        hh.build()
+        buffer = hh.printer.lookup_object('mmu_machine').units[0].buffer
+        tension, compression = buffer.tension_sensor, buffer.compression_sensor
+        events = []
+        hh.printer.register_event_handler(
+            'mmu:sync_feedback', lambda eventtime, value: events.append(value))
+
+        buttons = hh.printer.lookup_object('buttons')
+        buttons.press(tension.switch_pin, True)
+        buttons.press(compression.switch_pin, True)
+        buttons.press(compression.switch_pin, False)
+        self.assertEqual(events, [])
+        self.assertTrue(tension.runout_helper.filament_present, 'state is still recorded')
+
+        hh.boot()
+        self.assertEqual(hh.errors, [])
+        del events[:]
+        hh.sensor('filament_tension').set(False)
+        hh.sensor('filament_compression').set(True)
+        self.assertEqual(events, [0, 1], 'events after connect are sent as before')
+
+
 if __name__ == '__main__':
     unittest.main()
