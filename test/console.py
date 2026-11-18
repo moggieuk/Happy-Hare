@@ -822,8 +822,11 @@ class Console:
         """Make the cached boot banner describe the post-preload simulator state."""
         current, _plain = self.hh.mmu.logger._color_message(
             self.hh.mmu.get_filament_position_string())
+        table, _plain = self.hh.mmu.logger._color_message(self.hh.mmu._mmu_visual_to_string())
         refreshed = []
         for message in self.startup_output:
+            if 'Avail: ' in message and 'Selct: ' in message:
+                message = table  # Gates may have been emptied or left unknown since bootup printed it
             lines = message.split('\n')
             lines = [current if line.startswith('[T') else line for line in lines]
             refreshed.append('\n'.join(lines))
