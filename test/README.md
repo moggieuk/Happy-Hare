@@ -1081,6 +1081,7 @@ templates** from them, so a broken template shows up as a test failure.
 |---|---|
 | `boxturtle2_ercf` | three units on one toolhead: two BoxTurtle 1.0 (4 gates each, `VirtualSelector`) and an ERCF 1.1sb (8 gates, `LinearServoSelector`, encoder) — 16 gates, for the scrolling unit rack |
 | `ercf_quattrobox` | multi-unit, mixed selector types with a shared downstream buffer and independent gate encoders |
+| `ercf_mmu_cutter` | a single ERCF 1.1sb (8 gates, encoder) with a servo cutter at the MMU run as the post-unload extension, and no tip forming or toolhead cutter |
 | `ercf_vvd` | **the console default.** A multi-unit profile and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
