@@ -4,6 +4,8 @@ import {liveMachine} from './live-config.js';
 import {simulatorApi, detectConnection} from './simulator.js';
 import {overlayAllowed, overlaySnapshot} from './overlay.js';
 import {unitInfo, unitObjectFields} from './unit-info.js';
+import {gateMenu, GATE_MENU_OBJECTS, GATE_MENU_MMU_FIELDS} from './gate-menu.js';
+import {createGateMenu} from './gate-menu-view.js';
 import {parameterCommand, macroCommand, editorParameters, macroCatalog, editorMacroParameters, toolheadObjects} from './editor.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
@@ -204,12 +206,14 @@ async function initializeConnection() {
 }
 // The unit footers read the machine's units and their heaters and climate sensors, in either connected mode
 async function unitObjectsWanted(available) {
-  if (!available.includes('mmu_machine')) return {};
+  const menu=Object.fromEntries(Object.entries(GATE_MENU_OBJECTS).filter(([name])=>available.includes(name)));
+  if (!available.includes('mmu_machine')) return menu;
   const machine=(await rpc('printer.objects.query',{objects:{mmu_machine:null}})).status.mmu_machine;
-  return unitObjectFields(machine,available);
+  return {...menu,...unitObjectFields(machine,available)};
 }
 function acceptUnitObjects(status) {
   for (const [name,fields] of Object.entries(status || {})) store.unitObjects[name]={...store.unitObjects[name],...fields};
+  store.unitObjectsChanged?.();
 }
 async function subscribeLive() {
   const generation=++store.subscriptionGeneration;
@@ -227,7 +231,7 @@ async function subscribeLive() {
     'filament_cut_fragment','filament_remaining_color'];
   wanted.save_variables=['variables'];
   Object.assign(wanted,await unitObjectsWanted(objects));
-  wanted.mmu.push('drying_state');
+  wanted.mmu.push('drying_state','enabled');
   const initial=await rpc('printer.objects.subscribe',{objects:wanted});
   acceptUnitObjects(initial.status);
   store.liveState.accept({configfile:startup.configfile},initial.eventtime-1);
@@ -262,7 +266,7 @@ function acceptLive(delta,time) {
 async function startStream() {
   const generation=store.viewGeneration;
   const wanted=await unitObjectsWanted((await rpc('printer.objects.list')).objects);
-  const status=(await rpc('printer.objects.subscribe',{objects:{...wanted,mmu:['sensors','telemetry_mode','drying_state']}})).status;
+  const status=(await rpc('printer.objects.subscribe',{objects:{...wanted,mmu:['sensors','telemetry_mode','drying_state',...GATE_MENU_MMU_FIELDS]}})).status;
   const mmu=status.mmu;
   if (generation!==store.viewGeneration || store.viewMode!=='playback' || store.offline) return;
   acceptUnitObjects(status);
@@ -440,6 +444,15 @@ async function selectDimension(event) {
   } catch (error) { message(error.message, true); }
 }
 $('scene').addEventListener('click', selectDimension);
+// The action menu on a gate's spool or number, while connected to a printer or the simulator
+const gateMenuView=createGateMenu($('scene').parentNode,{
+  items:gate=>gateMenu(store.unitObjects,gate,!store.offline && store.socket?.readyState===1),
+  run:script=>sendScript(script)});
+$('scene').addEventListener('click',event=>{
+  const target=event.target.closest('[data-part="espooler"],[data-part="gate-status-pill"]');
+  if (target && !store.offline) gateMenuView.open(Number(target.dataset.gate),event.clientX,event.clientY);
+});
+store.unitObjectsChanged=()=>gateMenuView.refresh();  // What can be sent follows the printer's state
 $('scene').addEventListener('keydown', selectDimension);
 $('parameter').addEventListener('pointerdown',()=> $('parameter').style.removeProperty('--macro-picker-padding'));
 $('parameter').addEventListener('change',()=> $('parameter').style.removeProperty('--macro-picker-padding'));
@@ -472,18 +485,22 @@ $("command").addEventListener('keydown', event => {
   input.value = commandHistory.navigate(event.key === 'ArrowUp' ? -1 : 1, input.value);
   input.setSelectionRange(input.value.length, input.value.length);
 });
+// A command sent from this page is watched; commands from elsewhere never move a paused view
+function sendScript(script) {
+  if (store.viewMode==='playback') followLive();
+  scrollConsoleToEnd();
+  // Not under the busy lock: a second command (a pause, an emergency stop) must go through while the first runs.
+  rpc("printer.gcode.script", { script }).catch((e) => { if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error'); });
+  if (store.socket.readyState === WebSocket.OPEN) commandHistory.add(script);
+  lastActivity = performance.now();
+  draw();
+}
 $("command-form").onsubmit = (event) => {
   event.preventDefault();
   const script = $("command").value.trim();
   if (!script) return;
-  if (store.viewMode==='playback') followLive(); // A command typed here is watched; commands from elsewhere never move a paused view
-  scrollConsoleToEnd();
-  // Not under the busy lock: a second command (a pause, an emergency stop) must go through while the first runs.
-  rpc("printer.gcode.script", { script }).catch((e) => { if (!consoleEndsWith(e.message)) consoleLine(e.message, 'error'); });
-  if (store.socket.readyState === WebSocket.OPEN) {
-    commandHistory.add(script);
-    $("command").value = "";
-  }
+  sendScript(script);
+  if (store.socket.readyState === WebSocket.OPEN) $("command").value = "";
 };
 $("restart").onclick = () =>
   action(async () => {

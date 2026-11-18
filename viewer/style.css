@@ -469,3 +469,14 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 [data-part="rack-scroll"] { cursor: pointer; }
 [data-part="rack-scroll"]:hover rect, [data-part="rack-scroll"]:focus-visible rect { fill-opacity: 1; stroke-width: 1.4; }
 [data-part="rack-scroll"]:focus-visible { outline: none; }
+
+/* Gate action menu */
+#scene [data-part="espooler"], #scene [data-part="gate-status-pill"] { cursor: context-menu; }
+#gate-menu { position: absolute; z-index: 5; display: grid; gap: 2px; min-width: 150px; padding: 6px; border: 1px solid #dae2e9; border-radius: 8px; background: white; box-shadow: 0 6px 18px rgb(0 0 0 / .22); font-size: 12px; }
+#gate-menu[hidden] { display: none; }
+.gate-menu-title { padding: 2px 8px 5px; font-weight: 700; opacity: .7; }
+#gate-menu button { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0; padding: 5px 8px; border: 0; border-radius: 5px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#gate-menu button:hover:not(:disabled), #gate-menu button:focus-visible { background: rgb(79 134 198 / .18); }
+#gate-menu button:disabled { opacity: .38; cursor: default; }
+#gate-menu svg { flex: none; width: 16px; height: 16px; fill: currentColor; }
+[data-theme="dark"] #gate-menu { border-color: #344554; background: #1a2530; }

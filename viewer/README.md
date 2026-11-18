@@ -18,6 +18,8 @@ the simulator.
 | `path-measure.js` | Length and point-at-length of the scene's paths, computed without the page |
 | `unit-info.js` | What the footer under each unit shows, worked out from live printer objects |
 | `unit-icons.js` | The vendor logos and climate glyphs, as SVG paths |
+| `gate-menu.js` | The action menu on a gate: its commands and when each can be sent |
+| `gate-menu-view.js` | That menu as a pop-up over the scene |
 | `spool.js`, `buffer-view.js`, `spool-picker.js`, `toolhead-panel.js`, `console-log.js`, `chrome.js`, `simulator.js`, `util.js` | Spool and buffer drawing, side panels, the console, theme and tooltips, simulator calls, shared helpers |
 
 Everything outside `app.js`, `scene.js` and the small DOM modules has no DOM access and is covered by the JS tests.
@@ -194,6 +196,26 @@ Under each unit's gate numbers the scene shows what Mainsail Happy Hare Edition 
 
 It is read from live printer objects (`mmu_machine`, the unit's heater and sensor objects, `mmu.drying_state`)
 in both connected modes. A loaded recording has no connection, so it shows no footer.
+
+## Gate action menu
+
+Clicking a spool or a gate number, while connected, opens a menu of commands for that gate. The rules for
+when each can be sent are Mainsail Happy Hare Edition's (its gate menu and its MMU control buttons):
+
+| Item | Sends | Can be sent when |
+|---|---|---|
+| Select | `MMU_SELECT GATE=n` | not the selected gate, and no filament is loaded |
+| Change Tool | `MMU_CHANGE_TOOL GATE=n` | not the selected gate |
+| Preload | `MMU_PRELOAD GATE=n` | the selected gate with nothing loaded, or another gate on a unit that can crossload |
+| Load | `MMU_LOAD` | the selected gate, unloaded |
+| Unload | `MMU_UNLOAD` | the selected gate, not unloaded |
+| Eject | `MMU_EJECT GATE=n` | the selected gate, or another gate on a unit that can crossload |
+| Check Gate | `MMU_CHECK_GATE GATE=n` | always |
+| Scan NFC Tag | `MMU_NFC_SCAN GATE=n` | as Preload; shown only where the gate has an NFC reader |
+
+Nothing can be sent while printing, with the MMU disabled, or when not connected. The menu closes on a
+choice, Escape, a click elsewhere, the pointer leaving it, or after eight seconds. It reads `mmu`,
+`mmu_machine`, `print_stats` and `idle_timeout` from live printer objects.
 
 ## Modes and panels
 
