@@ -22,7 +22,7 @@ class MmuSendTelemetryCommand(BaseCommand):
         super().__init__(mmu)
         self.register(self.CMD, self._run,
                       help_brief='Record a macro animation event',
-                      help_params='_MMU_SEND_TELEMETRY EVENT=cut|release',
+                      help_params='_MMU_SEND_TELEMETRY EVENT=cut|release [CUTTER=toolhead|mmu]',
                       category=CATEGORY_INTERNAL, log=False)
 
     def _run(self, gcmd):
@@ -32,9 +32,12 @@ class MmuSendTelemetryCommand(BaseCommand):
         event = gcmd.get('EVENT').strip().strip('"').lower()
         if event not in ('cut', 'release'):
             raise gcmd.error('Unsupported telemetry EVENT: %s' % event)
-        variables = self.mmu.cut_tip_vars() or {}
-        blade = variables.get('blade_pos')
-        telemetry.state(event, cutter='toolhead',
+        cutter = gcmd.get('CUTTER', 'toolhead').strip().strip('"').lower()
+        if cutter not in ('toolhead', 'mmu'):
+            raise gcmd.error('Unsupported telemetry CUTTER: %s' % cutter)
+        # Only the toolhead blade has a configured position; the cutter at the MMU is placed from its feed length
+        blade = (self.mmu.cut_tip_vars() or {}).get('blade_pos') if cutter == 'toolhead' else None
+        telemetry.state(event, cutter=cutter,
                         blade_pos=float(blade) if blade is not None else None,
                         unit=self.mmu.mmu_unit().name, gate=self.mmu.gate_selected,
                         origin='macro', phase=event.upper())

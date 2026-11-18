@@ -220,6 +220,12 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertTrue(capture.read(after=1)['reset'])
         self.assertEqual(capture.read(after=records[-1]['sequence'])['records'], [])
 
+    def test_a_cutter_at_the_mmu_is_in_the_baseline(self):
+        machine = lambda: self.State(self.hh.mmu)()['printer']['mmu_machine']
+        self.assertIsNone(machine()['mmu_cutter'])
+        self.hh.mmu.has_mmu_cutter = True
+        self.assertEqual(machine()['mmu_cutter'], {'feed_length': None})  # No servo cutter variables on this profile
+
     def test_sensor_enablement_and_macro_dimensions_are_recorded(self):
         mmu = self.hh.mmu
         mmu.p.form_tip_macro = '_MMU_CUT_TIP'

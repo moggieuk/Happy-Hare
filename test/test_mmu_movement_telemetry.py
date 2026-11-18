@@ -92,6 +92,10 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertEqual([r['phase'] for r in self.records], ['CUT', 'RELEASE'])
         self.assertEqual(before, (mmu.filament_pos, mmu.gate_selected, self.hh.filament().tip[:]))
 
+    def test_macro_hook_names_the_cutter_at_the_mmu(self):
+        self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="cut" CUTTER=mmu')
+        self.assertEqual([(r['event'], r['cutter'], r['blade_pos']) for r in self.records], [('cut', 'mmu', None)])
+
     def test_macro_hook_with_no_subscribers_does_nothing(self):
         self.unsubscribe()
         telemetry = self.hh.mmu.movement_telemetry

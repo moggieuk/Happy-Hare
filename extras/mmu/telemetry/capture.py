@@ -111,6 +111,13 @@ class ReplayState:
             sets.append((unit.toolhead_wrapper.p, unit_path + ('toolhead', 'parameters')))
         return sets
 
+    def mmu_cutter(self):
+        """The post-unload cutter at the MMU, placed by its feed length from the gate parking position."""
+        if not self.mmu.has_mmu_cutter:
+            return None
+        macro = self.mmu.printer.lookup_object('gcode_macro _MMU_SERVO_CUTTER_VARS', None)
+        return dict(feed_length=macro.variables.get('feed_length') if macro else None)
+
     def scopes(self):
         """Config section name -> state paths holding that section's parameters."""
         scopes = {}
@@ -193,7 +200,7 @@ class ReplayState:
                               for name, (value, sensor) in sensors.items()},
                      drive_motors={kind: [motor.get_name() for motor in owner.get_steppers()]
                                    for kind, owner in (('gear', drive.mmu_gear_stepper), ('extruder', drive.mmu_extruder_stepper))}),
-            mmu_machine=dict(num_gates=mmu.num_gates, units=units, form_tip_macro=macro_name,
+            mmu_machine=dict(num_gates=mmu.num_gates, units=units, form_tip_macro=macro_name, mmu_cutter=self.mmu_cutter(),
                              purge_macro=mmu._macro_name(mmu.p.purge_macro))),
             macros=macros))
 
