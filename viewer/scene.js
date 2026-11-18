@@ -2,7 +2,7 @@
 // The main view: draws one scene state into the host <svg>. It reads nothing from the page outside the host and
 // changes nothing outside it; the caller passes what to draw (view) and how (settings).
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
-import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, toolheadProgress, toolheadDrawingRange, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, excessFilamentLabel, constrainFilament, gearAngle, homingTarget, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength } from './playback.js';
+import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, toolheadProgress, toolheadDrawingRange, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, excessFilamentLabel, constrainFilament, gearAngle, homingTarget, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength, movingTip} from './playback.js';
 import {$, escape, short as sensorName, DEFAULT_COLOR, round1, clamp01} from './util.js';
 import {renderBuffer} from './buffer-view.js';
 import {measurePath} from './path-measure.js';
@@ -57,6 +57,8 @@ function advanceSpools(now, {espoolers, running, session}) {
 }
 // The rack of units scrolls to the selected gate; the edge arrows add a temporary manual shift until the gate changes.
 let rackGate = null, rackManualShift = 0, rackTween = null, bowdenDetached = false;
+// The tip as last drawn, and the hold a playing move started with
+let lastTip = null, moveHold = null;
 const rackScrollTime = 350, rackBleedPx = 12, MASK_HEIGHT = 700;
 // The MMU gears ease between gripped and released instead of snapping.
 let gearSpacingTween = null;
@@ -262,6 +264,9 @@ function measure(c) {
   };
   let schematicDistance = position => progress(position)*length;
   let schematicTip = null;
+  // Where a tip position is drawn along the path, before any sensor holds it back
+  const rawTip = tip;
+  let drawnAt = pathDistance;
   // UNKNOWN uses an illustrative endpoint between the MMU gears and its outlet.
   if (s.gate >= 0 && s.filament_pos === -1 && e.kind !== 'movement') tip = tipAtPathDistance(virtual ? virtual.parkDistance : 570-405);
   // The schematic Bowden scale ends at the extruder sensor: beyond it positions use the toolhead's own scale, so the
@@ -274,7 +279,11 @@ function measure(c) {
         null,s.encoder_reference.parking<0 ? virtual.parkDistance : null);
       schematicTip=schematicDistance(tip);
       tip=tipAtPathDistance(schematicTip);
-    } else tip = tipAtPathDistance(encoderFilamentDistance(events,e,s,tip,pathDistance,mmuDistanceAtY(encoderPoint().y)));
+      drawnAt=schematicDistance;
+    } else {
+      drawnAt=position=>encoderFilamentDistance(events,e,s,position,pathDistance,mmuDistanceAtY(encoderPoint().y));
+      tip = tipAtPathDistance(drawnAt(tip));
+    }
   } else if (s.gate >= 0 && s.filament_pos >= 0 && tip < entry) {
     const endstop = s.encoder_reference?.endstop?.split(':').at(-1);
     const sensor = unitSensors.find(([name,d]) => Number.isFinite(d.position) &&
@@ -287,6 +296,7 @@ function measure(c) {
         virtual && endstop==='mmu_shared_exit' && s.encoder_reference.parking<0 ? virtual.parkDistance : null);
       schematicTip = schematicDistance(tip);
       tip = tipAtPathDistance(schematicTip);
+      drawnAt = schematicDistance;
     }
   }
   const tipScale = toolheadHeight/(end-entry);
@@ -312,8 +322,27 @@ function measure(c) {
       return {...d,name,position,tolerance:slack ? Math.abs(pathDistance(d.position+slack)-pathDistance(d.position)) : 0};
     });
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
-  const constrained = constrainFilament(schematicTip ?? pathDistance(tip),
-    s.tails[gate] === null ? null : pathDistance(s.tails[gate]), presenceSensors, fragments, s.sensor_conflicts || []);
+  const tail = s.tails[gate] === null ? null : pathDistance(s.tails[gate]);
+  const constrained = constrainFilament(schematicTip ?? pathDistance(tip), tail, presenceSensors, fragments, s.sensor_conflicts || []);
+  const after = e.settled_state || e.state, from = e.before?.tips?.[gate], to = after?.tips?.[gate];
+  if (playing && e.kind === 'movement' && e.before?.gate === s.gate && Number.isFinite(from) && Number.isFinite(to) && from !== to) {
+    // A sensor's hold must not make the tip stall and then jump: carry it smoothly across the move
+    const hold = (position,state) => {
+      const free = drawnAt(position);
+      return constrainFilament(free, tail, presenceSensors.map(d=>({...d,state:state.sensors?.[d.name]?.state ?? d.state})), fragments).tip-free;
+    };
+    // The move leaves from where the tip was last drawn, which a sensor may have been holding back
+    if (moveHold?.seq !== e.seq) moveHold = {seq:e.seq, start:lastTip?.gate === gate && Math.abs(lastTip.raw-from) < .5
+      ? lastTip.drawn-drawnAt(from) : hold(from,e.before)};
+    constrained.tip = movingTip(schematicTip ?? pathDistance(tip), clamp01((rawTip-from)/(to-from)), moveHold.start, hold(to,after));
+    // A sensor that changes during the move does so as the drawn tip reaches it
+    for (const d of presenceSensors) {
+      if (e.before.sensors?.[d.name]?.state === after.sensors?.[d.name]?.state) continue;
+      const shown = displayedSensors.find(([name])=>name===d.name)?.[1];
+      if (shown) shown.state = constrained.tip >= d.position-1e-6;
+    }
+  }
+  lastTip = {gate, raw:rawTip, drawn:constrained.tip};
   const focus = s.gate_focus ?? s.gate;
   // Start just inside the upper spool rim; the fixed fade hides the insertion point.
   const fullTipOpacity=virtual ? 1 : s.gate_full_opacity ?? 1;

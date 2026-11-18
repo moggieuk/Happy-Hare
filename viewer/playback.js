@@ -290,6 +290,12 @@ export function constrainFilament(tip, tail, sensors, fragments = [], reported =
   return {tip:bounded(tip), warnings:[...new Set(warnings)]};
 }
 
+// A sensor reading can hold the drawn tip back from where a move's distance puts it. Blend that hold from the
+// move's start to its end, so the tip leaves from where it was drawn and arrives where it will be drawn.
+export function movingTip(free, progress, startHold, endHold) {
+  return free + startHold*(1-progress) + endHold*progress;
+}
+
 // Approximate each discrete move from rest; recorded distances remain authoritative.
 function motionProfile(event) {
   const distance=Math.abs(event.distance ?? 0), speed=event.speed, acceleration=event.acceleration;
