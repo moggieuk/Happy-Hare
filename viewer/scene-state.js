@@ -13,7 +13,7 @@ export class SceneModel {
   constructor() {
     this.tips=[]; this.shapes=[]; this.hairLengths=[]; this.motors={};
     this.fragments={}; this.hotends={}; this.bufferPositions={};
-    this.excess={}; this.overshoot={}; this.cutter=false; this.nozzles={};
+    this.excess={}; this.overshoot={}; this.cutter=false; this.mmuCutter=false; this.mmuOffcut=null; this.nozzles={};
   }
   logicalTip(s, pos, manual=false) {
     const {extruder_entry:entry,extruder_gears:gears,nozzle} = s.layout;
@@ -133,7 +133,7 @@ export class SceneModel {
       gate_map:{filament_name:m.gate_filament_name,material:m.gate_material,vendor:m.gate_vendor,td:m.gate_td,temperature:m.gate_temperature,
         spool_id:m.gate_spool_id,speed_override:m.gate_speed_override,rfid:m.gate_spool_rfid,ttg_map:m.ttg_map,
         endless_spool_groups:m.endless_spool_groups,initial_weight:m.gate_initial_weight,remaining_weight:m.gate_remaining_weight},
-      unit_sensors:unit.sensors,devices,buffers,object_status,configuration,filament,cutters,cutter_pressed:this.cutter,
+      unit_sensors:unit.sensors,devices,buffers,object_status,configuration,filament,cutters,cutter_pressed:this.cutter,mmu_cutter_pressed:this.mmuCutter,mmu_offcut:this.mmuOffcut,
       espoolers:Object.assign({},...Object.values(machine.units).map(u=>u.espooler?.operations || {})),
       extruder_target_temperature:finite(extruder.target_temperature) ? extruder.target_temperature : null,
       mmu_gripped:mmuGripped,synced:[1,3].includes(m.sync_mode),drive_motors:m.drive_motors,motors:this.motors,

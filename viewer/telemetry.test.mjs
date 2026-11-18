@@ -214,7 +214,7 @@ test('per-move encoder measurement never overwrites absolute encoder status',()=
  assert.notEqual(e.before.devices[key].encoder_pos,123);
  assert.equal(e.state.devices[key].encoder_pos,e.before.devices[key].encoder_pos);
 });
-test('a cut at the MMU trims the tip at the blade without leaving a fragment in the toolhead',()=>{
+test('a cut at the MMU holds the offcut until the release, which trims the tip at the blade',()=>{
  const h=header();h.state.printer.mmu.filament_pos=0;h.state.printer.mmu_machine.mmu_cutter={feed_length:48};
  const r=new TelemetryReplay();r.feed(h);
  const s=r.snapshot(),blade=s.cutters.find(c=>c.kind==='mmu');
@@ -223,9 +223,17 @@ test('a cut at the MMU trims the tip at the blade without leaving a fragment in 
  event(r,'cut',{cutter:'mmu',phase:'CUT'});
  const cut=r.events.at(-1);
  assert.equal(cut.cutter,'mmu');
- assert.equal(cut.state.tips[s.gate],blade.position);
+ assert.equal(cut.state.tips[s.gate],blade.position+10);
+ assert.equal(cut.state.mmu_cutter_pressed,true);
  assert.equal(cut.state.cutter_pressed,false);
- assert.equal(cut.state.retained_segment,s.retained_segment);
+ assert.equal(cut.state.mmu_offcut.gate,s.gate);
+ event(r,'release',{cutter:'mmu',phase:'RELEASE'});
+ const release=r.events.at(-1);
+ assert.equal(release.cutter,'mmu');
+ assert.equal(release.state.tips[s.gate],blade.position);
+ assert.equal(release.state.mmu_cutter_pressed,false);
+ assert.equal(release.state.mmu_offcut,null);
+ assert.equal(release.state.retained_segment,s.retained_segment);
 });
 test('configuration changes affect subsequent steps, never earlier snapshots',()=>{
  const r=stream();const initial=structuredClone(r.events[0]);

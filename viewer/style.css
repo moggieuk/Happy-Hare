@@ -188,6 +188,7 @@ select, input { max-width: 100%; }
   color-scheme: dark;
   color: #dce5ef;
   background: #111820;
+  --scene-background: #1a2530;
   --scene-body: #263543;
   --scene-border: #70879d;
   --scene-text: #bdcfe0;
