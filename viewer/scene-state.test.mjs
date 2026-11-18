@@ -51,3 +51,16 @@ test('the status readout rounds distances to two decimal places',()=>{
  assert.equal(statusText({encoder_pos:2199.8123}),'{"encoder_pos":2199.81}');
  assert.equal(statusText(null),'No status exposed');
 });
+
+test('a gate sensor the unit neither homes nor preloads on has only an assumed position',()=>{
+ const r=new TelemetryReplay();
+ r.accept(JSON.parse(fs.readFileSync(new URL('./fixtures/ercf-vvd.json',import.meta.url))));
+ const mmu=r.facts.printer.mmu, unit=r.facts.printer.mmu_machine.units[mmu.unit];
+ mmu.sensors[`${mmu.unit}:mmu_shared_exit`]={triggered:false,enabled:true};
+ Object.assign(unit.parameters,{gate_homing_endstop:'encoder',gate_preload_endstop:'encoder'});
+ assert.equal(r.snapshot().sensors[`${mmu.unit}:mmu_shared_exit`].assumed,true);
+ unit.parameters.gate_homing_endstop='mmu_shared_exit';
+ assert.equal(r.snapshot().sensors[`${mmu.unit}:mmu_shared_exit`].assumed,false);
+ Object.assign(unit.parameters,{gate_homing_endstop:'encoder',gate_preload_endstop:'mmu_shared_exit'});
+ assert.equal(r.snapshot().sensors[`${mmu.unit}:mmu_shared_exit`].assumed,false);
+});

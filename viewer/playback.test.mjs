@@ -952,3 +952,11 @@ test('a tip held at a sensor leaves from where it was drawn and arrives where it
   assert.equal(movingTip(500,.5,-175,0),412.5);
   assert.equal(movingTip(500,.5,0,0),500);
 });
+
+test('a sensor with only an assumed position neither holds the tip nor raises a warning',()=>{
+  const clear={name:'shared exit',position:250,state:false,enabled:true};
+  assert.equal(constrainFilament(400,null,[clear]).tip,250);
+  assert.equal(constrainFilament(400,null,[clear]).warnings.length,1);
+  assert.deepEqual(constrainFilament(400,null,[{...clear,assumed:true}]),{tip:400,warnings:[]});
+  assert.equal(constrainFilament(100,null,[{...clear,state:true,assumed:true}]).tip,100);
+});

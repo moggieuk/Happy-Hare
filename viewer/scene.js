@@ -339,7 +339,7 @@ function measure(c) {
       held(after.tips[gate],after)-drawnAt(to));
     // A sensor that changes during the move does so as the drawn tip reaches it
     for (const d of presenceSensors) {
-      if (e.before.sensors?.[d.name]?.state === after.sensors?.[d.name]?.state) continue;
+      if (d.assumed || e.before.sensors?.[d.name]?.state === after.sensors?.[d.name]?.state) continue;
       const shown = displayedSensors.find(([name])=>name===d.name)?.[1];
       if (shown) shown.state = constrained.tip >= d.position-1e-6;
     }
