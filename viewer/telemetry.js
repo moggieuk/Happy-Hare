@@ -200,6 +200,14 @@ export class TelemetryReplay extends SceneModel {
       this.emit(record, 'state', 'Toolchange ended', {internal:true, telemetry:record});
     } else if (record.event === 'record_mode') {
       this.emit(record, 'state', 'Recording '+record.mode, {internal:true, telemetry:record});
+    } else if (record.event === 'cut' && record.cutter === 'mmu') {
+      // The offcut drops out at the MMU, so only the tip changes
+      const gate = mmu.gate, blade = before.cutters.find(c=>c.kind === 'mmu')?.position;
+      if (gate >= 0 && finite(blade) && this.tips[gate] > blade) {
+        this.tips[gate] = blade;
+        this.shapes[gate] = 'square';
+      }
+      this.emit(record,'cut','MMU filament cut',{before,cutter:'mmu',telemetry:record});
     } else if (record.event === 'cut' || record.event === 'filament_cut') {
       const gate = mmu.gate, nozzle = before.layout.nozzle;
       const blade = finite(record.blade_pos) ? nozzle-record.blade_pos : before.cutters.find(c=>c.kind === 'toolhead')?.position;

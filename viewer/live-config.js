@@ -46,7 +46,11 @@ export function liveMachine(objects) {
     };
     gate+=count;
   }
-  return {num_gates:gate,units,parameters:machineParameters,
+  // As Klipper decides it: a post-unload extension that names a cutter
+  const extension=settings['gcode_macro _mmu_sequence_vars']?.variable_user_post_unload_extension;
+  const feed=Number(settings['gcode_macro _mmu_servo_cutter_vars']?.variable_feed_length);
+  const mmu_cutter=String(extension || '').toLowerCase().includes('cut') ? {feed_length:Number.isFinite(feed) ? feed : null} : null;
+  return {num_gates:gate,units,parameters:machineParameters,mmu_cutter,
     form_tip_macro:first(machineParameters.form_tip_macro),purge_macro:first(machineParameters.purge_macro)};
 }
 

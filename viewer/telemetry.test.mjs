@@ -214,6 +214,19 @@ test('per-move encoder measurement never overwrites absolute encoder status',()=
  assert.notEqual(e.before.devices[key].encoder_pos,123);
  assert.equal(e.state.devices[key].encoder_pos,e.before.devices[key].encoder_pos);
 });
+test('a cut at the MMU trims the tip at the blade without leaving a fragment in the toolhead',()=>{
+ const h=header();h.state.printer.mmu.filament_pos=0;h.state.printer.mmu_machine.mmu_cutter={feed_length:48};
+ const r=new TelemetryReplay();r.feed(h);
+ const s=r.snapshot(),blade=s.cutters.find(c=>c.kind==='mmu');
+ assert.equal(blade.position,r.logicalTip(s,0)+48);
+ r.tips[s.gate]=blade.position+10;
+ event(r,'cut',{cutter:'mmu',phase:'CUT'});
+ const cut=r.events.at(-1);
+ assert.equal(cut.cutter,'mmu');
+ assert.equal(cut.state.tips[s.gate],blade.position);
+ assert.equal(cut.state.cutter_pressed,false);
+ assert.equal(cut.state.retained_segment,s.retained_segment);
+});
 test('configuration changes affect subsequent steps, never earlier snapshots',()=>{
  const r=stream();const initial=structuredClone(r.events[0]);
  event(r,'state_delta',{changes:[{path:['macros','_MMU_CUT_TIP_VARS','blade_pos'],value:12}]});
