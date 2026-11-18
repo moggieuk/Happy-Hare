@@ -224,8 +224,9 @@ until RELEASE. It no longer identifies cutter contact from coordinates or speed.
 general unit-test harness retains its simplified macro effects.
 
 The servo cutter at the MMU (`SERVO_CUTTER_ACTION`, run as the post-unload extension)
-emits `_MMU_SEND_TELEMETRY EVENT="cut" CUTTER="mmu"` after each cut. Its record has
-`cutter: mmu` and no blade position; there is no `release`. When a post-unload cutter is
+emits `_MMU_SEND_TELEMETRY EVENT="cut" CUTTER="mmu"` before each closing of the servo and
+`EVENT="release"` after it, once per cut attempt. These records have `cutter: mmu` and no
+blade position. When a post-unload cutter is
 configured the baseline holds `mmu_machine.mmu_cutter.feed_length`, the distance from the
 gate parking position to the blade; otherwise `mmu_cutter` is null.
 

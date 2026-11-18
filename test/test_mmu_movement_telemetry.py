@@ -96,6 +96,18 @@ class TestMovementTelemetry(unittest.TestCase):
         self.hh.run_gcode('_MMU_SEND_TELEMETRY EVENT="cut" CUTTER=mmu')
         self.assertEqual([(r['event'], r['cutter'], r['blade_pos']) for r in self.records], [('cut', 'mmu', None)])
 
+    def test_the_servo_cutter_macro_marks_a_cut_and_a_release_around_each_close(self):
+        import os
+        path = os.path.join(os.path.dirname(__file__), '..', 'config', 'macros', 'mmu_servo_cutter.cfg')
+        with open(path) as f:
+            action = f.read().split('[gcode_macro SERVO_CUTTER_ACTION]')[1].split('[gcode_macro')[0]
+        lines = [line.strip() for line in action.splitlines()]
+        closes = [i for i, line in enumerate(lines) if line == '_CUTTER_CLOSE']
+        self.assertEqual(len(closes), 2)
+        for i in closes:
+            self.assertEqual(lines[i - 1], '_MMU_SEND_TELEMETRY EVENT="cut" CUTTER="mmu"')
+            self.assertEqual(lines[i + 1], '_MMU_SEND_TELEMETRY EVENT="release" CUTTER="mmu"')
+
     def test_macro_hook_with_no_subscribers_does_nothing(self):
         self.unsubscribe()
         telemetry = self.hh.mmu.movement_telemetry
