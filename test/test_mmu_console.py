@@ -2444,6 +2444,14 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertIsNone(console_mod.startup_seed(parse(['--no-log', '--script', 'x'])))
         self.assertEqual(console_mod.startup_seed(parse(['--no-log', '--seed', '7'])), 7)
 
+    def test_preloads_park_behind_the_encoder_on_a_machine_with_two_encoders(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'ercf_quattrobox', '--no-serve', '--no-moonraker', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        self.assertLess(max(console.fil.tip[:8]), console.fil.layout['mmu_encoder'])
+        self.assertFalse(console.hh.sensors()['unit0:mmu_shared_exit'].runout_helper.filament_present)
+
     def test_a_seeded_start_leaves_the_spent_spool_empty_and_a_gate_or_two_unknown(self):
         from test.hh.filament import TIP_ABSENT
         console = console_mod.Console(console_mod.parse_args(
