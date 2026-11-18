@@ -40,6 +40,11 @@ test('percentage labels hide empty spools and distinguish tiny positive amounts'
   assert.doesNotMatch(renderSpool(options),/data-part="spool-fill-label"/);
   assert.doesNotMatch(renderSpool({...options,fillPercent:0,showFillPercent:true}),/data-part="spool-fill-label"/);
   const warning=renderSpool({...options,fillPercent:0.1,showFillPercent:true});
+test('the percentage label is dark with a light outline on a bright filament and light with a dark outline otherwise',()=>{
+  const label=color=>renderSpool({...options,color,fillPercent:50,showFillPercent:true}).match(/data-part="spool-fill-label"[^>]*>/)[0];
+  assert.match(label('ffee00'),/fill="#17212b" stroke="#f4f5f6cc"/);
+  assert.match(label('1b3a8c'),/fill="#f4f5f6" stroke="#17212bcc"/);
+});
   assert.match(warning,/data-part="spool-low-warning"[^>]*fill="#fff"/);
   assert.match(warning,/dominant-baseline="central" font-size="4.8" font-weight="800" fill="#d82232"[^>]*>!<\/text>/);
   for (const [fillPercent,label] of [[0.5,1],[45.6,46],[100,100],[120,100]]) {

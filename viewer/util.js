@@ -7,6 +7,16 @@ export const number = (value, fallback=0) => finite(value) ? value : fallback;
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const clamp01 = v => clamp(v, 0, 1);
 export const round1 = value => Number(value.toFixed(1));
+// Relative luminance of a hex colour (WCAG): 0 is black, 1 is white. Anything unreadable counts as black.
+export function brightness(color) {
+  const hex = /^#?([0-9a-f]{6})/i.exec(color || '')?.[1];
+  if (!hex) return 0;
+  const [r, g, b] = [0, 2, 4].map(i => {
+    const channel = parseInt(hex.slice(i, i+2), 16)/255;
+    return channel <= .04045 ? channel/12.92 : ((channel+.055)/1.055)**2.4;
+  });
+  return .2126*r + .7152*g + .0722*b;
+}
 // A printer object's status for the readout, with distances (and any other number) to two decimal places.
 export const statusText = status => status === null ? 'No status exposed'
   : JSON.stringify(status, (key, value) => finite(value) ? Number(value.toFixed(2)) : value);
