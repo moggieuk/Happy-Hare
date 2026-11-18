@@ -432,6 +432,18 @@ TRADRACK = Profile(
     syms={'MMU_TYPE_TRADRACK_1_0': True},
     description='Tradrack 1.0 - physical LinearServoSelector')
 
+TRADRACK_ENCODER = TRADRACK.derive(
+    'tradrack_encoder',
+    syms={
+        'MOD_BINKY': True,
+        'MMU_HAS_ENCODER': True,
+        # Binky occupies the board's shared-exit connector; wire that switch to the printer MCU.
+        'PIN_SHARED_EXIT_SENSOR': '^mcu:PA6',
+        'CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT': True,
+    },
+    filament_layout={'mmu_shared_exit': 10.0, 'mmu_encoder': 41.0},
+    description='Tradrack 1.0 + Binky encoder, shared-exit homing')
+
 # 3MS has no Bowden move: each gate feeds directly to the extruder-entry sensor. This
 # exercises MmuSensorManager's alias from that sensor to mmu_shared_exit, which lets the
 # otherwise generic gate-loading code use the toolhead sensor as its homing point.
@@ -446,11 +458,10 @@ THREE_MS = Profile(
     # The console presents filament at -40 mm and 3MS parks 250 mm behind its
     # extruder-entry datum. Put that datum at +210 mm so preload/load can reach it
     # within gate_homing_max and unload returns to the exact presented position.
-    # Preserve the generic 40 mm extruder-to-toolhead spacing.
+    # The gears are 8 mm downstream of that sensor.
     filament_layout={
-        'extruder_entry': 210.0,
+        'extruder_entry': 218.0,
         'extruder': 210.0,
-        'toolhead': 250.0,
         'filament_compression': 210.0,
     })
 
@@ -540,16 +551,23 @@ KMS = Profile(
 # and heater setup without relying on external objects hidden in the harness.
 QIDI = Profile(
     'qidi',
-    syms={'MMU_TYPE_QIDI_BOX_1_0': True},
-    description='QIDI Box 1.0 - 4 gates, fixed QIDI v2 MCU and THR sensor',
+    syms={
+        'MMU_TYPE_QIDI_BOX_1_0': True,
+        'TOOLHEAD_TYPE_QIDI_Q1_PRO': True,
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+        'BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER': True,
+        # Simulator geometry: blade 5mm before the Q1 Pro's 75mm gear-to-nozzle reference.
+        'VAR_CUT_TIP_BLADE_POS': 80,
+        'VAR_CUT_TIP_RETRACT_LENGTH': 20,
+        'VAR_CUT_TIP_PUSHBACK_LENGTH': 12,
+    },
+    description='QIDI Box 1.0 - Q1 Pro toolhead with cutter before the extruder',
     # Keep a compact simulated internal leg and ~750 mm hub-to-extruder leg.
     # Preload uses the production homing limit to find the shared hub sensor,
     # then retracts to park clear of the shared path.
     filament_layout={
         'mmu_shared_exit': 150.0,
         'extruder_entry': 900.0,
-        'extruder': 900.0,
-        'toolhead': 940.0,
         'filament_compression': 900.0,
     })
 
@@ -596,8 +614,8 @@ QUATTROBOX_V2 = Profile(
 # multi-unit remains uncovered.
 EMU = Profile(
     'emu',
-    syms={'MMU_TYPE_EMU_1_0': True},
-    description='EMU 1.0 - 5 gates, proportional (analog) buffer sensor')
+    syms={'MMU_TYPE_EMU_1_0': True, 'MMU_HAS_HEATER': True},
+    description='EMU 1.0 - 5 gates, per-gate heaters, proportional (analog) buffer sensor')
 
 # The alternate EMU wiring: all five per-gate MCUs are EBB36/42 gen1 boards, with a
 # single five-pixel exit chain attached to gate 0's EBB.  Keep the LED map explicit:
@@ -612,7 +630,7 @@ EMU_EBB = EMU.derive(
         'PARAM_ENTRY_LEDS': '',
         'PARAM_EXIT_LEDS': 'neopixel:_unit0_gate0_leds (1-5)',
     },
-    description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, exit LEDs on gate 0')
+    description='EMU 1.0 - 5 EBB36/42 gen1 MCUs, per-gate heaters, exit LEDs on gate 0')
 
 # BoxTurtle plus an encoder, homing to it instead of to the gate switch. KMS also ships an
 # encoder, but its exit sensors win the default homing choice, so _home_to_gate's encoder branch
@@ -767,7 +785,7 @@ ERCF_VVD = Profile(
         # Longer than the 20s default: this is the window to walk from the bench
         # scanner/reader to the printer and preload a gate
         'PARAM_SPOOLMAN_PENDING_ID_TIMEOUT': 30,
-        'CHOICE_LOG_FILE_LEVEL_STEPPER': True,
+        'CHOICE_LOG_FILE_LEVEL_TRACE': True,
         # Both default y (macro_vars/Kconfig.software:30,41); turned off on this machine, so
         # mmu_macro_vars.cfg gets check_gates/load_initial_tool = False at print start.
         'BOOL_SOFTWARE_CHECK_GATES': False,
@@ -919,6 +937,100 @@ def _per_gate_pins(gates, base, *pins, prefix='unit0:'):
             for k, pin in enumerate(pins) for gate in gates}
 
 
+# Mixed selectors with a shared downstream buffer and independent gate encoders.
+ERCF_QUATTROBOX = Profile(
+    'ercf_quattrobox',
+    syms={
+        'MMU_HAS_SENSOR_TOOLHEAD': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_TOOLHEAD_SENSOR': 'PG13',
+        'PIN_EXTRUDER_SENSOR': 'PG14',
+        'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+    },
+    units=[
+        UnitProfile('unit0', index=0, syms={
+            'MMU_FAMILY_ERCF': True,
+            'MMU_TYPE_ERCF_1_1': True,
+            'BOARD_TYPE_ERB_1': True,
+            'PARAM_NUM_GATES': 8,
+            'MMU_HAS_SENSOR_ENTRY': True,
+            'MMU_HAS_SENSOR_EXIT': False,
+            'MMU_HAS_SENSOR_SHARED_EXIT': True,
+            'PIN_SHARED_EXIT_SENSOR': '^unit0:gpio220',
+            **_per_gate_pins(range(8), 100, 'ENTRY_SENSOR', prefix='^unit0:'),
+            'CHOICE_ENCODER_TYPE_BINKY_12': True,
+            'MMU_HAS_SYNC_FEEDBACK_BUFFER': True,
+            'MMU_HAS_SENSOR_BUFFER_COMPRESSION': True,
+            'MMU_HAS_SENSOR_BUFFER_TENSION': True,
+            'MMU_HAS_SENSOR_BUFFER_PROPORTIONAL': True,
+            'PIN_BUFFER_COMPRESSION': '^mcu:PF4',
+            'PIN_BUFFER_TENSION': '^mcu:PF5',
+            'PIN_BUFFER_ANALOG': 'mcu:PF6',
+            'CHOICE_BUFFER_SPRING_STATE_TENSION': True,
+            'PARAM_BUFFER_RANGE': 12,
+            'PARAM_BUFFER_MAXRANGE': 16,
+        }),
+        UnitProfile('unit1', index=1, syms={
+            'MMU_FAMILY_QUATTRO_BOX': True,
+            'MMU_TYPE_QUATTRO_BOX_2_0': True,
+            'PARAM_NUM_GATES': 4,
+            'MMU_HAS_SENSOR_ENTRY': True,
+            'MMU_HAS_SENSOR_EXIT': True,
+            'MMU_HAS_SENSOR_SHARED_EXIT': True,
+            'MMU_HAS_ENCODER': True,
+            'CHOICE_ENCODER_TYPE_BINKY_12': True,
+            'MMU_SHARED_SYNC_FEEDBACK_BUFFER': True,
+            'PARAM_SYNC_FEEDBACK_BUFFER_NAME': 'unit0',
+        }),
+    ],
+    filament_layout={'mmu_shared_exit': 150.0},
+    description='ERCF (8 gates) + QuattroBox v2 (4 gates), shared buffer, separate encoders, per-gate exits on QuattroBox only')
+
+
+# Two BoxTurtles (4 gates each, virtual selectors) and an ERCF (8 gates, servo selector with an
+# encoder) sharing one toolhead: three units, with the virtual-selector units first.
+_BOXTURTLE_UNIT = {
+    'MMU_TYPE_BOX_TURTLE_1_0': True,
+    # As the standalone BoxTurtle profile: normal loading homes at the shared hub,
+    # preloading uses each gate's own exit sensor.
+    'CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT': True,
+    'CHOICE_GATE_PRELOAD_ENDSTOP_EXIT': True,
+    'PARAM_GATE_PRELOAD_PARKING_DISTANCE': 10,
+}
+BOXTURTLE2_ERCF = Profile(
+    'boxturtle2_ercf',
+    syms={
+        'MMU_HAS_SENSOR_TOOLHEAD': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_TOOLHEAD_SENSOR': 'PG13',
+        'PIN_EXTRUDER_SENSOR': 'PG14',
+        'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
+        'MMU_HAS_TOOLHEAD_CUTTER': True,
+        'PARAM_ENDLESS_SPOOL_ENABLED': True,
+    },
+    units=[
+        UnitProfile('unit0', index=0, syms=dict(_BOXTURTLE_UNIT)),
+        UnitProfile('unit1', index=1, syms=dict(_BOXTURTLE_UNIT)),
+        UnitProfile('unit2', index=2, syms={
+            'MMU_FAMILY_ERCF': True,
+            'MMU_TYPE_ERCF_1_1': True,
+            'BOARD_TYPE_ERB_1': True,
+            'PARAM_NUM_GATES': 8,
+            'MOD_BINKY': True,
+            'MOD_SPRINGY': True,
+            'CHOICE_ENCODER_TYPE_BINKY_12': True,
+            'PARAM_HAS_BYPASS': True,
+            'MMU_HAS_SENSOR_ENTRY': True,
+            'SERVO_TYPE_SAVOX_SH0255MG': True,
+            'PARAM_SERVO_MAX_ANGLE': 180,
+            'CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER': True,
+        }),
+    ],
+    filament_layout={'mmu_shared_exit': 150.0},
+    description='2 x BoxTurtle 1.0 (4 gates each, VirtualSelector) + ERCF 1.1sb (8 gates, encoder)')
+
+
 TRADRACK_MAX_GATES = TRADRACK.derive(
     'tradrack_max_gates',
     syms=dict({'PARAM_NUM_GATES': MAX_GATES,
@@ -941,7 +1053,7 @@ BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE2_ERCF, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
                     QUATTROBOX_V2, EMU, EMU_EBB, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,

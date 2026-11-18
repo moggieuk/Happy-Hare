@@ -135,9 +135,9 @@ class TestCandidates(_Install):
                          "no setting of BOOL_SOFTWARE_HOME_MMU gives this value")
 
     def test_hidden_value_is_offered_through_its_choice(self):
-        self.edit("mmu.cfg", "log_file_level", "4")
+        self.edit("mmu.cfg", "log_file_level", "3")
         candidate = self.by_symbol(self.analyse())["PARAM_LOG_FILE_LEVEL"]
-        self.assertEqual((candidate.set_name, candidate.kconfig_value), ("CHOICE_LOG_FILE_LEVEL_STEPPER", "y"))
+        self.assertEqual((candidate.set_name, candidate.kconfig_value), ("CHOICE_LOG_FILE_LEVEL_TRACE", "y"))
         self.assertEqual(candidate.set_key, "CHOICE_LOG_FILE_LEVEL")
 
     def test_log_file_turned_off_is_offered_through_its_choice(self):
@@ -357,7 +357,7 @@ class TestApply(_Install):
 
     def test_menuconfig_holds_the_imported_values(self):
         self.edit("mmu_parameters_unit0.cfg", "gear_load_speed", "123")
-        self.edit("mmu.cfg", "log_file_level", "4")
+        self.edit("mmu.cfg", "log_file_level", "3")
         self.edit("mmu_macro_vars.cfg", "variable_user_pre_initialize_extension", '"MY_INIT"')
 
         before = self.build_file("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
@@ -368,9 +368,9 @@ class TestApply(_Install):
 
         params = self.build_file("config/base/mmu_parameters.cfg", "mmu_parameters_unit0.cfg")
         self.assertEqual(params.get("mmu_unit_parameters unit0", "gear_load_speed").strip(), "123")
-        self.assertIn("\nCONFIG_CHOICE_LOG_FILE_LEVEL_STEPPER=y\n", self.saved())
+        self.assertIn("\nCONFIG_CHOICE_LOG_FILE_LEVEL_TRACE=y\n", self.saved())
         mmu = self.build_file("config/base/mmu.cfg", "mmu.cfg")
-        self.assertEqual(mmu.get("mmu_parameters", "log_file_level").strip(), "4")
+        self.assertEqual(mmu.get("mmu_parameters", "log_file_level").strip(), "3")
         macro_vars = self.build_file("config/base/mmu_macro_vars.cfg", "mmu_macro_vars.cfg")
         self.assertEqual(macro_vars.get("gcode_macro _MMU_SOFTWARE_VARS",
                                         "variable_user_pre_initialize_extension").strip(), '"MY_INIT"')

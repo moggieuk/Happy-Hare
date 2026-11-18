@@ -112,6 +112,14 @@ class TestHappyHareImports(unittest.TestCase):
         self.assertIn('VirtualSelector', SELECTOR_REGISTRY)
         self.assertIn('LinearSelector', SELECTOR_REGISTRY)
 
+    def test_telemetry_package_imports_from_overlay(self):
+        for name in ('movement', 'selector', 'gcode', 'capture', 'stream', 'api'):
+            with self.subTest(module=name):
+                module = importlib.import_module('extras.mmu.telemetry.' + name)
+                self.assertEqual(os.path.realpath(module.__file__),
+                                 os.path.join(REPO_ROOT, 'extras/mmu/telemetry', name + '.py'))
+                self.assertTrue(module.__file__.startswith(self.klippy + os.sep))
+
     def test_nfc_package_imports(self):
         """
         The NFC package reaches 4 levels up for Klipper's bus module
