@@ -557,7 +557,7 @@ function idleOverlay() {
 }
 function sceneSettings() {
   return {spoolSpacing:Number($('spool-spacing').value), spoolAngle:Number($('spool-angle').value),
-    spoolRealism:$('spool-realism').checked, heatingPreview:$('heating-preview').checked, unitLogos:$('unit-logos').checked,
+    spoolRealism:$('spool-realism').checked, heatingPreview:$('heating-preview').checked, unitLogos:$('unit-logos').checked, unitNames:$('unit-names').checked,
     previewGateCount:Number($('preview-gate-count').value), nozzleDiameter:Number($("nozzle-diameter").value)};
 }
 // Everything one frame draws from, derived once: the scene, the controls and the readout all take it.
@@ -757,6 +757,7 @@ initSpoolPicker(draw);
 $('preview-gate-count').oninput=draw;
 $('heating-preview').onchange=draw;
 $('unit-logos').onchange=draw;
+$('unit-names').onchange=draw;
 $("slow-animation").onchange = () => {
   animationNow();
   animationRate=$("slow-animation").checked ? .1 : 1;

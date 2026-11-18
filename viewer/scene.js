@@ -333,19 +333,19 @@ function measure(c) {
 // One 24x24 glyph drawn `size` high with its top left at (x, y)
 const glyph=(path,x,y,size,attrs)=>`<path d="${path}" transform="translate(${x} ${y}) scale(${size/24})" ${attrs}/>`;
 // The strip under a unit's gate pills: logo, display name, then humidity, temperature and the heater or drying state
-function unitFooter(info,left,right,top,dark,showLogo) {
+function unitFooter(info,left,right,top,dark,showLogo,showName) {
   const logo=unitLogo(info.vendor,dark), size=logo.square ? 30 : 38;
-  const textLeft=left+12+(showLogo ? 38+12 : 0), row=top+33, id=`unit-footer-${escape(info.name)}`;
+  const textLeft=left+12+(showLogo ? 38+12 : 0), row=top+(showName ? 33 : 23), id=`unit-footer-${escape(info.name)}`;
   let svg=`<defs><clipPath id="${id}"><rect x="${left}" y="${top}" width="${right-left-8}" height="46"/></clipPath></defs><g data-part="unit-footer" data-unit="${escape(info.name)}" clip-path="url(#${id})" font-size="11" fill="var(--scene-text, #304c65)">`;
+  // Alone, the name sits level with the middle of the logo
+  const climate=info.humidity || info.temperature || info.heaterIcon;
   if (showLogo) {
     svg += glyph(logo.path,left+12+(38-size)/2,top+4+(38-size)/2,size,'data-part="unit-logo" fill="var(--scene-text, #304c65)" opacity=".7"');
     // A hairline between the logo and the text, fading out at both ends
     const x=left+12+38+4;
-    svg += `<defs><linearGradient id="${id}-rule" gradientUnits="userSpaceOnUse" x1="0" y1="${top+3}" x2="0" y2="${top+43}"><stop stop-color="var(--scene-border, #96abba)" stop-opacity="0"/><stop offset=".3" stop-color="var(--scene-border, #96abba)" stop-opacity=".8"/><stop offset=".7" stop-color="var(--scene-border, #96abba)" stop-opacity=".8"/><stop offset="1" stop-color="var(--scene-border, #96abba)" stop-opacity="0"/></linearGradient></defs><rect data-part="unit-logo-rule" x="${x-.4}" y="${top+3}" width=".8" height="40" fill="url(#${id}-rule)"/>`;
+    if (showName || climate) svg += `<defs><linearGradient id="${id}-rule" gradientUnits="userSpaceOnUse" x1="0" y1="${top+3}" x2="0" y2="${top+43}"><stop stop-color="var(--scene-border, #96abba)" stop-opacity="0"/><stop offset=".3" stop-color="var(--scene-border, #96abba)" stop-opacity=".8"/><stop offset=".7" stop-color="var(--scene-border, #96abba)" stop-opacity=".8"/><stop offset="1" stop-color="var(--scene-border, #96abba)" stop-opacity="0"/></linearGradient></defs><rect data-part="unit-logo-rule" x="${x-.4}" y="${top+3}" width=".8" height="40" fill="url(#${id}-rule)"/>`;
   }
-  // Alone, the name sits level with the middle of the logo
-  const climate=info.humidity || info.temperature || info.heaterIcon;
-  svg += `<text data-part="unit-name" x="${textLeft}" y="${top+(climate ? 15 : 23)}" dominant-baseline="middle">${escape(info.display_name)}</text>`;
+  if (showName) svg += `<text data-part="unit-name" x="${textLeft}" y="${top+(climate ? 15 : 23)}" dominant-baseline="middle">${escape(info.display_name)}</text>`;
   const tooltip=info.tooltip ? ` data-tooltip="${escape(info.tooltip)}"` : '';
   svg += `<g data-part="unit-climate"${tooltip}>`;
   let x=textLeft;
@@ -481,7 +481,7 @@ function rack(c) {
     const dark=document.documentElement.dataset.theme==='dark';
     for (const {unit,enclosureLeft,enclosureRight,unitLastRow} of shells) {
       const info=view.unitInfo?.find(entry=>entry.name===unit.name);
-      if (info) svg += unitFooter(info,enclosureLeft,enclosureRight,611+unitLastRow+mmuOffset,dark,settings.unitLogos!==false);
+      if (info) svg += unitFooter(info,enclosureLeft,enclosureRight,611+unitLastRow+mmuOffset,dark,settings.unitLogos!==false,settings.unitNames!==false);
     }
     // Narrow vertical arrows at the panel edges scroll to units that are off screen; the rack fades out beneath them.
     if (grid.overflow.left || grid.overflow.right) rackFade={left:grid.overflow.left,right:grid.overflow.right,bleed,top:440+mmuOffset,bottom:enclosureBottom};
