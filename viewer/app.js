@@ -6,6 +6,7 @@ import {overlayAllowed, overlaySnapshot} from './overlay.js';
 import {unitInfo, unitObjectFields} from './unit-info.js';
 import {gateMenu, GATE_MENU_OBJECTS, GATE_MENU_MMU_FIELDS} from './gate-menu.js';
 import {createGateMenu} from './gate-menu-view.js';
+import {ttgMapChart} from './ttg-map.js';
 import {parameterCommand, macroCommand, editorParameters, macroCatalog, editorMacroParameters, toolheadObjects} from './editor.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
 import {timelineMarkers} from './playback.js';
@@ -485,6 +486,20 @@ $("command").addEventListener('keydown', event => {
   input.value = commandHistory.navigate(event.key === 'ArrowUp' ? -1 : 1, input.value);
   input.setSelectionRange(input.value.length, input.value.length);
 });
+// The tool-to-gate chart, redrawn only when what it shows changes
+let toolMappingShown='';
+function renderToolMapping(state) {
+  const map=state?.gate_map, numGates=state?.gate_colors?.length || 0;
+  const inputs={numGates,ttgMap:map?.ttg_map || [],groups:map?.endless_spool_groups || [],tool:state?.tool ?? -1,gate:state?.gate ?? -1};
+  const key=JSON.stringify(inputs);
+  if (key===toolMappingShown) return;
+  toolMappingShown=key;
+  $('tool-mapping').hidden=!numGates;
+  if (!numGates) return;
+  const {viewBox,markup}=ttgMapChart(inputs);
+  $('ttg-map').setAttribute('viewBox',viewBox);
+  $('ttg-map').innerHTML=markup;
+}
 // A command sent from this page is watched; commands from elsewhere never move a paused view
 function sendScript(script) {
   if (store.viewMode==='playback') followLive();
@@ -608,6 +623,7 @@ function renderScene() {
   if (store.viewMode==='live' ? !store.displayed : !store.events.length) return;
   const view=currentView();
   renderControls(view);
+  renderToolMapping(view.state);
   const {warnings, unitSensors}=scene.render(view, sceneSettings());
   renderMacros(view.state, !store.offline && isSimulator());
   renderWarning(warnings, store.viewMode==='playback' ? selectorNotice(store.events, view.event, Boolean(store.playing), store.live && !store.paused) : null);

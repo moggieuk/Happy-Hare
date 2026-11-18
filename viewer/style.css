@@ -480,3 +480,6 @@ select option { font-weight: 400; color: #172f40; background: #fff; }
 #gate-menu button:disabled { opacity: .38; cursor: default; }
 #gate-menu svg { flex: none; width: 16px; height: 16px; fill: currentColor; }
 [data-theme="dark"] #gate-menu { border-color: #344554; background: #1a2530; }
+
+/* Tool-to-gate mapping chart */
+#ttg-map { display: block; width: 75%; height: auto; margin: 0 auto; }
