@@ -6,6 +6,7 @@ import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, g
 import {$, escape, short as sensorName, DEFAULT_COLOR, round1, clamp01} from './util.js';
 import {renderBuffer} from './buffer-view.js';
 import {measurePath} from './path-measure.js';
+import {unitLogo, ICONS} from './unit-icons.js';
 
 export function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
@@ -329,6 +330,32 @@ function measure(c) {
 }
 
 // The rack of units: enclosures, spools, gate pills and the scroll arrows
+// One 24x24 glyph drawn `size` high with its top left at (x, y)
+const glyph=(path,x,y,size,attrs)=>`<path d="${path}" transform="translate(${x} ${y}) scale(${size/24})" ${attrs}/>`;
+// The strip under a unit's gate pills: logo, display name, then humidity, temperature and the heater or drying state
+function unitFooter(info,left,right,top,dark) {
+  const logo=unitLogo(info.vendor,dark), size=logo.square ? 30 : 38;
+  const textLeft=left+12+38+8, row=top+33, id=`unit-footer-${escape(info.name)}`;
+  let svg=`<defs><clipPath id="${id}"><rect x="${left}" y="${top}" width="${right-left-8}" height="46"/></clipPath></defs><g data-part="unit-footer" data-unit="${escape(info.name)}" clip-path="url(#${id})" font-size="11" fill="var(--scene-text, #304c65)">`;
+  svg += glyph(logo.path,left+12+(38-size)/2,top+4+(38-size)/2,size,'data-part="unit-logo" fill="var(--scene-text, #304c65)" opacity=".7"');
+  svg += `<text data-part="unit-name" x="${textLeft}" y="${top+15}" dominant-baseline="middle">${escape(info.display_name)}</text>`;
+  const tooltip=info.tooltip ? ` data-tooltip="${escape(info.tooltip)}"` : '';
+  svg += `<g data-part="unit-climate"${tooltip}>`;
+  let x=textLeft;
+  for (const [text,icon,color] of [[info.humidity,ICONS.water,'#2196f3'],[info.temperature,ICONS.thermometer,'#ff5722']]) {
+    if (!text) continue;
+    if (info.climateIcons) { svg += glyph(icon,x-3,row-7.5,15,`fill="${color}"`); x += 12; }
+    svg += `<text x="${x}" y="${row}" dominant-baseline="middle">${escape(text)}</text>`;
+    x += text.length*6.2+8;
+  }
+  if (info.heaterIcon) {
+    const text=info.heater || '', end=right-14;
+    if (text) svg += `<text x="${end}" y="${row}" text-anchor="end" dominant-baseline="middle">${escape(text)}</text>`;
+    svg += glyph(ICONS[info.heaterIcon],end-text.length*6.2-(text ? 20 : 18),row-9,18,'data-part="unit-heater" fill="#f44336"');
+  }
+  return svg+'</g></g>';
+}
+
 function rack(c) {
   let {viewMode, live, events, s, spoolRequests, gate, unitGates, displayGates, mmuOffset, virtual, lane, path, selectionLit, svg, feedFront, focus}=c;
   let rackArrows='', rackFade=null, bowdenReach=1, enclosurePaths='';
@@ -443,6 +470,11 @@ function rack(c) {
       const selected=index===s.gate && focus===index;
       const x=laneX+4;
       svg += `<g data-part="gate-status-pill" data-gate="${index}" data-tooltip="Gate ${index} · ${status===0 ? 'Empty' : status>0 ? 'Available' : 'Unknown'}"><rect x="${x-16}" y="${587+row*rowSpacing+mmuOffset}" width="32" height="18" rx="9" fill="${selected ? '#36ca42' : 'color-mix(in srgb, var(--scene-body, #edf2f6), black 12%)'}" stroke="${border}" stroke-width="2"/><text x="${x}" y="${596+row*rowSpacing+mmuOffset}" dominant-baseline="central" text-anchor="middle" font-size="11" font-weight="700" fill="${selected ? '#102514' : 'var(--scene-text, #304c65)'}">${index}</text></g>`;
+    }
+    const dark=document.documentElement.dataset.theme==='dark';
+    for (const {unit,enclosureLeft,enclosureRight,unitLastRow} of shells) {
+      const info=view.unitInfo?.find(entry=>entry.name===unit.name);
+      if (info) svg += unitFooter(info,enclosureLeft,enclosureRight,611+unitLastRow+mmuOffset,dark);
     }
     // Narrow vertical arrows at the panel edges scroll to units that are off screen; the rack fades out beneath them.
     if (grid.overflow.left || grid.overflow.right) rackFade={left:grid.overflow.left,right:grid.overflow.right,bleed,top:440+mmuOffset,bottom:enclosureBottom};
