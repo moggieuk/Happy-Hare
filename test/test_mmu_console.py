@@ -2444,6 +2444,19 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertIsNone(console_mod.startup_seed(parse(['--no-log', '--script', 'x'])))
         self.assertEqual(console_mod.startup_seed(parse(['--no-log', '--seed', '7'])), 7)
 
+    def test_a_seeded_start_leaves_the_spent_spool_empty_and_a_gate_or_two_unknown(self):
+        from test.hh.filament import TIP_ABSENT
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--seed', '5', '--no-serve', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        mmu = console.hh.mmu
+        self.assertEqual(mmu.gate_remaining_weight[1], 0)
+        self.assertEqual(mmu.gate_status[1], 0)
+        self.assertEqual(console.fil.tip[1], TIP_ABSENT)
+        self.assertIn(list(mmu.gate_status).count(-1), (1, 2))
+        self.assertEqual(self.console.hh.mmu.gate_status.count(1), self.console.hh.mmu.num_gates)  # No seed: untouched
+
     def test_priming_is_reproducible_and_varied(self):
         """
         Seeded on purpose: the point is data that LOOKS real, not data that changes every run.
