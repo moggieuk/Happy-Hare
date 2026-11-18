@@ -726,11 +726,12 @@ function purge(c) {
 
 // Cutter blades, painted last
 function cutters(c) {
-  let {live, playing, s, tip, end, path, svg, tube, length, progress}=c;
+  let {live, playing, s, tip, end, path, svg, tube, length, progress, schematicDistance}=c;
   // Paint cutters last so they remain above attached and retained filament.
   for (const cutter of s.cutters || []) {
-    const pt = tube.getPointAtLength(progress(cutter.position) * length);
     const onMmu = cutter.kind === 'mmu';
+    // The MMU end of the path is schematic, so its cutter is placed on the scale the tip is drawn on there
+    const pt = tube.getPointAtLength(onMmu ? schematicDistance(cutter.position) : progress(cutter.position) * length);
     const direction = onMmu ? 1 : -1;
     const bladeEvent = live ? playing?.event : null;
     const pressed = bladeEvent && ['cut','release'].includes(bladeEvent.kind)
@@ -738,7 +739,7 @@ function cutters(c) {
       : cutter.kind === 'toolhead' && s.cutter_pressed ? 1 : 0;
     // The triangle tip rests at the 20px tube's outer wall, then crosses it.
     const x = pt.x - direction * 10 + direction * 20 * pressed;
-    svg += `<g class="cutter-blade" aria-label="${onMmu ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path data-part="blade" data-pressed="${pressed}" d="M${x} ${pt.y} l${-direction*42} -5 v10 Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/>${onMmu ? `<text x="${pt.x-52}" y="${pt.y}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--scene-text, #304c65)">MMU cutter</text>` : ''}</g>`;
+    svg += `<g class="cutter-blade" aria-label="${onMmu ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path data-part="blade" data-pressed="${pressed}" d="M${x} ${pt.y} l${-direction*42} -5 v10 Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/></g>`;
   }
   Object.assign(c, {svg});
 }
