@@ -335,9 +335,14 @@ const glyph=(path,x,y,size,attrs)=>`<path d="${path}" transform="translate(${x} 
 // The strip under a unit's gate pills: logo, display name, then humidity, temperature and the heater or drying state
 function unitFooter(info,left,right,top,dark,showLogo) {
   const logo=unitLogo(info.vendor,dark), size=logo.square ? 30 : 38;
-  const textLeft=left+12+(showLogo ? 38+8 : 0), row=top+33, id=`unit-footer-${escape(info.name)}`;
+  const textLeft=left+12+(showLogo ? 38+12 : 0), row=top+33, id=`unit-footer-${escape(info.name)}`;
   let svg=`<defs><clipPath id="${id}"><rect x="${left}" y="${top}" width="${right-left-8}" height="46"/></clipPath></defs><g data-part="unit-footer" data-unit="${escape(info.name)}" clip-path="url(#${id})" font-size="11" fill="var(--scene-text, #304c65)">`;
-  if (showLogo) svg += glyph(logo.path,left+12+(38-size)/2,top+4+(38-size)/2,size,'data-part="unit-logo" fill="var(--scene-text, #304c65)" opacity=".7"');
+  if (showLogo) {
+    svg += glyph(logo.path,left+12+(38-size)/2,top+4+(38-size)/2,size,'data-part="unit-logo" fill="var(--scene-text, #304c65)" opacity=".7"');
+    // A hairline between the logo and the text, fading out at both ends
+    const x=left+12+38+4;
+    svg += `<defs><linearGradient id="${id}-rule" gradientUnits="userSpaceOnUse" x1="0" y1="${top+3}" x2="0" y2="${top+43}"><stop stop-color="var(--scene-border, #96abba)" stop-opacity="0"/><stop offset=".3" stop-color="var(--scene-border, #96abba)" stop-opacity=".8"/><stop offset=".7" stop-color="var(--scene-border, #96abba)" stop-opacity=".8"/><stop offset="1" stop-color="var(--scene-border, #96abba)" stop-opacity="0"/></linearGradient></defs><rect data-part="unit-logo-rule" x="${x-.4}" y="${top+3}" width=".8" height="40" fill="url(#${id}-rule)"/>`;
+  }
   // Alone, the name sits level with the middle of the logo
   const climate=info.humidity || info.temperature || info.heaterIcon;
   svg += `<text data-part="unit-name" x="${textLeft}" y="${top+(climate ? 15 : 23)}" dominant-baseline="middle">${escape(info.display_name)}</text>`;
