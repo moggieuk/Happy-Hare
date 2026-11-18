@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncIndicatorSide, bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn } from './playback.js';
+import { syncIndicatorSide, bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn, movingTip} from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -943,4 +943,12 @@ test('a state update reads as one path: value line per change',()=>{
   {path:['printer','mmu','gate_status'],value:[1,0]},
   {path:['printer','mmu','sensors','unit0:mmu_shared_exit'],remove:true}]),
   'printer.mmu.selector.grip: "Gripped"\nprinter.mmu.sync_mode: 0\nprinter.mmu.gate_status: [1,0]\nprinter.mmu.sensors.unit0:mmu_shared_exit: (removed)');
+});
+
+test('a tip held at a sensor leaves from where it was drawn and arrives where it will be drawn',()=>{
+  // Held 175 short at the start (a clear sensor), free at the end (the sensor triggered during the move)
+  assert.equal(movingTip(256+175,0,-175,0),256);
+  assert.equal(movingTip(600,1,-175,0),600);
+  assert.equal(movingTip(500,.5,-175,0),412.5);
+  assert.equal(movingTip(500,.5,0,0),500);
 });
