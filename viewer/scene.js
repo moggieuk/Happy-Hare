@@ -333,12 +333,12 @@ function measure(c) {
 // One 24x24 glyph drawn `size` high with its top left at (x, y)
 const glyph=(path,x,y,size,attrs)=>`<path d="${path}" transform="translate(${x} ${y}) scale(${size/24})" ${attrs}/>`;
 // The strip under a unit's gate pills: logo, display name, then humidity, temperature and the heater or drying state
-function unitFooter(info,left,right,top,dark) {
+function unitFooter(info,left,right,top,dark,showLogo) {
   const logo=unitLogo(info.vendor,dark), size=logo.square ? 30 : 38;
-  const textLeft=left+12+38+8, row=top+33, id=`unit-footer-${escape(info.name)}`;
+  const textLeft=left+12+(showLogo ? 38+8 : 0), row=top+33, id=`unit-footer-${escape(info.name)}`;
   let svg=`<defs><clipPath id="${id}"><rect x="${left}" y="${top}" width="${right-left-8}" height="46"/></clipPath></defs><g data-part="unit-footer" data-unit="${escape(info.name)}" clip-path="url(#${id})" font-size="11" fill="var(--scene-text, #304c65)">`;
-  svg += glyph(logo.path,left+12+(38-size)/2,top+4+(38-size)/2,size,'data-part="unit-logo" fill="var(--scene-text, #304c65)" opacity=".7"');
-  svg += `<text data-part="unit-name" x="${textLeft}" y="${top+15}" dominant-baseline="middle">${escape(info.display_name)}</text>`;
+  if (showLogo) svg += glyph(logo.path,left+12+(38-size)/2,top+4+(38-size)/2,size,'data-part="unit-logo" fill="var(--scene-text, #304c65)" opacity=".7"');
+  svg += `<text data-part="unit-name" x="${(textLeft+right-12)/2}" y="${top+15}" text-anchor="middle" dominant-baseline="middle">${escape(info.display_name)}</text>`;
   const tooltip=info.tooltip ? ` data-tooltip="${escape(info.tooltip)}"` : '';
   svg += `<g data-part="unit-climate"${tooltip}>`;
   let x=textLeft;
@@ -474,7 +474,7 @@ function rack(c) {
     const dark=document.documentElement.dataset.theme==='dark';
     for (const {unit,enclosureLeft,enclosureRight,unitLastRow} of shells) {
       const info=view.unitInfo?.find(entry=>entry.name===unit.name);
-      if (info) svg += unitFooter(info,enclosureLeft,enclosureRight,611+unitLastRow+mmuOffset,dark);
+      if (info) svg += unitFooter(info,enclosureLeft,enclosureRight,611+unitLastRow+mmuOffset,dark,settings.unitLogos!==false);
     }
     // Narrow vertical arrows at the panel edges scroll to units that are off screen; the rack fades out beneath them.
     if (grid.overflow.left || grid.overflow.right) rackFade={left:grid.overflow.left,right:grid.overflow.right,bleed,top:440+mmuOffset,bottom:enclosureBottom};
