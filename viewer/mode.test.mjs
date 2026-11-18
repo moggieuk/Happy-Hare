@@ -66,6 +66,8 @@ test('a failed simulator probe is a live machine and nothing else calls sim.* af
 test('a command from elsewhere never pulls a paused view back to live; one typed in the viewer follows it',()=>{
  const handler=app.slice(app.indexOf('data.method === "notify_gcode_command"'),app.indexOf('data.method === "notify_gcode_response"'));
  assert.ok(!handler.includes('followLive'));
+ const send=app.slice(app.indexOf('function sendScript('),app.indexOf('$("command-form").onsubmit'));
+ assert.match(send,/followLive\(\)/);
  const form=app.slice(app.indexOf('$("command-form").onsubmit'),app.indexOf('$("restart").onclick'));
- assert.match(form,/followLive\(\)/);
+ assert.match(form,/sendScript\(script\)/);
 });
