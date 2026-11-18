@@ -2,7 +2,7 @@
 // The main view: draws one scene state into the host <svg>. It reads nothing from the page outside the host and
 // changes nothing outside it; the caller passes what to draw (view) and how (settings).
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
-import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, toolheadProgress, toolheadDrawingRange, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, excessFilamentLabel, constrainFilament, gearAngle, homingTarget, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength, movingTip} from './playback.js';
+import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, toolheadProgress, toolheadDrawingRange, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, excessFilamentLabel, constrainFilament, gearAngle, homingTarget, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength, movingTip, visualTip} from './playback.js';
 import {$, escape, short as sensorName, DEFAULT_COLOR, round1, clamp01} from './util.js';
 import {renderBuffer} from './buffer-view.js';
 import {measurePath} from './path-measure.js';
@@ -324,17 +324,19 @@ function measure(c) {
   const fragments = s.retained_segment ? [{start:pathDistance(s.retained_segment.start),end:pathDistance(s.retained_segment.end)}] : [];
   const tail = s.tails[gate] === null ? null : pathDistance(s.tails[gate]);
   const constrained = constrainFilament(schematicTip ?? pathDistance(tip), tail, presenceSensors, fragments, s.sensor_conflicts || []);
-  const after = e.settled_state || e.state, from = e.before?.tips?.[gate], to = after?.tips?.[gate];
-  if (playing && e.kind === 'movement' && e.before?.gate === s.gate && Number.isFinite(from) && Number.isFinite(to) && from !== to) {
+  // The animated tip runs between the two states as the toolhead sensors allow them to be shown;
+  // the frame after the move shows the settled state
+  const after = e.settled_state || e.state, moving = playing && e.kind === 'movement' && e.before?.gate === s.gate && e.state;
+  const from = moving ? visualTip(e.before,gate) : NaN, to = moving ? e.state.tips[gate]+visualTip(after,gate)-after.tips[gate] : NaN;
+  if (Number.isFinite(from) && Number.isFinite(to) && from !== to) {
     // A sensor's hold must not make the tip stall and then jump: carry it smoothly across the move
-    const hold = (position,state) => {
-      const free = drawnAt(position);
-      return constrainFilament(free, tail, presenceSensors.map(d=>({...d,state:state.sensors?.[d.name]?.state ?? d.state})), fragments).tip-free;
-    };
-    // The move leaves from where the tip was last drawn, which a sensor may have been holding back
-    if (moveHold?.seq !== e.seq) moveHold = {seq:e.seq, start:lastTip?.gate === gate && Math.abs(lastTip.raw-from) < .5
-      ? lastTip.drawn-drawnAt(from) : hold(from,e.before)};
-    constrained.tip = movingTip(schematicTip ?? pathDistance(tip), clamp01((rawTip-from)/(to-from)), moveHold.start, hold(to,after));
+    const held = (position,state) => constrainFilament(drawnAt(position), tail,
+      presenceSensors.map(d=>({...d,state:state.sensors?.[d.name]?.state ?? d.state})), fragments).tip;
+    // The move leaves from where the tip was last drawn and arrives where the settled frame will draw it
+    if (moveHold?.seq !== e.seq) moveHold = {seq:e.seq, start:(lastTip?.gate === gate && Math.abs(lastTip.raw-from) < 25
+      ? lastTip.drawn : held(from,e.before))-drawnAt(from)};
+    constrained.tip = movingTip(schematicTip ?? pathDistance(tip), clamp01((rawTip-from)/(to-from)), moveHold.start,
+      held(after.tips[gate],after)-drawnAt(to));
     // A sensor that changes during the move does so as the drawn tip reaches it
     for (const d of presenceSensors) {
       if (e.before.sensors?.[d.name]?.state === after.sensors?.[d.name]?.state) continue;

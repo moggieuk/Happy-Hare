@@ -290,6 +290,20 @@ export function constrainFilament(tip, tail, sensors, fragments = [], reported =
   return {tip:bounded(tip), warnings:[...new Set(warnings)]};
 }
 
+// A gate's tip as the toolhead sensors allow it to be shown: at least at a triggered one, at most at a clear one
+export function visualTip(s, gate) {
+  let result=s.tips[gate];
+  for (const [name,sensor] of Object.entries(s.sensors || {})) {
+    if (s.active_sensors && !s.active_sensors.includes(name)) continue;
+    if (!['extruder','toolhead'].includes(sensorName(name)) || sensor.enabled === false || !Number.isFinite(sensor.position)) continue;
+    const fragment=s.retained_segment;
+    if (fragment && fragment.start<=sensor.position && fragment.end>=sensor.position) continue;
+    if (sensor.state === true) result=Math.max(result,sensor.position);
+    else if (sensor.state === false) result=Math.min(result,sensor.position);
+  }
+  return result;
+}
+
 // A sensor reading can hold the drawn tip back from where a move's distance puts it. Blend that hold from the
 // move's start to its end, so the tip leaves from where it was drawn and arrives where it will be drawn.
 export function movingTip(free, progress, startHold, endHold) {
@@ -909,19 +923,7 @@ export function playbackFrame(event, elapsed, movementMs, selectionGrip = event.
     if (event.before?.tip_shapes?.[gate] === 'cone') state.cone_edge_opacity=1-flood;
   }
   if (event.kind === 'movement' && event.before) {
-    const visualEndpoint=s=>{
-      const tip=s.tips[gate];
-      let result=tip;
-      for (const [name,sensor] of Object.entries(s.sensors || {})) {
-        if (s.active_sensors && !s.active_sensors.includes(name)) continue;
-        if (!['extruder','toolhead'].includes(sensorName(name)) || sensor.enabled === false || !Number.isFinite(sensor.position)) continue;
-        const fragment=s.retained_segment;
-        if (fragment && fragment.start<=sensor.position && fragment.end>=sensor.position) continue;
-        if (sensor.state === true) result=Math.max(result,sensor.position);
-        else if (sensor.state === false) result=Math.min(result,sensor.position);
-      }
-      return result;
-    };
+    const visualEndpoint=s=>visualTip(s,gate);
     // Blend display corrections over the same accelerated travel as the move.
     // Recorded/model positions remain untouched for subsequent accounting.
     const before=event.before, after=event.settled_state || event.state;
