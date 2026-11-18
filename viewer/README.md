@@ -20,6 +20,7 @@ the simulator.
 | `unit-icons.js` | The vendor logos and climate glyphs, as SVG paths |
 | `gate-menu.js` | The action menu on a gate: its commands and when each can be sent |
 | `gate-menu-view.js` | That menu as a pop-up over the scene |
+| `ttg-map.js` | The tool-to-gate mapping chart, as SVG markup |
 | `spool.js`, `buffer-view.js`, `spool-picker.js`, `toolhead-panel.js`, `console-log.js`, `chrome.js`, `simulator.js`, `util.js` | Spool and buffer drawing, side panels, the console, theme and tooltips, simulator calls, shared helpers |
 
 Everything outside `app.js`, `scene.js` and the small DOM modules has no DOM access and is covered by the JS tests.
@@ -216,6 +217,15 @@ when each can be sent are Mainsail Happy Hare Edition's (its gate menu and its M
 Nothing can be sent while printing, with the MMU disabled, or when not connected. The menu closes on a
 choice, Escape, a click elsewhere, the pointer leaving it, or after eight seconds. It reads `mmu`,
 `mmu_machine`, `print_stats` and `idle_timeout` from live printer objects.
+
+## Tool mapping
+
+The **Tool mapping** panel, under Playback, is Mainsail Happy Hare Edition's tool-to-gate chart with the same
+geometry: tools on the left, gates on the right, a line from each tool to the gate it is mapped to, and a
+lettered bracket for each endless-spool group of more than one gate. The selected tool's line, the selected
+gate and that gate's group are highlighted. It is drawn from the scene's own state (`ttg_map`,
+`endless_spool_groups`, the selected tool and gate), so it follows playback and works for a loaded recording.
+It is read-only.
 
 ## Modes and panels
 
