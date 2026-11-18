@@ -404,6 +404,9 @@ Two more things happen at startup that a printer does for itself and a frozen cl
   the gate table and the LED `filament_color` effect have something to show instead of
   `Unknown | 200C | Unknown`. An interactive session picks a new seed each start and prints
   it; `--seed N` repeats a spread, a `--script` run uses seed 0, and `--no-prime` gives none.
+  With a seed (so not under `--script` unless `--seed` is given), the machine is also left as
+  a used one is found: a spool with no weight left has no filament at its gate and reads
+  EMPTY, and one or two other gates read UNKNOWN until `MMU_CHECK_GATE` looks.
 - **`effect_initialized` is waited out.** It is a unit-wide 8s state flash from bootup, and
   while it holds a unit *every* transient flash is dropped (`mmu_led_manager.py:473`) — so an
   NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so

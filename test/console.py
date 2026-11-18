@@ -614,6 +614,8 @@ class Console:
         # machine, so this costs the older profiles nothing.
         if preloading:
             self._preload_all()
+            if a.seed is not None and not a.no_prime:
+                self._weather_gates(a.seed)
             self._refresh_startup_filament_row()
 
         # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
@@ -795,6 +797,26 @@ class Console:
             self._dispatch('MMU_SELECT GATE=%d' % selected)
             self.hh.reactor.advance(0.)
         self._clear_sink()  # setup noise is not console history
+
+    def _weather_gates(self, seed):
+        """
+        Leave the machine as a used one is found: a spool that has run out has no filament at
+        its gate and reads EMPTY, and one or two gates with filament read UNKNOWN until
+        MMU_CHECK_GATE looks. The selected gate is left alone.
+        """
+        from extras.mmu.mmu_constants import GATE_EMPTY, GATE_UNKNOWN
+        mmu = self.hh.mmu
+        rng = random.Random(seed + 2)
+        empty = [gate for gate in range(mmu.num_gates) if mmu.gate_remaining_weight[gate] == 0]
+        for gate in empty:
+            with self.hh.quiet_sensors():
+                self.fil.remove(gate)
+            mmu.gate_maps.set_gate_status(gate, GATE_EMPTY, clear_attributes=False)  # The spent spool is still on the gate
+        stocked = [gate for gate in range(mmu.num_gates) if gate not in empty and gate != mmu.gate_selected]
+        for gate in rng.sample(stocked, min(len(stocked), rng.randint(1, 2))):
+            mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
+        self.hh.reactor.advance(0.)
+        self._clear_sink()
 
     def _refresh_startup_filament_row(self):
         """Make the cached boot banner describe the post-preload simulator state."""
