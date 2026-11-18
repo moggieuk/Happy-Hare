@@ -383,7 +383,7 @@ Useful flags — `make console ARGS='...'`:
 --no-preload                   # leave every gate empty
 --no-calibrate                 # boot cold: no seeded calibration, no homing, no preload
 --no-prime                     # leave the gate map blank instead of filling it in
---seed N                       # seed for the primed gate map (default 0, reproducible)
+--seed N                       # seed for the primed gate map (default: new each start, printed; 0 with --script)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
 --serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
 --serve-host ADDRESS          # listening address (default 127.0.0.1)
@@ -402,8 +402,8 @@ Two more things happen at startup that a printer does for itself and a frozen cl
 
 - **The gate map is primed** — every gate gets a vendor, material, color and temperature, so
   the gate table and the LED `filament_color` effect have something to show instead of
-  `Unknown | 200C | Unknown`. Seeded, so a session is reproducible; `--seed N` for a different
-  spread, `--no-prime` for none.
+  `Unknown | 200C | Unknown`. An interactive session picks a new seed each start and prints
+  it; `--seed N` repeats a spread, a `--script` run uses seed 0, and `--no-prime` gives none.
 - **`effect_initialized` is waited out.** It is a unit-wide 8s state flash from bootup, and
   while it holds a unit *every* transient flash is dropped (`mmu_led_manager.py:473`) — so an
   NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so
