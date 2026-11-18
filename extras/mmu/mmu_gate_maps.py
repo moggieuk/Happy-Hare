@@ -285,7 +285,8 @@ class MmuGateMaps:
     # sensor correction makes it EMPTY: an empty lane is not an ejected one, and a caller
     # may be about to use those. reset_gate() is a real ejection and always clears.
     def validate_gate_status(self, gates=None, clear_attributes=True):
-        v_gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
+        self.renew_gate_map() # Ensure that webhooks sees get_status() change, cleared attributes included
+        v_gate_status = list(self.gate_status)
         gates = range(self.num_gates) if gates is None else gates
         for gate in gates:
             status = v_gate_status[gate]
@@ -366,7 +367,7 @@ class MmuGateMaps:
     def set_gate_status(self, gate, state, clear_attributes=True):
         if 0 <= gate < self.num_gates:
             if state != self.gate_status[gate] or (state == GATE_EMPTY and clear_attributes):
-                self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
+                self.renew_gate_map() # Ensure that webhooks sees get_status() change
                 if state == GATE_EMPTY and clear_attributes:
                     self.clear_gate_attributes(gate)
                 self.gate_status[gate] = state
