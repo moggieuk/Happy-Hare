@@ -274,7 +274,8 @@ export function constrainFilament(tip, tail, sensors, fragments = [], reported =
   const warnings = [...reported];
   for (const sensor of sensors) {
     const {position,state,name} = sensor;
-    if (!Number.isFinite(position) || sensor.enabled === false || typeof state !== 'boolean') continue;
+    // A sensor drawn at a nominal place says nothing about where the tip is
+    if (!Number.isFinite(position) || sensor.enabled === false || typeof state !== 'boolean' || sensor.assumed) continue;
     const fragment = fragments.some(part => part.start <= position && part.end >= position);
     if (!state && (tail === null || tail <= position)) {
       upper = Math.min(upper, position);

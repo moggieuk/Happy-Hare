@@ -45,6 +45,7 @@ export class SceneModel {
     const p=unit.toolhead.parameters, up=unit.parameters;
     const bowden=unit.bowden_lengths[m.gate];
     const gateEndstop=short(up.gate_homing_endstop || '').replace(/_\d+$/,'');
+    const preloadEndstop=short(up.gate_preload_endstop || '').replace(/_\d+$/,'');
     const gateHome=gateEndstop === 'mmu_shared_exit' ? 10 : gateEndstop === 'encoder' ? 20 : 0;
     const gears=gateHome+(finite(bowden) && bowden > 0 ? bowden : 700);
     const entry=gears, entrySensor=gears-number(p.toolhead_entry_to_extruder);
@@ -56,7 +57,9 @@ export class SceneModel {
       const key=short(name).replace(/_\d+$/,'');
       const pos=key === 'extruder' ? entrySensor : key === 'toolhead' ? layout.toolhead
         : key === 'mmu_pre_gate' ? -150 : ['filament_compression','filament_tension'].includes(key) ? entry : layout[key];
-      sensors[name]={state:value.triggered,enabled:value.enabled,position:finite(pos)?pos:null};
+      // Only the sensors the gate homes or preloads on have a known place; another gate sensor is drawn at a nominal one
+      const assumed=['mmu_exit','mmu_shared_exit'].includes(key) && key !== gateEndstop && key !== preloadEndstop;
+      sensors[name]={state:value.triggered,enabled:value.enabled,position:finite(pos)?pos:null,assumed};
     }
     // StallGuard has no persistent filament-presence reading.
     if (up.extruder_homing_endstop === 'mmu_gear_touch')

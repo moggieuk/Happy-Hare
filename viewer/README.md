@@ -117,6 +117,11 @@ forward travel, and triggered sensors limit withdrawal unless a detached fragmen
 explains the reading. Contradictory moves hold at the last safe position and show
 a **!** with sensor details. Disabled sensors provide no constraint.
 
+A gate exit or shared exit sensor that the unit neither homes nor preloads on is the exception: Happy Hare
+does not say where it is, so it is drawn at a nominal place, lights from its reading alone, and neither
+limits the tip nor raises a warning. A limit that does apply is carried smoothly across an animated move,
+so the tip leaves from where it was drawn and arrives where the settled state draws it.
+
 Ordinary presence sensors switch as the interpolated filament crosses their
 location. Recorded states are authoritative at movement endpoints; disabled or
 overridden sensors are not inferred from geometry. Buffer travel is inferred from
