@@ -71,18 +71,18 @@ function sourceMode() {
   renderWarning();
 }
 
+// A notice (blue, "i") and a warning (amber, "!") each have their own box, stacked
 function renderWarning(warnings=[], notice=null) {
   const simulatorLive=store.viewMode==='live' && !store.offline && store.socket?.readyState===1 && isSimulator();
-  const text=simulatorLive
+  const playback=store.viewMode==='playback';
+  const warning=simulatorLive
     ? 'Simulator subscriptions may skip movement updates. Select Telemetry stream for complete movement animation.'
-    : store.viewMode!=='playback' ? ''
-    : [notice, warnings.length ? 'Displayed tip adjusted to sensor readings: '+warnings.join('; ') : ''].filter(Boolean).join('\n');
-  // A notice alone is informational (blue, "i"); anything that is a warning keeps the warning look
-  const informational=Boolean(notice) && !warnings.length && store.viewMode==='playback';
-  $('filament-warning').dataset.kind=informational ? 'notice' : 'warning';
-  $('filament-warning').querySelector('.warning-bang').textContent=informational ? 'i' : '!';
-  $('filament-warning').hidden=!text;
-  $('filament-warning-message').textContent=text;
+    : playback && warnings.length ? 'Displayed tip adjusted to sensor readings: '+warnings.join('; ') : '';
+  const info=playback && !simulatorLive && notice ? notice : '';
+  for (const [id,text] of [['filament-notice',info],['filament-warning',warning]]) {
+    $(id).hidden=!text;
+    $(`${id}-message`).textContent=text;
+  }
 }
 
 const RPC_TIMEOUT_MS = 15000;

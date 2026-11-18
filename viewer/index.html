@@ -96,7 +96,11 @@
           <div class="scene-container">
           <div class="scene-annotations">
           <div id="scene-macros"></div>
-          <div id="filament-warning" role="status" hidden>
+          <div id="filament-notice" class="scene-alert" data-kind="notice" role="status" hidden>
+            <span class="warning-bang" aria-hidden="true">i</span>
+            <span id="filament-notice-message"></span>
+          </div>
+          <div id="filament-warning" class="scene-alert" data-kind="warning" role="status" hidden>
             <span class="warning-bang" aria-hidden="true">!</span>
             <span id="filament-warning-message"></span>
           </div>
