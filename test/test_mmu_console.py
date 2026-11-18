@@ -2455,6 +2455,8 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertEqual(mmu.gate_status[1], 0)
         self.assertEqual(console.fil.tip[1], TIP_ABSENT)
         self.assertIn(list(mmu.gate_status).count(-1), (1, 2))
+        table = next(m for m in console.startup_output if 'Avail: ' in m)
+        self.assertIn(' - ', table.split('Avail: ')[1].split('\n')[0].replace('\xa0', ' '))
         self.assertEqual(self.console.hh.mmu.gate_status.count(1), self.console.hh.mmu.num_gates)  # No seed: untouched
 
     def test_priming_is_reproducible_and_varied(self):
