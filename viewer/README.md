@@ -181,8 +181,8 @@ it does not extend the Bowden or move the buffer's compression contact point.
 
 Under each unit's gate numbers the scene shows what Mainsail Happy Hare Edition shows there, by the same rules:
 
-- **Logo and name:** the vendor's logo (Happy Hare's own for a vendor without one) and the unit's `display_name`,
-  centred in the space beside it. "Show unit logos" in Settings hides the logos.
+- **Logo and name:** the vendor's logo (Happy Hare's own for a vendor without one) and the unit's `display_name`
+  beside it. "Show unit logos" in Settings hides the logos.
 - **Climate:** humidity and temperature from the unit's environment sensor, and at the right the heater's
   target with a heating-coil icon, or a rotating-orbit icon while any of the unit's gates is drying or queued to dry.
 - **Per-gate heaters or sensors:** the row shows the selected gate's values followed by `...`, and a tooltip lists every gate.
