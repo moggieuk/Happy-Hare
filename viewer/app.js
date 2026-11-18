@@ -534,7 +534,8 @@ function animationNow() {
   animationRealTime=now;
   return animationTime;
 }
-const scene=createScene($('scene'), {now:animationNow, requestFrame:draw, tooltipOpen:()=>!$('viewer-tooltip').hidden});
+const scene=createScene($('scene'), {now:animationNow, requestFrame:draw,
+  rackHeld:()=>!$('viewer-tooltip').hidden || gateMenuView.isOpen()});
 // Gate lanes and spool columns share the same spacing.
 function currentIndex() {
   return store.live ? Math.max(0, store.events.findIndex(e => e.seq === (store.playing?.event.seq || store.played))) : store.cursor;
