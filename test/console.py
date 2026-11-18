@@ -30,6 +30,7 @@ import collections
 import contextlib
 import logging
 import os
+import random
 import re
 import select
 import shutil
@@ -578,7 +579,7 @@ class Console:
         # machine a later MMU_STATUS reported as homed with a gate selected.
         self.hh.boot(calibrate=not a.no_calibrate,
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
-                     prime=not a.no_prime, seed=a.seed,
+                     prime=not a.no_prime, seed=a.seed or 0,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
         from extras.mmu.telemetry.capture import display_color as hex6
@@ -2801,6 +2802,8 @@ class Console:
             self.info(line)
         self.info('/help for meta-commands, MMU_HELP for Happy Hare commands, '
                   'Ctrl-D to quit.')
+        if self.args.seed and not self.args.no_prime:
+            self.info('Spools were primed with --seed %d; pass it again to repeat them.' % self.args.seed)
         if self.scrollback is not None and sys.stdout.isatty():
             self.info('%s scrolls back through the log.'
                       % ('Shift-Up, PgUp or /s' if self.scroll_keys else '/s (or /scroll)'))
@@ -3353,9 +3356,9 @@ def parse_args(argv=None):
     p.add_argument('--no-prime', action='store_true',
                    help='leave the gate map blank instead of giving every gate a vendor, '
                         'material, colour and temperature')
-    p.add_argument('--seed', type=int, default=0,
-                   help='seed for the primed gate map, so a session is reproducible '
-                        '(default %(default)s)')
+    p.add_argument('--seed', type=int, default=None,
+                   help='seed for the primed gate map, to repeat a session. An interactive '
+                        'session picks a new one each start and prints it; a --script run uses 0')
     p.add_argument('--no-moonraker', action='store_true',
                    help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
                         'unanswered - which is what a printer with Moonraker down looks like')
@@ -3443,8 +3446,16 @@ def parse_args(argv=None):
     return args
 
 
+def startup_seed(args):
+    """A new gate map each interactive start; an explicit seed or a --script run stays repeatable."""
+    if args.seed is None and not args.script:
+        return random.SystemRandom().randrange(1, 10000)
+    return args.seed
+
+
 def main(argv=None):
     args = select_startup_profile(parse_args(argv))
+    args.seed = startup_seed(args)
     console = Console(args)
     if not args.script:
         # boot() builds a whole fake printer and preloads every gate, which is fifteen to

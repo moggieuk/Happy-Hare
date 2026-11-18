@@ -2438,6 +2438,12 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertIn('Ready', joined, 'precondition: this is the bootup output')
         self.assertNotIn('Unknown', joined)
 
+    def test_an_interactive_start_picks_its_own_seed_and_a_script_or_given_seed_does_not(self):
+        parse = console_mod.parse_args
+        self.assertGreater(console_mod.startup_seed(parse(['--no-log'])), 0)
+        self.assertIsNone(console_mod.startup_seed(parse(['--no-log', '--script', 'x'])))
+        self.assertEqual(console_mod.startup_seed(parse(['--no-log', '--seed', '7'])), 7)
+
     def test_priming_is_reproducible_and_varied(self):
         """
         Seeded on purpose: the point is data that LOOKS real, not data that changes every run.
