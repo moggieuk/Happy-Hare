@@ -738,17 +738,19 @@ function cutters(c) {
       ? bladeStroke(bladeEvent, playing?.fraction || 0, cutter.kind)
       : (onMmu ? s.mmu_cutter_pressed : s.cutter_pressed) ? 1 : 0;
     if (onMmu && pressed > 0) {
-      // The cutter shears by sliding the bowden aside with the offcut still in it; the release drops the offcut
+      // The cutter shears by bending the end of the bowden aside with the offcut still in it; the release ejects the offcut
       const releasing = bladeEvent?.kind === 'release' && bladeEvent.cutter === 'mmu';
       const cutting = bladeEvent?.kind === 'cut' && bladeEvent.cutter === 'mmu';
       const offcut = releasing ? bladeEvent.before?.mmu_offcut : cutting ? bladeEvent.state?.mmu_offcut : s.mmu_offcut;
-      const from = schematicDistance(cutter.position), reach = 56, slide = 26;
-      const points = Array.from({length:9},(_,i)=>tube.getPointAtLength(Math.min(length,from+reach*i/8)));
-      const section = points.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ');
+      const from = schematicDistance(cutter.position), reach = 90, slide = 26, steps = 16;
+      const points = Array.from({length:steps+1},(_,i)=>tube.getPointAtLength(Math.min(length,from+reach*i/steps)));
+      const line = list => list.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ');
+      // Full deflection at the blade, easing to none where the bend meets the fixed bowden
+      const bent = amount => line(points.map((p,i)=>({x:p.x+slide*amount*(1-i/steps)**2,y:p.y})));
       const fall = releasing ? (playing?.fraction || 0)**2 : 0;
-      const stub = tube.getPointAtLength(Math.min(length,from+8));
-      const piece = offcut ? `<g data-part="mmu-offcut" transform="translate(${slide*(releasing ? 1 : pressed)} ${fall*70})" opacity="${1-fall}"><path d="M${points[0].x} ${points[0].y} L${stub.x} ${stub.y}" fill="none" stroke="#${offcut.color || DEFAULT_COLOR}" stroke-width="7"/>${offcut.tip_shape === 'square' ? '' : shapedTip(8,offcut.color || DEFAULT_COLOR,'mmu-offcut-tip',offcut.hair_length ?? 15,measurePath(section))}</g>` : '';
-      svg += `<g data-part="mmu-cut-section" data-slide="${pressed}"><path d="${section}" fill="none" stroke="var(--scene-background, white)" stroke-width="22"/><g transform="translate(${slide*pressed} 0)"><path d="${section}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${section}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/></g>${piece}</g>`;
+      const held = measurePath(bent(releasing ? 1 : pressed)), stub = held.getPointAtLength(8), start = held.getPointAtLength(0);
+      const piece = offcut ? `<g data-part="mmu-offcut" transform="translate(0 ${fall*70})" opacity="${1-fall}"><path d="M${start.x} ${start.y} L${stub.x} ${stub.y}" fill="none" stroke="#${offcut.color || DEFAULT_COLOR}" stroke-width="7"/>${offcut.tip_shape === 'square' ? '' : shapedTip(8,offcut.color || DEFAULT_COLOR,'mmu-offcut-tip',offcut.hair_length ?? 15,held)}</g>` : '';
+      svg += `<g data-part="mmu-cut-section" data-slide="${pressed}"><path d="${line(points)}" fill="none" stroke="var(--scene-background, white)" stroke-width="22"/><path d="${bent(pressed)}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${bent(pressed)}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/>${piece}</g>`;
     }
     // The triangle tip rests at the 20px tube's outer wall, then crosses it.
     const x = pt.x - direction * 10 + direction * 20 * pressed;
