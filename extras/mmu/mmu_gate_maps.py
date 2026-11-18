@@ -308,6 +308,7 @@ class MmuGateMaps:
             if clear_attributes and status != GATE_EMPTY and v_gate_status[gate] == GATE_EMPTY:
                 self.clear_gate_attributes(gate)
         self.gate_status = v_gate_status
+        self.update_gate_color_rgb()
         self.auto_group_endless_spool()
 
 
