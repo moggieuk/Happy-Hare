@@ -54,5 +54,5 @@ export function createGateMenu(container, {items, run}) {
   menu.addEventListener('mouseleave', close);
   document.addEventListener('pointerdown', event => { if (gate !== null && !menu.contains(event.target)) close(); }, true);
   document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
-  return {open, close, refresh};
+  return {open, close, refresh, isOpen: () => gate !== null};
 }

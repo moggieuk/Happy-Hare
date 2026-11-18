@@ -12,7 +12,7 @@ export function spoolFill(state, gate) {
   return state.spool_percentages?.[gate] ?? 100;
 }
 
-export function createScene(host, {now: animationNow, requestFrame: draw, tooltipOpen}) {
+export function createScene(host, {now: animationNow, requestFrame: draw, rackHeld}) {
   let view={}, settings={};
 const spoolAngles=new Map(), spoolArrowVisibility=new Map(), spoolDirections=new Map();
 let spoolLastFrame=null, spoolSession=null;
@@ -115,7 +115,7 @@ let lastActivity = performance.now();
 for (const type of ['pointermove','pointerdown','keydown','wheel','focusin'])
   document.addEventListener(type,()=>{ lastActivity=performance.now(); },{passive:true,capture:true});
 function returnRackWhenIdle() {
-  if (tooltipOpen()) lastActivity=performance.now();
+  if (rackHeld()) lastActivity=performance.now();  // A tooltip or menu is open over the scrolled rack
   if (rackIdleReturn(rackManualShift,performance.now()-lastActivity)) { rackManualShift=0; draw(); }
 }
 // Geometry: the tube path, the tip and sensor positions, and the fixed toolhead and Bowden markup
