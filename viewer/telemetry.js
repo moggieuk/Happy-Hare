@@ -201,13 +201,21 @@ export class TelemetryReplay extends SceneModel {
     } else if (record.event === 'record_mode') {
       this.emit(record, 'state', 'Recording '+record.mode, {internal:true, telemetry:record});
     } else if (record.event === 'cut' && record.cutter === 'mmu') {
-      // The offcut drops out at the MMU, so only the tip changes
+      // The offcut stays in the bowden, slid aside with it, until the release drops it
       const gate = mmu.gate, blade = before.cutters.find(c=>c.kind === 'mmu')?.position;
-      if (gate >= 0 && finite(blade) && this.tips[gate] > blade) {
+      this.mmuCutter = true;
+      this.mmuOffcut = gate >= 0 && finite(blade) && this.tips[gate] > blade
+        ? {gate,tip_shape:this.shapes[gate],hair_length:this.hairLengths[gate],color:before.gate_colors[gate]} : null;
+      this.emit(record,'cut','MMU filament cut',{before,cutter:'mmu',telemetry:record});
+    } else if (record.event === 'release' && record.cutter === 'mmu') {
+      const gate = this.mmuOffcut?.gate, blade = before.cutters.find(c=>c.kind === 'mmu')?.position;
+      if (gate !== undefined && finite(blade)) {
         this.tips[gate] = blade;
         this.shapes[gate] = 'square';
       }
-      this.emit(record,'cut','MMU filament cut',{before,cutter:'mmu',telemetry:record});
+      this.mmuCutter = false;
+      this.mmuOffcut = null;
+      this.emit(record,'release','MMU cutter release',{before,cutter:'mmu',telemetry:record});
     } else if (record.event === 'cut' || record.event === 'filament_cut') {
       const gate = mmu.gate, nozzle = before.layout.nozzle;
       const blade = finite(record.blade_pos) ? nozzle-record.blade_pos : before.cutters.find(c=>c.kind === 'toolhead')?.position;

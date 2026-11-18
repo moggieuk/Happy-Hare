@@ -497,7 +497,7 @@ export function homingPulse(event) {
 
 export function bladeStroke(event, fraction, kind) {
   if (event?.cutter === kind && event.kind === 'release') return 1-clamp01(fraction);
-  if (event?.cutter === kind && event.kind === 'cut' && event.state?.cutter_pressed) return Math.min(1,Math.max(0,fraction)/.4);
+  if (event?.cutter === kind && event.kind === 'cut' && event.state?.[kind === 'mmu' ? 'mmu_cutter_pressed' : 'cutter_pressed']) return Math.min(1,Math.max(0,fraction)/.4);
   if (event?.kind !== 'cut' || event.cutter !== kind) return 0;
   const t = Math.max(0, Math.min(1, fraction));
   return t < .4 ? t / .4 : t <= .6 ? 1 : (1 - t) / .4;

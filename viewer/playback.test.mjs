@@ -281,6 +281,8 @@ test('tip shape follows retraction and cut switches ownership at blade contact',
 
 test('explicit CUT holds the blade until RELEASE',()=>{
  assert.equal(bladeStroke({kind:'cut',cutter:'toolhead',state:{cutter_pressed:true}},1,'toolhead'),1);
+ assert.equal(bladeStroke({kind:'cut',cutter:'mmu',state:{mmu_cutter_pressed:true}},1,'mmu'),1);
+ assert.equal(bladeStroke({kind:'release',cutter:'mmu',state:{}},1,'mmu'),0);
  assert.equal(bladeStroke({kind:'release',cutter:'toolhead'},.5,'toolhead'),.5);
  assert.equal(bladeStroke({kind:'release',cutter:'toolhead'},1,'toolhead'),0);
  assert.equal(duration({kind:'release'}),650);

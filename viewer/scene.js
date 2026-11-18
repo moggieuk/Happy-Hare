@@ -726,7 +726,7 @@ function purge(c) {
 
 // Cutter blades, painted last
 function cutters(c) {
-  let {live, playing, s, tip, end, path, svg, tube, length, progress, schematicDistance}=c;
+  let {live, playing, s, tip, end, path, svg, tube, length, progress, schematicDistance, shapedTip}=c;
   // Paint cutters last so they remain above attached and retained filament.
   for (const cutter of s.cutters || []) {
     const onMmu = cutter.kind === 'mmu';
@@ -736,7 +736,20 @@ function cutters(c) {
     const bladeEvent = live ? playing?.event : null;
     const pressed = bladeEvent && ['cut','release'].includes(bladeEvent.kind)
       ? bladeStroke(bladeEvent, playing?.fraction || 0, cutter.kind)
-      : cutter.kind === 'toolhead' && s.cutter_pressed ? 1 : 0;
+      : (onMmu ? s.mmu_cutter_pressed : s.cutter_pressed) ? 1 : 0;
+    if (onMmu && pressed > 0) {
+      // The cutter shears by sliding the bowden aside with the offcut still in it; the release drops the offcut
+      const releasing = bladeEvent?.kind === 'release' && bladeEvent.cutter === 'mmu';
+      const cutting = bladeEvent?.kind === 'cut' && bladeEvent.cutter === 'mmu';
+      const offcut = releasing ? bladeEvent.before?.mmu_offcut : cutting ? bladeEvent.state?.mmu_offcut : s.mmu_offcut;
+      const from = schematicDistance(cutter.position), reach = 56, slide = 26;
+      const points = Array.from({length:9},(_,i)=>tube.getPointAtLength(Math.min(length,from+reach*i/8)));
+      const section = points.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ');
+      const fall = releasing ? (playing?.fraction || 0)**2 : 0;
+      const stub = tube.getPointAtLength(Math.min(length,from+8));
+      const piece = offcut ? `<g data-part="mmu-offcut" transform="translate(${slide*(releasing ? 1 : pressed)} ${fall*70})" opacity="${1-fall}"><path d="M${points[0].x} ${points[0].y} L${stub.x} ${stub.y}" fill="none" stroke="#${offcut.color || DEFAULT_COLOR}" stroke-width="7"/>${offcut.tip_shape === 'square' ? '' : shapedTip(8,offcut.color || DEFAULT_COLOR,'mmu-offcut-tip',offcut.hair_length ?? 15,measurePath(section))}</g>` : '';
+      svg += `<g data-part="mmu-cut-section" data-slide="${pressed}"><path d="${section}" fill="none" stroke="var(--scene-background, white)" stroke-width="22"/><g transform="translate(${slide*pressed} 0)"><path d="${section}" fill="none" stroke="var(--scene-tube-border, #b1c4d2)" stroke-width="19.25"/><path d="${section}" fill="none" stroke="var(--scene-tube, #edf4f8)" stroke-width="14.75"/></g>${piece}</g>`;
+    }
     // The triangle tip rests at the 20px tube's outer wall, then crosses it.
     const x = pt.x - direction * 10 + direction * 20 * pressed;
     svg += `<g class="cutter-blade" aria-label="${onMmu ? 'MMU servo cutter' : cutter.before_extruder ? 'Cutter before extruder' : 'Cutter inside extruder'}"><path data-part="blade" data-pressed="${pressed}" d="M${x} ${pt.y} l${-direction*42} -5 v10 Z" fill="var(--scene-nozzle, #9cafbe)" stroke="var(--scene-spoke, #526f86)"/></g>`;
