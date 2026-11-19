@@ -636,6 +636,11 @@ HH_RENAMED_SYMBOLS = {
     "PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH":   "PARAM_BLOBIFIER_SERVO_MIN_PULSE_WIDTH",
     "PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH":   "PARAM_BLOBIFIER_SERVO_MAX_PULSE_WIDTH",
     "PARAM_BLOBIFIER_MAXIMUM_SERVO_ANGLE":   "PARAM_BLOBIFIER_SERVO_MAXIMUM_ANGLE",
+
+    # v4.x: the "Developer" log level went with the stepper logging it
+    # enabled. A saved choice of it becomes Trace, the most verbose level left.
+    "CHOICE_LOG_LEVEL_STEPPER":              "CHOICE_LOG_LEVEL_TRACE",
+    "CHOICE_LOG_FILE_LEVEL_STEPPER":         "CHOICE_LOG_FILE_LEVEL_TRACE",
 }
 
 # v4.1 - pins follow the PIN_ convention: i2c pins are named by the

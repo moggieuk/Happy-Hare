@@ -81,6 +81,17 @@ class TestModelItself(MotionTestCase):
         self.assertTrue(self.fil.triggered('mmu_entry_0'))
         self.assertFalse(self.fil.triggered('mmu_exit_0'))
 
+    def test_extrusion_stops_tip_at_nozzle_and_retains_full_travel(self):
+        nozzle = self.fil._nozzle_position(0)
+        self.hh.place_filament(0, position=nozzle - 2.)
+        observed = []
+        self.fil.observers.append(lambda gate, delta, tip, tail: observed.append(delta))
+        self.fil.advance(0, 20., motor_mode='extruder')
+        self.assertAlmostEqual(self.fil.tip[0], nozzle)
+        self.assertEqual(observed, [20.])
+        self.fil.advance(0, -5., motor_mode='extruder')
+        self.assertAlmostEqual(self.fil.tip[0], nozzle - 5.)
+
     def test_stepper_rounds_negative_positions_to_nearest_step(self):
         """As Klipper does - truncating toward zero miscounts a move that crosses it."""
         stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
@@ -135,11 +146,191 @@ class TestModelItself(MotionTestCase):
         self.assertIsNone(self.fil.trip_distance(0, 50., ['mmu_exit_0']),
                           'a 50mm move cannot reach a sensor 100mm away')
 
+    def test_loaded_buffer_absorbs_relative_motion_and_retains_overtravel(self):
+        start = self.fil._nozzle_position(0) - 30.
+        self.fil._set_sensor = None
+        geometry = next(iter(self.fil.buffers.values()))
+        geometry['maxrange'] = 12.
+        geometry['compression_travel'] = 10.
+        geometry['tension_travel'] = 2.
+        self.fil.place(0, start)
+        self.fil._gripped = lambda gate: True
+        self.fil._drive_mode = lambda gate: 'gear'
+        self.assertTrue(self.fil.triggered('filament_tension', 0))
+        self.assertAlmostEqual(self.fil.trip_distance(0, 12., ['filament_compression'])[1], 10.)
+        for delta, travel, excess in [(12,12,0),(3,12,3),(-3,12,0),(-12,0,0),(-2,0,-2),(2,0,0)]:
+            self.fil.advance(0, delta)
+            self.assertEqual(self.fil.tip[0], start)
+            self.assertAlmostEqual(geometry['travel'][0], travel)
+            self.assertAlmostEqual(self.fil.unabsorbed[0], excess)
+            self.assertEqual(self.fil.triggered('filament_compression',0),travel >= 10.)
+        self.fil.advance(0, 12.)
+        self.fil._drive_mode = lambda gate: 'extruder'
+        self.fil.advance(0, 5.)
+        self.assertEqual(geometry['travel'][0], 7.)
+        self.assertEqual(self.fil.tip[0], start + 5.)
+        self.fil._drive_mode = lambda gate: 'synced'
+        self.fil.advance(0, 10.)
+        self.assertEqual(geometry['travel'][0], 7.)
+        self.fil._drive_mode = lambda gate: 'gear'
+        self.fil.advance(0, 2., 'toolhead extrusion')
+        self.assertEqual(geometry['travel'][0], 5.)
+        self.assertEqual(self.fil.tip[0], start + 17.)
+        self.fil.place(0, start)
+        self.assertEqual(geometry['travel'][0], 0.)
+        self.assertEqual(geometry['excess'][0], 0.)
+
+    def test_buffer_contact_preserves_excess_before_grip_confirmation(self):
+        self.fil._set_sensor = None
+        self.fil._gripped = lambda gate: False
+        self.fil._drive_mode = lambda gate: 'gear'
+        geometry = next(iter(self.fil.buffers.values()))
+        self.fil.place(0, geometry['entry'])
+        self.fil.advance(0, 15., 'homing -> unit0:filament_compression')
+        self.assertEqual(geometry['travel'][0], 12.)
+        self.assertEqual(geometry['excess'][0], 3.)
+        self.assertEqual(self.fil.unabsorbed[0], 3.)
+        trip = self.fil.trip_distance(0, -20., ['filament_tension'])
+        self.assertAlmostEqual(trip[1], 13.)
+        self.fil.advance(0, 1., 'toolhead extrusion')
+        self.fil._gripped = lambda gate: self.fil.tip[gate] > geometry['entry']
+        self.assertEqual(geometry['travel'][0], 12.)
+        self.assertEqual(geometry['excess'][0], 2.)
+        self.fil.advance(0, -2.)
+        self.assertEqual(geometry['travel'][0], 12.)
+        self.assertEqual(geometry['excess'][0], 0.)
+
+    def test_buffer_spring_defaults_and_centered_thresholds(self):
+        from types import SimpleNamespace
+        from test.hh.filament import FilamentPath
+        for spring, rest in [('tension',0),('neutral',6),('compression',12),(-1,0),(0,6),(1,12)]:
+            buffer = SimpleNamespace(name='unit0', buffer_spring_state=spring,
+                buffer_range=8., buffer_maxrange=12., proportional_sensor=None)
+            unit = SimpleNamespace(name='unit0', first_gate=0, num_gates=1, buffer=buffer)
+            model = FilamentPath(1).configure_buffers([unit], gripped=lambda gate: True)
+            geometry = model.buffers['unit0']
+            self.assertEqual(geometry['travel'][0],rest)
+            self.assertEqual(geometry['tension_travel'],2.)
+            self.assertEqual(geometry['compression_travel'],10.)
+            model.advance(0,3.)
+            model.place(0,-100.)
+            self.assertEqual(geometry['travel'][0],rest)
+            self.assertEqual(geometry['excess'][0],0.)
+
+    def test_buffer_relaxes_only_after_tip_leaves_extruder_grip(self):
+        from types import SimpleNamespace
+        from test.hh.filament import FilamentPath
+        for spring, rest, initial in [('tension',0.,10.), ('neutral',6.,10.), ('compression',12.,2.)]:
+            with self.subTest(spring=spring):
+                buffer = SimpleNamespace(name='unit0', buffer_spring_state=spring,
+                    buffer_range=8., buffer_maxrange=12., proportional_sensor=None)
+                unit = SimpleNamespace(name='unit0', first_gate=0, num_gates=1, buffer=buffer)
+                model = FilamentPath(1)
+                model._extruder_position = lambda gate: 700.
+                model.configure_buffers([unit], gripped=lambda gate: model.tip[gate]>=700.)
+                model.place(0,705.)
+                geometry = model.buffers['unit0']
+                model._set_buffer_travel(geometry,0,initial)
+                model.advance(0,-3.,motor_mode='synced')
+                self.assertEqual(geometry['travel'][0],initial)
+                model.advance(0,-4.,motor_mode='synced')
+                expected = initial+max(-2.,min(2.,rest-initial))
+                self.assertEqual(geometry['travel'][0],expected)
+                self.assertFalse(geometry['contact'][0])
+                model.advance(0,-20.,motor_mode='gear')
+                self.assertEqual(geometry['travel'][0],rest)
+                self.assertEqual(geometry['excess'][0],0.)
+                if spring == 'tension':
+                    self.assertTrue(model._buffer_triggered('unit0:filament_tension',0))
+
+    def test_compression_home_uses_gears_at_calibrated_bowden_endpoint(self):
+        from types import SimpleNamespace
+        from test.hh.filament import FilamentPath
+        buffer = SimpleNamespace(name='unit0', buffer_spring_state='tension',
+            buffer_range=8., buffer_maxrange=13., proportional_sensor=None)
+        unit = SimpleNamespace(name='unit0', first_gate=0, num_gates=1, buffer=buffer)
+        model = FilamentPath(1, layout={'extruder_entry':700.})
+        model._extruder_position = lambda gate: 700.
+        model.configure_buffers([unit])
+        model.place(0,680.)
+        travel = model._buffer_trip_distance(0,100.,'unit0:filament_compression',True)
+        self.assertAlmostEqual(travel,30.5)
+        model.advance(0,20.,'homing -> unit0:filament_compression',motor_mode='gear')
+        self.assertAlmostEqual(model.buffers['unit0']['travel'][0],0.)
+        model.advance(0,10.5,'homing -> unit0:filament_compression',motor_mode='gear')
+        self.assertAlmostEqual(model.buffers['unit0']['travel'][0],10.5)
+        self.assertTrue(model._buffer_triggered('unit0:filament_compression',0))
+
+    def test_free_gear_retraction_takes_up_buffer_before_moving_tip(self):
+        from types import SimpleNamespace
+        from test.hh.filament import FilamentPath
+        buffer = SimpleNamespace(name='unit0',buffer_spring_state='tension',
+            buffer_range=8.,buffer_maxrange=13.,proportional_sensor=None)
+        unit = SimpleNamespace(name='unit0',first_gate=0,num_gates=1,buffer=buffer)
+        model = FilamentPath(1).configure_buffers([unit])
+        model.place(0,690.)
+        model._set_buffer_travel(model.buffers['unit0'],0,2.5)
+        model.advance(0,-2.,motor_mode='gear')
+        self.assertEqual(model.tip[0],690.)
+        self.assertEqual(model.buffers['unit0']['travel'][0],.5)
+        model.advance(0,-2.,motor_mode='gear')
+        self.assertEqual(model.tip[0],688.5)
+        self.assertEqual(model.buffers['unit0']['travel'][0],0.)
+
+    def test_sync_does_not_feed_another_units_proportional_buffer(self):
+        from types import SimpleNamespace
+        from test.hh.filament import FilamentPath
+        units = []
+        for gate in range(2):
+            name = 'unit%d' % gate
+            buffer = SimpleNamespace(name=name, buffer_spring_state='neutral',
+                buffer_range=8., buffer_maxrange=12., proportional_sensor=object())
+            units.append(SimpleNamespace(name=name, first_gate=gate, num_gates=1, buffer=buffer))
+        model = FilamentPath(2).configure_buffers(units, selected_gate=lambda: 0)
+        readings = []
+        model._set_buffer_value = lambda name, value: readings.append((name,value))
+        model.sync(0)
+        self.assertEqual(readings, [('unit0',0.)])
+
+    def test_free_filament_clears_excess_and_contact_only_counts_overrun(self):
+        self.fil._set_sensor = None
+        self.fil.buffers.clear()
+        self.fil._gripped = lambda gate: False
+        self.fil._extruder_position = lambda gate: 800.
+        self.fil._drive_mode = lambda gate: 'gear'
+        self.fil.place(0, 780.)
+        self.fil.unabsorbed[0] = -5.
+        self.fil.advance(0, 10.)
+        self.assertEqual(self.fil.unabsorbed[0], 0.)
+        self.fil.advance(0, 15.)
+        self.assertEqual(self.fil.tip[0], 800.)
+        self.assertEqual(self.fil.unabsorbed[0], 5.)
+        self.fil.advance(0, -8.)
+        self.assertEqual(self.fil.tip[0], 797.)
+        self.assertEqual(self.fil.unabsorbed[0], 0.)
+
+    def test_without_buffer_reports_reversible_mismatch(self):
+        self.fil._set_sensor = None
+        self.fil.buffers.clear()
+        self.fil.place(0, 800.)
+        self.fil._gripped = lambda gate: True
+        self.fil._drive_mode = lambda gate: 'gear'
+        self.fil.advance(0, 3.)
+        self.assertEqual(self.fil.unabsorbed[0], 3.)
+        self.assertEqual(self.fil.tip[0], 800.)
+        self.fil.advance(0, -3.)
+        self.assertEqual(self.fil.unabsorbed[0], 0.)
+        self.fil.advance(0, -2.)
+        self.assertEqual(self.fil.tip[0], 800.)
+        self.assertEqual(self.fil.unabsorbed[0], -2.)
+        self.fil.advance(0, 2.)
+        self.assertEqual(self.fil.unabsorbed[0], 0.)
+
     def test_tension_sprung_buffer_uses_configured_travel(self):
-        """Only contact during extruder homing can build compression."""
+        """Ordinary gear moves build compression after contact with stationary gears."""
         buffer = self.hh.mmu.mmu_machine.units[0].buffer
-        entry = self.fil.layout['extruder_entry']
-        compression = entry + buffer.buffer_maxrange * 0.7
+        entry = self.fil._extruder_position(0)
+        compression = entry + (buffer.buffer_maxrange + buffer.buffer_range) / 2
 
         self.assertAlmostEqual(self.fil.position('filament_compression'), compression)
 
@@ -148,21 +339,20 @@ class TestModelItself(MotionTestCase):
         self.assertFalse(self.hh.sensor('filament_compression').present)
 
         self.hh.place_filament(0, position=entry)
-        self.assertFalse(self.hh.sensor('filament_tension').present)
+        self.assertTrue(self.hh.sensor('filament_tension').present)
         self.assertFalse(self.hh.sensor('filament_compression').present)
 
-        # A calibrated Bowden move can overshoot the nominal coordinate without
-        # proving that the filament has contacted the extruder. It must not squeeze
-        # the buffer merely because the model's absolute tip position passed entry.
         self.fil.advance(0, buffer.buffer_maxrange, 'move')
+        self.assertEqual(self.fil.tip[0],entry)
         self.assertFalse(self.hh.sensor('filament_tension').present)
-        self.assertFalse(self.hh.sensor('filament_compression').present)
+        self.assertTrue(self.hh.sensor('filament_compression').present)
+        self.hh.place_filament(0, position=entry)
 
         trip = self.fil.trip_distance(
             0, buffer.buffer_maxrange,
             ['unit0:filament_compression'],
         )
-        self.assertAlmostEqual(trip[1], buffer.buffer_maxrange * 0.7)
+        self.assertAlmostEqual(trip[1], (buffer.buffer_maxrange + buffer.buffer_range) / 2)
         self.fil.advance(0, trip[1], 'homing -> unit0:filament_compression')
         self.assertFalse(self.hh.sensor('filament_tension').present)
         self.assertTrue(self.hh.sensor('filament_compression').present)

@@ -62,6 +62,7 @@ logging.getLogger().setLevel(logging.CRITICAL)
 BOOTABLE = {
     'boxturtle': (4, 'VirtualSelector'),
     'tradrack': (10, 'LinearServoSelector'),
+    'tradrack_encoder': (10, 'LinearServoSelector'),
     '3ms': (4, 'VirtualSelector'),
     # Needs two symbols the vendor Kconfig leaves open (a board and a gate homing sensor) or it
     # does not render at all - see the profile's own comment in test/hh/profiles.py.
@@ -161,6 +162,14 @@ class TestEveryBootableProfile(unittest.TestCase):
 
     def test_tradrack_max_gates(self):
         self._check('tradrack_max_gates')
+
+    def test_tradrack_encoder(self):
+        hh = self._check('tradrack_encoder')
+        unit = hh.mmu.mmu_unit(0)
+        self.assertIsNotNone(unit.encoder)
+        self.assertEqual(unit.p.gate_homing_endstop, 'mmu_shared_exit')
+        self.assertEqual(unit.p.gate_endstop_to_encoder, 31)
+        self.assertEqual(unit.p.gate_parking_distance, -48)
 
     def test_boxturtle_max_gates(self):
         self._check('boxturtle_max_gates')
@@ -319,6 +328,9 @@ class TestEveryBootableProfile(unittest.TestCase):
             fallback_homed_states.append(hh.mmu.filament_pos)
             return result
 
+        # Isolate datum recovery from mechanical grip: this fixture simulates
+        # an extruder that has already released despite stale position state.
+        model._gripped = lambda gate: False
         hh.mmu.sensor_manager.check_sensor = report_extruder_clear
         hh.mmu._park_at_gate = record_direct_park
         hh.mmu._unload_gate = record_fallback_home
@@ -481,11 +493,18 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
         self.assertEqual(unit.filament_heater, 'heater_generic unit0_heater')
         self.assertEqual(unit.environment_sensor, 'temperature_sensor unit0_Env')
+        self.assertEqual(unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle, 75)
+        self.assertEqual(unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle, 78)
+        cutter = hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS').variables
+        self.assertTrue(cutter['cutter_before_extruder'])
+        self.assertEqual(cutter['blade_pos'], 80)
+        self.assertGreater(cutter['blade_pos'], unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
 
         model = hh.filament()
         self.assertEqual(model.layout['mmu_entry'], -150)
         self.assertEqual(model.layout['mmu_shared_exit'], 150)
-        self.assertEqual(model.layout['extruder'], 900)
+        self.assertEqual(model.layout['extruder'], 876)
+        self.assertEqual(model.layout['toolhead'], 897)
         # Reproduce make console's startup preload of every gate. No other
         # filament may leave the shared sensor asserted after the selected gate
         # is ejected and preloaded again.
@@ -579,8 +598,27 @@ class TestEveryBootableProfile(unittest.TestCase):
             'are controlled in hardware' in line
             for line in captured.output))
 
+    def _check_emu_heaters(self, hh):
+        unit = hh.mmu.mmu_unit(0)
+        expected = ['heater_generic unit0_heater%d' % gate for gate in range(5)]
+        self.assertEqual(unit.filament_heaters, expected)
+        self.assertTrue(unit.environment_manager.has_per_gate_heaters())
+        hh.run_gcode('MMU_HEATER TEMP=45 GATES=0')
+        for gate, name in enumerate(expected):
+            self.assertEqual(hh.printer.lookup_object(name).get_temp()[1],
+                             45 if gate == 0 else 0)
+        from extras.mmu.telemetry.capture import TelemetryCapture
+        capture = TelemetryCapture(hh.mmu)
+        try:
+            facts = capture.read()['records'][0]['state']
+            self.assertTrue(facts['printer']['mmu_machine']['units'][unit.name]
+                            ['has_per_gate_heaters'])
+        finally:
+            capture.close()
+
     def test_emu(self):
-        self._check('emu')
+        hh = self._check('emu')
+        self._check_emu_heaters(hh)
 
         # EMU's unmodified board choice is SLB, independently wired for every gate.
         from test.hh import cfg, profiles
@@ -602,6 +640,7 @@ class TestEveryBootableProfile(unittest.TestCase):
 
     def test_emu_ebb(self):
         hh = self._check('emu_ebb')
+        self._check_emu_heaters(hh)
 
         # The shipped EBB defaults must remain internally valid too.  This caught the
         # obsolete BOARD_TYPE_EBB_1_0 guard: it left one-pixel chains mapped as (1-5).
@@ -1373,3 +1412,36 @@ class TestSelectorMicrosteps(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestErcfQuattroBox(unittest.TestCase):
+    def test_shared_buffer_separate_encoders_and_filament_sensors(self):
+        hh = session('ercf_quattrobox')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True, selected_gate=0)
+        self.assertEqual(hh.errors, [])
+        ercf, quattro = hh.mmu.mmu_machine.units
+        self.assertEqual([(u.first_gate, u.num_gates) for u in (ercf, quattro)],
+                         [(0, 8), (8, 4)])
+        self.assertEqual(ercf.selector_type, 'LinearServoSelector')
+        self.assertEqual(quattro.selector_type, 'VirtualSelector')
+        self.assertIs(ercf.buffer, quattro.buffer)
+        self.assertIsNot(ercf.encoder, quattro.encoder)
+        sensors = hh.sensors()
+        for gate in range(12):
+            self.assertIn('mmu_entry_%d' % gate, sensors)
+        for gate in range(8):
+            self.assertNotIn('mmu_exit_%d' % gate, sensors)
+        for gate in range(8, 12):
+            self.assertIn('mmu_exit_%d' % gate, sensors)
+        for name in ('unit0:mmu_shared_exit', 'unit1:mmu_shared_exit',
+                     'default:extruder', 'default:toolhead',
+                     'unit0:filament_compression', 'unit0:filament_tension'):
+            self.assertIn(name, sensors)
+        self.assertTrue(ercf.buffer.tension_sensor.runout_helper.filament_present)
+        model = hh.filament()
+        geometry = model.buffers['unit0']
+        geometry['travel'][0] = geometry['maxrange']
+        model.sync(0)
+        self.assertTrue(ercf.buffer.compression_sensor.runout_helper.filament_present)
+        self.assertFalse(ercf.buffer.tension_sensor.runout_helper.filament_present)

@@ -31,6 +31,7 @@ REPO_ROOT   = os.path.dirname(os.path.dirname(HARNESS_DIR))
 HH_GLOBS = (
     'extras/*.py',
     'extras/mmu/*.py',
+    'extras/mmu/telemetry/*.py',
     'extras/mmu/unit/*.py',
     'extras/mmu/unit/nfc/*.py',
     'extras/mmu/unit/td1/*.py',

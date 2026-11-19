@@ -33,9 +33,9 @@ class WebSocketClient:
     def __init__(self, port):
         self.sock = socket.create_connection(('127.0.0.1', port), timeout=5)
         key = base64.b64encode(os.urandom(16)).decode()
-        self.sock.sendall(('GET /websocket HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\n'
+        self.sock.sendall(('GET /websocket HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nUpgrade: websocket\r\n'
                            'Connection: Upgrade\r\nSec-WebSocket-Key: %s\r\n'
-                           'Sec-WebSocket-Version: 13\r\n\r\n' % key).encode())
+                           'Sec-WebSocket-Version: 13\r\n\r\n' % (port, key)).encode())
         head = b''
         while b'\r\n\r\n' not in head:
             head += self.sock.recv(1)
@@ -107,6 +107,39 @@ class WebUiBridgeTestCase(unittest.TestCase):
 
 
 class TestWebUiBridge(WebUiBridgeTestCase):
+    def test_motion_delivery_handles_ack_but_defers_commands(self):
+        batch = self.call('server.mmu.telemetry.subscribe')['result']
+        self.hh.mmu.movement_telemetry.state('cut')
+        self.bridge.inbox.put((None, json.dumps(dict(method='printer.gcode.script',
+                                                    params=dict(script='MMU_LOAD'))), None))
+        conn = next(iter(self.bridge.clients))
+        self.bridge.inbox.put((conn, json.dumps(dict(method='server.mmu.telemetry.ack', params=dict(
+            stream_id=batch['stream_id'], delivery_id=batch['delivery_id']))), None))
+        self.bridge._next_telemetry = 0
+        self.bridge.service_during_move()
+        self.assertTrue(self.bridge.has_pending_requests())
+        self.assertEqual(len(self.bridge._deferred_requests), 1)
+        self.client.receive()  # Acknowledgement reply precedes the next delivery.
+        notification = self.client.receive()
+        self.assertEqual(notification['method'], 'notify_mmu_telemetry')
+        self.assertTrue(any(r.get('event') == 'cut' for r in notification['params'][0]['records']))
+
+    def test_telemetry_subscription_ack_and_unsubscribe(self):
+        batch = self.call('server.mmu.telemetry.subscribe')['result']
+        self.assertEqual(batch['records'][0]['event'], 'session')
+        self.hh.mmu.movement_telemetry.state('cut')
+        self.bridge.telemetry_stream.pump()
+        self.assertIsNotNone(self.bridge.telemetry_stream.clients[next(iter(self.bridge.clients))]['inflight'])
+        self.call('server.mmu.telemetry.ack', stream_id=batch['stream_id'], delivery_id=batch['delivery_id'])
+        self.bridge.telemetry_stream.pump()
+        self.serve(lambda: select.select([self.client.sock], [], [], 0)[0])
+        notification = self.client.receive()
+        self.assertEqual(notification['method'], 'notify_mmu_telemetry')
+        self.assertTrue(any(r.get('event') == 'cut'
+                            for r in notification['params'][0]['records']))
+        self.call('server.mmu.telemetry.unsubscribe')
+        self.assertEqual(self.bridge.telemetry_stream.clients, {})
+
     def test_handshake_completes_and_the_server_reports_klippy_ready(self):
         self.assertIn('101 Switching Protocols', self.client.handshake)
         info = self.call('server.info')['result']
@@ -137,6 +170,44 @@ class TestWebUiBridge(WebUiBridgeTestCase):
         update = self.client.receive()
         self.assertEqual(update['method'], 'notify_status_update')
         self.assertEqual(update['params'][0]['mmu']['print_state'], self.hh.mmu.psm.print_state)
+
+    def request(self, method, path='/printer/info', headers=None, body=None):
+        import http.client
+        conn = http.client.HTTPConnection('127.0.0.1', self.bridge.port, timeout=5)
+        conn.putrequest(method, path, skip_host=True)
+        for name, value in {'Host': '127.0.0.1:%d' % self.bridge.port, **(headers or {})}.items():
+            conn.putheader(name, value)
+        conn.putheader('Content-Length', str(len(body or b'')))
+        conn.endheaders(body)
+        response = conn.getresponse()
+        status, allow = response.status, response.getheader('Access-Control-Allow-Origin')
+        conn.close()
+        return status, allow
+
+    def test_pages_from_elsewhere_cannot_use_the_bridge(self):
+        self.assertEqual(self.request('GET', headers={'Origin': 'https://example.com'})[0], 403)
+        self.assertEqual(self.request('POST', headers={'Origin': 'https://example.com'}, body=b'{}')[0], 403)
+        self.assertEqual(self.request('OPTIONS', headers={'Origin': 'https://example.com'})[0], 403)
+        self.assertEqual(self.request('GET', headers={'Host': 'attacker.example'})[0], 403)   # DNS rebinding
+
+    def test_local_pages_are_allowed_and_get_their_own_origin_back(self):
+        self.assertEqual(self.request('OPTIONS', headers={'Origin': 'http://localhost:8000'}), (204, 'http://localhost:8000'))
+
+    def test_oversized_bodies_are_refused(self):
+        from test.hh.webui_bridge import MAX_BODY_BYTES
+        import http.client
+        conn = http.client.HTTPConnection('127.0.0.1', self.bridge.port, timeout=5)
+        conn.putrequest('POST', '/printer/info', skip_host=True)
+        conn.putheader('Host', '127.0.0.1:%d' % self.bridge.port)
+        conn.putheader('Content-Length', str(MAX_BODY_BYTES + 1))
+        conn.endheaders()
+        self.assertEqual(conn.getresponse().status, 413)
+        conn.close()
+
+    def test_unmasked_websocket_frames_close_the_connection(self):
+        self.client.sock.sendall(bytes([0x81, 2]) + b'{}')
+        with self.assertRaises((ConnectionError, OSError)):
+            self.client.receive()
 
     def test_http_database_item_is_served_like_moonraker(self):
         import http.client, threading
@@ -195,6 +266,21 @@ class TestPauseDialogReachesTheUi(WebUiBridgeTestCase):
         mark = len(self.hh.gcode.console)
         self.hh.run_gcode('MMU_PAUSE FORCE_IN_PRINT=1 MSG="Gate 1 jammed"')
         self.assertFalse([m for m in self.hh.gcode.console[mark:] if m.startswith('action:prompt_')])
+
+
+
+
+class TestViewerSharedObjects(WebUiBridgeTestCase):
+    PROFILE = 'ercf_vvd'
+
+    def test_toolhead_edit_through_gcode_script_reaches_both_units(self):
+        reply = self.call('printer.gcode.script', script='MMU_TEST_CONFIG UNIT=0 TOOLHEAD_RESIDUAL_FILAMENT=3')
+        self.assertIn('result', reply)
+        for unit in self.hh.mmu.mmu_machine.units:
+            self.assertEqual(unit.toolhead_wrapper.p.toolhead_residual_filament, 3)
+
+    def test_failed_script_is_an_error_reply(self):
+        self.assertIn('error', self.call('printer.gcode.script', script='MMU_TEST_CONFIG UNIT=0 EXTRUDER_SWITCH_PIN=PA1'))
 
 
 if __name__ == '__main__':
