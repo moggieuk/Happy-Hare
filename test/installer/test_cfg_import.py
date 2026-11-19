@@ -545,6 +545,11 @@ class TestMcuConnection(_Reinstalled):
         self.edit("mmu_hardware_unit0.cfg", "canbus_interface", "can2", section="mcu unit0")
         self.assertEqual(self.imported("mcu unit0", "canbus_uuid", "canbus_interface"), ["aaaaaaaaaaaa", "can2"])
 
+    def test_missing_interface_keeps_menuconfigs(self):
+        self.switch("mcu unit0", canbus_uuid="aaaaaaaaaaaa")
+        self.assertEqual(self.analyse().candidates, [])
+        self.assertEqual(self.imported("mcu unit0", "canbus_uuid", "canbus_interface"), ["aaaaaaaaaaaa", "can1"])
+
 
 class TestPerGateMcuConnection(_Reinstalled):
     """A per-gate EMU over CANbus"""

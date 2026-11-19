@@ -300,11 +300,15 @@ class Analysis(object):
         rendered = self._render(values)
         self.live = self._options(rendered)
         self.theirs = {(section, option): value for section, options in hhcfg.values() for option, value in options}
+        self.implied = set()                   # Not in the .cfg, so never reported as kept
         for section_type, option, default, with_option in _IMPLIED_DEFAULTS:
             for section in {s for s, _ in self.theirs if s.split(" ", 1)[0] == section_type}:
-                if (section, with_option) in self.theirs:
-                    self.theirs.setdefault((section, option), default)
-                    self.origin.setdefault((section, option), self.origin.get((section, with_option)))
+                key, switched = (section, option), (section, with_option)
+                # Only for a switch: where the render has the option, an absent one is menuconfig's to restore
+                if switched in self.theirs and switched not in self.live and key not in self.theirs:
+                    self.theirs[key] = default
+                    self.origin.setdefault(key, self.origin.get(switched))
+                    self.implied.add(key)
         symbols = self._symbols(values)
 
         # Every (section, option) each symbol renders into, so an edit to one copy isn't
@@ -771,7 +775,7 @@ class Analysis(object):
         return {
             "kconfig": os.path.abspath(self.kconfig_path),
             "imported": rows([(key, c.cfg_value, c.note()) for c in self.candidates for key in c.locations]),
-            "kept": rows(self.kept),
+            "kept": rows([entry for entry in self.kept if entry[0] not in self.implied]),
             "replaced": rows([(key, value, "menuconfig sets %s" % ours) for key, value, ours in self.replaced]),
             "settings": [list(s) for c in self.candidates for s in c.settings()],
         }
