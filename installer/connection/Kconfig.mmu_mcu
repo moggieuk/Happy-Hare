@@ -24,7 +24,8 @@ choice CHOICE_MMU_CONNECTION_TYPE
   help 
     Choose the type of mcu connection for the MMU
     Serial or CANbus
-    With per-gate MCUs this is the default for each gate, which can be changed per gate
+    With per-gate MCUs this is the default for each gate,
+    which can be changed per gate
 
   config CHOICE_MMU_CONNECTION_TYPE_SERIAL
     bool "Serial"
