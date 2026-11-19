@@ -1,6 +1,8 @@
 # Tests for Happy Hare's Python-backed Kconfig preprocessor helpers.
 
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -95,6 +97,32 @@ class TestConnectionFunctions(unittest.TestCase):
                          'CHOICE_BUFFER_SERIAL_DEVICE_' + stem)
         self.assertEqual(funcs.mmu_serial_choice(None, None, ''),
                          'CHOICE_MMU_SERIAL_DEVICE_NONE')
+
+    def test_serial_choice_names_are_shell_safe(self):
+        # Stock QIDI Box firmware reports a version with dots in its USB serial
+        device = '/dev/serial/by-id/usb-Klipper_stm32f401xc_QIDI_BOX_V1_1.1.1-if00'
+        stem = 'USB_KLIPPER_STM32F401XC_QIDI_BOX_V1_1_1_1_IF00'
+        self.assertEqual(funcs.mmu_serial_choice(None, None, device),
+                         'CHOICE_MMU_SERIAL_DEVICE_' + stem)
+        self.assertEqual(funcs.mmu_serial_gate_choice(None, None, '3', device),
+                         'CHOICE_MMU_SERIAL_DEVICE_' + stem + '_GATE_3')
+        self.assertEqual(funcs.buffer_serial_choice(None, None, device),
+                         'CHOICE_BUFFER_SERIAL_DEVICE_' + stem)
+
+    @unittest.skipUnless(shutil.which('sh'), 'needs a POSIX shell')
+    def test_saved_serial_choice_can_be_sourced_by_install_sh(self):
+        # install.sh runs under 'set -e' and sources the saved .mmu_config, where a
+        # name that is not a valid shell variable is a failed command
+        device = '/dev/serial/by-id/usb-Klipper_stm32f401xc_QIDI_BOX_V1_1.1.1-if00'
+        symbol = funcs.mmu_serial_choice(None, None, device)
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, '.mmu_config')
+            with open(path, 'w') as handle:
+                handle.write('CONFIG_%s=y%s\n' % (symbol, funcs.HH_DEFAULT_TOKEN))
+                handle.write('CONFIG_AFTER=y\n')
+            result = subprocess.run(['sh', '-ec', '. "$1"; echo "$CONFIG_AFTER"', 'sh', path],
+                                    capture_output=True, text=True)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, 'y'), result.stderr)
 
     def test_canbus_connection_fields_and_choice_names(self):
         connection = 'vlan-1:abc123'
