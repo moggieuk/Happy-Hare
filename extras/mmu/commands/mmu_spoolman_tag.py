@@ -37,9 +37,8 @@ class MmuSpoolmanTagCommand(BaseCommand):
         + "RFID     = _uid_ (or comma-separated UIDs) to write onto the spool. RFID='' to clear\n"
         + "APPEND   = 1 Add to the existing UID(s) instead of replacing them\n"
         + "REGISTER = 1 Bind the gate's already-recorded UID onto SPOOLID (needs spoolman_support != pull)\n"
-        + "MIGRATE  = native|extra Move all tag UIDs to Spoolman's native tags (>= 0.27), or back to the legacy extra field\n"
+        + "MIGRATE  = native Move all legacy extra-field tag UIDs to Spoolman's native tags (>= 0.27)\n"
         + "DRYRUN   = 1 With MIGRATE=, only report what would move\n"
-        + "           With MIGRATE=, GATE= limits the migration to the spool assigned to that gate (temporary, for testing)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
@@ -52,8 +51,6 @@ class MmuSpoolmanTagCommand(BaseCommand):
         + f"{CMD} SPOOLID=87 REGISTER=1             ...Bind currently selected gate's tag uid to spool 87\n"
         + f"{CMD} MIGRATE=native DRYRUN=1          ...Report how many legacy extra-field tags would become native Spoolman tags\n"
         + f"{CMD} MIGRATE=native                    ...Link every legacy extra-field tag natively (also done automatically at startup)\n"
-        + f"{CMD} MIGRATE=extra                     ...(Developer) Move native tags back into the extra field, to re-test migration\n"
-        + f"{CMD} MIGRATE=extra GATE=2              ...(Developer) Same, but only for the spool assigned to gate 2\n"
         + "\nSee MMU_SPOOLMAN read or change gate-spool assignment in spoolman\n"
     )
 
@@ -171,4 +168,4 @@ class MmuSpoolmanTagCommand(BaseCommand):
                                         gate=gate if gate is not None and gate >= 0 else None)
 
         else:
-            mmu.log_error("%s needs RFID=<uid>, REGISTER=1 or MIGRATE=native|extra" % self.CMD)
+            mmu.log_error("%s needs RFID=<uid>, REGISTER=1 or MIGRATE=native" % self.CMD)
