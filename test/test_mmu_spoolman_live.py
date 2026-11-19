@@ -94,6 +94,18 @@ class TestCacheKeptCurrent(LiveTestCase):
         self.hh.run(self.server._on_spoolman_event({'type': 'updated', 'resource': 'vendor', 'payload': {'id': 1}}))
 
 
+class TestUnlinkedInSpoolmanUi(LiveTestCase):
+
+    def test_mirror_removed_when_the_unlink_arrives(self):
+        self.hh.call_remote('spoolman_set_spool_uid', spool_id=3, uid=UID, silent=True)
+        self.db.take_events()
+        self.hh.advance(spoolman_live_window() + 1)
+        del self.db.tag_links[UID]     # user unlinks in the Spoolman UI
+        self.send('updated', 'spool', self.db._render_spool(3))
+        self.assertEqual(self.db.spool_uid(3), '')
+        self.assertNotIn(UID, self.server.uid_to_spool_id)
+
+
 class TestFilamentDetails(LiveTestCase):
     """Spoolman owns filament details in every mode, so they reach Klipper in every mode but off."""
 

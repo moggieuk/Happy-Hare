@@ -48,6 +48,7 @@ class TagTestCase(unittest.TestCase):
         """Put the database back to the pre-migration state (startup migrates it)."""
         self.db.tag_links.clear()
         self.db.tag_formats.clear()
+        self.hh.mmu_server.native_uids.clear() # Or the missing links look like unlinks in the Spoolman UI
         self.hh.call_remote('spoolman_refresh', silent=True)
         self.hh.klippy.drain()
 
@@ -648,6 +649,12 @@ class TestUnlinkedInSpoolmanUi(TagTestCase):
     def test_mirror_removed(self):
         self.lookup(NATIVE_UID)
         self.assertEqual(self.db.spool_uid(2), '')
+
+    def test_not_relinked_after_cache_rebuild(self):
+        self.hh.call_remote('spoolman_refresh', silent=True)
+        self.assertEqual(self.db.spool_uid(2), '')
+        self.assertFalse(self.lookup(NATIVE_UID))
+        self.assertNotIn(NATIVE_UID, self.db.tag_links)
 
 
 if __name__ == '__main__':

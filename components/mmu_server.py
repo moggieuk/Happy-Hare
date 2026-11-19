@@ -378,7 +378,11 @@ class MmuServer:
             self.spool_records.pop(spool_id, None)
             new = None
         else:
-            self._cache_insert_spool(spool_info) # Unlinked native UIDs stay in native_uids so a scan still detects the unlink
+            self._cache_insert_spool(spool_info)
+            native = self._get_native_uid_list(spool_info)
+            for u in self._parse_uid_list(old[2].get('rfids')) if old else []:
+                if u in self.native_uids and u not in native and self.uid_to_spool_id.get(u) == spool_id:
+                    await self._forget_unlinked_tag(u) # Unlinked in Spoolman, extra-field mirror left behind
             new = self.spool_location[spool_id]
             for u in self._parse_uid_list(new[2].get('rfids')):
                 self.uid_miss_cache.pop(u, None)
@@ -782,6 +786,8 @@ class MmuServer:
                     ok, conflict = await self._unlink_native_tag(spool_id, uid), None
                 if ok:
                     summary['moved'] += 1
+                    if not to_native:
+                        self.native_uids.discard(uid)
                     await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} migrated to {'a native Spoolman tag' if to_native else 'the extra field'}", silent=silent)
                 elif conflict is not None:
                     holder = (f"spool {conflict['spool_id']}" if conflict.get('spool_id') is not None else
@@ -957,12 +963,17 @@ class MmuServer:
             await self._log_n_send(f"Failed to retrieve spools from spoolman: {str(e)}", error=True, silent=silent)
             return False
 
+        # Native tags unlinked in Spoolman since the last build; only their extra-field mirror remains
+        unlinked = [u for u in self.native_uids if u not in new_native_uids and u in new_uid_to_spool_id] if self.spoolman_has_tags else []
+
         # Fetch and parse succeeded - commit the freshly built cache atomically
         self.spool_location = new_spool_location
         self.uid_to_spool_id = new_uid_to_spool_id
         self.native_uids = new_native_uids
         self.spool_records = new_spool_records
-        self.legacy_only_uid_count = legacy_only
+        self.legacy_only_uid_count = max(0, legacy_only - len(unlinked))
+        for uid in unlinked:
+            await self._forget_unlinked_tag(uid)
 
         if errors:
             if fix:
