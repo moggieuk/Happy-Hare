@@ -162,10 +162,10 @@ class TestStartupMigration(TagTestCase):
     def test_extra_field_is_kept_for_older_clients(self):
         self.assertEqual(self.db.spool_uid(1), LEGACY_UID)
 
-    def test_progress_on_the_console(self):
-        msgs = ' '.join(self.hh.gcode('MMU_LOG'))
-        self.assertIn('migrating 1 tag(s) on 1 spool(s) to native Spoolman tags', msgs)
-        self.assertIn('[1/1] tag %s on spool 1 migrated to a native Spoolman tag' % LEGACY_UID, msgs)
+    def test_one_summary_on_the_console(self):
+        msgs = [m for m in self.hh.gcode('MMU_LOG') if 'NFC' in m]
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('NFC: tag migration (extra field -> native tags): 1 tag(s) moved on 1 spool(s)', msgs[0])
 
     def test_second_startup_does_nothing(self):
         before = len(self.tag_requests())
@@ -185,7 +185,7 @@ class TestStartupMigration(TagTestCase):
             self.assertTrue(hh.mmu_server.spoolman_has_tags)
             self.assertEqual(hh.db.tag_links[LEGACY_UID], ('filament', fid), 'native link untouched')
             self.assertEqual(hh.db.spool_uid(1), '', 'old extra-field copy removed')
-            self.assertIn('is linked to filament %d in Spoolman - removed its old copy' % fid, ' '.join(hh.gcode('MMU_LOG')))
+            self.assertIn('Removed old copy: tag %s on spool 1 (linked to filament %d)' % (LEGACY_UID, fid), ' '.join(hh.gcode('MMU_LOG')))
             self.assertEqual(hh.mmu_server.legacy_only_uid_count, 0)
             self.assert_second_startup_is_silent(hh)
         finally:
@@ -200,7 +200,9 @@ class TestStartupMigration(TagTestCase):
             self.assertEqual(hh.db.tag_links[LEGACY_UID], ('spool', 2))
             self.assertEqual(hh.db.spool_uid(1), '')
             self.assertFalse([u for m, u, _ in hh.db.requests if m == 'POST' and '/tag' in u and '/scan' not in u])
-            self.assertIn('is linked to spool 2 in Spoolman - removed its old copy', ' '.join(hh.gcode('MMU_LOG')))
+            msgs = [m for m in hh.gcode('MMU_LOG') if 'NFC' in m]
+            self.assertEqual(len(msgs), 1, 'one console message')
+            self.assertIn('Removed old copy: tag %s on spool 1 (linked to spool 2)' % LEGACY_UID, msgs[0])
             self.assert_second_startup_is_silent(hh)
         finally:
             hh.close()
@@ -264,7 +266,7 @@ class TestStartupMigration(TagTestCase):
         klippy.query_objects, klippy.run_gcode = query, gcode
         self.hh.run(server._auto_migrate_tags(wait=0, attempts=5))
         self.assertEqual(len(polls), 3)
-        self.assertIn('migrated to a native Spoolman tag', ' '.join(self.hh.gcode('MMU_LOG')))
+        self.assertIn('1 tag(s) moved on 1 spool(s)', ' '.join(self.hh.gcode('MMU_LOG')))
         self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID])
 
     def test_console_failure_mid_run_does_not_abort(self):
@@ -421,15 +423,13 @@ class TestMigrateCommand(TagTestCase):
         """NFC console messages sent since setUp (startup's own migration excluded)."""
         return [m for m in self.hh.gcode('MMU_LOG')[self.log_start:] if 'NFC:' in m]
 
-    def test_progress_is_reported_tag_by_tag(self):
-        """The console shows a start line, one line per tag, then the summary."""
+    def test_one_console_message_per_run(self):
+        """Per-tag progress goes to moonraker.log; the console gets a single summary."""
         self.db.spools[2]['extra'][spoolman.FIELD_RFID] = '"%s"' % NATIVE_UID
         self.hh.call_remote('spoolman_migrate_tags', direction='native', silent=False)
         msgs = self.console()
-        self.assertIn('migrating 2 tag(s) on 2 spool(s) to native Spoolman tags', msgs[0])
-        self.assertIn('[1/2] tag %s on spool 1 migrated to a native Spoolman tag' % LEGACY_UID, msgs[1])
-        self.assertIn('[2/2] tag %s on spool 2 migrated to a native Spoolman tag' % NATIVE_UID, msgs[2])
-        self.assertIn('2 tag(s) moved on 2 spool(s)', msgs[3])
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('2 tag(s) moved on 2 spool(s)', msgs[0])
 
     def test_progress_back_to_extra_field(self):
         self.migrate('native')
@@ -437,14 +437,15 @@ class TestMigrateCommand(TagTestCase):
         before = len(self.console())
         self.hh.call_remote('spoolman_migrate_tags', direction='extra', silent=False)
         msgs = self.console()[before:]
-        self.assertIn('migrating 1 tag(s) on 1 spool(s) to the extra field', msgs[0])
-        self.assertIn('[1/1] tag %s on spool 1 migrated to the extra field' % LEGACY_UID, msgs[1])
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('(native tags -> extra field): 1 tag(s) moved on 1 spool(s)', msgs[0])
 
     def test_dry_run_lists_what_would_move(self):
         self.hh.call_remote('spoolman_migrate_tags', direction='native', dry_run=True, silent=False)
         msgs = self.console()
-        self.assertIn('checking 1 tag(s)', msgs[0])
-        self.assertIn('[1/1] tag %s on spool 1 would be migrated' % LEGACY_UID, msgs[1])
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('[dry run]: 1 tag(s) would be moved on 1 spool(s)', msgs[0])
+        self.assertIn('Would migrate: tag %s on spool 1' % LEGACY_UID, msgs[0])
         self.assertEqual(self.db.tag_links, {})
 
     def test_conflict_is_reported_as_it_happens(self):
@@ -452,15 +453,17 @@ class TestMigrateCommand(TagTestCase):
         self.db.link_tag(LEGACY_UID, filament_id=fid)
         self.hh.call_remote('spoolman_migrate_tags', direction='native', silent=False)
         msgs = self.console()
-        self.assertTrue(any('[1/1] tag %s on spool 1 is linked to filament %d in Spoolman - removed its old copy' % (LEGACY_UID, fid) in m
-                            for m in msgs))
-        self.assertIn('Removed old extra-field copy: tag %s on spool 1 (linked to filament %d)' % (LEGACY_UID, fid), msgs[-1])
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('1 old extra-field copy removed', msgs[0])
+        self.assertIn('Removed old copy: tag %s on spool 1 (linked to filament %d)' % (LEGACY_UID, fid), msgs[0])
 
     def test_dry_run_reports_a_removal_without_writing(self):
         self.db.link_tag(LEGACY_UID, spool_id=2)
         patched = len(self.db.patched_spools)
         self.hh.call_remote('spoolman_migrate_tags', direction='native', dry_run=True, silent=False)
-        self.assertTrue(any('its old copy in the extra field would be removed' in m for m in self.console()))
+        msgs = self.console()
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('Would remove old copy: tag %s on spool 1 (linked to spool 2)' % LEGACY_UID, msgs[0])
         self.assertEqual(len(self.db.patched_spools), patched)
         self.assertEqual(self.db.spool_uid(1), LEGACY_UID)
 

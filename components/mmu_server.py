@@ -788,16 +788,22 @@ class MmuServer:
             if moving:
                 plan.append((spool_id, native, extra, moving))
         total = sum(len(m) for *_, m in plan)
-        target = "native Spoolman tags" if to_native else "the extra field"
-        summary = {'spools': len(plan), 'moved': 0, 'removed': [], 'skipped': skipped, 'errors': 0}
+        summary = {'moved': 0, 'moved_spools': set(), 'migrated': [], 'removed': [], 'skipped': skipped, 'errors': 0}
         if total:
-            await self._log_n_send(f"NFC: {'checking' if dry_run else 'migrating'} {total} tag(s) on {len(plan)} spool(s) to {target}...", silent=silent)
+            logging.info(f"NFC: {'checking' if dry_run else 'migrating'} {total} tag(s) on {len(plan)} spool(s) to "
+                         f"{'native Spoolman tags' if to_native else 'the extra field'}")
 
         def holder_name(conflict):
             return (f"spool {conflict['spool_id']}" if conflict.get('spool_id') is not None else
                     f"filament {conflict['filament_id']}" if conflict.get('filament_id') is not None else
                     conflict.get('message', 'another record'))
 
+        def moved(spool_id, uid):
+            summary['moved'] += 1
+            summary['moved_spools'].add(spool_id)
+            summary['migrated'].append(f"tag {uid} on spool {spool_id}")
+
+        # Per-tag progress goes to moonraker.log; the console gets one summary at the end
         done = 0
         for spool_id, native, extra, moving in plan:
             if dry_run:
@@ -805,18 +811,15 @@ class MmuServer:
                     done += 1
                     if uid in native_holder:
                         summary['removed'].append(f"tag {uid} on spool {spool_id} (linked to spool {native_holder[uid]})")
-                        await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} is linked to spool {native_holder[uid]} - "
-                                               "its old copy in the extra field would be removed", silent=silent)
                     else:
-                        summary['moved'] += 1
-                        await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} would be migrated", silent=silent)
+                        moved(spool_id, uid)
                 continue
 
             if not to_native: # Extra field first, so the UID is never in neither store
                 if not await self._write_extra_uids(spool_id, extra + [u for u in native if u not in extra]):
                     done += len(moving)
                     summary['errors'] += len(moving)
-                    await self._log_n_send(f"NFC: couldn't write the extra field on spool {spool_id} - its {len(moving)} tag(s) were not moved", error=True, silent=silent)
+                    logging.error(f"NFC: couldn't write the extra field on spool {spool_id} - its {len(moving)} tag(s) were not moved")
                     continue
 
             stale = [] # (uid, holder): natively linked elsewhere, so this extra-field copy is a leftover
@@ -829,42 +832,49 @@ class MmuServer:
                 else:
                     ok, conflict = await self._unlink_native_tag(spool_id, uid), None
                 if ok:
-                    summary['moved'] += 1
+                    moved(spool_id, uid)
                     if not to_native:
                         self.native_uids.discard(uid)
-                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} migrated to {'a native Spoolman tag' if to_native else 'the extra field'}", silent=silent)
+                    logging.info(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} migrated to {'a native Spoolman tag' if to_native else 'the extra field'}")
                 elif conflict is not None:
-                    stale.append((uid, holder_name(conflict), done))
+                    stale.append((uid, holder_name(conflict)))
                 else:
                     summary['errors'] += 1
-                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} failed - see moonraker.log", error=True, silent=silent)
+                    logging.error(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} failed")
 
             # Native links win: drop the leftovers in one write so the next startup has nothing to do
             if stale:
-                stale_uids = [u for u, *_ in stale]
+                stale_uids = [u for u, _ in stale]
                 removed = await self._write_extra_uids(spool_id, [u for u in extra if u not in stale_uids])
-                for uid, holder, n in stale:
+                for uid, holder in stale:
                     if removed:
                         summary['removed'].append(f"tag {uid} on spool {spool_id} (linked to {holder})")
-                        await self._log_n_send(f"NFC: [{n}/{total}] tag {uid} on spool {spool_id} is linked to {holder} in Spoolman - "
-                                               "removed its old copy from the extra field", silent=silent)
                     else:
                         summary['errors'] += 1
-                        await self._log_n_send(f"NFC: [{n}/{total}] tag {uid} on spool {spool_id} is linked to {holder} - "
-                                               "couldn't remove its old copy from the extra field, see moonraker.log", error=True, silent=silent)
+                        logging.error(f"NFC: tag {uid} on spool {spool_id} is linked to {holder} - couldn't remove its old copy from the extra field")
 
         direction = "extra field -> native tags" if to_native else "native tags -> extra field"
-        msg = (f"NFC: tag migration ({direction}){' [dry run]' if dry_run else ''}: "
-               f"{summary['moved']} tag(s) {'would be ' if dry_run else ''}moved on {summary['spools']} spool(s)")
+        would = 'would be ' if dry_run else ''
+        n_removed = len(summary['removed'])
+        parts = []
+        if summary['moved'] or not n_removed:
+            parts.append(f"{summary['moved']} tag(s) {would}moved on {len(summary['moved_spools'])} spool(s)")
+        if n_removed:
+            parts.append(f"{n_removed} old extra-field {'copy' if n_removed == 1 else 'copies'} {would}removed")
+        msg = f"NFC: tag migration ({direction}){' [dry run]' if dry_run else ''}: {', '.join(parts)}"
         if summary['errors']:
             msg += f", {summary['errors']} error(s) - see moonraker.log"
+        if dry_run:
+            for m in summary['migrated']:
+                msg += f"\n  - Would migrate: {m}"
         for r in summary['removed']:
-            msg += f"\n  - {'Would remove' if dry_run else 'Removed'} old extra-field copy: {r}"
-        for s in summary['skipped']:
-            msg += f"\n  - Skipped: {s}"
-        logging.info(msg)
+            msg += f"\n  - {'Would remove' if dry_run else 'Removed'} old copy: {r}"
+        for sk in summary['skipped']:
+            msg += f"\n  - Skipped: {sk}"
         if not silent or summary['removed'] or summary['errors']:
             await self._log_n_send(msg, error=bool(summary['errors']), silent=silent)
+        else:
+            logging.info(msg)
         return summary
 
 
@@ -896,7 +906,7 @@ class MmuServer:
     async def _auto_migrate_tags(self, wait=5.0, attempts=24):
         '''
         Startup migration of legacy extra-field UIDs to native tags. Waits for Klipper
-        to be ready (up to ~2 min) so progress reaches the console; otherwise logs only -
+        to be ready (up to ~2 min) so the summary reaches the console; otherwise logs only -
         never through the M118 fallback, which pauses the print on an error
         '''
         ready = False
@@ -917,7 +927,7 @@ class MmuServer:
                 summary = await self._migrate_tags(to_native=True, silent=quiet)
             except Exception as e:
                 # Usually a console message failing (Klipper restarting); migrating again is safe
-                logging.warning(f"NFC: startup tag migration couldn't report progress ({str(e)}), continuing in moonraker.log only")
+                logging.warning(f"NFC: startup tag migration couldn't report to the console ({str(e)}), continuing in moonraker.log only")
                 summary = await self._migrate_tags(to_native=True, silent=True)
             if summary and (summary['moved'] or summary['removed']):
                 await self._build_spool_location_cache(silent=True)
