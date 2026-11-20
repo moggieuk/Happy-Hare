@@ -365,5 +365,31 @@ class TestResidualFilamentHeating(unittest.TestCase):
         self.assertEqual(self.extruder.get_heater().target_temp, self.mmu.p.default_extruder_temp)
 
 
+class TestCutFragmentPersistence(unittest.TestCase):
+    """The cut fragment is saved under its own namespaced key and mirrored to the legacy plain key for the UI."""
+
+    def setUp(self):
+        self.hh = session('boxturtle')
+        self.hh.boot(calibrate=True)
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.vm = self.hh.mmu.var_manager
+        self.wrapper = self.hh.mmu.mmu_unit().extruder_wrapper
+        self.variables = self.vm.save_variables.allVariables
+
+    def tearDown(self):
+        self.hh.close()
+
+    def test_saved_under_namespaced_key_and_legacy_plain_key(self):
+        self.wrapper.set_filament_cut_fragment(12.34)
+        self.assertEqual(self.vm.get('mmu_state_filament_cut_fragment', None, self.wrapper.name), 12.3)
+        self.assertEqual(self.vm.get('mmu_state_filament_remaining', None), 12.3)
+        self.assertIsNone(self.vm.get('mmu_state_filament_remaining', None, self.wrapper.name))
+
+    def test_legacy_namespaced_value_loads_when_new_key_absent(self):
+        self.variables[self.vm.namespace('mmu_state_filament_remaining', self.wrapper.name)] = 7.5
+        self.wrapper._handle_connect()
+        self.assertEqual(self.wrapper.filament_cut_fragment, 7.5)
+
+
 if __name__ == '__main__':
     unittest.main()

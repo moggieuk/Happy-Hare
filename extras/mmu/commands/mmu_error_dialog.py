@@ -28,7 +28,8 @@ class MmuErrorDialogCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "MSG   = _text_ Lines (separated by \\n) shown after the reason, replacing the default resume hint\n"
         + "ABORT = [0|1] Add an ABORT (CANCEL_PRINT) button\n"
-        + "RESET = [0|1] Clear MSG and ABORT (applied before them)\n"
+        + "BUTTONS = _text_ Extra buttons, comma separated: Label|GCODE|style (primary, warning, error...)\n"
+        + "RESET = [0|1] Clear MSG, ABORT and BUTTONS (applied before them)\n"
         + "(no parameters to report current settings)\n"
     )
     HELP_SUPPLEMENT = (
@@ -56,6 +57,7 @@ class MmuErrorDialogCommand(BaseCommand):
         reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
         msg = gcmd.get('MSG', None)
         abort = gcmd.get_int('ABORT', None, minval=0, maxval=1)
+        buttons = gcmd.get('BUTTONS', None)
 
         if reset:
             dialog.reset()
@@ -63,8 +65,13 @@ class MmuErrorDialogCommand(BaseCommand):
             dialog.set(lines=msg.replace("\\n", "\n").split("\n"))
         if abort is not None:
             dialog.set(show_abort=bool(abort))
+        if buttons is not None:
+            parsed = [tuple(part.strip() for part in button.split("|")) for button in buttons.split(",") if button.strip()]
+            if any(len(button) != 3 or not button[0] or not button[1] for button in parsed):
+                raise gcmd.error("BUTTONS needs Label|GCODE|style, comma separated")
+            dialog.set(buttons=parsed)
 
-        if not (reset or msg is not None or abort is not None):
+        if not (reset or msg is not None or abort is not None or buttons is not None):
             self.mmu.log_always(
                 "Error dialog %s\nText: %s\nButtons: %s" % (
                     "enabled" if self.mmu.p.show_error_dialog else "disabled (show_error_dialog=0)",

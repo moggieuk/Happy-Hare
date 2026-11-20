@@ -148,6 +148,7 @@ ACTION_PRELOAD = 13             # Preloading filament into a gate (own action so
 MACRO_EVENT_RESTART          = "restart"          # Params: None
 MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all
 MACRO_EVENT_FILAMENT_GRIPPED = "filament_gripped" # Params: None
+MACRO_EVENT_SPOOL_CREATED    = "spool_created"    # Params: SPOOLID created from a tag, GATE or -1 if not yet known
 
 # Tip forming and purging macro names
 MACRO_BLOBIFIER = "BLOBIFIER"
@@ -238,8 +239,7 @@ LOG_ESSENTIAL = 0
 LOG_INFO      = 1
 LOG_DEBUG     = 2
 LOG_TRACE     = 3
-LOG_STEPPER   = 4
-LOG_LEVELS = ['ESSENTIAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
+LOG_LEVELS = ['ESSENTIAL', 'INFO', 'DEBUG', 'TRACE']
 
 # States of espooler motor
 ESPOOLER_NONE   = ''
@@ -275,6 +275,22 @@ TD1_STATE_ENABLED      = 'enabled'   # Scanner in use, readings applied on reque
 TD1_STATE_AUTO         = 'auto'      # Scanner in use, new readings applied automatically
 TD1_STATE_DISABLED     = 'disabled'  # Scanner present but Happy Hare is ignoring it
 
+# Safety net for a shared NFC lookup whose NEXT_SPOOLID result never arrives (lost
+# RPC / hung Moonraker). Must exceed Moonraker's worst-case request time (~16s) so a
+# slow comms failure signals '-1' before this fires. Normal outcomes resolve sooner.
+NFC_LOOKUP_TIMEOUT = 30.0
+
+# NFC reader LED indicator fallback durations - used only when the effect_nfc_* mapping in
+# [mmu_leds] omits its optional 3rd (duration) field; the config value is authoritative
+NFC_LED_READ_FLASH  = 1.5  # "tag read" flash
+NFC_LED_FAIL_FLASH  = 3.0  # "lookup failed" flash before returning to default
+TD1_LED_READ_FLASH  = 1.5  # "measured" flash
+TD1_LED_FAIL_FLASH  = 3.0  # "no measurement" flash before returning to default
+
+# Base spoolman pending-spool_id LED overlay: swap to the "expiring" effect this many
+# seconds before spoolman_pending_id_timeout voids the assignment
+PENDING_LED_WARN_WINDOW = 5.0
+
 # mmu_vars.cfg variables
 VARS_MMU_REVISION                    = "mmu__revision"
 VARS_MMU_ENABLE_ENDLESS_SPOOL        = "mmu_state_enable_endless_spool"
@@ -301,7 +317,8 @@ VARS_MMU_TOOL_SELECTED               = "mmu_state_tool_selected"
 VARS_MMU_LAST_TOOL                   = "mmu_state_last_tool"
 VARS_MMU_FILAMENT_POS                = "mmu_state_filament_pos"
 VARS_MMU_BYPASS_FILAMENT             = "mmu_state_bypass_filament"
-VARS_MMU_FILAMENT_REMAINING          = "mmu_state_filament_remaining"
+VARS_MMU_FILAMENT_CUT_FRAGMENT       = "mmu_state_filament_cut_fragment"
+VARS_MMU_FILAMENT_REMAINING          = "mmu_state_filament_remaining"   # Legacy name of cut fragment: non-namespaced copy still written for UIs, namespaced copy only read as fallback
 VARS_MMU_FILAMENT_REMAINING_COLOR    = "mmu_state_filament_remaining_color"
 VARS_MMU_FILAMENT_REMAINING_MATERIAL = "mmu_state_filament_remaining_material"
 VARS_MMU_FILAMENT_REMAINING_TEMP     = "mmu_state_filament_remaining_temp"
@@ -336,6 +353,9 @@ T_MACRO_COLOR_GATEMAP  = 'gatemap'  # As per gatemap but hide empty tools. Will 
 T_MACRO_COLOR_SLICER   = 'slicer'   # Color from slicer tool map. Will add spool_id if spoolman is enabled
 T_MACRO_COLOR_OFF      = 'off'      # Turn off color and spool_id association
 T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES, T_MACRO_COLOR_OFF]
+
+# Motion telemetry recording (MMU_TELEMETRY): off, on until switched off, or one toolchange then off
+TELEMETRY_MODES = ('off', 'on', 'toolchange')
 
 # Default color or "unknown" - translucent grey (matches various UIs)
 UNKNOWN_FILAMENT_COLOR = '#808182E3'

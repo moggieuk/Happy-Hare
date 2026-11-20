@@ -37,6 +37,10 @@ class MmuMachineParameters(TunableParametersBase):
         if new != old:
             self._mmu_machine.mmu.gate_maps.update_t_macros()
 
+    def _on_endless_spool_auto_groups(self, old, new):
+        if new != old:
+            self._mmu_machine.mmu.gate_maps.auto_group_endless_spool()
+
     def _on_macro_change(self, old, new):
         self._mmu_machine.mmu.init_macros()
 
@@ -129,21 +133,25 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,  section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
         ParamSpec('spoolman_pending_id_timeout',   'int',    20,            section="FEATURES", limits=dict(minval=5, maxval=120)),
         ParamSpec('spoolman_nfc_auto_create',      'int',    0,             section="FEATURES", limits=dict(minval=0, maxval=1)),
+        ParamSpec('spoolman_nfc_prefer_db_temps',  'int',    0,             section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('spoolman_led_segment',          'choice', 'gate_status', section="FEATURES", choices={o: o for o in ('gate_status', 'status', 'both')}),
 
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),
         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
+        ParamSpec('endless_spool_auto_groups',     'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1), on_change=_on_endless_spool_auto_groups),
         ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
 
         # Logging
+        # Level 4 (developer) no longer exists, but a saved 4 is still accepted and logs as trace
         ParamSpec('log_level',                     'int',      1, section="LOGGING", limits=dict(minval=0, maxval=4)),
         ParamSpec('log_file_level',                'int',      2, section="LOGGING", limits=dict(minval=-1, maxval=4)),
         ParamSpec('log_statistics',                'int',      0, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_visual',                    'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_startup_status',            'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_m117_messages',             'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
+        ParamSpec('default_telemetry_mode',        'choice', 'off', section="LOGGING", choices={o: o for o in TELEMETRY_MODES}, hidden=True),
 
         # Cosmetic console stuff
         ParamSpec('console_stat_columns',          'list', ['unload', 'load', 'total'],     section="CONSOLE", hidden=True),

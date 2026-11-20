@@ -456,6 +456,11 @@ class TestHeaterRotateInPrint(unittest.TestCase):
         rendered = cfg.render(profiles.get('qidi'))[PARAMS]
         self.assertRegex(rendered, r'(?m)^heater_rotate_in_print\s*: 0\s')
 
+    def test_rotation_distance_and_speed_render_their_defaults(self):
+        rendered = cfg.render(profiles.get('qidi'))[PARAMS]
+        self.assertRegex(rendered, r'(?m)^heater_rotate_distance\s*: 100(\.0)?\s')
+        self.assertRegex(rendered, r'(?m)^heater_rotate_speed\s*: 0(\.0)?\s')
+
     def test_not_offered_with_a_shared_gear(self):
         vvd = profiles.get('ercf_vvd').units[-1].syms
         with cfg._env(cfg._SINGLE_UNIT_ENV):
@@ -2407,6 +2412,14 @@ class TestEmuMcus(unittest.TestCase):
         mcus = re.findall(r'^\[mcu (\S+)\]\n(?:serial|canbus_uuid) *: *(\S*)', hw, re.M)
         self.assertEqual([name for name, _ in mcus], ['unit0_gate%d' % i for i in range(5)])
         self.assertTrue(all(value for _, value in mcus), mcus)
+
+    def test_one_gate_on_serial_while_the_rest_follow_the_unit(self):
+        syms = dict(profiles.get('emu').syms, CHOICE_MMU_CONNECTION_TYPE_CANBUS=True,
+                    CHOICE_MMU_CONNECTION_TYPE_SERIAL_3=True)
+        hw = cfg.render(profiles.get('emu').derive('emu_gate3_serial', syms=syms))[HARDWARE]
+        mcus = re.findall(r'^\[mcu unit0_gate(\d)\]\n(serial|canbus_uuid) *:', hw, re.M)
+        self.assertEqual(mcus, [('0', 'canbus_uuid'), ('1', 'canbus_uuid'), ('2', 'canbus_uuid'),
+                                ('3', 'serial'), ('4', 'canbus_uuid')])
 
     def test_one_mcu_and_cpu_sensor_with_per_gate_off(self):
         syms = dict(profiles.get('emu').syms, MMU_HAS_PER_GATE_MCU=False)

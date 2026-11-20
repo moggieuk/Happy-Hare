@@ -22,6 +22,9 @@ from itertools                  import repeat
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
+from .telemetry.movement        import MovementTelemetry
+from .telemetry.api             import TelemetryAPI
+from .telemetry.gcode           import GcodeExtrusionTelemetry
 from .mmu_utils                 import MmuError, MmuColorUtils, is_kalico
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -35,23 +38,6 @@ from .mmu_dialog                import MmuErrorDialog
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
 
-# Safety net for a shared NFC lookup whose NEXT_SPOOLID result never arrives (lost
-# RPC / hung Moonraker). Must exceed Moonraker's worst-case request time (~16s) so a
-# slow comms failure signals '-1' before this fires. Normal outcomes resolve sooner.
-NFC_LOOKUP_TIMEOUT = 30.0
-
-# NFC reader LED indicator fallback durations - used only when the effect_nfc_* mapping in
-# [mmu_leds] omits its optional 3rd (duration) field; the config value is authoritative
-NFC_LED_READ_FLASH  = 1.5  # "tag read" flash
-NFC_LED_FAIL_FLASH  = 3.0  # "lookup failed" flash before returning to default
-TD1_LED_READ_FLASH  = 1.5  # "measured" flash
-TD1_LED_FAIL_FLASH  = 3.0  # "no measurement" flash before returning to default
-
-# Base spoolman pending-spool_id LED overlay: swap to the "expiring" effect this many
-# seconds before spoolman_pending_id_timeout voids the assignment
-PENDING_LED_WARN_WINDOW = 5.0
-
-
 # Main klipper module
 class MmuController(MmuFilamentMovement):
 
@@ -60,6 +46,9 @@ class MmuController(MmuFilamentMovement):
         self.mmu_machine = mmu_machine
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.movement_telemetry = MovementTelemetry(self.reactor)
+        self.telemetry_api = TelemetryAPI(self)
+        self.gcode_telemetry = GcodeExtrusionTelemetry(self)
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
@@ -69,6 +58,9 @@ class MmuController(MmuFilamentMovement):
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
         self._material_purge_volume = 0.        # During toolchange, the material change contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
+        self.klipper_idle_timeout = None        # Printer's own [idle_timeout], captured on connect
+        self.homing = None                      # Active homing target for status subscribers
+        self.config_changes = {}                # Runtime changes to configfile values: {section: {name: value}}
         self.bowden_start_pos = None            # If set then we can measure bowden progress
         self.step_unload_overshoot = 0.         # Handed from _MMU_STEP_UNLOAD_TOOLHEAD to _MMU_STEP_UNLOAD_BOWDEN
         self.step_unload_homing_buffer = 0.     # Handed from _MMU_STEP_UNLOAD_BOWDEN to _MMU_STEP_UNLOAD_GATE
@@ -219,9 +211,8 @@ class MmuController(MmuFilamentMovement):
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-        # Remember user setting of idle_timeout so it can be restored (if not overridden)
-        if self.p.default_idle_timeout < 0:
-            self.p.default_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
+        # Remember user setting of idle_timeout so it can be restored (see default_idle_timeout)
+        self.klipper_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
 
         # Establish existence of Blobifier and filament cutter options
         # TODO: A little bit hacky until a more universal approach is implemented
@@ -236,7 +227,22 @@ class MmuController(MmuFilamentMovement):
         self.log_debug('Klipper disconnected!')
 
 
+    def _seed_config_changes(self):
+        settings = self.printer.lookup_object('configfile').get_status(0).get('settings', {})
+        sets = [self.p]
+        for unit in self.mmu_machine.units:
+            sets += [unit.p, unit.selector.p, unit.toolhead_wrapper.p]
+        changes = {s: dict(v) for s, v in self.config_changes.items()}
+        for params in sets:
+            for scope, name, value in params.differences_from(settings):
+                if not name.startswith('default_gate_') and name not in ('default_ttg_map', 'default_endless_spool_groups'):
+                    changes.setdefault(scope, {})[name] = value
+        self.config_changes = changes
+
+
     def handle_ready(self):
+        self.telemetry_api.start(self.p.default_telemetry_mode)
+
         # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
@@ -245,6 +251,9 @@ class MmuController(MmuFilamentMovement):
 
         # Restore state (only if fully calibrated)
         self._load_persisted_state()
+
+        # Clients start from the configfile, so record where load-time fix-ups moved values away from it
+        self._seed_config_changes()
 
         # Setup events for managing internal print state machine
         self.psm.register_event_handlers()
@@ -580,12 +589,13 @@ class MmuController(MmuFilamentMovement):
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
         speed = float(sequence_vars.variables.get(speed_var, 30)) if sequence_vars else 30.
         self.log_info("%s %.1fmm to leave %.1fmm retracted" % ("Retracting" if length > 0 else "Un-retracting", abs(length), retract))
-        self.gcode.run_script_from_command(
-            "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
-            "M83\n"
-            "G1 E%.2f F%d\n"
-            "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
-        )
+        with self.gcode_telemetry.scope('standalone_load_retraction', label='Final load retraction'):
+            self.gcode.run_script_from_command(
+                "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
+                "M83\n"
+                "G1 E%.2f F%d\n"
+                "RESTORE_GCODE_STATE NAME=_MMU_LOAD_RETRACT" % (-length, speed * 60)
+            )
         self._set_park_retracted_length(retract)
         self._persist_park_retraction()
 
@@ -634,7 +644,7 @@ class MmuController(MmuFilamentMovement):
         blade_pos = float(cut_vars['blade_pos'])
         # As _MMU_CUT_TIP limits it: to the retract left after what is already retracted
         if live:
-            retracted = (self.park_retracted_length() + u.extruder_wrapper.filament_remaining
+            retracted = (self.park_retracted_length() + u.extruder_wrapper.filament_cut_fragment
                          + toolhead.toolhead_residual_filament)
         else:
             retracted = toolhead.toolhead_residual_filament + self.toolchange_retract
@@ -704,7 +714,8 @@ class MmuController(MmuFilamentMovement):
 
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables else ""))
 
-            self.gcode.run_script_from_command(command)
+            with self.gcode_telemetry.scope(macro):
+                self.gcode.run_script_from_command(command)
             if wait:
                 self.movequeue_wait()
 
@@ -719,6 +730,24 @@ class MmuController(MmuFilamentMovement):
                     self.log_error("Error running %s: %s" % (macro, str(e)))
             else:
                 raise
+
+
+    @contextlib.contextmanager
+    def toolchange_scope(self, gcmd):
+        """Mark the start and end of a load, unload, or toolchange for replay navigation and recording."""
+        telemetry = self.movement_telemetry
+        command = gcmd.get_command()
+        telemetry.toolchange_start(command=command, label=gcmd.get_commandline(), tool=self.tool_selected,
+                                   gate=self.gate_selected, unit=self.mmu_unit().name)
+        status = 'completed'
+        try:
+            yield
+        except BaseException:
+            status = 'error'
+            raise
+        finally:
+            telemetry.toolchange_end(command=command, tool=self.tool_selected, gate=self.gate_selected,
+                                     filament_pos=self.filament_pos, status=status)
 
 
     def mmu_macro_event(self, event_name, params=""):
@@ -816,6 +845,9 @@ class MmuController(MmuFilamentMovement):
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
                         "Unknown",
             'filament_position': self.drive().get_filament_position(),
+            'homing': None if self.homing is None else dict(self.homing, endstops=list(self.homing['endstops'])),
+            'config_changes': self.config_changes,
+            'telemetry_mode': self.telemetry_api.stream.record_mode, # off, on or toolchange (MMU_TELEMETRY)
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'pending_spool_id': self.pending_spool_id,
@@ -882,6 +914,13 @@ class MmuController(MmuFilamentMovement):
 
         # Merge environment status and fill in units without heater
         status["drying_state"] = merge_unit_status_list(eventtime, attr="environment_manager", key="drying_state", fill_value=DRYING_STATE_NONE)
+
+        # Current drying cycle of each unit (None when not drying), in unit order
+        status["drying"] = [
+            unit.environment_manager.get_status(eventtime)['drying']
+            if getattr(unit, 'environment_manager', None) is not None else None
+            for unit in self.mmu_machine.units
+        ]
 
         # NFC readers are shared-reader + sparse per-gate (not a flat per-gate list),
         # so report a per-unit dict list. Only present when readers are configured.
@@ -960,7 +999,7 @@ class MmuController(MmuFilamentMovement):
         )
 
         status = self.get_status(0)
-        if status['filament_remaining']:
+        if status['filament_cut_fragment']:
             residual_filament_color = status['filament_remaining_color']
         else:
             residual_filament_color = ""
@@ -1240,9 +1279,6 @@ class MmuController(MmuFilamentMovement):
             return f" [ {sf_char} ] "
 
         def _color_filament(text, rgb_hex, *chars):
-            if not self.gate_color[gate]:
-                return text
-
             chars = set(chars)
             result = []
             in_markup = False
@@ -1385,7 +1421,7 @@ class MmuController(MmuFilamentMovement):
             else:
                 visual = visual.replace(residual_line, line)
 
-            rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
+            rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], UNKNOWN_FILAMENT_COLOR)
             visual = _color_filament(visual, rgb_hex, line)
 
             # Must happen after gate_color coloring, else residual_filament_color's
@@ -1446,11 +1482,8 @@ class MmuController(MmuFilamentMovement):
         swatch = "*" # Fallback character
         if self.p.console_show_filament_color:
             symbol = symbol or UI_SOLID_SQUARE
-            if self.gate_color[gate]:
-                rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
-                swatch = '{{%s}}%s{{}}' % (rgb_hex, symbol)
-            else:
-                swatch = symbol
+            rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], UNKNOWN_FILAMENT_COLOR)
+            swatch = '{{%s}}%s{{}}' % (rgb_hex, symbol)
 
         if self.endless_spool_enabled and gate == self.p.endless_spool_eject_gate:
             return "W" # Always show waste gate for filament tips if configured
@@ -1929,6 +1962,12 @@ class MmuController(MmuFilamentMovement):
 # -----------------------------------------------------------------------------------------------------------
 
     @property
+    def default_idle_timeout(self):
+        """Idle timeout to restore: the parameter, or Klipper's own [idle_timeout] while it is left at -1"""
+        configured = self.p.default_idle_timeout
+        return self.klipper_idle_timeout if configured < 0 else configured
+
+    @property
     def gate_status(self):
         return self.gate_maps.gate_status
 
@@ -2116,9 +2155,6 @@ class MmuController(MmuFilamentMovement):
 
     def log_trace_exit(self, msg):
         self.logger.log_trace_exit(msg)
-
-    def log_stepper(self, msg):
-        self.logger.log_stepper(msg)
 
     def log_enabled(self, level):
         return self.logger.log_enabled(level)
@@ -2742,7 +2778,7 @@ class MmuController(MmuFilamentMovement):
 
     def _mmu_unlock(self):
         if self.is_mmu_paused():
-            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
+            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
 
             # Important to wait for stable temperature to resume exactly how we paused
@@ -3127,11 +3163,21 @@ class MmuController(MmuFilamentMovement):
         self.filament_direction = direction
 
 
-    def set_filament_pos_state(self, state, silent=False):
+    def set_filament_pos_state(self, state, silent=False, source=None, homing_overshoot_mm=None):
         if state in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
             self.td1.release()
-        if self.filament_pos != state:
+        previous = self.filament_pos
+        changed = previous != state
+        if changed:
             self.filament_pos = state
+        # A repeated position can still carry a sensor-anchored homing result
+        if self.movement_telemetry.listeners and (changed or source is not None or homing_overshoot_mm is not None):
+            self.movement_telemetry.state('filament_pos_changed',
+                unit=self.mmu_unit().name, gate=self.gate_selected,
+                previous=previous, filament_pos=state, source=source,
+                homing_overshoot_mm=homing_overshoot_mm,
+                filament_pos_name=FILAMENT_POS_NAME_MAP.get(state, 'UNKNOWN'))
+        if changed:
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
                 if not silent:
                     self._display_visual_state()
@@ -3455,7 +3501,7 @@ class MmuController(MmuFilamentMovement):
         self._clear_pending() # Drop any pending shared-NFC spool_id/metadata on disable
         self._disable_filament_monitoring()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
-        self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
+        self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.motors_onoff(on=False) # Will also unsync gear
         self.is_enabled = False
         self.printer.send_event("mmu:disabled")
@@ -3494,7 +3540,7 @@ class MmuController(MmuFilamentMovement):
             return
 
         drive.mmu_gear_stepper.do_enable(False)
-        self.log_stepper("Type-B idle gear stepper for gate %d disabled" % gate)
+        self.log_trace("Type-B idle gear stepper for gate %d disabled" % gate)
 
 
     def disable_all_idle_gear_steppers(self):
@@ -3507,7 +3553,7 @@ class MmuController(MmuFilamentMovement):
                     drive.mmu_gear_stepper.do_enable(False)
                     disabled_any = True
         if disabled_any:
-            self.log_stepper("All type-B idle gear steppers de-energized")
+            self.log_trace("All type-B idle gear steppers de-energized")
 
 
     def _random_failure(self):
@@ -3885,6 +3931,9 @@ class MmuController(MmuFilamentMovement):
         self.led_manager.gate_map_changed(gate)
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
+        if self.movement_telemetry.listeners:
+            self.movement_telemetry.state('gate_changed', previous_gate=prev_gate,
+                                         gate=gate, unit=self.mmu_unit(gate).name)
 
         # A real gate in use means the bypass filament is gone
         if gate >= 0 and self.bypass_filament:
@@ -4375,7 +4424,8 @@ class MmuController(MmuFilamentMovement):
         try:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_get_spool_by_uid",
-                                        uid=uid, gate=gate, metadata=metadata, save=save, silent=quiet)
+                                        uid=uid, gate=gate, metadata=metadata, save=save, silent=quiet,
+                                        prefer_db_temps=bool(self.p.spoolman_nfc_prefer_db_temps))
             # Shared-reader lookups (gate is None) are guarded until NEXT_SPOOLID
             # resolves, so no further shared reads dispatch a competing request.
             # Per-gate lookups are deliberate/rare and stay outside the guard.
@@ -4406,7 +4456,8 @@ class MmuController(MmuFilamentMovement):
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_get_spool_by_uid",
                                         uid=uid, gate=None, metadata=metadata, save=save,
-                                        silent=False, report_only=True)
+                                        silent=False, report_only=True,
+                                        prefer_db_temps=bool(self.p.spoolman_nfc_prefer_db_temps))
         except Exception as e:
             self.log_error("Error while registering tag uid: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 

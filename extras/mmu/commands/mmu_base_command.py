@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_TEST_CONFIG command
+# Goal: Shared command registration, help, unit dispatch and telemetry ownership.
 #
 #
 # (\_/)
@@ -50,6 +50,8 @@ class BaseCommand:
         category=CATEGORY_OTHER,
         per_unit=False,
         log=True,
+        all_units_once=False,
+        toolchange=False,
     ):
         """
         Register a gcode command with shared help behavior.
@@ -60,7 +62,11 @@ class BaseCommand:
 
         With UNIT=ALL a per_unit handler is invoked once per unit. Returning a truthy
         value from the handler aborts the iteration over the remaining units (used to
-        stop multi-unit operations after an error has been handled)
+        stop multi-unit operations after an error has been handled). With all_units_once=True
+        the handler is instead invoked a single time with mmu_unit=None and must itself
+        iterate mmu.mmu_machine.units
+
+        With toolchange=True the whole command is bracketed by telemetry toolchange start and end records
         """
         if name.upper().startswith("MMU_CALIBRATE_"):
             calibration_handler = handler
@@ -69,15 +75,8 @@ class BaseCommand:
                 with self.mmu.wrap_suspend_calibration_events():
                     return calibration_handler(*args)
 
-        def wrapped(gcmd):
+        def dispatch(gcmd):
             mmu = self.mmu
-
-            if log:
-                mmu.log_to_file(gcmd.get_commandline())
-
-            if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-                mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
-                return
 
             # We don't use klipper's register_mux_command() because it isn't flexible really enough
             # Instead provide flexible "UNIT" processing and pass the mmu_unit to the command handler
@@ -87,6 +86,8 @@ class BaseCommand:
                 mmu_machine = mmu.mmu_machine
 
                 if unit_param is not None and unit_param.upper() == ALL_UNITS:
+                    if all_units_once:
+                        return handler(gcmd, None)
                     # Repeat for all units. Handler can abort iteration over remaining
                     # units by returning a truthy value (e.g. after handling an error)
                     for mmu_unit in mmu_machine.units:
@@ -98,6 +99,25 @@ class BaseCommand:
                 return handler(gcmd, mmu_unit)
 
             return handler(gcmd)
+
+        def run(gcmd):
+            mmu = self.mmu
+
+            if log:
+                mmu.log_to_file(gcmd.get_commandline())
+
+            if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+                mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
+                return
+
+            if toolchange:
+                with mmu.toolchange_scope(gcmd):
+                    return dispatch(gcmd)
+            return dispatch(gcmd)
+
+        def wrapped(gcmd):
+            with self.mmu.gcode_telemetry.scope(name):
+                return run(gcmd)
 
 
         # Record metadata for this command for help subsystem

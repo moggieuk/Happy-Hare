@@ -122,7 +122,7 @@ class MmuTestFormTipCommand(BaseCommand):
 
                     # Any cut fragment stays in the toolhead for the next load to push through
                     color = mmu.gate_color[mmu.gate_selected] if mmu.gate_selected >= 0 else UNKNOWN_FILAMENT_COLOR
-                    mmu.mmu_unit().extruder_wrapper.set_filament_remaining(remaining, color)
+                    mmu.mmu_unit().extruder_wrapper.set_filament_cut_fragment(remaining, color)
 
                     # Eject only after the macro's movement has been measured
                     if test:

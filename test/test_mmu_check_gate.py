@@ -234,6 +234,24 @@ class TestCheckGateSafety(EndlessSpoolTestCase):
         self.assertIn([(0, -1)], pushes)
         self.assert_metadata_cleared()
 
+    def test_confirmed_empty_after_failed_pickup_clears_and_unassigns(self):
+        from extras.mmu.mmu_utils import MmuError
+        mmu = self.hh.mmu
+        self.hh.run_gcode('MMU_TEST_CONFIG spoolman_support=push')
+        self.remove(0)
+        mmu.select_gate(0)
+        with self.assertRaises(MmuError):
+            mmu._load_gate(allow_retry=False)
+        self.assertEqual(mmu.gate_status[0], 0)
+        self.assert_metadata_preserved()
+
+        pushes = []
+        with patch.object(mmu, '_spoolman_push_gate_map',
+                          side_effect=lambda gate_ids: pushes.append(list(gate_ids))):
+            self.hh.run_gcode('MMU_CHECK_GATE GATE=0')
+        self.assert_metadata_cleared()
+        self.assertIn([(0, -1)], pushes)
+
     def test_in_print_pause_keeps_the_required_tool_wording(self):
         # The pre-existing message users and their pause handlers match on.
         self.remove(0)
@@ -359,7 +377,7 @@ class TestCheckGateSafety(EndlessSpoolTestCase):
             self.hh.mmu._load_gate(allow_retry=False)
         self.assertEqual(self.hh.mmu.filament_pos, 0)
         self.assertEqual(self.hh.mmu.gate_status[0], 0)
-        self.assertEqual(self.hh.mmu.gate_spool_id[0], -1)
+        self.assert_metadata_preserved()
 
 
 class TestCheckGateEncoderFailure(unittest.TestCase):
@@ -535,6 +553,24 @@ class TestSensorlessEncoderDiscovery(unittest.TestCase):
                         'precondition: one pulse is below the noise floor')
         return patch.object(self.hh.filament(), 'travel_over',
                             side_effect=lambda *a, **k: real(*a, **k) or step)
+
+    def test_homing_miss_after_failed_pickup_clears_attributes(self):
+        from extras.mmu.mmu_utils import MmuError
+        mmu = self.hh.mmu
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=1 MATERIAL=PETG TEMP=240 SPOOLID=42')
+        mmu.select_gate(1)
+        with self.assertRaises(MmuError):
+            mmu._load_gate(allow_retry=False)
+        self.assertEqual(mmu.gate_status[1], 0)
+        self.assertEqual(mmu.gate_spool_id[1], 42)
+
+        self.hh.run_gcode('MMU_CHECK_GATE GATE=1')
+        self.assertEqual(mmu.gate_status[1], 0)
+        self.assertEqual(mmu.gate_material[1], '')
+        self.assertEqual(mmu.gate_spool_id[1], -1)
+        self.assertEqual(mmu.gate_temperature[1], int(mmu.p.default_extruder_temp))
+        self.assertTrue(any('no filament detected during homing' in line
+                            for line in self.hh.console))
 
     def test_a_rogue_encoder_pulse_is_still_an_empty_lane(self):
         with self.sub_threshold_encoder():

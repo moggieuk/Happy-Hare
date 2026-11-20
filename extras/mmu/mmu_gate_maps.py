@@ -45,6 +45,7 @@ class MmuGateMaps:
         else:
             self.p.default_endless_spool_groups = list(range(self.num_gates))
         self.endless_spool_groups = list(self.p.default_endless_spool_groups)
+        self._es_auto_identity = [None] * self.num_gates # Last (material, rgb) of each gate for auto groups
 
         # Components of the gate map (status, material, color, spool_id, filament name, temperature, and speed override)
         self._gate_map_vars = [
@@ -129,6 +130,7 @@ class MmuGateMaps:
             else:
                 errors.append("Invalid value or incorrect number of gates specified with %s" % var)
         self.update_gate_color_rgb()
+        self.auto_group_endless_spool()
         if self._migration_notes:
             self.mmu.log_warning("Warning: Persisted gate lists / unit state migrated:\n%s" % "\n".join(self._migration_notes))
             self._migration_notes = []
@@ -146,7 +148,8 @@ class MmuGateMaps:
             gate_selected = self.mmu.mmu_unit().first_gate
 
         selector = self.mmu.selector(gate_selected)
-        if gate_selected != TOOL_GATE_UNKNOWN and not selector.is_homed:
+        carriage_independent = gate_selected == TOOL_GATE_BYPASS and not selector.has_bypass() # Bypass isn't a selector position
+        if gate_selected != TOOL_GATE_UNKNOWN and not selector.is_homed and not carriage_independent:
             errors.append(f"Persisted gate/tool {gate_selected}/{tool_selected} dropped because selector isn't homed")
             tool_selected = gate_selected = TOOL_GATE_UNKNOWN
 
@@ -238,6 +241,7 @@ class MmuGateMaps:
         self.mmu.var_manager.set(VARS_MMU_GATE_MAP_UNITS, self.current_layout())
         self.mmu.var_manager.write()
         self.update_t_macros()
+        self.auto_group_endless_spool()
 
         # Also persist to spoolman db if pushing updates for visibility
         if spoolman_sync:
@@ -285,7 +289,8 @@ class MmuGateMaps:
     # sensor correction makes it EMPTY: an empty lane is not an ejected one, and a caller
     # may be about to use those. reset_gate() is a real ejection and always clears.
     def validate_gate_status(self, gates=None, clear_attributes=True):
-        v_gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
+        self.renew_gate_map() # Ensure that webhooks sees get_status() change, cleared attributes included
+        v_gate_status = list(self.gate_status)
         gates = range(self.num_gates) if gates is None else gates
         for gate in gates:
             status = v_gate_status[gate]
@@ -304,6 +309,8 @@ class MmuGateMaps:
             if clear_attributes and status != GATE_EMPTY and v_gate_status[gate] == GATE_EMPTY:
                 self.clear_gate_attributes(gate)
         self.gate_status = v_gate_status
+        self.update_gate_color_rgb()
+        self.auto_group_endless_spool()
 
 
     # Use post-mmu exit sensors to correct the selected gate.
@@ -358,14 +365,72 @@ class MmuGateMaps:
         self.endless_spool_enabled = self.p.endless_spool_enabled
         self.endless_spool_groups = list(self.p.default_endless_spool_groups)
         self.persist_endless_spool()
+        self.auto_group_endless_spool(quiet=True)
+
+
+    def auto_group_endless_spool(self, quiet=False):
+        """
+        With 'endless_spool_auto_groups' set, build the EndlessSpool groups from the gate map:
+        gates with the same material and color (RGB, alpha ignored) share a group, and a gate
+        without material or color stays in a group of its own. The group number is the first
+        gate of the group.
+
+        An EMPTY gate without material or color keeps the material and color it last had and
+        stays with the gates that still have them. A runout (and MMU_CHECK_GATE) marks the
+        gate empty and clears its attributes before the next gate is looked up, so without
+        this the gate would leave its own group and the swap would not happen. After a
+        restart, or when the option is turned on, that is taken from its former partners
+        if they all have the same material and color.
+
+        Returns:
+            bool: True if the groups changed
+        """
+        if not self.p.endless_spool_auto_groups:
+            self._es_auto_identity = [None] * self.num_gates
+            return False
+
+        keys = []
+        for gate in range(self.num_gates):
+            material = self._normalize_material(self.gate_material[gate])
+            color = (self.gate_color[gate] or "").strip()
+            if material and color:
+                keys.append((material, MmuColorUtils.color_to_rgb_hex(color)[:6]))
+            else:
+                keys.append(None)
+
+        previous = list(self.endless_spool_groups)
+        identity = list(self._es_auto_identity)
+        for gate, key in enumerate(keys):
+            if key is not None or self.gate_status[gate] != GATE_EMPTY:
+                identity[gate] = key
+            elif identity[gate] is None:
+                former = set(k for g, k in enumerate(keys)
+                             if k is not None and g != gate and previous[g] == previous[gate])
+                if len(former) == 1:
+                    identity[gate] = former.pop()
+        self._es_auto_identity = identity
+
+        groups = [gate if key is None else keys.index(key) for gate, key in enumerate(keys)]
+        for gate, key in enumerate(keys):
+            if key is None and identity[gate] is not None and identity[gate] in keys:
+                groups[gate] = groups[keys.index(identity[gate])]
+
+        if groups == previous:
+            return False
+        self.endless_spool_groups = groups
+        self.persist_endless_spool()
+        if not quiet:
+            self.mmu.log_info(self.es_groups_to_string(title="EndlessSpool groups set from gate map"))
+        return True
 
 
     # clear_attributes=False keeps spool identity when only a sensor reports the lane
-    # empty. The default clears, and unassigns the spool in Spoolman.
+    # empty. The default clears, and unassigns the spool in Spoolman, even if
+    # a previous failed pickup already marked the gate EMPTY with attributes kept.
     def set_gate_status(self, gate, state, clear_attributes=True):
         if 0 <= gate < self.num_gates:
-            if state != self.gate_status[gate]:
-                self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
+            if state != self.gate_status[gate] or (state == GATE_EMPTY and clear_attributes):
+                self.renew_gate_map() # Ensure that webhooks sees get_status() change
                 if state == GATE_EMPTY and clear_attributes:
                     self.clear_gate_attributes(gate)
                 self.gate_status[gate] = state
@@ -378,6 +443,7 @@ class MmuGateMaps:
                     )
                     return
                 self.persist_gate_status()
+                self.auto_group_endless_spool() # A refilled gate without material or color leaves its old group
                 self.mmu.led_manager.gate_map_changed(gate)
                 self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
                 self.mmu._moonraker_push_lane_data([(gate, self.gate_spool_id[gate])])

@@ -33,7 +33,7 @@ class MmuExtruderWrapper():
 
         self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
 
-        self.filament_remaining = 0.            # The amount of filament remaining in extruder hotend
+        self.filament_cut_fragment = 0.          # Filament left in the hotend by a tip cut (excludes calibrated residual)
         self.filament_remaining_color = UNKNOWN_FILAMENT_COLOR # Color of remaining filament
         self.filament_remaining_material = ""   # Material last fully loaded and purged into the extruder
         self.filament_remaining_temp = 0        # Nozzle temp that filament was run at (0 = unknown)
@@ -89,7 +89,8 @@ class MmuExtruderWrapper():
 
         # Always load length of filament remaining in extruder (after cut), its color and material
         self.var_manager = self.mmu_machine.var_manager
-        self.filament_remaining = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING, self.filament_remaining, self.name)
+        legacy_fragment = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING, self.filament_cut_fragment, self.name)
+        self.filament_cut_fragment = self.var_manager.get(VARS_MMU_FILAMENT_CUT_FRAGMENT, legacy_fragment, self.name)
         self.filament_remaining_color = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_COLOR, self.filament_remaining_color, self.name)
         self.filament_remaining_material = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_MATERIAL, self.filament_remaining_material, self.name)
         self.filament_remaining_temp = self.var_manager.get(VARS_MMU_FILAMENT_REMAINING_TEMP, self.filament_remaining_temp, self.name)
@@ -178,12 +179,12 @@ class MmuExtruderWrapper():
         self._run_current_percent = 100
 
 
-    def set_filament_remaining(self, length, color=UNKNOWN_FILAMENT_COLOR):
-        self.filament_remaining = length
+    def set_filament_cut_fragment(self, length, color=UNKNOWN_FILAMENT_COLOR):
+        self.filament_cut_fragment = length
         self.filament_remaining_color = color
-        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1))) # TODO TEMP Duplicate non-namespaced for older Mainsail/Fluidd UI
+        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1))) # TODO TEMP Legacy non-namespaced name still read by Mainsail/Fluidd UI
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color)              # TODO TEMP duplicate non-namespaced for older Mainsail/Fluidd UI
-        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1)), self.name)
+        self.var_manager.set(VARS_MMU_FILAMENT_CUT_FRAGMENT, max(0, round(length, 1)), self.name)
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color, self.name, write=True)
 
 
@@ -219,8 +220,8 @@ class MmuExtruderWrapper():
         residual = getattr(self.mmu_unit.toolhead_wrapper.p, "toolhead_residual_filament", 0)
         return {
             'extruder_name': self.name,
-            'extruder_filament_remaining': self.filament_remaining + residual,
-            'filament_remaining': self.filament_remaining,             # TODO Use this printer variable in UI's
+            'extruder_filament_remaining': self.filament_cut_fragment + residual,
+            'filament_cut_fragment': self.filament_cut_fragment, # TODO Use this printer variable in UI's
             'filament_remaining_color': self.filament_remaining_color, # TODO Use this printer variable in UI's
             'filament_remaining_material': self.filament_remaining_material,
             'filament_remaining_temp': self.filament_remaining_temp,

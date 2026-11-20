@@ -26,6 +26,7 @@
 
 import logging
 import unittest
+from unittest import mock
 
 from test.hh import session
 from test.hh.root import install
@@ -285,6 +286,47 @@ class TestTestMoveGrip(SelectorTestCase):
         self.hh.run_gcode('MMU_TEST_MOVE MOVE=-100')
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.grip_state(), FILAMENT_RELEASE_STATE)
+
+
+class TestLinearServoGripStatus(SelectorTestCase):
+    """The linear-servo selector reports `grip` in its status, like the rotary and servo selectors."""
+
+    PROFILE = 'tradrack'
+
+    def test_status_grip_follows_mmu_grip_and_release(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_GRIP')
+        self.assertEqual(selector.get_status(0)['grip'], 'Gripped')
+        self.hh.run_gcode('MMU_RELEASE')
+        self.assertEqual(selector.get_status(0)['grip'], 'Released')
+        self.assertEqual(self.hh.errors, [])
+
+
+class TestLinearServoReselect(SelectorTestCase):
+    """Re-selecting the current, already positioned gate must not release and regrip the servo."""
+
+    PROFILE = 'tradrack'
+
+    def test_reselecting_the_current_gate_keeps_the_servo_gripped(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_GRIP')
+        with mock.patch.object(selector, 'filament_hold_move') as hold, \
+                mock.patch.object(selector, '_select_position') as position:
+            self.hh.mmu.select_gate(0)
+        hold.assert_not_called()
+        position.assert_not_called()
+        self.assertEqual(selector.get_status(0)['grip'], 'Gripped')
+
+    def test_changing_gate_still_moves_the_selector(self):
+        selector = self.selector('unit0')
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.run_gcode('MMU_GRIP')
+        self.hh.run_gcode('MMU_SELECT GATE=4')
+        self.assertEqual(self.hh.mmu.gate_selected, 4)
+        self.assertAlmostEqual(self.axis('unit0').carriage, selector.selector_offsets[4], places=3)
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestTestMoveGripAlwaysGripped(TestTestMoveGrip):
@@ -1485,7 +1527,8 @@ class TestMultiUnitSelectors(SelectorTestCase):
         # sensor's own trigger is still drawn in the fill regardless, so the two
         # facts - "gate_map says empty" and "something is physically detected" -
         # are both visible at once rather than one hiding the other.
-        visual = self.hh.mmu.get_filament_position_string()
+        from test.filament_display import strip_color_markup
+        visual = strip_color_markup(self.hh.mmu.get_filament_position_string())
         self.assertIn('◉■■◉', visual)  # entry triggered, gap fully filled, exit triggered
         self.assertIn('EMPTY', visual)
 
@@ -2036,3 +2079,20 @@ class TestSelectorFinalMethods(unittest.TestCase):
             '_select_gate': lambda self, lgate: None,
             '_restore_gate': lambda self, lgate: None,
         })
+
+
+class TestSoaktestSelectorVirtualUnit(unittest.TestCase):
+    """UNIT=ALL must skip units with a VirtualSelector rather than crash on them"""
+
+    def test_all_units_with_virtual_selector_is_clean_error(self):
+        hh = session('boxturtle_test')
+        try:
+            hh.boot()
+            import sys
+            module = sys.modules[type(hh.mmu.mmu_machine.units[0].selector).__module__.rsplit('.', 1)[0] + '.mmu_base_selectors']
+            if 'MMU_SOAKTEST_SELECTOR' not in hh.mmu.gcode.ready_gcode_handlers:
+                module.MmuSoaktestSelectorCommand(hh.mmu)  # Only registered by physical selectors
+            hh.run_gcode('MMU_SOAKTEST_SELECTOR UNIT=ALL LOOP=1')
+            self.assertFalse(any('check_if_unit_loaded' in str(e) for e in hh.errors), hh.errors)
+        finally:
+            hh.close()

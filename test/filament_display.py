@@ -95,7 +95,7 @@ class FilamentDisplayState:
     sync_feedback_bias_modelled: Optional[float] = None
 
     # Residual filament (hotend) / gate spool color
-    filament_remaining: float = 0.0
+    filament_cut_fragment: float = 0.0
     filament_remaining_color: str = ""
     gate_color: str = ""
 
@@ -140,7 +140,7 @@ class _RealMmuController:
 
     def get_status(self, flags):
         return {
-            'filament_remaining': self._state.filament_remaining,
+            'filament_cut_fragment': self._state.filament_cut_fragment,
             'filament_remaining_color': self._state.filament_remaining_color,
             'sync_feedback_state': self._state.sync_feedback_state,
             'sync_feedback_bias_modelled': self._state.sync_feedback_bias_modelled,

@@ -142,9 +142,7 @@ class MCU_stepper:
         Register `distance` mm of REAL travel. The counterpart to set_position.
 
         The fake has no step generation, so nothing else advances the mcu position. The
-        harness drives this from the two places motion actually happens: the fake
-        HomingMove (klippy_root/extras/homing.py) and the plain-move observer
-        (test/hh/bootstrap.py:_on_manual_move).
+        harness calls this for homing, manual MMU moves, and toolhead extrusion.
 
         Adjusts the OFFSET rather than _commanded_pos on purpose: the commanded position is
         owned by set_position and mirrors MmuStepper.commanded_pos, so moving it here would

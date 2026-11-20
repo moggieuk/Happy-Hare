@@ -340,6 +340,7 @@ class TunableParametersBase:
                 # Call on_change handler AFTER the actual parameter is updated
                 if spec.on_change is not None:
                     spec.on_change(self, current, new_val)
+                self._announce_change(spec.name, new_val)
                 applied.append(name)
 
         if strict and unknown:
@@ -445,5 +446,49 @@ class TunableParametersBase:
             setattr(self, name, new)
             if spec.on_change is not None:
                 spec.on_change(self, old, new)
+            self._announce_change(name, new)
             return True
         return False
+
+
+    def scope(self):
+        """Lower-case config section name, as Klipper keys configfile settings. None without a section."""
+        get_name = getattr(self._config, 'get_name', None)
+        return get_name().lower() if get_name else None
+
+
+    def differs_from_configfile(self, settings, name, value):
+        """True unless the configfile already holds this value (tuples and lists compare equal)"""
+        given = settings.get(self.scope(), {})
+        as_list = lambda v: list(v) if isinstance(v, (list, tuple)) else v
+        return name not in given or as_list(given[name]) != as_list(value)
+
+
+    def differences_from(self, settings):
+        """Yield (scope, name, value) where load-time fix-ups moved a value away from the configfile."""
+        for spec in self._SPECS:
+            if hasattr(self, spec.name) and spec.name in settings.get(self.scope(), {}) \
+                    and self.differs_from_configfile(settings, spec.name, getattr(self, spec.name)):
+                yield self.scope(), spec.name, getattr(self, spec.name)
+
+
+    def _announce_change(self, name, value):
+        """
+        Record a runtime change for clients: every change is a telemetry event, while config_changes holds
+        only values that differ from the configfile (a change back to the file value removes its entry).
+        Sets without a config section (calibration) persist through save_variables instead.
+        """
+        scope = self.scope()
+        mmu = self._config.get_printer().lookup_object('mmu', None) if scope else None
+        if mmu is not None:
+            settings = self._config.get_printer().lookup_object('configfile').get_status(0)['settings']
+            # Copy on write: get_status() hands out this dict and Klipper compares it with the previous one
+            changes = {s: dict(v) for s, v in mmu.config_changes.items()}
+            if self.differs_from_configfile(settings, name, value):
+                changes.setdefault(scope, {})[name] = value
+            else:
+                changes.get(scope, {}).pop(name, None)
+                if not changes.get(scope, True):
+                    del changes[scope]
+            mmu.config_changes = changes
+            mmu.movement_telemetry.config_changed(scope, name, value)

@@ -112,6 +112,8 @@ class InMemorySpoolman:
         self.offline = False        # every request returns 503
         self.created_spools = []
         self.patched_spools = []
+        # Spoolman's copy of SpoolmanDB (GET /v1/external/filament); None = endpoint missing
+        self.external_filaments = None
 
     # -- construction helpers used by tests ---------------------------------
     def add_vendor(self, name):
@@ -228,6 +230,10 @@ class InMemorySpoolman:
             return self._vendor(method, parts, query, body)
         if parts[1] == 'filament':
             return self._filament(method, parts, query, body)
+        if parts[1:3] == ['external', 'filament'] and method == 'GET':
+            if self.external_filaments is None:
+                return Response(404)
+            return Response(200, [dict(f) for f in self.external_filaments])
         return Response(404)
 
     def _field(self, method, parts, body):

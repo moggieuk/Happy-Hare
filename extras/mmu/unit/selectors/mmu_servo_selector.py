@@ -23,6 +23,7 @@ import logging
 from typing                 import Sequence
 
 # Happy Hare imports
+from ...telemetry.selector import move_selector_servo
 from ...mmu_constants       import *
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
@@ -335,14 +336,14 @@ class ServoSelector(PhysicalSelector):
         """
         if angle >= 0 and angle != self.servo_angle:
             self.mmu.movequeue_wait()
-            self.servo.set_position(angle=angle, duration=None if self.p.servo_always_active else self.p.servo_duration)
+            move_selector_servo(self, angle=angle, duration=None if self.p.servo_always_active else self.p.servo_duration)
             self.servo_angle = angle
             self.mmu.movequeue_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
 
 
     # De-energize servo if 'servo_always_active' is being used
     def _servo_off(self):
-        self.servo.set_position(width=0, duration=None)
+        move_selector_servo(self, width=0, duration=None)
         self._reinit()
 
 

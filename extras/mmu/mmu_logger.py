@@ -186,13 +186,6 @@ class MmuLogger:
             f"encoder={self.mmu.get_encoder_distance(dwell=None):.1f}mm"
         )
 
-    def log_stepper(self, msg):
-        msg = "%s %s %s STEPPER: %s" % (UI_SEPARATOR, UI_SEPARATOR, UI_SEPARATOR, msg)
-        if self.mmu.p.log_file_level > 3:
-            self.log(msg)
-        if self.mmu.p.log_level > 3:
-            self.mmu.gcode.respond_info(msg)
-
     def log_enabled(self, level):
         return self.mmu.p.log_file_level >= level or self.mmu.p.log_level >= level
 

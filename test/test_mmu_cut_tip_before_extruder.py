@@ -9,10 +9,9 @@
 # The cut is then verified: a missed cut leaves the filament gripped by the extruder, so the
 # extruder sensor stays covered or a gear-only pull can't move it, and the unload pauses.
 #
-# The fake gcode_move ignores E and manual moves don't reach the extruder's position, so a CUT is
-# modelled by an effect around the real macro body: afterwards the extruder stepper is moved by
-# the macro's net extruder movement, from which Happy Hare works out the fragment, and the
-# filament end is moved to where the blade leaves it (park_pos from the nozzle).
+# The harness accounts for G-code and manual motor travel. A CUT effect around the real macro
+# body separately moves the filament end to where the blade leaves it (park_pos from the nozzle).
+# Happy Hare measures physical extruder steps to calculate the retained fragment.
 # A MISSED cut skips that move, so the filament stays continuous. The model can't hold filament
 # against the gear either, so hold() makes the verification pull report that nothing moved, as a
 # gear slipping against a gripped filament would. The modelled buffer is always coupled to the
@@ -80,21 +79,11 @@ class BeforeExtruderCutCase(unittest.TestCase):
             effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
 
         def cut(macro, gcmd):
-            start = len(self.hh.gcode.executed)
             macro.run_body(gcmd)
-            extruded = 0.
-            for line in self.hh.gcode.executed[start:]:
-                if line.startswith('G1 E'):
-                    extruded += float(line.split()[1][1:])
-                elif line.startswith('_MMU_STEP_MOVE') and 'extruder' in line:
-                    extruded += float(line.split()[1].split('=')[1])
-            stepper = self.hh.printer.lookup_object('toolhead').get_extruder().extruder_stepper.stepper
-            stepper.set_position([stepper.get_commanded_position() + extruded, 0., 0., 0.])
-            stepper.harness_note_motion(extruded)
             self.cut_moves = len(self.moves)
             if not self.missed:
                 gate = self.mmu.gate_selected
-                self.fil.advance(gate, self.nozzle - macro.variables['output_park_pos'] - self.fil.tip[gate], 'cut')
+                self.fil.place(gate, self.nozzle - macro.variables['output_park_pos'])
             if self.freed:
                 self.hh.sensor('filament_tension').set(False) # The cut releases the tension step
 
@@ -157,7 +146,7 @@ class BeforeExtruderCutCase(unittest.TestCase):
     def assert_paused_in_extruder(self):
         self.assertTrue(any(NOT_CUT in e for e in self.hh.errors), self.hh.errors)
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_IN_EXTRUDER)
-        self.assertEqual(self.extruder.filament_remaining, 0.) # Still continuous, so no fragment
+        self.assertEqual(self.extruder.filament_cut_fragment, 0.) # Still continuous, so no fragment
         self.assertNotIn('Fast unloading move through bowden', self.traces())
         self.assertNotIn('Final parking', self.traces())
 
@@ -195,7 +184,7 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         # 80 - 76 + toolhead_unload_safety_margin
         self.assertIn(('Verifying cut off extruder sensor', -14.0, 'gear'), self.moves)
         self.assertEqual(positions, [FILAMENT_POS_HOMED_ENTRY])
-        self.assertAlmostEqual(self.extruder.filament_remaining, self.fragment, places=1)
+        self.assertAlmostEqual(self.extruder.filament_cut_fragment, self.fragment, places=1)
         self.assertAlmostEqual(self.fil.tip[0], self.TIP_AT_GATE, places=2)
 
     def test_missed_cut_pauses_with_the_filament_in_the_extruder(self):
@@ -210,13 +199,13 @@ class TestCutBetweenGearsAndEntrySensor(BeforeExtruderCutCase):
         self.assertEqual(self.hh.errors, [])
         # toolhead_extruder_to_nozzle - fragment - residual - ooze - retracted_length
         self.assertAlmostEqual(self.load_length()[0], 72. - self.fragment - 2. - 0. - 0., places=1)
-        self.assertEqual(self.extruder.filament_remaining, 0.)
+        self.assertEqual(self.extruder.filament_cut_fragment, 0.)
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
 
     def test_test_form_tip_records_the_fragment(self):
         self.mmu.gate_color[self.mmu.gate_selected] = 'ff0000'
         self.hh.run_gcode('MMU_TEST_FORM_TIP')
-        self.assertAlmostEqual(self.extruder.filament_remaining, self.fragment, places=1)
+        self.assertAlmostEqual(self.extruder.filament_cut_fragment, self.fragment, places=1)
         self.assertEqual(self.extruder.filament_remaining_color, 'ff0000')
         self.assertIn(('Ejecting filament for inspection', -80.0, 'gear'), self.moves)
 
@@ -279,7 +268,7 @@ class TestCutPushbackTooShort(BeforeExtruderCutCase):
         self.assertTrue(any("can't clear the extruder" in e for e in self.hh.errors), self.hh.errors)
         self.assertFalse(any(line.startswith('_CUT_TIP_DO_CUT_MOTION') for line in executed))
         self.assertFalse(any(line.startswith('_MMU_STEP_MOVE') for line in executed))
-        self.assertEqual(self.extruder.filament_remaining, 0.)
+        self.assertEqual(self.extruder.filament_cut_fragment, 0.)
 
 
 class TestCutterSetBeforeExtruderWithBladeAfterGears(BeforeExtruderCutCase):
@@ -298,7 +287,7 @@ class TestCutPushbackShortenedByRecordedFragment(BeforeExtruderCutCase):
         self.assertEqual(self.boot_errors, [])
         # The macro retracts only what the fragment, residual and the load's final retraction don't
         # already cover: 40 - (34 + 2 + 2) = 2
-        self.extruder.set_filament_remaining(34.)
+        self.extruder.set_filament_cut_fragment(34.)
         executed = self.unload()
         self.assertTrue(any("pushback 2.0mm can't clear the extruder" in e for e in self.hh.errors), self.hh.errors)
         self.assertFalse(any(line.startswith('_CUT_TIP_DO_CUT_MOTION') for line in executed))
@@ -438,7 +427,7 @@ class TestCutAlwaysGripped(BeforeExtruderCutCase):
         self.unload()
         self.assert_unloaded()
         self.assertIn('Verifying cut with sync-feedback buffer', self.traces())
-        self.assertAlmostEqual(self.extruder.filament_remaining, self.fragment, places=1)
+        self.assertAlmostEqual(self.extruder.filament_cut_fragment, self.fragment, places=1)
         self.hh.run_gcode('MMU_LOAD')
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)

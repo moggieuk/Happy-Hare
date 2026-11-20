@@ -105,6 +105,7 @@ DENSITY_FALLBACK = {               # g/cm³, used when SpoolmanDB is unreachable
     "hips": 1.03, "pva": 1.23, "tpe": 1.21, "peek": 1.32, "pei": 1.27, "pom": 1.41,
 }
 DENSITY_DEFAULT        = 1.24      # PLA - safe default for unknown materials
+SPOOLMANDB_COLOR_DISTANCE = 60     # Max RGB distance for a SpoolmanDB colour to match a tag colour
 DEFAULT_SPOOL_WEIGHT_G = 1000      # Net filament weight when the tag doesn't supply one
 
 TAG_FORMAT_BRANDS = {              # Brand deduced from parser tag_format when the tag has none
@@ -180,8 +181,10 @@ class MmuServer:
 
         # Process-lifetime caches of SpoolmanDB reference data, fetched lazily on
         # the first tag auto-create. None = not yet fetched; {}/[] = fetch failed
-        # (kept so a failed fetch isn't retried on every scan).
+        # (kept so a failed fetch isn't retried on every scan; the filaments list is
+        # the exception, cached only once non-empty).
         self._spoolmandb_materials = None   # {material_lower: density}
+        self._spoolmandb_filaments = None   # Spoolman's copy of SpoolmanDB (/v1/external/filament), once non-empty
         self._spoolmandb_bambu     = None   # [filament dict, ...] from bambulab.json
         self._spoolmandb_bambu_mfr = None   # top-level manufacturer name (e.g. "Bambu Lab")
 
@@ -1009,7 +1012,8 @@ class MmuServer:
             logging.error(f"NFC: failed to send GATE={gate} SPOOLID={spool_id}: {str(e)}")
 
 
-    async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False, report_only=False) -> bool:
+    async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False, report_only=False,
+                                prefer_db_temps=False) -> bool:
         '''
         Resolve a scanned NFC/RFID tag UID to a spool_id and hand it back to
         Happy Hare.
@@ -1099,7 +1103,7 @@ class MmuServer:
                 # Tag isn't registered but carried usable filament metadata and
                 # auto-create is enabled: build the vendor/filament/spool now and
                 # register this UID against the new spool.
-                new_id = await self._create_spool_from_metadata(metadata, uid_norm)
+                new_id = await self._create_spool_from_metadata(metadata, uid_norm, prefer_db_temps)
                 if new_id is not None:
                     # Targeted cache insert - no full rebuild (see _cache_insert_spool)
                     spool_info = await self._fetch_spool_info(new_id)
@@ -1173,7 +1177,7 @@ class MmuServer:
     # (donkie.github.io) and degrades gracefully to the module-level fallbacks.
     # ══════════════════════════════════════════════════════════════════════════
 
-    async def _create_spool_from_metadata(self, metadata, uid_norm) -> int | None:
+    async def _create_spool_from_metadata(self, metadata, uid_norm, prefer_db_temps=False) -> int | None:
         '''
         Create a Spoolman vendor -> filament -> spool from parsed tag metadata.
         Returns the new spool_id, or None if the metadata is insufficient or any
@@ -1208,17 +1212,27 @@ class MmuServer:
         if canonical_color_hex:
             color_hex = canonical_color_hex
 
+        # 1b. Any other brand: the manufacturer's entry in SpoolmanDB, by brand, material
+        # and colour. Its temperatures replace the tag's only with prefer_db_temps.
+        db_entry = bambu_match
+        if db_entry is None:
+            db_entry = await self._match_spoolmandb_filament(brand, material, color_hex, metadata)
+            if db_entry is not None:
+                density = self._to_float(db_entry.get("density"), density)
+                brand = str(db_entry.get("manufacturer") or brand)
+
         # 2. Vendor (find or create, with Generic fallback)
         vendor_id, vendor_name = await self._resolve_vendor(brand, is_bambu)
 
         # 3+4. Filament (find existing or create from tag + SpoolmanDB data)
         filament_id = await self._find_or_create_filament(
-            metadata, color_hex, density, diameter, weight, vendor_id, vendor_name, bambu_match)
+            metadata, color_hex, density, diameter, weight, vendor_id, vendor_name,
+            db_entry, db_temps_win=prefer_db_temps and bambu_match is None and db_entry is not None)
         if filament_id is None:
             return None
 
         # 5. Spool, with the UID written inline into the extra field
-        return await self._create_spool(filament_id, metadata, uid_norm, weight, bambu_match)
+        return await self._create_spool(filament_id, metadata, uid_norm, weight, db_entry)
 
 
     async def _resolve_density(self, material, color_hex, material_id, is_bambu):
@@ -1317,15 +1331,21 @@ class MmuServer:
 
 
     async def _find_or_create_filament(self, metadata, color_hex, density,
-                                       diameter, weight, vendor_id, vendor_name, bambu_match) -> int | None:
+                                       diameter, weight, vendor_id, vendor_name, db_entry,
+                                       db_temps_win=False) -> int | None:
         '''
-        Find an existing filament (by Bambu external_id, then material + vendor
+        Find an existing filament (by SpoolmanDB external_id, then material + vendor
         with colour preference) or create one from tag + SpoolmanDB metadata.
+        'db_entry' is the matching SpoolmanDB entry (Bambu or any brand), or None;
+        db_temps_win makes its temperatures replace the tag's instead of filling gaps.
         Returns filament_id, or None on failure.
         '''
         base = self.spoolman.spoolman_url
         material = str(metadata.get("material") or "").strip()
         material_id = str(metadata.get("material_id") or "").strip() or None
+        if material_id is None and db_entry is not None:
+            # The SpoolmanDB id, as Spoolman stores it when a filament is imported from it
+            material_id = str(db_entry.get("id") or "").strip() or None
 
         # --- Search by Bambu SKU (external_id) first ---
         if material_id:
@@ -1359,7 +1379,7 @@ class MmuServer:
         # Vendor is stored separately (vendor_id), so keep it OUT of the filament
         # name - this keeps a spool-resolved gate's name consistent with the
         # metadata-only gate-map path (which also stores vendor separately).
-        db_name = str(bambu_match.get("name") or "").strip() if bambu_match else ""
+        db_name = str(db_entry.get("name") or "").strip() if db_entry else ""
         name = db_name or str(metadata.get("material_detail") or material).strip().replace("_", " ")
 
         body = {
@@ -1384,13 +1404,21 @@ class MmuServer:
         min_temp = metadata.get("min_temp")
         max_temp = metadata.get("max_temp")
         bed_temp = metadata.get("bed_temp")
-        if bambu_match is not None:
+        if db_temps_win:
+            # One manufacturer's value: it replaces the tag's range
+            db_temp = self._to_int_safe(db_entry.get("extruder_temp"))
+            if db_temp is not None:
+                min_temp = max_temp = db_temp
+            db_bed = self._to_int_safe(db_entry.get("bed_temp"))
+            if db_bed is not None:
+                bed_temp = db_bed
+        elif db_entry is not None:
             if min_temp is None:
-                min_temp = bambu_match.get("extruder_temp")
+                min_temp = db_entry.get("extruder_temp")
             if max_temp is None:
-                max_temp = bambu_match.get("extruder_temp_max")
+                max_temp = db_entry.get("extruder_temp_max")
             if bed_temp is None:
-                bed_temp = bambu_match.get("bed_temp")
+                bed_temp = db_entry.get("bed_temp")
         ext_min = self._to_int_safe(min_temp)
         ext_max = self._to_int_safe(max_temp)
         bed     = self._to_int_safe(bed_temp)
@@ -1417,7 +1445,7 @@ class MmuServer:
         return int(created["id"])
 
 
-    async def _create_spool(self, filament_id, metadata, uid_norm, weight, bambu_match) -> int | None:
+    async def _create_spool(self, filament_id, metadata, uid_norm, weight, db_entry) -> int | None:
         '''
         Create a Spoolman spool for filament_id, writing the RFID UID into the
         '{MMU_RFID_FIELD}' extra field inline (so no follow-up PATCH is needed -
@@ -1427,8 +1455,8 @@ class MmuServer:
         base = self.spoolman.spoolman_url
 
         spool_weight = metadata.get("spool_weight_g")
-        if spool_weight is None and bambu_match is not None:
-            spool_weight = bambu_match.get("spool_weight")
+        if spool_weight is None and db_entry is not None:
+            spool_weight = db_entry.get("spool_weight")
         tray_uid = self._valid_tray_uid(metadata.get("tray_uid"))
 
         # A freshly registered tag is assumed to be a full spool: remaining_weight
@@ -1509,6 +1537,81 @@ class MmuServer:
             logging.info(f"NFC: SpoolmanDB materials fetch failed ({e}); using fallback densities")
         self._spoolmandb_materials = result
         return result
+
+
+    async def _fetch_spoolmandb_filaments(self) -> list:
+        '''
+        Fetch + cache Spoolman's copy of SpoolmanDB (every manufacturer's filaments),
+        from the Spoolman server rather than the internet. Returns [] on failure or an
+        empty list; only a non-empty list is cached, so a later scan retries.
+        '''
+        if self._spoolmandb_filaments:
+            return self._spoolmandb_filaments
+        filaments = []
+        try:
+            resp = await self.http_client.get(url=f"{self.spoolman.spoolman_url}/v1/external/filament")
+            if resp.has_error():
+                raise RuntimeError(f"HTTP {resp.status_code}")
+            raw = resp.json()
+            if isinstance(raw, list):
+                filaments = [f for f in raw if isinstance(f, dict)]
+            logging.info(f"NFC: SpoolmanDB filaments loaded from Spoolman ({len(filaments)} entries)")
+        except Exception as e:
+            logging.info(f"NFC: SpoolmanDB filaments fetch failed ({e}); tag data only")
+        self._spoolmandb_filaments = filaments or None
+        return filaments
+
+
+    @staticmethod
+    def _brand_key(name):
+        '''Brand as compared with SpoolmanDB manufacturers: case and punctuation ignored.'''
+        return re.sub(r'[^0-9a-z]', '', str(name or '').lower())
+
+
+    @staticmethod
+    def _color_distance(hex_a, hex_b):
+        '''RGB distance between two 6-digit hex colours, None if either is unusable.'''
+        try:
+            a = [int(hex_a[i:i + 2], 16) for i in (0, 2, 4)]
+            b = [int(hex_b[i:i + 2], 16) for i in (0, 2, 4)]
+        except (TypeError, ValueError, IndexError):
+            return None
+        return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+    async def _match_spoolmandb_filament(self, brand, material, color_hex, metadata):
+        '''
+        The SpoolmanDB entry for a tag of any brand: same manufacturer and material, and
+        the closest colour within SPOOLMANDB_COLOR_DISTANCE (an app's colour picker rarely
+        gives the exact hex). Among equally close entries, the one whose name shares the
+        most words with the tag's material detail wins. Returns the entry or None.
+        '''
+        brand_key = self._brand_key(brand)
+        if not brand_key or brand_key == "generic" or not color_hex:
+            return None
+        material_lower = material.lower().strip()
+        detail_words = set(re.findall(r'[0-9a-z]+', str(metadata.get("material_detail") or "").lower()))
+        best = None
+        for entry in await self._fetch_spoolmandb_filaments():
+            if self._brand_key(entry.get("manufacturer")) != brand_key:
+                continue
+            if str(entry.get("material") or "").lower().strip() != material_lower:
+                continue
+            hexes = [entry.get("color_hex")] + list(entry.get("color_hexes") or [])
+            distances = [d for d in (self._color_distance(color_hex, str(h or "").lstrip("#").upper())
+                                     for h in hexes) if d is not None]
+            if not distances or min(distances) > SPOOLMANDB_COLOR_DISTANCE:
+                continue
+            words = set(re.findall(r'[0-9a-z]+', str(entry.get("name") or "").lower()))
+            rank = (min(distances), -len(detail_words & words))
+            if best is None or rank < best[0]:
+                best = (rank, entry)
+        if best is None:
+            logging.info(f"NFC: no SpoolmanDB filament for {brand!r} {material!r} #{color_hex}")
+            return None
+        logging.info(f"NFC: SpoolmanDB match {best[1].get('id')!r} for {brand!r} {material!r} "
+                     f"#{color_hex} (colour distance {best[0][0]:.0f})")
+        return best[1]
 
 
     async def _fetch_spoolmandb_bambu(self) -> list:
