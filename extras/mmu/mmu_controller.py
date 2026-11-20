@@ -580,7 +580,7 @@ class MmuController(MmuFilamentMovement):
         speed_var = 'retract_speed' if length > 0 else 'unretract_speed'
         speed = float(sequence_vars.variables.get(speed_var, 30)) if sequence_vars else 30.
         self.log_info("%s %.1fmm to leave %.1fmm retracted" % ("Retracting" if length > 0 else "Un-retracting", abs(length), retract))
-        self.gcode.run_script_from_command(
+        self.run_gcode_script(
             "SAVE_GCODE_STATE NAME=_MMU_LOAD_RETRACT\n"
             "M83\n"
             "G1 E%.2f F%d\n"
@@ -673,6 +673,17 @@ class MmuController(MmuFilamentMovement):
         return True
 
 
+    def run_gcode_script(self, script):
+        """
+        Run gcode from a command or from a timer/event. Newer Kalico rejects
+        run_script_from_command() unless the gcode mutex is already held
+        """
+        if self.gcode.get_mutex().test():
+            self.gcode.run_script_from_command(script)
+        else:
+            self.gcode.run_script(script)
+
+
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         """
         Run a gcode command/macro with optional variable overrides, error handling, and blocking.
@@ -704,7 +715,7 @@ class MmuController(MmuFilamentMovement):
 
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables else ""))
 
-            self.gcode.run_script_from_command(command)
+            self.run_gcode_script(command)
             if wait:
                 self.movequeue_wait()
 
@@ -2671,7 +2682,7 @@ class MmuController(MmuFilamentMovement):
                     self.psm.paused_extruder_temp = residual['target'] # Resume at the new filament's temp, not the residual raise
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
-                self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
+                self.run_gcode_script("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
                 self.log_trace("Extruder heater will be disabled in %s" % (self._seconds_to_string(self.p.disable_heater)))
                 self.log_trace("Idle timeout in %s" % self._seconds_to_string(self.p.timeout_pause))
                 self._save_toolhead_position_and_park('pause') # if already paused this is a no-op
@@ -2736,7 +2747,7 @@ class MmuController(MmuFilamentMovement):
 
     def _mmu_unlock(self):
         if self.is_mmu_paused():
-            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
+            self.run_gcode_script("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
 
             # Important to wait for stable temperature to resume exactly how we paused
@@ -2808,7 +2819,7 @@ class MmuController(MmuFilamentMovement):
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
         if operation not in ['complete', 'cancel'] and 'xyz' not in self.toolhead.get_status(self.reactor.monotonic())['homed_axes']:
-            self.gcode.run_script_from_command(self.p.toolhead_homing_macro)
+            self.run_gcode_script(self.p.toolhead_homing_macro)
             self.movequeue_wait()
 
         eventtime = self.reactor.monotonic()
@@ -2821,7 +2832,7 @@ class MmuController(MmuFilamentMovement):
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self.log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
-                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % TOOLHEAD_POSITION_STATE)
+                self.run_gcode_script("SAVE_GCODE_STATE NAME=%s" % TOOLHEAD_POSITION_STATE)
                 self.saved_toolhead_operation = operation
 
                 # Save toolhead velocity limits and set user defined for macros
@@ -2836,7 +2847,7 @@ class MmuController(MmuFilamentMovement):
                     params += " MINIMUM_CRUISE_RATIO=%.4f" % self.p.macro_toolhead_min_cruise_ratio
 
                 if params:
-                    self.gcode.run_script_from_command(f"SET_VELOCITY_LIMIT{params}")
+                    self.run_gcode_script(f"SET_VELOCITY_LIMIT{params}")
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
@@ -2894,7 +2905,7 @@ class MmuController(MmuFilamentMovement):
                         travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
                     gcode_pos = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]['last_position']
                     display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
-                    self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (TOOLHEAD_POSITION_STATE, travel_speed))
+                    self.run_gcode_script("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (TOOLHEAD_POSITION_STATE, travel_speed))
                     self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
 
                 self._clear_saved_toolhead_position()
@@ -2904,7 +2915,7 @@ class MmuController(MmuFilamentMovement):
                     cmd = "SET_VELOCITY_LIMIT ACCEL=%.4f" % self.saved_toolhead_max_accel
                     if self.saved_toolhead_min_cruise_ratio is not None:
                         cmd += " MINIMUM_CRUISE_RATIO=%.4f" % self.saved_toolhead_min_cruise_ratio
-                    self.gcode.run_script_from_command(cmd)
+                    self.run_gcode_script(cmd)
                     self.saved_toolhead_max_accel = None
             else:
                 pass # Resume will call here again shortly so we can ignore for now
@@ -3176,9 +3187,9 @@ class MmuController(MmuFilamentMovement):
         # M104 only reaches the active extruder, which need not be this unit's (toolchanger/IDEX)
         extruder_name = extruder_name or self.mmu_unit().extruder_name()
         if self.toolhead.get_extruder().get_name() == extruder_name:
-            self.gcode.run_script_from_command("M104 S%.1f" % temp)
+            self.run_gcode_script("M104 S%.1f" % temp)
         else:
-            self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (extruder_name, temp))
+            self.run_gcode_script("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (extruder_name, temp))
 
 
     def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
@@ -3295,7 +3306,7 @@ class MmuController(MmuFilamentMovement):
     def _wait_for_extruder_temperature(self, temp, source, extruder_name):
         with self.wrap_action(ACTION_HEATING):
             self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, temp, UI_DEGREE))
-            self.gcode.run_script_from_command(
+            self.run_gcode_script(
                 f"TEMPERATURE_WAIT "
                 f"SENSOR={extruder_name} "
                 f"MINIMUM={temp - self.p.extruder_temp_variance:.1f} "
@@ -3449,7 +3460,7 @@ class MmuController(MmuFilamentMovement):
         self._clear_pending() # Drop any pending shared-NFC spool_id/metadata on disable
         self._disable_filament_monitoring()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
-        self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
+        self.run_gcode_script("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
         self.motors_onoff(on=False) # Will also unsync gear
         self.is_enabled = False
         self.printer.send_event("mmu:disabled")
@@ -3544,8 +3555,8 @@ class MmuController(MmuFilamentMovement):
 
         current_speed_factor, current_extrude_factor = self._get_current_override()
 
-        self.gcode.run_script_from_command(f"M220 S{speed_percent}")
-        self.gcode.run_script_from_command(f"M221 S{extrude_percent}")
+        self.run_gcode_script(f"M220 S{speed_percent}")
+        self.run_gcode_script(f"M221 S{extrude_percent}")
 
         if (
             current_speed_factor != speed_factor
@@ -3707,7 +3718,7 @@ class MmuController(MmuFilamentMovement):
     def _note_toolchange(self, m117_msg):
         self._last_toolchange = m117_msg
         if self.p.log_m117_messages:
-            self.gcode.run_script_from_command("M117 %s" % m117_msg)
+            self.run_gcode_script("M117 %s" % m117_msg)
 
 
     # Tell the sequence macros about where to move to next

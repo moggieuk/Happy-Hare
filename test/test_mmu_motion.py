@@ -572,6 +572,39 @@ class TestLoadGate(MotionTestCase):
         self.assertEqual(overshoot, 0.0)
         self.assertEqual(self.hh.errors, [])
 
+    def test_kalico_homing_move_requiring_gcmd(self):
+        """
+        Newer Kalico made gcmd a required HomingMove argument (and manual_home
+        still has no probe_pos), so the direct HomingMove path must supply one.
+        """
+        import extras.mmu_stepper as mmu_stepper
+        from extras.homing import HomingMove
+        homing = self.hh.printer.lookup_object('homing')
+        original_manual_home = homing.manual_home
+        gcmds = []
+
+        class GcmdHomingMove(HomingMove):
+            def __init__(self, printer, endstops, toolhead, gcmd):
+                gcmds.append(gcmd)
+                HomingMove.__init__(self, printer, endstops, toolhead)
+
+        def kalico_manual_home(toolhead, endstops, pos, speed,
+                               triggered, check_triggered, gcmd):
+            raise AssertionError('manual_home must not be used')
+
+        try:
+            mmu_stepper.HomingMove = GcmdHomingMove
+            homing.manual_home = kalico_manual_home
+            self.hh.mmu._load_gate()
+        finally:
+            mmu_stepper.HomingMove = HomingMove
+            homing.manual_home = original_manual_home
+
+        self.assertEqual(len(gcmds), 1)
+        self.assertIsNotNone(gcmds[0])
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_HOMED_GATE)
+        self.assertEqual(self.hh.errors, [])
+
 
 class TestCheckGate(MotionTestCase):
 
