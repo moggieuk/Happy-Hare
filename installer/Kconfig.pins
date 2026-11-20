@@ -420,10 +420,20 @@ menu "Pins / TMC"
 
   config PIN_ENCODER
     string
-    prompt "$(pad,$(pin_pad),Encoder pin)" if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER
+    prompt "$(pad,$(pin_pad),Encoder pin)" if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER && !CHOICE_ENCODER_TYPE_ANALOG
     validator "$(pin_validator)"
     help
       $(pin_help)
+
+  @repeat var=i min=0 max=$(max_gate)@
+    config PIN_ENCODER_ANALOG_$(i)
+      string
+      prompt "$(pad,$(pin_pad),Encoder analog $(i) pin)" if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER && \
+          CHOICE_ENCODER_TYPE_ANALOG && PARAM_NUM_GATES > $(i)
+      validator "$(pin_validator)"
+      help
+        $(pin_help)
+  @endrepeat@
 
   config PIN_NEOPIXEL
     string

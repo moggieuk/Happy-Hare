@@ -634,6 +634,21 @@ ENCODER = BOXTURTLE_TEST.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
+# BoxTurtle + an analog wheel sensor per gate as the encoder (MmuAnalogCounter): analog_pins
+# instead of encoder_pin. Homing keeps the base fixture's per-gate exit sensors, since an
+# analog encoder counts on the host and would stop a homing move late. Test-only.
+ENCODER_ANALOG = BOXTURTLE_TEST.derive(
+    'encoder_analog',
+    syms={
+        'MMU_HAS_ENCODER': True,
+        'CHOICE_ENCODER_TYPE_ANALOG': True,
+        'PIN_ENCODER_ANALOG_0': 'unit0:PC0',
+        'PIN_ENCODER_ANALOG_1': 'unit0:PC1',
+        'PIN_ENCODER_ANALOG_2': 'unit0:PC2',
+        'PIN_ENCODER_ANALOG_3': 'unit0:PC3',
+    },
+    description='BoxTurtle + analog wheel sensor per gate as the encoder')
+
 # Two BoxTurtles where unit1 shares unit0's encoder AND buffer through the "Use shared ...?"
 # flags. An owner's section is named after its unit by default, so the sharer names unit0
 # and renders neither section of its own.
@@ -953,7 +968,7 @@ CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, THREE_MS, CHAMELEON, HTLF, PI
                     TD1_OFFPATH, TD1_BOTH)
 
 PROFILES = {p.name: p for p in CONSOLE_PROFILES +
-            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER, ENCODER_SHARED,
+            (BOXTURTLE_TEST, ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER, ENCODER_SHARED, ENCODER_ANALOG,
              TRADRACK_MAX_GATES, BOXTURTLE_MAX_GATES)}
 
 
