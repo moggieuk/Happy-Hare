@@ -238,6 +238,9 @@ class FakeConnection:
             return self.messages.pop(0)
         return await self.forever
 
+    def close(self):
+        self.closed = True
+
 
 class TestConnection(unittest.TestCase):
 
@@ -304,6 +307,41 @@ class TestConnection(unittest.TestCase):
 
         self.assertTrue(hh.run(start_twice()))
         hh.run(server.close())
+
+    def test_bad_event_keeps_the_connection(self):
+        """An event that raises (e.g. Klipper not up yet) is skipped, not a reconnect"""
+        hh = harness(spools=[dict(material='PLA')])
+        self.addCleanup(hh.close)
+        hh.component_init()
+        server = hh.mmu_server
+        event = json.dumps({'type': 'updated', 'resource': 'spool', 'payload': hh.db._render_spool(1)})
+        connections, handled = [], []
+
+        async def connect(url):
+            connections.append(FakeConnection([event, event]))
+            return connections[-1]
+
+        async def on_event(ev):
+            handled.append(ev)
+            if len(handled) == 1:
+                raise RuntimeError("Klipper not ready")
+
+        server._ws_connect = connect
+        server._on_spoolman_event = on_event
+        server.live_updates = True
+
+        async def until_handled():
+            server._start_live_updates()
+            for _ in range(200):
+                if len(handled) == 2:
+                    return True
+                await asyncio.sleep(0)
+            return False
+
+        self.assertTrue(hh.run(until_handled()))
+        self.assertEqual(len(connections), 1)
+        hh.run(server.close())
+        self.assertTrue(getattr(connections[0], 'closed', False))
 
 
 if __name__ == '__main__':

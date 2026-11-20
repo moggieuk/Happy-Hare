@@ -92,6 +92,7 @@ PRINTER_NAME_HEADER = 'X-Printer-Name'  # sent with every request to the configu
 LIVE_DETAIL_KEYS = ('material', 'color', 'name', 'temp', 'bed_temp', 'vendor', 'filament_id') # Forwarded to Klipper; weight isn't
 LIVE_OWN_WRITE_WINDOW = 5.0        # Seconds to ignore Spoolman events for a spool Happy Hare just wrote (its own echo)
 LIVE_RETRY_MAX = 60.0              # Longest wait between live-update reconnect attempts
+LIVE_PING_INTERVAL = 30.0          # Seconds between websocket pings (and to wait for a pong) to detect a dead connection
 NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spoolman (avoids re-querying on every scan)
 
 # ─── RFID spool auto-create: SpoolmanDB reference data + offline fallbacks ─────
@@ -305,12 +306,15 @@ class MmuServer:
         '''Moonraker ships tornado; imported here so tests can replace this method'''
         from tornado.websocket import websocket_connect
         from tornado.httpclient import HTTPRequest
-        return await websocket_connect(HTTPRequest(url, headers={PRINTER_NAME_HEADER: str(self.printer_hostname or "")}))
+        # Pings notice a half-open connection (e.g. Spoolman host lost power), which never sends a close
+        return await websocket_connect(HTTPRequest(url, headers={PRINTER_NAME_HEADER: str(self.printer_hostname or "")}),
+                                       ping_interval=LIVE_PING_INTERVAL, ping_timeout=LIVE_PING_INTERVAL)
 
 
     async def _live_updates_loop(self):
         delay, connected_before = 2.0, False
         while True:
+            ws = None
             try:
                 ws = await self._ws_connect(self._live_updates_url())
                 logging.info("Spoolman live updates connected")
@@ -328,12 +332,18 @@ class MmuServer:
                     except ValueError:
                         continue
                     if isinstance(event, dict):
-                        await self._on_spoolman_event(event)
+                        try:
+                            await self._on_spoolman_event(event)
+                        except Exception as e: # One bad event (e.g. Klipper not up yet) mustn't drop the connection
+                            logging.warning(f"Spoolman live update: couldn't apply {event.get('resource')} event: {str(e)}")
                 logging.info("Spoolman live updates disconnected")
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logging.info(f"Spoolman live updates unavailable ({str(e)}), retrying in {delay:.0f}s")
+            finally:
+                if ws is not None:
+                    ws.close()
             await asyncio.sleep(delay)
             delay = min(delay * 2, LIVE_RETRY_MAX)
 
@@ -413,7 +423,9 @@ class MmuServer:
     async def _probe_tag_api(self) -> bool | None:
         '''
         Native tag API present? Probed rather than version-checked so dev builds and
-        forks are detected. None if it couldn't be determined (probed again next init)
+        forks are detected. None if it couldn't be determined: _init_spoolman retries it
+        with the version check, then falls back to legacy until Spoolman is re-initialised
+        (Moonraker restart, or MMU_SPOOLMAN REFRESH after a failed init)
         '''
         resp = await self.http_client.get(url=f"{self.spoolman.spoolman_url}/v1/tag/reader")
         if resp.status_code in (404, 405):
@@ -429,12 +441,19 @@ class MmuServer:
         Return True if connected, False if not. Set's self.spoolman_has_extras is
         '''
         async with self.cache_lock:
+            # The capability probe is part of contacting Spoolman: an error from it mid-startup is
+            # the same "not ready yet" as a failed version check, so it shares the retries
+            tag_api = None
             for _ in range(retry):
                 self.spoolman_version = await self._get_spoolman_version()
                 if self.spoolman_version:
-                    logging.info("Contacted Spoolman")
-                    break
-                logging.warning(f"Spoolman not available. {'Retrying in 2 seconds...' if retry > 1 else ''}")
+                    tag_api = await self._probe_tag_api() if self.spoolman_version >= MIN_SM_VER else False
+                    if tag_api is not None:
+                        logging.info("Contacted Spoolman")
+                        break
+                    logging.warning(f"Spoolman tag API not determined. {'Retrying in 2 seconds...' if retry > 1 else ''}")
+                else:
+                    logging.warning(f"Spoolman not available. {'Retrying in 2 seconds...' if retry > 1 else ''}")
                 await asyncio.sleep(2)
 
             extras = False
@@ -447,7 +466,7 @@ class MmuServer:
                     extras = extras and await self._add_extra_field("spool", field_name="Printer Name", field_key=MMU_NAME_FIELD, field_type="text", default_value="")
                 if MMU_GATE_FIELD not in fields:
                     extras = extras and await self._add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=-1)
-                native_tags = await self._probe_tag_api() is True
+                native_tags = tag_api is True # Still None after the retries: legacy for this session
 
                 # RFID field is required before native tags; afterwards only kept if it already exists
                 self.spoolman_has_rfid_field = MMU_RFID_FIELD in fields
@@ -727,7 +746,7 @@ class MmuServer:
         return True
 
 
-    async def _migrate_tags(self, to_native=True, dry_run=False, silent=False, spool_id_filter=None) -> dict | None:
+    async def _migrate_tags(self, to_native=True, dry_run=False, silent=False) -> dict | None:
         '''
         to_native: link extra-field UIDs natively (extra field kept)
         else (testing): move native UIDs back to the extra field
@@ -746,29 +765,51 @@ class MmuServer:
             self.spoolman_has_rfid_field = True
 
         # Plan first, so progress can be reported against a known total
-        plan = [] # (spool_id, native, extra, uids to move)
-        for spool_info in resp.json():
+        spools = resp.json()
+        native_holder, extra_holders = self._uid_holders(spools)
+        plan = []    # (spool_id, native, extra, uids to move)
+        skipped = [] # Legacy duplicates: which spool should win is the user's call
+        for spool_info in spools:
             spool_id = spool_info['id']
-            if spool_id_filter is not None and spool_id != spool_id_filter:
-                continue
             native = self._get_native_uid_list(spool_info)
             extra = self._get_uid_list_from_extra(spool_info.get('extra'))
-            moving = [u for u in extra if u not in native] if to_native else native
+            if to_native:
+                moving = []
+                for u in extra:
+                    if u in native:
+                        continue
+                    if u not in native_holder and len(extra_holders[u]) > 1:
+                        skipped.append(f"tag {u} is in the extra field of spools {', '.join(map(str, extra_holders[u]))} - "
+                                       "remove it from all but one in Spoolman")
+                    else:
+                        moving.append(u)
+            else:
+                moving = native
             if moving:
                 plan.append((spool_id, native, extra, moving))
         total = sum(len(m) for *_, m in plan)
         target = "native Spoolman tags" if to_native else "the extra field"
-        summary = {'spools': len(plan), 'moved': 0, 'conflicts': [], 'errors': 0}
+        summary = {'spools': len(plan), 'moved': 0, 'removed': [], 'skipped': skipped, 'errors': 0}
         if total:
             await self._log_n_send(f"NFC: {'checking' if dry_run else 'migrating'} {total} tag(s) on {len(plan)} spool(s) to {target}...", silent=silent)
+
+        def holder_name(conflict):
+            return (f"spool {conflict['spool_id']}" if conflict.get('spool_id') is not None else
+                    f"filament {conflict['filament_id']}" if conflict.get('filament_id') is not None else
+                    conflict.get('message', 'another record'))
 
         done = 0
         for spool_id, native, extra, moving in plan:
             if dry_run:
                 for uid in moving:
                     done += 1
-                    summary['moved'] += 1
-                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} would be migrated", silent=silent)
+                    if uid in native_holder:
+                        summary['removed'].append(f"tag {uid} on spool {spool_id} (linked to spool {native_holder[uid]})")
+                        await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} is linked to spool {native_holder[uid]} - "
+                                               "its old copy in the extra field would be removed", silent=silent)
+                    else:
+                        summary['moved'] += 1
+                        await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} would be migrated", silent=silent)
                 continue
 
             if not to_native: # Extra field first, so the UID is never in neither store
@@ -778,9 +819,12 @@ class MmuServer:
                     await self._log_n_send(f"NFC: couldn't write the extra field on spool {spool_id} - its {len(moving)} tag(s) were not moved", error=True, silent=silent)
                     continue
 
+            stale = [] # (uid, holder): natively linked elsewhere, so this extra-field copy is a leftover
             for uid in moving:
                 done += 1
-                if to_native:
+                if to_native and uid in native_holder:
+                    ok, conflict = False, {'spool_id': native_holder[uid]}
+                elif to_native:
                     ok, conflict = await self._link_native_tag(spool_id, uid)
                 else:
                     ok, conflict = await self._unlink_native_tag(spool_id, uid), None
@@ -790,28 +834,54 @@ class MmuServer:
                         self.native_uids.discard(uid)
                     await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} migrated to {'a native Spoolman tag' if to_native else 'the extra field'}", silent=silent)
                 elif conflict is not None:
-                    holder = (f"spool {conflict['spool_id']}" if conflict.get('spool_id') is not None else
-                              f"filament {conflict['filament_id']}" if conflict.get('filament_id') is not None else
-                              conflict.get('message', 'another record'))
-                    summary['conflicts'].append(f"tag {uid} on spool {spool_id} is already linked to {holder}")
-                    await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} not migrated - already linked to {holder}", silent=silent)
+                    stale.append((uid, holder_name(conflict), done))
                 else:
                     summary['errors'] += 1
                     await self._log_n_send(f"NFC: [{done}/{total}] tag {uid} on spool {spool_id} failed - see moonraker.log", error=True, silent=silent)
 
+            # Native links win: drop the leftovers in one write so the next startup has nothing to do
+            if stale:
+                stale_uids = [u for u, *_ in stale]
+                removed = await self._write_extra_uids(spool_id, [u for u in extra if u not in stale_uids])
+                for uid, holder, n in stale:
+                    if removed:
+                        summary['removed'].append(f"tag {uid} on spool {spool_id} (linked to {holder})")
+                        await self._log_n_send(f"NFC: [{n}/{total}] tag {uid} on spool {spool_id} is linked to {holder} in Spoolman - "
+                                               "removed its old copy from the extra field", silent=silent)
+                    else:
+                        summary['errors'] += 1
+                        await self._log_n_send(f"NFC: [{n}/{total}] tag {uid} on spool {spool_id} is linked to {holder} - "
+                                               "couldn't remove its old copy from the extra field, see moonraker.log", error=True, silent=silent)
+
         direction = "extra field -> native tags" if to_native else "native tags -> extra field"
-        if spool_id_filter is not None:
-            direction += f", spool {spool_id_filter} only"
         msg = (f"NFC: tag migration ({direction}){' [dry run]' if dry_run else ''}: "
                f"{summary['moved']} tag(s) {'would be ' if dry_run else ''}moved on {summary['spools']} spool(s)")
         if summary['errors']:
             msg += f", {summary['errors']} error(s) - see moonraker.log"
-        for c in summary['conflicts']:
-            msg += f"\n  - Conflict: {c}"
+        for r in summary['removed']:
+            msg += f"\n  - {'Would remove' if dry_run else 'Removed'} old extra-field copy: {r}"
+        for s in summary['skipped']:
+            msg += f"\n  - Skipped: {s}"
         logging.info(msg)
-        if not silent or summary['conflicts'] or summary['errors']:
+        if not silent or summary['removed'] or summary['errors']:
             await self._log_n_send(msg, error=bool(summary['errors']), silent=silent)
         return summary
+
+
+    def _uid_holders(self, spools):
+        '''
+        From one /spool listing: native UID -> spool id, and extra-field UID -> spool ids
+        holding it there (for UIDs not natively linked on that same spool)
+        '''
+        native_holder, extra_holders = {}, {}
+        for spool_info in spools:
+            native = self._get_native_uid_list(spool_info)
+            for u in native:
+                native_holder[u] = spool_info['id']
+            for u in self._get_uid_list_from_extra(spool_info.get('extra')):
+                if u not in native:
+                    extra_holders.setdefault(u, []).append(spool_info['id'])
+        return native_holder, extra_holders
 
 
     async def _klippy_ready(self) -> bool:
@@ -849,12 +919,12 @@ class MmuServer:
                 # Usually a console message failing (Klipper restarting); migrating again is safe
                 logging.warning(f"NFC: startup tag migration couldn't report progress ({str(e)}), continuing in moonraker.log only")
                 summary = await self._migrate_tags(to_native=True, silent=True)
-            if summary and summary['moved']:
+            if summary and (summary['moved'] or summary['removed']):
                 await self._build_spool_location_cache(silent=True)
 
 
-    async def migrate_tags(self, direction='native', dry_run=False, silent=False, spool_id=None) -> bool:
-        '''MMU_SPOOLMAN_TAG MIGRATE=native|extra; spool_id limits it to one spool'''
+    async def migrate_tags(self, direction='native', dry_run=False, silent=False) -> bool:
+        '''MMU_SPOOLMAN_TAG MIGRATE=native|extra (extra is for testing and isn't in the command help)'''
         if not await self._check_init_spoolman(): return False
         if not self.spoolman_has_tags:
             ver = '.'.join(map(str, self.spoolman_version or ()))
@@ -866,8 +936,7 @@ class MmuServer:
             return False
         async with self.cache_lock:
             await self._initialize_mmu() # Console messages go via MMU_LOG, which needs the backend known
-            summary = await self._migrate_tags(to_native=(direction == 'native'), dry_run=dry_run, silent=silent,
-                                               spool_id_filter=int(spool_id) if spool_id is not None else None)
+            summary = await self._migrate_tags(to_native=(direction == 'native'), dry_run=dry_run, silent=silent)
             if summary is None:
                 return False
             if not dry_run:
@@ -935,9 +1004,7 @@ class MmuServer:
                     new_uid_to_spool_id[uid] = spool_id
 
                 if self.spoolman_has_tags:
-                    native = self._get_native_uid_list(spool_info)
-                    new_native_uids.update(native)
-                    legacy_only += sum(1 for u in self._get_uid_list_from_extra(spool_info.get('extra')) if u not in native)
+                    new_native_uids.update(self._get_native_uid_list(spool_info))
 
                 if printer_name and mmu_gate >= 0:
                     if printer_name not in assignments:
@@ -953,6 +1020,11 @@ class MmuServer:
                 if mmu_gate >= 0 and not printer_name:
                     errors += f"\n  - Spool {spool_id} has mmu_gate {mmu_gate} but no printer assigned"
                     sids_to_fix.append(spool_id)
+
+            if self.spoolman_has_tags:
+                # Pending for the startup migration; a UID in several extra fields waits for the user
+                native_holder, extra_holders = self._uid_holders(new_spool_records.values())
+                legacy_only = sum(len(sids) for u, sids in extra_holders.items() if u in native_holder or len(sids) == 1)
 
             for p, gates in assignments.items():
                 for g, spool_list in gates.items():
@@ -1557,9 +1629,11 @@ class MmuServer:
             # to the cached lookup below
             spool_id = None
             native_hit = False
+            scan_ok = False # Spoolman answered, so a non-match proves the tag isn't native
             filament = None # Tag linked to a filament: only auto-create can resolve it
             if self.spoolman_has_tags:
                 scan = await self._scan_tag(uid_norm, gate, tag_format)
+                scan_ok = scan is not None
                 if scan is not None:
                     if scan.get('matched_spool_id') is not None:
                         spool_id = int(scan['matched_spool_id'])
@@ -1618,8 +1692,9 @@ class MmuServer:
                     "NFC lookup: uid=%s cache refresh result=%s" %
                     (uid_norm, spool_id if spool_id is not None else "not found"))
 
-            # Resolved from the extra field with native tags: migrate this UID
-            if spool_id is not None and not native_hit and self.spoolman_has_tags:
+            # Resolved from the extra field with native tags: migrate this UID. Only once Spoolman
+            # confirmed it isn't native - after a failed scan the cache may hold an already-native tag
+            if spool_id is not None and not native_hit and scan_ok and uid_norm not in self.native_uids:
                 await self._link_resolved_tag(spool_id, uid_norm, tag_format)
 
             created = False

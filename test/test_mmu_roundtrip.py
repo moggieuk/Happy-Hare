@@ -567,18 +567,6 @@ class TestSpoolmanTagMigrateCommand(RoundTripTestCase):
         self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native DRYRUN=1')
         self.assertEqual(self.rt.db.tag_links, {})
 
-    def test_gate_limits_migration_to_its_spool(self):
-        self.rt.run_gcode('MMU_GATE_MAP GATE=3 SPOOLID=2')
-        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native GATE=3')
-        self.assertEqual(self.rt.db.spool_native_uids(2), [TAG_B])
-        self.assertEqual(self.rt.db.spool_native_uids(1), [], 'other spools untouched')
-
-    def test_gate_with_no_spool_errors(self):
-        errors_before = len(self.rt.errors)
-        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native GATE=1')
-        self.assertGreater(len(self.rt.errors), errors_before)
-        self.assertEqual(self.rt.db.tag_links, {}, 'nothing migrated')
-
     def test_bad_direction_errors(self):
         with self.assertRaisesRegex(Exception, "MIGRATE must be"):
             self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=sideways')
