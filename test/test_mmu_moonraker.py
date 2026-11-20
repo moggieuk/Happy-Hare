@@ -77,7 +77,7 @@ class TestInitialisation(MoonrakerTestCase):
             'spoolman_pull_gate_map', 'spoolman_clear_spools_for_printer',
             'spoolman_set_spool_gate', 'spoolman_unset_spool_gate',
             'spoolman_get_spool_info', 'spoolman_display_spool_location',
-            'spoolman_get_spool_by_uid', 'spoolman_set_spool_uid',
+            'spoolman_get_spool_by_uid', 'spoolman_set_spool_uid', 'spoolman_migrate_tags',
             'moonraker_push_lane_data', 'moonraker_cleanup_lane_data', 'mmu_td1_request',
         }
         self.assertEqual(set(self.hh.server.remote_methods), expected)
@@ -124,6 +124,41 @@ class TestInitialisation(MoonrakerTestCase):
             self.assertFalse(hh.mmu_server.spoolman_has_extras)
         finally:
             hh.close()
+
+    def test_native_tag_api_off_below_0_27(self):
+        """Spoolman before 0.27 has no tag API (probe gets 404) - legacy extra-field path."""
+        for version in ('0.18.1', '0.26.9'):
+            with self.subTest(version=version):
+                hh = harness(spoolman_version=version)
+                try:
+                    hh.component_init()
+                    self.assertTrue(hh.mmu_server.spoolman_has_extras)
+                    self.assertFalse(hh.mmu_server.spoolman_has_tags)
+                finally:
+                    hh.close()
+
+    def test_native_tag_api_on_from_0_27(self):
+        """Spoolman >= 0.27.0 ships native NFC/RFID tag links."""
+        for version in ('0.27.0', '0.27.3', '1.0.0'):
+            with self.subTest(version=version):
+                hh = harness(spoolman_version=version)
+                try:
+                    hh.component_init()
+                    self.assertTrue(hh.mmu_server.spoolman_has_extras)
+                    self.assertTrue(hh.mmu_server.spoolman_has_tags)
+                finally:
+                    hh.close()
+
+    def test_native_tag_api_off_when_too_old_or_unreachable(self):
+        for kwargs, offline in (({'spoolman_version': '0.17.0'}, False), ({}, True)):
+            with self.subTest(kwargs=kwargs, offline=offline):
+                hh = harness(**kwargs)
+                try:
+                    hh.db.offline = offline
+                    hh.component_init()
+                    self.assertFalse(hh.mmu_server.spoolman_has_tags)
+                finally:
+                    hh.close()
 
     def test_unreachable_spoolman_does_not_raise(self):
         hh = harness()
