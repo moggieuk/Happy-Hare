@@ -81,8 +81,9 @@ class TestModelItself(MotionTestCase):
         self.assertTrue(self.fil.triggered('mmu_entry_0'))
         self.assertFalse(self.fil.triggered('mmu_exit_0'))
 
-    def test_extrusion_stops_tip_at_nozzle_and_retains_full_travel(self):
-        nozzle = self.fil._nozzle_position(0)
+    def test_extrusion_stops_tip_short_of_the_residual_and_retains_full_travel(self):
+        self.hh.mmu.mmu_unit(0).toolhead_wrapper.p.toolhead_residual_filament = 22.5
+        nozzle = self.fil._nozzle_position(0) - 22.5
         self.hh.place_filament(0, position=nozzle - 2.)
         observed = []
         self.fil.observers.append(lambda gate, delta, tip, tail: observed.append(delta))
@@ -762,6 +763,39 @@ class TestLoadGate(MotionTestCase):
         self.assertEqual(overshoot, 0.0)
         self.assertEqual(self.hh.errors, [])
 
+    def test_kalico_homing_move_requiring_gcmd(self):
+        """
+        Newer Kalico made gcmd a required HomingMove argument (and manual_home
+        still has no probe_pos), so the direct HomingMove path must supply one.
+        """
+        import extras.mmu_stepper as mmu_stepper
+        from extras.homing import HomingMove
+        homing = self.hh.printer.lookup_object('homing')
+        original_manual_home = homing.manual_home
+        gcmds = []
+
+        class GcmdHomingMove(HomingMove):
+            def __init__(self, printer, endstops, toolhead, gcmd):
+                gcmds.append(gcmd)
+                HomingMove.__init__(self, printer, endstops, toolhead)
+
+        def kalico_manual_home(toolhead, endstops, pos, speed,
+                               triggered, check_triggered, gcmd):
+            raise AssertionError('manual_home must not be used')
+
+        try:
+            mmu_stepper.HomingMove = GcmdHomingMove
+            homing.manual_home = kalico_manual_home
+            self.hh.mmu._load_gate()
+        finally:
+            mmu_stepper.HomingMove = HomingMove
+            homing.manual_home = original_manual_home
+
+        self.assertEqual(len(gcmds), 1)
+        self.assertIsNotNone(gcmds[0])
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_HOMED_GATE)
+        self.assertEqual(self.hh.errors, [])
+
 
 class TestCheckGate(MotionTestCase):
 
@@ -1408,6 +1442,27 @@ class TestKalico(MotionTestCase):
         physical steps, so only the registration list can catch this.
         """
         _assert_gcode_axis_step_generator_tracking(self)
+
+
+class TestKalicoBleedingEdgeV2(MotionTestCase):
+    """
+    Kalico bleeding-edge-v2: the pre-motion_queuing toolhead, but one that
+    predates unregister_step_generator - it has the step_generators list and
+    register_step_generator only. Taking a manual-mode stepper off the list at
+    klippy:connect crashed with "'ToolHead' object has no attribute
+    'unregister_step_generator'".
+    """
+    SESSION_KWARGS = {'kalico': True, 'unregister_step_generator': False}
+
+    def test_boot_without_unregister_step_generator(self):
+        toolhead = self.hh.printer.lookup_object('toolhead')
+        self.assertFalse(hasattr(toolhead, 'unregister_step_generator'),
+                         'this generation has no unregister_step_generator')
+        _assert_all_mmu_steppers_on_the_emulator(self)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_manual_mode_steppers_off_toolhead_step_generators(self):
+        _assert_step_generator_tracking(self)
 
 
 class TestOldKlipper(MotionTestCase):

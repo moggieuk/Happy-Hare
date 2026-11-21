@@ -2413,6 +2413,14 @@ class TestEmuMcus(unittest.TestCase):
         self.assertEqual([name for name, _ in mcus], ['unit0_gate%d' % i for i in range(5)])
         self.assertTrue(all(value for _, value in mcus), mcus)
 
+    def test_one_gate_on_serial_while_the_rest_follow_the_unit(self):
+        syms = dict(profiles.get('emu').syms, CHOICE_MMU_CONNECTION_TYPE_CANBUS=True,
+                    CHOICE_MMU_CONNECTION_TYPE_SERIAL_3=True)
+        hw = cfg.render(profiles.get('emu').derive('emu_gate3_serial', syms=syms))[HARDWARE]
+        mcus = re.findall(r'^\[mcu unit0_gate(\d)\]\n(serial|canbus_uuid) *:', hw, re.M)
+        self.assertEqual(mcus, [('0', 'canbus_uuid'), ('1', 'canbus_uuid'), ('2', 'canbus_uuid'),
+                                ('3', 'serial'), ('4', 'canbus_uuid')])
+
     def test_one_mcu_and_cpu_sensor_with_per_gate_off(self):
         syms = dict(profiles.get('emu').syms, MMU_HAS_PER_GATE_MCU=False)
         with cfg._env(cfg._SINGLE_UNIT_ENV):

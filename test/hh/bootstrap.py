@@ -105,7 +105,8 @@ class Session:
 
     def __init__(self, profile='boxturtle', adc_api='new', adc_payload='samples',
                  strict_gcode=False, printer_stub=PRINTER_STUB, virtual_nfc=False,
-                 log_dir=None, klipper_aio=True, kalico=False, old_klipper=False):
+                 log_dir=None, klipper_aio=True, kalico=False, old_klipper=False,
+                 unregister_step_generator=True):
         self.klippy = install()
         self.profile = (profile if isinstance(profile, profiles_mod.Profile)
                         else profiles_mod.get(profile))
@@ -123,6 +124,10 @@ class Session:
         # of old_klipper
         self.kalico = kalico
         self.old_klipper = old_klipper
+        # False models a pre-motion_queuing toolhead that predates
+        # unregister_step_generator (Kalico bleeding-edge-v2, mainline before
+        # 8928c394c): the step_generators list and register only
+        self.unregister_step_generator = unregister_step_generator
         self._orig_chelper_get_ffi = None
         self.strict_gcode = strict_gcode
         self.printer_stub = printer_stub
@@ -162,6 +167,8 @@ class Session:
         if kalico_marker:
             printer.add_object('danger_options', object())
         printer.harness_missing_modules = {'motion_queuing'}
+        if not self.unregister_step_generator:
+            printer.harness_toolhead_missing = {'unregister_step_generator'}
         import chelper
         self._orig_chelper_get_ffi = chelper.get_ffi
         chelper.get_ffi = lambda: self._pre_motion_queuing_ffi(printer)
@@ -529,6 +536,8 @@ class Session:
         model._extruder_position = lambda gate: model.layout['extruder_entry']
         model._nozzle_position = lambda gate: (model._extruder_position(gate)
             + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_extruder_to_nozzle)
+        model._residual_filament = lambda gate: (
+            self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_residual_filament)
         toolhead_params = self.mmu.mmu_unit(0).toolhead_wrapper.p
         if 'extruder' not in model_layout:
             model.layout['extruder'] = model._extruder_position(0) - toolhead_params.toolhead_entry_to_extruder
@@ -920,9 +929,9 @@ class Session:
         for name, obj in self.printer.objects.items():
             if not name.startswith('mmu_encoder '):
                 continue
-            counter = counters.get(getattr(obj, 'encoder_pin', None))
-            if counter is None and len(counters) == 1:
-                counter, = counters.values()
+            # MmuEncoder keeps neither its pin nor its counter, only the counter's callback
+            counter = next((counter for counter in counters.values()
+                            if getattr(counter._callback, '__self__', None) is obj), None)
             if counter is not None:
                 out.append((obj, counter))
         return out
@@ -946,6 +955,8 @@ class Session:
             return
         travel = model.travel_over(position, start_tip, start_tail, delta)
         for encoder, counter in self._encoders():
+            if encoder is not self.mmu.mmu_unit(gate).encoder:
+                continue
             # Carry the part-pulse over, or a stream of small extrusion moves never pulses
             pulses = self._encoder_residual.get(counter, 0.) + travel / encoder.resolution
             whole = int(round(pulses))

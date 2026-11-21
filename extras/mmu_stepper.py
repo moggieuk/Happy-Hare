@@ -48,10 +48,19 @@ import logging, collections, math
 from kinematics.extruder import ExtruderStepper, PrinterExtruder
 from .                   import force_move
 from .homing             import HomingMove
+from .mmu.mmu_utils      import mcu_disconnected
 
 # Temporary Kalico compatibility imports
 import inspect, chelper
 from .stepper_enable     import DISABLE_STALL_TIME
+
+
+def _create_homing_move(printer, endstops, toolhead):
+    # Newer Kalico requires the initiating gcmd; it is only stored, so a placeholder will do
+    if 'gcmd' in inspect.signature(HomingMove.__init__).parameters:
+        gcmd = printer.lookup_object('gcode').create_gcode_command("", "", {})
+        return HomingMove(printer, endstops, toolhead, gcmd)
+    return HomingMove(printer, endstops, toolhead)
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -428,7 +437,7 @@ class MmuGenericRail:
         mstepper.set_position(startpos)
         init_mcu_pos = mstepper.get_steppers()[0].get_mcu_position()
 
-        hmove = HomingMove(mstepper.printer, endstops, mstepper)
+        hmove = _create_homing_move(mstepper.printer, endstops, mstepper)
         hmove.homing_move(homepos, hi.speed)
 
         if hi.retract_dist:
@@ -444,7 +453,7 @@ class MmuGenericRail:
                 second_start = [second_start_x, 0., 0., 0.]
                 mstepper.set_position(second_start)
 
-                hmove = HomingMove(mstepper.printer, endstops, mstepper)
+                hmove = _create_homing_move(mstepper.printer, endstops, mstepper)
                 hmove.homing_move(homepos, hi.second_homing_speed)
 
                 if hmove.check_no_movement() is not None:
@@ -727,7 +736,12 @@ class MmuStepper(ExtruderStepper):
                 toolhead.register_step_generator(self.stepper.generate_steps)
                 self._step_gen_registered = True
         elif self._step_gen_registered:
-            toolhead.unregister_step_generator(self.stepper.generate_steps)
+            handler = self.stepper.generate_steps
+            if hasattr(toolhead, 'unregister_step_generator'):
+                toolhead.unregister_step_generator(handler)
+            elif handler in toolhead.step_generators:
+                # Toolheads without unregister_step_generator (e.g. Kalico bleeding-edge-v2)
+                toolhead.step_generators.remove(handler)
             self._step_gen_registered = False
 
 
@@ -759,7 +773,7 @@ class MmuStepper(ExtruderStepper):
 
     def _do_homing_move_legacy(self, endstops, pos, speed, probe_pos, triggered, check_trigger):
         # Kalico's manual_home lacks probe_pos and returns no trigger position.
-        hmove = HomingMove(self.printer, endstops, self)
+        hmove = _create_homing_move(self.printer, endstops, self)
         return hmove.homing_move(pos, speed, probe_pos=probe_pos, triggered=triggered, check_triggered=check_trigger)
 
     #
@@ -964,7 +978,13 @@ class MmuStepper(ExtruderStepper):
             self.next_cmd_time = print_time
 
 
+    def mcu_disconnected(self):
+        return any(mcu_disconnected(s.get_mcu()) for s in self.steppers)
+
+
     def do_enable(self, enable):
+        if self.mcu_disconnected():
+            return
         stepper_names = [s.get_name() for s in self.steppers]
         stepper_enable = self.printer.lookup_object('stepper_enable')
         if hasattr(stepper_enable, 'set_motors_enable'):  # Temporary. Added for Kalico compatibility

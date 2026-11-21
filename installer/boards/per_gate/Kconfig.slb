@@ -5,6 +5,9 @@ if BOARD_TYPE_SLB_1_0
   config PARAM_BOARD_TYPE
     default "SLB v1"
 
+  config BOOL_EMU_MULTI_LED_BUTTON_PCB
+    default y
+
   # PTC heater output for a [heater_generic]: PB3 (24V, 5A max). Thermistor: TEMP PB12
 
   choice CHOICE_MMU_CONNECTION_TYPE
@@ -39,7 +42,8 @@ if BOARD_TYPE_SLB_1_0
       default "^$(MCU_NAME):PA0"
 
     config PIN_EJECT_BUTTON_0
-      default "^!$(MCU_NAME):PB2"
+      default "^!$(MCU_NAME):PB2" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+      default "^$(MCU_NAME):PB2"
 
     config PIN_NEOPIXEL
       default "$(MCU_NAME):PA4"
@@ -110,7 +114,8 @@ if BOARD_TYPE_SLB_1_0
         default "^$(MCU_NAME)_gate$(gate):PA0"
 
       config PIN_EJECT_BUTTON_$(gate)
-        default "^!$(MCU_NAME)_gate$(gate):PB2"
+        default "^!$(MCU_NAME)_gate$(gate):PB2" if BOOL_EMU_MULTI_LED_BUTTON_PCB
+        default "^$(MCU_NAME)_gate$(gate):PB2"
 
       config PIN_NEOPIXEL_$(gate)
         default "$(MCU_NAME)_gate$(gate):PA4"

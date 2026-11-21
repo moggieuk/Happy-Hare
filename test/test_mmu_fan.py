@@ -133,10 +133,10 @@ class TestMmuFanRender(unittest.TestCase):
         self.assertEqual(params['default_fan_temperature_source'], 'mcu')
         self.assertNotIn('fan_temperature_sources', params)
 
-    def test_emu_defaults_fan_source_to_mcu_on_both_boards(self):
+    def test_emu_defaults_fan_source_to_mcu_on_all_boards(self):
         # Neither profile sets a temperature source symbol, so this pins the
-        # computed Kconfig default for the EMU on its two supported boards.
-        for profile_name in ('emu', 'emu_ebb'):
+        # computed Kconfig default for each supported EMU board.
+        for profile_name in ('emu', 'emu_ebb', 'emu_emb_c'):
             profile = profiles.get(profile_name)
             with self.subTest(profile=profile_name):
                 self.assertNotIn(

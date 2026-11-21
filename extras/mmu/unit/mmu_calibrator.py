@@ -435,12 +435,16 @@ class MmuCalibrator:
             mmu.log_debug(msg)
 
         if rd != UNCALIBRATED:
-            # Now adjust effected calibrated bowden lengths
+            # Now adjust effected calibrated bowden lengths. The length is in gear mm so keeping the same
+            # step count at the new rd scales it by rd/prev_rd. A bowden length shared across gates with
+            # per-gate rd's can't be attributed to one gate's rd, so leave it alone.
             update_bowdens = updated_gates if mmu_unit.variable_bowden_lengths else [gate]
+            if not mmu_unit.variable_bowden_lengths and mmu_unit.variable_rotation_distances:
+                update_bowdens = []
             for g in update_bowdens:
                 prev_bowden = self.get_bowden_length(g)
                 if prev_bowden != UNCALIBRATED:
-                    new_bl = prev_bowden * (prev_rd / rd) # Adjust for same effective calibrated distance
+                    new_bl = prev_bowden * (rd / prev_rd)
                     self.update_bowden_length(new_bl, g, console_msg=console_msg, reason="updated")
 
         # Update calibration status

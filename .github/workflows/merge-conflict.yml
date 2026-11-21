@@ -4,8 +4,9 @@ on:
   # Metadata only: never check out or execute code from a PR.
   pull_request_target:
     types: [opened, synchronize, reopened, edited]
+  # A PR's base moving can create conflicts; PR branch pushes arrive as pull_request_target.
   push:
-    branches: ['**']
+    branches: [main, development]
   schedule:
     - cron: '23 * * * *'
   workflow_dispatch:
@@ -21,7 +22,10 @@ concurrency:
 
 jobs:
   label:
-    if: github.event.repository.fork == false
+    # An edit only matters when it retargets the PR; title/body edits cannot change mergeability.
+    if: >-
+      github.event.repository.fork == false &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

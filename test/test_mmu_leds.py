@@ -393,6 +393,14 @@ LEDS_OPTIONAL_RGB = profiles.BOXTURTLE.derive(
     })
 
 
+class TestAnimationOption(LedTestCase):
+    """'animation: False' in the rendered config must turn animation off, not stay truthy."""
+    PROFILE = profiles.BOXTURTLE.derive('leds_animation_off', syms={'BOOL_ENABLE_LEDS_ANIMATION': False})
+
+    def test_animation_false_is_read_as_false(self):
+        self.assertIs(self.unit.leds.animation, False)
+
+
 class TestOptionalStaticRgb(LedTestCase):
     """
     The (r,g,b) of an effect_* mapping is optional, and the whole mapping may be empty.

@@ -18,6 +18,8 @@
 #
 import logging, time
 
+from .mmu.mmu_utils import mcu_disconnected
+
 SERVO_SIGNAL_PERIOD = 0.020
 PIN_MIN_TIME = 0.100
 
@@ -62,7 +64,7 @@ class MmuServo:
 
 
     def _set_pwm(self, print_time, value, duration):
-        if value == self.last_value:
+        if value == self.last_value or mcu_disconnected(self.mcu_servo.get_mcu()):
             return
 
         print_time = max(print_time, self.last_value_time + PIN_MIN_TIME)
