@@ -43,6 +43,17 @@ class TestQidiPlus4Toolhead(unittest.TestCase):
         self.assertTrue(self.kconfig.is_enabled("MMU_HAS_TOOLHEAD_CUTTER"))
         self.assertEqual(self.kconfig.get("VAR_CUT_TIP_CUTTER_BEFORE_EXTRUDER"), "True")
 
+    def test_plus4_box_reads_pb0_as_its_motion_sensor(self):
+        # The Plus4 hub has a filament motion sensor on PB0, not the Q2/Max4 buffer
+        self.assertFalse(self.kconfig.is_enabled("OPTION_QIDI_BOX_BUFFER"))
+        self.assertTrue(self.kconfig.is_enabled("MMU_HAS_ENCODER"))
+        self.assertFalse(self.kconfig.is_enabled("MMU_HAS_SYNC_FEEDBACK_BUFFER"))
+
+    def test_hub_buffer_can_still_be_chosen(self):
+        kconfig = _parse("qidi_plus4_buffer_hub", dict(PLUS4_ON_BOX, OPTION_QIDI_BOX_BUFFER=True))
+        self.assertTrue(kconfig.is_enabled("MMU_HAS_SYNC_FEEDBACK_BUFFER"))
+        self.assertFalse(kconfig.is_enabled("MMU_HAS_ENCODER"))
+
     def test_cutter_position_can_be_overridden(self):
         kconfig = _parse("qidi_plus4_cutter_after", dict(
             PLUS4_ON_BOX, BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER=False))

@@ -552,6 +552,8 @@ class TestEveryBootableProfile(unittest.TestCase):
         from extras.mmu.unit.mmu_toolhead_wrapper import MmuHallEndstop
         unit = hh.mmu.mmu_unit(0)
         self.assertIsInstance(unit.toolhead_wrapper.sensors['extruder'], MmuHallEndstop)
+        self.assertIsNotNone(unit.encoder)      # The Plus4 hub's motion sensor on PB0
+        self.assertIsNone(unit.buffer)
         self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
         cutter = hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS').variables
         self.assertTrue(cutter['cutter_before_extruder'])

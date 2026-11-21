@@ -27,6 +27,7 @@ config MMU_TYPE_QIDI_BOX_1_0
 if MMU_TYPE_QIDI_BOX_1_0
   config OPTION_QIDI_BOX_BUFFER
     bool "Q2/Max4 hub buffer (not a Plus4)"
+    default n if TOOLHEAD_TYPE_QIDI_PLUS4
     default y
     help
       The Box's hub decides what its PB0 input reads. The Q2 and Max4 hubs

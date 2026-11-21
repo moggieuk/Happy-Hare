@@ -111,6 +111,27 @@ class TestUnload(Plus4Case):
         self.assertIn(('Verifying cut off extruder sensor', 'extruder'), self.moves)
 
 
+class TestFourGateCycle(unittest.TestCase):
+    """The commissioning check, in simulation: two load, cut and unload cycles per gate."""
+
+    def test_two_cycles_on_every_gate(self):
+        hh = session('qidi_plus4')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        hh.heat_extruder(220)
+        for gate in range(4):
+            hh.place_filament(gate, position=TIP_AT_GATE)
+            hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+        for gate in range(4):
+            for cycle in range(2):
+                with self.subTest(gate=gate, cycle=cycle):
+                    hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                    hh.run_gcode('MMU_LOAD')
+                    self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+                    hh.run_gcode('MMU_UNLOAD')
+                    self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+                    self.assertEqual(hh.errors, [])
+
 class TestMotorsOffThenHoming(Plus4Case):
     """
     Happy Hare #1532: on v3, any homing move after MMU_MOTORS_OFF shut Klipper down with
