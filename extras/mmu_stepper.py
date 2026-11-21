@@ -55,6 +55,14 @@ import inspect, chelper
 from .stepper_enable     import DISABLE_STALL_TIME
 
 
+def _create_homing_move(printer, endstops, toolhead):
+    # Newer Kalico requires the initiating gcmd; it is only stored, so a placeholder will do
+    if 'gcmd' in inspect.signature(HomingMove.__init__).parameters:
+        gcmd = printer.lookup_object('gcode').create_gcode_command("", "", {})
+        return HomingMove(printer, endstops, toolhead, gcmd)
+    return HomingMove(printer, endstops, toolhead)
+
+
 # -----------------------------------------------------------------------------------------------------------
 # MmuGenericRail: single-stepper rail with multiple endstops, direction reversal, etc
 # -----------------------------------------------------------------------------------------------------------
@@ -429,7 +437,7 @@ class MmuGenericRail:
         mstepper.set_position(startpos)
         init_mcu_pos = mstepper.get_steppers()[0].get_mcu_position()
 
-        hmove = HomingMove(mstepper.printer, endstops, mstepper)
+        hmove = _create_homing_move(mstepper.printer, endstops, mstepper)
         hmove.homing_move(homepos, hi.speed)
 
         if hi.retract_dist:
@@ -445,7 +453,7 @@ class MmuGenericRail:
                 second_start = [second_start_x, 0., 0., 0.]
                 mstepper.set_position(second_start)
 
-                hmove = HomingMove(mstepper.printer, endstops, mstepper)
+                hmove = _create_homing_move(mstepper.printer, endstops, mstepper)
                 hmove.homing_move(homepos, hi.second_homing_speed)
 
                 if hmove.check_no_movement() is not None:
@@ -765,7 +773,7 @@ class MmuStepper(ExtruderStepper):
 
     def _do_homing_move_legacy(self, endstops, pos, speed, probe_pos, triggered, check_trigger):
         # Kalico's manual_home lacks probe_pos and returns no trigger position.
-        hmove = HomingMove(self.printer, endstops, self)
+        hmove = _create_homing_move(self.printer, endstops, self)
         return hmove.homing_move(pos, speed, probe_pos=probe_pos, triggered=triggered, check_triggered=check_trigger)
 
     #
