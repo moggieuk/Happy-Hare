@@ -272,8 +272,8 @@ class MmuHallEndstop(MmuVirtualEndstopSensor):
         self.trigger_handler(read_time, is_present)
 
 
-    def get_status(self, eventtime):
-        status = self.runout_helper.get_status(eventtime)
+    def get_status(self, eventtime=None):
+        status = super().get_status(eventtime)
         status.update({
             "Diameter": self.diameter,
             "Raw": self.lastFilamentWidthReading + self.lastFilamentWidthReading2,

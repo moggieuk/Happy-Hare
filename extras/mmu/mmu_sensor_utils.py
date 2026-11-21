@@ -388,13 +388,18 @@ class MmuSensor:
         )
 
         self.runout_helper = ro_helper
-        self.get_status = ro_helper.get_status
 
         # This will make sensor visible in UI's like Mainsail/Fluidd and allow it to be disabled
         if register:
             self.printer.add_object(f"filament_switch_sensor {self.registration_name}", self)
 
         logging.info(f"MMU: Created MmuSensor({name})")
+
+
+    # A method, not an instance attribute bound to the runout helper, so that a subclass
+    # can extend it
+    def get_status(self, eventtime=None):
+        return self.runout_helper.get_status(eventtime)
 
 
 

@@ -64,6 +64,15 @@ class TestHallAsExtruderSensor(_HallEndstopBoot):
         self.feed(0.0)
         self.assertFalse(sm.check_sensor('extruder'))
 
+    def test_status_reports_the_hall_reading(self):
+        # What Mainsail/Fluidd show for the sensor, so a user can calibrate against it
+        status = self.hh.printer.lookup_object('filament_switch_sensor extruder').get_status
+        self.feed(1.0)
+        reading = status(self.hh.reactor.monotonic())
+        self.assertTrue(reading['filament_detected'])
+        self.assertEqual(reading['Raw'], 20000)
+        self.assertGreater(reading['Diameter'], 1.0)
+
 
 class TestHallAsToolheadSensor(_HallEndstopBoot):
     target = 'toolhead'
