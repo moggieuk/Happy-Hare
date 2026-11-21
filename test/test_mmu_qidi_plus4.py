@@ -18,7 +18,7 @@ import sys
 import unittest
 from unittest import mock
 
-from test.hh import session
+from test.hh import profiles, session
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -159,6 +159,41 @@ class TestMotorsOffThenHoming(Plus4Case):
         self.assertEqual(self.hh.errors, [])
         self.assertTrue(self.positions)
         self.assertEqual(self.mmu.gate_status[1], 0)    # GATE_EMPTY
+
+
+class TestDoublePressCut(unittest.TestCase):
+    """
+    QIDI's stock cut presses the cutter twice, holding each press for 0.5 s, because one
+    press can leave the filament joined. On v4 that is configuration: _MMU_CUT_TIP_VARS
+    cut_iterations (press, dwell cut_dwell_time, release, then again) - no code needed.
+    The cut motion macro's body runs here, so this is the shipped macro's own G-code.
+    """
+
+    def presses(self, profile):
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        hh.printer.harness_macro_effects['_CUT_TIP_DO_CUT_MOTION'] = lambda macro, gcmd: macro.run_body(gcmd)
+        start = len(hh.gcode.executed)
+        hh.run_gcode('_CUT_TIP_DO_CUT_MOTION PIN_PARK_X_LOC=304 PIN_PARK_Y_LOC=25')
+        self.assertEqual(hh.errors, [])
+        lines = hh.gcode.executed[start:]
+        events = [line.split('EVENT=')[1].strip('"') for line in lines if line.startswith('_MMU_SEND_TELEMETRY')]
+        dwells = [line for line in lines if line.startswith('G4 ')]
+        return events, dwells
+
+    def test_two_presses_with_half_second_holds_when_configured(self):
+        events, dwells = self.presses(profiles.get('qidi_plus4').derive('qidi_plus4_double_cut', syms={
+            'VAR_CUT_TIP_ITERATIONS': 2, 'VAR_CUT_TIP_CUT_DWELL_TIME': 500}))
+        self.assertEqual(events, ['cut', 'release', 'cut', 'release'])
+        self.assertEqual(dwells[0], 'G4 P500.0')     # The hold at the bottom of each press
+        self.assertEqual(dwells[-1], 'G4 P500.0')
+
+    def test_one_press_by_default(self):
+        for name in ('qidi_plus4', 'qidi'):
+            with self.subTest(profile=name):
+                events, _ = self.presses(name)
+                self.assertEqual(events, ['cut', 'release'])
 
 
 del Plus4Case
