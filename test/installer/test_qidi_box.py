@@ -2,6 +2,10 @@
 
 import re
 import unittest
+from unittest.mock import patch
+
+import kconfiglib
+import kconfigfunctions
 
 from test.hh import cfg, profiles, session
 
@@ -346,6 +350,60 @@ class TestQidiBoxDryerHardware(unittest.TestCase):
             self.assertIsNotNone(hh.printer.lookup_object("heater_generic unit0_heater", None))
         finally:
             hh.close()
+
+
+class TestQidiBoxSerialDefault(unittest.TestCase):
+    """The board picks the Box's USB serial device from /dev/serial/by-id.
+
+    Stock firmware names itself after the board revision (V1 on early Boxes, V2 on
+    later ones); mainline firmware names itself after the chip. Kconfig lists the
+    devices with $(shell, ls ...) at parse time, so the listing is faked here.
+    """
+
+    V1_STOCK = "/dev/serial/by-id/usb-Klipper_QIDI_BOX_V1_1.1.1_31FFD8054E4B383732580111-if00"
+    V2_STOCK = "/dev/serial/by-id/usb-Klipper_QIDI_BOX_V2_1.0.0_31FFD8054E4B383732580543-if00"
+    MAINLINE = "/dev/serial/by-id/usb-Klipper_stm32f401xc_31FFD8054E4B383732580543-if00"
+    # A Plus4's Cartographer probe sits beside the Box and must never be picked
+    CARTOGRAPHER = "/dev/serial/by-id/usb-Cartographer_614e_0D0005800E4330394D360000-if00"
+    OTHER_KLIPPER = "/dev/serial/by-id/usb-Klipper_rp2040_E66138935F4B2F28-if00"
+
+    def _default_device(self, *devices):
+        real_shell = kconfiglib._shell_fn
+
+        def shell(kconf, name, command):
+            if "/dev/serial/by-id" in command:
+                return " ".join(devices)
+            return real_shell(kconf, name, command)
+
+        with patch.object(kconfiglib, "_shell_fn", shell), cfg._env(cfg._SINGLE_UNIT_ENV):
+            kconfig = cfg._kconfig("qidi_box_serial", {"MMU_TYPE_QIDI_BOX_1_0": True})
+        selection = kconfig.named_choices["CHOICE_MMU_SERIAL_CONNECTION"].selection
+        return selection.name if selection else None
+
+    @staticmethod
+    def _choice(device):
+        return kconfigfunctions.mmu_serial_choice(None, None, device)
+
+    def test_v1_stock_firmware_is_the_default(self):
+        self.assertEqual(self._default_device(self.CARTOGRAPHER, self.V1_STOCK),
+                         self._choice(self.V1_STOCK))
+
+    def test_v2_stock_firmware_is_the_default(self):
+        self.assertEqual(self._default_device(self.CARTOGRAPHER, self.V2_STOCK),
+                         self._choice(self.V2_STOCK))
+
+    def test_mainline_firmware_is_the_default(self):
+        self.assertEqual(self._default_device(self.CARTOGRAPHER, self.MAINLINE),
+                         self._choice(self.MAINLINE))
+
+    def test_stock_firmware_wins_over_another_stm32_klipper_device(self):
+        self.assertEqual(
+            self._default_device(self.OTHER_KLIPPER, self.MAINLINE, self.V1_STOCK),
+            self._choice(self.V1_STOCK))
+
+    def test_without_a_klipper_device_the_user_enters_one(self):
+        self.assertEqual(self._default_device(self.CARTOGRAPHER),
+                         "CHOICE_MMU_SERIAL_DEVICE_OTHER")
 
 
 if __name__ == "__main__":

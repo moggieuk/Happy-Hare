@@ -14,7 +14,8 @@ if BOARD_TYPE_QIDI_BOX_2_0
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   endchoice
   choice CHOICE_MMU_SERIAL_CONNECTION
-    # Stock firmware: usb-Klipper_QIDI_BOX_V2_*
+    # Stock firmware, either board revision: usb-Klipper_QIDI_BOX_V1_* or
+    # usb-Klipper_QIDI_BOX_V2_* (serial_device matches on "Klipper_QIDI_BOX")
     default $(mmu_serial_config,1,QIDI_BOX) if $(serial_exists,1,QIDI_BOX)
     # Mainline firmware: usb-Klipper_stm32f401xc_*
     default $(mmu_serial_config,1,stm32f401xc) if $(serial_exists,1,stm32f401xc)
