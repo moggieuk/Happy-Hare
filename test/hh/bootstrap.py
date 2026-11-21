@@ -105,7 +105,8 @@ class Session:
 
     def __init__(self, profile='boxturtle', adc_api='new', adc_payload='samples',
                  strict_gcode=False, printer_stub=PRINTER_STUB, virtual_nfc=False,
-                 log_dir=None, klipper_aio=True, kalico=False, old_klipper=False):
+                 log_dir=None, klipper_aio=True, kalico=False, old_klipper=False,
+                 unregister_step_generator=True):
         self.klippy = install()
         self.profile = (profile if isinstance(profile, profiles_mod.Profile)
                         else profiles_mod.get(profile))
@@ -123,6 +124,10 @@ class Session:
         # of old_klipper
         self.kalico = kalico
         self.old_klipper = old_klipper
+        # False models a pre-motion_queuing toolhead that predates
+        # unregister_step_generator (Kalico bleeding-edge-v2, mainline before
+        # 8928c394c): the step_generators list and register only
+        self.unregister_step_generator = unregister_step_generator
         self._orig_chelper_get_ffi = None
         self.strict_gcode = strict_gcode
         self.printer_stub = printer_stub
@@ -162,6 +167,8 @@ class Session:
         if kalico_marker:
             printer.add_object('danger_options', object())
         printer.harness_missing_modules = {'motion_queuing'}
+        if not self.unregister_step_generator:
+            printer.harness_toolhead_missing = {'unregister_step_generator'}
         import chelper
         self._orig_chelper_get_ffi = chelper.get_ffi
         chelper.get_ffi = lambda: self._pre_motion_queuing_ffi(printer)
