@@ -902,7 +902,7 @@ The test files, grouped by what they're about:
 | `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
 | `test_mmu_buttons_compat.py` | 1 | switch sensors on Klipper without `register_debounce_button` |
 | `test_mmu_hall_endstop.py` | 6 | the hall-effect `[mmu_toolhead]` endstop booting on ADC pins and following their readings |
-| `test_mmu_qidi_plus4.py` | 10 | the QIDI Box on a Plus4 toolhead: load homing on the hall sensor, unload parking, the cut before the extruder, two load/cut/unload cycles on every gate, `MMU_MOTORS_OFF` then homing (#1532), the double-press cut |
+| `test_mmu_qidi_plus4.py` | 11 | the QIDI Box on a Plus4 toolhead: load homing on the hall sensor, unload parking, the cut before the extruder, two load/cut/unload cycles on every gate, `MMU_MOTORS_OFF` then homing (#1532), the double-press cut |
 | **Filament handling** | | |
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |

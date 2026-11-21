@@ -81,15 +81,36 @@ class TestQidiPlus4Toolhead(unittest.TestCase):
         self.assertTrue(kconfig.is_enabled("SW9"))
         self.assertTrue(kconfig.is_enabled("SHOW_SHARED_WARNINGS"))
 
-    def test_placeholder_values_are_marked_unmeasured_where_they_render(self):
-        # Until a commissioned Plus4 is measured, nobody reading the rendered config may
-        # mistake these for calibration
-        macro_vars = self.rendered["config/base/mmu_macro_vars.cfg"]
-        for text, values in ((self.machine, ("toolhead_extruder_to_nozzle", "hall_raw_dia1")),
-                             (macro_vars, ("blade_pos", "pin_loc_xy"))):
-            for value in values:
-                with self.subTest(value=value):
-                    self.assertRegex(text, r"(?s)# UNMEASURED:.*%s" % value)
+    def test_sourced_values(self):
+        # Cutter: QIDI's stock box_macros.cfg. Distances: qidi-community/plus4-cad and
+        # Bunny-Box's Plus4 config, which agree to within about 2mm
+        expected = {
+            "PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE": "72",
+            "VAR_CUT_TIP_BLADE_POS": "92",
+            "VAR_CUT_TIP_PIN_LOC_XY": "304, 20",
+            "VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY": "304, 4.3",
+            "VAR_CUT_TIP_ITERATIONS": "2",
+            "VAR_CUT_TIP_CUT_DWELL_TIME": "500",
+        }
+        for symbol, value in expected.items():
+            with self.subTest(symbol=symbol):
+                self.assertEqual(self.kconfig.get(symbol), value)
+
+    def test_pushback_clears_the_gears(self):
+        # v4 needs the pushback to carry the fragment 3mm past the gears, within the retract
+        blade = float(self.kconfig.get("VAR_CUT_TIP_BLADE_POS"))
+        gears = float(self.kconfig.get("PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE"))
+        pushback = float(self.kconfig.get("VAR_CUT_TIP_PUSHBACK_LENGTH"))
+        retract = float(self.kconfig.get("VAR_CUT_TIP_RETRACT_LENGTH"))
+        residual = float(self.kconfig.get("PARAM_TOOLHEAD_RESIDUAL_FILAMENT"))
+        self.assertGreaterEqual(pushback, blade - gears + 3.)
+        self.assertGreaterEqual(retract - residual, pushback)
+
+    def test_only_the_unconfirmed_value_is_marked_unmeasured(self):
+        # Nobody has published the hall sensor's distance to the gears; v4 can measure it
+        # on the printer. Everything else is sourced, so nothing else is marked.
+        self.assertRegex(self.machine, r"# UNMEASURED:.*toolhead_entry_to_extruder")
+        self.assertNotIn("UNMEASURED", self.rendered["config/base/mmu_macro_vars.cfg"])
 
     def test_other_toolheads_carry_no_unmeasured_marker(self):
         rendered = cfg.render(profiles.Profile("qidi_q2_defaults",

@@ -103,12 +103,13 @@ class TestUnload(Plus4Case):
         self.assertFalse(self.fil.triggered('unit0:mmu_shared_exit'))
         self.assertAlmostEqual(hub - self.fil.tip[0], abs(self.unit.p.gate_parking_distance), places=1)
 
-    def test_unload_cuts_before_the_extruder_and_verifies_on_the_hall_sensor(self):
-        start = len(self.hh.gcode.executed)
+    def test_unload_cuts_before_the_extruder_and_leaves_the_hall_sensor_clear(self):
+        start, console = len(self.hh.gcode.executed), len(self.hh.console)
         self.hh.run_gcode('MMU_UNLOAD')
         self.assertEqual(self.hh.errors, [])
         self.assertIn('_MMU_CUT_TIP', [line.split()[0] for line in self.hh.gcode.executed[start:] if line.strip()])
-        self.assertIn(('Verifying cut off extruder sensor', 'extruder'), self.moves)
+        self.assertTrue(any('blade before extruder' in line for line in self.hh.console[console:]))
+        self.assertFalse(self.hall_reading()[1])
 
 
 class TestFourGateCycle(unittest.TestCase):
@@ -210,10 +211,16 @@ class TestDoublePressCut(unittest.TestCase):
         self.assertEqual(dwells[0], 'G4 P500.0')     # The hold at the bottom of each press
         self.assertEqual(dwells[-1], 'G4 P500.0')
 
-    def test_one_press_by_default(self):
-        for name in ('qidi_plus4', 'qidi'):
-            with self.subTest(profile=name):
-                events, _ = self.presses(name)
+    def test_the_plus4_preset_presses_twice_like_qidi(self):
+        events, dwells = self.presses('qidi_plus4')
+        self.assertEqual(events, ['cut', 'release', 'cut', 'release'])
+        self.assertEqual(dwells[0], 'G4 P500.0')
+
+    def test_one_press_otherwise(self):
+        for profile in ('qidi', profiles.get('qidi_plus4').derive('qidi_plus4_single_cut',
+                                                                   syms={'VAR_CUT_TIP_ITERATIONS': 1})):
+            with self.subTest(profile=getattr(profile, 'name', profile)):
+                events, _ = self.presses(profile)
                 self.assertEqual(events, ['cut', 'release'])
 
 

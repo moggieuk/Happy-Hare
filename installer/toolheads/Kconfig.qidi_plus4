@@ -9,12 +9,16 @@ config TOOLHEAD_TYPE_QIDI_PLUS4
 # [hall_filament_width_sensor] adc1: PA2, adc2: PA3). Its cutter blade sits before
 # the extruder gears.
 #
-# UNMEASURED: every dimension and the hall calibration below is a placeholder chosen to
-# be self-consistent (blade between the hall sensor and the gears), not a measurement.
-# TOOLHEAD_PRESET_UNMEASURED makes the rendered config say so; drop it once measured.
+# Sources: the cutter motion is QIDI's stock box_macros.cfg (BOX_MOVE_TO_CUTTER,
+# BOX_DO_CUT). The extruder-to-nozzle and blade distances come from the community toolhead
+# model (github.com/qidi-community/plus4-cad, Toolhead_(assembled).step: gears ~73mm and
+# blade ~91mm above the nozzle tip) and Bunny-Box's Plus4 config (72 and 92), which agree
+# to within about 2mm. The hall sensor's distance to the gears is published nowhere, so it
+# stays marked unmeasured; MMU_CALIBRATE_BOWDEN to the sensor and to gear collision (with
+# an encoder) differ by exactly that distance.
 if TOOLHEAD_TYPE_QIDI_PLUS4
   config TOOLHEAD_PRESET_UNMEASURED
-    default y
+    default "toolhead_entry_to_extruder"
   config PARAM_TOOLHEAD_TYPE
     default "QIDI Plus4"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
@@ -44,22 +48,27 @@ if TOOLHEAD_TYPE_QIDI_PLUS4
   config BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER
     default y
 
-  # Cutter: blade 8mm before the gears; the pushback must clear them by
-  # CUT_PUSHBACK_CLEARANCE. Pin coordinates are Bunny-Box's Plus4 values
+  # Cutter: blade 20mm before the gears, so the pushback must carry the fragment 23mm
+  # (CUT_PUSHBACK_CLEARANCE past the gears) and the retract must cover the pushback.
+  # QIDI presses twice (Y4.5 then Y4.3, 0.5s each); here both presses go to Y4.3
   if MMU_HAS_TOOLHEAD_CUTTER
     config VAR_CUT_TIP_BLADE_POS
-      default 80
+      default 92
     config VAR_CUT_TIP_RETRACT_LENGTH
-      default 40
+      default 30
     config VAR_CUT_TIP_PUSHBACK_LENGTH
-      default 20
+      default 25
+    config VAR_CUT_TIP_ITERATIONS
+      default 2
+    config VAR_CUT_TIP_CUT_DWELL_TIME
+      default 500
     choice CHOICE_CUT_TIP_CUTTING_AXIS
       default CHOICE_CUT_TIP_CUTTING_AXIS_Y
     endchoice
     config VAR_CUT_TIP_PIN_LOC_XY
       default "304, 20"
     config VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY
-      default "304, 4.35"
+      default "304, 4.3"
     config VAR_CUT_TIP_PIN_PARK_DIST
       default 5
   endif
