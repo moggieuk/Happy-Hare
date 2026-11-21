@@ -168,3 +168,27 @@ del AfterExtruderGoldenCase
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestSafeMarginAtAxisLimit(unittest.TestCase):
+    """A safe margin reaching past the axis maximum is clamped, not rejected by _SAFE_G1 (#1512)."""
+
+    def test_approach_and_retreat_clamped_to_axis_max(self):
+        hh = session(profiles.get('3ms').derive('3ms_cutter', syms={'MMU_HAS_TOOLHEAD_CUTTER': True}))
+        hh.boot(calibrate=True)
+        self.addCleanup(hh.close)
+        for name in ('_CUT_TIP_MOVE_TO_CUTTER_PIN', '_CUT_TIP_DO_CUT_MOTION'):
+            hh.printer.harness_macro_effects[name] = lambda macro, gcmd: macro.run_body(gcmd)
+        axis_max = hh.printer.lookup_object('toolhead').get_status(0)['axis_maximum'][0]
+        x = axis_max - 3.0 # Margin of 30 would exceed the limit
+        start = len(hh.gcode.executed)
+        hh.gcode.errors.clear()
+        hh.run_gcode('_CUT_TIP_MOVE_TO_CUTTER_PIN PIN_PARK_X_LOC=%s PIN_PARK_Y_LOC=0' % x)
+        hh.run_gcode('_CUT_TIP_DO_CUT_MOTION PIN_PARK_X_LOC=%s PIN_PARK_Y_LOC=0' % x)
+        self.assertEqual(hh.gcode.errors, [])
+        safe_moves = [c for c in hh.gcode.executed[start:] if c.startswith('_SAFE_G1')]
+        self.assertTrue(safe_moves)
+        for c in safe_moves:
+            for part in c.split():
+                if part.startswith('X='):
+                    self.assertLessEqual(float(part[2:]), axis_max, c)
