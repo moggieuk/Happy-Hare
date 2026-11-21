@@ -442,6 +442,8 @@ class InMemorySpoolman:
                 results = [f for f in results
                            if f.get('vendor', {}).get('name', '').lower()
                            == vendor_name.lower()]
+            if self.has_tag_api: # Like spools, real 0.27 filaments carry their tags
+                results = [dict(f, tags=self._tags_for('filament', f['id'])) for f in results]
             return Response(200, results)
         if method == 'POST':
             data = dict(body or {})

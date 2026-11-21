@@ -117,6 +117,21 @@ class TestFilamentDetails(LiveTestCase):
         self.assertIn("'color': 'abcdef'", cmds[0])
         self.assertNotIn('REPLACE=1', cmds[0])
 
+    def test_tag_added_in_spoolman_on_a_gate_is_forwarded(self):
+        """Klipper's NFC neighbour check uses the gate's RFIDS set, so tag edits must reach it."""
+        self.db.link_tag(UID, spool_id=1)
+        self.send('updated', 'spool', self.db._render_spool(1))
+        cmds = self.gate_map_commands()
+        self.assertEqual(len(cmds), 1)
+        self.assertIn("0: {", cmds[0])
+        self.assertIn(UID, cmds[0])
+
+    def test_tag_on_a_spool_not_on_a_gate_is_not_forwarded(self):
+        self.db.link_tag(UID, spool_id=3)
+        self.send('updated', 'spool', self.db._render_spool(3))
+        self.assertEqual(self.gate_map_commands(), [])
+        self.assertEqual(self.server.uid_to_spool_id.get(UID), 3, 'cache still updated')
+
     def test_spool_not_on_a_gate_is_not_forwarded(self):
         self.edit_spool(3, filament={'color_hex': 'ABCDEF'})
         self.assertEqual(self.gate_map_commands(), [])

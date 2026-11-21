@@ -166,6 +166,7 @@ class TestStartupMigration(TagTestCase):
         msgs = [m for m in self.hh.gcode('MMU_LOG') if 'NFC' in m]
         self.assertEqual(len(msgs), 1, 'one console message')
         self.assertIn('NFC: tag migration (extra field -> native tags): 1 tag(s) moved on 1 spool(s)', msgs[0])
+        self.assertIn('Migrated: tag %s on spool 1' % LEGACY_UID, msgs[0], 'each spool listed')
 
     def test_second_startup_does_nothing(self):
         before = len(self.tag_requests())
@@ -286,6 +287,21 @@ class TestStartupMigration(TagTestCase):
         self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID])
         self.assertEqual(self.db.spool_native_uids(2), [NATIVE_UID])
         self.assertEqual(klippy.pause_calls, 0)
+
+    def test_cache_rebuilt_when_the_summary_fails(self):
+        """The silent re-run finds nothing to do, so the rebuild can't depend on its summary."""
+        self.make_legacy()
+        klippy, server = self.hh.klippy, self.hh.mmu_server
+        real_gcode = klippy.run_gcode
+        async def flaky(script, default=None):
+            if 'tag migration' in script:
+                raise RuntimeError('Printer is not ready')
+            return await real_gcode(script, default)
+        klippy.run_gcode = flaky
+        self.hh.run(server._auto_migrate_tags(wait=0, attempts=1))
+        self.assertEqual(self.db.spool_native_uids(1), [LEGACY_UID], 'migrated')
+        self.assertIn(LEGACY_UID, server.native_uids, 'cache rebuilt')
+        self.assertEqual(server.legacy_only_uid_count, 0, 'cache rebuilt')
 
     def test_quiet_migration_never_touches_the_console(self):
         self.make_legacy()
@@ -430,6 +446,8 @@ class TestMigrateCommand(TagTestCase):
         msgs = self.console()
         self.assertEqual(len(msgs), 1, 'one console message')
         self.assertIn('2 tag(s) moved on 2 spool(s)', msgs[0])
+        self.assertIn('Migrated: tag %s on spool 1' % LEGACY_UID, msgs[0])
+        self.assertIn('Migrated: tag %s on spool 2' % NATIVE_UID, msgs[0])
 
     def test_progress_back_to_extra_field(self):
         self.migrate('native')
@@ -467,6 +485,18 @@ class TestMigrateCommand(TagTestCase):
         self.assertEqual(len(self.db.patched_spools), patched)
         self.assertEqual(self.db.spool_uid(1), LEGACY_UID)
 
+    def test_dry_run_reports_a_filament_held_tag_as_a_removal(self):
+        """The spool listing doesn't show filament tags; the dry run must still match the real run."""
+        fid = self.db.add_filament(name='Vendor tag product')
+        self.db.link_tag(LEGACY_UID, filament_id=fid)
+        patched, links = len(self.db.patched_spools), dict(self.db.tag_links)
+        self.hh.call_remote('spoolman_migrate_tags', direction='native', dry_run=True, silent=False)
+        msgs = self.console()
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('Would remove old copy: tag %s on spool 1 (linked to filament %d)' % (LEGACY_UID, fid), msgs[0])
+        self.assertNotIn('Would migrate', msgs[0])
+        self.assertEqual((len(self.db.patched_spools), self.db.tag_links), (patched, links), 'nothing written')
+
     def test_duplicate_is_listed_as_skipped(self):
         self.db.spools[2]['extra'][spoolman.FIELD_RFID] = '"%s"' % LEGACY_UID
         self.hh.call_remote('spoolman_migrate_tags', direction='native', silent=False)
@@ -496,6 +526,39 @@ class TestMigrateCommand(TagTestCase):
         self.assertTrue(self.migrate('native'))
         posts = [r for r in self.tag_requests()[before:] if r[0] == 'POST']
         self.assertEqual(posts, [], 'an already-linked tag must not be re-posted')
+
+    def fail_link_with_409(self, payload=None, unparseable=False):
+        """The next POST /spool/{id}/tag gets a 409 that doesn't name the tag's holder."""
+        class Unparseable(spoolman.Response):
+            def json(self):
+                raise ValueError('not json')
+        real = self.db.handle
+        def handle(method, url, body=None):
+            if method == 'POST' and url.endswith('/tag') and '/spool/' in url:
+                self.db.requests.append((method, url, body))
+                return (Unparseable if unparseable else spoolman.Response)(409, payload, error='conflict')
+            return real(method, url, body)
+        self.db.handle = handle
+
+    def check_unexpected_409_keeps_the_copy(self):
+        self.hh.call_remote('spoolman_migrate_tags', direction='native', silent=False)
+        self.assertEqual(self.db.spool_uid(1), LEGACY_UID, 'extra-field copy kept')
+        msgs = self.console()
+        self.assertEqual(len(msgs), 1, 'one console message')
+        self.assertIn('1 error(s)', msgs[0])
+        self.assertNotIn('Removed old copy', msgs[0])
+
+    def test_unparseable_409_keeps_the_copy(self):
+        self.fail_link_with_409(unparseable=True)
+        self.check_unexpected_409_keeps_the_copy()
+
+    def test_empty_409_keeps_the_copy(self):
+        self.fail_link_with_409(payload=None)
+        self.check_unexpected_409_keeps_the_copy()
+
+    def test_409_without_a_holder_keeps_the_copy(self):
+        self.fail_link_with_409(payload={'message': 'something else'})
+        self.check_unexpected_409_keeps_the_copy()
 
     def test_native_conflict_keeps_the_native_link(self):
         """A UID natively held by a filament stays there; only the extra-field copy goes."""
@@ -695,6 +758,35 @@ class TestMigrateOnResolve(TagTestCase):
         self.db.fail_next = 500
         self.assertTrue(self.lookup(LEGACY_UID))
         self.assertEqual(self.db.tag_links[LEGACY_UID], ('filament', fid))
+
+    def test_duplicate_is_not_linked_by_a_scan(self):
+        """Startup skips a UID on two spools; a scan mustn't pick the winner either."""
+        hh = harness(spools=[dict(uid=LEGACY_UID, material='PLA'), dict(uid=LEGACY_UID, material='ABS')],
+                     spoolman_version=self.VERSION)
+        try:
+            hh.component_init()
+            hh.call_remote('spoolman_get_spool_by_uid', uid=LEGACY_UID, gate=None, silent=True)
+            self.assertEqual(hh.gcode('MMU_GATE_MAP')[-1], 'MMU_GATE_MAP NEXT_SPOOLID=2 QUIET=1', 'resolves as in legacy')
+            hh.mmu_server.spoolman_has_extras = False  # force a re-init
+            hh.call_remote('spoolman_refresh', silent=True)
+            hh.drain_tasks()
+            self.assertNotIn(LEGACY_UID, hh.db.tag_links, 'not linked natively')
+            self.assertEqual((hh.db.spool_uid(1), hh.db.spool_uid(2)), (LEGACY_UID, LEGACY_UID), 'both copies kept')
+            self.assertFalse([m for m in hh.gcode('MMU_LOG') if 'migrated' in m or 'Removed' in m])
+        finally:
+            hh.close()
+
+    def test_duplicate_links_once_the_user_removes_a_copy(self):
+        hh = harness(spools=[dict(uid=LEGACY_UID, material='PLA'), dict(uid=LEGACY_UID, material='ABS')],
+                     spoolman_version=self.VERSION)
+        try:
+            hh.component_init()
+            hh.db.spools[1]['extra'][spoolman.FIELD_RFID] = '""'   # user fixes it in Spoolman
+            hh.call_remote('spoolman_refresh', silent=True)
+            hh.call_remote('spoolman_get_spool_by_uid', uid=LEGACY_UID, gate=None, silent=True)
+            self.assertEqual(hh.db.tag_links.get(LEGACY_UID), ('spool', 2))
+        finally:
+            hh.close()
 
     def test_failed_scan_of_native_tag_is_not_migrated_again(self):
         """Scan failed and the cache resolves an already-native tag: no link, no 'migrated'."""

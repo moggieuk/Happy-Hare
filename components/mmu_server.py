@@ -89,7 +89,7 @@ MIN_SM_VER       = (0, 18, 1)
 
 PRINTER_NAME_HEADER = 'X-Printer-Name'  # sent with every request to the configured Spoolman server
 
-LIVE_DETAIL_KEYS = ('material', 'color', 'name', 'temp', 'bed_temp', 'vendor', 'filament_id') # Forwarded to Klipper; weight isn't
+LIVE_DETAIL_KEYS = ('material', 'color', 'name', 'temp', 'bed_temp', 'vendor', 'filament_id', 'rfids') # Forwarded to Klipper; weight isn't
 LIVE_OWN_WRITE_WINDOW = 5.0        # Seconds to ignore Spoolman events for a spool Happy Hare just wrote (its own echo)
 LIVE_RETRY_MAX = 60.0              # Longest wait between live-update reconnect attempts
 LIVE_PING_INTERVAL = 30.0          # Seconds between websocket pings (and to wait for a pong) to detect a dead connection
@@ -715,7 +715,11 @@ class MmuServer:
                 conflict = resp.json() or {}
             except Exception:
                 conflict = {}
-            return False, conflict
+            # Only a 409 naming the current holder is "already linked"; anything else is a plain failure
+            if isinstance(conflict, dict) and (conflict.get('spool_id') is not None or conflict.get('filament_id') is not None):
+                return False, conflict
+            logging.error(f"NFC: unexpected conflict linking tag {uid} to {kind} {spool_id}: {conflict or 'no details'}")
+            return False, None
         if resp.has_error():
             logging.error(f"NFC: failed to link tag {uid} to {kind} {spool_id}: {self.spoolman._get_response_error(resp)}")
             return False, None
@@ -804,6 +808,16 @@ class MmuServer:
             summary['migrated'].append(f"tag {uid} on spool {spool_id}")
 
         # Per-tag progress goes to moonraker.log; the console gets one summary at the end
+        # The spool listing only shows spool tags. The real run learns about filament holders from
+        # the 409; the dry run sends no links, so it reads them from the filament listing instead
+        filament_holder = {}
+        if dry_run and to_native and plan:
+            resp_f = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/filament')
+            if not resp_f.has_error() and isinstance(resp_f.json(), list):
+                for filament_info in resp_f.json():
+                    for u in self._get_native_uid_list(filament_info):
+                        filament_holder[u] = filament_info['id']
+
         done = 0
         for spool_id, native, extra, moving in plan:
             if dry_run:
@@ -811,6 +825,8 @@ class MmuServer:
                     done += 1
                     if uid in native_holder:
                         summary['removed'].append(f"tag {uid} on spool {spool_id} (linked to spool {native_holder[uid]})")
+                    elif uid in filament_holder:
+                        summary['removed'].append(f"tag {uid} on spool {spool_id} (linked to filament {filament_holder[uid]})")
                     else:
                         moved(spool_id, uid)
                 continue
@@ -864,9 +880,8 @@ class MmuServer:
         msg = f"NFC: tag migration ({direction}){' [dry run]' if dry_run else ''}: {', '.join(parts)}"
         if summary['errors']:
             msg += f", {summary['errors']} error(s) - see moonraker.log"
-        if dry_run:
-            for m in summary['migrated']:
-                msg += f"\n  - Would migrate: {m}"
+        for m in summary['migrated']: # Each spool's tags, in the one console message
+            msg += f"\n  - {'Would migrate' if dry_run else 'Migrated'}: {m}"
         for r in summary['removed']:
             msg += f"\n  - {'Would remove' if dry_run else 'Removed'} old copy: {r}"
         for sk in summary['skipped']:
@@ -923,13 +938,16 @@ class MmuServer:
             if not self.spoolman_has_tags or not self.legacy_only_uid_count:
                 return
             quiet = not (ready and self._mmu_backend_enabled())
+            failed = False
             try:
                 summary = await self._migrate_tags(to_native=True, silent=quiet)
             except Exception as e:
                 # Usually a console message failing (Klipper restarting); migrating again is safe
                 logging.warning(f"NFC: startup tag migration couldn't report to the console ({str(e)}), continuing in moonraker.log only")
+                failed = True
                 summary = await self._migrate_tags(to_native=True, silent=True)
-            if summary and (summary['moved'] or summary['removed']):
+            # After a failure the first attempt may already have changed Spoolman, so the re-run can find nothing to do
+            if failed or (summary and (summary['moved'] or summary['removed'])):
                 await self._build_spool_location_cache(silent=True)
 
 
@@ -1580,6 +1598,9 @@ class MmuServer:
 
     async def _link_resolved_tag(self, spool_id, uid_norm, tag_format=None):
         '''Resolved from the extra field with native tags: link natively. Failure is not fatal'''
+        if any(sid != spool_id and uid_norm in self._parse_uid_list(loc[2].get('rfids'))
+               for sid, loc in self.spool_location.items()):
+            return # On several spools: which one keeps it is the user's call, as in the startup migration
         ok, conflict = await self._link_native_tag(spool_id, uid_norm, tag_format)
         if ok:
             self.native_uids.add(uid_norm)
