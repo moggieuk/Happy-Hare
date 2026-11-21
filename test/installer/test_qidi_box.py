@@ -294,6 +294,71 @@ class TestQidiBoxProfile(unittest.TestCase):
                 self.assertEqual(customized.get(symbol), value)
 
 
+class TestQidiBoxMotionSensorHub(unittest.TestCase):
+    """The hub decides what PB0 reads.
+
+    A Box on a Q2 or Max4 has a filament buffer on PB0 (QIDI's stock box.cfg:
+    buffer_pin: ^mcu_box1:PB0). On a Plus4 the hub carries a filament motion sensor
+    instead (stock box.cfg: [filament_motion_sensor box_motion_sensor] on
+    ^mcu_box1:PB0), which Happy Hare reads as an encoder. OPTION_QIDI_BOX_BUFFER
+    picks between them and stays on unless deselected, so existing configs keep
+    their buffer.
+    """
+
+    SYMS = {"MMU_TYPE_QIDI_BOX_1_0": True, "OPTION_QIDI_BOX_BUFFER": False}
+
+    @classmethod
+    def setUpClass(cls):
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            cls.default = cfg._kconfig("qidi_box_buffer_hub", {"MMU_TYPE_QIDI_BOX_1_0": True})
+            cls.kconfig = cfg._kconfig("qidi_box_motion_hub", cls.SYMS)
+        cls.profile = profiles.Profile("qidi_box_motion_hub", syms=cls.SYMS)
+        cls.hardware = cfg.render(cls.profile)["config/base/mmu_hardware.cfg"]
+
+    def test_buffer_hub_is_the_default(self):
+        self.assertTrue(self.default.is_enabled("OPTION_QIDI_BOX_BUFFER"))
+        self.assertTrue(self.default.is_enabled("MMU_HAS_SYNC_FEEDBACK_BUFFER"))
+        self.assertFalse(self.default.is_enabled("MMU_HAS_ENCODER"))
+
+    def test_motion_sensor_hub_reads_pb0_as_the_encoder(self):
+        self.assertTrue(self.kconfig.is_enabled("MMU_HAS_ENCODER"))
+        self.assertEqual(self.kconfig.get("PIN_ENCODER"), "^unit0:PB0")
+        self.assertIn("encoder_pin", self.hardware)
+        self.assertIn("^unit0:PB0", self.hardware)
+
+    def test_motion_sensor_starts_near_its_resolution(self):
+        # About 3 mm of filament per pulse (Bunny-Box's starting value; one Box calibrated
+        # to 2.9777). Calibration still replaces it.
+        self.assertEqual(self.kconfig.get("PARAM_ENCODER_RESOLUTION"), "3.0")
+
+    def test_motion_sensor_hub_has_no_buffer(self):
+        self.assertFalse(self.kconfig.is_enabled("MMU_HAS_SYNC_FEEDBACK_BUFFER"))
+        self.assertFalse(self.kconfig.is_enabled("MMU_HAS_SENSOR_BUFFER_TENSION"))
+        self.assertNotIn("tension_pin", self.hardware)
+
+    def test_gate_homing_stays_on_the_shared_hub_sensor(self):
+        self.assertEqual(self.kconfig.get("PARAM_GATE_HOMING_ENDSTOP"), "mmu_shared_exit")
+
+    def test_boots_and_loads_with_the_encoder_counting(self):
+        hh = session(self.profile.derive("qidi_box_motion_hub_boot", filament_layout={
+            "mmu_shared_exit": 150.0, "mmu_encoder": 150.0,
+            "extruder_entry": 900.0, "filament_compression": 900.0}))
+        try:
+            hh.boot(calibrate=True)
+            self.assertEqual(hh.errors, [])
+            self.assertIsNone(hh.mmu.mmu_unit(0).buffer)
+            hh.heat_extruder(220)
+            hh.place_filament(0, position=-40)
+            hh.run_gcode("MMU_PRELOAD GATE=0")
+            hh.run_gcode("MMU_SELECT GATE=0")
+            hh.run_gcode("MMU_LOAD")
+            self.assertEqual(hh.errors, [])
+            self.assertEqual(hh.mmu.filament_pos, 10)    # FILAMENT_POS_LOADED
+            self.assertGreater(hh.mmu.get_status(hh.reactor.monotonic())["encoder"]["encoder_pos"], 0)
+        finally:
+            hh.close()
+
+
 class TestQidiBoxDryerHardware(unittest.TestCase):
 
     SECTION = re.compile(r"^\[([^\]]+)\]", re.M)
