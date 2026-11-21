@@ -36,6 +36,12 @@ def is_kalico(printer):
     return bool(printer.lookup_object('danger_options', False))
 
 
+def mcu_disconnected(mcu):
+    # Kalico sets non_critical_disconnected on an is_non_critical mcu that is unplugged. Stock
+    # Klipper has no such attribute.
+    return bool(mcu is not None and getattr(mcu, 'non_critical_disconnected', False))
+
+
 
 # -----------------------------------------------------------------------------------------------------------
 # DEDICATED MMU EXCEPTION
