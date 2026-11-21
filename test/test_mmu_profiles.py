@@ -483,6 +483,24 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(hh.errors, [])
         self.assertEqual(hh.mmu.tool_selected, 1)
 
+    def toolchange(self, profile):
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True, gates_loaded_at=-40)
+        hh.heat_extruder(220)
+        hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        hh.run_gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertEqual(hh.errors, [])
+        self.assertEqual(hh.mmu.tool_selected, 1)
+
+    def test_ercf_quattrobox_counts_each_encoder_separately(self):
+        """Two units with their own encoders: each one only sees its own unit's gates."""
+        self.toolchange('ercf_quattrobox')
+
+    def test_tradrack_encoder_homes_to_the_extruder_by_collision(self):
+        """The encoder stops once the gear slips against the stationary extruder."""
+        self.toolchange('tradrack_encoder')
+
     def test_qidi(self):
         """QIDI boots with its fixed board, THR sensor and normal dryer setup."""
         with self.assertNoLogs(level='WARNING'):

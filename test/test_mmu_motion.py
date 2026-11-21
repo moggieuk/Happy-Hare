@@ -81,8 +81,9 @@ class TestModelItself(MotionTestCase):
         self.assertTrue(self.fil.triggered('mmu_entry_0'))
         self.assertFalse(self.fil.triggered('mmu_exit_0'))
 
-    def test_extrusion_stops_tip_at_nozzle_and_retains_full_travel(self):
-        nozzle = self.fil._nozzle_position(0)
+    def test_extrusion_stops_tip_short_of_the_residual_and_retains_full_travel(self):
+        self.hh.mmu.mmu_unit(0).toolhead_wrapper.p.toolhead_residual_filament = 22.5
+        nozzle = self.fil._nozzle_position(0) - 22.5
         self.hh.place_filament(0, position=nozzle - 2.)
         observed = []
         self.fil.observers.append(lambda gate, delta, tip, tail: observed.append(delta))

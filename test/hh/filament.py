@@ -127,6 +127,10 @@ class FilamentPath:
     state changes back into Happy Hare through its real callbacks.
     """
 
+    # Compression an unbuffered bowden takes when the gear pushes into stationary extruder
+    # gears; beyond it the gear slips, so the filament (and an encoder on it) stops
+    BOWDEN_SLACK = 5.0
+
     def __init__(self, num_gates, layout=None, set_sensor=None,
                  tag_window=DEFAULT_TAG_WINDOW):
         self.num_gates = num_gates
@@ -156,6 +160,7 @@ class FilamentPath:
         self._gripped = lambda gate: False
         self._extruder_position = lambda gate: self.layout['extruder_entry']
         self._nozzle_position = lambda gate: float('inf')
+        self._residual_filament = lambda gate: 0.
         self.unabsorbed = [0.] * num_gates
 
     def configure_buffers(self, units, selected_gate=None, drive_mode=None, gripped=None):
@@ -547,8 +552,10 @@ class FilamentPath:
         mode = motor_mode or self._motion_mode(gate, reason)
         buffered = any(gate in geometry['travel'] for geometry in self.buffers.values())
         held = self._gripped(gate) and mode == 'gear'
+        moved = delta
         if not buffered:
-            self.tip[gate] += self._advance_unbuffered(gate, delta, mode)
+            movement, moved = self._advance_unbuffered(gate, delta, mode)
+            self.tip[gate] += movement
             if self.tip[gate] < self._extruder_position(gate):
                 self.unabsorbed[gate] = 0.
         else:
@@ -561,16 +568,18 @@ class FilamentPath:
             if mode == 'gear' and delta > 0 and not held:
                 movement = min(movement,max(0.,self._extruder_position(gate)-start_tip))
             self.tip[gate] += movement
-        # Extruded material leaves the nozzle; observers still receive the full feed.
+        # Extruded material leaves the nozzle; observers still receive the full feed. The
+        # residual filament an unload leaves in the hotend stops the solid filament short of it.
         if delta > 0 and mode in ('extruder','synced','gear+extruder'):
-            self.tip[gate] = min(self.tip[gate], self._nozzle_position(gate))
+            self.tip[gate] = min(self.tip[gate],
+                                 self._nozzle_position(gate) - self._residual_filament(gate))
         self.tail[gate] += delta        # filament moves as one piece
         self.history.append((gate, delta, reason))
         logging.debug('filament: gate %d %+.2f -> %.2f (%s)',
                       gate, delta, self.tip[gate], reason)
         self.sync(gate)
         for observe in self.observers:
-            observe(gate, delta, start_tip, start_tail)
+            observe(gate, moved, start_tip, start_tail)
         return self.tip[gate]
 
     def _motion_mode(self, gate, reason):
@@ -586,23 +595,28 @@ class FilamentPath:
         self.unabsorbed[gate] = displacement-travel
 
     def _advance_unbuffered(self, gate, delta, mode):
-        """Only filament constrained by the extruder can store relative feed."""
+        """
+        Only filament constrained by the extruder can store relative feed. Returns how far the
+        tip moves and how far the filament upstream of any compression does.
+        """
         if self._gripped(gate):
             relative = delta if mode == 'gear' else -delta if mode == 'extruder' else 0.
             self.unabsorbed[gate] += relative
-            return 0. if mode == 'gear' else delta
+            return (0. if mode == 'gear' else delta), delta
         entry = self._extruder_position(gate)
         if mode == 'gear' and self.tail[gate] <= entry and self.tip[gate] <= entry:
             # Compression against stationary gears is released before withdrawing.
             stored = max(0., self.unabsorbed[gate]) if self.tip[gate] >= entry else 0.
             available = delta + stored
             if self.tip[gate] + available >= entry:
-                self.unabsorbed[gate] = self.tip[gate] + available - entry
-                return entry - self.tip[gate]
-            self.unabsorbed[gate] = 0.
-            return available
+                self.unabsorbed[gate] = min(self.tip[gate] + available - entry, self.BOWDEN_SLACK)
+                movement = entry - self.tip[gate]
+            else:
+                self.unabsorbed[gate] = 0.
+                movement = available
+            return movement, movement + self.unabsorbed[gate] - stored
         self.unabsorbed[gate] = 0.
-        return delta
+        return delta, delta
 
     def _advance_buffer(self, gate, delta, start_tip, mode):
         """Store relative gear/extruder travel in a buffer."""

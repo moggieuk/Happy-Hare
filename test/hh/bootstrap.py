@@ -529,6 +529,8 @@ class Session:
         model._extruder_position = lambda gate: model.layout['extruder_entry']
         model._nozzle_position = lambda gate: (model._extruder_position(gate)
             + self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_extruder_to_nozzle)
+        model._residual_filament = lambda gate: (
+            self.mmu.mmu_unit(gate).toolhead_wrapper.p.toolhead_residual_filament)
         toolhead_params = self.mmu.mmu_unit(0).toolhead_wrapper.p
         if 'extruder' not in model_layout:
             model.layout['extruder'] = model._extruder_position(0) - toolhead_params.toolhead_entry_to_extruder
@@ -920,9 +922,9 @@ class Session:
         for name, obj in self.printer.objects.items():
             if not name.startswith('mmu_encoder '):
                 continue
-            counter = counters.get(getattr(obj, 'encoder_pin', None))
-            if counter is None and len(counters) == 1:
-                counter, = counters.values()
+            # MmuEncoder keeps neither its pin nor its counter, only the counter's callback
+            counter = next((counter for counter in counters.values()
+                            if getattr(counter._callback, '__self__', None) is obj), None)
             if counter is not None:
                 out.append((obj, counter))
         return out
@@ -946,6 +948,8 @@ class Session:
             return
         travel = model.travel_over(position, start_tip, start_tail, delta)
         for encoder, counter in self._encoders():
+            if encoder is not self.mmu.mmu_unit(gate).encoder:
+                continue
             # Carry the part-pulse over, or a stream of small extrusion moves never pulses
             pulses = self._encoder_residual.get(counter, 0.) + travel / encoder.resolution
             whole = int(round(pulses))

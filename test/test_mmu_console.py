@@ -2788,6 +2788,9 @@ class TestTheDefaultProfile(unittest.TestCase):
         with_encoder = [u for u in units if u.has_encoder()]
         if not with_encoder:
             self.skipTest('the default profile has no encoder to mis-report')
+        self.console._dispatch('MMU_SELECT GATE=%d' % with_encoder[0].first_gate)
+        self.console._dispatch('MMU_TEST_MOVE MOVE=50')
+        self.console._dispatch('MMU_TEST_MOVE MOVE=-50')
         expected = with_encoder[0].encoder.get_distance()
         self.assertNotEqual(expected, 0., 'nothing to distinguish a wrong reading from')
         # Select a gate on a DIFFERENT unit - the case that used to zero the reading
