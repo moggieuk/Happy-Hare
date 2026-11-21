@@ -10,6 +10,7 @@
 
 import logging
 import unittest
+from unittest.mock import patch
 
 from test.hh import session
 
@@ -169,6 +170,24 @@ class TestSingleExtruderHeating(unittest.TestCase):
         self.mmu._hotend_off_handler(self.hh.reactor.monotonic())
 
         self.assertEqual(_heater_commands(self.hh.gcode.executed[mark:]), ['M104 S0.0'])
+        self.assertEqual(self.extruder.get_heater().target_temp, 0)
+
+    def test_hotend_off_timer_outside_gcode_mutex(self):
+        """
+        Newer Kalico's run_script_from_command raises unless the gcode mutex is
+        held, which it is not when a reactor timer fires with no command running.
+        """
+        gcode = self.hh.gcode
+        self.extruder.get_heater().set_temp(210.)
+
+        def strict_run_script_from_command(script):
+            if not gcode.get_mutex().test():
+                raise gcode.error("run_script_from_command requires the G-code mutex")
+            gcode.run_script(script)
+
+        with patch.object(gcode, 'run_script_from_command', strict_run_script_from_command):
+            self.mmu._hotend_off_handler(self.hh.reactor.monotonic())
+
         self.assertEqual(self.extruder.get_heater().target_temp, 0)
 
 
