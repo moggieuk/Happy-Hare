@@ -262,7 +262,7 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/clear` | as `/redraw`, but empty the log rather than repaint it |
 | `/scroll [N]`, `/s` | scroll back through the log (see below) |
 | `/sensors` | the sensor table (also `MMU_SENSORS`) |
-| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one) |
+| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one); the viewer follows the change |
 | `/encoder [NAME] [RESOLUTION=mm] …` | show or change an encoder's runtime numeric settings; `/encoder NAME` lists them |
 | `/web` | where the web API is and how to point Mainsail or Fluidd at it |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
@@ -383,7 +383,7 @@ Useful flags — `make console ARGS='...'`:
 --no-preload                   # leave every gate empty
 --no-calibrate                 # boot cold: no seeded calibration, no homing, no preload
 --no-prime                     # leave the gate map blank instead of filling it in
---seed N                       # seed for the primed gate map (default 0, reproducible)
+--seed N                       # seed for the primed gate map (default: new each start, printed; 0 with --script)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
 --serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
 --serve-host ADDRESS          # listening address (default 127.0.0.1)
@@ -402,8 +402,11 @@ Two more things happen at startup that a printer does for itself and a frozen cl
 
 - **The gate map is primed** — every gate gets a vendor, material, color and temperature, so
   the gate table and the LED `filament_color` effect have something to show instead of
-  `Unknown | 200C | Unknown`. Seeded, so a session is reproducible; `--seed N` for a different
-  spread, `--no-prime` for none.
+  `Unknown | 200C | Unknown`. An interactive session picks a new seed each start and prints
+  it; `--seed N` repeats a spread, a `--script` run uses seed 0, and `--no-prime` gives none.
+  With a seed (so not under `--script` unless `--seed` is given), the machine is also left as
+  a used one is found: a spool with no weight left has no filament at its gate and reads
+  EMPTY, and one or two other gates read UNKNOWN until `MMU_CHECK_GATE` looks.
 - **`effect_initialized` is waited out.** It is a unit-wide 8s state flash from bootup, and
   while it holds a unit *every* transient flash is dropped (`mmu_led_manager.py:473`) — so an
   NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so
@@ -578,6 +581,16 @@ echo '/print job' > /tmp/job.txt
 make console ARGS='--profile boxturtle --script /tmp/job.txt'
 ```
 
+### Integrated live viewer
+
+`make console` also serves the viewer on the same local web API: open
+`http://127.0.0.1:7125/sim/viewer/`, or the address printed in the console banner.
+`--no-serve` disables both the viewer and the web API. The viewer is a standalone
+application in the top-level `viewer/` folder and the simulator only hosts it; how it
+works is described in `viewer/README.md`, and the telemetry it replays in
+`extras/mmu/telemetry/README.md`. Tests: `make test UT=test_mmu_live_viewer.py`, plus the
+console, web API and telemetry suites.
+
 ### Driving a real Mainsail or Fluidd — the web API
 
 At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
@@ -617,7 +630,8 @@ interfaces; remote clients still use the simulator computer's LAN address. The d
 remains localhost only. The simulator API has no authentication, so use LAN access only
 on a trusted network. The bridge refuses requests whose `Origin` is a page from another site, and
 whose `Host` is not this machine (DNS rebinding), so a web page you happen to visit cannot drive the
-simulator; pages served from localhost, or from the address given to `--serve-host`, can.
+simulator; pages served from localhost, or from the address given to `--serve-host`, can. The live viewer
+and Mainsail can connect simultaneously.
 
 To see the pause dialog, pretend a print is running and make something fail:
 
@@ -898,6 +912,7 @@ The test files, grouped by what they're about:
 | `test_mmu_print_job.py` | 10 | `/print job` end to end, molding the built-in job, and the fake G-code it needs: parsing, extrusion modes, the extruder heater |
 | `test_mmu_webui_bridge.py` | 16 | the Moonraker-compatible web API the console serves: handshake, status, gcode, the pause dialog reaching a UI, and refusing cross-site pages, oversized bodies and unmasked frames |
 | `test_mmu_simulator_telemetry.py` | 7 | the simulator's telemetry capture, real macros and the bridge |
+| `test_mmu_live_viewer.py` | 13 | the viewer's hosting by the console: parameter editor, served modules, profile restart and upload |
 | `test_mmu_live_status.py` | 14 | the status objects the viewer subscribes to |
 | `test_mmu_movement_telemetry.py` | 20 | movement start/outcome pairs, toolchange start/end markers, and the replay state around them |
 | `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |
@@ -1069,6 +1084,7 @@ templates** from them, so a broken template shows up as a test failure.
 |---|---|
 | `boxturtle2_ercf` | three units on one toolhead: two BoxTurtle 1.0 (4 gates each, `VirtualSelector`) and an ERCF 1.1sb (8 gates, `LinearServoSelector`, encoder) — 16 gates, for the scrolling unit rack |
 | `ercf_quattrobox` | multi-unit, mixed selector types with a shared downstream buffer and independent gate encoders |
+| `ercf_mmu_cutter` | a single ERCF 1.1sb (8 gates, encoder) with a servo cutter at the MMU run as the post-unload extension, and no tip forming or toolhead cutter |
 | `ercf_vvd` | **the console default.** A multi-unit profile and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
