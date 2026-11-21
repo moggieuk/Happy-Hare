@@ -286,6 +286,10 @@ class PhysicalSelector(BaseSelector, object):
                 self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, last_pos, namespace=self.mmu_unit.name)
 
         if last_pos is not None:
+            stepper = getattr(self, 'selector_stepper', None)
+            if stepper is not None and stepper.mcu_disconnected():
+                self.mmu.log_always("Warning: MMU mcu for unit '%s' is disconnected. Selector position not restored" % self.mmu_unit.name)
+                return
             self._restore_position(last_pos)
             self.is_homed = True
 

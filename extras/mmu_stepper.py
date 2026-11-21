@@ -48,6 +48,7 @@ import logging, collections, math
 from kinematics.extruder import ExtruderStepper, PrinterExtruder
 from .                   import force_move
 from .homing             import HomingMove
+from .mmu.mmu_utils      import mcu_disconnected
 
 # Temporary Kalico compatibility imports
 import inspect, chelper
@@ -964,7 +965,13 @@ class MmuStepper(ExtruderStepper):
             self.next_cmd_time = print_time
 
 
+    def mcu_disconnected(self):
+        return any(mcu_disconnected(s.get_mcu()) for s in self.steppers)
+
+
     def do_enable(self, enable):
+        if self.mcu_disconnected():
+            return
         stepper_names = [s.get_name() for s in self.steppers]
         stepper_enable = self.printer.lookup_object('stepper_enable')
         if hasattr(stepper_enable, 'set_motors_enable'):  # Temporary. Added for Kalico compatibility
