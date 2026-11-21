@@ -602,12 +602,14 @@ class TestAutotunedRd(unittest.TestCase):
         self.sf = self.unit.sync_feedback
         self.now = self.hh.reactor.monotonic()
 
-    def process(self, autotune=None, rd_tuned=None):
+    def process(self, autotune=None, rd_tuned=None, rd_current=None):
         status = self.sf.ctrl.update(self.now, 0.0, 0.0)
         if autotune is not None:
             status['output']['autotune'] = autotune
         if rd_tuned is not None:
             status['output']['rd_tuned'] = rd_tuned
+        if rd_current is not None:
+            status['output']['rd_current'] = rd_current
         self.sf._process_status(self.now, status)
 
     def test_hard_reset_rebases_tuned_rd_for_new_gate(self):
@@ -630,6 +632,23 @@ class TestAutotunedRd(unittest.TestCase):
         self.assertEqual(status['sync_feedback_rd_correction'], 2.0)
         self.sf._handle_gate_selected(1, 0)
         self.assertEqual(self.hh.mmu.get_status(self.now)['sync_feedback_rd_correction'], 0.)
+
+    def test_status_reports_flow_rate_against_calibrated_rd(self):
+        self.sf._reset_controller(self.now)
+        rd = self.unit.calibrator.get_gear_rd()
+
+        # Extruder slip present while autotune settles: the tuned rd adopts it, so the
+        # existing value reads 100 while the calibrated one shows the slip
+        self.process(rd_tuned=rd * 1.05, rd_current=rd * 1.05)
+        status = self.hh.mmu.get_status(self.now)
+        self.assertEqual(status['sync_feedback_flow_rate'], 100.)
+        self.assertEqual(status['sync_feedback_flow_rate_calibrated'], 95.24)
+
+        # Gear slip: the gear turns faster than calibrated, not capped at 100
+        self.process(rd_tuned=rd, rd_current=rd / 1.05)
+        status = self.hh.mmu.get_status(self.now)
+        self.assertEqual(status['sync_feedback_flow_rate'], 100.)
+        self.assertEqual(status['sync_feedback_flow_rate_calibrated'], 105.)
 
     def test_print_end_summarises_autotuned_rd(self):
         cal = self.unit.calibrator
