@@ -173,3 +173,22 @@ class BowdenRestartTestCase(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BowdenRescaleOnRdTestCase(unittest.TestCase):
+    """Bowden length is in gear mm: same steps at a new rd scales it by rd/prev_rd."""
+
+    def test_rd_change_scales_bowden_by_new_over_old(self):
+        hh = session('boxturtle')
+        hh.build()
+        hh.boot()
+        self.addCleanup(hh.close)
+        unit = hh.mmu.mmu_unit()
+        cal = unit.calibrator
+        gate = unit.first_gate
+        unit.variable_bowden_lengths = True
+        unit.variable_rotation_distances = True
+        cal.update_gear_rd(20.0, gate=gate)
+        cal.update_bowden_length(1000.0, gate=gate)
+        cal.update_gear_rd(21.0, gate=gate)
+        self.assertAlmostEqual(cal.get_bowden_length(gate), 1050.0, places=1)
