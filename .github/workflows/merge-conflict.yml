@@ -22,7 +22,10 @@ concurrency:
 
 jobs:
   label:
-    if: github.event.repository.fork == false
+    # An edit only matters when it retargets the PR; title/body edits cannot change mergeability.
+    if: >-
+      github.event.repository.fork == false &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
