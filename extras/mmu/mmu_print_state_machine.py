@@ -233,14 +233,14 @@ class MmuPrintStateMachine:
             self.mmu._residual_restore = None
             if was_paused and state in ("complete", "cancelled", "error"):
                 self.mmu.log_info("Turning off heaters (slicer PRINT_END was bypassed by MMU pause)")
-                self.mmu.gcode.run_script_from_command("TURN_OFF_HEATERS")
+                self.mmu.run_gcode_script("TURN_OFF_HEATERS")
             self.mmu.reactor.update_timer(self.mmu.hotend_off_timer, self.mmu.reactor.NEVER) # Don't automatically turn off extruder heaters
 
             self.mmu.gate_maps.restore_automap_option()
             self.mmu._disable_filament_monitoring() # Disable filament monitoring
 
             if self.mmu.printer.lookup_object("idle_timeout").idle_timeout != self.mmu.p.default_idle_timeout:
-                self.mmu.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.mmu.p.default_idle_timeout) # Restore original idle_timeout
+                self.mmu.run_gcode_script("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.mmu.p.default_idle_timeout) # Restore original idle_timeout
 
             self.mmu._standalone_sync = False # Safer to clear this on print end or idle_timeout to standby to avoid user confusion
             self.set_print_state(state)

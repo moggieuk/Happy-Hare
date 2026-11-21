@@ -523,14 +523,14 @@ class TestKlipperErrors(ErrorDialogTestCase):
 
     def failing_restore_move(self, times):
         """The post-toolchange RESTORE_GCODE_STATE move raises 'Move out of range' the first 'times' times."""
-        real = self.mmu.gcode.run_script_from_command
+        real = self.mmu.run_gcode_script
         left = [times]
-        def run_script_from_command(script):
+        def run_gcode_script(script):
             if script.startswith('RESTORE_GCODE_STATE NAME=MMU_state') and 'MOVE=1' in script and left[0] > 0:
                 left[0] -= 1
                 raise self.hh.printer.command_error('Move out of range: 400.000 10.000 1.000 [0.000]')
             return real(script)
-        return patch.object(self.mmu.gcode, 'run_script_from_command', side_effect=run_script_from_command)
+        return patch.object(self.mmu, 'run_gcode_script', side_effect=run_gcode_script)
 
     def test_failed_restore_move_pauses_and_resume_completes(self):
         self.start_print(0)

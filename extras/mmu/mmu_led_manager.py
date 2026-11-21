@@ -610,7 +610,7 @@ class MmuLedManager:
         # Stop the current effect on the gate led(s)
         def stop_gate_effect(unit, segment, gate, fadetime=None):
             if self.mmu_machine.get_mmu_unit_by_index(unit).leds.animation:
-                self.mmu.gcode.run_script_from_command(
+                self.mmu.run_gcode_script(
                     "_MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (
                         effect_leds_spec(unit, segment, gate),
                         (f'FADETIME={fadetime}') if fadetime is not None else ''
@@ -622,7 +622,7 @@ class MmuLedManager:
             leds = self.mmu_machine.get_mmu_unit_by_index(unit).leds
             if leds.animation:
                 e_str = effect if raw else effect_spec(unit, gate, "%s_%s" % (base_effect, segment))
-                self.mmu.gcode.run_script_from_command(
+                self.mmu.run_gcode_script(
                     "_MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (
                         e_str,
                         (f'FADETIME={fadetime}') if fadetime is not None else ''
@@ -637,7 +637,7 @@ class MmuLedManager:
         def set_gate_rgb(rgb, unit, segment, gate, transmit=True):
             # Normally there is only a single led per gate but some designs have many
             for index, is_last in with_last(led_indexes(unit, segment, gate)):
-                self.mmu.gcode.run_script_from_command(
+                self.mmu.run_gcode_script(
                     "SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (
                         led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0
                     )

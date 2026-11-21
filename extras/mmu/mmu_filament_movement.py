@@ -4591,7 +4591,7 @@ class MmuFilamentMovement:
             None. Logs and dispatches the low-level current command.
         """
         self.log_info(msg.format("%.2f" % run_current))
-        self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
+        self.run_gcode_script("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -4647,4 +4647,4 @@ class MmuFilamentMovement:
         Returns:
             None. Dispatches the low-level pressure-advance command.
         """
-        self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
+        self.run_gcode_script("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
