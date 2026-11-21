@@ -43,6 +43,13 @@ class _HallEndstopBoot(unittest.TestCase):
         self.assertEqual(self.hh.errors, [])
         self.assertIsInstance(self.sensor, MmuHallEndstop)
 
+    def test_endstop_is_registered_under_the_unit_qualified_name(self):
+        # v4 looks entry/toolhead endstops up as "<unit>:<sensor>"
+        sm = self.hh.mmu.sensor_manager
+        qualified = sm.get_qualified_endstop_name(self.target)
+        self.assertIn(':', qualified)
+        self.assertEqual(self.sensor.name, qualified)
+
     def test_both_pins_are_bound_as_adc(self):
         self.hh.pins.assert_bound(PIN1, 'adc')
         self.hh.pins.assert_bound(PIN2, 'adc')

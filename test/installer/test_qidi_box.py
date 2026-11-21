@@ -191,6 +191,11 @@ class TestQidiBoxProfile(unittest.TestCase):
             re.MULTILINE,
         ))
 
+    def test_nfc_spi_bus_is_the_plain_name_stock_firmware_knows(self):
+        hardware = self.rendered["config/base/mmu_hardware.cfg"]
+        self.assertNotIn("spi2_PB", hardware)
+        self.assertIn("spi_bus               : spi2\n", hardware)
+
     def test_fixed_board_pinout(self):
         hardware = self.rendered["config/base/mmu_hardware.cfg"]
         for expected in (

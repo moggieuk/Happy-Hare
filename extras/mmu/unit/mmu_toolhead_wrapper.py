@@ -132,7 +132,10 @@ class MmuToolheadWrapper():
             self.hall_runout_dia_min = config.getfloat('hall_min_diameter', 1.0)
             self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) # Unused
 
-            s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
+            # Entry/toolhead sensors are looked up unit-qualified (e.g. "default:extruder")
+            endstop_name = (f"{self.name}:{target_name}"
+                            if target_name in (SENSOR_EXTRUDER_ENTRY, SENSOR_TOOLHEAD) else target_name)
+            s = MmuHallEndstop(config, endstop_name, self.hall_pin1, self.hall_pin2,
                                self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
                                hall_runout_dia=self.hall_runout_dia_min,
                                events=('insert', 'runout'),
