@@ -71,6 +71,7 @@ BOOTABLE = {
     'mmx': (4, 'ServoSelector'),
     'kms': (4, 'VirtualSelector'),
     'qidi': (4, 'VirtualSelector'),
+    'qidi_plus4': (4, 'VirtualSelector'),
     'quattrobox_v2': (4, 'VirtualSelector'),
     'emu': (5, 'VirtualSelector'),
     'emu_ebb': (5, 'VirtualSelector'),
@@ -544,6 +545,19 @@ class TestEveryBootableProfile(unittest.TestCase):
         hh.run_gcode('MMU_STATUS')
         status = re.sub(r'<[^>]+>', '', '\n'.join(hh.console[at:]))
         self.assertIn('■◉■■■■■◯', status)
+
+    def test_qidi_plus4(self):
+        """QIDI Box on a Plus4: the hall sensor is the extruder entry, the cutter is before it."""
+        hh = self._check('qidi_plus4')
+        from extras.mmu.unit.mmu_toolhead_wrapper import MmuHallEndstop
+        unit = hh.mmu.mmu_unit(0)
+        self.assertIsInstance(unit.toolhead_wrapper.sensors['extruder'], MmuHallEndstop)
+        self.assertEqual(unit.p.extruder_homing_endstop, 'extruder')
+        cutter = hh.printer.lookup_object('gcode_macro _MMU_CUT_TIP_VARS').variables
+        self.assertTrue(cutter['cutter_before_extruder'])
+        self.assertGreater(cutter['blade_pos'], unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
+        hh.pins.assert_bound('PA2', 'adc')
+        hh.pins.assert_bound('PA3', 'adc')
 
     def test_quattrobox_v2(self):
         """QuattroBox v2 boots with every Chameleon X5 component and preloads clear of the hub."""

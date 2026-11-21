@@ -1,0 +1,66 @@
+config TOOLHEAD_TYPE_QIDI_PLUS4
+  bool "QIDI Plus4"
+  imply MMU_HAS_SENSOR_EXTRUDER
+  imply MMU_HAS_HALL_EXTRUDER_SENSOR
+  imply MMU_HAS_TOOLHEAD_CUTTER
+
+# The Plus4 has no extruder switch: its extruder sensor is a hall-effect filament
+# width sensor on two ADC pins of the main MCU (QIDI's stock printer.cfg reads it as
+# [hall_filament_width_sensor] adc1: PA2, adc2: PA3). Its cutter blade sits before
+# the extruder gears.
+#
+# UNMEASURED: every dimension and the hall calibration below is a placeholder chosen to
+# be self-consistent (blade between the hall sensor and the gears), not a measurement.
+# TOOLHEAD_PRESET_UNMEASURED makes the rendered config say so; drop it once measured.
+if TOOLHEAD_TYPE_QIDI_PLUS4
+  config TOOLHEAD_PRESET_UNMEASURED
+    default y
+  config PARAM_TOOLHEAD_TYPE
+    default "QIDI Plus4"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default 72
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default 62
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default 20
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default 2
+
+  config PIN_HALL_ADC1
+    default "PA2"
+  config PIN_HALL_ADC2
+    default "PA3"
+
+  # QIDI stock printer.cfg calibration for the hall sensor
+  config PARAM_HALL_CAL_DIA1
+    default 1.5
+  config PARAM_HALL_RAW_DIA1
+    default 14397
+  config PARAM_HALL_CAL_DIA2
+    default 2.0
+  config PARAM_HALL_RAW_DIA2
+    default 15058
+
+  config BOOL_CUT_TIP_CUTTER_BEFORE_EXTRUDER
+    default y
+
+  # Cutter: blade 8mm before the gears; the pushback must clear them by
+  # CUT_PUSHBACK_CLEARANCE. Pin coordinates are Bunny-Box's Plus4 values
+  if MMU_HAS_TOOLHEAD_CUTTER
+    config VAR_CUT_TIP_BLADE_POS
+      default 80
+    config VAR_CUT_TIP_RETRACT_LENGTH
+      default 40
+    config VAR_CUT_TIP_PUSHBACK_LENGTH
+      default 20
+    choice CHOICE_CUT_TIP_CUTTING_AXIS
+      default CHOICE_CUT_TIP_CUTTING_AXIS_Y
+    endchoice
+    config VAR_CUT_TIP_PIN_LOC_XY
+      default "304, 20"
+    config VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY
+      default "304, 4.35"
+    config VAR_CUT_TIP_PIN_PARK_DIST
+      default 5
+  endif
+endif

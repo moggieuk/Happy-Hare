@@ -22,6 +22,11 @@ config MMU_SHARED_TOOLHEAD
   bool
   default n
 
+# Set by a toolhead preset whose dimensional defaults are placeholders rather than
+# measurements, so the rendered config can say so
+config TOOLHEAD_PRESET_UNMEASURED
+  bool
+
 choice CHOICE_TOOLHEAD_TYPE
   prompt "Toolhead"
   default CHOICE_TOOLHEAD_TYPE_OTHER

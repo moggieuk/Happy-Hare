@@ -1794,6 +1794,8 @@ class _SensorHandle:
     def kind(self):
         """
         'switch'       - a real switch pin, driven through the buttons callback
+        'hall'         - hall filament width sensor (MmuHallEndstop) on two ADC pins; driven
+                         by feeding both pins the readings of a filament or of none
         'proportional' - ADC backed (MmuProportionalSensor); driven by feeding a value
         'virtual'      - derived/virtual endstop sensor; driven via trigger_handler
 
@@ -1803,6 +1805,8 @@ class _SensorHandle:
         """
         if hasattr(self.sensor, 'switch_pin'):
             return 'switch'
+        if hasattr(self.sensor, 'mcu_adc2'):
+            return 'hall'
         if hasattr(self.sensor, 'mcu_adc'):
             return 'proportional'
         if hasattr(self.sensor, 'trigger_handler'):
@@ -1816,6 +1820,8 @@ class _SensorHandle:
             # min_event_systime gating and insert/runout dispatch all run.
             buttons = self._session.printer.lookup_object('buttons')
             buttons.press(self.sensor.switch_pin, state)
+        elif kind == 'hall':
+            self._feed_hall(state)
         elif kind == 'proportional':
             # No switch to press: drive the ADC to a value past the trigger threshold.
             self.feed(self._extreme_value() if state else self.neutral_value(),
@@ -1836,6 +1842,28 @@ class _SensorHandle:
         if settle and not self._session.reactor.in_dispatch():
             self._session.reactor.advance(0.)
         return self
+
+    # -- hall filament width sensors ---------------------------------------
+    HALL_FILAMENT_DIAMETER = 1.75
+
+    def _feed_hall(self, present):
+        """
+        Feed both ADC pins what the sensor would read with a 1.75mm filament in it, or with
+        none, using the sensor's own calibration to turn a diameter into raw readings. The
+        sensor smooths its diameter over successive readings, so keep feeding until the
+        state flips, as a real one would over a few report intervals.
+        """
+        sensor = self.sensor
+        diameter = self.HALL_FILAMENT_DIAMETER if present else 0.
+        slope = (sensor.dia2 - sensor.dia1) / (sensor.rawdia2 - sensor.rawdia1)
+        raw = max(0., (diameter - sensor.dia1) / slope + sensor.rawdia1)
+        value = raw / 2 / 10000.    # Each pin's share, as the 0..1 reading HH scales by 10000
+        for _ in range(50):
+            sensor.mcu_adc.feed(value)
+            sensor.mcu_adc2.feed(value)
+            if (sensor.diameter > sensor.hall_min_diameter) == present:
+                return
+        raise AssertionError('hall sensor %r never read %s' % (self.name, 'filament' if present else 'empty'))
 
     # -- proportional (ADC) sensors ----------------------------------------
     def neutral_value(self):

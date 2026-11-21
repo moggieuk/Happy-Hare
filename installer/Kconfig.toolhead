@@ -6,6 +6,7 @@
 # Responsible for defining/setting:
 #   MMU_HAS_SENSOR_TOOLHEAD (and PIN_EXTRUDER_SENSOR)
 #   MMU_HAS_SENSOR_EXTRUDER (and PIN_EXTRUDER_SENSOR)
+#   MMU_HAS_HALL_EXTRUDER_SENSOR (and PIN_HALL_ADC1/2, PARAM_HALL_*)
 #   MMU_HAS_TOOLHEAD_CUTTER
 #
 # Responsible for setting:
@@ -26,6 +27,15 @@ config MMU_HAS_SENSOR_EXTRUDER
   def_bool n
 
 config PIN_EXTRUDER_SENSOR
+  string
+
+config MMU_HAS_HALL_EXTRUDER_SENSOR
+  def_bool n
+
+config PIN_HALL_ADC1
+  string
+
+config PIN_HALL_ADC2
   string
 
 config MMU_HAS_TOOLHEAD_CUTTER
@@ -85,12 +95,64 @@ menu "Toolhead sensors/settings"
       printer MCU so specify it here.
   
   config PIN_EXTRUDER_SENSOR
-    prompt "Extruder sensor pin    "
+    prompt "Extruder sensor pin    " if !MMU_HAS_HALL_EXTRUDER_SENSOR
     validator "$(pin_validator)"
     depends on MMU_HAS_SENSOR_EXTRUDER
     help
       Can also be set under "Pins" section
       $(pin_help)
+
+  config MMU_HAS_HALL_EXTRUDER_SENSOR
+    prompt "Extruder sensor is a hall filament sensor?"
+    depends on MMU_HAS_SENSOR_EXTRUDER
+    help
+      Select if the extruder (entry) sensor is an analog hall-effect
+      filament width sensor read through two ADC pins (e.g. Qidi Plus4).
+      Happy Hare emulates the extruder sensor from its readings, so the
+      extruder sensor pin is not used.
+
+  if MMU_HAS_HALL_EXTRUDER_SENSOR
+    config PIN_HALL_ADC1
+      prompt "Hall sensor ADC pin 1  "
+      validator "$(pin_validator)"
+      help
+        First analog pin of the hall filament width sensor
+        $(pin_help)
+
+    config PIN_HALL_ADC2
+      prompt "Hall sensor ADC pin 2  "
+      validator "$(pin_validator)"
+      help
+        Second analog pin of the hall filament width sensor
+        $(pin_help)
+
+    config PARAM_HALL_CAL_DIA1
+      float "Hall calibration dia 1 "
+      default 1.5
+      help
+        Diameter (mm) of the first calibration rod, as in Klipper's
+        hall_filament_width_sensor 'cal_dia1'
+
+    config PARAM_HALL_RAW_DIA1
+      int "Hall raw reading, dia 1"
+      default 9500
+      help
+        Summed raw reading of both pins with the first calibration rod
+        inserted ('raw_dia1')
+
+    config PARAM_HALL_CAL_DIA2
+      float "Hall calibration dia 2 "
+      default 2.0
+      help
+        Diameter (mm) of the second calibration rod ('cal_dia2')
+
+    config PARAM_HALL_RAW_DIA2
+      int "Hall raw reading, dia 2"
+      default 10500
+      help
+        Summed raw reading of both pins with the second calibration rod
+        inserted ('raw_dia2')
+  endif
 
   config PARAM_REGISTER_TOOLHEAD_SENSORS
     boolint "Register toolhead sensors in Mainsail/Fluidd"
