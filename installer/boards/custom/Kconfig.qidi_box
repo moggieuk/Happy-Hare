@@ -107,7 +107,7 @@ shutdown_value: 1\n\
 [mmu_nfc_reader $(UNIT_NAME)_nfc01]\n\
 reader_type           : rc522\n\
 cs_pin                : $(MCU_NAME):PC6\n\
-spi_bus               : spi2_PB14_PB15_PB13\n\
+spi_bus               : spi2\n\
 spi_speed             : 1000000\n\
 debug                 : 0\n\
 \n\
@@ -115,7 +115,7 @@ debug                 : 0\n\
 [mmu_nfc_reader $(UNIT_NAME)_nfc23]\n\
 reader_type           : rc522\n\
 cs_pin                : $(MCU_NAME):PC7\n\
-spi_bus               : spi2_PB14_PB15_PB13\n\
+spi_bus               : spi2\n\
 spi_speed             : 1000000\n\
 debug                 : 0\n\
 \n\
