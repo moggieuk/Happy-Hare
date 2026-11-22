@@ -11,7 +11,7 @@
 # particular depends on MmuNfcEndstop.home_start pinning triggered=True (tag detection is
 # the trigger regardless of direction) which had never been executed.
 #
-# GEOMETRY. Model defaults: park -100, entry -50, gate/exit 0, NFC reader -80, read window
+# GEOMETRY. Model defaults: park -100, entry -150, gate/exit 0, NFC reader -80, read window
 # +/-15mm. A tag rides `offset` mm behind the filament tip, since physically the tag is on
 # the spool rather than the tip.
 #

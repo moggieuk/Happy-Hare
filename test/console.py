@@ -72,7 +72,7 @@ try:
 except Exception:                                   # pragma: no cover - Windows
     termios = tty = None
 
-# Where a preloaded filament tip is placed: past the entry switch at -50, which is the
+# Where a preloaded filament tip is placed: past the entry switch, which is the
 # precondition Happy Hare requires before a preload can start (test/README.md section 5).
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
