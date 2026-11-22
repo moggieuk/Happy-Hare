@@ -986,17 +986,14 @@ test('moves that jog filament to an NFC reader are scans, in the direction of th
 });
 
 test('the spool turns through the scan and the moves that park the filament straight after it',()=>{
-  const move=(seq,label,requested,time,duration=1,gate=3)=>({kind:'movement',seq,label,requested,time,duration,state:{gate}});
-  let scan=scanMove(null,move(1,'NFC: scan',-300,10));
-  assert.deepEqual([scan.reverse,scan.pulse,scan.turning],[true,true,true]);
-  scan=scanMove(scan,{kind:'state',seq:2});
-  assert.equal(scan.turning,false);
-  scan=scanMove(scan,move(3,'Reverse homing off mmu_exit_3 sensor',-1000,11.1));
-  assert.deepEqual([scan.reverse,scan.pulse,scan.turning],[true,false,true]);
-  scan=scanMove(scan,move(4,'Final parking',10,12.2));
-  assert.deepEqual([scan.reverse,scan.pulse,scan.turning],[false,false,true]);
-  // A later move, another gate's move, and a move with no scan before it are not part of one
-  assert.equal(scanMove(scan,move(5,'Loading',50,20)),null);
-  assert.equal(scanMove(scan,move(5,'Final parking',10,13.4,1,4)),null);
-  assert.equal(scanMove(null,move(5,'Final parking',10,13.4)),null);
+  const move=(label,requested,time,duration=1,gate=3)=>({kind:'movement',label,requested,time,duration,state:{gate}});
+  const events=[move('NFC: scan',-300,10),{kind:'state'},move('Reverse homing off mmu_exit_3 sensor',-1000,11.1),
+    move('Final parking',10,12.2),move('Loading',50,20),move('Final parking',10,21.1,1,4)];
+  assert.deepEqual(scanMove(events,events[0]),{gate:3,reverse:true,pulse:true});
+  assert.equal(scanMove(events,events[1]),null);
+  assert.deepEqual(scanMove(events,events[2]),{gate:3,reverse:true,pulse:false});
+  assert.deepEqual(scanMove(events,events[3]),{gate:3,reverse:false,pulse:false});
+  // A later move and another gate's move are not part of the scan
+  assert.equal(scanMove(events,events[4]),null);
+  assert.equal(scanMove(events,events[5]),null);
 });

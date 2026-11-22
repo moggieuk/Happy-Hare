@@ -892,7 +892,7 @@ function drawFrame() {
   const now=animationNow();
   const spoolRunning=Boolean(store.playing) || (store.live && !store.paused);
   const spoolMoving=scene.advanceSpools(now, {espoolers:store.displayed?.espoolers, running:spoolRunning, session:store.session,
-    scan:playingScan()});
+    scan:playingScan(), backward:Boolean(store.playing?.reverse)});
   if (store.viewMode==='live' && store.liveTarget) {
     const fraction=Math.min(1,(now-store.liveStart)/350);
     store.displayed=liveFrame(store.liveFrom,store.liveTarget,fraction);
@@ -941,8 +941,8 @@ function drawFrame() {
 function playingScan() {
   const playing=store.playing;
   if (!playing) return null;
-  if (playing.scan === undefined) playing.scan=store.scan=scanMove(store.scan,playing.event);
-  return playing.scan?.turning ? playing.scan : null;
+  if (playing.scan === undefined) playing.scan=scanMove(store.events,playing.event);
+  return playing.scan;
 }
 // One bad frame must not end the animation loop: report it once and carry on.
 let lastFrameError = '';

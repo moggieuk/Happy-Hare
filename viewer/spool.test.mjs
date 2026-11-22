@@ -78,4 +78,7 @@ test('a scanned tag shows rings that grow from it and turn with the face',()=>{
   assert.match(early,/transform="rotate\(40\)" opacity="1"/);
   const radius=svg=>Number(svg.match(/<circle cx="-15" cy="0" r="([\d.]+)"/)[1]);
   assert.ok(radius(late)>radius(early));
+  // The rings lie over the white marking on the rim
+  const drawn=renderSpool({...options,pulse:.1});
+  assert.ok(drawn.indexOf('data-part="spool-tag-pulse"')>drawn.indexOf('data-part="spool-rim-mark"'));
 });

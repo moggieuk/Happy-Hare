@@ -31,7 +31,7 @@ function updateSpoolMotion() {
     renderer.updateMotion(spoolMotion(index,renderedSpoolState?.espoolers?.[index]));
 }
 // Spool rotation and arrow fades advance every frame, whether or not the scene is redrawn.
-function advanceSpools(now, {espoolers, running, session, scan}) {
+function advanceSpools(now, {espoolers, running, session, scan, backward=false}) {
   if (spoolSession !== session) { spoolAngles.clear(); spoolLastFrame=null; spoolArrowVisibility.clear(); spoolDirections.clear(); spoolSession=session; }
   let spoolFading=false;
   const fadeStep=spoolLastFrame === null ? 0 : Math.min(100,now-spoolLastFrame)/450;
@@ -45,7 +45,7 @@ function advanceSpools(now, {espoolers, running, session, scan}) {
   }
   let spoolRotating=false;
   if (running && spoolLastFrame !== null) {
-    const seconds=Math.min(100,now-spoolLastFrame)/1000;
+    const seconds=Math.min(100,now-spoolLastFrame)/1000*(backward ? -1 : 1);  // A step played backward unwinds what it did
     for (const [gate,operation] of Object.entries(espoolers || {})) {
       if (!espoolerActive(operation)) continue;
       const speed=(40+100*Math.min(1,operation.output_power))*(operation.direction==='rewind'?-1:1);

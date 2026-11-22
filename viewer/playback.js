@@ -528,13 +528,20 @@ export function nfcScan(event) {
 }
 
 // The spool turns through a whole scan: its NFC moves (when the tag also pulses), and the moves that follow at once
-// to park the filament again. `previous` is the last result; {gate, reverse, pulse, turning, ...}, else null.
-export function scanMove(previous, event) {
-  if (event?.kind !== 'movement') return previous && {...previous, turning: false};
-  const gate = event.state.gate, gap = event.time-previous?.end;
-  const scanning = Boolean(nfcScan(event));
-  if (!scanning && !(previous?.gate === gate && event.seq > previous.seq && gap < 1)) return null;
-  return {gate, reverse: (event.requested ?? event.distance ?? 0) < 0, pulse: scanning, turning: true, seq: event.seq, end: event.time+(event.duration || 0)};
+// to park the filament again. {gate, reverse, pulse} for a move of `events` that belongs to a scan, else null.
+export function scanMove(events, event) {
+  if (event?.kind !== 'movement') return null;
+  const gate = event.state.gate, reverse = (event.requested ?? event.distance ?? 0) < 0;
+  if (nfcScan(event)) return {gate, reverse, pulse: true};
+  let later = event;
+  for (let i = events.indexOf(event)-1; i >= 0; i--) {
+    const earlier = events[i];
+    if (earlier.kind !== 'movement') continue;
+    if (earlier.state.gate !== gate || later.time-earlier.time-(earlier.duration || 0) >= 1) return null;
+    if (nfcScan(earlier)) return {gate, reverse, pulse: false};
+    later = earlier;
+  }
+  return null;
 }
 
 export function homingPulse(event) {
