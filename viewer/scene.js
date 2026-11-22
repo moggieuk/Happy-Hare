@@ -52,7 +52,8 @@ function advanceSpools(now, {espoolers, running, session, scan}) {
       spoolAngles.set(Number(gate),((spoolAngles.get(Number(gate)) || 0)+seconds*speed)%360);
       spoolRotating=true;
     }
-    // An NFC scan jogs the filament, so the spool turns with it even where nothing drives the spool
+    // A scan jogs the filament, so the spool turns with it even where nothing drives the spool: as an espooler
+    // would, assisting a forward move and rewinding a retract
     if (scan && !espoolerActive(espoolers?.[scan.gate])) {
       spoolAngles.set(scan.gate,((spoolAngles.get(scan.gate) || 0)+seconds*SCAN_TURN*(scan.reverse ? -1 : 1))%360);
       spoolRotating=true;
@@ -60,7 +61,7 @@ function advanceSpools(now, {espoolers, running, session, scan}) {
   }
   const scanned=Boolean(spoolScan);
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  spoolScan=running && scan ? {gate:scan.gate,phase:reduced ? .4 : (now%SCAN_PULSE_MS)/SCAN_PULSE_MS} : null;
+  spoolScan=running && scan?.pulse ? {gate:scan.gate,phase:reduced ? .4 : (now%SCAN_PULSE_MS)/SCAN_PULSE_MS} : null;
   spoolLastFrame=now;
   return spoolFading || spoolRotating || scanned || Boolean(spoolScan);
 }

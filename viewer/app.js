@@ -9,7 +9,7 @@ import {createGateMenu} from './gate-menu-view.js';
 import {ttgMapChart} from './ttg-map.js';
 import {parameterCommand, macroCommand, editorParameters, macroCatalog, editorMacroParameters, toolheadObjects} from './editor.js';
 import {TelemetryReplay, parseTelemetry} from './telemetry.js';
-import {timelineMarkers, nfcScan} from './playback.js';
+import {timelineMarkers, scanMove} from './playback.js';
 import {selectorNotice, orderedSteps, homingHold, nozzleArrivalTime, playbackFrame, isInternalUpdate, changeLines, visibleSteps, toolchangeIndex, annotatedStep, interpolate, duration, CommandHistory, traceText, homingPulse, configurationLabel} from './playback.js';
 import {$, options, syncChildren} from './util.js';
 import {consoleLine, consoleEndsWith, scrollConsoleToEnd} from './console-log.js';
@@ -892,7 +892,7 @@ function drawFrame() {
   const now=animationNow();
   const spoolRunning=Boolean(store.playing) || (store.live && !store.paused);
   const spoolMoving=scene.advanceSpools(now, {espoolers:store.displayed?.espoolers, running:spoolRunning, session:store.session,
-    scan:store.playing ? nfcScan(store.playing.event) : null});
+    scan:playingScan()});
   if (store.viewMode==='live' && store.liveTarget) {
     const fraction=Math.min(1,(now-store.liveStart)/350);
     store.displayed=liveFrame(store.liveFrom,store.liveTarget,fraction);
@@ -936,6 +936,13 @@ function drawFrame() {
   } else if (spoolMoving) {
     scene.updateSpoolMotion();
   }
+}
+// The scan the playing event belongs to, worked out once for each event
+function playingScan() {
+  const playing=store.playing;
+  if (!playing) return null;
+  if (playing.scan === undefined) playing.scan=store.scan=scanMove(store.scan,playing.event);
+  return playing.scan?.turning ? playing.scan : null;
 }
 // One bad frame must not end the animation loop: report it once and carry on.
 let lastFrameError = '';

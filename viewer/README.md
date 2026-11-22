@@ -42,7 +42,9 @@ off screen; they scroll the rack by hand until the next gate selection.
 
 A selected gate that is empty shows no filament: what was drawn there (after an eject, say) withdraws into the spool.
 During an NFC scan in telemetry playback the scanned gate's spool turns with the jogged filament, with or without an
-espooler, and rings pulse from the tag mark on its face. Live status mode has no record of a scan, so shows neither.
+espooler: the way an espooler assists on a forward move and the way it rewinds on a retract, through the scan and the
+moves that park the filament straight after it. Rings pulse from the tag mark on its face during the scan moves. Live
+status mode has no record of a scan, so shows neither.
 
 ## Simulator-only features
 Profile switching and sensor toggles use `sim.viewer.*` RPCs that only

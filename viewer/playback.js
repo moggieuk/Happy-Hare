@@ -527,6 +527,16 @@ export function nfcScan(event) {
   return {gate: event.state.gate, reverse: (event.requested ?? event.distance ?? 0) < 0};
 }
 
+// The spool turns through a whole scan: its NFC moves (when the tag also pulses), and the moves that follow at once
+// to park the filament again. `previous` is the last result; {gate, reverse, pulse, turning, ...}, else null.
+export function scanMove(previous, event) {
+  if (event?.kind !== 'movement') return previous && {...previous, turning: false};
+  const gate = event.state.gate, gap = event.time-previous?.end;
+  const scanning = Boolean(nfcScan(event));
+  if (!scanning && !(previous?.gate === gate && event.seq > previous.seq && gap < 1)) return null;
+  return {gate, reverse: (event.requested ?? event.distance ?? 0) < 0, pulse: scanning, turning: true, seq: event.seq, end: event.time+(event.duration || 0)};
+}
+
 export function homingPulse(event) {
   const sensor=event.homed === true ? homingTarget(event) : null;
   return sensor ? {sensor, reverse:(event.requested ?? event.distance ?? 0) < 0} : null;

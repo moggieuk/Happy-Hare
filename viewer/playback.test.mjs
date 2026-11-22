@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncIndicatorSide, bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn, movingTip, withdrawTip, nfcScan} from './playback.js';
+import { syncIndicatorSide, bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn, movingTip, withdrawTip, nfcScan, scanMove} from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -983,4 +983,20 @@ test('moves that jog filament to an NFC reader are scans, in the direction of th
   assert.deepEqual(nfcScan(move('Preload homing to gate/NFC','preload_compound',300)),{gate:3,reverse:false});
   assert.equal(nfcScan(move('Final parking',undefined,-10)),null);
   assert.equal(nfcScan({kind:'gate_changed',label:'NFC',state:{gate:3}}),null);
+});
+
+test('the spool turns through the scan and the moves that park the filament straight after it',()=>{
+  const move=(seq,label,requested,time,duration=1,gate=3)=>({kind:'movement',seq,label,requested,time,duration,state:{gate}});
+  let scan=scanMove(null,move(1,'NFC: scan',-300,10));
+  assert.deepEqual([scan.reverse,scan.pulse,scan.turning],[true,true,true]);
+  scan=scanMove(scan,{kind:'state',seq:2});
+  assert.equal(scan.turning,false);
+  scan=scanMove(scan,move(3,'Reverse homing off mmu_exit_3 sensor',-1000,11.1));
+  assert.deepEqual([scan.reverse,scan.pulse,scan.turning],[true,false,true]);
+  scan=scanMove(scan,move(4,'Final parking',10,12.2));
+  assert.deepEqual([scan.reverse,scan.pulse,scan.turning],[false,false,true]);
+  // A later move, another gate's move, and a move with no scan before it are not part of one
+  assert.equal(scanMove(scan,move(5,'Loading',50,20)),null);
+  assert.equal(scanMove(scan,move(5,'Final parking',10,13.4,1,4)),null);
+  assert.equal(scanMove(null,move(5,'Final parking',10,13.4)),null);
 });

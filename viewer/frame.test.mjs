@@ -22,7 +22,7 @@ function harness() {
     // The scene owns spool rotation; here it only reports whether a spool is turning
     scene:{advanceSpools:(now,spools)=>{ context.advances.push(spools); return spools.running && Object.values(spools.espoolers || {}).some(espoolerActive); },
       updateSpoolMotion:()=>context.spoolUpdates++,returnRackWhenIdle:()=>{}},
-    homingHold,nfcScan:()=>null,
+    homingHold,scanMove:()=>null,
     updateLiveIndicator:()=>{},
     $:()=>({checked:false}),duration:()=>1000,nozzleArrivalTime:()=>null,
     playbackFrame:()=>({fraction:.1,state}),homingPulse:()=>null,followTrace:()=>{},
