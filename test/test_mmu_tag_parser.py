@@ -271,6 +271,24 @@ class TestTigerTagVersions(TagParserTestCase):
             self.assertNotEqual((info or {}).get("tag_format"), "tigertag", hex(magic))
 
 
+class TestTigerTagTables(TagParserTestCase):
+    """Tables generated from TigerTag's registry by utils/update_tigertag_tables.py."""
+
+    def test_brand_and_material_added_by_the_registry(self):
+        info = self.parse(tigertag_image(0x5BF59264, material_id=48469, brand_id=628))
+        self.assertEqual((info.get("material"), info.get("brand")), ("PEEK-CF", "Buddy3D"))
+
+    def test_existing_material_names_are_kept(self):
+        """TigerTag renamed some materials; a gate's MATERIAL mustn't change under users."""
+        for material_id, name in ((24629, "PLA-HS"), (11506, "PLA-LW"), (7649, "PETG-HS")):
+            self.assertEqual(self.parse(tigertag_image(0x5BF59264, material_id=material_id)).get("material"), name)
+
+    def test_placeholder_ids_give_no_name(self):
+        info = self.parse(tigertag_image(0x5BF59264, material_id=65535, brand_id=65535))
+        self.assertNotIn("material", info)
+        self.assertNotIn("brand", info)
+
+
 class TestUnparseableInputIsSafe(TagParserTestCase):
     """
     Robustness sweep. A reader hands parse_tag whatever the chip returned, including
