@@ -936,14 +936,13 @@ def _try_anycubic_ace(raw: bytes) -> Optional[dict]:
 
 # ---- TigerTag --------------------------------------------------------------
 
+# The only version IDs TigerTag has issued: the registry in TigerTag-RFID-Guide
+# database/id_version.json (0 = empty chip). Accepting anything else risks treating an
+# unrelated NTAG payload as a TigerTag
 _TIGERTAG_MAGIC = {
     0x5BF59264: "TigerTag",
     0xBC0FCB97: "TigerTag+",
     0x6C41A2E1: "TigerTag Init",
-    # Earlier public database / app variants seen in the reference projects.
-    0x5BF04674: "TigerTag",
-    0xBC0A5927: "TigerTag+",
-    0x6C2B2DF1: "TigerTag Init",
 }
 
 _TIGERTAG_TYPE_FILAMENT = 0x8E

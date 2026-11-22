@@ -227,6 +227,50 @@ class TestSimplyPrintUrl(TagParserTestCase):
         self.assertIsNone(self.parse(raw))
 
 
+def tigertag_image(magic, material_id=38219, brand_id=0, rgb=(0x61, 0xA3, 0x5D), weight_g=1000,
+                   nozzle=(240, 270), bed=(80, 100)):
+    """TigerTag user memory from page 4: the 32-byte core plus a zero twin-tag id."""
+    import struct
+    raw = bytearray(36)
+    struct.pack_into(">I", raw, 0, magic)
+    struct.pack_into(">I", raw, 4, 0xFFFFFFFF)          # no product id
+    struct.pack_into(">H", raw, 8, material_id)
+    raw[12], raw[13] = 0x8E, 56                         # filament, 1.75 mm
+    struct.pack_into(">H", raw, 14, brand_id)
+    raw[16:20] = bytes(rgb) + b"\xFF"
+    raw[20:23] = weight_g.to_bytes(3, "big")
+    raw[23] = 21                                        # grams
+    struct.pack_into(">HH", raw, 24, *nozzle)
+    raw[30], raw[31] = bed
+    return bytes(raw)
+
+
+class TestTigerTagVersions(TagParserTestCase):
+    """Only the version IDs in TigerTag's registry (database/id_version.json) are TigerTags."""
+
+    def test_registry_versions_parse(self):
+        for magic, name in ((0x5BF59264, "TigerTag"), (0xBC0FCB97, "TigerTag+")):
+            info = self.parse(tigertag_image(magic))
+            self.assertEqual(info.get("tag_format"), "tigertag", hex(magic))
+            self.assertEqual(info.get("tigertag_version"), name)
+            self.assertEqual(info.get("color_hex"), "61A35D")
+            self.assertEqual(info.get("weight_g"), 1000)
+            self.assertEqual((info.get("min_temp"), info.get("max_temp")), (240, 270))
+
+    def test_blank_init_chip_is_not_a_filament(self):
+        self.assertIsNone(tag_parser._try_tigertag(tigertag_image(0x6C41A2E1)))
+        self.assertTrue(tag_parser._has_tigertag_magic(tigertag_image(0x6C41A2E1)))
+
+    def test_ids_outside_the_registry_are_not_tigertags(self):
+        """0x5BF04674, 0xBC0A5927 and 0x6C2B2DF1 were never issued by TigerTag."""
+        for magic in (0x5BF04674, 0xBC0A5927, 0x6C2B2DF1, 0x00000000):
+            raw = tigertag_image(magic)
+            self.assertFalse(tag_parser._has_tigertag_magic(raw), hex(magic))
+            self.assertIsNone(tag_parser._try_tigertag(raw), hex(magic))
+            info = self.parse(raw)
+            self.assertNotEqual((info or {}).get("tag_format"), "tigertag", hex(magic))
+
+
 class TestUnparseableInputIsSafe(TagParserTestCase):
     """
     Robustness sweep. A reader hands parse_tag whatever the chip returned, including
