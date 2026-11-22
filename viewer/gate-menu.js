@@ -43,7 +43,8 @@ export function gateMenu(objects, gate, connected) {
   const loaded = position === FILAMENT_POS_LOADED, crossload = unit?.can_crossload ?? false;
   // A gate that is not selected can only be worked on where filament can be driven with another gate loaded
   const reachable = selected ? !loaded : crossload;
-  const hasNfc = Boolean(unit?.nfc_reader || unit?.nfc_readers?.[gate-unit.first_gate]);
+  // A scan jogs the gate's filament past its own reader; a reader shared by the unit cannot be scanned this way
+  const hasNfc = Boolean(unit?.nfc_readers?.[gate-unit.first_gate]);
   const item = (id, label, command, disabled) => ({id, label, icon: ICONS[id], command, disabled: !send || disabled});
   return [
     item('select', 'Select', `MMU_SELECT GATE=${gate}`, selected || loaded),

@@ -43,15 +43,14 @@ test('another gate can be selected or changed to, and worked on only where the u
   assert.deepEqual(enabled(objects({filament_pos:10}),2),['changeTool','check']);
 });
 
-test('a gate with an NFC reader offers a tag scan, under the preload rule',()=>{
+test('a gate with its own NFC reader offers a tag scan, under the preload rule',()=>{
   assert.equal(gateMenu(objects(),0,true).some(item=>item.id==='nfc'),false);
-  const shared=objects({},{nfc_reader:'mmu_nfc_reader shared'});
-  assert.equal(command(shared,1,'nfc'),'MMU_NFC_SCAN GATE=1');
-  assert.ok(enabled(shared,0).includes('nfc'));
-  assert.ok(!enabled(shared,1).includes('nfc'));
+  assert.equal(gateMenu(objects({},{nfc_reader:'shared'}),0,true).some(item=>item.id==='nfc'),false);
   const perGate=objects({},{nfc_readers:['r0','','r2','']});
   assert.equal(gateMenu(perGate,1,true).some(item=>item.id==='nfc'),false);
-  assert.equal(gateMenu(perGate,2,true).some(item=>item.id==='nfc'),true);
+  assert.equal(command(perGate,2,'nfc'),'MMU_NFC_SCAN GATE=2');
+  assert.ok(enabled(perGate,0).includes('nfc'));
+  assert.ok(!enabled(perGate,2).includes('nfc'));
 });
 
 test('a gate belongs to the unit that holds it',()=>{
