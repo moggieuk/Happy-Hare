@@ -76,11 +76,17 @@ class FakeHttpClient:
         self.spoolman = spoolman
         self.spoolmandb = spoolmandb
         self.requests = []          # [(method, url, headers)] assertion surface
+        self.tigertag = {}          # TigerTag registry fixtures: {'last_update': {...}, 'id_brand': [...], ...}
 
     async def request(self, method, url, body=None, headers=None, **kwargs):
         self.requests.append((method, url, dict(headers) if headers else {}))
         if 'donkie.github.io' in url:
             return self._spoolmandb(url)
+        if 'TigerTag-RFID-Guide' in url:
+            name = url.rsplit('/', 1)[-1].removesuffix('.json')
+            if name in self.tigertag:
+                return spoolman_mod.Response(200, self.tigertag[name])
+            return spoolman_mod.Response(404, error='not found (test)')
         return self.spoolman.handle(method.upper(), url, body)
 
     async def get(self, url, **kwargs):
@@ -150,6 +156,7 @@ class FakeKlippyApis:
         self.sink = None
         self.pause_calls = 0
         self.extra_status = {}
+        self.config_sections = {}   # Klipper's configfile 'config': {section: {option: raw string}}
         # The second channel back into Klipper, for the TD-1 bridge alone: an endpoint
         # reply rather than a gcode command, queued for the same reason
         self.endpoint_requests = []  # [(path, args)] every request, in order
@@ -162,6 +169,8 @@ class FakeKlippyApis:
         return objects
 
     async def query_objects(self, objects, default=None):
+        if 'configfile' in objects:
+            return {'configfile': {'config': dict(self.config_sections)}}
         if 'mmu' in objects and self.mmu_present:
             status = {'enabled': self.mmu_enabled, 'num_gates': self.num_gates}
             status.update(self.extra_status)

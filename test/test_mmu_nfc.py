@@ -556,5 +556,45 @@ class TestStartupWarningsReachTheConsole(unittest.TestCase):
         self.assertEqual(self.warnings(logged), [])
 
 
+class TestTigerTagRegistryAtStartup(unittest.TestCase):
+    """nfc_tigertag_registry: Klipper adds Moonraker's downloaded TigerTag IDs once at startup."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session('nfc_per_gate')
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def setUp(self):
+        import json, os
+        from extras.mmu.unit.nfc import tag_parser
+        self.tag_parser = tag_parser
+        self.saved = dict(tag_parser._TIGERTAG_BRANDS)
+        self.addCleanup(lambda: (tag_parser._TIGERTAG_BRANDS.clear(), tag_parser._TIGERTAG_BRANDS.update(self.saved)))
+        cache = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag')
+        os.makedirs(cache, exist_ok=True)
+        with open(os.path.join(cache, 'id_brand.json'), 'w') as f:
+            json.dump([{'id': 64999, 'name': 'Newbrand'}], f)
+        self.unit = self.hh.mmu.mmu_machine.units[0]
+        self.addCleanup(setattr, self.unit.p, 'nfc_tigertag_registry', self.unit.p.nfc_tigertag_registry)
+
+    def test_parameter_defaults_off(self):
+        self.assertEqual(self.unit.p.nfc_tigertag_registry, 0)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_off_loads_nothing(self):
+        self.unit.p.nfc_tigertag_registry = 0
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+
+    def test_on_adds_the_downloaded_ids(self):
+        self.unit.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertEqual(self.tag_parser._TIGERTAG_BRANDS.get(64999), 'Newbrand')
+
+
 if __name__ == '__main__':
     unittest.main()

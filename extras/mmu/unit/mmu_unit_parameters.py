@@ -336,6 +336,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('nfc_preload_clear_distance',       'float', lambda self: self.nfc_gate_clear_distance, section="NFC",      validator=_validate_nfc_preload_clear_distance),
         ParamSpec('nfc_field_probe_reads',            'int',       3, section="NFC", limits=dict(minval=1, maxval=10)),
         ParamSpec('nfc_deep_read',                    'int',       0, section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('nfc_tigertag_registry',            'int',       0, section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
 
         # TD-1 filament measurement

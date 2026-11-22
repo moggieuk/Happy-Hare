@@ -99,6 +99,17 @@ NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spo
 SPOOLMANDB_MATERIALS_URL = "https://donkie.github.io/SpoolmanDB/materials.json"
 SPOOLMANDB_BAMBU_URL     = "https://donkie.github.io/SpoolmanDB/filaments/bambulab.json"
 
+# TigerTag's registry (CC0). With nfc_tigertag_registry on for any MMU unit, copies of its ID
+# tables are kept in config/mmu/optional/tigertag, which Klipper adds to its built-in tables at
+# startup (tag_parser.load_tigertag_registry). Which tables, from where, and what a row must
+# satisfy is defined once in the schema module shared with the parser and the table generator.
+# It lives in the Klipper tree, so it is loaded by path from this file's real (linked) location
+TIGERTAG_SCHEMA = os.path.join("extras", "mmu", "unit", "nfc", "tigertag_registry.py")
+TIGERTAG_DB_NAMESPACE = "mmu_server"
+TIGERTAG_DB_KEY = "tigertag_registry" # Last nfc_tigertag_registry seen from Klipper, so a restart needn't wait for it
+TIGERTAG_REFRESH = 24 * 3600       # Seconds between registry checks
+TIGERTAG_RETRY = 3600              # Seconds before retrying a check that failed
+
 DENSITY_FALLBACK = {               # g/cm³, used when SpoolmanDB is unreachable
     "pla": 1.24, "pla+": 1.24, "abs": 1.04, "petg": 1.27, "nylon": 1.52,
     "pa": 1.52, "tpu": 1.21, "flexible": 1.21, "asa": 1.05, "pc": 1.30,
@@ -217,6 +228,175 @@ class MmuServer:
 
         # Options
         self.update_location = self.config.getboolean("update_spoolman_location", True)
+        self._tigertag_task = None # Runs while any MMU unit has nfc_tigertag_registry on
+        self._tigertag_schema = None
+        self.server.register_event_handler("server:klippy_ready", self._handle_klippy_ready)
+
+
+    async def close(self) -> None:
+        if self._tigertag_task is not None:
+            self._tigertag_task.cancel()
+            self._tigertag_task = None
+
+
+    # TigerTag registry ----------------------------------------------------------------------
+
+    async def _handle_klippy_ready(self):
+        '''Klipper owns the switch (nfc_tigertag_registry, per unit): follow it on every Klipper start'''
+        try:
+            result = await self.klippy_apis.query_objects({"configfile": ["config"]})
+        except Exception as e:
+            logging.debug(f"TigerTag registry: couldn't read Klipper's config: {str(e)}")
+            return
+        config = ((result or {}).get('configfile') or {}).get('config') or {}
+        wanted = any(str(options.get('nfc_tigertag_registry', '0')).strip().lower() in ('1', 'true', 'yes')
+                     for section, options in config.items()
+                     if section.startswith('mmu_unit_parameters') and isinstance(options, dict))
+        self._set_tigertag_registry(wanted)
+        try:
+            await self.database.insert_item(TIGERTAG_DB_NAMESPACE, TIGERTAG_DB_KEY, wanted)
+        except Exception as e:
+            logging.debug(f"TigerTag registry: couldn't save the setting: {str(e)}")
+
+
+    def _set_tigertag_registry(self, wanted):
+        if wanted and self._tigertag_task is None:
+            self._tigertag_task = asyncio.create_task(self._tigertag_registry_loop())
+        elif not wanted and self._tigertag_task is not None:
+            self._tigertag_task.cancel()
+            self._tigertag_task = None
+
+
+    def _tigertag_cache_dir(self) -> str | None:
+        '''config/mmu/optional/tigertag in the printer's config directory'''
+        config_dir = None
+        file_manager = self.server.lookup_component('file_manager', None)
+        if file_manager is not None:
+            try:
+                config_dir = file_manager.get_directory('config')
+            except Exception:
+                config_dir = None
+        if not config_dir:
+            data_path = self.server.get_app_args().get('data_path')
+            config_dir = os.path.join(data_path, 'config') if data_path else None
+        return os.path.join(config_dir, 'mmu', 'optional', 'tigertag') if config_dir else None
+
+
+    def _load_tigertag_schema(self):
+        '''
+        The shared registry schema (tigertag_registry.py), loaded once by path. The installer
+        links this component to the Happy Hare checkout, so the module sits beside it there.
+        None if it can't be found: then nothing is downloaded and Klipper keeps its built-in tables
+        '''
+        if self._tigertag_schema is None:
+            repo = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            path = os.path.join(repo, TIGERTAG_SCHEMA)
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("hh_tigertag_registry", path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self._tigertag_schema = module
+            except Exception as e:
+                logging.warning(f"TigerTag registry: can't load {path} ({str(e)}), not downloading")
+                return None
+        return self._tigertag_schema
+
+
+    async def _tigertag_registry_loop(self):
+        schema = self._load_tigertag_schema()
+        if schema is None:
+            return
+        while True:
+            try:
+                ok = await self._refresh_tigertag_registry(schema)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logging.warning(f"TigerTag registry: refresh failed: {str(e)}")
+                ok = False
+            await asyncio.sleep(TIGERTAG_REFRESH if ok else TIGERTAG_RETRY)
+
+
+    async def _refresh_tigertag_registry(self, schema=None) -> bool:
+        '''
+        Download the schema's tables that changed since the last check into the cache directory,
+        keeping only rows that pass the schema's rules. Returns True when the cache is current,
+        False to retry sooner. Never replaces a good copy with a download that has no valid rows
+        '''
+        schema = schema or self._load_tigertag_schema()
+        if schema is None:
+            return True
+        cache_dir = self._tigertag_cache_dir()
+        if not cache_dir:
+            logging.warning("TigerTag registry: printer config directory unknown, not downloading")
+            return True
+        stamps_file = f"{schema.STAMPS_FILE}.json"
+        remote = await self._fetch_json(f"{schema.REGISTRY_URL}/{stamps_file}")
+        if not isinstance(remote, dict):
+            return False
+        local = self._read_json(os.path.join(cache_dir, stamps_file))
+        local = local if isinstance(local, dict) else {}
+
+        os.makedirs(cache_dir, exist_ok=True)
+        readme = os.path.join(cache_dir, 'README.txt')
+        if not os.path.exists(readme):
+            with open(readme, 'w', encoding='utf-8') as f:
+                f.write("Downloaded by Happy Hare (mmu_server) from TigerTag's registry:\n"
+                        f"  {schema.REGISTRY_URL}\n"
+                        "Refreshed automatically; don't edit. Turned on by nfc_tigertag_registry in the MMU\n"
+                        "unit parameters. Safe to delete: it is downloaded again.\n")
+
+        stamps, updated, ok = dict(local), [], True
+        for table in schema.TABLES:
+            key, path = table.stamp_key, os.path.join(cache_dir, f"{table.file}.json")
+            if remote.get(key) is not None and remote.get(key) == local.get(key) and os.path.exists(path):
+                continue
+            good, rejected = schema.clean_rows(table, await self._fetch_json(f"{schema.REGISTRY_URL}/{table.file}.json"))
+            if not good:
+                logging.warning(f"TigerTag registry: {table.file}.json missing or has no valid entries, keeping the previous copy")
+                ok = False
+                continue
+            if rejected:
+                logging.warning(f"TigerTag registry: {table.file}.json: dropped {rejected} entr{'y' if rejected == 1 else 'ies'} that fail the schema rules")
+            self._write_json_atomic(path, good)
+            stamps[key] = remote.get(key)
+            updated.append(table.file)
+        if stamps != local:
+            self._write_json_atomic(os.path.join(cache_dir, stamps_file), stamps)
+        if updated:
+            logging.info(f"TigerTag registry: updated {', '.join(updated)} in {cache_dir}")
+        return ok
+
+
+    async def _fetch_json(self, url):
+        try:
+            resp = await self.http_client.get(url=url)
+            if resp.has_error():
+                logging.info(f"Couldn't fetch {url}: HTTP {resp.status_code}")
+                return None
+            return resp.json()
+        except Exception as e:
+            logging.info(f"Couldn't fetch {url}: {str(e)}")
+            return None
+
+
+    @staticmethod
+    def _read_json(path):
+        try:
+            with open(path, encoding='utf-8') as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return None
+
+
+    @staticmethod
+    def _write_json_atomic(path, data):
+        '''Write then rename, so the Klipper-side parser never reads a half-written file'''
+        tmp = f"{path}.tmp"
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, path)
 
 
     async def _get_spoolman_version(self) -> tuple[int, int, int] | None:
@@ -234,6 +414,14 @@ class MmuServer:
 
 
     async def component_init(self) -> None:
+        # The switch is Klipper's, but Moonraker needn't wait for Klipper: act on the last value
+        # seen, so the tables are usually fresh before Klipper loads them. Klipper ready corrects it
+        try:
+            if await self.database.get_item(TIGERTAG_DB_NAMESPACE, TIGERTAG_DB_KEY, False):
+                self._set_tigertag_registry(True)
+        except Exception as e:
+            logging.debug(f"TigerTag registry: couldn't read the last setting: {str(e)}")
+
         if self.spoolman is None:
             logging.warning("Spoolman not available. Happy Hare remote methods not available")
             return

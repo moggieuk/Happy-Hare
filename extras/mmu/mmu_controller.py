@@ -255,6 +255,8 @@ class MmuController(MmuFilamentMovement):
         # Clients start from the configfile, so record where load-time fix-ups moved values away from it
         self._seed_config_changes()
 
+        self._load_tigertag_registry()
+
         # Setup events for managing internal print state machine
         self.psm.register_event_handlers()
 
@@ -4379,6 +4381,29 @@ class MmuController(MmuFilamentMovement):
         else:
             temperature = int(self.p.default_extruder_temp)
         return name, material, vendor, color, temperature
+
+
+    def _load_tigertag_registry(self):
+        """
+        With nfc_tigertag_registry on for any unit, add the TigerTag IDs Moonraker downloaded
+        into <config>/mmu/optional/tigertag to the tag parser's tables. Once, at startup: a
+        newer download takes effect on the next restart
+        """
+        if not any(getattr(unit.p, 'nfc_tigertag_registry', 0) for unit in self.mmu_machine.units):
+            return
+        config_file = self.printer.get_start_args().get('config_file')
+        if not config_file:
+            return
+        import os
+        from .unit.nfc import tag_parser
+        cache_dir = os.path.join(os.path.dirname(config_file), 'mmu', 'optional', 'tigertag')
+        try:
+            added = tag_parser.load_tigertag_registry(cache_dir)
+        except Exception as e:
+            self.log_debug("NFC: couldn't load TigerTag registry from %s: %s" % (cache_dir, str(e)))
+            return
+        if added:
+            self.log_debug("NFC: added %d TigerTag name(s) from %s" % (added, cache_dir))
 
 
     def nfc_deep_read_enabled(self, unit):

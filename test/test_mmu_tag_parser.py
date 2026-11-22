@@ -228,14 +228,14 @@ class TestSimplyPrintUrl(TagParserTestCase):
 
 
 def tigertag_image(magic, material_id=38219, brand_id=0, rgb=(0x61, 0xA3, 0x5D), weight_g=1000,
-                   nozzle=(240, 270), bed=(80, 100)):
+                   nozzle=(240, 270), bed=(80, 100), type_id=0x8E, diameter_id=56):
     """TigerTag user memory from page 4: the 32-byte core plus a zero twin-tag id."""
     import struct
     raw = bytearray(36)
     struct.pack_into(">I", raw, 0, magic)
     struct.pack_into(">I", raw, 4, 0xFFFFFFFF)          # no product id
     struct.pack_into(">H", raw, 8, material_id)
-    raw[12], raw[13] = 0x8E, 56                         # filament, 1.75 mm
+    raw[12], raw[13] = type_id, diameter_id             # default: filament, 1.75 mm
     struct.pack_into(">H", raw, 14, brand_id)
     raw[16:20] = bytes(rgb) + b"\xFF"
     raw[20:23] = weight_g.to_bytes(3, "big")
@@ -283,10 +283,153 @@ class TestTigerTagTables(TagParserTestCase):
         for material_id, name in ((24629, "PLA-HS"), (11506, "PLA-LW"), (7649, "PETG-HS")):
             self.assertEqual(self.parse(tigertag_image(0x5BF59264, material_id=material_id)).get("material"), name)
 
+    def test_type_and_diameter_come_from_the_registry_tables(self):
+        info = self.parse(tigertag_image(0x5BF59264, type_id=173, diameter_id=221))
+        self.assertEqual((info.get("tigertag_type"), info.get("diameter_mm")), ("Resin", 2.85))
+        info = self.parse(tigertag_image(0x5BF59264))
+        self.assertEqual((info.get("tigertag_type"), info.get("diameter_mm")), ("Filament", 1.75))
+
+    def test_unknown_type_and_diameter_are_left_out(self):
+        info = self.parse(tigertag_image(0x5BF59264, type_id=7, diameter_id=9))
+        self.assertNotIn("tigertag_type", info)
+        self.assertNotIn("diameter_mm", info)
+        self.assertEqual(info.get("tigertag_diameter_id"), 9)
+
     def test_placeholder_ids_give_no_name(self):
         info = self.parse(tigertag_image(0x5BF59264, material_id=65535, brand_id=65535))
         self.assertNotIn("material", info)
         self.assertNotIn("brand", info)
+
+
+class TestTigerTagDownloadedTables(TagParserTestCase):
+    """Moonraker's downloaded registry (config/mmu/optional/tigertag), added once at startup."""
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+        # load_tigertag_registry adds to the module tables: restore them after each test
+        self.saved = [(t, dict(t)) for t in (getattr(tag_parser, s.attr) for s in tag_parser._tigertag_registry.TABLES)]
+
+    def tearDown(self):
+        import shutil
+        for table, copy in self.saved:
+            table.clear()
+            table.update(copy)
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def write(self, name, rows):
+        import os
+        with open(os.path.join(self.dir, name + ".json"), "w", encoding="utf-8") as f:
+            f.write(rows if isinstance(rows, str) else json.dumps(rows))
+
+    def brand(self, brand_id):
+        return self.parse(tigertag_image(0x5BF59264, brand_id=brand_id)).get("brand")
+
+    def test_new_id_from_the_download_resolves(self):
+        self.assertIsNone(self.brand(64999))
+        self.write("id_brand", [{"id": 64999, "name": "Newbrand"}, {"id": 628, "name": "Buddy3D"}])
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 1)
+        self.assertEqual(self.brand(64999), "Newbrand")
+
+    def test_download_never_renames_a_built_in_entry(self):
+        self.write("id_material", [{"id": 24629, "label": "PLA High Speed"}])
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 0)
+        info = self.parse(tigertag_image(0x5BF59264, material_id=24629))
+        self.assertEqual(info.get("material"), "PLA-HS")
+
+    def test_unreadable_or_bad_files_change_nothing(self):
+        self.write("id_brand", "{not json")
+        self.write("id_aspect", [{"id": "x", "label": 5}, "junk"])
+        self.write("id_material", {"not": "a list"})
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 0)
+        self.assertEqual(self.brand(628), "Buddy3D")
+
+    def test_new_type_and_diameter_from_the_download(self):
+        self.write("id_type", [{"id": 200, "label": "Pellets"}])
+        self.write("id_diameter", [{"id": 99, "label": "3.00"}])
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 2)
+        info = self.parse(tigertag_image(0x5BF59264, type_id=200, diameter_id=99))
+        self.assertEqual((info.get("tigertag_type"), info.get("diameter_mm")), ("Pellets", 3.0))
+
+    def test_diameter_entries_must_be_millimetres(self):
+        self.write("id_diameter", [{"id": 90, "label": "abc"}, {"id": 91, "label": "0"},
+                                   {"id": 92, "label": "-1.75"}, {"id": 93, "label": "175"},
+                                   {"id": 221, "label": "9.99"}])   # last: built-in never replaced
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 0)
+        self.assertEqual(self.parse(tigertag_image(0x5BF59264, diameter_id=221)).get("diameter_mm"), 2.85)
+
+    def test_newly_issued_version_is_recognised(self):
+        """A version TigerTag issues after this release is read once the registry has it."""
+        new = 0x1234ABCD
+        self.assertNotEqual((self.parse(tigertag_image(new)) or {}).get("tag_format"), "tigertag")
+        self.write("id_version", [{"id": new, "version": "1.1", "name": "TigerTag 1.1", "tag": "TIGER_TAG_V1.1"}])
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 1)
+        info = self.parse(tigertag_image(new, material_id=24629))
+        self.assertEqual(info.get("tag_format"), "tigertag")
+        self.assertEqual(info.get("tigertag_version"), "TigerTag 1.1")
+        self.assertEqual(info.get("material"), "PLA-HS")
+
+    def test_new_blank_chip_version_is_not_a_filament(self):
+        self.write("id_version", [{"id": 0x1234ABCE, "version": "1.0", "name": "TigerTag Init 2"}])
+        tag_parser.load_tigertag_registry(self.dir)
+        self.assertTrue(tag_parser._has_tigertag_magic(tigertag_image(0x1234ABCE)))
+        self.assertIsNone(tag_parser._try_tigertag(tigertag_image(0x1234ABCE)))
+
+    def test_version_entries_are_checked_strictly(self):
+        before = dict(tag_parser._TIGERTAG_MAGIC)
+        rejected = [
+            {"id": 0x22220001, "version": "2.0", "name": "TigerTag 2"},   # another chip layout
+            {"id": 0x22220002, "name": "No version"},
+            {"id": 0x22220003, "version": 1.1, "name": "Numeric version"},
+            {"id": 0, "version": "1.0", "name": "RFID Empty"},            # empty chip
+            {"id": 2 ** 32, "version": "1.0", "name": "Too big"},
+            {"id": -1, "version": "1.0", "name": "Negative"},
+            {"id": True, "version": "1.0", "name": "Boolean id"},
+            {"id": "1542820452", "version": "1.0", "name": "String id"},
+            {"id": 0x22220004, "version": "1.0", "name": "  "},
+            {"id": 0x5BF59264, "version": "1.0", "name": "Renamed"},      # built-in never replaced
+            "junk",
+        ]
+        self.write("id_version", rejected)
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 0)
+        self.assertEqual(tag_parser._TIGERTAG_MAGIC, before)
+        for magic in (0x22220001, 0x22220002, 0x22220003, 0x22220004):
+            self.assertNotEqual((self.parse(tigertag_image(magic)) or {}).get("tag_format"), "tigertag", hex(magic))
+
+    def test_ids_must_fit_the_chip_field(self):
+        """Aspect, type, diameter and unit are one byte on the chip; material and brand two."""
+        self.write("id_aspect", [{"id": 256, "label": "Too wide"}, {"id": 200, "label": "Fits"}])
+        self.write("id_brand", [{"id": 65536, "name": "Too wide"}, {"id": 64999, "name": "Fits"}])
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 2)
+        self.assertNotIn(256, tag_parser._TIGERTAG_ASPECTS)
+        self.assertNotIn(65536, tag_parser._TIGERTAG_BRANDS)
+        self.assertEqual(tag_parser._TIGERTAG_BRANDS.get(64999), "Fits")
+
+    def test_names_must_be_safe_text(self):
+        """Names reach the gate map and G-code: no quotes, escapes, comments, control chars or essays."""
+        bad = ['Quote"d', "Apos'trophe", "Back\\slash", "Semi;colon", "Hash#tag",
+               "New\nline", "Tab\tbed", "Null\x00", "", "   ", "x" * 49]
+        self.write("id_brand", [{"id": 64000 + i, "name": n} for i, n in enumerate(bad)]
+                   + [{"id": 64999, "name": "Bambu Lab m\u00b3 3D-Fuel (Pro)"}])
+        self.assertEqual(tag_parser.load_tigertag_registry(self.dir), 1)
+        self.assertEqual(tag_parser._TIGERTAG_BRANDS.get(64999), "Bambu Lab m\u00b3 3D-Fuel (Pro)")
+        self.assertFalse([i for i in range(64000, 64000 + len(bad)) if i in tag_parser._TIGERTAG_BRANDS])
+
+    def test_downloaded_version_decodes_like_a_built_in_one(self):
+        """The version table is the only gate: once listed, a version decodes with no field checks,
+        so a low-temperature filament or a resin chip with no temperatures still resolves."""
+        new = 0x1234ABCD
+        self.write("id_version", [{"id": new, "version": "1.1", "name": "TigerTag 1.1"}])
+        tag_parser.load_tigertag_registry(self.dir)
+        for fields in (dict(nozzle=(60, 100)), dict(type_id=173, nozzle=(0, 0), bed=(0, 0)),
+                       dict(type_id=0x55, diameter_id=3)):
+            info = self.parse(tigertag_image(new, **fields))
+            self.assertEqual(info.get("tag_format"), "tigertag", fields)
+            self.assertEqual(info.get("tigertag_version"), "TigerTag 1.1")
+
+    def test_missing_folder_changes_nothing(self):
+        import os
+        self.assertEqual(tag_parser.load_tigertag_registry(os.path.join(self.dir, "nope")), 0)
 
 
 class TestUnparseableInputIsSafe(TagParserTestCase):

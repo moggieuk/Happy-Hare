@@ -5,8 +5,9 @@
 # TigerTag's own registry, the CC0 database in the TigerTag-RFID-Guide repository:
 #   https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/database
 #
-# The tables turn the IDs written on a TigerTag chip (material, brand, aspect, unit,
-# version) into names. Only the block between the BEGIN/END markers is rewritten.
+# The tables turn the IDs written on a TigerTag chip into names: every ID table in the
+# registry (version, type, diameter, material, brand, aspect, unit). The product catalogue
+# and container models aren't used. Only the block between the BEGIN/END markers is rewritten.
 #
 #   python3 utils/update_tigertag_tables.py              # download and update in place
 #   python3 utils/update_tigertag_tables.py --check      # report changes, write nothing
@@ -18,58 +19,53 @@
 
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import sys
 import urllib.request
 
-REPO_RAW = "https://raw.githubusercontent.com/TigerTag-Project/TigerTag-RFID-Guide/main/database"
-TARGET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "extras", "mmu", "unit", "nfc", "tag_parser.py")
+HERE = os.path.dirname(os.path.abspath(__file__))
+NFC_DIR = os.path.join(HERE, "..", "extras", "mmu", "unit", "nfc")
+TARGET = os.path.join(NFC_DIR, "tag_parser.py")
 BEGIN = "# BEGIN TigerTag registry tables"
 END = "# END TigerTag registry tables"
 
-# Material names Happy Hare already shipped under a different spelling. Kept so the
-# MATERIAL a gate shows (and what Spoolman auto-create receives) doesn't change under
-# existing users; TigerTag's label is noted beside each
-KEEP_MATERIAL_NAMES = {
-    7649: "PETG-HS",    # TigerTag: PETG HS
-    10478: "Cast Fil",  # TigerTag: Castable Filament
-    11506: "PLA-LW",    # TigerTag: PLA-AERO
-    24629: "PLA-HS",    # TigerTag: PLA High Speed
-    31011: "ASA-LW",    # TigerTag: ASA-AERO
-    48047: "TPU-HS",    # TigerTag: TPU High Speed
-    56527: "PEI",       # TigerTag: PEI-1010
-    57469: "PETG-HF",   # TigerTag: PETG HF
-}
 
-# (python name, registry file, name field, last_update key)
-TABLES = (
-    ("_TIGERTAG_MATERIALS", "id_material", "label", "filament_materials"),
-    ("_TIGERTAG_BRANDS", "id_brand", "name", "brands"),
-    ("_TIGERTAG_ASPECTS", "id_aspect", "label", "aspects"),
-    ("_TIGERTAG_UNITS", "id_measure_unit", "label", "measure_units"),
-)
+def load_schema():
+    """extras/mmu/unit/nfc/tigertag_registry.py: the tables, rules and kept names shared with
+    the parser and Moonraker's download. Loaded by path: this script isn't in that package"""
+    spec = importlib.util.spec_from_file_location("tigertag_registry", os.path.join(NFC_DIR, "tigertag_registry.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+schema = load_schema()
 
 
 def fetch(name, source_dir):
     if source_dir:
         with open(os.path.join(source_dir, name + ".json"), encoding="utf-8") as f:
             return json.load(f)
-    with urllib.request.urlopen(f"{REPO_RAW}/{name}.json", timeout=30) as resp:
+    with urllib.request.urlopen(f"{schema.REGISTRY_URL}/{name}.json", timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def id_map(rows, field, what):
-    """{id: name} from a registry list, refusing anything that doesn't look like one"""
+def id_map(table, rows):
+    """{id: name} for one schema table, refusing anything the schema's row_ok rejects: a bad
+    registry entry stops the build so a human looks, rather than being shipped"""
     if not isinstance(rows, list) or not rows:
-        raise ValueError(f"{what}: expected a non-empty list")
+        raise ValueError(f"{table.file}: expected a non-empty list")
     out = {}
     for row in rows:
-        if not isinstance(row, dict) or not isinstance(row.get("id"), int) or not isinstance(row.get(field), str):
-            raise ValueError(f"{what}: unexpected entry {row!r}")
+        if schema.is_placeholder(table, row):
+            continue
+        if not schema.row_ok(table, row):
+            raise ValueError(f"{table.file}: entry fails the schema rules: {row!r}")
         if row["id"] in out:
-            raise ValueError(f"{what}: duplicate id {row['id']}")
-        out[row["id"]] = row[field]
+            raise ValueError(f"{table.file}: duplicate id {row['id']}")
+        out[row["id"]] = row[table.field]
     return out
 
 
@@ -84,25 +80,26 @@ def render_dict(name, mapping, comments=None, hex_keys=False):
 
 
 def build_block(source_dir):
-    stamps = fetch("last_update", source_dir)
-    versions = id_map(fetch("id_version", source_dir), "name", "id_version")
-    versions.pop(0, None)  # 0 = empty chip, never a TigerTag
-    if not any("Init" in v for v in versions.values()):
-        raise ValueError("id_version: no 'Init' entry; _try_tigertag relies on it to skip blank chips")
-
-    parts = []
-    renamed = {}
-    for py_name, file_name, field, stamp_key in TABLES:
-        table = id_map(fetch(file_name, source_dir), field, file_name)
+    stamps = fetch(schema.STAMPS_FILE, source_dir)
+    parts, renamed = [], {}
+    for table in schema.TABLES:
+        mapping = id_map(table, fetch(table.file, source_dir))
         comments = None
-        if py_name == "_TIGERTAG_MATERIALS":
+        if table.key == "versions":
+            if not any("Init" in v for v in mapping.values()):
+                raise ValueError("id_version: no 'Init' entry; _try_tigertag relies on it to skip blank chips")
+            parts.append("# The only version IDs TigerTag has issued (0 = empty chip). Accepting anything else\n"
+                         "# risks treating an unrelated NTAG payload as a TigerTag\n"
+                         + render_dict(table.attr, mapping, hex_keys=True))
+            continue
+        if table.key == "materials":
             comments = {}
-            for mid, keep in KEEP_MATERIAL_NAMES.items():
-                if mid in table and table[mid] != keep:
-                    comments[mid] = f"TigerTag: {table[mid]}"
-                    renamed[mid] = (table[mid], keep)
-                    table[mid] = keep
-        parts.append(render_dict(py_name, table, comments))
+            for mid, keep in schema.KEEP_MATERIAL_NAMES.items():
+                if mid in mapping and mapping[mid] != keep:
+                    comments[mid] = f"TigerTag: {mapping[mid]}"
+                    renamed[mid] = (mapping[mid], keep)
+                    mapping[mid] = keep
+        parts.append(render_dict(table.attr, mapping, comments))
 
     def stamp(key):
         ms = stamps.get(key) if isinstance(stamps, dict) else None
@@ -111,15 +108,11 @@ def build_block(source_dir):
     header = "\n".join([
         BEGIN,
         "# Generated by utils/update_tigertag_tables.py from TigerTag's registry (CC0):",
-        f"#   {REPO_RAW}",
-        "# Registry dates: " + ", ".join(f"{k} {stamp(k)}" for k in ("versions", "filament_materials", "brands", "aspects", "measure_units")),
-        "# Don't edit by hand: re-run the script. Names Happy Hare already shipped under",
-        "# another spelling are kept (KEEP_MATERIAL_NAMES in the script)",
+        f"#   {schema.REGISTRY_URL}",
+        "# Registry dates: " + ", ".join(f"{t.stamp_key} {stamp(t.stamp_key)}" for t in schema.TABLES),
+        "# Don't edit by hand: re-run the script. Tables and rules: tigertag_registry.py. Names Happy",
+        "# Hare already shipped under another spelling are kept (KEEP_MATERIAL_NAMES there)",
         "# cspell:disable",
-        "",
-        "# The only version IDs TigerTag has issued (0 = empty chip). Accepting anything else",
-        "# risks treating an unrelated NTAG payload as a TigerTag",
-        render_dict("_TIGERTAG_MAGIC", versions, hex_keys=True),
     ])
     return header + "\n\n" + "\n\n".join(parts) + "\n# cspell:enable\n" + END, renamed
 
