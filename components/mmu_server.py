@@ -99,7 +99,7 @@ NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spo
 SPOOLMANDB_MATERIALS_URL = "https://donkie.github.io/SpoolmanDB/materials.json"
 SPOOLMANDB_BAMBU_URL     = "https://donkie.github.io/SpoolmanDB/filaments/bambulab.json"
 
-# TigerTag's registry (CC0). With nfc_tigertag_registry on for any MMU unit, copies of its ID
+# TigerTag's registry (CC0). With nfc_tigertag_registry on (one printer-wide setting), copies of its ID
 # tables are kept in config/mmu/optional/tigertag, which Klipper adds to its built-in tables at
 # startup (tag_parser.load_tigertag_registry). Which tables, from where, and what a row must
 # satisfy is defined once in the schema module shared with the parser and the table generator.
@@ -228,7 +228,7 @@ class MmuServer:
 
         # Options
         self.update_location = self.config.getboolean("update_spoolman_location", True)
-        self._tigertag_task = None # Runs while any MMU unit has nfc_tigertag_registry on
+        self._tigertag_task = None # Runs while nfc_tigertag_registry is on
         self._tigertag_schema = None
         self.server.register_event_handler("server:klippy_ready", self._handle_klippy_ready)
 
@@ -242,16 +242,17 @@ class MmuServer:
     # TigerTag registry ----------------------------------------------------------------------
 
     async def _handle_klippy_ready(self):
-        '''Klipper owns the switch (nfc_tigertag_registry, per unit): follow it on every Klipper start'''
+        '''Klipper owns the switch (nfc_tigertag_registry in [mmu_parameters], one per printer):
+        follow it on every Klipper start'''
         try:
             result = await self.klippy_apis.query_objects({"configfile": ["config"]})
         except Exception as e:
             logging.debug(f"TigerTag registry: couldn't read Klipper's config: {str(e)}")
             return
         config = ((result or {}).get('configfile') or {}).get('config') or {}
-        wanted = any(str(options.get('nfc_tigertag_registry', '0')).strip().lower() in ('1', 'true', 'yes')
-                     for section, options in config.items()
-                     if section.startswith('mmu_unit_parameters') and isinstance(options, dict))
+        options = config.get('mmu_parameters')
+        wanted = isinstance(options, dict) and \
+            str(options.get('nfc_tigertag_registry', '0')).strip().lower() in ('1', 'true', 'yes')
         self._set_tigertag_registry(wanted)
         try:
             await self.database.insert_item(TIGERTAG_DB_NAMESPACE, TIGERTAG_DB_KEY, wanted)
@@ -344,8 +345,8 @@ class MmuServer:
             with open(readme, 'w', encoding='utf-8') as f:
                 f.write("Downloaded by Happy Hare (mmu_server) from TigerTag's registry:\n"
                         f"  {schema.REGISTRY_URL}\n"
-                        "Refreshed automatically; don't edit. Turned on by nfc_tigertag_registry in the MMU\n"
-                        "unit parameters. Safe to delete: it is downloaded again.\n")
+                        "Refreshed automatically; don't edit. Turned on by nfc_tigertag_registry in\n"
+                        "[mmu_parameters] (mmu/base/mmu.cfg). Safe to delete: it is downloaded again.\n")
 
         stamps, updated, ok = dict(local), [], True
         for table in schema.TABLES:

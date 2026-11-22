@@ -7,7 +7,6 @@
 # MMU_HAS_PER_GATE_NFC_READERS
 #
 # PARAM_NFC_DEEP_READ
-# PARAM_NFC_TIGERTAG_REGISTRY
 # PARAM_NFC_GATE_JOG_SCAN_WINDOW
 # PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
 # PARAM_NFC_NEIGHBOR_CHECK
@@ -563,17 +562,6 @@ if MMU_HAS_NFC_READER
         and uses it to populate the local gate map when a tag is presented.
         Optionally, if a scanned tag's UID isn't yet known to Spoolman, a new spool can be created automatically
         from the tag.
-
-    config PARAM_NFC_TIGERTAG_REGISTRY
-      boolint
-      prompt "Download TigerTag registry tables" if PARAM_NFC_DEEP_READ
-      default 0
-      keep_when_hidden
-      help
-        Moonraker downloads TigerTag's ID tables (versions, types, diameters, materials, brands,
-        aspects, units) into mmu/optional/tigertag daily, when they change. IDs newer than this
-        Happy Hare release then decode; IDs it already knows never change. Loaded when Klipper
-        starts; needs internet. New tag versions are accepted only with the 1.x chip layout.
 
     config PARAM_NFC_GATE_JOG_SCAN_WINDOW
       string "NFC jog scan window (scan)           "

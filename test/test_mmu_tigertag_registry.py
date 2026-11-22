@@ -153,41 +153,51 @@ class TestFailures(RegistryTestCase):
 
 
 class TestSwitch(unittest.TestCase):
-    """Klipper owns the switch: nfc_tigertag_registry in [mmu_unit_parameters <unit>]."""
+    """Klipper owns the switch: nfc_tigertag_registry in [mmu_parameters], one per printer."""
 
     def setUp(self):
         self.hh = harness()
         self.server = self.hh.mmu_server
         self.addCleanup(self.hh.close)
 
-    def klipper_ready(self, **units):
-        self.hh.klippy.config_sections = {f'mmu_unit_parameters {name}': {'nfc_tigertag_registry': value}
-                                          for name, value in units.items()}
+    def klipper_ready(self, value=None, units=None):
+        """Klipper's config as Moonraker sees it: [mmu_parameters] with the switch (omitted if
+        value is None), plus {unit name: options} as [mmu_unit_parameters <unit>] sections"""
+        config = {f'mmu_unit_parameters {name}': options for name, options in (units or {}).items()}
+        config['mmu_parameters'] = {} if value is None else {'nfc_tigertag_registry': value}
+        self.hh.klippy.config_sections = config
         self.hh.run(self.server._handle_klippy_ready())
 
     def test_off_by_default(self):
         self.klipper_ready()
         self.assertIsNone(self.server._tigertag_task)
+
+    def test_on_in_mmu_parameters_turns_it_on(self):
+        self.klipper_ready('1')
+        self.assertIsNotNone(self.server._tigertag_task)
+
+    def test_a_unit_section_does_not_turn_it_on(self):
+        """It is printer-wide: an nfc_tigertag_registry left in a unit's section is ignored"""
+        self.klipper_ready('0', units={'unit0': {'nfc_tigertag_registry': '1', 'nfc_deep_read': '1'}})
+        self.assertIsNone(self.server._tigertag_task)
+
+    def test_no_mmu_parameters_section_is_off(self):
         self.hh.klippy.config_sections = {'mmu_unit_parameters unit0': {'nfc_deep_read': '1'}}
         self.hh.run(self.server._handle_klippy_ready())
         self.assertIsNone(self.server._tigertag_task)
 
-    def test_any_unit_turns_it_on(self):
-        self.klipper_ready(unit0='0', unit1='1')
-        self.assertIsNotNone(self.server._tigertag_task)
-
     def test_turned_off_stops_the_job(self):
-        self.klipper_ready(unit0='1')
+        self.klipper_ready('1')
         task = self.server._tigertag_task
-        self.klipper_ready(unit0='0')
+        self.klipper_ready('0')
         self.assertIsNone(self.server._tigertag_task)
         self.hh.run(__import__('asyncio').sleep(0))
         self.assertTrue(task.cancelled())
 
     def test_klipper_restart_keeps_one_job(self):
-        self.klipper_ready(unit0='1')
+        self.klipper_ready('1')
         task = self.server._tigertag_task
-        self.klipper_ready(unit0='1')
+        self.klipper_ready('1')
         self.assertIs(self.server._tigertag_task, task)
 
     def moonraker_restart(self):
@@ -197,13 +207,13 @@ class TestSwitch(unittest.TestCase):
         self.hh.run(self.server.component_init())
 
     def test_restart_starts_before_klipper_when_last_seen_on(self):
-        self.klipper_ready(unit0='1')
+        self.klipper_ready('1')
         self.moonraker_restart()
         self.assertIsNotNone(self.server._tigertag_task, 'downloading without waiting for Klipper')
 
     def test_restart_stays_off_when_last_seen_off(self):
-        self.klipper_ready(unit0='1')
-        self.klipper_ready(unit0='0')
+        self.klipper_ready('1')
+        self.klipper_ready('0')
         self.moonraker_restart()
         self.assertIsNone(self.server._tigertag_task)
 
@@ -212,13 +222,13 @@ class TestSwitch(unittest.TestCase):
         self.assertIsNone(self.server._tigertag_task)
 
     def test_klipper_corrects_a_stale_setting(self):
-        self.klipper_ready(unit0='1')
+        self.klipper_ready('1')
         self.moonraker_restart()                 # starts from the remembered value...
-        self.klipper_ready(unit0='0')            # ...then Klipper says it was turned off
+        self.klipper_ready('0')            # ...then Klipper says it was turned off
         self.assertIsNone(self.server._tigertag_task)
 
     def test_close_stops_the_job(self):
-        self.klipper_ready(unit0='1')
+        self.klipper_ready('1')
         self.hh.run(self.server.close())
         self.assertIsNone(self.server._tigertag_task)
 
