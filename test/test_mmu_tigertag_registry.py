@@ -152,6 +152,62 @@ class TestFailures(RegistryTestCase):
         self.assertEqual(self.fetched(n), ['last_update.json', 'id_aspect.json'])
 
 
+class TestTurnedOffDeletesTheDownload(RegistryTestCase):
+    """Turning nfc_tigertag_registry off deletes the downloaded copies - but only the files the
+    download writes, and only on Klipper's word that it is off."""
+
+    def klipper_ready(self, value, config=None):
+        self.hh.klippy.config_sections = config if config is not None else \
+            {'mmu_parameters': {'nfc_tigertag_registry': value}}
+        self.hh.run(self.server._handle_klippy_ready())
+
+    def downloaded(self):
+        self.assertTrue(self.refresh())
+        self.assertTrue(os.path.isfile(os.path.join(self.cache, 'id_brand.json')))
+
+    def test_turned_off_deletes_the_folder(self):
+        self.downloaded()
+        self.klipper_ready('0')
+        self.assertFalse(os.path.exists(self.cache))
+
+    def test_left_over_temp_files_go_too(self):
+        self.downloaded()
+        open(os.path.join(self.cache, 'id_brand.json.tmp'), 'w').close()
+        self.klipper_ready('0')
+        self.assertFalse(os.path.exists(self.cache))
+
+    def test_files_it_did_not_write_are_kept(self):
+        self.downloaded()
+        with open(os.path.join(self.cache, 'my notes.txt'), 'w') as f:
+            f.write('mine')
+        self.klipper_ready('0')
+        self.assertEqual(os.listdir(self.cache), ['my notes.txt'])
+
+    def test_on_keeps_the_download(self):
+        self.downloaded()
+        self.klipper_ready('1')
+        self.assertTrue(os.path.isfile(os.path.join(self.cache, 'id_brand.json')))
+
+    def test_off_with_nothing_downloaded_is_harmless(self):
+        self.klipper_ready('0')
+        self.assertFalse(os.path.exists(self.cache))
+
+    def test_no_happy_hare_section_deletes_nothing(self):
+        self.downloaded()
+        self.klipper_ready(None, config={'printer': {}})
+        self.assertTrue(os.path.isfile(os.path.join(self.cache, 'id_brand.json')))
+
+    def test_unreadable_klipper_config_deletes_nothing(self):
+        from unittest import mock
+        self.downloaded()
+
+        async def fail(*args, **kwargs):
+            raise RuntimeError('Klipper went away')
+        with mock.patch.object(self.server.klippy_apis, 'query_objects', fail):
+            self.hh.run(self.server._handle_klippy_ready())
+        self.assertTrue(os.path.isfile(os.path.join(self.cache, 'id_brand.json')))
+
+
 class TestSwitch(unittest.TestCase):
     """Klipper owns the switch: nfc_tigertag_registry in [mmu_parameters], one per printer."""
 

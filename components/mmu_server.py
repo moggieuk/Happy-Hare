@@ -243,7 +243,7 @@ class MmuServer:
 
     async def _handle_klippy_ready(self):
         '''Klipper owns the switch (nfc_tigertag_registry in [mmu_parameters], one per printer):
-        follow it on every Klipper start'''
+        follow it on every Klipper start. Turned off, the downloaded copies are deleted too'''
         try:
             result = await self.klippy_apis.query_objects({"configfile": ["config"]})
         except Exception as e:
@@ -254,6 +254,10 @@ class MmuServer:
         wanted = isinstance(options, dict) and \
             str(options.get('nfc_tigertag_registry', '0')).strip().lower() in ('1', 'true', 'yes')
         self._set_tigertag_registry(wanted)
+        if not wanted and isinstance(options, dict):
+            # Only on Klipper's word that it is off: an unreadable config, or no Happy Hare
+            # section at all, never deletes anything
+            self._remove_tigertag_cache()
         try:
             await self.database.insert_item(TIGERTAG_DB_NAMESPACE, TIGERTAG_DB_KEY, wanted)
         except Exception as e:
@@ -266,6 +270,37 @@ class MmuServer:
         elif not wanted and self._tigertag_task is not None:
             self._tigertag_task.cancel()
             self._tigertag_task = None
+
+
+    def _remove_tigertag_cache(self):
+        '''
+        Delete the downloaded copies when the option is turned off, so nothing is left for
+        Klipper to load and the folder doesn't sit there stale. Only the files the download
+        writes are removed (tables, stamps, README and any interrupted .tmp), then the folder
+        if that empties it: anything else someone put there is left alone
+        '''
+        cache_dir = self._tigertag_cache_dir()
+        if not cache_dir or not os.path.isdir(cache_dir):
+            return
+        schema = self._load_tigertag_schema()
+        stamps = schema.STAMPS_FILE if schema is not None else "last_update"
+        ours = {f"{stamps}.json", "README.txt"}
+        removed = 0
+        for name in os.listdir(cache_dir):
+            base = name[:-len(".tmp")] if name.endswith(".tmp") else name
+            if base in ours or (base.startswith("id_") and base.endswith(".json")):
+                try:
+                    os.remove(os.path.join(cache_dir, name))
+                    removed += 1
+                except OSError as e:
+                    logging.warning(f"TigerTag registry: couldn't delete {name}: {str(e)}")
+        try:
+            os.rmdir(cache_dir)
+            logging.info(f"TigerTag registry: turned off, deleted {cache_dir}")
+        except OSError:
+            if removed:
+                logging.info(f"TigerTag registry: turned off, deleted the downloaded files in {cache_dir}"
+                             " (other files there were kept)")
 
 
     def _tigertag_cache_dir(self) -> str | None:
