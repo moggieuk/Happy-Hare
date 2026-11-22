@@ -1240,11 +1240,13 @@ class Console:
     }
 
     def _landmarks(self):
-        """[(position, label)] in path order, one entry per distinct position."""
+        """[(landmark, label)] in path order, one entry per distinct position."""
         by_pos = {}
         for name, pos in self.fil.layout.items():
-            by_pos.setdefault(pos, []).append(self._LANDMARK_LABEL.get(name, name))
-        return [(pos, '/'.join(sorted(by_pos[pos]))) for pos in sorted(by_pos)]
+            by_pos.setdefault(pos, []).append(name)
+        return [(by_pos[pos][0],
+                 '/'.join(sorted(self._LANDMARK_LABEL.get(name, name) for name in by_pos[pos])))
+                for pos in sorted(by_pos)]
 
     def _hdr_filament(self, st):
         """Per-gate tip position on the modelled path - what a real printer cannot show."""
@@ -1271,8 +1273,8 @@ class Console:
                                                  paint('(empty)', '90', self.color)))
                 continue
             cells = []
-            for (pos, _), w in zip(marks, widths):
-                covered = tail <= pos <= tip        # filament occupies [tail, tip]
+            for (name, _), w in zip(marks, widths):
+                covered = tail <= self.fil.landmark(name, gate) <= tip  # filament occupies [tail, tip]
                 cells.append(paint('##'.center(w), '1;32', self.color) if covered
                              else '..'.center(w))
             out.append('  %sgate %-3d %s  %+8.1f' % (flag, gate, ' '.join(cells), tip))

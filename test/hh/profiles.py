@@ -23,20 +23,23 @@ class UnitProfile:
     index must match the unit's position in Profile.units: it becomes UNIT_INDEX, which
     Kconfig.name:6 uses to build the default display name ('BoxTurtle-0', 'VVD-1', ...).
     mcu_name defaults to name, as it does in install.sh:421-422.
+    filament_layout overrides the profile's simulator geometry for this unit's gates.
     """
 
-    def __init__(self, name, syms=None, index=0, mcu_name=None):
+    def __init__(self, name, syms=None, index=0, mcu_name=None, filament_layout=None):
         self.name = name
         self.syms = dict(syms or {})
         self.index = index
         self.mcu_name = mcu_name or name
+        self.filament_layout = dict(filament_layout or {})
 
-    def derive(self, name=None, syms=None, index=None, mcu_name=None):
+    def derive(self, name=None, syms=None, index=None, mcu_name=None, filament_layout=None):
         merged = dict(self.syms)
         merged.update(syms or {})
         return UnitProfile(name or self.name, merged,
                            self.index if index is None else index,
-                           mcu_name or self.mcu_name)
+                           mcu_name or self.mcu_name,
+                           self.filament_layout if filament_layout is None else filament_layout)
 
     def __repr__(self):
         return 'UnitProfile(%r)' % (self.name,)
@@ -570,7 +573,11 @@ QIDI = Profile(
     # Keep a compact simulated internal leg and ~750 mm hub-to-extruder leg.
     # Preload uses the production homing limit to find the shared hub sensor,
     # then retracts to park clear of the shared path.
+    # The gear turns the spool to scan its tag, retracting up to 480 mm from the
+    # hub, so the entry switch has to sit further upstream than that.
     filament_layout={
+        'mmu_pre_gate': -400.0,
+        'mmu_entry': -400.0,
         'mmu_shared_exit': 150.0,
         'extruder_entry': 900.0,
         'filament_compression': 900.0,
@@ -882,7 +889,10 @@ ERCF_VVD = Profile(
             # gate is expressed, and is what the attribution debt exists for
             'MMU_HAS_TD1': True,
             'PARAM_TD1_BOWDEN_DEVICE': 'TD1-VVD',
-        }),
+        },
+            # The gear turns the spool to scan its tag, retracting up to 300 mm from
+            # the gate, so the entry switch has to sit further upstream than that.
+            filament_layout={'mmu_pre_gate': -400.0, 'mmu_entry': -400.0}),
     ],
     # Non-identity maps, so the console starts with something to look at in MMU_TTG_MAP and
     # MMU_ENDLESS_SPOOL_GROUPS and RESET=1 has a configured default to restore:

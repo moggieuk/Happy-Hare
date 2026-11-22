@@ -909,5 +909,36 @@ class TestSharedGateOccupancyAcrossUnits(unittest.TestCase):
                          "gate 0 is on unit0, whose shared exit is clear")
 
 
+class TestScanKeepsFilamentGripped(unittest.TestCase):
+    """A full scan sweep on the shipped window never pulls filament out of the entry switch."""
+
+    def test_entry_stays_covered_through_the_sweep(self):
+        for name in ('qidi', 'ercf_vvd'):
+            with self.subTest(profile=name):
+                hh = session(name, virtual_nfc=True)
+                self.addCleanup(hh.close)
+                hh.boot()
+                fil = hh.filament()
+                mmu = hh.mmu
+                gate = next(g for g in range(mmu.num_gates)
+                            if mmu.mmu_unit(g).nfc_manager is not None
+                            and mmu.mmu_unit(g).nfc_manager.has_gate_nfc_reader(g))
+                hh.place_filament(gate, position=-40.)
+                hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+
+                entry = []
+                advance = fil.advance
+
+                def traced(*args, **kwargs):
+                    result = advance(*args, **kwargs)
+                    entry.append(fil.triggered('mmu_entry_%d' % gate))
+                    return result
+                fil.advance = traced
+                hh.run_gcode('MMU_NFC_SCAN GATE=%d' % gate)
+
+                self.assertTrue(entry, 'the scan did not move the filament')
+                self.assertTrue(all(entry), 'the scan pulled filament out of the entry switch')
+
+
 if __name__ == '__main__':
     unittest.main()

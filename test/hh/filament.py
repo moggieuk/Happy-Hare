@@ -59,6 +59,9 @@ import logging
 # live between -100 and the extruder. Only a user insertion (or a spool running out, via
 # exhaust()) can change its state - which is exactly the real machine.
 #
+# Machines whose gear turns the spool (ViViD, QIDI Box) scan much further back than -100,
+# so their profiles move the switch upstream to match - see Profile.filament_layout.
+#
 # This was previously inverted - entry at -50, i.e. between park and the gate - on the
 # reasoning that HH's preload tail marks a gate GATE_UNKNOWN when entry is still covered
 # afterwards. That tail is inside `except MmuError` (mmu_filament_movement.py:180-189)
@@ -143,6 +146,8 @@ class FilamentPath:
         # {unit name: (first_gate, num_gates)}, filled in by the Session. Empty means
         # single-unit, in which case gates_visible_to() falls back to every gate as before.
         self.units = {}
+        # {unit name: {landmark: position}} for units whose geometry differs from `layout`
+        self.unit_layout = {}
         self.tags = {}                  # gate -> Tag
         self.tag_window = tag_window
         self._set_sensor = set_sensor
@@ -292,11 +297,19 @@ class FilamentPath:
         bare = name.split(':')[-1]
         # Strip a trailing per-gate index: mmu_exit_2 -> mmu_exit
         if bare in self.layout:
-            return self.layout[bare]
+            return self.landmark(bare, self.gate_of(name))
         head = bare.rsplit('_', 1)[0]
         if head in self.layout:
-            return self.layout[head]
+            return self.landmark(head, self.gate_of(name))
         return None
+
+    def landmark(self, key, gate=None):
+        """Position of a layout landmark as the unit owning `gate` has it."""
+        if gate is not None:
+            for unit, (first, count) in self.units.items():
+                if first <= gate < first + count:
+                    return self.unit_layout.get(unit, {}).get(key, self.layout[key])
+        return self.layout[key]
 
     def models_sensor(self, name):
         """Whether a registered sensor is owned by the dynamic buffer model."""

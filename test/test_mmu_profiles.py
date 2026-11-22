@@ -520,7 +520,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertGreater(cutter['blade_pos'], unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
 
         model = hh.filament()
-        self.assertEqual(model.layout['mmu_entry'], -150)
+        self.assertEqual(model.layout['mmu_entry'], -400)
         self.assertEqual(model.layout['mmu_shared_exit'], 150)
         self.assertEqual(model.layout['extruder'], 876)
         self.assertEqual(model.layout['toolhead'], 897)
