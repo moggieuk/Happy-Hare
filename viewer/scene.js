@@ -2,7 +2,7 @@
 // The main view: draws one scene state into the host <svg>. It reads nothing from the page outside the host and
 // changes nothing outside it; the caller passes what to draw (view) and how (settings).
 import { SpoolRenderer, renderSpool, spoolWindingRadius, espoolerActive } from './spool.js';
-import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, toolheadProgress, toolheadDrawingRange, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, excessFilamentLabel, constrainFilament, gearAngle, homingTarget, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength, movingTip, visualTip} from './playback.js';
+import { SCENE_WIDTH, BUFFER_CENTER_X, BOWDEN_EXIT_X as EXIT, EXTRUDER_X as E, gateSelectionLit, rackIdleReturn, spoolTooltip, tweenTo, virtualSelectorLayout, syncIndicatorSide, bowdenLane, rackGrid, bowdenAttachment, toolheadProgress, toolheadDrawingRange, switchFilamentDistance, syncForDisplay, encoderFilamentDistance, excessFilamentLabel, constrainFilament, gearAngle, homingTarget, bladeStroke, bowdenLengthLabel, toolheadReferences, coolingTubeMeasurements, dimensionParameter, lastEncoderReading, encoderReference, gateDevicePositions, purgeOutletColor, purgeCoils, purgeStrandLength, movingTip, visualTip, withdrawTip} from './playback.js';
 import {$, escape, short as sensorName, DEFAULT_COLOR, round1, clamp01} from './util.js';
 import {renderBuffer} from './buffer-view.js';
 import {measurePath} from './path-measure.js';
@@ -15,13 +15,14 @@ export function spoolFill(state, gate) {
 export function createScene(host, {now: animationNow, requestFrame: draw, rackHeld, rackMoved}) {
   let view={}, settings={};
 const spoolAngles=new Map(), spoolArrowVisibility=new Map(), spoolDirections=new Map();
-let spoolLastFrame=null, spoolSession=null;
+let spoolLastFrame=null, spoolSession=null, spoolScan=null;
+const SCAN_TURN=70, SCAN_PULSE_MS=900;  // Degrees a second a scanned spool turns without an espooler, and its tag's ring period
 const spoolRenderers=new Map();
 let renderedSpoolState=null;
 function spoolMotion(index,operation) {
   const active=espoolerActive(operation);
   const visibility=spoolArrowVisibility.get(index) ?? (active ? 1 : 0);
-  return {rotation:spoolAngles.get(index) || 0,
+  return {rotation:spoolAngles.get(index) || 0, pulse:spoolScan?.gate===index ? spoolScan.phase : null,
     arrowOpacity:visibility*visibility*(3-2*visibility),
     direction:active ? operation.direction : spoolDirections.get(index)};
 }
@@ -30,7 +31,7 @@ function updateSpoolMotion() {
     renderer.updateMotion(spoolMotion(index,renderedSpoolState?.espoolers?.[index]));
 }
 // Spool rotation and arrow fades advance every frame, whether or not the scene is redrawn.
-function advanceSpools(now, {espoolers, running, session}) {
+function advanceSpools(now, {espoolers, running, session, scan}) {
   if (spoolSession !== session) { spoolAngles.clear(); spoolLastFrame=null; spoolArrowVisibility.clear(); spoolDirections.clear(); spoolSession=session; }
   let spoolFading=false;
   const fadeStep=spoolLastFrame === null ? 0 : Math.min(100,now-spoolLastFrame)/450;
@@ -51,9 +52,17 @@ function advanceSpools(now, {espoolers, running, session}) {
       spoolAngles.set(Number(gate),((spoolAngles.get(Number(gate)) || 0)+seconds*speed)%360);
       spoolRotating=true;
     }
+    // An NFC scan jogs the filament, so the spool turns with it even where nothing drives the spool
+    if (scan && !espoolerActive(espoolers?.[scan.gate])) {
+      spoolAngles.set(scan.gate,((spoolAngles.get(scan.gate) || 0)+seconds*SCAN_TURN*(scan.reverse ? -1 : 1))%360);
+      spoolRotating=true;
+    }
   }
+  const scanned=Boolean(spoolScan);
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  spoolScan=running && scan ? {gate:scan.gate,phase:reduced ? .4 : (now%SCAN_PULSE_MS)/SCAN_PULSE_MS} : null;
   spoolLastFrame=now;
-  return spoolFading || spoolRotating;
+  return spoolFading || spoolRotating || scanned || Boolean(spoolScan);
 }
 // The rack of units scrolls to the selected gate; the edge arrows add a temporary manual shift until the gate changes.
 let rackGate = null, rackManualShift = 0, rackTween = null, bowdenDetached = false;
@@ -67,6 +76,13 @@ function animatedGearSpacing(target) {
   gearSpacingTween = tweenTo(reduced ? null : gearSpacingTween, target, animationNow());
   if (!gearSpacingTween.done) draw();
   return gearSpacingTween.value;
+}
+let withdrawal = null;
+function withdrawnTip(gate, tip, empty, spool) {
+  withdrawal = withdrawTip(withdrawal, {gate, tip, empty, spool, now: animationNow(),
+    animate: !matchMedia('(prefers-reduced-motion: reduce)').matches});
+  if (!withdrawal.tween.done) draw();
+  return withdrawal.tip;
 }
 // An inward ring marks active homing; the outward ring marks completion.
 function homingRing(name,x,y) {
@@ -350,7 +366,10 @@ function measure(c) {
   const fullTipOpacity=virtual ? 1 : s.gate_full_opacity ?? 1;
   const slidingRack=fullTipOpacity===0;
   const spoolTip=570-504;
-  const selectedTip=constrained.tip+(Math.min(constrained.tip,spoolTip)-constrained.tip)*(virtual ? (s.gate_feed===undefined ? 0 : 1-s.gate_feed) : s.gate_retraction || 0);
+  const retractedTip=constrained.tip+(Math.min(constrained.tip,spoolTip)-constrained.tip)*(virtual ? (s.gate_feed===undefined ? 0 : 1-s.gate_feed) : s.gate_retraction || 0);
+  const emptyGate=s.gate >= 0 && s.gate_status?.[gate] === 0 && s.filament_pos === 0;
+  if (emptyGate) constrained.warnings=[];
+  const selectedTip=withdrawnTip(gate,retractedTip,emptyGate,spoolTip);
   tip = tipAtPathDistance(selectedTip);
   const shapedTipOpacity=fullTipOpacity*(virtual && selectedTip<virtual.distanceAtY(virtual.hub) ? branchOpacity : 1)*clamp01((selectedTip-(570-502))/28);
   const start = s.tails[gate] === null ? 0 : pathDistance(s.tails[gate]), stop = Math.max(0,selectedTip-coneOffset);

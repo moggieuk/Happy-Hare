@@ -40,6 +40,10 @@ The rack slides so the selected spool stays under the exit (a virtual-selector u
 slides it along with the existing selection animation. Narrow arrows at the panel edges appear when part of a unit is
 off screen; they scroll the rack by hand until the next gate selection.
 
+A selected gate that is empty shows no filament: what was drawn there (after an eject, say) withdraws into the spool.
+During an NFC scan in telemetry playback the scanned gate's spool turns with the jogged filament, with or without an
+espooler, and rings pulse from the tag mark on its face. Live status mode has no record of a scan, so shows neither.
+
 ## Simulator-only features
 Profile switching and sensor toggles use `sim.viewer.*` RPCs that only
 the simulator provides. The viewer probes for them once on connect and hides those controls elsewhere.
@@ -212,7 +216,7 @@ when each can be sent are Mainsail Happy Hare Edition's (its gate menu and its M
 | Unload | `MMU_UNLOAD` | the selected gate, not unloaded |
 | Eject | `MMU_EJECT GATE=n` | the selected gate, or another gate on a unit that can crossload |
 | Check Gate | `MMU_CHECK_GATE GATE=n` | always |
-| Scan NFC Tag | `MMU_NFC_SCAN GATE=n` | as Preload; shown only where the gate has an NFC reader |
+| Scan NFC Tag | `MMU_NFC_SCAN GATE=n` | as Preload; shown only where the gate has its own NFC reader (a reader shared by the unit cannot be scanned this way) |
 
 Nothing can be sent while printing, with the MMU disabled, or when not connected. The menu closes on a
 choice, Escape, a click elsewhere, the pointer leaving it, or after eight seconds. It reads `mmu`,

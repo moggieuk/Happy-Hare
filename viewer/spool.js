@@ -2,6 +2,13 @@ import {brightness} from './util.js';
 
 const BRIGHT_FILAMENT = .5;  // Luminance above which white text is lost on the winding
 
+// The tag's scan rings: each grows and fades over one period, half a period apart
+const PULSE_RINGS=[0,.5];
+function pulseRing(phase,offset) {
+  const t=(phase+offset)%1;
+  return {radius:1.6+5*t,opacity:.9*(1-t)};
+}
+
 // Annular window, optionally rotated and shifted along the spool axis.
 function windowOutline(rotation=0,shift=0) {
   const windowPoint=(radius,degrees)=>{
@@ -36,7 +43,7 @@ export function spoolWindingRadius(percent) {
  * placement, scale, clipping, and animation; idPrefix must be unique and SVG-safe.
  */
 export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
-  rotation=0, arrowOpacity=0, direction='assist', glow=0, showFillPercent=false, shadowStyle='blur', windingLines=true}) {
+  rotation=0, arrowOpacity=0, direction='assist', glow=0, pulse=null, showFillPercent=false, shadowStyle='blur', windingLines=true}) {
   const spoolStyle=style, percent=fillPercent, spoolViewAngle=viewAngle;
   const angle=rotation, fade=arrowOpacity;
   const solidSpool=style.endsWith('-solid');
@@ -76,6 +83,11 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
     }).join('');
   // The dot lives on the front face, so its orbit and shape share the face projection.
   const faceDot=`<g data-part="spool-rotation-dot" data-spool-rotation="0" transform="rotate(${angle})"><path d="M-18 -2.4 H-15 A2.4 2.4 0 0 1 -15 2.4 H-18 Z" fill="#fff" stroke="#fff" stroke-width=".95"/><circle cx="-15" cy="0" r="1.4375" fill="#c62828"/></g>`;
+  // Rings spread from the tag while it is scanned; drawn on the face, so the viewing angle makes them oval
+  const tagPulse=`<g data-part="spool-tag-pulse" data-spool-rotation="0" transform="rotate(${angle})" opacity="${pulse===null ? 0 : 1}" pointer-events="none">${PULSE_RINGS.map(offset=>{
+    const {radius,opacity}=pulseRing(pulse ?? 0,offset);
+    return `<circle cx="-15" cy="0" r="${radius}" fill="none" stroke="#e53935" stroke-width=".8" opacity="${opacity}"/>`;
+  }).join('')}</g>`;
   svg += `<g transform="scale(${spoolFaceScale} 1)">${rimSidewall(spoolDepthOffset+rimDepth)}<g data-part="spool-rear-face" transform="translate(${spoolDepthOffset} 0)"><circle r="16.5" fill="none" stroke="url(#spool-edge-${idPrefix})" stroke-width="1" opacity=".3"/><g clip-path="url(#spool-face-clip-${idPrefix})"><g ${faceFilter}>${windowShadow()}<circle r="17" fill="url(#spool-face-${idPrefix})" ${solidSpool ? '' : `clip-path="url(#spool-spokes-${idPrefix})"`}/>${windowWalls()}<circle r="${spoolHubRadius}" fill="${material}"/></g></g><circle r="${spoolBoreRadius}" fill="url(#spool-bore-${idPrefix})"/></g><defs><linearGradient id="spool-winding-shade-${idPrefix}" x1="0" y1="0" x2="0" y2="1"><stop stop-color="color-mix(in srgb, #${color}, black 25%)"/><stop offset=".4" stop-color="#${color}"/><stop offset=".65" stop-color="color-mix(in srgb, #${color}, white 15%)"/><stop offset="1" stop-color="color-mix(in srgb, #${color}, black 35%)"/></linearGradient></defs><path data-part="spool-core-tube" d="M0 -${spoolHubRadius} H${spoolDepthOffset} A${spoolHubRadius} ${spoolHubRadius} 0 0 1 ${spoolDepthOffset} ${spoolHubRadius} H0 Z" fill="url(#spool-core-shade-${idPrefix})"/><defs><linearGradient id="spool-core-contact-fade-${idPrefix}" gradientUnits="userSpaceOnUse" x1="0" y1="${-spoolHubRadius}" x2="0" y2="${spoolHubRadius}"><stop stop-color="black" stop-opacity="0"/><stop offset=".25" stop-color="black" stop-opacity=".55"/><stop offset=".75" stop-color="black" stop-opacity=".55"/><stop offset="1" stop-color="black" stop-opacity="0"/></linearGradient></defs><path data-part="spool-core-contact-shadow" d="M${spoolDepthOffset} -${spoolHubRadius} A${spoolHubRadius} ${spoolHubRadius} 0 0 1 ${spoolDepthOffset} ${spoolHubRadius}" fill="none" stroke="url(#spool-core-contact-fade-${idPrefix})" stroke-width=".6"/><path d="M0 -${windingRadius} H${spoolDepthOffset} A${windingRadius} ${windingRadius} 0 0 1 ${spoolDepthOffset} ${windingRadius} H0 Z" fill="${percent ? `url(#spool-winding-shade-${idPrefix})` : 'none'}"/>${Array.from({length:percent && windingLines ? 18 : 0},(_,i)=>(i+1)*spoolDepthOffset/19).map(depth=>`<path d="M${depth} -${windingRadius} A${windingRadius} ${windingRadius} 0 0 1 ${depth} ${windingRadius}" fill="none" stroke="color-mix(in srgb, #${color}, black 50%)" stroke-width=".06" opacity=".85"/><path d="M${depth+.18} -${windingRadius} A${windingRadius} ${windingRadius} 0 0 1 ${depth+.18} ${windingRadius}" fill="none" stroke="color-mix(in srgb, #${color}, white 55%)" stroke-width=".06" opacity=".75"/>`).join('')}`;
   if (percent>0) {
     // Contact shadow from the front flange, fading into the first winding turns.
@@ -85,7 +97,7 @@ export function renderSpool({idPrefix, style, color, fillPercent, viewAngle,
     // Light the winding before painting the front flange, so the rim occludes it.
     svg += `<g data-part="selected-spool-backlight" opacity="${glow}" pointer-events="none">${percent>0 ? `<ellipse data-part="spool-winding-light" cx="${spoolDepthOffset/2+windingRadius*.35}" cy="11" rx="${spoolDepthOffset*.7}" ry="7" fill="url(#spool-backlight-${idPrefix})" clip-path="url(#spool-contact-clip-${idPrefix})"/>` : ''}</g>`;
   }
-  svg += `${rimSidewall(0)}<g transform="translate(${-rimDepth} 0)"><circle r="16.5" fill="none" stroke="url(#spool-edge-${idPrefix})" stroke-width="1" opacity=".3"/>${percent ? `<circle r="${windingRadius}" fill="#${color}"/>` : ''}<g clip-path="url(#spool-face-clip-${idPrefix})"><g ${faceFilter}>${windowShadow(true)}<circle r="17" fill="url(#spool-face-${idPrefix})" ${solidSpool ? '' : `clip-path="url(#spool-front-spokes-${idPrefix})"`}/>${windowWalls(true)}<circle r="${spoolHubRadius}" fill="${material}"/></g>${faceDot}</g><circle data-part="spool-core-bore" r="${spoolBoreRadius}" fill="url(#spool-bore-${idPrefix})"/></g>`;
+  svg += `${rimSidewall(0)}<g transform="translate(${-rimDepth} 0)"><circle r="16.5" fill="none" stroke="url(#spool-edge-${idPrefix})" stroke-width="1" opacity=".3"/>${percent ? `<circle r="${windingRadius}" fill="#${color}"/>` : ''}<g clip-path="url(#spool-face-clip-${idPrefix})"><g ${faceFilter}>${windowShadow(true)}<circle r="17" fill="url(#spool-face-${idPrefix})" ${solidSpool ? '' : `clip-path="url(#spool-front-spokes-${idPrefix})"`}/>${windowWalls(true)}<circle r="${spoolHubRadius}" fill="${material}"/></g>${faceDot}</g><circle data-part="spool-core-bore" r="${spoolBoreRadius}" fill="url(#spool-bore-${idPrefix})"/>${tagPulse}</g>`;
   svg += `<path data-part="spool-rim-mark" data-depth="${rimDepth}" d="${rimMarkPath(angle,rimDepth)}" fill="#fff"/></g>`;
   if (fade>0) {
     // Keep the arrow on the near side of the full winding, independent of spool rotation.
@@ -137,15 +149,16 @@ export class SpoolRenderer {
       this.arrow=this.element.querySelector('[data-part="espooler-direction"]');
       this.arrowPosition=this.arrow.getAttribute('transform').split(' scale(')[0];
       this.glows=[...this.element.querySelectorAll('[data-part="selected-spool-backlight"]')];
+      this.pulse=this.element.querySelector('[data-part="spool-tag-pulse"]');
       this.geometryKey=key;
       this.motion={};
     }
-    const {rotation=0,arrowOpacity=0,direction='assist',glow=0}=options;
-    this.updateMotion({rotation,arrowOpacity,direction,glow});
+    const {rotation=0,arrowOpacity=0,direction='assist',glow=0,pulse=null}=options;
+    this.updateMotion({rotation,arrowOpacity,direction,glow,pulse});
   }
 
   updateMotion({rotation=this.motion.rotation ?? 0, arrowOpacity=this.motion.arrowOpacity ?? 0,
-    direction=this.motion.direction ?? 'assist', glow=this.motion.glow ?? 0}) {
+    direction=this.motion.direction ?? 'assist', glow=this.motion.glow ?? 0, pulse=this.motion.pulse ?? null}) {
     if (rotation !== this.motion.rotation) {
       this.rimMark.setAttribute('d',rimMarkPath(rotation,this.rimMarkDepth));
       for (const {node,offset} of this.rotating) node.setAttribute('transform',`rotate(${rotation+offset})`);
@@ -158,7 +171,14 @@ export class SpoolRenderer {
       this.arrow.setAttribute('transform',`${this.arrowPosition} scale(1 ${direction==='rewind' ? -1 : 1})`);
     }
     if (glow !== this.motion.glow) for (const node of this.glows) node.setAttribute('opacity',glow);
-    this.motion={rotation,arrowOpacity,direction,glow};
+    if (pulse !== this.motion.pulse) {
+      this.pulse.setAttribute('opacity',pulse===null ? 0 : 1);
+      if (pulse !== null) PULSE_RINGS.forEach((offset,i)=>{
+        const {radius,opacity}=pulseRing(pulse,offset), ring=this.pulse.children[i];
+        ring.setAttribute('r',radius); ring.setAttribute('opacity',opacity);
+      });
+    }
+    this.motion={rotation,arrowOpacity,direction,glow,pulse};
   }
 }
 

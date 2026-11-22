@@ -70,3 +70,12 @@ test('crisp window shadows replace the blur filter on both faces only',()=>{
   const solid={...options,style:'cardboard-solid'};
   assert.equal(renderSpool({...solid,shadowStyle:'crisp'}),renderSpool(solid));
 });
+
+test('a scanned tag shows rings that grow from it and turn with the face',()=>{
+  const rings=svg=>svg.match(/<g data-part="spool-tag-pulse"[^>]*>.*?<\/g>/)[0];
+  assert.match(rings(renderSpool(options)),/opacity="0"/);
+  const early=rings(renderSpool({...options,pulse:.1,rotation:40})), late=rings(renderSpool({...options,pulse:.4,rotation:40}));
+  assert.match(early,/transform="rotate\(40\)" opacity="1"/);
+  const radius=svg=>Number(svg.match(/<circle cx="-15" cy="0" r="([\d.]+)"/)[1]);
+  assert.ok(radius(late)>radius(early));
+});

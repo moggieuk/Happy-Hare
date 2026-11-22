@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncIndicatorSide, bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn, movingTip} from './playback.js';
+import { syncIndicatorSide, bowdenAttachment, BOWDEN_EXIT_X, EXTRUDER_X, bowdenLane, bowdenLaneOffset, gateSelectionLit, timelineMarkers, homingHold, spoolTooltip, tweenTo, rackGrid, rackIdleReturn, movingTip, withdrawTip, nfcScan} from './playback.js';
 
 test('timeline labels distinguish loads, unloads and requested toolchanges',()=>{
  const marker=(command,tool,label=command)=>({kind:'toolchange',telemetry:{command,tool,label}});
@@ -959,4 +959,28 @@ test('a sensor with only an assumed position neither holds the tip nor raises a 
   assert.equal(constrainFilament(400,null,[clear]).warnings.length,1);
   assert.deepEqual(constrainFilament(400,null,[{...clear,assumed:true}]),{tip:400,warnings:[]});
   assert.equal(constrainFilament(100,null,[{...clear,state:true,assumed:true}]).tip,100);
+});
+
+test('an empty gate withdraws what was drawn into the spool, and a gate reached empty shows nothing',()=>{
+  const at=(previous,now,empty,tip=180,gate=2)=>withdrawTip(previous,{gate,tip,empty,spool:66,now});
+  let w=at(null,0,false);
+  assert.equal(w.tip,180);
+  // The sensors clearing moves the estimate, but the withdrawal leaves from what was drawn
+  w=at(w,100,true,115);
+  assert.equal(w.tip,180);
+  w=at(w,325,true,115);
+  assert.ok(w.tip<180 && w.tip>66);
+  w=at(w,550,true,115);
+  assert.equal(w.tip,66);
+  assert.equal(at(w,600,true,200,4).tip,66);
+  assert.equal(at(w,600,false,200,4).tip,200);
+});
+
+test('moves that jog filament to an NFC reader are scans, in the direction of the move',()=>{
+  const move=(label,endstop,requested)=>({kind:'movement',label,endstop,requested,state:{gate:3}});
+  assert.deepEqual(nfcScan(move('NFC: scan','mmu_nfc_3',50)),{gate:3,reverse:false});
+  assert.deepEqual(nfcScan(move('NFC: scan continue',undefined,-50)),{gate:3,reverse:true});
+  assert.deepEqual(nfcScan(move('Preload homing to gate/NFC','preload_compound',300)),{gate:3,reverse:false});
+  assert.equal(nfcScan(move('Final parking',undefined,-10)),null);
+  assert.equal(nfcScan({kind:'gate_changed',label:'NFC',state:{gate:3}}),null);
 });

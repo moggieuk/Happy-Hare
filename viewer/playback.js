@@ -311,6 +311,16 @@ export function movingTip(free, progress, startHold, endHold) {
   return free + startHold*(1-progress) + endHold*progress;
 }
 
+// An empty gate has no filament to show: what was drawn there withdraws into the spool, and returns the same way.
+// `previous` is the last result (null at first); the result's `tip` is the one to draw.
+export function withdrawTip(previous, {gate, tip, empty, spool, now, animate = true}) {
+  const last = previous?.gate === gate ? previous : {tween: null, shown: empty ? spool : tip};
+  const tween = tweenTo(animate ? last.tween : null, empty ? 1 : 0, now, 450);
+  const shown = !empty && tween.value === 0 ? tip : last.shown;
+  const from = empty ? shown : tip;
+  return {gate, tween, shown, tip: from + (Math.min(from, spool) - from)*tween.value};
+}
+
 // Approximate each discrete move from rest; recorded distances remain authoritative.
 function motionProfile(event) {
   const distance=Math.abs(event.distance ?? 0), speed=event.speed, acceleration=event.acceleration;
@@ -509,6 +519,12 @@ export function homingTarget(event) {
   if (candidates.length !== 1) return null;
   if (sensors[candidates[0]].position == null && short(candidates[0]) !== 'gear_touch') return null;
   return candidates[0];
+}
+
+// A move that jogs a gate's filament to bring its spool's tag to the NFC reader: {gate, reverse}, else null
+export function nfcScan(event) {
+  if (event?.kind !== 'movement' || !(/\bNFC\b/.test(event.label || '') || /nfc/i.test(event.endstop || ''))) return null;
+  return {gate: event.state.gate, reverse: (event.requested ?? event.distance ?? 0) < 0};
 }
 
 export function homingPulse(event) {
