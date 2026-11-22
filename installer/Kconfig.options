@@ -295,8 +295,8 @@ menu "Global software options"
     prompt "Motion telemetry recording after a restart"
     default CHOICE_DEFAULT_TELEMETRY_MODE_OFF
     help
-      Whether motion telemetry is recorded to the Moonraker log (for the
-      Visualizer). Change it at runtime with MMU_TELEMETRY MODE=...
+      Whether motion telemetry is recorded to Moonraker's logs/mmu-telemetry.jsonl
+      (for the Visualizer). Change it at runtime with MMU_TELEMETRY MODE=...
 
     config CHOICE_DEFAULT_TELEMETRY_MODE_OFF
       bool "Off"
