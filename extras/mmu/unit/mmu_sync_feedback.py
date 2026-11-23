@@ -52,6 +52,7 @@ class MmuSyncFeedback:
         self.flowguard_active = False # FlowGuard armed in sync-feedback controller or just using encoder
         self.ctrl = None
         self.flow_rate = 100.         # Estimated % flowrate (calc only for proportional sensors)
+        self.flow_rate_calibrated = 100. # Same estimate against the calibrated rd instead of the autotuned one
         self.rd_correction = 0.       # % deviation of tuned rd from the rd the gate started with
         self._rd_start = None         # Calibrated rd the controller was last hard reset with
 
@@ -403,6 +404,7 @@ class MmuSyncFeedback:
             'sync_feedback_bias_raw': None,
             'sync_feedback_bias_modelled': None,
             'sync_feedback_flow_rate': None,
+            'sync_feedback_flow_rate_calibrated': None,
             'sync_feedback_rd_correction': None,
             'flowguard': None,
             'tangle_prevention': None,
@@ -423,6 +425,7 @@ class MmuSyncFeedback:
                 'sync_feedback_bias_raw': round(self._get_sync_bias_raw(), 2),
                 'sync_feedback_bias_modelled': round(self._get_sync_bias_modelled(), 2),
                 'sync_feedback_flow_rate': self.flow_rate,
+                'sync_feedback_flow_rate_calibrated': self.flow_rate_calibrated,
                 'sync_feedback_rd_correction': self.rd_correction,
                 'flowguard': flowguard_status,
                 'tangle_prevention': {
@@ -737,6 +740,12 @@ class MmuSyncFeedback:
         if self.mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
             # if rd_current > rd_true then flowrate must be reduced
             self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
+            # Autotune adopts a slip that is already there when it settles (first minutes after
+            # sync) as gear calibration, and the value above then reads 100. Against the calibrated
+            # rd the slip stays visible from the start, at the price of any calibration error.
+            # Not capped: above 100 the gear feeds less than calibrated (gear slip, spool drag)
+            if self._rd_start:
+                self.flow_rate_calibrated = round((self._rd_start / rd_current) * 100., 2)
 
         if self._rd_start:
             self.rd_correction = round((rd_tuned - self._rd_start) / self._rd_start * 100., 2)
