@@ -2211,19 +2211,47 @@ class TestConsoleScript(unittest.TestCase):
         self.assertEqual(parse_args(['--serve']).serve, 7125)
         self.assertEqual(parse_args(['--serve', '8771']).serve, 8771)
 
-    def test_a_taken_port_warns_without_stopping_console_or_trying_another(self):
+    def test_gate_status_wraps_to_the_terminal_so_the_leds_keep_their_own_row(self):
+        import os, re, shutil
+        console = self._make_console(['--no-log', '--header', 'gates,leds'])
+        with mock.patch.object(shutil, 'get_terminal_size', return_value=os.terminal_size((40, 24))):
+            lines = console._hdr_gates(console._status())
+        self.assertGreater(len(lines), 1)
+        for line in lines:
+            self.assertLessEqual(len(re.sub(r'\x1b\[[0-9;]*m', '', line)), 40, line)
+
+    def test_a_taken_default_port_moves_to_a_free_one_and_says_so(self):
         taken = socket.socket()
         self.addCleanup(taken.close)
         taken.bind(('127.0.0.1', 0))
         taken.listen(1)
         port = taken.getsockname()[1]
         console = self._make_console(['--no-log', '--header', 'off'])
+        self.addCleanup(console.close)
         console._start_bridge(port)
-        self.assertIsNone(console.bridge)
-        self.assertIn('Console remains available', console.web_api_lines()[0])
-        console._start_bridge(port, explicit=True)   # named: left alone, and said so
+        self.assertNotIn(console.bridge.port, (port, 0))
+        lines = console.web_api_lines()
+        self.assertIn('Warning: port %d is in use' % port, lines[0])
+        self.assertIn('http://127.0.0.1:%d/sim/console/' % console.bridge.port, '\n'.join(lines))
+
+    def test_a_taken_named_port_warns_without_stopping_console_or_trying_another(self):
+        taken = socket.socket()
+        self.addCleanup(taken.close)
+        taken.bind(('127.0.0.1', 0))
+        taken.listen(1)
+        port = taken.getsockname()[1]
+        console = self._make_console(['--no-log', '--header', 'off'])
+        console._start_bridge(port, explicit=True)
         self.assertIsNone(console.bridge)
         self.assertIn('Web API not started: port %d' % port, console.web_api_lines()[0])
+        self.assertIn('Console remains available', console.web_api_lines()[0])
+
+    def test_help_shows_how_to_choose_the_port_and_address(self):
+        from test.console import parse_args
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            parse_args(['--help'])
+        self.assertIn("make console ARGS='--profile boxturtle2_ercf --serve 7131 --serve-host 0.0.0.0'", out.getvalue())
 
     def test_meta_commands_do_not_crash(self):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',

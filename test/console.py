@@ -78,6 +78,8 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
+PORT_ATTEMPTS = 20                              # Ports tried from the default when it is busy
+SERVE_EXAMPLE = "make console ARGS='--profile boxturtle2_ercf --serve 7131 --serve-host 0.0.0.0'"
 API_PORT = 7125                                 # Local simulator web API and Happy Hare Console
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
@@ -506,6 +508,7 @@ class Console:
         self.fil = None
         self.bridge = None                          # the web UI's Moonraker API
         self.bridge_error = None                    # why it did not start, if it was asked to
+        self.bridge_notice = None                   # that it moved off a busy default port
         self.cutter_telemetry_unsubscribe = None
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
@@ -670,14 +673,23 @@ class Console:
         simulator (see test/hh/webui_bridge.py). Happy Hare's pause dialog arrives as
         '// action:prompt_*' output lines, which reach the UI with the rest of the output.
 
-        If the port cannot be opened, warn in the startup banner and keep the console usable.
+        A busy default port moves to the next free one; a port named with --serve is left alone.
+        Either way the startup banner says so and the console stays usable.
         """
-        try:
-            self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port, host=self.args.serve_host).start()
-        except OSError as exc:
-            self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
+        self.bridge_notice = None
+        for candidate in range(port, port + (1 if explicit else PORT_ATTEMPTS)):
+            try:
+                self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=candidate, host=self.args.serve_host).start()
+            except OSError as exc:
+                if candidate == port:
+                    self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
+                continue
+            break
         if self.bridge is None:
             return
+        if self.bridge.port != port and port:
+            self.bridge_notice = ('Warning: port %d is in use, so the web API is on port %d. '
+                                  'Choose one with --serve PORT.' % (port, self.bridge.port))
         self.bridge_error = None
         self.bridge.restart_profile = self._restart_for_web
         self.bridge.profile_name = str(self.args.profile)
@@ -716,7 +728,8 @@ class Console:
         port = self.bridge.port
         host = self.bridge.host
         address = '127.0.0.1' if host == '0.0.0.0' else host
-        return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
+        return ([self.bridge_notice] if self.bridge_notice else []) + [
+                'Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
                 % (host, port, address, port),
                 'Happy Hare Console: http://%s:%d/sim/console/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
@@ -727,7 +740,7 @@ class Console:
             print('\n'.join(lines) if lines else 'The web API is off. Start the console without --no-serve.')
             return
         port = self.bridge.port
-        for line in lines[:1]:
+        for line in lines[:-2]:
             self.info(line)
         host = '127.0.0.1' if self.bridge.host == '0.0.0.0' else self.bridge.host
         if self.bridge.host == '0.0.0.0':
@@ -738,6 +751,7 @@ class Console:
                   'dialog.\n'
                   'Then /print start, /exhaust 1 and MMU_CHANGE_TOOL TOOL=1 make a pause '
                   'dialog appear.' % (host, port, host, port))
+        self.info('Another port or address, when starting:\n  %s' % SERVE_EXAMPLE)
 
     def _run_for_bridge(self, script):
         """A script sent from the web UI: shown and run as if typed at the prompt. Returns the first failure."""
@@ -1378,7 +1392,16 @@ class Console:
             if gate < len(spools) and spools[gate] not in (None, -1):
                 bits.append('#%s' % spools[gate])
             cells.append('%d:%s' % (gate, '/'.join(bits)))
-        return ['  ' + '  '.join(cells)]
+        # Wrapped to the terminal: a row wider than the screen spills onto the next header row
+        import shutil
+        width = max(40, shutil.get_terminal_size((100, 24)).columns)
+        lines, cur = [], ''
+        for cell in cells:
+            if cur and len(cur) + 2 + len(cell) > width:
+                lines.append(cur)
+                cur = ''
+            cur = (cur + '  ' if cur else '  ') + cell
+        return lines + [cur]
 
     # A lit LED is a SOLID BLOCK, not '##'. The old glyph was painted in the LED's own
     # colour, which made a white or grey LED - mmu_breathing_white_fast (0.2,0.2,0.2) on
@@ -3367,7 +3390,10 @@ def select_startup_profile(args):
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
         prog='make console',
-        description='Interactive MMU console on the Happy Hare test harness.')
+        description='Interactive MMU console on the Happy Hare test harness.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='Flags go through ARGS. To serve the web API on another port, reachable from\n'
+               'other computers:\n  %s' % SERVE_EXAMPLE)
     p.add_argument('--profile', default=None,
                    help='harness profile name. When omitted at a terminal, choose from a '
                         'startup list; otherwise ercf_vvd is used. ercf_vvd is a real 2-unit machine '
@@ -3390,9 +3416,10 @@ def parse_args(argv=None):
                    help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
                         'unanswered - which is what a printer with Moonraker down looks like')
     p.add_argument('--serve', nargs='?', const=API_PORT, default=None, type=int, metavar='PORT',
-                   help='serve the Moonraker-compatible web API on this port (default %d). It is '
-                        'already on by default at a terminal, so this is for choosing the port or '
-                        'turning it on when not at one' % API_PORT)
+                   help='serve the Moonraker-compatible web API on this port (default %d, or the '
+                        'next free port when that is in use; a port named here is never changed). '
+                        'It is already on by default at a terminal, so this is for choosing the '
+                        'port or turning it on when not at one' % API_PORT)
     p.add_argument('--serve-host', default='127.0.0.1', metavar='ADDRESS',
                    help='web API listening address (default %(default)s); use a LAN IPv4 address '
                         'or 0.0.0.0 for remote access. The simulator API has no authentication')
