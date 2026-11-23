@@ -560,6 +560,9 @@ class Session:
         # unit's filament - see FilamentPath.gates_visible_to.
         model.units = {u.name: (u.first_gate, u.num_gates)
                        for u in self.mmu.mmu_machine.units}
+        model.unit_layout = {u.name: u.filament_layout
+                             for u in getattr(self.profile, 'units', None) or ()
+                             if u.filament_layout}
         def set_buffer_value(name, value):
             buffer = next(u.buffer for u in self.mmu.mmu_machine.units
                           if u.buffer is not None and u.buffer.name == name)

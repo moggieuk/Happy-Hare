@@ -968,7 +968,7 @@ when it sits inside that span. When Happy Hare commands a move, the harness work
 sensor trips first and how far the filament actually gets. Default layout:
 
 ```
-spool ... park(-100) ... entry(-50) ... gate/exit(0) ... encoder(+20) ... extruder(+700)
+spool ... entry(-150) ... park(-100) ... gate/exit(0) ... encoder(+20) ... extruder(+700)
 ```
 
 The tail is normally infinitely far back — a spool is attached, so anything behind the tip
