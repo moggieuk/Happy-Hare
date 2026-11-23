@@ -1392,7 +1392,16 @@ class Console:
             if gate < len(spools) and spools[gate] not in (None, -1):
                 bits.append('#%s' % spools[gate])
             cells.append('%d:%s' % (gate, '/'.join(bits)))
-        return ['  ' + '  '.join(cells)]
+        # Wrapped to the terminal: a row wider than the screen spills onto the next header row
+        import shutil
+        width = max(40, shutil.get_terminal_size((100, 24)).columns)
+        lines, cur = [], ''
+        for cell in cells:
+            if cur and len(cur) + 2 + len(cell) > width:
+                lines.append(cur)
+                cur = ''
+            cur = (cur + '  ' if cur else '  ') + cell
+        return lines + [cur]
 
     # A lit LED is a SOLID BLOCK, not '##'. The old glyph was painted in the LED's own
     # colour, which made a white or grey LED - mmu_breathing_white_fast (0.2,0.2,0.2) on

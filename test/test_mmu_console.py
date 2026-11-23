@@ -2211,6 +2211,15 @@ class TestConsoleScript(unittest.TestCase):
         self.assertEqual(parse_args(['--serve']).serve, 7125)
         self.assertEqual(parse_args(['--serve', '8771']).serve, 8771)
 
+    def test_gate_status_wraps_to_the_terminal_so_the_leds_keep_their_own_row(self):
+        import os, re, shutil
+        console = self._make_console(['--no-log', '--header', 'gates,leds'])
+        with mock.patch.object(shutil, 'get_terminal_size', return_value=os.terminal_size((40, 24))):
+            lines = console._hdr_gates(console._status())
+        self.assertGreater(len(lines), 1)
+        for line in lines:
+            self.assertLessEqual(len(re.sub(r'\x1b\[[0-9;]*m', '', line)), 40, line)
+
     def test_a_taken_default_port_moves_to_a_free_one_and_says_so(self):
         taken = socket.socket()
         self.addCleanup(taken.close)
