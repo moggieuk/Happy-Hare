@@ -2237,6 +2237,18 @@ class TestConsoleScript(unittest.TestCase):
             header._on_resize()
         self.assertGreaterEqual(out.flushes, 3)     # the interrupted paint finished, then one more ran
 
+    def test_a_resize_repaints_the_log_and_the_prompt_as_well_as_the_header(self):
+        from test.console import PinnedHeader
+        console = self._make_console(['--no-log', '--header', 'machine'])
+        console.pinned = header = PinnedHeader(console)
+        header.active, console._at_prompt = True, True
+        out = io.StringIO()
+        with mock.patch('test.console.raw_stdout', return_value=out), mock.patch.object(sys.stdout, 'isatty', return_value=True), \
+                mock.patch.object(console, 'redraw') as redraw:
+            header._on_resize()
+        redraw.assert_called_once_with()
+        self.assertTrue(out.getvalue().endswith(console.prompt()))
+
     def test_gate_status_wraps_to_the_terminal_so_the_leds_keep_their_own_row(self):
         import os, re, shutil
         console = self._make_console(['--no-log', '--header', 'gates,leds'])
