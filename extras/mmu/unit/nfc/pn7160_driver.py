@@ -833,6 +833,9 @@ class PN7160Handler:
                 continue
             if tlv_type == 0xFE:
                 return None
+            # Not a valid TLV type, so not NDEF (e.g. TigerTag): don't cut the read short
+            if tlv_type not in (0x01, 0x02, 0x03, 0xFD):
+                return None
             if i + 1 >= data_len:
                 return None
             tlv_len = data[i + 1]
@@ -1035,6 +1038,9 @@ class PN7160Handler:
                 continue
             if tlv_type == 0xFE:
                 return pos
+            # Not a valid TLV type, so not NDEF (e.g. TigerTag): don't cut the read short
+            if tlv_type not in (0x01, 0x02, 0x03, 0xFD):
+                return None
             if pos >= len(data):
                 return None
             tlv_len = data[pos]

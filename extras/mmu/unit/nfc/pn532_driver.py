@@ -776,6 +776,9 @@ class _PN532Base:
                 continue
             if t == 0xFE:  # Terminator TLV
                 return None
+            # Not a valid TLV type, so not NDEF (e.g. TigerTag): don't cut the read short
+            if t not in (0x01, 0x02, 0x03, 0xFD):
+                return None
             if i + 1 >= data_len:
                 return None
             l = data[i + 1]
