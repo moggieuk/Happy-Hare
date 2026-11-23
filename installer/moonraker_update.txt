@@ -9,6 +9,7 @@ managed_services: klipper moonraker
 enable_file_preprocessor: True
 enable_toolchange_next_pos: True
 update_spoolman_location: True
+spoolman_live_updates: True
 
 [mmu_telemetry]
 max_log_size: 10485760

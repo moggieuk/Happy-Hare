@@ -33,6 +33,7 @@ FIELD_GATE = 'mmu_gate_map'
 FIELD_RFID = 'rfid_tag'
 
 SPOOLMAN_VERSION = '0.18.1'      # >= MIN_SM_VER (0,18,1) at mmu_server.py:86
+TAG_API_VERSION = '0.27.0'       # First Spoolman release with native tag links
 
 # The two hardcoded donkie.github.io SpoolmanDB URLs (mmu_server.py:95-96) have no
 # config flag to disable them, so they MUST be intercepted or tests hit the real
@@ -114,6 +115,21 @@ class InMemorySpoolman:
         self.patched_spools = []
         # Spoolman's copy of SpoolmanDB (GET /v1/external/filament); None = endpoint missing
         self.external_filaments = None
+        # Native tag links (>= 0.27 only): uid -> ('spool'|'filament', id)
+        self.tag_links = {}
+        self.tag_formats = {}
+        self.scans = []             # bodies of POST /v1/tag/scan, in order
+        self.events = []            # websocket change events a real Spoolman would broadcast
+        self.tag_api = None         # None: follow version; True/False: force (dev builds, forks)
+
+    @property
+    def has_tag_api(self):
+        if self.tag_api is not None:
+            return self.tag_api
+        try:
+            return tuple(int(n) for n in self.version.split('.')) >= (0, 27, 0)
+        except ValueError:
+            return False
 
     # -- construction helpers used by tests ---------------------------------
     def add_vendor(self, name):
@@ -175,6 +191,38 @@ class InMemorySpoolman:
             pass
         return parse_uid_list(raw)
 
+    def link_tag(self, uid, spool_id=None, filament_id=None, fmt=None):
+        """Test helper: natively link a tag (as the Spoolman UI would)."""
+        uid = normalise_uid(uid)
+        self.tag_links[uid] = ('spool', spool_id) if spool_id is not None else ('filament', filament_id)
+        self.tag_formats[uid] = fmt
+        return uid
+
+    def emit(self, kind, resource, payload):
+        """Record the change event a real Spoolman broadcasts on its websocket."""
+        import copy
+        self.events.append({'type': kind, 'resource': resource, 'date': '2026-01-01T00:00:00Z',
+                            'payload': copy.deepcopy(payload)})
+
+    def take_events(self):
+        events, self.events = self.events, []
+        return events
+
+    def spool_native_uids(self, spool_id):
+        return [u for u, holder in self.tag_links.items() if holder == ('spool', spool_id)]
+
+    def _tags_for(self, kind, ident):
+        return [{'uid': u, 'format': self.tag_formats.get(u), 'added': '2026-01-01T00:00:00Z'}
+                for u, holder in self.tag_links.items() if holder == (kind, ident)]
+
+    def _render_spool(self, sid):
+        spool = self.spools[sid]
+        if not self.has_tag_api:
+            return spool
+        out = dict(spool)
+        out['tags'] = self._tags_for('spool', sid)
+        return out
+
     def spool_uid(self, spool_id):
         """Comma-joined display string of the UID(s) registered against a spool,
         or '' if none. Use spool_uids() to test against the individual UIDs."""
@@ -192,6 +240,9 @@ class InMemorySpoolman:
 
     def find_spool_by_uid(self, uid):
         target = normalise_uid(uid)
+        holder = self.tag_links.get(target)
+        if holder and holder[0] == 'spool':
+            return holder[1]
         for sid in self.spools:
             if target in self.spool_uids(sid):
                 return sid
@@ -224,6 +275,12 @@ class InMemorySpoolman:
             return Response(200, {'version': self.version})
         if len(parts) >= 3 and parts[1] == 'field':
             return self._field(method, parts, body)
+        if self.has_tag_api and parts[1:3] == ['tag', 'reader'] and method == 'GET':
+            return Response(200, [])
+        if self.has_tag_api and parts[1:3] == ['tag', 'scan'] and method == 'POST':
+            return self._tag_scan(body or {})
+        if self.has_tag_api and len(parts) >= 4 and parts[1] in ('spool', 'filament') and parts[3] == 'tag':
+            return self._tag(method, parts, body)
         if parts[1] == 'spool':
             return self._spool(method, parts, query, body)
         if parts[1] == 'vendor':
@@ -255,14 +312,25 @@ class InMemorySpoolman:
             if sid not in self.spools:
                 return Response(404)
             if method == 'GET':
-                return Response(200, self.spools[sid])
+                return Response(200, self._render_spool(sid))
             if method in ('PATCH', 'PUT'):
+                bad = self._undefined_extra(body)
+                if bad:
+                    return Response(400, {'message': 'Unknown extra field %s' % bad}, error='unknown extra field')
                 self._merge_spool(sid, body or {})
                 self.patched_spools.append((sid, body))
-                return Response(200, self.spools[sid])
+                self.emit('updated', 'spool', self._render_spool(sid))
+                return Response(200, self._render_spool(sid))
+            if method == 'DELETE':
+                payload = self._render_spool(sid)
+                del self.spools[sid]
+                for uid in [u for u, h in self.tag_links.items() if h == ('spool', sid)]:
+                    del self.tag_links[uid]
+                self.emit('deleted', 'spool', payload)
+                return Response(200)
             return Response(405)
         if method == 'GET':
-            return Response(200, list(self.spools.values()))
+            return Response(200, [self._render_spool(sid) for sid in self.spools])
         if method == 'POST':
             return self._create_spool(body or {})
         return Response(405)
@@ -276,7 +344,17 @@ class InMemorySpoolman:
             else:
                 spool[key] = value
 
+    def _undefined_extra(self, body):
+        """Spoolman rejects writes to an extra field that hasn't been defined."""
+        for key in ((body or {}).get('extra') or {}):
+            if key not in self.fields['spool']:
+                return key
+        return None
+
     def _create_spool(self, body):
+        bad = self._undefined_extra(body)
+        if bad:
+            return Response(400, {'message': 'Unknown extra field %s' % bad}, error='unknown extra field')
         filament_id = body.get('filament_id')
         if filament_id not in self.filaments:
             return Response(400, error='unknown filament_id %r' % (filament_id,))
@@ -291,7 +369,57 @@ class InMemorySpoolman:
             'lot_nr': body.get('lot_nr'),
         }
         self.created_spools.append(sid)
+        self.emit('added', 'spool', self._render_spool(sid))
         return Response(200, self.spools[sid])
+
+    def _tag_scan(self, body):
+        self.scans.append(dict(body))
+        uid = normalise_uid(body.get('uid', ''))
+        if not uid:
+            return Response(400, {'message': 'invalid uid'})
+        kind, ident = self.tag_links.get(uid, (None, None))
+        return Response(200, {
+            'uid': uid, 'reader_id': body.get('reader_id'), 'name': body.get('name'),
+            'format': body.get('format'), 'payload_b64': None,
+            'matched_spool_id': ident if kind == 'spool' else None,
+            'spool': self._render_spool(ident) if kind == 'spool' else None,
+            'matched_filament_id': ident if kind == 'filament' else None,
+            'filament': dict(self.filaments[ident]) if kind == 'filament' else None,
+            'decoded': None, 'created': False,
+        })
+
+    def _tag(self, method, parts, body):
+        """POST /v1/{spool|filament}/{id}/tag and DELETE .../tag/{uid} (Spoolman >= 0.27)."""
+        kind, ident = parts[1], int(parts[2])
+        store = self.spools if kind == 'spool' else self.filaments
+        if ident not in store:
+            return Response(404, {'message': '%s %d not found' % (kind, ident)})
+        if method == 'POST' and len(parts) == 4:
+            uid = normalise_uid((body or {}).get('uid', ''))
+            if not uid:
+                return Response(400, {'message': 'invalid uid'})
+            holder = self.tag_links.get(uid)
+            if holder is not None and holder != (kind, ident):
+                return Response(409, {'message': 'tag %s already linked' % uid,
+                                      'spool_id': holder[1] if holder[0] == 'spool' else None,
+                                      'filament_id': holder[1] if holder[0] == 'filament' else None},
+                                error='conflict')
+            self.tag_links[uid] = (kind, ident)
+            if (body or {}).get('format') or uid not in self.tag_formats:
+                self.tag_formats[uid] = (body or {}).get('format')
+            if kind == 'spool':
+                self.emit('updated', 'spool', self._render_spool(ident))
+            return Response(201, {'uid': uid, 'format': self.tag_formats[uid], 'added': '2026-01-01T00:00:00Z'})
+        if method == 'DELETE' and len(parts) == 5:
+            uid = normalise_uid(parts[4])
+            if self.tag_links.get(uid) != (kind, ident):
+                return Response(404, {'message': 'tag not linked'})
+            del self.tag_links[uid]
+            self.tag_formats.pop(uid, None)
+            if kind == 'spool':
+                self.emit('updated', 'spool', self._render_spool(ident))
+            return Response(204)
+        return Response(405)
 
     def _vendor(self, method, parts, query, body):
         if method == 'GET':
@@ -321,6 +449,8 @@ class InMemorySpoolman:
                 results = [f for f in results
                            if f.get('vendor', {}).get('name', '').lower()
                            == vendor_name.lower()]
+            if self.has_tag_api: # Like spools, real 0.27 filaments carry their tags
+                results = [dict(f, tags=self._tags_for('filament', f['id'])) for f in results]
             return Response(200, results)
         if method == 'POST':
             data = dict(body or {})

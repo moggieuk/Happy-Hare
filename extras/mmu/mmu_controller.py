@@ -4473,6 +4473,16 @@ class MmuController(MmuFilamentMovement):
             self.log_error("Error while registering tag uid: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
 
+    def _spoolman_migrate_tags(self, direction, dry_run=False, quiet=False):
+        """Ask Moonraker to move tag UIDs between the extra field and native tags"""
+        if self.p.spoolman_support == SPOOLMAN_OFF: return
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            webhooks.call_remote_method("spoolman_migrate_tags",
+                                        direction=direction, dry_run=dry_run, silent=quiet)
+        except Exception as e:
+            self.log_error("Error while migrating tags: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
+
     def _spoolman_set_spool_uid(self, spool_id, uid, append=False, quiet=True, gate=None):
         """
         Write NFC/RFID tag UID(s) onto a spool record in Spoolman so future
