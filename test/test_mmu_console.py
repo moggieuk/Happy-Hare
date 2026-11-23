@@ -2211,6 +2211,32 @@ class TestConsoleScript(unittest.TestCase):
         self.assertEqual(parse_args(['--serve']).serve, 7125)
         self.assertEqual(parse_args(['--serve', '8771']).serve, 8771)
 
+    def test_a_resize_during_a_repaint_is_painted_afterwards_not_inside_it(self):
+        from test.console import PinnedHeader
+        console = self._make_console(['--no-log', '--header', 'machine'])
+        header = PinnedHeader(console)
+        header.active = True
+
+        class Out:
+            busy, resizes, flushes = False, 1, 0
+            def write(self, text):
+                pass
+            def flush(self):
+                if self.busy:
+                    raise RuntimeError('reentrant call inside stdout')
+                self.busy, self.flushes = True, self.flushes + 1
+                try:
+                    if self.resizes:
+                        self.resizes -= 1
+                        header._on_resize()         # the next SIGWINCH lands mid-flush
+                finally:
+                    self.busy = False
+
+        out = Out()
+        with mock.patch('test.console.raw_stdout', return_value=out):
+            header._on_resize()
+        self.assertGreaterEqual(out.flushes, 3)     # the interrupted paint finished, then one more ran
+
     def test_gate_status_wraps_to_the_terminal_so_the_leds_keep_their_own_row(self):
         import os, re, shutil
         console = self._make_console(['--no-log', '--header', 'gates,leds'])
