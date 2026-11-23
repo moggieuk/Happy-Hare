@@ -357,9 +357,11 @@ class MmuServer:
             if resource == 'spool' and kind in ('added', 'updated', 'deleted'):
                 await self._apply_spool_change(kind, payload)
             elif resource == 'filament' and kind == 'updated':
-                # Spools embed their filament: re-apply each cached spool of it
-                for record in [r for r in self.spool_records.values() if (r.get('filament') or {}).get('id') == payload['id']]:
-                    await self._apply_spool_change('updated', dict(record, filament=payload))
+                # Spools embed their filament: re-read each cached spool of it (cached records lag our own writes)
+                for sid in [s for s, r in self.spool_records.items() if (r.get('filament') or {}).get('id') == payload['id']]:
+                    spool_info = await self._fetch_spool_info(sid)
+                    if spool_info is not None:
+                        await self._apply_spool_change('updated', spool_info)
 
 
     async def _mmu_status(self, *fields) -> dict:
@@ -375,8 +377,11 @@ class MmuServer:
         '''Update the cache from one changed spool, then tell Klipper only what it doesn't own'''
         spool_id = int(spool_info['id'])
         written = self.own_writes.get(spool_id)
-        if written is not None and time.monotonic() - written < LIVE_OWN_WRITE_WINDOW:
-            return # Happy Hare's own write: the cache already reflects it
+        if kind != 'deleted' and written is not None and time.monotonic() - written < LIVE_OWN_WRITE_WINDOW:
+            # Possibly our own echo, possibly stale: apply Spoolman's current state, which is a no-op for a pure echo
+            spool_info = await self._fetch_spool_info(spool_id)
+            if spool_info is None:
+                return
 
         old = self.spool_location.get(spool_id)
         if old:
@@ -1836,9 +1841,11 @@ class MmuServer:
             weight = self._to_float(metadata.get("weight_g"), None) or self._to_float(filament.get("weight"), DEFAULT_SPOOL_WEIGHT_G)
             if not await self._unlink_native_tag(filament_id, uid_norm, kind='filament'):
                 return None
-            spool_id = await self._create_spool(filament_id, metadata, uid_norm, weight, None)
+            spool_id = await self._create_spool(filament_id, metadata, uid_norm, weight, None, require_link=True)
             if spool_id is None:
-                await self._link_native_tag(filament_id, uid_norm, metadata.get("tag_format"), kind='filament') # Put it back
+                ok, _ = await self._link_native_tag(filament_id, uid_norm, metadata.get("tag_format"), kind='filament') # Put it back
+                if not ok:
+                    logging.error(f"NFC: tag {uid_norm} could not be put back on filament {filament_id}")
             else:
                 logging.info(f"NFC: tag {uid_norm} moved from filament {filament_id} to new spool {spool_id}")
             return spool_id
@@ -2099,12 +2106,13 @@ class MmuServer:
         return int(created["id"])
 
 
-    async def _create_spool(self, filament_id, metadata, uid_norm, weight, db_entry) -> int | None:
+    async def _create_spool(self, filament_id, metadata, uid_norm, weight, db_entry, require_link=False) -> int | None:
         '''
         Create a Spoolman spool for filament_id, writing the RFID UID into the
         '{MMU_RFID_FIELD}' extra field inline (so no follow-up PATCH is needed -
         the field already exists, created during _init_spoolman). Returns the new
-        spool_id, or None on failure.
+        spool_id, or None on failure. With require_link a failed native tag link
+        deletes the new spool and fails, so the caller can restore the tag.
         '''
         base = self.spoolman.spoolman_url
 
@@ -2140,6 +2148,10 @@ class MmuServer:
         if self.spoolman_has_tags:
             # Not fatal - the tag can be linked again later
             ok, conflict = await self._link_native_tag(spool_id, uid_norm, metadata.get("tag_format"))
+            if not ok and require_link:
+                logging.error(f"NFC: native tag link for {uid_norm} failed - removing new spool {spool_id}")
+                await self.http_client.request(method="DELETE", url=f"{base}/v1/spool/{spool_id}", body=None)
+                return None
             if not ok:
                 logging.warning(f"NFC: spool {spool_id} created but native tag link for {uid_norm} failed: {conflict}")
         return spool_id

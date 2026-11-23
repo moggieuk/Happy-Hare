@@ -139,7 +139,8 @@ class TestFilamentDetails(LiveTestCase):
 
     def test_filament_event_updates_its_spools(self):
         fid = self.db.spools[2]['filament']['id']
-        filament = dict(self.db.spools[2]['filament'], name='Renamed ABS')
+        filament = self.db.spools[2]['filament']
+        filament['name'] = 'Renamed ABS'
         self.send('updated', 'filament', filament)
         self.assertEqual(self.server.spool_location[2][2]['name'], 'Renamed ABS')
         cmds = self.gate_map_commands()
@@ -241,6 +242,37 @@ class TestOwnWritesIgnored(LiveTestCase):
 def spoolman_live_window():
     from components import mmu_server
     return mmu_server.LIVE_OWN_WRITE_WINDOW
+
+
+class TestStaleRecords(LiveTestCase):
+    MODE = 'pull'
+
+    def test_filament_edit_keeps_gate_assigned_by_happy_hare(self):
+        """Assignment writes only touch spool_location; the cached record must not restore the old gate."""
+        self.server.spool_records = json.loads(json.dumps(self.server.spool_records)) # Detach from the fake store, as over HTTP
+        self.hh.call_remote('spoolman_set_spool_gate', spool_id=1, gate=2, silent=True)
+        self.hh.klippy.extra_status['gate_spool_id'] = [-1, 2, 1, -1]
+        self.db.take_events()
+        self.hh.klippy.drain()
+        self.hh.advance(spoolman_live_window() + 1)
+        self.db.spools[1]['filament']['name'] = 'Renamed'
+        self.send('updated', 'filament', self.db.spools[1]['filament'])
+        self.assertEqual(self.server.spool_location[1][1], 2)
+        cmds = self.gate_map_commands()
+        self.assertEqual(len(cmds), 1)
+        self.assertIn("2: {", cmds[0])
+        self.assertNotIn('REPLACE=1', cmds[0])
+
+
+class TestExternalEditInOwnWriteWindow(LiveTestCase):
+
+    def test_edit_right_after_our_write_is_applied(self):
+        self.hh.call_remote('spoolman_set_spool_uid', spool_id=1, uid=UID, silent=True)
+        self.db.take_events()
+        self.hh.klippy.drain()
+        self.edit_spool(1, filament={'color_hex': 'ABCDEF'}) # No clock advance: still inside the window
+        self.assertEqual(self.server.spool_location[1][2]['color'], 'abcdef')
+        self.assertEqual(len(self.gate_map_commands()), 1)
 
 
 class FakeConnection:

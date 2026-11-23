@@ -682,6 +682,23 @@ class TestTagScan(TagTestCase):
         self.assertEqual(self.db.tag_links[NATIVE_UID], ('filament', fid))
         self.assertEqual(self.last_gcode(), 'MMU_GATE_MAP NEXT_SPOOLID=-2 QUIET=1')
 
+    def test_filament_tag_link_failure_puts_tag_back(self):
+        """Native-only: a failed link to the new spool must not leave the tag on neither record."""
+        fid = self.db.add_filament(name='Vendor tag product')
+        self.db.link_tag(NATIVE_UID, filament_id=fid)
+        real = self.db._tag
+        def failing(method, parts, body):
+            if method == 'POST' and parts[1] == 'spool':
+                return spoolman.Response(500, error='injected')
+            return real(method, parts, body)
+        self.db._tag = failing
+        try:
+            self.assertFalse(self.lookup(NATIVE_UID, save=True))
+        finally:
+            self.db._tag = real
+        self.assertEqual(self.db.tag_links[NATIVE_UID], ('filament', fid))
+        self.assertEqual(self.db.spools.keys() & set(self.db.created_spools), set(), 'new spool removed')
+
     def test_hostname_is_cleaned(self):
         hh = harness(spools=list(self.SPOOLS), spoolman_version=self.VERSION, hostname='my printer!')
         try:

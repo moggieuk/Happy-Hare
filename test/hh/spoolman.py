@@ -321,6 +321,13 @@ class InMemorySpoolman:
                 self.patched_spools.append((sid, body))
                 self.emit('updated', 'spool', self._render_spool(sid))
                 return Response(200, self._render_spool(sid))
+            if method == 'DELETE':
+                payload = self._render_spool(sid)
+                del self.spools[sid]
+                for uid in [u for u, h in self.tag_links.items() if h == ('spool', sid)]:
+                    del self.tag_links[uid]
+                self.emit('deleted', 'spool', payload)
+                return Response(200)
             return Response(405)
         if method == 'GET':
             return Response(200, [self._render_spool(sid) for sid in self.spools])
