@@ -275,6 +275,53 @@ class TestExternalEditInOwnWriteWindow(LiveTestCase):
         self.assertEqual(len(self.gate_map_commands()), 1)
 
 
+class TestReconnect(LiveTestCase):
+    """Events sent while disconnected are lost: the rebuild on reconnect must also reach Klipper."""
+    MODE = 'pull'
+
+    def reconnect(self):
+        """First connection drops at once; the second one triggers the rebuild."""
+        connections = []
+
+        async def connect(url):
+            connections.append(FakeConnection([None] if not connections else []))
+            return connections[-1]
+
+        async def until_reconnected():
+            self.server._start_live_updates()
+            for _ in range(200):
+                await asyncio.sleep(0)
+                if len(connections) == 2 and not self.server.cache_lock.locked():
+                    return
+
+        mod = self.hh.mmu_server_mod
+        self.addCleanup(setattr, mod, 'asyncio', mod.asyncio)
+        mod.asyncio = NoWaitAsyncio()
+        self.server._ws_connect = connect
+        self.server.live_updates = True
+        self.hh.run(until_reconnected())
+        self.hh.run(self.server.close())
+
+    def test_assignment_made_while_disconnected_reaches_klipper(self):
+        self.db.spools[3]['extra'].update({spoolman.FIELD_PRINTER: json.dumps(HOST), spoolman.FIELD_GATE: '2'})
+        self.reconnect()
+        self.assertEqual(self.server.spool_location[3][:2], (HOST, 2))
+        cmds = self.gate_map_commands()
+        self.assertEqual(len(cmds), 1)
+        self.assertIn('REPLACE=1', cmds[0])
+        self.assertIn("2: {'spool_id': 3", cmds[0])
+
+
+class NoWaitAsyncio:
+    """asyncio for mmu_server whose sleep() only yields (reconnect backoff in tests)."""
+    def __getattr__(self, name):
+        return getattr(asyncio, name)
+
+    @staticmethod
+    async def sleep(delay, result=None):
+        return await asyncio.sleep(0, result)
+
+
 class FakeConnection:
     def __init__(self, messages):
         self.messages = list(messages)

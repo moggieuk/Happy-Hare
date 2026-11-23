@@ -321,7 +321,12 @@ class MmuServer:
                 delay = 2.0
                 if connected_before: # Events sent while disconnected are lost
                     async with self.cache_lock:
+                        before = dict(self.spool_location)
                         await self._build_spool_location_cache(silent=True)
+                        try:
+                            await self._reconcile_klipper(before)
+                        except Exception as e: # Klipper not up: it syncs for itself when it starts
+                            logging.warning(f"Spoolman live updates: couldn't reconcile after reconnect: {str(e)}")
                 connected_before = True
                 while True:
                     msg = await ws.read_message()
@@ -371,6 +376,35 @@ class MmuServer:
         except Exception as e:
             logging.debug(f"Spoolman live updates: couldn't query mmu status: {str(e)}")
             return {}
+
+
+    async def _reconcile_klipper(self, before):
+        '''Tell Klipper what changed in the cache while events were being missed (caller holds cache_lock)'''
+        await self._initialize_mmu()
+        if not self._mmu_backend_enabled():
+            return
+        after = self.spool_location
+        ours = lambda loc: loc is not None and loc[0] == self.printer_hostname and loc[1] >= 0
+        moved = any((before.get(sid) or ())[:2] != (after.get(sid) or ())[:2] and (ours(before.get(sid)) or ours(after.get(sid)))
+                    for sid in set(before) | set(after))
+        changed = {sid for sid, new in after.items()
+                   if sid in before and any(before[sid][2].get(k) != new[2].get(k) for k in LIVE_DETAIL_KEYS)}
+        if not moved and not changed:
+            return
+
+        status = await self._mmu_status('spoolman_support', 'gate_spool_id')
+        mode = status.get('spoolman_support')
+        if mode in (None, 'off'):
+            return
+        if moved and mode == 'pull':
+            gate_ids = [(gate, self._find_first_spool_id(self.printer_hostname, gate)) for gate in range(self.nb_gates)]
+            logging.info("Spoolman live update: assignments changed while disconnected, updating gate map")
+            await self._send_gate_map_update(gate_ids, replace=True, silent=True)
+        else:
+            gate_ids = [(gate, sid) for gate, sid in enumerate(status.get('gate_spool_id') or []) if sid in changed]
+            if gate_ids:
+                logging.info(f"Spoolman live update: spool details changed while disconnected, updating gate(s) {[g for g, _ in gate_ids]}")
+                await self._send_gate_map_update(gate_ids, silent=True)
 
 
     async def _apply_spool_change(self, kind, spool_info):
