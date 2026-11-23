@@ -3009,6 +3009,8 @@ class PinnedHeader:
         self.height = 0                             # rows actually reserved
         self.wanted = 0                             # rows the header asked for
         self.active = False
+        self.painting = False                       # a resize is being painted
+        self.resized = False                        # the terminal changed size since the last paint
 
     # -- terminal plumbing ----------------------------------------------------
     @staticmethod
@@ -3048,8 +3050,25 @@ class PinnedHeader:
         return self
 
     def _on_resize(self, *_args):
-        if self.active:
-            self.repaint(force=True)
+        # SIGWINCH arrives in bursts while a window is dragged, and a handler can interrupt
+        # the previous one (or any print) in the middle of a write to stdout, which Python
+        # refuses to re-enter. So only note the resize here if a paint is already under way,
+        # and leave one that could not be painted for the next repaint.
+        if not self.active:
+            return
+        self.resized = True
+        if self.painting:
+            return
+        self.painting = True
+        try:
+            while self.resized:
+                try:
+                    self.repaint()
+                except RuntimeError:
+                    self.resized = True
+                    break
+        finally:
+            self.painting = False
 
     def restore(self):
         if not self.active:
@@ -3062,6 +3081,8 @@ class PinnedHeader:
 
     # -- painting -------------------------------------------------------------
     def repaint(self, force=False):
+        if self.resized:
+            force, self.resized = True, False
         block = self.console.header_block()
         if not block:
             return
