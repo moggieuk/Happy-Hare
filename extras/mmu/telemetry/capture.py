@@ -49,7 +49,7 @@ def changes(previous, current, path=()):
 
 
 def display_color(color):
-    """Six-digit hex for the viewer, grey when the colour is unset"""
+    """Six-digit hex for the Happy Hare Console, grey when the colour is unset"""
     from ..mmu_utils import MmuColorUtils
     return MmuColorUtils.color_to_rgb_hex(color, '808182')[:6]
 

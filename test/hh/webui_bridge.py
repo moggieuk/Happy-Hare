@@ -34,7 +34,7 @@ import socket
 import tempfile
 import re
 
-from test.hh.live_viewer import SourceViewer
+from test.hh.console_support import ConsoleSupport
 import struct
 import sys
 import threading
@@ -88,7 +88,7 @@ def simulator_stream(mmu, capture):
 CONSOLE_REPO = 'https://github.com/moggieuk/Happy-Hare-Console.git'
 CONSOLE_MISSING = ('The Happy Hare Console was not found at %%s\n\n'
                    'Clone it beside this checkout:\n\n    git clone %s\n\n'
-                   'or set HH_CONSOLE_DIR to the viewer folder of a checkout elsewhere.\n' % CONSOLE_REPO)
+                   'or set HH_CONSOLE_DIR to the console folder of a checkout elsewhere.\n' % CONSOLE_REPO)
 
 
 def console_dir():
@@ -96,7 +96,7 @@ def console_dir():
     named = os.environ.get('HH_CONSOLE_DIR')
     if named:
         return pathlib.Path(named).expanduser()
-    return pathlib.Path(__file__).resolve().parents[3] / 'Happy-Hare-Console' / 'viewer'
+    return pathlib.Path(__file__).resolve().parents[3] / 'Happy-Hare-Console' / 'console'
 
 
 class RpcError(Exception):
@@ -227,16 +227,16 @@ class WebUiBridge:
         self._next_status = 0.0
         self._next_telemetry = 0.0
         self._server = None
-        self.viewer = SourceViewer(session)
-        self.telemetry_stream = simulator_stream(session.mmu, self.viewer.telemetry_capture)
+        self.console_support = ConsoleSupport(session)
+        self.telemetry_stream = simulator_stream(session.mmu, self.console_support.telemetry_capture)
         self.restart_profile = None
         self.profile_name = ""
-        self.uploads = tempfile.TemporaryDirectory(prefix="hh-viewer-")
+        self.uploads = tempfile.TemporaryDirectory(prefix="hh-console-")
         self._upload_root = None                  # The configuration directory the running session was booted from, if uploaded
 
     @property
     def telemetry_capture(self):
-        return self.viewer.telemetry_capture
+        return self.console_support.telemetry_capture
 
     # -- lifecycle -------------------------------------------------------------
     def start(self):
@@ -285,7 +285,7 @@ class WebUiBridge:
         try:
             self._server = _Server((self.host, self.port), Handler)
         except OSError:
-            self.viewer.close()
+            self.console_support.close()
             self.uploads.cleanup()
             raise
         self.port = self._server.server_address[1]
@@ -294,7 +294,7 @@ class WebUiBridge:
 
     def close(self):
         self.telemetry_stream.close()
-        self.viewer.close()
+        self.console_support.close()
         self.uploads.cleanup()
         for conn in list(self.clients):
             conn.close()
@@ -368,21 +368,21 @@ class WebUiBridge:
                 params.update(sent)
         # The Happy Hare Console (a repository of its own): index plus its flat modules and stylesheet.
         # The page uses relative URLs, so the directory form of the address is required.
-        if parsed.path == '/sim/viewer':
+        if parsed.path == '/sim/console':
             handler.send_response(301)
-            handler.send_header('Location', '/sim/viewer/')
+            handler.send_header('Location', '/sim/console/')
             handler.send_header('Content-Length', '0')
             handler.end_headers()
             return
-        viewer_dir = console_dir()
-        name = 'index.html' if parsed.path == '/sim/viewer/' else parsed.path.removeprefix('/sim/viewer/')
-        if parsed.path.startswith('/sim/viewer') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
-                and (viewer_dir / name).is_file():
-            self._reply(handler, 200, (viewer_dir / name).read_bytes(),
+        web_dir = console_dir()
+        name = 'index.html' if parsed.path == '/sim/console/' else parsed.path.removeprefix('/sim/console/')
+        if parsed.path.startswith('/sim/console') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
+                and (web_dir / name).is_file():
+            self._reply(handler, 200, (web_dir / name).read_bytes(),
                         {'js': 'text/javascript', 'css': 'text/css'}.get(name.rsplit('.', 1)[-1], 'text/html'))
             return
-        if parsed.path == '/sim/viewer/':
-            self._reply(handler, 404, (CONSOLE_MISSING % viewer_dir).encode(), 'text/plain; charset=utf-8')
+        if parsed.path == '/sim/console/':
+            self._reply(handler, 404, (CONSOLE_MISSING % web_dir).encode(), 'text/plain; charset=utf-8')
             return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':
@@ -696,7 +696,7 @@ class WebUiBridge:
     def rpc_server_mmu_telemetry_unsubscribe(self, conn, params):
         return self.telemetry_stream.unsubscribe(conn)
 
-    def rpc_sim_viewer_setup(self, conn, params):
+    def rpc_sim_console_setup(self, conn, params):
         from test.hh.profiles import CONSOLE_PROFILES
         units = self.session.mmu.mmu_machine.units
         index = int(params.get('unit', 0))
@@ -704,10 +704,10 @@ class WebUiBridge:
             raise RpcError('Unknown MMU unit')
         return dict(connection_kind='simulator', profile=self.profile_name,
                     profiles=[dict(name=p.name, description=p.description) for p in CONSOLE_PROFILES],
-                    units=[u.name for u in units], parameters=self.viewer.parameters(index),
-                    macro_parameters=self.viewer.macro_parameters())
+                    units=[u.name for u in units], parameters=self.console_support.parameters(index),
+                    macro_parameters=self.console_support.macro_parameters())
 
-    def rpc_sim_viewer_sensor(self, conn, params):
+    def rpc_sim_console_sensor(self, conn, params):
         name = params.get('name')
         sensors = self.session.mmu.sensor_manager.get_sensor_states(all_sensors=True)
         if name not in sensors or not isinstance(params.get('enabled'), bool):
@@ -715,7 +715,7 @@ class WebUiBridge:
         self.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=%d' % (name, params['enabled']))
         return {'enabled': bool(sensors[name][1].runout_helper.sensor_enabled)}
 
-    def rpc_sim_viewer_restart(self, conn, params):
+    def rpc_sim_console_restart(self, conn, params):
         from test.hh.profiles import CONSOLE_PROFILES
         if self.restart_profile is None:
             raise RpcError('Profile restart requires the interactive console')

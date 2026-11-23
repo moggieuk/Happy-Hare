@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Source telemetry tests: these intentionally do not instantiate the live viewer.
+# Goal: Source telemetry tests: these intentionally do not instantiate the Happy Hare Console support.
 #
 # (\_/)
 # ( *,*)
@@ -219,7 +219,7 @@ class TestMovementTelemetry(unittest.TestCase):
         self.assertIsNone(end['homed'])
         self.assertTrue(start['motors'])
 
-    def test_source_stream_works_without_text_logging_or_viewer(self):
+    def test_source_stream_works_without_text_logging_or_console_support(self):
         with mock.patch.object(self.hh.mmu, 'log_enabled', return_value=False):
             self.hh.mmu.move_filament('capture', 10)
         start, end = self.pair()

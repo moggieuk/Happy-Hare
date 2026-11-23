@@ -270,7 +270,7 @@ class TestPauseDialogReachesTheUi(WebUiBridgeTestCase):
 
 
 
-class TestViewerSharedObjects(WebUiBridgeTestCase):
+class TestConsoleSharedObjects(WebUiBridgeTestCase):
     PROFILE = 'ercf_vvd'
 
     def test_toolhead_edit_through_gcode_script_reaches_both_units(self):

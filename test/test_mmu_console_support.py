@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Verify simulator viewer controls and replay capture.
+# Goal: Verify the simulator's Happy Hare Console controls and replay capture.
 #
 # (\_/)
 # ( *,*)
@@ -23,21 +23,21 @@ import urllib.request
 from unittest import mock
 
 from test.hh import session
-from test.hh.live_viewer import SourceViewer
+from test.hh.console_support import ConsoleSupport
 from test.hh.webui_bridge import WebUiBridge, RpcError
 from test.console import Console, parse_args
 from test.test_mmu_console import make_install_tree
 
 
-class TestSourceViewer(unittest.TestCase):
+class TestConsoleSupport(unittest.TestCase):
     def setUp(self):
         self.hh = session('boxturtle')
         self.hh.boot(calibrate=True, selected_gate=0)
         self.hh.heat_extruder(220)
-        self.viewer = SourceViewer(self.hh)
+        self.support = ConsoleSupport(self.hh)
 
     def tearDown(self):
-        self.viewer.close()
+        self.support.close()
         self.hh.close()
 
     def test_failed_bind_removes_the_upload_folder(self):
@@ -47,19 +47,19 @@ class TestSourceViewer(unittest.TestCase):
         self.assertFalse(pathlib.Path(bridge.uploads.name).exists())
 
     def test_parameter_groups_match_test_config_owners(self):
-        parameters = {p['name']: p for p in self.viewer.parameters(0)}
+        parameters = {p['name']: p for p in self.support.parameters(0)}
         self.assertEqual(parameters['timeout_pause']['group'], 'Machine Wide')
         self.assertEqual(parameters['gate_homing_max']['group'], 'Unit 0')
         self.assertEqual(parameters['calibrated_bowden_length']['group'], 'Other · Calibration (unit0 / gate 0)')
         self.assertTrue(all(p['section'] and p['group'] for p in parameters.values()))
 
     def test_parameters_use_runtime_guards(self):
-        names={p['name'] for p in self.viewer.parameters(0)}
+        names={p['name'] for p in self.support.parameters(0)}
         self.assertIn('toolhead_ooze_reduction',names)
         self.assertNotIn('extruder_switch_pin',names)
 
 
-class TestViewerConsole(unittest.TestCase):
+class TestConsoleHosting(unittest.TestCase):
     def setUp(self):
         self.out=io.StringIO()
         with contextlib.redirect_stdout(self.out):
@@ -75,7 +75,7 @@ class TestViewerConsole(unittest.TestCase):
         self.assertEqual((unit['vendor'], unit['display_name']), ('BoxTurtle', 'BoxTurtle-0'))
 
     def test_the_console_is_served_from_its_own_checkout(self):
-        url = 'http://127.0.0.1:%d/sim/viewer/' % self.bridge.port
+        url = 'http://127.0.0.1:%d/sim/console/' % self.bridge.port
         with tempfile.TemporaryDirectory() as folder, mock.patch.dict(os.environ, {'HH_CONSOLE_DIR': folder}):
             with self.assertRaises(urllib.error.HTTPError) as missing:
                 urllib.request.urlopen(url, timeout=2)
@@ -96,59 +96,59 @@ class TestViewerConsole(unittest.TestCase):
 
     def test_macro_edit_rides_on_the_next_event_and_cancelled_edits_leave_nothing(self):
         with contextlib.redirect_stdout(self.out):
-            self.bridge.rpc_sim_viewer_restart(None, {'profile': 'ercf_vvd'})
-        viewer = self.bridge.viewer
-        initial = viewer.read_telemetry()['records'][0]
+            self.bridge.rpc_sim_console_restart(None, {'profile': 'ercf_vvd'})
+        support = self.bridge.console_support
+        initial = support.read_telemetry()['records'][0]
         macro = '_MMU_CUT_TIP_VARS'
         old = initial['state']['macros'][macro]['blade_pos']
         self.configure_macro(macro, 'blade_pos', str(old + 5))
-        self.assertEqual(viewer.read_telemetry()['records'], [initial])
+        self.assertEqual(support.read_telemetry()['records'], [initial])
         self.configure_macro(macro, 'blade_pos', str(old))
         self.console.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
-        self.assertEqual([r['event'] for r in viewer.read_telemetry()['records']], ['session', 'cut'])
+        self.assertEqual([r['event'] for r in support.read_telemetry()['records']], ['session', 'cut'])
         self.configure_macro(macro, 'blade_pos', str(old + 5))
         self.console.hh.mmu.movement_telemetry.state('cut', cutter='toolhead')
-        delta = viewer.read_telemetry()['records'][-2]
+        delta = support.read_telemetry()['records'][-2]
         self.assertEqual(delta['event'], 'state_delta')
         self.assertIn(dict(path=['macros', macro, 'blade_pos'], value=old+5), delta['changes'])
 
     def test_grouped_configuration_precedes_move_with_historical_geometry(self):
         with contextlib.redirect_stdout(self.out):
-            self.bridge.rpc_sim_viewer_restart(None, {'profile': 'ercf_vvd'})
-        viewer = self.bridge.viewer
+            self.bridge.rpc_sim_console_restart(None, {'profile': 'ercf_vvd'})
+        support = self.bridge.console_support
         macro = '_MMU_CUT_TIP_VARS'
-        old = next(p['value'] for p in viewer.macro_parameters() if p['macro'] == macro and p['name'] == 'blade_pos')
+        old = next(p['value'] for p in support.macro_parameters() if p['macro'] == macro and p['name'] == 'blade_pos')
         self.configure_macro(macro, 'blade_pos', str(old + 3))
         self.run_script('MMU_TEST_CONFIG UNIT=0 TOOLHEAD_OOZE_REDUCTION=1.5')
         with contextlib.redirect_stdout(self.out):
             self.console.hh.mmu.move_filament('after settings', 1, motor='gear')
-        records = viewer.read_telemetry()['records']
+        records = support.read_telemetry()['records']
         config = next(r for r in records if r['event'] == 'state_delta')
         self.assertGreaterEqual(len(config['changes']), 2)
         self.assertLess(config['sequence'], next(r['sequence'] for r in records if r['event'] == 'movement_start'))
         self.assertEqual(records[0]['state']['macros'][macro]['blade_pos'], old)
 
     def test_sensor_toggles_ride_on_the_next_event(self):
-        viewer = self.bridge.viewer
-        initial = viewer.read_telemetry()['records'][0]
+        support = self.bridge.console_support
+        initial = support.read_telemetry()['records'][0]
         name = next(n for n, sensor in initial['state']['printer']['mmu']['sensors'].items() if sensor['enabled'])
         def toggle(enabled):
             with contextlib.redirect_stdout(self.out):
-                self.bridge.rpc_sim_viewer_sensor(None, dict(name=name, enabled=enabled))
+                self.bridge.rpc_sim_console_sensor(None, dict(name=name, enabled=enabled))
         toggle(False)
         toggle(True)
-        self.assertEqual(viewer.read_telemetry()['records'], [initial])
+        self.assertEqual(support.read_telemetry()['records'], [initial])
         toggle(False)
-        self.assertEqual(viewer.read_telemetry()['records'], [initial])
+        self.assertEqual(support.read_telemetry()['records'], [initial])
         with contextlib.redirect_stdout(self.out):
             self.console.hh.mmu.move_filament('disabled sensor', 1, motor='gear')
-        records = viewer.read_telemetry()['records']
+        records = support.read_telemetry()['records']
         self.assertTrue(any(r['event'] == 'state_delta' for r in records))
         self.assertTrue(initial['state']['printer']['mmu']['sensors'][name]['enabled'])
 
     def test_escaped_string_literals_reach_a_macro_variable_unchanged(self):
-        # The viewer escapes every character (editor.js); the printer must decode it back exactly.
-        item = next(p for p in self.bridge.viewer.macro_parameters() if isinstance(p['value'], str))
+        # The Happy Hare Console escapes every character (editor.js); the printer must decode it back exactly.
+        item = next(p for p in self.bridge.console_support.macro_parameters() if isinstance(p['value'], str))
         text = 'both " and \' quotes; M112\nnext line'
         literal = "'" + ''.join('\\U%08x' % ord(c) for c in text) + "'"
         self.configure_macro(item['macro'], item['name'], literal)
@@ -165,20 +165,20 @@ class TestViewerConsole(unittest.TestCase):
         old=self.console.hh.mmu.movement_telemetry.session_id
         port=self.bridge.port
         with contextlib.redirect_stdout(self.out), mock.patch.object(self.console, 'clear_log') as clear_log:
-            self.bridge.rpc_sim_viewer_restart(None,{'profile':'encoder'})
+            self.bridge.rpc_sim_console_restart(None,{'profile':'encoder'})
         clear_log.assert_called_once_with()
         self.assertIs(self.console.bridge,self.bridge)
         self.assertEqual(self.bridge.port,port)
         self.assertNotEqual(self.console.hh.mmu.movement_telemetry.session_id,old)
         self.assertEqual(self.console.args.profile,'encoder')
         self.assertIn('Happy Hare console  profile=encoder', self.out.getvalue())
-        self.assertIn('Live viewer: http://127.0.0.1:%d/sim/viewer/' % port, self.out.getvalue())
+        self.assertIn('Happy Hare Console: http://127.0.0.1:%d/sim/console/' % port, self.out.getvalue())
 
-    def test_restart_tells_connected_viewers_the_printer_is_ready_again(self):
+    def test_restart_tells_connected_pages_the_printer_is_ready_again(self):
         sent=[]
         self.bridge.clients.add(mock.Mock(send_text=sent.append))
         with contextlib.redirect_stdout(self.out):
-            self.bridge.rpc_sim_viewer_restart(None,{'profile':'encoder'})
+            self.bridge.rpc_sim_console_restart(None,{'profile':'encoder'})
         self.assertTrue(any('notify_klippy_ready' in text for text in sent))
 
     def test_uploaded_config_and_failure_recovery(self):
@@ -186,15 +186,15 @@ class TestViewerConsole(unittest.TestCase):
             make_install_tree(root)
             files=[dict(name=str(p.relative_to(root)),text=p.read_text()) for p in pathlib.Path(root).rglob('*.cfg')]
             with contextlib.redirect_stdout(self.out):
-                self.bridge.rpc_sim_viewer_restart(None,{'files':files})
+                self.bridge.rpc_sim_console_restart(None,{'files':files})
             self.assertEqual(self.console.hh.mmu.num_gates,4)
         previous=self.console.args.profile
         with contextlib.redirect_stdout(self.out), self.assertRaises(Exception):
-            self.bridge.rpc_sim_viewer_restart(None,{'files':[{'name':'printer.cfg','text':'[include mmu/base/*.cfg]'}]})
+            self.bridge.rpc_sim_console_restart(None,{'files':[{'name':'printer.cfg','text':'[include mmu/base/*.cfg]'}]})
         self.assertEqual(self.console.args.profile,previous)
         self.assertIsNotNone(self.console.hh.mmu)
 
     def test_upload_cannot_escape(self):
         for name,text in [('../bad.cfg',''),('printer.cfg','[include /etc/*.cfg]'),(3,'x'),('printer.cfg',None)]:
             with self.assertRaises(RpcError):
-                self.bridge.rpc_sim_viewer_restart(None,{'files':[dict(name=name,text=text)]})
+                self.bridge.rpc_sim_console_restart(None,{'files':[dict(name=name,text=text)]})

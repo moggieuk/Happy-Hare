@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Viewer controls and source telemetry; no simulator animation observations.
+# Goal: Happy Hare Console controls and source telemetry; no simulator animation observations.
 #
 # (\_/)
 # ( *,*)
@@ -19,8 +19,8 @@ def plain(value):
     return serialize(value)
 
 
-class SourceViewer:
-    """Console controls and source capture; no simulator animation observations."""
+class ConsoleSupport:
+    """Happy Hare Console controls and source capture; no simulator animation observations."""
 
     def __init__(self, session):
         from extras.mmu.telemetry.capture import TelemetryCapture

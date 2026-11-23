@@ -78,7 +78,7 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
-API_PORT = 7125                                 # Local simulator viewer/API
+API_PORT = 7125                                 # Local simulator web API and Happy Hare Console
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -679,14 +679,14 @@ class Console:
         if self.bridge is None:
             return
         self.bridge_error = None
-        self.bridge.restart_profile = self._restart_for_viewer
+        self.bridge.restart_profile = self._restart_for_web
         self.bridge.profile_name = str(self.args.profile)
         self._install_pace_observer()
 
-    def _restart_for_viewer(self, profile):
+    def _restart_for_web(self, profile):
         bridge, previous = self.bridge, self.args.profile
         no_serve = self.args.no_serve
-        bridge.viewer.close()
+        bridge.console_support.close()
         self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
         self.args.no_serve = True
         self.args.profile = profile
@@ -701,9 +701,9 @@ class Console:
             self.args.no_serve = no_serve
             self.bridge = bridge
             bridge.session = self.hh
-            from test.hh.live_viewer import SourceViewer
-            bridge.viewer = SourceViewer(self.hh)
-            bridge.telemetry_stream.reset_capture(self.hh.mmu, bridge.viewer.telemetry_capture)
+            from test.hh.console_support import ConsoleSupport
+            bridge.console_support = ConsoleSupport(self.hh)
+            bridge.telemetry_stream.reset_capture(self.hh.mmu, bridge.console_support.telemetry_capture)
             bridge.profile_name = str(self.args.profile)
             bridge.last_sent.clear()
             self._install_pace_observer()
@@ -718,7 +718,7 @@ class Console:
         address = '127.0.0.1' if host == '0.0.0.0' else host
         return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
                 % (host, port, address, port),
-                'Live viewer: http://%s:%d/sim/viewer/' % (address, port),
+                'Happy Hare Console: http://%s:%d/sim/console/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):
@@ -1894,7 +1894,7 @@ class Console:
         self._drain(mark)
 
     # Buffers and encoders are simulator objects whose settings are not MMU_TEST_CONFIG parameters,
-    # so they are edited here. Each edit emits one event so a viewer refresh shows it at once.
+    # so they are edited here. Each edit emits one event so a Happy Hare Console refresh shows it at once.
 
     def _object_arguments(self, kind, args, settings):
         """Resolve `[NAME] KEY=value ...` to (object, units sharing it, {key: text})."""

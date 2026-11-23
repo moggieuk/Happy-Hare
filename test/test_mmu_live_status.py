@@ -29,7 +29,7 @@ class TestLiveStatus(unittest.TestCase):
         machine = self.hh.mmu.mmu_machine
         self.assertIs(machine.get_status(0), machine.machine_status)
 
-    def test_viewer_only_fields_are_not_in_mmu_status(self):
+    def test_console_only_fields_are_not_in_mmu_status(self):
         status = self.hh.mmu.get_status(0)
         for key in ('filament_grip_state', 'sensor_states', 'active_sensors'):
             self.assertNotIn(key, status)

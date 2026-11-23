@@ -262,7 +262,7 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/clear` | as `/redraw`, but empty the log rather than repaint it |
 | `/scroll [N]`, `/s` | scroll back through the log (see below) |
 | `/sensors` | the sensor table (also `MMU_SENSORS`) |
-| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one); the viewer follows the change |
+| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one); the Happy Hare Console follows the change |
 | `/encoder [NAME] [RESOLUTION=mm] …` | show or change an encoder's runtime numeric settings; `/encoder NAME` lists them |
 | `/web` | where the web API is and how to point Mainsail or Fluidd at it |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
@@ -581,16 +581,15 @@ echo '/print job' > /tmp/job.txt
 make console ARGS='--profile boxturtle --script /tmp/job.txt'
 ```
 
-### Integrated live viewer
+### Happy Hare Console
 
-`make console` also serves the viewer on the same local web API: open
-`http://127.0.0.1:7125/sim/viewer/`, or the address printed in the console banner.
-`--no-serve` disables both the viewer and the web API. The viewer is the
-[Happy Hare Console](https://github.com/moggieuk/Happy-Hare-Console), a repository of its
-own that the simulator only hosts. Clone it beside this checkout (so that
-`../Happy-Hare-Console/viewer` exists), or set `HH_CONSOLE_DIR` to the `viewer` folder of a
+`make console` also serves the Happy Hare Console on the same local web API: open
+`http://127.0.0.1:7125/sim/console/`, or the address printed in the console banner.
+`--no-serve` disables both it and the web API. It is a repository of its own,
+[Happy-Hare-Console](https://github.com/moggieuk/Happy-Hare-Console), that the simulator only hosts. Clone it beside this checkout (so that
+`../Happy-Hare-Console/console` exists), or set `HH_CONSOLE_DIR` to the `console` folder of a
 checkout elsewhere; without it the address explains what to do. The telemetry it replays is
-described in `extras/mmu/telemetry/README.md`. Tests: `make test UT=test_mmu_live_viewer.py`,
+described in `extras/mmu/telemetry/README.md`. Tests: `make test UT=test_mmu_console_support.py`,
 plus the console, web API and telemetry suites.
 
 ### Driving a real Mainsail or Fluidd — the web API
@@ -632,7 +631,7 @@ interfaces; remote clients still use the simulator computer's LAN address. The d
 remains localhost only. The simulator API has no authentication, so use LAN access only
 on a trusted network. The bridge refuses requests whose `Origin` is a page from another site, and
 whose `Host` is not this machine (DNS rebinding), so a web page you happen to visit cannot drive the
-simulator; pages served from localhost, or from the address given to `--serve-host`, can. The live viewer
+simulator; pages served from localhost, or from the address given to `--serve-host`, can. The Happy Hare Console
 and Mainsail can connect simultaneously.
 
 To see the pause dialog, pretend a print is running and make something fail:
@@ -914,8 +913,8 @@ The test files, grouped by what they're about:
 | `test_mmu_print_job.py` | 10 | `/print job` end to end, molding the built-in job, and the fake G-code it needs: parsing, extrusion modes, the extruder heater |
 | `test_mmu_webui_bridge.py` | 16 | the Moonraker-compatible web API the console serves: handshake, status, gcode, the pause dialog reaching a UI, and refusing cross-site pages, oversized bodies and unmasked frames |
 | `test_mmu_simulator_telemetry.py` | 7 | the simulator's telemetry capture, real macros and the bridge |
-| `test_mmu_live_viewer.py` | 13 | the viewer's hosting by the console: parameter editor, serving the Console's checkout, profile restart and upload |
-| `test_mmu_live_status.py` | 14 | the status objects the viewer subscribes to |
+| `test_mmu_console_support.py` | 13 | the Happy Hare Console's hosting by the simulator: parameter editor, serving the Console's checkout, profile restart and upload |
+| `test_mmu_live_status.py` | 14 | the status objects the Happy Hare Console subscribes to |
 | `test_mmu_movement_telemetry.py` | 20 | movement start/outcome pairs, toolchange start/end markers, and the replay state around them |
 | `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |
 | `test_mmu_selector_telemetry.py` | 6 | selector motion, servo and homing records |
@@ -1010,7 +1009,7 @@ keep its downstream tip stationary and change buffer travel instead. Travel is b
 `buffer_maxrange`; additional displacement is retained as unabsorbed compression or tension,
 so reversal takes up that excess before the buffer leaves its stop. Equal gear/extruder
 movement leaves the buffer unchanged. Simulated physical buffer switches have 2mm of release hysteresis;
-proportional buffers retain their configured virtual-switch thresholds. The viewer shows travel and any unabsorbed displacement
+proportional buffers retain their configured virtual-switch thresholds. The Happy Hare Console shows travel and any unabsorbed displacement
 in millimeters, not force. Without a modeled buffer, relative displacement is reported but
 no Bowden spring is simulated. The inline piston rests at the configured spring position
 when empty. Switch readings

@@ -15,7 +15,7 @@ import unittest
 from unittest import mock
 import greenlet
 from test.hh import session
-from test.hh.live_viewer import SourceViewer
+from test.hh.console_support import ConsoleSupport
 
 
 class TestGcodeTelemetry(unittest.TestCase):
@@ -82,13 +82,13 @@ class TestGcodeTelemetry(unittest.TestCase):
         drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
         motors = [drive.mmu_gear_stepper.get_steppers()[0],drive.mmu_extruder_stepper.get_steppers()[0]]
         before = [s.get_mcu_position() for s in motors]
-        viewer = SourceViewer(self.hh)
-        self.addCleanup(viewer.close)
+        support = ConsoleSupport(self.hh)
+        self.addCleanup(support.close)
         with self.scope('MMU_TEST'):
             self.run_gcode('M83\nG1 E3 F300')
         for stepper, start in zip(motors,before):
             self.assertAlmostEqual((stepper.get_mcu_position()-start)*stepper.get_step_dist(),3,places=2)
-        records = viewer.read_telemetry()['records']
+        records = support.read_telemetry()['records']
         self.assertEqual([e['actual_mm'] for e in records if e['event']=='movement_outcome'], [3])
 
     def test_permanent_handler_excludes_print_moves(self):
@@ -264,7 +264,7 @@ class TestGcodeTelemetry(unittest.TestCase):
         self.assertEqual(outcome['extrusion_speed_mm_s'], 10)
 
     def test_macro_scope_emits_one_source_pair_per_extrusion_command(self):
-        viewer = SourceViewer(self.hh)
+        support = ConsoleSupport(self.hh)
         try:
             self.hh.gcode.register_command('TEST_EXTRUSION_MACRO',
                 lambda gcmd: self.run_gcode('M83\nG1 E2 F300\nG1 E-1'))
@@ -272,12 +272,12 @@ class TestGcodeTelemetry(unittest.TestCase):
             self.run_gcode('G1 E4')
             with self.scope('MMU_TEST'):
                 self.run_gcode('G0 E1\nG1 X1')
-            records = viewer.read_telemetry()['records']
+            records = support.read_telemetry()['records']
             self.assertEqual([r['actual_mm'] for r in records if r['event']=='movement_outcome'], [2,-1,4])
             self.assertEqual(sum(r['event'] == 'movement_start' for r in records), 3)
             self.assertEqual(sum(r['event'] == 'movement_outcome' for r in records), 3)
         finally:
-            viewer.close()
+            support.close()
 
 
     def test_idle_and_paused_g1_are_captured_but_resumed_printing_is_not(self):

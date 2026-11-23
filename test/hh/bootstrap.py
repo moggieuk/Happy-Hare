@@ -1059,7 +1059,7 @@ class Session:
         return self
 
     def _note_drive_motion(self, gate, distance, toolhead=False):
-        """Account for physical motor travel without duplicating viewer drive totals."""
+        """Account for physical motor travel without duplicating Happy Hare Console drive totals."""
         from extras.mmu.mmu_constants import (DRIVE_EXTRUDER_ONLY,
             DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
         drive = self.mmu.drive(gate)
