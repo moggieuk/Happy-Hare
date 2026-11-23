@@ -1562,6 +1562,22 @@ class Console:
         if self.scrollback:
             LogPager(self).paint_tail()
 
+    def resize_redraw(self):
+        """
+        Repaint everything after the terminal changed size, and say whether that was possible.
+
+        A terminal moves or rewraps what it is already showing when its size changes, so the
+        old status band ends up somewhere in the log area. Repainting only the band leaves it there.
+        """
+        if not sys.stdout.isatty():
+            return False
+        self.redraw()
+        if self._at_prompt:
+            out = raw_stdout()
+            out.write(self.prompt() + self._line_buffer())
+            out.flush()
+        return True
+
 
 
     #########################
@@ -3082,7 +3098,10 @@ class PinnedHeader:
     # -- painting -------------------------------------------------------------
     def repaint(self, force=False):
         if self.resized:
-            force, self.resized = True, False
+            self.resized = False
+            if self.console.resize_redraw():
+                return
+            force = True
         block = self.console.header_block()
         if not block:
             return
