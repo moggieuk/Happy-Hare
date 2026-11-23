@@ -3,7 +3,7 @@
 ## Overview
 
 Motion telemetry records what the MMU does (filament moves, selector and servo moves, extruder moves, state changes) so the
-web app (for example the Happy Hare Visualizer) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
+web app (for example the Happy Hare Console) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
 relays and stores them, and the web app displays them.
 
 ```
@@ -353,7 +353,7 @@ of physical filament movement, and a submitted move is not proof of completion.
 Encoder travel is reported separately for that reason. Origin changes are not
 filament travel; before/after drive positions share the stated reference.
 
-A client such as the Visualizer consumes these pairs and derives animation snapshots locally. The
+A client such as the Happy Hare Console consumes these pairs and derives animation snapshots locally. The
 console bridge captures source records without wrapping movement methods or
 observing simulator geometry. The bridge owns a `TelemetryCapture`.
 **Save motion telemetry** now downloads the compact v2 capture as JSONL.

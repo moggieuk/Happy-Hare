@@ -296,7 +296,7 @@ menu "Global software options"
     default CHOICE_DEFAULT_TELEMETRY_MODE_OFF
     help
       Whether motion telemetry is recorded to Moonraker's logs/mmu-telemetry.jsonl
-      (for the Visualizer). Change it at runtime with MMU_TELEMETRY MODE=...
+      (for the Happy Hare Console). Change it at runtime with MMU_TELEMETRY MODE=...
 
     config CHOICE_DEFAULT_TELEMETRY_MODE_OFF
       bool "Off"
