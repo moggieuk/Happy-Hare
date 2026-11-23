@@ -725,6 +725,10 @@ class WebUiBridge:
             if 'files' in params:
                 root = self._store_upload(params['files'])
                 profile = str(self._upload_config_dir(root))
+                from test.hh.cfg import install_version_problem
+                problem = install_version_problem(p.read_text() for p in pathlib.Path(profile).glob('mmu/base/*.cfg'))
+                if problem:
+                    raise RpcError(problem)
                 label = pathlib.PurePosixPath(params['files'][0]['name']).parts[0]
                 label = 'uploaded config' if label.endswith('.cfg') else label
             elif profile not in {p.name for p in CONSOLE_PROFILES}:

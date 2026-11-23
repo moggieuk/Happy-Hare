@@ -211,6 +211,11 @@ class TestConsoleHosting(unittest.TestCase):
             with self.assertRaises(RpcError):
                 self.bridge._upload_config_dir(pathlib.Path(self.bridge._store_upload(files)))
 
+    def test_an_upload_from_an_older_happy_hare_is_refused_by_name(self):
+        files=[dict(name='mmu/base/mmu.cfg',text='[mcu mmu]\n'),dict(name='mmu/base/mmu_parameters.cfg',text='[mmu]\nhappy_hare_version: 2.4\t# Stamp\n')]
+        with self.assertRaisesRegex(RpcError,'from Happy Hare 2.4'):
+            self.bridge.rpc_sim_console_restart(None,{'files':files})
+
     def test_upload_cannot_escape(self):
         for name,text in [('../bad.cfg',''),('printer.cfg','[include mmu/../../etc/*.cfg]'),('mmu/base/mmu.cfg','[include /etc/*.cfg]'),(3,'x'),('printer.cfg',None)]:
             with self.assertRaises(RpcError):
