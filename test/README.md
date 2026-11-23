@@ -385,7 +385,7 @@ Useful flags — `make console ARGS='...'`:
 --no-prime                     # leave the gate map blank instead of filling it in
 --seed N                       # seed for the primed gate map (default: new each start, printed; 0 with --script)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
---serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
+--serve [PORT]                 # choose the web API's port (default 7125, or the next free port); on by default at a terminal
 --serve-host ADDRESS          # listening address (default 127.0.0.1)
 --no-serve                     # don't serve the web API for Mainsail/Fluidd
 --pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
@@ -608,7 +608,9 @@ Web API (for Mainsail/Fluidd): host 127.0.0.1  port 7125  (http://127.0.0.1:7125
 It is a development and documentation aid for seeing what the web UIs really do with Happy
 Hare, such as the pause dialog; it is not a Moonraker clone. A method the UI asks for that is
 not served gets a JSON-RPC error, and `http://127.0.0.1:7125/sim/unsupported` lists them.
-`--no-serve` turns it off, and `--serve PORT` picks the port. Scripts and tests never start
+`--no-serve` turns it off, and `--serve PORT` picks the port. When the default port is in use
+(a real Moonraker on the same machine, say) the next free one is used and the banner warns;
+a port named with `--serve` is never changed. Scripts and tests never start
 it unless `--serve` is given, so they cannot fight over the port.
 
 Point Mainsail at it by running its dev server with that address, from a Mainsail checkout:
