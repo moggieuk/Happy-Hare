@@ -608,10 +608,14 @@ class Session:
         # This read-only utility is useful specifically in the interactive console. Run its
         # real Jinja body so it can enumerate the harness's live get_status() dictionaries;
         # ordinary choreography macros remain recorded no-ops.
-        effects.setdefault('MMU_DUMP_VARS', self._effect_dump_vars)
+        effects.setdefault('MMU_DUMP_VARS', self._effect_run_body)
+        # The servo cutter at the MMU is real commands and servo moves hung off the post-unload
+        # hook, so its bodies run too; the hook itself is empty unless an extension is set.
+        for name in ('_MMU_POST_UNLOAD', 'SERVO_CUTTER_ACTION', '_CUTTER_OPEN', '_CUTTER_CLOSE'):
+            effects.setdefault(name, self._effect_run_body)
         return effects
 
-    def _effect_dump_vars(self, macro, gcmd):
+    def _effect_run_body(self, macro, gcmd):
         gcode_macro = self.printer.lookup_object('gcode_macro')
         context = gcode_macro.create_template_context()
         context.update({
@@ -1055,7 +1059,7 @@ class Session:
         return self
 
     def _note_drive_motion(self, gate, distance, toolhead=False):
-        """Account for physical motor travel without duplicating viewer drive totals."""
+        """Account for physical motor travel without duplicating Happy Hare Console drive totals."""
         from extras.mmu.mmu_constants import (DRIVE_EXTRUDER_ONLY,
             DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
         drive = self.mmu.drive(gate)

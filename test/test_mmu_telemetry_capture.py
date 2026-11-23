@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Replay capture must remain independent of simulator geometry and the viewer.
+# Goal: Replay capture must remain independent of simulator geometry and the Happy Hare Console.
 #
 # (\_/)
 # ( *,*)

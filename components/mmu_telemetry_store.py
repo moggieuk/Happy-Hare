@@ -139,7 +139,7 @@ class TelemetryRecorder:
                 elif self.mode == 'toolchange':
                     self.pending = None
                     if self.file is not None:
-                        self._line(record)  # A new baseline inside a segment: the viewer restarts its replay here
+                        self._line(record)  # A new baseline inside a segment: the Happy Hare Console restarts its replay here
                 continue
             if self.header is None:
                 raise ValueError('Recording requires an initial checkpoint')

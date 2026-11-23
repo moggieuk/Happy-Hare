@@ -58,7 +58,7 @@ class GcodeExtrusionTelemetry:
     def _handle_g1(self, gcmd):
         mmu = self.mmu
         telemetry = mmu.movement_telemetry
-        # Printing and disconnected viewers avoid coordinate and ownership work.
+        # Printing and disconnected clients avoid coordinate and ownership work.
         if not telemetry.listeners or (not self.owners and mmu.is_printing()):
             return self.original(gcmd)
         owner = greenlet.getcurrent()

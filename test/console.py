@@ -30,6 +30,7 @@ import collections
 import contextlib
 import logging
 import os
+import random
 import re
 import select
 import shutil
@@ -77,7 +78,7 @@ except Exception:                                   # pragma: no cover - Windows
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
-API_PORT = 7125                                 # Local simulator web API
+API_PORT = 7125                                 # Local simulator web API and Happy Hare Console
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -578,7 +579,7 @@ class Console:
         # machine a later MMU_STATUS reported as homed with a gate selected.
         self.hh.boot(calibrate=not a.no_calibrate,
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
-                     prime=not a.no_prime, seed=a.seed,
+                     prime=not a.no_prime, seed=a.seed or 0,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
         from extras.mmu.telemetry.capture import display_color as hex6
@@ -613,6 +614,8 @@ class Console:
         # machine, so this costs the older profiles nothing.
         if preloading:
             self._preload_all()
+            if a.seed is not None and not a.no_prime:
+                self._weather_gates(a.seed)
             self._refresh_startup_filament_row()
 
         # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
@@ -676,7 +679,35 @@ class Console:
         if self.bridge is None:
             return
         self.bridge_error = None
+        self.bridge.restart_profile = self._restart_for_web
+        self.bridge.profile_name = str(self.args.profile)
         self._install_pace_observer()
+
+    def _restart_for_web(self, profile):
+        bridge, previous = self.bridge, self.args.profile
+        no_serve = self.args.no_serve
+        bridge.console_support.close()
+        self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
+        self.args.no_serve = True
+        self.args.profile = profile
+        try:
+            try:
+                self._meta_reset([], show_banner=False)
+            except Exception:
+                self.args.profile = previous
+                self._meta_reset([], show_banner=False)
+                raise
+        finally:
+            self.args.no_serve = no_serve
+            self.bridge = bridge
+            bridge.session = self.hh
+            from test.hh.console_support import ConsoleSupport
+            bridge.console_support = ConsoleSupport(self.hh)
+            bridge.telemetry_stream.reset_capture(self.hh.mmu, bridge.console_support.telemetry_capture)
+            bridge.profile_name = str(self.args.profile)
+            bridge.last_sent.clear()
+            self._install_pace_observer()
+            self.banner()
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""
@@ -687,6 +718,7 @@ class Console:
         address = '127.0.0.1' if host == '0.0.0.0' else host
         return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
                 % (host, port, address, port),
+                'Happy Hare Console: http://%s:%d/sim/console/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):
@@ -766,12 +798,35 @@ class Console:
             self.hh.reactor.advance(0.)
         self._clear_sink()  # setup noise is not console history
 
+    def _weather_gates(self, seed):
+        """
+        Leave the machine as a used one is found: a spool that has run out has no filament at
+        its gate and reads EMPTY, and one or two gates with filament read UNKNOWN until
+        MMU_CHECK_GATE looks. The selected gate is left alone.
+        """
+        from extras.mmu.mmu_constants import GATE_EMPTY, GATE_UNKNOWN
+        mmu = self.hh.mmu
+        rng = random.Random(seed + 2)
+        empty = [gate for gate in range(mmu.num_gates) if mmu.gate_remaining_weight[gate] == 0]
+        for gate in empty:
+            with self.hh.quiet_sensors():
+                self.fil.remove(gate)
+            mmu.gate_maps.set_gate_status(gate, GATE_EMPTY, clear_attributes=False)  # The spent spool is still on the gate
+        stocked = [gate for gate in range(mmu.num_gates) if gate not in empty and gate != mmu.gate_selected]
+        for gate in rng.sample(stocked, min(len(stocked), rng.randint(1, 2))):
+            mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
+        self.hh.reactor.advance(0.)
+        self._clear_sink()
+
     def _refresh_startup_filament_row(self):
         """Make the cached boot banner describe the post-preload simulator state."""
         current, _plain = self.hh.mmu.logger._color_message(
             self.hh.mmu.get_filament_position_string())
+        table, _plain = self.hh.mmu.logger._color_message(self.hh.mmu._mmu_visual_to_string())
         refreshed = []
         for message in self.startup_output:
+            if 'Avail: ' in message and 'Selct: ' in message:
+                message = table  # Gates may have been emptied or left unknown since bootup printed it
             lines = message.split('\n')
             lines = [current if line.startswith('[T') else line for line in lines]
             refreshed.append('\n'.join(lines))
@@ -1839,7 +1894,7 @@ class Console:
         self._drain(mark)
 
     # Buffers and encoders are simulator objects whose settings are not MMU_TEST_CONFIG parameters,
-    # so they are edited here. Each edit emits one event so a viewer refresh shows it at once.
+    # so they are edited here. Each edit emits one event so a Happy Hare Console refresh shows it at once.
 
     def _object_arguments(self, kind, args, settings):
         """Resolve `[NAME] KEY=value ...` to (object, units sharing it, {key: text})."""
@@ -2774,6 +2829,8 @@ class Console:
             self.info(line)
         self.info('/help for meta-commands, MMU_HELP for Happy Hare commands, '
                   'Ctrl-D to quit.')
+        if self.args.seed and not self.args.no_prime:
+            self.info('Spools were primed with --seed %d; pass it again to repeat them.' % self.args.seed)
         if self.scrollback is not None and sys.stdout.isatty():
             self.info('%s scrolls back through the log.'
                       % ('Shift-Up, PgUp or /s' if self.scroll_keys else '/s (or /scroll)'))
@@ -3326,9 +3383,9 @@ def parse_args(argv=None):
     p.add_argument('--no-prime', action='store_true',
                    help='leave the gate map blank instead of giving every gate a vendor, '
                         'material, colour and temperature')
-    p.add_argument('--seed', type=int, default=0,
-                   help='seed for the primed gate map, so a session is reproducible '
-                        '(default %(default)s)')
+    p.add_argument('--seed', type=int, default=None,
+                   help='seed for the primed gate map, to repeat a session. An interactive '
+                        'session picks a new one each start and prints it; a --script run uses 0')
     p.add_argument('--no-moonraker', action='store_true',
                    help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
                         'unanswered - which is what a printer with Moonraker down looks like')
@@ -3416,8 +3473,16 @@ def parse_args(argv=None):
     return args
 
 
+def startup_seed(args):
+    """A new gate map each interactive start; an explicit seed or a --script run stays repeatable."""
+    if args.seed is None and not args.script:
+        return random.SystemRandom().randrange(1, 10000)
+    return args.seed
+
+
 def main(argv=None):
     args = select_startup_profile(parse_args(argv))
+    args.seed = startup_seed(args)
     console = Console(args)
     if not args.script:
         # boot() builds a whole fake printer and preloads every gate, which is fifteen to
