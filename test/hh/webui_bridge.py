@@ -721,9 +721,12 @@ class WebUiBridge:
             raise RpcError('Profile restart requires the interactive console')
         profile, root = params.get('profile'), None
         try:
+            label = None
             if 'files' in params:
                 root = self._store_upload(params['files'])
-                profile = str(next(root.rglob('printer.cfg')).parent)
+                profile = str(self._upload_config_dir(root))
+                label = pathlib.PurePosixPath(params['files'][0]['name']).parts[0]
+                label = 'uploaded config' if label.endswith('.cfg') else label
             elif profile not in {p.name for p in CONSOLE_PROFILES}:
                 raise RpcError('Choose an available simulator profile')
             self.restart_profile(profile)
@@ -735,6 +738,8 @@ class WebUiBridge:
         if self._upload_root is not None:
             shutil.rmtree(self._upload_root, ignore_errors=True)
         self._upload_root = root
+        if label:
+            self.profile_name = label
         self.notify('notify_klippy_ready', [])  # As after a Klipper restart: live views resubscribe to the new session
         return {'profile': self.profile_name}
 
@@ -754,12 +759,23 @@ class WebUiBridge:
             total += len(text.encode())
             if total > 5_000_000:
                 raise RpcError('Configuration upload exceeds 5 MB')
+            # Only printer.cfg's [include mmu/...] lines and the files under mmu/ are ever read
             for inc in re.findall(r'(?im)^\s*\[include\s+([^]]+)\]', text):
-                if pathlib.PurePosixPath(inc).is_absolute() or '..' in pathlib.PurePosixPath(inc).parts:
+                inc = pathlib.PurePosixPath(inc.strip())
+                if (inc.parts[:1] == ('mmu',) or 'mmu' in path.parts) and (inc.is_absolute() or '..' in inc.parts):
                     raise RpcError('Includes must stay within the uploaded configuration')
             target = root / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text)
-        if len(list(root.rglob('printer.cfg'))) != 1:
-            raise RpcError('Upload a directory containing one printer.cfg and its mmu directory')
         return root
+
+    @staticmethod
+    def _upload_config_dir(root):
+        """The folder to boot from: the one holding the outermost printer.cfg, else the one holding mmu/."""
+        for found in (root.rglob('printer.cfg'), (p.parents[1] for p in root.rglob('mmu/base/mmu.cfg'))):
+            found = sorted(found, key=lambda p: len(p.parts))
+            if len(found) > 1 and len(found[0].parts) == len(found[1].parts):
+                break
+            if found and (found[0].parent / 'mmu' / 'base' / 'mmu.cfg').is_file():
+                return found[0].parent
+        raise RpcError('Choose the folder holding printer.cfg, or its mmu folder')
