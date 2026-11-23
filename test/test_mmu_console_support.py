@@ -211,6 +211,19 @@ class TestConsoleHosting(unittest.TestCase):
             with self.assertRaises(RpcError):
                 self.bridge._upload_config_dir(pathlib.Path(self.bridge._store_upload(files)))
 
+    def test_an_uploaded_mmu_folder_kept_under_another_name_boots(self):
+        with tempfile.TemporaryDirectory() as root:
+            make_install_tree(root)
+            files=[dict(name='mmu.old/'+str(p.relative_to(pathlib.Path(root)/'mmu')),text=p.read_text()) for p in (pathlib.Path(root)/'mmu').rglob('*.cfg')]
+            with contextlib.redirect_stdout(self.out):
+                self.assertEqual(self.bridge.rpc_sim_console_restart(None,{'files':files}),{'profile':'mmu.old'})
+            self.assertEqual(self.console.hh.mmu.num_gates,4)
+
+    def test_an_upload_from_the_previous_minor_version_is_refused(self):
+        files=[dict(name='mmu/base/mmu.cfg',text='[mmu_machine]\nhappy_hare_version: 4.2.0\n')]
+        with self.assertRaisesRegex(RpcError,'from Happy Hare 4.2.0'):
+            self.bridge.rpc_sim_console_restart(None,{'files':files})
+
     def test_an_upload_from_an_older_happy_hare_is_refused_by_name(self):
         files=[dict(name='mmu/base/mmu.cfg',text='[mcu mmu]\n'),dict(name='mmu/base/mmu_parameters.cfg',text='[mmu]\nhappy_hare_version: 2.4\t# Stamp\n')]
         with self.assertRaisesRegex(RpcError,'from Happy Hare 2.4'):

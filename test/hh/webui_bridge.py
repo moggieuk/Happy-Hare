@@ -775,11 +775,17 @@ class WebUiBridge:
 
     @staticmethod
     def _upload_config_dir(root):
-        """The folder to boot from: the one holding the outermost printer.cfg, else the one holding mmu/."""
-        for found in (root.rglob('printer.cfg'), (p.parents[1] for p in root.rglob('mmu/base/mmu.cfg'))):
+        """
+        The folder to boot from: the one holding the outermost printer.cfg, else the one holding mmu/,
+        else the one holding an mmu folder kept under another name (mmu.old), which becomes mmu/.
+        """
+        for found in (root.rglob('printer.cfg'), (p.parents[1] for p in root.rglob('mmu/base/mmu.cfg')),
+                      (p.parents[1] for p in root.rglob('base/mmu.cfg') if p.parents[1] != root)):
             found = sorted(found, key=lambda p: len(p.parts))
             if len(found) > 1 and len(found[0].parts) == len(found[1].parts):
                 break
+            if found and found[0].name not in ('printer.cfg', 'mmu') and not (found[0].parent / 'mmu').exists():
+                found[0] = found[0].rename(found[0].parent / 'mmu')
             if found and (found[0].parent / 'mmu' / 'base' / 'mmu.cfg').is_file():
                 return found[0].parent
         raise RpcError('Choose the folder holding printer.cfg, or its mmu folder')

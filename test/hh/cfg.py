@@ -550,7 +550,8 @@ def install_version_problem(texts):
         current = re.search(r'(?m)^VERSION = "([\d.]+)"', f.read()).group(1)
     texts = list(texts)
     found = [m.group(1) for t in texts for m in re.finditer(r'(?m)^\s*happy_hare_version\s*[:=]\s*([\d.]+)', t)]
-    if found and int(found[0].split('.')[0]) >= int(current.split('.')[0]):
+    release = lambda version: tuple(int(n) for n in (version.split('.') + ['0'])[:2])
+    if found and release(found[0]) >= release(current):
         return None
     if not found and any(re.search(r'(?m)^\[mmu_machine\]', t) for t in texts):
         return None
