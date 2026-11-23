@@ -585,11 +585,13 @@ make console ARGS='--profile boxturtle --script /tmp/job.txt'
 
 `make console` also serves the viewer on the same local web API: open
 `http://127.0.0.1:7125/sim/viewer/`, or the address printed in the console banner.
-`--no-serve` disables both the viewer and the web API. The viewer is a standalone
-application in the top-level `viewer/` folder and the simulator only hosts it; how it
-works is described in `viewer/README.md`, and the telemetry it replays in
-`extras/mmu/telemetry/README.md`. Tests: `make test UT=test_mmu_live_viewer.py`, plus the
-console, web API and telemetry suites.
+`--no-serve` disables both the viewer and the web API. The viewer is the
+[Happy Hare Console](https://github.com/moggieuk/Happy-Hare-Console), a repository of its
+own that the simulator only hosts. Clone it beside this checkout (so that
+`../Happy-Hare-Console/viewer` exists), or set `HH_CONSOLE_DIR` to the `viewer` folder of a
+checkout elsewhere; without it the address explains what to do. The telemetry it replays is
+described in `extras/mmu/telemetry/README.md`. Tests: `make test UT=test_mmu_live_viewer.py`,
+plus the console, web API and telemetry suites.
 
 ### Driving a real Mainsail or Fluidd — the web API
 
@@ -912,7 +914,7 @@ The test files, grouped by what they're about:
 | `test_mmu_print_job.py` | 10 | `/print job` end to end, molding the built-in job, and the fake G-code it needs: parsing, extrusion modes, the extruder heater |
 | `test_mmu_webui_bridge.py` | 16 | the Moonraker-compatible web API the console serves: handshake, status, gcode, the pause dialog reaching a UI, and refusing cross-site pages, oversized bodies and unmasked frames |
 | `test_mmu_simulator_telemetry.py` | 7 | the simulator's telemetry capture, real macros and the bridge |
-| `test_mmu_live_viewer.py` | 13 | the viewer's hosting by the console: parameter editor, served modules, profile restart and upload |
+| `test_mmu_live_viewer.py` | 13 | the viewer's hosting by the console: parameter editor, serving the Console's checkout, profile restart and upload |
 | `test_mmu_live_status.py` | 14 | the status objects the viewer subscribes to |
 | `test_mmu_movement_telemetry.py` | 20 | movement start/outcome pairs, toolchange start/end markers, and the replay state around them |
 | `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |

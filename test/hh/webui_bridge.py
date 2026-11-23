@@ -25,6 +25,7 @@ import collections
 import hashlib
 import http.server
 import json
+import os
 import queue
 import pathlib
 import select
@@ -82,6 +83,20 @@ def simulator_stream(mmu, capture):
                 client.update(after=None, inflight=None)
 
     return SimulatorStream(mmu, capture)
+
+
+CONSOLE_REPO = 'https://github.com/moggieuk/Happy-Hare-Console.git'
+CONSOLE_MISSING = ('The Happy Hare Console was not found at %%s\n\n'
+                   'Clone it beside this checkout:\n\n    git clone %s\n\n'
+                   'or set HH_CONSOLE_DIR to the viewer folder of a checkout elsewhere.\n' % CONSOLE_REPO)
+
+
+def console_dir():
+    """The Console's web folder: HH_CONSOLE_DIR, else a Happy-Hare-Console checkout beside this one."""
+    named = os.environ.get('HH_CONSOLE_DIR')
+    if named:
+        return pathlib.Path(named).expanduser()
+    return pathlib.Path(__file__).resolve().parents[3] / 'Happy-Hare-Console' / 'viewer'
 
 
 class RpcError(Exception):
@@ -351,20 +366,23 @@ class WebUiBridge:
                 sent = None
             if isinstance(sent, dict):
                 params.update(sent)
-        # The standalone viewer (repo-root viewer/): index plus its flat modules and stylesheet. The page
-        # uses relative URLs, so the directory form of the address is required.
+        # The Happy Hare Console (a repository of its own): index plus its flat modules and stylesheet.
+        # The page uses relative URLs, so the directory form of the address is required.
         if parsed.path == '/sim/viewer':
             handler.send_response(301)
             handler.send_header('Location', '/sim/viewer/')
             handler.send_header('Content-Length', '0')
             handler.end_headers()
             return
-        viewer_dir = pathlib.Path(__file__).resolve().parents[2] / 'viewer'
+        viewer_dir = console_dir()
         name = 'index.html' if parsed.path == '/sim/viewer/' else parsed.path.removeprefix('/sim/viewer/')
         if parsed.path.startswith('/sim/viewer') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
                 and (viewer_dir / name).is_file():
             self._reply(handler, 200, (viewer_dir / name).read_bytes(),
                         {'js': 'text/javascript', 'css': 'text/css'}.get(name.rsplit('.', 1)[-1], 'text/html'))
+            return
+        if parsed.path == '/sim/viewer/':
+            self._reply(handler, 404, (CONSOLE_MISSING % viewer_dir).encode(), 'text/plain; charset=utf-8')
             return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':

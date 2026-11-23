@@ -14,9 +14,11 @@
 import contextlib
 import io
 import json
+import os
 import pathlib
 import tempfile
 import unittest
+import urllib.error
 import urllib.request
 from unittest import mock
 
@@ -72,17 +74,18 @@ class TestViewerConsole(unittest.TestCase):
         unit = self.bridge.rpc_printer_objects_query(None, {'objects': {'mmu_machine': None}})['status']['mmu_machine']['unit_0']
         self.assertEqual((unit['vendor'], unit['display_name']), ('BoxTurtle', 'BoxTurtle-0'))
 
-    def test_every_imported_viewer_module_is_served(self):
-        import pathlib, re
-        viewer = pathlib.Path(__file__).parent.parent / 'viewer'
-        names = {'index.html', 'app.js'}
-        for page in viewer.glob('*.js'):
-            names.update(re.findall(r"(?:from|import) '\./([\w.-]+\.js)'", page.read_text()))
-        for name in sorted(names):
-            with self.subTest(module=name):
-                url = 'http://127.0.0.1:%d/sim/viewer/%s' % (self.bridge.port, '' if name == 'index.html' else name)
-                with urllib.request.urlopen(url, timeout=2) as response:
-                    self.assertEqual(response.status, 200)
+    def test_the_console_is_served_from_its_own_checkout(self):
+        url = 'http://127.0.0.1:%d/sim/viewer/' % self.bridge.port
+        with tempfile.TemporaryDirectory() as folder, mock.patch.dict(os.environ, {'HH_CONSOLE_DIR': folder}):
+            with self.assertRaises(urllib.error.HTTPError) as missing:
+                urllib.request.urlopen(url, timeout=2)
+            self.assertIn('git clone', missing.exception.read().decode())
+            for name in ('index.html', 'app.js'):
+                with open(os.path.join(folder, name), 'w') as f:
+                    f.write(name)
+            for name in ('', 'app.js'):
+                with urllib.request.urlopen(url + name, timeout=2) as response:
+                    self.assertEqual(response.read().decode(), name or 'index.html')
 
     def run_script(self, script):
         with contextlib.redirect_stdout(self.out):
