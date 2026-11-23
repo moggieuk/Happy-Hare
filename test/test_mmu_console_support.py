@@ -194,7 +194,24 @@ class TestConsoleHosting(unittest.TestCase):
         self.assertEqual(self.console.args.profile,previous)
         self.assertIsNotNone(self.console.hh.mmu)
 
+    def test_uploaded_mmu_folder_boots_without_a_printer_cfg(self):
+        with tempfile.TemporaryDirectory() as root:
+            make_install_tree(root)
+            files=[dict(name=str(p.relative_to(root)),text=p.read_text()) for p in (pathlib.Path(root)/'mmu').rglob('*.cfg')]
+            with contextlib.redirect_stdout(self.out):
+                self.assertEqual(self.bridge.rpc_sim_console_restart(None,{'files':files}),{'profile':'mmu'})
+            self.assertEqual(self.console.hh.mmu.num_gates,4)
+
+    def test_upload_boots_from_the_outermost_printer_cfg_and_ignores_includes_it_never_reads(self):
+        root=pathlib.Path(self.bridge._store_upload([
+            dict(name='config/printer.cfg',text='[include /home/pi/extra.cfg]\n[include mmu/base/*.cfg]'),
+            dict(name='config/backup/printer.cfg',text=''),dict(name='config/mmu/base/mmu.cfg',text='')]))
+        self.assertEqual(self.bridge._upload_config_dir(root),root/'config')
+        for files in ([dict(name='base/mmu.cfg',text='')],[dict(name='printer.cfg',text=''),dict(name='mmu.cfg',text='')]):
+            with self.assertRaises(RpcError):
+                self.bridge._upload_config_dir(pathlib.Path(self.bridge._store_upload(files)))
+
     def test_upload_cannot_escape(self):
-        for name,text in [('../bad.cfg',''),('printer.cfg','[include /etc/*.cfg]'),(3,'x'),('printer.cfg',None)]:
+        for name,text in [('../bad.cfg',''),('printer.cfg','[include mmu/../../etc/*.cfg]'),('mmu/base/mmu.cfg','[include /etc/*.cfg]'),(3,'x'),('printer.cfg',None)]:
             with self.assertRaises(RpcError):
                 self.bridge.rpc_sim_console_restart(None,{'files':[dict(name=name,text=text)]})
