@@ -855,7 +855,7 @@ class MmuController(MmuFilamentMovement):
             'filament': "Loaded" if self.filament_pos == FILAMENT_POS_LOADED else
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
                         "Unknown",
-            'filament_position': self.drive().get_filament_position(),
+            'filament_position': round(self.drive().get_filament_position(), 2),
             'homing': None if self.homing is None else dict(self.homing, endstops=list(self.homing['endstops'])),
             'config_changes': self.config_changes,
             'telemetry_mode': self.telemetry_api.stream.record_mode, # off, on or toolchange (MMU_TELEMETRY)

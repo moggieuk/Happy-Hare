@@ -35,6 +35,11 @@ class TestLiveStatus(unittest.TestCase):
             self.assertNotIn(key, status)
         self.assertIsNone(status['homing'])
 
+    def test_filament_position_is_rounded_to_two_decimals(self):
+        mmu = self.hh.mmu
+        with mock.patch.object(mmu.drive(), 'get_filament_position', return_value=712.0900000000003):
+            self.assertEqual(mmu.get_status(0)['filament_position'], 712.09)
+
     def test_runtime_edits_are_reported_against_their_config_section(self):
         mmu = self.hh.mmu
         self.assertNotIn('mmu_toolhead default', mmu.get_status(0)['config_changes'])
