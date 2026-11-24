@@ -415,6 +415,11 @@ class WebUiBridge:
             self._next_telemetry = now + .25
             self.telemetry_stream.pump()
 
+    def _pump_status(self, now):
+        if self.clients and now >= self._next_status:
+            self._next_status = now + STATUS_PERIOD
+            self.push_status()
+
     def notify(self, method, params):
         text = json.dumps({'jsonrpc': '2.0', 'method': method, 'params': params}, default=str)
         for conn in list(self.clients):
@@ -430,7 +435,7 @@ class WebUiBridge:
         return bool(self._deferred_requests or self.inbox.qsize())
 
     def service_during_move(self):
-        """Deliver completed moves without executing another printer command."""
+        """Deliver completed moves and status changes without executing another printer command."""
         for _ in range(self.inbox.qsize()):
             try:
                 item = self.inbox.get_nowait()
@@ -446,6 +451,7 @@ class WebUiBridge:
                 self._deferred_requests.append(item)
         now = time.monotonic()
         self._pump_telemetry(now)
+        self._pump_status(now)                    # as Moonraker does while a command runs
 
     def service(self):
         """Run every queued request. Call from the thread that owns the session."""
@@ -458,9 +464,7 @@ class WebUiBridge:
             self._handle(conn, text, waiter)
         now = time.monotonic()
         self._pump_telemetry(now)
-        if self.clients and now >= self._next_status:
-            self._next_status = now + STATUS_PERIOD
-            self.push_status()
+        self._pump_status(now)
 
     def _handle(self, conn, text, waiter):
         try:
