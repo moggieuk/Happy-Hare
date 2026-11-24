@@ -2419,6 +2419,7 @@ class Console:
             return                                  # belt and braces: mid-dispatch anyway
         self._ticking = True
         try:
+            idle_until = time.monotonic()
             self._service_bridge()
             if not self.live:
                 return                              # a frozen clock only serves the web UI
@@ -2426,7 +2427,8 @@ class Console:
             # 'is None', not 'or': _last_tick is a float and 0.0 is a legitimate reading,
             # which 'or' would silently treat as never-ticked and skip the advance.
             last = now if self._last_tick is None else self._last_tick
-            dt = min(now - last, LIVE_MAX_CATCHUP)
+            # A command run for the web UI has already spent its own time on the clock
+            dt = min(idle_until - last, LIVE_MAX_CATCHUP)
             self._last_tick = now
             if dt <= 0:
                 return
