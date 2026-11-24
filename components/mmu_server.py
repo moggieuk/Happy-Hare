@@ -1292,6 +1292,7 @@ class MmuServer:
         Spoolman edits are reflected; the full readonly sync leaves it False (cache).
         '''
         async with self.cache_lock:
+            await self._initialize_mmu()
             return await self._send_gate_map_update(gate_ids, silent=silent, refresh=refresh)
 
 
