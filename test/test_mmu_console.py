@@ -1565,6 +1565,17 @@ class TestLiveClock(unittest.TestCase):
             console._tick()
         self.assertEqual(console.advance.call_args[0][0], console_mod.LIVE_MAX_CATCHUP)
 
+    def test_a_command_run_for_the_web_ui_is_not_counted_again_by_the_tick(self):
+        console = self._console(['--live'])
+        console.advance = mock.Mock()
+        wall = [499.125]
+        console._service_bridge = lambda: wall.__setitem__(0, wall[0] + 7.0)    # a paced MMU_LOAD
+        with mock.patch.object(console_mod.time, 'monotonic', side_effect=lambda: wall[0]):
+            console._last_tick = 499.0
+            console._tick()
+        self.assertAlmostEqual(console.advance.call_args[0][0], 0.125, places=3)
+        self.assertAlmostEqual(console._last_tick, 506.125, places=3)
+
     def test_a_failing_tick_stops_the_clock_instead_of_repeating(self):
         console = self._console(['--live'])
         console.advance = mock.Mock(side_effect=RuntimeError('reactor went bang'))
