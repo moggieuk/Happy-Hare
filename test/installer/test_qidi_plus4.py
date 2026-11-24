@@ -106,19 +106,16 @@ class TestQidiPlus4Toolhead(unittest.TestCase):
         self.assertGreaterEqual(pushback, blade - gears + 3.)
         self.assertGreaterEqual(retract - residual, pushback)
 
-    def test_only_the_unconfirmed_value_is_marked_unmeasured(self):
-        # Nobody has published the hall sensor's distance to the gears; v4 can measure it
-        # on the printer. Everything else is sourced, so nothing else is marked.
-        self.assertRegex(self.machine, r"# UNMEASURED:.*toolhead_entry_to_extruder")
-        self.assertNotIn("UNMEASURED", self.rendered["config/base/mmu_macro_vars.cfg"])
-
-    def test_other_toolheads_carry_no_unmeasured_marker(self):
-        rendered = cfg.render(profiles.Profile("qidi_q2_defaults",
-                                               syms={"MMU_TYPE_QIDI_BOX_1_0": True}))
-        for name, text in rendered.items():
-            with self.subTest(file=name):
-                self.assertNotIn("UNMEASURED", text)
-
+    def test_measured_entry_sensor_sits_above_the_blade(self):
+        # Measured on a Plus4: the hall sensor is ~24mm above the gears, above the blade.
+        # The cut check needs entry-to-gears above blade-to-gears to look for the sensor
+        # above the cut, and 22 keeps the gear-only push short of the gears
+        blade = float(self.kconfig.get("VAR_CUT_TIP_BLADE_POS"))
+        gears = float(self.kconfig.get("PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE"))
+        entry = float(self.kconfig.get("PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER"))
+        self.assertEqual(entry, 22.)
+        self.assertGreater(entry, blade - gears)
+        self.assertIn("toolhead_entry_to_extruder  : 22", self.machine)
 
 if __name__ == "__main__":
     unittest.main()

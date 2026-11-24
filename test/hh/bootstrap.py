@@ -724,6 +724,11 @@ class Session:
         macro.variables = dict(macro.variables, output_park_pos=blade_pos + rip_length)
 
         stepper, model, gate = self._extruder_and_filament()
+        if model is not None and model._nozzle_position(gate) != float('inf'):
+            # The blade cuts where it physically is, so the tip ends blade_pos + rip_length
+            # behind the nozzle even when HH's idea of the filament position is off (e.g. a
+            # wrong toolhead_entry_to_extruder). Same as above when that idea is right.
+            severed = max(model.tip[gate] - (model._nozzle_position(gate) - blade_pos - rip_length), 0.)
         if stepper is not None:
             # Whole steps, as a G1 moves, so HH's measured travel and thus the fragment it
             # derives do not depend on the stepper's starting phase

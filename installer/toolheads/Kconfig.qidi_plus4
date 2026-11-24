@@ -13,20 +13,22 @@ config TOOLHEAD_TYPE_QIDI_PLUS4
 # BOX_DO_CUT). The extruder-to-nozzle and blade distances come from the community toolhead
 # model (github.com/qidi-community/plus4-cad, Toolhead_(assembled).step: gears ~73mm and
 # blade ~91mm above the nozzle tip) and Bunny-Box's Plus4 config (72 and 92), which agree
-# to within about 2mm. The hall sensor's distance to the gears is published nowhere, so it
-# stays marked unmeasured; MMU_CALIBRATE_BOWDEN to the sensor and to gear collision (with
-# an encoder) differ by exactly that distance.
+# to within about 2mm. The hall sensor's distance to the gears was measured on a Plus4
+# (see toolhead_entry_to_extruder below).
 if TOOLHEAD_TYPE_QIDI_PLUS4
-  config TOOLHEAD_PRESET_UNMEASURED
-    default "toolhead_entry_to_extruder"
   config PARAM_TOOLHEAD_TYPE
     default "QIDI Plus4"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     default 72
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
     default 62
+  # The hall sensor sits above the blade. Measured on a Plus4 after a cut at blade_pos 92:
+  # a gear-only pull cleared the sensor after 4.15mm, so it is ~96mm from the nozzle and
+  # ~24mm above the gears. 22 stops the gear-only push to the gears ~2mm short, so it
+  # can't compress filament. It must stay above blade_pos - toolhead_extruder_to_nozzle
+  # (20), or the cut check expects the sensor clear and flags every good cut as not cut.
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default 20
+    default 22
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
     default 2
 

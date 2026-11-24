@@ -587,8 +587,7 @@ QIDI = Profile(
 # extruder-entry sensor is the hall-effect filament width sensor on the printer's main MCU
 # (MmuHallEndstop over two ADC pins, driven by the harness from filament position), the
 # cutter blade sits before the extruder gears, and the Plus4 hub's filament motion sensor
-# on PB0 is the encoder (no buffer). The preset's numbers are placeholders until
-# a commissioned Plus4 has been measured - the rendered config says UNMEASURED.
+# on PB0 is the encoder (no buffer).
 QIDI_PLUS4 = Profile(
     'qidi_plus4',
     syms={
@@ -598,11 +597,14 @@ QIDI_PLUS4 = Profile(
     description='QIDI Box 1.0 on a Plus4 - hall-sensor extruder entry, cutter before the extruder, '
                 'hub motion sensor as encoder',
     # Same compact internal leg and ~750 mm hub-to-extruder leg as the qidi profile. The
-    # motion sensor is in the hub, so the encoder sits at the shared exit.
+    # motion sensor is in the hub, so the encoder sits at the shared exit. The hall sensor
+    # sits where it was measured on a real Plus4, 24 mm above the gears, rather than where
+    # the config's toolhead_entry_to_extruder says, so a wrong config value shows.
     filament_layout={
         'mmu_shared_exit': 150.0,
         'mmu_encoder': 150.0,
         'extruder_entry': 900.0,
+        'extruder': 900.0 - 24.0,
     })
 
 # QuattroBox v2 on its Chameleon X5 board, which supplies nearly everything as defaults: eject

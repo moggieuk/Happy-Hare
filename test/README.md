@@ -902,7 +902,7 @@ The test files, grouped by what they're about:
 | `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
 | `test_mmu_buttons_compat.py` | 1 | switch sensors on Klipper without `register_debounce_button` |
 | `test_mmu_hall_endstop.py` | 6 | the hall-effect `[mmu_toolhead]` endstop booting on ADC pins and following their readings |
-| `test_mmu_qidi_plus4.py` | 11 | the QIDI Box on a Plus4 toolhead: load homing on the hall sensor, unload parking, the cut before the extruder, two load/cut/unload cycles on every gate, `MMU_MOTORS_OFF` then homing (#1532), the double-press cut |
+| `test_mmu_qidi_plus4.py` | 13 | the QIDI Box on a Plus4 toolhead: load homing on the hall sensor, unload parking, the cut before the extruder and its check against the measured hall sensor position, two load/cut/unload cycles on every gate, `MMU_MOTORS_OFF` then homing (#1532), the double-press cut |
 | **Filament handling** | | |
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |
@@ -1117,7 +1117,7 @@ templates** from them, so a broken template shows up as a test failure.
 | `pico_mmu` | PicoMMU's `ServoSelector`; deliberately boots uncalibrated because its gate angles depend on the physical cam build |
 | `mmx` | MMX's `ServoSelector` with its vendor gate-angle order; also used for a full load/unload selector test |
 | `qidi` | QIDI Box with a Q1 Pro toolhead: fixed board, shared hub endstop, tension buffer, dryer, cutter before the extruder |
-| `qidi_plus4` | QIDI Box on a Plus4: the Plus4 toolhead preset at its defaults, so a hall-sensor extruder entry, a cutter before the extruder and the hub's motion sensor as the encoder (no buffer). Its toolhead numbers are unmeasured placeholders |
+| `qidi_plus4` | QIDI Box on a Plus4: the Plus4 toolhead preset at its defaults, so a hall-sensor extruder entry, a cutter before the extruder and the hub's motion sensor as the encoder (no buffer). The hall sensor sits where it was measured on a real Plus4, 24mm above the gears |
 | `quattrobox_v2` | QuattroBox v2 on its Chameleon X5 board: eject buttons, Binky encoder, PSF-style proportional buffer, heater on two 3950 thermistors, two BME280s, and a shared PN532 reader and bowden TD-1 |
 | `emu` | 5 gates; with `quattrobox_v2`, the shipped profiles with an analog buffer sensor |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |

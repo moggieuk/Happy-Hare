@@ -22,11 +22,6 @@ config MMU_SHARED_TOOLHEAD
   bool
   default n
 
-# Set by a toolhead preset to the options among its defaults that are placeholders rather
-# than measurements (e.g. "toolhead_entry_to_extruder"), so the rendered config can say so
-config TOOLHEAD_PRESET_UNMEASURED
-  string
-
 choice CHOICE_TOOLHEAD_TYPE
   prompt "Toolhead"
   default CHOICE_TOOLHEAD_TYPE_OTHER

@@ -6,8 +6,9 @@
 # from the filament model by feeding both ADCs readings on either side of hall_min_diameter
 # (see _SensorHandle in test/hh/bootstrap.py).
 #
-# The preset's dimensions are placeholders until a commissioned Plus4 is measured, so these
-# tests check what the machine does with whatever values it has, never the values themselves.
+# The hall sensor sits where it was measured on a real Plus4 (24mm above the gears), not
+# where the config says, so TestCutCheckOnTheMeasuredSensor can show what a wrong
+# toolhead_entry_to_extruder does to the cut check.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_qidi_plus4
 #
@@ -110,6 +111,39 @@ class TestUnload(Plus4Case):
         self.assertIn('_MMU_CUT_TIP', [line.split()[0] for line in self.hh.gcode.executed[start:] if line.strip()])
         self.assertTrue(any('blade before extruder' in line for line in self.hh.console[console:]))
         self.assertFalse(self.hall_reading()[1])
+
+
+class TestCutCheckOnTheMeasuredSensor(unittest.TestCase):
+    """
+    On a real Plus4 the hall sensor sits above the blade: ~24mm above the gears, with the blade
+    20mm above them. After a cut the filament end is below the sensor, so the cut check has to
+    pull it clear with the gear. toolhead_entry_to_extruder must say the sensor is above the
+    blade for that; with 0 the check expects the sensor already clear and, on hardware, flagged
+    every good cut as not cut. The profile puts the sensor where it was measured.
+    """
+
+    def unload(self, profile):
+        hh = session(profile)
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True)
+        hh.heat_extruder(220)
+        hh.place_filament(0, position=TIP_AT_GATE)
+        hh.run_gcode('MMU_PRELOAD GATE=0')
+        hh.run_gcode('MMU_SELECT GATE=0')
+        hh.run_gcode('MMU_LOAD')
+        self.assertEqual(hh.errors, [], 'load was not clean')
+        hh.run_gcode('MMU_UNLOAD')
+        return hh
+
+    def test_the_preset_value_passes_a_good_cut(self):
+        hh = self.unload('qidi_plus4')
+        self.assertEqual(hh.errors, [])
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+
+    def test_entry_zero_flags_a_good_cut_as_not_cut(self):
+        hh = self.unload(profiles.get('qidi_plus4').derive('qidi_plus4_entry_0', syms={
+            'PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER': 0}))
+        self.assertTrue(any('Tip may not have been cut' in error for error in hh.errors), hh.errors)
 
 
 class TestFourGateCycle(unittest.TestCase):
