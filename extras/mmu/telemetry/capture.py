@@ -160,6 +160,7 @@ class ReplayState:
                 sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in unit_sensors],
                 extruder=dict(name=unit.extruder_wrapper.name,
                               retracted_length=unit.extruder_wrapper.retracted_length,
+                              target_temperature=mmu.printer.lookup_object(unit.extruder_wrapper.name).get_heater().target_temp,
                               **unit.extruder_wrapper.get_status(now)),
                 encoder=None if encoder is None else dict(name=encoder.name, distance=encoder.get_distance(), status=encoder.get_status(now),
                     parameters=self.select(encoder, ('resolution', 'desired_headroom',
