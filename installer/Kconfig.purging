@@ -352,7 +352,7 @@ menu "Purging"
     comment "Simple purge macro variables"
       link VAR_PURGE_EXTRUDER_PURGE_SPEED
       help
-        Extruder purge speed for the simple bucket purge macro
+        Purge speed and extra purge length for the simple bucket purge macro
   endif
 
   if CHOICE_PURGE_MACRO_BLOBIFIER
