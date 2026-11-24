@@ -396,6 +396,8 @@ class TestEncoderValidationOptions(unittest.TestCase):
         'bowden_move_error_tolerance':       ('PARAM_BOWDEN_MOVE_ERROR_TOLERANCE', 60, 70),
         'toolhead_move_error_tolerance':     ('PARAM_TOOLHEAD_MOVE_ERROR_TOLERANCE', 80, 90),
         'toolhead_post_load_tighten':        ('PARAM_TOOLHEAD_POST_LOAD_TIGHTEN', 60, 25),
+        'gear_homing_stall_retries':         ('PARAM_GEAR_HOMING_STALL_RETRIES', 0, 3),
+        'gear_homing_stall_step':            ('PARAM_GEAR_HOMING_STALL_STEP', 30.0, 40.0),
     }
 
     @staticmethod

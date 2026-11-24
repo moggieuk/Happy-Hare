@@ -391,6 +391,9 @@ class MmuUnitParameters(TunableParametersBase):
         # Encoder
         ParamSpec('encoder_dwell',                    'float',   0.1, section="ENCODER",    limits=dict(minval=0.0, maxval=2.0),  hidden=True),
         ParamSpec('encoder_move_step_size',           'float',  15.0, section="ENCODER",    limits=dict(minval=5.0, maxval=25.0), guard=_guard_has_encoder),
+        ParamSpec('gear_homing_stall_retries',        'int',       0, section="ENCODER",    limits=dict(minval=0, maxval=10),     guard=_guard_has_encoder),
+        ParamSpec('gear_homing_stall_step',           'float',  30.0, section="ENCODER",    limits=dict(minval=10.0, maxval=100.0), guard=_guard_has_encoder),
+        ParamSpec('gear_homing_stall_ratio',          'float',   0.4, section="ENCODER",    limits=dict(above=0.0, below=1.0),    guard=_guard_has_encoder, hidden=True),
 
         # eSpooler
         ParamSpec('espooler_min_distance',            'float',  50.0, section="ESPOOLER",   limits=dict(above=0.0),              guard=_guard_has_espooler),

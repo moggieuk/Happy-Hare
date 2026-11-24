@@ -163,6 +163,9 @@ class FilamentPath:
         self._drive_mode = None
         self._set_buffer_value = None
         self._gripped = lambda gate: False
+        # gate -> (lo, hi): a jam the tip can't move past. The gear slips against it, so the
+        # filament (and an encoder on it) stops while the motor keeps turning
+        self.jams = {}
         self._extruder_position = lambda gate: self.layout['extruder_entry']
         self._nozzle_position = lambda gate: float('inf')
         self._residual_filament = lambda gate: 0.
@@ -228,6 +231,18 @@ class FilamentPath:
         return self
 
     # -- setup -------------------------------------------------------------
+    def jam(self, gate, ahead=None, behind=None):
+        """
+        Jam a gate's filament: it can't advance past `ahead` or retract past `behind`
+        (positions, as for the tip). The gear keeps turning but slips, as on a notched or
+        snagged filament. Clear with unjam().
+        """
+        self.jams[gate] = (float('-inf') if behind is None else behind,
+                           float('inf') if ahead is None else ahead)
+
+    def unjam(self, gate):
+        self.jams.pop(gate, None)
+
     def place(self, gate, position, sync=True):
         """Put a gate's filament tip at an absolute path position."""
         self.tip[gate] = float(position)
@@ -436,6 +451,11 @@ class FilamentPath:
         if not delta:
             return None
         direction = 1.0 if delta > 0 else -1.0
+        if gate in self.jams:
+            # A jammed filament only reaches what lies before the jam
+            lo, hi = self.jams[gate]
+            reach = (hi - self.tip[gate]) if direction > 0 else (self.tip[gate] - lo)
+            delta = direction * max(0., min(abs(delta), reach))
         best = None
         for name in names:
             if self.models_sensor(name):
@@ -565,6 +585,11 @@ class FilamentPath:
         mode = motor_mode or self._motion_mode(gate, reason)
         buffered = any(gate in geometry['travel'] for geometry in self.buffers.values())
         held = self._gripped(gate) and mode == 'gear'
+        if gate in self.jams:
+            # A jammed filament only reaches what lies before the jam. Whatever drives it slips,
+            # so nothing past that moves: not the tail, and not a buffer
+            lo, hi = self.jams[gate]
+            delta = max(0., min(delta, hi - start_tip)) if delta > 0 else min(0., max(delta, lo - start_tip))
         moved = delta
         if not buffered:
             movement, moved = self._advance_unbuffered(gate, delta, mode)
