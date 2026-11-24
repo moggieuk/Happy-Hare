@@ -94,7 +94,7 @@ PRINTER_NAME_HEADER = 'X-Printer-Name'  # sent with every request to the configu
 
 NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spoolman (avoids re-querying on every scan)
 
-# ─── RFID spool auto-create: SpoolmanDB reference data + offline fallbacks ─────
+# --- RFID spool auto-create: SpoolmanDB reference data + offline fallbacks -----
 # Reference filament data fetched (once per process) from SpoolmanDB, the
 # community database maintained by Spoolman's author. Used only to enrich
 # auto-created records (density, temps, canonical vendor/colour names); every
@@ -102,7 +102,7 @@ NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spo
 SPOOLMANDB_MATERIALS_URL = "https://donkie.github.io/SpoolmanDB/materials.json"
 SPOOLMANDB_BAMBU_URL     = "https://donkie.github.io/SpoolmanDB/filaments/bambulab.json"
 
-DENSITY_FALLBACK = {               # g/cm³, used when SpoolmanDB is unreachable
+DENSITY_FALLBACK = {               # g/cm^3, used when SpoolmanDB is unreachable
     "pla": 1.24, "pla+": 1.24, "abs": 1.04, "petg": 1.27, "nylon": 1.52,
     "pa": 1.52, "tpu": 1.21, "flexible": 1.21, "asa": 1.05, "pc": 1.30,
     "hips": 1.03, "pva": 1.23, "tpe": 1.21, "peek": 1.32, "pei": 1.27, "pom": 1.41,
@@ -1162,7 +1162,7 @@ class MmuServer:
 
 
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
     # RFID SPOOL AUTO-CREATE
     #
     # Build a Spoolman vendor -> filament -> spool from parsed NFC/RFID tag
@@ -1175,7 +1175,7 @@ class MmuServer:
     # socket traffic originates here rather than from Klipper. Reference
     # enrichment (density, temps, canonical vendor name) comes from SpoolmanDB
     # (donkie.github.io) and degrades gracefully to the module-level fallbacks.
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
 
     async def _create_spool_from_metadata(self, metadata, uid_norm) -> int | None:
         '''
@@ -1227,7 +1227,7 @@ class MmuServer:
 
     async def _resolve_density(self, material, color_hex, material_id, is_bambu):
         '''
-        Determine filament density (g/cm³) and, for Bambu tags, locate the
+        Determine filament density (g/cm^3) and, for Bambu tags, locate the
         matching SpoolmanDB entry (which carries temps/name/spool_weight).
         Order: SpoolmanDB Bambu (by SKU then material+colour) -> SpoolmanDB
         materials.json -> DENSITY_FALLBACK table -> DENSITY_DEFAULT.
@@ -1950,12 +1950,12 @@ def load_component(config):
 
 
 
-# ══════════════════════════════════════════════════════════════════════════
+# ==========================================================================
 # Gcode file Metadata parsing extension
 #
 # Beyond this point this module acts like an extended file_manager/metadata module
 #
-# ══════════════════════════════════════════════════════════════════════════
+# ==========================================================================
 
 AUTHORZIED_SLICERS = ['PrusaSlicer', 'SuperSlicer', 'OrcaSlicer', 'BambuStudio']
 SLICER_ALIASES = {'Creality_Print': 'OrcaSlicer'} # Orca forks that share Orca's comment keys
