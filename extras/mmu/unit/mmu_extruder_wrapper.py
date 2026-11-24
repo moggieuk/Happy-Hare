@@ -220,8 +220,8 @@ class MmuExtruderWrapper():
         residual = getattr(self.mmu_unit.toolhead_wrapper.p, "toolhead_residual_filament", 0)
         return {
             'extruder_name': self.name,
-            'extruder_filament_remaining': self.filament_cut_fragment + residual,
-            'filament_cut_fragment': self.filament_cut_fragment, # TODO Use this printer variable in UI's
+            'extruder_filament_remaining': round(self.filament_cut_fragment + residual, 2),
+            'filament_cut_fragment': round(self.filament_cut_fragment, 2), # TODO Use this printer variable in UI's
             'filament_remaining_color': self.filament_remaining_color, # TODO Use this printer variable in UI's
             'filament_remaining_material': self.filament_remaining_material,
             'filament_remaining_temp': self.filament_remaining_temp,
