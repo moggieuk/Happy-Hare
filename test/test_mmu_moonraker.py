@@ -624,6 +624,29 @@ class TestSpoolCreatedAfterStartup(MoonrakerTestCase):
         self.assertEqual(attrs['material'], 'PETG')
 
 
+class TestReadonlyGetFilaments(MoonrakerTestCase):
+    """
+    #1571: spoolman_support: readonly only ever calls spoolman_get_filaments. Straight
+    after a Moonraker restart nothing else has run _initialize_mmu() yet, so the
+    backend was never detected and the gate map update was silently dropped.
+    """
+
+    SPOOLS = (dict(material='PETG', vendor='Polymaker', extruder_temp=240),)
+
+    def test_get_filaments_sends_attributes_before_backend_init(self):
+        self.assertFalse(hasattr(self.hh.mmu_server, 'mmu_backend_present'),
+                         'precondition: nothing has initialized the MMU backend yet')
+        self.hh.call_remote('spoolman_get_filaments', gate_ids=[(0, 1)], silent=True,
+                            refresh=True)
+        cmd = self.last_gcode()
+        self.assertIsNotNone(cmd, 'get_filaments must send the gate map update')
+        attrs = ast.literal_eval(cmd.split('MAP="', 1)[1].split('"', 1)[0])[0]
+        self.assertEqual(attrs['spool_id'], 1)
+        self.assertEqual(attrs['material'], 'PETG')
+        self.assertEqual(attrs['vendor'], 'Polymaker')
+        self.assertEqual(attrs['temp'], 240)
+
+
 class TestSpoolWeight(MoonrakerTestCase):
     """
     #856: the spool's remaining and full weight travel to Happy Hare in the gate map,
