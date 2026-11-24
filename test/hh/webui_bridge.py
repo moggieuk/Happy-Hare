@@ -44,7 +44,7 @@ import urllib.parse
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 RPC_METHOD_NOT_FOUND = -32601
 RPC_SERVER_ERROR = -32000
-STATUS_PERIOD = 0.5                 # seconds between notify_status_update pushes
+STATUS_PERIOD = 0.25                # seconds between notify_status_update pushes, as Klipper's subscriptions
 REQUEST_TIMEOUT = 20.0              # an HTTP caller waits this long for the console thread
 GCODE_STORE_LINES = 1000
 MAX_MESSAGE_BYTES = 8_000_000      # one WebSocket message; a configuration upload is the largest legitimate one
@@ -415,6 +415,11 @@ class WebUiBridge:
             self._next_telemetry = now + .25
             self.telemetry_stream.pump()
 
+    def _pump_status(self, now):
+        if self.clients and now >= self._next_status:
+            self._next_status = now + STATUS_PERIOD
+            self.push_status()
+
     def notify(self, method, params):
         text = json.dumps({'jsonrpc': '2.0', 'method': method, 'params': params}, default=str)
         for conn in list(self.clients):
@@ -430,7 +435,7 @@ class WebUiBridge:
         return bool(self._deferred_requests or self.inbox.qsize())
 
     def service_during_move(self):
-        """Deliver completed moves without executing another printer command."""
+        """Deliver completed moves and status changes without executing another printer command."""
         for _ in range(self.inbox.qsize()):
             try:
                 item = self.inbox.get_nowait()
@@ -446,6 +451,7 @@ class WebUiBridge:
                 self._deferred_requests.append(item)
         now = time.monotonic()
         self._pump_telemetry(now)
+        self._pump_status(now)                    # as Moonraker does while a command runs
 
     def service(self):
         """Run every queued request. Call from the thread that owns the session."""
@@ -458,9 +464,7 @@ class WebUiBridge:
             self._handle(conn, text, waiter)
         now = time.monotonic()
         self._pump_telemetry(now)
-        if self.clients and now >= self._next_status:
-            self._next_status = now + STATUS_PERIOD
-            self.push_status()
+        self._pump_status(now)
 
     def _handle(self, conn, text, waiter):
         try:
@@ -486,8 +490,6 @@ class WebUiBridge:
             done.set()
         elif conn is not None:
             conn.send_text(json.dumps(reply, default=str))
-        if method == 'printer.gcode.script':
-            self.push_status()                    # show what the script changed immediately
 
     # -- status ----------------------------------------------------------------
     def _objects(self):
