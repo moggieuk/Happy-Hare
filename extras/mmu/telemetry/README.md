@@ -310,7 +310,8 @@ a move.
 
 The final standalone-load G1 is annotated **Final load retraction**, without a
 separate notification. The persisted per-extruder `retracted_length` is part of the replay state, so its
-changes arrive as `state_delta` records. Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
+changes arrive as `state_delta` records, as do changes to the extruder heater's `target_temperature`
+(with the next event; a heater change is not an event of its own). Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
 configured residual, persisted per-extruder fragment length and retained color,
 the selected gate color and persisted `retracted_length`. Missing sensors supply no positional evidence.
 

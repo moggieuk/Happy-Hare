@@ -98,16 +98,17 @@ class TestTelemetryCapture(unittest.TestCase):
                 self.assertEqual(facts['printer']['mmu_machine']['units'][unit.name]
                                  ['has_per_gate_heaters'], expected)
 
-    def test_heater_changes_are_not_movement_telemetry(self):
+    def test_extruder_target_temperature_is_captured(self):
         heater = self.hh.mmu.printer.lookup_object('extruder').get_heater()
         capture = self.capture()
         baseline = capture.read()['records'][0]['state']
-        self.assertNotIn('target_temperature', baseline['printer']['mmu_machine']['units']['unit0']['extruder'])
+        self.assertEqual(baseline['printer']['mmu_machine']['units']['unit0']['extruder']['target_temperature'], 0)
         heater.set_temp(220)
         self.emit()
         changes = [change for record in capture.read()['records'] if record['event'] == 'state_delta'
                    for change in record['changes']]
-        self.assertFalse(any('target_temperature' in change['path'] for change in changes))
+        self.assertIn(dict(path=['printer', 'mmu_machine', 'units', 'unit0', 'extruder', 'target_temperature'],
+                           value=220), changes)
 
     def test_grip_state_and_always_gripped_are_captured(self):
         selector = self.hh.mmu.selector()
