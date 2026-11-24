@@ -1850,7 +1850,9 @@ class MmuServer:
 
                 # A gate can have valid local filament metadata without a Spoolman spool
                 gate_status_val = gate_status[gate] if gate < len(gate_status) else -1
-                is_empty = gate_status_val in [-1, 0]
+                gate_material_val = gate_material[gate] if gate < len(gate_material) else ''
+                # An unknown gate still holds the filament the gate map records for it
+                is_empty = gate_status_val == 0 or (gate_status_val == -1 and spool_id <= 0 and not gate_material_val)
 
                 if is_empty:
                     # Empty gate format
