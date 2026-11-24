@@ -44,7 +44,7 @@ import urllib.parse
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 RPC_METHOD_NOT_FOUND = -32601
 RPC_SERVER_ERROR = -32000
-STATUS_PERIOD = 0.5                 # seconds between notify_status_update pushes
+STATUS_PERIOD = 0.25                # seconds between notify_status_update pushes, as Klipper's subscriptions
 REQUEST_TIMEOUT = 20.0              # an HTTP caller waits this long for the console thread
 GCODE_STORE_LINES = 1000
 MAX_MESSAGE_BYTES = 8_000_000      # one WebSocket message; a configuration upload is the largest legitimate one
@@ -490,8 +490,6 @@ class WebUiBridge:
             done.set()
         elif conn is not None:
             conn.send_text(json.dumps(reply, default=str))
-        if method == 'printer.gcode.script':
-            self.push_status()                    # show what the script changed immediately
 
     # -- status ----------------------------------------------------------------
     def _objects(self):

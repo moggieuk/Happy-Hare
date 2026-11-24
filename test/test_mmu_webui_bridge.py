@@ -133,6 +133,23 @@ class TestWebUiBridge(WebUiBridgeTestCase):
         self.assertEqual(notification['method'], 'notify_status_update')
         self.assertEqual(notification['params'][0], dict(mmu=dict(filament_pos=self.hh.mmu.filament_pos)))
 
+    def test_a_finished_command_is_reported_on_the_next_status_tick(self):
+        self.call('printer.objects.subscribe', objects=dict(mmu=['gate']))
+        self.bridge._next_status = float('inf')
+        self.call('printer.gcode.script', script='MMU_SELECT GATE=2')
+        request_id = self.client.send('server.info')
+        seen = []
+        while not seen or seen[-1].get('id') != request_id:
+            self.serve(lambda: select.select([self.client.sock], [], [], 0)[0])
+            seen.append(self.client.receive())
+        self.assertNotIn('notify_status_update', [m.get('method') for m in seen])
+        self.bridge._next_status = 0
+        self.bridge.service()
+        update = self.client.receive()
+        while update.get('method') != 'notify_status_update':
+            update = self.client.receive()
+        self.assertEqual(update['params'][0], dict(mmu=dict(gate=2)))
+
     def test_telemetry_subscription_ack_and_unsubscribe(self):
         batch = self.call('server.mmu.telemetry.subscribe')['result']
         self.assertEqual(batch['records'][0]['event'], 'session')
