@@ -117,6 +117,16 @@ class MmuSensorsCommand(BaseCommand):
             category=CATEGORY_GENERAL
         )
 
+    def _is_shared_gate_endstop(self, qualified):
+        """True if a unit homes or preloads its gates onto this shared sensor"""
+        sm = self.mmu.sensor_manager
+        for u in self.mmu.mmu_machine.units:
+            for endstop in (u.p.gate_homing_endstop, u.p.gate_preload_endstop):
+                if (endstop in SHARED_GATE_ENDSTOPS
+                        and sm.get_qualified_endstop_name(endstop, mmu_unit=u) == qualified):
+                    return True
+        return False
+
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
@@ -151,7 +161,7 @@ class MmuSensorsCommand(BaseCommand):
                 changed = sm.set_sensor_enabled(qualified, enabled, write=True)
                 mmu.log_always("Sensor '%s' %s%s" % (
                     qualified, "enabled" if enabled else "disabled", "" if changed else " (no change)"))
-                if changed and not enabled and sm.get_unprefixed_sensor_name(qualified) in SHARED_GATE_ENDSTOPS:
+                if changed and not enabled and self._is_shared_gate_endstop(qualified):
                     mmu.log_warning(
                         "'%s' is a shared-gate endstop. Disabling it persistently defeats the safety "
                         "check that stops one gate's filament being driven into another's at the hub "
