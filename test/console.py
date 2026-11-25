@@ -1023,6 +1023,7 @@ class Console:
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
             if self.bridge is not None:
                 self.bridge.host_output('!! reactor: %s' % exc)
+        self._idle_clock(active=True)
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
@@ -1660,9 +1661,31 @@ class Console:
             self._settle_moonraker()
             left -= step
 
+    def _idle_clock(self, active=False):
+        """
+        Klipper's idle timeout, which the fake leaves to its caller: a command leaves the
+        printer Ready with the timeout counting from then (moves take no time when unpaced, so
+        every command counts), and the timeout expiring turns the extruder heater off and
+        leaves it Idle. A job drives the state itself while it plays.
+        """
+        idle = self.hh.printer.lookup_object('idle_timeout', None)
+        if idle is None or idle.state == 'Printing':
+            return
+        now = self.hh.reactor.monotonic()
+        if active:
+            if idle.state == 'Ready':
+                idle.timeout_timer.waketime = now + idle.idle_timeout
+            else:
+                idle.set_state('Ready')
+        elif idle.state == 'Ready' and now >= idle.timeout_timer.waketime:
+            self._dispatch('M104 S0')
+            idle.set_state('Idle')
+            self.hh.reactor.advance(0.)
+
     def _meta_advance(self, args):
         mark = len(self.sink)
         self.advance(float(args[0]) if args else 1.0)
+        self._idle_clock()
         self._drain(mark)
 
     def _meta_clear(self, args):
@@ -2279,6 +2302,7 @@ class Console:
     def _job_hold(self, why):
         job = self.job
         self.hh.printer.lookup_object('print_stats').set_state('paused')
+        self.hh.printer.lookup_object('idle_timeout').set_state('Ready')
         self.info('Print job %s held at line %d (%s): %s\n'
                   'Fix it, RESUME (or MMU_UNLOCK then RESUME), then /print resume - '
                   'or /print cancel' % (job.name, job.line_no, why,
@@ -2407,6 +2431,7 @@ class Console:
             mark = len(self.sink)
             try:
                 self.advance(dt)
+                self._idle_clock()
             except Exception as exc:                # noqa: BLE001
                 # Stop rather than reprint the same failure on every tick.
                 self.live = False
