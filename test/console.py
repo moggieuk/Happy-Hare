@@ -2395,8 +2395,8 @@ class Console:
                 return
             if len(self.sink) > mark:
                 self._reprint(lambda: self._drain(mark))
-            if self.pinned is not None:
-                self.pinned.repaint()               # the clock and t=+Ns moved
+            if self.pinned is not None and self.pinned.repaint():   # the clock and t=+Ns moved
+                self._reprint(lambda: None)         # the header changed height and took the cursor with it
         finally:
             self._ticking = False
 
@@ -2988,7 +2988,7 @@ class PinnedHeader:
         import shutil
         return max(8, shutil.get_terminal_size((100, 24)).lines)
 
-    def _set_region(self, height):
+    def _set_region(self, height, home=True):
         # raw_stdout() throughout, not sys.stdout: cursor control is not log content and must
         # not reach the scrollback buffer. With no tee installed the two are the same thing.
         out = raw_stdout()
@@ -2998,8 +2998,10 @@ class PinnedHeader:
         out.write('\0337')                          # save cursor
         out.write('\033[%d;%dr' % (height + 1, rows))
         out.write('\0338')
-        # If the cursor is still up in the reserved band, get it into the scroll region.
-        out.write('\033[%d;1H' % (height + 1))
+        # On a cleared screen the log starts at the top of the scroll region. Once there is a log
+        # the cursor belongs at its foot, where the prompt is: from the top, output would be
+        # written over the rows already on screen instead of scrolling them.
+        out.write('\033[%d;1H' % (height + 1 if home else rows))
         out.flush()
         self.height = height
 
@@ -3063,8 +3065,9 @@ class PinnedHeader:
         # band is capped, so height stays below len(block) permanently and comparing against
         # it would re-run _set_region on every repaint - which moves the cursor, twice a
         # second under a live clock, right out from under the prompt.
-        if force or len(block) != self.wanted:
-            self._set_region(len(block))
+        moved = force or len(block) != self.wanted
+        if moved:
+            self._set_region(len(block), home=force)
         if len(block) > self.height:
             # The band is capped at rows-4 so there is always room to type. Painting the
             # whole block regardless would write through the bottom of the band and into the
@@ -3081,6 +3084,7 @@ class PinnedHeader:
             out.write(text + RESET)
         out.write('\0338')                          # restore cursor
         out.flush()
+        return moved
 
 
 class LogPager:
