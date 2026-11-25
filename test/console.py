@@ -558,9 +558,11 @@ class Console:
         effects['__MMU_PURGE_SEGMENT'] = self._run_macro_body
         for name in ('_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
                      '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP',
-                     '_MMU_FORM_TIP', '_WAIT_FOR_TEMP'):
+                     '_WAIT_FOR_TEMP'):
             effects[name] = self._run_macro_body
-        effects['_CUT_TIP_DO_CUT_MOTION'] = self._run_macro_body
+        # Toolhead moves are not paced, so without this a cut or a formed tip is over in an instant
+        effects['_CUT_TIP_DO_CUT_MOTION'] = self._timed_macro(1.5)
+        effects['_MMU_FORM_TIP'] = self._timed_macro(4.)
         self.cutter_telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self._on_cutter_telemetry)
 
 
@@ -767,6 +769,14 @@ class Console:
     @staticmethod
     def _run_macro_body(macro, gcmd):
         macro.run_body(gcmd)
+
+    def _timed_macro(self, seconds):
+        """Run a macro's body, then spend the time its toolhead moves take on a printer (none unless paced)."""
+        def effect(macro, gcmd):
+            macro.run_body(gcmd)
+            for _ in self.hh.printer.lookup_object('motion_queuing').pace_move(seconds, 0.):
+                pass
+        return effect
 
     def _on_cutter_telemetry(self, record):
         # Only the simulator changes geometry. The real command merely emits an
