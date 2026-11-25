@@ -457,6 +457,14 @@ and wiping over that span, so dividing the net distance by any one of the macro'
 badly understates it (`unloading_speed_start` put the whole retract at 0.5s). A round number is
 the honest answer for work that is deliberately not modelled.
 
+**In the interactive simulator those bodies do run**, along with the cut and purge macros,
+and there every toolhead move (`G0`-`G3`, the move back from a parked position) and `G4`
+dwell takes the time its own speed gives it: the longer of the XYZ and extruder distances
+over the feedrate, acceleration aside, with the extruder fed along as it goes. So a purge
+lasts as long as its `G1 E` moves say, not a round number. Moves issued from inside a
+reactor callback are still immediate, and a `/print` job times its own moves in batches
+instead of one by one. The unit-test harness does none of this.
+
 Note the log still arrives in **blocks**, because Happy Hare only logs at operation-step
 boundaries, not continuously. The header is what moves during a long move.
 
