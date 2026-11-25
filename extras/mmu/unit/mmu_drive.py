@@ -162,6 +162,13 @@ class MmuDrive():
         return self._driving_stepper.get_mode_position()
 
 
+    def get_filament_position_at(self, eventtime):
+        """
+        The filament position the driving stepper has reached, partway through a move
+        """
+        return self._driving_stepper.get_live_mode_position(eventtime)
+
+
     def get_live_filament_position(self):
         """
         Return the approximate live (non-based) filament position for dynamic feedback of position

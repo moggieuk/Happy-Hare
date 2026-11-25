@@ -771,7 +771,6 @@ class Session:
         # HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
         # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position
         # alone is not enough - it is mcu-preserving, by design (klippy_root/stepper.py)
-        stepper.set_position([stepper.get_commanded_position() + amount, 0., 0., 0.])
         stepper.harness_note_motion(amount)
 
     def calibrate(self):

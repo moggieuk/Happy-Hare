@@ -156,7 +156,6 @@ class ToolHead:
         extruder_stepper = getattr(self.extruder, 'extruder_stepper', None)
         if distance and extruder_stepper is not None:
             stepper = extruder_stepper.stepper
-            stepper.set_commanded_position(stepper.get_commanded_position()+distance)
             # Happy Hare Console motor totals come from the drive observer, once per move.
             stepper.harness_note_motion(distance)
         if hasattr(self.extruder, 'last_position'):
