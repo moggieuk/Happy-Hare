@@ -2181,15 +2181,25 @@ class MmuController(MmuFilamentMovement):
 
     def _idle_timeout_time(self, eventtime):
         """
-        When Klipper's idle timeout will expire if nothing moves, as its own handler works it out. None unless counting
+        Expected idle expiry if nothing moves and G-code is free. None unless counting.
         """
         idle_timeout = self.printer.lookup_object("idle_timeout", None)
         if idle_timeout is None or self.toolhead is None or idle_timeout.state != "Ready":
             return None
+        if idle_timeout.idle_timeout <= 0.: # Kalico allows disabling the idle timeout
+            return None
         print_time, est_print_time, lookahead_empty = self.toolhead.check_busy(eventtime)
         if not lookahead_empty:
             return None
-        return round(eventtime + idle_timeout.idle_timeout - max(0., est_print_time - print_time))
+        timer = getattr(idle_timeout, 'timeout_timer', None)
+        waketime = getattr(timer, 'waketime', self.reactor.NEVER)
+        if waketime == self.reactor.NEVER:
+            return None
+        # SET_IDLE_TIMEOUT in Ready schedules a full timeout from now, even
+        # when the toolhead has already been idle for longer than that timeout.
+        # Expiry cannot precede that callback (or a retry while G-code is busy).
+        deadline = eventtime + idle_timeout.idle_timeout - max(0., est_print_time - print_time)
+        return round(max(waketime, deadline))
 
 
     def _setup_hotend_off_timer(self):
