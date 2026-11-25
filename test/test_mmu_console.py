@@ -3326,6 +3326,22 @@ class TestBufferAndEncoderCommands(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
 
+class TestToolheadMacrosTakeTime(unittest.TestCase):
+    def test_cutting_and_forming_a_tip_last_long_enough_to_be_seen_when_paced(self):
+        for profile, action in (('ercf_vvd', 'Cutting Tip'), ('tradrack', 'Forming Tip')):
+            with self.subTest(profile=profile), no_tty():
+                console = console_mod.Console(console_mod.parse_args(
+                    ['--profile', profile, '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+                self.addCleanup(console.close)
+                console.boot()
+                seen = set()
+                console.hh.printer.harness_pace_observer = lambda: seen.add(console.hh.mmu.get_status(0)['action'])
+                console.hh.set_pacing(0.2, wall=False)
+                console.run_command('MMU_LOAD')
+                console.run_command('MMU_UNLOAD')
+                self.assertIn(action, seen)
+
+
 class TestWebProfileRestart(unittest.TestCase):
     def test_restart_rebinds_connected_telemetry_for_same_and_new_profile(self):
         from test.hh.webui_bridge import WebUiBridge
