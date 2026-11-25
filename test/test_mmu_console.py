@@ -3342,6 +3342,25 @@ class TestToolheadMacrosTakeTime(unittest.TestCase):
                 self.assertIn(action, seen)
 
 
+class TestLiveFilamentPosition(unittest.TestCase):
+    def test_the_live_position_advances_through_a_paced_move_and_ends_where_it_was_sent(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+            self.addCleanup(console.close)
+            console.boot()
+            mmu, reactor = console.hh.mmu, console.hh.reactor
+            seen = set()
+            console.hh.printer.harness_pace_observer = lambda: seen.add(mmu.get_status(reactor.monotonic())['filament_position_live'])
+            console.hh.set_pacing(0.2, wall=False)
+            console.run_command('MMU_SELECT GATE=0')
+            console.run_command('MMU_LOAD')
+            status = mmu.get_status(reactor.monotonic())
+            self.assertGreater(status['filament_position'], 700.)
+            self.assertAlmostEqual(status['filament_position_live'], status['filament_position'], delta=0.1)
+            self.assertGreater(len([pos for pos in seen if 100. < pos < 700.]), 5)   # The Bowden move, which filament_position reports only once it ends
+
+
 class TestIdleTimeoutStandIn(unittest.TestCase):
     def test_a_pause_after_a_load_reports_when_the_idle_timeout_expires_and_then_expires(self):
         with no_tty():

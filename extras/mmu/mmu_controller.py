@@ -858,6 +858,7 @@ class MmuController(MmuFilamentMovement):
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
                         "Unknown",
             'filament_position': round(self.drive().get_filament_position(), 2),
+            'filament_position_live': round(self.drive().get_filament_position_at(eventtime), 1), # Where the move under way has got to; filament_position is where it ends
             'homing': None if self.homing is None else dict(self.homing, endstops=list(self.homing['endstops'])),
             'config_changes': self.config_changes,
             'telemetry_mode': self.telemetry_api.stream.record_mode, # off, on or toolchange (MMU_TELEMETRY)
