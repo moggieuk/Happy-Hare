@@ -693,6 +693,7 @@ class Console:
         self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
         self.args.no_serve = True
         self.args.profile = profile
+        self.args.pace = 1.  # Watched in the web console, so as a printer runs; /pace still changes it
         try:
             try:
                 self._meta_reset([], show_banner=False)
