@@ -561,9 +561,10 @@ class Console:
                      '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP',
                      '_WAIT_FOR_TEMP'):
             effects[name] = self._run_macro_body
-        # Toolhead moves are not paced, so without this a cut or a formed tip is over in an instant
-        effects['_CUT_TIP_DO_CUT_MOTION'] = self._timed_macro(1.5)
-        effects['_MMU_FORM_TIP'] = self._timed_macro(4.)
+        for name in ('_CUT_TIP_DO_CUT_MOTION', '_MMU_FORM_TIP'):
+            effects[name] = self._run_macro_body
+        # These bodies are toolhead moves: paced, each takes the time its own speeds give it
+        self.hh.printer.harness_pace_toolhead = True
         self.cutter_telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self._on_cutter_telemetry)
 
 
@@ -778,14 +779,6 @@ class Console:
     @staticmethod
     def _run_macro_body(macro, gcmd):
         macro.run_body(gcmd)
-
-    def _timed_macro(self, seconds):
-        """Run a macro's body, then spend the time its toolhead moves take on a printer (none unless paced)."""
-        def effect(macro, gcmd):
-            macro.run_body(gcmd)
-            for _ in self.hh.printer.lookup_object('motion_queuing').pace_move(seconds, 0.):
-                pass
-        return effect
 
     def _on_cutter_telemetry(self, record):
         # Only the simulator changes geometry. The real command merely emits an
@@ -2228,11 +2221,15 @@ class Console:
                 if self.JOB_MOTION.match(word):
                     dwells = len(toolhead.dwells)
                     before = gcode_move.last_position[:4]
+                    # A job's own moves are timed here, in batches, not one by one by the toolhead
+                    self.hh.printer.harness_pace_toolhead = False
                     try:
                         self.hh.gcode.run_script(line)
                     except Exception as exc:        # noqa: BLE001
                         print(paint('!! %s' % exc, '1;31', self.color))
                         self.failures += 1
+                    finally:
+                        self.hh.printer.harness_pace_toolhead = True
                     after = gcode_move.last_position[:4]
                     de = after[3] - before[3]
                     job.extruded += de

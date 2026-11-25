@@ -2742,7 +2742,10 @@ class TestTheDefaultProfile(unittest.TestCase):
 
         self.assertGreater(len(seen), 50, 'a whole load produced only a handful of updates')
         self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
-        self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
+        # The load ends retracted to reduce ooze, and that toolhead move is walked too
+        fed = seen[:seen.index(max(seen)) + 1]
+        self.assertEqual(fed, sorted(fed), 'a load should only feed filament forwards until its final retraction')
+        self.assertLess(max(seen) - seen[-1], 5.)
 
     def test_gate9_compression_rises_only_during_forced_extruder_home(self):
         """ViViD's buffer must stay uncompressed throughout its Bowden move."""
@@ -3340,6 +3343,51 @@ class TestToolheadMacrosTakeTime(unittest.TestCase):
                 console.run_command('MMU_LOAD')
                 console.run_command('MMU_UNLOAD')
                 self.assertIn(action, seen)
+
+    def test_a_purge_lasts_long_enough_to_be_seen_when_paced(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+            self.addCleanup(console.close)
+            console.boot()
+            seen = set()
+            console.hh.printer.harness_pace_observer = lambda: seen.add(console.hh.mmu.get_status(0)['action'])
+            console.hh.set_pacing(0.2, wall=False)
+            console.run_command('MMU_SELECT GATE=0')
+            console.run_command('MMU_LOAD')
+            self.assertIn('Purging', seen)
+
+
+class TestToolheadMovesArePaced(unittest.TestCase):
+    def _console(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+        self.addCleanup(console.close)
+        with no_tty():
+            console.boot()
+        return console
+
+    def test_a_toolhead_move_and_a_dwell_take_their_own_time_when_paced(self):
+        console = self._console()
+        reactor = console.hh.reactor
+        console.run_command('M83')
+        start = reactor.monotonic()
+        console.run_command('G1 E10 F300')
+        self.assertEqual(reactor.monotonic(), start)          # Unpaced: no time at all
+        console.hh.set_pacing(1., wall=False)
+        console.run_command('G1 E10 F300')
+        console.run_command('G4 P500')
+        self.assertAlmostEqual(reactor.monotonic() - start, 2.5, places=3)
+
+    def test_a_restored_position_is_moved_to_at_the_speed_given_in_mm_per_second(self):
+        console = self._console()
+        toolhead = console.hh.printer.lookup_object('toolhead')
+        console.run_command('SAVE_GCODE_STATE NAME=here')
+        console.run_command('G91')
+        console.run_command('G1 X10 F600')
+        console.run_command('RESTORE_GCODE_STATE NAME=here MOVE=1 MOVE_SPEED=200')
+        self.assertEqual(toolhead.moves[-1][1], 200.)
 
 
 class TestLiveFilamentPosition(unittest.TestCase):

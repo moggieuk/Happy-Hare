@@ -154,8 +154,7 @@ class GCodeMove:
         self.extrude_factor = state['extrude_factor']
         if gcmd.get_int('MOVE', 0):
             self.last_position[:3] = state['last_position'][:3]
-            self.speed = gcmd.get_float('MOVE_SPEED', self.speed * 60.) / 60.
-            self._move_with_transform(self.speed)
+            self._move_with_transform(gcmd.get_float('MOVE_SPEED', self.speed, above=0.))   # mm/s, as Klipper takes it
 
     def cmd_SET_GCODE_OFFSET(self, gcmd):
         # Ported from klippy/extras/gcode_move.py (MOVE= not supported)
