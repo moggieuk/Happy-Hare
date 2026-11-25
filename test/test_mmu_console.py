@@ -887,6 +887,17 @@ class TestPinnedHeader(unittest.TestCase):
                         'region reserved before the screen was cleared')
         self._capture(pin.restore)
 
+    def test_a_header_that_changes_height_leaves_the_cursor_at_the_bottom_of_the_log(self):
+        """The prompt is down there; sending the cursor to the top of the log writes over what is on screen."""
+        pin = self._pin()
+        self._capture(pin.install)
+        pin.console.header_lines = lambda: ['line one', 'line two', 'line three']
+        out = self._capture(lambda: self.assertTrue(pin.repaint()))
+        top, bottom, row = map(int, __import__('re').search(r'\x1b\[(\d+);(\d+)r\x1b8\x1b\[(\d+);1H', out).groups())
+        self.assertEqual(row, bottom)
+        self.assertFalse(self._capture(lambda: self.assertFalse(pin.repaint())).count('r\x1b8'))
+        self._capture(pin.restore)
+
     def test_each_header_row_resets_before_erasing(self):
         """ESC[2K erases with the CURRENT attributes, so a leaked colour would fill rows."""
         pin = self._pin()
