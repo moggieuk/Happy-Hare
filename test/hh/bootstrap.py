@@ -17,6 +17,10 @@ from .root import install
 
 # extras/mmu/mmu_constants.py:69 - bootup is scheduled this far out
 BOOT_DELAY = 2.5
+# Passed as gates_loaded_at: each gate's filament where a preload leaves it
+AT_PRELOAD_PARK = 'preload park'
+# Where a user's push leaves a filament: past the entry switch, short of the gate
+TIP_AT_GATE = -40.0
 
 # What a user's real printer.cfg provides and the HH templates deliberately do not.
 #
@@ -1394,6 +1398,23 @@ class Session:
             self.printer.send_event('klippy:ready')
         return self
 
+    def preload_park(self, gate):
+        """
+        Where a preload leaves this gate's filament: gate_preload_parking_distance from the
+        preload endstop. A printer that restarts with filament in its gates finds it there.
+        """
+        params = self.mmu.mmu_unit(gate).p
+        endstop = params.gate_preload_endstop or params.gate_homing_endstop
+        model = self.filament()
+        landmark = 'mmu_encoder' if endstop == 'encoder' else endstop
+        if landmark not in model.layout:
+            return TIP_AT_GATE
+        park = model.landmark(landmark, gate) + params.gate_preload_parking_distance
+        # A gate's own park is short of the hub: the default layout puts the shared exit only 10mm on
+        if endstop != 'mmu_shared_exit' and park >= model.landmark('mmu_shared_exit', gate):
+            park = model.landmark('mmu_shared_exit', gate) - 1.
+        return park
+
     def seed_loaded_gates(self, tip_position, status=None):
         """
         Put filament at every gate and persist an 'available' map, BEFORE klippy:ready.
@@ -1428,14 +1449,16 @@ class Session:
         """
         # NOT the selected gate/tool: that is seed_selection()'s job, and it has its own rules
         # about pairing with seed_selector_last_pos().
-        from extras.mmu.mmu_constants import GATE_AVAILABLE, VARS_MMU_GATE_STATUS
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, GATE_EMPTY, VARS_MMU_GATE_STATUS
+        seeded_status = GATE_AVAILABLE if status is None else status
+        if not isinstance(seeded_status, (list, tuple)):
+            seeded_status = [seeded_status] * self.mmu.num_gates
         model = self.filament()
         for gate in range(self.mmu.num_gates):
-            model.place(gate, tip_position)
-        seeded_status = GATE_AVAILABLE if status is None else status
-        self.mmu.var_manager.set(VARS_MMU_GATE_STATUS,
-                                 [seeded_status] * self.mmu.num_gates)
-        self.mmu.p.default_gate_status[:] = [seeded_status] * self.mmu.num_gates
+            if seeded_status[gate] != GATE_EMPTY:
+                model.place(gate, self.preload_park(gate) if tip_position is AT_PRELOAD_PARK else tip_position)
+        self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, list(seeded_status))
+        self.mmu.p.default_gate_status[:] = list(seeded_status)
         return self
 
     def seed_selection(self, gate, tool=None):
@@ -1527,7 +1550,7 @@ class Session:
                 homed.append(unit.name)
         return homed
 
-    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
+    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, gate_status=None, prime=False, seed=0,
              pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None,
              sensors_disabled=None):
         """
@@ -1543,7 +1566,9 @@ class Session:
 
         gates_loaded_at=<tip position> is the same idea for the gate map - see
         seed_loaded_gates(). Only the console passes it, and only when it is about to preload
-        every gate anyway.
+        every gate anyway. gate_status is a callable giving the status to persist for each gate
+        (called after priming, so it can read the spool weights); a gate it marks empty gets no
+        filament.
 
         prime=True is the same idea again, for the filament ATTRIBUTES - see prime_gate_map().
         Also before ready, and for the same reason: __MMU_BOOTUP prints the gate/filament table,
@@ -1599,7 +1624,7 @@ class Session:
             if prime:
                 self.primed = self.prime_gate_map(seed=seed)
             if gates_loaded_at is not None:
-                self.seed_loaded_gates(gates_loaded_at)
+                self.seed_loaded_gates(gates_loaded_at, gate_status() if gate_status else None)
             if selected_gate is not None:
                 self.seed_selection(selected_gate, selected_tool)
             if selector_last_pos is not None:

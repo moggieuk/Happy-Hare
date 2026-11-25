@@ -484,16 +484,16 @@ command returns, so stamping there gave every line of a load the same end-of-com
 23:05:53 [T9] ███◉██████████ ... LOADED 801.8mm
 ```
 
-The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
-table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on
-screen when the prompt appears — so it used to report the whole machine unknown about one
-that is fully loaded. `Session.seed_loaded_gates()` places filament at every gate and
-persists `mmu_state_gate_status` before `klippy:ready`, which is exactly the state a real
-printer restores from `mmu_vars.cfg`. Both halves are needed: the persisted map is the only
-source for a unit with no per-gate switches (ERCF), and it is not enough for one that has
-them (ViViD re-derives its gates from `mmu_entry_9..12` at bootup and would overwrite a
-seeded map with `GATE_EMPTY`). `--no-preload` and `--no-calibrate` skip it, so a cold start
-is still a cold start.
+The **starting state of the gates is set before bootup too**, as a printer that was used
+yesterday has it: `Session.seed_loaded_gates()` places each gate's filament where a preload
+leaves it (`gate_preload_parking_distance` from the preload endstop) and persists
+`mmu_state_gate_status` before `klippy:ready`. Bootup then checks the persisted map against
+the sensors exactly as it does on a printer, and nothing is preloaded afterwards. With
+`--seed` the persisted map is a used machine's: a spent spool's gate is empty (and has no
+filament), and one or two stocked gates are unknown. Bootup resolves an unknown gate whose
+exit sensor sees the filament; on a unit with nothing to see it (ERCF), it stays unknown
+until `MMU_CHECK_GATE`. `--no-preload` and `--no-calibrate` skip it, so a cold start is
+still a cold start.
 
 Lines the **console itself** adds are dimmed and prefixed `#`, so there is never a question
 about which of them came off the MMU:

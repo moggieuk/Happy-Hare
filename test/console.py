@@ -47,6 +47,7 @@ if __package__ in (None, ''):                       # allow `python test/console
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from test.hh import session as hh_session           # noqa: E402
+from test.hh import bootstrap                       # noqa: E402
 from test.hh import print_job                       # noqa: E402
 from test.hh.webui_bridge import WebUiBridge        # noqa: E402
 
@@ -571,17 +572,16 @@ class Console:
         # Seed calibration INSIDE boot(), before __MMU_BOOTUP runs. Calibrating afterwards
         # (which is what this used to do) left the banner warning "Calibration steps are not
         # complete" about a machine that was calibrated a millisecond later.
-        # gates_loaded_at for the same reason as calibrate: __MMU_BOOTUP prints the gate
-        # table, and _preload_all() runs AFTER boot() returns - so the banner said every gate
-        # was unknown (ERCF) or empty (ViViD, which has per-gate switches) about a machine
-        # that is fully preloaded by the time the prompt appears, and that banner is the last
-        # thing on screen. Only seeded when the preload is actually going to happen.
+        # gates_loaded_at: a printer restarts with its filament where a preload left it and
+        # its gate map persisted, and bootup checks one against the other. Nothing is
+        # preloaded afterwards.
         preloading = not (a.no_preload or a.no_calibrate)
         # home= for the same reason as the other two: bootup renders the selector and filament
         # rows, and homing afterwards left the banner showing 'Selct: XXXX' and '[T?]' about a
         # machine a later MMU_STATUS reported as homed with a gate selected.
         self.hh.boot(calibrate=not a.no_calibrate,
-                     gates_loaded_at=TIP_AT_GATE if preloading else None,
+                     gates_loaded_at=bootstrap.AT_PRELOAD_PARK if preloading else None,
+                     gate_status=self._weathered_gate_status if a.seed is not None and not a.no_prime else None,
                      prime=not a.no_prime, seed=a.seed or 0,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
@@ -611,15 +611,6 @@ class Console:
         # Without this HH auto-heats and reports it through log_error, which lands in the
         # error list and makes a clean session look dirty (bootstrap.py:464).
         self.hh.heat_extruder(a.temp)
-
-        # A PHYSICAL selector needs calibrating and homing before it can select a gate, and an
-        # uncalibrated one refuses with "Selector is not calibrated". No-op on a VirtualSelector
-        # machine, so this costs the older profiles nothing.
-        if preloading:
-            self._preload_all()
-            if a.seed is not None and not a.no_prime:
-                self._weather_gates(a.seed)
-            self._refresh_startup_filament_row()
 
         # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
         # it every call Happy Hare makes to Moonraker goes into the void, so an NFC read ends
@@ -790,61 +781,22 @@ class Console:
         model.tip[gate] = min(model.tip[gate], model._nozzle_position(gate)-blade)
         model.sync(gate)
 
-    def _preload_all(self):
-        """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
-        # The preload walks every gate and would otherwise leave the LAST one selected, which
-        # is the one thing about the machine the bootup banner cannot be made to agree with:
-        # it renders before this runs. Preloading from the pre_bootup seam instead is not a
-        # free swap - today the preload runs after _settle_nfc_init() and after bootup sets
-        # the print state to 'initialized', and moving it ahead of bootup changes that
-        # ordering. So restore the selection bootup reported instead, and the banner's
-        # 'Selct:'/'T' row still describes the machine the first MMU_STATUS sees. Read from
-        # the machine rather than hardcoding gate 0, so a persisted selection is honoured too.
-        selected = self.hh.mmu.gate_selected
-        for gate in range(self.hh.mmu.num_gates):
-            self.hh.place_filament(gate, position=TIP_AT_GATE)
-            self._dispatch('MMU_PRELOAD GATE=%d' % gate)
-            # Settle between gates. Without it the preload does not finish and the gate is
-            # left EMPTY, which then fails every load with "Gate N is empty".
-            self.hh.reactor.advance(0.)
-        if selected >= 0 and self.hh.mmu.gate_selected != selected:
-            self._dispatch('MMU_SELECT GATE=%d' % selected)
-            self.hh.reactor.advance(0.)
-        self._clear_sink()  # setup noise is not console history
-
-    def _weather_gates(self, seed):
+    def _weathered_gate_status(self):
         """
-        Leave the machine as a used one is found: a spool that has run out has no filament at
-        its gate and reads EMPTY, and one or two gates with filament read UNKNOWN until
-        MMU_CHECK_GATE looks. The selected gate is left alone.
+        The gate map a used machine is found with, persisted before bootup so that Happy Hare
+        corrects it from the sensors as it would on a printer: a spool that has run out has no
+        filament at its gate and reads EMPTY, and one or two gates with filament read UNKNOWN.
+        Gate 0, which bootup selects, is left alone.
         """
-        from extras.mmu.mmu_constants import GATE_EMPTY, GATE_UNKNOWN
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, GATE_EMPTY, GATE_UNKNOWN
         mmu = self.hh.mmu
-        rng = random.Random(seed + 2)
-        empty = [gate for gate in range(mmu.num_gates) if mmu.gate_remaining_weight[gate] == 0]
-        for gate in empty:
-            with self.hh.quiet_sensors():
-                self.fil.remove(gate)
-            mmu.gate_maps.set_gate_status(gate, GATE_EMPTY, clear_attributes=False)  # The spent spool is still on the gate
-        stocked = [gate for gate in range(mmu.num_gates) if gate not in empty and gate != mmu.gate_selected]
+        rng = random.Random(self.args.seed + 2)
+        status = [GATE_EMPTY if mmu.gate_remaining_weight[gate] == 0 else GATE_AVAILABLE
+                  for gate in range(mmu.num_gates)]
+        stocked = [gate for gate in range(1, mmu.num_gates) if status[gate] == GATE_AVAILABLE]
         for gate in rng.sample(stocked, min(len(stocked), rng.randint(1, 2))):
-            mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
-        self.hh.reactor.advance(0.)
-        self._clear_sink()
-
-    def _refresh_startup_filament_row(self):
-        """Make the cached boot banner describe the post-preload simulator state."""
-        current, _plain = self.hh.mmu.logger._color_message(
-            self.hh.mmu.get_filament_position_string())
-        table, _plain = self.hh.mmu.logger._color_message(self.hh.mmu._mmu_visual_to_string())
-        refreshed = []
-        for message in self.startup_output:
-            if 'Avail: ' in message and 'Selct: ' in message:
-                message = table  # Gates may have been emptied or left unknown since bootup printed it
-            lines = message.split('\n')
-            lines = [current if line.startswith('[T') else line for line in lines]
-            refreshed.append('\n'.join(lines))
-        self.startup_output = refreshed
+            status[gate] = GATE_UNKNOWN
+        return status
 
     def close(self):
         if self.cutter_telemetry_unsubscribe is not None:
