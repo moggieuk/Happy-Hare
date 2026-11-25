@@ -3343,17 +3343,21 @@ class TestToolheadMacrosTakeTime(unittest.TestCase):
 
 
 class TestWebProfileRestart(unittest.TestCase):
-    def test_a_profile_started_from_the_web_console_runs_at_real_speed(self):
+    def test_the_web_console_asks_for_real_speed_and_a_restart_keeps_what_it_asked_for(self):
         from test.hh.webui_bridge import WebUiBridge
         with no_tty():
             console = console_mod.Console(console_mod.parse_args(
                 ['--profile', 'boxturtle', '--no-serve', '--no-log', '--plain', '--header', 'off']))
             self.addCleanup(console.close)
             console.boot()
-            console.bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
-            self.assertEqual(console.hh.pacing, 0.5)
+            bridge = console.bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
+            bridge.set_pace = console._pace_for_web
+            console._restart_for_web('boxturtle')
+            self.assertEqual(console.hh.pacing, 0.5)   # A restart alone leaves the launch pace
+            self.assertEqual(bridge.rpc_sim_console_pace(None, {'realtime': True}), {'pace': 1.})
             console._restart_for_web('boxturtle')
             self.assertEqual(console.hh.pacing, 1.)
+            self.assertEqual(bridge.rpc_sim_console_pace(None, {'realtime': False}), {'pace': 0.5})
 
     def test_restart_rebinds_connected_telemetry_for_same_and_new_profile(self):
         from test.hh.webui_bridge import WebUiBridge

@@ -468,6 +468,7 @@ def parse_scroll_args(text):
 class Console:
     def __init__(self, args):
         self.args = args
+        self.launch_pace = args.pace
         self.color = not args.plain and sys.stdout.isatty()
         # See truecolor_supported(): guessing truecolor on a terminal without it turns
         # Happy Hare's pink warning into a pink BACKGROUND.
@@ -685,8 +686,17 @@ class Console:
                                   'Choose one with --serve PORT.' % (port, self.bridge.port))
         self.bridge_error = None
         self.bridge.restart_profile = self._restart_for_web
+        self.bridge.set_pace = self._pace_for_web
         self.bridge.profile_name = str(self.args.profile)
         self._install_pace_observer()
+
+    def _pace_for_web(self, realtime):
+        """
+        The web console's live view watches the machine as a printer runs; its telemetry view
+        keeps the pace this console was launched with. A restart from the web keeps the choice.
+        """
+        self.args.pace = 1. if realtime else self.launch_pace
+        return self.hh.set_pacing(self.args.pace, wall=self._wall_pacing())
 
     def _restart_for_web(self, profile):
         bridge, previous = self.bridge, self.args.profile
@@ -695,7 +705,6 @@ class Console:
         self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
         self.args.no_serve = True
         self.args.profile = profile
-        self.args.pace = 1.  # Watched in the web console, so as a printer runs; /pace still changes it
         try:
             try:
                 self._meta_reset([], show_banner=False)
