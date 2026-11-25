@@ -1673,6 +1673,8 @@ class Console:
             return
         now = self.hh.reactor.monotonic()
         if active:
+            toolhead = self.hh.printer.lookup_object('toolhead')
+            toolhead.last_move_time = toolhead.get_last_move_time()
             if idle.state == 'Ready':
                 idle.timeout_timer.waketime = now + idle.idle_timeout
             else:
