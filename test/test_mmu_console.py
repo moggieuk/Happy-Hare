@@ -3342,6 +3342,26 @@ class TestToolheadMacrosTakeTime(unittest.TestCase):
                 self.assertIn(action, seen)
 
 
+class TestIdleTimeoutStandIn(unittest.TestCase):
+    def test_a_pause_after_a_load_reports_when_the_idle_timeout_expires_and_then_expires(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+            self.addCleanup(console.close)
+            console.boot()
+            hh = console.hh
+            idle = hh.printer.lookup_object('idle_timeout')
+            console.run_command('MMU_LOAD')
+            console.run_command('MMU_PAUSE FORCE_IN_PRINT=1')
+            self.assertEqual(idle.state, 'Ready')
+            now = hh.reactor.monotonic()
+            self.assertGreater(hh.mmu.get_status(now)['idle_timeout_time'], now)
+            console.run_command('SET_IDLE_TIMEOUT TIMEOUT=30')
+            console._meta_advance(['31'])
+            self.assertEqual(idle.state, 'Idle')
+            self.assertIsNone(hh.mmu.get_status(hh.reactor.monotonic())['idle_timeout_time'])
+
+
 class TestWebProfileRestart(unittest.TestCase):
     def test_the_web_console_asks_for_real_speed_and_a_restart_keeps_what_it_asked_for(self):
         from test.hh.webui_bridge import WebUiBridge

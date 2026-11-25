@@ -549,6 +549,10 @@ What is simulated:
 
 - **The print lifecycle.** `print_stats` and `idle_timeout` move as `virtual_sdcard` would
   move them, so Happy Hare's automatic job start/end detection runs for real.
+- **The idle timeout.** Outside a job, any command leaves `idle_timeout` Ready with the
+  timeout counting from then, and a held job is Ready too. When it expires (on the live
+  clock or `/advance`) the extruder heater goes off and the state returns to Idle. The
+  unit-test harness does none of this: there the state only moves when a test sets it.
 - **Macro bodies.** Configured `T<n>` macros run their real Jinja in both consoles
   and during jobs, delegating to `MMU_CHANGE_TOOL`. `MMU_START_SETUP`, `MMU_START_CHECK`,
   `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` are additionally enabled during jobs.
