@@ -2542,7 +2542,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertLess(max(console.fil.tip[:8]), console.fil.layout['mmu_encoder'])
         self.assertFalse(console.hh.sensors()['unit0:mmu_shared_exit'].runout_helper.filament_present)
 
-    def test_a_seeded_start_leaves_the_spent_spool_empty_and_a_gate_or_two_unknown(self):
+    def test_a_seeded_start_leaves_the_spent_spool_empty_and_bootup_corrects_what_its_sensors_can(self):
         from test.hh.filament import TIP_ABSENT
         console = console_mod.Console(console_mod.parse_args(
             ['--profile', 'boxturtle', '--seed', '5', '--no-serve', '--no-log', '--plain']))
@@ -2552,7 +2552,9 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertEqual(mmu.gate_remaining_weight[1], 0)
         self.assertEqual(mmu.gate_status[1], 0)
         self.assertEqual(console.fil.tip[1], TIP_ABSENT)
-        self.assertIn(list(mmu.gate_status).count(-1), (1, 2))
+        # Every BoxTurtle gate has an exit sensor, so bootup resolves the gates seeded unknown
+        self.assertIn(console._weathered_gate_status().count(-1), (1, 2))
+        self.assertEqual(list(mmu.gate_status).count(-1), 0)
         table = next(m for m in console.startup_output if 'Avail: ' in m)
         self.assertIn(' - ', table.split('Avail: ')[1].split('\n')[0].replace('\xa0', ' '))
         self.assertEqual(self.console.hh.mmu.gate_status.count(1), self.console.hh.mmu.num_gates)  # No seed: untouched
