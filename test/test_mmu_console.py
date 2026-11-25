@@ -3341,6 +3341,19 @@ class TestToolheadMacrosTakeTime(unittest.TestCase):
                 console.run_command('MMU_UNLOAD')
                 self.assertIn(action, seen)
 
+    def test_a_purge_lasts_long_enough_to_be_seen_when_paced(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+            self.addCleanup(console.close)
+            console.boot()
+            seen = set()
+            console.hh.printer.harness_pace_observer = lambda: seen.add(console.hh.mmu.get_status(0)['action'])
+            console.hh.set_pacing(0.2, wall=False)
+            console.run_command('MMU_SELECT GATE=0')
+            console.run_command('MMU_LOAD')
+            self.assertIn('Purging', seen)
+
 
 class TestLiveFilamentPosition(unittest.TestCase):
     def test_the_live_position_advances_through_a_paced_move_and_ends_where_it_was_sent(self):

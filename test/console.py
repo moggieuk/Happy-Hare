@@ -555,13 +555,13 @@ class Console:
         effects['MMU_COLD_PULL'] = self._run_macro_body
         # Execute reference purge segments so G1 telemetry and filament transport
         # reflect real macro commands instead of the harness's time-only effect.
-        effects['_MMU_PURGE'] = self._run_macro_body
+        effects['_MMU_PURGE'] = self._timed_macro(4.)
         effects['__MMU_PURGE_SEGMENT'] = self._run_macro_body
         for name in ('_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
                      '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP',
                      '_WAIT_FOR_TEMP'):
             effects[name] = self._run_macro_body
-        # Toolhead moves are not paced, so without this a cut or a formed tip is over in an instant
+        # Toolhead moves are not paced, so without this a purge (above), a cut or a formed tip is over in an instant
         effects['_CUT_TIP_DO_CUT_MOTION'] = self._timed_macro(1.5)
         effects['_MMU_FORM_TIP'] = self._timed_macro(4.)
         self.cutter_telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self._on_cutter_telemetry)
