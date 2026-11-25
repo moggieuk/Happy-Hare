@@ -582,6 +582,7 @@ class Console:
         # machine a later MMU_STATUS reported as homed with a gate selected.
         self.hh.boot(calibrate=not a.no_calibrate,
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
+                     gate_status=self._weathered_gate_status if a.seed is not None and not a.no_prime else None,
                      prime=not a.no_prime, seed=a.seed or 0,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
@@ -617,8 +618,6 @@ class Console:
         # machine, so this costs the older profiles nothing.
         if preloading:
             self._preload_all()
-            if a.seed is not None and not a.no_prime:
-                self._weather_gates(a.seed)
             self._refresh_startup_filament_row()
 
         # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
@@ -800,8 +799,12 @@ class Console:
         # ordering. So restore the selection bootup reported instead, and the banner's
         # 'Selct:'/'T' row still describes the machine the first MMU_STATUS sees. Read from
         # the machine rather than hardcoding gate 0, so a persisted selection is honoured too.
+        from extras.mmu.mmu_constants import GATE_AVAILABLE
         selected = self.hh.mmu.gate_selected
         for gate in range(self.hh.mmu.num_gates):
+            # What bootup made of a gate seeded empty or unknown stands
+            if self.hh.mmu.gate_maps.gate_status[gate] < GATE_AVAILABLE:
+                continue
             self.hh.place_filament(gate, position=TIP_AT_GATE)
             self._dispatch('MMU_PRELOAD GATE=%d' % gate)
             # Settle between gates. Without it the preload does not finish and the gate is
@@ -812,25 +815,22 @@ class Console:
             self.hh.reactor.advance(0.)
         self._clear_sink()  # setup noise is not console history
 
-    def _weather_gates(self, seed):
+    def _weathered_gate_status(self):
         """
-        Leave the machine as a used one is found: a spool that has run out has no filament at
-        its gate and reads EMPTY, and one or two gates with filament read UNKNOWN until
-        MMU_CHECK_GATE looks. The selected gate is left alone.
+        The gate map a used machine is found with, persisted before bootup so that Happy Hare
+        corrects it from the sensors as it would on a printer: a spool that has run out has no
+        filament at its gate and reads EMPTY, and one or two gates with filament read UNKNOWN.
+        Gate 0, which bootup selects, is left alone.
         """
-        from extras.mmu.mmu_constants import GATE_EMPTY, GATE_UNKNOWN
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, GATE_EMPTY, GATE_UNKNOWN
         mmu = self.hh.mmu
-        rng = random.Random(seed + 2)
-        empty = [gate for gate in range(mmu.num_gates) if mmu.gate_remaining_weight[gate] == 0]
-        for gate in empty:
-            with self.hh.quiet_sensors():
-                self.fil.remove(gate)
-            mmu.gate_maps.set_gate_status(gate, GATE_EMPTY, clear_attributes=False)  # The spent spool is still on the gate
-        stocked = [gate for gate in range(mmu.num_gates) if gate not in empty and gate != mmu.gate_selected]
+        rng = random.Random(self.args.seed + 2)
+        status = [GATE_EMPTY if mmu.gate_remaining_weight[gate] == 0 else GATE_AVAILABLE
+                  for gate in range(mmu.num_gates)]
+        stocked = [gate for gate in range(1, mmu.num_gates) if status[gate] == GATE_AVAILABLE]
         for gate in rng.sample(stocked, min(len(stocked), rng.randint(1, 2))):
-            mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
-        self.hh.reactor.advance(0.)
-        self._clear_sink()
+            status[gate] = GATE_UNKNOWN
+        return status
 
     def _refresh_startup_filament_row(self):
         """Make the cached boot banner describe the post-preload simulator state."""

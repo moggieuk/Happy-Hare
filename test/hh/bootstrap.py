@@ -1428,14 +1428,16 @@ class Session:
         """
         # NOT the selected gate/tool: that is seed_selection()'s job, and it has its own rules
         # about pairing with seed_selector_last_pos().
-        from extras.mmu.mmu_constants import GATE_AVAILABLE, VARS_MMU_GATE_STATUS
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, GATE_EMPTY, VARS_MMU_GATE_STATUS
+        seeded_status = GATE_AVAILABLE if status is None else status
+        if not isinstance(seeded_status, (list, tuple)):
+            seeded_status = [seeded_status] * self.mmu.num_gates
         model = self.filament()
         for gate in range(self.mmu.num_gates):
-            model.place(gate, tip_position)
-        seeded_status = GATE_AVAILABLE if status is None else status
-        self.mmu.var_manager.set(VARS_MMU_GATE_STATUS,
-                                 [seeded_status] * self.mmu.num_gates)
-        self.mmu.p.default_gate_status[:] = [seeded_status] * self.mmu.num_gates
+            if seeded_status[gate] != GATE_EMPTY:
+                model.place(gate, tip_position)
+        self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, list(seeded_status))
+        self.mmu.p.default_gate_status[:] = list(seeded_status)
         return self
 
     def seed_selection(self, gate, tool=None):
@@ -1527,7 +1529,7 @@ class Session:
                 homed.append(unit.name)
         return homed
 
-    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
+    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, gate_status=None, prime=False, seed=0,
              pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None,
              sensors_disabled=None):
         """
@@ -1543,7 +1545,9 @@ class Session:
 
         gates_loaded_at=<tip position> is the same idea for the gate map - see
         seed_loaded_gates(). Only the console passes it, and only when it is about to preload
-        every gate anyway.
+        every gate anyway. gate_status is a callable giving the status to persist for each gate
+        (called after priming, so it can read the spool weights); a gate it marks empty gets no
+        filament.
 
         prime=True is the same idea again, for the filament ATTRIBUTES - see prime_gate_map().
         Also before ready, and for the same reason: __MMU_BOOTUP prints the gate/filament table,
@@ -1599,7 +1603,7 @@ class Session:
             if prime:
                 self.primed = self.prime_gate_map(seed=seed)
             if gates_loaded_at is not None:
-                self.seed_loaded_gates(gates_loaded_at)
+                self.seed_loaded_gates(gates_loaded_at, gate_status() if gate_status else None)
             if selected_gate is not None:
                 self.seed_selection(selected_gate, selected_tool)
             if selector_last_pos is not None:

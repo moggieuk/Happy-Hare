@@ -548,6 +548,19 @@ class TestBootupOutput(unittest.TestCase):
         self.assertTrue(console.startup_output, 'no bootup output captured at all')
         self.assertTrue(console.hh.fired('mmu:bootup'), 'bootup never ran')
 
+    def test_a_gate_left_unknown_is_one_its_sensors_cannot_vouch_for(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--no-log', '--plain', '--profile', 'boxturtle2_ercf', '--seed', '3']))
+        self.addCleanup(console.close)
+        console.boot()
+        from extras.mmu.mmu_constants import GATE_UNKNOWN
+        mmu = console.hh.mmu
+        unknown = [gate for gate in range(mmu.num_gates) if mmu.gate_maps.gate_status[gate] == GATE_UNKNOWN]
+        self.assertTrue(unknown, 'the seed left no gate unknown')
+        for gate in unknown:
+            self.assertIsNot(mmu.sensor_manager.check_gate_sensor('mmu_exit', gate), True,
+                             'gate %d is unknown with filament at its exit sensor' % gate)
+
     def test_the_welcome_message_reaches_the_banner(self):
         console = console_mod.Console(console_mod.parse_args(
             ['--no-preload', '--no-log', '--plain']))
