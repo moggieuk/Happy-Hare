@@ -118,7 +118,9 @@ class ToolHead:
 
     def check_busy(self, eventtime):
         est_print_time = self.mcu.estimated_print_time(eventtime)
-        return est_print_time, est_print_time, True
+        # The simulator sets last_move_time; without it the toolhead has always just moved
+        last = getattr(self, 'last_move_time', None)
+        return est_print_time if last is None else last, est_print_time, True
 
     def flush_step_generation(self):
         self.flushes += 1

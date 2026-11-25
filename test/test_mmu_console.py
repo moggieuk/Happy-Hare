@@ -3355,7 +3355,10 @@ class TestIdleTimeoutStandIn(unittest.TestCase):
             console.run_command('MMU_PAUSE FORCE_IN_PRINT=1')
             self.assertEqual(idle.state, 'Ready')
             now = hh.reactor.monotonic()
-            self.assertGreater(hh.mmu.get_status(now)['idle_timeout_time'], now)
+            deadline = hh.mmu.get_status(now)['idle_timeout_time']
+            self.assertGreater(deadline, now)
+            console._meta_advance(['5'])
+            self.assertEqual(hh.mmu.get_status(hh.reactor.monotonic())['idle_timeout_time'], deadline)
             console.run_command('SET_IDLE_TIMEOUT TIMEOUT=30')
             console._meta_advance(['31'])
             self.assertEqual(idle.state, 'Idle')
