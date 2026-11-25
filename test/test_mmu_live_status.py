@@ -90,6 +90,25 @@ class TestLiveStatus(unittest.TestCase):
         self.assertEqual(changes['mmu_parameters']['drying_data'], mmu.p.drying_data)
         self.assertFalse([n for n in changes['mmu_parameters'] if skipped(n)])
 
+    def test_the_time_the_paused_extruder_heater_goes_off_is_reported_until_unlock(self):
+        mmu = self.hh.mmu
+        self.assertIsNone(mmu.get_status(0)['hotend_off_time'])
+        before = self.hh.reactor.monotonic()
+        self.hh.run_gcode('MMU_PAUSE FORCE_IN_PRINT=1')
+        self.assertAlmostEqual(mmu.get_status(0)['hotend_off_time'], before + mmu.p.disable_heater, delta=1.)
+        self.hh.run_gcode('MMU_UNLOCK')
+        self.assertIsNone(mmu.get_status(0)['hotend_off_time'])
+
+    def test_the_time_klippers_idle_timeout_expires_is_reported_while_it_is_counting(self):
+        mmu = self.hh.mmu
+        idle = self.hh.printer.lookup_object('idle_timeout')
+        self.assertIsNone(mmu.get_status(1000.)['idle_timeout_time'])  # Idle: nothing is counting
+        idle.set_state('Ready')
+        with mock.patch.object(mmu.toolhead, 'check_busy', return_value=(100., 130.4, True), create=True):
+            self.assertEqual(mmu.get_status(1000.)['idle_timeout_time'], round(1000. + idle.idle_timeout - 30.4))
+        with mock.patch.object(mmu.toolhead, 'check_busy', return_value=(100., 100., False), create=True):
+            self.assertIsNone(mmu.get_status(1000.)['idle_timeout_time'])  # Moves are queued
+
     def test_idle_timeout_parameter_stays_at_its_configfile_value(self):
         mmu = self.hh.mmu
         settings = self.hh.printer.lookup_object('configfile').get_status(0)['settings']

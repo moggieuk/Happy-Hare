@@ -20,7 +20,7 @@ class IdleTimeout:
         gcmd.respond_info('idle_timeout: Timeout set to %.2f s' % (timeout,))
 
     def get_status(self, eventtime=None):
-        return {'state': self.state, 'printing_time': 0.}
+        return {'state': self.state, 'printing_time': 0., 'idle_timeout': self.idle_timeout}
 
     # -- test-facing: drive the state machine HH subscribes to ---------------
     def set_state(self, state):

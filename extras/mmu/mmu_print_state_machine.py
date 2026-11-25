@@ -172,7 +172,7 @@ class MmuPrintStateMachine:
             self.mmu._reset_job_statistics() # Reset job stats but leave persisted totals alone
             for unit in self.mmu.mmu_machine.units:
                 unit.calibrator.reset_autotune_changes()
-            self.mmu.reactor.update_timer(self.mmu.hotend_off_timer, self.mmu.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self.mmu.set_hotend_off_timer() # Don't automatically turn off extruder heaters
             self.mmu.is_handling_runout = False
             self.mmu.gate_maps.clear_slicer_tool_map()
             self.mmu._enable_filament_monitoring() # Enable filament monitoring while printing
@@ -234,7 +234,7 @@ class MmuPrintStateMachine:
             if was_paused and state in ("complete", "cancelled", "error"):
                 self.mmu.log_info("Turning off heaters (slicer PRINT_END was bypassed by MMU pause)")
                 self.mmu.run_gcode_script("TURN_OFF_HEATERS")
-            self.mmu.reactor.update_timer(self.mmu.hotend_off_timer, self.mmu.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self.mmu.set_hotend_off_timer() # Don't automatically turn off extruder heaters
 
             self.mmu.gate_maps.restore_automap_option()
             self.mmu._disable_filament_monitoring() # Disable filament monitoring
