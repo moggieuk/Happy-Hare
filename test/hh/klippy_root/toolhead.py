@@ -116,6 +116,10 @@ class ToolHead:
     def get_last_move_time(self):
         return self._print_time()
 
+    def check_busy(self, eventtime):
+        est_print_time = self.mcu.estimated_print_time(eventtime)
+        return est_print_time, est_print_time, True
+
     def flush_step_generation(self):
         self.flushes += 1
 

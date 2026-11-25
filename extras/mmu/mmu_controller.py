@@ -60,6 +60,8 @@ class MmuController(MmuFilamentMovement):
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
         self.klipper_idle_timeout = None        # Printer's own [idle_timeout], captured on connect
         self.homing = None                      # Active homing target for status subscribers
+        self.hotend_off_time = None             # When the paused extruder's heater goes off, for status subscribers
+        self.toolhead = None                    # Printer toolhead, looked up on connect
         self.config_changes = {}                # Runtime changes to configfile values: {section: {name: value}}
         self.bowden_start_pos = None            # If set then we can measure bowden progress
         self.step_unload_overshoot = 0.         # Handed from _MMU_STEP_UNLOAD_TOOLHEAD to _MMU_STEP_UNLOAD_BOWDEN
@@ -867,6 +869,8 @@ class MmuController(MmuFilamentMovement):
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'action': self._get_action_string(),
             'sync_drive': self.drive().is_synced_to_extruder(),
+            'hotend_off_time': self.hotend_off_time, # When (reactor time) the paused extruder's heater goes off, else None
+            'idle_timeout_time': self._idle_timeout_time(eventtime), # When (reactor time) the idle timeout expires, else None
             'reason_for_pause': self.psm.reason_for_pause if self.is_mmu_paused() else "",
             'pause_hint': (self.psm.pause_hint or "") if self.is_mmu_paused() else "",
             'spoolman_support': self.p.spoolman_support,
@@ -2175,11 +2179,43 @@ class MmuController(MmuFilamentMovement):
 # MMU STATE FUNCTIONS
 # -----------------------------------------------------------------------------------------------------------
 
+    def _idle_timeout_time(self, eventtime):
+        """
+        Expected idle expiry if nothing moves and G-code is free. None unless counting.
+        """
+        idle_timeout = self.printer.lookup_object("idle_timeout", None)
+        if idle_timeout is None or self.toolhead is None or idle_timeout.state != "Ready":
+            return None
+        if idle_timeout.idle_timeout <= 0.: # Kalico allows disabling the idle timeout
+            return None
+        print_time, est_print_time, lookahead_empty = self.toolhead.check_busy(eventtime)
+        if not lookahead_empty:
+            return None
+        timer = getattr(idle_timeout, 'timeout_timer', None)
+        waketime = getattr(timer, 'waketime', self.reactor.NEVER)
+        if waketime == self.reactor.NEVER:
+            return None
+        # SET_IDLE_TIMEOUT in Ready schedules a full timeout from now, even
+        # when the toolhead has already been idle for longer than that timeout.
+        # Expiry cannot precede that callback (or a retry while G-code is busy).
+        deadline = eventtime + idle_timeout.idle_timeout - max(0., est_print_time - print_time)
+        return round(max(waketime, deadline))
+
+
     def _setup_hotend_off_timer(self):
         self.hotend_off_timer = self.reactor.register_timer(self._hotend_off_handler, self.reactor.NEVER)
 
 
+    def set_hotend_off_timer(self, delay=None):
+        """
+        Turn the paused extruder's heater off after delay seconds, or never if no delay is given
+        """
+        self.hotend_off_time = None if delay is None else round(self.reactor.monotonic() + delay, 1)
+        self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER if delay is None else self.hotend_off_time)
+
+
     def _hotend_off_handler(self, eventtime):
+        self.hotend_off_time = None
         if not self.is_printing():
             self.log_info("Disabled extruder heater")
             self._set_extruder_temperature(0, self.psm.paused_extruder)
@@ -2723,7 +2759,7 @@ class MmuController(MmuFilamentMovement):
                 if residual and residual['raised']:
                     self.psm.paused_extruder_temp = residual['target'] # Resume at the new filament's temp, not the residual raise
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.psm.paused_extruder_temp, UI_DEGREE))
-                self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
+                self.set_hotend_off_timer(self.p.disable_heater)
                 self.run_gcode_script("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
                 self.log_trace("Extruder heater will be disabled in %s" % (self._seconds_to_string(self.p.disable_heater)))
                 self.log_trace("Idle timeout in %s" % self._seconds_to_string(self.p.timeout_pause))
@@ -2790,7 +2826,7 @@ class MmuController(MmuFilamentMovement):
     def _mmu_unlock(self):
         if self.is_mmu_paused():
             self.run_gcode_script("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
-            self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
+            self.set_hotend_off_timer()
 
             # Important to wait for stable temperature to resume exactly how we paused
             if self.psm.paused_extruder_temp:
@@ -3511,7 +3547,7 @@ class MmuController(MmuFilamentMovement):
         if not self.is_enabled: return
         self._clear_pending() # Drop any pending shared-NFC spool_id/metadata on disable
         self._disable_filament_monitoring()
-        self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
+        self.set_hotend_off_timer()
         self.run_gcode_script("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.motors_onoff(on=False) # Will also unsync gear
         self.is_enabled = False

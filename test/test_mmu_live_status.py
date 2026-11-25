@@ -90,6 +90,63 @@ class TestLiveStatus(unittest.TestCase):
         self.assertEqual(changes['mmu_parameters']['drying_data'], mmu.p.drying_data)
         self.assertFalse([n for n in changes['mmu_parameters'] if skipped(n)])
 
+    def test_the_time_the_paused_extruder_heater_goes_off_is_reported_until_unlock(self):
+        mmu = self.hh.mmu
+        self.assertIsNone(mmu.get_status(0)['hotend_off_time'])
+        before = self.hh.reactor.monotonic()
+        self.hh.run_gcode('MMU_PAUSE FORCE_IN_PRINT=1')
+        self.assertAlmostEqual(mmu.get_status(0)['hotend_off_time'], before + mmu.p.disable_heater, delta=1.)
+        self.hh.run_gcode('MMU_UNLOCK')
+        self.assertIsNone(mmu.get_status(0)['hotend_off_time'])
+
+    def test_the_time_klippers_idle_timeout_expires_is_reported_while_it_is_counting(self):
+        mmu = self.hh.mmu
+        idle = self.hh.printer.lookup_object('idle_timeout')
+        self.assertIsNone(mmu.get_status(1000.)['idle_timeout_time'])  # Idle: nothing is counting
+        idle.set_state('Ready')
+        idle.timeout_timer.waketime = 1001.  # Earlier check must still wait for the idle interval
+        with mock.patch.object(mmu.toolhead, 'check_busy', return_value=(100., 130.4, True), create=True):
+            self.assertEqual(mmu.get_status(1000.)['idle_timeout_time'], round(1000. + idle.idle_timeout - 30.4))
+        with mock.patch.object(mmu.toolhead, 'check_busy', return_value=(100., 100., False), create=True):
+            self.assertIsNone(mmu.get_status(1000.)['idle_timeout_time'])  # Moves are queued
+
+    def test_idle_deadline_respects_timeout_reset_after_long_idle(self):
+        mmu = self.hh.mmu
+        idle = self.hh.printer.lookup_object('idle_timeout')
+        idle.set_state('Ready')
+        now = self.hh.reactor.monotonic()
+        with mock.patch.object(mmu.toolhead, 'check_busy', return_value=(100., 400., True)):
+            self.hh.run_gcode('SET_IDLE_TIMEOUT TIMEOUT=60')
+            self.assertEqual(idle.timeout_timer.waketime, now + 60.)
+            self.assertEqual(mmu.get_status(now)['idle_timeout_time'], round(now + 60.))
+            # Polling later must not move the deadline or subtract the idle
+            # interval that preceded SET_IDLE_TIMEOUT a second time.
+            with mock.patch.object(mmu.toolhead, 'check_busy', return_value=(100., 410., True)):
+                self.assertEqual(mmu.get_status(now + 10.)['idle_timeout_time'], round(now + 60.))
+
+    def test_idle_deadline_respects_a_scheduled_retry(self):
+        mmu = self.hh.mmu
+        idle = self.hh.printer.lookup_object('idle_timeout')
+        idle.set_state('Ready')
+        idle.timeout_timer.waketime = 1001.
+        # Klipper retries after one second if G-code is busy at expiry.
+        with mock.patch.object(mmu.toolhead, 'check_busy', return_value=(100., 100. + idle.idle_timeout + 10., True)):
+            self.assertEqual(mmu.get_status(1000.)['idle_timeout_time'], 1001.)
+
+    def test_idle_deadline_is_absent_without_an_active_timer(self):
+        mmu = self.hh.mmu
+        idle = self.hh.printer.lookup_object('idle_timeout')
+        idle.set_state('Ready')
+        for timer in (None, SimpleNamespace(waketime=self.hh.reactor.NEVER)):
+            with self.subTest(timer=timer), mock.patch.object(idle, 'timeout_timer', timer):
+                self.assertIsNone(mmu.get_status(self.hh.reactor.monotonic())['idle_timeout_time'])
+
+    def test_idle_deadline_is_absent_when_kalico_disables_the_timeout(self):
+        idle = self.hh.printer.lookup_object('idle_timeout')
+        idle.set_state('Ready')
+        idle.idle_timeout = 0.  # Kalico accepts timeout: 0 in its config
+        self.assertIsNone(self.hh.mmu.get_status(self.hh.reactor.monotonic())['idle_timeout_time'])
+
     def test_idle_timeout_parameter_stays_at_its_configfile_value(self):
         mmu = self.hh.mmu
         settings = self.hh.printer.lookup_object('configfile').get_status(0)['settings']
