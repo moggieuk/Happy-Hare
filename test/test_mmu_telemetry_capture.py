@@ -168,6 +168,14 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertEqual([r['event'] for r in records], ['state_delta'])
         self.assertIn(['printer', 'mmu', 'gate_color'], [c['path'][:3] for c in records[0]['changes']])
 
+    def test_a_tool_map_edit_is_recorded_at_once(self):
+        capture = self.capture()
+        before = len(capture.read()['records'])
+        self.hh.run_gcode('MMU_TTG_MAP TOOL=0 GATE=2')
+        records = capture.read()['records'][before:]
+        self.assertEqual({r['event'] for r in records}, {'state_delta'})
+        self.assertIn(['printer', 'mmu', 'ttg_map'], [c['path'][:3] for r in records for c in r['changes']])
+
     def test_parameter_edit_is_one_delta_and_does_not_reread_parameter_sets(self):
         capture = self.capture()
         with mock.patch.object(self.State, 'parameter_sets', side_effect=AssertionError('re-read')):
