@@ -4392,15 +4392,20 @@ class MmuController(MmuFilamentMovement):
 
         Printer-wide, because there is one parser and one set of tables for every unit. Whether
         a unit's tags use them is that unit's nfc_deep_read: without it a tag is never parsed
-        (MmuNfcManager._want_metadata), so only its UID is read
+        (MmuNfcManager._want_metadata), so only its UID is read.
+
+        Every startup first resets the tables to the built-in ones: RESTART keeps the parser
+        module loaded, so without it IDs an earlier startup added would survive the option
+        being turned off, or a table Moonraker shrank or deleted
         """
+        from .unit.nfc import tag_parser, tigertag_registry
+        tag_parser.reset_tigertag_registry()
         if not self.p.nfc_tigertag_registry:
             return
         config_file = self.printer.get_start_args().get('config_file')
         if not config_file:
             return
         import os
-        from .unit.nfc import tag_parser, tigertag_registry
         cache_dir = os.path.join(os.path.dirname(config_file), 'mmu', 'optional', 'tigertag')
         found = sum(os.path.isfile(os.path.join(cache_dir, t.file + ".json")) for t in tigertag_registry.TABLES)
         if not found:

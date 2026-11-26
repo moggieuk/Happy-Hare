@@ -570,12 +570,17 @@ class TestTigerTagRegistryAtStartup(unittest.TestCase):
         cls.hh.close()
 
     def setUp(self):
-        import json, os
+        import json, os, shutil
         from extras.mmu.unit.nfc import tag_parser
         self.tag_parser = tag_parser
-        self.saved = dict(tag_parser._TIGERTAG_BRANDS)
-        self.addCleanup(lambda: (tag_parser._TIGERTAG_BRANDS.clear(), tag_parser._TIGERTAG_BRANDS.update(self.saved)))
+        saved = {t.attr: dict(getattr(tag_parser, t.attr)) for t in tag_parser._tigertag_registry.TABLES}
+        def restore():
+            for attr, table in saved.items():
+                getattr(tag_parser, attr).clear()
+                getattr(tag_parser, attr).update(table)
+        self.addCleanup(restore)
         cache = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag')
+        shutil.rmtree(cache, ignore_errors=True)                # Each test starts with only id_brand.json
         os.makedirs(cache, exist_ok=True)
         with open(os.path.join(cache, 'id_brand.json'), 'w') as f:
             json.dump([{'id': 64999, 'name': 'Newbrand'}], f)
@@ -616,10 +621,80 @@ class TestTigerTagRegistryAtStartup(unittest.TestCase):
         self.assertFalse(console_changed)
 
     def test_load_adding_nothing_is_still_recorded(self):
+        import json, os
+        brand = next(iter(self.tag_parser._TIGERTAG_BRANDS))     # Already built in: adds nothing
+        with open(os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag', 'id_brand.json'), 'w') as f:
+            json.dump([{'id': brand, 'name': 'Renamed'}], f)
         self.p.nfc_tigertag_registry = 1
-        self.hh.mmu._load_tigertag_registry()                   # first load adds 64999
         lines, _ = self.load_logged()
         self.assertRegex(lines[0], r"loaded 1 of 7 tables .*, 0 new ID\(s\)$")
+
+    def test_repeat_load_counts_from_the_built_in_tables(self):
+        """Each startup starts again from the built-in tables, so a RESTART reports the same count"""
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        lines, _ = self.load_logged()
+        self.assertRegex(lines[0], r"loaded 1 of 7 tables .*, 1 new ID\(s\)$")
+
+    # A Klipper RESTART builds new printer objects but keeps imported modules, so the tag
+    # parser's tables survive it. Calling _load_tigertag_registry() twice on the same booted
+    # session is exactly that: a second startup in the same process
+
+    def test_restart_with_the_option_off_drops_the_downloaded_ids(self):
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertEqual(self.tag_parser._TIGERTAG_BRANDS.get(64999), 'Newbrand')
+        self.p.nfc_tigertag_registry = 0
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+
+    def test_restart_with_the_option_off_drops_downloaded_version_ids(self):
+        import json, os, struct
+        magic = 0x1234ABCD                                      # Not a built-in version
+        self.assertNotIn(magic, self.tag_parser._TIGERTAG_MAGIC)
+        with open(os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag', 'id_version.json'), 'w') as f:
+            json.dump([{'id': magic, 'name': 'TigerTag Test', 'version': '1.9'}], f)
+        raw = struct.pack(">I", magic) + bytes(28)
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertTrue(self.tag_parser._has_tigertag_magic(raw))
+        self.p.nfc_tigertag_registry = 0
+        self.hh.mmu._load_tigertag_registry()
+        self.assertFalse(self.tag_parser._has_tigertag_magic(raw))
+
+    def test_restart_after_a_table_is_deleted_drops_its_ids(self):
+        import os
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+        cache = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag')
+        with open(os.path.join(cache, 'id_aspect.json'), 'w') as f:
+            f.write('[]')                                       # Another table remains, so a load still runs
+        os.remove(os.path.join(cache, 'id_brand.json'))
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+
+    def test_restart_after_a_table_shrinks_drops_the_removed_ids(self):
+        import json, os
+        path = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag', 'id_brand.json')
+        with open(path, 'w') as f:
+            json.dump([{'id': 64999, 'name': 'Newbrand'}, {'id': 64998, 'name': 'Gonebrand'}], f)
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertIn(64998, self.tag_parser._TIGERTAG_BRANDS)
+        with open(path, 'w') as f:
+            json.dump([{'id': 64999, 'name': 'Newbrand'}], f)  # The registry dropped Gonebrand
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64998, self.tag_parser._TIGERTAG_BRANDS)
+        self.assertEqual(self.tag_parser._TIGERTAG_BRANDS.get(64999), 'Newbrand')
+
+    def test_reset_restores_the_built_in_tables_exactly(self):
+        before = {t.attr: dict(getattr(self.tag_parser, t.attr)) for t in self.tag_parser._tigertag_registry.TABLES}
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.tag_parser.reset_tigertag_registry()
+        after = {t.attr: dict(getattr(self.tag_parser, t.attr)) for t in self.tag_parser._tigertag_registry.TABLES}
+        self.assertEqual(after, before)
 
     def test_no_downloaded_tables_yet_is_recorded(self):
         import os, shutil

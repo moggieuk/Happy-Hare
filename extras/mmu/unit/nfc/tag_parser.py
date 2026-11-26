@@ -1303,6 +1303,20 @@ _TIGERTAG_UNITS: dict[int, str] = {
 # already have is never replaced, so a gate's MATERIAL can't change between releases.
 # Which tables, and what a row must satisfy, is defined once in tigertag_registry.
 
+# The tables as shipped. Klipper's RESTART keeps this module loaded, so IDs a previous startup
+# added would otherwise outlive the option being turned off or a downloaded table shrinking;
+# each startup resets to these first (mmu_controller._load_tigertag_registry)
+_TIGERTAG_BUILTIN = {t.attr: dict(globals()[t.attr]) for t in _tigertag_registry.TABLES}
+
+
+def reset_tigertag_registry() -> None:
+    """Put every TigerTag table back to its built-in contents, in place"""
+    for table in _tigertag_registry.TABLES:
+        target = globals()[table.attr]
+        target.clear()
+        target.update(_TIGERTAG_BUILTIN[table.attr])
+
+
 def load_tigertag_registry(cache_dir: str) -> int:
     """Add IDs from the downloaded registry to the built-in tables; returns how many were added.
     A missing or unreadable file is skipped, leaving that table as built in."""
