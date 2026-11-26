@@ -669,7 +669,13 @@ class MmuStepper(ExtruderStepper):
             if leader is not None and isinstance(leader, MmuStepper):
                 source = leader
         stepper = source.stepper
-        print_time = stepper.get_mcu().estimated_print_time(eventtime)
+        mcu = stepper.get_mcu()
+        print_time = mcu.estimated_print_time(eventtime)
+        if mcu.print_time_to_clock(print_time) < 0:
+            # Before the clocks sync, or an eventtime of 0 (get_status(0)): the clock would be
+            # negative, which Klipper's unsigned stepcompress argument rejects. Where the queued
+            # moves end is the best answer then
+            return self.get_mode_position()
         pos = stepper.mcu_to_commanded_position(stepper.get_past_mcu_position(print_time))
         return pos if self.motion_mode == self.MODE_MANUAL else pos - self._mode_pos_offset
 
