@@ -166,12 +166,14 @@ class MmuGateMaps:
 
     def persist_ttg_map(self):
         self.mmu.var_manager.set(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
+        self.mmu.movement_telemetry.gate_map_changed()
 
 
     def persist_endless_spool(self):
         self.mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
         self.mmu.var_manager.set(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
         self.mmu.var_manager.write()
+        self.mmu.movement_telemetry.gate_map_changed()
 
 
     def td1_rgba(self, gate):
@@ -222,6 +224,7 @@ class MmuGateMaps:
 
     def persist_gate_status(self):
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, self.gate_status, write=True)
+        self.mmu.movement_telemetry.gate_map_changed()
 
 
     def persist_gate_map(self, spoolman_sync=False, gate_ids=None, changed_gate=None):
@@ -254,6 +257,7 @@ class MmuGateMaps:
                 self.mmu._spoolman_update_filaments(gate_ids)
 
         self.mmu.led_manager.gate_map_changed(changed_gate)
+        self.mmu.movement_telemetry.gate_map_changed()
         event_gate = -1 if changed_gate is None else changed_gate
         self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % event_gate)
         lane_ids = None if changed_gate is None else [(changed_gate, self.gate_spool_id[changed_gate])]
